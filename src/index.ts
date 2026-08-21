@@ -99,6 +99,7 @@ app.post('/scrape', async (c) => {
       url: body.url,
       maxChars: body.maxChars,
       fastOnly: body.fastOnly,
+      renderJs: body.renderJs,
       timeoutMs: body.timeoutMs,
       noCache: body.noCache,
       extractHighlights: body.extractHighlights,
@@ -182,13 +183,14 @@ app.post('/search/web', async (c) => {
 
     const includeDomains = body?.includeDomains;
     const excludeDomains = body?.excludeDomains;
-    const cacheKey = `search:web:${query}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}`;
+    const updated = body?.updated;
+    const cacheKey = `search:web:${query}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}`;
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const parsedData = await searchYahooWeb({ query, includeDomains, excludeDomains });
+    const parsedData = await searchYahooWeb({ query, includeDomains, excludeDomains, updated });
 
     const responseData = {
       query,
@@ -217,6 +219,7 @@ app.post('/search', async (c) => {
     const noCache = body?.noCache ?? false;
     const includeDomains = body?.includeDomains;
     const excludeDomains = body?.excludeDomains;
+    const updated = body?.updated;
     const extractHighlights = body?.extractHighlights;
 
     if (!query || typeof query !== 'string') {
@@ -232,6 +235,7 @@ app.post('/search', async (c) => {
       noCache,
       includeDomains,
       excludeDomains,
+      updated,
       extractHighlights,
     });
 
