@@ -51,10 +51,14 @@ export function createMcpServer(): McpServer {
         .string()
         .optional()
         .describe('ハイライト抽出に使用するキーワード・検索文'),
+      proxyUrl: z
+        .string()
+        .optional()
+        .describe('経由する HTTP/HTTPS/SOCKS5 プロキシ URL (例: "http://user:pass@host:port")'),
     },
-    async ({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query }) => {
+    async ({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query, proxyUrl }) => {
       try {
-        const result = await scrapeUrl({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query });
+        const result = await scrapeUrl({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query, proxyUrl });
         return {
           content: [
             {
@@ -160,6 +164,7 @@ export function createMcpServer(): McpServer {
       includeDomains: z.array(z.string()).optional().describe('絞り込むドメインリスト'),
       excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
       updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all", "day", "week", "year"'),
+      proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
       extractHighlights: z.boolean().optional().describe('クエリ関連ハイライトを抽出するか'),
     },
     async ({
@@ -171,6 +176,7 @@ export function createMcpServer(): McpServer {
       includeDomains,
       excludeDomains,
       updated,
+      proxyUrl,
       extractHighlights,
     }) => {
       try {
@@ -183,6 +189,7 @@ export function createMcpServer(): McpServer {
           includeDomains,
           excludeDomains,
           updated,
+          proxyUrl,
           extractHighlights,
         });
         return {
@@ -205,10 +212,11 @@ export function createMcpServer(): McpServer {
       url: z.string().url().describe('探索対象のベース URL'),
       limit: z.number().int().min(1).max(500).optional().describe('取得する最大 URL 件数 (デフォルト: 100)'),
       includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)'),
+      proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
     },
-    async ({ url, limit = 100, includeSubdomains = false }) => {
+    async ({ url, limit = 100, includeSubdomains = false, proxyUrl }) => {
       try {
-        const result = await mapSiteUrl({ url, limit, includeSubdomains });
+        const result = await mapSiteUrl({ url, limit, includeSubdomains, proxyUrl });
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
@@ -230,10 +238,11 @@ export function createMcpServer(): McpServer {
       maxPages: z.number().int().min(1).max(20).optional().describe('最大取得ページ数 (デフォルト: 5, 最大: 20)'),
       maxDepth: z.number().int().min(1).max(5).optional().describe('探索する最大リンク深度 (デフォルト: 2)'),
       maxChars: z.number().int().positive().max(100_000).optional().describe('各ページの最大本文文字数 (デフォルト: 15000)'),
+      proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
     },
-    async ({ url, maxPages = 5, maxDepth = 2, maxChars = 15000 }) => {
+    async ({ url, maxPages = 5, maxDepth = 2, maxChars = 15000, proxyUrl }) => {
       try {
-        const result = await crawlSiteUrl({ url, maxPages, maxDepth, maxChars });
+        const result = await crawlSiteUrl({ url, maxPages, maxDepth, maxChars, proxyUrl });
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };

@@ -300,9 +300,33 @@ export function convertHtmlToMarkdown(
 // ==========================================
 let sharedBrowser: Browser | null = null;
 
-export async function getBrowser(): Promise<Browser> {
+export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+  // プロキシ指定がある場合は専用の Chromium インスタンスを起動
+  if (proxyUrl) {
+    let proxyServerArg = proxyUrl;
+    try {
+      const parsedProxy = new URL(proxyUrl);
+      proxyServerArg = `${parsedProxy.protocol}//${parsedProxy.host}`;
+    } catch {}
+
+    const dedicatedBrowser = await puppeteer.launch({
+      executablePath: CHROME_EXECUTABLE_PATH,
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-blink-features=AutomationControlled',
+        '--window-size=1280,800',
+        `--proxy-server=${proxyServerArg}`,
+      ],
+    });
+    return { browser: dedicatedBrowser, isDedicated: true };
+  }
+
   if (sharedBrowser && sharedBrowser.connected) {
-    return sharedBrowser;
+    return { browser: sharedBrowser, isDedicated: false };
   }
 
   const browserlessUrl = process.env.BROWSERLESS_URL;
@@ -310,7 +334,7 @@ export async function getBrowser(): Promise<Browser> {
     const wsUrl = browserlessUrl.replace(/^http/, 'ws');
     try {
       sharedBrowser = await puppeteer.connect({ browserWSEndpoint: wsUrl });
-      return sharedBrowser;
+      return { browser: sharedBrowser, isDedicated: false };
     } catch (e: any) {
       console.warn(`[web-fetcher] Failed to connect to BROWSERLESS_URL (${wsUrl}), falling back to local launch:`, e?.message);
     }
@@ -329,14 +353,31 @@ export async function getBrowser(): Promise<Browser> {
     ],
   });
 
-  return sharedBrowser;
+  return { browser: sharedBrowser, isDedicated: false };
 }
 
-export async function fetchWithStealthBrowser(targetUrl: string, maxChars: number): Promise<ScrapeResult> {
-  const browser = await getBrowser();
+export async function fetchWithStealthBrowser(
+  targetUrl: string,
+  maxChars: number,
+  proxyUrl?: string,
+): Promise<ScrapeResult> {
+  const { browser, isDedicated } = await getBrowser(proxyUrl);
   const page: Page = await browser.newPage();
 
   try {
+    // プロキシ認証の設定 (ユーザー名・パスワードが含まれる場合)
+    if (proxyUrl) {
+      try {
+        const parsedProxy = new URL(proxyUrl);
+        if (parsedProxy.username || parsedProxy.password) {
+          await page.authenticate({
+            username: decodeURIComponent(parsedProxy.username),
+            password: decodeURIComponent(parsedProxy.password),
+          });
+        }
+      } catch {}
+    }
+
     await page.setUserAgent(USER_AGENT);
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
@@ -477,16 +518,20 @@ export async function fetchWithStealthBrowser(targetUrl: string, maxChars: numbe
     };
   } finally {
     await page.close().catch(() => {});
+    if (isDedicated) {
+      await browser.close().catch(() => {});
+    }
   }
 }
 
 // ==========================================
-// 6. 安全なリダイレクト追従付き静的 HTTP Fetch
+// 6. 安全なリダイレクト追従付き静的 HTTP Fetch (プロキシ対応)
 // ==========================================
 export async function fetchWithSafeRedirects(
   initialUrl: string,
   timeoutMs: number,
   maxRedirects = 5,
+  proxyUrl?: string,
 ): Promise<{ response: Response; finalUrl: string } | null> {
   let currentUrl = initialUrl;
 
@@ -508,7 +553,9 @@ export async function fetchWithSafeRedirects(
 
     await throttleDomain(parsed.hostname);
 
-    const res = await fetch(currentUrl, {
+    const effectiveProxy = proxyUrl || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY;
+
+    const res = await (fetch as any)(currentUrl, {
       headers: {
         'User-Agent': USER_AGENT,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5',
@@ -519,6 +566,7 @@ export async function fetchWithSafeRedirects(
       },
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'manual',
+      ...(effectiveProxy ? { proxy: effectiveProxy } : {}),
     });
 
     if ([301, 302, 303, 307, 308].includes(res.status)) {
@@ -576,21 +624,17 @@ export async function parsePdfToMarkdown(
 }
 
 // ==========================================
-// 8. クエリ関連ハイライト抽出 (Tavily 互換)
+// 8. クエリ関連ハイライト抽出 (検索語句に関連する重要文を自動抽出)
 // ==========================================
-export function extractQueryHighlights(content: string, query: string, maxHighlights = 4): string[] {
+export function extractQueryHighlights(content: string, query: string, maxHighlights = 3): string[] {
   if (!query || !content) return [];
   const terms = query
-    .split(/[\s　]+/)
-    .map((t) => t.trim().toLowerCase())
+    .toLowerCase()
+    .split(/\s+/)
     .filter((t) => t.length >= 2);
   if (terms.length === 0) return [];
 
-  const paragraphs = content
-    .split(/\n{2,}|\n(?=[#*-])/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 20 && !p.startsWith('---'));
-
+  const paragraphs = content.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 20 && !p.startsWith('---'));
   const scored: { text: string; score: number }[] = [];
 
   for (const para of paragraphs) {
@@ -657,6 +701,7 @@ export async function scrapeUrl(options: {
   mode?: 'auto' | 'fast' | 'browser';
   fastOnly?: boolean;
   renderJs?: boolean;
+  proxyUrl?: string;
   timeoutMs?: number;
   noCache?: boolean;
   query?: string;
@@ -668,6 +713,7 @@ export async function scrapeUrl(options: {
   const noCache = options.noCache ?? false;
   const query = options.query;
   const shouldExtractHighlights = options.extractHighlights ?? false;
+  const proxyUrl = options.proxyUrl;
 
   // 競合チェック & 動作モードの解決
   if (options.fastOnly && options.renderJs) {
@@ -688,7 +734,7 @@ export async function scrapeUrl(options: {
     throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedUrl.hostname}"`);
   }
 
-  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${effectiveMode}`;
+  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${effectiveMode}:${proxyUrl || ''}`;
   if (!noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) return cached;
@@ -817,7 +863,7 @@ export async function scrapeUrl(options: {
 
   // Level 2: Headless Chromium (Puppeteer)
   try {
-    const result = await fetchWithStealthBrowser(targetUrl, maxChars);
+    const result = await fetchWithStealthBrowser(targetUrl, maxChars, proxyUrl);
     if (shouldExtractHighlights && query) {
       result.highlights = extractQueryHighlights(result.content, query);
     }
@@ -858,11 +904,13 @@ export async function mapSiteUrl(options: {
   limit?: number;
   includeSubdomains?: boolean;
   timeoutMs?: number;
+  proxyUrl?: string;
 }): Promise<{ url: string; count: number; links: string[]; sitemapFound: boolean }> {
   const targetUrl = options.url;
   const limit = Math.min(options.limit ?? 100, 500);
   const includeSubdomains = options.includeSubdomains ?? false;
   const timeoutMs = options.timeoutMs ?? 10000;
+  const proxyUrl = options.proxyUrl;
 
   const parsed = new URL(targetUrl);
   if (isBlockedHostname(parsed.hostname)) {
@@ -885,7 +933,7 @@ export async function mapSiteUrl(options: {
   for (const sitemapUrl of sitemapCandidates) {
     if (collectedUrls.size >= limit) break;
     try {
-      const res = await fetchWithSafeRedirects(sitemapUrl, timeoutMs);
+      const res = await fetchWithSafeRedirects(sitemapUrl, timeoutMs, 5, proxyUrl);
       if (res && res.response.ok) {
         const xmlText = await res.response.text();
         const parsedXml = parser.parse(xmlText);
@@ -908,7 +956,7 @@ export async function mapSiteUrl(options: {
             const subLoc = typeof sub === 'string' ? sub : sub?.loc;
             if (subLoc && typeof subLoc === 'string') {
               try {
-                const subRes = await fetchWithSafeRedirects(subLoc, timeoutMs);
+                const subRes = await fetchWithSafeRedirects(subLoc, timeoutMs, 5, proxyUrl);
                 if (subRes && subRes.response.ok) {
                   const subXml = parser.parse(await subRes.response.text());
                   const subUrlList = subXml?.urlset?.url
@@ -935,7 +983,7 @@ export async function mapSiteUrl(options: {
   // サイトマップで見つからない、または件数が少ない場合は対象ページの内部リンクを抽出
   if (collectedUrls.size < limit) {
     try {
-      const pageRes = await fetchWithSafeRedirects(targetUrl, timeoutMs);
+      const pageRes = await fetchWithSafeRedirects(targetUrl, timeoutMs, 5, proxyUrl);
       if (pageRes && pageRes.response.ok) {
         const html = await pageRes.response.text();
         const $ = cheerio.load(html);
@@ -980,6 +1028,7 @@ export async function crawlSiteUrl(options: {
   scrapeContent?: boolean;
   maxChars?: number;
   timeoutMs?: number;
+  proxyUrl?: string;
 }): Promise<{
   url: string;
   count: number;
@@ -991,6 +1040,7 @@ export async function crawlSiteUrl(options: {
   const scrapeContent = options.scrapeContent !== false;
   const maxChars = options.maxChars ?? 15000;
   const timeoutMs = options.timeoutMs ?? 10000;
+  const proxyUrl = options.proxyUrl;
 
   const parsedRoot = new URL(rootUrl);
   if (isBlockedHostname(parsedRoot.hostname)) {
@@ -1014,12 +1064,13 @@ export async function crawlSiteUrl(options: {
         maxChars,
         timeoutMs,
         fastOnly: true,
+        proxyUrl,
       });
       results.push(scraped);
 
       if (current.depth < maxDepth && queue.length < maxPages * 3) {
         try {
-          const fetchRes = await fetchWithSafeRedirects(normUrl, 5000);
+          const fetchRes = await fetchWithSafeRedirects(normUrl, 5000, 5, proxyUrl);
           if (fetchRes && fetchRes.response.ok) {
             const html = await fetchRes.response.text();
             const $ = cheerio.load(html);
@@ -1222,6 +1273,7 @@ export async function integratedSearch(options: {
   includeDomains?: string[];
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
+  proxyUrl?: string;
   extractHighlights?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
@@ -1233,8 +1285,9 @@ export async function integratedSearch(options: {
   const includeDomains = options.includeDomains;
   const excludeDomains = options.excludeDomains;
   const updated = options.updated;
+  const proxyUrl = options.proxyUrl;
   const extractHighlights = options.extractHighlights ?? false;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${proxyUrl || ''}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1285,6 +1338,7 @@ export async function integratedSearch(options: {
             maxChars,
             timeoutMs: 12000,
             query,
+            proxyUrl,
             extractHighlights,
           });
           return {
