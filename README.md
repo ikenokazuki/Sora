@@ -121,11 +121,11 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 ---
 
 ### 🤖 Module 2: Browser Actions & Automation (`ENABLED_MODULES=browser`)
-フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行、スクリーンショット撮影。
+フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行、スクリーンショット撮影、マルチターン対話セッション。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」にも対応。 | `source: "browser"` | - `url` (string, 必須): 開始 URL<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): タイムアウト ms |
+| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行・ページ遷移）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」や `sessionId` によるマルチターン対話セッション維持に対応。 | `source: "browser"` | - `url` (string, 任意): 開始/遷移 URL<br>- `sessionId` (string, 任意): 既存セッションID<br>- `createSession` (boolean, 任意): セッションを作成・維持するか<br>- `closeSession` (boolean, 任意): セッションを終了するか<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`, `navigate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): タイムアウト ms |
 
 ---
 
@@ -284,8 +284,18 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.4 Yahoo Web 検索 (`POST /search/web`)
-- **リクエスト**:
+### 3.4 統合深層検索 (`POST /search`) & Web 検索 (`POST /search/web`)
+- **深層検索リクエスト (`POST /search`)**:
+```json
+{
+  "query": "2026年 AI 最新トレンド",
+  "limit": 3,
+  "scrapeContent": true,
+  "includeRealtime": true,
+  "updated": "week"
+}
+```
+- **Web 検索リクエスト (`POST /search/web`)**:
 ```json
 {
   "query": "新商品 発売情報",
@@ -297,7 +307,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.4 画像・動画・ニュース・知恵袋・サジェスト検索
+### 3.5 画像・動画・ニュース・知恵袋・サジェスト検索
 - **画像検索 (`POST /search/image`)**: `{ "query": "富士山", "limit": 10 }`
 - **動画検索 (`POST /search/video`)**: `{ "query": "簡単 レシピ", "limit": 10 }`
 - **ニュース検索 (`POST /search/news`)**: `{ "query": "AI ロボット", "limit": 10 }`
@@ -306,7 +316,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.5 電車乗換案内 (`POST /transit/route`)
+### 3.6 電車乗換案内 (`POST /transit/route`)
 - **リクエスト**:
 ```json
 {
@@ -357,7 +367,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.6 日本全国 天気予報 (`POST /weather` / `GET /weather` / `GET /weather/:city`)
+### 3.7 日本全国 天気予報 (`POST /weather` / `GET /weather` / `GET /weather/:city`)
 
 気象庁公式オープンデータ API（および livedoor 天気互換形式）を直接解析し、日本全国の今日・明日・明後日の詳細な気象データを完全自律で取得します。
 
@@ -422,13 +432,13 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.7 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
+### 3.8 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
 - **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名" }`
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---
 
-### 3.8 サイトマップ & クロール (`POST /map` / `POST /crawl`)
+### 3.9 サイトマップ & クロール (`POST /map` / `POST /crawl`)
 - **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 100 }`
 - **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 5 }`
 
