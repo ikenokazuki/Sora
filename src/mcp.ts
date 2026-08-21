@@ -17,9 +17,10 @@ import {
   getSuggestedKeywords,
   searchTransitRoute,
   fetchWeatherForecast,
+  executeBrowserActions,
 } from './scraper.js';
 
-export type GhostFetchModule = 'web' | 'yahoo' | 'life';
+export type GhostFetchModule = 'web' | 'browser' | 'yahoo' | 'life';
 
 export interface McpServerOptions {
   modules?: (GhostFetchModule | 'all')[];
@@ -44,6 +45,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   });
 
   const shouldEnableWeb = isModuleActive('web', options?.modules);
+  const shouldEnableBrowser = isModuleActive('browser', options?.modules);
   const shouldEnableYahoo = isModuleActive('yahoo', options?.modules);
   const shouldEnableLife = isModuleActive('life', options?.modules);
 
@@ -219,7 +221,63 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   }
 
   // =========================================================================
-  // 🇯🇵 Category 2: Yahoo! JAPAN Services (モジュール: 'yahoo')
+  // 🤖 Category 2: Browser Actions & Automation (モジュール: 'browser')
+  // =========================================================================
+  if (shouldEnableBrowser) {
+    mcpServer.tool(
+      'browser_action',
+      '【対話型ブラウザ自動操作】Web ページを開き、クリック・テキスト入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの一連のアクションを順次実行して最終結果を返します。ボタンのテキスト指定クリックにも対応。',
+      {
+        url: z.string().url().describe('操作対象の開始 Web ページ URL (http/https)'),
+        actions: z
+          .array(
+            z.object({
+              type: z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate']).describe('アクション種別: "click", "fill", "type", "press", "select", "scroll", "wait", "evaluate"'),
+              selector: z.string().optional().describe('操作対象の CSS セレクタ (例: "#search-input", "button.submit")'),
+              text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト (例: "検索", "ログイン")'),
+              value: z.string().optional().describe('select タグで選択する値'),
+              key: z.string().optional().describe('press で押下するキー名 (例: "Enter", "Tab", "Escape")'),
+              direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")'),
+              distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)'),
+              ms: z.number().optional().describe('待機時間 (ミリ秒)'),
+              script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
+              clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)'),
+              delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
+            }),
+          )
+          .optional()
+          .describe('順次実行するブラウザアクションの配列'),
+        extract: z
+          .object({
+            markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
+            html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
+            screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)'),
+            screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: false)'),
+            maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
+          })
+          .optional()
+          .describe('操作完了後に抽出するデータ指定'),
+        timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+        proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
+      },
+      async (opts) => {
+        try {
+          const result = await executeBrowserActions(opts as any);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Browser action error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+  }
+
+  // =========================================================================
+  // 🇯🇵 Category 3: Yahoo! JAPAN Services (モジュール: 'yahoo')
   // =========================================================================
   if (shouldEnableYahoo) {
     // Tool 6: search_image (Yahoo 画像検索)

@@ -24,6 +24,7 @@ import {
   getSuggestedKeywords,
   searchTransitRoute,
   fetchWeatherForecast,
+  executeBrowserActions,
 } from './scraper.js';
 import { createAuthMiddleware } from './auth.js';
 import { createMcpServer, createMcpTransport } from './mcp.js';
@@ -134,6 +135,39 @@ app.post('/scrape', async (c) => {
     );
   }
 });
+
+// 対話型ブラウザ自動操作 (POST /browser/action & POST /action)
+const handleBrowserAction = async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const url = body?.url;
+    if (!url || typeof url !== 'string') {
+      return c.json({ error: 'url is required' }, 400);
+    }
+
+    const result = await executeBrowserActions({
+      url,
+      actions: body.actions,
+      extract: body.extract,
+      timeout: body.timeout,
+      proxyUrl: body.proxyUrl,
+    });
+
+    return c.json(result);
+  } catch (err: any) {
+    const isSecurity = err.message?.includes('forbidden') || err.message?.includes('private or blocked');
+    return c.json(
+      {
+        error: err.message || 'Browser action failed',
+        url: (err as any).url,
+      },
+      isSecurity ? 403 : 500,
+    );
+  }
+};
+
+app.post('/browser/action', handleBrowserAction);
+app.post('/action', handleBrowserAction);
 
 // Yahoo リアルタイム検索 (X 生ツイート & フライヤー画像)
 app.post('/search/realtime', async (c) => {
