@@ -1,11 +1,13 @@
 {
-  "name": "web-fetcher",
+  "name": "ghostfetch",
   "version": "1.0.0",
-  "description": "Unified Web Scraping & Markdown Extraction Service with LRU Caching, SSRF Protection, and Browserless Integration",
+  "description": "Ultra-fast, stealth web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "test": "bun test",
     "build": "bun build ./src/index.ts --compile --outfile server"
   },
   "dependencies": {

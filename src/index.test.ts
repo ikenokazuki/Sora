@@ -163,12 +163,12 @@ describe('web-fetcher Auth Middleware', () => {
   });
 });
 
-describe('web-fetcher REST & MCP Endpoints', () => {
+describe('GhostFetch REST & MCP Endpoints', () => {
   it('GET /health should return 200 OK with service details', async () => {
     const res = await app.fetch(new Request('http://localhost/health'));
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
-    expect(data.service).toBe('web-fetcher');
+    expect(data.service).toBe('ghostfetch');
     expect(data.status).toBe('ok');
   });
 
