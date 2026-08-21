@@ -297,6 +297,12 @@ app.post('/crawl', async (c) => {
   }
 });
 
-console.log(`Starting web-fetcher service on port ${PORT}...`);
+if (import.meta.main || process.env.NODE_ENV !== 'test') {
+  Bun.serve({
+    port: PORT,
+    fetch: app.fetch,
+  });
+  console.log(`Starting web-fetcher service on port ${PORT}...`);
+}
 
 export { app };
