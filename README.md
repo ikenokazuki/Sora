@@ -191,12 +191,13 @@ docker run -d \
 
 ### 3.6 日本全国 天気予報 (`POST /weather` / `GET /weather` / `GET /weather/:city`)
 
-気象庁配信・livedoor天気互換の [weather.tsukumijima.net](https://weather.tsukumijima.net/) と連携し、日本全国の今日・明日・明後日の詳細な気象データを取得します。
+気象庁公式オープンデータ API（および livedoor 天気互換形式）を直接解析し、日本全国の今日・明日・明後日の詳細な気象データを完全自律で取得します。
 
 #### 本機能の利点 (Features & Advantages)
+- **完全自律・公式直結（ゼロ依存）**: 気象庁の公式 CDN（`jma.go.jp`）から直接気象データを取得・パース。個人のボランティアサーバーに負荷を一切かけない倫理的・持続可能な設計。
 - **全国 1,805 市区町村のスマート自動解決**: 気象庁公式のエリア定義（`area.json`）を内蔵。「天童市」「軽井沢」「箱根」「浦安」「別府」などの市区町村名・有名地名から、担当する気象台の地点 ID を 0ms で自動選定。県名なしの入力にも対応。
 - **AI エージェントフレンドリーな構造化データ**: 3日間の天気テロップ、風・波、予想最高/最低気温（℃）、時間帯別降水確率（0-6時, 6-12時, 12-18時, 18-24時）、気象台発表の天気概況文（見出し・本文）をクリーンな JSON で一括取得。
-- **LRU キャッシュによる高速応答と負荷抑制**: 30分間のインメモリ LRU キャッシュを標準搭載し、外部 API への過剰なアクセスを自動防止。
+- **LRU キャッシュによる超高速応答**: 30分間のインメモリ LRU キャッシュを標準搭載し、気象庁サーバーへの不要な重複アクセスを自動防止。
 
 - **リクエスト (POST)**:
 ```json
@@ -211,18 +212,18 @@ docker run -d \
 {
   "source": "weather",
   "cityId": "060010",
-  "title": "山形県 山形 の天気",
+  "title": "村山 の天気",
   "publicTimeFormatted": "2026/08/21 17:00:00",
   "publishingOffice": "山形地方気象台",
   "location": {
     "area": "東北",
     "prefecture": "山形県",
     "district": "村山地方",
-    "city": "山形"
+    "city": "天童市"
   },
   "description": {
-    "headline": "村山地方では、２１日夜のはじめ頃まで急な強い雨や落雷に注意してください。",
-    "body": "東北地方は気圧の谷となっています...",
+    "headline": "",
+    "body": "前線が、日本海から東北地方を通って、日本の東にのびています...",
     "text": "..."
   },
   "forecasts": [
@@ -231,18 +232,18 @@ docker run -d \
       "dateLabel": "今日",
       "telop": "曇り",
       "detail": {
-        "weather": "くもり　所により　夜のはじめ頃　まで　雨　で　雷を伴う",
-        "wind": "西の風",
+        "weather": "くもり　所により　夕方　雨　で　雷を伴い　激しく　降る",
+        "wind": "北の風　後　南東の風",
         "wave": null
       },
       "temperature": {
-        "min": null,
-        "max": null
+        "min": "22℃",
+        "max": "31℃"
       },
       "chanceOfRain": {
-        "T00_06": "--%",
-        "T06_12": "--%",
-        "T12_18": "--%",
+        "T00_06": "30%",
+        "T06_12": "0%",
+        "T12_18": "0%",
         "T18_24": "30%"
       },
       "image": "https://www.jma.go.jp/bosai/forecast/img/200.svg"
@@ -282,10 +283,12 @@ docker run -d \
 
 ## 5. 謝意・クレジット (Acknowledgments)
 
-`GhostFetch` の各検索・データ連携機能は、以下の優れたオープンソースプロジェクトおよび公開サービスに支えられています。開発者の皆様に心より感謝申し上げます。
+`GhostFetch` の各検索・データ連携機能は、以下の優れたオープンソースプロジェクトおよび公開サービス・公的オープンデータに支えられています。開発者・関係者の皆様に心より感謝申し上げます。
 
-- **天気予報 API（livedoor 天気互換）**: [weather.tsukumijima.net](https://weather.tsukumijima.net/) / [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api)
-  - 気象庁データに基づく使いやすく信頼性の高い天気 API を無償提供・維持してくださっている **tsukumijima** 氏に深く感謝申し上げます。
+- **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
+  - 日本全国の高精度な気象予報・防災データおよび全国エリア定義データのオープン公開に深く感謝いたします。
+- **天気予報 API（livedoor 天気互換）の設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
+  - livedoor 天気互換フォーマットの分かりやすいスキーマ設計と長年のコミュニティ貢献に感謝いたします。
 - **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
   - Yahoo! JAPAN の画像・動画・ニュース・知恵袋・サジェスト検索の MCP 実装に感謝いたします。
 - **norikae-mcp**: [tysonwu/norikae-mcp](https://github.com/tysonwu/norikae-mcp)
