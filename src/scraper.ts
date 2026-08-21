@@ -360,6 +360,111 @@ export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser;
   return { browser: sharedBrowser, isDedicated: false };
 }
 
+/** 企業の高度な Bot 検知 (Cloudflare / Akamai / DataDome / Kasada) を回避するステルス偽装 */
+export async function applyStealthEvasions(page: Page): Promise<void> {
+  await page.setUserAgent(USER_AGENT);
+  await page.setViewport({ width: 1280, height: 800 });
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+    'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+  });
+
+  await page.evaluateOnNewDocument(() => {
+    const g = globalThis as any;
+    // 1. navigator.webdriver 完全隠蔽 (プロトタイプからの削除)
+    try {
+      delete (Object.getPrototypeOf(navigator) as any).webdriver;
+    } catch {}
+    try {
+      delete (navigator as any).webdriver;
+    } catch {}
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => undefined,
+    });
+
+    // 2. window.chrome オブジェクト完全模倣
+    g.chrome = {
+      app: {
+        isInstalled: false,
+        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+      },
+      runtime: {
+        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
+      },
+      csi: function () {},
+      loadTimes: function () {},
+    };
+
+    // 3. navigator.languages
+    Object.defineProperty(navigator, 'languages', {
+      get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+    });
+
+    // 4. navigator.plugins & mimeTypes
+    const fakePlugins = [
+      { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+    ];
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => fakePlugins,
+    });
+
+    // 5. Permissions API 偽装
+    if ((navigator as any).permissions && (navigator as any).permissions.query) {
+      const origQuery = (navigator as any).permissions.query;
+      (navigator as any).permissions.query = (parameters: any) =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: (g.Notification?.permission === 'granted') ? 'granted' : 'prompt' })
+          : origQuery(parameters);
+    }
+
+    // 6. WebGL Vendor & Renderer 偽装 (SwiftShader 隠蔽)
+    if (g.WebGLRenderingContext) {
+      const getParameter = g.WebGLRenderingContext.prototype.getParameter;
+      g.WebGLRenderingContext.prototype.getParameter = function (parameter: any) {
+        if (parameter === 37445) return 'Google Inc. (Intel)'; // UNMASKED_VENDOR_WEBGL
+        if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)'; // UNMASKED_RENDERER_WEBGL
+        return getParameter.apply(this, [parameter]);
+      };
+    }
+  });
+}
+
+/** Cloudflare Turnstile チャレンジを自動検知して突破 */
+export async function bypassCloudflareTurnstile(page: Page): Promise<boolean> {
+  try {
+    const turnstileIframe = await page.$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+    if (turnstileIframe) {
+      const box = await turnstileIframe.boundingBox();
+      if (box) {
+        const clickX = box.x + 28;
+        const clickY = box.y + box.height / 2;
+        await page.mouse.move(clickX, clickY, { steps: 20 });
+        await new Promise((r) => setTimeout(r, 150));
+        await page.mouse.click(clickX, clickY);
+
+        await Promise.race([
+          page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 6000 }),
+          new Promise((r) => setTimeout(r, 4000)),
+        ]).catch(() => {});
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
 export async function fetchWithStealthBrowser(
   targetUrl: string,
   maxChars: number,
@@ -382,83 +487,7 @@ export async function fetchWithStealthBrowser(
       } catch {}
     }
 
-    await page.setUserAgent(USER_AGENT);
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-      'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"Windows"',
-    });
-
-    // Stealth 偽装 (bot.sannysoft.com, Cloudflare, Akamai, DataDome 回避)
-    await page.evaluateOnNewDocument(() => {
-      const g = globalThis as any;
-      // 1. navigator.webdriver 完全隠蔽 (プロトタイプからの削除)
-      try {
-        delete (Object.getPrototypeOf(navigator) as any).webdriver;
-      } catch {}
-      try {
-        delete (navigator as any).webdriver;
-      } catch {}
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-      });
-
-      // 2. window.chrome オブジェクト完全模倣
-      g.chrome = {
-        app: {
-          isInstalled: false,
-          InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
-          RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
-        },
-        runtime: {
-          OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
-          OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
-          PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-          PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-          PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
-          RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
-        },
-        csi: function () {},
-        loadTimes: function () {},
-      };
-
-      // 3. navigator.languages
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-      });
-
-      // 4. navigator.plugins & mimeTypes
-      const fakePlugins = [
-        { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-        { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-        { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-        { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-        { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      ];
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => fakePlugins,
-      });
-
-      // 5. Permissions API 偽装
-      if ((navigator as any).permissions && (navigator as any).permissions.query) {
-        const origQuery = (navigator as any).permissions.query;
-        (navigator as any).permissions.query = (parameters: any) =>
-          parameters.name === 'notifications'
-            ? Promise.resolve({ state: (g.Notification?.permission === 'granted') ? 'granted' : 'prompt' })
-            : origQuery(parameters);
-      }
-
-      // 6. WebGL Vendor & Renderer 偽装 (SwiftShader 隠蔽)
-      if (g.WebGLRenderingContext) {
-        const getParameter = g.WebGLRenderingContext.prototype.getParameter;
-        g.WebGLRenderingContext.prototype.getParameter = function (parameter: any) {
-          if (parameter === 37445) return 'Google Inc. (Intel)'; // UNMASKED_VENDOR_WEBGL
-          if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)'; // UNMASKED_RENDERER_WEBGL
-          return getParameter.apply(this, [parameter]);
-        };
-      }
-    });
+    await applyStealthEvasions(page);
 
     // 画像・フォントの遮断 (高速化)
     await page.setRequestInterception(true);
@@ -474,28 +503,9 @@ export async function fetchWithStealthBrowser(
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
     // Cloudflare Turnstile 自動突破 (絶対座標マウスインジェクション)
-    try {
-      const turnstileIframe = await page.$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
-      if (turnstileIframe) {
-        const box = await turnstileIframe.boundingBox();
-        if (box) {
-          const clickX = box.x + 28;
-          const clickY = box.y + box.height / 2;
-          await page.mouse.move(clickX, clickY, { steps: 20 });
-          await new Promise((r) => setTimeout(r, 150));
-          await page.mouse.click(clickX, clickY);
+    await bypassCloudflareTurnstile(page);
 
-          await Promise.race([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 6000 }),
-            new Promise((r) => setTimeout(r, 4000)),
-          ]).catch(() => {});
-        }
-      }
-    } catch {
-      // Turnstile がない場合はスルー
-    }
-
-    // 描画待機
+    // 描画待機 (SPA Hydration 安定化)
     await new Promise((r) => setTimeout(r, 1000));
     const rawHtml = await page.content();
 

@@ -6,6 +6,8 @@ import {
   convertHtmlToMarkdown,
   DEFAULT_MAX_CHARS,
   isBlockedHostname,
+  applyStealthEvasions,
+  bypassCloudflareTurnstile,
   type BrowserActionStep,
 } from './scraper.js';
 
@@ -175,12 +177,15 @@ async function runActionsOnPage(
             await page.click(action.selector, { clickCount: 3 });
             await page.keyboard.press('Backspace');
           }
-          await page.type(action.selector, action.text ?? '', { delay: action.delay ?? 20 });
+          const humanDelay = action.delay ?? Math.floor(Math.random() * 20 + 20);
+          await page.type(action.selector, action.text ?? '', { delay: humanDelay });
+          await new Promise((r) => setTimeout(r, 50));
           break;
         }
         case 'press': {
           if (!action.key) throw new Error('Press action requires key');
           await page.keyboard.press(action.key as any);
+          await new Promise((r) => setTimeout(r, 50));
           break;
         }
         case 'select': {
@@ -189,6 +194,7 @@ async function runActionsOnPage(
           }
           await page.waitForSelector(action.selector, { timeout: 10000 });
           await page.select(action.selector, action.value);
+          await new Promise((r) => setTimeout(r, 50));
           break;
         }
         case 'scroll': {
@@ -221,6 +227,8 @@ async function runActionsOnPage(
             throw new Error(`Access to private or blocked host is forbidden: ${action.url}`);
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+          await bypassCloudflareTurnstile(page);
+          await new Promise((r) => setTimeout(r, 300));
           break;
         }
         default:
@@ -295,14 +303,7 @@ export async function handleBrowserSessionAction(
       isDedicated = browserRes.isDedicated;
       page = await browserInstance.newPage();
 
-      await page.setUserAgent(USER_AGENT);
-      await page.setViewport({ width: 1280, height: 800 });
-
-      await page.evaluateOnNewDocument(() => {
-        const g = globalThis as any;
-        Object.defineProperty(g.navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(g.navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });
-      });
+      await applyStealthEvasions(page);
 
       session = {
         id: requestedId,
@@ -321,14 +322,7 @@ export async function handleBrowserSessionAction(
     isDedicated = browserRes.isDedicated;
     page = await browserInstance.newPage();
 
-    await page.setUserAgent(USER_AGENT);
-    await page.setViewport({ width: 1280, height: 800 });
-
-    await page.evaluateOnNewDocument(() => {
-      const g = globalThis as any;
-      Object.defineProperty(g.navigator, 'webdriver', { get: () => undefined });
-      Object.defineProperty(g.navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });
-    });
+    await applyStealthEvasions(page);
   }
 
   try {
@@ -340,6 +334,9 @@ export async function handleBrowserSessionAction(
       const currentUrl = page.url();
       if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
         await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        await bypassCloudflareTurnstile(page);
+        // SPA hydration 安定化
+        await new Promise((r) => setTimeout(r, 400));
       }
     }
 
