@@ -14,17 +14,17 @@
     "@hono/mcp": "^0.3.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
-    "cheerio": "^1.0.0",
+    "cheerio": "^1.2.0",
     "fast-xml-parser": "^5.11.0",
-    "hono": "^4.7.2",
-    "linkedom": "^0.18.9",
-    "puppeteer-core": "^24.4.0",
-    "turndown": "^7.2.0",
+    "hono": "^4.13.3",
+    "linkedom": "^0.18.13",
+    "puppeteer-core": "^24.43.1",
+    "turndown": "^7.2.4",
     "unpdf": "^1.8.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/turndown": "^5.0.5"
+    "@types/turndown": "^5.0.6"
   }
 }
