@@ -189,12 +189,12 @@ describe('web-fetcher Auth Middleware', () => {
   });
 });
 
-describe('GhostFetch REST & MCP Endpoints', () => {
+describe('Sora REST & MCP Endpoints', () => {
   it('GET /health should return 200 OK with service details', async () => {
     const res = await app.fetch(new Request('http://localhost/health'));
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
-    expect(data.service).toBe('ghostfetch');
+    expect(data.service).toBe('sora');
     expect(data.status).toBe('ok');
   });
 
@@ -404,7 +404,7 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     const res = await app.fetch(new Request('http://localhost/'));
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
-    expect(data.service).toBe('ghostfetch');
+    expect(data.service).toBe('sora');
     expect(data.version).toBe('2.0.0');
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
@@ -449,7 +449,7 @@ describe('GhostFetch REST & MCP Endpoints', () => {
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/test`,
         actions: [
-          { type: 'fill', selector: '#kw', text: 'GhostFetch Interactive' },
+          { type: 'fill', selector: '#kw', text: 'Sora Interactive' },
           { type: 'click', text: '検索' },
           { type: 'wait', ms: 100 },
         ],
@@ -460,7 +460,7 @@ describe('GhostFetch REST & MCP Endpoints', () => {
       expect(result.renderedWithBrowser).toBe(true);
       expect(result.actionLogs.length).toBe(3);
       expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
-      expect(result.content).toContain('GhostFetch Interactive');
+      expect(result.content).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
