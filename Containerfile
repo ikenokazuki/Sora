@@ -1,5 +1,5 @@
 # Stage 1: Build Application Binary (Bun)
-FROM oven/bun:1 AS builder
+FROM docker.io/oven/bun:1 AS builder
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
@@ -7,7 +7,7 @@ COPY . .
 RUN bun build ./src/index.ts --compile --outfile server
 
 # Stage 2: Harvest Chromium and required dependencies (Debian Bookworm)
-FROM debian:bookworm-slim AS browser-harvester
+FROM docker.io/library/debian:bookworm-slim AS browser-harvester
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-sandbox \
