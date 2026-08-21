@@ -1,0 +1,30 @@
+{
+  "name": "ghostfetch",
+  "version": "1.0.0",
+  "description": "Ultra-fast, stealth web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
+  "type": "module",
+  "license": "BUSL-1.1",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "build": "bun build ./src/index.ts --compile --outfile server"
+  },
+  "dependencies": {
+    "@hono/mcp": "^0.3.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@mozilla/readability": "^0.5.0",
+    "cheerio": "^1.0.0-rc.12",
+    "fast-xml-parser": "^5.11.0",
+    "hono": "^4.6.14",
+    "linkedom": "^0.18.5",
+    "puppeteer-core": "^23.11.1",
+    "turndown": "^7.2.0",
+    "unpdf": "^1.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/turndown": "^5.0.5"
+  }
+}
