@@ -10,6 +10,8 @@ import {
   filterByDomains,
   extractQueryHighlights,
   resolveCityId,
+  executeBrowserActions,
+  resolveChromiumPath,
 } from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
@@ -411,6 +413,59 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(data.endpoints.searchSuggest).toBeDefined();
     expect(data.endpoints.transitRoute).toBeDefined();
     expect(data.endpoints.weather).toBeDefined();
+    expect(data.endpoints.browserAction).toBeDefined();
+  });
+
+  it('executeBrowserActions should handle full browser interaction lifecycle when Chromium is available', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const mockHtml = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head><meta charset="UTF-8"><title>Interaction Test</title></head>
+      <body>
+        <input id="kw" type="text" value="" />
+        <button id="btn" onclick="document.getElementById('res').innerText = 'Found: ' + document.getElementById('kw').value;">検索</button>
+        <div id="res"></div>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(mockHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      const result = await executeBrowserActions({
+        url: `http://127.0.0.1:${server.port}/test`,
+        actions: [
+          { type: 'fill', selector: '#kw', text: 'GhostFetch Interactive' },
+          { type: 'click', text: '検索' },
+          { type: 'wait', ms: 100 },
+        ],
+        extract: { markdown: true, screenshot: true },
+      });
+
+      expect(result.source).toBe('browser');
+      expect(result.renderedWithBrowser).toBe(true);
+      expect(result.actionLogs.length).toBe(3);
+      expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
+      expect(result.content).toContain('GhostFetch Interactive');
+      expect(result.screenshot).toBeDefined();
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
   });
 });
 
