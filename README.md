@@ -248,7 +248,7 @@ docker run -d \
 ### 4.1 ディストロレス (Distroless) コンテナ設計
 - **ベースイメージ**: `gcr.io/distroless/cc-debian12`
 - **シェルなし・パッケージマネージャなし**: コンテナ内に `/bin/sh` や `apt`、`curl` は一切存在せず、攻撃者がシェルを奪取する余地がありません。
-- **権限剥奪**: ルートレス Podman + `krun` (Firecracker 軽量マイクロVM) により強固に隔離。
+- **最小権限設計**: 非 root 実行に対応し、Docker / Podman / Kubernetes などの標準コンテナ環境で安全に隔離・実行可能。
 
 ### 4.2 セキュリティ & パフォーマンス機能
 - **プロキシ連携**: HTTP, HTTPS, SOCKS5 プロキシに対応し、IP ローテーションや地域制限回避が可能。
