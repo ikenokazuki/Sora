@@ -52,7 +52,7 @@
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `fastOnly` (boolean, 任意): 静的フェッチのみに限定するか<br>- `renderJs` (boolean, 任意): JS完全実行（Stealth Chromium）を強制するか<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
+| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
 | `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
 | `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
@@ -87,8 +87,7 @@
 {
   "url": "https://example.com/press-release.pdf",
   "maxChars": 30000,
-  "fastOnly": false,
-  "renderJs": false,
+  "mode": "auto",
   "extractHighlights": true,
   "query": "新商品 発売日"
 }
