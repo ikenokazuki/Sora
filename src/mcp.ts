@@ -191,16 +191,11 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
     );
-  }
 
-  // =========================================================================
-  // 🇯🇵 Category 2: Yahoo! JAPAN Services (モジュール: 'yahoo')
-  // =========================================================================
-  if (shouldEnableYahoo) {
-    // Tool 5: search_web (Yahoo Japan Web 検索)
+    // Tool 5: search_web (基本 Web 検索)
     mcpServer.tool(
       'search_web',
-      'Yahoo! JAPAN Web 検索を実行し、タイトル・概要スニペット・URL を取得します。期間指定（24h/1週間/1年）や特定ドメインの絞り込み・除外が可能です。',
+      'Web 検索を実行し、タイトル・概要スニペット・URL を取得します。期間指定（24h/1週間/1年）や特定ドメインの絞り込み・除外が可能です。',
       {
         query: z.string().min(1).describe('検索キーワード'),
         includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
@@ -221,7 +216,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
     );
+  }
 
+  // =========================================================================
+  // 🇯🇵 Category 2: Yahoo! JAPAN Services (モジュール: 'yahoo')
+  // =========================================================================
+  if (shouldEnableYahoo) {
     // Tool 6: search_image (Yahoo 画像検索)
     mcpServer.tool(
       'search_image',
