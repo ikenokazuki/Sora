@@ -1763,7 +1763,29 @@ export interface WeatherForecastOptions {
   noCache?: boolean;
 }
 
-/** 天気予報を取得 (tsukumijima weather API) */
+const WEATHER_CODE_TELOP: Record<string, string> = {
+  '100': '晴れ', '101': '晴時々曇', '102': '晴一時雨', '103': '晴時々雨', '104': '晴一時雪', '105': '晴時々雪',
+  '110': '晴のち時々曇', '111': '晴のち曇', '112': '晴のち一時雨', '113': '晴のち時々雨', '114': '晴のち雨',
+  '200': '曇り', '201': '曇時々晴', '202': '曇一時雨', '203': '曇時々雨', '204': '曇一時雪', '205': '曇時々雪',
+  '210': '曇のち時々晴', '211': '曇のち晴', '212': '曇のち一時雨', '213': '曇のち時々雨', '214': '曇のち雨',
+  '300': '雨', '301': '雨時々晴', '302': '雨時々止む', '303': '雨時々雪', '304': '雨一時雪',
+  '311': '雨のち晴', '313': '雨のち曇', '314': '雨のち時々雪', '315': '雨のち雪',
+  '400': '雪', '401': '雪時々晴', '402': '雪時々止む', '403': '雪時々雨',
+  '411': '雪のち晴', '413': '雪のち曇', '414': '雪のち雨',
+};
+
+function getTelopFromCode(code: string, weatherText?: string): string {
+  if (WEATHER_CODE_TELOP[code]) return WEATHER_CODE_TELOP[code];
+  if (weatherText) {
+    if (weatherText.startsWith('晴')) return '晴れ';
+    if (weatherText.startsWith('くもり') || weatherText.startsWith('曇')) return '曇り';
+    if (weatherText.startsWith('雨')) return '雨';
+    if (weatherText.startsWith('雪')) return '雪';
+  }
+  return '晴れ';
+}
+
+/** 天気予報を取得 (気象庁公式オープンデータ API 直接通信 / 完全自律型) */
 export async function fetchWeatherForecast(options: WeatherForecastOptions): Promise<any> {
   const cityId = resolveCityId(options.city);
   const days = Math.min(Math.max(options.days ?? 3, 1), 3);
@@ -1774,6 +1796,96 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
     if (cached) return cached;
   }
 
+  // 1. 気象庁（JMA）公式 API 直接通信
+  try {
+    const officeCode = cityId.substring(0, 2) + '0000';
+    const [forecastRes, overviewRes] = await Promise.all([
+      fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
+        headers: { 'User-Agent': 'GhostFetch/2.0' },
+      }),
+      fetch(`https://www.jma.go.jp/bosai/forecast/data/overview_forecast/${officeCode}.json`, {
+        headers: { 'User-Agent': 'GhostFetch/2.0' },
+      }).catch(() => null),
+    ]);
+
+    if (forecastRes.ok) {
+      const forecastData: any = await forecastRes.json();
+      const overviewData: any = overviewRes?.ok ? await overviewRes.json() : null;
+
+      const shortForecast = forecastData[0];
+      const timeDefines: string[] = shortForecast?.timeSeries?.[0]?.timeDefines || [];
+      const weatherAreas: any[] = shortForecast?.timeSeries?.[0]?.areas || [];
+      const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
+      const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
+
+      const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
+      const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
+      const targetTemp = tempAreas[0];
+
+      const dateLabels = ['今日', '明日', '明後日'];
+      const forecasts = [];
+
+      for (let i = 0; i < Math.min(days, timeDefines.length); i++) {
+        const rawDate = timeDefines[i];
+        const dateStr = rawDate ? rawDate.split('T')[0] : '';
+        const wCode = targetArea?.weatherCodes?.[i] || '100';
+        const wDetail = targetArea?.weathers?.[i] || '';
+        const wind = targetArea?.winds?.[i] || null;
+        const wave = targetArea?.waves?.[i] || null;
+
+        forecasts.push({
+          date: dateStr,
+          dateLabel: dateLabels[i] || `${i + 1}日後`,
+          telop: getTelopFromCode(wCode, wDetail),
+          detail: {
+            weather: wDetail,
+            wind,
+            wave,
+          },
+          temperature: {
+            min: targetTemp?.temps?.[i * 2] ? `${targetTemp.temps[i * 2]}℃` : null,
+            max: targetTemp?.temps?.[i * 2 + 1] ? `${targetTemp.temps[i * 2 + 1]}℃` : null,
+          },
+          chanceOfRain: {
+            T00_06: targetPop?.pops?.[0] ? `${targetPop.pops[0]}%` : '--%',
+            T06_12: targetPop?.pops?.[1] ? `${targetPop.pops[1]}%` : '--%',
+            T12_18: targetPop?.pops?.[2] ? `${targetPop.pops[2]}%` : '--%',
+            T18_24: targetPop?.pops?.[3] ? `${targetPop.pops[3]}%` : '--%',
+          },
+          image: `https://www.jma.go.jp/bosai/forecast/img/${wCode}.svg`,
+        });
+      }
+
+      const formatted = {
+        source: 'weather',
+        cityId,
+        title: `${targetArea?.area?.name || options.city} の天気`,
+        publicTime: shortForecast?.reportDatetime,
+        publishingOffice: shortForecast?.publishingOffice || '気象庁',
+        location: {
+          area: targetArea?.area?.name,
+          prefecture: targetArea?.area?.name,
+          city: options.city,
+        },
+        description: {
+          headline: overviewData?.headlineText || '',
+          body: overviewData?.text || '',
+          text: overviewData?.text || '',
+          publicTime: overviewData?.reportDatetime || '',
+        },
+        forecasts,
+        link: `https://www.jma.go.jp/bosai/forecast/#area_type=class20&area_code=${cityId}`,
+        cached: false,
+      };
+
+      if (!options.noCache) setToCache(cacheKey, formatted);
+      return formatted;
+    }
+  } catch (err) {
+    // Graceful fallback to tsukumijima weather API
+  }
+
+  // 2. フォールバック: tsukumijima weather API
   const url = `https://weather.tsukumijima.net/api/forecast?city=${cityId}`;
   const res = await fetch(url, {
     headers: {
@@ -1822,4 +1934,5 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   if (!options.noCache) setToCache(cacheKey, formattedResult);
   return formattedResult;
 }
+
 
