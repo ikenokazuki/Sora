@@ -3,6 +3,8 @@ import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
 import puppeteer, { Browser, Page } from 'puppeteer-core';
+import { extractText, getMeta } from 'unpdf';
+import { XMLParser } from 'fast-xml-parser';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -49,6 +51,7 @@ export interface ScrapeResult {
   cached?: boolean;
   ogImage?: string;
   description?: string;
+  highlights?: string[];
 }
 
 interface CacheEntry<T> {
@@ -402,7 +405,124 @@ export async function fetchWithSafeRedirects(
 }
 
 // ==========================================
-// 7. コア Scrape 処理 (Level 1 静的 -> Level 2 Browser 自動エスカレーション)
+// 7. PDF ドキュメントの Markdown 変換 (unpdf)
+// ==========================================
+export async function parsePdfToMarkdown(
+  pdfBuffer: ArrayBuffer | Uint8Array,
+  targetUrl: string,
+  maxChars: number,
+): Promise<ScrapeResult> {
+  const { text, totalPages } = await extractText(new Uint8Array(pdfBuffer));
+  const fullText = Array.isArray(text) ? text.join('\n\n--- [Page Break] ---\n\n') : String(text || '');
+  let title = new URL(targetUrl).pathname.split('/').pop() || 'PDF Document';
+  try {
+    const meta = await getMeta(new Uint8Array(pdfBuffer));
+    if (meta?.info?.Title) {
+      title = String(meta.info.Title);
+    }
+  } catch {}
+
+  const isTruncated = fullText.length > maxChars;
+  const slicedText = fullText.slice(0, maxChars);
+
+  const frontmatter = [
+    '---',
+    `title: "${title.replace(/"/g, '\\"')}"`,
+    `url: "${targetUrl}"`,
+    `totalPages: ${totalPages}`,
+    'contentType: "application/pdf"',
+    '---\n\n',
+  ].join('\n');
+
+  return {
+    url: targetUrl,
+    title,
+    content: frontmatter + slicedText,
+    isTruncated,
+    contentType: 'application/pdf',
+    source: 'web',
+    renderedWithBrowser: false,
+  };
+}
+
+// ==========================================
+// 8. クエリ関連ハイライト抽出 (Tavily 互換)
+// ==========================================
+export function extractQueryHighlights(content: string, query: string, maxHighlights = 4): string[] {
+  if (!query || !content) return [];
+  const terms = query
+    .split(/[\s　]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length >= 2);
+  if (terms.length === 0) return [];
+
+  const paragraphs = content
+    .split(/\n{2,}|\n(?=[#*-])/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 20 && !p.startsWith('---'));
+
+  const scored: { text: string; score: number }[] = [];
+
+  for (const para of paragraphs) {
+    const lower = para.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      const occurrences = (lower.match(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+      score += occurrences * (term.length >= 4 ? 2 : 1);
+    }
+    if (score > 0) {
+      const snippet = para.length > 300 ? para.slice(0, 300) + '...' : para;
+      scored.push({ text: snippet, score });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxHighlights).map((s) => s.text);
+}
+
+// ==========================================
+// 9. ドメインフィルタリング (includeDomains / excludeDomains)
+// ==========================================
+export function filterByDomains(
+  items: any[],
+  includeDomains?: string[],
+  excludeDomains?: string[],
+): any[] {
+  let filtered = items;
+
+  if (includeDomains && includeDomains.length > 0) {
+    const normalizedInc = includeDomains.map((d) => d.toLowerCase().trim());
+    filtered = filtered.filter((item) => {
+      const itemUrl = item.url || item.link;
+      if (!itemUrl) return false;
+      try {
+        const host = new URL(itemUrl).hostname.toLowerCase();
+        return normalizedInc.some((inc) => host === inc || host.endsWith('.' + inc));
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  if (excludeDomains && excludeDomains.length > 0) {
+    const normalizedExc = excludeDomains.map((d) => d.toLowerCase().trim());
+    filtered = filtered.filter((item) => {
+      const itemUrl = item.url || item.link;
+      if (!itemUrl) return true;
+      try {
+        const host = new URL(itemUrl).hostname.toLowerCase();
+        return !normalizedExc.some((exc) => host === exc || host.endsWith('.' + exc));
+      } catch {
+        return true;
+      }
+    });
+  }
+
+  return filtered;
+}
+
+// ==========================================
+// 10. コア Scrape 処理 (Level 1 静的 / PDF -> Level 2 Browser 自動エスカレーション)
 // ==========================================
 export async function scrapeUrl(options: {
   url: string;
@@ -410,12 +530,16 @@ export async function scrapeUrl(options: {
   fastOnly?: boolean;
   timeoutMs?: number;
   noCache?: boolean;
+  query?: string;
+  extractHighlights?: boolean;
 }): Promise<ScrapeResult> {
   const targetUrl = options.url;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const fastOnly = options.fastOnly ?? false;
   const timeoutMs = options.timeoutMs ?? 10000;
   const noCache = options.noCache ?? false;
+  const query = options.query;
+  const shouldExtractHighlights = options.extractHighlights ?? false;
 
   let parsedUrl: URL;
   try {
@@ -428,7 +552,7 @@ export async function scrapeUrl(options: {
     throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedUrl.hostname}"`);
   }
 
-  const cacheKey = `scrape:${targetUrl}:${maxChars}`;
+  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}`;
   if (!noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) return cached;
@@ -450,6 +574,17 @@ export async function scrapeUrl(options: {
       const response = fetchRes.response;
       const contentType = response.headers.get('content-type') || '';
 
+      // PDF の場合: unpdf でテキスト抽出
+      if (contentType.includes('application/pdf') || fetchRes.finalUrl.toLowerCase().endsWith('.pdf')) {
+        const arrayBuf = await response.arrayBuffer();
+        const pdfResult = await parsePdfToMarkdown(arrayBuf, fetchRes.finalUrl, maxChars);
+        if (shouldExtractHighlights && query) {
+          pdfResult.highlights = extractQueryHighlights(pdfResult.content, query);
+        }
+        if (!noCache) setToCache(cacheKey, pdfResult);
+        return pdfResult;
+      }
+
       if (contentType.includes('text/plain') || contentType.includes('application/json')) {
         const rawText = await response.text();
         const trimmed = rawText.slice(0, maxChars);
@@ -462,6 +597,9 @@ export async function scrapeUrl(options: {
           source: 'web',
           renderedWithBrowser: false,
         };
+        if (shouldExtractHighlights && query) {
+          result.highlights = extractQueryHighlights(trimmed, query);
+        }
         if (!noCache) setToCache(cacheKey, result);
         return result;
       }
@@ -489,6 +627,9 @@ export async function scrapeUrl(options: {
             ogImage,
             description,
           };
+          if (shouldExtractHighlights && query) {
+            result.highlights = extractQueryHighlights(result.content, query);
+          }
           if (!noCache) setToCache(cacheKey, result);
           return result;
         }
@@ -519,6 +660,9 @@ export async function scrapeUrl(options: {
         ogImage: staticResult.ogImage,
         description: staticResult.description,
       };
+      if (shouldExtractHighlights && query) {
+        result.highlights = extractQueryHighlights(result.content, query);
+      }
       if (!noCache) setToCache(cacheKey, result);
       return result;
     }
@@ -528,6 +672,9 @@ export async function scrapeUrl(options: {
   // Level 2: Headless Chromium (Puppeteer)
   try {
     const result = await fetchWithStealthBrowser(targetUrl, maxChars);
+    if (shouldExtractHighlights && query) {
+      result.highlights = extractQueryHighlights(result.content, query);
+    }
     if (!noCache) setToCache(cacheKey, result);
     return result;
   } catch (browserErr: any) {
@@ -546,6 +693,9 @@ export async function scrapeUrl(options: {
         ogImage: staticResult.ogImage,
         description: staticResult.description,
       };
+      if (shouldExtractHighlights && query) {
+        result.highlights = extractQueryHighlights(result.content, query);
+      }
       if (!noCache) setToCache(cacheKey, result);
       return result;
     }
@@ -555,7 +705,263 @@ export async function scrapeUrl(options: {
 }
 
 // ==========================================
-// 8. Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動)
+// 11. サイトマップ & URL マッピング (/map & map_site)
+// ==========================================
+export async function mapSiteUrl(options: {
+  url: string;
+  limit?: number;
+  includeSubdomains?: boolean;
+  timeoutMs?: number;
+}): Promise<{ url: string; count: number; links: string[]; sitemapFound: boolean }> {
+  const targetUrl = options.url;
+  const limit = Math.min(options.limit ?? 100, 500);
+  const includeSubdomains = options.includeSubdomains ?? false;
+  const timeoutMs = options.timeoutMs ?? 10000;
+
+  const parsed = new URL(targetUrl);
+  if (isBlockedHostname(parsed.hostname)) {
+    throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsed.hostname}"`);
+  }
+
+  const baseOrigin = parsed.origin;
+  const baseHost = parsed.hostname.toLowerCase();
+  const collectedUrls = new Set<string>();
+  let sitemapFound = false;
+
+  const sitemapCandidates = [
+    `${baseOrigin}/sitemap.xml`,
+    `${baseOrigin}/sitemap_index.xml`,
+    `${baseOrigin}/sitemap-index.xml`,
+  ];
+
+  const parser = new XMLParser();
+
+  for (const sitemapUrl of sitemapCandidates) {
+    if (collectedUrls.size >= limit) break;
+    try {
+      const res = await fetchWithSafeRedirects(sitemapUrl, timeoutMs);
+      if (res && res.response.ok) {
+        const xmlText = await res.response.text();
+        const parsedXml = parser.parse(xmlText);
+        sitemapFound = true;
+
+        if (parsedXml?.urlset?.url) {
+          const rawUrls = Array.isArray(parsedXml.urlset.url) ? parsedXml.urlset.url : [parsedXml.urlset.url];
+          for (const u of rawUrls) {
+            const loc = typeof u === 'string' ? u : u?.loc;
+            if (loc && typeof loc === 'string') {
+              collectedUrls.add(loc.trim());
+              if (collectedUrls.size >= limit) break;
+            }
+          }
+        } else if (parsedXml?.sitemapindex?.sitemap) {
+          const subSitemaps = Array.isArray(parsedXml.sitemapindex.sitemap)
+            ? parsedXml.sitemapindex.sitemap
+            : [parsedXml.sitemapindex.sitemap];
+          for (const sub of subSitemaps.slice(0, 3)) {
+            const subLoc = typeof sub === 'string' ? sub : sub?.loc;
+            if (subLoc && typeof subLoc === 'string') {
+              try {
+                const subRes = await fetchWithSafeRedirects(subLoc, timeoutMs);
+                if (subRes && subRes.response.ok) {
+                  const subXml = parser.parse(await subRes.response.text());
+                  const subUrlList = subXml?.urlset?.url
+                    ? Array.isArray(subXml.urlset.url)
+                      ? subXml.urlset.url
+                      : [subXml.urlset.url]
+                    : [];
+                  for (const su of subUrlList) {
+                    const loc = typeof su === 'string' ? su : su?.loc;
+                    if (loc && typeof loc === 'string') {
+                      collectedUrls.add(loc.trim());
+                      if (collectedUrls.size >= limit) break;
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // サイトマップで見つからない、または件数が少ない場合は対象ページの内部リンクを抽出
+  if (collectedUrls.size < limit) {
+    try {
+      const pageRes = await fetchWithSafeRedirects(targetUrl, timeoutMs);
+      if (pageRes && pageRes.response.ok) {
+        const html = await pageRes.response.text();
+        const $ = cheerio.load(html);
+        $('a[href]').each((_, el) => {
+          if (collectedUrls.size >= limit) return false;
+          const href = $(el).attr('href');
+          if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
+            return;
+          }
+          try {
+            const abs = new URL(href, pageRes.finalUrl);
+            const absHost = abs.hostname.toLowerCase();
+            const isMatch = includeSubdomains
+              ? absHost === baseHost || absHost.endsWith('.' + baseHost)
+              : absHost === baseHost;
+            if (isMatch && (abs.protocol === 'http:' || abs.protocol === 'https:')) {
+              abs.hash = '';
+              collectedUrls.add(abs.toString());
+            }
+          } catch {}
+        });
+      }
+    } catch {}
+  }
+
+  const links = Array.from(collectedUrls).slice(0, limit);
+  return {
+    url: targetUrl,
+    count: links.length,
+    links,
+    sitemapFound,
+  };
+}
+
+// ==========================================
+// 12. サブページ再帰的クロール (/crawl & crawl_site)
+// ==========================================
+export async function crawlSiteUrl(options: {
+  url: string;
+  maxPages?: number;
+  maxDepth?: number;
+  scrapeContent?: boolean;
+  maxChars?: number;
+  timeoutMs?: number;
+}): Promise<{
+  url: string;
+  count: number;
+  results: ScrapeResult[];
+}> {
+  const rootUrl = options.url;
+  const maxPages = Math.min(options.maxPages ?? 5, 20);
+  const maxDepth = Math.min(options.maxDepth ?? 2, 5);
+  const scrapeContent = options.scrapeContent !== false;
+  const maxChars = options.maxChars ?? 15000;
+  const timeoutMs = options.timeoutMs ?? 10000;
+
+  const parsedRoot = new URL(rootUrl);
+  if (isBlockedHostname(parsedRoot.hostname)) {
+    throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedRoot.hostname}"`);
+  }
+  const rootHost = parsedRoot.hostname.toLowerCase();
+
+  const visited = new Set<string>();
+  const queue: { url: string; depth: number }[] = [{ url: rootUrl, depth: 0 }];
+  const results: ScrapeResult[] = [];
+
+  while (queue.length > 0 && results.length < maxPages) {
+    const current = queue.shift()!;
+    const normUrl = current.url.split('#')[0];
+    if (visited.has(normUrl)) continue;
+    visited.add(normUrl);
+
+    try {
+      const scraped = await scrapeUrl({
+        url: normUrl,
+        maxChars,
+        timeoutMs,
+        fastOnly: true,
+      });
+      results.push(scraped);
+
+      if (current.depth < maxDepth && queue.length < maxPages * 3) {
+        try {
+          const fetchRes = await fetchWithSafeRedirects(normUrl, 5000);
+          if (fetchRes && fetchRes.response.ok) {
+            const html = await fetchRes.response.text();
+            const $ = cheerio.load(html);
+            $('a[href]').each((_, el) => {
+              const href = $(el).attr('href');
+              if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+              try {
+                const abs = new URL(href, fetchRes.finalUrl);
+                if (abs.hostname.toLowerCase() === rootHost && (abs.protocol === 'http:' || abs.protocol === 'https:')) {
+                  abs.hash = '';
+                  const nextUrl = abs.toString();
+                  if (!visited.has(nextUrl) && !queue.some((q) => q.url === nextUrl)) {
+                    queue.push({ url: nextUrl, depth: current.depth + 1 });
+                  }
+                }
+              } catch {}
+            });
+          }
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn(`[web-fetcher/crawl] Error fetching ${normUrl}:`, err?.message);
+    }
+  }
+
+  return {
+    url: rootUrl,
+    count: results.length,
+    results,
+  };
+}
+
+// ==========================================
+// 13. Yahoo リアルタイム急上昇トレンド取得 (/search/trend & search_trend)
+// ==========================================
+export async function fetchRealtimeTrends(limit = 20): Promise<{
+  source: 'x';
+  type: 'trend';
+  count: number;
+  items: { rank: number; keyword: string; tweetCount?: string; url: string }[];
+  timestamp: string;
+}> {
+  const cacheKey = `trends:realtime`;
+  const cached = getFromCache<any>(cacheKey);
+  if (cached) return cached;
+
+  const res = await fetchWithSafeRedirects('https://search.yahoo.co.jp/realtime', 10000);
+  if (!res || !res.response.ok) {
+    throw new Error('Yahoo リアルタイムトレンドの取得に失敗しました');
+  }
+
+  const html = await res.response.text();
+  const $ = cheerio.load(html);
+  const items: { rank: number; keyword: string; tweetCount?: string; url: string }[] = [];
+
+  $('section, div').each((_, section) => {
+    $(section).find('a[href*="/realtime/search"]').each((_, el) => {
+      const link = $(el);
+      const text = link.text().trim();
+      const href = link.attr('href') || '';
+      if (!text || text.length > 50) return;
+      if (items.some((i) => i.keyword === text)) return;
+
+      const rankMatch = link.closest('li, div').text().match(/^(\d+)/);
+      const rank = rankMatch ? parseInt(rankMatch[1], 10) : items.length + 1;
+      items.push({
+        rank,
+        keyword: text,
+        url: href.startsWith('http') ? href : `https://search.yahoo.co.jp${href}`,
+      });
+    });
+  });
+
+  const finalItems = items.slice(0, limit);
+  const result = {
+    source: 'x' as const,
+    type: 'trend' as const,
+    count: finalItems.length,
+    items: finalItems,
+    timestamp: new Date().toISOString(),
+  };
+
+  setToCache(cacheKey, result);
+  return result;
+}
+
+// ==========================================
+// 14. Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動)
 // ==========================================
 export async function callYahooMcp(toolName: string, args: Record<string, any>): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -583,7 +989,6 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>):
         return reject(new Error(`Yahoo MCP exited with code ${code}: ${stderr}`));
       }
 
-      // JSON-RPC のレスポンス行を探索
       const lines = stdout.trim().split('\n');
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
@@ -597,7 +1002,6 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>):
       reject(new Error(`Invalid JSON-RPC response from Yahoo MCP: ${stdout}`));
     });
 
-    // JSON-RPC 2.0 リクエストを送信
     const rpcPayload = JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -614,7 +1018,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>):
 }
 
 // ==========================================
-// 9. Firecrawl 互換 統合深層検索 (search_deep)
+// 15. Firecrawl / Tavily 互換 統合深層検索 (search_deep)
 // ==========================================
 export async function integratedSearch(options: {
   query: string;
@@ -623,15 +1027,21 @@ export async function integratedSearch(options: {
   includeRealtime?: boolean;
   maxChars?: number;
   noCache?: boolean;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  extractHighlights?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 3, 10);
-  const scrapeContent = options.scrapeContent !== false; // default: true
-  const includeRealtime = options.includeRealtime !== false; // default: true
+  const scrapeContent = options.scrapeContent !== false;
+  const includeRealtime = options.includeRealtime !== false;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const noCache = options.noCache ?? false;
+  const includeDomains = options.includeDomains;
+  const excludeDomains = options.excludeDomains;
+  const extractHighlights = options.extractHighlights ?? false;
 
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${extractHighlights}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -658,7 +1068,10 @@ export async function integratedSearch(options: {
     searchResults = (searchResults as any).results || (searchResults as any).items || [];
   }
 
-  const topItems = searchResults.slice(0, limit).map((item: any) => ({
+  // ドメインフィルタリングの適用
+  const filteredSearchResults = filterByDomains(searchResults, includeDomains, excludeDomains);
+
+  const topItems = filteredSearchResults.slice(0, limit).map((item: any) => ({
     source: 'web' as const,
     ...item,
   }));
@@ -691,12 +1104,15 @@ export async function integratedSearch(options: {
             url: itemUrl,
             maxChars,
             timeoutMs: 12000,
+            query,
+            extractHighlights,
           });
           return {
             ...item,
             markdown: scrape.content,
             ogImage: scrape.ogImage,
             description: scrape.description,
+            highlights: scrape.highlights,
             cached: scrape.cached,
           };
         } catch (e: any) {

@@ -1,9 +1,14 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware } from './auth.js';
-import { createMcpServer, createMcpTransport } from './mcp.js';
-import { isBlockedHostname, convertHtmlToMarkdown, scrapeUrl } from './scraper.js';
+import {
+  isBlockedHostname,
+  convertHtmlToMarkdown,
+  scrapeUrl,
+  filterByDomains,
+  extractQueryHighlights,
+} from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
   it('isBlockedHostname should block local and private IPs/hostnames', () => {
@@ -49,17 +54,47 @@ describe('web-fetcher Core Functions', () => {
     expect(result.markdown).not.toContain('Footer content');
   });
 
+  it('filterByDomains should filter items by includeDomains and excludeDomains', () => {
+    const sampleItems = [
+      { title: 'Official Natalie', url: 'https://natalie.mu/music/news/123' },
+      { title: 'Oricon News', url: 'https://www.oricon.co.jp/news/456' },
+      { title: 'Spam Blog', url: 'https://matome-matome.com/post/789' },
+    ];
+
+    const included = filterByDomains(sampleItems, ['natalie.mu', 'oricon.co.jp']);
+    expect(included.length).toBe(2);
+    expect(included.map((i) => i.title)).toContain('Official Natalie');
+    expect(included.map((i) => i.title)).not.toContain('Spam Blog');
+
+    const excluded = filterByDomains(sampleItems, undefined, ['matome-matome.com']);
+    expect(excluded.length).toBe(2);
+    expect(excluded.map((i) => i.title)).not.toContain('Spam Blog');
+  });
+
+  it('extractQueryHighlights should extract relevant sentences from long text', () => {
+    const content = `
+      # イベント開催概要
+      2026年9月15日に東京ドームで大型アイドルフェスが開催されます。
+      チケットは8月1日から一般発売がスタートします。
+
+      ## 交通アクセス
+      最寄り駅はJR水道橋駅または後楽園駅となります。
+      駐車場はございませんので公共交通機関をご利用ください。
+    `;
+
+    const highlights = extractQueryHighlights(content, '東京ドーム チケット 発売');
+    expect(highlights.length).toBeGreaterThan(0);
+    expect(highlights[0]).toContain('東京ドーム');
+  });
+
   it('scrapeUrl should include source: "web" in the response', async () => {
-    // Note: fastOnly will scrape without chromium
     try {
       const result = await scrapeUrl({
         url: 'https://example.com',
         fastOnly: true,
       });
       expect(result.source).toBe('web');
-    } catch {
-      // Network unreachable during offline testing is acceptable
-    }
+    } catch {}
   });
 });
 
@@ -138,12 +173,34 @@ describe('web-fetcher REST & MCP Endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /mcp should respond to JSON-RPC tools/list', async () => {
+  it('POST /map should return 400 when url is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /crawl should return 400 when url is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /mcp should respond to JSON-RPC tools/list with all 7 tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'application/json',
+        Accept: 'application/json, text/event-stream',
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -155,15 +212,28 @@ describe('web-fetcher REST & MCP Endpoints', () => {
 
     const res = await app.fetch(req);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
-    expect(body.jsonrpc).toBe('2.0');
-    expect(body.result).toBeDefined();
-    expect(Array.isArray(body.result.tools)).toBe(true);
+    const rawText = await res.text();
+    let body: any;
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      const dataLine = rawText.split('\n').find((l) => l.startsWith('data: '));
+      if (dataLine) {
+        body = JSON.parse(dataLine.replace(/^data:\s*/, ''));
+      }
+    }
+
+    expect(body?.jsonrpc).toBe('2.0');
+    expect(body?.result).toBeDefined();
+    expect(Array.isArray(body?.result?.tools)).toBe(true);
 
     const toolNames = body.result.tools.map((t: any) => t.name);
     expect(toolNames).toContain('scrape');
     expect(toolNames).toContain('search_web');
     expect(toolNames).toContain('search_realtime');
     expect(toolNames).toContain('search_deep');
+    expect(toolNames).toContain('map_site');
+    expect(toolNames).toContain('crawl_site');
+    expect(toolNames).toContain('search_trend');
   });
 });
