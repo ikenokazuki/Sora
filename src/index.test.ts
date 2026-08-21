@@ -8,6 +8,7 @@ import {
   scrapeUrl,
   filterByDomains,
   extractQueryHighlights,
+  resolveCityId,
 } from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
@@ -105,6 +106,16 @@ describe('web-fetcher Core Functions', () => {
         renderJs: true,
       }),
     ).rejects.toThrow('同時に指定できません');
+  });
+
+  it('resolveCityId should correctly resolve Japanese city and prefecture names to IDs', () => {
+    expect(resolveCityId('東京')).toBe('130010');
+    expect(resolveCityId('東京都')).toBe('130010');
+    expect(resolveCityId('大阪')).toBe('270000');
+    expect(resolveCityId('大阪府')).toBe('270000');
+    expect(resolveCityId('福岡')).toBe('400010');
+    expect(resolveCityId('札幌')).toBe('016010');
+    expect(resolveCityId('400040')).toBe('400040');
   });
 });
 
@@ -251,7 +262,8 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_chiebukuro');
     expect(toolNames).toContain('suggest_keywords');
     expect(toolNames).toContain('search_route');
-    expect(toolNames.length).toBe(13);
+    expect(toolNames).toContain('get_weather');
+    expect(toolNames.length).toBe(14);
   });
 
   it('POST /search/image should return 400 when query is missing', async () => {
@@ -320,6 +332,17 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /weather should return 400 when city is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/weather', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('GET / should list all endpoints including new ones', async () => {
     const res = await app.fetch(new Request('http://localhost/'));
     expect(res.status).toBe(200);
@@ -332,6 +355,7 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(data.endpoints.searchChiebukuro).toBeDefined();
     expect(data.endpoints.searchSuggest).toBeDefined();
     expect(data.endpoints.transitRoute).toBeDefined();
+    expect(data.endpoints.weather).toBeDefined();
   });
 });
 
