@@ -20,14 +20,15 @@ import {
   executeBrowserActions,
 } from './scraper.js';
 
-export type GhostFetchModule = 'web' | 'browser' | 'yahoo' | 'life';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life';
+export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
-  modules?: (GhostFetchModule | 'all')[];
+  modules?: (SoraModule | 'all')[];
 }
 
 /** モジュールが有効化されているかを判定 */
-export function isModuleActive(mod: GhostFetchModule, explicitModules?: (GhostFetchModule | 'all')[]): boolean {
+export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 'all')[]): boolean {
   if (explicitModules && explicitModules.length > 0) {
     if (explicitModules.includes('all')) return true;
     return explicitModules.includes(mod);
@@ -40,7 +41,7 @@ export function isModuleActive(mod: GhostFetchModule, explicitModules?: (GhostFe
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
   const mcpServer = new McpServer({
-    name: 'GhostFetch',
+    name: 'Sora',
     version: '2.0.0',
   });
 

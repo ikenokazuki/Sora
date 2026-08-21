@@ -1,7 +1,7 @@
 {
-  "name": "ghostfetch",
+  "name": "sora",
   "version": "1.0.0",
-  "description": "Ultra-fast, stealth web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
+  "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
   "scripts": {

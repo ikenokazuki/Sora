@@ -59,7 +59,7 @@ app.all('/message', handleMcpRequest);
 // ==========================================
 app.get('/', (c) => {
   return c.json({
-    service: 'ghostfetch',
+    service: 'sora',
     description: 'Unified Web Scraping, Search, Transit & MCP Service',
     version: '2.0.0',
     endpoints: {
@@ -89,7 +89,7 @@ app.get('/', (c) => {
 app.get('/health', (c) => {
   return c.json({
     status: 'ok',
-    service: 'ghostfetch',
+    service: 'sora',
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
     yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),
@@ -554,7 +554,7 @@ if (import.meta.main) {
     port: PORT,
     fetch: app.fetch,
   });
-  console.log(`Starting GhostFetch service on port ${PORT}...`);
+  console.log(`Starting Sora service on port ${PORT}...`);
 }
 
 export { app };

@@ -1,9 +1,9 @@
-# GhostFetch
+# Sora
 
-> **Ultra-fast, Stealth Web Scraping & Deep Search Engine with MCP (Model Context Protocol)**  
+> **Ultra-fast, Lightweight Web Scraping & Deep Search Engine with MCP (Model Context Protocol)**  
 > *(Firecrawl & Tavily Alternative / Distroless / Source-Available)*
 
-`GhostFetch` は、Web ページや PDF の超高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング・Bot 検知回避）、Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、電車乗換案内、日本全国天気予報（気象庁オープンデータ直結・1,805 自治体自動解決）、およびこれらを統合した深層検索を提供する All-in-One サービスです。
+`Sora` は、Web ページや PDF の超高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング・Bot 検知回避）、Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、電車乗換案内、日本全国天気予報（気象庁オープンデータ直結・1,805 自治体自動解決）、およびこれらを統合した深層検索を提供する All-in-One サービスです。
 
 標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）としてセルフホストして利用できます。
 
@@ -26,7 +26,7 @@
 
 ### 📊 パフォーマンス & アーキテクチャ比較
 
-| 項目 | GhostFetch (本ツール) | Firecrawl (セルフホスト) | 一般的な Node/Python 製 MCP |
+| 項目 | Sora (本ツール) | Firecrawl (セルフホスト) | 一般的な Node/Python 製 MCP |
 |---|---|---|---|
 | **API / ヘルスチェック応答** | **1.5 ms** (`0.0015s`) | 20〜50 ms | 30〜100 ms |
 | **起動時間 (コールドスタート)** | **< 10 ms** | 10〜30 秒 (複数サービス) | 1〜3 秒 |
@@ -61,7 +61,7 @@
 
 ## 🏛️ 設計思想 (Design Philosophy & Principles)
 
-`GhostFetch` は、以下の **4つのコア設計原則** に基づいて構築されています：
+`Sora` は、以下の **4つのコア設計原則** に基づいて構築されています：
 
 1. **✂️ オッカムの剃刀（Occam's Razor & Zero-Middleware）**:
    - *「必要が無いなら多くのものを定立してはならない。要件を満たす最も単純な構成が最良の構成である。」*
@@ -84,11 +84,11 @@ GitHub Container Registry (GHCR) から 1 コマンドで即座に起動でき�
 
 ```bash
 docker run -d \
-  --name ghostfetch \
+  --name sora \
   -p 3016:8000 \
   -e API_KEY="your-secret-api-key" \
   -e ENABLED_MODULES="all" \
-  ghcr.io/ikenokazuki/ghostfetch:latest
+  ghcr.io/ikenokazuki/sora:latest
 ```
 
 ### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
@@ -99,7 +99,7 @@ docker run -d \
 ```json
 {
   "mcpServers": {
-    "ghostfetch": {
+    "sora": {
       "url": "http://localhost:3016/mcp",
       "headers": {
         "Authorization": "Bearer your-secret-api-key"
@@ -113,7 +113,7 @@ docker run -d \
 ```json
 {
   "mcpServers": {
-    "ghostfetch": {
+    "sora": {
       "url": "http://localhost:3016/sse",
       "headers": {
         "Authorization": "Bearer your-secret-api-key"
@@ -128,11 +128,11 @@ docker run -d \
 
 ## 2. 提供 MCP ツール一覧 (全 15 ツール / 4つのモジュール)
 
-GhostFetch は、目的に応じて **4つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **4つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                      GhostFetch - Modular MCP                            │
+│                         Sora - Modular MCP                               │
 ├─────────────────┬───────────────────┬──────────────────┬─────────────────┤
 │ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │
@@ -201,7 +201,7 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 ```json
 {
   "status": "ok",
-  "service": "ghostfetch",
+  "service": "sora",
   "version": "2.0.0",
   "cachedEntries": 0,
   "chromiumAvailable": true,
@@ -253,7 +253,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 {
   "url": "https://example.com/search",
   "actions": [
-    { "type": "fill", "selector": "input[name='q']", "text": "GhostFetch" },
+    { "type": "fill", "selector": "input[name='q']", "text": "Sora" },
     { "type": "click", "text": "検索" },
     { "type": "wait", "selector": ".results-container", "ms": 5000 },
     { "type": "scroll", "direction": "down", "distance": 1000 }
@@ -271,9 +271,9 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ```json
 {
   "source": "browser",
-  "url": "https://example.com/search?q=GhostFetch",
-  "title": "検索結果 - GhostFetch",
-  "content": "---\ntitle: \"検索結果 - GhostFetch\"\nurl: \"https://example.com/search?q=GhostFetch\"\n---\n\n# 検索結果\n...",
+  "url": "https://example.com/search?q=Sora",
+  "title": "検索結果 - Sora",
+  "content": "---\ntitle: \"検索結果 - Sora\"\nurl: \"https://example.com/search?q=Sora\"\n---\n\n# 検索結果\n...",
   "screenshot": "iVBORw0KGgoAAAANSUhEUgA...",
   "actionLogs": [
     { "step": 1, "type": "fill", "target": "input[name='q']", "success": true, "elapsedMs": 42 },
@@ -500,7 +500,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ## 5. 謝意・クレジット (Acknowledgments)
 
-`GhostFetch` は、以下の優れたオープンソースプロジェクト、公開サービス、公的オープンデータ、およびライブラリ作者の皆様の素晴らしい貢献に支えられています。心より感謝申し上げます。
+`Sora` は、以下の優れたオープンソースプロジェクト、公開サービス、公的オープンデータ、およびライブラリ作者の皆様の素晴らしい貢献に支えられています。心より感謝申し上げます。
 
 ### 🗾 データソース & 着想元 (Data Sources & Inspirations)
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
