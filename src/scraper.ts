@@ -1018,7 +1018,51 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>):
 }
 
 // ==========================================
-// 15. Firecrawl / Tavily 互換 統合深層検索 (search_deep)
+// 15. Yahoo Web 検索 (プレフィルタリング site: / -site: 対応)
+// ==========================================
+export async function searchYahooWeb(options: {
+  query: string;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+}): Promise<any> {
+  let effectiveWebQuery = options.query;
+  let webSiteArg: string | undefined = undefined;
+
+  if (options.includeDomains && options.includeDomains.length > 0) {
+    if (options.includeDomains.length === 1) {
+      webSiteArg = options.includeDomains[0];
+    } else {
+      effectiveWebQuery += ` (${options.includeDomains.map((d) => `site:${d}`).join(' OR ')})`;
+    }
+  }
+
+  if (options.excludeDomains && options.excludeDomains.length > 0) {
+    effectiveWebQuery += ` ${options.excludeDomains.map((d) => `-site:${d}`).join(' ')}`;
+  }
+
+  const mcpRes = await callYahooMcp('yahoo_web_search', {
+    query: effectiveWebQuery,
+    ...(webSiteArg ? { site: webSiteArg } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '[]';
+  let parsedData: any = content;
+  try {
+    const json = JSON.parse(content);
+    if (json && Array.isArray(json.items)) {
+      const filtered = filterByDomains(json.items, options.includeDomains, options.excludeDomains);
+      json.items = filtered.map((item: any) => ({ source: 'web' as const, ...item }));
+      json.count = json.items.length;
+      json.source = 'web';
+      parsedData = json;
+    }
+  } catch {}
+
+  return parsedData;
+}
+
+// ==========================================
+// 16. Firecrawl / Tavily 互換 統合深層検索 (search_deep)
 // ==========================================
 export async function integratedSearch(options: {
   query: string;
@@ -1040,7 +1084,6 @@ export async function integratedSearch(options: {
   const includeDomains = options.includeDomains;
   const excludeDomains = options.excludeDomains;
   const extractHighlights = options.extractHighlights ?? false;
-
   const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${extractHighlights}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
@@ -1048,33 +1091,20 @@ export async function integratedSearch(options: {
   }
 
   // 1. Yahoo Web 検索 と リアルタイム検索を並行実行
-  const [webMcpRes, realtimeMcpRes] = await Promise.all([
-    callYahooMcp('yahoo_web_search', { query }),
+  const [webParsedRes, realtimeMcpRes] = await Promise.all([
+    searchYahooWeb({ query, includeDomains, excludeDomains }),
     includeRealtime
       ? callYahooMcp('yahoo_realtime_search', { query }).catch(() => null)
       : Promise.resolve(null),
   ]);
 
-  // Web 検索結果のパース
-  const webContent = webMcpRes?.content?.[0]?.text || '[]';
-  let searchResults: any[] = [];
-  try {
-    searchResults = JSON.parse(webContent);
-  } catch {
-    searchResults = [];
-  }
+  const searchResults = Array.isArray(webParsedRes?.items)
+    ? webParsedRes.items
+    : Array.isArray(webParsedRes)
+    ? webParsedRes
+    : [];
 
-  if (!Array.isArray(searchResults)) {
-    searchResults = (searchResults as any).results || (searchResults as any).items || [];
-  }
-
-  // ドメインフィルタリングの適用
-  const filteredSearchResults = filterByDomains(searchResults, includeDomains, excludeDomains);
-
-  const topItems = filteredSearchResults.slice(0, limit).map((item: any) => ({
-    source: 'web' as const,
-    ...item,
-  }));
+  const topItems = searchResults.slice(0, limit);
 
   // リアルタイム検索結果のパース
   let realtimeItems: any[] = [];

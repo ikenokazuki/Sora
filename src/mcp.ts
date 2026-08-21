@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   scrapeUrl,
   callYahooMcp,
+  searchYahooWeb,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
@@ -74,21 +75,9 @@ export function createMcpServer(): McpServer {
     },
     async ({ query, includeDomains, excludeDomains }) => {
       try {
-        const mcpRes = await callYahooMcp('yahoo_web_search', { query });
-        const content = mcpRes?.content?.[0]?.text || '[]';
-        let enrichedText = content;
-        try {
-          const json = JSON.parse(content);
-          if (json && Array.isArray(json.items)) {
-            const filtered = filterByDomains(json.items, includeDomains, excludeDomains);
-            json.items = filtered.map((item: any) => ({ source: 'web' as const, ...item }));
-            json.count = json.items.length;
-            json.source = 'web';
-            enrichedText = JSON.stringify(json, null, 2);
-          }
-        } catch {}
+        const result = await searchYahooWeb({ query, includeDomains, excludeDomains });
         return {
-          content: [{ type: 'text', text: enrichedText }],
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
       } catch (err: any) {
         return {
