@@ -101,6 +101,7 @@ app.post('/scrape', async (c) => {
       mode: body.mode,
       fastOnly: body.fastOnly,
       renderJs: body.renderJs,
+      proxyUrl: body.proxyUrl,
       timeoutMs: body.timeoutMs,
       noCache: body.noCache,
       extractHighlights: body.extractHighlights,
@@ -221,6 +222,7 @@ app.post('/search', async (c) => {
     const includeDomains = body?.includeDomains;
     const excludeDomains = body?.excludeDomains;
     const updated = body?.updated;
+    const proxyUrl = body?.proxyUrl;
     const extractHighlights = body?.extractHighlights;
 
     if (!query || typeof query !== 'string') {
@@ -237,6 +239,7 @@ app.post('/search', async (c) => {
       includeDomains,
       excludeDomains,
       updated,
+      proxyUrl,
       extractHighlights,
     });
 
@@ -259,6 +262,7 @@ app.post('/map', async (c) => {
       limit: body.limit,
       includeSubdomains: body.includeSubdomains,
       timeoutMs: body.timeoutMs,
+      proxyUrl: body.proxyUrl,
     });
 
     return c.json(result);
@@ -282,6 +286,7 @@ app.post('/crawl', async (c) => {
       maxDepth: body.maxDepth,
       maxChars: body.maxChars,
       timeoutMs: body.timeoutMs,
+      proxyUrl: body.proxyUrl,
     });
 
     return c.json(result);
