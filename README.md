@@ -60,12 +60,18 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 7 ツール)
+## 2. 提供 MCP ツール一覧 (全 13 ツール)
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面（Cloudflare Turnstile 等）は自動で Chromium レンダリング。プロキシ対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `proxyUrl` (string, 任意): 経由する HTTP/HTTPS/SOCKS5 プロキシ URL<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
 | `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
+| `search_image` | Yahoo! JAPAN 画像検索を実行し、画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページを取得します。 | 各アイテムに `source: "image"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 20)<br>- `page` (number, 任意): ページ番号 |
+| `search_video` | Yahoo! JAPAN 動画検索を実行し、動画タイトル・動画URL・再生時間・配信元・サムネイルを取得します。 | 各アイテムに `source: "video"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 20)<br>- `page` (number, 任意): ページ番号 |
+| `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URL・サムネイルを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 60) |
+| `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・投稿日時・カテゴリ・スニペットを取得します。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 10)<br>- `page` (number, 任意): ページ番号<br>- `status` (string, 任意): `"all"`, `"open"`, `"vote"`, `"solved"` |
+| `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 20) |
+| `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `year` / `month` / `day` / `hour` / `minute` (number, 任意)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
 | `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
 | `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL<br>- `extractHighlights` (boolean, 任意) |
@@ -133,113 +139,95 @@ docker run -d \
   "updated": "week"
 }
 ```
-- **レスポンス例**:
+
+---
+
+### 3.4 画像・動画・ニュース・知恵袋・サジェスト検索
+- **画像検索 (`POST /search/image`)**:
 ```json
 {
-  "query": "新商品 発売情報",
-  "source": "web",
-  "type": "web",
-  "data": {
-    "count": 1,
-    "source": "web",
-    "items": [
-      {
-        "source": "web",
-        "title": "新商品発表のお知らせ",
-        "url": "https://example.com/news/123",
-        "description": "2026年秋に新商品を発表...",
-        "rank": 1
-      }
-    ]
-  }
+  "query": "富士山",
+  "limit": 10
+}
+```
+- **動画検索 (`POST /search/video`)**:
+```json
+{
+  "query": "簡単 レシピ",
+  "limit": 10
+}
+```
+- **ニュース検索 (`POST /search/news`)**:
+```json
+{
+  "query": "AI ロボット",
+  "limit": 10
+}
+```
+- **知恵袋 Q&A (`POST /search/chiebukuro`)**:
+```json
+{
+  "query": "プログラミング 初心者",
+  "limit": 10,
+  "status": "solved"
+}
+```
+- **サジェスト・キーワード補完 (`POST /search/suggest`)**:
+```json
+{
+  "query": "乃木坂",
+  "limit": 5
 }
 ```
 
 ---
 
-### 3.4 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
-- **リアルタイム検索 (`POST /search/realtime`)**:
-```json
-{
-  "query": "キーワード"
-}
-```
-- **急上昇トレンド (`POST /search/trend`)**:
-```json
-{
-  "limit": 20
-}
-```
-- **トレンド レスポンス例**:
-```json
-{
-  "source": "x",
-  "type": "trend",
-  "count": 20,
-  "items": [
-    {
-      "rank": 1,
-      "keyword": "ライブ生配信",
-      "url": "https://search.yahoo.co.jp/realtime/search?p=ライブ生配信"
-    }
-  ],
-  "timestamp": "2026-08-21T16:00:00.000Z"
-}
-```
-
----
-
-### 3.5 サイトマップ・URL マッピング (`POST /map`)
+### 3.5 電車乗換案内 (`POST /transit/route`)
 - **リクエスト**:
 ```json
 {
-  "url": "https://example.com",
-  "limit": 100,
-  "includeSubdomains": false,
-  "proxyUrl": "http://proxy.example.com:8080"
+  "from": "東京",
+  "to": "新宿",
+  "via": ["秋葉原"],
+  "ticket": "ic",
+  "sortBy": "time"
 }
 ```
 - **レスポンス例**:
 ```json
 {
-  "url": "https://example.com",
-  "count": 45,
-  "links": [
-    "https://example.com/about",
-    "https://example.com/docs/api",
-    "https://example.com/blog/2026-08"
-  ],
-  "sitemapFound": true
-}
-```
-
----
-
-### 3.6 サブページ再帰クロール (`POST /crawl`)
-- **リクエスト**:
-```json
-{
-  "url": "https://example.com/docs",
-  "maxPages": 5,
-  "maxDepth": 2,
-  "proxyUrl": "http://proxy.example.com:8080"
-}
-```
-- **レスポンス例**:
-```json
-{
-  "url": "https://example.com/docs",
-  "count": 5,
-  "results": [
+  "source": "transit",
+  "from": "東京",
+  "to": "新宿",
+  "via": ["秋葉原"],
+  "routeCount": 3,
+  "routes": [
     {
-      "url": "https://example.com/docs",
-      "title": "Documentation Overview",
-      "content": "---\ntitle: \"...\"---\n\n...",
-      "source": "web"
+      "index": 1,
+      "totalTime": "19:04発→19:17着13分（乗車13分）",
+      "transfers": "乗換：0回",
+      "fare": "IC優先：253円",
+      "sections": [
+        {
+          "line": "ＪＲ中央線通勤快速"
+        }
+      ]
     }
   ]
 }
 ```
+
+---
+
+### 3.6 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
+- **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名" }`
+- **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
+
+---
+
+### 3.7 サイトマップ & クロール (`POST /map` / `POST /crawl`)
+- **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 100 }`
+- **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 5 }`
 
 ---
 
