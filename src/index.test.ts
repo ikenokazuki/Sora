@@ -467,5 +467,71 @@ describe('GhostFetch REST & MCP Endpoints', () => {
       server.stop();
     }
   });
+
+  it('handleBrowserSessionAction should maintain stateful multi-turn interactive session', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) return;
+
+    const mockHtml = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head><meta charset="UTF-8"><title>Multi-Turn Session</title></head>
+      <body>
+        <h1>セッションテスト</h1>
+        <input id="session-input" type="text" value="" />
+        <button id="step-btn" onclick="document.getElementById('status').innerText = 'State: ' + document.getElementById('session-input').value;">確定</button>
+        <div id="status">未実行</div>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(mockHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      // Turn 1: 新規セッション作成 & 画面オープン
+      const turn1 = await executeBrowserActions({
+        url: `http://127.0.0.1:${server.port}/session-test`,
+        createSession: true,
+        actions: [{ type: 'fill', selector: '#session-input', text: 'Turn1 Value' }],
+        extract: { markdown: true },
+      });
+
+      expect(turn1.sessionId).toBeDefined();
+      expect(turn1.sessionClosed).toBe(false);
+      const sessionId = turn1.sessionId!;
+
+      // Turn 2: 同一セッションIDで続けてボタンクリック
+      const turn2 = await executeBrowserActions({
+        sessionId,
+        actions: [
+          { type: 'click', text: '確定' },
+          { type: 'wait', ms: 100 },
+        ],
+        extract: { markdown: true },
+      });
+
+      expect(turn2.sessionId).toBe(sessionId);
+      expect(turn2.content).toContain('State: Turn1 Value');
+
+      // Turn 3: セッションの明示的クローズ
+      const turn3 = await executeBrowserActions({
+        sessionId,
+        closeSession: true,
+      });
+
+      expect(turn3.sessionClosed).toBe(true);
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
 });
 
