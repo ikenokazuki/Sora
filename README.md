@@ -38,25 +38,23 @@
 
 ---
 
-### ⏱️ 各エンドポイントの実測応答速度 (Measured Latency)
+### ⏱️ 各エンドポイントの実測応答速度 (Measured Latency: Cold vs Cached)
 
-実機ローカルサーバーにおける実測レイテンシ一覧です。AI エージェントが思考・生成する時間（1〜3秒）と比較して圧倒的に高速に応答します。
+実機ローカルサーバーにおける「初回取得（非キャッシュ時）」と「キャッシュヒット時」の実測レイテンシ一覧です。AI エージェントが思考・生成する時間（1〜3秒）と比較して圧倒的に高速に応答します。
 
-| レベル | エンドポイント | 実測応答速度 | 処理内容・特徴 |
-|---|---|:---:|---|
-| **⚡ 0〜1ms 級** | `GET /health` | **0.2 〜 1.8 ms** | API 死活監視・ヘルスチェック（Bun 最適化） |
-| | `GET /weather` (キャッシュ時) | **0.4 ms** | 30分間 LRU メモリキャッシュヒット |
-| | `POST /scrape` (キャッシュ時) | **0.5 ms** | 同一 URL スクレイプのキャッシュヒット |
-| **🚀 30〜80ms 級** | `GET /weather?city=東京` | **37.9 ms** | 気象庁公式 CDN（`jma.go.jp`）直結パース |
-| | `POST /scrape` (静的最速) | **79.7 ms** | Web ページの高速フェッチ＋Markdown 抽出 |
-| **🌐 400〜800ms 級** | `POST /search/realtime` | **443.3 ms** | Yahoo! リアルタイム X (Twitter) 検索 |
-| | `POST /transit/route` | **456.6 ms** | Yahoo! 路線情報 電車乗換案内 |
-| | `POST /search/news` | **489.9 ms** | Yahoo! ニュース最新記事検索 |
-| | `POST /search/image` / `video` | **450 〜 550 ms** | 画像・動画検索 |
-| | `POST /search/chiebukuro` | **420 〜 500 ms** | Yahoo! 知恵袋 Q&A 検索 |
-| | `POST /search/suggest` | **824.2 ms** | Yahoo! キーワードサジェスト補完 |
-| **🤖 0.5〜1.4s 級** | `POST /browser/action` (初回) | **約 1.4 秒** | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
-| | `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | 既存タブ（`sessionId`）上での追加アクション実行 |
+| エンドポイント | 初回取得 (非キャッシュ時) | キャッシュ時 (2回目以降) | 処理内容・技術特徴 |
+|---|:---:|:---:|---|
+| `GET /health` | **0.2 〜 1.8 ms** | — | API 死活監視・ヘルスチェック（Bun 最適化） |
+| `GET /weather` (気象庁天気) | **約 38 ms** | **0.4 〜 0.7 ms** | 気象庁公式 CDN（`jma.go.jp`）直結パース＋1,805自治体自動選定 |
+| `POST /scrape` (静的最速) | **約 79 ms** | **0.5 〜 1.0 ms** | Web ページの高速フェッチ＋Markdown 本文抽出 |
+| `POST /transit/route` (乗換案内) | **約 390 ms** | **0.6 〜 7.0 ms** | Yahoo! 路線情報スクレイプ（最適経路・IC運賃計算） |
+| `POST /search/realtime` (X速報) | **約 440 ms** | **0.6 ms** | Yahoo! リアルタイム検索（Xツイート＆画像抽出） |
+| `POST /search/news` (ニュース) | **約 480 ms** | **0.6 ms** | Yahoo! ニュース最新記事検索 |
+| `POST /search/image` / `video` | **450 〜 550 ms** | **0.6 ms** | Yahoo! 画像・動画検索 |
+| `POST /search/chiebukuro` (知恵袋) | **420 〜 500 ms** | **0.6 ms** | Yahoo! 知恵袋 Q&A 検索 |
+| `POST /search/suggest` (サジェスト) | **約 820 ms** | **0.5 ms** | Yahoo! オートコンプリート関連語補完 |
+| `POST /browser/action` (初回実行) | **約 1.4 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
+| `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 
 ---
 
