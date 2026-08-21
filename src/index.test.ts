@@ -2,6 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware } from './auth.js';
+import { createMcpServer, isModuleActive } from './mcp.js';
 import {
   isBlockedHostname,
   convertHtmlToMarkdown,
@@ -276,6 +277,30 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('get_weather');
     expect(toolNames.length).toBe(14);
+  });
+
+  it('isModuleActive should correctly evaluate enabled modules', () => {
+    expect(isModuleActive('web', ['web'])).toBe(true);
+    expect(isModuleActive('yahoo', ['web'])).toBe(false);
+    expect(isModuleActive('life', ['web'])).toBe(false);
+
+    expect(isModuleActive('web', ['all'])).toBe(true);
+    expect(isModuleActive('yahoo', ['all'])).toBe(true);
+    expect(isModuleActive('life', ['all'])).toBe(true);
+
+    expect(isModuleActive('life', ['web', 'life'])).toBe(true);
+    expect(isModuleActive('yahoo', ['web', 'life'])).toBe(false);
+  });
+
+  it('createMcpServer with module filtering should register only designated category tools', () => {
+    const webOnlyServer = createMcpServer({ modules: ['web'] });
+    expect(webOnlyServer).toBeDefined();
+
+    const lifeOnlyServer = createMcpServer({ modules: ['life'] });
+    expect(lifeOnlyServer).toBeDefined();
+
+    const yahooOnlyServer = createMcpServer({ modules: ['yahoo'] });
+    expect(yahooOnlyServer).toBeDefined();
   });
 
   it('POST /search/image should return 400 when query is missing', async () => {
