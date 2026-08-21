@@ -44,6 +44,7 @@ export interface ScrapeResult {
   content: string;
   isTruncated: boolean;
   contentType: string;
+  source: 'web';
   renderedWithBrowser?: boolean;
   cached?: boolean;
   ogImage?: string;
@@ -336,6 +337,7 @@ export async function fetchWithStealthBrowser(targetUrl: string, maxChars: numbe
       content: finalContent,
       isTruncated,
       contentType: 'text/html',
+      source: 'web',
       renderedWithBrowser: true,
       ogImage,
       description,
@@ -457,6 +459,7 @@ export async function scrapeUrl(options: {
           content: trimmed,
           isTruncated: rawText.length > maxChars,
           contentType,
+          source: 'web',
           renderedWithBrowser: false,
         };
         if (!noCache) setToCache(cacheKey, result);
@@ -481,6 +484,7 @@ export async function scrapeUrl(options: {
             content: markdown.slice(0, maxChars),
             isTruncated,
             contentType,
+            source: 'web',
             renderedWithBrowser: false,
             ogImage,
             description,
@@ -510,6 +514,7 @@ export async function scrapeUrl(options: {
         content: staticResult.markdown.slice(0, maxChars),
         isTruncated,
         contentType: staticResult.contentType,
+        source: 'web',
         renderedWithBrowser: false,
         ogImage: staticResult.ogImage,
         description: staticResult.description,
@@ -536,6 +541,7 @@ export async function scrapeUrl(options: {
         content: staticResult.markdown.slice(0, maxChars),
         isTruncated,
         contentType: staticResult.contentType,
+        source: 'web',
         renderedWithBrowser: false,
         ogImage: staticResult.ogImage,
         description: staticResult.description,
@@ -652,7 +658,10 @@ export async function integratedSearch(options: {
     searchResults = (searchResults as any).results || (searchResults as any).items || [];
   }
 
-  const topItems = searchResults.slice(0, limit);
+  const topItems = searchResults.slice(0, limit).map((item: any) => ({
+    source: 'web' as const,
+    ...item,
+  }));
 
   // リアルタイム検索結果のパース
   let realtimeItems: any[] = [];
@@ -660,7 +669,11 @@ export async function integratedSearch(options: {
     const rtContent = realtimeMcpRes?.content?.[0]?.text || '[]';
     try {
       const parsed = JSON.parse(rtContent);
-      realtimeItems = Array.isArray(parsed) ? parsed : (parsed?.items || parsed?.results || []);
+      const rawList = Array.isArray(parsed) ? parsed : (parsed?.items || parsed?.results || []);
+      realtimeItems = rawList.map((item: any) => ({
+        source: 'x' as const,
+        ...item,
+      }));
     } catch {
       realtimeItems = [];
     }
@@ -698,6 +711,7 @@ export async function integratedSearch(options: {
 
   const finalResponse: Record<string, any> = {
     query,
+    source: 'integrated',
     results: enrichedResults,
     count: enrichedResults.length,
     cached: false,
@@ -705,6 +719,7 @@ export async function integratedSearch(options: {
 
   if (includeRealtime && realtimeItems.length > 0) {
     finalResponse.realtime = {
+      source: 'x',
       count: realtimeItems.length,
       items: realtimeItems,
     };
