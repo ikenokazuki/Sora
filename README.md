@@ -1,8 +1,9 @@
 # web-fetcher
 
-統合 Web スクレイピング・検索・MCP (Model Context Protocol) サービス
+統合 Web スクレイピング・検索・MCP (Model Context Protocol) サービス  
+*(Firecrawl & Tavily 互換 / 100% MIT License / Distroless)*
 
-`web-fetcher` は、Web ページの高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング）、Yahoo Japan Web 検索、Yahoo Japan リアルタイム検索（X/Twitter ポスト取得）、およびこれらを統合した深層検索（Firecrawl 互換）を提供する All-in-One サービスです。
+`web-fetcher` は、Web ページや PDF の高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング）、Yahoo Japan Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、およびこれらを統合した深層検索を提供する All-in-One サービスです。
 
 専用ドメイン `https://fetcher.ikebun.jp` 経由で、標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）として利用できます。
 
@@ -47,14 +48,17 @@
 
 ---
 
-## 2. 提供 MCP ツール一覧
+## 2. 提供 MCP ツール一覧 (全 7 ツール)
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `scrape` | 指定 URL の Web ページをスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトの場合は自動で Chromium レンダリングへフォールバックします。 | `source: "web"` | - `url` (string, 必須): 対象 URL<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `fastOnly` (boolean, 任意): 静的フェッチのみに限定するか |
-| `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード |
+| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトは自動で Chromium レンダリング。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `fastOnly` (boolean, 任意): 静的フェッチのみに限定するか<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
+| `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン |
 | `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
-| `search_deep` | Firecrawl 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `maxChars` (number, 任意): 各ページ最大文字数 |
+| `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
+| `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `extractHighlights` (boolean, 任意) |
+| `map_site` | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 100)<br>- `includeSubdomains` (boolean, 任意) |
+| `crawl_site` | 指定した URL 配下のページを再帰的にクロールし、複数ページの Markdown 本文を一括収集します。 | 各結果に `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 5)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2) |
 
 ---
 
@@ -62,10 +66,7 @@
 
 ベース URL: `https://fetcher.ikebun.jp` (ローカル内部アクセス: `http://127.0.0.1:3016`)
 
-### 3.1 ヘルスチェック
-- **エンドポイント**: `GET /health`
-- **認証**: 不要
-- **レスポンス例**:
+### 3.1 ヘルスチェック (`GET /health`)
 ```json
 {
   "status": "ok",
@@ -80,59 +81,59 @@
 
 ---
 
-### 3.2 単一 URL スクレイプ
-- **エンドポイント**: `POST /scrape`
+### 3.2 単一 URL / PDF スクレイプ (`POST /scrape`)
 - **リクエスト**:
 ```json
 {
-  "url": "https://example.com/article",
+  "url": "https://example.com/press-release.pdf",
   "maxChars": 30000,
   "fastOnly": false,
-  "timeoutMs": 10000,
-  "noCache": false
+  "extractHighlights": true,
+  "query": "新商品 発売日"
 }
 ```
 - **レスポンス例**:
 ```json
 {
-  "url": "https://example.com/article",
-  "title": "Example Title",
-  "content": "---\ntitle: \"Example Title\"\nurl: \"https://example.com/article\"\n---\n\n記事本文のMarkdownテキスト...",
+  "url": "https://example.com/press-release.pdf",
+  "title": "2026年新商品プレスリリース",
+  "content": "---\ntitle: \"2026年新商品プレスリリース\"\nurl: \"https://example.com/press-release.pdf\"\ntotalPages: 3\ncontentType: \"application/pdf\"\n---\n\n...",
   "isTruncated": false,
-  "contentType": "text/html",
+  "contentType": "application/pdf",
   "source": "web",
   "renderedWithBrowser": false,
-  "ogImage": "https://example.com/ogp.jpg",
-  "description": "記事の概要..."
+  "highlights": [
+    "2026年9月1日より全国で新商品の一般発売を開始いたします。"
+  ]
 }
 ```
 
 ---
 
-### 3.3 Yahoo Web 検索
-- **エンドポイント**: `POST /search/web`
+### 3.3 Yahoo Web 検索 (`POST /search/web`)
 - **リクエスト**:
 ```json
 {
-  "query": "東京タワー 営業時間",
-  "noCache": false
+  "query": "推しグループ ライブツアー",
+  "includeDomains": ["natalie.mu", "oricon.co.jp"],
+  "excludeDomains": ["matome.naver.jp"]
 }
 ```
 - **レスポンス例**:
 ```json
 {
-  "query": "東京タワー 営業時間",
+  "query": "推しグループ ライブツアー",
   "source": "web",
   "type": "web",
   "data": {
-    "count": 6,
+    "count": 2,
     "source": "web",
     "items": [
       {
         "source": "web",
-        "title": "営業時間・料金 | 東京タワー",
-        "url": "https://www.tokyotower.co.jp/...",
-        "description": "メインデッキ 9:00～22:30...",
+        "title": "推しグループ、全国ツアー開催決定！",
+        "url": "https://natalie.mu/music/news/...",
+        "description": "2026年秋に全国5大都市を巡る...",
         "rank": 1
       }
     ]
@@ -142,116 +143,104 @@
 
 ---
 
-### 3.4 Yahoo リアルタイム検索 (X ツイート取得)
-- **エンドポイント**: `POST /search/realtime`
-- **リクエスト**:
+### 3.4 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
+- **リアルタイム検索 (`POST /search/realtime`)**:
 ```json
 {
-  "query": "推しグループ名",
-  "noCache": false
+  "query": "推しグループ名"
 }
 ```
-- **レスポンス例**:
+- **急上昇トレンド (`POST /search/trend`)**:
 ```json
 {
-  "query": "推しグループ名",
+  "limit": 20
+}
+```
+- **トレンド レスポンス例**:
+```json
+{
   "source": "x",
-  "type": "realtime",
-  "data": {
-    "count": 20,
-    "source": "x",
-    "items": [
-      {
-        "source": "x",
-        "id": "189...",
-        "author": "user_id",
-        "text": "最新のライブ告知ツイート本文...",
-        "createdAt": "2026-08-21T14:30:00Z",
-        "media": ["https://pbs.twimg.com/media/...jpg"]
-      }
-    ]
-  }
-}
-```
-
----
-
-### 3.5 統合深層検索 (Firecrawl 互換)
-- **エンドポイント**: `POST /search`
-- **リクエスト**:
-```json
-{
-  "query": "最新アイドルフェス 2026",
-  "limit": 3,
-  "scrapeContent": true,
-  "includeRealtime": true,
-  "maxChars": 30000
-}
-```
-- **レスポンス例**:
-```json
-{
-  "query": "最新アイドルフェス 2026",
-  "source": "integrated",
-  "count": 3,
-  "results": [
+  "type": "trend",
+  "count": 20,
+  "items": [
     {
-      "source": "web",
-      "title": "フェス公式サイト",
-      "url": "https://example.com/fes2026",
-      "description": "開催概要...",
-      "markdown": "---\ntitle: \"フェス公式サイト\"...\n\nタイムテーブルや出演者情報..."
+      "rank": 1,
+      "keyword": "ライブ生配信",
+      "url": "https://search.yahoo.co.jp/realtime/search?p=ライブ生配信"
     }
   ],
-  "realtime": {
-    "source": "x",
-    "count": 20,
-    "items": [
-      {
-        "source": "x",
-        "id": "189...",
-        "author": "user_id",
-        "text": "ツイート本文..."
-      }
-    ]
-  }
+  "timestamp": "2026-08-21T16:00:00.000Z"
 }
 ```
 
 ---
 
-## 4. 認証（API キー）とセキュリティ
-
-### 4.1 認証方法
-外部からのリクエストには、以下のいずれかのヘッダーを付与します:
-- `Authorization: Bearer <API_KEY>`
-- `X-API-Key: <API_KEY>`
-
-### 4.2 設定方法
-サーバーの環境変数 `WEB_FETCHER_API_KEY`（または `API_KEY`）に設定した文字列が認証トークンとなります。
-- 未設定時: 外部アクセスも許可（オープン）状態。
-- 設定時: キーが一致しない外部リクエストは `401 Unauthorized` で拒否されます。
-- `GET /health` および内部ループバック（`127.0.0.1` 直接アクセス）は自動的にバイパスされます。
-
-### 4.3 セキュリティ機能
-- **SSRF 防御**: プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）や内部ドメインへのリクエストは自動遮断されます。
-- **ドメイン別スロットリング**: 同一ドメインへの過剰な連続リクエストを防ぐため、ランダムな Jitter（ゆらぎ）付きスロットリングを行います。
-- **LRU キャッシュ**: 15分間のインメモリキャッシュにより同一リクエストを高速応答します。
+### 3.5 サイトマップ・URL マッピング (`POST /map`)
+- **リクエスト**:
+```json
+{
+  "url": "https://example.com",
+  "limit": 100,
+  "includeSubdomains": false
+}
+```
+- **レスポンス例**:
+```json
+{
+  "url": "https://example.com",
+  "count": 45,
+  "links": [
+    "https://example.com/about",
+    "https://example.com/docs/api",
+    "https://example.com/blog/2026-08"
+  ],
+  "sitemapFound": true
+}
+```
 
 ---
 
-## 5. 開発 & テスト
-
-```bash
-# 依存関係のインストール
-bun install
-
-# 単体・統合テストの実行
-bun test
-
-# 開発サーバー起動
-bun run dev
-
-# スタンドアロンバイナリのコンパイル
-bun run build
+### 3.6 サブページ再帰クロール (`POST /crawl`)
+- **リクエスト**:
+```json
+{
+  "url": "https://example.com/docs",
+  "maxPages": 5,
+  "maxDepth": 2
+}
 ```
+- **レスポンス例**:
+```json
+{
+  "url": "https://example.com/docs",
+  "count": 5,
+  "results": [
+    {
+      "url": "https://example.com/docs",
+      "title": "Documentation Overview",
+      "content": "---\ntitle: \"...\"---\n\n...",
+      "source": "web"
+    }
+  ]
+}
+```
+
+---
+
+## 4. セキュリティ & アーキテクチャ
+
+### 4.1 ディストロレス (Distroless) コンテナ設計
+- **ベースイメージ**: `gcr.io/distroless/cc-debian12`
+- **シェルなし・パッケージマネージャなし**: コンテナ内に `/bin/sh` や `apt`、`curl` は一切存在せず、攻撃者がシェルを奪取する余地がありません。
+- **権限剥奪**: ルートレス Podman + `krun` (Firecracker 軽量マイクロVM) により強固に隔離。
+
+### 4.2 セキュリティ機能
+- **SSRF 防御**: プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）への内部攻撃を遮断。
+- **Jitter スロットリング**: 同一ドメインへの過剰な連続アクセスを自動抑制。
+- **LRU キャッシュ**: 15分間のメモリキャッシュにより同一リクエストを高速応答。
+
+---
+
+## 5. ライセンス
+
+[MIT License](LICENSE) (c) 2026 ikeno
