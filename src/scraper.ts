@@ -145,6 +145,69 @@ export function isBlockedHostname(hostname: string): boolean {
 // ==========================================
 // 4. HTML クリーニング & Markdown 化 (Readability + Turndown)
 // ==========================================
+// ==========================================
+// SPA / Bot チャレンジ / JS 必須ページのインテリジェント自動検知
+// ==========================================
+export function checkIfSpaFallbackNeeded(rawHtml: string, bodyMarkdown: string, isRendered: boolean): boolean {
+  if (isRendered) return false;
+
+  const lowerHtml = rawHtml.toLowerCase();
+  const lowerBody = bodyMarkdown.toLowerCase();
+
+  // 1. 本文が極端に短い
+  if (bodyMarkdown.trim().length < 80) return true;
+
+  // 2. JavaScript 無効化 / 必要の警告
+  const jsWarningPatterns = [
+    'javascript is disabled',
+    'javascript を有効に',
+    'you need to enable javascript',
+    'enable javascript to continue',
+    'javascript required',
+    'please enable javascript',
+    'javascript is required',
+    'requires javascript',
+  ];
+  if (jsWarningPatterns.some((p) => lowerBody.includes(p) || lowerHtml.includes(p))) {
+    return true;
+  }
+
+  // 3. Bot チャレンジ / WAF / Cloudflare / Turnstile 画面
+  const botChallengePatterns = [
+    'just a moment...',
+    'checking your browser',
+    'checking if the site connection is secure',
+    'verify you are human',
+    'verify that you are not a robot',
+    'attention required! | cloudflare',
+    'challenges.cloudflare.com',
+    'cf-turnstile',
+    'datadome',
+    'perimeterx',
+    'security check',
+    'アクセスが制限されています',
+  ];
+  if (botChallengePatterns.some((p) => lowerHtml.includes(p) || lowerBody.includes(p))) {
+    return true;
+  }
+
+  // 4. SPA ルート要素が存在し、かつ本文が希薄（DOM 未マウント状態）
+  const hasSpaRoot =
+    /<div[^>]+id=["'](root|__next|__nuxt|app|main-app|react-root)["'][^>]*>\s*<\/div>/i.test(rawHtml) ||
+    /<app-root[^>]*>\s*<\/app-root>/i.test(rawHtml);
+  if (hasSpaRoot && bodyMarkdown.length < 350) {
+    return true;
+  }
+
+  // 5. ローディング・プレースホルダー状態
+  const trimmedLines = bodyMarkdown.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  if (trimmedLines.length <= 4 && trimmedLines.some((l) => /^(loading|読み込み中|please wait)[\.…]*$/i.test(l))) {
+    return true;
+  }
+
+  return false;
+}
+
 export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,
@@ -201,12 +264,8 @@ export function convertHtmlToMarkdown(
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  // SPA かどうかの判定
-  const hasJsDisabledNotice =
-    bodyMarkdown.includes('JavaScript is disabled') ||
-    bodyMarkdown.includes('JavaScript を有効に') ||
-    bodyMarkdown.includes('You need to enable JavaScript');
-  const isSpaFallbackNeeded = !isRendered && (bodyMarkdown.length < 50 || hasJsDisabledNotice);
+  // SPA かどうかの自動判定
+  const isSpaFallbackNeeded = checkIfSpaFallbackNeeded(rawHtml, bodyMarkdown, isRendered);
 
   // YAML Frontmatter の構築
   const frontmatterLines: string[] = ['---'];
@@ -277,12 +336,68 @@ export async function fetchWithStealthBrowser(targetUrl: string, maxChars: numbe
       'Sec-Ch-Ua-Platform': '"Windows"',
     });
 
-    // Stealth 偽装
+    // Stealth 偽装 (bot.sannysoft.com, Cloudflare, Akamai, DataDome 回避)
     await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      (globalThis as any).chrome = { runtime: {} };
-      Object.defineProperty(navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });
-      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      const g = globalThis as any;
+      // 1. navigator.webdriver 偽装
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+
+      // 2. window.chrome オブジェクト完全模倣
+      g.chrome = {
+        app: {
+          isInstalled: false,
+          InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+          RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+        },
+        runtime: {
+          OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+          OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+          PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+          PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+          PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+          RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
+        },
+        csi: function () {},
+        loadTimes: function () {},
+      };
+
+      // 3. navigator.languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+      });
+
+      // 4. navigator.plugins & mimeTypes
+      const fakePlugins = [
+        { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+        { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      ];
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => fakePlugins,
+      });
+
+      // 5. Permissions API 偽装
+      if ((navigator as any).permissions && (navigator as any).permissions.query) {
+        const origQuery = (navigator as any).permissions.query;
+        (navigator as any).permissions.query = (parameters: any) =>
+          parameters.name === 'notifications'
+            ? Promise.resolve({ state: (g.Notification?.permission === 'granted') ? 'granted' : 'prompt' })
+            : origQuery(parameters);
+      }
+
+      // 6. WebGL Vendor & Renderer 偽装 (SwiftShader 隠蔽)
+      if (g.WebGLRenderingContext) {
+        const getParameter = g.WebGLRenderingContext.prototype.getParameter;
+        g.WebGLRenderingContext.prototype.getParameter = function (parameter: any) {
+          if (parameter === 37445) return 'Google Inc. (Intel)'; // UNMASKED_VENDOR_WEBGL
+          if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)'; // UNMASKED_RENDERER_WEBGL
+          return getParameter.apply(this, [parameter]);
+        };
+      }
     });
 
     // 画像・フォントの遮断 (高速化)
@@ -521,13 +636,11 @@ export function filterByDomains(
   return filtered;
 }
 
-// ==========================================
-// 10. コア Scrape 処理 (Level 1 静的 / PDF -> Level 2 Browser 自動エスカレーション)
-// ==========================================
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
   fastOnly?: boolean;
+  renderJs?: boolean;
   timeoutMs?: number;
   noCache?: boolean;
   query?: string;
@@ -536,6 +649,7 @@ export async function scrapeUrl(options: {
   const targetUrl = options.url;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const fastOnly = options.fastOnly ?? false;
+  const renderJs = options.renderJs ?? false;
   const timeoutMs = options.timeoutMs ?? 10000;
   const noCache = options.noCache ?? false;
   const query = options.query;
@@ -552,10 +666,20 @@ export async function scrapeUrl(options: {
     throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedUrl.hostname}"`);
   }
 
-  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}`;
+  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${renderJs}`;
   if (!noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) return cached;
+  }
+
+  // 明示的な JS レンダリング指定がある場合は Level 1 をスキップして直接 Chromium 実行
+  if (renderJs) {
+    const result = await fetchWithStealthBrowser(targetUrl, maxChars);
+    if (shouldExtractHighlights && query) {
+      result.highlights = extractQueryHighlights(result.content, query);
+    }
+    if (!noCache) setToCache(cacheKey, result);
+    return result;
   }
 
   let staticResult: {
@@ -1024,6 +1148,7 @@ export async function searchYahooWeb(options: {
   query: string;
   includeDomains?: string[];
   excludeDomains?: string[];
+  updated?: 'all' | 'day' | 'week' | 'year';
 }): Promise<any> {
   let effectiveWebQuery = options.query;
   let webSiteArg: string | undefined = undefined;
@@ -1043,6 +1168,7 @@ export async function searchYahooWeb(options: {
   const mcpRes = await callYahooMcp('yahoo_web_search', {
     query: effectiveWebQuery,
     ...(webSiteArg ? { site: webSiteArg } : {}),
+    ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
   });
 
   const content = mcpRes?.content?.[0]?.text || '[]';
@@ -1073,6 +1199,7 @@ export async function integratedSearch(options: {
   noCache?: boolean;
   includeDomains?: string[];
   excludeDomains?: string[];
+  updated?: 'all' | 'day' | 'week' | 'year';
   extractHighlights?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
@@ -1083,8 +1210,9 @@ export async function integratedSearch(options: {
   const noCache = options.noCache ?? false;
   const includeDomains = options.includeDomains;
   const excludeDomains = options.excludeDomains;
+  const updated = options.updated;
   const extractHighlights = options.extractHighlights ?? false;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${extractHighlights}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1092,7 +1220,7 @@ export async function integratedSearch(options: {
 
   // 1. Yahoo Web 検索 と リアルタイム検索を並行実行
   const [webParsedRes, realtimeMcpRes] = await Promise.all([
-    searchYahooWeb({ query, includeDomains, excludeDomains }),
+    searchYahooWeb({ query, includeDomains, excludeDomains, updated }),
     includeRealtime
       ? callYahooMcp('yahoo_realtime_search', { query }).catch(() => null)
       : Promise.resolve(null),

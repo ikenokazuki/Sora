@@ -35,6 +35,10 @@ export function createMcpServer(): McpServer {
         .boolean()
         .optional()
         .describe('静的フェッチのみに限定し、Chromium ブラウザレンダリングをスキップするかどうか (デフォルト: false)'),
+      renderJs: z
+        .boolean()
+        .optional()
+        .describe('JavaScript を完全実行してページを描画するか (Headless Chromium Stealth モード強制実行, デフォルト: false)'),
       extractHighlights: z
         .boolean()
         .optional()
@@ -44,9 +48,9 @@ export function createMcpServer(): McpServer {
         .optional()
         .describe('ハイライト抽出に使用するキーワード・検索文'),
     },
-    async ({ url, maxChars, fastOnly, extractHighlights, query }) => {
+    async ({ url, maxChars, fastOnly, renderJs, extractHighlights, query }) => {
       try {
-        const result = await scrapeUrl({ url, maxChars, fastOnly, extractHighlights, query });
+        const result = await scrapeUrl({ url, maxChars, fastOnly, renderJs, extractHighlights, query });
         return {
           content: [
             {
@@ -67,15 +71,16 @@ export function createMcpServer(): McpServer {
   // Tool 2: search_web (Yahoo Japan Web 検索)
   mcpServer.tool(
     'search_web',
-    'Yahoo Japan Web 検索を実行し、指定キーワードの上位検索結果（タイトル・概要スニペット・URL）を取得します。ドメイン絞り込みや除外も可能です。',
+    'Yahoo Japan Web 検索を実行し、指定キーワードの上位検索結果（タイトル・概要スニペット・URL）を取得します。ドメイン絞り込みや期間指定（24h/1week/1year）も可能です。',
     {
       query: z.string().min(1).describe('検索キーワード'),
       includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
       excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメインリスト'),
+      updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(指定なし), "day"(24時間以内), "week"(1週間以内), "year"(1年以内)'),
     },
-    async ({ query, includeDomains, excludeDomains }) => {
+    async ({ query, includeDomains, excludeDomains, updated }) => {
       try {
-        const result = await searchYahooWeb({ query, includeDomains, excludeDomains });
+        const result = await searchYahooWeb({ query, includeDomains, excludeDomains, updated });
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
@@ -150,6 +155,7 @@ export function createMcpServer(): McpServer {
         .describe('各ページの最大本文文字数 (デフォルト: 30000)'),
       includeDomains: z.array(z.string()).optional().describe('絞り込むドメインリスト'),
       excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
+      updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all", "day", "week", "year"'),
       extractHighlights: z.boolean().optional().describe('クエリ関連ハイライトを抽出するか'),
     },
     async ({
@@ -160,6 +166,7 @@ export function createMcpServer(): McpServer {
       maxChars = 30000,
       includeDomains,
       excludeDomains,
+      updated,
       extractHighlights,
     }) => {
       try {
@@ -171,6 +178,7 @@ export function createMcpServer(): McpServer {
           maxChars,
           includeDomains,
           excludeDomains,
+          updated,
           extractHighlights,
         });
         return {
