@@ -11,9 +11,21 @@
 
 ---
 
-## 1. クイックスタート & MCP サーバー接続
+## 1. クイックスタート
 
-### 1.1 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
+### 1.1 コンテナの起動 (Docker / Podman)
+
+GitHub Container Registry (GHCR) から 1 コマンドで即座に起動できます:
+
+```bash
+docker run -d \
+  --name ghostfetch \
+  -p 3016:8000 \
+  -e API_KEY="your-secret-api-key" \
+  ghcr.io/ikenokazuki/ghostfetch:latest
+```
+
+### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
 
 #### Streamable HTTP 接続（推奨・標準）
 設定ファイル（例: `claude_desktop_config.json` や Cursor の MCP 設定）に以下を追加します:
@@ -24,7 +36,7 @@
     "ghostfetch": {
       "url": "http://localhost:3016/mcp",
       "headers": {
-        "Authorization": "Bearer <YOUR_API_KEY>"
+        "Authorization": "Bearer your-secret-api-key"
       }
     }
   }
@@ -38,7 +50,7 @@
     "ghostfetch": {
       "url": "http://localhost:3016/sse",
       "headers": {
-        "Authorization": "Bearer <YOUR_API_KEY>"
+        "Authorization": "Bearer your-secret-api-key"
       }
     }
   }
