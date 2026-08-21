@@ -500,16 +500,27 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ## 5. 謝意・クレジット (Acknowledgments)
 
-`GhostFetch` の各検索・データ連携機能は、以下の優れたオープンソースプロジェクトおよび公開サービス・公的オープンデータに支えられています。開発者・関係者の皆様に心より感謝申し上げます。
+`GhostFetch` は、以下の優れたオープンソースプロジェクト、公開サービス、公的オープンデータ、およびライブラリ作者の皆様の素晴らしい貢献に支えられています。心より感謝申し上げます。
 
+### 🗾 データソース & 着想元 (Data Sources & Inspirations)
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
-  - 日本全国の高精度な気象予報・防災データおよび全国エリア定義データのオープン公開に深く感謝いたします。
-- **天気予報 API（livedoor 天気互換）の設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
+  - 日本全国の高精度な気象予報・防災データおよび全国 1,800 以上のエリア定義データのオープン公開に深く感謝いたします。
+- **天気予報 API（livedoor 天気互換）設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
   - livedoor 天気互換フォーマットの分かりやすいスキーマ設計と長年のコミュニティ貢献に感謝いたします。
 - **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
   - Yahoo! JAPAN の画像・動画・ニュース・知恵袋・サジェスト検索の MCP 実装に感謝いたします。
 - **norikae-mcp**: [tysonwu/norikae-mcp](https://github.com/tysonwu/norikae-mcp)
   - Yahoo! 路線情報スクレイピングによる乗換案内ロジックの設計・実装に感謝いたします。
+
+### 🛠️ 基盤オープンソース・ライブラリ (Core Libraries & Ecosystem)
+- **[Hono](https://hono.dev/)** ([@yusukebe](https://github.com/yusukebe)) — 超高速 Web API フレームワーク & MCP 統合
+- **[Puppeteer](https://pptr.dev/)** (Google Chrome Team) — ヘッドレス Chromium 制御・ステルス操作
+- **[Readability](https://github.com/mozilla/readability)** (Mozilla) — リーダーモード記事本文抽出エンジン
+- **[Cheerio](https://cheerio.js.org/)** (cheeriojs team) — 高速 DOM 解析 & メタデータ抽出
+- **[Turndown](https://github.com/mixmark-io/turndown)** ([Dom Christie](https://github.com/domchristie)) — HTML to Markdown コンバーター
+- **[LinkeDOM](https://github.com/WebReflection/linkedom)** ([Andrea Giammarchi](https://github.com/WebReflection)) — 超軽量インメモリ DOM エンジン
+- **[unpdf](https://github.com/unjs/unpdf)** (UnJS Team) — 高速・軽量 PDF テキスト抽出
+- **[Model Context Protocol SDK](https://github.com/modelcontextprotocol)** (Anthropic / MCP Team) — 次世代 AI ツール接続規格
 
 ---
 
