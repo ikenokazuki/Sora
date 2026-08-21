@@ -499,6 +499,9 @@ export async function fetchWithStealthBrowser(
       }
     });
 
+    // ドメイン別スロットリング & Jitter (IP BAN 防止)
+    await throttleDomain(new URL(targetUrl).hostname);
+
     // ページ遷移
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 

@@ -6,6 +6,7 @@ import {
   convertHtmlToMarkdown,
   DEFAULT_MAX_CHARS,
   isBlockedHostname,
+  throttleDomain,
   applyStealthEvasions,
   bypassCloudflareTurnstile,
   type BrowserActionStep,
@@ -333,6 +334,7 @@ export async function handleBrowserSessionAction(
       }
       const currentUrl = page.url();
       if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
+        await throttleDomain(new URL(options.url).hostname);
         await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
         await bypassCloudflareTurnstile(page);
         // SPA hydration 安定化
