@@ -5,7 +5,7 @@
 
 `GhostFetch` は、Web ページや PDF の超高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング・Bot 検知回避）、Yahoo Japan Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、プロキシ連携、およびこれらを統合した深層検索を提供する All-in-One サービスです。
 
-専用ドメイン `https://fetcher.ikebun.jp` 経由で、標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）として利用できます。
+標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）としてセルフホストして利用できます。
 
 すべての検索・スクレイピング結果には、情報ソースが Web ページ由来なのか X (Twitter) 由来なのかを即座に判別できる `source: "web" | "x"` プロパティが付与されます。
 
@@ -22,7 +22,7 @@
 {
   "mcpServers": {
     "ghostfetch": {
-      "url": "https://fetcher.ikebun.jp/mcp",
+      "url": "http://localhost:3016/mcp",
       "headers": {
         "Authorization": "Bearer <YOUR_API_KEY>"
       }
@@ -36,7 +36,7 @@
 {
   "mcpServers": {
     "ghostfetch": {
-      "url": "https://fetcher.ikebun.jp/sse",
+      "url": "http://localhost:3016/sse",
       "headers": {
         "Authorization": "Bearer <YOUR_API_KEY>"
       }
@@ -64,7 +64,7 @@
 
 ## 3. REST API 仕様
 
-ベース URL: `https://fetcher.ikebun.jp` (ローカル内部アクセス: `http://127.0.0.1:3016`)
+ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
 ### 3.1 ヘルスチェック (`GET /health`)
 ```json
@@ -115,27 +115,27 @@
 - **リクエスト**:
 ```json
 {
-  "query": "推しグループ ライブツアー",
-  "includeDomains": ["natalie.mu", "oricon.co.jp"],
-  "excludeDomains": ["matome.naver.jp"],
+  "query": "新商品 発売情報",
+  "includeDomains": ["example.com", "news.example.org"],
+  "excludeDomains": ["spam.example.com"],
   "updated": "week"
 }
 ```
 - **レスポンス例**:
 ```json
 {
-  "query": "推しグループ ライブツアー",
+  "query": "新商品 発売情報",
   "source": "web",
   "type": "web",
   "data": {
-    "count": 2,
+    "count": 1,
     "source": "web",
     "items": [
       {
         "source": "web",
-        "title": "推しグループ、全国ツアー開催決定！",
-        "url": "https://natalie.mu/music/news/...",
-        "description": "2026年秋に全国5大都市を巡る...",
+        "title": "新商品発表のお知らせ",
+        "url": "https://example.com/news/123",
+        "description": "2026年秋に新商品を発表...",
         "rank": 1
       }
     ]
@@ -149,7 +149,7 @@
 - **リアルタイム検索 (`POST /search/realtime`)**:
 ```json
 {
-  "query": "推しグループ名"
+  "query": "キーワード"
 }
 ```
 - **急上昇トレンド (`POST /search/trend`)**:
