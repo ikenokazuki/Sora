@@ -116,6 +116,18 @@ describe('web-fetcher Core Functions', () => {
     expect(resolveCityId('福岡')).toBe('400010');
     expect(resolveCityId('札幌')).toBe('016010');
     expect(resolveCityId('400040')).toBe('400040');
+
+    // 気象庁公式データに基づく市区町村・観光地の単体指定テスト
+    expect(resolveCityId('天童市')).toBe('060010');
+    expect(resolveCityId('天童')).toBe('060010');
+    expect(resolveCityId('浦安市')).toBe('120010');
+    expect(resolveCityId('浦安')).toBe('120010');
+    expect(resolveCityId('軽井沢町')).toBe('200020');
+    expect(resolveCityId('軽井沢')).toBe('200020');
+    expect(resolveCityId('箱根町')).toBe('140020');
+    expect(resolveCityId('箱根')).toBe('140020');
+    expect(resolveCityId('別府市')).toBe('440010');
+    expect(resolveCityId('石垣島')).toBe('473000');
   });
 });
 
