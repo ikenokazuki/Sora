@@ -1897,10 +1897,10 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
     const officeCode = cityId.substring(0, 2) + '0000';
     const [forecastRes, overviewRes] = await Promise.all([
       fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'GhostFetch/2.0' },
+        headers: { 'User-Agent': 'Sora/2.0' },
       }),
       fetch(`https://www.jma.go.jp/bosai/forecast/data/overview_forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'GhostFetch/2.0' },
+        headers: { 'User-Agent': 'Sora/2.0' },
       }).catch(() => null),
     ]);
 
@@ -1985,7 +1985,7 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const url = `https://weather.tsukumijima.net/api/forecast?city=${cityId}`;
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'GhostFetch/2.0 (+https://github.com/ikenokazuki/GhostFetch)',
+      'User-Agent': 'Sora/2.0 (+https://github.com/ikenokazuki/Sora)',
       'Accept': 'application/json',
     },
   });
