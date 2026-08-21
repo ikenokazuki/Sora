@@ -190,31 +190,39 @@ docker run -d \
 ---
 
 ### 3.6 日本全国 天気予報 (`POST /weather` / `GET /weather` / `GET /weather/:city`)
+
+気象庁配信・livedoor天気互換の [weather.tsukumijima.net](https://weather.tsukumijima.net/) と連携し、日本全国の今日・明日・明後日の詳細な気象データを取得します。
+
+#### 本機能の利点 (Features & Advantages)
+- **全国 1,805 市区町村のスマート自動解決**: 気象庁公式のエリア定義（`area.json`）を内蔵。「天童市」「軽井沢」「箱根」「浦安」「別府」などの市区町村名・有名地名から、担当する気象台の地点 ID を 0ms で自動選定。県名なしの入力にも対応。
+- **AI エージェントフレンドリーな構造化データ**: 3日間の天気テロップ、風・波、予想最高/最低気温（℃）、時間帯別降水確率（0-6時, 6-12時, 12-18時, 18-24時）、気象台発表の天気概況文（見出し・本文）をクリーンな JSON で一括取得。
+- **LRU キャッシュによる高速応答と負荷抑制**: 30分間のインメモリ LRU キャッシュを標準搭載し、外部 API への過剰なアクセスを自動防止。
+
 - **リクエスト (POST)**:
 ```json
 {
-  "city": "東京",
+  "city": "天童市",
   "days": 3
 }
 ```
-- **GET リクエスト**: `GET /weather?city=大阪&days=2` または `GET /weather/福岡`
+- **GET リクエスト**: `GET /weather?city=軽井沢&days=2` または `GET /weather/箱根`
 - **レスポンス例**:
 ```json
 {
   "source": "weather",
-  "cityId": "130010",
-  "title": "東京都 東京 の天気",
+  "cityId": "060010",
+  "title": "山形県 山形 の天気",
   "publicTimeFormatted": "2026/08/21 17:00:00",
-  "publishingOffice": "気象庁",
+  "publishingOffice": "山形地方気象台",
   "location": {
-    "area": "関東",
-    "prefecture": "東京都",
-    "district": "東京地方",
-    "city": "東京"
+    "area": "東北",
+    "prefecture": "山形県",
+    "district": "村山地方",
+    "city": "山形"
   },
   "description": {
-    "headline": "東京地方では、２１日夜遅くまで急な強い雨や落雷に注意してください。",
-    "body": "関東甲信地方は高気圧に覆われていますが、湿った空気や日射の影響を受けています...",
+    "headline": "村山地方では、２１日夜のはじめ頃まで急な強い雨や落雷に注意してください。",
+    "body": "東北地方は気圧の谷となっています...",
     "text": "..."
   },
   "forecasts": [
@@ -223,9 +231,9 @@ docker run -d \
       "dateLabel": "今日",
       "telop": "曇り",
       "detail": {
-        "weather": "くもり　所により　夜のはじめ頃　まで　雨　で　雷を伴い　激しく　降る",
-        "wind": "南西の風",
-        "wave": "０．５メートル"
+        "weather": "くもり　所により　夜のはじめ頃　まで　雨　で　雷を伴う",
+        "wind": "西の風",
+        "wave": null
       },
       "temperature": {
         "min": null,
@@ -268,11 +276,24 @@ docker run -d \
 - **プロキシ連携**: HTTP, HTTPS, SOCKS5 プロキシに対応し、IP ローテーションや地域制限回避が可能。
 - **SSRF 防御**: プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）への内部攻撃を遮断。
 - **Jitter スロットリング**: 同一ドメインへの過剰な連続アクセスを自動抑制。
-- **LRU キャッシュ**: 15分間のメモリキャッシュにより同一リクエストを高速応答。
+- **LRU キャッシュ**: 15〜30分間のメモリキャッシュにより同一リクエストを高速応答。
 
 ---
 
-## 5. ライセンス (License)
+## 5. 謝意・クレジット (Acknowledgments)
+
+`GhostFetch` の各検索・データ連携機能は、以下の優れたオープンソースプロジェクトおよび公開サービスに支えられています。開発者の皆様に心より感謝申し上げます。
+
+- **天気予報 API（livedoor 天気互換）**: [weather.tsukumijima.net](https://weather.tsukumijima.net/) / [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api)
+  - 気象庁データに基づく使いやすく信頼性の高い天気 API を無償提供・維持してくださっている **tsukumijima** 氏に深く感謝申し上げます。
+- **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
+  - Yahoo! JAPAN の画像・動画・ニュース・知恵袋・サジェスト検索の MCP 実装に感謝いたします。
+- **norikae-mcp**: [tysonwu/norikae-mcp](https://github.com/tysonwu/norikae-mcp)
+  - Yahoo! 路線情報スクレイピングによる乗換案内ロジックの設計・実装に感謝いたします。
+
+---
+
+## 6. ライセンス (License)
 
 本ソフトウェアは **[Business Source License 1.1 (BSL 1.1 / BUSL-1.1)](LICENSE)** の下で公開されています。
 
@@ -288,3 +309,4 @@ docker run -d \
 詳細については [LICENSE](LICENSE) をご確認ください。
 
 Copyright (c) 2026 ikeno
+
