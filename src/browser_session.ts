@@ -73,7 +73,7 @@ function refreshSessionTimer(session: BrowserSession) {
   }
   session.lastActive = Date.now();
   session.timer = setTimeout(async () => {
-    console.log(`[GhostFetch] Session ${session.id} expired due to inactivity. Closing...`);
+    console.log(`[Sora] Session ${session.id} expired due to inactivity. Closing...`);
     await closeBrowserSession(session.id);
   }, SESSION_TTL_MS);
 }
@@ -95,7 +95,7 @@ export async function closeBrowserSession(sessionId: string): Promise<boolean> {
       await session.dedicatedBrowser.close().catch(() => {});
     }
   } catch (err) {
-    console.warn(`[GhostFetch] Error closing session ${sessionId}:`, err);
+    console.warn(`[Sora] Error closing session ${sessionId}:`, err);
   }
 
   return true;
