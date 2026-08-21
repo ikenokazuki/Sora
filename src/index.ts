@@ -142,12 +142,20 @@ const handleBrowserAction = async (c: any) => {
   try {
     const body = await c.req.json();
     const url = body?.url;
-    if (!url || typeof url !== 'string') {
-      return c.json({ error: 'url is required' }, 400);
+    const sessionId = body?.sessionId;
+    const createSession = body?.createSession;
+    const closeSession = body?.closeSession;
+
+    // url も sessionId もない場合はエラー (ただし closeSession 時は sessionId のみでOK)
+    if (!url && !sessionId) {
+      return c.json({ error: 'url or sessionId is required' }, 400);
     }
 
     const result = await executeBrowserActions({
       url,
+      sessionId,
+      createSession,
+      closeSession,
       actions: body.actions,
       extract: body.extract,
       timeout: body.timeout,
