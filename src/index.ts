@@ -73,7 +73,7 @@ app.get('/', (c) => {
 app.get('/health', (c) => {
   return c.json({
     status: 'ok',
-    service: 'web-fetcher',
+    service: 'ghostfetch',
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
     yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),

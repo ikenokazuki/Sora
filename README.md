@@ -1,9 +1,9 @@
-# web-fetcher
+# GhostFetch
 
-統合 Web スクレイピング・検索・MCP (Model Context Protocol) サービス  
-*(Firecrawl & Tavily 互換 / 100% MIT License / Distroless)*
+> **Ultra-fast, Stealth Web Scraping & Deep Search Engine with MCP (Model Context Protocol)**  
+> *(Firecrawl & Tavily Alternative / Distroless / Source-Available)*
 
-`web-fetcher` は、Web ページや PDF の高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング）、Yahoo Japan Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、プロキシ連携、およびこれらを統合した深層検索を提供する All-in-One サービスです。
+`GhostFetch` は、Web ページや PDF の超高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング・Bot 検知回避）、Yahoo Japan Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、プロキシ連携、およびこれらを統合した深層検索を提供する All-in-One サービスです。
 
 専用ドメイン `https://fetcher.ikebun.jp` 経由で、標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）として利用できます。
 
@@ -21,7 +21,7 @@
 ```json
 {
   "mcpServers": {
-    "web-fetcher": {
+    "ghostfetch": {
       "url": "https://fetcher.ikebun.jp/mcp",
       "headers": {
         "Authorization": "Bearer <YOUR_API_KEY>"
@@ -35,7 +35,7 @@
 ```json
 {
   "mcpServers": {
-    "web-fetcher": {
+    "ghostfetch": {
       "url": "https://fetcher.ikebun.jp/sse",
       "headers": {
         "Authorization": "Bearer <YOUR_API_KEY>"
@@ -52,7 +52,7 @@
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。プロキシ対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `proxyUrl` (string, 任意): 経由する HTTP/HTTPS/SOCKS5 プロキシ URL<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
+| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面（Cloudflare Turnstile 等）は自動で Chromium レンダリング。プロキシ対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `proxyUrl` (string, 任意): 経由する HTTP/HTTPS/SOCKS5 プロキシ URL<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
 | `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
 | `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
@@ -70,7 +70,7 @@
 ```json
 {
   "status": "ok",
-  "service": "web-fetcher",
+  "service": "ghostfetch",
   "cachedEntries": 0,
   "chromiumAvailable": true,
   "yahooMcpAvailable": true,
@@ -246,6 +246,17 @@
 
 ---
 
-## 5. ライセンス
+## 5. ライセンス (License)
 
-[MIT License](LICENSE) (c) 2026 ikeno
+本ソフトウェアは **GhostFetch Source-Available License (Commercial Hosted Service Restriction)** の下で公開されています。
+
+- **無料・自由にご利用いただける用途**:
+  - 個人開発、学術研究、非商用利用
+  - 企業・組織内での自社システム向けセルフホスト利用（自社サービスを支える内部ツールとして動作させること）
+  - ソースコードの改変・フォーク・社内共有
+- **禁止事項 (Restriction)**:
+  - 本ソフトウェア（またはその派生物）を、第三者向けの「有料クラウドサービス」「有料スクレイピング / 検索 API サービス」「マネージドサービス」として提供・再販すること（商用ライセンスの個別契約が必要となります）。
+
+詳細については [LICENSE](LICENSE) をご確認ください。
+
+Copyright (c) 2026 ikeno
