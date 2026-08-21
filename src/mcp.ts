@@ -232,7 +232,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         actions: z
           .array(
             z.object({
-              type: z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate']).describe('アクション種別: "click", "fill", "type", "press", "select", "scroll", "wait", "evaluate"'),
+              type: z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate']).describe('アクション種別: "click", "fill", "type", "press", "select", "scroll", "wait", "evaluate", "navigate"'),
+              url: z.string().url().optional().describe('navigate 時に遷移する URL'),
               selector: z.string().optional().describe('操作対象の CSS セレクタ (例: "#search-input", "button.submit")'),
               text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト (例: "検索", "ログイン")'),
               value: z.string().optional().describe('select タグで選択する値'),

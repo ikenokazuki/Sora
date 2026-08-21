@@ -532,7 +532,8 @@ export async function fetchWithStealthBrowser(
 // 5.5 対話型ブラウザ自動操作 (Browser Actions & Automation)
 // ==========================================
 export interface BrowserActionStep {
-  type: 'click' | 'fill' | 'type' | 'press' | 'select' | 'scroll' | 'wait' | 'evaluate';
+  type: 'click' | 'fill' | 'type' | 'press' | 'select' | 'scroll' | 'wait' | 'evaluate' | 'navigate';
+  url?: string;
   selector?: string;
   text?: string;
   value?: string;
@@ -696,6 +697,14 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
           case 'evaluate': {
             if (!action.script) throw new Error('Evaluate action requires script');
             await page.evaluate(action.script);
+            break;
+          }
+          case 'navigate': {
+            if (!action.url) throw new Error('Navigate action requires url');
+            if (isBlockedHostname(new URL(action.url).hostname)) {
+              throw new Error(`Access to private or blocked host is forbidden: ${action.url}`);
+            }
+            await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
             break;
           }
           default:
