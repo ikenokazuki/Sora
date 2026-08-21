@@ -11,6 +11,7 @@ import {
   setToCache,
   scrapeUrl,
   callYahooMcp,
+  searchYahooWeb,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
@@ -187,19 +188,7 @@ app.post('/search/web', async (c) => {
       if (cached) return c.json(cached);
     }
 
-    const mcpRes = await callYahooMcp('yahoo_web_search', { query });
-    const content = mcpRes?.content?.[0]?.text || '';
-    let parsedData = content;
-    try {
-      const json = JSON.parse(content);
-      if (json && Array.isArray(json.items)) {
-        const filtered = filterByDomains(json.items, includeDomains, excludeDomains);
-        json.items = filtered.map((item: any) => ({ source: 'web' as const, ...item }));
-        json.count = json.items.length;
-        json.source = 'web';
-      }
-      parsedData = json;
-    } catch {}
+    const parsedData = await searchYahooWeb({ query, includeDomains, excludeDomains });
 
     const responseData = {
       query,
