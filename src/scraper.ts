@@ -526,6 +526,228 @@ export async function fetchWithStealthBrowser(
 }
 
 // ==========================================
+// 5.5 対話型ブラウザ自動操作 (Browser Actions & Automation)
+// ==========================================
+export interface BrowserActionStep {
+  type: 'click' | 'fill' | 'type' | 'press' | 'select' | 'scroll' | 'wait' | 'evaluate';
+  selector?: string;
+  text?: string;
+  value?: string;
+  key?: string;
+  direction?: 'down' | 'up';
+  distance?: number;
+  ms?: number;
+  script?: string;
+  clear?: boolean;
+  delay?: number;
+}
+
+export interface BrowserActionOptions {
+  url: string;
+  actions?: BrowserActionStep[];
+  extract?: {
+    markdown?: boolean;
+    html?: boolean;
+    screenshot?: boolean;
+    screenshotFullPage?: boolean;
+    maxChars?: number;
+  };
+  timeout?: number;
+  proxyUrl?: string;
+}
+
+export interface BrowserActionResult {
+  source: 'browser';
+  url: string;
+  title: string;
+  content?: string;
+  html?: string;
+  screenshot?: string; // base64 PNG
+  actionLogs: Array<{
+    step: number;
+    type: string;
+    target?: string;
+    success: boolean;
+    message?: string;
+    elapsedMs: number;
+  }>;
+  renderedWithBrowser: true;
+}
+
+/** 一連のブラウザ操作（クリック・入力・スクロール・スクショ）を実行 */
+export async function executeBrowserActions(options: BrowserActionOptions): Promise<BrowserActionResult> {
+  const targetUrl = options.url;
+  const timeoutMs = options.timeout ?? 30000;
+  const actions = options.actions ?? [];
+  const extract = options.extract ?? { markdown: true };
+  const maxChars = extract.maxChars ?? DEFAULT_MAX_CHARS;
+
+  if (isBlockedHostname(new URL(targetUrl).hostname)) {
+    throw new Error(`Access to private or blocked host is forbidden: ${targetUrl}`);
+  }
+
+  const { browser, isDedicated } = await getBrowser(options.proxyUrl);
+  const page = await browser.newPage();
+  const actionLogs: any[] = [];
+
+  try {
+    await page.setUserAgent(USER_AGENT);
+    await page.setViewport({ width: 1280, height: 800 });
+
+    // Stealth 偽装
+    await page.evaluateOnNewDocument(() => {
+      const g = globalThis as any;
+      Object.defineProperty(g.navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(g.navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });
+    });
+
+    // ページロード
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+
+    // アクションを順次実行
+    let stepIndex = 1;
+    for (const action of actions) {
+      const stepStart = performance.now();
+      try {
+        switch (action.type) {
+          case 'click': {
+            if (action.selector) {
+              await page.waitForSelector(action.selector, { timeout: 10000 });
+              await page.click(action.selector);
+            } else if (action.text) {
+              const clicked = await page.evaluate((btnText: string) => {
+                const doc = (globalThis as any).document;
+                const elements: any[] = Array.from(
+                  doc.querySelectorAll('button, a, input[type="submit"], input[type="button"], [role="button"], span, div')
+                );
+                const target = elements.find(
+                  (el) => el.textContent?.trim().includes(btnText) || el.value?.includes(btnText)
+                );
+                if (target) {
+                  target.click();
+                  return true;
+                }
+                return false;
+              }, action.text);
+              if (!clicked) throw new Error(`Element containing text "${action.text}" not found`);
+            } else {
+              throw new Error('Click action requires selector or text');
+            }
+            if (action.delay) await new Promise((r) => setTimeout(r, action.delay));
+            break;
+          }
+          case 'fill':
+          case 'type': {
+            if (!action.selector) throw new Error('Fill action requires selector');
+            await page.waitForSelector(action.selector, { timeout: 10000 });
+            if (action.clear !== false) {
+              await page.click(action.selector, { clickCount: 3 });
+              await page.keyboard.press('Backspace');
+            }
+            await page.type(action.selector, action.text ?? '', { delay: action.delay ?? 20 });
+            break;
+          }
+          case 'press': {
+            if (!action.key) throw new Error('Press action requires key');
+            await page.keyboard.press(action.key as any);
+            break;
+          }
+          case 'select': {
+            if (!action.selector || action.value === undefined) throw new Error('Select action requires selector and value');
+            await page.waitForSelector(action.selector, { timeout: 10000 });
+            await page.select(action.selector, action.value);
+            break;
+          }
+          case 'scroll': {
+            const distance = action.distance ?? 800;
+            const direction = action.direction === 'up' ? -distance : distance;
+            await page.evaluate((d: number) => {
+              (globalThis as any).window.scrollBy({ top: d, behavior: 'smooth' });
+            }, direction);
+            await new Promise((r) => setTimeout(r, 500));
+            break;
+          }
+          case 'wait': {
+            if (action.selector) {
+              await page.waitForSelector(action.selector, { timeout: action.ms ?? 10000 });
+            } else if (action.ms) {
+              await new Promise((r) => setTimeout(r, action.ms));
+            } else {
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            break;
+          }
+          case 'evaluate': {
+            if (!action.script) throw new Error('Evaluate action requires script');
+            await page.evaluate(action.script);
+            break;
+          }
+          default:
+            throw new Error(`Unsupported action type: ${(action as any).type}`);
+        }
+
+        actionLogs.push({
+          step: stepIndex++,
+          type: action.type,
+          target: action.selector || action.text || action.key || action.script,
+          success: true,
+          elapsedMs: Math.round(performance.now() - stepStart),
+        });
+      } catch (actErr: any) {
+        actionLogs.push({
+          step: stepIndex++,
+          type: action.type,
+          target: action.selector || action.text || action.key,
+          success: false,
+          message: actErr?.message || String(actErr),
+          elapsedMs: Math.round(performance.now() - stepStart),
+        });
+      }
+    }
+
+    const finalUrl = page.url();
+    const title = await page.title();
+    let content: string | undefined;
+    let html: string | undefined;
+    let screenshot: string | undefined;
+
+    if (extract.html) {
+      html = await page.content();
+    }
+
+    if (extract.markdown !== false) {
+      const rawHtml = html || (await page.content());
+      const { markdown } = convertHtmlToMarkdown(rawHtml, finalUrl, maxChars, true);
+      content = markdown.slice(0, maxChars);
+    }
+
+    if (extract.screenshot) {
+      const screenshotBuffer = await page.screenshot({
+        fullPage: extract.screenshotFullPage ?? false,
+        type: 'png',
+      });
+      screenshot = Buffer.from(screenshotBuffer).toString('base64');
+    }
+
+    return {
+      source: 'browser',
+      url: finalUrl,
+      title,
+      content,
+      html,
+      screenshot,
+      actionLogs,
+      renderedWithBrowser: true,
+    };
+  } finally {
+    await page.close().catch(() => {});
+    if (isDedicated) {
+      await browser.close().catch(() => {});
+    }
+  }
+}
+
+// ==========================================
 // 6. 安全なリダイレクト追従付き静的 HTTP Fetch (プロキシ対応)
 // ==========================================
 export async function fetchWithSafeRedirects(

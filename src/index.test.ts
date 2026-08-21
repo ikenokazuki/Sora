@@ -276,19 +276,23 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(toolNames).toContain('suggest_keywords');
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('get_weather');
-    expect(toolNames.length).toBe(14);
+    expect(toolNames).toContain('browser_action');
+    expect(toolNames.length).toBe(15);
   });
 
   it('isModuleActive should correctly evaluate enabled modules', () => {
     expect(isModuleActive('web', ['web'])).toBe(true);
+    expect(isModuleActive('browser', ['web'])).toBe(false);
     expect(isModuleActive('yahoo', ['web'])).toBe(false);
     expect(isModuleActive('life', ['web'])).toBe(false);
 
     expect(isModuleActive('web', ['all'])).toBe(true);
+    expect(isModuleActive('browser', ['all'])).toBe(true);
     expect(isModuleActive('yahoo', ['all'])).toBe(true);
     expect(isModuleActive('life', ['all'])).toBe(true);
 
     expect(isModuleActive('life', ['web', 'life'])).toBe(true);
+    expect(isModuleActive('browser', ['browser', 'web'])).toBe(true);
     expect(isModuleActive('yahoo', ['web', 'life'])).toBe(false);
   });
 
@@ -296,11 +300,25 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     const webOnlyServer = createMcpServer({ modules: ['web'] });
     expect(webOnlyServer).toBeDefined();
 
+    const browserOnlyServer = createMcpServer({ modules: ['browser'] });
+    expect(browserOnlyServer).toBeDefined();
+
     const lifeOnlyServer = createMcpServer({ modules: ['life'] });
     expect(lifeOnlyServer).toBeDefined();
 
     const yahooOnlyServer = createMcpServer({ modules: ['yahoo'] });
     expect(yahooOnlyServer).toBeDefined();
+  });
+
+  it('POST /browser/action should return 400 when url is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/browser/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
   });
 
   it('POST /search/image should return 400 when query is missing', async () => {
