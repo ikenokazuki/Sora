@@ -31,14 +31,18 @@ export function createMcpServer(): McpServer {
         .max(100_000)
         .optional()
         .describe('抽出する最大文字数 (デフォルト: 30000)'),
+      mode: z
+        .enum(['auto', 'fast', 'browser'])
+        .optional()
+        .describe('スクレイプ動作モード: "auto" (スマート自動判定, デフォルト), "fast" (静的フェッチ最速限定), "browser" (Stealth Chromium JS完全実行)'),
       fastOnly: z
         .boolean()
         .optional()
-        .describe('静的フェッチのみに限定し、Chromium ブラウザレンダリングをスキップするかどうか (デフォルト: false)'),
+        .describe('【互換用】静的フェッチのみに限定するか (mode: "fast" と同等)'),
       renderJs: z
         .boolean()
         .optional()
-        .describe('JavaScript を完全実行してページを描画するか (Headless Chromium Stealth モード強制実行, デフォルト: false)'),
+        .describe('【互換用】Stealth Chromium で JS 完全実行するか (mode: "browser" と同等)'),
       extractHighlights: z
         .boolean()
         .optional()
@@ -48,9 +52,9 @@ export function createMcpServer(): McpServer {
         .optional()
         .describe('ハイライト抽出に使用するキーワード・検索文'),
     },
-    async ({ url, maxChars, fastOnly, renderJs, extractHighlights, query }) => {
+    async ({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query }) => {
       try {
-        const result = await scrapeUrl({ url, maxChars, fastOnly, renderJs, extractHighlights, query });
+        const result = await scrapeUrl({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query });
         return {
           content: [
             {

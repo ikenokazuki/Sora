@@ -14,12 +14,21 @@ export const DEFAULT_MAX_CHARS = 30_000;
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
+function resolveChromiumPath(): string | undefined {
+  if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
+  if (existsSync('/usr/bin/chromium')) return '/usr/bin/chromium';
+  if (existsSync('/usr/bin/google-chrome')) return '/usr/bin/google-chrome';
+  if (existsSync('/usr/bin/chromium-browser')) return '/usr/bin/chromium-browser';
+  try {
+    const { execSync } = require('child_process');
+    const path = execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (path && existsSync(path)) return path;
+  } catch {}
+  return undefined;
+}
+
 // Chromium のパス判定 (コンテナ内 または ホスト環境)
-export const CHROME_EXECUTABLE_PATH =
-  process.env.CHROME_PATH ||
-  (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' :
-   existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' :
-   existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : undefined);
+export const CHROME_EXECUTABLE_PATH = resolveChromiumPath();
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -339,7 +348,13 @@ export async function fetchWithStealthBrowser(targetUrl: string, maxChars: numbe
     // Stealth 偽装 (bot.sannysoft.com, Cloudflare, Akamai, DataDome 回避)
     await page.evaluateOnNewDocument(() => {
       const g = globalThis as any;
-      // 1. navigator.webdriver 偽装
+      // 1. navigator.webdriver 完全隠蔽 (プロトタイプからの削除)
+      try {
+        delete (Object.getPrototypeOf(navigator) as any).webdriver;
+      } catch {}
+      try {
+        delete (navigator as any).webdriver;
+      } catch {}
       Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined,
       });
@@ -639,6 +654,7 @@ export function filterByDomains(
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
+  mode?: 'auto' | 'fast' | 'browser';
   fastOnly?: boolean;
   renderJs?: boolean;
   timeoutMs?: number;
@@ -648,12 +664,18 @@ export async function scrapeUrl(options: {
 }): Promise<ScrapeResult> {
   const targetUrl = options.url;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-  const fastOnly = options.fastOnly ?? false;
-  const renderJs = options.renderJs ?? false;
   const timeoutMs = options.timeoutMs ?? 10000;
   const noCache = options.noCache ?? false;
   const query = options.query;
   const shouldExtractHighlights = options.extractHighlights ?? false;
+
+  // 競合チェック & 動作モードの解決
+  if (options.fastOnly && options.renderJs) {
+    throw new Error('`fastOnly: true` と `renderJs: true` は同時に指定できません。`mode: "auto" | "fast" | "browser"` を指定してください。');
+  }
+
+  const effectiveMode: 'auto' | 'fast' | 'browser' =
+    options.mode ?? (options.fastOnly ? 'fast' : options.renderJs ? 'browser' : 'auto');
 
   let parsedUrl: URL;
   try {
@@ -666,14 +688,14 @@ export async function scrapeUrl(options: {
     throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedUrl.hostname}"`);
   }
 
-  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${renderJs}`;
+  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${effectiveMode}`;
   if (!noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) return cached;
   }
 
-  // 明示的な JS レンダリング指定がある場合は Level 1 をスキップして直接 Chromium 実行
-  if (renderJs) {
+  // mode: "browser" の場合は Level 1 をスキップして直接 Chromium 実行
+  if (effectiveMode === 'browser') {
     const result = await fetchWithStealthBrowser(targetUrl, maxChars);
     if (shouldExtractHighlights && query) {
       result.highlights = extractQueryHighlights(result.content, query);
@@ -738,7 +760,7 @@ export async function scrapeUrl(options: {
         );
         staticResult = { title, markdown, isSpaFallbackNeeded, contentType, ogImage, description };
 
-        if (!isSpaFallbackNeeded || fastOnly) {
+        if (!isSpaFallbackNeeded || effectiveMode === 'fast') {
           const isTruncated = markdown.length > maxChars;
           const result: ScrapeResult = {
             url: fetchRes.finalUrl,
@@ -765,12 +787,12 @@ export async function scrapeUrl(options: {
     if (err.message?.includes('セキュリティ上の理由')) {
       throw err;
     }
-    if (!fastOnly) {
+    if (effectiveMode !== 'fast') {
       console.warn(`[web-fetcher] Static fetch failed for "${targetUrl}", escalating to Browserless Chromium:`, err?.message);
     }
   }
 
-  if (fastOnly) {
+  if (effectiveMode === 'fast') {
     if (staticResult && staticResult.markdown.trim().length > 0) {
       const isTruncated = staticResult.markdown.length > maxChars;
       const result: ScrapeResult = {

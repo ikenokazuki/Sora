@@ -96,6 +96,16 @@ describe('web-fetcher Core Functions', () => {
       expect(result.source).toBe('web');
     } catch {}
   });
+
+  it('scrapeUrl should reject when both fastOnly: true and renderJs: true are specified', async () => {
+    expect(
+      scrapeUrl({
+        url: 'https://example.com',
+        fastOnly: true,
+        renderJs: true,
+      }),
+    ).rejects.toThrow('同時に指定できません');
+  });
 });
 
 describe('web-fetcher Auth Middleware', () => {

@@ -98,6 +98,7 @@ app.post('/scrape', async (c) => {
     const result = await scrapeUrl({
       url: body.url,
       maxChars: body.maxChars,
+      mode: body.mode,
       fastOnly: body.fastOnly,
       renderJs: body.renderJs,
       timeoutMs: body.timeoutMs,
