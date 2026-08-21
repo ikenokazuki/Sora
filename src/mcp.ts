@@ -10,6 +10,12 @@ import {
   crawlSiteUrl,
   fetchRealtimeTrends,
   filterByDomains,
+  searchYahooImage,
+  searchYahooVideo,
+  searchYahooNews,
+  searchYahooChiebukuro,
+  getSuggestedKeywords,
+  searchTransitRoute,
 } from './scraper.js';
 
 export function createMcpServer(): McpServer {
@@ -272,6 +278,169 @@ export function createMcpServer(): McpServer {
         return {
           isError: true,
           content: [{ type: 'text', text: `Search trend error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 8: search_image (Yahoo Japan 画像検索)
+  mcpServer.tool(
+    'search_image',
+    'Yahoo! JAPAN 画像検索を実行し、指定キーワードに関連する画像のタイトル・画像URL・サムネイル・ソース元ページを取得します。',
+    {
+      query: z.string().min(1).describe('検索キーワード'),
+      limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 20, 最大: 20)'),
+      page: z.number().int().min(1).optional().describe('ページ番号 (デフォルト: 1)'),
+    },
+    async ({ query, limit, page }) => {
+      try {
+        const result = await searchYahooImage({ query, limit, page });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Image search error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 9: search_video (Yahoo Japan 動画検索)
+  mcpServer.tool(
+    'search_video',
+    'Yahoo! JAPAN 動画検索を実行し、指定キーワードに関連する動画のタイトル・動画URL・再生時間・配信元・サムネイルを取得します。',
+    {
+      query: z.string().min(1).describe('検索キーワード'),
+      limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 20, 最大: 20)'),
+      page: z.number().int().min(1).optional().describe('ページ番号 (デフォルト: 1)'),
+    },
+    async ({ query, limit, page }) => {
+      try {
+        const result = await searchYahooVideo({ query, limit, page });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Video search error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 10: search_news (Yahoo ニュース検索)
+  mcpServer.tool(
+    'search_news',
+    'Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URL・サムネイルを取得します。最大60件を一括取得可能です。',
+    {
+      query: z.string().min(1).describe('検索キーワード'),
+      limit: z.number().int().min(1).max(60).optional().describe('取得件数 (デフォルト: 10, 最大: 60)'),
+    },
+    async ({ query, limit }) => {
+      try {
+        const result = await searchYahooNews({ query, limit });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `News search error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 11: search_chiebukuro (Yahoo 知恵袋検索)
+  mcpServer.tool(
+    'search_chiebukuro',
+    'Yahoo!知恵袋を検索し、質問タイトル・回答数・解決ステータス・投票受付中か・カテゴリ等を取得します。日本のリアルな口コミ・Q&A情報が得られます。',
+    {
+      query: z.string().min(1).describe('検索キーワード'),
+      limit: z.number().int().min(1).max(10).optional().describe('取得件数 (デフォルト: 10, 最大: 10)'),
+      page: z.number().int().min(1).optional().describe('ページ番号 (デフォルト: 1)'),
+      status: z.enum(['all', 'open', 'vote', 'solved']).optional().describe('質問ステータス: "all"(すべて), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)'),
+    },
+    async ({ query, limit, page, status }) => {
+      try {
+        const result = await searchYahooChiebukuro({ query, limit, page, status });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Chiebukuro search error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 12: suggest_keywords (Yahoo サジェスト・キーワード補完)
+  mcpServer.tool(
+    'suggest_keywords',
+    'Yahoo! JAPAN のオートコンプリートサジェストを取得し、入力キーワードに対する関連検索ワード・補完候補を返します。ユーザーが実際に使う検索ワードの発見に有用です。',
+    {
+      query: z.string().min(1).describe('補完対象のキーワード（部分入力可）'),
+      limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 10, 最大: 20)'),
+    },
+    async ({ query, limit }) => {
+      try {
+        const result = await getSuggestedKeywords({ query, limit });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Suggest keywords error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 13: search_route (電車乗換案内)
+  mcpServer.tool(
+    'search_route',
+    '日本国内の電車乗換案内。出発駅から到着駅への最適ルート・所要時間・乗り換え回数・運賃（IC/きっぷ）を検索します。経由駅指定（最大3駅）、出発/到着/始発/終電指定、新幹線・特急・バス利用の有無も指定可能。駅名は日本語（漢字・かな）で指定してください。',
+    {
+      from: z.string().min(1).describe('出発駅名（日本語: 例「東京」「新宿」）'),
+      to: z.string().min(1).describe('到着駅名（日本語: 例「横浜」「渋谷」）'),
+      via: z.array(z.string()).optional().describe('経由駅名の配列（最大3駅: 例 ["表参道"]）'),
+      year: z.number().optional().describe('出発年 (例: 2026)'),
+      month: z.number().optional().describe('出発月 (1-12)'),
+      day: z.number().optional().describe('出発日 (1-31)'),
+      hour: z.number().optional().describe('出発時刻の時 (0-23)'),
+      minute: z.number().optional().describe('出発時刻の分 (0-59)'),
+      timeType: z.enum(['departure', 'arrival', 'first_train', 'last_train', 'unspecified']).optional()
+        .describe('時刻指定タイプ: "departure"(出発時刻), "arrival"(到着時刻), "first_train"(始発), "last_train"(終電)'),
+      ticket: z.enum(['ic', 'cash']).optional().describe('運賃タイプ: "ic"(IC運賃), "cash"(きっぷ運賃)'),
+      seatPreference: z.enum(['non_reserved', 'reserved', 'green']).optional()
+        .describe('座席指定: "non_reserved"(自由席), "reserved"(指定席), "green"(グリーン車)'),
+      walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow']).optional()
+        .describe('歩く速度'),
+      sortBy: z.enum(['time', 'transfer', 'fare']).optional()
+        .describe('並び順: "time"(早い順), "transfer"(乗り換え少ない順), "fare"(安い順)'),
+      useAirline: z.boolean().optional().describe('空路を使う (デフォルト: true)'),
+      useShinkansen: z.boolean().optional().describe('新幹線を使う (デフォルト: true)'),
+      useExpress: z.boolean().optional().describe('有料特急を使う (デフォルト: true)'),
+      useHighwayBus: z.boolean().optional().describe('高速バスを使う (デフォルト: true)'),
+      useLocalBus: z.boolean().optional().describe('路線バスを使う (デフォルト: true)'),
+      useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)'),
+    },
+    async (opts) => {
+      try {
+        const result = await searchTransitRoute(opts);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Transit route error: ${err?.message || err}` }],
         };
       }
     },

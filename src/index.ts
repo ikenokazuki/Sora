@@ -17,6 +17,12 @@ import {
   crawlSiteUrl,
   fetchRealtimeTrends,
   filterByDomains,
+  searchYahooImage,
+  searchYahooVideo,
+  searchYahooNews,
+  searchYahooChiebukuro,
+  getSuggestedKeywords,
+  searchTransitRoute,
 } from './scraper.js';
 import { createAuthMiddleware } from './auth.js';
 import { createMcpServer, createMcpTransport } from './mcp.js';
@@ -51,20 +57,26 @@ app.all('/message', handleMcpRequest);
 // ==========================================
 app.get('/', (c) => {
   return c.json({
-    service: 'web-fetcher',
-    description: 'Unified Web Scraping, Search & MCP Service (Firecrawl / Tavily Compatible)',
-    version: '1.1.0',
+    service: 'ghostfetch',
+    description: 'Unified Web Scraping, Search, Transit & MCP Service',
+    version: '2.0.0',
     endpoints: {
       health: 'GET /health',
       mcp: 'POST/GET /mcp (Streamable HTTP / SSE)',
       sse: 'GET /sse, POST /message',
-      scrape: 'POST /scrape { url, maxChars?, fastOnly?, timeoutMs?, extractHighlights?, query?, noCache? }',
-      searchWeb: 'POST /search/web { query, includeDomains?, excludeDomains?, noCache? }',
-      searchRealtime: 'POST /search/realtime { query, noCache? }',
-      searchTrend: 'POST /search/trend { limit? }',
-      searchIntegrated: 'POST /search { query, limit?, scrapeContent?, includeRealtime?, maxChars?, includeDomains?, excludeDomains?, extractHighlights?, noCache? }',
-      map: 'POST /map { url, limit?, includeSubdomains? }',
-      crawl: 'POST /crawl { url, maxPages?, maxDepth?, maxChars? }',
+      scrape: 'POST /scrape',
+      searchWeb: 'POST /search/web',
+      searchRealtime: 'POST /search/realtime',
+      searchTrend: 'POST /search/trend',
+      searchIntegrated: 'POST /search',
+      searchImage: 'POST /search/image',
+      searchVideo: 'POST /search/video',
+      searchNews: 'POST /search/news',
+      searchChiebukuro: 'POST /search/chiebukuro',
+      searchSuggest: 'POST /search/suggest',
+      transitRoute: 'POST /transit/route',
+      map: 'POST /map',
+      crawl: 'POST /crawl',
       cacheClear: 'POST /cache/clear',
     },
   });
@@ -296,12 +308,162 @@ app.post('/crawl', async (c) => {
   }
 });
 
+// Yahoo 画像検索
+app.post('/search/image', async (c) => {
+  try {
+    const body = await c.req.json();
+    const query = body?.query;
+    if (!query || typeof query !== 'string') {
+      return c.json({ error: 'query is required' }, 400);
+    }
+
+    const cacheKey = `search:image:${query}:${body?.limit || ''}:${body?.page || ''}`;
+    if (!body.noCache) {
+      const cached = getFromCache<any>(cacheKey);
+      if (cached) return c.json(cached);
+    }
+
+    const result = await searchYahooImage({ query, limit: body.limit, page: body.page });
+    if (!body.noCache) setToCache(cacheKey, result);
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Image search failed' }, 500);
+  }
+});
+
+// Yahoo 動画検索
+app.post('/search/video', async (c) => {
+  try {
+    const body = await c.req.json();
+    const query = body?.query;
+    if (!query || typeof query !== 'string') {
+      return c.json({ error: 'query is required' }, 400);
+    }
+
+    const cacheKey = `search:video:${query}:${body?.limit || ''}:${body?.page || ''}`;
+    if (!body.noCache) {
+      const cached = getFromCache<any>(cacheKey);
+      if (cached) return c.json(cached);
+    }
+
+    const result = await searchYahooVideo({ query, limit: body.limit, page: body.page });
+    if (!body.noCache) setToCache(cacheKey, result);
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Video search failed' }, 500);
+  }
+});
+
+// Yahoo ニュース検索
+app.post('/search/news', async (c) => {
+  try {
+    const body = await c.req.json();
+    const query = body?.query;
+    if (!query || typeof query !== 'string') {
+      return c.json({ error: 'query is required' }, 400);
+    }
+
+    const cacheKey = `search:news:${query}:${body?.limit || ''}`;
+    if (!body.noCache) {
+      const cached = getFromCache<any>(cacheKey);
+      if (cached) return c.json(cached);
+    }
+
+    const result = await searchYahooNews({ query, limit: body.limit });
+    if (!body.noCache) setToCache(cacheKey, result);
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'News search failed' }, 500);
+  }
+});
+
+// Yahoo 知恵袋検索
+app.post('/search/chiebukuro', async (c) => {
+  try {
+    const body = await c.req.json();
+    const query = body?.query;
+    if (!query || typeof query !== 'string') {
+      return c.json({ error: 'query is required' }, 400);
+    }
+
+    const cacheKey = `search:chiebukuro:${query}:${body?.limit || ''}:${body?.page || ''}:${body?.status || 'all'}`;
+    if (!body.noCache) {
+      const cached = getFromCache<any>(cacheKey);
+      if (cached) return c.json(cached);
+    }
+
+    const result = await searchYahooChiebukuro({ query, limit: body.limit, page: body.page, status: body.status });
+    if (!body.noCache) setToCache(cacheKey, result);
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Chiebukuro search failed' }, 500);
+  }
+});
+
+// Yahoo サジェスト（キーワード補完）
+app.post('/search/suggest', async (c) => {
+  try {
+    const body = await c.req.json();
+    const query = body?.query;
+    if (!query || typeof query !== 'string') {
+      return c.json({ error: 'query is required' }, 400);
+    }
+
+    const cacheKey = `search:suggest:${query}:${body?.limit || ''}`;
+    if (!body.noCache) {
+      const cached = getFromCache<any>(cacheKey);
+      if (cached) return c.json(cached);
+    }
+
+    const result = await getSuggestedKeywords({ query, limit: body.limit });
+    if (!body.noCache) setToCache(cacheKey, result);
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Suggest keywords failed' }, 500);
+  }
+});
+
+// 乗換案内
+app.post('/transit/route', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body?.from || !body?.to) {
+      return c.json({ error: 'from and to are required' }, 400);
+    }
+
+    const result = await searchTransitRoute({
+      from: body.from,
+      to: body.to,
+      via: body.via,
+      year: body.year,
+      month: body.month,
+      day: body.day,
+      hour: body.hour,
+      minute: body.minute,
+      timeType: body.timeType,
+      ticket: body.ticket,
+      seatPreference: body.seatPreference,
+      walkSpeed: body.walkSpeed,
+      sortBy: body.sortBy,
+      useAirline: body.useAirline,
+      useShinkansen: body.useShinkansen,
+      useExpress: body.useExpress,
+      useHighwayBus: body.useHighwayBus,
+      useLocalBus: body.useLocalBus,
+      useFerry: body.useFerry,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Transit route search failed' }, 500);
+  }
+});
+
 if (import.meta.main || process.env.NODE_ENV !== 'test') {
   Bun.serve({
     port: PORT,
     fetch: app.fetch,
   });
-  console.log(`Starting web-fetcher service on port ${PORT}...`);
+  console.log(`Starting GhostFetch service on port ${PORT}...`);
 }
 
 export { app };
