@@ -60,7 +60,7 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 13 ツール)
+## 2. 提供 MCP ツール一覧 (全 14 ツール)
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
@@ -72,6 +72,7 @@ docker run -d \
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・投稿日時・カテゴリ・スニペットを取得します。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 10)<br>- `page` (number, 任意): ページ番号<br>- `status` (string, 任意): `"all"`, `"open"`, `"vote"`, `"solved"` |
 | `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 20) |
 | `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `year` / `month` / `day` / `hour` / `minute` (number, 任意)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
+| `get_weather` | 気象庁配信の日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況、風・波情報を取得します。都市名または6桁の地点IDに対応。 | `source: "weather"` | - `city` (string, 必須): 都市名 (例「東京」「大阪」「福岡」) または 地点ID (例「130010」)<br>- `days` (number, 任意): 予報日数 (1〜3日, デフォルト: 3) |
 | `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
 | `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL<br>- `extractHighlights` (boolean, 任意) |
@@ -143,42 +144,11 @@ docker run -d \
 ---
 
 ### 3.4 画像・動画・ニュース・知恵袋・サジェスト検索
-- **画像検索 (`POST /search/image`)**:
-```json
-{
-  "query": "富士山",
-  "limit": 10
-}
-```
-- **動画検索 (`POST /search/video`)**:
-```json
-{
-  "query": "簡単 レシピ",
-  "limit": 10
-}
-```
-- **ニュース検索 (`POST /search/news`)**:
-```json
-{
-  "query": "AI ロボット",
-  "limit": 10
-}
-```
-- **知恵袋 Q&A (`POST /search/chiebukuro`)**:
-```json
-{
-  "query": "プログラミング 初心者",
-  "limit": 10,
-  "status": "solved"
-}
-```
-- **サジェスト・キーワード補完 (`POST /search/suggest`)**:
-```json
-{
-  "query": "乃木坂",
-  "limit": 5
-}
-```
+- **画像検索 (`POST /search/image`)**: `{ "query": "富士山", "limit": 10 }`
+- **動画検索 (`POST /search/video`)**: `{ "query": "簡単 レシピ", "limit": 10 }`
+- **ニュース検索 (`POST /search/news`)**: `{ "query": "AI ロボット", "limit": 10 }`
+- **知恵袋 Q&A (`POST /search/chiebukuro`)**: `{ "query": "プログラミング 初心者", "limit": 10, "status": "solved" }`
+- **サジェスト・キーワード補完 (`POST /search/suggest`)**: `{ "query": "乃木坂", "limit": 5 }`
 
 ---
 
@@ -219,13 +189,69 @@ docker run -d \
 
 ---
 
-### 3.6 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
+### 3.6 日本全国 天気予報 (`POST /weather` / `GET /weather` / `GET /weather/:city`)
+- **リクエスト (POST)**:
+```json
+{
+  "city": "東京",
+  "days": 3
+}
+```
+- **GET リクエスト**: `GET /weather?city=大阪&days=2` または `GET /weather/福岡`
+- **レスポンス例**:
+```json
+{
+  "source": "weather",
+  "cityId": "130010",
+  "title": "東京都 東京 の天気",
+  "publicTimeFormatted": "2026/08/21 17:00:00",
+  "publishingOffice": "気象庁",
+  "location": {
+    "area": "関東",
+    "prefecture": "東京都",
+    "district": "東京地方",
+    "city": "東京"
+  },
+  "description": {
+    "headline": "東京地方では、２１日夜遅くまで急な強い雨や落雷に注意してください。",
+    "body": "関東甲信地方は高気圧に覆われていますが、湿った空気や日射の影響を受けています...",
+    "text": "..."
+  },
+  "forecasts": [
+    {
+      "date": "2026-08-21",
+      "dateLabel": "今日",
+      "telop": "曇り",
+      "detail": {
+        "weather": "くもり　所により　夜のはじめ頃　まで　雨　で　雷を伴い　激しく　降る",
+        "wind": "南西の風",
+        "wave": "０．５メートル"
+      },
+      "temperature": {
+        "min": null,
+        "max": null
+      },
+      "chanceOfRain": {
+        "T00_06": "--%",
+        "T06_12": "--%",
+        "T12_18": "--%",
+        "T18_24": "30%"
+      },
+      "image": "https://www.jma.go.jp/bosai/forecast/img/200.svg"
+    }
+  ]
+}
+```
+
+---
+
+### 3.7 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
 - **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名" }`
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---
 
-### 3.7 サイトマップ & クロール (`POST /map` / `POST /crawl`)
+### 3.8 サイトマップ & クロール (`POST /map` / `POST /crawl`)
 - **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 100 }`
 - **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 5 }`
 

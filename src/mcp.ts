@@ -16,6 +16,7 @@ import {
   searchYahooChiebukuro,
   getSuggestedKeywords,
   searchTransitRoute,
+  fetchWeatherForecast,
 } from './scraper.js';
 
 export function createMcpServer(): McpServer {
@@ -441,6 +442,29 @@ export function createMcpServer(): McpServer {
         return {
           isError: true,
           content: [{ type: 'text', text: `Transit route error: ${err?.message || err}` }],
+        };
+      }
+    },
+  );
+
+  // Tool 14: get_weather (日本の天気予報)
+  mcpServer.tool(
+    'get_weather',
+    '日本全国各地の今日・明日・明後日の天気予報、詳細（風・波）、予想気温、降水確率、天気概況文を取得します。都市名（例「東京」「大阪」「福岡」「札幌」「名古屋」）または 6桁の地点ID（例「130010」）を指定できます。',
+    {
+      city: z.string().min(1).describe('都市名または都道府県名（例: "東京", "大阪", "福岡", "札幌", "名古屋", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
+      days: z.number().int().min(1).max(3).optional().describe('取得する予報日数 (1〜3日, デフォルト: 3)'),
+    },
+    async ({ city, days }) => {
+      try {
+        const result = await fetchWeatherForecast({ city, days });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Weather forecast error: ${err?.message || err}` }],
         };
       }
     },

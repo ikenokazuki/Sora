@@ -23,6 +23,7 @@ import {
   searchYahooChiebukuro,
   getSuggestedKeywords,
   searchTransitRoute,
+  fetchWeatherForecast,
 } from './scraper.js';
 import { createAuthMiddleware } from './auth.js';
 import { createMcpServer, createMcpTransport } from './mcp.js';
@@ -75,6 +76,7 @@ app.get('/', (c) => {
       searchChiebukuro: 'POST /search/chiebukuro',
       searchSuggest: 'POST /search/suggest',
       transitRoute: 'POST /transit/route',
+      weather: 'POST/GET /weather, GET /weather/:city',
       map: 'POST /map',
       crawl: 'POST /crawl',
       cacheClear: 'POST /cache/clear',
@@ -458,7 +460,53 @@ app.post('/transit/route', async (c) => {
   }
 });
 
-if (import.meta.main || process.env.NODE_ENV !== 'test') {
+// 天気予報 (POST /weather)
+app.post('/weather', async (c) => {
+  try {
+    const body = await c.req.json();
+    const city = body?.city;
+    if (!city || typeof city !== 'string') {
+      return c.json({ error: 'city is required' }, 400);
+    }
+
+    const days = body?.days ? parseInt(body.days, 10) : undefined;
+    const result = await fetchWeatherForecast({ city, days, noCache: body?.noCache });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  }
+});
+
+// 天気予報 (GET /weather & GET /weather/:city)
+app.get('/weather/:city', async (c) => {
+  try {
+    const city = c.req.param('city');
+    const daysParam = c.req.query('days');
+    const days = daysParam ? parseInt(daysParam, 10) : undefined;
+    const noCache = c.req.query('noCache') === 'true';
+
+    const result = await fetchWeatherForecast({ city, days, noCache });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  }
+});
+
+app.get('/weather', async (c) => {
+  try {
+    const city = c.req.query('city') || '東京';
+    const daysParam = c.req.query('days');
+    const days = daysParam ? parseInt(daysParam, 10) : undefined;
+    const noCache = c.req.query('noCache') === 'true';
+
+    const result = await fetchWeatherForecast({ city, days, noCache });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  }
+});
+
+if (import.meta.main) {
   Bun.serve({
     port: PORT,
     fetch: app.fetch,
