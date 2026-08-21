@@ -206,8 +206,9 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 
 ### 3.3 対話型ブラウザ自動操作 (`POST /browser/action` または `POST /action`)
 
-Web ページを開き、クリック・テキスト入力・スクロール・待機・スクリーンショット撮影などの一連のアクションを順次実行して最終結果を取得します。
+Web ページを開き、クリック・テキスト入力・スクロール・待機・スクリーンショット撮影などの一連のアクションを順次実行して最終結果を取得します。**ワンショット実行** と、チャットで対話しながら操作を進める **ステートフル・マルチターン対話セッション (`sessionId`)** の両方に対応しています。
 
+#### ① ワンショット実行（1回完結）
 - **リクエスト (POST)**:
 ```json
 {
@@ -244,6 +245,42 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "renderedWithBrowser": true
 }
 ```
+
+#### ② ステートフル・マルチターン対話セッション（対話型チャット向け）
+- **Turn 1 (セッション作成 & 画面オープン)**:
+```json
+{
+  "url": "https://example.com/login",
+  "createSession": true,
+  "actions": [
+    { "type": "fill", "selector": "#username", "text": "myuser" }
+  ],
+  "extract": { "screenshot": true }
+}
+```
+*(レスポンスで `"sessionId": "sess_a1b2c3d4"` が返却されます)*
+
+- **Turn 2 (開いたままの画面で続けて操作)**:
+```json
+{
+  "sessionId": "sess_a1b2c3d4",
+  "actions": [
+    { "type": "fill", "selector": "#password", "text": "mypassword" },
+    { "type": "click", "text": "ログイン" },
+    { "type": "wait", "selector": "#dashboard" }
+  ],
+  "extract": { "markdown": true }
+}
+```
+
+- **Turn 3 (セッション終了 & クリーンアップ)**:
+```json
+{
+  "sessionId": "sess_a1b2c3d4",
+  "closeSession": true
+}
+```
+*(※ 操作が 5 分間途切れた場合も自動タイムアウトで安全にメモリ解放されます)*
 
 ---
 

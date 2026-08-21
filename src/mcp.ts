@@ -226,9 +226,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   if (shouldEnableBrowser) {
     mcpServer.tool(
       'browser_action',
-      '【対話型ブラウザ自動操作】Web ページを開き、クリック・テキスト入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの一連のアクションを順次実行して最終結果を返します。ボタンのテキスト指定クリックにも対応。',
+      '【対話型ブラウザ自動操作】Web ページを開き、クリック・テキスト入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの一連のアクションを順次実行して最終結果を返します。ボタンのテキスト指定クリックや、sessionId によるマルチターン対話セッション維持にも対応。',
       {
-        url: z.string().url().describe('操作対象の開始 Web ページ URL (http/https)'),
+        url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
+        sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
+        createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)'),
+        closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)'),
         actions: z
           .array(
             z.object({
