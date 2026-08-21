@@ -78,6 +78,7 @@ app.get('/', (c) => {
       searchSuggest: 'POST /search/suggest',
       transitRoute: 'POST /transit/route',
       weather: 'POST/GET /weather, GET /weather/:city',
+      browserAction: 'POST /browser/action',
       map: 'POST /map',
       crawl: 'POST /crawl',
       cacheClear: 'POST /cache/clear',
