@@ -87,24 +87,24 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 14 ツール / 3つのモジュール)
+## 2. 提供 MCP ツール一覧 (全 15 ツール / 4つのモジュール)
 
-GhostFetch は、目的に応じて **3つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
+GhostFetch は、目的に応じて **4つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│              GhostFetch - All-in-One MCP                 │
-├─────────────────┬───────────────────┬────────────────────┤
-│ 🌐 Core Web     │ 🇯🇵 Yahoo Services  │ 🗾 Daily Life       │
-│ (`web`)         │ (`yahoo`)         │ (`life`)           │
-│ ・search_web    │ ・search_image    │ ・search_route     │
-│ ・scrape        │ ・search_video    │   (乗換案内)       │
-│ ・search_deep   │ ・search_news     │ ・get_weather      │
-│ ・map_site      │ ・search_chiebukuro│   (気象庁公式天気) │
-│ ・crawl_site    │ ・search_realtime │                    │
-│                 │ ・search_trend    │                    │
-│                 │ ・suggest_keywords│                    │
-└─────────────────┴───────────────────┴────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                      GhostFetch - Modular MCP                            │
+├─────────────────┬───────────────────┬──────────────────┬─────────────────┤
+│ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │
+│ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │
+│ ・search_web    │ ・browser_action  │ ・search_image   │ ・search_route  │
+│ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │
+│ ・search_deep   │    スクショ/JS実行│ ・search_news    │ ・get_weather   │
+│ ・map_site      │                   │ ・search_chiebukuro│ (気象庁天気)  │
+│ ・crawl_site    │                   │ ・search_realtime│                 │
+│                 │                   │ ・search_trend   │                 │
+│                 │                   │ ・suggest_keywords│                │
+└─────────────────┴───────────────────┴──────────────────┴─────────────────┘
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -120,7 +120,16 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 
 ---
 
-### 🇯🇵 Module 2: Yahoo! JAPAN Services (`ENABLED_MODULES=yahoo`)
+### 🤖 Module 2: Browser Actions & Automation (`ENABLED_MODULES=browser`)
+フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行、スクリーンショット撮影。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」にも対応。 | `source: "browser"` | - `url` (string, 必須): 開始 URL<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): タイムアウト ms |
+
+---
+
+### 🇯🇵 Module 3: Yahoo! JAPAN Services (`ENABLED_MODULES=yahoo`)
 日本のメディア・Q&A・トレンド・リアルタイム情報に完全特化した検索群。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -135,7 +144,7 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 
 ---
 
-### 🗾 Module 3: Japan Daily Life & Transit (`ENABLED_MODULES=life`)
+### 🗾 Module 4: Japan Daily Life & Transit (`ENABLED_MODULES=life`)
 日本の公共交通・気象庁公式オープンデータに直結した生活インフラ機能。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -195,7 +204,50 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 
 ---
 
-### 3.3 Yahoo Web 検索 (`POST /search/web`)
+### 3.3 対話型ブラウザ自動操作 (`POST /browser/action` または `POST /action`)
+
+Web ページを開き、クリック・テキスト入力・スクロール・待機・スクリーンショット撮影などの一連のアクションを順次実行して最終結果を取得します。
+
+- **リクエスト (POST)**:
+```json
+{
+  "url": "https://example.com/search",
+  "actions": [
+    { "type": "fill", "selector": "input[name='q']", "text": "GhostFetch" },
+    { "type": "click", "text": "検索" },
+    { "type": "wait", "selector": ".results-container", "ms": 5000 },
+    { "type": "scroll", "direction": "down", "distance": 1000 }
+  ],
+  "extract": {
+    "markdown": true,
+    "screenshot": true,
+    "html": false
+  },
+  "timeout": 30000
+}
+```
+
+- **レスポンス例**:
+```json
+{
+  "source": "browser",
+  "url": "https://example.com/search?q=GhostFetch",
+  "title": "検索結果 - GhostFetch",
+  "content": "---\ntitle: \"検索結果 - GhostFetch\"\nurl: \"https://example.com/search?q=GhostFetch\"\n---\n\n# 検索結果\n...",
+  "screenshot": "iVBORw0KGgoAAAANSUhEUgA...",
+  "actionLogs": [
+    { "step": 1, "type": "fill", "target": "input[name='q']", "success": true, "elapsedMs": 42 },
+    { "step": 2, "type": "click", "target": "検索", "success": true, "elapsedMs": 115 },
+    { "step": 3, "type": "wait", "target": ".results-container", "success": true, "elapsedMs": 620 },
+    { "step": 4, "type": "scroll", "target": undefined, "success": true, "elapsedMs": 510 }
+  ],
+  "renderedWithBrowser": true
+}
+```
+
+---
+
+### 3.4 Yahoo Web 検索 (`POST /search/web`)
 - **リクエスト**:
 ```json
 {
