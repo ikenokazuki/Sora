@@ -205,7 +205,7 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /mcp should respond to JSON-RPC tools/list with all 7 tools', async () => {
+  it('POST /mcp should respond to JSON-RPC tools/list with all 13 tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -245,5 +245,93 @@ describe('GhostFetch REST & MCP Endpoints', () => {
     expect(toolNames).toContain('map_site');
     expect(toolNames).toContain('crawl_site');
     expect(toolNames).toContain('search_trend');
+    expect(toolNames).toContain('search_image');
+    expect(toolNames).toContain('search_video');
+    expect(toolNames).toContain('search_news');
+    expect(toolNames).toContain('search_chiebukuro');
+    expect(toolNames).toContain('suggest_keywords');
+    expect(toolNames).toContain('search_route');
+    expect(toolNames.length).toBe(13);
+  });
+
+  it('POST /search/image should return 400 when query is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/search/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /search/video should return 400 when query is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/search/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /search/news should return 400 when query is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/search/news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /search/chiebukuro should return 400 when query is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/search/chiebukuro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /search/suggest should return 400 when query is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/search/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /transit/route should return 400 when from/to is missing', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/transit/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('GET / should list all endpoints including new ones', async () => {
+    const res = await app.fetch(new Request('http://localhost/'));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.service).toBe('ghostfetch');
+    expect(data.version).toBe('2.0.0');
+    expect(data.endpoints.searchImage).toBeDefined();
+    expect(data.endpoints.searchVideo).toBeDefined();
+    expect(data.endpoints.searchNews).toBeDefined();
+    expect(data.endpoints.searchChiebukuro).toBeDefined();
+    expect(data.endpoints.searchSuggest).toBeDefined();
+    expect(data.endpoints.transitRoute).toBeDefined();
   });
 });
+

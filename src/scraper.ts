@@ -1378,3 +1378,345 @@ export async function integratedSearch(options: {
   if (!noCache) setToCache(cacheKey, finalResponse);
   return finalResponse;
 }
+
+// ==========================================
+// 17. Yahoo 画像検索
+// ==========================================
+export async function searchYahooImage(options: {
+  query: string;
+  limit?: number;
+  page?: number;
+}): Promise<any> {
+  const mcpRes = await callYahooMcp('yahoo_image_search', {
+    query: options.query,
+    ...(options.limit ? { limit: options.limit } : {}),
+    ...(options.page ? { page: options.page } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '{}';
+  try {
+    const json = JSON.parse(content);
+    json.source = 'image';
+    if (Array.isArray(json.items)) {
+      json.items = json.items.map((item: any) => ({ source: 'image' as const, ...item }));
+    }
+    return json;
+  } catch {
+    return { source: 'image', raw: content };
+  }
+}
+
+// ==========================================
+// 18. Yahoo 動画検索
+// ==========================================
+export async function searchYahooVideo(options: {
+  query: string;
+  limit?: number;
+  page?: number;
+}): Promise<any> {
+  const mcpRes = await callYahooMcp('yahoo_video_search', {
+    query: options.query,
+    ...(options.limit ? { limit: options.limit } : {}),
+    ...(options.page ? { page: options.page } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '{}';
+  try {
+    const json = JSON.parse(content);
+    json.source = 'video';
+    if (Array.isArray(json.items)) {
+      json.items = json.items.map((item: any) => ({ source: 'video' as const, ...item }));
+    }
+    return json;
+  } catch {
+    return { source: 'video', raw: content };
+  }
+}
+
+// ==========================================
+// 19. Yahoo ニュース検索
+// ==========================================
+export async function searchYahooNews(options: {
+  query: string;
+  limit?: number;
+}): Promise<any> {
+  const mcpRes = await callYahooMcp('yahoo_news_search', {
+    query: options.query,
+    ...(options.limit ? { limit: options.limit } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '{}';
+  try {
+    const json = JSON.parse(content);
+    json.source = 'news';
+    if (Array.isArray(json.items)) {
+      json.items = json.items.map((item: any) => ({ source: 'news' as const, ...item }));
+    }
+    return json;
+  } catch {
+    return { source: 'news', raw: content };
+  }
+}
+
+// ==========================================
+// 20. Yahoo 知恵袋検索
+// ==========================================
+export async function searchYahooChiebukuro(options: {
+  query: string;
+  limit?: number;
+  page?: number;
+  status?: 'all' | 'open' | 'vote' | 'solved';
+}): Promise<any> {
+  const mcpRes = await callYahooMcp('yahoo_chiebukuro_search', {
+    query: options.query,
+    ...(options.limit ? { limit: options.limit } : {}),
+    ...(options.page ? { page: options.page } : {}),
+    ...(options.status && options.status !== 'all' ? { status: options.status } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '{}';
+  try {
+    const json = JSON.parse(content);
+    json.source = 'chiebukuro';
+    if (Array.isArray(json.items)) {
+      json.items = json.items.map((item: any) => ({ source: 'chiebukuro' as const, ...item }));
+    }
+    return json;
+  } catch {
+    return { source: 'chiebukuro', raw: content };
+  }
+}
+
+// ==========================================
+// 21. Yahoo サジェスト（キーワード補完）
+// ==========================================
+export async function getSuggestedKeywords(options: {
+  query: string;
+  limit?: number;
+}): Promise<any> {
+  const mcpRes = await callYahooMcp('yahoo_suggest_keywords', {
+    query: options.query,
+    ...(options.limit ? { limit: options.limit } : {}),
+  });
+
+  const content = mcpRes?.content?.[0]?.text || '{}';
+  try {
+    const json = JSON.parse(content);
+    json.source = 'suggest';
+    return json;
+  } catch {
+    return { source: 'suggest', raw: content };
+  }
+}
+
+// ==========================================
+// 22. 乗換案内（Yahoo! 路線情報スクレイピング）
+// ==========================================
+
+/** 乗り換えルート検索のパラメータ */
+export interface TransitSearchOptions {
+  from: string;
+  to: string;
+  via?: string[];
+  year?: number;
+  month?: number;
+  day?: number;
+  hour?: number;
+  minute?: number;
+  timeType?: 'departure' | 'arrival' | 'first_train' | 'last_train' | 'unspecified';
+  ticket?: 'ic' | 'cash';
+  seatPreference?: 'non_reserved' | 'reserved' | 'green';
+  walkSpeed?: 'fast' | 'slightly_fast' | 'slightly_slow' | 'slow';
+  sortBy?: 'time' | 'transfer' | 'fare';
+  useAirline?: boolean;
+  useShinkansen?: boolean;
+  useExpress?: boolean;
+  useHighwayBus?: boolean;
+  useLocalBus?: boolean;
+  useFerry?: boolean;
+}
+
+/** 乗換案内の URL パラメータを組み立てる */
+function buildTransitUrl(opts: TransitSearchOptions): string {
+  const base = 'https://transit.yahoo.co.jp/search/result';
+  const params = new URLSearchParams();
+
+  params.set('from', opts.from);
+  params.set('to', opts.to);
+  params.set('flatlon', '');
+  params.set('tlatlon', '');
+
+  // 経由駅（最大3駅）
+  const via = opts.via || [];
+  for (let i = 0; i < 3; i++) {
+    params.set(`via${i + 1}`, via[i] || '');
+    params.set(`viacode${i + 1}`, '');
+  }
+
+  // 日時
+  const now = new Date();
+  params.set('y', String(opts.year || now.getFullYear()));
+  params.set('m', String(opts.month || now.getMonth() + 1).padStart(2, '0'));
+  params.set('d', String(opts.day || now.getDate()).padStart(2, '0'));
+  params.set('hh', String(opts.hour ?? now.getHours()).padStart(2, '0'));
+  params.set('m1', String(Math.floor((opts.minute ?? now.getMinutes()) / 10)));
+  params.set('m2', String((opts.minute ?? now.getMinutes()) % 10));
+
+  // 時刻タイプ
+  const timeTypeMap: Record<string, string> = {
+    departure: '1',
+    arrival: '4',
+    first_train: '3',
+    last_train: '2',
+    unspecified: '1',
+  };
+  params.set('type', timeTypeMap[opts.timeType || 'departure'] || '1');
+
+  // 運賃タイプ
+  params.set('ticket', opts.ticket === 'cash' ? 'normal' : 'ic');
+
+  // 座席指定
+  const seatMap: Record<string, string> = { non_reserved: '0', reserved: '1', green: '2' };
+  params.set('shin', seatMap[opts.seatPreference || 'non_reserved'] || '0');
+
+  // 歩く速度
+  const walkMap: Record<string, string> = { fast: '1', slightly_fast: '2', slightly_slow: '3', slow: '4' };
+  params.set('ws', walkMap[opts.walkSpeed || 'slightly_slow'] || '3');
+
+  // 並び順
+  const sortMap: Record<string, string> = { time: '0', transfer: '1', fare: '2' };
+  params.set('s', sortMap[opts.sortBy || 'time'] || '0');
+
+  // 交通手段フラグ
+  params.set('al', opts.useAirline !== false ? '1' : '0');
+  params.set('shin', opts.useShinkansen !== false ? '1' : '0');
+  params.set('ex', opts.useExpress !== false ? '1' : '0');
+  params.set('hb', opts.useHighwayBus !== false ? '1' : '0');
+  params.set('lb', opts.useLocalBus !== false ? '1' : '0');
+  params.set('sr', opts.useFerry !== false ? '1' : '0');
+
+  params.set('kw', opts.from);
+
+  return `${base}?${params.toString()}`;
+}
+
+/** HTML からルート情報をパースする */
+function parseTransitHtml(html: string, opts: TransitSearchOptions): any {
+  const $ = cheerio.load(html);
+  const routes: any[] = [];
+
+  // 各ルートブロックを解析
+  $('.routeList .route, .routeDetail, #route01, #route02, #route03, #route04, #route05, .routeCand').each((i, el) => {
+    const routeEl = $(el);
+
+    // ルートサマリー情報
+    const summary = routeEl.find('.summary, .routeSummary').first();
+    const timeText = summary.find('.time, .reqTime').text().trim() || routeEl.find('.time').first().text().trim();
+    const transferText = summary.find('.transfer, .transfer-num').text().trim() || routeEl.find('.transfer').first().text().trim();
+    const fareText = summary.find('.fare, .fare-num').text().trim() || routeEl.find('.fare').first().text().trim();
+
+    // 区間詳細
+    const sections: any[] = [];
+    routeEl.find('.section, li.routeDetail, .access, .routeStep').each((j, sec) => {
+      const secEl = $(sec);
+      const lineName = secEl.find('.lineName, .transport, .name').text().trim();
+      const fromStation = secEl.find('.staName .from, .dep .name, .startName').text().trim();
+      const toStation = secEl.find('.staName .to, .arr .name, .endName').text().trim();
+      const depTime = secEl.find('.dep .time, .depTime, .startTime').text().trim();
+      const arrTime = secEl.find('.arr .time, .arrTime, .endTime').text().trim();
+
+      if (lineName || fromStation || toStation) {
+        sections.push({
+          line: lineName || undefined,
+          from: fromStation || undefined,
+          to: toStation || undefined,
+          departureTime: depTime || undefined,
+          arrivalTime: arrTime || undefined,
+        });
+      }
+    });
+
+    if (timeText || fareText || sections.length > 0) {
+      routes.push({
+        index: i + 1,
+        totalTime: timeText || undefined,
+        transfers: transferText || undefined,
+        fare: fareText || undefined,
+        sections: sections.length > 0 ? sections : undefined,
+      });
+    }
+  });
+
+  // フォールバック: routeList 形式でなかった場合、より汎用的にパース
+  if (routes.length === 0) {
+    // .navResult 内のテキストを抽出
+    const resultSummaries: any[] = [];
+    $('#srline, .elmRouteDetail, #rsltlst li').each((i, el) => {
+      const text = $(el).text().replace(/\s+/g, ' ').trim();
+      if (text.length > 10) {
+        resultSummaries.push({
+          index: i + 1,
+          summary: text.substring(0, 500),
+        });
+      }
+    });
+    if (resultSummaries.length > 0) {
+      return {
+        source: 'transit',
+        from: opts.from,
+        to: opts.to,
+        via: opts.via,
+        routes: resultSummaries,
+        note: 'Summary mode: structured parsing did not match, providing raw summaries.',
+      };
+    }
+
+    // 最終フォールバック: ページ全体のテキストから関連部分を抽出
+    const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+    const transitSection = bodyText.substring(0, 2000);
+    return {
+      source: 'transit',
+      from: opts.from,
+      to: opts.to,
+      via: opts.via,
+      rawText: transitSection,
+      note: 'Could not parse structured route data. Providing raw text.',
+    };
+  }
+
+  return {
+    source: 'transit',
+    from: opts.from,
+    to: opts.to,
+    via: opts.via,
+    routeCount: routes.length,
+    routes,
+  };
+}
+
+/** 乗換案内のメイン関数 */
+export async function searchTransitRoute(opts: TransitSearchOptions): Promise<any> {
+  const cacheKey = `transit:${opts.from}:${opts.to}:${(opts.via || []).join(',')}:${opts.year || ''}:${opts.month || ''}:${opts.day || ''}:${opts.hour ?? ''}:${opts.minute ?? ''}:${opts.timeType || 'departure'}`;
+  const cached = getFromCache<any>(cacheKey);
+  if (cached) return cached;
+
+  const url = buildTransitUrl(opts);
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'ja,en;q=0.5',
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Yahoo Transit returned HTTP ${res.status}`);
+  }
+
+  const html = await res.text();
+  const result = parseTransitHtml(html, opts);
+
+  setToCache(cacheKey, result);
+  return result;
+}
