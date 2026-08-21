@@ -56,7 +56,7 @@ export function createMcpServer(): McpServer {
   // Tool 2: search_web
   mcpServer.tool(
     'search_web',
-    'Yahoo Japan Web 検索を実行し、指定キーワードの上位検索結果（タイトル・概要スニペット・URL）を取得します。',
+    'Yahoo Japan Web 検索を実行し、指定キーワードの上位検索結果（タイトル・概要スニペット・URL）を取得します。各アイテムには source: "web" が付与されます。',
     {
       query: z.string().min(1).describe('検索キーワード'),
     },
@@ -64,8 +64,17 @@ export function createMcpServer(): McpServer {
       try {
         const mcpRes = await callYahooMcp('yahoo_web_search', { query });
         const content = mcpRes?.content?.[0]?.text || '[]';
+        let enrichedText = content;
+        try {
+          const json = JSON.parse(content);
+          if (json && Array.isArray(json.items)) {
+            json.items = json.items.map((item: any) => ({ source: 'web' as const, ...item }));
+            json.source = 'web';
+            enrichedText = JSON.stringify(json, null, 2);
+          }
+        } catch {}
         return {
-          content: [{ type: 'text', text: content }],
+          content: [{ type: 'text', text: enrichedText }],
         };
       } catch (err: any) {
         return {
@@ -79,7 +88,7 @@ export function createMcpServer(): McpServer {
   // Tool 3: search_realtime
   mcpServer.tool(
     'search_realtime',
-    'Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像・リンク情報を取得します。',
+    'Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像・リンク情報を取得します。各アイテムには source: "x" が付与されます。',
     {
       query: z.string().min(1).describe('検索キーワード'),
     },
@@ -87,8 +96,17 @@ export function createMcpServer(): McpServer {
       try {
         const mcpRes = await callYahooMcp('yahoo_realtime_search', { query });
         const content = mcpRes?.content?.[0]?.text || '[]';
+        let enrichedText = content;
+        try {
+          const json = JSON.parse(content);
+          if (json && Array.isArray(json.items)) {
+            json.items = json.items.map((item: any) => ({ source: 'x' as const, ...item }));
+            json.source = 'x';
+            enrichedText = JSON.stringify(json, null, 2);
+          }
+        } catch {}
         return {
-          content: [{ type: 'text', text: content }],
+          content: [{ type: 'text', text: enrichedText }],
         };
       } catch (err: any) {
         return {

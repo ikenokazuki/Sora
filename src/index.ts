@@ -127,11 +127,16 @@ app.post('/search/realtime', async (c) => {
     const content = mcpRes?.content?.[0]?.text || '';
     let parsedData = content;
     try {
-      parsedData = JSON.parse(content);
+      const json = JSON.parse(content);
+      if (json && Array.isArray(json.items)) {
+        json.items = json.items.map((item: any) => ({ source: 'x' as const, ...item }));
+      }
+      parsedData = json;
     } catch {}
 
     const responseData = {
       query,
+      source: 'x',
       type: 'realtime',
       data: parsedData,
       cached: false,
@@ -163,11 +168,16 @@ app.post('/search/web', async (c) => {
     const content = mcpRes?.content?.[0]?.text || '';
     let parsedData = content;
     try {
-      parsedData = JSON.parse(content);
+      const json = JSON.parse(content);
+      if (json && Array.isArray(json.items)) {
+        json.items = json.items.map((item: any) => ({ source: 'web' as const, ...item }));
+      }
+      parsedData = json;
     } catch {}
 
     const responseData = {
       query,
+      source: 'web',
       type: 'web',
       data: parsedData,
       cached: false,

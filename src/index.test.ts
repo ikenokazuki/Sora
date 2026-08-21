@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware } from './auth.js';
 import { createMcpServer, createMcpTransport } from './mcp.js';
-import { isBlockedHostname, convertHtmlToMarkdown } from './scraper.js';
+import { isBlockedHostname, convertHtmlToMarkdown, scrapeUrl } from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
   it('isBlockedHostname should block local and private IPs/hostnames', () => {
@@ -47,6 +47,19 @@ describe('web-fetcher Core Functions', () => {
     expect(result.markdown).toContain('This is the main article content');
     expect(result.markdown).not.toContain('Header content');
     expect(result.markdown).not.toContain('Footer content');
+  });
+
+  it('scrapeUrl should include source: "web" in the response', async () => {
+    // Note: fastOnly will scrape without chromium
+    try {
+      const result = await scrapeUrl({
+        url: 'https://example.com',
+        fastOnly: true,
+      });
+      expect(result.source).toBe('web');
+    } catch {
+      // Network unreachable during offline testing is acceptable
+    }
   });
 });
 

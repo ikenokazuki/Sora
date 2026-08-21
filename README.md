@@ -6,6 +6,8 @@
 
 専用ドメイン `https://fetcher.ikebun.jp` 経由で、標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）として利用できます。
 
+すべての検索・スクレイピング結果には、情報ソースが Web ページ由来なのか X (Twitter) 由来なのかを即座に判別できる `source: "web" | "x"` プロパティが付与されます。
+
 ---
 
 ## 1. クイックスタート & MCP サーバー接続
@@ -47,12 +49,12 @@
 
 ## 2. 提供 MCP ツール一覧
 
-| ツール名 | 説明 | 主要引数 |
-|---|---|---|
-| `scrape` | 指定 URL の Web ページをスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトの場合は自動で Chromium レンダリングへフォールバックします。 | - `url` (string, 必須): 対象 URL<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `fastOnly` (boolean, 任意): 静的フェッチのみに限定するか |
-| `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。 | - `query` (string, 必須): 検索キーワード |
-| `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | - `query` (string, 必須): 検索キーワード |
-| `search_deep` | Firecrawl 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `maxChars` (number, 任意): 各ページ最大文字数 |
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `scrape` | 指定 URL の Web ページをスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトの場合は自動で Chromium レンダリングへフォールバックします。 | `source: "web"` | - `url` (string, 必須): 対象 URL<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `fastOnly` (boolean, 任意): 静的フェッチのみに限定するか |
+| `search_web` | Yahoo Japan Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード |
+| `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
+| `search_deep` | Firecrawl 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `maxChars` (number, 任意): 各ページ最大文字数 |
 
 ---
 
@@ -98,6 +100,7 @@
   "content": "---\ntitle: \"Example Title\"\nurl: \"https://example.com/article\"\n---\n\n記事本文のMarkdownテキスト...",
   "isTruncated": false,
   "contentType": "text/html",
+  "source": "web",
   "renderedWithBrowser": false,
   "ogImage": "https://example.com/ogp.jpg",
   "description": "記事の概要..."
@@ -119,11 +122,14 @@
 ```json
 {
   "query": "東京タワー 営業時間",
+  "source": "web",
   "type": "web",
   "data": {
     "count": 6,
+    "source": "web",
     "items": [
       {
+        "source": "web",
         "title": "営業時間・料金 | 東京タワー",
         "url": "https://www.tokyotower.co.jp/...",
         "description": "メインデッキ 9:00～22:30...",
@@ -149,11 +155,14 @@
 ```json
 {
   "query": "推しグループ名",
+  "source": "x",
   "type": "realtime",
   "data": {
     "count": 20,
+    "source": "x",
     "items": [
       {
+        "source": "x",
         "id": "189...",
         "author": "user_id",
         "text": "最新のライブ告知ツイート本文...",
@@ -183,9 +192,11 @@
 ```json
 {
   "query": "最新アイドルフェス 2026",
+  "source": "integrated",
   "count": 3,
   "results": [
     {
+      "source": "web",
       "title": "フェス公式サイト",
       "url": "https://example.com/fes2026",
       "description": "開催概要...",
@@ -193,8 +204,16 @@
     }
   ],
   "realtime": {
+    "source": "x",
     "count": 20,
-    "items": [ ... ]
+    "items": [
+      {
+        "source": "x",
+        "id": "189...",
+        "author": "user_id",
+        "text": "ツイート本文..."
+      }
+    ]
   }
 }
 ```
