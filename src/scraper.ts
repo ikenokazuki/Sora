@@ -15,7 +15,7 @@ export const DEFAULT_MAX_CHARS = 30_000;
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
-function resolveChromiumPath(): string | undefined {
+export function resolveChromiumPath(): string | undefined {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   if (existsSync('/usr/bin/chromium')) return '/usr/bin/chromium';
   if (existsSync('/usr/bin/google-chrome')) return '/usr/bin/google-chrome';
@@ -127,6 +127,9 @@ export async function throttleDomain(hostname: string, minIntervalMs = 150): Pro
 // 3. SSRF 防御 (内部 IP 遮断)
 // ==========================================
 export function isBlockedHostname(hostname: string): boolean {
+  if (process.env.ALLOW_LOCAL_FETCH === 'true') {
+    return false;
+  }
   const lower = hostname.toLowerCase();
   if (lower === 'localhost' || lower.endsWith('.local') || lower.endsWith('.internal')) {
     return true;
@@ -311,7 +314,7 @@ export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser;
     } catch {}
 
     const dedicatedBrowser = await puppeteer.launch({
-      executablePath: CHROME_EXECUTABLE_PATH,
+      executablePath: resolveChromiumPath(),
       headless: true,
       args: [
         '--no-sandbox',
@@ -342,7 +345,7 @@ export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser;
   }
 
   sharedBrowser = await puppeteer.launch({
-    executablePath: CHROME_EXECUTABLE_PATH,
+    executablePath: resolveChromiumPath(),
     headless: true,
     args: [
       '--no-sandbox',
@@ -617,13 +620,26 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
             } else if (action.text) {
               const clicked = await page.evaluate((btnText: string) => {
                 const doc = (globalThis as any).document;
-                const elements: any[] = Array.from(
-                  doc.querySelectorAll('button, a, input[type="submit"], input[type="button"], [role="button"], span, div')
-                );
-                const target = elements.find(
-                  (el) => el.textContent?.trim().includes(btnText) || el.value?.includes(btnText)
-                );
+                // 1. button, a, input 等のインタラクティブ要素を最優先探索（完全一致 -> 部分一致）
+                const interactiveSelectors = 'button, a, input[type="submit"], input[type="button"], input[type="reset"], [role="button"]';
+                const interactives: any[] = Array.from(doc.querySelectorAll(interactiveSelectors));
+                
+                let target = interactives.find((el) => el.textContent?.trim() === btnText || el.value?.trim() === btnText);
+                if (!target) {
+                  target = interactives.find((el) => el.textContent?.trim().includes(btnText) || el.value?.includes(btnText));
+                }
+                
+                // 2. インタラクティブ要素になければ、末端の葉ノード (span, label, div等) を探索
+                if (!target) {
+                  const all: any[] = Array.from(doc.querySelectorAll('span, label, p, div, li, td'));
+                  const leaves = all.filter((el) => el.children.length === 0);
+                  target = leaves.find((el) => el.textContent?.trim() === btnText) ||
+                           leaves.find((el) => el.textContent?.trim().includes(btnText));
+                }
+
                 if (target) {
+                  target.scrollIntoView?.({ behavior: 'instant', block: 'center' });
+                  target.focus?.();
                   target.click();
                   return true;
                 }
