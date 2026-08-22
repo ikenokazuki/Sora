@@ -1,21 +1,28 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { streamSSE } from 'hono/streaming';
 import { existsSync } from 'fs';
+import { randomUUID } from 'crypto';
 import {
   PORT,
   CHROME_EXECUTABLE_PATH,
   YAHOO_MCP_PATH,
   DEFAULT_MAX_CHARS,
+  CACHE_TTL_TREND,
   getCacheSize,
+  getCacheMetrics,
   clearCache,
   getFromCache,
   setToCache,
   scrapeUrl,
+  scrapeBatchUrls,
   callYahooMcp,
   searchYahooWeb,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
   fetchRealtimeTrends,
+  normalizeRealtimeItem,
   filterByDomains,
   searchYahooImage,
   searchYahooVideo,
@@ -25,16 +32,124 @@ import {
   searchTransitRoute,
   fetchWeatherForecast,
   executeBrowserActions,
+  closeSharedBrowser,
+  isSharedBrowserConnected,
 } from './scraper.js';
-import { createAuthMiddleware } from './auth.js';
+import {
+  ScrapeRequestSchema,
+  BatchScrapeRequestSchema,
+  BrowserActionRequestSchema,
+  generateOpenApiDocument,
+  type ApiErrorResponse,
+} from './types.js';
+import {
+  getActiveSessionCount,
+  closeAllBrowserSessions,
+} from './browser_session.js';
+import { createAuthMiddleware, extractAuthToken } from './auth.js';
 import { createMcpServer, createMcpTransport } from './mcp.js';
 
-const app = new Hono();
+export const app = new Hono();
 
 // ==========================================
-// 1. 認証ミドルウェア (API Key / Localhost Bypass)
+// 構造化エラーレスポンス ヘルパー
 // ==========================================
+export function formatError(
+  c: any,
+  message: string,
+  code = 'INTERNAL_ERROR',
+  status: 400 | 401 | 403 | 404 | 408 | 422 | 429 | 500 | 502 = 500,
+  retryable = false,
+  details?: any,
+) {
+  return c.json(
+    {
+      error: message,
+      code,
+      status,
+      retryable,
+      ...(details ? { details } : {}),
+    },
+    status,
+  );
+}
+
+// ==========================================
+// 1. セキュリティヘッダー & DoS 防御 (Body Limit)
+// ==========================================
+app.use('*', async (c, next) => {
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  return next();
+});
+
+app.use(
+  '*',
+  bodyLimit({
+    maxSize: 10 * 1024 * 1024, // 10MB
+    onError: (c) => {
+      return c.json({ error: 'Payload Too Large: Request body exceeds 10MB limit' }, 413);
+    },
+  }),
+);
+
+// ==========================================
+// 2. Request ID, 応答時間計測 & 構造化ログミドルウェア
+// ==========================================
+app.use('*', async (c, next) => {
+  const start = performance.now();
+  const reqId = c.req.header('x-request-id') || randomUUID();
+  c.header('x-request-id', reqId);
+
+  await next();
+
+  const latencyMs = Math.round((performance.now() - start) * 100) / 100;
+  c.header('X-Response-Time', `${latencyMs}ms`);
+
+  const path = c.req.path;
+  if (path !== '/health' && path !== '/metrics') {
+    const logPayload = {
+      timestamp: new Date().toISOString(),
+      reqId,
+      method: c.req.method,
+      path,
+      status: c.res.status,
+      latencyMs,
+      ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'direct',
+      userAgent: c.req.header('user-agent') || '',
+    };
+    if (process.env.LOG_FORMAT === 'json') {
+      console.log(JSON.stringify(logPayload));
+    }
+  }
+});
+
 app.use('*', createAuthMiddleware());
+
+// ==========================================
+// 3. グレースフル・シャットダウン (ブラウザプロセス完全解放)
+// ==========================================
+let isShuttingDown = false;
+export async function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  await Promise.allSettled([
+    closeAllBrowserSessions(),
+    closeSharedBrowser(),
+  ]);
+}
+
+if (typeof process !== 'undefined') {
+  process.on('SIGINT', async () => {
+    await gracefulShutdown();
+    process.exit(0);
+  });
+  process.on('SIGTERM', async () => {
+    await gracefulShutdown();
+    process.exit(0);
+  });
+}
 
 // ==========================================
 // 2. MCP Server & Streamable HTTP / SSE 初期化
@@ -60,17 +175,23 @@ app.all('/message', handleMcpRequest);
 app.get('/', (c) => {
   return c.json({
     service: 'sora',
-    description: 'Unified Web Scraping, Search, Transit & MCP Service',
+    description: 'Unified Web Scraping, Deep Search, Transit & MCP Service',
     version: '2.0.0',
     endpoints: {
       health: 'GET /health',
+      metrics: 'GET /metrics',
+      docs: 'GET /docs (Interactive Swagger UI)',
+      openapi: 'GET /openapi.json (OpenAPI 3.0.0 Specification)',
       mcp: 'POST/GET /mcp (Streamable HTTP / SSE)',
       sse: 'GET /sse, POST /message',
       scrape: 'POST /scrape',
+      scrapeStream: 'POST /scrape/stream (SSE)',
+      scrapeBatch: 'POST /scrape/batch',
       searchWeb: 'POST /search/web',
       searchRealtime: 'POST /search/realtime',
       searchTrend: 'POST /search/trend',
       searchIntegrated: 'POST /search',
+      searchStream: 'POST /search/stream',
       searchImage: 'POST /search/image',
       searchVideo: 'POST /search/video',
       searchNews: 'POST /search/news',
@@ -81,6 +202,7 @@ app.get('/', (c) => {
       browserAction: 'POST /browser/action',
       map: 'POST /map',
       crawl: 'POST /crawl',
+      crawlStream: 'POST /crawl/stream',
       cacheClear: 'POST /cache/clear',
     },
   });
@@ -98,64 +220,189 @@ app.get('/health', (c) => {
   });
 });
 
+app.get('/metrics', (c) => {
+  const format = c.req.query('format');
+  const accept = c.req.header('accept') || '';
+  const mem = process.memoryUsage();
+  const cache = getCacheMetrics();
+  const activeSessions = getActiveSessionCount();
+  const uptime = Math.floor(process.uptime());
+
+  if (format === 'prometheus' || accept.includes('text/plain')) {
+    const lines = [
+      '# HELP sora_uptime_seconds Process uptime in seconds',
+      '# TYPE sora_uptime_seconds gauge',
+      `sora_uptime_seconds ${uptime}`,
+      '# HELP sora_memory_rss_bytes Resident set size in bytes',
+      '# TYPE sora_memory_rss_bytes gauge',
+      `sora_memory_rss_bytes ${mem.rss}`,
+      '# HELP sora_memory_heap_used_bytes Heap used in bytes',
+      '# TYPE sora_memory_heap_used_bytes gauge',
+      `sora_memory_heap_used_bytes ${mem.heapUsed}`,
+      '# HELP sora_cache_entries Total cache entries',
+      '# TYPE sora_cache_entries gauge',
+      `sora_cache_entries ${cache.size}`,
+      '# HELP sora_cache_hits_total Total cache hits',
+      '# TYPE sora_cache_hits_total counter',
+      `sora_cache_hits_total ${cache.hits}`,
+      '# HELP sora_cache_misses_total Total cache misses',
+      '# TYPE sora_cache_misses_total counter',
+      `sora_cache_misses_total ${cache.misses}`,
+      '# HELP sora_cache_hit_rate Cache hit rate',
+      '# TYPE sora_cache_hit_rate gauge',
+      `sora_cache_hit_rate ${cache.hitRatio}`,
+      '# HELP sora_active_browser_sessions Active browser sessions count',
+      '# TYPE sora_active_browser_sessions gauge',
+      `sora_active_browser_sessions ${activeSessions}`,
+    ];
+    return c.text(lines.join('\n') + '\n', 200, {
+      'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
+    });
+  }
+
+  return c.json({
+    status: 'ok',
+    service: 'sora',
+    uptimeSeconds: uptime,
+    cache,
+    activeSessions,
+    chromium: {
+      available: !!CHROME_EXECUTABLE_PATH,
+      sharedConnected: isSharedBrowserConnected(),
+    },
+    memory: {
+      rssMb: Math.round(mem.rss / 1024 / 1024),
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.post('/cache/clear', (c) => {
   const count = clearCache();
   return c.json({ status: 'ok', cleared: count });
 });
 
-// 単一 URL / PDF スクレイプ
+// 単一 URL / PDF スクレイプ (マルチフォーマット対応)
 app.post('/scrape', async (c) => {
+  let rawBody: any;
   try {
-    const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
-      return c.json({ error: 'url is required' }, 400);
-    }
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
 
-    const result = await scrapeUrl({
-      url: body.url,
-      maxChars: body.maxChars,
-      mode: body.mode,
-      fastOnly: body.fastOnly,
-      renderJs: body.renderJs,
-      proxyUrl: body.proxyUrl,
-      timeoutMs: body.timeoutMs,
-      noCache: body.noCache,
-      extractHighlights: body.extractHighlights,
-      query: body.query,
-    });
+  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
+    return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
 
+  try {
+    const result = await scrapeUrl(parsed.data);
     return c.json(result);
   } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json(
-      {
-        error: err.message || 'Scrape failed',
-        url: (err as any).url,
-      },
-      isSecurity ? 403 : 500,
-    );
+    const msg = err.message || 'Scrape failed';
+    const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
+    const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト') || msg.includes('timed out');
+    const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : 'SCRAPE_ERROR';
+    const status = isSecurity ? 403 : isTimeout ? 408 : 500;
+    return formatError(c, msg, code, status, !isSecurity);
+  }
+});
+
+// 単一 URL スクレイプ SSE ストリーミング (POST /scrape/stream)
+app.post('/scrape/stream', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
+    return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  return streamSSE(c, async (stream) => {
+    try {
+      await scrapeUrl({
+        ...parsed.data,
+        onProgress: async (evt) => {
+          await stream.writeSSE({
+            event: evt.stage === 'done' ? 'done' : 'progress',
+            data: JSON.stringify(evt),
+          });
+        },
+      });
+    } catch (err: any) {
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({
+          error: err.message || 'Scrape failed',
+          code: 'SCRAPE_ERROR',
+        }),
+      });
+    }
+  });
+});
+
+// 複数 URL 一括並行スクレイプ (POST /scrape/batch)
+app.post('/scrape/batch', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = BatchScrapeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'urls must be a non-empty array of URLs (max: 20)', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await scrapeBatchUrls(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    const msg = err.message || 'Batch scrape failed';
+    const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
+    const code = isSecurity ? 'SSRF_BLOCKED' : 'BATCH_SCRAPE_ERROR';
+    return formatError(c, msg, code, isSecurity ? 403 : 500, !isSecurity);
   }
 });
 
 // 対話型ブラウザ自動操作 (POST /browser/action & POST /action)
 const handleBrowserAction = async (c: any) => {
+  let rawBody: any;
   try {
-    const body = await c.req.json();
-    const url = body?.url;
-    const sessionId = body?.sessionId;
-    const createSession = body?.createSession;
-    const closeSession = body?.closeSession;
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
 
-    // url も sessionId もない場合はエラー (ただし closeSession 時は sessionId のみでOK)
-    if (!url && !sessionId) {
-      return c.json({ error: 'url or sessionId is required' }, 400);
-    }
+  const parsed = BrowserActionRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid browser action parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
 
+  const body = parsed.data;
+  if (!body.url && !body.sessionId) {
+    return formatError(c, 'url or sessionId is required', 'INVALID_INPUT', 400, false);
+  }
+
+  try {
     const result = await executeBrowserActions({
-      url,
-      sessionId,
-      createSession,
-      closeSession,
+      url: body.url,
+      sessionId: body.sessionId,
+      ownerToken: extractAuthToken(c),
+      createSession: body.createSession,
+      closeSession: body.closeSession,
       actions: body.actions,
       extract: body.extract,
       timeout: body.timeout,
@@ -164,14 +411,13 @@ const handleBrowserAction = async (c: any) => {
 
     return c.json(result);
   } catch (err: any) {
-    const isSecurity = err.message?.includes('forbidden') || err.message?.includes('private or blocked');
-    return c.json(
-      {
-        error: err.message || 'Browser action failed',
-        url: (err as any).url,
-      },
-      isSecurity ? 403 : 500,
-    );
+    const msg = err.message || 'Browser action failed';
+    const isForbidden = msg.includes('Forbidden') || msg.includes('permission');
+    const isSecurity = isForbidden || msg.includes('private or blocked') || msg.includes('遮断');
+    const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト');
+    const code = isForbidden ? 'FORBIDDEN' : isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : 'BROWSER_ERROR';
+    const status = isSecurity ? 403 : isTimeout ? 408 : 500;
+    return formatError(c, msg, code, status, !isSecurity);
   }
 };
 
@@ -183,36 +429,46 @@ app.post('/search/realtime', async (c) => {
   try {
     const body = await c.req.json();
     const query = body?.query;
+    const sort = body?.sort === 'popular' ? 'popular' : 'recent';
+    const limit = typeof body?.limit === 'number' ? Math.min(Math.max(body.limit, 1), 40) : undefined;
+    const page = typeof body?.page === 'number' ? Math.max(body.page, 1) : undefined;
+
     if (!query || typeof query !== 'string') {
       return c.json({ error: 'query is required' }, 400);
     }
 
-    const cacheKey = `search:realtime:${query}`;
+    const cacheKey = `search:realtime:${query}:${sort}:${limit || 20}:${page || 1}`;
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const mcpRes = await callYahooMcp('yahoo_realtime_search', { query });
+    const mcpRes = await callYahooMcp('yahoo_realtime_search', {
+      query,
+      sort,
+      ...(limit ? { limit } : {}),
+      ...(page ? { page } : {}),
+    });
     const content = mcpRes?.content?.[0]?.text || '';
     let parsedData = content;
     try {
       const json = JSON.parse(content);
       if (json && Array.isArray(json.items)) {
-        json.items = json.items.map((item: any) => ({ source: 'x' as const, ...item }));
+        json.items = json.items.map((item: any) => normalizeRealtimeItem(item));
       }
       parsedData = json;
     } catch {}
 
     const responseData = {
       query,
+      sort,
       source: 'x',
       type: 'realtime',
       data: parsedData,
       cached: false,
     };
 
-    if (!body.noCache) setToCache(cacheKey, responseData);
+    if (!body.noCache) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
     return c.json(responseData);
   } catch (err: any) {
     return c.json({ error: err.message || 'Realtime search failed' }, 500);
@@ -271,9 +527,10 @@ app.post('/search', async (c) => {
   try {
     const body = await c.req.json();
     const query = body?.query;
-    const limit = Math.min(body?.limit || 3, 10);
+    const limit = Math.min(body?.limit || 5, 20);
     const scrapeContent = body?.scrapeContent !== false;
     const includeRealtime = body?.includeRealtime !== false;
+    const realtimeSort = body?.realtimeSort === 'popular' ? 'popular' : 'recent';
     const maxChars = body?.maxChars || DEFAULT_MAX_CHARS;
     const noCache = body?.noCache ?? false;
     const includeDomains = body?.includeDomains;
@@ -281,6 +538,8 @@ app.post('/search', async (c) => {
     const updated = body?.updated;
     const proxyUrl = body?.proxyUrl;
     const extractHighlights = body?.extractHighlights;
+    const onlyMainContent = body?.onlyMainContent;
+    const formats = body?.formats;
 
     if (!query || typeof query !== 'string') {
       return c.json({ error: 'query is required' }, 400);
@@ -291,6 +550,7 @@ app.post('/search', async (c) => {
       limit,
       scrapeContent,
       includeRealtime,
+      realtimeSort,
       maxChars,
       noCache,
       includeDomains,
@@ -298,6 +558,9 @@ app.post('/search', async (c) => {
       updated,
       proxyUrl,
       extractHighlights,
+      onlyMainContent,
+      formats,
+      dedup: body?.dedup,
     });
 
     return c.json(finalResponse);
@@ -320,6 +583,7 @@ app.post('/map', async (c) => {
       includeSubdomains: body.includeSubdomains,
       timeoutMs: body.timeoutMs,
       proxyUrl: body.proxyUrl,
+      since: body.since,
     });
 
     return c.json(result);
@@ -344,12 +608,61 @@ app.post('/crawl', async (c) => {
       maxChars: body.maxChars,
       timeoutMs: body.timeoutMs,
       proxyUrl: body.proxyUrl,
+      concurrency: body.concurrency,
+      includePatterns: body.includePatterns,
+      excludePatterns: body.excludePatterns,
+      formats: body.formats,
+      webhookUrl: body.webhookUrl,
     });
 
     return c.json(result);
   } catch (err: any) {
     const isSecurity = err.message?.includes('セキュリティ上の理由');
     return c.json({ error: err.message || 'Crawl failed' }, isSecurity ? 403 : 500);
+  }
+});
+
+// サブページ再帰的クロール SSE ストリーミング (/crawl/stream)
+app.post('/crawl/stream', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body || !body.url || typeof body.url !== 'string') {
+      return c.json({ error: 'url is required' }, 400);
+    }
+
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: 'start',
+        data: JSON.stringify({ url: body.url, status: 'crawling' }),
+      });
+
+      const result = await crawlSiteUrl({
+        url: body.url,
+        maxPages: body.maxPages,
+        maxDepth: body.maxDepth,
+        maxChars: body.maxChars,
+        timeoutMs: body.timeoutMs,
+        proxyUrl: body.proxyUrl,
+        concurrency: body.concurrency,
+        includePatterns: body.includePatterns,
+        excludePatterns: body.excludePatterns,
+        formats: body.formats,
+        onPageCrawled: (page: any, count: number) => {
+          stream.writeSSE({
+            event: 'page',
+            data: JSON.stringify({ count, page }),
+          });
+        },
+      });
+
+      await stream.writeSSE({
+        event: 'done',
+        data: JSON.stringify({ count: result.count, url: result.url }),
+      });
+    });
+  } catch (err: any) {
+    const isSecurity = err.message?.includes('セキュリティ上の理由');
+    return c.json({ error: err.message || 'Crawl stream failed' }, isSecurity ? 403 : 500);
   }
 });
 
@@ -549,6 +862,41 @@ app.get('/weather', async (c) => {
   }
 });
 
+// ==========================================
+// 3.5 対話型 API ドキュメント (Swagger UI & OpenAPI 3.0)
+// ==========================================
+// OpenAPI 仕様書エンドポイント (Zod スキーマから完全自動生成)
+app.get('/openapi.json', (c) => {
+  return c.json(generateOpenApiDocument());
+});
+
+app.get('/docs', (c) => {
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sora API Interactive Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        presets: [SwaggerUIBundle.presets.apis],
+        layout: "BaseLayout"
+      });
+    };
+  </script>
+</body>
+</html>`;
+  return c.html(html);
+});
+
 if (import.meta.main) {
   Bun.serve({
     port: PORT,
@@ -556,5 +904,3 @@ if (import.meta.main) {
   });
   console.log(`Starting Sora service on port ${PORT}...`);
 }
-
-export { app };

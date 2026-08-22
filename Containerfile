@@ -48,7 +48,7 @@ COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
 
 ENV PORT=8000 \
-    CHROME_PATH=/usr/bin/chromium \
+    CHROME_PATH=/usr/lib/chromium/chromium \
     YAHOO_MCP_PATH=/app/yahoo-search-mcp
 
 EXPOSE 8000
