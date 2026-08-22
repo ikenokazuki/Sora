@@ -1054,8 +1054,14 @@ describe('Sora REST & MCP Endpoints', () => {
     const docsRes = await app.request('/docs');
     expect(docsRes.status).toBe(200);
     const html = await docsRes.text();
-    expect(html).toContain('SwaggerUIBundle');
+    expect(html).toContain('@scalar/api-reference');
     expect(html).toContain('/openapi.json');
+
+    const swaggerRes = await app.request('/swagger');
+    expect(swaggerRes.status).toBe(200);
+    const swaggerHtml = await swaggerRes.text();
+    expect(swaggerHtml).toContain('SwaggerUIBundle');
+    expect(swaggerHtml).toContain('/openapi.json');
   });
 
   it('extractTablesFromHtml should parse HTML tables into structured JSON objects', () => {
