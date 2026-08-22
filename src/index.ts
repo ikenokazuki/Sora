@@ -863,20 +863,42 @@ app.get('/weather', async (c) => {
 });
 
 // ==========================================
-// 3.5 対話型 API ドキュメント (Swagger UI & OpenAPI 3.0)
+// 3.5 対話型 API ドキュメント (Scalar API Reference & Swagger UI)
 // ==========================================
 // OpenAPI 仕様書エンドポイント (Zod スキーマから完全自動生成)
 app.get('/openapi.json', (c) => {
   return c.json(generateOpenApiDocument());
 });
 
+// モダンな API リファレンス (Scalar UI: パラメータの意味・型・制約を初期表示で美しく一覧化)
 app.get('/docs', (c) => {
+  const html = `<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sora API Reference</title>
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-url="/openapi.json"
+      data-configuration='{"theme":"purple","darkMode":true,"layout":"modern","showSidebar":true}'
+      src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"
+    ></script>
+  </body>
+</html>`;
+  return c.html(html);
+});
+
+// 従来の Swagger UI (互換用)
+app.get('/swagger', (c) => {
   const html = `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sora API Interactive Docs</title>
+  <title>Sora API Swagger UI</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
 </head>
 <body>
@@ -888,7 +910,9 @@ app.get('/docs', (c) => {
         url: '/openapi.json',
         dom_id: '#swagger-ui',
         presets: [SwaggerUIBundle.presets.apis],
-        layout: "BaseLayout"
+        layout: "BaseLayout",
+        defaultModelRendering: 'model',
+        defaultModelsExpandDepth: 2
       });
     };
   </script>
