@@ -57,8 +57,7 @@ Sora コンテナを起動した状態で URL を指定します：
 {
   "mcpServers": {
     "sora": {
-      "url": "http://localhost:3000/mcp",
-      "transport": "sse"
+      "url": "http://localhost:3016/mcp"
     }
   }
 }
@@ -66,7 +65,7 @@ Sora コンテナを起動した状態で URL を指定します：
 
 ### ② Docker / Podman での 1 コマンド起動
 ```bash
-docker run -d -p 3000:3000 --name sora ghcr.io/ikeno/sora:latest
+docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 ```
 
 ---
@@ -76,12 +75,12 @@ docker run -d -p 3000:3000 --name sora ghcr.io/ikeno/sora:latest
 1. **🗾 日本の日常インフラ & Web 探索の完全網羅**:
    - 海外製ツール（Firecrawl / Tavily）では対応できない「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式オープンデータ直結（全国 1,805 市区町村自動選定）」「電車乗換案内」を単一 MCP で提供。
 2. **⚡ 圧倒的なミリ秒応答 & 超低消費メモリ**:
-   - Bun ネイティブコンパイルにより、API 応答 **1.5ms**、常駐メモリわずか **~56MB**。AI エージェントの待ち時間を極限まで短縮。
+   - Bun ネイティブコンパイルにより、API 応答 **1.5ms**、常駐メモリ **JSヒープ ~32MB / 全体 ~140MB**。AI エージェントの待ち時間を極限まで短縮。
 3. **📦 完全オールインワン & ゼロミドルウェア**:
    - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一バイナリ / 単一コンテナだけで即座に完結。
 4. **🛡️ Distroless（シェルなし）& 厳格なセキュリティ**:
    - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`, `bash`, `curl` 等が存在せず、RCE（任意コード実行）攻撃を無力化。
-   - SSRF 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
+   - SSRF / DNS Rebinding 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
 5. **🕹️ ステートフルなブラウザ操作 DSL**:
    - `open` → `fill` → `click` → `screenshot` → `evaluate` の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
 
@@ -93,7 +92,7 @@ docker run -d -p 3000:3000 --name sora ghcr.io/ikeno/sora:latest
 |---|---|---|---|
 | **API / ヘルスチェック応答** | **1.5 ms** (`0.0015s`) | 20〜50 ms | 30〜100 ms |
 | **起動時間 (コールドスタート)** | **< 10 ms** | 10〜30 秒 (複数サービス) | 1〜3 秒 |
-| **常駐メモリ消費 (RSS)** | **約 56 MB** (単体バイナリ) | 2GB〜4GB+ | 250MB〜800MB |
+| **常駐メモリ消費 (RSS)** | **約 140 MB** (JSヒープ ~32MB) | 2GB〜4GB+ | 250MB〜800MB |
 | **イメージサイズ (Total)** | **約 1.18 GB** (Chromium+日本語フォント内包) | 4GB〜6GB+ (複数イメージ合計) | 800MB〜2.5GB |
 | **必要なコンテナ構成** | **単一コンテナ (All-in-One)** | 5〜6 個 (Redis/PG/Workers) | 複数 MCP プロセスが乱立 |
 | **セキュリティ設計** | **Distroless (シェルなし・非root)** | 通常 Debian/Alpine | 通常 Debian/Ubuntu |
@@ -481,7 +480,7 @@ sora_active_browser_sessions 2
 > 
 > **🧹 ユーザー指定ノイズセレクタ除去 (`removeSelectors`)**: `removeSelectors: [".ad", ".comments", "#related-articles"]` を指定し、特定ブロックを Markdown 変換前に徹底パージできます。
 > 
-> **📖 対話型 API ドキュメント (`GET /docs`)**: ブラウザから `http://localhost:3000/docs` にアクセスすると、Swagger UI から全 API を直接テスト実行（Try it out）できます。
+> **📖 対話型 API ドキュメント (`GET /docs`)**: ブラウザから `http://localhost:3016/docs` にアクセスすると、Swagger UI から全 API を直接テスト実行（Try it out）できます。
 
 ---
 
