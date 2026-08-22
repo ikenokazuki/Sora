@@ -5,10 +5,65 @@ import TurndownService from 'turndown';
 import puppeteer, { Browser, Page } from 'puppeteer-core';
 import { extractText, getMeta } from 'unpdf';
 import { XMLParser } from 'fast-xml-parser';
-import { spawn } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { MUNICIPALITY_CITY_MAP } from './city_map.js';
+import { promises as dnsPromises } from 'dns';
+
+// 分割モジュールの型・関数をすべて re-export
+export * from './types.js';
+export * from './cache.js';
+export * from './enrichment.js';
+export * from './services/yahoo.js';
+export * from './services/life.js';
+
+import type {
+  ScrapeFormat,
+  TableData,
+  MediaInfo,
+  Citation,
+  ImageItem,
+  MarkdownChunk,
+  LinkStatus,
+  CookieParam,
+  ScrapeResult,
+  BrowserActionStep,
+  BrowserActionOptions,
+  BrowserActionResult,
+  BatchScrapeResult,
+  SitemapEntry,
+} from './types.js';
+
+import {
+  getFromCache,
+  setToCache,
+  runWithSingleFlight,
+  CACHE_TTL_DEFAULT,
+  CACHE_TTL_TREND,
+} from './cache.js';
+
+import {
+  estimateTokens,
+  safeTruncateMarkdown,
+  cleanMarkdownTokens,
+  generateExtractiveSummary,
+  dedupSearchResults,
+  maskPiiInText,
+  generatePromptContext,
+  highlightQueryMatchesInMarkdown,
+  calculateContentStats,
+  extractCitationsFromMarkdown,
+  sendWebhookNotification,
+  chunkMarkdownContent,
+  validateExtractedLinks,
+  extractQueryHighlights,
+  filterByDomains,
+} from './enrichment.js';
+
+import {
+  callYahooMcp,
+  searchYahooWeb,
+  normalizeRealtimeItem,
+} from './services/yahoo.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
 export const DEFAULT_MAX_CHARS = 30_000;
@@ -16,13 +71,43 @@ export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 export function resolveChromiumPath(): string | undefined {
-  if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
-  if (existsSync('/usr/bin/chromium')) return '/usr/bin/chromium';
-  if (existsSync('/usr/bin/google-chrome')) return '/usr/bin/google-chrome';
-  if (existsSync('/usr/bin/chromium-browser')) return '/usr/bin/chromium-browser';
+  const envPaths = [
+    process.env.CHROME_PATH,
+    process.env.CHROME_BIN,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+  ];
+  for (const p of envPaths) {
+    if (p && existsSync(p)) return p;
+  }
+
+  const standardPaths = [
+    '/usr/lib/chromium/chromium',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/snap/bin/chromium',
+    '/opt/google/chrome/chrome',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ];
+  for (const p of standardPaths) {
+    if (existsSync(p)) return p;
+  }
+
+  // PATH 環境変数の走査 (NixOS / Custom distros)
+  const pathEnv = process.env.PATH || '';
+  const pathDirs = pathEnv.split(':');
+  const binaries = ['chromium', 'google-chrome', 'google-chrome-stable', 'chromium-browser', 'chrome'];
+  for (const dir of pathDirs) {
+    for (const bin of binaries) {
+      const fullPath = `${dir}/${bin}`;
+      if (existsSync(fullPath)) return fullPath;
+    }
+  }
+
   try {
     const { execSync } = require('child_process');
-    const path = execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null', { encoding: 'utf8' }).trim();
+    const path = execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null || which chrome 2>/dev/null', { encoding: 'utf8' }).trim();
     if (path && existsSync(path)) return path;
   } catch {}
   return undefined;
@@ -31,14 +116,114 @@ export function resolveChromiumPath(): string | undefined {
 // Chromium のパス判定 (コンテナ内 または ホスト環境)
 export const CHROME_EXECUTABLE_PATH = resolveChromiumPath();
 
-// Yahoo MCP バイナリのパス
-export const YAHOO_MCP_PATH =
-  process.env.YAHOO_MCP_PATH ||
-  (existsSync('/usr/local/bin/yahoo-search-mcp') ? '/usr/local/bin/yahoo-search-mcp' :
-   existsSync(join(import.meta.dir, '../bin/yahoo-search-mcp')) ? join(import.meta.dir, '../bin/yahoo-search-mcp') :
-   existsSync('/home/ikeno/app/oshiframe/backend/bin/Yahoo-Japan-Search-MCP-v0.1.0-linux-x64/yahoo-search-mcp')
-     ? '/home/ikeno/app/oshiframe/backend/bin/Yahoo-Japan-Search-MCP-v0.1.0-linux-x64/yahoo-search-mcp'
-     : 'yahoo-search-mcp');
+let sharedBrowserInstance: Browser | null = null;
+
+export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+  if (proxyUrl) {
+    if (!CHROME_EXECUTABLE_PATH) {
+      throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
+    }
+    const args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1920,1080',
+      `--proxy-server=${proxyUrl}`,
+    ];
+    const dedicated = await puppeteer.launch({
+      executablePath: CHROME_EXECUTABLE_PATH,
+      headless: true,
+      args,
+    });
+    return { browser: dedicated, isDedicated: true };
+  }
+
+  if (sharedBrowserInstance && sharedBrowserInstance.connected) {
+    try {
+      await sharedBrowserInstance.version();
+      return { browser: sharedBrowserInstance, isDedicated: false };
+    } catch {
+      sharedBrowserInstance = null;
+    }
+  }
+
+  if (!CHROME_EXECUTABLE_PATH) {
+    throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
+  }
+
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-blink-features=AutomationControlled',
+    '--window-size=1920,1080',
+  ];
+
+  sharedBrowserInstance = await puppeteer.launch({
+    executablePath: CHROME_EXECUTABLE_PATH,
+    headless: true,
+    args,
+  });
+
+  return { browser: sharedBrowserInstance, isDedicated: false };
+}
+
+export function isSharedBrowserConnected(): boolean {
+  return sharedBrowserInstance !== null && sharedBrowserInstance.connected;
+}
+
+export async function closeSharedBrowser(): Promise<void> {
+  if (sharedBrowserInstance) {
+    try {
+      await sharedBrowserInstance.close();
+    } catch {}
+    sharedBrowserInstance = null;
+  }
+}
+
+export async function applyStealthEvasions(page: Page): Promise<void> {
+  await page.setUserAgent(USER_AGENT);
+  await page.setViewport({ width: 1920, height: 1080 });
+
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    (globalThis as any).chrome = {
+      runtime: {},
+      app: {},
+      csi: () => {},
+      loadTimes: () => {},
+    };
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [1, 2, 3, 4, 5],
+    });
+    Object.defineProperty(navigator, 'languages', {
+      get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+    });
+  });
+}
+
+export async function bypassCloudflareTurnstile(page: Page, timeoutMs = 10000): Promise<boolean> {
+  try {
+    const turnstileIframe = await page.waitForSelector('iframe[src*="challenges.cloudflare.com"]', {
+      timeout: Math.min(timeoutMs, 5000),
+    });
+    if (turnstileIframe) {
+      const frame = await turnstileIframe.contentFrame();
+      if (frame) {
+        const checkbox = await frame.$('input[type="checkbox"], .ctp-checkbox-label, #challenge-stage');
+        if (checkbox) {
+          await checkbox.click();
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
+          return true;
+        }
+      }
+    }
+  } catch {}
+  return false;
+}
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -47,178 +232,571 @@ const turndown = new TurndownService({
   codeBlockStyle: 'fenced',
 });
 
-// ==========================================
-// 1. In-Memory LRU Cache (TTL 15分, 最大2000件)
-// ==========================================
-export interface ScrapeResult {
-  url: string;
-  title: string;
-  content: string;
-  isTruncated: boolean;
-  contentType: string;
-  source: 'web';
-  renderedWithBrowser?: boolean;
-  cached?: boolean;
-  ogImage?: string;
-  description?: string;
-  highlights?: string[];
-}
+// GFM Table サポート (HTML table -> Markdown table)
+turndown.addRule('gfmTable', {
+  filter: 'table',
+  replacement: function (_content, node: any) {
+    const rows = Array.from((node as any).querySelectorAll('tr'));
+    if (rows.length === 0) return '';
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
+    const matrix: string[][] = [];
+    for (const row of rows as any[]) {
+      const cells = Array.from((row as any).querySelectorAll('th, td')).map((c: any) =>
+        (c.textContent || '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim(),
+      );
+      if (cells.length > 0) matrix.push(cells);
+    }
+    if (matrix.length === 0) return '';
 
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15分
-const MAX_CACHE_SIZE = 2000;
-const memoryCache = new Map<string, CacheEntry<any>>();
+    const maxCols = Math.max(...matrix.map((r) => r.length));
+    const normalizedMatrix = matrix.map((r) => {
+      while (r.length < maxCols) r.push('');
+      return r;
+    });
 
-export function getCacheSize(): number {
-  return memoryCache.size;
-}
+    const header = '| ' + normalizedMatrix[0].join(' | ') + ' |';
+    const separator = '| ' + normalizedMatrix[0].map(() => '---').join(' | ') + ' |';
+    const body = normalizedMatrix
+      .slice(1)
+      .map((r) => '| ' + r.join(' | ') + ' |')
+      .join('\n');
 
-export function clearCache(): number {
-  const count = memoryCache.size;
-  memoryCache.clear();
-  return count;
-}
+    return `\n\n${header}\n${separator}${body ? '\n' + body : ''}\n\n`;
+  },
+});
 
-export function getFromCache<T>(key: string): T | null {
-  const entry = memoryCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    memoryCache.delete(key);
-    return null;
-  }
-  return { ...entry.data, cached: true };
-}
-
-export function setToCache<T>(key: string, data: T): void {
-  if (memoryCache.size >= MAX_CACHE_SIZE) {
-    const keysToDelete = Array.from(memoryCache.keys()).slice(0, Math.floor(MAX_CACHE_SIZE * 0.1));
-    for (const k of keysToDelete) memoryCache.delete(k);
-  }
-  memoryCache.set(key, {
-    data: { ...data, cached: false },
-    expiresAt: Date.now() + CACHE_TTL_MS,
-  });
-}
-
-// ==========================================
-// 2. ドメイン別スロットリング & Jitter (IP BAN 防止)
-// ==========================================
-const lastRequestByDomain = new Map<string, number>();
-
-export async function throttleDomain(hostname: string, minIntervalMs = 150): Promise<void> {
-  const lastTime = lastRequestByDomain.get(hostname) || 0;
-  const now = Date.now();
-  const elapsed = now - lastTime;
-  const jitter = Math.floor(Math.random() * 100); // 0〜100ms のランダムな揺らぎ
-  const requiredWait = minIntervalMs + jitter;
-
-  if (elapsed < requiredWait) {
-    const delay = requiredWait - elapsed;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  lastRequestByDomain.set(hostname, Date.now());
-}
+// GFM Codeblock 言語指定保持 (<pre><code class="language-python">)
+turndown.addRule('fencedCodeBlock', {
+  filter: function (node: any, options: any) {
+    if (node.nodeName !== 'PRE') return false;
+    const hasCode = Boolean(
+      (node.querySelector && node.querySelector('code')) ||
+      (node.firstChild && node.firstChild.nodeName === 'CODE')
+    );
+    return options.codeBlockStyle === 'fenced' && hasCode;
+  },
+  replacement: function (_content, node: any) {
+    const codeEl = (node.querySelector && node.querySelector('code')) || node.firstChild || node;
+    const lang =
+      codeEl?.getAttribute?.('data-language') ||
+      node.getAttribute?.('data-language') ||
+      (codeEl?.getAttribute?.('class') || '').match(/(?:language|lang|highlight)-([a-zA-Z0-9_+-]+)/i)?.[1] ||
+      (node.getAttribute?.('class') || '').match(/(?:language|lang|highlight)-([a-zA-Z0-9_+-]+)/i)?.[1] ||
+      '';
+    const code = (codeEl?.textContent || node.textContent || '').replace(/\r\n/g, '\n');
+    return `\n\n\`\`\`${lang.toLowerCase()}\n${code.replace(/\n+$/, '')}\n\`\`\`\n\n`;
+  },
+});
 
 // ==========================================
-// 3. SSRF 防御 (内部 IP 遮断)
+// 2. ドメイン単位の適応型レート制限 & Jitter
 // ==========================================
+const domainLastAccess = new Map<string, number>();
+const DOMAIN_MIN_INTERVAL_MS = 150; // 同一ドメインへの最小待機間隔
+
+export async function throttleDomain(urlStr: string): Promise<void> {
+  try {
+    const hostname = new URL(urlStr).hostname.toLowerCase();
+    const now = Date.now();
+    const last = domainLastAccess.get(hostname) || 0;
+    const elapsed = now - last;
+
+    if (elapsed < DOMAIN_MIN_INTERVAL_MS) {
+      const waitTime = DOMAIN_MIN_INTERVAL_MS - elapsed + Math.floor(Math.random() * 100);
+      await new Promise((r) => setTimeout(r, waitTime));
+    }
+    domainLastAccess.set(hostname, Date.now());
+  } catch {}
+}
+
+// ==========================================
+// 3. SSRF 防御 (ローカル・プライベートIP遮断)
+// ==========================================
+export const MAX_RESPONSE_BODY_BYTES = 30 * 1024 * 1024; // 最大 30MB
+
+export function isPrivateIp(ip: string): boolean {
+  const trimmed = ip.trim().toLowerCase();
+  if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === '0.0.0.0' || trimmed === '::') return true;
+  if (trimmed.startsWith('10.') || trimmed.startsWith('192.168.') || trimmed.startsWith('0.')) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(trimmed)) return true;
+  if (trimmed.startsWith('169.254.')) return true; // リンクローカル / クラウドメタデータ (AWS/GCP)
+  // CGNAT (Carrier-Grade NAT / RFC 6598: 100.64.0.0/10)
+  if (/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(trimmed)) return true;
+  // TEST-NET & Benchmark (RFC 5737 / RFC 2544)
+  if (/^198\.(1[8-9])\./.test(trimmed)) return true;
+  if (trimmed.startsWith('192.0.2.') || trimmed.startsWith('198.51.100.') || trimmed.startsWith('203.0.113.')) return true;
+  // Multicast & Reserved
+  if (/^(22[4-9]|23[0-9]|24[0-9]|25[0-5])\./.test(trimmed)) return true;
+  // IPv6 ULA, Link-local, Multicast, Doc
+  if (trimmed.startsWith('fc') || trimmed.startsWith('fd') || trimmed.startsWith('fe80:') || trimmed.startsWith('ff')) return true;
+  return false;
+}
+
 export function isBlockedHostname(hostname: string): boolean {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') {
-    return false;
-  }
-  const lower = hostname.toLowerCase();
-  if (lower === 'localhost' || lower.endsWith('.local') || lower.endsWith('.internal')) {
-    return true;
-  }
-  const ipv4Match = lower.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (ipv4Match) {
-    const octets = ipv4Match.slice(1, 5).map(Number);
-    const [a, b] = octets;
-    if (a === 127 || a === 10 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;
-  }
+  const h = hostname.toLowerCase().trim();
   if (
-    lower === '::1' ||
-    lower === '::' ||
-    lower.startsWith('fe80:') ||
-    lower.startsWith('fc00:') ||
-    lower.startsWith('fd00:')
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '::1' ||
+    h === '::' ||
+    h === '0.0.0.0' ||
+    h.endsWith('.localhost') ||
+    h.endsWith('.local') ||
+    h.endsWith('.internal')
   ) {
     return true;
   }
+  if (h.startsWith('::ffff:')) {
+    const mapped = h.replace(/^::ffff:/, '');
+    return isPrivateIp(mapped);
+  }
+  if (
+    h === '169.254.169.254' ||
+    h === 'metadata.google.internal' ||
+    h === 'metadata.internal' ||
+    h === 'instance-data'
+  ) {
+    return true;
+  }
+  if (/^\d+$/.test(h)) {
+    try {
+      const num = parseInt(h, 10);
+      const ip = `${(num >> 24) & 255}.${(num >> 16) & 255}.${(num >> 8) & 255}.${num & 255}`;
+      if (isPrivateIp(ip)) return true;
+    } catch {}
+  }
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) {
+    return isPrivateIp(h);
+  }
   return false;
 }
 
-// ==========================================
-// 4. HTML クリーニング & Markdown 化 (Readability + Turndown)
-// ==========================================
-// ==========================================
-// SPA / Bot チャレンジ / JS 必須ページのインテリジェント自動検知
-// ==========================================
-export function checkIfSpaFallbackNeeded(rawHtml: string, bodyMarkdown: string, isRendered: boolean): boolean {
-  if (isRendered) return false;
+/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策） */
+export async function validateHostIpDns(hostname: string): Promise<void> {
+  if (process.env.ALLOW_LOCAL_FETCH === 'true') return;
 
-  const lowerHtml = rawHtml.toLowerCase();
-  const lowerBody = bodyMarkdown.toLowerCase();
-
-  // 1. 本文が極端に短い
-  if (bodyMarkdown.trim().length < 80) return true;
-
-  // 2. JavaScript 無効化 / 必要の警告
-  const jsWarningPatterns = [
-    'javascript is disabled',
-    'javascript を有効に',
-    'you need to enable javascript',
-    'enable javascript to continue',
-    'javascript required',
-    'please enable javascript',
-    'javascript is required',
-    'requires javascript',
-  ];
-  if (jsWarningPatterns.some((p) => lowerBody.includes(p) || lowerHtml.includes(p))) {
-    return true;
+  if (isBlockedHostname(hostname)) {
+    throw new Error(`プライベートネットワークまたは安全でないホストへのアクセスは遮断されています: ${hostname}`);
   }
 
-  // 3. Bot チャレンジ / WAF / Cloudflare / Turnstile 画面
-  const botChallengePatterns = [
-    'just a moment...',
-    'checking your browser',
-    'checking if the site connection is secure',
-    'verify you are human',
-    'verify that you are not a robot',
-    'attention required! | cloudflare',
-    'challenges.cloudflare.com',
-    'cf-turnstile',
-    'datadome',
-    'perimeterx',
-    'security check',
-    'アクセスが制限されています',
-  ];
-  if (botChallengePatterns.some((p) => lowerHtml.includes(p) || lowerBody.includes(p))) {
-    return true;
+  try {
+    const addresses = await dnsPromises.lookup(hostname, { all: true });
+    for (const addr of addresses) {
+      if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
+        throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
+      }
+    }
+  } catch (err: any) {
+    if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
+      throw err;
+    }
+    // DNS解決失敗等は後続の fetch に任せる
+  }
+}
+
+// ==========================================
+// 簡易セマフォ（ブラウザ同時実行数制限）
+// ==========================================
+export class SimpleSemaphore {
+  private current = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(public readonly max: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.current < this.max) {
+      this.current++;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+    this.current++;
   }
 
-  // 4. SPA ルート要素が存在し、かつ本文が希薄（DOM 未マウント状態）
-  const hasSpaRoot =
-    /<div[^>]+id=["'](root|__next|__nuxt|app|main-app|react-root)["'][^>]*>\s*<\/div>/i.test(rawHtml) ||
-    /<app-root[^>]*>\s*<\/app-root>/i.test(rawHtml);
-  if (hasSpaRoot && bodyMarkdown.length < 350) {
-    return true;
+  release(): void {
+    this.current = Math.max(0, this.current - 1);
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    }
   }
 
-  // 5. ローディング・プレースホルダー状態
-  const trimmedLines = bodyMarkdown.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-  if (trimmedLines.length <= 4 && trimmedLines.some((l) => /^(loading|読み込み中|please wait)[\.…]*$/i.test(l))) {
-    return true;
+  get activeCount(): number {
+    return this.current;
   }
 
-  return false;
+  get pendingCount(): number {
+    return this.queue.length;
+  }
+}
+
+const MAX_CONCURRENT_BROWSERS = parseInt(process.env.MAX_CONCURRENT_BROWSERS || '5', 10);
+export const browserSemaphore = new SimpleSemaphore(Math.max(1, Math.min(MAX_CONCURRENT_BROWSERS, 50)));
+
+// ==========================================
+// 4. 安全な HTTP フェッチ (リダイレクト追跡 & SSRF/DNS Rebinding 再検証)
+// ==========================================
+export async function fetchWithSafeRedirects(
+  initialUrl: string,
+  timeoutMs = 15000,
+  maxRedirects = 5,
+  customHeaders?: Record<string, string>,
+  customCookies?: CookieParam[],
+): Promise<{ finalUrl: string; response: Response }> {
+  let currentUrl = initialUrl;
+  let redirects = 0;
+
+  const cookieHeader = customCookies && customCookies.length > 0
+    ? customCookies.map((c) => `${c.name}=${c.value}`).join('; ')
+    : undefined;
+
+  while (redirects <= maxRedirects) {
+    let parsed: URL;
+    try {
+      parsed = new URL(currentUrl);
+    } catch {
+      throw new Error(`無効な URL です: ${currentUrl}`);
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`許可されていないプロトコルです: ${parsed.protocol}`);
+    }
+
+    await validateHostIpDns(parsed.hostname);
+
+    await throttleDomain(currentUrl);
+
+    const headers: Record<string, string> = {
+      'User-Agent': USER_AGENT,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf;q=0.8,*/*;q=0.7',
+      'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...(customHeaders || {}),
+    };
+
+    const res = await fetch(currentUrl, {
+      method: 'GET',
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    // Content-Length による大容量ファイルガード (Zip Bomb / 大容量ビデオ等)
+    const contentLength = res.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BODY_BYTES) {
+      throw new Error(`レスポンスサイズが上限 (${MAX_RESPONSE_BODY_BYTES / (1024 * 1024)}MB) を超過しています: ${contentLength} bytes`);
+    }
+
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get('Location');
+      if (!location) return { finalUrl: currentUrl, response: res };
+
+      currentUrl = new URL(location, currentUrl).href;
+      redirects++;
+      continue;
+    }
+
+    return { finalUrl: currentUrl, response: res };
+  }
+
+  throw new Error(`リダイレクト回数が上限（${maxRedirects}回）を超えました`);
+}
+
+/** HTML/テキストのバッファから文字コード（Shift_JIS / EUC-JP / UTF-8 等）を自動判定してデコード */
+export function decodeHtmlBuffer(buffer: ArrayBuffer | Uint8Array, contentTypeHeader = ''): string {
+  const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+
+  const headerMatch = contentTypeHeader.match(/charset=([a-zA-Z0-9_\-]+)/i);
+  let charset = headerMatch ? headerMatch[1].toLowerCase().trim() : '';
+
+  if (!charset) {
+    const headChunk = new (TextDecoder as any)('latin1').decode(uint8.slice(0, 2048));
+    const metaCharsetMatch = headChunk.match(/<meta[^>]+charset=["']?\s*([a-zA-Z0-9_\-]+)/i);
+    if (metaCharsetMatch) {
+      charset = metaCharsetMatch[1].toLowerCase().trim();
+    } else {
+      const metaHttpEquivMatch = headChunk.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["'][^"']*charset=([a-zA-Z0-9_\-]+)/i);
+      if (metaHttpEquivMatch) {
+        charset = metaHttpEquivMatch[1].toLowerCase().trim();
+      }
+    }
+  }
+
+  if (['sjis', 'shift-jis', 'shift_jis', 'cp932', 'windows-31j', 'ms932', 'x-sjis'].includes(charset)) {
+    try {
+      return new (TextDecoder as any)('shift_jis').decode(uint8);
+    } catch {}
+  } else if (['euc-jp', 'eucjp', 'x-euc-jp'].includes(charset)) {
+    try {
+      return new (TextDecoder as any)('euc-jp').decode(uint8);
+    } catch {}
+  } else if (['iso-2022-jp'].includes(charset)) {
+    try {
+      return new (TextDecoder as any)('iso-2022-jp').decode(uint8);
+    } catch {}
+  }
+
+  try {
+    return new TextDecoder('utf-8').decode(uint8);
+  } catch {
+    return new TextDecoder('utf-8', { fatal: false }).decode(uint8);
+  }
+}
+
+/** CSS セレクタまたは属性指定によるキーバリュー抽出 */
+export function extractWithSelectors(
+  $: cheerio.CheerioAPI,
+  selectors?: Record<string, string>,
+  baseUrl?: string,
+): Record<string, string | null> | undefined {
+  if (!selectors || Object.keys(selectors).length === 0) return undefined;
+  const result: Record<string, string | null> = {};
+
+  for (const [key, selectorExpr] of Object.entries(selectors)) {
+    try {
+      if (!selectorExpr || typeof selectorExpr !== 'string') continue;
+
+      const attrMatch = selectorExpr.match(/^(.*?)@([a-zA-Z0-9_\-]+)$/);
+      if (attrMatch) {
+        const cssSel = attrMatch[1].trim();
+        const attrName = attrMatch[2].trim();
+        const el = cssSel ? $(cssSel).first() : $('*').first();
+        let val = el.attr(attrName) || null;
+        if (val && baseUrl && ['href', 'src', 'data-src'].includes(attrName.toLowerCase())) {
+          try {
+            val = new URL(val, baseUrl).href;
+          } catch {}
+        }
+        result[key] = val;
+      } else {
+        const el = $(selectorExpr).first();
+        if (el.length > 0) {
+          result[key] = el.text().replace(/\s+/g, ' ').trim();
+        } else {
+          result[key] = null;
+        }
+      }
+    } catch {
+      result[key] = null;
+    }
+  }
+
+  return result;
+}
+
+/** HTML から <table> データを抽出して構造化 JSON に変換 */
+export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
+  const tables: TableData[] = [];
+  $('table').each((_, tableEl) => {
+    const $t = $(tableEl);
+    const id = $t.attr('id') || undefined;
+    const caption = $t.find('caption').first().text().trim() || undefined;
+
+    const headers: string[] = [];
+    $t.find('tr').first().find('th, td').each((_, cell) => {
+      headers.push($(cell).text().replace(/\s+/g, ' ').trim());
+    });
+
+    if (headers.length === 0) return;
+
+    const rows: Record<string, string>[] = [];
+    $t.find('tr').slice(1).each((_, tr) => {
+      const rowObj: Record<string, string> = {};
+      let hasData = false;
+      $(tr).find('td, th').each((cIdx, cell) => {
+        const colName = headers[cIdx] || `col_${cIdx + 1}`;
+        const cellText = $(cell).text().replace(/\s+/g, ' ').trim();
+        if (cellText) hasData = true;
+        rowObj[colName] = cellText;
+      });
+      if (hasData) rows.push(rowObj);
+    });
+
+    if (rows.length > 0) {
+      tables.push({ id, caption, headers, rows });
+    }
+  });
+  return tables;
+}
+
+/** YouTube / 動画メディアメタデータ & チャプター抽出 */
+export function extractMediaInfo(
+  $: cheerio.CheerioAPI,
+  targetUrl: string,
+  rawHtml?: string,
+): MediaInfo | undefined {
+  try {
+    const urlObj = new URL(targetUrl);
+    const host = urlObj.hostname.toLowerCase();
+
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      let videoId: string | undefined;
+      if (host.includes('youtu.be')) {
+        videoId = urlObj.pathname.slice(1).split('?')[0];
+      } else {
+        videoId = urlObj.searchParams.get('v') || undefined;
+      }
+
+      if (videoId) {
+        const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        const duration = $('meta[itemprop="duration"]').attr('content') || undefined;
+
+        const chapters: Array<{ title: string; time: string; seconds: number }> = [];
+        const fullText = (rawHtml || '') + '\n' + $('body').text();
+        const timestampRegex = /(?:^|\n)[ \t]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[ \t]+([^\r\n]+)/g;
+        let match;
+        const seenTimes = new Set<string>();
+
+        while ((match = timestampRegex.exec(fullText)) !== null) {
+          const hours = match[1] ? parseInt(match[1], 10) : 0;
+          const mins = parseInt(match[2], 10);
+          const secs = parseInt(match[3], 10);
+          const title = match[4].replace(/\s+/g, ' ').trim();
+          const timeStr = match[1] ? `${match[1]}:${match[2]}:${match[3]}` : `${match[2]}:${match[3]}`;
+
+          if (!seenTimes.has(timeStr) && title.length >= 2 && title.length <= 80) {
+            seenTimes.add(timeStr);
+            const totalSeconds = hours * 3600 + mins * 60 + secs;
+            chapters.push({ title, time: timeStr, seconds: totalSeconds });
+          }
+        }
+
+        return {
+          type: 'youtube',
+          videoId,
+          thumbnail,
+          duration,
+          chapters: chapters.length > 0 ? chapters.sort((a, b) => a.seconds - b.seconds) : undefined,
+        };
+      }
+    }
+
+    const videoSrc = $('video source, video').attr('src');
+    const ogVideo = $('meta[property="og:video"]').attr('content');
+    if (videoSrc || ogVideo) {
+      return {
+        type: 'video',
+        thumbnail: $('meta[property="og:image"]').attr('content') || undefined,
+      };
+    }
+  } catch {}
+
+  return undefined;
+}
+
+// URL パターンマッチング (includePatterns / excludePatterns 用ワイルドカード対応)
+export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean {
+  if (!patterns || patterns.length === 0) return true;
+  let pathname = '';
+  let filename = '';
+  try {
+    const u = new URL(targetUrl);
+    pathname = u.pathname;
+    filename = pathname.split('/').pop() || '';
+  } catch {
+    pathname = targetUrl;
+    filename = targetUrl;
+  }
+
+  return patterns.some((pattern) => {
+    let esc = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    esc = esc.replace(/\*\*/g, '___DOUBLE_STAR___');
+    esc = esc.replace(/\*/g, '[^/]*');
+    esc = esc.replace(/___DOUBLE_STAR___/g, '.*');
+    const regexStr = '^' + esc + '$';
+    try {
+      const reg = new RegExp(regexStr);
+      return reg.test(pathname) || reg.test(targetUrl) || reg.test(filename);
+    } catch {
+      return pathname.includes(pattern) || targetUrl.includes(pattern) || filename.includes(pattern);
+    }
+  });
+}
+
+export function extractMetadataFromJsonLd(items: any[]): {
+  publishedTime?: string;
+  author?: string;
+  siteName?: string;
+  description?: string;
+  ogImage?: string;
+} {
+  const result: {
+    publishedTime?: string;
+    author?: string;
+    siteName?: string;
+    description?: string;
+    ogImage?: string;
+  } = {};
+
+  const flatObjects: any[] = [];
+  function flatten(obj: any) {
+    if (!obj || typeof obj !== 'object') return;
+    if (Array.isArray(obj)) {
+      obj.forEach(flatten);
+    } else {
+      flatObjects.push(obj);
+      if (obj['@graph'] && Array.isArray(obj['@graph'])) {
+        obj['@graph'].forEach(flatten);
+      }
+    }
+  }
+  items.forEach(flatten);
+
+  for (const item of flatObjects) {
+    if (!result.publishedTime) {
+      if (typeof item.datePublished === 'string') result.publishedTime = item.datePublished;
+      else if (typeof item.dateCreated === 'string') result.publishedTime = item.dateCreated;
+      else if (typeof item.dateModified === 'string') result.publishedTime = item.dateModified;
+    }
+
+    if (!result.author) {
+      if (typeof item.author === 'string') {
+        result.author = item.author;
+      } else if (item.author && typeof item.author === 'object') {
+        if (typeof item.author.name === 'string') result.author = item.author.name;
+        else if (Array.isArray(item.author) && typeof item.author[0]?.name === 'string') {
+          result.author = item.author[0].name;
+        }
+      } else if (typeof item.creator === 'string') {
+        result.author = item.creator;
+      } else if (item.creator && typeof item.creator.name === 'string') {
+        result.author = item.creator.name;
+      }
+    }
+
+    if (!result.siteName) {
+      if (item.publisher && typeof item.publisher.name === 'string') {
+        result.siteName = item.publisher.name;
+      } else if (item.isPartOf && typeof item.isPartOf.name === 'string') {
+        result.siteName = item.isPartOf.name;
+      }
+    }
+
+    if (!result.description && typeof item.description === 'string') {
+      result.description = item.description;
+    }
+
+    if (!result.ogImage) {
+      if (typeof item.image === 'string') {
+        result.ogImage = item.image;
+      } else if (item.image && typeof item.image === 'object') {
+        if (typeof item.image.url === 'string') result.ogImage = item.image.url;
+        else if (Array.isArray(item.image) && typeof item.image[0] === 'string') {
+          result.ogImage = item.image[0];
+        } else if (Array.isArray(item.image) && typeof item.image[0]?.url === 'string') {
+          result.ogImage = item.image[0].url;
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 export function convertHtmlToMarkdown(
@@ -226,982 +804,1043 @@ export function convertHtmlToMarkdown(
   targetUrl: string,
   maxChars: number,
   isRendered = false,
-): { title: string; markdown: string; ogImage?: string; description?: string; isSpaFallbackNeeded: boolean } {
-  const parsedUrl = new URL(targetUrl);
+  onlyMainContent = true,
+  selectors?: Record<string, string>,
+  removeSelectors?: string[],
+): {
+  title: string;
+  markdown: string;
+  ogImage?: string;
+  description?: string;
+  publishedTime?: string;
+  author?: string;
+  siteName?: string;
+  isTruncated: boolean;
+  links: string[];
+  images?: ImageItem[];
+  jsonLd?: any[];
+  tables?: TableData[];
+  extracted?: Record<string, string | null>;
+  media?: MediaInfo;
+  html?: string;
+  estimatedTokens: number;
+} {
   const $ = cheerio.load(rawHtml);
 
+  // 1. JSON-LD の先行抽出 (script タグ削除前)
+  const jsonLd: any[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const parsed = JSON.parse($(el).text());
+      if (parsed) jsonLd.push(parsed);
+    } catch {}
+  });
+
+  // JSON-LD からのメタデータ（Schema.org）抽出
+  const jsonLdMeta = extractMetadataFromJsonLd(jsonLd);
+
+  // 2. メタデータの抽出 (OGP / JSON-LD / Standard Meta)
   const title =
     $('title').first().text().trim() ||
-    $('meta[property="og:title"]').attr('content')?.trim() ||
-    parsedUrl.hostname;
-  const ogImage = $('meta[property="og:image"]').attr('content')?.trim();
+    $('meta[property="og:title"]').attr('content') ||
+    targetUrl;
+
   const description =
-    $('meta[property="og:description"]').attr('content')?.trim() ||
-    $('meta[name="description"]').attr('content')?.trim();
+    $('meta[property="og:description"]').attr('content') ||
+    $('meta[name="description"]').attr('content') ||
+    jsonLdMeta.description ||
+    undefined;
 
-  // 不要タグの削除
-  $(
-    'script, style, noscript, svg, iframe, nav, footer, header, aside, form, ' +
-      '[role="navigation"], [role="banner"], [role="dialog"], ' +
-      '#cookieyes, .cookie-banner, .onetrust-pc-dark-filter, #onetrust-consent-sdk, ' +
-      '#no-js-banner, .loading__no-js, .modal-backdrop, .ad, .advertisement',
-  ).remove();
+  const ogImage =
+    $('meta[property="og:image"]').attr('content') ||
+    $('meta[name="twitter:image"]').attr('content') ||
+    jsonLdMeta.ogImage ||
+    undefined;
 
-  const cleanedHtml = $.html();
+  const publishedTime =
+    $('meta[property="article:published_time"]').attr('content') ||
+    $('meta[name="pubdate"]').attr('content') ||
+    $('meta[name="publish-date"]').attr('content') ||
+    $('time[datetime]').first().attr('datetime') ||
+    jsonLdMeta.publishedTime ||
+    undefined;
 
-  // Readability による記事抽出の試行
-  let bodyMarkdown = '';
-  try {
-    const { document } = parseHTML(cleanedHtml);
-    const reader = new Readability(document as any);
-    const article = reader.parse();
-    if (article && article.content && article.content.length > 100) {
-      bodyMarkdown = turndown.turndown(article.content);
+  const author =
+    $('meta[name="author"]').attr('content') ||
+    $('meta[property="article:author"]').attr('content') ||
+    jsonLdMeta.author ||
+    undefined;
+
+  const siteName =
+    $('meta[property="og:site_name"]').attr('content') ||
+    jsonLdMeta.siteName ||
+    undefined;
+
+  // 3. リンク一覧の抽出
+  const links: string[] = [];
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href) {
+      try {
+        const absUrl = new URL(href, targetUrl).href;
+        if (absUrl.startsWith('http') && !links.includes(absUrl)) {
+          links.push(absUrl);
+        }
+      } catch {}
     }
-  } catch {
-    // Readability 失敗時は Cheerio フォールバック
+  });
+
+  // 4. 画像一覧 & キャプション・メタデータの抽出
+  const images: ImageItem[] = [];
+  $('img').each((_, el) => {
+    const src = $(el).attr('src') || $(el).attr('data-src');
+    if (src) {
+      try {
+        const absUrl = new URL(src, targetUrl).href;
+        if (absUrl.startsWith('http') && !images.some((img) => img.url === absUrl)) {
+          const $img = $(el);
+          const alt = $img.attr('alt')?.trim() || undefined;
+          const imgTitle = $img.attr('title')?.trim() || undefined;
+          const widthStr = $img.attr('width');
+          const heightStr = $img.attr('height');
+          const width = widthStr ? parseInt(widthStr, 10) : undefined;
+          const height = heightStr ? parseInt(heightStr, 10) : undefined;
+
+          let caption: string | undefined = undefined;
+          const figure = $img.closest('figure');
+          if (figure.length > 0) {
+            const figcaption = figure.find('figcaption').first().text().trim();
+            if (figcaption) caption = figcaption;
+          }
+
+          const isMainImage = (ogImage && absUrl === ogImage) || images.length === 0;
+
+          images.push({
+            url: absUrl,
+            alt,
+            title: imgTitle,
+            caption,
+            isMainImage: isMainImage ? true : undefined,
+            width: !isNaN(width as number) ? width : undefined,
+            height: !isNaN(height as number) ? height : undefined,
+          });
+        }
+      } catch {}
+    }
+  });
+
+  // 5. 構造化テーブルの抽出
+  const tables = extractTablesFromHtml($);
+
+  // 6. YouTube / 動画メディアの抽出
+  const media = extractMediaInfo($, targetUrl, rawHtml);
+
+  // 7. ピンポイント セレクタ抽出
+  const extracted = extractWithSelectors($, selectors, targetUrl);
+
+  // 8. ノイズ要素 & Cookie 同意バナー等のパージ
+  const noiseSelectors = [
+    'script',
+    'style',
+    'noscript',
+    'iframe',
+    'svg',
+    '.ads',
+    '.advertisement',
+    '#cookie-banner',
+    '.cookie-consent',
+    '.onetrust-pc-dark-filter',
+    '#onetrust-consent-sdk',
+    '#CybotCookiebotDialog',
+  ];
+  if (removeSelectors && removeSelectors.length > 0) {
+    noiseSelectors.push(...removeSelectors);
+  }
+  $(noiseSelectors.join(', ')).remove();
+
+  // 8.5 コードブロックの言語情報保持 (Readability パージ対策)
+  $('pre code, pre').each((_, el) => {
+    const cls = $(el).attr('class') || '';
+    const match = cls.match(/(?:language|lang|highlight)-([a-zA-Z0-9_+-]+)/i);
+    if (match) {
+      $(el).attr('data-language', match[1]);
+    }
+  });
+
+  // 9. Mozilla Readability による本文抽出
+  let contentHtml = '';
+  if (onlyMainContent) {
+    try {
+      const { document } = parseHTML($.html());
+      const reader = new Readability(document);
+      const article = reader.parse();
+      if (article && article.content) {
+        contentHtml = article.content;
+      }
+    } catch {}
+    if (!contentHtml) {
+      contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
+    }
+  } else {
+    contentHtml = $('body').html() || $.html() || '';
   }
 
-  if (!bodyMarkdown || bodyMarkdown.length < 50) {
-    let mainElement = $(
-      'article, main, [role="main"], .content, .main-content, .post-content, .entry-content, #main, #content, #root, #__next, #react-root',
-    );
-    if (mainElement.length === 0) mainElement = $('body');
-    const mainHtml = mainElement.html() || '';
-    bodyMarkdown = turndown.turndown(mainHtml);
-  }
+  // 10. Frontmatter の組み立て
+  const frontmatterLines: string[] = [];
+  if (publishedTime) frontmatterLines.push(`publishedTime: "${publishedTime}"`);
+  if (author) frontmatterLines.push(`author: "${author}"`);
+  if (siteName) frontmatterLines.push(`siteName: "${siteName}"`);
+  const header = frontmatterLines.length > 0 ? `---\n${frontmatterLines.join('\n')}\n---\n\n` : '';
 
-  bodyMarkdown = bodyMarkdown
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s+\n/g, '\n\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // 11. HTML -> Markdown 変換 & クレンジング
+  let markdown = header + turndown.turndown(contentHtml);
+  markdown = cleanMarkdownTokens(markdown);
 
-  // SPA かどうかの自動判定
-  const isSpaFallbackNeeded = checkIfSpaFallbackNeeded(rawHtml, bodyMarkdown, isRendered);
-
-  // YAML Frontmatter の構築
-  const frontmatterLines: string[] = ['---'];
-  frontmatterLines.push(`title: "${title.replace(/"/g, '\\"')}"`);
-  frontmatterLines.push(`url: "${targetUrl}"`);
-  if (ogImage) frontmatterLines.push(`ogImage: "${ogImage}"`);
-  if (description) frontmatterLines.push(`description: "${description.replace(/"/g, '\\"')}"`);
-  frontmatterLines.push('---\n\n');
-
-  const fullMarkdown = frontmatterLines.join('\n') + bodyMarkdown;
+  const isTruncated = markdown.length > maxChars;
+  const truncatedMarkdown = safeTruncateMarkdown(markdown, maxChars);
+  const estimatedTokens = estimateTokens(truncatedMarkdown);
 
   return {
     title,
-    markdown: fullMarkdown,
+    markdown: truncatedMarkdown,
     ogImage,
     description,
-    isSpaFallbackNeeded,
+    publishedTime,
+    author,
+    siteName,
+    isTruncated,
+    links,
+    images: images.length > 0 ? images : undefined,
+    jsonLd: jsonLd.length > 0 ? jsonLd : undefined,
+    tables: tables.length > 0 ? tables : undefined,
+    extracted,
+    media,
+    html: contentHtml,
+    estimatedTokens,
   };
 }
 
 // ==========================================
-// 5. Headless Chromium (Puppeteer + Stealth + Turnstile 突破)
+// 6. Stealth Chromium レンダリング
 // ==========================================
-let sharedBrowser: Browser | null = null;
-
-export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
-  // プロキシ指定がある場合は専用の Chromium インスタンスを起動
-  if (proxyUrl) {
-    let proxyServerArg = proxyUrl;
-    try {
-      const parsedProxy = new URL(proxyUrl);
-      proxyServerArg = `${parsedProxy.protocol}//${parsedProxy.host}`;
-    } catch {}
-
-    const dedicatedBrowser = await puppeteer.launch({
-      executablePath: resolveChromiumPath(),
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-blink-features=AutomationControlled',
-        '--window-size=1280,800',
-        `--proxy-server=${proxyServerArg}`,
-      ],
-    });
-    return { browser: dedicatedBrowser, isDedicated: true };
+export async function fetchWithStealthBrowser(
+  url: string,
+  timeoutMs = 30000,
+  proxyUrl?: string,
+  clipSelector?: string,
+  customCookies?: CookieParam[],
+): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
+  const chromePath = resolveChromiumPath();
+  if (!chromePath) {
+    throw new Error('Chromium/Chrome が見つからないためブラウザレンダリングを実行できません');
   }
 
-  if (sharedBrowser && sharedBrowser.connected) {
-    return { browser: sharedBrowser, isDedicated: false };
-  }
+  await throttleDomain(url);
 
-  const browserlessUrl = process.env.BROWSERLESS_URL;
-  if (browserlessUrl) {
-    const wsUrl = browserlessUrl.replace(/^http/, 'ws');
-    try {
-      sharedBrowser = await puppeteer.connect({ browserWSEndpoint: wsUrl });
-      return { browser: sharedBrowser, isDedicated: false };
-    } catch (e: any) {
-      console.warn(`[web-fetcher] Failed to connect to BROWSERLESS_URL (${wsUrl}), falling back to local launch:`, e?.message);
-    }
-  }
+  // ブラウザ同時実行数制限（セマフォ待機）
+  await browserSemaphore.acquire();
 
-  sharedBrowser = await puppeteer.launch({
-    executablePath: resolveChromiumPath(),
-    headless: true,
-    args: [
+  try {
+    const args = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--disable-blink-features=AutomationControlled',
-      '--window-size=1280,800',
-    ],
-  });
-
-  return { browser: sharedBrowser, isDedicated: false };
-}
-
-/** 企業の高度な Bot 検知 (Cloudflare / Akamai / DataDome / Kasada) を回避するステルス偽装 */
-export async function applyStealthEvasions(page: Page): Promise<void> {
-  await page.setUserAgent(USER_AGENT);
-  await page.setViewport({ width: 1280, height: 800 });
-  await page.setExtraHTTPHeaders({
-    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-    'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"',
-  });
-
-  await page.evaluateOnNewDocument(() => {
-    const g = globalThis as any;
-    // 1. navigator.webdriver 完全隠蔽 (プロトタイプからの削除)
-    try {
-      delete (Object.getPrototypeOf(navigator) as any).webdriver;
-    } catch {}
-    try {
-      delete (navigator as any).webdriver;
-    } catch {}
-    Object.defineProperty(navigator, 'webdriver', {
-      get: () => undefined,
-    });
-
-    // 2. window.chrome オブジェクト完全模倣
-    g.chrome = {
-      app: {
-        isInstalled: false,
-        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
-        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
-      },
-      runtime: {
-        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
-        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
-        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
-        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
-        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
-      },
-      csi: function () {},
-      loadTimes: function () {},
-    };
-
-    // 3. navigator.languages
-    Object.defineProperty(navigator, 'languages', {
-      get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-    });
-
-    // 4. navigator.plugins & mimeTypes
-    const fakePlugins = [
-      { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-      { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      '--window-size=1920,1080',
     ];
-    Object.defineProperty(navigator, 'plugins', {
-      get: () => fakePlugins,
+    if (proxyUrl) args.push(`--proxy-server=${proxyUrl}`);
+
+    const browser: Browser = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: true,
+      args,
     });
 
-    // 5. Permissions API 偽装
-    if ((navigator as any).permissions && (navigator as any).permissions.query) {
-      const origQuery = (navigator as any).permissions.query;
-      (navigator as any).permissions.query = (parameters: any) =>
-        parameters.name === 'notifications'
-          ? Promise.resolve({ state: (g.Notification?.permission === 'granted') ? 'granted' : 'prompt' })
-          : origQuery(parameters);
-    }
-
-    // 6. WebGL Vendor & Renderer 偽装 (SwiftShader 隠蔽)
-    if (g.WebGLRenderingContext) {
-      const getParameter = g.WebGLRenderingContext.prototype.getParameter;
-      g.WebGLRenderingContext.prototype.getParameter = function (parameter: any) {
-        if (parameter === 37445) return 'Google Inc. (Intel)'; // UNMASKED_VENDOR_WEBGL
-        if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)'; // UNMASKED_RENDERER_WEBGL
-        return getParameter.apply(this, [parameter]);
-      };
-    }
-  });
-}
-
-/** Cloudflare Turnstile チャレンジを自動検知して突破 */
-export async function bypassCloudflareTurnstile(page: Page): Promise<boolean> {
-  try {
-    const turnstileIframe = await page.$('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
-    if (turnstileIframe) {
-      const box = await turnstileIframe.boundingBox();
-      if (box) {
-        const clickX = box.x + 28;
-        const clickY = box.y + box.height / 2;
-        await page.mouse.move(clickX, clickY, { steps: 20 });
-        await new Promise((r) => setTimeout(r, 150));
-        await page.mouse.click(clickX, clickY);
-
-        await Promise.race([
-          page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 6000 }),
-          new Promise((r) => setTimeout(r, 4000)),
-        ]).catch(() => {});
-        return true;
-      }
-    }
-  } catch {}
-  return false;
-}
-
-export async function fetchWithStealthBrowser(
-  targetUrl: string,
-  maxChars: number,
-  proxyUrl?: string,
-): Promise<ScrapeResult> {
-  const { browser, isDedicated } = await getBrowser(proxyUrl);
-  const page: Page = await browser.newPage();
-
-  try {
-    // プロキシ認証の設定 (ユーザー名・パスワードが含まれる場合)
-    if (proxyUrl) {
-      try {
-        const parsedProxy = new URL(proxyUrl);
-        if (parsedProxy.username || parsedProxy.password) {
-          await page.authenticate({
-            username: decodeURIComponent(parsedProxy.username),
-            password: decodeURIComponent(parsedProxy.password),
-          });
-        }
-      } catch {}
-    }
-
-    await applyStealthEvasions(page);
-
-    // 画像・フォントの遮断 (高速化)
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      if (['image', 'font', 'media'].includes(req.resourceType())) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    // ドメイン別スロットリング & Jitter (IP BAN 防止)
-    await throttleDomain(new URL(targetUrl).hostname);
-
-    // ページ遷移
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-
-    // Cloudflare Turnstile 自動突破 (絶対座標マウスインジェクション)
-    await bypassCloudflareTurnstile(page);
-
-    // 描画待機 (SPA Hydration 安定化)
-    await new Promise((r) => setTimeout(r, 1000));
-    const rawHtml = await page.content();
-
-    const { title, markdown, ogImage, description } = convertHtmlToMarkdown(
-      rawHtml,
-      targetUrl,
-      maxChars,
-      true,
-    );
-
-    const isTruncated = markdown.length > maxChars;
-    const finalContent = markdown.slice(0, maxChars);
-
-    return {
-      url: targetUrl,
-      title,
-      content: finalContent,
-      isTruncated,
-      contentType: 'text/html',
-      source: 'web',
-      renderedWithBrowser: true,
-      ogImage,
-      description,
-    };
-  } finally {
-    await page.close().catch(() => {});
-    if (isDedicated) {
-      await browser.close().catch(() => {});
-    }
-  }
-}
-
-// ==========================================
-// 5.5 対話型ブラウザ自動操作 (Browser Actions & Automation)
-// ==========================================
-export interface BrowserActionStep {
-  type: 'click' | 'fill' | 'type' | 'press' | 'select' | 'scroll' | 'wait' | 'evaluate' | 'navigate';
-  url?: string;
-  selector?: string;
-  text?: string;
-  value?: string;
-  key?: string;
-  direction?: 'down' | 'up';
-  distance?: number;
-  ms?: number;
-  script?: string;
-  clear?: boolean;
-  delay?: number;
-}
-
-export interface BrowserActionOptions {
-  url?: string;
-  sessionId?: string;
-  createSession?: boolean;
-  closeSession?: boolean;
-  actions?: BrowserActionStep[];
-  extract?: {
-    markdown?: boolean;
-    html?: boolean;
-    screenshot?: boolean;
-    screenshotFullPage?: boolean;
-    maxChars?: number;
-  };
-  timeout?: number;
-  proxyUrl?: string;
-}
-
-export interface BrowserActionResult {
-  source: 'browser';
-  sessionId?: string;
-  sessionClosed?: boolean;
-  url: string;
-  title: string;
-  content?: string;
-  html?: string;
-  screenshot?: string; // base64 PNG
-  actionLogs: Array<{
-    step: number;
-    type: string;
-    target?: string;
-    success: boolean;
-    message?: string;
-    elapsedMs: number;
-  }>;
-  renderedWithBrowser: true;
-}
-
-import {
-  handleBrowserSessionAction,
-  closeBrowserSession,
-  closeAllBrowserSessions,
-  getActiveSessionCount,
-  type BrowserSession,
-  type BrowserSessionOptions,
-  type BrowserSessionResult,
-} from './browser_session.js';
-
-export {
-  handleBrowserSessionAction,
-  closeBrowserSession,
-  closeAllBrowserSessions,
-  getActiveSessionCount,
-  type BrowserSession,
-  type BrowserSessionOptions,
-  type BrowserSessionResult,
-};
-
-/** 一連のブラウザ操作（クリック・入力・スクロール・スクショ）を実行 (セッション対応) */
-export async function executeBrowserActions(options: BrowserActionOptions): Promise<BrowserActionResult> {
-  return handleBrowserSessionAction(options);
-}
-
-// ==========================================
-// 6. 安全なリダイレクト追従付き静的 HTTP Fetch (プロキシ対応)
-// ==========================================
-export async function fetchWithSafeRedirects(
-  initialUrl: string,
-  timeoutMs: number,
-  maxRedirects = 5,
-  proxyUrl?: string,
-): Promise<{ response: Response; finalUrl: string } | null> {
-  let currentUrl = initialUrl;
-
-  for (let i = 0; i <= maxRedirects; i++) {
-    let parsed: URL;
     try {
-      parsed = new URL(currentUrl);
-    } catch {
-      return null;
+      const page: Page = await browser.newPage();
+      await page.setUserAgent(USER_AGENT);
+      await page.setViewport({ width: 1920, height: 1080 });
+
+      if (customCookies && customCookies.length > 0) {
+        const puppeteerCookies = customCookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain,
+          path: c.path || '/',
+          httpOnly: c.httpOnly,
+          secure: c.secure,
+          sameSite: c.sameSite,
+        }));
+        await page.setCookie(...(puppeteerCookies as any));
+      }
+
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      });
+
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: timeoutMs });
+
+      const finalUrl = page.url();
+      const title = await page.title();
+      const html = await page.content();
+
+      let screenshot: string | undefined = undefined;
+      if (clipSelector) {
+        try {
+          const el = await page.$(clipSelector);
+          if (el) {
+            const buf = await el.screenshot({ encoding: 'base64' });
+            screenshot = buf as string;
+          }
+        } catch {}
+      } else {
+        const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
+        screenshot = buf as string;
+      }
+
+      return { html, title, screenshot, finalUrl };
+    } finally {
+      await browser.close();
     }
-
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return null;
-    }
-
-    if (isBlockedHostname(parsed.hostname)) {
-      throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsed.hostname}"`);
-    }
-
-    await throttleDomain(parsed.hostname);
-
-    const effectiveProxy = proxyUrl || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY;
-
-    const res = await (fetch as any)(currentUrl, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5',
-        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-        'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'manual',
-      ...(effectiveProxy ? { proxy: effectiveProxy } : {}),
-    });
-
-    if ([301, 302, 303, 307, 308].includes(res.status)) {
-      const location = res.headers.get('location');
-      if (!location) return null;
-      currentUrl = new URL(location, currentUrl).toString();
-      continue;
-    }
-
-    return { response: res, finalUrl: currentUrl };
+  } finally {
+    browserSemaphore.release();
   }
-
-  throw new Error(`リダイレクト回数が上限 (${maxRedirects}) を超えました: ${initialUrl}`);
 }
 
 // ==========================================
-// 7. PDF ドキュメントの Markdown 変換 (unpdf)
+// 7. PDF 構造化抽出 (unpdf)
 // ==========================================
 export async function parsePdfToMarkdown(
-  pdfBuffer: ArrayBuffer | Uint8Array,
+  buffer: ArrayBuffer | Uint8Array,
   targetUrl: string,
-  maxChars: number,
+  maxChars = DEFAULT_MAX_CHARS,
 ): Promise<ScrapeResult> {
-  const { text, totalPages } = await extractText(new Uint8Array(pdfBuffer));
-  const fullText = Array.isArray(text) ? text.join('\n\n--- [Page Break] ---\n\n') : String(text || '');
-  let title = new URL(targetUrl).pathname.split('/').pop() || 'PDF Document';
+  const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const { text, totalPages } = await extractText(uint8, { mergePages: true });
+  let pdfMetadata: any = {};
   try {
-    const meta = await getMeta(new Uint8Array(pdfBuffer));
-    if (meta?.info?.Title) {
-      title = String(meta.info.Title);
-    }
+    const meta = await getMeta(uint8);
+    pdfMetadata = meta?.info || {};
   } catch {}
 
-  const isTruncated = fullText.length > maxChars;
-  const slicedText = fullText.slice(0, maxChars);
+  const title = pdfMetadata.Title || targetUrl.split('/').pop() || 'PDF Document';
+  const author = pdfMetadata.Author || undefined;
+  const rawText = Array.isArray(text) ? text.join('\n\n') : (text || '');
+  const markdown = rawText.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
 
-  const frontmatter = [
-    '---',
-    `title: "${title.replace(/"/g, '\\"')}"`,
-    `url: "${targetUrl}"`,
-    `totalPages: ${totalPages}`,
-    'contentType: "application/pdf"',
-    '---\n\n',
-  ].join('\n');
+  const isTruncated = markdown.length > maxChars;
+  const truncatedContent = safeTruncateMarkdown(markdown, maxChars);
+  const estimatedTokens = estimateTokens(truncatedContent);
 
   return {
     url: targetUrl,
     title,
-    content: frontmatter + slicedText,
+    author,
+    content: truncatedContent,
     isTruncated,
     contentType: 'application/pdf',
     source: 'web',
-    renderedWithBrowser: false,
+    metadata: pdfMetadata,
+    estimatedTokens,
   };
 }
 
 // ==========================================
-// 8. クエリ関連ハイライト抽出 (検索語句に関連する重要文を自動抽出)
+// 10. 高度なブラウザ操作 (browser_action)
 // ==========================================
-export function extractQueryHighlights(content: string, query: string, maxHighlights = 3): string[] {
-  if (!query || !content) return [];
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length >= 2);
-  if (terms.length === 0) return [];
+export async function executeBrowserActions(options: BrowserActionOptions): Promise<any> {
+  const { handleBrowserSessionAction } = await import('./browser_session.js');
+  const sessionRes = await handleBrowserSessionAction({
+    url: options.url,
+    sessionId: options.sessionId,
+    ownerToken: options.ownerToken,
+    createSession: options.createSession,
+    closeSession: options.closeSession,
+    actions: options.actions,
+    extract: options.extract,
+    timeout: options.timeout,
+    proxyUrl: options.proxyUrl,
+  });
 
-  const paragraphs = content.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length >= 20 && !p.startsWith('---'));
-  const scored: { text: string; score: number }[] = [];
-
-  for (const para of paragraphs) {
-    const lower = para.toLowerCase();
-    let score = 0;
-    for (const term of terms) {
-      const occurrences = (lower.match(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
-      score += occurrences * (term.length >= 4 ? 2 : 1);
-    }
-    if (score > 0) {
-      const snippet = para.length > 300 ? para.slice(0, 300) + '...' : para;
-      scored.push({ text: snippet, score });
-    }
-  }
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, maxHighlights).map((s) => s.text);
+  return {
+    success: true,
+    url: sessionRes.url,
+    sessionId: sessionRes.sessionId,
+    sessionClosed: sessionRes.sessionClosed,
+    markdown: sessionRes.content,
+    content: sessionRes.content,
+    screenshot: sessionRes.screenshot,
+    html: sessionRes.html,
+    actionOutputs: sessionRes.actionLogs?.map((l: any, idx: number) => ({
+      step: idx + 1,
+      type: l.type,
+      result: l.success ? 'ok' : undefined,
+      error: !l.success ? l.message : undefined,
+    })),
+    actionLogs: sessionRes.actionLogs,
+    renderedWithBrowser: true,
+    source: 'browser',
+  };
 }
 
 // ==========================================
-// 9. ドメインフィルタリング (includeDomains / excludeDomains)
+// 11. スクレイピング完了処理 & オプション統合
 // ==========================================
-export function filterByDomains(
-  items: any[],
-  includeDomains?: string[],
-  excludeDomains?: string[],
-): any[] {
-  let filtered = items;
-
-  if (includeDomains && includeDomains.length > 0) {
-    const normalizedInc = includeDomains.map((d) => d.toLowerCase().trim());
-    filtered = filtered.filter((item) => {
-      const itemUrl = item.url || item.link;
-      if (!itemUrl) return false;
-      try {
-        const host = new URL(itemUrl).hostname.toLowerCase();
-        return normalizedInc.some((inc) => host === inc || host.endsWith('.' + inc));
-      } catch {
-        return false;
-      }
-    });
+async function finalizeScrapeResult(
+  result: ScrapeResult,
+  options: {
+    query?: string;
+    shouldExtractHighlights: boolean;
+    shouldExtractSummary: boolean;
+    shouldExtractCitations: boolean;
+    shouldChunkMarkdown: boolean;
+    chunkSize: number;
+    shouldValidateLinks: boolean;
+    shouldFormatAsPrompt: boolean;
+    shouldHighlightMatches: boolean;
+    shouldMaskPii: boolean;
+    webhookUrl?: string;
+  },
+): Promise<ScrapeResult> {
+  if (options.shouldMaskPii) {
+    result.content = maskPiiInText(result.content);
   }
+  const stats = calculateContentStats(result.content);
+  result.characterCount = stats.characterCount;
+  result.wordCount = stats.wordCount;
+  result.readingTimeMin = stats.readingTimeMin;
 
-  if (excludeDomains && excludeDomains.length > 0) {
-    const normalizedExc = excludeDomains.map((d) => d.toLowerCase().trim());
-    filtered = filtered.filter((item) => {
-      const itemUrl = item.url || item.link;
-      if (!itemUrl) return true;
-      try {
-        const host = new URL(itemUrl).hostname.toLowerCase();
-        return !normalizedExc.some((exc) => host === exc || host.endsWith('.' + exc));
-      } catch {
-        return true;
-      }
-    });
+  if (options.shouldExtractHighlights && options.query) {
+    result.highlights = extractQueryHighlights(result.content, options.query);
   }
-
-  return filtered;
+  if (options.shouldExtractSummary) {
+    result.summary = generateExtractiveSummary(result.content, 4);
+  }
+  if (options.shouldExtractCitations) {
+    result.citations = extractCitationsFromMarkdown(result.content, result.url);
+  }
+  if (options.shouldChunkMarkdown) {
+    result.chunks = chunkMarkdownContent(result.content, options.chunkSize);
+  }
+  if (options.shouldValidateLinks && result.links && result.links.length > 0) {
+    result.linksWithStatus = await validateExtractedLinks(result.links);
+  }
+  if (options.shouldHighlightMatches && options.query) {
+    result.highlightedContent = highlightQueryMatchesInMarkdown(result.content, options.query);
+  }
+  if (options.shouldFormatAsPrompt) {
+    result.promptContext = generatePromptContext(result);
+  }
+  if (options.webhookUrl) {
+    sendWebhookNotification(options.webhookUrl, result);
+  }
+  return result;
 }
 
+// ==========================================
+// 12. 単一 URL スクレイピング (scrapeUrl)
+// ==========================================
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
   mode?: 'auto' | 'fast' | 'browser';
-  fastOnly?: boolean;
   renderJs?: boolean;
-  proxyUrl?: string;
-  timeoutMs?: number;
-  noCache?: boolean;
+  fastOnly?: boolean;
+  formats?: ScrapeFormat[];
+  onlyMainContent?: boolean;
+  selectors?: Record<string, string>;
+  clipSelector?: string;
+  headers?: Record<string, string>;
+  cookies?: CookieParam[];
+  removeSelectors?: string[];
   query?: string;
   extractHighlights?: boolean;
+  extractSummary?: boolean;
+  extractCitations?: boolean;
+  chunkMarkdown?: boolean;
+  chunkSize?: number;
+  validateLinks?: boolean;
+  formatAsPrompt?: boolean;
+  highlightMatches?: boolean;
+  maskPii?: boolean;
+  webhookUrl?: string;
+  retries?: number;
+  retryDelayMs?: number;
+  proxyUrl?: string;
+  noCache?: boolean;
+  timeoutMs?: number;
+  onProgress?: (event: { stage: 'start' | 'fetch' | 'render' | 'enrich' | 'done'; message: string; data?: any }) => void;
 }): Promise<ScrapeResult> {
-  const targetUrl = options.url;
+  const url = options.url;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-  const timeoutMs = options.timeoutMs ?? 10000;
-  const noCache = options.noCache ?? false;
-  const query = options.query;
-  const shouldExtractHighlights = options.extractHighlights ?? false;
-  const proxyUrl = options.proxyUrl;
+  const formats = options.formats ?? ['markdown'];
+  const onlyMainContent = options.onlyMainContent !== false;
+  const timeoutMs = options.timeoutMs ?? 15000;
+  const retries = Math.min(Math.max(options.retries ?? 0, 0), 3);
+  const retryDelayMs = options.retryDelayMs ?? 1000;
+  const onProgress = options.onProgress;
 
-  // 競合チェック & 動作モードの解決
+  onProgress?.({ stage: 'start', message: `Starting scrape for ${url}` });
+
   if (options.fastOnly && options.renderJs) {
-    throw new Error('`fastOnly: true` と `renderJs: true` は同時に指定できません。`mode: "auto" | "fast" | "browser"` を指定してください。');
+    throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const effectiveMode: 'auto' | 'fast' | 'browser' =
-    options.mode ?? (options.fastOnly ? 'fast' : options.renderJs ? 'browser' : 'auto');
+  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.query || ''}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(targetUrl);
-  } catch {
-    throw new Error(`無効な URL です: ${targetUrl}`);
-  }
-
-  if (isBlockedHostname(parsedUrl.hostname)) {
-    throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedUrl.hostname}"`);
-  }
-
-  const cacheKey = `scrape:${targetUrl}:${maxChars}:${shouldExtractHighlights}:${query || ''}:${effectiveMode}:${proxyUrl || ''}`;
-  if (!noCache) {
+  if (!options.noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
-    if (cached) return cached;
-  }
-
-  // mode: "browser" の場合は Level 1 をスキップして直接 Chromium 実行
-  if (effectiveMode === 'browser') {
-    const result = await fetchWithStealthBrowser(targetUrl, maxChars);
-    if (shouldExtractHighlights && query) {
-      result.highlights = extractQueryHighlights(result.content, query);
+    if (cached) {
+      onProgress?.({ stage: 'done', message: 'Cache hit', data: cached });
+      return cached;
     }
-    if (!noCache) setToCache(cacheKey, result);
-    return result;
   }
 
-  let staticResult: {
-    title: string;
-    markdown: string;
-    isSpaFallbackNeeded: boolean;
-    contentType: string;
-    ogImage?: string;
-    description?: string;
-  } | null = null;
+  return runWithSingleFlight(cacheKey, async () => {
+    let attempt = 0;
+    let lastError: any = null;
 
-  try {
-    const fetchRes = await fetchWithSafeRedirects(targetUrl, timeoutMs);
+    while (attempt <= retries) {
+      try {
+        let result: ScrapeResult;
 
-    if (fetchRes && fetchRes.response.ok) {
-      const response = fetchRes.response;
-      const contentType = response.headers.get('content-type') || '';
+      const isForcedBrowser = options.mode === 'browser' || options.renderJs === true;
+      const isFastMode = options.mode === 'fast' || options.fastOnly === true;
 
-      // PDF の場合: unpdf でテキスト抽出
-      if (contentType.includes('application/pdf') || fetchRes.finalUrl.toLowerCase().endsWith('.pdf')) {
-        const arrayBuf = await response.arrayBuffer();
-        const pdfResult = await parsePdfToMarkdown(arrayBuf, fetchRes.finalUrl, maxChars);
-        if (shouldExtractHighlights && query) {
-          pdfResult.highlights = extractQueryHighlights(pdfResult.content, query);
+      if (!isForcedBrowser) {
+        onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
+        const { finalUrl, response } = await fetchWithSafeRedirects(
+          url,
+          timeoutMs,
+          5,
+          options.headers,
+          options.cookies,
+        );
+
+        const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
+
+        if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
+          const buf = await response.arrayBuffer();
+          const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
+          result = await finalizeScrapeResult(pdfResult, {
+            query: options.query,
+            shouldExtractHighlights: options.extractHighlights ?? false,
+            shouldExtractSummary: options.extractSummary ?? false,
+            shouldExtractCitations: options.extractCitations ?? false,
+            shouldChunkMarkdown: options.chunkMarkdown ?? false,
+            chunkSize: options.chunkSize ?? 1000,
+            shouldValidateLinks: options.validateLinks ?? false,
+            shouldFormatAsPrompt: options.formatAsPrompt ?? false,
+            shouldHighlightMatches: options.highlightMatches ?? false,
+            shouldMaskPii: options.maskPii ?? false,
+            webhookUrl: options.webhookUrl,
+          });
+          if (!options.noCache) setToCache(cacheKey, result);
+          return result;
         }
-        if (!noCache) setToCache(cacheKey, pdfResult);
-        return pdfResult;
-      }
 
-      if (contentType.includes('text/plain') || contentType.includes('application/json')) {
-        const rawText = await response.text();
-        const trimmed = rawText.slice(0, maxChars);
-        const result: ScrapeResult = {
-          url: fetchRes.finalUrl,
-          title: new URL(fetchRes.finalUrl).hostname,
-          content: trimmed,
-          isTruncated: rawText.length > maxChars,
-          contentType,
-          source: 'web',
-          renderedWithBrowser: false,
-        };
-        if (shouldExtractHighlights && query) {
-          result.highlights = extractQueryHighlights(trimmed, query);
-        }
-        if (!noCache) setToCache(cacheKey, result);
-        return result;
-      }
+        const buf = await response.arrayBuffer();
+        const html = decodeHtmlBuffer(buf, contentType);
 
-      if (contentType.includes('text/html') || !contentType) {
-        const rawHtml = await response.text();
-        const { title, markdown, ogImage, description, isSpaFallbackNeeded } = convertHtmlToMarkdown(
-          rawHtml,
-          fetchRes.finalUrl,
+        const parsed = convertHtmlToMarkdown(
+          html,
+          finalUrl,
           maxChars,
           false,
+          onlyMainContent,
+          options.selectors,
+          options.removeSelectors,
         );
-        staticResult = { title, markdown, isSpaFallbackNeeded, contentType, ogImage, description };
 
-        if (!isSpaFallbackNeeded || effectiveMode === 'fast') {
-          const isTruncated = markdown.length > maxChars;
-          const result: ScrapeResult = {
-            url: fetchRes.finalUrl,
-            title,
-            content: markdown.slice(0, maxChars),
-            isTruncated,
-            contentType,
+        // Frontmatter を除いた実本文テキストの判定
+        const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
+        const hasLittleContent = bodyOnlyMarkdown.length < 50;
+
+        const chromePath = resolveChromiumPath();
+        const isSpaOrBlank =
+          !isFastMode &&
+          chromePath &&
+          (hasLittleContent ||
+            html.includes('id="root"') ||
+            html.includes('id="app"') ||
+            html.includes('__NEXT_DATA__') ||
+            html.includes('client-bootstrap') ||
+            html.includes('data-build=') ||
+            html.includes('data-reactroot') ||
+            html.includes('Please enable JavaScript') ||
+            html.includes('Checking your browser'));
+
+        if (!isSpaOrBlank) {
+          result = {
+            url: finalUrl,
+            title: parsed.title,
+            content: parsed.markdown,
+            isTruncated: parsed.isTruncated,
+            contentType: 'text/html',
             source: 'web',
             renderedWithBrowser: false,
-            ogImage,
-            description,
+            ogImage: parsed.ogImage,
+            description: parsed.description,
+            publishedTime: parsed.publishedTime,
+            author: parsed.author,
+            siteName: parsed.siteName,
+            links: formats.includes('links') ? parsed.links : undefined,
+            images: formats.includes('images') ? parsed.images : undefined,
+            jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
+            tables: formats.includes('tables') ? parsed.tables : undefined,
+            extracted: parsed.extracted,
+            media: parsed.media,
+            html: formats.includes('html') ? parsed.html : undefined,
+            rawHtml: formats.includes('rawHtml') ? html : undefined,
+            estimatedTokens: parsed.estimatedTokens,
           };
-          if (shouldExtractHighlights && query) {
-            result.highlights = extractQueryHighlights(result.content, query);
-          }
-          if (!noCache) setToCache(cacheKey, result);
+
+          onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
+          result = await finalizeScrapeResult(result, {
+            query: options.query,
+            shouldExtractHighlights: options.extractHighlights ?? false,
+            shouldExtractSummary: options.extractSummary ?? false,
+            shouldExtractCitations: options.extractCitations ?? false,
+            shouldChunkMarkdown: options.chunkMarkdown ?? false,
+            chunkSize: options.chunkSize ?? 1000,
+            shouldValidateLinks: options.validateLinks ?? false,
+            shouldFormatAsPrompt: options.formatAsPrompt ?? false,
+            shouldHighlightMatches: options.highlightMatches ?? false,
+            shouldMaskPii: options.maskPii ?? false,
+            webhookUrl: options.webhookUrl,
+          });
+
+          if (!options.noCache) setToCache(cacheKey, result);
+          onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
           return result;
         }
       }
-    } else if (fetchRes && [403, 429, 503].includes(fetchRes.response.status)) {
-      console.warn(`[web-fetcher] HTTP ${fetchRes.response.status} detected for "${targetUrl}", escalating to Browserless Chromium`);
-    }
-  } catch (err: any) {
-    if (err.message?.includes('セキュリティ上の理由')) {
-      throw err;
-    }
-    if (effectiveMode !== 'fast') {
-      console.warn(`[web-fetcher] Static fetch failed for "${targetUrl}", escalating to Browserless Chromium:`, err?.message);
-    }
-  }
 
-  if (effectiveMode === 'fast') {
-    if (staticResult && staticResult.markdown.trim().length > 0) {
-      const isTruncated = staticResult.markdown.length > maxChars;
-      const result: ScrapeResult = {
-        url: targetUrl,
-        title: staticResult.title,
-        content: staticResult.markdown.slice(0, maxChars),
-        isTruncated,
-        contentType: staticResult.contentType,
+      // Chromium 自動昇格 または ブラウザ指定モード
+      onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
+      const browserRes = await fetchWithStealthBrowser(
+        url,
+        timeoutMs,
+        options.proxyUrl,
+        options.clipSelector,
+        options.cookies,
+      );
+
+      const parsed = convertHtmlToMarkdown(
+        browserRes.html,
+        browserRes.finalUrl,
+        maxChars,
+        true,
+        onlyMainContent,
+        options.selectors,
+        options.removeSelectors,
+      );
+
+      result = {
+        url: browserRes.finalUrl,
+        title: browserRes.title || parsed.title,
+        content: parsed.markdown,
+        isTruncated: parsed.isTruncated,
+        contentType: 'text/html',
         source: 'web',
-        renderedWithBrowser: false,
-        ogImage: staticResult.ogImage,
-        description: staticResult.description,
+        renderedWithBrowser: true,
+        ogImage: parsed.ogImage,
+        description: parsed.description,
+        publishedTime: parsed.publishedTime,
+        author: parsed.author,
+        siteName: parsed.siteName,
+        screenshot: formats.includes('screenshot') ? browserRes.screenshot : undefined,
+        links: formats.includes('links') ? parsed.links : undefined,
+        images: formats.includes('images') ? parsed.images : undefined,
+        jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
+        tables: formats.includes('tables') ? parsed.tables : undefined,
+        extracted: parsed.extracted,
+        media: parsed.media,
+        html: formats.includes('html') ? parsed.html : undefined,
+        rawHtml: formats.includes('rawHtml') ? browserRes.html : undefined,
+        estimatedTokens: parsed.estimatedTokens,
       };
-      if (shouldExtractHighlights && query) {
-        result.highlights = extractQueryHighlights(result.content, query);
-      }
-      if (!noCache) setToCache(cacheKey, result);
+
+      onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
+      result = await finalizeScrapeResult(result, {
+        query: options.query,
+        shouldExtractHighlights: options.extractHighlights ?? false,
+        shouldExtractSummary: options.extractSummary ?? false,
+        shouldExtractCitations: options.extractCitations ?? false,
+        shouldChunkMarkdown: options.chunkMarkdown ?? false,
+        chunkSize: options.chunkSize ?? 1000,
+        shouldValidateLinks: options.validateLinks ?? false,
+        shouldFormatAsPrompt: options.formatAsPrompt ?? false,
+        shouldHighlightMatches: options.highlightMatches ?? false,
+        shouldMaskPii: options.maskPii ?? false,
+        webhookUrl: options.webhookUrl,
+      });
+
+      if (!options.noCache) setToCache(cacheKey, result);
+      onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
       return result;
+    } catch (err: any) {
+      lastError = err;
+      attempt++;
+      if (attempt <= retries) {
+        const backoff = retryDelayMs * Math.pow(2, attempt - 1);
+        await new Promise((r) => setTimeout(r, backoff));
+      }
     }
-    throw new Error(`ページの取得に失敗しました (fastOnly): ${targetUrl}`);
   }
 
-  // Level 2: Headless Chromium (Puppeteer)
+    throw lastError || new Error(`スクレイピングに失敗しました: ${url}`);
+  });
+}
+
+// ==========================================
+// 13. 一括並行スクレイピング (scrapeBatchUrls)
+// ==========================================
+export async function scrapeBatchUrls(options: {
+  urls: string[];
+  concurrency?: number;
+  maxChars?: number;
+  mode?: 'auto' | 'fast' | 'browser';
+  formats?: ScrapeFormat[];
+  onlyMainContent?: boolean;
+  selectors?: Record<string, string>;
+  clipSelector?: string;
+  fastOnly?: boolean;
+  renderJs?: boolean;
+  headers?: Record<string, string>;
+  cookies?: CookieParam[];
+  removeSelectors?: string[];
+  query?: string;
+  extractHighlights?: boolean;
+  extractSummary?: boolean;
+  extractCitations?: boolean;
+  chunkMarkdown?: boolean;
+  chunkSize?: number;
+  validateLinks?: boolean;
+  formatAsPrompt?: boolean;
+  highlightMatches?: boolean;
+  maskPii?: boolean;
+  webhookUrl?: string;
+  retries?: number;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+  proxyUrl?: string;
+  noCache?: boolean;
+}): Promise<BatchScrapeResult> {
+  const { urls, concurrency = 3, ...scrapeOpts } = options;
+  const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
+
+  const results: ScrapeResult[] = [];
+  const errors: Array<{ url: string; error: string }> = [];
+
+  let index = 0;
+  async function worker() {
+    while (index < urls.length) {
+      const currentIdx = index++;
+      const targetUrl = urls[currentIdx];
+      try {
+        const res = await scrapeUrl({
+          url: targetUrl,
+          ...scrapeOpts,
+        });
+        results.push(res);
+      } catch (e: any) {
+        errors.push({ url: targetUrl, error: e?.message || 'Unknown error' });
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limitWorkers, urls.length) }, () => worker());
+  await Promise.all(workers);
+
+  const batchResult: BatchScrapeResult = {
+    total: urls.length,
+    successful: results.length,
+    failed: errors.length,
+    results,
+    errors,
+  };
+
+  if (options.webhookUrl) {
+    sendWebhookNotification(options.webhookUrl, batchResult);
+  }
+
+  return batchResult;
+}
+
+// ==========================================
+// 14. sitemap.xml の探索 & 再帰パース
+// ==========================================
+export async function fetchSitemapEntries(
+  sitemapUrl: string,
+  limit = 200,
+  maxDepth = 2,
+  currentDepth = 0,
+): Promise<SitemapEntry[]> {
+  if (currentDepth > maxDepth || limit <= 0) return [];
+
   try {
-    const result = await fetchWithStealthBrowser(targetUrl, maxChars, proxyUrl);
-    if (shouldExtractHighlights && query) {
-      result.highlights = extractQueryHighlights(result.content, query);
-    }
-    if (!noCache) setToCache(cacheKey, result);
-    return result;
-  } catch (browserErr: any) {
-    console.warn(`[web-fetcher] Browserless render failed for "${targetUrl}":`, browserErr?.message);
+    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000);
+    if (!response.ok) return [];
 
-    if (staticResult) {
-      const isTruncated = staticResult.markdown.length > maxChars;
-      const result: ScrapeResult = {
-        url: targetUrl,
-        title: staticResult.title,
-        content: staticResult.markdown.slice(0, maxChars),
-        isTruncated,
-        contentType: staticResult.contentType,
-        source: 'web',
-        renderedWithBrowser: false,
-        ogImage: staticResult.ogImage,
-        description: staticResult.description,
-      };
-      if (shouldExtractHighlights && query) {
-        result.highlights = extractQueryHighlights(result.content, query);
+    const xml = await response.text();
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+    });
+    const parsed = parser.parse(xml);
+
+    const entries: SitemapEntry[] = [];
+
+    // 1. 通常の <urlset>
+    if (parsed.urlset && parsed.urlset.url) {
+      const urlList = Array.isArray(parsed.urlset.url) ? parsed.urlset.url : [parsed.urlset.url];
+      for (const item of urlList) {
+        if (item.loc) {
+          entries.push({
+            url: String(item.loc).trim(),
+            lastmod: item.lastmod ? String(item.lastmod).trim() : undefined,
+          });
+          if (entries.length >= limit) return entries;
+        }
       }
-      if (!noCache) setToCache(cacheKey, result);
-      return result;
     }
 
-    throw new Error(`ページの取得に失敗しました: ${targetUrl} (${browserErr?.message})`);
+    // 2. <sitemapindex> (再帰走査)
+    if (parsed.sitemapindex && parsed.sitemapindex.sitemap && currentDepth < maxDepth) {
+      const sitemaps = Array.isArray(parsed.sitemapindex.sitemap)
+        ? parsed.sitemapindex.sitemap
+        : [parsed.sitemapindex.sitemap];
+
+      for (const sm of sitemaps) {
+        if (sm.loc) {
+          const subEntries = await fetchSitemapEntries(
+            String(sm.loc).trim(),
+            limit - entries.length,
+            maxDepth,
+            currentDepth + 1,
+          );
+          entries.push(...subEntries);
+          if (entries.length >= limit) return entries.slice(0, limit);
+        }
+      }
+    }
+
+    return entries;
+  } catch {
+    return [];
   }
 }
 
 // ==========================================
-// 11. サイトマップ & URL マッピング (/map & map_site)
+// 15. サイトマップ探索 (mapSiteUrl)
 // ==========================================
 export async function mapSiteUrl(options: {
   url: string;
   limit?: number;
   includeSubdomains?: boolean;
+  since?: string;
   timeoutMs?: number;
+  noCache?: boolean;
   proxyUrl?: string;
-}): Promise<{ url: string; count: number; links: string[]; sitemapFound: boolean }> {
-  const targetUrl = options.url;
-  const limit = Math.min(options.limit ?? 100, 500);
-  const includeSubdomains = options.includeSubdomains ?? false;
-  const timeoutMs = options.timeoutMs ?? 10000;
-  const proxyUrl = options.proxyUrl;
+}): Promise<{
+  url: string;
+  links: string[];
+  count: number;
+  source: 'sitemap' | 'links';
+  cached?: boolean;
+}> {
+  const url = options.url;
+  const limit = Math.min(options.limit ?? 200, 1000);
+  const cacheKey = `map:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}`;
 
-  const parsed = new URL(targetUrl);
-  if (isBlockedHostname(parsed.hostname)) {
-    throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsed.hostname}"`);
+  if (!options.noCache) {
+    const cached = getFromCache<any>(cacheKey);
+    if (cached) return cached;
   }
 
-  const baseOrigin = parsed.origin;
-  const baseHost = parsed.hostname.toLowerCase();
-  const collectedUrls = new Set<string>();
-  let sitemapFound = false;
+  const parsedUrl = new URL(url);
+  const origin = parsedUrl.origin;
 
-  const sitemapCandidates = [
-    `${baseOrigin}/sitemap.xml`,
-    `${baseOrigin}/sitemap_index.xml`,
-    `${baseOrigin}/sitemap-index.xml`,
+  // 1. /robots.txt から Sitemap ディレクティブを探索
+  const candidateSitemaps = [
+    `${origin}/sitemap.xml`,
+    `${origin}/sitemap_index.xml`,
+    `${origin}/sitemap/sitemap.xml`,
   ];
 
-  const parser = new XMLParser();
-
-  for (const sitemapUrl of sitemapCandidates) {
-    if (collectedUrls.size >= limit) break;
-    try {
-      const res = await fetchWithSafeRedirects(sitemapUrl, timeoutMs, 5, proxyUrl);
-      if (res && res.response.ok) {
-        const xmlText = await res.response.text();
-        const parsedXml = parser.parse(xmlText);
-        sitemapFound = true;
-
-        if (parsedXml?.urlset?.url) {
-          const rawUrls = Array.isArray(parsedXml.urlset.url) ? parsedXml.urlset.url : [parsedXml.urlset.url];
-          for (const u of rawUrls) {
-            const loc = typeof u === 'string' ? u : u?.loc;
-            if (loc && typeof loc === 'string') {
-              collectedUrls.add(loc.trim());
-              if (collectedUrls.size >= limit) break;
-            }
-          }
-        } else if (parsedXml?.sitemapindex?.sitemap) {
-          const subSitemaps = Array.isArray(parsedXml.sitemapindex.sitemap)
-            ? parsedXml.sitemapindex.sitemap
-            : [parsedXml.sitemapindex.sitemap];
-          for (const sub of subSitemaps.slice(0, 3)) {
-            const subLoc = typeof sub === 'string' ? sub : sub?.loc;
-            if (subLoc && typeof subLoc === 'string') {
-              try {
-                const subRes = await fetchWithSafeRedirects(subLoc, timeoutMs, 5, proxyUrl);
-                if (subRes && subRes.response.ok) {
-                  const subXml = parser.parse(await subRes.response.text());
-                  const subUrlList = subXml?.urlset?.url
-                    ? Array.isArray(subXml.urlset.url)
-                      ? subXml.urlset.url
-                      : [subXml.urlset.url]
-                    : [];
-                  for (const su of subUrlList) {
-                    const loc = typeof su === 'string' ? su : su?.loc;
-                    if (loc && typeof loc === 'string') {
-                      collectedUrls.add(loc.trim());
-                      if (collectedUrls.size >= limit) break;
-                    }
-                  }
-                }
-              } catch {}
-            }
+  try {
+    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000);
+    if (robotsRes.response.ok) {
+      const robotsText = await robotsRes.response.text();
+      const sitemapMatches = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
+      if (sitemapMatches) {
+        for (const match of sitemapMatches) {
+          const smUrl = match.replace(/^Sitemap:\s*/i, '').trim();
+          if (!candidateSitemaps.includes(smUrl)) {
+            candidateSitemaps.unshift(smUrl);
           }
         }
       }
-    } catch {}
-  }
+    }
+  } catch {}
 
-  // サイトマップで見つからない、または件数が少ない場合は対象ページの内部リンクを抽出
-  if (collectedUrls.size < limit) {
-    try {
-      const pageRes = await fetchWithSafeRedirects(targetUrl, timeoutMs, 5, proxyUrl);
-      if (pageRes && pageRes.response.ok) {
-        const html = await pageRes.response.text();
-        const $ = cheerio.load(html);
-        $('a[href]').each((_, el) => {
-          if (collectedUrls.size >= limit) return false;
-          const href = $(el).attr('href');
-          if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
-            return;
-          }
-          try {
-            const abs = new URL(href, pageRes.finalUrl);
-            const absHost = abs.hostname.toLowerCase();
-            const isMatch = includeSubdomains
-              ? absHost === baseHost || absHost.endsWith('.' + baseHost)
-              : absHost === baseHost;
-            if (isMatch && (abs.protocol === 'http:' || abs.protocol === 'https:')) {
-              abs.hash = '';
-              collectedUrls.add(abs.toString());
-            }
-          } catch {}
-        });
+  // 2. 候補 Sitemap を順次試行
+  for (const sitemapUrl of candidateSitemaps) {
+    const entries = await fetchSitemapEntries(sitemapUrl, limit);
+    if (entries.length > 0) {
+      let filteredEntries = entries;
+      if (options.since) {
+        const sinceTime = new Date(options.since).getTime();
+        if (!isNaN(sinceTime)) {
+          filteredEntries = entries.filter((e) => !e.lastmod || new Date(e.lastmod).getTime() >= sinceTime);
+        }
       }
-    } catch {}
+      const links = filteredEntries.map((e) => e.url);
+      const result = {
+        url,
+        links,
+        count: links.length,
+        source: 'sitemap' as const,
+      };
+      if (!options.noCache) setToCache(cacheKey, result);
+      return result;
+    }
   }
 
-  const links = Array.from(collectedUrls).slice(0, limit);
-  return {
-    url: targetUrl,
-    count: links.length,
-    links,
-    sitemapFound,
+  // 3. Sitemap がない場合はトップページの内部リンクを抽出
+  const scraped = await scrapeUrl({
+    url,
+    maxChars: 5000,
+    formats: ['links'],
+    noCache: options.noCache,
+    proxyUrl: options.proxyUrl,
+  });
+
+  const baseHost = parsedUrl.hostname.toLowerCase();
+  const internalLinks = (scraped.links || []).filter((link) => {
+    try {
+      const linkHost = new URL(link).hostname.toLowerCase();
+      return options.includeSubdomains ? linkHost.endsWith(baseHost) : linkHost === baseHost;
+    } catch {
+      return false;
+    }
+  });
+
+  const result = {
+    url,
+    links: internalLinks.slice(0, limit),
+    count: Math.min(internalLinks.length, limit),
+    source: 'links' as const,
   };
+
+  if (!options.noCache) setToCache(cacheKey, result);
+  return result;
 }
 
 // ==========================================
-// 12. サブページ再帰的クロール (/crawl & crawl_site)
+// 16. 再帰クロール (crawlSiteUrl)
 // ==========================================
 export async function crawlSiteUrl(options: {
   url: string;
   maxPages?: number;
   maxDepth?: number;
-  scrapeContent?: boolean;
   maxChars?: number;
   timeoutMs?: number;
+  concurrency?: number;
+  formats?: ScrapeFormat[];
+  includePatterns?: string[];
+  excludePatterns?: string[];
   proxyUrl?: string;
+  webhookUrl?: string;
+  onPageScraped?: (page: ScrapeResult) => void;
+  onPageCrawled?: (page: ScrapeResult, count: number) => void;
 }): Promise<{
   url: string;
+  baseUrl: string;
   count: number;
-  results: ScrapeResult[];
+  totalPages: number;
+  pages: ScrapeResult[];
 }> {
-  const rootUrl = options.url;
-  const maxPages = Math.min(options.maxPages ?? 5, 20);
-  const maxDepth = Math.min(options.maxDepth ?? 2, 5);
-  const scrapeContent = options.scrapeContent !== false;
-  const maxChars = options.maxChars ?? 15000;
-  const timeoutMs = options.timeoutMs ?? 10000;
-  const proxyUrl = options.proxyUrl;
+  const {
+    url: initialUrl,
+    maxPages = 10,
+    maxDepth = 2,
+    maxChars = 15000,
+    formats = ['markdown'],
+    includePatterns,
+    excludePatterns,
+    proxyUrl,
+    webhookUrl,
+    onPageScraped,
+    onPageCrawled,
+  } = options;
 
-  const parsedRoot = new URL(rootUrl);
-  if (isBlockedHostname(parsedRoot.hostname)) {
-    throw new Error(`セキュリティ上の理由からアクセスが拒否されました: "${parsedRoot.hostname}"`);
-  }
-  const rootHost = parsedRoot.hostname.toLowerCase();
+  const targetLimit = Math.min(maxPages, 50);
+  const baseHost = new URL(initialUrl).hostname.toLowerCase();
 
   const visited = new Set<string>();
-  const queue: { url: string; depth: number }[] = [{ url: rootUrl, depth: 0 }];
-  const results: ScrapeResult[] = [];
+  const queue: Array<{ url: string; depth: number }> = [{ url: initialUrl, depth: 0 }];
+  const pages: ScrapeResult[] = [];
 
-  while (queue.length > 0 && results.length < maxPages) {
-    const current = queue.shift()!;
-    const normUrl = current.url.split('#')[0];
-    if (visited.has(normUrl)) continue;
-    visited.add(normUrl);
+  while (queue.length > 0 && pages.length < targetLimit) {
+    const item = queue.shift();
+    if (!item) break;
+
+    const normalizedUrl = item.url.split('#')[0].replace(/\/+$/, '');
+    if (visited.has(normalizedUrl)) continue;
+    visited.add(normalizedUrl);
+
+    if (excludePatterns && !matchUrlPattern(item.url, excludePatterns)) {
+      continue;
+    }
+    if (includePatterns && !matchUrlPattern(item.url, includePatterns)) {
+      continue;
+    }
 
     try {
       const scraped = await scrapeUrl({
-        url: normUrl,
+        url: item.url,
         maxChars,
-        timeoutMs,
-        fastOnly: true,
+        formats: Array.from(new Set([...formats, 'links'])),
         proxyUrl,
       });
-      results.push(scraped);
 
-      if (current.depth < maxDepth && queue.length < maxPages * 3) {
-        try {
-          const fetchRes = await fetchWithSafeRedirects(normUrl, 5000, 5, proxyUrl);
-          if (fetchRes && fetchRes.response.ok) {
-            const html = await fetchRes.response.text();
-            const $ = cheerio.load(html);
-            $('a[href]').each((_, el) => {
-              const href = $(el).attr('href');
-              if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-              try {
-                const abs = new URL(href, fetchRes.finalUrl);
-                if (abs.hostname.toLowerCase() === rootHost && (abs.protocol === 'http:' || abs.protocol === 'https:')) {
-                  abs.hash = '';
-                  const nextUrl = abs.toString();
-                  if (!visited.has(nextUrl) && !queue.some((q) => q.url === nextUrl)) {
-                    queue.push({ url: nextUrl, depth: current.depth + 1 });
-                  }
-                }
-              } catch {}
-            });
-          }
-        } catch {}
+      pages.push(scraped);
+      if (onPageCrawled) onPageCrawled(scraped, pages.length);
+      if (onPageScraped) onPageScraped(scraped);
+
+      if (item.depth < maxDepth && scraped.links) {
+        for (const link of scraped.links) {
+          try {
+            const linkHost = new URL(link).hostname.toLowerCase();
+            if (linkHost === baseHost && !visited.has(link.split('#')[0].replace(/\/+$/, ''))) {
+              queue.push({ url: link, depth: item.depth + 1 });
+            }
+          } catch {}
+        }
       }
-    } catch (err: any) {
-      console.warn(`[web-fetcher/crawl] Error fetching ${normUrl}:`, err?.message);
-    }
+    } catch {}
   }
 
-  return {
-    url: rootUrl,
-    count: results.length,
-    results,
+  const result = {
+    url: initialUrl,
+    baseUrl: initialUrl,
+    count: pages.length,
+    totalPages: pages.length,
+    pages,
   };
+
+  if (webhookUrl) {
+    sendWebhookNotification(webhookUrl, result);
+  }
+
+  return result;
 }
 
 // ==========================================
-// 13. Yahoo リアルタイム急上昇トレンド取得 (/search/trend & search_trend)
+// 17. リアルタイムトレンド取得 (fetchRealtimeTrends)
 // ==========================================
 export async function fetchRealtimeTrends(limit = 20): Promise<{
   source: 'x';
@@ -1250,121 +1889,19 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
     timestamp: new Date().toISOString(),
   };
 
-  setToCache(cacheKey, result);
+  setToCache(cacheKey, result, CACHE_TTL_TREND);
   return result;
 }
 
 // ==========================================
-// 14. Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動)
-// ==========================================
-export async function callYahooMcp(toolName: string, args: Record<string, any>): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(YAHOO_MCP_PATH, [], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('error', (err) => {
-      reject(new Error(`Failed to spawn Yahoo MCP (${YAHOO_MCP_PATH}): ${err.message}`));
-    });
-
-    child.on('close', (code) => {
-      if (code !== 0 && !stdout) {
-        return reject(new Error(`Yahoo MCP exited with code ${code}: ${stderr}`));
-      }
-
-      const lines = stdout.trim().split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-          const json = JSON.parse(lines[i]);
-          if (json.id === 1 && json.result) {
-            return resolve(json.result);
-          }
-        } catch {}
-      }
-
-      reject(new Error(`Invalid JSON-RPC response from Yahoo MCP: ${stdout}`));
-    });
-
-    const rpcPayload = JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: toolName,
-        arguments: args,
-      },
-    }) + '\n';
-
-    child.stdin.write(rpcPayload);
-    child.stdin.end();
-  });
-}
-
-// ==========================================
-// 15. Yahoo Web 検索 (プレフィルタリング site: / -site: 対応)
-// ==========================================
-export async function searchYahooWeb(options: {
-  query: string;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-  updated?: 'all' | 'day' | 'week' | 'year';
-}): Promise<any> {
-  let effectiveWebQuery = options.query;
-  let webSiteArg: string | undefined = undefined;
-
-  if (options.includeDomains && options.includeDomains.length > 0) {
-    if (options.includeDomains.length === 1) {
-      webSiteArg = options.includeDomains[0];
-    } else {
-      effectiveWebQuery += ` (${options.includeDomains.map((d) => `site:${d}`).join(' OR ')})`;
-    }
-  }
-
-  if (options.excludeDomains && options.excludeDomains.length > 0) {
-    effectiveWebQuery += ` ${options.excludeDomains.map((d) => `-site:${d}`).join(' ')}`;
-  }
-
-  const mcpRes = await callYahooMcp('yahoo_web_search', {
-    query: effectiveWebQuery,
-    ...(webSiteArg ? { site: webSiteArg } : {}),
-    ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '[]';
-  let parsedData: any = content;
-  try {
-    const json = JSON.parse(content);
-    if (json && Array.isArray(json.items)) {
-      const filtered = filterByDomains(json.items, options.includeDomains, options.excludeDomains);
-      json.items = filtered.map((item: any) => ({ source: 'web' as const, ...item }));
-      json.count = json.items.length;
-      json.source = 'web';
-      parsedData = json;
-    }
-  } catch {}
-
-  return parsedData;
-}
-
-// ==========================================
-// 16. Firecrawl / Tavily 互換 統合深層検索 (search_deep)
+// 18. Firecrawl / Tavily 互換 統合深層検索 (integratedSearch)
 // ==========================================
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
   scrapeContent?: boolean;
   includeRealtime?: boolean;
+  realtimeSort?: 'recent' | 'popular';
   maxChars?: number;
   noCache?: boolean;
   includeDomains?: string[];
@@ -1372,11 +1909,15 @@ export async function integratedSearch(options: {
   updated?: 'all' | 'day' | 'week' | 'year';
   proxyUrl?: string;
   extractHighlights?: boolean;
+  onlyMainContent?: boolean;
+  formats?: ScrapeFormat[];
+  dedup?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
-  const limit = Math.min(options.limit ?? 3, 10);
+  const limit = Math.min(options.limit ?? 5, 20);
   const scrapeContent = options.scrapeContent !== false;
   const includeRealtime = options.includeRealtime !== false;
+  const realtimeSort = options.realtimeSort || 'recent';
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const noCache = options.noCache ?? false;
   const includeDomains = options.includeDomains;
@@ -1384,7 +1925,10 @@ export async function integratedSearch(options: {
   const updated = options.updated;
   const proxyUrl = options.proxyUrl;
   const extractHighlights = options.extractHighlights ?? false;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${proxyUrl || ''}`;
+  const onlyMainContent = options.onlyMainContent !== false;
+  const formats = options.formats ?? ['markdown'];
+  const dedup = options.dedup ?? false;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${proxyUrl || ''}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1394,15 +1938,19 @@ export async function integratedSearch(options: {
   const [webParsedRes, realtimeMcpRes] = await Promise.all([
     searchYahooWeb({ query, includeDomains, excludeDomains, updated }),
     includeRealtime
-      ? callYahooMcp('yahoo_realtime_search', { query }).catch(() => null)
+      ? callYahooMcp('yahoo_realtime_search', { query, sort: realtimeSort }).catch(() => null)
       : Promise.resolve(null),
   ]);
 
-  const searchResults = Array.isArray(webParsedRes?.items)
+  let searchResults = Array.isArray(webParsedRes?.items)
     ? webParsedRes.items
     : Array.isArray(webParsedRes)
     ? webParsedRes
     : [];
+
+  if (dedup && searchResults.length > 0) {
+    searchResults = dedupSearchResults(searchResults, (i: any) => `${i.title || ''} ${i.snippet || ''}`);
+  }
 
   const topItems = searchResults.slice(0, limit);
 
@@ -1413,10 +1961,11 @@ export async function integratedSearch(options: {
     try {
       const parsed = JSON.parse(rtContent);
       const rawList = Array.isArray(parsed) ? parsed : (parsed?.items || parsed?.results || []);
-      realtimeItems = rawList.map((item: any) => ({
-        source: 'x' as const,
-        ...item,
-      }));
+      let mapped = rawList.map((item: any) => normalizeRealtimeItem(item));
+      if (dedup && mapped.length > 0) {
+        mapped = dedupSearchResults(mapped, (i: any) => `${i.text || i.content || ''}`);
+      }
+      realtimeItems = mapped;
     } catch {
       realtimeItems = [];
     }
@@ -1437,15 +1986,44 @@ export async function integratedSearch(options: {
             query,
             proxyUrl,
             extractHighlights,
+            onlyMainContent,
+            formats,
           });
-          return {
+
+          const enrichedItem: Record<string, any> = {
             ...item,
-            markdown: scrape.content,
             ogImage: scrape.ogImage,
             description: scrape.description,
+            publishedTime: scrape.publishedTime,
+            author: scrape.author,
+            siteName: scrape.siteName,
             highlights: scrape.highlights,
             cached: scrape.cached,
           };
+
+          if (formats.includes('markdown')) {
+            enrichedItem.markdown = scrape.content;
+          }
+          if (formats.includes('html')) {
+            enrichedItem.html = scrape.html ?? scrape.rawHtml;
+          }
+          if (formats.includes('rawHtml')) {
+            enrichedItem.rawHtml = scrape.rawHtml;
+          }
+          if (formats.includes('links')) {
+            enrichedItem.links = scrape.links;
+          }
+          if (formats.includes('jsonLd') && scrape.jsonLd) {
+            enrichedItem.jsonLd = scrape.jsonLd;
+          }
+          if (formats.includes('images') && scrape.images) {
+            enrichedItem.images = scrape.images;
+          }
+          if (formats.includes('screenshot')) {
+            enrichedItem.screenshot = scrape.screenshot;
+          }
+
+          return enrichedItem;
         } catch (e: any) {
           return {
             ...item,
@@ -1467,6 +2045,7 @@ export async function integratedSearch(options: {
   if (includeRealtime && realtimeItems.length > 0) {
     finalResponse.realtime = {
       source: 'x',
+      sort: realtimeSort,
       count: realtimeItems.length,
       items: realtimeItems,
     };
@@ -1475,560 +2054,3 @@ export async function integratedSearch(options: {
   if (!noCache) setToCache(cacheKey, finalResponse);
   return finalResponse;
 }
-
-// ==========================================
-// 17. Yahoo 画像検索
-// ==========================================
-export async function searchYahooImage(options: {
-  query: string;
-  limit?: number;
-  page?: number;
-}): Promise<any> {
-  const mcpRes = await callYahooMcp('yahoo_image_search', {
-    query: options.query,
-    ...(options.limit ? { limit: options.limit } : {}),
-    ...(options.page ? { page: options.page } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '{}';
-  try {
-    const json = JSON.parse(content);
-    json.source = 'image';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'image' as const, ...item }));
-    }
-    return json;
-  } catch {
-    return { source: 'image', raw: content };
-  }
-}
-
-// ==========================================
-// 18. Yahoo 動画検索
-// ==========================================
-export async function searchYahooVideo(options: {
-  query: string;
-  limit?: number;
-  page?: number;
-}): Promise<any> {
-  const mcpRes = await callYahooMcp('yahoo_video_search', {
-    query: options.query,
-    ...(options.limit ? { limit: options.limit } : {}),
-    ...(options.page ? { page: options.page } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '{}';
-  try {
-    const json = JSON.parse(content);
-    json.source = 'video';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'video' as const, ...item }));
-    }
-    return json;
-  } catch {
-    return { source: 'video', raw: content };
-  }
-}
-
-// ==========================================
-// 19. Yahoo ニュース検索
-// ==========================================
-export async function searchYahooNews(options: {
-  query: string;
-  limit?: number;
-}): Promise<any> {
-  const mcpRes = await callYahooMcp('yahoo_news_search', {
-    query: options.query,
-    ...(options.limit ? { limit: options.limit } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '{}';
-  try {
-    const json = JSON.parse(content);
-    json.source = 'news';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'news' as const, ...item }));
-    }
-    return json;
-  } catch {
-    return { source: 'news', raw: content };
-  }
-}
-
-// ==========================================
-// 20. Yahoo 知恵袋検索
-// ==========================================
-export async function searchYahooChiebukuro(options: {
-  query: string;
-  limit?: number;
-  page?: number;
-  status?: 'all' | 'open' | 'vote' | 'solved';
-}): Promise<any> {
-  const mcpRes = await callYahooMcp('yahoo_chiebukuro_search', {
-    query: options.query,
-    ...(options.limit ? { limit: options.limit } : {}),
-    ...(options.page ? { page: options.page } : {}),
-    ...(options.status && options.status !== 'all' ? { status: options.status } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '{}';
-  try {
-    const json = JSON.parse(content);
-    json.source = 'chiebukuro';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'chiebukuro' as const, ...item }));
-    }
-    return json;
-  } catch {
-    return { source: 'chiebukuro', raw: content };
-  }
-}
-
-// ==========================================
-// 21. Yahoo サジェスト（キーワード補完）
-// ==========================================
-export async function getSuggestedKeywords(options: {
-  query: string;
-  limit?: number;
-}): Promise<any> {
-  const mcpRes = await callYahooMcp('yahoo_suggest_keywords', {
-    query: options.query,
-    ...(options.limit ? { limit: options.limit } : {}),
-  });
-
-  const content = mcpRes?.content?.[0]?.text || '{}';
-  try {
-    const json = JSON.parse(content);
-    json.source = 'suggest';
-    return json;
-  } catch {
-    return { source: 'suggest', raw: content };
-  }
-}
-
-// ==========================================
-// 22. 乗換案内（Yahoo! 路線情報スクレイピング）
-// ==========================================
-
-/** 乗り換えルート検索のパラメータ */
-export interface TransitSearchOptions {
-  from: string;
-  to: string;
-  via?: string[];
-  year?: number;
-  month?: number;
-  day?: number;
-  hour?: number;
-  minute?: number;
-  timeType?: 'departure' | 'arrival' | 'first_train' | 'last_train' | 'unspecified';
-  ticket?: 'ic' | 'cash';
-  seatPreference?: 'non_reserved' | 'reserved' | 'green';
-  walkSpeed?: 'fast' | 'slightly_fast' | 'slightly_slow' | 'slow';
-  sortBy?: 'time' | 'transfer' | 'fare';
-  useAirline?: boolean;
-  useShinkansen?: boolean;
-  useExpress?: boolean;
-  useHighwayBus?: boolean;
-  useLocalBus?: boolean;
-  useFerry?: boolean;
-}
-
-/** 乗換案内の URL パラメータを組み立てる */
-function buildTransitUrl(opts: TransitSearchOptions): string {
-  const base = 'https://transit.yahoo.co.jp/search/result';
-  const params = new URLSearchParams();
-
-  params.set('from', opts.from);
-  params.set('to', opts.to);
-  params.set('flatlon', '');
-  params.set('tlatlon', '');
-
-  // 経由駅（最大3駅）
-  const via = opts.via || [];
-  for (let i = 0; i < 3; i++) {
-    params.set(`via${i + 1}`, via[i] || '');
-    params.set(`viacode${i + 1}`, '');
-  }
-
-  // 日時
-  const now = new Date();
-  params.set('y', String(opts.year || now.getFullYear()));
-  params.set('m', String(opts.month || now.getMonth() + 1).padStart(2, '0'));
-  params.set('d', String(opts.day || now.getDate()).padStart(2, '0'));
-  params.set('hh', String(opts.hour ?? now.getHours()).padStart(2, '0'));
-  params.set('m1', String(Math.floor((opts.minute ?? now.getMinutes()) / 10)));
-  params.set('m2', String((opts.minute ?? now.getMinutes()) % 10));
-
-  // 時刻タイプ
-  const timeTypeMap: Record<string, string> = {
-    departure: '1',
-    arrival: '4',
-    first_train: '3',
-    last_train: '2',
-    unspecified: '1',
-  };
-  params.set('type', timeTypeMap[opts.timeType || 'departure'] || '1');
-
-  // 運賃タイプ
-  params.set('ticket', opts.ticket === 'cash' ? 'normal' : 'ic');
-
-  // 座席指定
-  const seatMap: Record<string, string> = { non_reserved: '0', reserved: '1', green: '2' };
-  params.set('shin', seatMap[opts.seatPreference || 'non_reserved'] || '0');
-
-  // 歩く速度
-  const walkMap: Record<string, string> = { fast: '1', slightly_fast: '2', slightly_slow: '3', slow: '4' };
-  params.set('ws', walkMap[opts.walkSpeed || 'slightly_slow'] || '3');
-
-  // 並び順
-  const sortMap: Record<string, string> = { time: '0', transfer: '1', fare: '2' };
-  params.set('s', sortMap[opts.sortBy || 'time'] || '0');
-
-  // 交通手段フラグ
-  params.set('al', opts.useAirline !== false ? '1' : '0');
-  params.set('shin', opts.useShinkansen !== false ? '1' : '0');
-  params.set('ex', opts.useExpress !== false ? '1' : '0');
-  params.set('hb', opts.useHighwayBus !== false ? '1' : '0');
-  params.set('lb', opts.useLocalBus !== false ? '1' : '0');
-  params.set('sr', opts.useFerry !== false ? '1' : '0');
-
-  params.set('kw', opts.from);
-
-  return `${base}?${params.toString()}`;
-}
-
-/** HTML からルート情報をパースする */
-function parseTransitHtml(html: string, opts: TransitSearchOptions): any {
-  const $ = cheerio.load(html);
-  const routes: any[] = [];
-
-  // 各ルートブロックを解析
-  $('.routeList .route, .routeDetail, #route01, #route02, #route03, #route04, #route05, .routeCand').each((i, el) => {
-    const routeEl = $(el);
-
-    // ルートサマリー情報
-    const summary = routeEl.find('.summary, .routeSummary').first();
-    const timeText = summary.find('.time, .reqTime').text().trim() || routeEl.find('.time').first().text().trim();
-    const transferText = summary.find('.transfer, .transfer-num').text().trim() || routeEl.find('.transfer').first().text().trim();
-    const fareText = summary.find('.fare, .fare-num').text().trim() || routeEl.find('.fare').first().text().trim();
-
-    // 区間詳細
-    const sections: any[] = [];
-    routeEl.find('.section, li.routeDetail, .access, .routeStep').each((j, sec) => {
-      const secEl = $(sec);
-      const lineName = secEl.find('.lineName, .transport, .name').text().trim();
-      const fromStation = secEl.find('.staName .from, .dep .name, .startName').text().trim();
-      const toStation = secEl.find('.staName .to, .arr .name, .endName').text().trim();
-      const depTime = secEl.find('.dep .time, .depTime, .startTime').text().trim();
-      const arrTime = secEl.find('.arr .time, .arrTime, .endTime').text().trim();
-
-      if (lineName || fromStation || toStation) {
-        sections.push({
-          line: lineName || undefined,
-          from: fromStation || undefined,
-          to: toStation || undefined,
-          departureTime: depTime || undefined,
-          arrivalTime: arrTime || undefined,
-        });
-      }
-    });
-
-    if (timeText || fareText || sections.length > 0) {
-      routes.push({
-        index: i + 1,
-        totalTime: timeText || undefined,
-        transfers: transferText || undefined,
-        fare: fareText || undefined,
-        sections: sections.length > 0 ? sections : undefined,
-      });
-    }
-  });
-
-  // フォールバック: routeList 形式でなかった場合、より汎用的にパース
-  if (routes.length === 0) {
-    // .navResult 内のテキストを抽出
-    const resultSummaries: any[] = [];
-    $('#srline, .elmRouteDetail, #rsltlst li').each((i, el) => {
-      const text = $(el).text().replace(/\s+/g, ' ').trim();
-      if (text.length > 10) {
-        resultSummaries.push({
-          index: i + 1,
-          summary: text.substring(0, 500),
-        });
-      }
-    });
-    if (resultSummaries.length > 0) {
-      return {
-        source: 'transit',
-        from: opts.from,
-        to: opts.to,
-        via: opts.via,
-        routes: resultSummaries,
-        note: 'Summary mode: structured parsing did not match, providing raw summaries.',
-      };
-    }
-
-    // 最終フォールバック: ページ全体のテキストから関連部分を抽出
-    const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
-    const transitSection = bodyText.substring(0, 2000);
-    return {
-      source: 'transit',
-      from: opts.from,
-      to: opts.to,
-      via: opts.via,
-      rawText: transitSection,
-      note: 'Could not parse structured route data. Providing raw text.',
-    };
-  }
-
-  return {
-    source: 'transit',
-    from: opts.from,
-    to: opts.to,
-    via: opts.via,
-    routeCount: routes.length,
-    routes,
-  };
-}
-
-/** 乗換案内のメイン関数 */
-export async function searchTransitRoute(opts: TransitSearchOptions): Promise<any> {
-  const cacheKey = `transit:${opts.from}:${opts.to}:${(opts.via || []).join(',')}:${opts.year || ''}:${opts.month || ''}:${opts.day || ''}:${opts.hour ?? ''}:${opts.minute ?? ''}:${opts.timeType || 'departure'}`;
-  const cached = getFromCache<any>(cacheKey);
-  if (cached) return cached;
-
-  const url = buildTransitUrl(opts);
-
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'text/html,application/xhtml+xml',
-      'Accept-Language': 'ja,en;q=0.5',
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Yahoo Transit returned HTTP ${res.status}`);
-  }
-
-  const html = await res.text();
-  const result = parseTransitHtml(html, opts);
-
-  setToCache(cacheKey, result);
-  return result;
-}
-
-// ==========================================
-// 23. 天気予報 API (weather.tsukumijima.net / livedoor 天気互換)
-// ==========================================
-
-export { MUNICIPALITY_CITY_MAP };
-
-/** 都市名または都道府県名から 6 桁の地点 ID を解決 */
-export function resolveCityId(query: string): string {
-  const clean = query.trim();
-  if (/^\d{6}$/.test(clean)) {
-    return clean;
-  }
-
-  // 1. 気象庁公式自治体マップによる完全一致
-  if (MUNICIPALITY_CITY_MAP[clean]) {
-    return MUNICIPALITY_CITY_MAP[clean];
-  }
-
-  // 2. 接尾辞を除去して再試行（例: "東京都" -> "東京", "天童市" -> "天童", "軽井沢町" -> "軽井沢"）
-  const stripped = clean.replace(/(?:都|府|県|市|区|町|村)$/, '');
-  if (MUNICIPALITY_CITY_MAP[stripped]) {
-    return MUNICIPALITY_CITY_MAP[stripped];
-  }
-
-  // 3. 部分一致
-  for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-    if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) {
-      return id;
-    }
-  }
-
-  // 見つからない場合はデフォルトで東京 (130010)
-  return '130010';
-}
-
-export interface WeatherForecastOptions {
-  city: string;
-  days?: number;
-  noCache?: boolean;
-}
-
-const WEATHER_CODE_TELOP: Record<string, string> = {
-  '100': '晴れ', '101': '晴時々曇', '102': '晴一時雨', '103': '晴時々雨', '104': '晴一時雪', '105': '晴時々雪',
-  '110': '晴のち時々曇', '111': '晴のち曇', '112': '晴のち一時雨', '113': '晴のち時々雨', '114': '晴のち雨',
-  '200': '曇り', '201': '曇時々晴', '202': '曇一時雨', '203': '曇時々雨', '204': '曇一時雪', '205': '曇時々雪',
-  '210': '曇のち時々晴', '211': '曇のち晴', '212': '曇のち一時雨', '213': '曇のち時々雨', '214': '曇のち雨',
-  '300': '雨', '301': '雨時々晴', '302': '雨時々止む', '303': '雨時々雪', '304': '雨一時雪',
-  '311': '雨のち晴', '313': '雨のち曇', '314': '雨のち時々雪', '315': '雨のち雪',
-  '400': '雪', '401': '雪時々晴', '402': '雪時々止む', '403': '雪時々雨',
-  '411': '雪のち晴', '413': '雪のち曇', '414': '雪のち雨',
-};
-
-function getTelopFromCode(code: string, weatherText?: string): string {
-  if (WEATHER_CODE_TELOP[code]) return WEATHER_CODE_TELOP[code];
-  if (weatherText) {
-    if (weatherText.startsWith('晴')) return '晴れ';
-    if (weatherText.startsWith('くもり') || weatherText.startsWith('曇')) return '曇り';
-    if (weatherText.startsWith('雨')) return '雨';
-    if (weatherText.startsWith('雪')) return '雪';
-  }
-  return '晴れ';
-}
-
-/** 天気予報を取得 (気象庁公式オープンデータ API 直接通信 / 完全自律型) */
-export async function fetchWeatherForecast(options: WeatherForecastOptions): Promise<any> {
-  const cityId = resolveCityId(options.city);
-  const days = Math.min(Math.max(options.days ?? 3, 1), 3);
-  const cacheKey = `weather:${cityId}:${days}`;
-
-  if (!options.noCache) {
-    const cached = getFromCache<any>(cacheKey);
-    if (cached) return cached;
-  }
-
-  // 1. 気象庁（JMA）公式 API 直接通信
-  try {
-    const officeCode = cityId.substring(0, 2) + '0000';
-    const [forecastRes, overviewRes] = await Promise.all([
-      fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'Sora/2.0' },
-      }),
-      fetch(`https://www.jma.go.jp/bosai/forecast/data/overview_forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'Sora/2.0' },
-      }).catch(() => null),
-    ]);
-
-    if (forecastRes.ok) {
-      const forecastData: any = await forecastRes.json();
-      const overviewData: any = overviewRes?.ok ? await overviewRes.json() : null;
-
-      const shortForecast = forecastData[0];
-      const timeDefines: string[] = shortForecast?.timeSeries?.[0]?.timeDefines || [];
-      const weatherAreas: any[] = shortForecast?.timeSeries?.[0]?.areas || [];
-      const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
-      const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
-
-      const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
-      const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-      const targetTemp = tempAreas[0];
-
-      const dateLabels = ['今日', '明日', '明後日'];
-      const forecasts = [];
-
-      for (let i = 0; i < Math.min(days, timeDefines.length); i++) {
-        const rawDate = timeDefines[i];
-        const dateStr = rawDate ? rawDate.split('T')[0] : '';
-        const wCode = targetArea?.weatherCodes?.[i] || '100';
-        const wDetail = targetArea?.weathers?.[i] || '';
-        const wind = targetArea?.winds?.[i] || null;
-        const wave = targetArea?.waves?.[i] || null;
-
-        forecasts.push({
-          date: dateStr,
-          dateLabel: dateLabels[i] || `${i + 1}日後`,
-          telop: getTelopFromCode(wCode, wDetail),
-          detail: {
-            weather: wDetail,
-            wind,
-            wave,
-          },
-          temperature: {
-            min: targetTemp?.temps?.[i * 2] ? `${targetTemp.temps[i * 2]}℃` : null,
-            max: targetTemp?.temps?.[i * 2 + 1] ? `${targetTemp.temps[i * 2 + 1]}℃` : null,
-          },
-          chanceOfRain: {
-            T00_06: targetPop?.pops?.[0] ? `${targetPop.pops[0]}%` : '--%',
-            T06_12: targetPop?.pops?.[1] ? `${targetPop.pops[1]}%` : '--%',
-            T12_18: targetPop?.pops?.[2] ? `${targetPop.pops[2]}%` : '--%',
-            T18_24: targetPop?.pops?.[3] ? `${targetPop.pops[3]}%` : '--%',
-          },
-          image: `https://www.jma.go.jp/bosai/forecast/img/${wCode}.svg`,
-        });
-      }
-
-      const formatted = {
-        source: 'weather',
-        cityId,
-        title: `${targetArea?.area?.name || options.city} の天気`,
-        publicTime: shortForecast?.reportDatetime,
-        publishingOffice: shortForecast?.publishingOffice || '気象庁',
-        location: {
-          area: targetArea?.area?.name,
-          prefecture: targetArea?.area?.name,
-          city: options.city,
-        },
-        description: {
-          headline: overviewData?.headlineText || '',
-          body: overviewData?.text || '',
-          text: overviewData?.text || '',
-          publicTime: overviewData?.reportDatetime || '',
-        },
-        forecasts,
-        link: `https://www.jma.go.jp/bosai/forecast/#area_type=class20&area_code=${cityId}`,
-        cached: false,
-      };
-
-      if (!options.noCache) setToCache(cacheKey, formatted);
-      return formatted;
-    }
-  } catch (err) {
-    // Graceful fallback to tsukumijima weather API
-  }
-
-  // 2. フォールバック: tsukumijima weather API
-  const url = `https://weather.tsukumijima.net/api/forecast?city=${cityId}`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Sora/2.0 (+https://github.com/ikenokazuki/Sora)',
-      'Accept': 'application/json',
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Weather API returned HTTP ${res.status}`);
-  }
-
-  const raw: any = await res.json();
-  const forecasts = Array.isArray(raw.forecasts) ? raw.forecasts.slice(0, days) : [];
-
-  const formattedResult = {
-    source: 'weather',
-    cityId,
-    title: raw.title,
-    publicTime: raw.publicTime,
-    publicTimeFormatted: raw.publicTimeFormatted,
-    publishingOffice: raw.publishingOffice,
-    location: raw.location,
-    description: {
-      headline: raw.description?.headlineText || '',
-      body: raw.description?.bodyText || '',
-      text: raw.description?.text || '',
-      publicTime: raw.description?.publicTimeFormatted || '',
-    },
-    forecasts: forecasts.map((f: any) => ({
-      date: f.date,
-      dateLabel: f.dateLabel,
-      telop: f.telop,
-      detail: f.detail,
-      temperature: {
-        min: f.temperature?.min?.celsius ? `${f.temperature.min.celsius}℃` : null,
-        max: f.temperature?.max?.celsius ? `${f.temperature.max.celsius}℃` : null,
-      },
-      chanceOfRain: f.chanceOfRain,
-      image: f.image?.url || null,
-    })),
-    link: raw.link,
-    cached: false,
-  };
-
-  if (!options.noCache) setToCache(cacheKey, formattedResult);
-  return formattedResult;
-}
-
-

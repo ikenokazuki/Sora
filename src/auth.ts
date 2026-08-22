@@ -1,10 +1,33 @@
 import type { MiddlewareHandler } from 'hono';
+import { timingSafeEqual, createHash } from 'crypto';
+
+/** タイミング攻撃（Timing Attack）を防ぐ定数時間文字列比較 */
+export function isSecureEqual(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
+/** リクエストから Bearer Token または X-API-Key を抽出 */
+export function extractAuthToken(c: any): string | undefined {
+  const authHeader = c.req.header('authorization');
+  const xApiKey = c.req.header('x-api-key');
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+  if (xApiKey) {
+    return xApiKey.trim();
+  }
+  return undefined;
+}
 
 export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler {
   return async (c, next) => {
-    // 1. ヘルスチェックとルートの GET は認証不要
+    // 1. 公開エンドポイント（ヘルスチェック、ルート、メトリクス）は認証不要
     const path = c.req.path;
-    if (path === '/health' || path === '/') {
+    if (path === '/health' || path === '/' || path === '/metrics') {
       return next();
     }
 
@@ -14,26 +37,16 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
       return next();
     }
 
-    // 3. API キーの照合 (Bearer Token または X-API-Key)
-    const authHeader = c.req.header('authorization');
-    const xApiKey = c.req.header('x-api-key');
-
-    let providedToken: string | undefined;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      providedToken = authHeader.substring(7).trim();
-    } else if (xApiKey) {
-      providedToken = xApiKey.trim();
-    }
-
-    if (providedToken && providedToken === apiKey) {
+    // 3. API キーの照合 (定数時間比較)
+    const providedToken = extractAuthToken(c);
+    if (providedToken && isSecureEqual(providedToken, apiKey)) {
       return next();
     }
 
-    // 4. Caddy などのリバースプロキシを経由しない直接ローカルアクセス（127.0.0.1）はバイパス
-    // Caddy 経由の場合は X-Forwarded-For または X-Real-IP が付与される
+    // 4. 明示的に許可された場合のみローカルバイパスを許容 (Secure by Default)
     const forwardedFor = c.req.header('x-forwarded-for');
     const realIp = c.req.header('x-real-ip');
-    const isDirectLocal = !forwardedFor && !realIp;
+    const isDirectLocal = !forwardedFor && !realIp && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
 
     if (isDirectLocal) {
       return next();

@@ -3,12 +3,14 @@ import { StreamableHTTPTransport } from '@hono/mcp';
 import { z } from 'zod';
 import {
   scrapeUrl,
+  scrapeBatchUrls,
   callYahooMcp,
   searchYahooWeb,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
   fetchRealtimeTrends,
+  normalizeRealtimeItem,
   filterByDomains,
   searchYahooImage,
   searchYahooVideo,
@@ -71,6 +73,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .enum(['auto', 'fast', 'browser'])
           .optional()
           .describe('スクレイプ動作モード: "auto" (スマート自動判定, デフォルト), "fast" (静的フェッチ最速限定), "browser" (Stealth Chromium JS完全実行)'),
+        formats: z
+          .array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables']))
+          .optional()
+          .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
         fastOnly: z
           .boolean()
           .optional()
@@ -83,18 +89,83 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
+        extractSummary: z
+          .boolean()
+          .optional()
+          .describe('超高速な抽出型自動要約（TL;DR 上位重要文リスト）を生成して付与するか (デフォルト: false)'),
+        extractCitations: z
+          .boolean()
+          .optional()
+          .describe('本文内の出典・引用リンク一覧をコンテキスト付きで抽出するか (デフォルト: false)'),
+        chunkMarkdown: z
+          .boolean()
+          .optional()
+          .describe('RAG 用に見出しや段落単位でセマンティック・チャンキングした chunks を生成するか (デフォルト: false)'),
+        chunkSize: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('チャンキング時の最大文字数目安 (デフォルト: 1000)'),
+        validateLinks: z
+          .boolean()
+          .optional()
+          .describe('抽出されたリンクの到達性・HTTPステータスを並行検証するか (デフォルト: false)'),
+        formatAsPrompt: z
+          .boolean()
+          .optional()
+          .describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)'),
+        highlightMatches: z
+          .boolean()
+          .optional()
+          .describe('本文中の検索一致語句をハイライトするか (デフォルト: false)'),
+        maskPii: z
+          .boolean()
+          .optional()
+          .describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)'),
+        webhookUrl: z
+          .string()
+          .optional()
+          .describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
         query: z
           .string()
           .optional()
           .describe('ハイライト抽出に使用するキーワード・検索文'),
+        onlyMainContent: z
+          .boolean()
+          .optional()
+          .describe('記事本文のみを抽出するか (デフォルト: true)。false にするとナビゲーションやヘッダー/フッターも含めて抽出'),
+        selectors: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('特定要素のみをピンポイント抽出する CSS セレクタまたは属性指定の連想配列 (例: {"price": ".product-price", "link": "a.btn@href"})'),
+        clipSelector: z
+          .string()
+          .optional()
+          .describe('指定した要素のみを切り抜いてスクリーンショットを撮影する CSS セレクタ (例: "#chart", ".pricing-table")'),
+        headers: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})'),
+        removeSelectors: z
+          .array(z.string())
+          .optional()
+          .describe('Markdown 変換前に除去したいノイズ要素の CSS セレクタ配列 (例: [".ad-banner", ".comments", "#related"])'),
+        retries: z
+          .number()
+          .int()
+          .min(0)
+          .max(3)
+          .optional()
+          .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
         proxyUrl: z
           .string()
           .optional()
           .describe('経由する HTTP/HTTPS/SOCKS5 プロキシ URL (例: "http://user:pass@host:port")'),
       },
-      async ({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query, proxyUrl }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, fastOnly, renderJs, extractHighlights, query, proxyUrl });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl });
           return {
             content: [
               {
@@ -112,29 +183,85 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
+    // Tool 1.5: scrape_batch (複数 URL 一括並行スクレイプ)
+    mcpServer.tool(
+      'scrape_batch',
+      '【複数 URL 一括並行スクレイプ】複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。',
+      {
+        urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
+        concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
+        maxChars: z.number().int().positive().max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+        mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)'),
+        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得フォーマット'),
+        selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
+        clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
+        headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
+        removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
+        extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
+        extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
+        chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
+        chunkSize: z.number().int().positive().optional().describe('チャンク文字数目安'),
+        validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
+        formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+        highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
+        maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
+        webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
+        retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
+        onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+        proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
+      },
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl }) => {
+        try {
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Batch scrape error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
     // Tool 2: search_deep (超高精度 統合検索)
     mcpServer.tool(
       'search_deep',
       '【超高精度 統合検索】Web 検索を実行し、上位 Web サイトの本文を並行スクレイピング＋リアルタイム最新情報（X）を一括取得して LLM の回答生成に最適な形式で返却します。',
       {
         query: z.string().min(1).describe('検索キーワード'),
-        limit: z.number().int().min(1).max(10).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 3)'),
-        scrapeContent: z.boolean().optional().describe('上位結果のページ本文を Markdown で取得するか (デフォルト: true)'),
+        limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
+        scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
         includeRealtime: z.boolean().optional().describe('リアルタイム速報（Xの生の声）を含めるか (デフォルト: true)'),
+        realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報の並び順: "recent" (新着順, デフォルト) または "popular" (話題順)'),
         maxChars: z.number().int().positive().max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
         includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
         excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
+        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
+        extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
+        dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
+        onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, maxChars, includeDomains, excludeDomains }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent }) => {
         try {
           const result = await integratedSearch({
             query,
             limit,
             scrapeContent,
             includeRealtime,
+            realtimeSort,
             maxChars,
             includeDomains,
             excludeDomains,
+            formats,
+            extractHighlights,
+            onlyMainContent,
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -154,11 +281,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を抽出します。ドメイン全体のページ構成把握に最適です。',
       {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
-        limit: z.number().int().min(1).max(500).optional().describe('取得する最大 URL 件数 (デフォルト: 100)'),
+        limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
+        since: z.string().optional().describe('指定した日付・日時以降に更新されたページのみを抽出するフィルタ (例: "2026-08-01", "2026-01-01T00:00:00Z")'),
       },
-      async ({ url, limit }) => {
+      async ({ url, limit, since }) => {
         try {
-          const result = await mapSiteUrl({ url, limit });
+          const result = await mapSiteUrl({ url, limit, since });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -177,12 +305,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、各ページの Markdown 本文を一括収集します。ドキュメントサイト等のまとめ読みに最適です。',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
-        maxPages: z.number().int().min(1).max(20).optional().describe('巡回する最大ページ数 (デフォルト: 5)'),
+        maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
         maxChars: z.number().int().positive().max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)'),
+        includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
+        excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
+        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images'])).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
       },
-      async ({ url, maxPages, maxChars }) => {
+      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats }) => {
         try {
-          const result = await crawlSiteUrl({ url, maxPages, maxChars });
+          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -403,15 +534,56 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     // Tool 11: search_realtime (Yahoo リアルタイム検索)
     mcpServer.tool(
       'search_realtime',
-      'Yahoo! リアルタイム検索を実行し、X (旧 Twitter) 上の最新の生の声・ポスト一覧（投稿者・本文・投稿日時・メディア・URL）を取得します。',
+      'Yahoo! リアルタイム検索を実行し、X (旧 Twitter) 上の最新の生の声・ポスト一覧（投稿者・本文・投稿日時・メディア・URL）を取得します。新着順 (recent) と 話題順 (popular) の切り替えに対応。',
       {
         query: z.string().min(1).describe('リアルタイム検索キーワード'),
+        sort: z
+          .enum(['recent', 'popular'])
+          .optional()
+          .describe('並び順: "recent" (新着順, デフォルト) または "popular" (話題・エンゲージメント順)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe('取得件数 (デフォルト: 20, 最大: 40)'),
+        page: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('ページ番号 (1-based, デフォルト: 1)'),
       },
-      async ({ query }) => {
+      async ({ query, sort, limit, page }) => {
         try {
-          const result = await callYahooMcp('search_realtime', { query });
+          const result = await callYahooMcp('yahoo_realtime_search', {
+            query,
+            sort: sort || 'recent',
+            ...(limit ? { limit } : {}),
+            ...(page ? { page } : {}),
+          });
+          const content = result?.content?.[0]?.text || '';
+          let parsedData = content;
+          try {
+            const json = JSON.parse(content);
+            if (json && Array.isArray(json.items)) {
+              json.items = json.items.map((item: any) => normalizeRealtimeItem(item));
+            }
+            parsedData = json;
+          } catch {}
+
+          let responsePayload: any = parsedData;
+          if (parsedData && typeof parsedData === 'object') {
+            responsePayload = {
+              source: 'x',
+              query,
+              sort: sort || 'recent',
+              ...(Array.isArray(parsedData) ? { items: parsedData } : parsedData),
+            };
+          }
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: JSON.stringify(responsePayload, null, 2) }],
           };
         } catch (err: any) {
           return {

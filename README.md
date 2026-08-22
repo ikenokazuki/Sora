@@ -1,26 +1,89 @@
-# Sora
+# Sora (空)
 
-> **Ultra-fast, Lightweight Web Scraping & Deep Search Engine with MCP (Model Context Protocol)**  
-> *(Firecrawl & Tavily Alternative / Distroless / Source-Available)*
+> **日本のWebをAIエージェントから利用するための Self-hosted MCP / REST 統合サーバー**  
+> *All-in-One, Zero-Middleware Web Scraping & Japanese Life Infrastructure Engine for AI Agents*
 
-`Sora` は、Web ページや PDF の超高速スクレイピング（Markdown 変換・メタデータ抽出・SPA 自動 Chromium レンダリング・Bot 検知回避）、Web 検索（ドメイン絞り込み対応）、Yahoo Japan リアルタイム検索（X/Twitter ポスト・画像・トレンド取得）、サイトマップ探索 (`/map`)、サブページ再帰クロール (`/crawl`)、電車乗換案内、日本全国天気予報（気象庁オープンデータ直結・1,805 自治体自動解決）、およびこれらを統合した深層検索を提供する All-in-One サービスです。
+`Sora` は、LLM や AI エージェント（Claude Desktop, Cursor, Cline, OpenCodeInterpreter, Dify など）が **日本の Web 空間と日常インフラを自由かつ安全に探索・操作するための All-in-One MCP / REST サーバー** です。
 
-標準的な **REST API** および **MCP サーバー**（Streamable HTTP / SSE）としてセルフホストして利用できます。
+外部 DB（Redis / PostgreSQL）やメッセージキューを一切必要とせず、**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ / 単一バイナリ** だけで月800円の VPS から即座に稼働します。
 
-すべての検索・スクレイピング結果には、情報ソースが Web ページ由来なのか X (Twitter) 由来なのかを即座に判別できる `source: "web" | "x" | "image" | "video" | "news" | "chiebukuro" | "suggest" | "transit" | "weather"` プロパティが付与されます。
+```mermaid
+flowchart LR
+    subgraph Clients["AI Clients / Agents"]
+        Claude["Claude Desktop / Cursor"]
+        Agents["LangChain / AutoGen / Dify"]
+    end
+
+    subgraph Sora["Sora All-in-One (Distroless / Bun)"]
+        direction TB
+        MCP["MCP Server (Streamable HTTP / SSE)"]
+        REST["Hono REST API (OpenAPI 3.0)"]
+        Auth["Timing-Safe Auth & SSRF Guard"]
+        LRU["True LRU In-Memory Cache"]
+        
+        subgraph Engine["Dual Scrape Engine"]
+            Fast["Static Fetch + Readability + AI Chunker"]
+            Browser["Stealth Chromium + Browser DSL (Tabs/Clicks)"]
+        end
+
+        subgraph JP["Japan Life Infrastructure"]
+            JMA["気象庁 1,805自治体 天気予報"]
+            Transit["Yahoo! 路線乗換・IC運賃"]
+            Yahoo["Yahoo! リアルタイム(X)/知恵袋/ニュース/画像/動画"]
+        end
+    end
+
+    subgraph Web["Public Internet"]
+        Sites["Web Sites / PDFs / SPAs"]
+        PublicData["気象庁 / Yahoo / X"]
+    end
+
+    Clients <-->|MCP / REST| Sora
+    Fast --> Sites
+    Browser --> Sites
+    JP --> PublicData
+```
 
 ---
 
-## 🌟 主な特徴と強み (Core Selling Points)
+## ⚡ 5秒で繋がる Quickstart (Claude Desktop / Cursor / Cline)
 
-1. **⚡ 圧倒的なミリ秒応答 & 超低消費メモリ**:
-   - Bun ネイティブコンパイルバイナリにより、API 応答 **1.5ms**、常駐メモリわずか **~56MB** を達成。AI エージェントの応答待ち時間を極限まで短縮。
-2. **📦 完全オールインワン & ゼロミドルウェア**:
-   - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ** だけで、月800円の極小 VPS でもフル稼働。
-3. **🛡️ Distroless（シェルなし）による強固なセキュリティ**:
-   - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`、`bash`、`apt`、`curl` が存在せず、未知の脆弱性によるシェル奪取・RCE（任意コード実行）攻撃を原理的に無力化。
-4. **🗾 日本の日常インフラ & Web 探索の完全網羅**:
-   - 海外製ツール（Firecrawl / Tavily）では不可能な「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式データ直結・全国 1,805 自治体の天気」「電車乗換案内」を単一 MCP で提供。
+お使いの AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで、16種類の強力なツール群が即座に有効化されます。
+
+### ① Remote MCP (HTTP / SSE) 接続
+Sora コンテナを起動した状態で URL を指定します：
+
+```json
+{
+  "mcpServers": {
+    "sora": {
+      "url": "http://localhost:3000/mcp",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+### ② Docker / Podman での 1 コマンド起動
+```bash
+docker run -d -p 3000:3000 --name sora ghcr.io/ikeno/sora:latest
+```
+
+---
+
+## 🌟 主な特徴と強み (Why Sora?)
+
+1. **🗾 日本の日常インフラ & Web 探索の完全網羅**:
+   - 海外製ツール（Firecrawl / Tavily）では対応できない「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式オープンデータ直結（全国 1,805 市区町村自動選定）」「電車乗換案内」を単一 MCP で提供。
+2. **⚡ 圧倒的なミリ秒応答 & 超低消費メモリ**:
+   - Bun ネイティブコンパイルにより、API 応答 **1.5ms**、常駐メモリわずか **~56MB**。AI エージェントの待ち時間を極限まで短縮。
+3. **📦 完全オールインワン & ゼロミドルウェア**:
+   - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一バイナリ / 単一コンテナだけで即座に完結。
+4. **🛡️ Distroless（シェルなし）& 厳格なセキュリティ**:
+   - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`, `bash`, `curl` 等が存在せず、RCE（任意コード実行）攻撃を無力化。
+   - SSRF 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
+5. **🕹️ ステートフルなブラウザ操作 DSL**:
+   - `open` → `fill` → `click` → `screenshot` → `evaluate` の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
 
 ---
 
@@ -56,6 +119,20 @@
 | `POST /search/suggest` (サジェスト) | **約 820 ms** | **0.5 ms** | Yahoo! オートコンプリート関連語補完 |
 | `POST /browser/action` (初回実行) | **約 1.4 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
 | `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
+
+#### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
+
+外部 LLM API を介さず、すべて Bun ネイティブおよび最適化アルゴリズムにより **1ミリ秒未満（< 1ms）** で完結します。
+
+| 処理・機能 | 処理時間 (1回あたり実測値) | 特徴・アルゴリズム |
+|---|:---:|---|
+| **読了時間・文字統計計算** (`calculateContentStats`) | **0.03 ms** (`31 µs`) | CJK/英単語の高速カウント＆推定読了時間算出 |
+| **出典・引用リンク抽出** (`extractCitationsFromMarkdown`) | **0.06 ms** (`62 µs`) | 正規表現＋文脈コンテキストスライシング |
+| **RAG セマンティック・チャンキング** (`chunkMarkdownContent`) | **0.13 ms** (`138 µs`) | 見出し・コードブロック境界を考慮したセマンティック分割 |
+| **検索結果の重複・類似排除** (`dedupSearchResults`) | **0.33 ms** (`335 µs`) | 50件の N-gram Jaccard 類似度判定 |
+| **PII 個人情報自動マスキング** (`maskPiiInText`) | **0.55 ms** (`557 µs`) | メール・電話・Luhn クレジットカード判定＆置換 |
+| **超高速 抽出型自動要約 (TL;DR)** (`generateExtractiveSummary`) | **0.97 ms** (`970 µs`) | TF-IDF 類似の重要文抽出アルゴリズム |
+| **検索語句 Markdown 強調ハイライト** (`highlightMatches`) | **9.1 ms** | 正規表現による構文安全な `<mark>` タグ挿入 |
 
 ---
 
@@ -126,7 +203,7 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 15 ツール / 4つのモジュール)
+## 2. 提供 MCP ツール一覧 (全 16 ツール / 4つのモジュール)
 
 Sora は、目的に応じて **4つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
@@ -138,24 +215,68 @@ Sora は、目的に応じて **4つの論理モジュール** で構成され�
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │
 │ ・search_web    │ ・browser_action  │ ・search_image   │ ・search_route  │
 │ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │
-│ ・search_deep   │    スクショ/JS実行│ ・search_news    │ ・get_weather   │
-│ ・map_site      │                   │ ・search_chiebukuro│ (気象庁天気)  │
-│ ・crawl_site    │                   │ ・search_realtime│                 │
-│                 │                   │ ・search_trend   │                 │
+│ ・scrape_batch  │    スクショ/JS実行│ ・search_news    │ ・get_weather   │
+│ ・search_deep   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │
+│ ・map_site      │                   │ ・search_realtime│                 │
+│ ・crawl_site    │                   │ ・search_trend   │                 │
 │                 │                   │ ・suggest_keywords│                │
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┘
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
-Web 検索と本文スクレイピング、深層統合検索、サイトマップ解析、再帰クロール。
+Web 検索と本文スクレイピング、一括並行取得、深層統合検索、サイトマップ解析、再帰クロール。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `search_web` | Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
-| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面（Cloudflare Turnstile 等）は自動で Chromium レンダリング。プロキシ対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `proxyUrl` (string, 任意): 経由する HTTP/HTTPS/SOCKS5 プロキシ URL<br>- `extractHighlights` (boolean, 任意): 重要文を抽出するか<br>- `query` (string, 任意): ハイライト対象キーワード |
-| `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 3, 最大: 10)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL<br>- `extractHighlights` (boolean, 任意) |
-| `map_site` | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 100)<br>- `includeSubdomains` (boolean, 任意)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
-| `crawl_site` | 指定した URL 配下のページを再帰的にクロールし、複数ページの Markdown 本文を一括収集します。 | 各結果に `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 5)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。RAGチャンキング・出典抽出・読了時間・PII保護・テーブルJSON抽出・要約生成に対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 10000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `chunkMarkdown` (boolean, 任意): RAG用セマンティック・チャンキングを行うか<br>- `chunkSize` (number, 任意): チャンク文字数目安 (デフォルト: 1000)<br>- `extractCitations` (boolean, 任意): 出典・引用リンク一覧を抽出するか<br>- `validateLinks` (boolean, 任意): リンクの到達性・ステータスを並行検証するか<br>- `extractSummary` (boolean, 任意): 抽出型自動要約（TL;DR）を生成するか<br>- `maskPii` (boolean, 任意): メール・電話番号・クレカ等の個人情報を自動マスキングするか<br>- `formatAsPrompt` (boolean, 任意): LLM用標準XMLラッパー形式を生成するか<br>- `highlightMatches` (boolean, 任意): 検索一致語句をハイライトするか<br>- `webhookUrl` (string, 任意): 完了通知先 Webhook URL<br>- `onlyMainContent` (boolean, 任意): 記事本文のみ抽出するか (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ連想配列<br>- `clipSelector` (string, 任意): 要素切り抜きスクショ用 CSS セレクタ<br>- `headers` / `cookies` (object/array, 任意): カスタムヘッダー / Cookie<br>- `removeSelectors` (string[], 任意): パージ対象ノイズセレクタ<br>- `retries` (number, 任意): リトライ回数 (0〜3)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+| `scrape_batch` | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | 各結果に `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- (その他 `scrape` と同等の全オプションに対応) |
+| `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot"]`<br>- `onlyMainContent` (boolean, 任意): 記事本文のみ抽出するか (デフォルト: true)<br>- `extractHighlights` (boolean, 任意): 各ページからクエリ関連ハイライトを抽出するか (デフォルト: false)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+| `map_site` | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000)<br>- `includeSubdomains` (boolean, 任意)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+| `crawl_site` | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | 各結果に `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot"]`<br>- `webhookUrl` (string, 任意): クロール完了時通知先 Webhook URL<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+---
+
+### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
+
+エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
+
+#### 1. 取得件数を増やすメリット・デメリット
+
+| 項目 | メリット | デメリット・リスク | 推奨設定 |
+| :--- | :--- | :--- | :--- |
+| **統合深層検索 (`/search`)** | より幅広いソースから情報を網羅できる。 | ・**レイテンシ増大**: 10〜20 サイトを並行取得すると応答時間が 5〜15 秒に遅延。<br>・**LLM コンテキスト肥大化**: 大量の全文を渡すとトークン消費が増大し、重要情報が埋もれる（*Lost in the Middle* 現象）。 | デフォルト `5`<br>(最大 `20`) |
+| **サイト内クロール (`/crawl`)** | ドキュメント全体の網羅的なナレッジ収集が可能。 | ・**時間・リソース消費**: ページ数に比例して処理時間が増大。 | デフォルト `10`<br>(最大 `50`) |
+| **サイトマップ探索 (`/map`)** | サイト全体の構造を瞬時に把握可能。 | ・テキスト処理のみのため負荷は極めて小さい。 | デフォルト `200`<br>(最大 `1000`) |
+
+#### 2. 最も高精度な LLM 活用のベストプラクティス
+> [!TIP]
+> **より効果的なアプローチ**:
+> 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
+> 2. **ハイライト抽出の併用**: `extractHighlights: true`（`query` 指定）を有効化すると、**Structure & Proximity-Aware BM25+ エンジン**（見出し文脈継承・フレーズ完全一致・近接度スコアリング・KWICスニペット生成）により、LLM は長いページ全体を読む代わりに**クエリに関連する最も重要な段落・センテンスのみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます（外部 LLM 不要、0.3ms でローカル動作）。
+> 3. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
+> 4. **GFM シンタックスハイライト言語の保持**: `<pre><code class="language-python">` 等からプログラミング言語名を正確に識別し、Markdown 出力時に ` ```python ` として再現。
+> 5. **自動トークン圧縮 & ノイズ除去**: 空リンク、無効な JavaScript リンク、不要な重複空行を自動クレンジング（`cleanMarkdownTokens`）し、Cookie 同意バナー（OneTrust / Cookiebot 等）も完全パージするため、LLM コンテキストを常にクリーンに保ちます。
+> 6. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
+> 7. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
+
+
+
+
+
+#### 3. 実測ベンチマークとスケーラビリティ特性 (ローカル実測値)
+
+| 処理 | 件数・ページ数 | 平均レイテンシ (ms) | スループット | 特性・備考 |
+| :--- | :--- | :--- | :--- | :--- |
+| **サイト内クロール** (`/crawl`) | `maxPages: 5` (旧デフォルト) | **358 ms** | 13.9 pages/sec | 3並行フェッチにより極めて高速 |
+| | `maxPages: 10` (**新デフォルト**) | **341 ms** | **29.3 pages/sec** | 並行キューの効率化で旧デフォルトと同等の所要時間 |
+| | `maxPages: 20` | **2,046 ms** | 9.8 pages/sec | 20ページの全文収集を約2秒で完了 |
+| | `maxPages: 50` (**新上限**) | **4,685 ms** | 10.7 pages/sec | 50ページ巡回も 5秒未満で安定動作 |
+| **サイトマップ探索** (`/map`) | `limit: 100` (旧デフォルト) | **826 ms** | - | XML/HTML パースのみで極めて軽量 |
+| | `limit: 200` (**新デフォルト**) | **882 ms** | - | 100件時とほぼ変わらない応答速度 (+56ms) |
+| | `limit: 1000` (**新上限**) | **808 ms** | - | 1,000件探索でもオーバーヘッドほぼゼロ |
+| **統合深層検索** (`/search`) | `limit: 3` (旧デフォルト) | **約 1.4 秒** | - | Web検索 + 上位3件並行スクレイプ |
+| | `limit: 5` (**新デフォルト**) | **約 2.0 〜 3.4 秒** | - | Web検索 + 上位5件並行スクレイプ |
+| | `limit: 20` (**新上限**) | **約 4 〜 8 秒** | - | 幅広いソースのディープ調査用 |
 
 ---
 
@@ -178,7 +299,7 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 | `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
 | `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 30) |
-| `search_realtime` | Yahoo Japan リアルタイム検索を実行し、X (旧 Twitter) の最新ツイートおよび画像 URL・投稿日時を取得します。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード |
+| `search_realtime` | Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 40)<br>- `page` (number, 任意): ページ番号 (デフォルト: 1) |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
 
 ---
@@ -197,12 +318,12 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
-### 3.1 ヘルスチェック (`GET /health`)
+### 3.1 ヘルスチェック & メトリクス
+#### `GET /health`
 ```json
 {
   "status": "ok",
   "service": "sora",
-  "version": "2.0.0",
   "cachedEntries": 0,
   "chromiumAvailable": true,
   "yahooMcpAvailable": true,
@@ -211,33 +332,192 @@ Web 検索と本文スクレイピング、深層統合検索、サイトマッ�
 }
 ```
 
+#### `GET /metrics` (運用統計・キャッシュヒット率・リソース使用量)
+```json
+{
+  "status": "ok",
+  "service": "sora",
+  "uptimeSeconds": 1420,
+  "cache": {
+    "size": 42,
+    "maxSize": 3000,
+    "hits": 156,
+    "misses": 48,
+    "hitRatio": 0.7647
+  },
+  "activeSessions": 2,
+  "chromium": {
+    "available": true,
+    "sharedConnected": true
+  },
+  "memory": {
+    "rssMb": 86,
+    "heapUsedMb": 34,
+    "heapTotalMb": 58
+  },
+  "timestamp": "2026-08-22T04:20:00.000Z"
+}
+```
+
+#### `GET /metrics?format=prometheus` または `Accept: text/plain` (Prometheus 監視用メトリクス)
+Grafana / Prometheus 監視スタックにそのまま取り込める標準テキスト形式で出力します。
+```text
+# HELP sora_uptime_seconds Process uptime in seconds
+# TYPE sora_uptime_seconds gauge
+sora_uptime_seconds 1420
+# HELP sora_memory_rss_bytes Resident set size in bytes
+# TYPE sora_memory_rss_bytes gauge
+sora_memory_rss_bytes 90177536
+# HELP sora_cache_hits_total Total cache hits
+# TYPE sora_cache_hits_total counter
+sora_cache_hits_total 156
+# HELP sora_cache_hit_rate Cache hit rate
+# TYPE sora_cache_hit_rate gauge
+sora_cache_hit_rate 0.7647
+# HELP sora_active_browser_sessions Active browser sessions count
+# TYPE sora_active_browser_sessions gauge
+sora_active_browser_sessions 2
+```
+
 ---
 
 ### 3.2 単一 URL / PDF スクレイプ (`POST /scrape`)
 - **リクエスト**:
 ```json
 {
-  "url": "https://example.com/press-release.pdf",
+  "url": "https://example.com/article",
   "maxChars": 30000,
   "mode": "auto",
-  "proxyUrl": "http://user:pass@proxy.example.com:8080",
+  "formats": ["markdown", "jsonLd", "images", "links"],
+  "onlyMainContent": true,
+  "selectors": {
+    "productName": "h1.product-title",
+    "price": ".price-value",
+    "buyLink": "a.btn-buy@href",
+    "thumbnail": "img.main-photo@src"
+  },
   "extractHighlights": true,
-  "query": "新商品 発売日"
+  "query": "新機能 リリース"
 }
 ```
 - **レスポンス例**:
 ```json
 {
-  "url": "https://example.com/press-release.pdf",
-  "title": "2026年新商品プレスリリース",
-  "content": "---\ntitle: \"2026年新商品プレスリリース\"\nurl: \"https://example.com/press-release.pdf\"\ntotalPages: 3\ncontentType: \"application/pdf\"\n---\n\n...",
+  "url": "https://example.com/article",
+  "title": "最新アップデートのお知らせ",
+  "content": "---\ntitle: \"最新アップデートのお知らせ\"\nurl: \"https://example.com/article\"\npublishedTime: \"2026-08-22T10:00:00Z\"\nauthor: \"開発チーム\"\nsiteName: \"Tech Blog\"\n---\n\n...",
   "isTruncated": false,
-  "contentType": "application/pdf",
+  "contentType": "text/html",
   "source": "web",
   "renderedWithBrowser": false,
+  "publishedTime": "2026-08-22T10:00:00Z",
+  "author": "開発チーム",
+  "siteName": "Tech Blog",
+  "extracted": {
+    "productName": "Sora プレミアムキーボード",
+    "price": "¥24,800",
+    "buyLink": "https://example.com/cart/add?id=123",
+    "thumbnail": "https://example.com/images/feature.png"
+  },
+  "jsonLd": [
+    {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "headline": "最新アップデートのお知らせ"
+    }
+  ],
+  "images": [
+    {
+      "url": "https://example.com/images/feature.png",
+      "alt": "新機能の画面イメージ"
+    }
+  ],
   "highlights": [
-    "2026年9月1日より全国で新商品の一般発売を開始いたします。"
+    "本日より新機能の提供を開始いたします。"
   ]
+}
+```
+
+> [!TIP]
+> **🇯🇵 日本語レガシーサイト自動対応**: `Shift_JIS (CP932)` や `EUC-JP` の Web サイトも文字コードを自動判定してデコードします。文字化けの心配はありません。
+> 
+> **📄 PDF 抽出強化**: 複数ページの PDF ドキュメントは `<!-- Page 1 -->\n## Page 1` のようにページ番号区切りで構造化 Markdown 出力され、`totalPages` や作成者等のメタデータも自動抽出されます。
+> 
+> **✂️ 構文安全トリミング & トークン見積もり**: `maxChars` で文字数制限された場合でも、開いたコードブロック（` ``` `）やテーブルを自動的に安全に補正・閉鎖します。また、レスポンスには推定 LLM トークン数 `estimatedTokens` が付与されます。
+> 
+> **🧩 RAG 最適化セマンティック・チャンキング (`chunkMarkdown: true`)**: 見出し階層（H1〜H4）や段落・コードブロックを壊さず適切に分割された `chunks: [{ index, heading, content, estimatedTokens }]` を自動生成し、ベクトル検索や RAG へ即座に投入できます。
+> 
+> **🖼️ 画像メタデータ & キャプション抽出 (`formats: ["images"]`)**: 各画像について URL に加え、`<figcaption>` の説明文（`caption`）、`width`/`height`、およびアイキャッチ判定（`isMainImage`）を自動抽出します。
+> 
+> **🔗 ページ内リンクの健全性・到達性判定 (`validateLinks: true`)**: ページ内のリンクに対して軽量な並行検証を行い、HTTP ステータスと有効性 `linksWithStatus: [{ url, status, ok }]` を返却します。
+> 
+> **📚 出典・引用リンク構造化抽出 (`extractCitations: true`)**: 本文中の外部リンクや参考文献をコンテキスト文付きで `citations: [{ text, url, context }]` として自動抽出します。
+> 
+> **⏱️ 読了時間 & 文字・単語数統計**: 本文から `characterCount`、`wordCount`、および言語特性に応じた推定読了時間 `readingTimeMin`（分数）を自動算出して付与します。
+> 
+> **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 長時間バッチ処理や大規模クロール完了時に、指定したエンドポイントへ非同期で結果ペイロードを HTTP POST 通知します。
+> 
+> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。
+> 
+> **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。
+> 
+> **🎬 YouTube / 動画メディアメタデータ & チャプター抽出 (`media`)**: 動画ページから再生時間、サムネイル、チャプター一覧（タイムスタンプ付き目次）を自動構造化抽出します。
+> 
+> **🤖 LLM 最適化プロンプト XML 自動生成 (`formatAsPrompt: true`)**: Claude / GPT / Gemini が最も理解しやすい標準的な `<web_page url="..." title="...">...</web_page>` 形式のコンテキストラッパー `promptContext` を自動生成します。
+> 
+> **🖍️ 検索キーワードの本文自動強調 (`highlightMatches: true`)**: 指定した `query` のキーワードを本文 Markdown 内で `<mark>キーワード</mark>` として強調表示した `highlightedContent` を取得できます。
+> 
+> **📊 テーブル構造化 JSON 抽出 (`formats: ["tables"]`)**: ページ内の表（`<table>`）を `{ caption, headers, rows }` の構造化 JSON 配列としてダイレクトに取得可能です。
+> 
+> **⚡ 超高速 抽出型自動要約 (`extractSummary: true`)**: 外部 LLM API を呼ばず、内部アルゴリズムによりミリ秒単位で重要文（TL;DR 要約）`summary: string[]` を自動生成します。
+> 
+> **🎯 検索結果の重複排除 (`dedup: true`)**: ニュース検索やリアルタイム検索で、コピペ投稿や転載記事を類似度判定で自動排除し、ユニークな情報のみを厳選します。
+> 
+> **🔄 自動リトライポリシー (`retries` & `retryDelayMs`)**: 接続失敗や 429/503 エラー時に指数バックオフで自動再試行し、耐障害性を向上させます。
+> 
+> **📸 要素指定スクリーンショット (`clipSelector`)**: 特定の要素（例: `clipSelector: "#stock-chart"`）を指定することで、その要素のみを切り抜いた Base64 PNG を取得できます。
+> 
+> **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。
+> 
+> **🧹 ユーザー指定ノイズセレクタ除去 (`removeSelectors`)**: `removeSelectors: [".ad", ".comments", "#related-articles"]` を指定し、特定ブロックを Markdown 変換前に徹底パージできます。
+> 
+> **📖 対話型 API ドキュメント (`GET /docs`)**: ブラウザから `http://localhost:3000/docs` にアクセスすると、Swagger UI から全 API を直接テスト実行（Try it out）できます。
+
+---
+
+### 3.2.1 複数 URL 一括並行スクレイプ (`POST /scrape/batch`)
+
+複数の Web ページ URL を指定し、ドメイン別スロットリングを維持しながら高速にサーバー側で並行フェッチして一括取得します。
+
+- **リクエスト (POST)**:
+```json
+{
+  "urls": [
+    "https://example.com/page1",
+    "https://example.com/page2",
+    "https://example.com/page3"
+  ],
+  "concurrency": 3,
+  "maxChars": 10000,
+  "mode": "auto",
+  "formats": ["markdown", "jsonLd"]
+}
+```
+- **レスポンス例**:
+```json
+{
+  "total": 3,
+  "successful": 3,
+  "failed": 0,
+  "results": [
+    {
+      "url": "https://example.com/page1",
+      "title": "Page 1 Title",
+      "content": "...",
+      "estimatedTokens": 450
+    }
+  ],
+  "errors": []
 }
 ```
 
@@ -328,13 +608,29 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ```json
 {
   "query": "2026年 AI 最新トレンド",
-  "limit": 3,
+  "limit": 5,
   "scrapeContent": true,
   "includeRealtime": true,
-  "updated": "week"
+  "updated": "week",
+  "formats": ["markdown"]
+}
+```
+- **HTML 形式で取得する場合**:
+```json
+{
+  "query": "React 19 新機能",
+  "formats": ["html"]
+}
+```
+- **重要ハイライトのみ抽出する場合 (トークン節約モード)**:
+```json
+{
+  "query": "React 19 新機能 変更点",
+  "extractHighlights": true
 }
 ```
 - **Web 検索リクエスト (`POST /search/web`)**:
+
 ```json
 {
   "query": "新商品 発売情報",
@@ -343,6 +639,36 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "updated": "week"
 }
 ```
+
+---
+
+### 3.4.1 サイトマップ探索 (`POST /map`)
+指定ドメインの `sitemap.xml` や内部リンクを探索し、サイト内の全 URL リストを抽出します。
+- **リクエスト**:
+```json
+{
+  "url": "https://example.com",
+  "limit": 200,
+  "includeSubdomains": false
+}
+```
+
+---
+
+### 3.4.2 サブページ再帰的クロール (`POST /crawl` & `POST /crawl/stream`)
+指定 URL から配下ページを再帰的に巡回し、複数ページの Markdown/HTML/画像/構造化データを一括収集します。`includePatterns` / `excludePatterns` による Glob ワイルドカードフィルタリングに対応。
+- **リクエスト (一括取得)**:
+```json
+{
+  "url": "https://example.com/docs",
+  "maxPages": 20,
+  "maxDepth": 2,
+  "includePatterns": ["/docs/**", "/guide/*"],
+  "excludePatterns": ["/tag/**", "*.pdf"],
+  "formats": ["markdown", "jsonLd", "images"]
+}
+```
+- **SSE ストリーミング (`POST /crawl/stream`)**: ページが取得されるたびにリアルタイムで Server-Sent Events（`start` -> `page` -> `done`）を配信。
 
 ---
 
@@ -430,14 +756,15 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "source": "weather",
   "cityId": "060010",
   "title": "村山 の天気",
-  "publicTimeFormatted": "2026/08/21 17:00:00",
+  "publishedTime": "2026-08-21T17:00:00+09:00",
+  "publicTime": "2026-08-21T17:00:00+09:00",
   "publishingOffice": "山形地方気象台",
   "location": {
     "area": "東北",
     "prefecture": "山形県",
-    "district": "村山地方",
     "city": "天童市"
   },
+  "overview": "前線が、日本海から東北地方を通って、日本の東にのびています。村山地方では、夜遅くにかけて雷を伴い激しい雨が降る所がある見込みです。",
   "description": {
     "headline": "",
     "body": "前線が、日本海から東北地方を通って、日本の東にのびています...",
@@ -472,14 +799,17 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ---
 
 ### 3.8 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
-- **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名" }`
+- **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名", "sort": "popular", "limit": 20, "page": 1 }`
+  - `sort`: `"recent"` (新着順, デフォルト) または `"popular"` (話題順 / エンゲージメント順)
+  - 各ポストに `publishedTime` (ISO 8601 文字列), `author` (ユーザー名 + @アカウント名), `siteName: "X (Twitter)"` が統一フォーマットで自動付与されます。
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---
 
 ### 3.9 サイトマップ & クロール (`POST /map` / `POST /crawl`)
-- **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 100 }`
-- **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 5 }`
+- **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 200 }`
+- **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 10 }`
+
 
 ---
 
@@ -491,10 +821,25 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 - **最小権限設計**: 非 root 実行に対応し、Docker / Podman / Kubernetes などの標準コンテナ環境で安全に隔離・実行可能。
 
 ### 4.2 セキュリティ & パフォーマンス機能
-- **プロキシ連携**: HTTP, HTTPS, SOCKS5 プロキシに対応し、IP ローテーションや地域制限回避が可能。
-- **SSRF 防御**: プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）への内部攻撃を遮断。
-- **Jitter スロットリング**: 同一ドメインへの過剰な連続アクセスを自動抑制。
-- **LRU キャッシュ**: 15〜30分間のメモリキャッシュにより同一リクエストを高速応答。
+- **🛡️ 多重 SSRF & DNS Rebinding 防御**:
+  - プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）、CGNAT（`100.64.0.0/10`）、IPv6 特殊アドレス、クラウドメタデータ IP（`169.254.169.254`）への内部アクセスを遮断。
+  - `dns.promises.lookup` による事前名前解決を行い、ドメイン偽装による **DNS Rebinding 攻撃** も接続前に即時ブロック。
+- **⚡ Single-Flight Cache (In-flight Deduplication)**:
+  - 同一 URL への並行リクエスト発生時、Promise を共有して 1 回の外部通信に集約。Thundering Herd（キャッシュスタンピード）を防ぎ、外部サーバーとローカルリソースを保護。
+- **🚦 ブラウザ同時実行制限 (Concurrency Control)**:
+  - `SimpleSemaphore` により Chromium プロセスの同時実行数（`MAX_CONCURRENT_BROWSERS`、デフォルト 5）を安全に制御。サーバーの CPU/メモリ枯渇を防止。
+- **🔒 Timing-Safe 認証 & Browser Session 所有権紐付け**:
+  - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
+  - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
+- **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
+  - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
+- **📐 共通 Zod スキーマ & OpenAPI 3.0 完全自動生成**:
+  - REST / MCP 双方で Zod スキーマによる入力検証を統一。
+  - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **100% 動的自動生成** し、ドキュメントの乖離を完全防止。
+  - エラーレスポンスは `{ "error": "...", "code": "SSRF_BLOCKED", "status": 403, "retryable": false }` のように AI エージェントが自己修復・自律判断しやすい構造を提供。
+- **⏱️ Jitter スロットリング & 真の LRU キャッシュ**:
+  - 同一ドメインへの過剰な連続アクセスを 150ms + Jitter（0〜100ms ゆらぎ）で自動抑制。
+  - 15〜30分間の真の LRU（アクセス時最新化）キャッシュと 10分おきの定期 TTL スイープにより、メモリリークを完全防止。
 
 ---
 
