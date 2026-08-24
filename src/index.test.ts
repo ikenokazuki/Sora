@@ -310,16 +310,25 @@ describe('web-fetcher Core Functions', () => {
       光のごとく駆け巡る
       好きじゃねぇ 愛してる
 
+      ## ・Delight
+      〈イントロ〉スタンダード＋ 黒服パーフェクトプルオーバー
+      うりゃおい ×4 👏 ×5 しゃーいくぞ
+      タイガー ファイヤー サイバー ファイバー
+
       ## ・待っていてね
       〈イントロ〉スタンダード倍速
     `;
     const songHighlights = extractQueryHighlights(songNoteDoc, '君と見るそら　ソライロ　コール', 3);
-    expect(songHighlights.length).toBeGreaterThanOrEqual(1);
+    // 相対スコア減衰カットオフと重要語カバレッジゲートにより、無関係な「Delight」等は排除されて1件のみ抽出される
+    expect(songHighlights.length).toBe(1);
     const topHl = songHighlights[0];
     expect(topHl).toContain('## ・ソライロ');
     expect(topHl).toContain('〈イントロ〉スタンダード');
     expect(topHl).toContain('またね口上');
     expect(topHl).toContain('銀河口上');
+    expect(topHl).not.toContain('Delight');
+    expect(topHl).not.toContain('好きって。');
+    expect(topHl).not.toContain('待っていてね');
   });
 
   it('generateTextFragmentUrl should create valid W3C Scroll-to-Text Fragment URLs', () => {
