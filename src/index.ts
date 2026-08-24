@@ -32,6 +32,17 @@ import {
   searchTransitRoute,
   fetchWeatherForecast,
   executeBrowserActions,
+  fetchWeatherWarnings,
+  fetchRecentEarthquakes,
+  registerWatchTarget,
+  checkWatchTarget,
+  checkAllWatchTargets,
+  listWatchTargets,
+  deleteWatchTarget,
+  searchMusic,
+  searchLaws,
+  getLawData,
+  checkDetailedHealth,
   closeSharedBrowser,
   isSharedBrowserConnected,
 } from './scraper.js';
@@ -39,6 +50,13 @@ import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
   BrowserActionRequestSchema,
+  DisasterWarningsRequestSchema,
+  EarthquakeRequestSchema,
+  WatchRegisterRequestSchema,
+  WatchCheckRequestSchema,
+  MusicSearchRequestSchema,
+  LawSearchRequestSchema,
+  LawDataRequestSchema,
   generateOpenApiDocument,
   type ApiErrorResponse,
 } from './types.js';
@@ -199,6 +217,15 @@ app.get('/', (c) => {
       searchSuggest: 'POST /search/suggest',
       transitRoute: 'POST /transit/route',
       weather: 'POST/GET /weather, GET /weather/:city',
+      disasterWarnings: 'POST /disaster/warnings',
+      disasterEarthquake: 'POST /disaster/earthquake',
+      watchRegister: 'POST /watch/register',
+      watchCheck: 'POST /watch/check',
+      watchList: 'GET /watch/list',
+      watchDelete: 'DELETE /watch/:id',
+      searchMusic: 'POST /search/music',
+      govLaws: 'POST /gov/laws',
+      govLawText: 'POST /gov/law-text',
       browserAction: 'POST /browser/action',
       map: 'POST /map',
       crawl: 'POST /crawl',
@@ -208,7 +235,12 @@ app.get('/', (c) => {
   });
 });
 
-app.get('/health', (c) => {
+app.get('/health', async (c) => {
+  const detailed = c.req.query('detailed');
+  if (detailed === 'true' || detailed === '1') {
+    const report = await checkDetailedHealth();
+    return c.json(report, report.status === 'ok' ? 200 : 503);
+  }
   return c.json({
     status: 'ok',
     service: 'sora',
@@ -859,6 +891,186 @@ app.get('/weather', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  }
+});
+
+// ==========================================
+// 4. 防災・地震・変更監視・音楽 REST エンドポイント
+// ==========================================
+
+// 気象警報・注意報 (POST /disaster/warnings)
+app.post('/disaster/warnings', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = DisasterWarningsRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid disaster warnings parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await fetchWeatherWarnings(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
+  }
+});
+
+// 地震速報・履歴 (POST /disaster/earthquake)
+app.post('/disaster/earthquake', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = EarthquakeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid earthquake parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await fetchRecentEarthquakes(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Earthquake search failed', 'EARTHQUAKE_ERROR', 500);
+  }
+});
+
+// 監視ターゲット登録 (POST /watch/register)
+app.post('/watch/register', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = WatchRegisterRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid watch register parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await registerWatchTarget(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Watch target registration failed', 'WATCH_ERROR', 500);
+  }
+});
+
+// 差分スキャン実行 (POST /watch/check)
+app.post('/watch/check', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = WatchCheckRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid watch check parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = parsed.data.id
+      ? await checkWatchTarget(parsed.data.id)
+      : await checkAllWatchTargets();
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Watch check failed', 'WATCH_ERROR', 500);
+  }
+});
+
+// 監視ターゲット一覧 (GET /watch/list)
+app.get('/watch/list', (c) => {
+  try {
+    const targets = listWatchTargets();
+    return c.json({ count: targets.length, targets });
+  } catch (err: any) {
+    return formatError(c, err.message || 'Watch list failed', 'WATCH_ERROR', 500);
+  }
+});
+
+// 監視ターゲット削除 (DELETE /watch/:id)
+app.delete('/watch/:id', (c) => {
+  const id = c.req.param('id');
+  if (!id) {
+    return formatError(c, 'Target id is required', 'INVALID_INPUT', 400);
+  }
+  const deleted = deleteWatchTarget(id);
+  return c.json({ success: deleted, id });
+});
+
+// 音楽メタデータ検索 (POST /search/music)
+app.post('/search/music', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = MusicSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'query is required for music search', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchMusic(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Music search failed', 'MUSIC_ERROR', 500);
+  }
+});
+
+// e-Gov キーワード法令検索 (POST /gov/laws)
+app.post('/gov/laws', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = LawSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'keyword is required for law search', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchLaws(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Law search failed', 'GOV_ERROR', 500);
+  }
+});
+
+// e-Gov 法令条文・本文詳細取得 (POST /gov/law-text)
+app.post('/gov/law-text', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = LawDataRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'lawId is required for law text retrieval', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await getLawData(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Law text retrieval failed', 'GOV_ERROR', 500);
   }
 });
 

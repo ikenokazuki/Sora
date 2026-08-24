@@ -1,6 +1,15 @@
+import {
+  dbGetCache,
+  dbSetCache,
+  dbDeleteCache,
+  dbClearExpiredCache,
+  dbClearAllCache,
+} from './db.js';
+
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
+  createdAt: number;
 }
 
 export const CACHE_TTL_DEFAULT = 30 * 60 * 1000; // 30分
@@ -34,6 +43,7 @@ export function getCacheSize(): number {
 export function clearCache(): number {
   const count = memoryCache.size;
   memoryCache.clear();
+  dbClearAllCache();
   cacheHits = 0;
   cacheMisses = 0;
   return count;
@@ -49,6 +59,7 @@ export function sweepExpiredEntries(): number {
       deletedCount++;
     }
   }
+  dbClearExpiredCache();
   return deletedCount;
 }
 
@@ -61,23 +72,54 @@ if (typeof setInterval !== 'undefined') {
   if (sweepTimer.unref) sweepTimer.unref();
 }
 
-export function getFromCache<T>(key: string): T | null {
-  const entry = memoryCache.get(key);
-  if (!entry) {
-    cacheMisses++;
-    return null;
-  }
-  if (Date.now() > entry.expiresAt) {
-    memoryCache.delete(key);
-    cacheMisses++;
-    return null;
-  }
-  // 真の LRU: 参照されたエントリを末尾（最新）に移動
-  memoryCache.delete(key);
-  memoryCache.set(key, entry);
+export function getFromCache<T>(key: string): (T & { cached: true; cachedAt?: string; ageSeconds?: number }) | null {
+  const now = Date.now();
 
-  cacheHits++;
-  return { ...entry.data, cached: true };
+  // 1. L1 メモリキャッシュの参照 (0ms)
+  const entry = memoryCache.get(key);
+  if (entry) {
+    if (now > entry.expiresAt) {
+      memoryCache.delete(key);
+      dbDeleteCache(key);
+      cacheMisses++;
+      return null;
+    }
+    // 真の LRU: 参照されたエントリを末尾（最新）に移動
+    memoryCache.delete(key);
+    memoryCache.set(key, entry);
+
+    cacheHits++;
+    const ageSeconds = Math.max(0, Math.floor((now - entry.createdAt) / 1000));
+    return {
+      ...entry.data,
+      cached: true,
+      cachedAt: new Date(entry.createdAt).toISOString(),
+      ageSeconds,
+    };
+  }
+
+  // 2. L2 SQLite 永続キャッシュの参照 (プロセス再起動後の復元)
+  const persistent = dbGetCache<T>(key);
+  if (persistent) {
+    const createdAt = persistent.expiresAt - CACHE_TTL_DEFAULT;
+    // L1 メモリキャッシュへ昇格
+    memoryCache.set(key, {
+      data: { ...persistent.value, cached: false },
+      expiresAt: persistent.expiresAt,
+      createdAt,
+    });
+    cacheHits++;
+    const ageSeconds = Math.max(0, Math.floor((now - createdAt) / 1000));
+    return {
+      ...persistent.value,
+      cached: true,
+      cachedAt: new Date(createdAt).toISOString(),
+      ageSeconds,
+    };
+  }
+
+  cacheMisses++;
+  return null;
 }
 
 export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT): boolean {
@@ -102,10 +144,16 @@ export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT): 
     memoryCache.delete(key);
   }
 
+  const now = Date.now();
+  const expiresAt = now + ttlMs;
   memoryCache.set(key, {
     data: { ...data, cached: false },
-    expiresAt: Date.now() + ttlMs,
+    expiresAt,
+    createdAt: now,
   });
+
+  // L2 SQLite へ非同期的に永続保存
+  dbSetCache(key, data, Math.ceil(ttlMs / 1000));
   return true;
 }
 

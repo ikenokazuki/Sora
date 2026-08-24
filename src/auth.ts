@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
+import { dbIncrementApiUsage } from './db.js';
 
 /** タイミング攻撃（Timing Attack）を防ぐ定数時間文字列比較 */
 export function isSecureEqual(a?: string, b?: string): boolean {
@@ -23,41 +24,86 @@ export function extractAuthToken(c: any): string | undefined {
   return undefined;
 }
 
+export function hashApiKey(key: string): string {
+  return createHash('sha256').update(key).digest('hex').slice(0, 16);
+}
+
 export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler {
   return async (c, next) => {
-    // 1. 公開エンドポイント（ヘルスチェック、ルート、メトリクス）は認証不要
+    // 1. 公開エンドポイント（ヘルスチェック、ルート、メトリクス、ドキュメント）は認証不要
     const path = c.req.path;
-    if (path === '/health' || path === '/' || path === '/metrics') {
+    if (
+      path === '/health' ||
+      path === '/' ||
+      path === '/metrics' ||
+      path === '/openapi.json' ||
+      path === '/docs' ||
+      path === '/swagger'
+    ) {
       return next();
     }
 
-    // 2. API キーが環境変数等で設定されていない場合は全許可（開発環境・内部利用用）
+    let tokenHash = 'anonymous';
+
+    // 2. API キーが環境変数等で設定されていない場合の挙動
     const apiKey = expectedApiKey ?? process.env.WEB_FETCHER_API_KEY ?? process.env.API_KEY;
     if (!apiKey) {
-      return next();
+      if (process.env.NODE_ENV === 'production') {
+        return c.json(
+          {
+            error: 'Unauthorized: Service is running in production with Fail-Closed mode and no API key configured',
+            message: 'Server administrator must set WEB_FETCHER_API_KEY or API_KEY environment variable.',
+          },
+          401,
+        );
+      }
+    } else {
+      // 3. API キーの照合 (定数時間比較)
+      const providedToken = extractAuthToken(c);
+      const forwardedFor = c.req.header('x-forwarded-for');
+      const realIp = c.req.header('x-real-ip');
+      const isDirectLocal = !forwardedFor && !realIp && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
+
+      if (providedToken && isSecureEqual(providedToken, apiKey)) {
+        tokenHash = hashApiKey(providedToken);
+      } else if (isDirectLocal) {
+        tokenHash = 'local_direct';
+      } else {
+        return c.json(
+          {
+            error: 'Unauthorized: Invalid or missing API key',
+            message: 'Please provide a valid API key via Authorization: Bearer <API_KEY> or X-API-Key header.',
+          },
+          401,
+        );
+      }
     }
 
-    // 3. API キーの照合 (定数時間比較)
-    const providedToken = extractAuthToken(c);
-    if (providedToken && isSecureEqual(providedToken, apiKey)) {
-      return next();
+    // 4. API キーごとの日次レート制限 & クォータ制御 (SQLite 永続化)
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const usageCount = dbIncrementApiUsage(tokenHash, todayStr);
+
+    const dailyLimit = process.env.DAILY_REQUEST_LIMIT ? parseInt(process.env.DAILY_REQUEST_LIMIT, 10) : undefined;
+    if (dailyLimit && dailyLimit > 0) {
+      c.header('X-RateLimit-Limit', String(dailyLimit));
+      c.header('X-RateLimit-Remaining', String(Math.max(0, dailyLimit - usageCount)));
+
+      if (usageCount > dailyLimit) {
+        return c.json(
+          {
+            error: 'Too Many Requests: Daily quota limit exceeded',
+            code: 'RATE_LIMIT_EXCEEDED',
+            status: 429,
+            retryable: false,
+            limit: dailyLimit,
+            current: usageCount,
+            message: `You have reached the daily quota of ${dailyLimit} requests. Resets at next UTC day.`,
+          },
+          429,
+        );
+      }
     }
 
-    // 4. 明示的に許可された場合のみローカルバイパスを許容 (Secure by Default)
-    const forwardedFor = c.req.header('x-forwarded-for');
-    const realIp = c.req.header('x-real-ip');
-    const isDirectLocal = !forwardedFor && !realIp && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
-
-    if (isDirectLocal) {
-      return next();
-    }
-
-    return c.json(
-      {
-        error: 'Unauthorized: Invalid or missing API key',
-        message: 'Please provide a valid API key via Authorization: Bearer <API_KEY> or X-API-Key header.',
-      },
-      401,
-    );
+    return next();
   };
 }

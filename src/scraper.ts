@@ -2,19 +2,25 @@ import * as cheerio from 'cheerio';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
-import puppeteer, { Browser, Page } from 'puppeteer-core';
-import { extractText, getMeta } from 'unpdf';
+import type { Page } from 'puppeteer-core';
 import { XMLParser } from 'fast-xml-parser';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { promises as dnsPromises } from 'dns';
 
 // 分割モジュールの型・関数をすべて re-export
 export * from './types.js';
 export * from './cache.js';
+export * from './db.js';
 export * from './enrichment.js';
+export * from './browser_engine.js';
+export * from './pdf.js';
 export * from './services/yahoo.js';
 export * from './services/life.js';
+export * from './services/disaster.js';
+export * from './services/watch.js';
+export * from './services/music.js';
+export * from './services/gov.js';
+export * from './services/health.js';
 
 import type {
   ScrapeFormat,
@@ -57,7 +63,26 @@ import {
   validateExtractedLinks,
   extractQueryHighlights,
   filterByDomains,
+  rerankSearchResults,
+  generateTextFragmentUrl,
+  chooseBestDescription,
 } from './enrichment.js';
+
+import {
+  resolveChromiumPath,
+  CHROME_EXECUTABLE_PATH,
+  getBrowser,
+  isSharedBrowserConnected,
+  closeSharedBrowser,
+  SimpleSemaphore,
+  browserSemaphore,
+  isPrivateIp,
+  isBlockedHostname,
+  validateHostIpDns,
+  setupPageSecurity,
+} from './browser_engine.js';
+
+import { parsePdfToMarkdown } from './pdf.js';
 
 import {
   callYahooMcp,
@@ -69,120 +94,6 @@ export const PORT = parseInt(process.env.PORT || '8000', 10);
 export const DEFAULT_MAX_CHARS = 30_000;
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-
-export function resolveChromiumPath(): string | undefined {
-  const envPaths = [
-    process.env.CHROME_PATH,
-    process.env.CHROME_BIN,
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-  ];
-  for (const p of envPaths) {
-    if (p && existsSync(p)) return p;
-  }
-
-  const standardPaths = [
-    '/usr/lib/chromium/chromium',
-    '/usr/bin/chromium',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/google-chrome-stable',
-    '/snap/bin/chromium',
-    '/opt/google/chrome/chrome',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ];
-  for (const p of standardPaths) {
-    if (existsSync(p)) return p;
-  }
-
-  // PATH 環境変数の走査 (NixOS / Custom distros)
-  const pathEnv = process.env.PATH || '';
-  const pathDirs = pathEnv.split(':');
-  const binaries = ['chromium', 'google-chrome', 'google-chrome-stable', 'chromium-browser', 'chrome'];
-  for (const dir of pathDirs) {
-    for (const bin of binaries) {
-      const fullPath = `${dir}/${bin}`;
-      if (existsSync(fullPath)) return fullPath;
-    }
-  }
-
-  try {
-    const { execSync } = require('child_process');
-    const path = execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null || which chrome 2>/dev/null', { encoding: 'utf8' }).trim();
-    if (path && existsSync(path)) return path;
-  } catch {}
-  return undefined;
-}
-
-// Chromium のパス判定 (コンテナ内 または ホスト環境)
-export const CHROME_EXECUTABLE_PATH = resolveChromiumPath();
-
-let sharedBrowserInstance: Browser | null = null;
-
-export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
-  if (proxyUrl) {
-    if (!CHROME_EXECUTABLE_PATH) {
-      throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
-    }
-    const args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080',
-      `--proxy-server=${proxyUrl}`,
-    ];
-    const dedicated = await puppeteer.launch({
-      executablePath: CHROME_EXECUTABLE_PATH,
-      headless: true,
-      args,
-    });
-    return { browser: dedicated, isDedicated: true };
-  }
-
-  if (sharedBrowserInstance && sharedBrowserInstance.connected) {
-    try {
-      await sharedBrowserInstance.version();
-      return { browser: sharedBrowserInstance, isDedicated: false };
-    } catch {
-      sharedBrowserInstance = null;
-    }
-  }
-
-  if (!CHROME_EXECUTABLE_PATH) {
-    throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
-  }
-
-  const args = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--disable-blink-features=AutomationControlled',
-    '--window-size=1920,1080',
-  ];
-
-  sharedBrowserInstance = await puppeteer.launch({
-    executablePath: CHROME_EXECUTABLE_PATH,
-    headless: true,
-    args,
-  });
-
-  return { browser: sharedBrowserInstance, isDedicated: false };
-}
-
-export function isSharedBrowserConnected(): boolean {
-  return sharedBrowserInstance !== null && sharedBrowserInstance.connected;
-}
-
-export async function closeSharedBrowser(): Promise<void> {
-  if (sharedBrowserInstance) {
-    try {
-      await sharedBrowserInstance.close();
-    } catch {}
-    sharedBrowserInstance = null;
-  }
-}
 
 export async function applyStealthEvasions(page: Page): Promise<void> {
   await page.setUserAgent(USER_AGENT);
@@ -310,129 +221,9 @@ export async function throttleDomain(urlStr: string): Promise<void> {
 }
 
 // ==========================================
-// 3. SSRF 防御 (ローカル・プライベートIP遮断)
+// 3. 安全な HTTP フェッチ (リダイレクト追跡 & SSRF/DNS Rebinding 再検証)
 // ==========================================
 export const MAX_RESPONSE_BODY_BYTES = 30 * 1024 * 1024; // 最大 30MB
-
-export function isPrivateIp(ip: string): boolean {
-  const trimmed = ip.trim().toLowerCase();
-  if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === '0.0.0.0' || trimmed === '::') return true;
-  if (trimmed.startsWith('10.') || trimmed.startsWith('192.168.') || trimmed.startsWith('0.')) return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(trimmed)) return true;
-  if (trimmed.startsWith('169.254.')) return true; // リンクローカル / クラウドメタデータ (AWS/GCP)
-  // CGNAT (Carrier-Grade NAT / RFC 6598: 100.64.0.0/10)
-  if (/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(trimmed)) return true;
-  // TEST-NET & Benchmark (RFC 5737 / RFC 2544)
-  if (/^198\.(1[8-9])\./.test(trimmed)) return true;
-  if (trimmed.startsWith('192.0.2.') || trimmed.startsWith('198.51.100.') || trimmed.startsWith('203.0.113.')) return true;
-  // Multicast & Reserved
-  if (/^(22[4-9]|23[0-9]|24[0-9]|25[0-5])\./.test(trimmed)) return true;
-  // IPv6 ULA, Link-local, Multicast, Doc
-  if (trimmed.startsWith('fc') || trimmed.startsWith('fd') || trimmed.startsWith('fe80:') || trimmed.startsWith('ff')) return true;
-  return false;
-}
-
-export function isBlockedHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase().trim();
-  if (
-    h === 'localhost' ||
-    h === '127.0.0.1' ||
-    h === '::1' ||
-    h === '::' ||
-    h === '0.0.0.0' ||
-    h.endsWith('.localhost') ||
-    h.endsWith('.local') ||
-    h.endsWith('.internal')
-  ) {
-    return true;
-  }
-  if (h.startsWith('::ffff:')) {
-    const mapped = h.replace(/^::ffff:/, '');
-    return isPrivateIp(mapped);
-  }
-  if (
-    h === '169.254.169.254' ||
-    h === 'metadata.google.internal' ||
-    h === 'metadata.internal' ||
-    h === 'instance-data'
-  ) {
-    return true;
-  }
-  if (/^\d+$/.test(h)) {
-    try {
-      const num = parseInt(h, 10);
-      const ip = `${(num >> 24) & 255}.${(num >> 16) & 255}.${(num >> 8) & 255}.${num & 255}`;
-      if (isPrivateIp(ip)) return true;
-    } catch {}
-  }
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) {
-    return isPrivateIp(h);
-  }
-  return false;
-}
-
-/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策） */
-export async function validateHostIpDns(hostname: string): Promise<void> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') return;
-
-  if (isBlockedHostname(hostname)) {
-    throw new Error(`プライベートネットワークまたは安全でないホストへのアクセスは遮断されています: ${hostname}`);
-  }
-
-  try {
-    const addresses = await dnsPromises.lookup(hostname, { all: true });
-    for (const addr of addresses) {
-      if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
-        throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
-      }
-    }
-  } catch (err: any) {
-    if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
-      throw err;
-    }
-    // DNS解決失敗等は後続の fetch に任せる
-  }
-}
-
-// ==========================================
-// 簡易セマフォ（ブラウザ同時実行数制限）
-// ==========================================
-export class SimpleSemaphore {
-  private current = 0;
-  private queue: Array<() => void> = [];
-
-  constructor(public readonly max: number) {}
-
-  async acquire(): Promise<void> {
-    if (this.current < this.max) {
-      this.current++;
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      this.queue.push(resolve);
-    });
-    this.current++;
-  }
-
-  release(): void {
-    this.current = Math.max(0, this.current - 1);
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    }
-  }
-
-  get activeCount(): number {
-    return this.current;
-  }
-
-  get pendingCount(): number {
-    return this.queue.length;
-  }
-}
-
-const MAX_CONCURRENT_BROWSERS = parseInt(process.env.MAX_CONCURRENT_BROWSERS || '5', 10);
-export const browserSemaphore = new SimpleSemaphore(Math.max(1, Math.min(MAX_CONCURRENT_BROWSERS, 50)));
 
 // ==========================================
 // 4. 安全な HTTP フェッチ (リダイレクト追跡 & SSRF/DNS Rebinding 再検証)
@@ -938,7 +729,7 @@ export function convertHtmlToMarkdown(
   // 7. ピンポイント セレクタ抽出
   const extracted = extractWithSelectors($, selectors, targetUrl);
 
-  // 8. ノイズ要素 & Cookie 同意バナー等のパージ
+  // 8. ノイズ要素 & Cookie 同意バナー & 不可視要素（間接プロンプトインジェクション対策）等のパージ
   const noiseSelectors = [
     'script',
     'style',
@@ -952,6 +743,16 @@ export function convertHtmlToMarkdown(
     '.onetrust-pc-dark-filter',
     '#onetrust-consent-sdk',
     '#CybotCookiebotDialog',
+    '[hidden]',
+    '[aria-hidden="true"]',
+    '[style*="display:none"]',
+    '[style*="display: none"]',
+    '[style*="visibility:hidden"]',
+    '[style*="visibility: hidden"]',
+    '[style*="font-size:0"]',
+    '[style*="font-size: 0"]',
+    '[style*="opacity:0"]',
+    '[style*="opacity: 0"]',
   ];
   if (removeSelectors && removeSelectors.length > 0) {
     noiseSelectors.push(...removeSelectors);
@@ -1041,24 +842,11 @@ export async function fetchWithStealthBrowser(
   await browserSemaphore.acquire();
 
   try {
-    const args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080',
-    ];
-    if (proxyUrl) args.push(`--proxy-server=${proxyUrl}`);
-
-    const browser: Browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args,
-    });
+    const { browser, isDedicated } = await getBrowser(proxyUrl);
 
     try {
       const page: Page = await browser.newPage();
+      await setupPageSecurity(page);
       await page.setUserAgent(USER_AGENT);
       await page.setViewport({ width: 1920, height: 1080 });
 
@@ -1101,49 +889,13 @@ export async function fetchWithStealthBrowser(
 
       return { html, title, screenshot, finalUrl };
     } finally {
-      await browser.close();
+      if (isDedicated) {
+        await browser.close();
+      }
     }
   } finally {
     browserSemaphore.release();
   }
-}
-
-// ==========================================
-// 7. PDF 構造化抽出 (unpdf)
-// ==========================================
-export async function parsePdfToMarkdown(
-  buffer: ArrayBuffer | Uint8Array,
-  targetUrl: string,
-  maxChars = DEFAULT_MAX_CHARS,
-): Promise<ScrapeResult> {
-  const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  const { text, totalPages } = await extractText(uint8, { mergePages: true });
-  let pdfMetadata: any = {};
-  try {
-    const meta = await getMeta(uint8);
-    pdfMetadata = meta?.info || {};
-  } catch {}
-
-  const title = pdfMetadata.Title || targetUrl.split('/').pop() || 'PDF Document';
-  const author = pdfMetadata.Author || undefined;
-  const rawText = Array.isArray(text) ? text.join('\n\n') : (text || '');
-  const markdown = rawText.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
-
-  const isTruncated = markdown.length > maxChars;
-  const truncatedContent = safeTruncateMarkdown(markdown, maxChars);
-  const estimatedTokens = estimateTokens(truncatedContent);
-
-  return {
-    url: targetUrl,
-    title,
-    author,
-    content: truncatedContent,
-    isTruncated,
-    contentType: 'application/pdf',
-    source: 'web',
-    metadata: pdfMetadata,
-    estimatedTokens,
-  };
 }
 
 // ==========================================
@@ -1213,6 +965,13 @@ async function finalizeScrapeResult(
 
   if (options.shouldExtractHighlights && options.query) {
     result.highlights = extractQueryHighlights(result.content, options.query);
+    if (result.highlights.length > 0) {
+      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
+    }
+  }
+  if (options.query) {
+    const topHighlight = result.highlights?.[0];
+    result.description = chooseBestDescription(result.description, topHighlight, options.query);
   }
   if (options.shouldExtractSummary) {
     result.summary = generateExtractiveSummary(result.content, 4);
@@ -1998,6 +1757,7 @@ export async function integratedSearch(options: {
             author: scrape.author,
             siteName: scrape.siteName,
             highlights: scrape.highlights,
+            textFragmentUrl: scrape.textFragmentUrl,
             cached: scrape.cached,
           };
 

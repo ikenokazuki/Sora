@@ -48,7 +48,7 @@ flowchart LR
 
 ## ⚡ 5秒で繋がる Quickstart (Claude Desktop / Cursor / Cline)
 
-お使いの AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで、16種類の強力なツール群が即座に有効化されます。
+お使いの AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで、24種類の強力なツール群 (全8モジュール) が即座に有効化されます。
 
 ### ① Remote MCP (HTTP / SSE) 接続
 Sora コンテナを起動した状態で URL を指定します：
@@ -202,24 +202,24 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 16 ツール / 4つのモジュール)
+## 2. 提供 MCP ツール一覧 (全 24 ツール / 8つのモジュール)
 
-Sora は、目的に応じて **4つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **8つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         Sora - Modular MCP                               │
-├─────────────────┬───────────────────┬──────────────────┬─────────────────┤
-│ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │
-│ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │
-│ ・search_web    │ ・browser_action  │ ・search_image   │ ・search_route  │
-│ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │
-│ ・scrape_batch  │    スクショ/JS実行│ ・search_news    │ ・get_weather   │
-│ ・search_deep   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │
-│ ・map_site      │                   │ ・search_realtime│                 │
-│ ・crawl_site    │                   │ ・search_trend   │                 │
-│                 │                   │ ・suggest_keywords│                │
-└─────────────────┴───────────────────┴──────────────────┴─────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                  Sora - Modular MCP                                                   │
+├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┤
+│ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │
+│ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │
+│ ・search_web    │ ・browser_action  │ ・search_image   │ ・search_route  │・search_    │・watch_       │・search_laws │
+│ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│
+│ ・scrape_batch  │    スクショ/JS実行│ ・search_news    │ ・get_weather   │  warnings   │・watch_check  ├──────────────┤
+│ ・search_deep   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │・search_    │・watch_list   │ 🎵 Music     │
+│ ・map_site      │                   │ ・search_realtime│                 │  earthquake ├───────────────┤ (`music`)    │
+│ ・crawl_site    │                   │ ・search_trend   │                 │             │               │・search_music│
+│                 │                   │ ・suggest_keywords│                │             │               │              │
+└─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┘
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -251,12 +251,13 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > [!TIP]
 > **より効果的なアプローチ**:
 > 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
-> 2. **ハイライト抽出の併用**: `extractHighlights: true`（`query` 指定）を有効化すると、**Structure & Proximity-Aware BM25+ エンジン**（見出し文脈継承・フレーズ完全一致・近接度スコアリング・KWICスニペット生成）により、LLM は長いページ全体を読む代わりに**クエリに関連する最も重要な段落・センテンスのみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます（外部 LLM 不要、0.3ms でローカル動作）。
-> 3. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
-> 4. **GFM シンタックスハイライト言語の保持**: `<pre><code class="language-python">` 等からプログラミング言語名を正確に識別し、Markdown 出力時に ` ```python ` として再現。
-> 5. **自動トークン圧縮 & ノイズ除去**: 空リンク、無効な JavaScript リンク、不要な重複空行を自動クレンジング（`cleanMarkdownTokens`）し、Cookie 同意バナー（OneTrust / Cookiebot 等）も完全パージするため、LLM コンテキストを常にクリーンに保ちます。
-> 6. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
-> 7. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
+> 2. **Google 流 非AI最先端ハイライト＆スニペット抽出**: `extractHighlights: true`（`query` 指定）を有効化すると、**Fielded BM25F + BM25+ エンジン**（見出し階層継承・句読点文境界スナッピング・語順整合マトリクス・Information Gain新規性選択・最短包含区間近接度）により、LLM は長いページ全体を読む代わりに**クエリに関連する最も重要な段落・センテンスのみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します（完全インメモリ、0.2ms で高速動作）。
+> 3. **Google 流 説明文自動選定器 (Meta vs Body Dynamic Arbiter)**: サイト共通の固定定型文（ボイラープレート）を自動検知し、クエリ直結の動的スニペットを `description` に自動昇格。検索結果一覧（SERP）の段階で AI が 100% 正確に内容を把握できます。
+> 4. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
+> 5. **GFM シンタックスハイライト言語の保持**: `<pre><code class="language-python">` 等からプログラミング言語名を正確に識別し、Markdown 出力時に ` ```python ` として再現。
+> 6. **自動トークン圧縮 & ノイズ除去**: 空リンク、無効な JavaScript リンク、不要な重複空行を自動クレンジング（`cleanMarkdownTokens`）し、Cookie 同意バナー（OneTrust / Cookiebot 等）も完全パージするため、LLM コンテキストを常にクリーンに保ちます。
+> 7. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
+> 8. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
 
 
 
@@ -313,6 +314,46 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 ---
 
+### 🚨 Module 5: Disaster & Emergency (`ENABLED_MODULES=disaster`)
+気象庁公式特別警報・気象警報・注意報および P2P地震情報 / 気象庁リアルタイム地震速報。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
+| `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
+
+---
+
+### 👁️ Module 6: Watch & Diff Monitoring (`ENABLED_MODULES=watch`)
+汎用 Web ページ監視プリミティブ。URL / セレクタごとの定期差分検知、SQLite 履歴永続化、自動 Webhook 通知。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `watch_register` | Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。 | `source: "watch"` | - `url` (string, 必須): 監視対象の Web ページ URL<br>- `title` (string, 任意): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意): 差分検知時に通知する Webhook URL<br>- `intervalSeconds` (number, 任意): 監視インターバル目安 (秒, デフォルト: 3600) |
+| `watch_check` | 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。 | `source: "watch"` | - `id` (string, 任意): 特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン) |
+| `watch_list` | 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。 | `source: "watch"` | - なし |
+
+---
+
+### 🎵 Module 7: Music Metadata (`ENABLED_MODULES=music`)
+iTunes 公式 Search API と連携した楽曲・アルバム・アーティストのメタデータ検索（法的リスクゼロ）。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+
+---
+
+### 🏛️ Module 8: Government & Law Data (`ENABLED_MODULES=gov`)
+デジタル庁・総務省公式 e-Gov 法令 API v2 と連携した日本の法令条文検索・構造化 Markdown 取得（完全無料・登録不要・24時間キャッシュ）。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `search_laws` | e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示。 | `source: "e-gov"` | - `keyword` (string, 必須): 検索キーワード (例: "著作権法", "民法")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `get_law_text` | e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。 | `source: "e-gov"` | - `lawId` (string, 必須): e-Gov 法令ID (例: "129AC0000000089") |
+
+---
+
 ## 3. REST API 仕様
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
@@ -328,6 +369,26 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
   "yahooMcpAvailable": true,
   "mcpConnected": true,
   "timestamp": "2026-08-21T05:54:26.782Z"
+}
+```
+
+#### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
+SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。異常検知時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へ自動アラート通知を行います。
+```json
+{
+  "status": "ok",
+  "service": "sora",
+  "version": "2.0.0",
+  "uptimeSeconds": 1420,
+  "timestamp": "2026-08-24T18:00:00.000Z",
+  "dependencies": {
+    "sqlite": { "status": "ok", "latencyMs": 0.4 },
+    "chromium": { "status": "ok", "latencyMs": 1.2 },
+    "yahoo": { "status": "ok", "latencyMs": 120 },
+    "jma": { "status": "ok", "latencyMs": 85 },
+    "p2pquake": { "status": "ok", "latencyMs": 92 },
+    "eGov": { "status": "ok", "latencyMs": 140 }
+  }
 }
 ```
 
@@ -809,6 +870,169 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 - **サイトマップ (`POST /map`)**: `{ "url": "https://example.com", "limit": 200 }`
 - **再帰クロール (`POST /crawl`)**: `{ "url": "https://example.com/docs", "maxPages": 10 }`
 
+---
+
+### 3.10 気象警報・注意報 & リアルタイム地震速報 (`POST /disaster/warnings` / `POST /disaster/earthquake`)
+- **気象警報・注意報 (`POST /disaster/warnings`)**:
+  - 市区町村名または都道府県名から、気象庁発表の特別警報・警報・注意報をリアルタイム取得。
+  ```json
+  { "city": "新宿区" }
+  ```
+  - レスポンス例:
+  ```json
+  {
+    "areaCode": "130010",
+    "areaName": "新宿区",
+    "prefecture": "東京都",
+    "reportTime": "2026-08-24T18:00:00+09:00",
+    "specialWarnings": [],
+    "warnings": [
+      { "code": "03", "name": "大雨警報", "level": "warning", "status": "発表" }
+    ],
+    "advisories": [
+      { "code": "14", "name": "雷注意報", "level": "advisory", "status": "継続" }
+    ],
+    "hasActiveAlerts": true
+  }
+  ```
+
+- **地震速報・履歴 (`POST /disaster/earthquake`)**:
+  - P2P地震情報 API ＋ 気象庁フォールバックによるリアルタイム地震履歴（震度1〜7、震源地、M値、深さ、津波情報、観測地点）を取得。
+  ```json
+  { "limit": 5, "minIntensity": 30 }
+  ```
+  - レスポンス例:
+  ```json
+  {
+    "count": 1,
+    "earthquakes": [
+      {
+        "id": "20260824183000",
+        "time": "2026/08/24 18:30:00",
+        "hypocenter": { "name": "千葉県北西部", "magnitude": 4.5, "depthKm": 70 },
+        "maxScale": "震度3",
+        "maxScaleRaw": 30,
+        "tsunami": "津波の心配なし",
+        "source": "p2pquake",
+        "points": [
+          { "pref": "東京都", "addr": "東京千代田区大手町", "scale": "震度3" }
+        ]
+      }
+    ]
+  }
+  ```
+
+---
+
+### 3.11 汎用 Web ページ差分監視 & Webhook (`POST /watch/*`, `GET /watch/list`, `DELETE /watch/:id`)
+URL またはピンポイント CSS セレクタを定期スキャンし、前回値（SHA-256 ハッシュ）と比較して差分検知時に自動で Webhook を発火します。データは SQLite に永続化。
+
+- **監視ターゲット登録 (`POST /watch/register`)**:
+  ```json
+  {
+    "url": "https://example.com/ticket",
+    "title": "チケット当落発表ページ",
+    "selector": "#result-box",
+    "webhookUrl": "https://api.example.com/hooks/ticket-alert",
+    "intervalSeconds": 1800
+  }
+  ```
+- **差分スキャン実行 (`POST /watch/check`)**:
+  - 単一ターゲット: `{ "id": "wt_abc123" }`
+  - 全ターゲット一括: `{}`
+  - 差分検知時に Webhook（SSRF 保護済み）へペイロード送信。
+- **ターゲット一覧 (`GET /watch/list`)**
+- **ターゲット削除 (`DELETE /watch/:id`)**
+
+---
+
+### 3.12 音楽メタデータ検索 (`POST /search/music`)
+iTunes 公式 Search API と連携し、楽曲・アルバム・アーティストメタデータを高速検索（歌詞本文を扱わないため著作権リスクゼロ）。
+
+- **リクエスト (`POST /search/music`)**:
+  ```json
+  {
+    "query": "YOASOBI",
+    "entity": "song",
+    "limit": 10
+  }
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "query": "YOASOBI",
+    "country": "jp",
+    "entity": "song",
+    "count": 10,
+    "items": [
+      {
+        "id": "1537012345",
+        "type": "song",
+        "title": "夜に駆ける",
+        "artist": "YOASOBI",
+        "album": "THE BOOK",
+        "artwork": {
+          "thumbnail": "https://.../100x100bb.jpg",
+          "highRes": "https://.../600x600bb.jpg"
+        },
+        "previewUrl": "https://audio-ssl.itunes.apple.com/.../preview.m4a",
+        "releaseDate": "2019-12-15T08:00:00Z",
+        "genre": "J-Pop",
+        "url": "https://music.apple.com/jp/album/..."
+      }
+    ],
+    "source": "itunes"
+  }
+  ```
+
+---
+
+### 3.13 e-Gov 日本法令検索 & 条文 Markdown 取得 (`POST /gov/laws` / `POST /gov/law-text`)
+デジタル庁・総務省の公式 e-Gov 法令 API v2 と連携し、日本の現行法令（憲法、法律、政令、府省令）のキーワード検索および構造化 Markdown 条文を取得します。
+
+- **法令キーワード検索 (`POST /gov/laws`)**:
+  ```json
+  {
+    "keyword": "著作権法",
+    "limit": 5
+  }
+  ```
+  - レスポンス例:
+  ```json
+  {
+    "count": 5,
+    "items": [
+      {
+        "id": "345AC0000000048",
+        "title": "著作権法",
+        "lawNum": "昭和四十五年法律第四十八号",
+        "promulgationDate": "1970-05-06",
+        "category": "Act"
+      }
+    ],
+    "source": "e-gov"
+  }
+  ```
+
+- **法令条文 Markdown 取得 (`POST /gov/law-text`)**:
+  ```json
+  {
+    "lawId": "345AC0000000048"
+  }
+  ```
+  - レスポンス例:
+  ```json
+  {
+    "id": "345AC0000000048",
+    "title": "著作権法",
+    "lawNum": "昭和四十五年法律第四十八号",
+    "era": "Showa",
+    "lawType": "Act",
+    "markdown": "# 著作権法\n\n**法令番号:** 昭和四十五年法律第四十八号\n\n## 第一章 総則\n\n### 第一条 (（目的）)\nこの法律は、著作物並びに実演、レコード、放送及び有線放送に関し著作権者の権利及びこれに隣接する権利を定め...\n\n### 第二条 (（定義）)\nこの法律において、次の各号に掲げる用語の意義は、当該各号に定めるところによる。\n- **一** 著作物 思想又は感情を創作的に表現したものであつて...\n- **二** 実演家 俳優、舞踊家、演奏家、歌手その他実演を行う者...",
+    "articleCount": 157,
+    "source": "e-gov"
+  }
+  ```
 
 ---
 
@@ -827,18 +1051,28 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - 同一 URL への並行リクエスト発生時、Promise を共有して 1 回の外部通信に集約。Thundering Herd（キャッシュスタンピード）を防ぎ、外部サーバーとローカルリソースを保護。
 - **🚦 ブラウザ同時実行制限 (Concurrency Control)**:
   - `SimpleSemaphore` により Chromium プロセスの同時実行数（`MAX_CONCURRENT_BROWSERS`、デフォルト 5）を安全に制御。サーバーの CPU/メモリ枯渇を防止。
-- **🔒 Timing-Safe 認証 & Browser Session 所有権紐付け**:
+- **🔒 Timing-Safe 認証 & 日次クォータ・レートリミット制御**:
   - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
+  - 環境変数 `DAILY_REQUEST_LIMIT` により API キー別の日次リクエスト上限を判定（超過時 `429 Too Many Requests`）。レスポンスヘッダーに `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` を標準付与。
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
+- **🧠 BM25+ 多信号ハイブリッド・リランキング (`rerankSearchResults`)**:
+  - タイトル完全一致（重み 3.0）、本文 BM25 スコア（重み 1.0）、公的・学術ドメイン信頼度ボーナス（`.go.jp`, `.gov`, `.ac.jp`, `.org`、重み 1.5）を組み合わせ、AI エージェントにとって最も信頼性の高い情報を最上位にソート。
+- **⏱️ キャッシュ鮮度メタデータ & Jitter スロットリング**:
+  - 同一ドメインへの過剰な連続アクセスを 150ms + Jitter（0〜100ms ゆらぎ）で自動抑制。
+  - キャッシュヒット時はレスポンスヘッダーに `X-Cache: HIT`、オブジェクト内に `cachedAt`（生成日時）および `ageSeconds`（キャッシュ経過秒数）を付与し、LLM が情報の鮮度を即座に判定可能。
+- **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
+  - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
+  - いずれかの依存関係で障害検知時、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ自動で障害通知 Webhook を発火。
 - **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
   - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
 - **📐 共通 Zod スキーマ & OpenAPI 3.0 完全自動生成**:
   - REST / MCP 双方で Zod スキーマによる入力検証を統一。
   - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **100% 動的自動生成** し、ドキュメントの乖離を完全防止。
   - エラーレスポンスは `{ "error": "...", "code": "SSRF_BLOCKED", "status": 403, "retryable": false }` のように AI エージェントが自己修復・自律判断しやすい構造を提供。
-- **⏱️ Jitter スロットリング & 真の LRU キャッシュ**:
-  - 同一ドメインへの過剰な連続アクセスを 150ms + Jitter（0〜100ms ゆらぎ）で自動抑制。
-  - 15〜30分間の真の LRU（アクセス時最新化）キャッシュと 10分おきの定期 TTL スイープにより、メモリリークを完全防止。
+- **💾 `bun:sqlite` による完全自己完結 永続化層 (Zero-Dependency SQLite)**:
+  - Bun ネイティブの組み込み SQLite3 C エンジンを活用。
+  - `PRAGMA journal_mode = WAL;` により、外部 DB デーモン（Redis / PostgreSQL）不要で高速な永続キャッシュ、API キー使用量カウント、watch/diff 差分履歴をローカルに安全保持。
+  - プロセス再起動後も L2 SQLite からキャッシュを即座に復元するハイブリッド L1/L2 アーキテクチャ。
 
 ---
 
@@ -848,7 +1082,13 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ### 🗾 データソース & 着想元 (Data Sources & Inspirations)
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
-  - 日本全国の高精度な気象予報・防災データおよび全国 1,800 以上のエリア定義データのオープン公開に深く感謝いたします。
+  - 日本全国の高精度な気象予報・防災気象警報データおよび全国 1,800 以上のエリア定義データのオープン公開に深く感謝いたします。
+- **P2P地震情報 (P2PQuake)**: [p2pquake.net](https://www.p2pquake.net/)
+  - リアルタイムな地震情報・震度速報 API の公開に感謝いたします。（※商用利用時は開発元への事前利用申請が必要です）
+- **e-Gov 法令 API（デジタル庁 / 総務省）**: [laws.e-gov.go.jp](https://laws.e-gov.go.jp/)
+  - 日本の全現行法令オープンデータおよび e-Gov 法令 API v2 の一般公開に深く感謝いたします。
+- **iTunes Search API** (Apple Inc.):
+  - 公式な音楽メタデータ検索 API の提供に感謝いたします。
 - **天気予報 API（livedoor 天気互換）設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
   - livedoor 天気互換フォーマットの分かりやすいスキーマ設計と長年のコミュニティ貢献に感謝いたします。
 - **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
@@ -873,9 +1113,12 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 - **非公式サードパーティ製ツール**:
   - 本ソフトウェアは、個人開発・学術研究・自社内利用を目的として開発された非公式（サードパーティ製）ツールです。
 - **商標について**:
-  - 「Yahoo!」「Yahoo! JAPAN」および各サービス名は、LINEヤフー株式会社の商標または登録商標です。本プロジェクトは LINEヤフー株式会社とは一切関係ありません。
-- **利用規約・法令の遵守**:
-  - 各外部サービス（Yahoo! JAPAN、気象庁等）へのアクセスにあたっては、相手先サービスの利用規約、ガイドライン、robots.txt、および適用法令を遵守し、過度な負荷をかけないよう利用者自身の責任においてご利用ください。
+  - 「Yahoo!」「Yahoo! JAPAN」および各サービス名は、LINEヤフー株式会社の商標または登録商標です。
+  - 「Apple」「iTunes」「Apple Music」は、Apple Inc. の商標です。
+  - 本プロジェクトは各社とは一切関係ありません。
+- **利用規約・法令の遵守 & 商用利用の注意**:
+  - 各外部サービス（Yahoo! JAPAN、気象庁、P2P地震情報、iTunes 等）へのアクセスにあたっては、相手先サービスの利用規約、ガイドライン、robots.txt、および適用法令を遵守し、過度な負荷をかけないよう利用者自身の責任においてご利用ください。
+  - P2P地震情報の商用利用を行う場合は、利用者の名義にて P2PQuake 開発元への事前利用申請を行ってください。
 - **責任の限定**:
   - 本ソフトウェアの利用により生じたいかなる損害（相手先サービスからのアクセス制限、データの完全性・正確性・最新性等を含む）について、本プロジェクトの開発者は一切の責任を負いません。
 
