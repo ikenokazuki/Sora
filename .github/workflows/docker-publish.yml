@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/sora
+  IMAGE_NAME: ikenokazuki/sora
 
 jobs:
   build-and-push:
@@ -34,8 +34,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
 
       - name: Set up Docker Buildx
@@ -47,7 +48,9 @@ jobs:
           context: .
           file: ./Containerfile
           push: true
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
