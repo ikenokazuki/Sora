@@ -744,7 +744,17 @@ export function extractQueryHighlights(content: string, query: string, maxHighli
   // スコア順にソート
   candidates.sort((a, b) => b.score - a.score);
 
-  // MMR (Maximal Marginal Relevance) + Information Gain (情報獲得量) による多様性選択
+  const topScore = candidates[0].score;
+  const topCandidate = candidates[0];
+
+  // クエリの重要語（Stopword 以外の高識別語）をトップ候補が含んでいるか特定
+  const genericStopwords = new Set(['コール', 'call', 'ライブ', 'live', '曲', '歌詞', '情報', '一覧', 'まとめ']);
+  const distinctiveTerms = terms.filter(
+    (t) => (t.length >= 3 || !genericStopwords.has(t)) &&
+           (topCandidate.text.toLowerCase().includes(t) || topCandidate.heading.toLowerCase().includes(t))
+  );
+
+  // MMR + Information Gain + 動的スコア減衰カットオフ による高精度選択
   const selected: CandidateHighlight[] = [];
   const selectedHeadings = new Set<string>();
   const coveredWords = new Set<string>();
@@ -752,13 +762,29 @@ export function extractQueryHighlights(content: string, query: string, maxHighli
   for (const cand of candidates) {
     if (selected.length >= maxHighlights) break;
 
-    // 1. 同一見出しからの重複ペナルティ
+    // ① 動的スコア減衰カットオフ (Relative Score Dropoff Cutoff):
+    // 1位の最高スコアに対して適合度が 45% 未満に急落した候補は、無関係なノイズとして足切り
+    if (selected.length > 0 && cand.score < topScore * 0.45) {
+      break;
+    }
+
+    // ② クエリ主要語カバレッジゲート (Core Term Coverage Gate):
+    // クエリに複数の重要語があり、1位が重要語にマッチしている場合、その重要語を一切含まない候補は足切り
+    if (selected.length > 0 && distinctiveTerms.length > 0 && rawTerms.length >= 2) {
+      const lowerCand = (cand.heading + ' ' + cand.text).toLowerCase();
+      const hasDistinctiveMatch = distinctiveTerms.some((t) => lowerCand.includes(t));
+      if (!hasDistinctiveMatch) {
+        continue;
+      }
+    }
+
+    // ③ 同一見出しからの重複ペナルティ
     const isHeadingDuplicate = cand.heading && selectedHeadings.has(cand.heading);
     if (isHeadingDuplicate && candidates.some((c) => c.heading && !selectedHeadings.has(c.heading) && c.score > cand.score * 0.4)) {
       continue;
     }
 
-    // 2. Information Gain (新規語の保有量)
+    // ④ Information Gain (新規語の保有量)
     const candWords = (cand.text.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || []);
     let newWordCount = 0;
     for (const w of candWords) {
@@ -773,16 +799,6 @@ export function extractQueryHighlights(content: string, query: string, maxHighli
     selected.push(cand);
     if (cand.heading) selectedHeadings.add(cand.heading);
     for (const w of candWords) coveredWords.add(w);
-  }
-
-  // 枠に余りがある場合は残りの高スコア候補で埋める
-  if (selected.length < maxHighlights) {
-    for (const cand of candidates) {
-      if (selected.length >= maxHighlights) break;
-      if (!selected.includes(cand)) {
-        selected.push(cand);
-      }
-    }
   }
 
   return selected.map((s) => s.text);
