@@ -71,6 +71,7 @@ export interface ScrapeResult {
   author?: string;
   siteName?: string;
   highlights?: string[];
+  textFragmentUrl?: string;
   summary?: string[];
   citations?: Citation[];
   chunks?: MarkdownChunk[];
@@ -304,6 +305,38 @@ export const MapRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
+export const ImageSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const VideoSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const NewsSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
+  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const ChiebukuroSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
+  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const TrendSearchRequestSchema = z.object({
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+});
+
 export const RealtimeSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('リアルタイム検索キーワード (X/Twitter の生の声)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)'),
@@ -352,6 +385,49 @@ export const IntegratedSearchRequestSchema = z.object({
 export const SuggestRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索語句プレフィックス'),
   limit: z.number().int().min(1).max(20).optional().describe('取得するサジェスト候補件数 (デフォルト: 10)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const DisasterWarningsRequestSchema = z.object({
+  city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
+  areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const EarthquakeRequestSchema = z.object({
+  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
+  minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 60=震度6強, 70=震度7)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const WatchRegisterRequestSchema = z.object({
+  url: z.string().url('有効な URL を指定してください').describe('監視対象の Web ページ URL'),
+  title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
+  selector: z.string().optional().describe('ピンポイントで差分監視する CSS セレクタ (例: "#status", ".news-list")'),
+  webhookUrl: z.string().url().optional().describe('差分検知時に通知を送信する Webhook URL'),
+  intervalSeconds: z.number().int().positive().optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+});
+
+export const WatchCheckRequestSchema = z.object({
+  id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全ターゲットを一括スキャン)'),
+});
+
+export const MusicSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const LawSearchRequestSchema = z.object({
+  keyword: z.string().min(1, 'keyword は必須です').describe('法令検索キーワード (法令名、単語)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const LawDataRequestSchema = z.object({
+  lawId: z.string().min(1, 'lawId は必須です').describe('e-Gov 法令 ID (例: "129AC0000000089")'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -540,6 +616,71 @@ export function generateOpenApiDocument() {
           responses: { '200': { description: 'OK' } },
         },
       },
+      '/search/image': {
+        post: {
+          summary: 'Yahoo! 画像検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ImageSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/search/video': {
+        post: {
+          summary: 'Yahoo! 動画検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(VideoSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/search/news': {
+        post: {
+          summary: 'Yahoo! ニュース検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(NewsSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/search/chiebukuro': {
+        post: {
+          summary: 'Yahoo! 知恵袋 Q&A 検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ChiebukuroSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/search/trend': {
+        post: {
+          summary: 'Yahoo! リアルタイム急上昇トレンド (X/Twitter)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(TrendSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
       '/search/realtime': {
         post: {
           summary: 'Yahoo! リアルタイム検索 (X/Twitter 生の声)',
@@ -590,6 +731,109 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/disaster/warnings': {
+        post: {
+          summary: '気象庁公式 特別警報・気象警報・注意報 リアルタイム取得',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(DisasterWarningsRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'AreaWarnings' } },
+        },
+      },
+      '/disaster/earthquake': {
+        post: {
+          summary: 'P2P地震情報 & 気象庁 リアルタイム地震速報・履歴取得',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(EarthquakeRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'EarthquakeSearchResult' } },
+        },
+      },
+      '/watch/register': {
+        post: {
+          summary: 'Web ページ差分監視ターゲット登録 (初期ハッシュ作成)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(WatchRegisterRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'WatchTargetResult' } },
+        },
+      },
+      '/watch/check': {
+        post: {
+          summary: 'Web ページ差分スキャン実行 (差分検知時 Webhook 自動発火)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(WatchCheckRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'WatchCheckResult' } },
+        },
+      },
+      '/watch/list': {
+        get: {
+          summary: '登録済み差分監視ターゲット一覧取得 (SQLite 永続化)',
+          responses: { '200': { description: 'WatchTargetList' } },
+        },
+      },
+      '/watch/{id}': {
+        delete: {
+          summary: '差分監視ターゲット削除',
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/search/music': {
+        post: {
+          summary: 'iTunes 公式 Search API 楽曲・アルバム・アーティストメタデータ検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(MusicSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'MusicSearchResult' } },
+        },
+      },
+      '/gov/laws': {
+        post: {
+          summary: 'e-Gov 法令 API v2 キーワード法令検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(LawSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'LawSearchResult' } },
+        },
+      },
+      '/gov/law-text': {
+        post: {
+          summary: 'e-Gov 法令 API v2 法令条文・本文詳細取得 (Markdown 構造化)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(LawDataRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'LawDataResult' } },
         },
       },
     },

@@ -31,6 +31,8 @@ import {
   crawlSiteUrl,
   filterByDomains,
   extractQueryHighlights,
+  generateTextFragmentUrl,
+  chooseBestDescription,
   resolveCityId,
   executeBrowserActions,
   resolveChromiumPath,
@@ -42,6 +44,32 @@ import {
   runWithSingleFlight,
   validateHostIpDns,
   SimpleSemaphore,
+  dbGetCache,
+  dbSetCache,
+  dbDeleteCache,
+  dbClearExpiredCache,
+  dbClearAllCache,
+  dbIncrementApiUsage,
+  dbSaveWatchTarget,
+  dbGetWatchTarget,
+  dbListWatchTargets,
+  dbDeleteWatchTarget,
+  dbInsertWatchHistory,
+  dbListWatchHistory,
+  fetchWeatherWarnings,
+  fetchRecentEarthquakes,
+  formatScale,
+  registerWatchTarget,
+  checkWatchTarget,
+  checkAllWatchTargets,
+  listWatchTargets,
+  deleteWatchTarget,
+  computeContentHash,
+  searchMusic,
+  searchLaws,
+  getLawData,
+  rerankSearchResults,
+  checkDetailedHealth,
 } from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
@@ -246,6 +274,77 @@ describe('web-fetcher Core Functions', () => {
     const highlightsPhrase = extractQueryHighlights(docWithPhraseMatch, '東京ドームチケット発売日');
     expect(highlightsPhrase.length).toBeGreaterThan(0);
     expect(highlightsPhrase[0]).toContain('来週月曜日');
+
+    // 6. 構造化セクション（楽曲コール・FAQ・レシピ等）の適応型セクション集約 & 見出し保持テスト
+    const songNoteDoc = `
+      ## ・好きって。
+      〈イントロ〉タイガーファイヤー始動
+
+      ## ・ソライロ
+      〈イントロ〉スタンダード
+      うりゃおい ×4 👏 ×5 しゃーいくぞ
+      タイガー ファイヤー サイバー ファイバー ダイバー
+      バイバー ジャージャー
+
+      (1サビ前)イェッタイガー ×3 ファイボ ワイパー
+
+      〈間奏〉日本語
+      うりゃおい ×4 👏 ×5 しゃーいくぞ
+      虎 火 人造 繊維 海人 振動 化繊
+
+      (2サビ前)イェッタイガー ファイボ ワイパー
+
+      〈間奏〉またね口上
+      出会えたからこそできること
+      全部があなたと作った日々だ
+      間違いなんて一つもなくて
+      変わらぬままのあなたがいい
+
+      （落ちサビ前）俺とお前の赤い糸 俺の俺の〇〇〇
+
+      〈アウトロ〉銀河口上
+      銀河に轟く歌声と
+      地球に花咲くその笑顔
+      お前が好きだと輝き叫ぶ
+      行くぜ全力どこまでも
+      光のごとく駆け巡る
+      好きじゃねぇ 愛してる
+
+      ## ・待っていてね
+      〈イントロ〉スタンダード倍速
+    `;
+    const songHighlights = extractQueryHighlights(songNoteDoc, '君と見るそら　ソライロ　コール', 3);
+    expect(songHighlights.length).toBeGreaterThanOrEqual(1);
+    const topHl = songHighlights[0];
+    expect(topHl).toContain('## ・ソライロ');
+    expect(topHl).toContain('〈イントロ〉スタンダード');
+    expect(topHl).toContain('またね口上');
+    expect(topHl).toContain('銀河口上');
+  });
+
+  it('generateTextFragmentUrl should create valid W3C Scroll-to-Text Fragment URLs', () => {
+    const baseUrl = 'https://note.com/kimisora_mix/n/nd94f3a06fe8f';
+    const snippet = '## ・ソライロ\n\n〈イントロ〉スタンダード\nタイガー ファイヤー\n銀河口上 愛してる';
+    const fragmentUrl = generateTextFragmentUrl(baseUrl, snippet);
+    expect(fragmentUrl).toContain('https://note.com/kimisora_mix/n/nd94f3a06fe8f#:~:text=');
+    expect(fragmentUrl).toContain(encodeURIComponent('スタンダード'));
+  });
+
+  it('chooseBestDescription should replace generic boilerplate meta with dynamic query snippet', () => {
+    const genericMeta = 'noteは、クリエイターが文章や画像、音声を投稿し、ユーザーがコンテンツを楽しんで応援できるプラットフォームです。';
+    const query = '君と見るそら ソライロ コール';
+    const dynamicSnippet = '## ・ソライロ\n\n〈イントロ〉スタンダード\nうりゃおい ×4 👏 ×5 しゃーいくぞ\nタイガー ファイヤー サイバー';
+
+    // 1. クエリ主要語を含まない定型文メタは動的スニペットに置き換えられる
+    const selected = chooseBestDescription(genericMeta, dynamicSnippet, query);
+    expect(selected).toBeDefined();
+    expect(selected).not.toContain('プラットフォーム');
+    expect(selected).toContain('ソライロ');
+
+    // 2. クエリ単語を十分に含む適切な Meta Description は尊重される
+    const relevantMeta = 'アイドルグループ「君と見るそら」の代表曲「ソライロ」のライブコール・MIX・口上まとめです。';
+    const selectedRelevant = chooseBestDescription(relevantMeta, dynamicSnippet, query);
+    expect(selectedRelevant).toBe(relevantMeta);
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
@@ -526,7 +625,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /mcp should respond to JSON-RPC tools/list with all 16 tools', async () => {
+  it('POST /mcp should respond to JSON-RPC tools/list with all 24 tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -575,7 +674,15 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('get_weather');
     expect(toolNames).toContain('browser_action');
-    expect(toolNames.length).toBe(16);
+    expect(toolNames).toContain('search_disaster_warnings');
+    expect(toolNames).toContain('search_earthquake');
+    expect(toolNames).toContain('watch_register');
+    expect(toolNames).toContain('watch_check');
+    expect(toolNames).toContain('watch_list');
+    expect(toolNames).toContain('search_music');
+    expect(toolNames).toContain('search_laws');
+    expect(toolNames).toContain('get_law_text');
+    expect(toolNames.length).toBe(24);
   });
 
   it('isModuleActive should correctly evaluate enabled modules', () => {
@@ -583,14 +690,25 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(isModuleActive('browser', ['web'])).toBe(false);
     expect(isModuleActive('yahoo', ['web'])).toBe(false);
     expect(isModuleActive('life', ['web'])).toBe(false);
+    expect(isModuleActive('disaster', ['web'])).toBe(false);
+    expect(isModuleActive('watch', ['web'])).toBe(false);
+    expect(isModuleActive('music', ['web'])).toBe(false);
+    expect(isModuleActive('gov', ['web'])).toBe(false);
 
     expect(isModuleActive('web', ['all'])).toBe(true);
     expect(isModuleActive('browser', ['all'])).toBe(true);
     expect(isModuleActive('yahoo', ['all'])).toBe(true);
     expect(isModuleActive('life', ['all'])).toBe(true);
+    expect(isModuleActive('disaster', ['all'])).toBe(true);
+    expect(isModuleActive('watch', ['all'])).toBe(true);
+    expect(isModuleActive('music', ['all'])).toBe(true);
+    expect(isModuleActive('gov', ['all'])).toBe(true);
 
     expect(isModuleActive('life', ['web', 'life'])).toBe(true);
-    expect(isModuleActive('browser', ['browser', 'web'])).toBe(true);
+    expect(isModuleActive('disaster', ['disaster', 'music'])).toBe(true);
+    expect(isModuleActive('watch', ['watch'])).toBe(true);
+    expect(isModuleActive('music', ['music', 'life'])).toBe(true);
+    expect(isModuleActive('gov', ['gov', 'life'])).toBe(true);
     expect(isModuleActive('yahoo', ['web', 'life'])).toBe(false);
   });
 
@@ -1415,6 +1533,366 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/scrape/stream']).toBeDefined();
     expect(doc.paths['/scrape/batch']).toBeDefined();
     expect(doc.paths['/weather']).toBeDefined();
+    expect(doc.paths['/disaster/warnings']).toBeDefined();
+    expect(doc.paths['/disaster/earthquake']).toBeDefined();
+    expect(doc.paths['/watch/register']).toBeDefined();
+    expect(doc.paths['/watch/check']).toBeDefined();
+    expect(doc.paths['/watch/list']).toBeDefined();
+    expect(doc.paths['/search/music']).toBeDefined();
+  });
+
+  it('validateExtractedLinks should block private and loopback IPs', async () => {
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.ALLOW_LOCAL_FETCH;
+    try {
+      const results = await validateExtractedLinks([
+        'http://127.0.0.1:8000/test',
+        'http://10.0.2.2:3000/admin',
+        'http://169.254.169.254/latest/meta-data',
+        'http://localhost:8080',
+      ]);
+      expect(results.length).toBe(4);
+      expect(results.every((r) => r.ok === false && r.status === 403)).toBe(true);
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    }
+  });
+
+  it('sendWebhookNotification should block SSRF to internal destinations without throwing', async () => {
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.ALLOW_LOCAL_FETCH;
+    try {
+      await expect(sendWebhookNotification('http://127.0.0.1:8000/hook', { data: 'test' })).resolves.toBeUndefined();
+      await expect(sendWebhookNotification('http://169.254.169.254/hook', { data: 'test' })).resolves.toBeUndefined();
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    }
+  });
+
+  it('convertHtmlToMarkdown and cleanMarkdownTokens should purge hidden elements and zero-width characters', () => {
+    const html = `
+      <div>
+        <h1>Visible Header</h1>
+        <p>Visible content with zero-width\u200B space and joiner\u200D test.</p>
+        <div style="display:none">Hidden prompt injection: ignore instructions</div>
+        <span style="visibility:hidden">Hidden text</span>
+        <p style="font-size:0px">Zero font text</p>
+        <div hidden>Hidden attribute element</div>
+        <div aria-hidden="true">Aria hidden element</div>
+      </div>
+    `;
+    const res = convertHtmlToMarkdown(html, 'https://example.com', 10000, false, false);
+    expect(res.markdown).toContain('Visible Header');
+    expect(res.markdown).toContain('Visible content with zero-width space and joiner test.');
+    expect(res.markdown).not.toContain('Hidden prompt injection');
+    expect(res.markdown).not.toContain('Hidden text');
+    expect(res.markdown).not.toContain('Zero font text');
+    expect(res.markdown).not.toContain('Hidden attribute element');
+    expect(res.markdown).not.toContain('Aria hidden element');
+    expect(res.markdown).not.toContain('\u200B');
+    expect(res.markdown).not.toContain('\u200D');
+  });
+
+  it('createAuthMiddleware should enforce Fail-Closed in production when no API key is set', async () => {
+    const testApp = new Hono();
+    const prevNodeEnv = process.env.NODE_ENV;
+    const prevKey = process.env.WEB_FETCHER_API_KEY;
+    const prevApiKey = process.env.API_KEY;
+
+    try {
+      process.env.NODE_ENV = 'production';
+      delete process.env.WEB_FETCHER_API_KEY;
+      delete process.env.API_KEY;
+
+      testApp.use('*', createAuthMiddleware());
+      testApp.get('/test', (c) => c.json({ ok: true }));
+
+      const res = await testApp.request('/test');
+      expect(res.status).toBe(401);
+      const json = (await res.json()) as any;
+      expect(json.error).toContain('Fail-Closed');
+    } finally {
+      process.env.NODE_ENV = prevNodeEnv;
+      if (prevKey) process.env.WEB_FETCHER_API_KEY = prevKey;
+      if (prevApiKey) process.env.API_KEY = prevApiKey;
+    }
+  });
+
+  it('isBlockedHostname and isPrivateIp should correctly identify edge-case blocked addresses', () => {
+    expect(isBlockedHostname('[::1]')).toBe(true);
+    expect(isBlockedHostname('0.0.0.0')).toBe(true);
+    expect(isBlockedHostname('169.254.169.254')).toBe(true);
+    expect(isBlockedHostname('metadata.google.internal')).toBe(true);
+    expect(isPrivateIp('10.0.2.2')).toBe(true);
+    expect(isPrivateIp('100.64.0.1')).toBe(true);
+    expect(isPrivateIp('192.168.1.1')).toBe(true);
+    expect(isPrivateIp('172.16.0.1')).toBe(true);
+    expect(isPrivateIp('172.31.255.255')).toBe(true);
+    expect(isPrivateIp('8.8.8.8')).toBe(false);
+    expect(isPrivateIp('1.1.1.1')).toBe(false);
+  });
+
+  // ==========================================
+  // Phase 1: SQLite 永続化 & L2 キャッシュテスト
+  // ==========================================
+  it('SQLite db persistence should store and retrieve cache entries across memory clears', () => {
+    dbSetCache('test:sqlite:key', { foo: 'bar' }, 60);
+    const cached = dbGetCache<{ foo: string }>('test:sqlite:key');
+    expect(cached).toBeDefined();
+    expect(cached?.value.foo).toBe('bar');
+
+    // L1 メモリと L2 SQLite の透過的連携
+    setToCache('test:hybrid:key', { data: 12345 }, 60000);
+    expect(getFromCache<any>('test:hybrid:key')?.data).toBe(12345);
+
+    dbDeleteCache('test:sqlite:key');
+    expect(dbGetCache('test:sqlite:key')).toBeUndefined();
+  });
+
+  it('SQLite api_usage and rate limiting counter should increment properly', () => {
+    const hash = 'key_hash_test_123';
+    const date = '2026-08-24';
+    const count1 = dbIncrementApiUsage(hash, date);
+    const count2 = dbIncrementApiUsage(hash, date);
+    expect(count1).toBeGreaterThanOrEqual(1);
+    expect(count2).toBe(count1 + 1);
+  });
+
+  // ==========================================
+  // Phase 2: 防災・地震モジュールテスト
+  // ==========================================
+  it('fetchWeatherWarnings should parse JMA warning structure and handle city names', async () => {
+    const warnings = await fetchWeatherWarnings({ city: '東京' });
+    expect(warnings.areaCode).toBe('130010');
+    expect(warnings.reportTime).toBeDefined();
+    expect(Array.isArray(warnings.warnings)).toBe(true);
+    expect(Array.isArray(warnings.advisories)).toBe(true);
+  });
+
+  it('fetchRecentEarthquakes and formatScale should format seismic intensity scale properly', async () => {
+    expect(formatScale(10)).toBe('震度1');
+    expect(formatScale(40)).toBe('震度4');
+    expect(formatScale(45)).toBe('震度5弱');
+    expect(formatScale(70)).toBe('震度7');
+
+    const result = await fetchRecentEarthquakes({ limit: 3 });
+    expect(result).toBeDefined();
+    expect(Array.isArray(result.earthquakes)).toBe(true);
+  });
+
+  it('POST /disaster/warnings and POST /disaster/earthquake should return valid JSON', async () => {
+    const resWarn = await app.request('/disaster/warnings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city: '大阪' }),
+    });
+    expect(resWarn.status).toBe(200);
+    const warnJson = (await resWarn.json()) as any;
+    expect(warnJson.areaCode).toBe('270000');
+
+    const resEq = await app.request('/disaster/earthquake', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 2 }),
+    });
+    expect(resEq.status).toBe(200);
+    const eqJson = (await resEq.json()) as any;
+    expect(Array.isArray(eqJson.earthquakes)).toBe(true);
+  });
+
+  // ==========================================
+  // Phase 3: 汎用 watch/diff プリミティブテスト
+  // ==========================================
+  it('registerWatchTarget, computeContentHash and checkWatchTarget should manage targets and detect diffs', async () => {
+    const hash1 = computeContentHash('Hello World');
+    const hash2 = computeContentHash('Hello World');
+    const hash3 = computeContentHash('Hello Sora');
+    expect(hash1).toBe(hash2);
+    expect(hash1).not.toBe(hash3);
+
+    // 監視ターゲット登録
+    const { target } = await registerWatchTarget({
+      url: 'https://example.com',
+      title: 'Example Test Watch',
+      initialFetch: false,
+    });
+    expect(target.id).toBeDefined();
+    expect(target.url).toBe('https://example.com');
+
+    // ターゲット一覧
+    const list = listWatchTargets();
+    expect(list.some((t) => t.id === target.id)).toBe(true);
+
+    // 削除
+    const deleted = deleteWatchTarget(target.id);
+    expect(deleted).toBe(true);
+    expect(dbGetWatchTarget(target.id)).toBeUndefined();
+  });
+
+  it('POST /watch/register, GET /watch/list, and DELETE /watch/:id should operate smoothly', async () => {
+    const regRes = await app.request('/watch/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com',
+        title: 'REST Register Test',
+      }),
+    });
+    expect(regRes.status).toBe(200);
+    const regJson = (await regRes.json()) as any;
+    expect(regJson.target.id).toBeDefined();
+
+    const listRes = await app.request('/watch/list');
+    expect(listRes.status).toBe(200);
+    const listJson = (await listRes.json()) as any;
+    expect(listJson.targets.length).toBeGreaterThanOrEqual(1);
+
+    const delRes = await app.request(`/watch/${regJson.target.id}`, { method: 'DELETE' });
+    expect(delRes.status).toBe(200);
+  });
+
+  // ==========================================
+  // Phase 4: 音楽メタデータモジュールテスト
+  // ==========================================
+  it('searchMusic should fetch metadata from iTunes Search API and format high-res artwork', async () => {
+    const result = await searchMusic({ query: 'YOASOBI', limit: 2 });
+    expect(result.source).toBe('itunes');
+    expect(result.items.length).toBeGreaterThanOrEqual(1);
+    const first = result.items[0];
+    expect(first.title).toBeDefined();
+    expect(first.artist).toBeDefined();
+    if (first.artwork?.thumbnail) {
+      expect(first.artwork.highRes).toContain('600x600bb');
+    }
+  });
+
+  it('POST /search/music should validate request body and return music items', async () => {
+    const resEmpty = await app.request('/search/music', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const res = await app.request('/search/music', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'Official髭男dism', limit: 3 }),
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it('rerankSearchResults should rank items by query keyword relevance and domain trust', () => {
+    const rawItems = [
+      { title: 'Random Blog Post', snippet: 'Just discussing general programming thoughts', url: 'https://blog.example.com/post' },
+      { title: 'Digital Agency Official Guide on Web APIs', snippet: 'The official Japanese government digital agency guidelines for OpenAPI', url: 'https://www.digital.go.jp/policies/api' },
+      { title: 'Other article about Web', snippet: 'Brief mention of digital services', url: 'https://news.example.com/1' },
+    ];
+    const reranked = rerankSearchResults(rawItems, 'デジタル庁 Web API');
+    expect(reranked[0].url).toContain('digital.go.jp');
+  });
+
+  it('searchLaws and getLawData should interact with e-Gov Law API v2', async () => {
+    const searchRes = await searchLaws({ keyword: '著作権法', limit: 5 });
+    expect(searchRes.source).toBe('e-gov');
+    expect(searchRes.items.length).toBeGreaterThanOrEqual(1);
+
+    const firstLaw = searchRes.items[0];
+    expect(firstLaw.id).toBeDefined();
+    expect(typeof firstLaw.title).toBe('string');
+    expect(firstLaw.title.length).toBeGreaterThan(0);
+    expect(searchRes.items.some((l) => l.title.includes('著作権'))).toBe(true);
+
+    const lawData = await getLawData({ lawId: firstLaw.id });
+    expect(lawData.source).toBe('e-gov');
+    expect(lawData.title).toBeDefined();
+    expect(lawData.markdown).toContain('#');
+  });
+
+  it('POST /gov/laws and POST /gov/law-text should handle REST requests', async () => {
+    const resEmpty = await app.request('/gov/laws', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resSearch = await app.request('/gov/laws', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: '民法', limit: 3 }),
+    });
+    expect(resSearch.status).toBe(200);
+    const searchJson = (await resSearch.json()) as any;
+    expect(searchJson.count).toBeGreaterThanOrEqual(1);
+
+    const resLaw = await app.request('/gov/law-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lawId: searchJson.items[0].id }),
+    });
+    expect(resLaw.status).toBe(200);
+    const lawJson = (await resLaw.json()) as any;
+    expect(lawJson.markdown).toBeDefined();
+  });
+
+  it('GET /health?detailed=true should return detailed health report with dependencies', async () => {
+    const res = await app.request('/health?detailed=true');
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.status).toBe('ok');
+    expect(json.dependencies).toBeDefined();
+    expect(json.dependencies.sqlite.status).toBe('ok');
+    expect(json.dependencies.jma).toBeDefined();
+  });
+
+  it('createAuthMiddleware should enforce DAILY_REQUEST_LIMIT quota and return 429 when exceeded', async () => {
+    const testApp = new Hono();
+    const prevLimit = process.env.DAILY_REQUEST_LIMIT;
+    process.env.DAILY_REQUEST_LIMIT = '2';
+
+    try {
+      testApp.use('*', createAuthMiddleware('test-quota-key'));
+      testApp.get('/test-quota', (c) => c.json({ ok: true }));
+
+      const headers = { 'X-API-Key': 'test-quota-key' };
+      const res1 = await testApp.request('/test-quota', { headers });
+      expect(res1.status).toBe(200);
+
+      const res2 = await testApp.request('/test-quota', { headers });
+      expect(res2.status).toBe(200);
+
+      const res3 = await testApp.request('/test-quota', { headers });
+      expect(res3.status).toBe(429);
+      const json3 = (await res3.json()) as any;
+      expect(json3.code).toBe('RATE_LIMIT_EXCEEDED');
+      expect(json3.limit).toBe(2);
+    } finally {
+      if (prevLimit !== undefined) {
+        process.env.DAILY_REQUEST_LIMIT = prevLimit;
+      } else {
+        delete process.env.DAILY_REQUEST_LIMIT;
+      }
+    }
+  });
+
+  it('createMcpServer should register disaster, watch, music, and gov tools', async () => {
+    const server = createMcpServer();
+    expect(server).toBeDefined();
+
+    const disasterServer = createMcpServer({ modules: ['disaster'] });
+    expect(disasterServer).toBeDefined();
+
+    const watchServer = createMcpServer({ modules: ['watch'] });
+    expect(watchServer).toBeDefined();
+
+    const musicServer = createMcpServer({ modules: ['music'] });
+    expect(musicServer).toBeDefined();
+
+    const govServer = createMcpServer({ modules: ['gov'] });
+    expect(govServer).toBeDefined();
   });
 });
 

@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
-import { filterByDomains } from '../enrichment.js';
+import { filterByDomains, rerankSearchResults } from '../enrichment.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -123,7 +123,8 @@ export async function searchYahooWeb(options: {
     const json = JSON.parse(content);
     if (json && Array.isArray(json.items)) {
       const filtered = filterByDomains(json.items, options.includeDomains, options.excludeDomains);
-      json.items = filtered.map((item: any) => ({ source: 'web' as const, ...item }));
+      const ranked = rerankSearchResults(filtered, options.query);
+      json.items = ranked.map((item: any) => ({ source: 'web' as const, ...item }));
       json.count = json.items.length;
       json.source = 'web';
       parsedData = json;
