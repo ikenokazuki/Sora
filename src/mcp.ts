@@ -20,9 +20,19 @@ import {
   searchTransitRoute,
   fetchWeatherForecast,
   executeBrowserActions,
+  fetchWeatherWarnings,
+  fetchRecentEarthquakes,
+  registerWatchTarget,
+  checkWatchTarget,
+  checkAllWatchTargets,
+  listWatchTargets,
+  deleteWatchTarget,
+  searchMusic,
+  searchLaws,
+  getLawData,
 } from './scraper.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
@@ -51,6 +61,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableBrowser = isModuleActive('browser', options?.modules);
   const shouldEnableYahoo = isModuleActive('yahoo', options?.modules);
   const shouldEnableLife = isModuleActive('life', options?.modules);
+  const shouldEnableDisaster = isModuleActive('disaster', options?.modules);
+  const shouldEnableWatch = isModuleActive('watch', options?.modules);
+  const shouldEnableMusic = isModuleActive('music', options?.modules);
+  const shouldEnableGov = isModuleActive('gov', options?.modules);
 
   // =========================================================================
   // 🌐 Category 1: Core Web & Crawling (モジュール: 'web')
@@ -680,6 +694,210 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             isError: true,
             content: [{ type: 'text', text: `Weather forecast error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+  }
+
+  // =========================================================================
+  // 🚨 Category 4: Disaster & Emergency (モジュール: 'disaster')
+  // =========================================================================
+  if (shouldEnableDisaster) {
+    // Tool 15: search_disaster_warnings (気象警報・注意報)
+    mcpServer.tool(
+      'search_disaster_warnings',
+      '気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。',
+      {
+        city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
+        areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
+      },
+      async (opts) => {
+        try {
+          const result = await fetchWeatherWarnings(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Disaster warnings error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 16: search_earthquake (リアルタイム地震速報・履歴)
+    mcpServer.tool(
+      'search_earthquake',
+      'P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）を取得します。',
+      {
+        limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
+        minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)'),
+      },
+      async (opts) => {
+        try {
+          const result = await fetchRecentEarthquakes(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Earthquake search error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+  }
+
+  // =========================================================================
+  // 👁️ Category 5: Watch & Diff Monitoring (モジュール: 'watch')
+  // =========================================================================
+  if (shouldEnableWatch) {
+    // Tool 17: watch_register (監視ターゲット登録)
+    mcpServer.tool(
+      'watch_register',
+      'Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
+      {
+        url: z.string().url().describe('監視対象の Web ページ URL'),
+        title: z.string().optional().describe('監視ターゲットの識別用タイトル'),
+        selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ'),
+        webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
+        intervalSeconds: z.number().int().positive().optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+      },
+      async (opts) => {
+        try {
+          const result = await registerWatchTarget(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Watch register error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 18: watch_check (差分スキャン実行)
+    mcpServer.tool(
+      'watch_check',
+      '登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
+      {
+        id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン)'),
+      },
+      async ({ id }) => {
+        try {
+          const result = id ? await checkWatchTarget(id) : await checkAllWatchTargets();
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Watch check error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 19: watch_list (監視ターゲット一覧)
+    mcpServer.tool(
+      'watch_list',
+      '現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
+      {},
+      async () => {
+        try {
+          const result = listWatchTargets();
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Watch list error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+  }
+
+  // =========================================================================
+  // 🎵 Category 6: Music Metadata (モジュール: 'music')
+  // =========================================================================
+  if (shouldEnableMusic) {
+    // Tool 20: search_music (iTunes 音楽・アルバム・アーティスト検索)
+    mcpServer.tool(
+      'search_music',
+      'iTunes 公式 Search API による楽曲・アルバム・アーティストメタデータ検索を実行し、高解像度ジャケット画像、30秒試聴音源 URL、リリース日、Apple Music リンク等を取得します（法的リスクゼロ）。',
+      {
+        query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+      },
+      async (opts) => {
+        try {
+          const result = await searchMusic(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Music search error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+  }
+
+  // =========================================================================
+  // 🏛️ Category 8: Government & Law Data (モジュール: 'gov')
+  // =========================================================================
+  if (shouldEnableGov) {
+    // Tool 21: search_laws (e-Gov キーワード法令検索)
+    mcpServer.tool(
+      'search_laws',
+      'e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します（完全無料・登録不要）。',
+      {
+        keyword: z.string().min(1).describe('法令検索キーワード (法令名、法律用語)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+      },
+      async (opts) => {
+        try {
+          const result = await searchLaws(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Law search error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 22: get_law_text (e-Gov 法令条文詳細取得)
+    mcpServer.tool(
+      'get_law_text',
+      'e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。',
+      {
+        lawId: z.string().min(1).describe('e-Gov 法令ID (例: "129AC0000000089")'),
+      },
+      async (opts) => {
+        try {
+          const result = await getLawData(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Law data error: ${err?.message || err}` }],
           };
         }
       },
