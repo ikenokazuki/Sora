@@ -8,6 +8,8 @@ import {
   estimateTokens,
   DEFAULT_MAX_CHARS,
   isBlockedHostname,
+  validateHostIpDns,
+  setupPageSecurity,
   throttleDomain,
   applyStealthEvasions,
   bypassCloudflareTurnstile,
@@ -257,8 +259,8 @@ async function runActionsOnPage(
           break;
         }
         case 'evaluate': {
-          if (process.env.ALLOW_BROWSER_EVALUATE === 'false' || process.env.SAFE_BROWSER_MODE === 'true') {
-            throw new Error('Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy');
+          if (process.env.ALLOW_BROWSER_EVALUATE !== 'true') {
+            throw new Error('Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set ALLOW_BROWSER_EVALUATE=true to enable)');
           }
           if (!action.script) throw new Error('Evaluate action requires script');
           await page.evaluate(action.script);
@@ -266,8 +268,17 @@ async function runActionsOnPage(
         }
         case 'navigate': {
           if (!action.url) throw new Error('Navigate action requires url');
-          if (process.env.ALLOW_LOCAL_FETCH !== 'true' && isBlockedHostname(new URL(action.url).hostname)) {
-            throw new Error(`Access to private or blocked host is forbidden: ${action.url}`);
+          let parsedUrl: URL;
+          try {
+            parsedUrl = new URL(action.url);
+          } catch {
+            throw new Error(`Invalid URL: ${action.url}`);
+          }
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
+          }
+          if (process.env.ALLOW_LOCAL_FETCH !== 'true') {
+            await validateHostIpDns(parsedUrl.hostname);
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
           await bypassCloudflareTurnstile(page);
@@ -359,6 +370,7 @@ export async function handleBrowserSessionAction(
         browserInstance = browserRes.browser;
         isDedicated = browserRes.isDedicated;
         page = await browserInstance.newPage();
+        await setupPageSecurity(page);
 
         // ダイアログ (alert / confirm / prompt) の自動承認
         page.on('dialog', async (dialog) => {
@@ -391,6 +403,7 @@ export async function handleBrowserSessionAction(
       browserInstance = browserRes.browser;
       isDedicated = browserRes.isDedicated;
       page = await browserInstance.newPage();
+      await setupPageSecurity(page);
 
       // ダイアログ (alert / confirm / prompt) の自動承認
       page.on('dialog', async (dialog) => {
