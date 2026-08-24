@@ -645,6 +645,10 @@ app.post('/crawl', async (c) => {
       excludePatterns: body.excludePatterns,
       formats: body.formats,
       webhookUrl: body.webhookUrl,
+      query: body.query,
+      extractHighlights: body.extractHighlights,
+      onlyHighlights: body.onlyHighlights,
+      noCache: body.noCache,
     });
 
     return c.json(result);
@@ -679,6 +683,10 @@ app.post('/crawl/stream', async (c) => {
         includePatterns: body.includePatterns,
         excludePatterns: body.excludePatterns,
         formats: body.formats,
+        query: body.query,
+        extractHighlights: body.extractHighlights,
+        onlyHighlights: body.onlyHighlights,
+        noCache: body.noCache,
         onPageCrawled: (page: any, count: number) => {
           stream.writeSSE({
             event: 'page',
