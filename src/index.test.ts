@@ -366,6 +366,20 @@ describe('web-fetcher Core Functions', () => {
     } catch {}
   });
 
+  it('scrapeUrl with onlyHighlights: true should replace full content with only matched highlights', async () => {
+    try {
+      const result = await scrapeUrl({
+        url: 'https://example.com',
+        query: 'Domain',
+        onlyHighlights: true,
+        fastOnly: true,
+      });
+      if (result.highlights && result.highlights.length > 0) {
+        expect(result.content).toBe(result.highlights.join('\n\n---\n\n'));
+      }
+    } catch {}
+  });
+
   it('scrapeUrl should reject when both fastOnly: true and renderJs: true are specified', async () => {
     expect(
       scrapeUrl({
