@@ -103,6 +103,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
+        onlyHighlights: z
+          .boolean()
+          .optional()
+          .describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
         extractSummary: z
           .boolean()
           .optional()
@@ -177,9 +181,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('経由する HTTP/HTTPS/SOCKS5 プロキシ URL (例: "http://user:pass@host:port")'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl });
           return {
             content: [
               {
@@ -211,6 +215,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
         headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
         removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
+        query: z.string().optional().describe('ハイライト抽出用キーワード'),
+        extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+        onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
         extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
         extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
         chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
@@ -224,9 +231,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
         proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl }) => {
         try {
-          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl });
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl });
           return {
             content: [
               {
@@ -324,10 +331,13 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
         excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
         formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images'])).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
+        query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
+        extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+        onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
       },
-      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats }) => {
+      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights }) => {
         try {
-          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats });
+          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };

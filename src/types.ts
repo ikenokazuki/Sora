@@ -228,6 +228,7 @@ export const ScrapeRequestSchema = z.object({
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか'),
+  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
   extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか'),
   extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか'),
   chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き)'),
@@ -252,6 +253,9 @@ export const BatchScrapeRequestSchema = z.object({
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列'),
+  query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
+  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -293,6 +297,9 @@ export const CrawlRequestSchema = z.object({
   excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン (例: ["/tag/**", "*.pdf"])'),
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)'),
+  query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
+  extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
