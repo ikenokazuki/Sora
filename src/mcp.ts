@@ -34,6 +34,7 @@ import {
   searchLaws,
   getLawData,
 } from './scraper.js';
+import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -82,7 +83,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         maxChars: z
           .number()
           .int()
-          .positive()
+          .min(1)
           .max(100_000)
           .optional()
           .describe('抽出する最大文字数 (デフォルト: 30000)'),
@@ -125,7 +126,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         chunkSize: z
           .number()
           .int()
-          .positive()
+          .min(1)
           .optional()
           .describe('チャンキング時の最大文字数目安 (デフォルト: 1000)'),
         validateLinks: z
@@ -211,7 +212,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       {
         urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
         concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
-        maxChars: z.number().int().positive().max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
         mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)'),
         formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得フォーマット'),
         selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
@@ -224,7 +225,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
         extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
         chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
-        chunkSize: z.number().int().positive().optional().describe('チャンク文字数目安'),
+        chunkSize: z.number().int().min(1).optional().describe('チャンク文字数目安'),
         validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
         formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
         highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
@@ -264,7 +265,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
         includeRealtime: z.boolean().optional().describe('リアルタイム速報（Xの生の声）を含めるか (デフォルト: true)'),
         realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報の並び順: "recent" (新着順, デフォルト) または "popular" (話題順)'),
-        maxChars: z.number().int().positive().max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
         includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
         excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
         formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
@@ -330,7 +331,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
         maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
-        maxChars: z.number().int().positive().max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)'),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)'),
         includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
         excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
         formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images'])).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
@@ -801,7 +802,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
         selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ (例: "#status")'),
         webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
-        intervalSeconds: z.number().int().positive().optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+        intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
       },
       async (opts) => {
         try {
@@ -1029,7 +1030,8 @@ export class McpSessionManager {
     if (sessionId && this.sessions.has(sessionId)) {
       const entry = this.sessions.get(sessionId)!;
       entry.lastActive = Date.now();
-      return entry.transport.handleRequest(req, options);
+      const res = await entry.transport.handleRequest(req, options);
+      return sanitizeMcpResponse(res);
     }
 
     // 2. セッションIDが指定されているが存在しない場合 (セッション切れ / 不正ID)
@@ -1081,7 +1083,8 @@ export class McpSessionManager {
       });
 
       await server.connect(transport);
-      return transport.handleRequest(req, { parsedBody });
+      const res = await transport.handleRequest(req, { parsedBody });
+      return sanitizeMcpResponse(res);
     }
 
     // 4. initialize 以外の単発・ステートレスリクエスト (例: 単発 tools/list, tools/call)
@@ -1090,7 +1093,8 @@ export class McpSessionManager {
       sessionIdGenerator: undefined,
     });
     await statelessServer.connect(statelessTransport);
-    return statelessTransport.handleRequest(req, { parsedBody });
+    const res = await statelessTransport.handleRequest(req, { parsedBody });
+    return sanitizeMcpResponse(res);
   }
 
   private cleanupStaleSessions() {
@@ -1113,6 +1117,104 @@ export class McpSessionManager {
     }
     this.sessions.clear();
   }
+}
+
+/**
+ * MCP レスポンスに含まれる tools/list の inputSchema を Gemini / Vertex AI 互換に自動サニタイズ
+ */
+export async function sanitizeMcpResponse(res: Response): Promise<Response> {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      const cloned = res.clone();
+      const body: any = await cloned.json();
+      let modified = false;
+
+      const sanitizeToolList = (result: any) => {
+        if (result && Array.isArray(result.tools)) {
+          result.tools = result.tools.map((t: any) => ({
+            ...t,
+            inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
+          }));
+          return true;
+        }
+        return false;
+      };
+
+      if (body) {
+        if (Array.isArray(body)) {
+          for (const item of body) {
+            if (item?.result?.tools) {
+              sanitizeToolList(item.result);
+              modified = true;
+            }
+          }
+        } else if (body.result?.tools) {
+          sanitizeToolList(body.result);
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        const headers = new Headers(res.headers);
+        const newBody = JSON.stringify(body);
+        headers.set('content-length', String(Buffer.byteLength(newBody)));
+        return new Response(newBody, {
+          status: res.status,
+          statusText: res.statusText,
+          headers,
+        });
+      }
+    } catch {
+      // JSON パース失敗時は元のレスポンスを返却
+    }
+  } else if (contentType.includes('text/event-stream') && res.body) {
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    let buffer = '';
+
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            try {
+              const parsed = JSON.parse(dataStr);
+              let changed = false;
+              if (parsed?.result?.tools && Array.isArray(parsed.result.tools)) {
+                parsed.result.tools = parsed.result.tools.map((t: any) => ({
+                  ...t,
+                  inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
+                }));
+                changed = true;
+              }
+              if (changed) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
+                continue;
+              }
+            } catch {}
+          }
+          controller.enqueue(encoder.encode(line + '\n'));
+        }
+      },
+      flush(controller) {
+        if (buffer.length > 0) {
+          controller.enqueue(encoder.encode(buffer));
+        }
+      },
+    });
+
+    return new Response(res.body.pipeThrough(transformStream), {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers,
+    });
+  }
+  return res;
 }
 
 export function createMcpTransport(options?: any) {

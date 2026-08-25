@@ -2,7 +2,8 @@ import { describe, it, expect } from 'bun:test';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
-import { createMcpServer, isModuleActive } from './mcp.js';
+import { createMcpServer, isModuleActive, McpSessionManager } from './mcp.js';
+import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import {
   isBlockedHostname,
   isPrivateIp,
@@ -2152,6 +2153,130 @@ describe('Sora REST & MCP Endpoints', () => {
       /javascript\s*が\s*無効/i.test(timeTreeMsg);
 
     expect(isJsDisabledMessage).toBe(true);
+  });
+
+  // ==========================================
+  // Phase 5: Google Gemini / Vertex AI MCP スキーマ互換性テスト
+  // ==========================================
+  it('sanitizeJsonSchemaForGemini should remove exclusiveMinimum, exclusiveMaximum, const and array types', () => {
+    const rawSchema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        maxChars: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+        },
+        maxLimit: {
+          type: 'number',
+          exclusiveMaximum: 100,
+        },
+        mode: {
+          type: 'string',
+          const: 'auto',
+        },
+        optionalTitle: {
+          type: ['string', 'null'],
+        },
+        nested: {
+          type: 'object',
+          properties: {
+            subInt: {
+              type: 'integer',
+              exclusiveMinimum: 5,
+            },
+          },
+        },
+      },
+      required: ['maxChars'],
+    };
+
+    const sanitized: any = sanitizeJsonSchemaForGemini(rawSchema);
+
+    // 1. $schema が削除されていること
+    expect(sanitized.$schema).toBeUndefined();
+
+    // 2. exclusiveMinimum -> minimum 変換
+    expect(sanitized.properties.maxChars.exclusiveMinimum).toBeUndefined();
+    expect(sanitized.properties.maxChars.minimum).toBe(1);
+
+    // 3. exclusiveMaximum -> maximum 変換
+    expect(sanitized.properties.maxLimit.exclusiveMaximum).toBeUndefined();
+    expect(sanitized.properties.maxLimit.maximum).toBe(100);
+
+    // 4. const -> enum 変換
+    expect(sanitized.properties.mode.const).toBeUndefined();
+    expect(sanitized.properties.mode.enum).toEqual(['auto']);
+
+    // 5. type 配列 -> nullable 変換
+    expect(sanitized.properties.optionalTitle.type).toBe('string');
+    expect(sanitized.properties.optionalTitle.nullable).toBe(true);
+
+    // 6. ネストされたプロパティも再帰的にサニタイズされていること
+    expect(sanitized.properties.nested.properties.subInt.exclusiveMinimum).toBeUndefined();
+    expect(sanitized.properties.nested.properties.subInt.minimum).toBe(6);
+  });
+
+  it('All MCP tools must produce 100% Gemini-compatible inputSchemas with no exclusiveMinimum, const, or array types', async () => {
+    // McpSessionManager 経由で tools/list JSON-RPC リクエストを発行
+    const manager = new McpSessionManager();
+    const req = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: {},
+      }),
+    });
+
+    const res = await manager.handleRequest(req);
+    expect(res.status).toBe(200);
+    const rawText = await res.text();
+    let body: any;
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      const dataLine = rawText.split('\n').find((l) => l.startsWith('data: '));
+      if (dataLine) {
+        body = JSON.parse(dataLine.replace(/^data:\s*/, ''));
+      }
+    }
+    expect(body?.result).toBeDefined();
+    expect(Array.isArray(body.result.tools)).toBe(true);
+    expect(body.result.tools.length).toBeGreaterThanOrEqual(15);
+
+    // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
+    const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
+      if (!schema || typeof schema !== 'object') return;
+
+      expect(schema.exclusiveMinimum, `${toolName} at ${path} has exclusiveMinimum`).toBeUndefined();
+      expect(schema.exclusiveMaximum, `${toolName} at ${path} has exclusiveMaximum`).toBeUndefined();
+      expect(schema.const, `${toolName} at ${path} has const`).toBeUndefined();
+      expect(schema.$schema, `${toolName} at ${path} has $schema`).toBeUndefined();
+      if (schema.type) {
+        expect(Array.isArray(schema.type), `${toolName} at ${path} has array type`).toBe(false);
+      }
+
+      if (schema.properties && typeof schema.properties === 'object') {
+        for (const [key, prop] of Object.entries(schema.properties)) {
+          assertGeminiCompatible(prop, toolName, `${path}.${key}`);
+        }
+      }
+      if (schema.items) {
+        assertGeminiCompatible(schema.items, toolName, `${path}.items`);
+      }
+    };
+
+    for (const tool of body.result.tools) {
+      expect(tool.name).toBeDefined();
+      expect(tool.inputSchema).toBeDefined();
+      assertGeminiCompatible(tool.inputSchema, tool.name);
+    }
   });
 });
 
