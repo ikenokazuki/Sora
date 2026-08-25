@@ -215,7 +215,7 @@ export const CookieParamSchema = z.object({
 
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
-  maxChars: z.number().int().positive().optional().describe('抽出する最大文字数 (デフォルト: 10000)'),
+  maxChars: z.number().int().min(1).optional().describe('抽出する最大文字数 (デフォルト: 10000)'),
   mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)'),
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
@@ -232,23 +232,23 @@ export const ScrapeRequestSchema = z.object({
   extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか'),
   extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか'),
   chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き)'),
-  chunkSize: z.number().int().positive().optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)'),
+  chunkSize: z.number().int().min(1).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)'),
   validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか'),
   formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
   highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか'),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか'),
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
   retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
-  retryDelayMs: z.number().int().positive().optional().describe('リトライ待機ディレイ (ミリ秒)'),
+  retryDelayMs: z.number().int().min(1).optional().describe('リトライ待機ディレイ (ミリ秒)'),
   proxyUrl: z.string().optional().describe('経由するプロキシ URL (http/https/socks5)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか'),
-  timeoutMs: z.number().int().positive().optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
 });
 
 export const BatchScrapeRequestSchema = z.object({
   urls: z.array(z.string()).min(1, 'urls は 1 件以上指定してください').describe('一括スクレイピング対象の URL 配列 (最大20件)'),
   concurrency: z.number().int().min(1).max(20).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
-  maxChars: z.number().int().positive().optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+  maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
   mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto", "fast", "browser"'),
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
@@ -291,8 +291,8 @@ export const BrowserActionRequestSchema = z.object({
 
 export const CrawlRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('クロール開始のベース URL (例: "https://example.com/docs")'),
-  maxPages: z.number().int().positive().optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
-  maxDepth: z.number().int().positive().optional().describe('リンク探索の最大深度 (デフォルト: 2)'),
+  maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
+  maxDepth: z.number().int().min(1).optional().describe('リンク探索の最大深度 (デフォルト: 2)'),
   includePatterns: z.array(z.string()).optional().describe('対象を絞り込むワイルドカードパターン (例: ["/docs/**", "/guide/*"])'),
   excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン (例: ["/tag/**", "*.pdf"])'),
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する形式配列'),
@@ -305,7 +305,7 @@ export const CrawlRequestSchema = z.object({
 
 export const MapRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('サイトマップ探索対象のベース URL (例: "https://example.com")'),
-  limit: z.number().int().positive().optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
+  limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
   includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)'),
   since: z.string().optional().describe('指定日時以降に更新された URL のみ抽出するフィルタ (例: "2026-08-01")'),
   until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
@@ -315,28 +315,28 @@ export const MapRequestSchema = z.object({
 export const ImageSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const NewsSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const ChiebukuroSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -348,7 +348,7 @@ export const RealtimeSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('リアルタイム検索キーワード (X/Twitter の生の声)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)'),
   limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based, デフォルト: 1)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -363,7 +363,7 @@ export const TransitRouteRequestSchema = z.object({
 
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
-  days: z.number().int().positive().optional().describe('取得する予報日数 (1〜3日, デフォルト: 3)'),
+  days: z.number().int().min(1).max(3).optional().describe('取得する予報日数 (1〜3日, デフォルト: 3)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -373,7 +373,7 @@ export const SearchWebQuerySchema = z.object({
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   updated: z.enum(['day', 'week', 'month', 'year']).optional().describe('期間指定: "day"(24h以内), "week"(1週間以内), "month"(1ヶ月以内), "year"(1年以内)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
-  page: z.number().int().positive().optional().describe('ページ番号 (1-based)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -383,7 +383,7 @@ export const IntegratedSearchRequestSchema = z.object({
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)'),
   fetchContent: z.boolean().optional().describe('上位サイトの Markdown 本文を並行取得するか (デフォルト: true)'),
-  maxCharsPerResult: z.number().int().positive().optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+  maxCharsPerResult: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
@@ -418,7 +418,7 @@ export const WatchRegisterRequestSchema = z.object({
   title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
   selector: z.string().optional().describe('ピンポイントで差分監視する CSS セレクタ (例: "#status", ".news-list")'),
   webhookUrl: z.string().url().optional().describe('差分検知時に通知を送信する Webhook URL'),
-  intervalSeconds: z.number().int().positive().optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+  intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
 });
 
 export const WatchCheckRequestSchema = z.object({
