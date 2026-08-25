@@ -216,9 +216,10 @@ Sora は、目的に応じて **8つの論理モジュール** で構成され�
 │ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│
 │ ・scrape_batch  │    スクショ/JS実行│ ・search_news    │ ・get_weather   │  warnings   │・watch_check  ├──────────────┤
 │ ・search_deep   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │・search_    │・watch_list   │ 🎵 Music     │
-│ ・map_site      │                   │ ・search_realtime│                 │  earthquake ├───────────────┤ (`music`)    │
-│ ・crawl_site    │                   │ ・search_trend   │                 │             │               │・search_music│
-│                 │                   │ ・suggest_keywords│                │             │               │              │
+│ ・map_site      │                   │ ・search_realtime│ ・search_road_  │  earthquake ├───────────────┤ (`music`)    │
+│ ・crawl_site    │                   │ ・search_trend   │   traffic (道路)│             │               │・search_song │
+│                 │                   │ ・suggest_keywords│                │             │               │・search_artist│
+│                 │                   │                  │                 │             │               │・search_music│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┘
 ```
 
@@ -311,6 +312,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 |---|---|---|---|
 | `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 地点ID (例「130010」)<br>- `days` (number, 任意): 予報日数 (1〜3日, デフォルト: 3) |
+| `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
 
 ---
 
@@ -340,7 +342,9 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "夜に駆ける")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、アーティスト代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "YOASOBI", "Official髭男dism")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行します（汎用・後方互換用）。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm", "artistTerm", "albumTerm"<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 
 ---
 
@@ -924,7 +928,41 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.11 汎用 Web ページ差分監視 & Webhook (`POST /watch/*`, `GET /watch/list`, `DELETE /watch/:id`)
+### 3.11 道路交通情報 (`POST /traffic/road`, `GET /traffic/road/:pref?`)
+JARTIC（日本道路交通情報センター）連携データに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します。
+
+- **リクエスト (`POST /traffic/road`)**:
+  ```json
+  {
+    "pref": "東京都",
+    "road": "東名高速"
+  }
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "pref": "東京都",
+    "road": "東名高速",
+    "updatedAt": "8月25日 20時15分 現在",
+    "hasIssues": true,
+    "summary": "東名高速にて 16 件の規制・事故等の情報があります。",
+    "items": [
+      {
+        "roadName": "東名高速",
+        "direction": "上り",
+        "status": "路肩規制",
+        "section": "春日井IC付近",
+        "cause": "工事",
+        "detail": "春日井IC付近 路肩規制 (工事)"
+      }
+    ],
+    "source": "jartic"
+  }
+  ```
+
+---
+
+### 3.12 汎用 Web ページ差分監視 & Webhook (`POST /watch/*`, `GET /watch/list`, `DELETE /watch/:id`)
 URL またはピンポイント CSS セレクタを定期スキャンし、前回値（SHA-256 ハッシュ）と比較して差分検知時に自動で Webhook を発火します。データは SQLite に永続化。
 
 - **監視ターゲット登録 (`POST /watch/register`)**:
@@ -946,14 +984,30 @@ URL またはピンポイント CSS セレクタを定期スキャンし、前�
 
 ---
 
-### 3.12 音楽メタデータ検索 (`POST /search/music`)
-iTunes 公式 Search API と連携し、楽曲・アルバム・アーティストメタデータを高速検索（歌詞本文を扱わないため著作権リスクゼロ）。
+### 3.13 音楽メタデータ検索 (`POST /search/song` / `POST /search/artist` / `POST /search/music`)
+iTunes 公式 Search API と連携し、曲名検索・アーティスト検索・汎用メタデータ検索を実行します（歌詞本文を扱わないため著作権リスクゼロ）。
 
-- **リクエスト (`POST /search/music`)**:
+- **曲名指定 楽曲検索 (`POST /search/song` または `POST /search/music/song`)**:
+  ```json
+  {
+    "query": "アイドル",
+    "limit": 5
+  }
+  ```
+- **アーティスト名指定 音楽検索 (`POST /search/artist` または `POST /search/music/artist`)**:
   ```json
   {
     "query": "YOASOBI",
     "entity": "song",
+    "limit": 10
+  }
+  ```
+- **汎用音楽検索 (`POST /search/music`)**:
+  ```json
+  {
+    "query": "YOASOBI",
+    "entity": "song",
+    "attribute": "artistTerm",
     "limit": 10
   }
   ```
@@ -963,6 +1017,7 @@ iTunes 公式 Search API と連携し、楽曲・アルバム・アーティス�
     "query": "YOASOBI",
     "country": "jp",
     "entity": "song",
+    "attribute": "artistTerm",
     "count": 10,
     "items": [
       {
@@ -987,7 +1042,7 @@ iTunes 公式 Search API と連携し、楽曲・アルバム・アーティス�
 
 ---
 
-### 3.13 e-Gov 日本法令検索 & 条文 Markdown 取得 (`POST /gov/laws` / `POST /gov/law-text`)
+### 3.14 e-Gov 日本法令検索 & 条文 Markdown 取得 (`POST /gov/laws` / `POST /gov/law-text`)
 デジタル庁・総務省の公式 e-Gov 法令 API v2 と連携し、日本の現行法令（憲法、法律、政令、府省令）のキーワード検索および構造化 Markdown 条文を取得します。
 
 - **法令キーワード検索 (`POST /gov/laws`)**:

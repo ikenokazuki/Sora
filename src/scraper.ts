@@ -17,6 +17,7 @@ export * from './pdf.js';
 export * from './services/yahoo.js';
 export * from './services/life.js';
 export * from './services/disaster.js';
+export * from './services/traffic.js';
 export * from './services/watch.js';
 export * from './services/music.js';
 export * from './services/gov.js';
@@ -1127,19 +1128,37 @@ export async function scrapeUrl(options: {
         const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
         const hasLittleContent = bodyOnlyMarkdown.length < 50;
 
+        // JavaScript 有効化要求・SPA マウントポイント・Cloudflare 待機画面の検知
+        const isJsDisabledMessage =
+          /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(bodyOnlyMarkdown) ||
+          /please\s+enable\s+(?:your\s+)?javascript/i.test(bodyOnlyMarkdown) ||
+          /javascript\s*を\s*(?:有効|オン)/i.test(bodyOnlyMarkdown) ||
+          /javascript\s*が\s*無効/i.test(bodyOnlyMarkdown) ||
+          /^(?:loading\.*|読み込み中\.*|now loading\.*)$/i.test(bodyOnlyMarkdown);
+
         const chromePath = resolveChromiumPath();
         const isSpaOrBlank =
           !isFastMode &&
           chromePath &&
           (hasLittleContent ||
+            isJsDisabledMessage ||
+            html.includes('id="react-root"') ||
             html.includes('id="root"') ||
             html.includes('id="app"') ||
+            html.includes('id="__next"') ||
+            html.includes('id="__nuxt"') ||
+            html.includes('id="svelte"') ||
             html.includes('__NEXT_DATA__') ||
+            html.includes('react-data') ||
+            html.includes('__NUXT_DATA__') ||
+            html.includes('__INITIAL_STATE__') ||
+            html.includes('__remixContext') ||
             html.includes('client-bootstrap') ||
             html.includes('data-build=') ||
             html.includes('data-reactroot') ||
             html.includes('Please enable JavaScript') ||
-            html.includes('Checking your browser'));
+            html.includes('Checking your browser') ||
+            html.includes('Just a moment...'));
 
         if (!isSpaOrBlank) {
           result = {

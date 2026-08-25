@@ -407,6 +407,12 @@ export const EarthquakeRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
+export const RoadTrafficRequestSchema = z.object({
+  pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)'),
+  road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速")'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
 export const WatchRegisterRequestSchema = z.object({
   url: z.string().url('有効な URL を指定してください').describe('監視対象の Web ページ URL'),
   title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
@@ -419,10 +425,26 @@ export const WatchCheckRequestSchema = z.object({
   id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全ターゲットを一括スキャン)'),
 });
 
+export const SongSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('検索曲名・楽曲タイトル'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
+export const ArtistSearchRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('アーティスト名'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+
 export const MusicSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
   country: z.string().optional().describe('国コード (デフォルト: "jp")'),
   entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+  attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
@@ -766,6 +788,19 @@ export function generateOpenApiDocument() {
           responses: { '200': { description: 'EarthquakeSearchResult' } },
         },
       },
+      '/traffic/road': {
+        post: {
+          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(RoadTrafficRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'RoadTrafficResult' } },
+        },
+      },
       '/watch/register': {
         post: {
           summary: 'Web ページ差分監視ターゲット登録 (初期ハッシュ作成)',
@@ -804,13 +839,65 @@ export function generateOpenApiDocument() {
           responses: { '200': { description: 'OK' } },
         },
       },
+      '/search/song': {
+        post: {
+          summary: 'iTunes 公式 Search API 曲名指定 楽曲メタデータ検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SongSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'MusicSearchResult' } },
+        },
+      },
+      '/search/artist': {
+        post: {
+          summary: 'iTunes 公式 Search API アーティスト名指定 音楽・アルバム・アーティストメタデータ検索',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ArtistSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'MusicSearchResult' } },
+        },
+      },
       '/search/music': {
         post: {
-          summary: 'iTunes 公式 Search API 楽曲・アルバム・アーティストメタデータ検索',
+          summary: 'iTunes 公式 Search API 楽曲・アルバム・アーティストメタデータ検索 (汎用)',
           requestBody: {
             content: {
               'application/json': {
                 schema: zodToOpenApiSchema(MusicSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'MusicSearchResult' } },
+        },
+      },
+      '/search/music/song': {
+        post: {
+          summary: 'iTunes 公式 Search API 曲名指定 楽曲メタデータ検索 (エイリアス)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SongSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'MusicSearchResult' } },
+        },
+      },
+      '/search/music/artist': {
+        post: {
+          summary: 'iTunes 公式 Search API アーティスト名指定 音楽・アルバム・アーティストメタデータ検索 (エイリアス)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ArtistSearchRequestSchema),
               },
             },
           },
