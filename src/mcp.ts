@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPTransport } from '@hono/mcp';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import {
   scrapeUrl,
@@ -22,12 +22,15 @@ import {
   executeBrowserActions,
   fetchWeatherWarnings,
   fetchRecentEarthquakes,
+  fetchRoadTraffic,
   registerWatchTarget,
   checkWatchTarget,
   checkAllWatchTargets,
   listWatchTargets,
   deleteWatchTarget,
   searchMusic,
+  searchSong,
+  searchArtist,
   searchLaws,
   getLawData,
 } from './scraper.js';
@@ -73,9 +76,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     // Tool 1: scrape (単一 URL / PDF スクレイプ)
     mcpServer.tool(
       'scrape',
-      '指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは自動で Stealth Chromium でレンダリングされます。',
+      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは自動で Stealth Chromium でレンダリングされます。',
       {
-        url: z.string().url().describe('スクレイピング対象の完全な URL (http/https)'),
+        url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
         maxChars: z
           .number()
           .int()
@@ -251,12 +254,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 2: search_deep (超高精度 統合検索)
+    // Tool 2: search_deep (超高精度 統合検索・本文一括取得)
     mcpServer.tool(
       'search_deep',
-      '【超高精度 統合検索】Web 検索を実行し、上位 Web サイトの本文を並行スクレイピング＋リアルタイム最新情報（X）を一括取得して LLM の回答生成に最適な形式で返却します。',
+      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。記事本文を深く読み込んで包括的・根拠ある回答を作成したい場合に最適です（URL一覧のみでよい場合は search_web を使用）。',
       {
-        query: z.string().min(1).describe('検索キーワード'),
+        query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
         scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
         includeRealtime: z.boolean().optional().describe('リアルタイム速報（Xの生の声）を含めるか (デフォルト: true)'),
@@ -299,7 +302,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     // Tool 3: map_site (サイトマップ探索)
     mcpServer.tool(
       'map_site',
-      '指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を抽出します。ドメイン全体のページ構成把握に最適です。',
+      '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の全 URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。',
       {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
         limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
@@ -323,7 +326,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     // Tool 4: crawl_site (サイト内再帰クロール)
     mcpServer.tool(
       'crawl_site',
-      '指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、各ページの Markdown 本文を一括収集します。ドキュメントサイト等のまとめ読みに最適です。',
+      '【サイト内再帰クロール】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、各ページの Markdown 本文を一括収集します。ドキュメントサイト等のまとめ読みに最適です。',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
         maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
@@ -350,12 +353,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 5: search_web (基本 Web 検索)
+    // Tool 5: search_web (基本 Web 検索・概要取得)
     mcpServer.tool(
       'search_web',
-      'Web 検索を実行し、タイトル・概要スニペット・URL を取得します。期間指定（24h/1週間/1年）や特定ドメインの絞り込み・除外が可能です。',
+      '【Web検索・概要/URL一覧取得】Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。本文を深く読み込む必要がなく、検索結果の一覧・URL を確認したい場合に最適です（記事本文まで一度に読みたい場合は search_deep を使用）。',
       {
-        query: z.string().min(1).describe('検索キーワード'),
+        query: z.string().min(1).describe('検索キーワード (例: "東京都 天気", "Next.js 15")'),
         includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
         excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメインリスト'),
         updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(指定なし), "day"(24時間以内), "week"(1週間以内), "year"(1年以内)'),
@@ -374,6 +377,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
     );
+
   }
 
   // =========================================================================
@@ -440,12 +444,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🇯🇵 Category 3: Yahoo! JAPAN Services (モジュール: 'yahoo')
   // =========================================================================
   if (shouldEnableYahoo) {
-    // Tool 6: search_image (Yahoo 画像検索)
+    // Tool 7: search_image (Yahoo 画像検索)
     mcpServer.tool(
       'search_image',
-      'Yahoo! JAPAN 画像検索を実行し、画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
+      '【Yahoo 画像検索】画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
       {
-        query: z.string().min(1).describe('画像検索キーワード'),
+        query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
       },
       async ({ query, limit }) => {
@@ -463,12 +467,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 7: search_video (Yahoo 動画検索)
+    // Tool 8: search_video (Yahoo 動画検索)
     mcpServer.tool(
       'search_video',
-      'Yahoo! JAPAN 動画検索を実行し、YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
+      '【Yahoo 動画検索】YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
       {
-        query: z.string().min(1).describe('動画検索キーワード'),
+        query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
       },
       async ({ query, limit }) => {
@@ -486,12 +490,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 8: search_news (Yahoo ニュース検索)
+    // Tool 9: search_news (Yahoo ニュース検索)
     mcpServer.tool(
       'search_news',
-      'Yahoo! ニュース検索を実行し、最新の報道記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）を取得します。',
+      '【ニュース検索】Yahoo! ニュース検索を実行し、大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）を取得します。時事問題・公式発表の調査に最適です。',
       {
-        query: z.string().min(1).describe('ニュース検索キーワード'),
+        query: z.string().min(1).describe('ニュース検索キーワード (例: "選挙", "経済動向", "ノーベル賞")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
       },
       async ({ query, limit }) => {
@@ -509,12 +513,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 9: search_chiebukuro (Yahoo 知恵袋検索)
+    // Tool 10: search_chiebukuro (Yahoo 知恵袋検索)
     mcpServer.tool(
       'search_chiebukuro',
-      'Yahoo! 知恵袋の Q&A 検索を実行し、質問タイトル・本文スニペット・回答数・解決ステータス（解決済/受付中）を取得します。人々の悩みやリアルな体験談の調査に最適です。',
+      '【知恵袋 Q&A 検索】Yahoo! 知恵袋の Q&A 検索を実行し、質問タイトル・本文スニペット・回答数・解決ステータス（解決済/受付中）を取得します。人々の悩みやリアルな体験談の調査に最適です。',
       {
-        query: z.string().min(1).describe('知恵袋検索キーワード'),
+        query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
       },
       async ({ query, limit }) => {
@@ -532,12 +536,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 10: suggest_keywords (サジェスト / キーワード補完)
+    // Tool 11: suggest_keywords (サジェスト / キーワード補完)
     mcpServer.tool(
       'suggest_keywords',
-      'Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句に関連する入力候補・よく一緒に検索されるキーワードを返します。',
+      '【サジェスト / キーワード補完】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句に関連する入力候補・よく一緒に検索されるキーワードを返します。',
       {
-        query: z.string().min(1).describe('検索語句プレフィックス'),
+        query: z.string().min(1).describe('検索語句プレフィックス (例: "東京 観光")'),
         limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10)'),
       },
       async ({ query, limit }) => {
@@ -555,12 +559,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 11: search_realtime (Yahoo リアルタイム検索)
+    // Tool 12: search_realtime (Yahoo リアルタイム検索)
     mcpServer.tool(
       'search_realtime',
-      'Yahoo! リアルタイム検索を実行し、X (旧 Twitter) 上の最新の生の声・ポスト一覧（投稿者・本文・投稿日時・メディア・URL）を取得します。新着順 (recent) と 話題順 (popular) の切り替えに対応。',
+      '【SNS・リアルタイム速報検索】Yahoo! リアルタイム検索を実行し、X (旧 Twitter) 上の最新の生の声・ポスト一覧（投稿者・本文・投稿日時・メディア・URL）を取得します。世間の反応・速報・イベント実況に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。',
       {
-        query: z.string().min(1).describe('リアルタイム検索キーワード'),
+        query: z.string().min(1).describe('リアルタイム検索キーワード (例: "地震", "電車遅延", "イベント名")'),
         sort: z
           .enum(['recent', 'popular'])
           .optional()
@@ -618,10 +622,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 12: search_trend (Yahoo トレンド急上昇)
+    // Tool 13: search_trend (Yahoo トレンド急上昇)
     mcpServer.tool(
       'search_trend',
-      'Yahoo! リアルタイム検索の「急上昇トレンドワード」ランキング（現在バズっているホットな話題 20 件）を取得します。',
+      '【トレンド急上昇ランキング】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）を取得します。',
       {
         limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)'),
       },
@@ -642,18 +646,18 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   }
 
   // =========================================================================
-  // 🗾 Category 3: Japan Daily Life & Transit (モジュール: 'life')
+  // 🗾 Category 4: Japanese Daily Life Services (モジュール: 'life')
   // =========================================================================
   if (shouldEnableLife) {
-    // Tool 13: search_route (Yahoo 乗換案内)
+    // Tool 14: search_route (電車・鉄道 乗換案内)
     mcpServer.tool(
       'search_route',
-      'Yahoo! 乗換案内を利用し、日本全国の鉄道・新幹線・路線バス・高速バス・フェリーの最適ルート、所要時間、乗換回数、運賃（IC/きっぷ）を検索します。',
+      '【電車・鉄道 乗換案内】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索します（車・道路情報は search_road_traffic を使用）。経由駅指定（最大3駅）や日時指定に対応。',
       {
-        from: z.string().min(1).describe('出発駅・バス停・施設名 (例: "新宿", "東京駅")'),
-        to: z.string().min(1).describe('到着駅・バス停・施設名 (例: "横浜", "京都")'),
-        via: z.array(z.string()).max(3).optional().describe('経由駅リスト (最大3駅, 例: ["品川"])'),
-        date: z.string().regex(/^\d{8}$/).optional().describe('検索日 (YYYYMMDD形式, 例: "20260821")'),
+        from: z.string().min(1).describe('出発駅名 (例: "東京", "新大阪", "博多")'),
+        to: z.string().min(1).describe('到着駅名 (例: "新宿", "京都", "天神")'),
+        via: z.array(z.string()).max(3).optional().describe('経由駅名リスト (最大3駅, 例: ["品川", "横浜"])'),
+        date: z.string().regex(/^\d{8}$/).optional().describe('検索日 (YYYYMMDD形式, 例: "20260825")'),
         time: z.string().regex(/^\d{4}$/).optional().describe('検索時刻 (HHMM形式, 例: "0930")'),
         timeType: z.enum(['departure', 'arrival', 'first_train', 'last_train']).optional()
           .describe('時刻指定タイプ: "departure"(出発時刻), "arrival"(到着時刻), "first_train"(始発), "last_train"(終電)'),
@@ -686,10 +690,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 14: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結)
+    // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結)
     mcpServer.tool(
       'get_weather',
-      '気象庁公式オープンデータ直結による日本全国の天気予報を取得します。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDから、今日・明日・明後日の天気、風・波、予想気温、降水確率、気象台概況文を返します。',
+      '【天気予報】気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況を取得します。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDに対応。',
       {
         city: z.string().min(1).describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
         days: z.number().int().min(1).max(3).optional().describe('取得する予報日数 (1〜3日, デフォルト: 3)'),
@@ -708,16 +712,39 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
     );
+
+    // Tool 16: search_road_traffic (リアルタイム道路交通情報 - JARTIC連携)
+    mcpServer.tool(
+      'search_road_traffic',
+      '【高速道路・道路交通情報】JARTIC（日本道路交通情報センター）連携データに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します（電車・鉄道は search_route を使用）。',
+      {
+        pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")'),
+        road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速", "阪神高速", "東北道")'),
+      },
+      async (opts) => {
+        try {
+          const result = await fetchRoadTraffic(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Road traffic error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
   }
 
   // =========================================================================
-  // 🚨 Category 4: Disaster & Emergency (モジュール: 'disaster')
+  // 🚨 Category 5: Disaster & Emergency (モジュール: 'disaster')
   // =========================================================================
   if (shouldEnableDisaster) {
-    // Tool 15: search_disaster_warnings (気象警報・注意報)
+    // Tool 17: search_disaster_warnings (気象警報・注意報)
     mcpServer.tool(
       'search_disaster_warnings',
-      '気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。',
+      '【特別警報・気象警報・注意報】気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。',
       {
         city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
         areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
@@ -737,10 +764,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 16: search_earthquake (リアルタイム地震速報・履歴)
+    // Tool 18: search_earthquake (リアルタイム地震速報・履歴)
     mcpServer.tool(
       'search_earthquake',
-      'P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）を取得します。',
+      '【地震速報・震度情報】P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）を取得します。',
       {
         limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
         minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)'),
@@ -762,17 +789,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   }
 
   // =========================================================================
-  // 👁️ Category 5: Watch & Diff Monitoring (モジュール: 'watch')
+  // 👁️ Category 6: Watch & Diff Monitoring (モジュール: 'watch')
   // =========================================================================
   if (shouldEnableWatch) {
-    // Tool 17: watch_register (監視ターゲット登録)
+    // Tool 19: watch_register (監視ターゲット登録)
     mcpServer.tool(
       'watch_register',
-      'Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
+      '【Webページ差分監視登録】Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
       {
-        url: z.string().url().describe('監視対象の Web ページ URL'),
-        title: z.string().optional().describe('監視ターゲットの識別用タイトル'),
-        selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ'),
+        url: z.string().url().describe('監視対象の Web ページ URL (例: "https://example.com/status")'),
+        title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
+        selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ (例: "#status")'),
         webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
         intervalSeconds: z.number().int().positive().optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
       },
@@ -791,10 +818,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 18: watch_check (差分スキャン実行)
+    // Tool 20: watch_check (差分スキャン実行)
     mcpServer.tool(
       'watch_check',
-      '登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
+      '【Webページ差分スキャン実行】登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
       {
         id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン)'),
       },
@@ -813,10 +840,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 19: watch_list (監視ターゲット一覧)
+    // Tool 21: watch_list (監視ターゲット一覧)
     mcpServer.tool(
       'watch_list',
-      '現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
+      '【Webページ監視ターゲット一覧】現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
       {},
       async () => {
         try {
@@ -835,17 +862,67 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   }
 
   // =========================================================================
-  // 🎵 Category 6: Music Metadata (モジュール: 'music')
+  // 🎵 Category 7: Music Metadata (モジュール: 'music')
   // =========================================================================
   if (shouldEnableMusic) {
-    // Tool 20: search_music (iTunes 音楽・アルバム・アーティスト検索)
+    // Tool 22: search_song (iTunes 曲名指定 楽曲メタデータ検索)
+    mcpServer.tool(
+      'search_song',
+      '【曲名指定 音楽検索】楽曲タイトル（曲名）を指定して iTunes 公式メタデータ（高解像度ジャケット画像、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク）をピンポイント検索します。',
+      {
+        query: z.string().min(1).describe('検索曲名・楽曲タイトル (例: "アイドル", "夜に駆ける", "Subtitle")'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+      },
+      async (opts) => {
+        try {
+          const result = await searchSong(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Song search error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索)
+    mcpServer.tool(
+      'search_artist',
+      '【アーティスト指定 音楽検索】アーティスト名を指定して、指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Music リンク等）を取得します。',
+      {
+        query: z.string().min(1).describe('アーティスト名 (例: "YOASOBI", "Official髭男dism", "Ado")'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
+        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+      },
+      async (opts) => {
+        try {
+          const result = await searchArtist(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Artist search error: ${err?.message || err}` }],
+          };
+        }
+      },
+    );
+
+    // Tool 24: search_music (iTunes 音楽・アルバム・アーティスト汎用検索)
     mcpServer.tool(
       'search_music',
-      'iTunes 公式 Search API による楽曲・アルバム・アーティストメタデータ検索を実行し、高解像度ジャケット画像、30秒試聴音源 URL、リリース日、Apple Music リンク等を取得します（法的リスクゼロ）。',
+      '【汎用音楽検索】楽曲・アルバム・アーティストの複合キーワード全文検索を行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。',
       {
-        query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
+        query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名の自由入力)'),
         country: z.string().optional().describe('国コード (デフォルト: "jp")'),
         entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+        attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
       },
       async (opts) => {
@@ -868,12 +945,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🏛️ Category 8: Government & Law Data (モジュール: 'gov')
   // =========================================================================
   if (shouldEnableGov) {
-    // Tool 21: search_laws (e-Gov キーワード法令検索)
+    // Tool 25: search_laws (e-Gov キーワード法令検索)
     mcpServer.tool(
       'search_laws',
-      'e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します（完全無料・登録不要）。',
+      '【e-Gov 日本法令キーワード検索】デジタル庁・総務省公式 e-Gov 法令 API v2 により、日本の現行法令（憲法、法律、政令、府省令）のキーワード検索を実行し、法令名、法令番号、公布年月日の一覧を取得します。',
       {
-        keyword: z.string().min(1).describe('法令検索キーワード (法令名、法律用語)'),
+        keyword: z.string().min(1).describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
       },
       async (opts) => {
@@ -891,10 +968,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool 22: get_law_text (e-Gov 法令条文詳細取得)
+    // Tool 26: get_law_text (e-Gov 法令条文詳細取得)
     mcpServer.tool(
       'get_law_text',
-      'e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。',
+      '【e-Gov 法令条文詳細取得】法令ID（例: "129AC0000000089"）を指定して、章・節・条・項・号が正確に構造化された Markdown 形式で条文本文を取得します。',
       {
         lawId: z.string().min(1).describe('e-Gov 法令ID (例: "129AC0000000089")'),
       },
@@ -917,6 +994,128 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   return mcpServer;
 }
 
-export function createMcpTransport(options?: any) {
-  return new StreamableHTTPTransport(options);
+export interface McpSessionEntry {
+  server: McpServer;
+  transport: WebStandardStreamableHTTPServerTransport;
+  lastActive: number;
 }
+
+/**
+ * MCP Streamable HTTP 仕様準拠のマルチセッションマネージャー
+ * 各クライアント接続ごとに独立したセッションとトランスポートを管理し、
+ * セッションIDに基づくルーティング、放置セッションの自動回収（TTL）、
+ * 並行リクエストの安全なディスパッチを行います。
+ */
+export class McpSessionManager {
+  private sessions = new Map<string, McpSessionEntry>();
+  private cleanupInterval: any;
+  private readonly sessionTtlMs: number;
+
+  constructor(options?: { sessionTtlMs?: number }) {
+    this.sessionTtlMs = options?.sessionTtlMs ?? 60 * 60 * 1000; // 1時間 TTL
+    this.cleanupInterval = setInterval(() => this.cleanupStaleSessions(), 5 * 60 * 1000);
+    if (typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
+      this.cleanupInterval.unref();
+    }
+  }
+
+  /**
+   * HTTP リクエスト（POST / GET / DELETE）を適切なセッションのトランスポートにルーティング
+   */
+  public async handleRequest(req: Request, options?: { parsedBody?: any }): Promise<Response> {
+    const sessionId = req.headers.get('mcp-session-id');
+
+    // 1. 既存セッションが存在する場合
+    if (sessionId && this.sessions.has(sessionId)) {
+      const entry = this.sessions.get(sessionId)!;
+      entry.lastActive = Date.now();
+      return entry.transport.handleRequest(req, options);
+    }
+
+    // 2. セッションIDが指定されているが存在しない場合 (セッション切れ / 不正ID)
+    if (sessionId && !this.sessions.has(sessionId)) {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: {
+            code: -32001,
+            message: 'Session not found',
+          },
+          id: null,
+        }),
+        {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }
+
+    // 3. セッション新規作成 (initialize リクエスト時)
+    let parsedBody = options?.parsedBody;
+    if (parsedBody === undefined && req.method === 'POST') {
+      try {
+        parsedBody = await req.clone().json();
+      } catch {
+        // invalid json
+      }
+    }
+
+    const messages = Array.isArray(parsedBody) ? parsedBody : [parsedBody];
+    const isInit = messages.some((m) => m && m.method === 'initialize');
+
+    if (isInit) {
+      // ステートフルセッション作成
+      const server = createMcpServer();
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: () => crypto.randomUUID(),
+        onsessioninitialized: (newSessionId) => {
+          this.sessions.set(newSessionId, {
+            server,
+            transport,
+            lastActive: Date.now(),
+          });
+        },
+        onsessionclosed: (closedSessionId) => {
+          this.sessions.delete(closedSessionId);
+        },
+      });
+
+      await server.connect(transport);
+      return transport.handleRequest(req, { parsedBody });
+    }
+
+    // 4. initialize 以外の単発・ステートレスリクエスト (例: 単発 tools/list, tools/call)
+    const statelessServer = createMcpServer();
+    const statelessTransport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    await statelessServer.connect(statelessTransport);
+    return statelessTransport.handleRequest(req, { parsedBody });
+  }
+
+  private cleanupStaleSessions() {
+    const now = Date.now();
+    for (const [id, session] of this.sessions.entries()) {
+      if (now - session.lastActive > this.sessionTtlMs) {
+        session.transport.close().catch(() => {});
+        this.sessions.delete(id);
+      }
+    }
+  }
+
+  public getActiveSessionCount(): number {
+    return this.sessions.size;
+  }
+
+  public clearAllSessions() {
+    for (const [, session] of this.sessions.entries()) {
+      session.transport.close().catch(() => {});
+    }
+    this.sessions.clear();
+  }
+}
+
+export function createMcpTransport(options?: any) {
+  return new WebStandardStreamableHTTPServerTransport(options);
+}
+

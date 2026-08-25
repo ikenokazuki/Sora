@@ -22,16 +22,18 @@ export interface MusicSearchResult {
   query: string;
   country: string;
   entity: string;
+  attribute?: string;
   count: number;
   items: MusicItem[];
   source: 'itunes';
 }
 
-/** iTunes Search API による音楽・アルバム・アーティストメタデータ検索 */
+/** iTunes Search API による音楽・アルバム・アーティストメタデータ検索 (汎用) */
 export async function searchMusic(options: {
   query: string;
   country?: string;
   entity?: 'song' | 'album' | 'musicArtist';
+  attribute?: 'songTerm' | 'artistTerm' | 'albumTerm' | string;
   limit?: number;
   noCache?: boolean;
 }): Promise<MusicSearchResult> {
@@ -42,15 +44,19 @@ export async function searchMusic(options: {
 
   const country = options.country || 'jp';
   const entity = options.entity || 'song';
+  const attribute = options.attribute?.trim();
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
 
-  const cacheKey = `music:${query}:${country}:${entity}:${limit}`;
+  const cacheKey = `music:${query}:${country}:${entity}:${attribute || 'all'}:${limit}`;
   if (!options.noCache) {
     const cached = getFromCache<MusicSearchResult>(cacheKey);
     if (cached) return cached;
   }
 
-  const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&country=${encodeURIComponent(country)}&entity=${encodeURIComponent(entity)}&limit=${limit}`;
+  let itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&country=${encodeURIComponent(country)}&entity=${encodeURIComponent(entity)}&limit=${limit}`;
+  if (attribute) {
+    itunesUrl += `&attribute=${encodeURIComponent(attribute)}`;
+  }
 
   const res = await fetch(itunesUrl, {
     headers: { 'User-Agent': 'Sora-Music-Metadata-Fetcher/1.0' },
@@ -91,6 +97,7 @@ export async function searchMusic(options: {
     query,
     country,
     entity,
+    ...(attribute ? { attribute } : {}),
     count: items.length,
     items,
     source: 'itunes',
@@ -102,3 +109,34 @@ export async function searchMusic(options: {
 
   return result;
 }
+
+/** 曲名指定での楽曲メタデータ検索 (iTunes attribute=songTerm) */
+export async function searchSong(options: {
+  query: string;
+  country?: string;
+  limit?: number;
+  noCache?: boolean;
+}): Promise<MusicSearchResult> {
+  return searchMusic({
+    ...options,
+    entity: 'song',
+    attribute: 'songTerm',
+  });
+}
+
+/** アーティスト名指定での音楽メタデータ検索 (iTunes attribute=artistTerm または entity=musicArtist) */
+export async function searchArtist(options: {
+  query: string;
+  country?: string;
+  entity?: 'song' | 'album' | 'musicArtist';
+  limit?: number;
+  noCache?: boolean;
+}): Promise<MusicSearchResult> {
+  const entity = options.entity || 'song';
+  return searchMusic({
+    ...options,
+    entity,
+    ...(entity !== 'musicArtist' ? { attribute: 'artistTerm' } : {}),
+  });
+}
+

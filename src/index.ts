@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { existsSync } from 'fs';
@@ -34,12 +35,15 @@ import {
   executeBrowserActions,
   fetchWeatherWarnings,
   fetchRecentEarthquakes,
+  fetchRoadTraffic,
   registerWatchTarget,
   checkWatchTarget,
   checkAllWatchTargets,
   listWatchTargets,
   deleteWatchTarget,
   searchMusic,
+  searchSong,
+  searchArtist,
   searchLaws,
   getLawData,
   checkDetailedHealth,
@@ -52,8 +56,11 @@ import {
   BrowserActionRequestSchema,
   DisasterWarningsRequestSchema,
   EarthquakeRequestSchema,
+  RoadTrafficRequestSchema,
   WatchRegisterRequestSchema,
   WatchCheckRequestSchema,
+  SongSearchRequestSchema,
+  ArtistSearchRequestSchema,
   MusicSearchRequestSchema,
   LawSearchRequestSchema,
   LawDataRequestSchema,
@@ -65,7 +72,7 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { createAuthMiddleware, extractAuthToken } from './auth.js';
-import { createMcpServer, createMcpTransport } from './mcp.js';
+import { createMcpServer, createMcpTransport, McpSessionManager } from './mcp.js';
 
 export const app = new Hono();
 
@@ -93,8 +100,25 @@ export function formatError(
 }
 
 // ==========================================
-// 1. セキュリティヘッダー & DoS 防御 (Body Limit)
+// 1. CORS, セキュリティヘッダー & DoS 防御 (Body Limit)
 // ==========================================
+app.use(
+  '*',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'mcp-session-id',
+      'mcp-protocol-version',
+      'x-request-id',
+      'Last-Event-ID',
+    ],
+    exposeHeaders: ['mcp-session-id', 'mcp-protocol-version', 'X-Response-Time'],
+  }),
+);
+
 app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
@@ -170,19 +194,36 @@ if (typeof process !== 'undefined') {
 }
 
 // ==========================================
-// 2. MCP Server & Streamable HTTP / SSE 初期化
+// 2. MCP Server & Streamable HTTP 初期化 (マルチセッション対応)
 // ==========================================
-const mcpServer = createMcpServer();
-const mcpTransport = createMcpTransport();
+export const mcpSessionManager = new McpSessionManager();
 
 async function handleMcpRequest(c: any) {
-  if (!mcpServer.isConnected()) {
-    await mcpServer.connect(mcpTransport);
+  const rawReq = c.req.raw;
+  let parsedBody: any;
+  if (rawReq.method === 'POST') {
+    try {
+      parsedBody = await c.req.json();
+    } catch {
+      // no json or invalid
+    }
   }
-  return mcpTransport.handleRequest(c);
+
+  // Accept ヘッダーの正規化（406 Not Acceptable の完全回避）
+  const accept = rawReq.headers.get('accept') || '';
+  let req = rawReq;
+  if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
+    const headers = new Headers(rawReq.headers);
+    headers.set('accept', 'application/json, text/event-stream');
+    req = new Request(rawReq.url, {
+      method: rawReq.method,
+      headers,
+    });
+  }
+  return mcpSessionManager.handleRequest(req, { parsedBody });
 }
 
-// Streamable HTTP & SSE エンドポイント
+// Streamable HTTP エンドポイント (POST /mcp, GET /mcp, DELETE /mcp)
 app.all('/mcp', handleMcpRequest);
 app.all('/sse', handleMcpRequest);
 app.all('/message', handleMcpRequest);
@@ -219,10 +260,13 @@ app.get('/', (c) => {
       weather: 'POST/GET /weather, GET /weather/:city',
       disasterWarnings: 'POST /disaster/warnings',
       disasterEarthquake: 'POST /disaster/earthquake',
+      trafficRoad: 'POST/GET /traffic/road, GET /traffic/road/:pref',
       watchRegister: 'POST /watch/register',
       watchCheck: 'POST /watch/check',
       watchList: 'GET /watch/list',
       watchDelete: 'DELETE /watch/:id',
+      searchSong: 'POST /search/song',
+      searchArtist: 'POST /search/artist',
       searchMusic: 'POST /search/music',
       govLaws: 'POST /gov/laws',
       govLawText: 'POST /gov/law-text',
@@ -247,7 +291,8 @@ app.get('/health', async (c) => {
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
     yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),
-    mcpConnected: mcpServer.isConnected(),
+    mcpConnected: true,
+    activeMcpSessions: mcpSessionManager.getActiveSessionCount(),
     timestamp: new Date().toISOString(),
   });
 });
@@ -950,6 +995,55 @@ app.post('/disaster/earthquake', async (c) => {
   }
 });
 
+// 道路交通情報 (POST /traffic/road)
+app.post('/traffic/road', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = RoadTrafficRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid road traffic parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await fetchRoadTraffic(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
+// 道路交通情報 GET (GET /traffic/road & GET /traffic/road/:pref)
+app.get('/traffic/road', async (c) => {
+  const pref = c.req.query('pref');
+  const road = c.req.query('road');
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await fetchRoadTraffic({ pref, road, noCache });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
+app.get('/traffic/road/:pref', async (c) => {
+  const pref = c.req.param('pref');
+  const road = c.req.query('road');
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await fetchRoadTraffic({ pref, road, noCache });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
 // 監視ターゲット登録 (POST /watch/register)
 app.post('/watch/register', async (c) => {
   let rawBody: any;
@@ -1016,7 +1110,55 @@ app.delete('/watch/:id', (c) => {
   return c.json({ success: deleted, id });
 });
 
-// 音楽メタデータ検索 (POST /search/music)
+// 曲名指定 楽曲メタデータ検索 (POST /search/song & POST /search/music/song)
+const handleSongSearch = async (c: any) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = SongSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'query is required for song search', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchSong(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Song search failed', 'MUSIC_ERROR', 500);
+  }
+};
+app.post('/search/song', handleSongSearch);
+app.post('/search/music/song', handleSongSearch);
+
+// アーティスト名指定 音楽メタデータ検索 (POST /search/artist & POST /search/music/artist)
+const handleArtistSearch = async (c: any) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = ArtistSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'query is required for artist search', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchArtist(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Artist search failed', 'MUSIC_ERROR', 500);
+  }
+};
+app.post('/search/artist', handleArtistSearch);
+app.post('/search/music/artist', handleArtistSearch);
+
+// 音楽メタデータ検索 (汎用・後方互換: POST /search/music)
 app.post('/search/music', async (c) => {
   let rawBody: any;
   try {

@@ -58,6 +58,9 @@ import {
   dbListWatchHistory,
   fetchWeatherWarnings,
   fetchRecentEarthquakes,
+  fetchRoadTraffic,
+  resolvePrefecture,
+  resolveRoadCode,
   formatScale,
   registerWatchTarget,
   checkWatchTarget,
@@ -66,6 +69,8 @@ import {
   deleteWatchTarget,
   computeContentHash,
   searchMusic,
+  searchSong,
+  searchArtist,
   searchLaws,
   getLawData,
   rerankSearchResults,
@@ -696,16 +701,109 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('suggest_keywords');
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('get_weather');
+    expect(toolNames).toContain('search_road_traffic');
     expect(toolNames).toContain('browser_action');
     expect(toolNames).toContain('search_disaster_warnings');
     expect(toolNames).toContain('search_earthquake');
     expect(toolNames).toContain('watch_register');
     expect(toolNames).toContain('watch_check');
     expect(toolNames).toContain('watch_list');
+    expect(toolNames).toContain('search_song');
+    expect(toolNames).toContain('search_artist');
     expect(toolNames).toContain('search_music');
     expect(toolNames).toContain('search_laws');
     expect(toolNames).toContain('get_law_text');
-    expect(toolNames.length).toBe(24);
+    expect(toolNames.length).toBe(27);
+  });
+
+  it('MCP Streamable HTTP should support full multi-session lifecycle (initialize -> notifications -> tools/list)', async () => {
+    // 1. Initialize
+    const initReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'n8n-mcp-client', version: '2.33.7' },
+        },
+      }),
+    });
+
+    const initRes = await app.fetch(initReq);
+    expect(initRes.status).toBe(200);
+    const sessionId = initRes.headers.get('mcp-session-id');
+    expect(sessionId).toBeDefined();
+    expect(typeof sessionId).toBe('string');
+
+    // 2. Notification initialized
+    const notifyReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId!,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'notifications/initialized',
+      }),
+    });
+    const notifyRes = await app.fetch(notifyReq);
+    expect(notifyRes.status).toBe(202);
+
+    // 3. tools/list in session
+    const toolsReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId!,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/list',
+        params: {},
+      }),
+    });
+    const toolsRes = await app.fetch(toolsReq);
+    expect(toolsRes.status).toBe(200);
+    const toolsText = await toolsRes.text();
+    expect(toolsText).toContain('scrape');
+    expect(toolsText).toContain('search_web');
+
+    // 4. Concurrent second client
+    const initReq2 = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'second-n8n-client', version: '2.33.7' },
+        },
+      }),
+    });
+    const initRes2 = await app.fetch(initReq2);
+    expect(initRes2.status).toBe(200);
+    const sessionId2 = initRes2.headers.get('mcp-session-id');
+    expect(sessionId2).toBeDefined();
+    expect(sessionId2).not.toBe(sessionId);
   });
 
   it('isModuleActive should correctly evaluate enabled modules', () => {
@@ -1775,6 +1873,57 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   // ==========================================
+  // 道路交通情報モジュールテスト (JARTIC / Yahoo 道路交通情報)
+  // ==========================================
+  it('resolvePrefecture and resolveRoadCode should normalize inputs', () => {
+    expect(resolvePrefecture('東京都')?.code).toBe(13);
+    expect(resolvePrefecture('大阪')?.code).toBe(27);
+    expect(resolvePrefecture('23')?.code).toBe(23);
+    expect(resolvePrefecture('unknown')).toBeNull();
+
+    expect(resolveRoadCode('東名高速')).toBe('1031008');
+    expect(resolveRoadCode('名神')).toBe('1041009');
+    expect(resolveRoadCode('首都圏中央連絡自動車道')).toBe('3120010');
+    expect(resolveRoadCode('unknown')).toBeNull();
+  });
+
+  it('fetchRoadTraffic should parse road traffic regulations for prefecture and specific highway', async () => {
+    const tokyoTraffic = await fetchRoadTraffic({ pref: '東京都' });
+    expect(tokyoTraffic.source).toBe('jartic');
+    expect(tokyoTraffic.pref).toBe('東京都');
+    expect(tokyoTraffic.items.length).toBeGreaterThanOrEqual(1);
+    expect(tokyoTraffic.updatedAt).toBeDefined();
+
+    const tomeiTraffic = await fetchRoadTraffic({ road: '東名高速' });
+    expect(tomeiTraffic.source).toBe('jartic');
+    expect(tomeiTraffic.road).toBe('東名高速');
+    expect(tomeiTraffic.items.length).toBeGreaterThanOrEqual(1);
+    expect(tomeiTraffic.items[0].roadName).toContain('東名');
+  });
+
+  it('POST /traffic/road and GET /traffic/road should return valid traffic JSON', async () => {
+    const postRes = await app.request('/traffic/road', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pref: '神奈川県' }),
+    });
+    expect(postRes.status).toBe(200);
+    const postJson = (await postRes.json()) as any;
+    expect(postJson.pref).toBe('神奈川県');
+    expect(postJson.items).toBeDefined();
+
+    const getRes = await app.request('/traffic/road?road=東名高速');
+    expect(getRes.status).toBe(200);
+    const getJson = (await getRes.json()) as any;
+    expect(getJson.road).toBe('東名高速');
+
+    const getPrefRes = await app.request('/traffic/road/13');
+    expect(getPrefRes.status).toBe(200);
+    const getPrefJson = (await getPrefRes.json()) as any;
+    expect(getPrefJson.prefCode).toBe(13);
+  });
+
+  // ==========================================
   // Phase 4: 音楽メタデータモジュールテスト
   // ==========================================
   it('searchMusic should fetch metadata from iTunes Search API and format high-res artwork', async () => {
@@ -1787,6 +1936,82 @@ describe('Sora REST & MCP Endpoints', () => {
     if (first.artwork?.thumbnail) {
       expect(first.artwork.highRes).toContain('600x600bb');
     }
+  });
+
+  it('searchSong should fetch song metadata specifically matching song title', async () => {
+    const result = await searchSong({ query: 'アイドル', limit: 2 });
+    expect(result.source).toBe('itunes');
+    expect(result.attribute).toBe('songTerm');
+    expect(result.entity).toBe('song');
+    expect(result.items.length).toBeGreaterThanOrEqual(1);
+    expect(result.items[0].title.toLowerCase()).toContain('アイドル');
+  });
+
+  it('searchArtist should fetch artist discography and metadata matching artist name', async () => {
+    const songResult = await searchArtist({ query: 'YOASOBI', entity: 'song', limit: 2 });
+    expect(songResult.source).toBe('itunes');
+    expect(songResult.attribute).toBe('artistTerm');
+    expect(songResult.items.length).toBeGreaterThanOrEqual(1);
+    expect(songResult.items[0].artist).toContain('YOASOBI');
+
+    const artistInfoResult = await searchArtist({ query: 'YOASOBI', entity: 'musicArtist', limit: 2 });
+    expect(artistInfoResult.source).toBe('itunes');
+    expect(artistInfoResult.entity).toBe('musicArtist');
+    expect(artistInfoResult.items.length).toBeGreaterThanOrEqual(1);
+    expect(artistInfoResult.items[0].type).toBe('artist');
+    expect(artistInfoResult.items[0].artist).toContain('YOASOBI');
+  });
+
+  it('POST /search/song and POST /search/music/song should validate and return song items', async () => {
+    const resEmpty = await app.request('/search/song', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const res = await app.request('/search/song', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'アイドル', limit: 2 }),
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.count).toBeGreaterThanOrEqual(1);
+    expect(json.attribute).toBe('songTerm');
+
+    const resAlias = await app.request('/search/music/song', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'アイドル', limit: 2 }),
+    });
+    expect(resAlias.status).toBe(200);
+  });
+
+  it('POST /search/artist and POST /search/music/artist should validate and return artist items', async () => {
+    const resEmpty = await app.request('/search/artist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const res = await app.request('/search/artist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'Official髭男dism', limit: 2 }),
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.count).toBeGreaterThanOrEqual(1);
+    expect(json.attribute).toBe('artistTerm');
+
+    const resAlias = await app.request('/search/music/artist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'Official髭男dism', limit: 2 }),
+    });
+    expect(resAlias.status).toBe(200);
   });
 
   it('POST /search/music should validate request body and return music items', async () => {
@@ -1916,6 +2141,17 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const govServer = createMcpServer({ modules: ['gov'] });
     expect(govServer).toBeDefined();
+  });
+
+  it('isJsDisabledMessage regex should match JavaScript is disabled notice', () => {
+    const timeTreeMsg = '#### JavaScript is disabled.\n\nPlease enable your JavaScript settings in order to use the service.';
+    const isJsDisabledMessage =
+      /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(timeTreeMsg) ||
+      /please\s+enable\s+(?:your\s+)?javascript/i.test(timeTreeMsg) ||
+      /javascript\s*を\s*(?:有効|オン)/i.test(timeTreeMsg) ||
+      /javascript\s*が\s*無効/i.test(timeTreeMsg);
+
+    expect(isJsDisabledMessage).toBe(true);
   });
 });
 

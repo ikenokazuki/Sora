@@ -344,6 +344,38 @@ export async function handleBrowserSessionAction(
     };
   }
 
+  // 1.1 evaluate アクションの事前検証 (ALLOW_BROWSER_EVALUATE !== 'true' 時の早期防御)
+  if (process.env.ALLOW_BROWSER_EVALUATE !== 'true' && actions.some((a) => a.type === 'evaluate')) {
+    const actionLogs = actions.map((act, idx) => {
+      if (act.type === 'evaluate') {
+        return {
+          step: idx + 1,
+          type: act.type,
+          target: act.script,
+          success: false,
+          message: 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set ALLOW_BROWSER_EVALUATE=true to enable)',
+          elapsedMs: 0,
+        };
+      }
+      return {
+        step: idx + 1,
+        type: act.type,
+        target: act.selector || act.text || act.url,
+        success: false,
+        message: 'Skipped due to prior policy block',
+        elapsedMs: 0,
+      };
+    });
+
+    return {
+      source: 'browser',
+      url: options.url || '',
+      title: '',
+      actionLogs,
+      renderedWithBrowser: true,
+    };
+  }
+
   const isStateful = Boolean(options.sessionId || options.createSession);
   let session: BrowserSession | undefined;
   let isDedicated = false;
