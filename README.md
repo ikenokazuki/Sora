@@ -46,12 +46,13 @@ flowchart LR
 
 ---
 
-## ⚡ 5秒で繋がる Quickstart (Claude Desktop / Cursor / Cline)
+## ⚡ 5秒で繋がる Quickstart
 
-お使いの AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで、24種類の強力なツール群 (全8モジュール) が即座に有効化されます。
+Sora は、**MCP (Model Context Protocol)** 接続と **CLI / REST API** 接続の両方に完全対応しています。
 
-### ① Remote MCP (HTTP / SSE) 接続
-Sora コンテナを起動した状態で URL を指定します：
+### ① Remote MCP (HTTP / SSE) 接続 (Claude Desktop / Cursor / Cline / Antigravity)
+AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
+Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準拠しており、初期状態では 4 つのコアツールのみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます。
 
 ```json
 {
@@ -63,10 +64,30 @@ Sora コンテナを起動した状態で URL を指定します：
 }
 ```
 
-### ② Docker / Podman での 1 コマンド起動
+### ② CLI 経由の直接実行 (Code Execution with CLI: トークン最節約)
+エージェントがターミナルから直接 `bin/sora` を実行することで、MCP ツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
+
+```bash
+# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
+bin/sora search "TypeScript 5.5 新機能" --limit 3 --prompt
+
+# 気象庁 天気予報 (市区町村名)
+bin/sora weather "千代田区"
+```
+
+### ③ Docker / Podman での 1 コマンド起動
 ```bash
 docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 ```
+
+---
+## Soraの由来
+Soraはアイドルグループ「[君と見るそら](https://x.com/kimisora_jpn)」から引用しました。
+「そら」は夜空に晴天に雨上がりに夕焼けにカラッとした夏空などいろんな「表情」があります。
+リアルタイム情報や知の蓄積であるWEBもある意味で「表情」。
+それをAIに「伝えて」リアルタイムで反映するという想いを込めてます。
+cloud（雲）も空にあり空は世界中繋がってます。
+ネット上の情報を一つのツールで「繋げる」という意味もあります。
 
 ---
 
@@ -202,9 +223,17 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 24 ツール / 8つのモジュール)
+## 2. 提供 MCP ツール一覧 (全 35 ツール / 9つのモジュール & 動的ツール発見)
 
-Sora は、目的に応じて **8つの論理モジュール** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **9つの論理モジュール（全 35 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade`）で有効化するカテゴリを自由にカスタマイズ可能です。
+
+### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
+Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントのコンテキスト肥大化（35 ツールのスキーマだけで 12,000〜25,000 トークン消費）を防ぐため、**初期露出は 4 つのコアツールのみ** に厳選されています。
+
+- **初期有効 (★ CORE 4ツール)**: `scrape`, `search_web`, `search_deep`, `search_tools`
+- **動的有効化 (・ DEFERRED 30ツール)**: フライト・標高/ジオコード・国会会議録・天気・乗換・知恵袋・X速報・画像・ニュース・音楽・法令・交通情報・差分監視・米国貿易コンプライアンス（CPSC/FDA/HTSコード検証）など
+
+エージェントが `search_tools({ query: "知恵袋" })` や `search_tools({ query: "天気" })`、`search_tools({ query: "フライト" })`、`search_tools({ query: "国会" })` を呼び出すと、該当ツールが**同一セッション内で即座に自動有効化**され、次回の `tools/list` および `tools/call` で利用可能になります。
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -212,28 +241,35 @@ Sora は、目的に応じて **8つの論理モジュール** で構成され�
 ├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┤
 │ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │
-│ ・search_web    │ ・browser_action  │ ・search_image   │ ・search_route  │・search_    │・watch_       │・search_laws │
-│ ・scrape        │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│
-│ ・scrape_batch  │    スクショ/JS実行│ ・search_news    │ ・get_weather   │  warnings   │・watch_check  ├──────────────┤
-│ ・search_deep   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │・search_    │・watch_list   │ 🎵 Music     │
-│ ・map_site      │                   │ ・search_realtime│ ・search_road_  │  earthquake ├───────────────┤ (`music`)    │
-│ ・crawl_site    │                   │ ・search_trend   │   traffic (道路)│             │               │・search_song │
-│                 │                   │ ・suggest_keywords│                │             │               │・search_artist│
-│                 │                   │                  │                 │             │               │・search_music│
+│ ★scrape         │ ・browser_action  │ ・search_image   │ ・search_route  │・search_    │・watch_       │・search_laws │
+│ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│
+│ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ・get_weather   │  warnings   │・watch_check  │・search_diet_│
+│ ★search_tools   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │・search_    │・watch_list   │  minutes     │
+│ ・scrape_batch  │                   │ ・search_realtime│ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │
+│ ・map_site      │                   │ ・search_trend   │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤
+│ ・crawl_site    │                   │ ・suggest_keywords│・get_flight_    │  elevation  │ (`music`)     │              │
+│                 │                   │                  │   status (航空) │ (国土地理院)│・search_song  │              │
+│                 │                   │                  │                 │             │・search_artist│              │
+│                 │                   │                  │                 │             │・search_music │              │
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┘
+★ = 初期常時有効 (CORE: 4ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 31ツール)
+
+🚢 Trade Compliance (`trade`) モジュールは図には未収録（詳細は Module 9 参照）:
+・check_cpsc_certificate（米国CPSC適合証明書eFiling判定）・check_fda_regulated（米国FDA規制対象簡易判定）・verify_hts_code（HTS/HSコード実在確認・検証）
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
-Web 検索と本文スクレイピング、一括並行取得、深層統合検索、サイトマップ解析、再帰クロール。
+Web 検索と本文スクレイピング、一括並行取得、深層統合検索、動的ツール発見、サイトマップ解析、再帰クロール。
 
-| ツール名 | 説明 | 識別プロパティ | 主要引数 |
-|---|---|---|---|
-| `search_web` | Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | 各アイテムに `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
-| `scrape` | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。RAGチャンキング・出典抽出・読了時間・PII保護・テーブルJSON抽出・要約生成に対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 10000)<br>- `mode` (string, 任意): `"auto"` (スマート自動判定, デフォルト), `"fast"` (静的最速), `"browser"` (Stealth Chromium)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `chunkMarkdown` (boolean, 任意): RAG用セマンティック・チャンキングを行うか<br>- `chunkSize` (number, 任意): チャンク文字数目安 (デフォルト: 1000)<br>- `extractCitations` (boolean, 任意): 出典・引用リンク一覧を抽出するか<br>- `validateLinks` (boolean, 任意): リンクの到達性・ステータスを並行検証するか<br>- `extractSummary` (boolean, 任意): 抽出型自動要約（TL;DR）を生成するか<br>- `maskPii` (boolean, 任意): メール・電話番号・クレカ等の個人情報を自動マスキングするか<br>- `formatAsPrompt` (boolean, 任意): LLM用標準XMLラッパー形式を生成するか<br>- `highlightMatches` (boolean, 任意): 検索一致語句をハイライトするか<br>- `webhookUrl` (string, 任意): 完了通知先 Webhook URL<br>- `onlyMainContent` (boolean, 任意): 記事本文のみ抽出するか (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ連想配列<br>- `clipSelector` (string, 任意): 要素切り抜きスクショ用 CSS セレクタ<br>- `headers` / `cookies` (object/array, 任意): カスタムヘッダー / Cookie<br>- `removeSelectors` (string[], 任意): パージ対象ノイズセレクタ<br>- `retries` (number, 任意): リトライ回数 (0〜3)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
-| `scrape_batch` | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | 各結果に `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- (その他 `scrape` と同等の全オプションに対応) |
-| `search_deep` | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web結果に `source: "web"`<br>X結果に `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot"]`<br>- `onlyMainContent` (boolean, 任意): 記事本文のみ抽出するか (デフォルト: true)<br>- `extractHighlights` (boolean, 任意): 各ページからクエリ関連ハイライトを抽出するか (デフォルト: false)<br>- `includeDomains` / `excludeDomains` (string[], 任意)<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
-| `map_site` | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000)<br>- `includeSubdomains` (boolean, 任意)<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
-| `crawl_site` | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | 各結果に `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot"]`<br>- `webhookUrl` (string, 任意): クロール完了時通知先 Webhook URL<br>- `proxyUrl` (string, 任意): 経由するプロキシ URL |
+| ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
+|---|:---:|---|---|---|
+| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイトや Bot 対策画面は自動で Chromium レンダリング。RAGチャンキング・出典抽出・読了時間・PII保護・テーブルJSON抽出・要約生成に対応。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 10000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `formatAsPrompt` (boolean, 任意): LLM用標準XMLラッパー形式を生成するか |
+| `search_web` | **★ CORE** | Web 検索を実行し、検索上位のタイトル・概要スニペット・URL を取得します。ドメイン絞り込み・除外・期間指定に対応。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
+| `search_deep` | **★ CORE** | Firecrawl / Tavily 互換の統合深層検索。Web検索＋上位サイト本文自動スクレイプ＋リアルタイム検索を一度にまとめて取得します。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意) |
+| `search_tools` | **★ CORE** | **【動的ツール発見メタツール】** Sora の全専門ツール（天気・乗換・知恵袋・X速報・音楽・法令・交通情報・差分監視等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"天気"`, `"知恵袋"`, `"yahoo"`, `"music"`, `"交通"`, `"法令"`) |
+| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5) |
+| `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
+| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2) |
 ---
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
@@ -313,6 +349,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 地点ID (例「130010」)<br>- `days` (number, 任意): 予報日数 (1〜3日, デフォルト: 3) |
 | `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
+| `get_flight_status` | 主要空港（羽田・成田・伊丹・関空・中部・新千歳・福岡・那覇等）の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 行先・航空会社名絞り込み |
 
 ---
 
@@ -323,6 +360,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 |---|---|---|---|
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
+| `get_elevation` | 国土地理院公式オープンデータに基づき、日本全国の住所・地名から緯度経度を自動特定し、海抜標高（m）をミリ精度で取得。津波・水害ハザードリスク判定に活用可能。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度 |
 
 ---
 
@@ -334,6 +372,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `watch_register` | Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。 | `source: "watch"` | - `url` (string, 必須): 監視対象の Web ページ URL<br>- `title` (string, 任意): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意): 差分検知時に通知する Webhook URL<br>- `intervalSeconds` (number, 任意): 監視インターバル目安 (秒, デフォルト: 3600) |
 | `watch_check` | 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。 | `source: "watch"` | - `id` (string, 任意): 特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン) |
 | `watch_list` | 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。 | `source: "watch"` | - なし |
+| `watch_delete` | 指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。 | `source: "watch"` | - `id` (string, 必須): 削除する監視ターゲットのID |
 
 ---
 
@@ -349,18 +388,125 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 ---
 
 ### 🏛️ Module 8: Government & Law Data (`ENABLED_MODULES=gov`)
-デジタル庁・総務省公式 e-Gov 法令 API v2 と連携した日本の法令条文検索・構造化 Markdown 取得（完全無料・登録不要・24時間キャッシュ）。
+デジタル庁・総務省公式 e-Gov 法令 API v2 および 国立国会図書館公式 API と連携した日本の法令条文検索・国会審議発言録全文検索（完全無料・登録不要）。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `search_laws` | e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示。 | `source: "e-gov"` | - `keyword` (string, 必須): 検索キーワード (例: "著作権法", "民法")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 | `get_law_text` | e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。 | `source: "e-gov"` | - `lawId` (string, 必須): e-Gov 法令ID (例: "129AC0000000089") |
+| `search_diet_minutes` | 国立国会図書館公式 API による戦後〜最新（2026年）の衆議院・参議院本会議および全委員会の発言記録・議員答弁全文検索。立法趣旨・政治政策ファクトチェックに活用可能。 | `source: "kokkai-ndl"` | - `keyword` (string, 任意): 検索キーワード<br>- `speaker` (string, 任意): 発言者名 (例: "総理大臣")<br>- `nameOfHouse` (string, 任意): `"衆議院"` または `"参議院"`<br>- `nameOfMeeting` (string, 任意): 委員会名<br>- `from` / `until` (string, 任意): 期間 (YYYY-MM-DD)<br>- `limit` (number, 任意): 取得件数 (1〜30, デフォルト: 10) |
+
+---
+
+### 🚢 Module 9: Trade Compliance (`ENABLED_MODULES=trade`)
+米国向け輸出入コンプライアンス判定（CPSC適合証明書eFiling義務化判定、FDA規制対象簡易判定、HTS/HSコード実在確認）。いずれも参考情報であり法的助言ではありません。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBPへの電子申告（eFiling）義務有無を判定します。CPSC公式HTSリスト（2026年1月版、約600コード）との完全一致・6桁近似一致の段階マッチング。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主な素材<br>- `productCategory` (string, 任意): 製品カテゴリ補足<br>- `description` (string, 任意): 自由記述補足 |
+| `check_fda_regulated` | HTSコードから、米国FDA（食品医薬品局）管轄の可能性をHS Chapter単位で判定します。HTS×FDフラグの機械可読な公式対応表が存在しないため、HS分類の一般知識に基づく粗い目安（`confidence: "chapter-level-estimate"`）です。 | `source: "hts-chapter-estimate"` | - `htsCode` (string, 必須): HTSコード (例: "3004.90.0000")<br>- `productDescription` (string, 任意): 製品の自由記述説明 |
+| `verify_hts_code` | LLM・利用者が製品の素材・用途・機能から推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式説明・関税率を取得します。キーワード検索による一意特定は不可能と判明したため、逆に候補コードを検証する設計です。完全一致しない場合は6桁分類の近い候補（`nearbyCandidates`）を返します。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するため必須 |
+
+---
+
+## 💻 2.1 Sora CLI & Code Execution パターン (トークン最節約)
+
+Anthropic が推奨する **Code Execution with MCP パターン**（エージェントが MCP ツール定義を丸ごとコンテキストに読み込む代わりに、CLI コマンドを実行して出力を直接取得する手法）に対応した CLI ラッパー `bin/sora` を同梱しています。
+
+CLI は HTTP クライアントとして動作するため、接続先とキーは**クライアント側の環境変数**で指定します（サーバー側の `WEB_FETCHER_API_KEY` とは別物です）。
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_API_URL` | `http://127.0.0.1:3016` | 接続先 Sora API のベース URL（本番コンテナはホスト側 `3016` → コンテナ内 `8000` にマップされます） |
+| `SORA_API_KEY` | *(未設定)* | サーバーが認証を要求する場合に送信する API キー（サーバー側の `WEB_FETCHER_API_KEY` / `API_KEY` と同じ値を指定します） |
+
+```bash
+# ヘルプと利用可能コマンド一覧
+bin/sora --help
+
+# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
+bin/sora search "TypeScript 5.5 新機能" --limit 3 --prompt
+
+# Web 検索 (タイトル・スニペット・URL一覧)
+bin/sora web "Next.js 15 Server Actions"
+
+# 単一 URL / PDF 本文抽出
+bin/sora scrape "https://example.com/article" --prompt
+
+# 気象庁 天気予報 (市区町村名)
+bin/sora weather "千代田区"
+
+# 乗換案内
+bin/sora transit "新宿" "渋谷"
+
+# X (旧 Twitter) リアルタイム速報
+bin/sora realtime "地震"
+
+# Yahoo! ニュース / 知恵袋 / 画像 / 動画
+bin/sora news "AI 半導体"
+bin/sora chiebukuro "NixOS バッテリー節約"
+bin/sora image "富士山"
+bin/sora video "富士山"
+
+# Stealth Chromium でページを開く (複雑な操作はMCP経由を推奨)
+bin/sora browser-action "https://example.com"
+
+# 道路交通情報 / フライト運航状況 / 防災 / 標高 / 地震
+bin/sora traffic "東京都" "首都高"
+bin/sora flight "羽田"
+bin/sora elevation "東京都千代田区永田町1-7-1"
+bin/sora disaster "千代田区"
+bin/sora earthquake
+
+# iTunes 音楽検索 (汎用 / 曲名 / アーティスト) / e-Gov 法令検索 & 条文取得 / 国会会議録検索
+bin/sora music "YOASOBI アイドル"
+bin/sora song "アイドル"
+bin/sora artist "YOASOBI"
+bin/sora laws "著作権法 第三十条"
+bin/sora law-text "129AC0000000089"
+bin/sora diet "人工知能"
+
+# Web ページ差分監視 (登録 / 一覧 / チェック / 削除)
+bin/sora watch register "https://example.com"
+bin/sora watch list
+bin/sora watch check
+bin/sora watch delete "wt_xxxxxxxxxxxx"
+
+# 米国貿易コンプライアンス判定 (CPSC適合証明書 / FDA規制対象 / HTSコード検証)
+bin/sora cpsc-check "9503.00.0073" child
+bin/sora fda-check "3004.90.0000"
+bin/sora hts-verify "9503.00.0073" "plastic toy car for children"
+
+# サーバーヘルス & ツール検索
+bin/sora health
+bin/sora tools "知恵袋"
+```
+
+---
+
+## 🧩 2.2 Agent Skill & Plugin 連携 (Antigravity / Claude / Cursor / Cline)
+
+Sora はエージェント用スキルおよびプラグインマニフェストを標準提供しています。
+
+- **Agent Skill 定義**: [`skills/sora/SKILL.md`](skills/sora/SKILL.md)
+- **Plugin Manifest**: [`plugin.json`](plugin.json)
+- **スラッシュコマンド**:
+  - `/sora-search <query>`: 統合深層検索
+  - `/sora-weather <city>`: 気象庁天気予報
+  - `/sora-cpsc-check <product description>`: 米国CPSC適合証明書eFiling義務化判定
+  - `/sora-fda-check <product description>`: 米国FDA規制対象簡易判定
+  - `/sora-hts-verify <product description>`: HTS/HSコード実在確認・検証
 
 ---
 
 ## 3. REST API 仕様
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
+
+> **📖 対話型 API ドキュメント & OpenAPI 仕様書**:
+> - **Scalar API Reference (推奨・モダンUI)**: [`http://localhost:3016/docs`](http://localhost:3016/docs) (ダークモード・パラメータ型・制約・実行テスト対応)
+> - **Swagger UI (互換用)**: [`http://localhost:3016/swagger`](http://localhost:3016/swagger)
+> - **OpenAPI 3.0 仕様書 (JSON)**: [`http://localhost:3016/openapi.json`](http://localhost:3016/openapi.json)
 
 ### 3.1 ヘルスチェック & メトリクス
 #### `GET /health`
@@ -409,6 +555,10 @@ SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎
     "misses": 48,
     "hitRatio": 0.7647
   },
+  "botDetection": {
+    "upgradeCount": 12,
+    "retryCount": 3
+  },
   "activeSessions": 2,
   "chromium": {
     "available": true,
@@ -441,6 +591,22 @@ sora_cache_hit_rate 0.7647
 # HELP sora_active_browser_sessions Active browser sessions count
 # TYPE sora_active_browser_sessions gauge
 sora_active_browser_sessions 2
+# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering
+# TYPE sora_bot_upgrade_total counter
+sora_bot_upgrade_total 12
+# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry
+# TYPE sora_bot_retry_total counter
+sora_bot_retry_total 3
+```
+
+`sora_bot_upgrade_total` / `sora_bot_retry_total`（JSON では `botDetection`）は、静的取得が SPA / Bot 検知画面と判定されてブラウザ描画へ昇格した回数と、ブラウザ描画後もなお空白と判定されて再試行した回数です。対象サイトの Bot 対策の強さや取得成功率の傾向を把握する運用指標として利用できます。
+
+#### `POST /cache/clear` (キャッシュ全削除)
+メモリキャッシュと SQLite 永続キャッシュを全て破棄します。取得内容を強制的に最新化したい場合に利用します。
+
+```bash
+curl -X POST http://127.0.0.1:3016/cache/clear
+# => {"status":"ok","cleared":42}
 ```
 
 ---
@@ -1089,6 +1255,192 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
   }
   ```
 
+### 3.15 国会会議録検索 (`POST /gov/diet-minutes` / `GET /gov/diet-minutes`)
+国立国会図書館公式 API と連携し、戦後から最新（2026年）までの衆議院・参議院の本会議および全委員会の発言記録・議員答弁を全文検索します。
+
+- **リクエスト (POST)**:
+  ```json
+  {
+    "keyword": "人工知能",
+    "nameOfHouse": "衆議院",
+    "nameOfMeeting": "予算委員会",
+    "limit": 5
+  }
+  ```
+- **リクエスト (GET)**: `GET /gov/diet-minutes?keyword=少子化対策&limit=3`
+- **レスポンス例**:
+  ```json
+  {
+    "count": 5,
+    "totalHits": 342,
+    "items": [
+      {
+        "speechId": "121305261X00220240205_001",
+        "house": "衆議院",
+        "meeting": "予算委員会",
+        "date": "2024-02-05",
+        "speaker": "岸田文雄",
+        "speakerPosition": "内閣総理大臣",
+        "speech": "○岸田内閣総理大臣　委員御指摘の人工知能（ＡＩ）に関する法規制及び利活用の推進につきましては...",
+        "speechUrl": "https://kokkai.ndl.go.jp/txt/..."
+      }
+    ],
+    "source": "kokkai-ndl"
+  }
+  ```
+
+---
+
+### 3.18 米国CPSC適合証明書 eFiling判定 (`POST /trade/cpsc-check`)
+HTSコードと製品情報から、米国CPSC管轄品目の適合証明書（GCC/CCC）発行要否・eFiling義務有無を判定します。参考情報であり法的助言ではありません。
+
+- **リクエスト**:
+  ```json
+  {
+    "htsCode": "9503.00.0073",
+    "targetAge": "child"
+  }
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "certificateRequired": true,
+    "certificateType": "CCC",
+    "eFilingRequired": true,
+    "applicableRegulations": [
+      {
+        "cfr": "CPSC HTS Guidance List (2026年1月版)",
+        "summary": "HTSコード \"9503.00.0073\" は \"Toys\" カテゴリとしてCPSC eFiling対象HTSリストに掲載",
+        "excerpt": "CPSC believes this HTS code is likely to include a product subject to a mandatory standard...",
+        "sourceUrl": "https://www.cpsc.gov/s3fs-public/CPSC-Guidance-and-HTS-List-for-Filing-of-Electronic-Certificates-6B-Cleared.pdf"
+      }
+    ],
+    "missingInfo": [],
+    "nextActions": ["CCCを発行し、CBP ACEシステムへeFilingしてください。"],
+    "disclaimer": "本ツールは参考情報を提供するものであり、法的助言ではありません。..."
+  }
+  ```
+
+### 3.19 米国FDA規制対象 簡易判定 (`POST /trade/fda-check`)
+HTSコードから、米国FDA管轄の可能性をHS Chapter単位で粗く判定します。HTS×FDフラグの機械可読な公式対応表が存在しないための近似判定です。
+
+- **リクエスト**:
+  ```json
+  {
+    "htsCode": "3004.90.0000"
+  }
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "fdaRegulatedLikely": true,
+    "possiblePrograms": ["DRU"],
+    "priorNoticeMayApply": false,
+    "matchedChapter": "30",
+    "confidence": "chapter-level-estimate",
+    "missingInfo": [],
+    "nextActions": ["FDA該当プログラムの具体的な登録・提出要件をFDA公式（fda.gov）または専門家に確認してください。"],
+    "disclaimer": "本ツールは参考情報を提供するものであり、法的助言ではありません。..."
+  }
+  ```
+
+### 3.20 HTS/HSコード実在確認・検証 (`POST /trade/hts-verify`)
+LLM・利用者が推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式説明・関税率を取得します。キーワード検索によるコードの一意特定は不可能と判明したため、逆に候補コードを検証する設計です。`productDescription`（推論根拠）は必須項目です。
+
+- **リクエスト**:
+  ```json
+  {
+    "htsCode": "9503.00.0073",
+    "productDescription": "plastic toy car for children aged 3 to 12"
+  }
+  ```
+- **レスポンス例（完全一致）**:
+  ```json
+  {
+    "htsCode": "9503.00.0073",
+    "productDescription": "plastic toy car for children aged 3 to 12",
+    "verified": true,
+    "matchLevel": "exact",
+    "hsCode": "950300",
+    "officialDescription": "3 to 12 years of age",
+    "generalRate": "",
+    "otherRate": "",
+    "specialRate": "",
+    "nearbyCandidates": [],
+    "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。...",
+    "source": "usitc-hts"
+  }
+  ```
+- **レスポンス例（完全一致なし、近い候補を提示）**: `matchLevel: "6-digit-category"`、`nearbyCandidates` に同じ6桁分類配下の候補一覧が入る。完全に不明な場合は `matchLevel: "unmatched"`。
+
+---
+
+### 3.16 国土地理院 標高・ジオコーディング (`POST /geo/elevation` / `GET /geo/elevation`)
+国土地理院公式オープンデータと連携し、住所・地名から緯度経度を自動解決し、その地点の海抜標高（m）をミリ精度で返します。
+
+- **リクエスト (POST)**:
+  ```json
+  {
+    "address": "東京都千代田区永田町1-7-1"
+  }
+  ```
+- **リクエスト (GET)**: `GET /geo/elevation?address=富士山頂` または `GET /geo/elevation?lat=35.6812&lon=139.7671`
+- **レスポンス例**:
+  ```json
+  {
+    "query": "東京都千代田区永田町1-7-1",
+    "address": "東京都千代田区永田町1-7-1",
+    "matchedTitle": "東京都千代田区永田町一丁目",
+    "lat": 35.6797,
+    "lon": 139.7448,
+    "elevationMeters": 24.4,
+    "dataAccuracy": "5m（レーザ）",
+    "formatted": "東京都千代田区永田町一丁目 の標高 (海抜): 24.4m (精度: 5m（レーザ）)",
+    "source": "gsi"
+  }
+  ```
+
+---
+
+### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
+羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等の主要空港における国内線・国際線、出発・到着便のリアルタイム運航ステータスを取得します。
+
+- **リクエスト (POST)**:
+  ```json
+  {
+    "airport": "羽田",
+    "type": "departure",
+    "category": "domestic",
+    "flightNumber": "ANA2421"
+  }
+  ```
+- **リクエスト (GET)**: `GET /traffic/flight/羽田?type=departure&category=domestic`
+- **レスポンス例**:
+  ```json
+  {
+    "airportName": "東京国際空港(羽田空港)",
+    "airportCode": "HND",
+    "type": "departure",
+    "category": "domestic",
+    "updatedAt": "8月26日 16時10分 時点",
+    "count": 1,
+    "hasDelaysOrCancellations": true,
+    "summary": "東京国際空港(羽田空港) 国内線 出発: 対象便数 1便。 (欠航: 1便, 遅延: 0便)",
+    "flights": [
+      {
+        "scheduledTime": "06:10",
+        "airline": "全日本空輸",
+        "flightNumber": "ANA2421",
+        "isCodeshare": true,
+        "destinationOrOrigin": "那覇",
+        "status": "欠航",
+        "detail": "定刻06:10発 ANA2421便(羽田→那覇) は欠航です。"
+      }
+    ],
+    "source": "yahoo-transit"
+  }
+  ```
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ
@@ -1128,6 +1480,34 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
   - Bun ネイティブの組み込み SQLite3 C エンジンを活用。
   - `PRAGMA journal_mode = WAL;` により、外部 DB デーモン（Redis / PostgreSQL）不要で高速な永続キャッシュ、API キー使用量カウント、watch/diff 差分履歴をローカルに安全保持。
   - プロセス再起動後も L2 SQLite からキャッシュを即座に復元するハイブリッド L1/L2 アーキテクチャ。
+
+### 4.3 環境変数一覧 (Environment Variables)
+
+Sora は 12-Factor App 原則に基づき、環境変数によってすべての動作・ネットワーク・セキュリティポリシーを一元管理します。
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート |
+| `WEB_FETCHER_API_KEY` | *(未設定)* | **サーバー側の API 認証キー（最優先）**。設定時は `Authorization: Bearer <key>` または `X-API-Key` ヘッダーによる認証が必須化されます |
+| `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
+| `NODE_ENV` | *(未設定)* | `production` を指定すると **Fail-Closed** 動作になり、認証キーが未設定のまま起動した場合に全リクエストを `401` で拒否します（未指定時は Fail-Open） |
+| `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
+| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
+| `SORA_DEFER_TOOLS` | `true` | Anthropic Tool Search Tool 動的ツール発見（初期 4 ツール露出）を有効化するか。`false` で全ツール静的一括ロード |
+| `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
+| `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
+| `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
+| `HTTPS_PROXY` / `https_proxy` | *(未設定)* | 標準 HTTPS プロキシ URL（Chromium および外部 HTTPS 通信に自動適用） |
+| `ALL_PROXY` / `all_proxy` | *(未設定)* | 標準汎用プロキシ URL（SOCKS5 等） |
+| `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
+| `MAX_CONCURRENT_BROWSERS` | `5` | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数 |
+| `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
+| `ALLOW_BROWSER_EVALUATE` | `true` | `false` 指定時に `/browser/action` での `evaluate`（任意JS実行）を完全遮断・ロックダウン |
+| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `/health?detailed=true` での外部依存障害検知時に送信する管理者アラート Webhook URL |
+| `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます） |
+| `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
+| `ALLOW_LOCAL_FETCH` | `false` | `true` の場合、`localhost` / プライベート IP へのスクレイピングを許可します（SSRF 対策の緩和。**テスト用途のみ**） |
 
 ---
 

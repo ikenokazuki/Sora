@@ -1,0 +1,2 @@
+description = "Search Japanese web, news, and realtime X with Sora engine"
+prompt = "Use sora CLI (/home/ikeno/app/web-fetcher/bin/sora search \"{{args}}\" --limit 3 --prompt) or search_deep MCP tool to perform a deep web search for '{{args}}' and provide a comprehensive, fact-based summary."

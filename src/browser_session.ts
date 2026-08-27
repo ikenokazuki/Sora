@@ -1,8 +1,7 @@
-import type { Page, Browser } from 'puppeteer-core';
+import type { Page, Browser, BrowserContext } from 'puppeteer-core';
 import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import {
   getBrowser,
-  USER_AGENT,
   convertHtmlToMarkdown,
   safeTruncateMarkdown,
   estimateTokens,
@@ -14,6 +13,7 @@ import {
   applyStealthEvasions,
   bypassCloudflareTurnstile,
   browserSemaphore,
+  humanMouseMove,
   type BrowserActionStep,
 } from './scraper.js';
 
@@ -36,6 +36,7 @@ function verifyOwnerToken(sessionOwnerHash?: string, requestToken?: string): boo
 export interface BrowserSession {
   id: string;
   page: Page;
+  context: BrowserContext;
   dedicatedBrowser?: Browser;
   ownerTokenHash?: string;
   lastActive: number;
@@ -58,7 +59,6 @@ export interface BrowserSessionOptions {
     maxChars?: number;
   };
   timeout?: number;
-  proxyUrl?: string;
 }
 
 export interface BrowserSessionResult {
@@ -135,6 +135,8 @@ export async function closeBrowserSession(sessionId: string): Promise<boolean> {
     await session.page.close().catch(() => {});
     if (session.dedicatedBrowser) {
       await session.dedicatedBrowser.close().catch(() => {});
+    } else {
+      await session.context.close().catch(() => {});
     }
   } catch (err) {
     console.warn(`[Sora] Error closing session ${sessionId}:`, err);
@@ -162,17 +164,25 @@ async function runActionsOnPage(
 ): Promise<{ actionLogs: any[]; finalUrl: string; title: string }> {
   const actionLogs: any[] = [];
   let stepIndex = 1;
+  const viewport = page.viewport();
+  let mouseX = (viewport?.width ?? 1920) * (0.3 + Math.random() * 0.4);
+  let mouseY = (viewport?.height ?? 1080) * (0.3 + Math.random() * 0.4);
 
   for (const action of actions) {
     const stepStart = performance.now();
     try {
       switch (action.type) {
         case 'click': {
+          let box: { x: number; y: number } | null = null;
           if (action.selector) {
             await page.waitForSelector(action.selector, { timeout: 10000 });
-            await page.click(action.selector);
+            box = await page.$eval(action.selector, (el: any) => {
+              el.scrollIntoView?.({ behavior: 'instant', block: 'center' });
+              const r = el.getBoundingClientRect();
+              return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            });
           } else if (action.text) {
-            const clicked = await page.evaluate((btnText: string) => {
+            box = await page.evaluate((btnText: string) => {
               // 1. インタラクティブ要素を最優先
               const interactiveSelectors =
                 'button, a, input[type="submit"], input[type="button"], input[type="reset"], [role="button"]';
@@ -199,15 +209,21 @@ async function runActionsOnPage(
               if (target) {
                 target.scrollIntoView?.({ behavior: 'instant', block: 'center' });
                 target.focus?.();
-                target.click();
-                return true;
+                const r = target.getBoundingClientRect();
+                return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
               }
-              return false;
+              return null;
             }, action.text);
-            if (!clicked) throw new Error(`Element containing text "${action.text}" not found`);
+            if (!box) throw new Error(`Element containing text "${action.text}" not found`);
           } else {
             throw new Error('Click action requires selector or text');
           }
+          await humanMouseMove(page, mouseX, mouseY, box.x, box.y);
+          mouseX = box.x;
+          mouseY = box.y;
+          await page.mouse.down();
+          await new Promise((r) => setTimeout(r, 30 + Math.random() * 50));
+          await page.mouse.up();
           if (action.delay) await new Promise((r) => setTimeout(r, action.delay));
           break;
         }
@@ -381,6 +397,7 @@ export async function handleBrowserSessionAction(
   let isDedicated = false;
   let page: Page;
   let browserInstance: Browser | undefined;
+  let context: BrowserContext | undefined;
 
   if (isStateful) {
     // 既存セッションの取得または新規作成
@@ -398,10 +415,14 @@ export async function handleBrowserSessionAction(
 
       await browserSemaphore.acquire();
       try {
-        const browserRes = await getBrowser(options.proxyUrl);
+        const browserRes = await getBrowser();
         browserInstance = browserRes.browser;
         isDedicated = browserRes.isDedicated;
-        page = await browserInstance.newPage();
+        // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
+        // BrowserContextを使う。別セッション(別ユーザー)間でCookieが漏れないようにする
+        // ための分離（scraper.ts の fetchWithStealthBrowser と同じ対策、実測で漏洩を確認済み）。
+        context = await browserInstance.createBrowserContext();
+        page = await context.newPage();
         await setupPageSecurity(page);
 
         // ダイアログ (alert / confirm / prompt) の自動承認
@@ -416,6 +437,7 @@ export async function handleBrowserSessionAction(
         session = {
           id: requestedId,
           page,
+          context,
           dedicatedBrowser: isDedicated ? browserInstance : undefined,
           ownerTokenHash: hashToken(options.ownerToken),
           lastActive: Date.now(),
@@ -431,10 +453,11 @@ export async function handleBrowserSessionAction(
     // ワンショット実行（セッション管理なし・即破棄）
     await browserSemaphore.acquire();
     try {
-      const browserRes = await getBrowser(options.proxyUrl);
+      const browserRes = await getBrowser();
       browserInstance = browserRes.browser;
       isDedicated = browserRes.isDedicated;
-      page = await browserInstance.newPage();
+      context = await browserInstance.createBrowserContext();
+      page = await context.newPage();
       await setupPageSecurity(page);
 
       // ダイアログ (alert / confirm / prompt) の自動承認
@@ -546,6 +569,8 @@ export async function handleBrowserSessionAction(
         await page.close().catch(() => {});
         if (isDedicated && browserInstance) {
           await browserInstance.close().catch(() => {});
+        } else if (context) {
+          await context.close().catch(() => {});
         }
       } finally {
         browserSemaphore.release();

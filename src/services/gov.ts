@@ -290,3 +290,125 @@ export async function getLawData(options: {
 
   return result;
 }
+
+export const CACHE_TTL_DIET = 60 * 60 * 1000; // 国会会議録は1時間キャッシュ
+
+export interface DietSpeechRecord {
+  speechId: string;
+  issueId?: string;
+  session?: number;
+  house: string;
+  meeting: string;
+  issue?: string;
+  date: string;
+  speaker: string;
+  speakerPosition?: string;
+  speakerGroup?: string;
+  speakerRole?: string;
+  speech: string;
+  speechUrl: string;
+  meetingUrl?: string;
+  pdfUrl?: string;
+}
+
+export interface DietMinutesSearchResult {
+  count: number;
+  totalHits: number;
+  items: DietSpeechRecord[];
+  source: 'kokkai-ndl';
+}
+
+/** 国会会議録検索 API (kokkai.ndl.go.jp) */
+export async function searchDietMinutes(options: {
+  keyword?: string;
+  speaker?: string;
+  nameOfHouse?: '衆議院' | '参議院';
+  nameOfMeeting?: string;
+  from?: string;
+  until?: string;
+  limit?: number;
+  noCache?: boolean;
+}): Promise<DietMinutesSearchResult> {
+  const keyword = options.keyword?.trim();
+  const speaker = options.speaker?.trim();
+  const nameOfHouse = options.nameOfHouse?.trim() as '衆議院' | '参議院' | undefined;
+  const nameOfMeeting = options.nameOfMeeting?.trim();
+  const from = options.from?.trim();
+  const until = options.until?.trim();
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 30);
+
+  if (!keyword && !speaker && !nameOfMeeting) {
+    throw new Error('keyword, speaker, または nameOfMeeting のいずれかを指定してください');
+  }
+
+  const cacheKey = `gov:diet:${keyword || ''}:${speaker || ''}:${nameOfHouse || ''}:${nameOfMeeting || ''}:${from || ''}:${until || ''}:${limit}`;
+
+  if (!options.noCache) {
+    const cached = getFromCache<DietMinutesSearchResult>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const params = new URLSearchParams();
+  if (keyword) params.set('any', keyword);
+  if (speaker) params.set('speaker', speaker);
+  if (nameOfHouse) params.set('nameOfHouse', nameOfHouse);
+  if (nameOfMeeting) params.set('nameOfMeeting', nameOfMeeting);
+  if (from) params.set('from', from);
+  if (until) params.set('until', until);
+  params.set('maximumRecords', String(limit));
+  params.set('recordPacking', 'json');
+
+  const url = `https://kokkai.ndl.go.jp/api/speech?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Sora-Diet-Minutes-Fetcher/1.0',
+      'Accept': 'application/json, text/plain, */*',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`国会会議録 API へのアクセスに失敗しました (HTTP ${res.status}): ${url}`);
+  }
+
+  const rawText = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error('国会会議録 API のレスポンスのパースに失敗しました');
+  }
+
+  const speechRecords: any[] = json?.speechRecord || [];
+  const items: DietSpeechRecord[] = speechRecords.map((r: any) => ({
+    speechId: r.speechID || r.speechId || '',
+    issueId: r.issueID || r.issueId,
+    session: r.session ? Number(r.session) : undefined,
+    house: r.nameOfHouse || '',
+    meeting: r.nameOfMeeting || '',
+    issue: r.issue,
+    date: r.date || '',
+    speaker: (r.speaker || '').trim(),
+    speakerPosition: r.speakerPosition || undefined,
+    speakerGroup: r.speakerGroup || undefined,
+    speakerRole: r.speakerRole || undefined,
+    speech: (r.speech || '').trim(),
+    speechUrl: r.speechURL || '',
+    meetingUrl: r.meetingURL || undefined,
+    pdfUrl: r.pdfURL || undefined,
+  }));
+
+  const result: DietMinutesSearchResult = {
+    count: items.length,
+    totalHits: Number(json?.numberOfRecords ?? items.length),
+    items,
+    source: 'kokkai-ndl',
+  };
+
+  if (!options.noCache) {
+    setToCache(cacheKey, result, CACHE_TTL_DIET);
+  }
+
+  return result;
+}
+

@@ -2,8 +2,9 @@ import { describe, it, expect } from 'bun:test';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
-import { createMcpServer, isModuleActive, McpSessionManager } from './mcp.js';
+import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog } from './mcp.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
+import { getProxyConfig } from './browser_engine.js';
 import {
   isBlockedHostname,
   isPrivateIp,
@@ -53,6 +54,12 @@ import {
   dbIncrementApiUsage,
   dbSaveWatchTarget,
   dbGetWatchTarget,
+  dbSaveDomainCookies,
+  dbGetDomainCookies,
+  dbSaveDomainStorage,
+  dbGetDomainStorage,
+  getOrCreateHttpSession,
+  closeHttpSession,
   dbListWatchTargets,
   dbDeleteWatchTarget,
   dbInsertWatchHistory,
@@ -74,8 +81,30 @@ import {
   searchArtist,
   searchLaws,
   getLawData,
+  searchDietMinutes,
+  fetchElevationAndCoordinates,
+  fetchFlightStatus,
+  checkCpscCertificate,
+  checkFdaRegulated,
+  verifyHtsCode,
+  detectSpaOrBotPage,
+  pickProxyUrl,
+  pickBrowserProfile,
+  getChromiumMajorVersion,
+  fetchWithSafeRedirects,
+  fetchWithStealthBrowser,
+  resolveAirport,
   rerankSearchResults,
   checkDetailedHealth,
+  buildUserAgentFromDefault,
+  buildUserAgentMetadata,
+  getFallbackUserAgent,
+  getBotDetectionMetrics,
+  getBrowser,
+  applyStealthEvasions,
+  groupCookiesByDomain,
+  initDatabase,
+  closeDb,
 } from './scraper.js';
 
 describe('web-fetcher Core Functions', () => {
@@ -512,6 +541,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(data.activeSessions).toBeDefined();
     expect(data.memory).toBeDefined();
     expect(data.chromium).toBeDefined();
+    expect(data.botDetection).toBeDefined();
+    expect(typeof data.botDetection.upgradeCount).toBe('number');
+    expect(typeof data.botDetection.retryCount).toBe('number');
   });
 
   it('POST /scrape should return 400 when url is missing', async () => {
@@ -654,7 +686,45 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /mcp should respond to JSON-RPC tools/list with all 24 tools', async () => {
+  it('searchCatalog should find tools by name, category, keywords, and description', () => {
+    const dummyCatalog = new Map<string, any>([
+      [
+        'search_chiebukuro',
+        {
+          name: 'search_chiebukuro',
+          category: 'yahoo',
+          description: '【知恵袋 Q&A 検索】Yahoo! 知恵袋の Q&A 検索を実行',
+          keywords: ['知恵袋', 'Q&A', '質問回答', '悩み', 'Yahoo'],
+          handle: { enabled: false, enable() { this.enabled = true; } },
+        },
+      ],
+      [
+        'get_weather',
+        {
+          name: 'get_weather',
+          category: 'life',
+          description: '【天気予報】気象庁公式オープンデータ直結',
+          keywords: ['天気予報', '気象', '気温', '降水確率', '週間天気', '天気'],
+          handle: { enabled: false, enable() { this.enabled = true; } },
+        },
+      ],
+    ]);
+
+    // 1. Tool name match
+    expect(searchCatalog(dummyCatalog, 'chiebukuro').map((e) => e.name)).toEqual(['search_chiebukuro']);
+    // 2. Keyword match
+    expect(searchCatalog(dummyCatalog, '天気').map((e) => e.name)).toEqual(['get_weather']);
+    // 3. Category match
+    expect(searchCatalog(dummyCatalog, 'yahoo').map((e) => e.name)).toEqual(['search_chiebukuro']);
+    // 4. Multi-word search
+    expect(searchCatalog(dummyCatalog, 'Yahoo 知恵袋').map((e) => e.name)).toEqual(['search_chiebukuro']);
+    // 5. No match
+    expect(searchCatalog(dummyCatalog, 'nonexistent')).toEqual([]);
+    // 6. Empty query
+    expect(searchCatalog(dummyCatalog, '')).toEqual([]);
+  });
+
+  it('POST /mcp should respond to initial tools/list with 4 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -688,33 +758,180 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const toolNames = body.result.tools.map((t: any) => t.name);
     expect(toolNames).toContain('scrape');
-    expect(toolNames).toContain('scrape_batch');
     expect(toolNames).toContain('search_web');
-    expect(toolNames).toContain('search_realtime');
     expect(toolNames).toContain('search_deep');
-    expect(toolNames).toContain('map_site');
-    expect(toolNames).toContain('crawl_site');
-    expect(toolNames).toContain('search_trend');
-    expect(toolNames).toContain('search_image');
-    expect(toolNames).toContain('search_video');
-    expect(toolNames).toContain('search_news');
-    expect(toolNames).toContain('search_chiebukuro');
-    expect(toolNames).toContain('suggest_keywords');
-    expect(toolNames).toContain('search_route');
-    expect(toolNames).toContain('get_weather');
-    expect(toolNames).toContain('search_road_traffic');
-    expect(toolNames).toContain('browser_action');
-    expect(toolNames).toContain('search_disaster_warnings');
-    expect(toolNames).toContain('search_earthquake');
-    expect(toolNames).toContain('watch_register');
-    expect(toolNames).toContain('watch_check');
-    expect(toolNames).toContain('watch_list');
-    expect(toolNames).toContain('search_song');
-    expect(toolNames).toContain('search_artist');
-    expect(toolNames).toContain('search_music');
-    expect(toolNames).toContain('search_laws');
-    expect(toolNames).toContain('get_law_text');
-    expect(toolNames.length).toBe(27);
+    expect(toolNames).toContain('search_tools');
+    expect(toolNames.length).toBe(4);
+  });
+
+  it('McpSessionManager should dynamically enable tools via search_tools in stateful session', async () => {
+    const manager = new McpSessionManager();
+    const parseRes = async (res: Response) => {
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        const line = text.split('\n').find((l) => l.startsWith('data: '));
+        if (line) {
+          return JSON.parse(line.replace(/^data:\s*/, ''));
+        }
+        return null;
+      }
+    };
+
+    // 1. Initialize session
+    const initReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test-client', version: '1.0' } },
+      }),
+    });
+    const initRes = await manager.handleRequest(initReq);
+    expect(initRes.status).toBe(200);
+    const sessionId = initRes.headers.get('mcp-session-id')!;
+    expect(sessionId).toBeDefined();
+
+    // 1.5 Send initialized notification
+    const notifyReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+    });
+    await manager.handleRequest(notifyReq);
+
+    // 2. Initial tools/list (should be 4 core tools)
+    const listReq1 = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
+    const listRes1 = await manager.handleRequest(listReq1);
+    const listBody1: any = await parseRes(listRes1);
+    const names1 = listBody1.result.tools.map((t: any) => t.name);
+    expect(names1.length).toBe(4);
+    expect(names1).toContain('scrape');
+    expect(names1).toContain('search_web');
+    expect(names1).toContain('search_deep');
+    expect(names1).toContain('search_tools');
+
+    // 3. Attempting to call disabled tool directly should fail
+    const callDisabledReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
+        params: { name: 'get_weather', arguments: { city: '天童市' } },
+      }),
+    });
+    const callDisabledRes = await manager.handleRequest(callDisabledReq);
+    const callDisabledBody: any = await parseRes(callDisabledRes);
+    expect(callDisabledBody.result?.isError).toBe(true);
+    expect(callDisabledBody.result?.content?.[0]?.text).toContain('disabled');
+
+    // 4. Call search_tools to activate weather
+    const searchReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'tools/call',
+        params: { name: 'search_tools', arguments: { query: '天気' } },
+      }),
+    });
+    const searchRes = await manager.handleRequest(searchReq);
+    const searchBody: any = await parseRes(searchRes);
+    expect(searchBody.result?.content?.[0]?.text).toContain('get_weather');
+
+    // 5. tools/list now includes get_weather (5 tools)
+    const listReq2 = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/list', params: {} }),
+    });
+    const listRes2 = await manager.handleRequest(listReq2);
+    const listBody2: any = await parseRes(listRes2);
+    const names2 = listBody2.result.tools.map((t: any) => t.name);
+    expect(names2.length).toBe(5);
+    expect(names2).toContain('get_weather');
+
+    // 6. Search for non-existent tool returns helpful message
+    const searchNoneReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'tools/call',
+        params: { name: 'search_tools', arguments: { query: 'xyz123nonexistent' } },
+      }),
+    });
+    const searchNoneRes = await manager.handleRequest(searchNoneReq);
+    const searchNoneBody: any = await parseRes(searchNoneRes);
+    expect(searchNoneBody.result?.content?.[0]?.text).toContain('見つかりませんでした');
+  });
+
+  it('createMcpServer with module filtering should not allow searching or enabling tools from inactive modules', async () => {
+    const webOnlyServer = createMcpServer({ modules: ['web'] });
+    const registeredTools = (webOnlyServer as any)._registeredTools;
+    expect(registeredTools['scrape']).toBeDefined();
+    expect(registeredTools['search_web']).toBeDefined();
+    expect(registeredTools['search_tools']).toBeDefined();
+    expect(registeredTools['search_chiebukuro']).toBeUndefined();
+    expect(registeredTools['get_weather']).toBeUndefined();
+
+    // Executing search_tools with query '知恵袋'
+    const searchTool = registeredTools['search_tools'];
+    const result = await searchTool.handler({ query: '知恵袋' });
+    expect(result.content[0].text).toContain('見つかりませんでした');
+  });
+
+  it('createMcpServer with deferTools: false should expose all tools immediately without search_tools activation', () => {
+    const staticServer = createMcpServer({ deferTools: false });
+    const registeredTools = (staticServer as any)._registeredTools;
+    expect(registeredTools['scrape'].enabled).toBe(true);
+    expect(registeredTools['get_weather'].enabled).toBe(true);
+    expect(registeredTools['search_chiebukuro'].enabled).toBe(true);
+    expect(registeredTools['search_laws'].enabled).toBe(true);
   });
 
   it('MCP Streamable HTTP should support full multi-session lifecycle (initialize -> notifications -> tools/list)', async () => {
@@ -816,6 +1033,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(isModuleActive('watch', ['web'])).toBe(false);
     expect(isModuleActive('music', ['web'])).toBe(false);
     expect(isModuleActive('gov', ['web'])).toBe(false);
+    expect(isModuleActive('trade', ['web'])).toBe(false);
 
     expect(isModuleActive('web', ['all'])).toBe(true);
     expect(isModuleActive('browser', ['all'])).toBe(true);
@@ -825,12 +1043,14 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(isModuleActive('watch', ['all'])).toBe(true);
     expect(isModuleActive('music', ['all'])).toBe(true);
     expect(isModuleActive('gov', ['all'])).toBe(true);
+    expect(isModuleActive('trade', ['all'])).toBe(true);
 
     expect(isModuleActive('life', ['web', 'life'])).toBe(true);
     expect(isModuleActive('disaster', ['disaster', 'music'])).toBe(true);
     expect(isModuleActive('watch', ['watch'])).toBe(true);
     expect(isModuleActive('music', ['music', 'life'])).toBe(true);
     expect(isModuleActive('gov', ['gov', 'life'])).toBe(true);
+    expect(isModuleActive('trade', ['trade', 'life'])).toBe(true);
     expect(isModuleActive('yahoo', ['web', 'life'])).toBe(false);
   });
 
@@ -941,7 +1161,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.0.0');
+    expect(data.version).toBe('2.4.0');
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
@@ -998,6 +1218,656 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
       expect(result.content).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('click action should move the mouse through multiple intermediate points, not teleport', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const mockHtml = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head><meta charset="UTF-8"><title>Mouse Trail Test</title></head>
+      <body>
+        <button id="btn" onclick="document.getElementById('res').innerText = 'clicked: ' + window.__mmCount;">押す</button>
+        <div id="res">not clicked</div>
+        <script>
+          window.__mmCount = 0;
+          document.addEventListener('mousemove', () => { window.__mmCount++; });
+        </script>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(mockHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      const result = await executeBrowserActions({
+        url: `http://127.0.0.1:${server.port}/mouse-trail`,
+        actions: [{ type: 'click', selector: '#btn' }, { type: 'wait', ms: 100 }],
+        extract: { markdown: true },
+      });
+
+      expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
+      const match = result.content.match(/clicked: (\d+)/);
+      expect(match).not.toBeNull();
+      expect(Number(match![1])).toBeGreaterThanOrEqual(5);
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('buildUserAgentFromDefault should extract the real Chromium version and mask it as Windows Chrome (not Headless)', () => {
+    const headlessUa = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36';
+    const result = buildUserAgentFromDefault(headlessUa);
+    expect(result).toContain('Chrome/148.0.0.0');
+    expect(result).not.toContain('Headless');
+    expect(result).toContain('Windows NT 10.0; Win64; x64');
+  });
+
+  it('buildUserAgentFromDefault should fall back to a sane default when the version cannot be parsed', () => {
+    const result = buildUserAgentFromDefault('some unparsable string');
+    expect(result).toMatch(/Chrome\/\d+\.\d+\.\d+\.\d+/);
+    expect(result).not.toContain('Headless');
+  });
+
+  it('getFallbackUserAgent should track the real Chromium version so the fallback path cannot reintroduce a cross-path version mismatch', () => {
+    const fallback = getFallbackUserAgent();
+    expect(fallback).toContain('Windows NT 10.0');
+    expect(fallback).not.toContain('Headless');
+
+    const actual = getChromiumMajorVersion();
+    if (actual !== undefined) {
+      // 静的fetch(wreq)は実バージョンを名乗るため、フォールバックが古い固定値だと
+      // 同一Cookieでバージョンが食い違う（この矛盾は本セッションで一度潰している）
+      expect(fallback).toContain(`Chrome/${actual}.`);
+    }
+  });
+
+  it('buildUserAgentMetadata should build Windows Client Hints metadata matching the given Chrome version (fixes CreepJS-detected UA/platform/userAgentData mismatch)', () => {
+    const headlessUa = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.7778.167 Safari/537.36';
+    const meta = buildUserAgentMetadata(headlessUa);
+    expect(meta.platform).toBe('Windows');
+    expect(meta.mobile).toBe(false);
+    expect(meta.brands?.some((b) => b.brand === 'Google Chrome' && b.version === '148')).toBe(true);
+    expect(meta.fullVersionList?.some((b) => b.brand === 'Google Chrome' && b.version === '148.0.7778.167')).toBe(true);
+  });
+
+  it('WebRTC ICE candidate gathering should not leak the real local/public IP via host candidates (CreepJS-detected leak)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      await page.goto('about:blank');
+      const candidates = await page.evaluate(() => {
+        return new Promise<string[]>((resolve) => {
+          // STUNサーバーを指定しないと srflx candidate（実IP露出の本体）が生成されずテストにならない
+          const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+          const found: string[] = [];
+          pc.onicecandidate = (e) => {
+            if (e.candidate) found.push(e.candidate.candidate);
+            else resolve(found);
+          };
+          pc.createDataChannel('test');
+          pc.createOffer().then((offer) => pc.setLocalDescription(offer));
+          setTimeout(() => resolve(found), 5000);
+        });
+      });
+      // srflx (STUN経由の公開IP) / host (ローカルIP、mDNS化されていないもの) の両方が漏洩経路。
+      // candidate文字列は "candidate:<foundation> <component> udp <priority> <ip> <port> typ <type> ..."
+      // という形式で、実IPは "typ host/srflx" の直前のフィールドに来る（raddr等の副次フィールドの
+      // 0.0.0.0 と誤判定しないよう、直前フィールドだけを厳密に取り出す）。
+      const leaksRealIp = candidates.some((c) => {
+        const m = c.match(/^candidate:\S+ \d+ udp \d+ (\S+) \d+ typ (host|srflx)/);
+        if (!m) return false;
+        const ip = m[1];
+        return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip) && ip !== '0.0.0.0';
+      });
+      expect(leaksRealIp).toBe(false);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('applyStealthEvasions should set a UA whose Chrome version matches the real running Chromium, not a stale hardcoded one', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const { browser } = await getBrowser();
+    const realDefaultUa = await browser.userAgent();
+    const realVersionMatch = realDefaultUa.match(/Chrome\/(\d+)\./);
+    expect(realVersionMatch).not.toBeNull();
+
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      const uaAfter = await page.evaluate(() => navigator.userAgent);
+      expect(uaAfter).not.toContain('Headless');
+      expect(uaAfter).toContain(`Chrome/${realVersionMatch![1]}`);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('applyStealthEvasions should perturb Canvas getImageData output with noise (raw pixel bytes differ from an unpatched context)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const drawScript = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 50;
+      canvas.height = 50;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      ctx.fillStyle = 'rgb(100, 150, 200)';
+      ctx.fillRect(0, 0, 50, 50);
+      ctx.font = '12px Arial';
+      ctx.fillText('test fingerprint text', 5, 25);
+      return Array.from(ctx.getImageData(0, 0, 50, 50).data);
+    };
+
+    const { browser } = await getBrowser();
+
+    const pageA = await browser.newPage();
+    let unpatched: number[];
+    try {
+      await pageA.goto('about:blank');
+      unpatched = await pageA.evaluate(drawScript);
+    } finally {
+      await pageA.close();
+    }
+
+    const pageB = await browser.newPage();
+    let patched: number[];
+    try {
+      await applyStealthEvasions(pageB);
+      await pageB.goto('about:blank');
+      patched = await pageB.evaluate(drawScript);
+    } finally {
+      await pageB.close();
+    }
+
+    expect(patched.length).toBe(unpatched.length);
+    expect(JSON.stringify(patched)).not.toBe(JSON.stringify(unpatched));
+  });
+
+  it('applyStealthEvasions should report a screen size at least as large as the viewport (headless default 800x600 is physically impossible with a 1920x1080 viewport)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      await page.goto('about:blank');
+      const info = await page.evaluate(() => ({
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+      }));
+      expect(info.screenWidth).toBeGreaterThanOrEqual(info.innerWidth);
+      expect(info.screenHeight).toBeGreaterThanOrEqual(info.innerHeight);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('applyStealthEvasions should keep the Intl locale consistent with navigator.languages (CreepJS checks the Intl section separately)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      await page.goto('about:blank');
+      const info = await page.evaluate(() => ({
+        firstLanguage: navigator.languages[0],
+        dateTimeLocale: Intl.DateTimeFormat().resolvedOptions().locale,
+        numberLocale: new Intl.NumberFormat().resolvedOptions().locale,
+      }));
+      expect(info.dateTimeLocale).toBe(info.firstLanguage);
+      expect(info.numberLocale).toBe(info.firstLanguage);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('applyStealthEvasions should at least propagate the spoofed User-Agent into Web Workers (platform/languages are a documented Chromium limitation)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const workerCode = "self.postMessage({ua:navigator.userAgent,plat:navigator.platform,lang:navigator.languages[0]})";
+    const html = `<!DOCTYPE html><html><body><div id="r">pending</div><script>
+      const w = new Worker(URL.createObjectURL(new Blob([${JSON.stringify(workerCode)}], {type:'application/javascript'})));
+      w.onmessage = (e) => { document.getElementById('r').innerText = JSON.stringify(e.data); };
+    </script></body></html>`;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+      },
+    });
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      await page.goto(`http://127.0.0.1:${server.port}/worker`);
+      await page.waitForFunction(() => document.getElementById('r')?.innerText !== 'pending', { timeout: 10000 });
+      const inWorker = JSON.parse(await page.evaluate(() => document.getElementById('r')!.innerText));
+
+      // UA の override は Worker コンテキストにも伝播する（ここは保証する）
+      expect(inWorker.ua).toContain('Windows NT 10.0');
+      expect(inWorker.ua).not.toContain('Headless');
+      // navigator.platform / languages は Worker に伝播しない。CDPの
+      // Emulation.setUserAgentOverride に platform/acceptLanguage を渡しても反映されないことを
+      // 実測で確認済み（scraper.ts の applyNativeEmulationOverrides 付近のコメント参照）。
+      // 現状を既知の限界として固定しておき、将来Chromium側が対応したら気づけるようにする。
+      expect(inWorker.plat).toBe('Linux x86_64');
+    } finally {
+      await page.close();
+      server.stop();
+    }
+  });
+
+  it('applyStealthEvasions should keep navigator.platform and navigator.userAgentData consistent with the Windows UA string (no CreepJS-style mismatch)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response('<!DOCTYPE html><html><body>ok</body></html>', {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      },
+    });
+    try {
+      await applyStealthEvasions(page);
+      // evaluateOnNewDocument は次のナビゲーションで初めて適用される。navigator.userAgentData は
+      // secure context (https or localhost/127.0.0.1) でのみ存在するため実サーバーへ遷移して確認する。
+      await page.goto(`http://127.0.0.1:${server.port}/`);
+      const info = await page.evaluate(async () => {
+        const uaData = (navigator as any).userAgentData;
+        const highEntropy = uaData ? await uaData.getHighEntropyValues(['platform', 'platformVersion']) : null;
+        return {
+          platform: navigator.platform,
+          uaDataPlatform: uaData?.platform,
+          uaDataMobile: uaData?.mobile,
+          highEntropyPlatform: highEntropy?.platform,
+        };
+      });
+      expect(info.platform).toBe('Win32');
+      expect(info.uaDataPlatform).toBe('Windows');
+      expect(info.uaDataMobile).toBe(false);
+      expect(info.highEntropyPlatform).toBe('Windows');
+    } finally {
+      await page.close();
+      server.stop();
+    }
+  });
+
+  it('applyStealthEvasions should send an Accept-Language HTTP header consistent with navigator.languages (ja priority)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    let seenAcceptLanguage = '';
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        seenAcceptLanguage = req.headers.get('accept-language') || '';
+        return new Response('<!DOCTYPE html><html><body>ok</body></html>', {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      },
+    });
+
+    const { browser } = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await applyStealthEvasions(page);
+      await page.goto(`http://127.0.0.1:${server.port}/`);
+      const jsLanguages = await page.evaluate(() => navigator.languages);
+
+      expect(jsLanguages[0]).toBe('ja-JP');
+      // JSのnavigator.languagesが日本語優先なら、実際に送信されるHTTPヘッダーも日本語優先であるべき
+      // （実測で "en-US,en;q=0.9" のまま送信され、jaが全く含まれない矛盾を確認済み）
+      expect(seenAcceptLanguage.startsWith('ja')).toBe(true);
+    } finally {
+      await page.close();
+      server.stop();
+    }
+  });
+
+  it('fetchWithStealthBrowser should persist Set-Cookie response cookies and resend them on the next visit', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path !== '/cookie-persist') {
+          return new Response('', { status: 404 }); // favicon等の副次リクエストにはCookieを出さない
+        }
+        const cookieHeader = req.headers.get('cookie') || '';
+        const seen = cookieHeader.includes('sora_persist_test=abc123');
+        const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+        return new Response(`<!DOCTYPE html><html><body>seen-cookie:${seen}<p>${filler}</p></body></html>`, {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Set-Cookie': 'sora_persist_test=abc123; Path=/',
+          },
+        });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      const url = `http://127.0.0.1:${server.port}/cookie-persist`;
+      const domain = '127.0.0.1';
+      dbSaveDomainCookies(domain, []); // 他テストの残留Cookieをクリア（DBはテスト間で共有）
+      // 共有ブラウザのCookieJarはポートを区別しないため、127.0.0.1 の他テスト分も残る。CDPで一掃する。
+      const { browser: cleanupBrowser } = await getBrowser();
+      const cleanupPage = await cleanupBrowser.newPage();
+      const cdp = await cleanupPage.createCDPSession();
+      await cdp.send('Network.clearBrowserCookies');
+      await cdp.detach();
+      await cleanupPage.close();
+
+      // 1回目: サーバーが Set-Cookie を返す。DBに永続化されるはず
+      const first = await scrapeUrl({ url, renderJs: true, noCache: true });
+      expect(first.content).toContain('seen-cookie:false');
+      const saved = dbGetDomainCookies(domain);
+      expect(saved?.some((c) => c.name === 'sora_persist_test' && c.value === 'abc123')).toBe(true);
+
+      // 2回目: 保存済みCookieが復元され、サーバーへ送り返されるはず
+      const second = await scrapeUrl({ url, renderJs: true, noCache: true });
+      expect(second.content).toContain('seen-cookie:true');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('fetchWithStealthBrowser via scrapeUrl(renderJs) should keep navigator.languages consistent with the Accept-Language header it sends', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+    let seenAcceptLanguage = '';
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        seenAcceptLanguage = req.headers.get('accept-language') || '';
+        return new Response(
+          `<!DOCTYPE html><html><body><div id="res"></div><p>${filler}</p><script>document.getElementById('res').innerText = 'languages:' + navigator.languages.join(',');</script></body></html>`,
+          { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      const result = await scrapeUrl({
+        url: `http://127.0.0.1:${server.port}/lang-consistency`,
+        renderJs: true,
+        noCache: true,
+      });
+
+      expect(seenAcceptLanguage.startsWith('ja')).toBe(true);
+      expect(result.content).toContain('languages:ja-JP,ja');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('scrapeUrl should increment getBotDetectionMetrics().upgradeCount when the static fetch result triggers SPA/bot detection', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        // id="__next" は detectSpaOrBotPage のSPAマウントポイント判定に引っかかる
+        return new Response(`<!DOCTYPE html><html><body><div id="__next"></div><p>${filler}</p></body></html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      const before = getBotDetectionMetrics().upgradeCount;
+
+      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
+
+      expect(result.renderedWithBrowser).toBe(true);
+      expect(getBotDetectionMetrics().upgradeCount).toBe(before + 1);
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('fetchWithStealthBrowser should persist localStorage across visits (Cookie-only persistence misses site tokens stored there)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path !== '/storage-persist') return new Response('', { status: 404 });
+        return new Response(
+          `<!DOCTYPE html><html><body>
+            <div id="res">pending</div>
+            <p>${filler}</p>
+            <script>
+              const prev = localStorage.getItem('sora_storage_test') || 'none';
+              document.getElementById('res').innerText = 'seen-storage:' + prev;
+              localStorage.setItem('sora_storage_test', 'persisted_value');
+            </script>
+          </body></html>`,
+          { headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      const url = `http://127.0.0.1:${server.port}/storage-persist`;
+      const domain = '127.0.0.1';
+      dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
+
+      // 1回目: localStorageは空。ページ側で値をセットする。DBに永続化されるはず
+      const first = await scrapeUrl({ url, renderJs: true, noCache: true });
+      expect(first.content).toContain('seen-storage:none');
+      const saved = dbGetDomainStorage(domain);
+      expect(saved?.sora_storage_test).toBe('persisted_value');
+
+      // 2回目: 保存済みlocalStorageがページロード前に復元されているはず
+      // (markdown変換で "_" が "\_" にエスケープされることがあるため正規表現で許容する)
+      const second = await scrapeUrl({ url, renderJs: true, noCache: true });
+      expect(second.content).toMatch(/seen-storage:persisted\\?_value/);
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('scrapeUrl(renderJs) should capture lazy-loaded, shadow DOM and late-rendered SPA content, not just the initially visible part', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    // 実サイトのSPAでよくある3パターンを再現する（マーカーはmarkdownのアンダースコア
+    // エスケープを避けるためハイフン区切りにする）
+    const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>SPA Gap</title></head>
+      <body>
+        <div id="top">TOP-CONTENT-VISIBLE</div>
+        <div style="height:3000px">spacer</div>
+        <div id="lazy">LAZY-PLACEHOLDER</div>
+        <div id="host"></div>
+        <div id="late">LATE-PLACEHOLDER</div>
+        <script>
+          new IntersectionObserver((entries) => {
+            for (const e of entries) {
+              if (e.isIntersecting) document.getElementById('lazy').innerText = 'LAZY-CONTENT-LOADED';
+            }
+          }).observe(document.getElementById('lazy'));
+          const shadow = document.getElementById('host').attachShadow({ mode: 'open' });
+          shadow.innerHTML = '<p>SHADOW-DOM-CONTENT</p>';
+          setTimeout(() => {
+            document.getElementById('late').innerText = 'LATE-CONTENT-RENDERED';
+          }, 1500);
+        </script>
+      </body></html>`;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      const res = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
+
+      expect(res.content).toContain('TOP-CONTENT-VISIBLE');
+      // IntersectionObserver は画面内に入らないと発火しないため自動スクロールが必要
+      expect(res.content).toContain('LAZY-CONTENT-LOADED');
+      // page.content() は shadow root の中身を含まないため明示的な展開が必要
+      expect(res.content).toContain('SHADOW-DOM-CONTENT');
+      // networkidle 成立後にクライアント側が描画するケース
+      expect(res.content).toContain('LATE-CONTENT-RENDERED');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      server.stop();
+    }
+  });
+
+  it('fetchWithStealthBrowser via scrapeUrl(renderJs) should also move the mouse before capturing content', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const mockHtml = `
+      <!DOCTYPE html>
+      <html lang="ja">
+      <head><meta charset="UTF-8"><title>Passive Load Mouse Trail</title></head>
+      <body>
+        <div id="res">count=0</div>
+        <script>
+          let n = 0;
+          document.addEventListener('mousemove', () => {
+            n++;
+            document.getElementById('res').innerText = 'count=' + n;
+          });
+        </script>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(mockHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      const result = await scrapeUrl({
+        url: `http://127.0.0.1:${server.port}/passive-mouse-trail`,
+        renderJs: true,
+        noCache: true,
+      });
+
+      const match = result.content.match(/count=(\d+)/);
+      expect(match).not.toBeNull();
+      expect(Number(match![1])).toBeGreaterThanOrEqual(3);
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
       server.stop();
@@ -2087,6 +2957,70 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(lawJson.markdown).toBeDefined();
   });
 
+  it('POST /trade/cpsc-check should handle REST requests', async () => {
+    const resEmpty = await app.request('/trade/cpsc-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resCheck = await app.request('/trade/cpsc-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ htsCode: '9503.00.0073', targetAge: 'child' }),
+    });
+    expect(resCheck.status).toBe(200);
+    const checkJson = (await resCheck.json()) as any;
+    expect(checkJson.certificateType).toBe('CCC');
+    expect(checkJson.eFilingRequired).toBe(true);
+  });
+
+  it('POST /trade/fda-check should handle REST requests', async () => {
+    const resEmpty = await app.request('/trade/fda-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resCheck = await app.request('/trade/fda-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ htsCode: '3004.90.0000' }),
+    });
+    expect(resCheck.status).toBe(200);
+    const checkJson = (await resCheck.json()) as any;
+    expect(checkJson.fdaRegulatedLikely).toBe(true);
+    expect(checkJson.possiblePrograms).toContain('DRU');
+  });
+
+  it('POST /trade/hts-verify should handle REST requests', async () => {
+    const resEmpty = await app.request('/trade/hts-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(resEmpty.status).toBe(400);
+
+    const resMissingDescription = await app.request('/trade/hts-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ htsCode: '9503.00.0073' }),
+    });
+    expect(resMissingDescription.status).toBe(400);
+
+    const resVerify = await app.request('/trade/hts-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ htsCode: '9503.00.0073', productDescription: 'plastic toy car for children' }),
+    });
+    expect(resVerify.status).toBe(200);
+    const verifyJson = (await resVerify.json()) as any;
+    expect(verifyJson.verified).toBe(true);
+    expect(verifyJson.matchLevel).toBe('exact');
+  });
+
   it('GET /health?detailed=true should return detailed health report with dependencies', async () => {
     const res = await app.request('/health?detailed=true');
     expect(res.status).toBe(200);
@@ -2127,7 +3061,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
   });
 
-  it('createMcpServer should register disaster, watch, music, and gov tools', async () => {
+  it('createMcpServer should register disaster, watch, music, gov, and trade tools', async () => {
     const server = createMcpServer();
     expect(server).toBeDefined();
 
@@ -2142,17 +3076,55 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const govServer = createMcpServer({ modules: ['gov'] });
     expect(govServer).toBeDefined();
+
+    const tradeServer = createMcpServer({ modules: ['trade'] });
+    expect(tradeServer).toBeDefined();
+    const tradeTools = Object.keys((tradeServer as any)._registeredTools);
+    expect(tradeTools).toContain('check_cpsc_certificate');
   });
 
-  it('isJsDisabledMessage regex should match JavaScript is disabled notice', () => {
+  it('detectSpaOrBotPage should flag a JavaScript-disabled notice page', () => {
     const timeTreeMsg = '#### JavaScript is disabled.\n\nPlease enable your JavaScript settings in order to use the service.';
-    const isJsDisabledMessage =
-      /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(timeTreeMsg) ||
-      /please\s+enable\s+(?:your\s+)?javascript/i.test(timeTreeMsg) ||
-      /javascript\s*を\s*(?:有効|オン)/i.test(timeTreeMsg) ||
-      /javascript\s*が\s*無効/i.test(timeTreeMsg);
+    expect(detectSpaOrBotPage({ html: `<body>${timeTreeMsg}</body>`, bodyOnlyMarkdown: timeTreeMsg })).toBe(true);
+  });
 
-    expect(isJsDisabledMessage).toBe(true);
+  it('detectSpaOrBotPage should flag known SPA mount markers', () => {
+    expect(detectSpaOrBotPage({ html: '<div id="__next"></div>', bodyOnlyMarkdown: 'x'.repeat(100) })).toBe(true);
+    expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100) })).toBe(false);
+  });
+
+  it('detectSpaOrBotPage should flag bot-challenge HTTP status codes', () => {
+    expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100), status: 403 })).toBe(true);
+    expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100), status: 429 })).toBe(true);
+    expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100), status: 503 })).toBe(true);
+    expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100), status: 200 })).toBe(false);
+  });
+
+  it('detectSpaOrBotPage should flag Cloudflare bot-mitigation headers', () => {
+    expect(
+      detectSpaOrBotPage({
+        html: '<html></html>',
+        bodyOnlyMarkdown: 'x'.repeat(100),
+        status: 200,
+        headers: { 'cf-mitigated': 'challenge' },
+      }),
+    ).toBe(true);
+    expect(
+      detectSpaOrBotPage({
+        html: '<html></html>',
+        bodyOnlyMarkdown: 'x'.repeat(100),
+        status: 403,
+        headers: { server: 'cloudflare' },
+      }),
+    ).toBe(true);
+    expect(
+      detectSpaOrBotPage({
+        html: '<html></html>',
+        bodyOnlyMarkdown: 'x'.repeat(100),
+        status: 200,
+        headers: { server: 'cloudflare' },
+      }),
+    ).toBe(false);
   });
 
   // ==========================================
@@ -2218,9 +3190,8 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('All MCP tools must produce 100% Gemini-compatible inputSchemas with no exclusiveMinimum, const, or array types', async () => {
-    // McpSessionManager 経由で tools/list JSON-RPC リクエストを発行
     const manager = new McpSessionManager();
-    const req = new Request('http://localhost/mcp', {
+    const initReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2229,6 +3200,59 @@ describe('Sora REST & MCP Endpoints', () => {
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+      }),
+    });
+    const initRes = await manager.handleRequest(initReq);
+    expect(initRes.status).toBe(200);
+    const sessionId = initRes.headers.get('mcp-session-id')!;
+    expect(sessionId).toBeDefined();
+
+    const notifyReq = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+    });
+    await manager.handleRequest(notifyReq);
+
+    // 全モジュールのツールを有効化するために主要カテゴリを検索
+    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade'];
+    for (let i = 0; i < categories.length; i++) {
+      const sReq = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 10 + i,
+          method: 'tools/call',
+          params: { name: 'search_tools', arguments: { query: categories[i] } },
+        }),
+      });
+      await manager.handleRequest(sReq);
+    }
+
+    const req = new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': '2024-11-05',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 100,
         method: 'tools/list',
         params: {},
       }),
@@ -2248,7 +3272,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBeGreaterThanOrEqual(15);
+    expect(body.result.tools.length).toBe(35); // 34 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -2277,6 +3301,559 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(tool.inputSchema).toBeDefined();
       assertGeminiCompatible(tool.inputSchema, tool.name);
     }
+  });
+
+  it('getProxyConfig should resolve proxy server and bypass list from environment variables in correct priority order', () => {
+    const originalEnv = { ...process.env };
+    try {
+      // 1. No env vars set
+      delete process.env.SORA_PROXY_URL;
+      delete process.env.HTTPS_PROXY;
+      delete process.env.https_proxy;
+      delete process.env.HTTP_PROXY;
+      delete process.env.http_proxy;
+      delete process.env.ALL_PROXY;
+      delete process.env.all_proxy;
+      delete process.env.NO_PROXY;
+      delete process.env.no_proxy;
+
+      expect(getProxyConfig()).toEqual({ proxyServer: undefined, proxyBypassList: undefined });
+
+      // 2. HTTP_PROXY
+      process.env.HTTP_PROXY = 'http://http-proxy:8080';
+      expect(getProxyConfig().proxyServer).toBe('http://http-proxy:8080');
+
+      // 3. HTTPS_PROXY overrides HTTP_PROXY
+      process.env.HTTPS_PROXY = 'http://https-proxy:8443';
+      expect(getProxyConfig().proxyServer).toBe('http://https-proxy:8443');
+
+      // 4. SORA_PROXY_URL has highest priority
+      process.env.SORA_PROXY_URL = 'socks5://sora-proxy:1080';
+      expect(getProxyConfig().proxyServer).toBe('socks5://sora-proxy:1080');
+
+      // 5. NO_PROXY bypass list
+      process.env.NO_PROXY = 'localhost,127.0.0.1,.local';
+      expect(getProxyConfig().proxyBypassList).toBe('localhost,127.0.0.1,.local');
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('pickBrowserProfile should return a stable Chrome profile matching the real Chromium version (identity must not flip between requests sharing a cookie jar)', () => {
+    const profile = pickBrowserProfile();
+    // ブラウザレンダリング経路が常に Windows Chrome を名乗るため、静的fetch側もChrome系に揃える
+    expect(profile.startsWith('chrome_')).toBe(true);
+    // 呼ぶたびに変わってはいけない（Cookieを共有しているのでidentityが揺れてはいけない）
+    expect(pickBrowserProfile()).toBe(profile);
+
+    // 実行環境のChromiumが検出できるなら、そのメジャーバージョンに一致していること
+    const actual = getChromiumMajorVersion();
+    if (actual !== undefined) {
+      expect(profile).toBe(`chrome_${actual}`);
+    }
+  });
+
+  it('fetchWithSafeRedirects should send a Windows Chrome User-Agent, consistent with the browser-render path (not wreq default macOS)', async () => {
+    let seenUa = '';
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        seenUa = req.headers.get('user-agent') || '';
+        return new Response('<html><body>ok</body></html>', { headers: { 'Content-Type': 'text/html' } });
+      },
+    });
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      await closeHttpSession('127.0.0.1'); // 既存プールセッションの影響を排除
+      await fetchWithSafeRedirects(`http://127.0.0.1:${server.port}/ua-check`);
+
+      expect(seenUa).toContain('Windows NT 10.0');
+      expect(seenUa).toContain('Chrome/');
+      expect(seenUa).not.toContain('Macintosh');
+      expect(seenUa).not.toContain('Firefox');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      await closeHttpSession('127.0.0.1');
+      server.stop();
+    }
+  });
+
+  it('static fetch and browser render should present the same Chrome major version and Accept-Language (they share one cookie jar)', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const seen: Record<string, { ua: string; al: string }> = {};
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path !== '/favicon.ico') {
+          seen[path] = {
+            ua: req.headers.get('user-agent') || '',
+            al: req.headers.get('accept-language') || '',
+          };
+        }
+        return new Response(`<html><body>${'ok '.repeat(40)}</body></html>`, {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      await closeHttpSession('127.0.0.1');
+
+      const base = `http://127.0.0.1:${server.port}`;
+      await fetchWithSafeRedirects(`${base}/static-path`);
+      await fetchWithStealthBrowser(`${base}/browser-path`);
+
+      const staticUa = seen['/static-path']?.ua ?? '';
+      const browserUa = seen['/browser-path']?.ua ?? '';
+      const major = (ua: string) => ua.match(/Chrome\/(\d+)\./)?.[1];
+
+      expect(major(staticUa)).toBeDefined();
+      // 同一ドメイン・同一Cookieなのに Chrome のメジャーバージョンが変わるのは明確な矛盾
+      expect(major(staticUa)).toBe(major(browserUa));
+      // Accept-Language も経路をまたいで一致していること
+      expect(seen['/static-path']?.al).toBe(seen['/browser-path']?.al);
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      await closeHttpSession('127.0.0.1');
+      server.stop();
+    }
+  });
+
+  it('pickProxyUrl should rotate through SORA_PROXY_LIST when set', () => {
+    const originalEnv = { ...process.env };
+    try {
+      process.env.SORA_PROXY_LIST = 'http://proxy1:8080,http://proxy2:8080,http://proxy3:8080';
+      const picks = new Set<string | undefined>();
+      for (let i = 0; i < 30; i++) picks.add(pickProxyUrl());
+      for (const p of picks) {
+        expect(p).toBeDefined();
+        expect(['http://proxy1:8080', 'http://proxy2:8080', 'http://proxy3:8080']).toContain(p as string);
+      }
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('pickProxyUrl should fall back to SORA_PROXY_URL when SORA_PROXY_LIST is unset', () => {
+    const originalEnv = { ...process.env };
+    try {
+      delete process.env.SORA_PROXY_LIST;
+      process.env.SORA_PROXY_URL = 'http://single-proxy:9090';
+      expect(pickProxyUrl()).toBe('http://single-proxy:9090');
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('pickProxyUrl should return undefined when no proxy env vars are set', () => {
+    const originalEnv = { ...process.env };
+    try {
+      delete process.env.SORA_PROXY_LIST;
+      delete process.env.SORA_PROXY_URL;
+      expect(pickProxyUrl()).toBeUndefined();
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('getOrCreateHttpSession should reuse the same session for the same domain', async () => {
+    const s1 = await getOrCreateHttpSession('sora-test-reuse.example', 'chrome_142');
+    const s2 = await getOrCreateHttpSession('sora-test-reuse.example', 'chrome_142');
+    expect(s1).toBe(s2);
+    await closeHttpSession('sora-test-reuse.example');
+  });
+
+  it('getOrCreateHttpSession should create separate sessions for different domains', async () => {
+    const s1 = await getOrCreateHttpSession('sora-test-a.example', 'chrome_142');
+    const s2 = await getOrCreateHttpSession('sora-test-b.example', 'chrome_142');
+    expect(s1).not.toBe(s2);
+    await closeHttpSession('sora-test-a.example');
+    await closeHttpSession('sora-test-b.example');
+  });
+
+  it('dbSaveDomainCookies and dbGetDomainCookies should persist and retrieve cookies for a domain', () => {
+    const cookies = [
+      { name: 'session_id', value: 'abc123', domain: 'example.com', path: '/', secure: true, httpOnly: true },
+    ];
+    dbSaveDomainCookies('example.com', cookies);
+    const retrieved = dbGetDomainCookies('example.com');
+    expect(retrieved).toBeDefined();
+    expect(retrieved![0].name).toBe('session_id');
+    expect(retrieved![0].value).toBe('abc123');
+  });
+
+  it('dbGetDomainCookies should return undefined for a domain with no saved cookies', () => {
+    expect(dbGetDomainCookies('unknown-domain-xyz.example')).toBeUndefined();
+  });
+
+  it('fetchWithStealthBrowser requests should not leak cookies across each other via the shared browser context', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+    const serverA = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname !== '/set-cookie') return new Response('', { status: 404 });
+        return new Response(`<!DOCTYPE html><html><body>set<p>${filler}</p></body></html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': 'leaky_test=should_not_leak; Path=/' },
+        });
+      },
+    });
+    const serverB = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname !== '/check-cookie') return new Response('', { status: 404 });
+        const leaked = (req.headers.get('cookie') || '').includes('leaky_test=should_not_leak');
+        return new Response(`<!DOCTYPE html><html><body>leaked:${leaked}<p>${filler}</p></body></html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      dbSaveDomainCookies('127.0.0.1', []); // 他テストのDB永続化分をクリア
+
+      await scrapeUrl({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
+      // 今回実装したDB経由の正規の永続化(同一ドメインへの意図した引き継ぎ)ではなく、
+      // ブラウザの生CookieJarが独立しているか（BrowserContext分離）だけを見たいので、
+      // 1回目で書き込まれたDBの永続化分をここで明示的に消してから2回目を実行する。
+      dbSaveDomainCookies('127.0.0.1', []);
+      const result = await scrapeUrl({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
+      expect(result.content).toContain('leaked:false');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      serverA.stop();
+      serverB.stop();
+    }
+  });
+
+  it('executeBrowserActions (one-shot, no session) should not leak cookies across independent requests via the shared browser context', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping real Chromium browser action test (Chromium not found on host)');
+      return;
+    }
+
+    const filler = 'padding text to stay above the 50-char little-content threshold. '.repeat(3);
+    const serverA = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname !== '/set-cookie') return new Response('', { status: 404 });
+        return new Response(`<!DOCTYPE html><html><body>set<p>${filler}</p></body></html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': 'session_leaky_test=should_not_leak; Path=/' },
+        });
+      },
+    });
+    const serverB = Bun.serve({
+      port: 0,
+      fetch(req) {
+        if (new URL(req.url).pathname !== '/check-cookie') return new Response('', { status: 404 });
+        const leaked = (req.headers.get('cookie') || '').includes('session_leaky_test=should_not_leak');
+        return new Response(`<!DOCTYPE html><html><body>leaked:${leaked}<p>${filler}</p></body></html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
+      },
+    });
+
+    try {
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      await executeBrowserActions({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, actions: [], extract: { markdown: true } });
+      const result = await executeBrowserActions({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, actions: [], extract: { markdown: true } });
+      expect(result.content).toContain('leaked:false');
+
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    } finally {
+      serverA.stop();
+      serverB.stop();
+    }
+  });
+
+  it('initDatabase should restrict the SQLite file to owner-only permissions (Cookie/API-key data must not be world-readable)', async () => {
+    const fs = await import('fs');
+    const tmpPath = `/tmp/claude-1000/-home-ikeno/2e0d4d20-0144-47e3-85ee-bedd80157af7/scratchpad/sora-perm-test-${Date.now()}.db`;
+    try {
+      closeDb();
+      initDatabase(tmpPath);
+      const mode = fs.statSync(tmpPath).mode & 0o777;
+      expect(mode).toBe(0o600);
+    } finally {
+      closeDb();
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.rmSync(tmpPath + suffix);
+        } catch {}
+      }
+    }
+  });
+
+  it('groupCookiesByDomain should key each cookie by its own domain attribute (redirect-safe), normalizing leading dot and falling back when domain is empty', () => {
+    const cookies = [
+      { name: 'a', value: '1', domain: '.example.com', path: '/' },
+      { name: 'b', value: '2', domain: 'sub.example.com', path: '/' },
+      { name: 'c', value: '3', domain: '', path: '/' },
+    ];
+    const grouped = groupCookiesByDomain(cookies as any, 'fallback.example.com');
+    expect([...grouped.keys()].sort()).toEqual(['example.com', 'fallback.example.com', 'sub.example.com']);
+    expect(grouped.get('example.com')![0].name).toBe('a');
+    expect(grouped.get('sub.example.com')![0].name).toBe('b');
+    expect(grouped.get('fallback.example.com')![0].name).toBe('c');
+  });
+
+  it('dbGetDomainCookies should filter out expired cookies and keep unexpired/session ones', () => {
+    const now = Date.now();
+    const cookies = [
+      { name: 'expired', value: 'old', domain: 'expiry-test.example', expiresAtMs: now - 60_000 },
+      { name: 'fresh', value: 'new', domain: 'expiry-test.example', expiresAtMs: now + 60_000 },
+      { name: 'session', value: 'nolimit', domain: 'expiry-test.example' }, // expiresAtMs未指定=セッションCookie
+    ];
+    dbSaveDomainCookies('expiry-test.example', cookies);
+    const retrieved = dbGetDomainCookies('expiry-test.example');
+    const names = retrieved?.map((c) => c.name).sort();
+    expect(names).toEqual(['fresh', 'session']);
+  });
+
+  it('No MCP tools should expose proxyUrl parameter in their inputSchema', () => {
+    const server = createMcpServer({ deferTools: false });
+    const tools = Object.values((server as any)._registeredTools) as any[];
+    for (const tool of tools) {
+      if (tool.inputSchema?.properties) {
+        expect(tool.inputSchema.properties.proxyUrl, `Tool ${tool.name} should not have proxyUrl`).toBeUndefined();
+      }
+    }
+  });
+
+  it('searchDietMinutes should fetch speech records from kokkai.ndl.go.jp API', async () => {
+    const result = await searchDietMinutes({ keyword: '人工知能', limit: 3 });
+    expect(result.source).toBe('kokkai-ndl');
+    expect(result.count).toBeGreaterThanOrEqual(1);
+    expect(result.totalHits).toBeGreaterThanOrEqual(1);
+    const speech = result.items[0];
+    expect(speech.speechId).toBeDefined();
+    expect(speech.house).toMatch(/衆議院|参議院/);
+    expect(speech.speaker).toBeDefined();
+    expect(speech.speech.length).toBeGreaterThan(0);
+    expect(speech.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('fetchElevationAndCoordinates should geocode address and fetch elevation from GSI API', async () => {
+    const resAddress = await fetchElevationAndCoordinates({ address: '東京都千代田区永田町1-7-1' });
+    expect(resAddress.source).toBe('gsi');
+    expect(resAddress.lat).toBeCloseTo(35.67, 1);
+    expect(resAddress.lon).toBeCloseTo(139.75, 1);
+    expect(typeof resAddress.elevationMeters).toBe('number');
+    expect(resAddress.formatted).toContain('標高');
+
+    const resCoords = await fetchElevationAndCoordinates({ lat: 35.3606, lon: 138.7274 }); // 富士山頂付近
+    expect(resCoords.source).toBe('gsi');
+    expect(resCoords.elevationMeters).toBeGreaterThan(3000);
+  });
+
+  it('fetchFlightStatus and resolveAirport should parse flight info for major airports', async () => {
+    expect(resolveAirport('羽田').code).toBe('HND');
+    expect(resolveAirport('成田').code).toBe('NRT');
+    expect(resolveAirport('kix').code).toBe('KIX');
+    expect(resolveAirport('伊丹').code).toBe('ITM');
+    expect(resolveAirport('中部').code).toBe('NGO');
+
+    const result = await fetchFlightStatus({ airport: '羽田', type: 'departure', category: 'domestic' });
+    expect(result.source).toBe('yahoo-transit');
+    expect(result.airportCode).toBe('HND');
+    expect(result.type).toBe('departure');
+    expect(result.category).toBe('domestic');
+    expect(result.count).toBeGreaterThanOrEqual(1);
+    expect(result.flights.length).toBeGreaterThanOrEqual(1);
+
+    const flight = result.flights[0];
+    expect(flight.scheduledTime).toBeDefined();
+    expect(flight.flightNumber).toBeDefined();
+    expect(flight.destinationOrOrigin).toBeDefined();
+    expect(flight.status).toBeDefined();
+  });
+
+  it('REST endpoints for Diet minutes, Elevation, and Flight status should work correctly', async () => {
+    // 1. Diet minutes (POST & GET)
+    const resDietPost = await app.request('/gov/diet-minutes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: 'デジタル', limit: 2 }),
+    });
+    expect(resDietPost.status).toBe(200);
+    const jsonDiet = (await resDietPost.json()) as any;
+    expect(jsonDiet.items.length).toBeGreaterThanOrEqual(1);
+
+    const resDietGet = await app.request('/gov/diet-minutes?keyword=予算&limit=2');
+    expect(resDietGet.status).toBe(200);
+
+    // 2. Elevation (POST & GET)
+    const resElevPost = await app.request('/geo/elevation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: '東京タワー' }),
+    });
+    expect(resElevPost.status).toBe(200);
+    const jsonElev = (await resElevPost.json()) as any;
+    expect(jsonElev.elevationMeters).toBeDefined();
+
+    const resElevGet = await app.request('/geo/elevation?address=スカイツリー');
+    expect(resElevGet.status).toBe(200);
+
+    // 3. Flight status (POST & GET)
+    const resFlightPost = await app.request('/traffic/flight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ airport: '羽田', type: 'departure' }),
+    });
+    expect(resFlightPost.status).toBe(200);
+    const jsonFlight = (await resFlightPost.json()) as any;
+    expect(jsonFlight.flights.length).toBeGreaterThanOrEqual(1);
+
+    const resFlightGet = await app.request('/traffic/flight/成田?type=departure');
+    expect(resFlightGet.status).toBe(200);
+  });
+
+  it('MCP server should register all 35 tools and support dynamic discovery of new tools', () => {
+    const serverDeferred = createMcpServer({ deferTools: true });
+    const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
+      .filter(([_, handle]: [string, any]) => handle.enabled !== false)
+      .map(([name]) => name);
+    // Core 4 tools are enabled by default
+    expect(enabledTools).toContain('scrape');
+    expect(enabledTools).toContain('search_web');
+    expect(enabledTools).toContain('search_deep');
+    expect(enabledTools).toContain('search_tools');
+    expect(enabledTools.length).toBe(4);
+
+    const serverAll = createMcpServer({ deferTools: false });
+    const toolsAll = Object.keys((serverAll as any)._registeredTools);
+    expect(toolsAll).toContain('search_diet_minutes');
+    expect(toolsAll).toContain('get_elevation');
+    expect(toolsAll).toContain('get_flight_status');
+    expect(toolsAll).toContain('check_cpsc_certificate');
+    expect(toolsAll).toContain('check_fda_regulated');
+    expect(toolsAll).toContain('verify_hts_code');
+    expect(toolsAll).toContain('watch_delete');
+    expect(toolsAll.length).toBe(35);
+  });
+
+  it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
+    const result = await checkCpscCertificate({ htsCode: '9503.00.0073', targetAge: 'child' });
+    expect(result.certificateRequired).toBe(true);
+    expect(result.certificateType).toBe('CCC');
+    expect(result.eFilingRequired).toBe(true);
+    expect(result.missingInfo.length).toBe(0);
+    expect(result.applicableRegulations.some((r) => r.summary.includes('Toys'))).toBe(true);
+    expect(result.applicableRegulations[0].sourceUrl).toContain('cpsc.gov');
+    expect(result.disclaimer.length).toBeGreaterThan(0);
+  });
+
+  it('checkCpscCertificate should require CCC eFiling for an exact-match bicycle helmet HTS code', async () => {
+    const result = await checkCpscCertificate({ htsCode: '6506103045', targetAge: 'child' });
+    expect(result.certificateRequired).toBe(true);
+    expect(result.certificateType).toBe('CCC');
+    expect(result.applicableRegulations.some((r) => r.summary.includes('Bicycle Helmets'))).toBe(true);
+  });
+
+  it('checkCpscCertificate should fall back to a 6-digit near match when the full HTS code is unmapped', async () => {
+    // 実在コード 9503000073 の統計接尾辞だけ変えた架空コード（先頭6桁 "950300" は一致する）
+    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'child' });
+    expect(result.certificateRequired).toBe('unknown');
+    expect(result.missingInfo.some((m) => m.includes('950300') || m.includes('Toys'))).toBe(true);
+  });
+
+  it('checkCpscCertificate should report missingInfo for a fully unmapped HTS code', async () => {
+    const result = await checkCpscCertificate({ htsCode: '0000.00.0000', targetAge: 'unknown' });
+    expect(result.certificateRequired).toBe('unknown');
+    expect(result.missingInfo.length).toBeGreaterThan(0);
+  });
+
+  it('checkFdaRegulated should flag pharmaceutical products (chapter 30) as FDA-regulated', () => {
+    const result = checkFdaRegulated({ htsCode: '3004.90.0000' });
+    expect(result.fdaRegulatedLikely).toBe(true);
+    expect(result.possiblePrograms).toContain('DRU');
+    expect(result.matchedChapter).toBe('30');
+    expect(result.confidence).toBe('chapter-level-estimate');
+  });
+
+  it('checkFdaRegulated should flag cosmetics (chapter 33) with COS program', () => {
+    const result = checkFdaRegulated({ htsCode: '3304.99.0000' });
+    expect(result.fdaRegulatedLikely).toBe(true);
+    expect(result.possiblePrograms).toContain('COS');
+  });
+
+  it('checkFdaRegulated should flag food preparations (chapter 21) with Prior Notice possibility', () => {
+    const result = checkFdaRegulated({ htsCode: '2106.90.0000' });
+    expect(result.fdaRegulatedLikely).toBe(true);
+    expect(result.possiblePrograms).toContain('FOO');
+    expect(result.priorNoticeMayApply).toBe(true);
+  });
+
+  it('checkFdaRegulated should treat meat (chapter 2) as USDA-jurisdiction, not FDA', () => {
+    const result = checkFdaRegulated({ htsCode: '0201.10.0000' });
+    expect(result.fdaRegulatedLikely).toBe(false);
+    expect(result.missingInfo.some((m) => m.includes('USDA'))).toBe(true);
+  });
+
+  it('checkFdaRegulated should mark unrelated chapters as not FDA-regulated', () => {
+    const result = checkFdaRegulated({ htsCode: '7318.15.0000' });
+    expect(result.fdaRegulatedLikely).toBe(false);
+    expect(result.possiblePrograms.length).toBe(0);
+  });
+
+  it('verifyHtsCode should confirm an exact-match real HTS code via USITC', async () => {
+    const result = await verifyHtsCode({
+      htsCode: '9503.00.0073',
+      productDescription: 'plastic toy car for children aged 3 to 12',
+    });
+    expect(result.verified).toBe(true);
+    expect(result.matchLevel).toBe('exact');
+    expect(result.officialDescription).toBeDefined();
+    expect(result.officialDescription!.length).toBeGreaterThan(0);
+    expect(result.hsCode).toBe('950300');
+    expect(result.productDescription).toBe('plastic toy car for children aged 3 to 12');
+  });
+
+  it('verifyHtsCode should fall back to 6-digit category candidates for an unmapped statistical suffix', async () => {
+    const result = await verifyHtsCode({
+      htsCode: '9503.00.9999',
+      productDescription: 'unknown toy variant',
+    });
+    expect(result.verified).toBe(false);
+    expect(result.matchLevel).toBe('6-digit-category');
+    expect(result.nearbyCandidates.length).toBeGreaterThan(0);
+  });
+
+  it('verifyHtsCode should report unmatched for a fully invalid HTS code', async () => {
+    const result = await verifyHtsCode({
+      htsCode: '9999.99.9999',
+      productDescription: 'nonexistent product',
+    });
+    expect(result.verified).toBe(false);
+    expect(result.matchLevel).toBe('unmatched');
+    expect(result.nearbyCandidates.length).toBe(0);
+  });
+
+  it('verifyHtsCode should reject an empty productDescription', async () => {
+    await expect(verifyHtsCode({ htsCode: '9503.00.0073', productDescription: '' })).rejects.toThrow();
   });
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "sora",
-  "version": "2.2.1",
+  "version": "2.4.0",
   "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
@@ -18,9 +18,10 @@
     "fast-xml-parser": "^5.11.0",
     "hono": "^4.13.3",
     "linkedom": "^0.18.13",
-    "puppeteer-core": "^24.43.1",
+    "puppeteer-core": "npm:rebrowser-puppeteer-core@^24.8.1",
     "turndown": "^7.2.4",
     "unpdf": "^1.8.1",
+    "wreq-js": "^3.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

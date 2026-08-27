@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/**
+ * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
+ * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
+ */
+export const SORA_VERSION = '2.4.0';
+
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
 
 export interface TableData {
@@ -124,7 +130,6 @@ export interface BrowserActionOptions {
     html?: boolean;
   };
   timeout?: number;
-  proxyUrl?: string;
 }
 
 export interface BrowserActionResult {
@@ -240,7 +245,6 @@ export const ScrapeRequestSchema = z.object({
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
   retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
   retryDelayMs: z.number().int().min(1).optional().describe('リトライ待機ディレイ (ミリ秒)'),
-  proxyUrl: z.string().optional().describe('経由するプロキシ URL (http/https/socks5)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか'),
   timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
 });
@@ -286,7 +290,6 @@ export const BrowserActionRequestSchema = z.object({
     maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
   }).optional().describe('操作完了後に抽出するデータ指定'),
   timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)'),
-  proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
 });
 
 export const CrawlRequestSchema = z.object({
@@ -460,6 +463,54 @@ export const LawDataRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
+export const DietMinutesSearchRequestSchema = z.object({
+  keyword: z.string().optional().describe('国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
+  speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
+  nameOfHouse: z.enum(['衆議院', '参議院']).optional().describe('院名 ("衆議院" または "参議院")'),
+  nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
+  from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
+  until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
+  limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+export type DietMinutesSearchOptions = z.infer<typeof DietMinutesSearchRequestSchema>;
+
+export const CpscCertificateCheckRequestSchema = z.object({
+  htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（子供向け製品かどうかはCPSC判定の主要分岐点）'),
+  material: z.string().optional().describe('主な素材（鉛・フタル酸エステル規制関連で重要）'),
+  productCategory: z.string().optional().describe('製品カテゴリの補足（HTSコードのみで対応表がヒットしない場合の補助情報）'),
+  description: z.string().optional().describe('自由記述の補足説明'),
+});
+
+export const FdaRegulatedCheckRequestSchema = z.object({
+  htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "3004.90.0000"）'),
+  productDescription: z.string().optional().describe('製品の自由記述説明（Chapterだけでは判定が曖昧なケースの補助情報）'),
+});
+
+export const VerifyHtsCodeRequestSchema = z.object({
+  htsCode: z.string().min(1, 'htsCode は必須です').describe('検証したいHTSコード（例: "9503.00.0073"）'),
+  productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
+});
+
+export const ElevationRequestSchema = z.object({
+  address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
+  lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
+  lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
+
+export const FlightStatusRequestSchema = z.object({
+  airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")'),
+  type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")'),
+  category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")'),
+  flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
+  keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+});
+export type FlightStatusOptions = z.infer<typeof FlightStatusRequestSchema>;
+
 // ==========================================
 // Zod -> OpenAPI 3.0 自動スキーマジェネレーター
 // ==========================================
@@ -518,7 +569,7 @@ export function generateOpenApiDocument() {
     openapi: '3.0.0',
     info: {
       title: 'Sora Web Scraping, Deep Search, Transit & MCP API',
-      version: '2.0.0',
+      version: SORA_VERSION,
       description: 'Unified High-Performance Web Scraping, Realtime X Search, Transit & Public Open Data Service (Distroless & Zero-Middleware)',
     },
     paths: {
@@ -527,6 +578,9 @@ export function generateOpenApiDocument() {
       },
       '/metrics': {
         get: { summary: 'Prometheus / JSON 運用メトリクス', responses: { '200': { description: 'OK' } } },
+      },
+      '/cache/clear': {
+        post: { summary: 'キャッシュの全クリア', responses: { '200': { description: 'OK' } } },
       },
       '/scrape': {
         post: {
@@ -609,6 +663,19 @@ export function generateOpenApiDocument() {
       '/browser/action': {
         post: {
           summary: 'ステートレス / ステートフル ブラウザ自動操作',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(BrowserActionRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/action': {
+        post: {
+          summary: 'ブラウザ自動操作 (POST /browser/action の別名)',
           requestBody: {
             content: {
               'application/json': {
@@ -928,6 +995,84 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'LawDataResult' } },
+        },
+      },
+      '/trade/cpsc-check': {
+        post: {
+          summary: '米国CPSC適合証明書 (GCC/CCC) eFiling義務化判定',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(CpscCertificateCheckRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'CpscCertificateCheckResult' } },
+        },
+      },
+      '/trade/fda-check': {
+        post: {
+          summary: '米国FDA規制対象 簡易判定（HS Chapter単位）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(FdaRegulatedCheckRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'CheckFdaRegulatedResult' } },
+        },
+      },
+      '/trade/hts-verify': {
+        post: {
+          summary: 'HTS/HSコード実在確認・検証（USITC公式データ照合）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(VerifyHtsCodeRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'VerifyHtsCodeResult' } },
+        },
+      },
+      '/gov/diet-minutes': {
+        post: {
+          summary: '国会会議録検索 API (衆参両院の本会議・委員会発言記録・議員答弁全文検索)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(DietMinutesSearchRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'DietMinutesSearchResult' } },
+        },
+      },
+      '/geo/elevation': {
+        post: {
+          summary: '国土地理院 住所ジオコーディング & 標高（海抜）取得 API',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ElevationRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'ElevationResult' } },
+        },
+      },
+      '/traffic/flight': {
+        post: {
+          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(FlightStatusRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'FlightStatusResult' } },
         },
       },
     },

@@ -12,6 +12,7 @@ import {
   CACHE_TTL_TREND,
   getCacheSize,
   getCacheMetrics,
+  getBotDetectionMetrics,
   clearCache,
   getFromCache,
   setToCache,
@@ -46,6 +47,12 @@ import {
   searchArtist,
   searchLaws,
   getLawData,
+  searchDietMinutes,
+  fetchElevationAndCoordinates,
+  fetchFlightStatus,
+  checkCpscCertificate,
+  checkFdaRegulated,
+  verifyHtsCode,
   checkDetailedHealth,
   closeSharedBrowser,
   isSharedBrowserConnected,
@@ -64,7 +71,14 @@ import {
   MusicSearchRequestSchema,
   LawSearchRequestSchema,
   LawDataRequestSchema,
+  DietMinutesSearchRequestSchema,
+  ElevationRequestSchema,
+  FlightStatusRequestSchema,
+  CpscCertificateCheckRequestSchema,
+  FdaRegulatedCheckRequestSchema,
+  VerifyHtsCodeRequestSchema,
   generateOpenApiDocument,
+  SORA_VERSION,
   type ApiErrorResponse,
 } from './types.js';
 import {
@@ -235,11 +249,11 @@ app.get('/', (c) => {
   return c.json({
     service: 'sora',
     description: 'Unified Web Scraping, Deep Search, Transit & MCP Service',
-    version: '2.0.0',
+    version: SORA_VERSION,
     endpoints: {
       health: 'GET /health',
       metrics: 'GET /metrics',
-      docs: 'GET /docs (Interactive Swagger UI)',
+      docs: 'GET /docs (Scalar API Reference), GET /swagger (Swagger UI)',
       openapi: 'GET /openapi.json (OpenAPI 3.0.0 Specification)',
       mcp: 'POST/GET /mcp (Streamable HTTP / SSE)',
       sse: 'GET /sse, POST /message',
@@ -265,12 +279,18 @@ app.get('/', (c) => {
       watchCheck: 'POST /watch/check',
       watchList: 'GET /watch/list',
       watchDelete: 'DELETE /watch/:id',
-      searchSong: 'POST /search/song',
-      searchArtist: 'POST /search/artist',
+      searchSong: 'POST /search/song, POST /search/music/song',
+      searchArtist: 'POST /search/artist, POST /search/music/artist',
       searchMusic: 'POST /search/music',
       govLaws: 'POST /gov/laws',
       govLawText: 'POST /gov/law-text',
-      browserAction: 'POST /browser/action',
+      govDietMinutes: 'POST/GET /gov/diet-minutes',
+      geoElevation: 'POST/GET /geo/elevation',
+      trafficFlight: 'POST/GET /traffic/flight, GET /traffic/flight/:airport',
+      browserAction: 'POST /browser/action, POST /action',
+      tradeCpscCheck: 'POST /trade/cpsc-check',
+      tradeFdaCheck: 'POST /trade/fda-check',
+      tradeHtsVerify: 'POST /trade/hts-verify',
       map: 'POST /map',
       crawl: 'POST /crawl',
       crawlStream: 'POST /crawl/stream',
@@ -302,6 +322,7 @@ app.get('/metrics', (c) => {
   const accept = c.req.header('accept') || '';
   const mem = process.memoryUsage();
   const cache = getCacheMetrics();
+  const botDetection = getBotDetectionMetrics();
   const activeSessions = getActiveSessionCount();
   const uptime = Math.floor(process.uptime());
 
@@ -331,6 +352,12 @@ app.get('/metrics', (c) => {
       '# HELP sora_active_browser_sessions Active browser sessions count',
       '# TYPE sora_active_browser_sessions gauge',
       `sora_active_browser_sessions ${activeSessions}`,
+      '# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering',
+      '# TYPE sora_bot_upgrade_total counter',
+      `sora_bot_upgrade_total ${botDetection.upgradeCount}`,
+      '# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry',
+      '# TYPE sora_bot_retry_total counter',
+      `sora_bot_retry_total ${botDetection.retryCount}`,
     ];
     return c.text(lines.join('\n') + '\n', 200, {
       'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
@@ -342,6 +369,7 @@ app.get('/metrics', (c) => {
     service: 'sora',
     uptimeSeconds: uptime,
     cache,
+    botDetection,
     activeSessions,
     chromium: {
       available: !!CHROME_EXECUTABLE_PATH,
@@ -483,7 +511,6 @@ const handleBrowserAction = async (c: any) => {
       actions: body.actions,
       extract: body.extract,
       timeout: body.timeout,
-      proxyUrl: body.proxyUrl,
     });
 
     return c.json(result);
@@ -613,7 +640,6 @@ app.post('/search', async (c) => {
     const includeDomains = body?.includeDomains;
     const excludeDomains = body?.excludeDomains;
     const updated = body?.updated;
-    const proxyUrl = body?.proxyUrl;
     const extractHighlights = body?.extractHighlights;
     const onlyMainContent = body?.onlyMainContent;
     const formats = body?.formats;
@@ -633,7 +659,6 @@ app.post('/search', async (c) => {
       includeDomains,
       excludeDomains,
       updated,
-      proxyUrl,
       extractHighlights,
       onlyMainContent,
       formats,
@@ -659,7 +684,6 @@ app.post('/map', async (c) => {
       limit: body.limit,
       includeSubdomains: body.includeSubdomains,
       timeoutMs: body.timeoutMs,
-      proxyUrl: body.proxyUrl,
       since: body.since,
     });
 
@@ -684,7 +708,6 @@ app.post('/crawl', async (c) => {
       maxDepth: body.maxDepth,
       maxChars: body.maxChars,
       timeoutMs: body.timeoutMs,
-      proxyUrl: body.proxyUrl,
       concurrency: body.concurrency,
       includePatterns: body.includePatterns,
       excludePatterns: body.excludePatterns,
@@ -723,7 +746,6 @@ app.post('/crawl/stream', async (c) => {
         maxDepth: body.maxDepth,
         maxChars: body.maxChars,
         timeoutMs: body.timeoutMs,
-        proxyUrl: body.proxyUrl,
         concurrency: body.concurrency,
         includePatterns: body.includePatterns,
         excludePatterns: body.excludePatterns,
@@ -1221,6 +1243,233 @@ app.post('/gov/law-text', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return formatError(c, err.message || 'Law text retrieval failed', 'GOV_ERROR', 500);
+  }
+});
+
+// 米国CPSC適合証明書 eFiling義務化判定 (POST /trade/cpsc-check)
+app.post('/trade/cpsc-check', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = CpscCertificateCheckRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'htsCode and targetAge are required for CPSC certificate check', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await checkCpscCertificate(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'CPSC certificate check failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// 米国FDA規制対象 簡易判定 (POST /trade/fda-check)
+app.post('/trade/fda-check', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = FdaRegulatedCheckRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'htsCode is required for FDA regulation check', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = checkFdaRegulated(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'FDA regulation check failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// HTS/HSコード実在確認・検証 (POST /trade/hts-verify)
+app.post('/trade/hts-verify', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = VerifyHtsCodeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'htsCode and productDescription are required for HTS code verification', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await verifyHtsCode(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'HTS code verification failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// 国会会議録検索 (POST /gov/diet-minutes & GET /gov/diet-minutes)
+app.post('/gov/diet-minutes', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = DietMinutesSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid diet minutes search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchDietMinutes(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  }
+});
+
+app.get('/gov/diet-minutes', async (c) => {
+  const keyword = c.req.query('keyword') || c.req.query('query') || c.req.query('any');
+  const speaker = c.req.query('speaker');
+  const nameOfHouse = c.req.query('nameOfHouse') as '衆議院' | '参議院' | undefined;
+  const nameOfMeeting = c.req.query('nameOfMeeting') || c.req.query('meeting');
+  const from = c.req.query('from');
+  const until = c.req.query('until');
+  const limitStr = c.req.query('limit');
+  const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await searchDietMinutes({
+      keyword,
+      speaker,
+      nameOfHouse,
+      nameOfMeeting,
+      from,
+      until,
+      limit,
+      noCache,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  }
+});
+
+// 国土地理院 住所ジオコーディング & 標高取得 (POST /geo/elevation & GET /geo/elevation)
+app.post('/geo/elevation', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = ElevationRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid elevation parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await fetchElevationAndCoordinates(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  }
+});
+
+app.get('/geo/elevation', async (c) => {
+  const address = c.req.query('address') || c.req.query('q');
+  const latStr = c.req.query('lat');
+  const lonStr = c.req.query('lon');
+  const lat = latStr ? parseFloat(latStr) : undefined;
+  const lon = lonStr ? parseFloat(lonStr) : undefined;
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await fetchElevationAndCoordinates({
+      address,
+      lat,
+      lon,
+      noCache,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  }
+});
+
+// 主要空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
+app.post('/traffic/flight', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = FlightStatusRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid flight status parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await fetchFlightStatus(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
+app.get('/traffic/flight', async (c) => {
+  const airport = c.req.query('airport');
+  const type = c.req.query('type') as 'departure' | 'arrival' | undefined;
+  const category = c.req.query('category') as 'domestic' | 'international' | undefined;
+  const flightNumber = c.req.query('flightNumber') || c.req.query('flight');
+  const keyword = c.req.query('keyword') || c.req.query('query');
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await fetchFlightStatus({
+      airport,
+      type,
+      category,
+      flightNumber,
+      keyword,
+      noCache,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
+app.get('/traffic/flight/:airport', async (c) => {
+  const airport = c.req.param('airport');
+  const type = c.req.query('type') as 'departure' | 'arrival' | undefined;
+  const category = c.req.query('category') as 'domestic' | 'international' | undefined;
+  const flightNumber = c.req.query('flightNumber') || c.req.query('flight');
+  const keyword = c.req.query('keyword') || c.req.query('query');
+  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+
+  try {
+    const result = await fetchFlightStatus({
+      airport,
+      type,
+      category,
+      flightNumber,
+      keyword,
+      noCache,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 

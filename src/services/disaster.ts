@@ -268,3 +268,117 @@ export async function fetchRecentEarthquakes(options?: {
     };
   }
 }
+
+export const CACHE_TTL_ELEVATION = 24 * 60 * 60 * 1000; // 標高・ジオコーディングは24時間キャッシュ
+
+export interface ElevationResult {
+  query?: string;
+  address?: string;
+  matchedTitle?: string;
+  lat: number;
+  lon: number;
+  elevationMeters: number | null;
+  dataAccuracy?: string;
+  formatted: string;
+  source: 'gsi';
+}
+
+/** 国土地理院 ジオコーディング & 標高（海抜）取得 API */
+export async function fetchElevationAndCoordinates(options: {
+  address?: string;
+  lat?: number;
+  lon?: number;
+  noCache?: boolean;
+}): Promise<ElevationResult> {
+  const rawAddress = options.address?.trim();
+  let lat = options.lat;
+  let lon = options.lon;
+  let matchedTitle: string | undefined;
+
+  if (!rawAddress && (lat === undefined || lon === undefined)) {
+    throw new Error('address または (lat, lon) のいずれかを指定してください');
+  }
+
+  const cacheKey = `geo:elevation:${rawAddress || ''}:${lat ?? ''}:${lon ?? ''}`;
+  if (!options.noCache) {
+    const cached = getFromCache<ElevationResult>(cacheKey);
+    if (cached) return cached;
+  }
+
+  // 1. 住所が指定されている場合は国土地理院住所検索 API でジオコーディング
+  if (rawAddress) {
+    const geocodeUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(rawAddress)}`;
+    const geoRes = await fetch(geocodeUrl, {
+      headers: {
+        'User-Agent': 'Sora-Gsi-Fetcher/1.0',
+        'Accept': 'application/json, text/plain, */*',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (geoRes.ok) {
+      const geoJson = (await geoRes.json()) as any[];
+      if (Array.isArray(geoJson) && geoJson.length > 0) {
+        const first = geoJson[0];
+        const coords = first.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2) {
+          lon = coords[0];
+          lat = coords[1];
+          matchedTitle = first.properties?.title || rawAddress;
+        }
+      }
+    }
+  }
+
+  if (lat === undefined || lon === undefined) {
+    throw new Error(`住所から座標を特定できませんでした: ${rawAddress}`);
+  }
+
+  // 2. 座標から国土地理院標高 API を呼び出し
+  const elevUrl = `https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${lon}&lat=${lat}&outtype=JSON`;
+  const elevRes = await fetch(elevUrl, {
+    headers: {
+      'User-Agent': 'Sora-Gsi-Fetcher/1.0',
+      'Accept': 'application/json, text/plain, */*',
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  let elevationMeters: number | null = null;
+  let dataAccuracy: string | undefined;
+
+  if (elevRes.ok) {
+    const elevJson = (await elevRes.json()) as any;
+    if (typeof elevJson?.elevation === 'number') {
+      elevationMeters = elevJson.elevation;
+      dataAccuracy = elevJson.hsrc;
+    } else if (elevJson?.elevation === '-----') {
+      elevationMeters = 0;
+      dataAccuracy = '海水面・データ外';
+    }
+  }
+
+  const elevStr = elevationMeters !== null ? `${elevationMeters}m` : '測定不能';
+  const accStr = dataAccuracy ? ` (精度: ${dataAccuracy})` : '';
+  const locationLabel = matchedTitle || rawAddress || `緯度: ${lat}, 経度: ${lon}`;
+  const formatted = `${locationLabel} の標高 (海抜): ${elevStr}${accStr}`;
+
+  const result: ElevationResult = {
+    query: rawAddress,
+    address: rawAddress,
+    matchedTitle,
+    lat,
+    lon,
+    elevationMeters,
+    dataAccuracy,
+    formatted,
+    source: 'gsi',
+  };
+
+  if (!options.noCache) {
+    setToCache(cacheKey, result, CACHE_TTL_ELEVATION);
+  }
+
+  return result;
+}
+
