@@ -1,2 +1,0 @@
-description = "Check US CPSC certificate (GCC/CCC) eFiling requirement for a product using Sora engine"
-prompt = "Use the check_cpsc_certificate MCP tool (or sora CLI: sora cpsc-check <htsCode> <targetAge>) to determine whether a US CPSC compliance certificate and eFiling are required for the product described as: '{{args}}'. Infer the HTS code and target age (adult/child/unknown) from the description if not explicitly given, then present the certificate type, eFiling requirement, and applicable regulations. This is reference information, not legal advice."

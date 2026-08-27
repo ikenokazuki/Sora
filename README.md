@@ -48,9 +48,14 @@ flowchart LR
 
 ## ⚡ 5秒で繋がる Quickstart
 
-Sora は、**MCP (Model Context Protocol)** 接続、**エージェントスキル (Skills CLI)**、**プラグイン**、および **CLI / REST API** 接続のすべてに完全対応しています。
+Sora は **MCP (Model Context Protocol)** サーバーとして動作し、Docker / Podman コンテナで起動して AI エージェントから接続します。
 
-### ① Remote MCP (HTTP / SSE) 接続 (Claude Desktop / Cursor / Cline / Antigravity)
+### ① Docker / Podman での起動
+```bash
+docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
+```
+
+### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
 Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準拠しており、初期状態では 4 つのコアツールのみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます。
 
@@ -64,63 +69,12 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 }
 ```
 
-#### Smithery による 1 コマンド導入 (Claude Desktop 等):
-```bash
-npx -y @smithery/cli install @ikenokazuki/sora --client claude
-```
-
-### ② エージェントスキルとしての導入 (skills.sh / Open Agent Skills)
-[skills.sh](https://skills.sh/) 互換のエージェントスキルとして、プロジェクトやグローバル環境に 1 コマンドで導入できます。
-
-```bash
-npx skills add ikenokazuki/Sora
-```
-
-### ③ Claude Code プラグイン / マーケットプレイス経由での導入
-Claude Code セッション内でマーケットプレイスを登録し、1 コマンドでインストールできます。
-
-```bash
-# 1. マーケットプレイスを登録
-/plugin marketplace add ikenokazuki/Sora
-
-# 2. Sora プラグインをインストール
-/plugin install sora@sora-marketplace
-```
-
-#### Antigravity / Gemini プラグインとしての手動導入:
-```bash
-# グローバル環境 (~/.gemini/config/plugins) に導入
-git clone https://github.com/ikenokazuki/Sora.git ~/.gemini/config/plugins/sora
-
-# またはプロジェクト単位 (.agents/plugins) に導入
-git submodule add https://github.com/ikenokazuki/Sora.git .agents/plugins/sora
-```
-
-### ④ CLI 経由の直接実行 (Code Execution with CLI: トークン最節約)
-エージェントがターミナルから直接 `sora` を実行することで、MCP ツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
-
-```bash
-# ワンライナーで ~/.local/bin/sora にインストール
-curl -fsSL https://raw.githubusercontent.com/ikenokazuki/Sora/main/bin/sora -o ~/.local/bin/sora && chmod +x ~/.local/bin/sora
-
-# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
-sora search "TypeScript 5.5 新機能" --limit 3 --prompt
-
-# 気象庁 天気予報 (市区町村名)
-sora weather "千代田区"
-```
-
-### ⑤ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
+### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
   2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 35 エンドポイントが自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
-
-### ⑥ Docker / Podman での 1 コマンド起動
-```bash
-docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
-```
 
 ---
 ## Soraの由来
@@ -450,94 +404,6 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `verify_hts_code` | LLM・利用者が製品の素材・用途・機能から推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式説明・関税率を取得します。キーワード検索による一意特定は不可能と判明したため、逆に候補コードを検証する設計です。完全一致しない場合は6桁分類の近い候補（`nearbyCandidates`）を返します。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するため必須 |
 
 ---
-
-## 💻 2.1 Sora CLI & Code Execution パターン (トークン最節約)
-
-Anthropic が推奨する **Code Execution with MCP パターン**（エージェントが MCP ツール定義を丸ごとコンテキストに読み込む代わりに、CLI コマンドを実行して出力を直接取得する手法）に対応した CLI ラッパー `bin/sora` を同梱しています。
-
-CLI は HTTP クライアントとして動作するため、接続先とキーは**クライアント側の環境変数**で指定します（サーバー側の `WEB_FETCHER_API_KEY` とは別物です）。
-
-| 環境変数名 | デフォルト値 | 説明 |
-|---|---|---|
-| `SORA_API_URL` | `http://127.0.0.1:3016` | 接続先 Sora API のベース URL（本番コンテナはホスト側 `3016` → コンテナ内 `8000` にマップされます） |
-| `SORA_API_KEY` | *(未設定)* | サーバーが認証を要求する場合に送信する API キー（サーバー側の `WEB_FETCHER_API_KEY` / `API_KEY` と同じ値を指定します） |
-
-```bash
-# ヘルプと利用可能コマンド一覧
-bin/sora --help
-
-# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
-bin/sora search "TypeScript 5.5 新機能" --limit 3 --prompt
-
-# Web 検索 (タイトル・スニペット・URL一覧)
-bin/sora web "Next.js 15 Server Actions"
-
-# 単一 URL / PDF 本文抽出
-bin/sora scrape "https://example.com/article" --prompt
-
-# 気象庁 天気予報 (市区町村名)
-bin/sora weather "千代田区"
-
-# 乗換案内
-bin/sora transit "新宿" "渋谷"
-
-# X (旧 Twitter) リアルタイム速報
-bin/sora realtime "地震"
-
-# Yahoo! ニュース / 知恵袋 / 画像 / 動画
-bin/sora news "AI 半導体"
-bin/sora chiebukuro "NixOS バッテリー節約"
-bin/sora image "富士山"
-bin/sora video "富士山"
-
-# Stealth Chromium でページを開く (複雑な操作はMCP経由を推奨)
-bin/sora browser-action "https://example.com"
-
-# 道路交通情報 / フライト運航状況 / 防災 / 標高 / 地震
-bin/sora traffic "東京都" "首都高"
-bin/sora flight "羽田"
-bin/sora elevation "東京都千代田区永田町1-7-1"
-bin/sora disaster "千代田区"
-bin/sora earthquake
-
-# iTunes 音楽検索 (汎用 / 曲名 / アーティスト) / e-Gov 法令検索 & 条文取得 / 国会会議録検索
-bin/sora music "YOASOBI アイドル"
-bin/sora song "アイドル"
-bin/sora artist "YOASOBI"
-bin/sora laws "著作権法 第三十条"
-bin/sora law-text "129AC0000000089"
-bin/sora diet "人工知能"
-
-# Web ページ差分監視 (登録 / 一覧 / チェック / 削除)
-bin/sora watch register "https://example.com"
-bin/sora watch list
-bin/sora watch check
-bin/sora watch delete "wt_xxxxxxxxxxxx"
-
-# 米国貿易コンプライアンス判定 (CPSC適合証明書 / FDA規制対象 / HTSコード検証)
-bin/sora cpsc-check "9503.00.0073" child
-bin/sora fda-check "3004.90.0000"
-bin/sora hts-verify "9503.00.0073" "plastic toy car for children"
-
-# サーバーヘルス & ツール検索
-bin/sora health
-bin/sora tools "知恵袋"
-```
-
----
-
-## 🧩 2.2 Agent Skill & Plugin 連携 (Antigravity / Claude / Cursor / Cline)
-
-Sora はエージェント用スキルおよびプラグインマニフェストを標準提供しています。
-
-- **Agent Skill 定義**: [`skills/sora/SKILL.md`](skills/sora/SKILL.md)
-- **Plugin Manifest**: [`plugin.json`](plugin.json)
-- **スラッシュコマンド**:
-  - `/sora-search <query>`: 統合深層検索
-  - `/sora-weather <city>`: 気象庁天気予報
-  - `/sora-cpsc-check <product description>`: 米国CPSC適合証明書eFiling義務化判定
-  - `/sora-fda-check <product description>`: 米国FDA規制対象簡易判定
-  - `/sora-hts-verify <product description>`: HTS/HSコード実在確認・検証
 
 ---
 
