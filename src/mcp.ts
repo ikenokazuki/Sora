@@ -1515,6 +1515,7 @@ export class McpSessionManager {
       const server = createMcpServer();
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
+        enableJsonResponse: true,
         onsessioninitialized: (newSessionId) => {
           this.sessions.set(newSessionId, {
             server,
@@ -1536,6 +1537,7 @@ export class McpSessionManager {
     const statelessServer = createMcpServer();
     const statelessTransport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
     await statelessServer.connect(statelessTransport);
     const res = await statelessTransport.handleRequest(req, { parsedBody });
