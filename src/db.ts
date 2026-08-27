@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 
@@ -81,7 +81,36 @@ export function initDatabase(dbPath?: string): Database {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_watch_history_target ON watch_history(watch_target_id, detected_at);`);
 
+  // 5. ドメイン単位の Cookie 永続化テーブル（bot対策突破後のセッション再利用用）
+  db.run(`
+    CREATE TABLE IF NOT EXISTS domain_cookies (
+      domain TEXT PRIMARY KEY,
+      cookies_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // 6. ドメイン単位の localStorage 永続化テーブル（Cookieだけでは引き継がれないトークン等の再利用用）
+  db.run(`
+    CREATE TABLE IF NOT EXISTS domain_storage (
+      domain TEXT PRIMARY KEY,
+      storage_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
   dbInstance = db;
+
+  // Cookie/APIキー使用量等の機微データを含むため、同一マシンの他ユーザーから
+  // 読めないようオーナーのみ読み書き可能に制限する（デフォルトumaskだと644になりうる）。
+  if (targetPath !== ':memory:') {
+    try {
+      chmodSync(targetPath, 0o600);
+      if (existsSync(`${targetPath}-wal`)) chmodSync(`${targetPath}-wal`, 0o600);
+      if (existsSync(`${targetPath}-shm`)) chmodSync(`${targetPath}-shm`, 0o600);
+    } catch {}
+  }
+
   return db;
 }
 
@@ -335,5 +364,74 @@ export function dbIncrementApiUsage(apiKeyHash: string, dateStr: string): number
     return row ? row.request_count : 1;
   } catch {
     return 1;
+  }
+}
+
+// ==========================================
+// ドメイン単位 Cookie 永続化 DAO
+// ==========================================
+
+export interface PersistedCookie {
+  name: string;
+  value: string;
+  domain?: string;
+  path?: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: 'lax' | 'strict' | 'none';
+  expiresAtMs?: number;
+}
+
+export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]): void {
+  try {
+    const db = getDb();
+    db.query(`
+      INSERT INTO domain_cookies (domain, cookies_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(domain) DO UPDATE SET
+        cookies_json = excluded.cookies_json,
+        updated_at = excluded.updated_at
+    `).run(domain, JSON.stringify(cookies), Date.now());
+  } catch {}
+}
+
+export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefined {
+  try {
+    const db = getDb();
+    const row = db.query<{ cookies_json: string }, [string]>(
+      'SELECT cookies_json FROM domain_cookies WHERE domain = ?',
+    ).get(domain);
+    if (!row) return undefined;
+    const cookies: PersistedCookie[] = JSON.parse(row.cookies_json);
+    const now = Date.now();
+    return cookies.filter((c) => c.expiresAtMs === undefined || c.expiresAtMs > now);
+  } catch {
+    return undefined;
+  }
+}
+
+export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {
+  try {
+    const db = getDb();
+    db.query(`
+      INSERT INTO domain_storage (domain, storage_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(domain) DO UPDATE SET
+        storage_json = excluded.storage_json,
+        updated_at = excluded.updated_at
+    `).run(domain, JSON.stringify(storage), Date.now());
+  } catch {}
+}
+
+export function dbGetDomainStorage(domain: string): Record<string, string> | undefined {
+  try {
+    const db = getDb();
+    const row = db.query<{ storage_json: string }, [string]>(
+      'SELECT storage_json FROM domain_storage WHERE domain = ?',
+    ).get(domain);
+    if (!row) return undefined;
+    return JSON.parse(row.storage_json);
+  } catch {
+    return undefined;
   }
 }
