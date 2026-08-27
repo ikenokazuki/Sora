@@ -48,7 +48,7 @@ flowchart LR
 
 ## ⚡ 5秒で繋がる Quickstart
 
-Sora は、**MCP (Model Context Protocol)** 接続と **CLI / REST API** 接続の両方に完全対応しています。
+Sora は、**MCP (Model Context Protocol)** 接続、**エージェントスキル (Skills CLI)**、**プラグイン**、および **CLI / REST API** 接続のすべてに完全対応しています。
 
 ### ① Remote MCP (HTTP / SSE) 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
@@ -64,18 +64,44 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 }
 ```
 
-### ② CLI 経由の直接実行 (Code Execution with CLI: トークン最節約)
-エージェントがターミナルから直接 `bin/sora` を実行することで、MCP ツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
-
+#### Smithery による 1 コマンド導入 (Claude Desktop 等):
 ```bash
-# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
-bin/sora search "TypeScript 5.5 新機能" --limit 3 --prompt
-
-# 気象庁 天気予報 (市区町村名)
-bin/sora weather "千代田区"
+npx -y @smithery/cli install @ikenokazuki/sora --client claude
 ```
 
-### ③ Docker / Podman での 1 コマンド起動
+### ② エージェントスキルとしての導入 (skills.sh / Open Agent Skills)
+[skills.sh](https://skills.sh/) 互換のエージェントスキルとして、プロジェクトやグローバル環境に 1 コマンドで導入できます。
+
+```bash
+npx skills add ikenokazuki/Sora
+```
+
+### ③ Antigravity / Claude Code プラグインとしての導入
+プラグインディレクトリにクローンするだけで、スキル・コマンド・MCP 接続設定が全自動で有効化されます。
+
+```bash
+# グローバル環境 (~/.gemini/config/plugins) に導入
+git clone https://github.com/ikenokazuki/Sora.git ~/.gemini/config/plugins/sora
+
+# またはプロジェクト単位 (.agents/plugins) に導入
+git submodule add https://github.com/ikenokazuki/Sora.git .agents/plugins/sora
+```
+
+### ④ CLI 経由の直接実行 (Code Execution with CLI: トークン最節約)
+エージェントがターミナルから直接 `sora` を実行することで、MCP ツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
+
+```bash
+# ワンライナーで ~/.local/bin/sora にインストール
+curl -fsSL https://raw.githubusercontent.com/ikenokazuki/Sora/main/bin/sora -o ~/.local/bin/sora && chmod +x ~/.local/bin/sora
+
+# 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
+sora search "TypeScript 5.5 新機能" --limit 3 --prompt
+
+# 気象庁 天気予報 (市区町村名)
+sora weather "千代田区"
+```
+
+### ⑤ Docker / Podman での 1 コマンド起動
 ```bash
 docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 ```
