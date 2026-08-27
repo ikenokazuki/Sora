@@ -12,59 +12,65 @@ Sora は、日本国内の Web 検索、リアルタイム速報 (X / 旧 Twitte
 ## 🚀 2 つの利用方法
 
 ### 1. CLI 経由での直接実行 (Code Execution with CLI: トークン最節約・推奨)
-ターミナルから `bin/sora` を直接呼び出すことで、MCP のツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
+ターミナルから `sora` CLI（または `./bin/sora`）を直接呼び出すことで、MCP のツール定義によるコンテキスト消費をゼロに抑えて最新データを高速取得できます。
+
+> **💡 CLI の導入方法**:
+> ```bash
+> # ワンライナーで ~/.local/bin/sora にインストール
+> curl -fsSL https://raw.githubusercontent.com/ikenokazuki/Sora/main/bin/sora -o ~/.local/bin/sora && chmod +x ~/.local/bin/sora
+> ```
 
 ```bash
 # 統合深層検索 (Web検索 + 上位本文スクレイプ + X速報を一括取得してプロンプト形式出力)
-/home/ikeno/app/web-fetcher/bin/sora search "TypeScript 5.5 新機能" --limit 3 --prompt
+sora search "TypeScript 5.5 新機能" --limit 3 --prompt
 
 # Web 検索 (タイトル・スニペット・URL一覧)
-/home/ikeno/app/web-fetcher/bin/sora web "Next.js 15 Server Actions"
+sora web "Next.js 15 Server Actions"
 
 # 単一 URL / PDF の Markdown 本文抽出
-/home/ikeno/app/web-fetcher/bin/sora scrape "https://example.com/article" --prompt
+sora scrape "https://example.com/article" --prompt
 
 # 気象庁 天気予報 (市区町村名)
-/home/ikeno/app/web-fetcher/bin/sora weather "千代田区"
+sora weather "千代田区"
 
 # Yahoo! 乗換案内
-/home/ikeno/app/web-fetcher/bin/sora transit "新宿" "渋谷"
+sora transit "新宿" "渋谷"
 
 # X (旧 Twitter) リアルタイム速報
-/home/ikeno/app/web-fetcher/bin/sora realtime "地震"
+sora realtime "地震"
 
 # Yahoo! ニュース検索
-/home/ikeno/app/web-fetcher/bin/sora news "AI 半導体"
+sora news "AI 半導体"
 
 # Yahoo! 知恵袋 Q&A 検索
-/home/ikeno/app/web-fetcher/bin/sora chiebukuro "NixOS バッテリー節約"
+sora chiebukuro "NixOS バッテリー節約"
 
 # JARTIC 道路交通情報
-/home/ikeno/app/web-fetcher/bin/sora traffic "東京都" "首都高"
+sora traffic "東京都" "首都高"
 
 # フライト航空運航状況・欠航・遅延
-/home/ikeno/app/web-fetcher/bin/sora flight "羽田"
+sora flight "羽田"
 
 # 国土地理院 標高 (海抜) & 座標判定
-/home/ikeno/app/web-fetcher/bin/sora elevation "東京都千代田区永田町1-7-1"
+sora elevation "東京都千代田区永田町1-7-1"
 
 # 国会会議録 全文検索 (衆参本会議・委員会答弁)
-/home/ikeno/app/web-fetcher/bin/sora diet "人工知能"
+sora diet "人工知能"
 
 # iTunes 音楽情報検索
-/home/ikeno/app/web-fetcher/bin/sora music "YOASOBI アイドル"
+sora music "YOASOBI アイドル"
 
 # e-Gov 法令・条文検索
-/home/ikeno/app/web-fetcher/bin/sora laws "著作権法 第三十条"
+sora laws "著作権法 第三十条"
 
 # 米国CPSC適合証明書(GCC/CCC) eFiling義務化判定
-/home/ikeno/app/web-fetcher/bin/sora cpsc-check "9503.00.0073" child
+sora cpsc-check "9503.00.0073" child
 
 # 米国FDA規制対象 簡易判定 (HS Chapter単位)
-/home/ikeno/app/web-fetcher/bin/sora fda-check "3004.90.0000"
+sora fda-check "3004.90.0000"
 
 # HTS/HSコード実在確認・検証 (USITC公式データ照合、製品説明は必須)
-/home/ikeno/app/web-fetcher/bin/sora hts-verify "9503.00.0073" "plastic toy car for children"
+sora hts-verify "9503.00.0073" "plastic toy car for children"
 ```
 
 > **HTSコードを推論する際の注意**: キーワード検索によるコードの一意特定はUSITC公式APIの精度上不可能です。素材・用途・機能・加工度合いを踏まえて自分で候補コードを推論してから `hts-verify` で実在確認・関税率取得を行ってください（`productDescription` にその根拠を必ず記載する）。
