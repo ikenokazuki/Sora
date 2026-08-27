@@ -2,15 +2,23 @@ import * as cheerio from 'cheerio';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
-import type { Page } from 'puppeteer-core';
+import type { Page, Protocol } from 'puppeteer-core';
 import { XMLParser } from 'fast-xml-parser';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { createSession, type BrowserProfile, type Response as WreqResponse, type Session } from 'wreq-js';
 
 // 分割モジュールの型・関数をすべて re-export
 export * from './types.js';
 export * from './cache.js';
 export * from './db.js';
+import {
+  dbGetDomainCookies,
+  dbSaveDomainCookies,
+  dbGetDomainStorage,
+  dbSaveDomainStorage,
+  type PersistedCookie,
+} from './db.js';
 export * from './enrichment.js';
 export * from './browser_engine.js';
 export * from './pdf.js';
@@ -22,6 +30,7 @@ export * from './services/watch.js';
 export * from './services/music.js';
 export * from './services/gov.js';
 export * from './services/health.js';
+export * from './services/trade.js';
 
 import type {
   ScrapeFormat,
@@ -71,8 +80,10 @@ import {
 
 import {
   resolveChromiumPath,
+  getChromiumMajorVersion,
   CHROME_EXECUTABLE_PATH,
   getBrowser,
+  getProxyConfig,
   isSharedBrowserConnected,
   closeSharedBrowser,
   SimpleSemaphore,
@@ -93,28 +104,241 @@ import {
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
 export const DEFAULT_MAX_CHARS = 30_000;
+/** 実行中のChromiumのバージョンすら取得できなかった場合の最終フォールバック。 */
 export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
+/**
+ * ブラウザから UA を取得できなかった場合に使うフォールバック UA。
+ * 固定値(Chrome/128)をそのまま使うと、実バージョンを名乗る静的fetch側との間で
+ * 「同じCookieなのにChromeのメジャーバージョンが違う」矛盾が再発するため、
+ * 実行環境のChromiumバージョンから組み立て直す。
+ */
+export function getFallbackUserAgent(): string {
+  const major = getChromiumMajorVersion();
+  if (!major) return USER_AGENT;
+  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
+
+/**
+ * headless Chromium のデフォルト UA（"HeadlessChrome/N.N.N.N" を含む）から実バージョンを抜き出し、
+ * Windows 版 Chrome の UA として組み立て直す。ハードコードのバージョン番号は Chromium の
+ * アップデートで陳腐化し、TLS/実バージョンとの矛盾フィンガープリントになるため、
+ * 実行中のブラウザから毎回動的に生成する。
+ */
+export function buildUserAgentFromDefault(defaultUa: string): string {
+  const match = defaultUa.match(/(?:Headless)?Chrome\/(\d+\.\d+\.\d+\.\d+)/);
+  const version = match ? match[1] : '128.0.0.0';
+  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
+}
+
+/**
+ * navigator.userAgentData (Client Hints) を UA 文字列(Windows Chrome)と一致させる。
+ * setUserAgent() で UA 文字列だけ書き換えても userAgentData/navigator.platform は
+ * 実機(Linux)のまま素通しになり、CreepJS等はこの矛盾を "headless likelihood" として検出する
+ * （実測で確認済み: userAgent=Windows なのに userAgentData/platform=Linux のまま）。
+ */
+export function buildUserAgentMetadata(defaultUa: string): Protocol.Emulation.UserAgentMetadata {
+  const match = defaultUa.match(/(?:Headless)?Chrome\/(\d+\.\d+\.\d+\.\d+)/);
+  const fullVersion = match ? match[1] : '128.0.0.0';
+  const majorVersion = fullVersion.split('.')[0];
+  return {
+    brands: [
+      { brand: 'Not)A;Brand', version: '99' },
+      { brand: 'Chromium', version: majorVersion },
+      { brand: 'Google Chrome', version: majorVersion },
+    ],
+    fullVersionList: [
+      { brand: 'Not)A;Brand', version: '99.0.0.0' },
+      { brand: 'Chromium', version: fullVersion },
+      { brand: 'Google Chrome', version: fullVersion },
+    ],
+    fullVersion,
+    platform: 'Windows',
+    platformVersion: '10.0.0',
+    architecture: 'x86',
+    model: '',
+    mobile: false,
+    bitness: '64',
+    wow64: false,
+  };
+}
+
+/**
+ * WebRTC の ICE candidate 収集から実IP（host/srflx）を除去する。
+ * ブラウザ起動フラグ --force-webrtc-ip-handling-policy=disable_non_proxied_udp は
+ * コマンドラインには正しく渡っているが、実測では srflx candidate（STUN経由の公開IP）が
+ * 素通しになることを確認した（CreepJSの実IP露出の原因）。RTCPeerConnection.prototype の
+ * addEventListener('icecandidate') / onicecandidate 経路の両方をフックし、host/srflxで
+ * 実IPv4を含む candidate だけを握りつぶす（mDNS化された .local host candidate や、
+ * relay/TURN経由の candidate はそのまま通す）。
+ */
+function patchWebRtcIpLeak(): void {
+  const isRealIpCandidate = (candidate: string): boolean => {
+    const m = candidate.match(/^candidate:\S+ \d+ udp \d+ (\S+) \d+ typ (host|srflx)/);
+    if (!m) return false;
+    const ip = m[1];
+    return /^(\d{1,3}\.){3}\d{1,3}$/.test(ip) && ip !== '0.0.0.0';
+  };
+
+  const NativeRTCPeerConnection = (globalThis as any).RTCPeerConnection;
+  if (!NativeRTCPeerConnection) return;
+  const proto = NativeRTCPeerConnection.prototype;
+
+  const origAddEventListener = proto.addEventListener;
+  proto.addEventListener = function (this: any, type: string, listener: any, options?: any) {
+    if (type !== 'icecandidate' || typeof listener !== 'function') {
+      return origAddEventListener.call(this, type, listener, options);
+    }
+    const wrapped = function (this: any, event: any) {
+      if (event.candidate && isRealIpCandidate(event.candidate.candidate)) return;
+      return listener.call(this, event);
+    };
+    return origAddEventListener.call(this, type, wrapped, options);
+  };
+
+  const nativeDescriptor = Object.getOwnPropertyDescriptor(proto, 'onicecandidate');
+  if (nativeDescriptor?.set && nativeDescriptor.get) {
+    Object.defineProperty(proto, 'onicecandidate', {
+      configurable: true,
+      enumerable: nativeDescriptor.enumerable,
+      get: nativeDescriptor.get,
+      set(this: any, handler: any) {
+        if (typeof handler !== 'function') {
+          return nativeDescriptor.set!.call(this, handler);
+        }
+        const wrapped = function (this: any, event: any) {
+          if (event.candidate && isRealIpCandidate(event.candidate.candidate)) return;
+          return handler.call(this, event);
+        };
+        return nativeDescriptor.set!.call(this, wrapped);
+      },
+    });
+  }
+}
+
+export const VIEWPORT_WIDTH = 1920;
+export const VIEWPORT_HEIGHT = 1080;
+export const STEALTH_LOCALE = 'ja-JP';
+
+/**
+ * ビューポートと矛盾しない画面サイズ、および navigator.languages と一致する Intl ロケールを
+ * CDPのネイティブoverrideで設定する。
+ *
+ * - screen: headless Chrome のデフォルトは 800x600 のままで、setViewport で 1920x1080 に
+ *   しても screen.width/height は変わらない。「ビューポートが物理画面より大きい」という
+ *   ありえない状態になり検出材料になる（実測で確認済み）。
+ * - locale: Accept-Language と navigator.languages は ja-JP 優先に揃えたが、
+ *   Intl.DateTimeFormat / Intl.NumberFormat の resolvedOptions().locale は en-US のまま
+ *   取り残されていた（CreepJSは専用のIntlセクションでこれを検査する）。
+ *
+ * どちらも JS プロトタイプ改ざんではなく CDP のネイティブoverrideを使うため、
+ * Function.prototype.toString() による改ざん検出（toString detection）の対象にならない。
+ */
+async function applyNativeEmulationOverrides(page: Page): Promise<void> {
+  try {
+    // detach() するとこれらの override は巻き戻る（実測: detach後に screen が 800x600、
+    // locale が en-US に戻ることを確認）。そのためセッションは切らず、ページの寿命に
+    // 任せて閉じさせる。
+    const client = await page.createCDPSession();
+    await client.send('Emulation.setDeviceMetricsOverride', {
+      width: VIEWPORT_WIDTH,
+      height: VIEWPORT_HEIGHT,
+      deviceScaleFactor: 1,
+      mobile: false,
+      screenWidth: VIEWPORT_WIDTH,
+      screenHeight: VIEWPORT_HEIGHT,
+    });
+    await client.send('Emulation.setLocaleOverride', { locale: STEALTH_LOCALE });
+  } catch {}
+}
+
+// 【既知の限界・実測で確認済み】Web Worker コンテキスト内の navigator は偽装しきれない。
+// - UA は伝播する（Worker内でも Windows Chrome 148 を名乗る）
+// - navigator.platform / navigator.languages は Worker に伝播せず、
+//   'Linux x86_64' / 'en-US,en' が露出したままになる
+// evaluateOnNewDocument のプロトタイプ改ざんが Worker に届かないのは既知だが、
+// CDP の Emulation.setUserAgentOverride に platform / acceptLanguage を渡しても
+// （page.setUserAgent を一切使わない状態で試しても）Worker には反映されないことを実測で確認した。
+// 残る手段は Target.setAutoAttach で Worker 生成を捕まえてスクリプトを注入することだが、
+// (1) Worker 内での JS 改ざんは toString detection の対象になる（WebGL偽装で実際に
+// CreepJS の stealth スコアが 0%→20% に悪化してロールバックした前例がある）
+// (2) CDP の露出面が増える
+// という二重のリスクに対し、得られるのは CreepJS 等の Worker セクションの表示改善に留まるため、
+// 費用対効果が見合わないと判断して対応しない。
+
+/**
+ * Canvasフィンガープリントに微小なノイズを注入する。getImageData()呼び出し結果の
+ * 一部ピクセルの最下位ビットを、ページ(セッション)ごとに固定されたシードから決定論的に
+ * 反転させる。同一セッション内では常に同じノイズ（Canvas自体は一貫して動作する）だが、
+ * セッションが変わるとノイズパターンも変わるため、フィンガープリントとして収束しない。
+ * ノイズはごく低確率かつ最下位ビットのみなので、実際の描画の見た目には影響しない。
+ */
+function patchCanvasFingerprint(): void {
+  const seed = Math.random() * 10000;
+  const proto = (globalThis as any).CanvasRenderingContext2D?.prototype;
+  if (!proto?.getImageData) return;
+
+  const originalGetImageData = proto.getImageData;
+  proto.getImageData = function (this: any, ...args: any[]) {
+    const imageData = originalGetImageData.apply(this, args);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const pseudoRandom = Math.abs(Math.sin(seed * (i + 1))) % 1;
+      if (pseudoRandom < 0.02) {
+        data[i] = data[i] ^ 1;
+      }
+    }
+    return imageData;
+  };
+}
+
 export async function applyStealthEvasions(page: Page): Promise<void> {
-  await page.setUserAgent(USER_AGENT);
-  await page.setViewport({ width: 1920, height: 1080 });
+  try {
+    const defaultUa = await page.browser().userAgent();
+    await page.setUserAgent(buildUserAgentFromDefault(defaultUa), buildUserAgentMetadata(defaultUa));
+  } catch {
+    const fallbackUa = getFallbackUserAgent();
+    await page.setUserAgent(fallbackUa, buildUserAgentMetadata(fallbackUa));
+  }
+  await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT });
+  await applyNativeEmulationOverrides(page);
+  // navigator.languages(下記)と実際のHTTPリクエストヘッダーを一致させる。Chromiumの
+  // Accept-Languageヘッダーは実行環境のロケール設定（例: コンテナのLANG=en_US.UTF-8）に
+  // 依存し、JSでnavigator.languagesを上書きしても連動しない（実測で "en-US,en;q=0.9" の
+  // まま送信され続け、jaが一切含まれない矛盾を確認済み）。
+  await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
 
   await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    // navigator インスタンスではなく Navigator.prototype 上のgetterを上書きする。
+    // インスタンスへの defineProperty だけでは検出サイトに素通しされる（実測で確認済み）。
+    Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
+      get: () => undefined,
+      configurable: true,
+    });
     (globalThis as any).chrome = {
       runtime: {},
       app: {},
       csi: () => {},
       loadTimes: () => {},
     };
-    Object.defineProperty(navigator, 'plugins', {
-      get: () => [1, 2, 3, 4, 5],
-    });
+    // navigator.plugins はダミー配列で上書きしない。現代のheadless Chromeは
+    // 標準でPDFビューア等の本物のPluginArrayを持つため、[1,2,3,4,5]のような
+    // ダミー配列に置き換えると型がArrayになりPluginArray判定で逆に検出される
+    // （実測で確認済み: 旧実装は "Plugins is of type PluginArray: failed"）。
     Object.defineProperty(navigator, 'languages', {
       get: () => ['ja-JP', 'ja', 'en-US', 'en'],
     });
+    // navigator.platform も UA(Windows)と一致させる。setUserAgent()のmetadata引数は
+    // navigator.userAgentDataはカバーするが navigator.platform は別APIで対象外
+    // （実測: CreepJSが "device: Linux" のまま検出、headless likelihood 56-67%だった）。
+    Object.defineProperty(Object.getPrototypeOf(navigator), 'platform', {
+      get: () => 'Win32',
+      configurable: true,
+    });
   });
+  await page.evaluateOnNewDocument(patchWebRtcIpLeak);
+  await page.evaluateOnNewDocument(patchCanvasFingerprint);
 }
 
 export async function bypassCloudflareTurnstile(page: Page, timeoutMs = 10000): Promise<boolean> {
@@ -229,19 +453,172 @@ export const MAX_RESPONSE_BODY_BYTES = 30 * 1024 * 1024; // 最大 30MB
 // ==========================================
 // 4. 安全な HTTP フェッチ (リダイレクト追跡 & SSRF/DNS Rebinding 再検証)
 // ==========================================
+// TLS/HTTP2/ヘッダー順序を一括で本物のブラウザに近づけるプロファイル群
+// （wreq-js, MIT, https://github.com/sqdshguy/wreq-js）。
+//
+// 静的fetchとブラウザ経路は domain_cookies で同じCookieを共有するため、両者が名乗る
+// identity は完全に一致していなければならない。実測で以下の矛盾を確認して潰した:
+//   - Firefox 151 → Chrome 142 → Edge 147 とリクエスト毎にブラウザが変動していた
+//   - 静的fetchが macOS、ブラウザ経路が Windows を名乗っていた（wreqのos既定が'macos'）
+//   - 静的fetchが Chrome 141、ブラウザ経路が実バージョンの Chrome 148 を名乗っていた
+// wreq がサポートする Chrome プロファイルの範囲（実行環境のChromiumに合わせて選ぶ）。
+const SUPPORTED_CHROME_PROFILE_VERSIONS = [
+  136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
+];
+
+/** wreq-js の os オプションは既定が 'macos'。ブラウザ経路(Windows)と揃えるため明示指定する。 */
+export const EMULATION_OS = 'windows';
+
+/** 両経路で共有する Accept-Language。片方だけ違うと同一Cookieで別設定を名乗ることになる。 */
+export const ACCEPT_LANGUAGE = 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7';
+
+/**
+ * 実行環境の Chromium のバージョンに最も近い wreq プロファイルを選ぶ。
+ * ブラウザ経路は buildUserAgentFromDefault で実バージョンを名乗るため、
+ * 静的fetch側も同じバージョンに揃えないと同一Cookieでバージョンが飛ぶ。
+ */
+export function pickBrowserProfile(): BrowserProfile {
+  const actual = getChromiumMajorVersion();
+  const versions = SUPPORTED_CHROME_PROFILE_VERSIONS;
+  const target = actual
+    ? versions.reduce((best, v) => (Math.abs(v - actual) < Math.abs(best - actual) ? v : best), versions[0])
+    : versions[versions.length - 1];
+  return `chrome_${target}` as BrowserProfile;
+}
+
+/**
+ * 静的fetch用プロキシURLをサーバー側の環境変数から選択する。
+ * SORA_PROXY_LIST（カンマ区切り）が設定されていればランダムに1つ選び、
+ * なければ getProxyConfig()（SORA_PROXY_URL > HTTPS_PROXY > HTTP_PROXY > ALL_PROXY の優先順位、
+ * browser_engine.ts のブラウザ用プロキシ解決と共通）にフォールバックする。
+ * SSRF対策のため、ユーザー入力（MCP/RESTのリクエストパラメータ）からの
+ * プロキシ指定は意図的に受け付けない。
+ */
+export function pickProxyUrl(): string | undefined {
+  const list = process.env.SORA_PROXY_LIST?.trim();
+  if (list) {
+    const candidates = list.split(',').map((s) => s.trim()).filter(Boolean);
+    if (candidates.length > 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+  }
+  return getProxyConfig().proxyServer;
+}
+
+// ==========================================
+// 静的fetch用 wreq-js セッションプール（ドメイン単位で再利用）
+// ==========================================
+// createSession() のネイティブTransport初期化コストは無視できないため
+// （実測: 毎回create+closeだと標準fetchの約2.7倍遅い）、ブラウザセッション
+// 管理（browser_session.ts）と同じTTL付きプールでドメインごとに使い回す。
+const HTTP_SESSION_TTL_MS = 5 * 60 * 1000; // 非アクティブ5分でクローズ
+const MAX_HTTP_SESSIONS = 50; // 同時保持上限（メモリ枯渇防止）
+
+interface PooledHttpSession {
+  session: Session;
+  domain: string;
+  lastUsed: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const httpSessionPool = new Map<string, PooledHttpSession>();
+
+function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
+  clearTimeout(pooled.timer);
+  pooled.lastUsed = Date.now();
+  pooled.timer = setTimeout(() => {
+    void closeHttpSession(pooled.domain);
+  }, HTTP_SESSION_TTL_MS);
+  if (pooled.timer.unref) pooled.timer.unref();
+}
+
+/** プール内の最も長くアイドルなセッションを退避・クローズ (LRU) */
+async function evictOldestHttpSessionIfNeeded(): Promise<void> {
+  if (httpSessionPool.size < MAX_HTTP_SESSIONS) return;
+  let oldestDomain: string | null = null;
+  let oldestTime = Infinity;
+  for (const [domain, p] of httpSessionPool.entries()) {
+    if (p.lastUsed < oldestTime) {
+      oldestTime = p.lastUsed;
+      oldestDomain = domain;
+    }
+  }
+  if (oldestDomain) await closeHttpSession(oldestDomain);
+}
+
+/** セッションをクローズし、Cookieを永続化してからプールから除去する */
+export async function closeHttpSession(domain: string): Promise<void> {
+  const pooled = httpSessionPool.get(domain);
+  if (!pooled) return;
+  clearTimeout(pooled.timer);
+  httpSessionPool.delete(domain);
+  try {
+    const allCookies = pooled.session.getAllCookies();
+    if (allCookies.length > 0) {
+      dbSaveDomainCookies(domain, allCookies as PersistedCookie[]);
+    }
+  } catch {}
+  try {
+    await pooled.session.close();
+  } catch {}
+}
+
+/** ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元） */
+export async function getOrCreateHttpSession(
+  domain: string,
+  browser: BrowserProfile,
+  proxyUrl?: string,
+): Promise<Session> {
+  const existing = httpSessionPool.get(domain);
+  if (existing) {
+    refreshHttpSessionTimer(existing);
+    return existing.session;
+  }
+
+  await evictOldestHttpSessionIfNeeded();
+
+  const session = await createSession({
+    browser,
+    os: EMULATION_OS,
+    ...(proxyUrl ? { proxy: proxyUrl } : {}),
+  });
+
+  const savedCookies = dbGetDomainCookies(domain);
+  if (savedCookies && savedCookies.length > 0) {
+    for (const c of savedCookies) {
+      try {
+        session.setCookie(c.name, c.value, `https://${c.domain || domain}`);
+      } catch {}
+    }
+  }
+
+  const pooled: PooledHttpSession = { session, domain, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
+  clearTimeout(pooled.timer);
+  httpSessionPool.set(domain, pooled);
+  refreshHttpSessionTimer(pooled);
+  return session;
+}
+
 export async function fetchWithSafeRedirects(
   initialUrl: string,
   timeoutMs = 15000,
   maxRedirects = 5,
   customHeaders?: Record<string, string>,
   customCookies?: CookieParam[],
-): Promise<{ finalUrl: string; response: Response }> {
+  proxyUrl?: string,
+): Promise<{ finalUrl: string; response: WreqResponse }> {
   let currentUrl = initialUrl;
   let redirects = 0;
 
   const cookieHeader = customCookies && customCookies.length > 0
     ? customCookies.map((c) => `${c.name}=${c.value}`).join('; ')
     : undefined;
+
+  const initialDomain = new URL(initialUrl).hostname;
+  const effectiveProxyUrl = proxyUrl ?? pickProxyUrl();
+  // 実行環境のChromiumバージョンに揃える（ブラウザ経路と同じidentityを名乗るため）
+  const browser = pickBrowserProfile();
+  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl);
 
   while (redirects <= maxRedirects) {
     let parsed: URL;
@@ -259,20 +636,14 @@ export async function fetchWithSafeRedirects(
 
     await throttleDomain(currentUrl);
 
+    // User-Agent・Accept・Sec-Fetch-* 等は browser プロファイルが本物同等の値を自動注入する
     const headers: Record<string, string> = {
-      'User-Agent': USER_AGENT,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf;q=0.8,*/*;q=0.7',
-      'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
+      'Accept-Language': ACCEPT_LANGUAGE,
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       ...(customHeaders || {}),
     };
 
-    const res = await fetch(currentUrl, {
+    const res = await session.fetch(currentUrl, {
       method: 'GET',
       headers,
       redirect: 'manual',
@@ -286,7 +657,7 @@ export async function fetchWithSafeRedirects(
     }
 
     if ([301, 302, 303, 307, 308].includes(res.status)) {
-      const location = res.headers.get('Location');
+      const location = res.headers.get('location');
       if (!location) return { finalUrl: currentUrl, response: res };
 
       currentUrl = new URL(location, currentUrl).href;
@@ -822,15 +1193,159 @@ export function convertHtmlToMarkdown(
   };
 }
 
+/** ベジエ曲線+イージングで座標間をステップ移動し、mousemoveイベントを段階的に発火させる */
+export async function humanMouseMove(
+  page: Page,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): Promise<void> {
+  const steps = 12 + Math.floor(Math.random() * 10);
+  const ctrlX = fromX + (toX - fromX) * 0.5 + (Math.random() - 0.5) * 80;
+  const ctrlY = fromY + (toY - fromY) * 0.5 + (Math.random() - 0.5) * 80;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+    const x = (1 - eased) ** 2 * fromX + 2 * (1 - eased) * eased * ctrlX + eased ** 2 * toX;
+    const y = (1 - eased) ** 2 * fromY + 2 * (1 - eased) * eased * ctrlY + eased ** 2 * toY;
+    await page.mouse.move(x, y);
+    if (i < steps) await new Promise((r) => setTimeout(r, 3 + Math.random() * 7));
+  }
+}
+
+/**
+ * ブラウザから取得したCookieを、各Cookie自身の domain 属性ごとにグループ化する。
+ * リクエスト前のURLとCookieの実ドメインはリダイレクトを跨ぐと食い違うことがあるため、
+ * 常にリクエスト前ドメインをキーにすると復元時に見つからなくなる。domain属性が
+ * 空の場合のみ fallbackDomain を使う。先頭の "." はホスト名比較のため正規化して除去する。
+ */
+export function groupCookiesByDomain(
+  cookies: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: string;
+    expires?: number;
+  }[],
+  fallbackDomain: string,
+): Map<string, PersistedCookie[]> {
+  const result = new Map<string, PersistedCookie[]>();
+  for (const c of cookies) {
+    const key = (c.domain || fallbackDomain).replace(/^\./, '');
+    const persisted: PersistedCookie = {
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+      httpOnly: c.httpOnly,
+      secure: c.secure,
+      sameSite: c.sameSite ? (c.sameSite.toLowerCase() as PersistedCookie['sameSite']) : undefined,
+      expiresAtMs: c.expires && c.expires > 0 ? c.expires * 1000 : undefined,
+    };
+    const list = result.get(key);
+    if (list) list.push(persisted);
+    else result.set(key, [persisted]);
+  }
+  return result;
+}
+
+/**
+ * SPAの取りこぼしを防ぐための3つの後処理。実測で、goto直後にcontent()を取るだけでは
+ * (1)遅延ロード (2)Shadow DOM (3)遅延レンダリング のコンテンツを取り落とすことを確認済み。
+ * いずれもJSプロトタイプ改ざんを伴わないためbot検知リスクはない（自動スクロールはむしろ
+ * 実ユーザーらしい挙動になる）。
+ */
+
+/** ページ末尾まで段階的にスクロールし、IntersectionObserverベースの遅延ロードを発火させる */
+async function autoScrollPage(page: Page, maxScrolls = 15): Promise<void> {
+  try {
+    await page.evaluate(async (limit: number) => {
+      const step = window.innerHeight;
+      let lastHeight = 0;
+      for (let i = 0; i < limit; i++) {
+        window.scrollBy(0, step);
+        await new Promise((r) => setTimeout(r, 120));
+        const height = document.body.scrollHeight;
+        // 最下部に到達し、かつ新規コンテンツの追加も止まったら終了（無限スクロール対策）
+        if (window.scrollY + window.innerHeight >= height && height === lastHeight) break;
+        lastHeight = height;
+      }
+      window.scrollTo(0, 0);
+    }, maxScrolls);
+  } catch {}
+}
+
+/**
+ * 本文テキストの「増加」が止まるまで待つ。networkidleはネットワークの静止しか見ないため、
+ * その後にクライアント側が描画するコンテンツを取り落とす（実測で確認済み）。
+ *
+ * MutationObserverで「DOM変化がゼロになるまで」待つ実装も試したが、時計表示やアニメーション等
+ * 常時DOMを書き換えるページでハードリミットまで待ち続けてしまい、実測で6.3秒かかった。
+ * ここで待ちたいのは「新しいコンテンツが出揃うこと」なので、文字数が増えなくなったかで判定する。
+ * これなら常時書き換え系（文字数が増えない）は即座に抜けられる。
+ */
+async function waitForDomStable(page: Page, quietMs = 600, timeoutMs = 2500): Promise<void> {
+  try {
+    await page.evaluate(
+      async (quiet: number, limit: number) => {
+        const start = Date.now();
+        let maxLength = -1;
+        let lastGrowth = Date.now();
+        while (Date.now() - start < limit) {
+          const length = document.body?.innerText.length ?? 0;
+          if (length > maxLength) {
+            maxLength = length;
+            lastGrowth = Date.now();
+          }
+          if (Date.now() - lastGrowth >= quiet) return;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      },
+      quietMs,
+      timeoutMs,
+    );
+  } catch {}
+}
+
+/**
+ * open な shadow root の中身を、そのホスト要素配下の通常DOMとして複製する。
+ * page.content() は outerHTML 相当で shadow root を含まないため、
+ * Web Components ベースのサイトは本文が丸ごと欠落する（実測で確認済み）。
+ * 元のshadow rootは触らず、抽出用の隠しコンテナを足すだけなのでページ動作に影響しない。
+ */
+async function inlineShadowDomContent(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      const MARKER = 'data-sora-shadow-copy';
+      const walk = (root: Document | ShadowRoot) => {
+        for (const el of Array.from(root.querySelectorAll('*'))) {
+          const sr = (el as any).shadowRoot as ShadowRoot | null;
+          if (!sr || el.hasAttribute?.(MARKER)) continue;
+          walk(sr);
+          const copy = document.createElement('div');
+          copy.setAttribute(MARKER, '');
+          copy.innerHTML = sr.innerHTML;
+          el.appendChild(copy);
+        }
+      };
+      walk(document);
+    });
+  } catch {}
+}
+
 // ==========================================
 // 6. Stealth Chromium レンダリング
 // ==========================================
 export async function fetchWithStealthBrowser(
   url: string,
   timeoutMs = 30000,
-  proxyUrl?: string,
   clipSelector?: string,
   customCookies?: CookieParam[],
+  waitUntil: 'networkidle0' | 'networkidle2' = 'networkidle2',
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
@@ -843,13 +1358,56 @@ export async function fetchWithStealthBrowser(
   await browserSemaphore.acquire();
 
   try {
-    const { browser, isDedicated } = await getBrowser(proxyUrl);
+    const { browser, isDedicated } = await getBrowser();
+    // 共有ブラウザは全ページでCookieJarを共有するため、リクエストごとに独立した
+    // BrowserContext(Incognito相当)を使う。同時に処理される別リクエスト間で
+    // Cookie/セッションが漏れないようにするための分離（実測で漏洩を確認済み）。
+    const context = await browser.createBrowserContext();
 
     try {
-      const page: Page = await browser.newPage();
+      const page: Page = await context.newPage();
       await setupPageSecurity(page);
-      await page.setUserAgent(USER_AGENT);
-      await page.setViewport({ width: 1920, height: 1080 });
+      try {
+        const defaultUa = await browser.userAgent();
+        await page.setUserAgent(buildUserAgentFromDefault(defaultUa), buildUserAgentMetadata(defaultUa));
+      } catch {
+        const fallbackUa = getFallbackUserAgent();
+        await page.setUserAgent(fallbackUa, buildUserAgentMetadata(fallbackUa));
+      }
+      await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT });
+      await applyNativeEmulationOverrides(page);
+      await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
+
+      const domain = new URL(url).hostname;
+      const persistedCookies = dbGetDomainCookies(domain);
+      if (persistedCookies && persistedCookies.length > 0) {
+        const restoredCookies = persistedCookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain || domain,
+          path: c.path || '/',
+          httpOnly: c.httpOnly,
+          secure: c.secure,
+          sameSite: c.sameSite,
+        }));
+        try {
+          await page.setCookie(...(restoredCookies as any));
+        } catch {}
+      }
+
+      const persistedStorage = dbGetDomainStorage(domain);
+      if (persistedStorage && Object.keys(persistedStorage).length > 0) {
+        // localStorageはオリジンに紐づくAPIのためgoto前には書き込めない。ページの
+        // 実スクリプトが走る前にセットするため evaluateOnNewDocument で注入する
+        // （Cookieだけでは引き継がれないサイトトークン等の再利用のため）。
+        await page.evaluateOnNewDocument((data: Record<string, string>) => {
+          try {
+            for (const [k, v] of Object.entries(data)) {
+              localStorage.setItem(k, v);
+            }
+          } catch {}
+        }, persistedStorage);
+      }
 
       if (customCookies && customCookies.length > 0) {
         const puppeteerCookies = customCookies.map((c) => ({
@@ -865,14 +1423,72 @@ export async function fetchWithStealthBrowser(
       }
 
       await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        // navigator インスタンスではなく Navigator.prototype 上のgetterを上書きする。
+        // インスタンスへの defineProperty だけでは検出サイトに素通しされる（実測で確認済み）。
+        Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
+          get: () => undefined,
+          configurable: true,
+        });
+        // navigator.platform も UA(Windows)と一致させる（CreepJS実測で矛盾を検出済み）。
+        Object.defineProperty(Object.getPrototypeOf(navigator), 'platform', {
+          get: () => 'Win32',
+          configurable: true,
+        });
+        // navigator.languages を Accept-Language ヘッダー(page.setExtraHTTPHeaders)と一致させる。
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['ja-JP', 'ja', 'en-US', 'en'],
+        });
       });
+      await page.evaluateOnNewDocument(patchWebRtcIpLeak);
+      await page.evaluateOnNewDocument(patchCanvasFingerprint);
 
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: timeoutMs });
+      await page.goto(url, { waitUntil, timeout: timeoutMs });
+
+      // ページ滞在中の行動シグナル（マウス移動皆無)は invisible な bot 判定材料になりうるため、
+      // コンテンツ取得前に軽くマウスを動かす（クリックは行わない、受動的な閲覧を模す）
+      try {
+        const viewport = page.viewport();
+        const w = viewport?.width ?? 1920;
+        const h = viewport?.height ?? 1080;
+        const x1 = w * (0.2 + Math.random() * 0.3);
+        const y1 = h * (0.2 + Math.random() * 0.3);
+        const x2 = w * (0.5 + Math.random() * 0.3);
+        const y2 = h * (0.5 + Math.random() * 0.3);
+        await humanMouseMove(page, x1, y1, x2, y2);
+      } catch {}
+
+      // SPA取りこぼし対策: 遅延ロードを発火させ、DOMが落ち着くまで待ち、
+      // shadow root の中身を抽出可能な形に展開してから content() を取る
+      await autoScrollPage(page);
+      await waitForDomStable(page);
+      await inlineShadowDomContent(page);
 
       const finalUrl = page.url();
       const title = await page.title();
       const html = await page.content();
+
+      try {
+        const currentCookies = await page.cookies();
+        if (currentCookies.length > 0) {
+          const cookiesByDomain = groupCookiesByDomain(currentCookies, domain);
+          for (const [key, list] of cookiesByDomain) {
+            dbSaveDomainCookies(key, list);
+          }
+        }
+      } catch {}
+
+      try {
+        const currentStorage = await page.evaluate(() => {
+          try {
+            return { ...localStorage };
+          } catch {
+            return null;
+          }
+        });
+        if (currentStorage && Object.keys(currentStorage).length > 0) {
+          dbSaveDomainStorage(domain, currentStorage);
+        }
+      } catch {}
 
       let screenshot: string | undefined = undefined;
       if (clipSelector) {
@@ -892,6 +1508,8 @@ export async function fetchWithStealthBrowser(
     } finally {
       if (isDedicated) {
         await browser.close();
+      } else {
+        await context.close();
       }
     }
   } finally {
@@ -913,7 +1531,6 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     actions: options.actions,
     extract: options.extract,
     timeout: options.timeout,
-    proxyUrl: options.proxyUrl,
   });
 
   return {
@@ -1010,6 +1627,72 @@ async function finalizeScrapeResult(
 // ==========================================
 // 12. 単一 URL スクレイピング (scrapeUrl)
 // ==========================================
+
+const BOT_MITIGATION_STATUS_CODES = new Set([403, 429, 503]);
+
+// 静的fetch→ブラウザ昇格、ブラウザレンダリング後の再試行がどれだけ発生しているかの運用可視化用カウンタ
+let botUpgradeCount = 0;
+let botRetryCount = 0;
+
+export function getBotDetectionMetrics(): { upgradeCount: number; retryCount: number } {
+  return { upgradeCount: botUpgradeCount, retryCount: botRetryCount };
+}
+
+/**
+ * 静的fetch結果がSPA(JS描画)またはbot対策の壁である可能性を判定する。
+ * HTML文字列マーカーに加えて、HTTPステータスコードとCloudflare系ヘッダーも見る。
+ */
+export function detectSpaOrBotPage(options: {
+  html: string;
+  bodyOnlyMarkdown: string;
+  status?: number;
+  headers?: Record<string, string>;
+}): boolean {
+  const { html, bodyOnlyMarkdown, status, headers } = options;
+  const hasLittleContent = bodyOnlyMarkdown.length < 50;
+
+  // JavaScript 有効化要求・SPA マウントポイント・Cloudflare 待機画面の検知
+  const isJsDisabledMessage =
+    /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(bodyOnlyMarkdown) ||
+    /please\s+enable\s+(?:your\s+)?javascript/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*を\s*(?:有効|オン)/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*が\s*無効/i.test(bodyOnlyMarkdown) ||
+    /^(?:loading\.*|読み込み中\.*|now loading\.*)$/i.test(bodyOnlyMarkdown);
+
+  const isBotChallengeStatus = status !== undefined && BOT_MITIGATION_STATUS_CODES.has(status);
+
+  const normalizedHeaders: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    normalizedHeaders[key.toLowerCase()] = value.toLowerCase();
+  }
+  const isCloudflareMitigation =
+    'cf-mitigated' in normalizedHeaders ||
+    (status !== undefined && BOT_MITIGATION_STATUS_CODES.has(status) && (normalizedHeaders.server ?? '').includes('cloudflare'));
+
+  return (
+    hasLittleContent ||
+    isJsDisabledMessage ||
+    isBotChallengeStatus ||
+    isCloudflareMitigation ||
+    html.includes('id="react-root"') ||
+    html.includes('id="root"') ||
+    html.includes('id="app"') ||
+    html.includes('id="__next"') ||
+    html.includes('id="__nuxt"') ||
+    html.includes('id="svelte"') ||
+    html.includes('__NEXT_DATA__') ||
+    html.includes('react-data') ||
+    html.includes('__NUXT_DATA__') ||
+    html.includes('__INITIAL_STATE__') ||
+    html.includes('__remixContext') ||
+    html.includes('client-bootstrap') ||
+    html.includes('data-build=') ||
+    html.includes('data-reactroot') ||
+    html.includes('Please enable JavaScript') ||
+    html.includes('Checking your browser') ||
+    html.includes('Just a moment...')
+  );
+}
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
@@ -1037,7 +1720,6 @@ export async function scrapeUrl(options: {
   webhookUrl?: string;
   retries?: number;
   retryDelayMs?: number;
-  proxyUrl?: string;
   noCache?: boolean;
   timeoutMs?: number;
   onProgress?: (event: { stage: 'start' | 'fetch' | 'render' | 'enrich' | 'done'; message: string; data?: any }) => void;
@@ -1126,39 +1808,18 @@ export async function scrapeUrl(options: {
 
         // Frontmatter を除いた実本文テキストの判定
         const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
-        const hasLittleContent = bodyOnlyMarkdown.length < 50;
-
-        // JavaScript 有効化要求・SPA マウントポイント・Cloudflare 待機画面の検知
-        const isJsDisabledMessage =
-          /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(bodyOnlyMarkdown) ||
-          /please\s+enable\s+(?:your\s+)?javascript/i.test(bodyOnlyMarkdown) ||
-          /javascript\s*を\s*(?:有効|オン)/i.test(bodyOnlyMarkdown) ||
-          /javascript\s*が\s*無効/i.test(bodyOnlyMarkdown) ||
-          /^(?:loading\.*|読み込み中\.*|now loading\.*)$/i.test(bodyOnlyMarkdown);
 
         const chromePath = resolveChromiumPath();
         const isSpaOrBlank =
           !isFastMode &&
           chromePath &&
-          (hasLittleContent ||
-            isJsDisabledMessage ||
-            html.includes('id="react-root"') ||
-            html.includes('id="root"') ||
-            html.includes('id="app"') ||
-            html.includes('id="__next"') ||
-            html.includes('id="__nuxt"') ||
-            html.includes('id="svelte"') ||
-            html.includes('__NEXT_DATA__') ||
-            html.includes('react-data') ||
-            html.includes('__NUXT_DATA__') ||
-            html.includes('__INITIAL_STATE__') ||
-            html.includes('__remixContext') ||
-            html.includes('client-bootstrap') ||
-            html.includes('data-build=') ||
-            html.includes('data-reactroot') ||
-            html.includes('Please enable JavaScript') ||
-            html.includes('Checking your browser') ||
-            html.includes('Just a moment...'));
+          detectSpaOrBotPage({
+            html,
+            bodyOnlyMarkdown,
+            status: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+          });
+        if (isSpaOrBlank) botUpgradeCount++;
 
         if (!isSpaOrBlank) {
           result = {
@@ -1209,15 +1870,14 @@ export async function scrapeUrl(options: {
 
       // Chromium 自動昇格 または ブラウザ指定モード
       onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
-      const browserRes = await fetchWithStealthBrowser(
+      let browserRes = await fetchWithStealthBrowser(
         url,
         timeoutMs,
-        options.proxyUrl,
         options.clipSelector,
         options.cookies,
       );
 
-      const parsed = convertHtmlToMarkdown(
+      let parsed = convertHtmlToMarkdown(
         browserRes.html,
         browserRes.finalUrl,
         maxChars,
@@ -1226,6 +1886,29 @@ export async function scrapeUrl(options: {
         options.selectors,
         options.removeSelectors,
       );
+
+      // レンダリング後も空/JS警告のままなら waitUntil を変えて1回だけ再試行する
+      const renderedBodyOnly = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
+      if (detectSpaOrBotPage({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
+        botRetryCount++;
+        onProgress?.({ stage: 'render', message: 'Content still blank after render, retrying with networkidle0' });
+        browserRes = await fetchWithStealthBrowser(
+          url,
+          timeoutMs,
+          options.clipSelector,
+          options.cookies,
+          'networkidle0',
+        );
+        parsed = convertHtmlToMarkdown(
+          browserRes.html,
+          browserRes.finalUrl,
+          maxChars,
+          true,
+          onlyMainContent,
+          options.selectors,
+          options.removeSelectors,
+        );
+      }
 
       result = {
         url: browserRes.finalUrl,
@@ -1317,7 +2000,6 @@ export async function scrapeBatchUrls(options: {
   retries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
-  proxyUrl?: string;
   noCache?: boolean;
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, ...scrapeOpts } = options;
@@ -1435,7 +2117,6 @@ export async function mapSiteUrl(options: {
   since?: string;
   timeoutMs?: number;
   noCache?: boolean;
-  proxyUrl?: string;
 }): Promise<{
   url: string;
   links: string[];
@@ -1507,7 +2188,6 @@ export async function mapSiteUrl(options: {
     maxChars: 5000,
     formats: ['links'],
     noCache: options.noCache,
-    proxyUrl: options.proxyUrl,
   });
 
   const baseHost = parsedUrl.hostname.toLowerCase();
@@ -1548,7 +2228,6 @@ export async function crawlSiteUrl(options: {
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
   noCache?: boolean;
-  proxyUrl?: string;
   webhookUrl?: string;
   onPageScraped?: (page: ScrapeResult) => void;
   onPageCrawled?: (page: ScrapeResult, count: number) => void;
@@ -1571,7 +2250,6 @@ export async function crawlSiteUrl(options: {
     extractHighlights,
     onlyHighlights,
     noCache,
-    proxyUrl,
     webhookUrl,
     onPageScraped,
     onPageCrawled,
@@ -1604,7 +2282,6 @@ export async function crawlSiteUrl(options: {
         url: item.url,
         maxChars,
         formats: Array.from(new Set([...formats, 'links'])),
-        proxyUrl,
         query,
         extractHighlights,
         onlyHighlights,
@@ -1711,7 +2388,6 @@ export async function integratedSearch(options: {
   includeDomains?: string[];
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
-  proxyUrl?: string;
   extractHighlights?: boolean;
   onlyMainContent?: boolean;
   formats?: ScrapeFormat[];
@@ -1727,12 +2403,11 @@ export async function integratedSearch(options: {
   const includeDomains = options.includeDomains;
   const excludeDomains = options.excludeDomains;
   const updated = options.updated;
-  const proxyUrl = options.proxyUrl;
   const extractHighlights = options.extractHighlights ?? false;
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const dedup = options.dedup ?? false;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${proxyUrl || ''}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1788,7 +2463,6 @@ export async function integratedSearch(options: {
             maxChars,
             timeoutMs: 12000,
             query,
-            proxyUrl,
             extractHighlights,
             onlyMainContent,
             formats,

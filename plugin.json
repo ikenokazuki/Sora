@@ -1,0 +1,14 @@
+{
+  "name": "sora",
+  "version": "2.4.0",
+  "description": "High-performance Japanese web scraping, deep search, and data integration plugin",
+  "author": "ikeno",
+  "skills": ["skills/sora"],
+  "commands": [
+    "commands/sora-search.toml",
+    "commands/sora-weather.toml",
+    "commands/sora-cpsc-check.toml",
+    "commands/sora-fda-check.toml",
+    "commands/sora-hts-verify.toml"
+  ]
+}

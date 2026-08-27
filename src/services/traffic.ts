@@ -274,3 +274,190 @@ export async function fetchRoadTraffic(options: {
   }
   return result;
 }
+
+export const CACHE_TTL_FLIGHT = 180; // 3分 (リアルタイム運航情報)
+
+export interface FlightItem {
+  scheduledTime: string;
+  estimatedTime?: string;
+  airline: string;
+  flightNumber: string;
+  isCodeshare?: boolean;
+  destinationOrOrigin: string;
+  status: string;
+  detail?: string;
+}
+
+export interface FlightStatusResult {
+  airportName: string;
+  airportCode: string;
+  type: 'departure' | 'arrival';
+  category: 'domestic' | 'international';
+  updatedAt: string;
+  count: number;
+  hasDelaysOrCancellations: boolean;
+  summary: string;
+  flights: FlightItem[];
+  source: 'yahoo-transit';
+}
+
+const AIRPORT_MAP: Record<string, { id: number; name: string; code: string }> = {
+  '羽田': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  '羽田空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  '東京国際空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'hnd': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'tokyo': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  '成田': { id: 1, name: '成田国際空港', code: 'NRT' },
+  '成田空港': { id: 1, name: '成田国際空港', code: 'NRT' },
+  '成田国際空港': { id: 1, name: '成田国際空港', code: 'NRT' },
+  'nrt': { id: 1, name: '成田国際空港', code: 'NRT' },
+  '伊丹': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  '伊丹空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  '大阪国際空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  'itm': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  '関西': { id: 4, name: '関西国際空港', code: 'KIX' },
+  '関西空港': { id: 4, name: '関西国際空港', code: 'KIX' },
+  '関西国際空港': { id: 4, name: '関西国際空港', code: 'KIX' },
+  '関空': { id: 4, name: '関西国際空港', code: 'KIX' },
+  'kix': { id: 4, name: '関西国際空港', code: 'KIX' },
+  '中部': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  '中部空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'セントレア': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  '中部国際空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'ngo': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+};
+
+/** 空港名またはコードから空港情報を解決 */
+export function resolveAirport(airportInput?: string): { id: number; name: string; code: string } {
+  if (!airportInput) {
+    return { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' };
+  }
+  const key = airportInput.trim().toLowerCase();
+  const direct = AIRPORT_MAP[key];
+  if (direct) return direct;
+
+  for (const [k, v] of Object.entries(AIRPORT_MAP)) {
+    if (key.includes(k) || k.includes(key)) return v;
+  }
+
+  return { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' };
+}
+
+/** フライト運航状況・欠航・遅延情報取得 (Yahoo! 路線情報) */
+export async function fetchFlightStatus(options: {
+  airport?: string;
+  type?: 'departure' | 'arrival';
+  category?: 'domestic' | 'international';
+  flightNumber?: string;
+  keyword?: string;
+  noCache?: boolean;
+}): Promise<FlightStatusResult> {
+  const airportInfo = resolveAirport(options.airport);
+  const type = options.type === 'arrival' ? 'arrival' : 'departure';
+  const category = options.category === 'international' ? 'international' : 'domestic';
+  const flightNumberFilter = options.flightNumber?.trim().toUpperCase().replace(/\s+/g, '');
+  const keywordFilter = options.keyword?.trim().toLowerCase();
+
+  const fac = category === 'international' ? 2 : 1;
+  const ad = type === 'arrival' ? 2 : 1;
+
+  const cacheKey = `traffic:flight:${airportInfo.id}:${fac}:${ad}:${flightNumberFilter || ''}:${keywordFilter || ''}`;
+
+  if (!options.noCache) {
+    const cached = getFromCache<FlightStatusResult>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const url = `https://transit.yahoo.co.jp/diainfo/flight/${airportInfo.id}/?fac=${fac}&ad=${ad}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`フライト運航情報の取得に失敗しました (HTTP ${res.status}): ${url}`);
+  }
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const timeMatch = $('body').text().match(/(\d+月\d+日\s+\d+時\d+分\s+時点)/);
+  const updatedAt = timeMatch ? timeMatch[1] : new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
+  const allFlights: FlightItem[] = [];
+
+  $('tr').each((_, tr) => {
+    const tds = $(tr).find('td');
+    if (tds.length >= 6) {
+      const scheduledTime = $(tds[0]).text().trim();
+      const rawEstimated = $(tds[1]).text().trim();
+      const estimatedTime = rawEstimated === '---' || !rawEstimated ? undefined : rawEstimated;
+      const airline = $(tds[2]).text().trim();
+      const rawFlightNum = $(tds[3]).text().replace(/\s+/g, '').trim();
+      const isCodeshare = rawFlightNum.includes('※');
+      const flightNumber = rawFlightNum.replace(/※/g, '');
+      const rawDest = $(tds[4]).text().trim();
+      const destinationOrOrigin = rawDest.replace(/行$|発$/, '');
+      const status = $(tds[5]).find('span').first().text().trim() || $(tds[5]).text().trim();
+      const detail = $(tds[5]).find('p').first().text().trim() || undefined;
+
+      allFlights.push({
+        scheduledTime,
+        estimatedTime,
+        airline,
+        flightNumber,
+        isCodeshare: isCodeshare ? true : undefined,
+        destinationOrOrigin,
+        status,
+        detail,
+      });
+    }
+  });
+
+  let filtered = allFlights;
+  if (flightNumberFilter) {
+    filtered = filtered.filter(f => f.flightNumber.toUpperCase().includes(flightNumberFilter));
+  }
+  if (keywordFilter) {
+    filtered = filtered.filter(f =>
+      f.airline.toLowerCase().includes(keywordFilter) ||
+      f.destinationOrOrigin.toLowerCase().includes(keywordFilter) ||
+      (f.detail && f.detail.toLowerCase().includes(keywordFilter)) ||
+      f.status.toLowerCase().includes(keywordFilter)
+    );
+  }
+
+  const hasDelaysOrCancellations = filtered.some(f => f.status.includes('欠航') || f.status.includes('遅れ') || f.status.includes('見合わせ'));
+  const cancelledCount = filtered.filter(f => f.status.includes('欠航')).length;
+  const delayedCount = filtered.filter(f => f.status.includes('遅れ')).length;
+
+  let summary = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}: 対象便数 ${filtered.length}便。`;
+  if (hasDelaysOrCancellations) {
+    summary += ` (欠航: ${cancelledCount}便, 遅延: ${delayedCount}便)`;
+  } else {
+    summary += ' 現在、目立った欠航や遅延はなく順調に運航されています。';
+  }
+
+  const result: FlightStatusResult = {
+    airportName: airportInfo.name,
+    airportCode: airportInfo.code,
+    type,
+    category,
+    updatedAt,
+    count: filtered.length,
+    hasDelaysOrCancellations,
+    summary,
+    flights: filtered,
+    source: 'yahoo-transit',
+  };
+
+  if (!options.noCache) {
+    setToCache(cacheKey, result, CACHE_TTL_FLIGHT);
+  }
+
+  return result;
+}
+

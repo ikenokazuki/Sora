@@ -48,11 +48,65 @@ export function resolveChromiumPath(): string | undefined {
 
 export const CHROME_EXECUTABLE_PATH = resolveChromiumPath();
 
+let cachedChromiumMajorVersion: number | undefined | null = null;
+
+/**
+ * 実行に使う Chromium のメジャーバージョンを取得する（結果はキャッシュ）。
+ * 静的fetch(wreq)側のプロファイル選択を、ブラウザ経路が名乗るバージョンと一致させるために使う。
+ * 両経路は Cookie を共有するため、バージョンがずれると「同じセッションのブラウザが
+ * 別バージョンに変わる」矛盾になる（実測で Chrome 141 と 148 の食い違いを確認済み）。
+ */
+export function getChromiumMajorVersion(): number | undefined {
+  if (cachedChromiumMajorVersion !== null) return cachedChromiumMajorVersion;
+  cachedChromiumMajorVersion = undefined;
+  if (CHROME_EXECUTABLE_PATH) {
+    try {
+      const { execSync } = require('child_process');
+      const out: string = execSync(`"${CHROME_EXECUTABLE_PATH}" --version`, {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      const major = out.match(/\b(\d+)\.\d+\.\d+/)?.[1];
+      if (major) cachedChromiumMajorVersion = parseInt(major, 10);
+    } catch {}
+  }
+  return cachedChromiumMajorVersion;
+}
+
 let sharedBrowserInstance: Browser | null = null;
 
+/**
+ * 環境変数からプロキシ設定を取得します。
+ * 優先順位: SORA_PROXY_URL > HTTPS_PROXY / https_proxy > HTTP_PROXY / http_proxy > ALL_PROXY / all_proxy
+ * NO_PROXY / no_proxy はプロキシ除外リストとして解釈されます。
+ */
+export function getProxyConfig(): { proxyServer?: string; proxyBypassList?: string } {
+  const proxyServer =
+    process.env.SORA_PROXY_URL?.trim() ||
+    process.env.HTTPS_PROXY?.trim() ||
+    process.env.https_proxy?.trim() ||
+    process.env.HTTP_PROXY?.trim() ||
+    process.env.http_proxy?.trim() ||
+    process.env.ALL_PROXY?.trim() ||
+    process.env.all_proxy?.trim() ||
+    undefined;
+
+  const proxyBypassList =
+    process.env.NO_PROXY?.trim() ||
+    process.env.no_proxy?.trim() ||
+    undefined;
+
+  return { proxyServer, proxyBypassList };
+}
+
 /** 共有または専用 Chromium ブラウザインスタンスの取得 */
-export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
-  if (proxyUrl) {
+export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+  const config = getProxyConfig();
+  const effectiveProxy = overrideProxyUrl?.trim() || config.proxyServer;
+  const effectiveBypass = config.proxyBypassList;
+
+  // overrideProxyUrl が明示的に指定され、かつ環境変数の設定と異なる場合のみ専用インスタンスを起動
+  if (overrideProxyUrl && overrideProxyUrl.trim() !== config.proxyServer) {
     if (!CHROME_EXECUTABLE_PATH) {
       throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
     }
@@ -60,15 +114,29 @@ export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser;
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
+      // --disable-gpu は付けない: WebGLコンテキスト自体が取得不能になり
+      // (canvas.getContext('webgl') が null)、bot対策サイトの検出項目になる。
+      // SwiftShaderソフトウェアレンダリングで代替され、実測でパフォーマンス
+      // 悪化もない（誤差範囲でむしろ僅かに高速）。
       '--disable-blink-features=AutomationControlled',
       '--window-size=1920,1080',
-      `--proxy-server=${proxyUrl}`,
+      // WebRTCがSTUN経由で実IPを漏らす対策（プロキシ運用時に致命的、実測でIP露出を確認済み）。
+      // 非プロキシ経由のUDP直接通信を無効化する。
+      '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+      `--proxy-server=${effectiveProxy}`,
     ];
+    if (effectiveBypass) {
+      args.push(`--proxy-bypass-list=${effectiveBypass}`);
+    }
     const dedicated = await puppeteer.launch({
       executablePath: CHROME_EXECUTABLE_PATH,
       headless: true,
       args,
+      // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
+      // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
+      // true にする一因（実測で確認済み）。--disable-popup-blocking/--disable-default-apps
+      // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
+      ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
     });
     return { browser: dedicated, isDedicated: true };
   }
@@ -90,15 +158,26 @@ export async function getBrowser(proxyUrl?: string): Promise<{ browser: Browser;
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    '--disable-gpu',
+    // --disable-gpu は付けない（理由は上記 dedicated ブラウザ側のコメント参照）
     '--disable-blink-features=AutomationControlled',
     '--window-size=1920,1080',
+    // WebRTCがSTUN経由で実IPを漏らす対策（理由は上記 dedicated ブラウザ側のコメント参照）
+    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
   ];
+
+  if (effectiveProxy) {
+    args.push(`--proxy-server=${effectiveProxy}`);
+    if (effectiveBypass) {
+      args.push(`--proxy-bypass-list=${effectiveBypass}`);
+    }
+  }
 
   sharedBrowserInstance = await puppeteer.launch({
     executablePath: CHROME_EXECUTABLE_PATH,
     headless: true,
     args,
+    // 理由は上記 dedicated ブラウザ側のコメント参照
+    ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
   });
 
   return { browser: sharedBrowserInstance, isDedicated: false };

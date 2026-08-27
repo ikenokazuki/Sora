@@ -1,0 +1,10 @@
+startCommand:
+  type: http
+  url: http://localhost:3016/mcp
+
+configSchema:
+  type: object
+  properties:
+    apiKey:
+      type: string
+      description: Optional API key for authenticating with Sora server

@@ -1,4 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, type RegisteredTool, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import {
@@ -33,14 +34,94 @@ import {
   searchArtist,
   searchLaws,
   getLawData,
+  searchDietMinutes,
+  fetchElevationAndCoordinates,
+  fetchFlightStatus,
+  checkCpscCertificate,
+  checkFdaRegulated,
+  verifyHtsCode,
 } from './scraper.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
   modules?: (SoraModule | 'all')[];
+  deferTools?: boolean;
+}
+
+export interface ToolCatalogEntry {
+  name: string;
+  category: SoraModule;
+  description: string;
+  keywords: string[];
+  handle: RegisteredTool;
+}
+
+/**
+ * ツール登録用ヘルパー。
+ * defaultEnabled が false の場合は即座に handle.disable() を呼び出して
+ * 初期状態では tools/list に露出しないようにし、カタログにメタ情報を保管します。
+ */
+export function registerTool<Args extends ZodRawShapeCompat>(
+  mcpServer: McpServer,
+  toolCatalog: Map<string, ToolCatalogEntry>,
+  name: string,
+  category: SoraModule,
+  description: string,
+  schema: Args,
+  handler: ToolCallback<Args>,
+  opts: { defaultEnabled: boolean; keywords?: string[] },
+): RegisteredTool {
+  const handle = mcpServer.tool(name, description, schema, handler);
+  if (!opts.defaultEnabled) {
+    handle.disable();
+  }
+  toolCatalog.set(name, {
+    name,
+    category,
+    description,
+    keywords: opts.keywords ?? [],
+    handle,
+  });
+  return handle;
+}
+
+/**
+ * ツールカタログからキーワードにマッチするエントリを検索します。
+ * 空白区切りの複数キーワードに対応し、ツール名・カテゴリ名・キーワード配列・説明文のいずれかに
+ * 部分一致するツールを抽出します。
+ */
+export function searchCatalog(
+  toolCatalog: Map<string, ToolCatalogEntry>,
+  query: string,
+): ToolCatalogEntry[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const terms = q.split(/\s+/).filter(Boolean);
+  const allMatches: ToolCatalogEntry[] = [];
+  const someMatches: ToolCatalogEntry[] = [];
+
+  for (const entry of toolCatalog.values()) {
+    const isMatch = (term: string) => {
+      return (
+        entry.name.toLowerCase().includes(term) ||
+        entry.category.toLowerCase().includes(term) ||
+        entry.keywords.some((k) => k.toLowerCase().includes(term)) ||
+        entry.description.toLowerCase().includes(term)
+      );
+    };
+
+    if (terms.every(isMatch)) {
+      allMatches.push(entry);
+    } else if (terms.some(isMatch)) {
+      someMatches.push(entry);
+    }
+  }
+
+  return allMatches.length > 0 ? allMatches : someMatches;
 }
 
 /** モジュールが有効化されているかを判定 */
@@ -61,6 +142,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     version: '2.0.0',
   });
 
+  const toolCatalog = new Map<string, ToolCatalogEntry>();
+  const isDeferEnabled = options?.deferTools ?? (process.env.SORA_DEFER_TOOLS !== 'false');
+  const deferredDefault = !isDeferEnabled;
+
   const shouldEnableWeb = isModuleActive('web', options?.modules);
   const shouldEnableBrowser = isModuleActive('browser', options?.modules);
   const shouldEnableYahoo = isModuleActive('yahoo', options?.modules);
@@ -69,15 +154,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableWatch = isModuleActive('watch', options?.modules);
   const shouldEnableMusic = isModuleActive('music', options?.modules);
   const shouldEnableGov = isModuleActive('gov', options?.modules);
+  const shouldEnableTrade = isModuleActive('trade', options?.modules);
 
   // =========================================================================
   // 🌐 Category 1: Core Web & Crawling (モジュール: 'web')
   // =========================================================================
   if (shouldEnableWeb) {
-    // Tool 1: scrape (単一 URL / PDF スクレイプ)
-    mcpServer.tool(
+    // Tool 1: scrape (単一 URL / PDF スクレイプ) - CORE (defaultEnabled: true)
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'scrape',
-      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは自動で Stealth Chromium でレンダリングされます。',
+      'web',
+      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは自動で Stealth Chromium でレンダリングされます。※他の専門機能や拡張ツールが必要な場合は、まず search_tools でツールを検索・有効化してください。',
       {
         url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
         maxChars: z
@@ -180,14 +269,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .max(3)
           .optional()
           .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
-        proxyUrl: z
-          .string()
-          .optional()
-          .describe('経由する HTTP/HTTPS/SOCKS5 プロキシ URL (例: "http://user:pass@host:port")'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, proxyUrl });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries });
           return {
             content: [
               {
@@ -203,11 +288,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: true, keywords: ['スクレイプ', 'Web抽出', 'URL', 'Markdown', 'PDF', '記事本文'] },
     );
 
-    // Tool 1.5: scrape_batch (複数 URL 一括並行スクレイプ)
-    mcpServer.tool(
+    // Tool 1.5: scrape_batch (複数 URL 一括並行スクレイプ) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'scrape_batch',
+      'web',
       '【複数 URL 一括並行スクレイプ】複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。',
       {
         urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
@@ -233,11 +322,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
         retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
-        proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent }) => {
         try {
-          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, proxyUrl });
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent });
           return {
             content: [
               {
@@ -253,12 +341,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['一括スクレイプ', '並行', '複数URL', 'バッチ'] },
     );
 
-    // Tool 2: search_deep (超高精度 統合検索・本文一括取得)
-    mcpServer.tool(
+    // Tool 2: search_deep (超高精度 統合検索・本文一括取得) - CORE (defaultEnabled: true)
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_deep',
-      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。記事本文を深く読み込んで包括的・根拠ある回答を作成したい場合に最適です（URL一覧のみでよい場合は search_web を使用）。',
+      'web',
+      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。記事本文を深く読み込んで包括的・根拠ある回答を作成したい場合に最適です（URL一覧のみでよい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -286,6 +378,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             excludeDomains,
             formats,
             extractHighlights,
+            dedup,
             onlyMainContent,
           });
           return {
@@ -298,11 +391,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報'] },
     );
 
-    // Tool 3: map_site (サイトマップ探索)
-    mcpServer.tool(
+    // Tool 3: map_site (サイトマップ探索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'map_site',
+      'web',
       '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の全 URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。',
       {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
@@ -322,11 +419,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['サイトマップ', 'URL一覧', 'サイト構造', 'リンク収集'] },
     );
 
-    // Tool 4: crawl_site (サイト内再帰クロール)
-    mcpServer.tool(
+    // Tool 4: crawl_site (サイト内再帰クロール) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'crawl_site',
+      'web',
       '【サイト内再帰クロール】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、各ページの Markdown 本文を一括収集します。ドキュメントサイト等のまとめ読みに最適です。',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
@@ -352,12 +453,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['クロール', '再帰巡回', 'ドメイン探索', '一括収集'] },
     );
 
-    // Tool 5: search_web (基本 Web 検索・概要取得)
-    mcpServer.tool(
+    // Tool 5: search_web (基本 Web 検索・概要取得) - CORE (defaultEnabled: true)
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_web',
-      '【Web検索・概要/URL一覧取得】Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。本文を深く読み込む必要がなく、検索結果の一覧・URL を確認したい場合に最適です（記事本文まで一度に読みたい場合は search_deep を使用）。',
+      'web',
+      '【Web検索・概要/URL一覧取得】Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。本文を深く読み込む必要がなく、検索結果の一覧・URL を確認したい場合に最適です（記事本文まで一度に読みたい場合は search_deep を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "東京都 天気", "Next.js 15")'),
         includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
@@ -377,16 +482,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
     );
-
   }
 
   // =========================================================================
   // 🤖 Category 2: Browser Actions & Automation (モジュール: 'browser')
   // =========================================================================
   if (shouldEnableBrowser) {
-    mcpServer.tool(
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'browser_action',
+      'browser',
       '【対話型ブラウザ自動操作】Web ページを開き、クリック・テキスト入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの一連のアクションを順次実行して最終結果を返します。ボタンのテキスト指定クリックや、sessionId によるマルチターン対話セッション維持にも対応。',
       {
         url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
@@ -423,7 +531,6 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('操作完了後に抽出するデータ指定'),
         timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)'),
-        proxyUrl: z.string().optional().describe('経由するプロキシ URL'),
       },
       async (opts) => {
         try {
@@ -438,6 +545,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['ブラウザ操作', 'クリック', '入力', 'スクリーンショット', 'Stealth Chromium', 'セッション'] },
     );
   }
 
@@ -445,9 +553,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🇯🇵 Category 3: Yahoo! JAPAN Services (モジュール: 'yahoo')
   // =========================================================================
   if (shouldEnableYahoo) {
-    // Tool 7: search_image (Yahoo 画像検索)
-    mcpServer.tool(
+    // Tool 7: search_image (Yahoo 画像検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_image',
+      'yahoo',
       '【Yahoo 画像検索】画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
       {
         query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
@@ -466,11 +577,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['画像検索', '写真', 'イラスト', 'Yahoo'] },
     );
 
-    // Tool 8: search_video (Yahoo 動画検索)
-    mcpServer.tool(
+    // Tool 8: search_video (Yahoo 動画検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_video',
+      'yahoo',
       '【Yahoo 動画検索】YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
       {
         query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
@@ -489,11 +604,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['動画検索', 'YouTube', 'Yahoo'] },
     );
 
-    // Tool 9: search_news (Yahoo ニュース検索)
-    mcpServer.tool(
+    // Tool 9: search_news (Yahoo ニュース検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_news',
+      'yahoo',
       '【ニュース検索】Yahoo! ニュース検索を実行し、大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）を取得します。時事問題・公式発表の調査に最適です。',
       {
         query: z.string().min(1).describe('ニュース検索キーワード (例: "選挙", "経済動向", "ノーベル賞")'),
@@ -512,11 +631,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['ニュース検索', '記事', '時事', 'Yahoo'] },
     );
 
-    // Tool 10: search_chiebukuro (Yahoo 知恵袋検索)
-    mcpServer.tool(
+    // Tool 10: search_chiebukuro (Yahoo 知恵袋検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_chiebukuro',
+      'yahoo',
       '【知恵袋 Q&A 検索】Yahoo! 知恵袋の Q&A 検索を実行し、質問タイトル・本文スニペット・回答数・解決ステータス（解決済/受付中）を取得します。人々の悩みやリアルな体験談の調査に最適です。',
       {
         query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
@@ -535,11 +658,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['知恵袋', 'Q&A', '質問回答', '悩み', 'Yahoo'] },
     );
 
-    // Tool 11: suggest_keywords (サジェスト / キーワード補完)
-    mcpServer.tool(
+    // Tool 11: suggest_keywords (サジェスト / キーワード補完) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'suggest_keywords',
+      'yahoo',
       '【サジェスト / キーワード補完】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句に関連する入力候補・よく一緒に検索されるキーワードを返します。',
       {
         query: z.string().min(1).describe('検索語句プレフィックス (例: "東京 観光")'),
@@ -558,11 +685,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['サジェスト', '関連キーワード', '予測', 'Yahoo'] },
     );
 
-    // Tool 12: search_realtime (Yahoo リアルタイム検索)
-    mcpServer.tool(
+    // Tool 12: search_realtime (Yahoo リアルタイム検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_realtime',
+      'yahoo',
       '【SNS・リアルタイム速報検索】Yahoo! リアルタイム検索を実行し、X (旧 Twitter) 上の最新の生の声・ポスト一覧（投稿者・本文・投稿日時・メディア・URL）を取得します。世間の反応・速報・イベント実況に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。',
       {
         query: z.string().min(1).describe('リアルタイム検索キーワード (例: "地震", "電車遅延", "イベント名")'),
@@ -621,11 +752,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['リアルタイム検索', 'X', 'Twitter', 'ツイート', 'トレンド', '速報'] },
     );
 
-    // Tool 13: search_trend (Yahoo トレンド急上昇)
-    mcpServer.tool(
+    // Tool 13: search_trend (Yahoo トレンド急上昇) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_trend',
+      'yahoo',
       '【トレンド急上昇ランキング】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）を取得します。',
       {
         limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)'),
@@ -643,6 +778,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['急上昇トレンド', '話題', 'ランキング', 'リアルタイム'] },
     );
   }
 
@@ -650,9 +786,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🗾 Category 4: Japanese Daily Life Services (モジュール: 'life')
   // =========================================================================
   if (shouldEnableLife) {
-    // Tool 14: search_route (電車・鉄道 乗換案内)
-    mcpServer.tool(
+    // Tool 14: search_route (電車・鉄道 乗換案内) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_route',
+      'life',
       '【電車・鉄道 乗換案内】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索します（車・道路情報は search_road_traffic を使用）。経由駅指定（最大3駅）や日時指定に対応。',
       {
         from: z.string().min(1).describe('出発駅名 (例: "東京", "新大阪", "博多")'),
@@ -689,11 +828,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['乗換案内', '電車', 'ルート', '経路', '交通', '時刻表'] },
     );
 
-    // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結)
-    mcpServer.tool(
+    // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'get_weather',
+      'life',
       '【天気予報】気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況を取得します。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDに対応。',
       {
         city: z.string().min(1).describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
@@ -712,11 +855,50 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['天気予報', '気象', '気温', '降水確率', '週間天気', '天気'] },
     );
 
-    // Tool 16: search_road_traffic (リアルタイム道路交通情報 - JARTIC連携)
-    mcpServer.tool(
+    // Tool: get_flight_status (フライト航空運行情報) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'get_flight_status',
+      'life',
+      '【フライト航空運行情報】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線出発・到着フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得します。',
+      {
+        airport: z.string().optional().describe('対象空港名またはコード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", デフォルト: "羽田")'),
+        type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure"(出発) または "arrival"(到着) (デフォルト: "departure")'),
+        category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic"(国内線) または "international"(国際線) (デフォルト: "domestic")'),
+        flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
+        keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
+      },
+      async (opts) => {
+        try {
+          const result = await fetchFlightStatus(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Flight status error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['フライト', '航空', '飛行機', '空港', '欠航', '遅延', '羽田', '成田', 'JAL', 'ANA'] },
+    );
+  }
+
+  // =========================================================================
+  // 🚨 Category 5: Disaster & Emergency (モジュール: 'disaster')
+  // =========================================================================
+  if (shouldEnableDisaster) {
+    // Tool 16: search_road_traffic (リアルタイム道路交通情報 - JARTIC連携) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_road_traffic',
+      'disaster',
       '【高速道路・道路交通情報】JARTIC（日本道路交通情報センター）連携データに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します（電車・鉄道は search_route を使用）。',
       {
         pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")'),
@@ -735,16 +917,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['道路交通情報', '通行止め', '渋滞', '高速道路', '規制', 'JARTIC'] },
     );
-  }
 
-  // =========================================================================
-  // 🚨 Category 5: Disaster & Emergency (モジュール: 'disaster')
-  // =========================================================================
-  if (shouldEnableDisaster) {
-    // Tool 17: search_disaster_warnings (気象警報・注意報)
-    mcpServer.tool(
+    // Tool 17: search_disaster_warnings (気象警報・注意報) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_disaster_warnings',
+      'disaster',
       '【特別警報・気象警報・注意報】気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。',
       {
         city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
@@ -763,11 +944,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['気象警報', '注意報', '特別警報', '防災', '気象庁', '大雨', '台風'] },
     );
 
-    // Tool 18: search_earthquake (リアルタイム地震速報・履歴)
-    mcpServer.tool(
+    // Tool 18: search_earthquake (リアルタイム地震速報・履歴) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_earthquake',
+      'disaster',
       '【地震速報・震度情報】P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）を取得します。',
       {
         limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
@@ -786,6 +971,35 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
+    );
+
+    // Tool: get_elevation (国土地理院 住所ジオコーディング & 標高・海抜判定) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'get_elevation',
+      'disaster',
+      '【国土地理院 標高・海抜・ジオコーディング】住所文字列（例: "東京都千代田区永田町1-7-1"）または緯度経度から、国土地理院公式オープンデータに基づきミリ単位の標高（海抜高度）および座標を即座に判定します。水害・津波リスク判定や地理調査に活用可能。',
+      {
+        address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
+        lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
+        lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+      },
+      async (opts) => {
+        try {
+          const result = await fetchElevationAndCoordinates(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Elevation error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['標高', '海抜', 'ジオコーディング', '国土地理院', '住所検索', '座標', '津波リスク', '水害'] },
     );
   }
 
@@ -793,9 +1007,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 👁️ Category 6: Watch & Diff Monitoring (モジュール: 'watch')
   // =========================================================================
   if (shouldEnableWatch) {
-    // Tool 19: watch_register (監視ターゲット登録)
-    mcpServer.tool(
+    // Tool 19: watch_register (監視ターゲット登録) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'watch_register',
+      'watch',
       '【Webページ差分監視登録】Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
       {
         url: z.string().url().describe('監視対象の Web ページ URL (例: "https://example.com/status")'),
@@ -817,11 +1034,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['Web監視登録', '差分監視', '更新通知', 'URL監視'] },
     );
 
-    // Tool 20: watch_check (差分スキャン実行)
-    mcpServer.tool(
+    // Tool 20: watch_check (差分スキャン実行) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'watch_check',
+      'watch',
       '【Webページ差分スキャン実行】登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
       {
         id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン)'),
@@ -839,11 +1060,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['Web監視チェック', '更新確認', '差分取得'] },
     );
 
-    // Tool 21: watch_list (監視ターゲット一覧)
-    mcpServer.tool(
+    // Tool 21: watch_list (監視ターゲット一覧) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'watch_list',
+      'watch',
       '【Webページ監視ターゲット一覧】現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
       {},
       async () => {
@@ -859,6 +1084,33 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['Web監視一覧', '登録確認', 'ターゲット一覧'] },
+    );
+
+    // Tool: watch_delete (監視ターゲット削除) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'watch_delete',
+      'watch',
+      '【Webページ監視ターゲット削除】指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。',
+      {
+        id: z.string().min(1).describe('削除する監視ターゲットのID'),
+      },
+      async ({ id }) => {
+        try {
+          const deleted = deleteWatchTarget(id);
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ success: deleted, id }, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Watch delete error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['Web監視削除', 'ターゲット削除', '監視解除'] },
     );
   }
 
@@ -866,9 +1118,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🎵 Category 7: Music Metadata (モジュール: 'music')
   // =========================================================================
   if (shouldEnableMusic) {
-    // Tool 22: search_song (iTunes 曲名指定 楽曲メタデータ検索)
-    mcpServer.tool(
+    // Tool 22: search_song (iTunes 曲名指定 楽曲メタデータ検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_song',
+      'music',
       '【曲名指定 音楽検索】楽曲タイトル（曲名）を指定して iTunes 公式メタデータ（高解像度ジャケット画像、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク）をピンポイント検索します。',
       {
         query: z.string().min(1).describe('検索曲名・楽曲タイトル (例: "アイドル", "夜に駆ける", "Subtitle")'),
@@ -884,15 +1139,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         } catch (err: any) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Song search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Artist search error: ${err?.message || err}` }],
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '曲名', 'iTunes', '音楽', 'Apple Music'] },
     );
 
-    // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索)
-    mcpServer.tool(
+    // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_artist',
+      'music',
       '【アーティスト指定 音楽検索】アーティスト名を指定して、指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Music リンク等）を取得します。',
       {
         query: z.string().min(1).describe('アーティスト名 (例: "YOASOBI", "Official髭男dism", "Ado")'),
@@ -913,11 +1172,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['アーティスト検索', 'ディスコグラフィ', '歌手', 'iTunes', 'アルバム'] },
     );
 
-    // Tool 24: search_music (iTunes 音楽・アルバム・アーティスト汎用検索)
-    mcpServer.tool(
+    // Tool 24: search_music (iTunes 音楽・アルバム・アーティスト汎用検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_music',
+      'music',
       '【汎用音楽検索】楽曲・アルバム・アーティストの複合キーワード全文検索を行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。',
       {
         query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名の自由入力)'),
@@ -939,6 +1202,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', 'アルバム', 'iTunes', '音楽'] },
     );
   }
 
@@ -946,9 +1210,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🏛️ Category 8: Government & Law Data (モジュール: 'gov')
   // =========================================================================
   if (shouldEnableGov) {
-    // Tool 25: search_laws (e-Gov キーワード法令検索)
-    mcpServer.tool(
+    // Tool 25: search_laws (e-Gov キーワード法令検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'search_laws',
+      'gov',
       '【e-Gov 日本法令キーワード検索】デジタル庁・総務省公式 e-Gov 法令 API v2 により、日本の現行法令（憲法、法律、政令、府省令）のキーワード検索を実行し、法令名、法令番号、公布年月日の一覧を取得します。',
       {
         keyword: z.string().min(1).describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")'),
@@ -967,11 +1234,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['法令検索', '法律', '政令', 'e-Gov', '条文検索'] },
     );
 
-    // Tool 26: get_law_text (e-Gov 法令条文詳細取得)
-    mcpServer.tool(
+    // Tool 26: get_law_text (e-Gov 法令条文詳細取得) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
       'get_law_text',
+      'gov',
       '【e-Gov 法令条文詳細取得】法令ID（例: "129AC0000000089"）を指定して、章・節・条・項・号が正確に構造化された Markdown 形式で条文本文を取得します。',
       {
         lawId: z.string().min(1).describe('e-Gov 法令ID (例: "129AC0000000089")'),
@@ -989,8 +1260,182 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
+      { defaultEnabled: deferredDefault, keywords: ['法令条文取得', '条文', 'e-Gov', '法律本文'] },
+    );
+
+    // Tool: search_diet_minutes (国会会議録 発言・答弁全文検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'search_diet_minutes',
+      'gov',
+      '【国会会議録 発言・答弁全文検索】国立国会図書館公式 API により、戦後から最新（2026年）までの衆議院・参議院の本会議および全委員会の発言記録・議員答弁を全文検索します。法律の立法趣旨・政治・政策議論のファクトチェックに最適です。',
+      {
+        keyword: z.string().optional().describe('検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
+        speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
+        nameOfHouse: z.enum(['衆議院', '参議院']).optional().describe('院名 ("衆議院" または "参議院")'),
+        nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
+        from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
+        until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
+        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)'),
+      },
+      async (opts) => {
+        try {
+          const result = await searchDietMinutes(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Diet minutes search error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国会会議録', '国会', '国会議事録', '答弁', '衆議院', '参議院', '委員会', '議員発言', '立法趣旨'] },
     );
   }
+
+  // =========================================================================
+  // 🚢 Category: Trade Compliance (モジュール: 'trade')
+  // =========================================================================
+  if (shouldEnableTrade) {
+    // Tool: check_cpsc_certificate (CPSC 適合証明書eFiling義務化判定) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'check_cpsc_certificate',
+      'trade',
+      '【米国CPSC適合証明書 eFiling判定】HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBPへの電子申告（eFiling）義務有無を判定し、eCFR公式APIで取得した根拠条文（16 CFR）を提示します。参考情報であり法的助言ではありません。',
+      {
+        htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
+        targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（子供向け製品かどうかはCPSC判定の主要分岐点、安全基準の絞り込みに使用）'),
+        material: z.string().optional().describe('主な素材（鉛・フタル酸エステル規制関連で重要）'),
+        productCategory: z.string().optional().describe('製品カテゴリの補足（例: toy, furniture, electronics, textile）。HTSコードのみで対応表がヒットしない場合の補助情報'),
+        description: z.string().optional().describe('自由記述の補足説明'),
+      },
+      async (opts) => {
+        try {
+          const result = await checkCpscCertificate(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `CPSC certificate check error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['CPSC', 'GCC', 'CCC', 'eFiling', '適合証明書', '輸出', '輸入', 'HTS', '貿易', 'コンプライアンス'] },
+    );
+
+    // Tool: check_fda_regulated (FDA規制対象HS Chapter単位判定) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'check_fda_regulated',
+      'trade',
+      '【米国FDA規制対象 簡易判定】HTSコードから、米国FDA（食品医薬品局）管轄の可能性をHS Chapter単位で粗く判定します。HTSコードとFDA規制フラグ(FD1〜FD4)の機械可読な公式対応表は存在しないため、この判定はHS分類の一般知識に基づく目安であり、精密なリスト照合ではありません。参考情報であり法的助言ではありません。',
+      {
+        htsCode: z.string().min(1).describe('HTSコード（例: "3004.90.0000"）'),
+        productDescription: z.string().optional().describe('製品の自由記述説明（Chapterだけでは判定が曖昧なケースの補助情報）'),
+      },
+      async (opts) => {
+        try {
+          const result = checkFdaRegulated(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `FDA regulation check error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['FDA', '食品医薬品局', 'Prior Notice', '事前通知', 'FD Flag', '輸出', '輸入', 'HTS', '貿易', 'コンプライアンス'] },
+    );
+
+    // Tool: verify_hts_code (HTS/HSコード実在確認・検証) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'verify_hts_code',
+      'trade',
+      '【HTS/HSコード実在確認・検証】LLMや利用者が製品の素材・用途・機能・加工度合いから推論したHTSコード候補を、米国USITC公式データ(hts.usitc.gov)と照合し、実在確認・正式な品目説明・関税率を取得します。キーワード検索によるコードの一意特定は不可能なため、このツールは逆に「候補コードの裏取り」を行います。HTSコードを推論する際は必ず製品の素材・用途・機能・加工度合いを踏まえて候補を絞り込んでから、このツールで検証してください。参考情報であり法的な分類判断ではありません。',
+      {
+        htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）。推論・入手した候補コードを渡す'),
+        productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
+      },
+      async (opts) => {
+        try {
+          const result = await verifyHtsCode(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `HTS code verification error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['HTS', 'HSコード', '関税分類', 'USITC', '実在確認', '検証', '輸出', '輸入', '貿易', 'コンプライアンス'] },
+    );
+  }
+
+  // =========================================================================
+  // 🔍 Category 9: Tool Discovery & Dynamic Activation (メタツール) - CORE (defaultEnabled: true)
+  // =========================================================================
+  mcpServer.tool(
+    'search_tools',
+    '【ツール検索・動的有効化】現在無効化されているSoraの追加ツールをキーワードで検索し、' +
+      '一致したツールを現在のセッションで有効化します。天気・乗換案内・知恵袋・リアルタイム速報・音楽・法令・防災情報など、' +
+      '専門機能を利用する際は、まずこのツールで対象ツールを検索してください。',
+    {
+      query: z.string().describe('検索キーワードまたはカテゴリ名（例: "天気", "知恵袋", "乗換", "地震", "法令", "音楽", "yahoo"）'),
+    },
+    async ({ query }) => {
+      const matches = searchCatalog(toolCatalog, query);
+      const newlyEnabled: string[] = [];
+      const alreadyEnabled: string[] = [];
+
+      for (const entry of matches) {
+        if (!entry.handle.enabled) {
+          entry.handle.enable();
+          const cleanDesc = entry.description.replace(/^【.*?】/, '').slice(0, 80);
+          const tag = entry.description.match(/^【(.*?)】/)?.[0] || '';
+          newlyEnabled.push(`- ${entry.name}: ${tag}${cleanDesc}...`);
+        } else {
+          alreadyEnabled.push(entry.name);
+        }
+      }
+
+      if (newlyEnabled.length === 0 && alreadyEnabled.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令)`,
+            },
+          ],
+        };
+      }
+
+      const messages: string[] = [];
+      if (newlyEnabled.length > 0) {
+        messages.push(`以下のツールをセッション内で有効化しました:\n${newlyEnabled.join('\n')}\n\n対象ツールを直接呼び出してください。`);
+      }
+      if (alreadyEnabled.length > 0) {
+        messages.push(`以下のツールはすでに有効化されています: ${alreadyEnabled.join(', ')}`);
+      }
+
+      return {
+        content: [{ type: 'text', text: messages.join('\n\n') }],
+      };
+    },
+  );
 
   return mcpServer;
 }
@@ -1220,4 +1665,3 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
 export function createMcpTransport(options?: any) {
   return new WebStandardStreamableHTTPServerTransport(options);
 }
-

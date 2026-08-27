@@ -1,10 +1,10 @@
-# Stage 1: Build Application Binary (Bun)
+# Stage 1: Build Application Bundle (Bun)
 FROM docker.io/oven/bun:1 AS builder
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
 COPY . .
-RUN bun build ./src/index.ts --compile --outfile server
+RUN bun build ./src/index.ts --target=bun --outfile=server.js
 
 # Stage 2: Harvest Chromium and required dependencies (Debian Bookworm)
 FROM docker.io/library/debian:bookworm-slim AS browser-harvester
@@ -34,8 +34,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM gcr.io/distroless/cc-debian12:latest
 WORKDIR /app
 
-# Copy Application & Yahoo MCP binaries
-COPY --from=builder /app/server /app/server
+# Copy Bun runtime, bundled server, and native dependencies
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=builder /app/server.js /app/server.js
+COPY --from=builder /app/package.json /app/package.json
+COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/bin/yahoo-search-mcp /app/yahoo-search-mcp
 
 # Copy Chromium and all shared libraries & assets
@@ -48,8 +51,10 @@ COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
 
 ENV PORT=8000 \
+    NODE_ENV=production \
     CHROME_PATH=/usr/lib/chromium/chromium \
     YAHOO_MCP_PATH=/app/yahoo-search-mcp
 
 EXPOSE 8000
-ENTRYPOINT ["/app/server"]
+ENTRYPOINT ["/usr/local/bin/bun", "/app/server.js"]
+
