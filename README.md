@@ -5,7 +5,7 @@
 
 `Sora` は、LLM や AI エージェント（Claude Desktop, Cursor, Cline, OpenCodeInterpreter, Dify など）が **日本の Web 空間と日常インフラを自由かつ安全に探索・操作するための All-in-One MCP / REST サーバー** です。
 
-外部 DB（Redis / PostgreSQL）やメッセージキューを一切必要とせず、**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ / 単一バイナリ** だけで月800円の VPS から即座に稼働します。
+外部 DB（Redis / PostgreSQL）やメッセージキューを一切必要とせず、**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ** だけで月800円の VPS から即座に稼働します。
 
 ```mermaid
 flowchart LR
@@ -138,9 +138,9 @@ cloud（雲）も空にあり空は世界中繋がってます。
 1. **🗾 日本の日常インフラ & Web 探索の完全網羅**:
    - 海外製ツール（Firecrawl / Tavily）では対応できない「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式オープンデータ直結（全国 1,805 市区町村自動選定）」「電車乗換案内」を単一 MCP で提供。
 2. **⚡ 圧倒的なミリ秒応答 & 超低消費メモリ**:
-   - Bun ネイティブコンパイルにより、API 応答 **1.5ms**、常駐メモリ **JSヒープ ~32MB / 全体 ~140MB**。AI エージェントの待ち時間を極限まで短縮。
+   - Bun 最適化ランタイムにより、API 応答 **1.5ms**、常駐メモリ **JSヒープ ~32MB / 全体 ~140MB**。AI エージェントの待ち時間を極限まで短縮。
 3. **📦 完全オールインワン & ゼロミドルウェア**:
-   - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一バイナリ / 単一コンテナだけで即座に完結。
+   - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一コンテナだけで即座に完結。
 4. **🛡️ Distroless（シェルなし）& 厳格なセキュリティ**:
    - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`, `bash`, `curl` 等が存在せず、RCE（任意コード実行）攻撃を無力化。
    - SSRF / DNS Rebinding 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
@@ -156,7 +156,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | **API / ヘルスチェック応答** | **1.5 ms** (`0.0015s`) | 20〜50 ms | 30〜100 ms |
 | **起動時間 (コールドスタート)** | **< 10 ms** | 10〜30 秒 (複数サービス) | 1〜3 秒 |
 | **常駐メモリ消費 (RSS)** | **約 140 MB** (JSヒープ ~32MB) | 2GB〜4GB+ | 250MB〜800MB |
-| **イメージサイズ (Total)** | **約 1.18 GB** (Chromium+日本語フォント内包) | 4GB〜6GB+ (複数イメージ合計) | 800MB〜2.5GB |
+| **イメージサイズ (Total)** | **約 1.29 GB** (Bun+Chromium+日本語フォント内包) | 4GB〜6GB+ (複数イメージ合計) | 800MB〜2.5GB |
 | **必要なコンテナ構成** | **単一コンテナ (All-in-One)** | 5〜6 個 (Redis/PG/Workers) | 複数 MCP プロセスが乱立 |
 | **セキュリティ設計** | **Distroless (シェルなし・非root)** | 通常 Debian/Alpine | 通常 Debian/Ubuntu |
 | **日本のローカル情報** | **完全対応 (天気・乗換・知恵袋・X)** | 非対応 (Webのみ) | プラグイン個別導入が必要 |
@@ -204,7 +204,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 
 1. **✂️ オッカムの剃刀（Occam's Razor & Zero-Middleware）**:
    - *「必要が無いなら多くのものを定立してはならない。要件を満たす最も単純な構成が最良の構成である。」*
-   - Redis、PostgreSQL、外部キュー、重厚なマイクロサービス群を一切排除。**「単一コンテナ・単一バイナリ」** だけで動作し、月800円の VPS や Raspberry Pi から数万リクエストのクラウドまで壊れずに常駐します。
+   - Redis、PostgreSQL、外部キュー、重厚なマイクロサービス群を一切排除。**「単一コンテナ（All-in-One）」** だけで動作し、月800円の VPS や Raspberry Pi から数万リクエストのクラウドまで壊れずに常駐します。
 2. **🛡️ ステルスと生還率のパレート最適（Stealth & Pareto Optimum）**:
    - 単に「0ms で機械的アクセス」をすれば、相手先サーバーの WAF や Cloudflare に即座に IP を BAN され、成功率は 0% に堕ちます。
    - 同一ドメインへの連続アクセス時に **150ms + Jitter（0〜100ms ゆらぎ）** を自動挿入し、タイピングにも **15〜40ms の人間的遅延** を付与。AI から見た体感速度を損なわずに **確実にデータを持ち帰る生還率** を最優先しています。
@@ -1581,6 +1581,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **[Turndown](https://github.com/mixmark-io/turndown)** ([Dom Christie](https://github.com/domchristie)) — HTML to Markdown コンバーター
 - **[LinkeDOM](https://github.com/WebReflection/linkedom)** ([Andrea Giammarchi](https://github.com/WebReflection)) — 超軽量インメモリ DOM エンジン
 - **[unpdf](https://github.com/unjs/unpdf)** (UnJS Team) — 高速・軽量 PDF テキスト抽出
+- **[wreq-js](https://github.com/sqdshguy/wreq-js)** ([@sqdshguy](https://github.com/sqdshguy)) — TLS / HTTP 指紋偽装 & 高速静的フェッチエンジン
 - **[Model Context Protocol SDK](https://github.com/modelcontextprotocol)** (Anthropic / MCP Team) — 次世代 AI ツール接続規格
 
 ---
