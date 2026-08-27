@@ -1,2 +1,0 @@
-description = "Fetch official JMA weather forecast using Sora engine"
-prompt = "Use sora CLI (sora weather \"{{args}}\") or get_weather MCP tool to get the official weather forecast for '{{args}}' and present the weather, temperature, and precipitation probabilities."
