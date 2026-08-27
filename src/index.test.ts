@@ -3855,6 +3855,54 @@ describe('Sora REST & MCP Endpoints', () => {
   it('verifyHtsCode should reject an empty productDescription', async () => {
     await expect(verifyHtsCode({ htsCode: '9503.00.0073', productDescription: '' })).rejects.toThrow();
   });
+
+  it('convertHtmlToMarkdown should retain calendar grid schedule items when onlyMainContent is true', () => {
+    const calendarHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head><title>アイドルスケジュールカレンダー</title></head>
+        <body>
+          <header><nav><a href="/">Home</a></nav></header>
+          <div data-test-id="calendar-grid" id="calendarOutline-mainUi" class="calendar-container">
+            <div role="grid">
+              <div role="row">
+                <div role="columnheader">Mon</div>
+                <div role="columnheader">Tue</div>
+                <div role="columnheader">Wed</div>
+              </div>
+              <div role="row">
+                <div role="gridcell">
+                  <p>1</p>
+                  <div class="event-item">『夏祭りスペシャルライブ2026』開場18:00 開演18:30</div>
+                </div>
+                <div role="gridcell">
+                  <p>2</p>
+                  <div class="event-item">『定期公演 vol.15 〜真夏の宴〜』新宿ReNY</div>
+                </div>
+                <div role="gridcell">
+                  <p>3</p>
+                  <div class="event-item">『対バンフェス2026』渋谷Spotify O-EAST</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <footer><p>Copyright TimeTree Inc.</p></footer>
+        </body>
+      </html>
+    `;
+
+    const parsed = convertHtmlToMarkdown(
+      calendarHtml,
+      'https://example.com/calendar',
+      10000,
+      false,
+      true, // onlyMainContent: true
+    );
+
+    expect(parsed.markdown).toContain('夏祭りスペシャルライブ2026');
+    expect(parsed.markdown).toContain('定期公演 vol.15');
+    expect(parsed.markdown).toContain('対バンフェス2026');
+  });
 });
 
 
