@@ -1,0 +1,21 @@
+{
+  "name": "sora-marketplace",
+  "owner": {
+    "name": "ikenokazuki"
+  },
+  "metadata": {
+    "description": "High-performance Japanese web scraping, deep search, and data integration plugins",
+    "version": "2.4.0"
+  },
+  "plugins": [
+    {
+      "name": "sora",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/ikenokazuki/Sora.git"
+      },
+      "description": "High-performance Japanese web scraping, deep search, Yahoo JAPAN integration, real-time X news, weather, transit, disaster, music, and law search CLI & tool suite.",
+      "version": "2.4.0"
+    }
+  ]
+}
