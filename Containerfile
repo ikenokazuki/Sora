@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
 COPY . .
-RUN bun build ./src/index.ts --compile --outfile server
+RUN bun build ./src/index.ts --compile --minify-syntax --minify-whitespace --keep-names --sourcemap=none --outfile server
 
 # Stage 2: Harvest Chromium and required dependencies (Debian Bookworm)
 FROM docker.io/library/debian:bookworm-slim AS browser-harvester
