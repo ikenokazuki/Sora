@@ -1148,7 +1148,17 @@ export function convertHtmlToMarkdown(
       const reader = new Readability(document);
       const article = reader.parse();
       if (article && article.content) {
-        contentHtml = article.content;
+        // カレンダー・テーブル等の構造化データがReadabilityで誤って間引かれていないか検証
+        const bodyTextLen = $('body').text().replace(/\s+/g, ' ').trim().length;
+        const articleTextLen = $(article.content).text().replace(/\s+/g, ' ').trim().length;
+        const hasStructuredGrid = $('[role="grid"], [role="gridcell"], table, [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]').length > 0;
+
+        if (hasStructuredGrid && articleTextLen < bodyTextLen * 0.4 && bodyTextLen > 200) {
+          // カレンダー・グリッド構造が過剰に削ぎ落とされたと判定し、main/article/body にフォールバック
+          contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
+        } else {
+          contentHtml = article.content;
+        }
       }
     } catch {}
     if (!contentHtml) {
@@ -1288,20 +1298,56 @@ async function autoScrollPage(page: Page, maxScrolls = 15): Promise<void> {
  * ここで待ちたいのは「新しいコンテンツが出揃うこと」なので、文字数が増えなくなったかで判定する。
  * これなら常時書き換え系（文字数が増えない）は即座に抜けられる。
  */
-async function waitForDomStable(page: Page, quietMs = 600, timeoutMs = 2500): Promise<void> {
+async function waitForDomStable(page: Page, quietMs = 1200, timeoutMs = 5000): Promise<void> {
   try {
     await page.evaluate(
       async (quiet: number, limit: number) => {
         const start = Date.now();
-        let maxLength = -1;
+        let maxScore = -1;
         let lastGrowth = Date.now();
+        const doc = (globalThis as any).document;
+        const win = (globalThis as any).window;
+        const loadingSelectors = [
+          '.loading',
+          '.spinner',
+          '.skeleton',
+          '[aria-busy="true"]',
+          '[role="progressbar"]',
+          '.is-loading',
+          '.loading__spinner',
+          '.loading__content',
+        ];
+
         while (Date.now() - start < limit) {
-          const length = document.body?.innerText.length ?? 0;
-          if (length > maxLength) {
-            maxLength = length;
+          let hasVisibleLoading = false;
+          if (doc && win) {
+            for (const sel of loadingSelectors) {
+              const elements = doc.querySelectorAll(sel);
+              for (let i = 0; i < elements.length; i++) {
+                const el = elements[i];
+                const style = win.getComputedStyle(el);
+                if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                  hasVisibleLoading = true;
+                  break;
+                }
+              }
+              if (hasVisibleLoading) break;
+            }
+          }
+
+          const textLength = doc?.body?.innerText?.length ?? 0;
+          const elementCount = doc?.querySelectorAll('*')?.length ?? 0;
+          const currentScore = textLength + elementCount * 5;
+
+          if (currentScore > maxScore || hasVisibleLoading) {
+            maxScore = currentScore;
             lastGrowth = Date.now();
           }
-          if (Date.now() - lastGrowth >= quiet) return;
+
+          if (!hasVisibleLoading && Date.now() - lastGrowth >= quiet) {
+            return;
+          }
+
           await new Promise((r) => setTimeout(r, 100));
         }
       },
