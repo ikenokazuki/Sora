@@ -1,0 +1,9 @@
+{
+  "name": "sora",
+  "description": "High-performance Japanese web scraping, deep search, Yahoo JAPAN integration, real-time X news, weather, transit, disaster, music, and law search CLI & tool suite.",
+  "version": "2.4.0",
+  "author": {
+    "name": "ikenokazuki"
+  },
+  "homepage": "https://github.com/ikenokazuki/Sora"
+}

@@ -76,9 +76,18 @@ npx -y @smithery/cli install @ikenokazuki/sora --client claude
 npx skills add ikenokazuki/Sora
 ```
 
-### ③ Antigravity / Claude Code プラグインとしての導入
-プラグインディレクトリにクローンするだけで、スキル・コマンド・MCP 接続設定が全自動で有効化されます。
+### ③ Claude Code プラグイン / マーケットプレイス経由での導入
+Claude Code セッション内でマーケットプレイスを登録し、1 コマンドでインストールできます。
 
+```bash
+# 1. マーケットプレイスを登録
+/plugin marketplace add ikenokazuki/Sora
+
+# 2. Sora プラグインをインストール
+/plugin install sora@sora-marketplace
+```
+
+#### Antigravity / Gemini プラグインとしての手動導入:
 ```bash
 # グローバル環境 (~/.gemini/config/plugins) に導入
 git clone https://github.com/ikenokazuki/Sora.git ~/.gemini/config/plugins/sora
@@ -101,7 +110,14 @@ sora search "TypeScript 5.5 新機能" --limit 3 --prompt
 sora weather "千代田区"
 ```
 
-### ⑤ Docker / Podman での 1 コマンド起動
+### ⑤ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
+- **Custom GPTs (Actions / OpenAI)**:
+  1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 35 エンドポイントが自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
+- **ChatGPT Desktop (MCP)**:
+  `http://localhost:3016/mcp` を MCP サーバーとして指定。
+
+### ⑥ Docker / Podman での 1 コマンド起動
 ```bash
 docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 ```
