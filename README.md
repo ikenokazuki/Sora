@@ -135,6 +135,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `POST /search/suggest` (サジェスト) | **約 820 ms** | **0.5 ms** | Yahoo! オートコンプリート関連語補完 |
 | `POST /browser/action` (初回実行) | **約 1.4 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
 | `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
+| `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
 
 #### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
 
@@ -402,6 +403,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBPへの電子申告（eFiling）義務有無を判定します。CPSC公式HTSリスト（2026年1月版、約600コード）との完全一致・6桁近似一致の段階マッチング。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主な素材<br>- `productCategory` (string, 任意): 製品カテゴリ補足<br>- `description` (string, 任意): 自由記述補足 |
 | `check_fda_regulated` | HTSコードから、米国FDA（食品医薬品局）管轄の可能性をHS Chapter単位で判定します。HTS×FDフラグの機械可読な公式対応表が存在しないため、HS分類の一般知識に基づく粗い目安（`confidence: "chapter-level-estimate"`）です。 | `source: "hts-chapter-estimate"` | - `htsCode` (string, 必須): HTSコード (例: "3004.90.0000")<br>- `productDescription` (string, 任意): 製品の自由記述説明 |
 | `verify_hts_code` | LLM・利用者が製品の素材・用途・機能から推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式説明・関税率を取得します。キーワード検索による一意特定は不可能と判明したため、逆に候補コードを検証する設計です。完全一致しない場合は6桁分類の近い候補（`nearbyCandidates`）を返します。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するため必須 |
+| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制対象判定（食品・化粧品・医薬品等）、CPSC適合証明書（GCC/CCC）および2026年eFiling義務化判定を一連のパイプラインとして一括自動実行し、通関前のアクションプランを含む総合診断レポートを返します。 | `overallStatus`, `actionPlan` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品名<br>- `description` (string, 任意): 商品説明・素材・用途<br>- `htsCode` (string, 任意): 既知/候補HTSコード<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材<br>- `productCategory` (string, 任意): 製品カテゴリ |
 
 ---
 
@@ -1346,6 +1348,57 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
       }
     ],
     "source": "yahoo-transit"
+  }
+  ```
+
+- **商品統合コンプライアンス一括判定 (`POST /trade/compliance`)**:
+  商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制判定、CPSC適合証明書（GCC/CCC）およびeFiling義務化判定を一括自動実行します。
+  ```bash
+  curl -X POST http://localhost:3016/trade/compliance \
+    -H "Content-Type: application/json" \
+    -d '{
+      "productName": "Wooden Building Blocks for Toddlers",
+      "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint."
+    }'
+  ```
+  **レスポンス例**:
+  ```json
+  {
+    "product": {
+      "name": "Wooden Building Blocks for Toddlers",
+      "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.",
+      "detectedCategory": "Toys",
+      "targetAge": "child",
+      "material": "wood",
+      "htsCode": "9503.00.0073"
+    },
+    "overallStatus": "action_required",
+    "summary": "CPSC規制対象 (CCC証明書作成 & eFiling電子申告が必須)",
+    "htsVerification": {
+      "htsCode": "9503.00.0073",
+      "verified": true,
+      "matchLevel": "exact",
+      "generalRate": "Free"
+    },
+    "fda": {
+      "fdaRegulatedLikely": false
+    },
+    "cpsc": {
+      "certificateRequired": true,
+      "certificateType": "CCC",
+      "eFilingRequired": true,
+      "applicableRegulations": [
+        {
+          "cfr": "CPSC HTS Guidance List (2026年1月版)",
+          "summary": "HTSコード \"9503.00.0073\" は \"Toys\" カテゴリとしてCPSC eFiling対象HTSリストに掲載"
+        }
+      ]
+    },
+    "actionPlan": [
+      "【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください。",
+      "【CPSC CCC】試験結果に基づき Children’s Product Certificate (CCC) を作成・発行してください。",
+      "【CPSC eFiling】米国税関(CBP) ACEシステムへの輸入通関申告時に証明書データを電子申告(eFiling)してください。"
+    ]
   }
   ```
 

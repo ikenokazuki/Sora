@@ -53,6 +53,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  checkProductCompliance,
   checkDetailedHealth,
   closeSharedBrowser,
   isSharedBrowserConnected,
@@ -77,6 +78,7 @@ import {
   CpscCertificateCheckRequestSchema,
   FdaRegulatedCheckRequestSchema,
   VerifyHtsCodeRequestSchema,
+  ProductComplianceRequestSchema,
   generateOpenApiDocument,
   SORA_VERSION,
   type ApiErrorResponse,
@@ -291,6 +293,7 @@ app.get('/', (c) => {
       tradeCpscCheck: 'POST /trade/cpsc-check',
       tradeFdaCheck: 'POST /trade/fda-check',
       tradeHtsVerify: 'POST /trade/hts-verify',
+      tradeCompliance: 'POST /trade/compliance',
       map: 'POST /map',
       crawl: 'POST /crawl',
       crawlStream: 'POST /crawl/stream',
@@ -1309,6 +1312,28 @@ app.post('/trade/hts-verify', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return formatError(c, err.message || 'HTS code verification failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// 商品統合コンプライアンス一括判定 (POST /trade/compliance)
+app.post('/trade/compliance', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = ProductComplianceRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid product compliance parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await checkProductCompliance(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Product compliance check failed', 'TRADE_ERROR', 500);
   }
 });
 

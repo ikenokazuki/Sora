@@ -58,6 +58,7 @@ import {
   dbGetDomainCookies,
   dbSaveDomainStorage,
   dbGetDomainStorage,
+  isRenderStillBlockedOrBlank,
   getOrCreateHttpSession,
   closeHttpSession,
   dbListWatchTargets,
@@ -87,6 +88,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  checkProductCompliance,
   detectSpaOrBotPage,
   pickProxyUrl,
   pickBrowserProfile,
@@ -1161,7 +1163,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.4.0');
+    expect(data.version).toBe('2.5.0');
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
@@ -3272,7 +3274,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(35); // 34 standard tools + search_tools
+    expect(body.result.tools.length).toBe(36); // 35 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3349,7 +3351,7 @@ describe('Sora REST & MCP Endpoints', () => {
     // 実行環境のChromiumが検出できるなら、そのメジャーバージョンに一致していること
     const actual = getChromiumMajorVersion();
     if (actual !== undefined) {
-      expect(profile).toBe(`chrome_${actual}`);
+      expect(profile as string).toBe(`chrome_${actual}`);
     }
   });
 
@@ -3731,7 +3733,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   });
 
-  it('MCP server should register all 35 tools and support dynamic discovery of new tools', () => {
+  it('MCP server should register all 36 tools and support dynamic discovery of new tools', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -3751,8 +3753,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolsAll).toContain('check_cpsc_certificate');
     expect(toolsAll).toContain('check_fda_regulated');
     expect(toolsAll).toContain('verify_hts_code');
+    expect(toolsAll).toContain('check_product_compliance');
     expect(toolsAll).toContain('watch_delete');
-    expect(toolsAll.length).toBe(35);
+    expect(toolsAll.length).toBe(36);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -3902,6 +3905,125 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(parsed.markdown).toContain('夏祭りスペシャルライブ2026');
     expect(parsed.markdown).toContain('定期公演 vol.15');
     expect(parsed.markdown).toContain('対バンフェス2026');
+  });
+
+  it('isRenderStillBlockedOrBlank should not trigger retry on rendered React SPA with content', () => {
+    // レンダリング成功したReact SPA (id="react-root" があっても本文が十分あれば再試行しない)
+    const successResult = isRenderStillBlockedOrBlank({
+      html: '<div id="react-root"><div class="calendar"><h3>Live Schedule</h3><p>August 2026</p></div></div>',
+      bodyOnlyMarkdown: '### Live Schedule\n\nAugust 2026\n\n『 Girl’Bomb!! 〜 真夏の祭典 〜 』\n\n『森宮藍presents「もりもりまつり！」』',
+    });
+    expect(successResult).toBe(false);
+
+    // まだJS無効警告で止まっている失敗ケース
+    const failedResult = isRenderStillBlockedOrBlank({
+      html: '<div id="react-root"><div class="loading">Please enable JavaScript to use this app</div></div>',
+      bodyOnlyMarkdown: 'Please enable JavaScript to use this app',
+    });
+    expect(failedResult).toBe(true);
+
+    // Cloudflare チャレンジ画面の失敗ケース
+    const challengeResult = isRenderStillBlockedOrBlank({
+      html: '<html><head><title>Just a moment...</title></head><body>Checking your browser...</body></html>',
+      bodyOnlyMarkdown: 'Checking your browser before accessing the site.',
+    });
+    expect(challengeResult).toBe(true);
+  });
+
+  // =========================================================================
+  // 🚢 checkProductCompliance (商品統合コンプライアンス一括判定) テスト
+  // =========================================================================
+  it('checkProductCompliance should infer toy attributes and require CPSC CCC and eFiling', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Wooden Building Blocks for Toddlers',
+      description: 'Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.',
+    });
+
+    expect(res.product.targetAge).toBe('child');
+    expect(res.product.material).toBe('wood');
+    expect(res.product.htsCode).toBe('9503.00.0073');
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.cpsc.certificateRequired).toBe(true);
+    expect(res.cpsc.certificateType).toBe('CCC');
+    expect(res.cpsc.eFilingRequired).toBe(true);
+    expect(res.fda.fdaRegulatedLikely).toBe(false);
+    expect(res.actionPlan.some((a) => a.includes('CCC'))).toBe(true);
+  });
+
+  it('checkProductCompliance should correctly evaluate explicit HTS code and helmet category', async () => {
+    const res = await checkProductCompliance({
+      htsCode: '6506103045',
+      productName: 'Aerodynamic Bicycle Helmet',
+      description: 'Protective adult cycling helmet with adjustable chin strap.',
+      targetAge: 'adult',
+    });
+
+    expect(res.cpsc.certificateRequired).toBe(true);
+    expect(res.cpsc.certificateType).toBe('GCC');
+    expect(res.cpsc.eFilingRequired).toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.actionPlan.some((a) => a.includes('GCC'))).toBe(true);
+  });
+
+  it('checkProductCompliance should detect cosmetics and flag FDA regulation', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Moisturizing Face Cream and Serum',
+      description: 'Organic skincare lotion and beauty cosmetic cream.',
+    });
+
+    expect(res.fda.fdaRegulatedLikely).toBe(true);
+    expect(res.fda.possiblePrograms).toContain('COS');
+    expect(res.cpsc.certificateRequired).not.toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.actionPlan.some((a) => a.includes('MoCRA'))).toBe(true);
+  });
+
+  it('checkProductCompliance should detect food preparations and flag Prior Notice', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Green Tea Matcha Snack Confectionery',
+      description: 'Japanese dietary food snack and organic powdered beverage.',
+    });
+
+    expect(res.fda.fdaRegulatedLikely).toBe(true);
+    expect(res.fda.possiblePrograms).toContain('FOO');
+    expect(res.fda.priorNoticeMayApply).toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.actionPlan.some((a) => a.includes('Prior Notice'))).toBe(true);
+  });
+
+  it('checkProductCompliance should classify general adult furniture without requiring CPSC CCC', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Solid Oak Dining Table for Living Room',
+      description: 'Modern minimalist wooden dining table for home furniture.',
+    });
+
+    expect(res.product.targetAge).toBe('unknown');
+    expect(res.product.material).toBe('wood');
+    expect(res.product.htsCode).toBe('9403.60.8081');
+    expect(res.cpsc.certificateRequired).not.toBe(true);
+    expect(res.cpsc.eFilingRequired).toBe(false);
+    expect(res.fda.fdaRegulatedLikely).toBe(false);
+    expect(['likely_exempt', 'potential_action_required']).toContain(res.overallStatus);
+  });
+
+  it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
+    const req = new Request('http://localhost/trade/compliance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: 'Kids Plastic Doll Toy',
+        description: 'Doll figure with accessories for children',
+      }),
+    });
+
+    const res = await app.fetch(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.product.targetAge).toBe('child');
+    expect(json.overallStatus).toBe('action_required');
+    expect(json.cpsc.certificateType).toBe('CCC');
+    expect(json.actionPlan.length).toBeGreaterThan(0);
+    expect(json.disclaimer).toBeTruthy();
   });
 });
 
