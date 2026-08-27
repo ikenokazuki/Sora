@@ -22,15 +22,28 @@ export function resolveChromiumPath(): string | undefined {
     '/snap/bin/chromium',
     '/opt/google/chrome/chrome',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
+  if (process.env.LOCALAPPDATA) {
+    standardPaths.push(`${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`);
+    standardPaths.push(`${process.env.LOCALAPPDATA}\\Microsoft\\Edge\\Application\\msedge.exe`);
+  }
   for (const p of standardPaths) {
     if (existsSync(p)) return p;
   }
 
-  // PATH 環境変数の走査 (NixOS / Custom distros)
+  // PATH 環境変数の走査 (NixOS / Custom distros / Windows)
   const pathEnv = process.env.PATH || '';
-  const pathDirs = pathEnv.split(':');
-  const binaries = ['chromium', 'google-chrome', 'google-chrome-stable', 'chromium-browser', 'chrome'];
+  const pathSeparator = process.platform === 'win32' ? ';' : ':';
+  const pathDirs = pathEnv.split(pathSeparator);
+  const binaries = process.platform === 'win32'
+    ? ['chrome.exe', 'chromium.exe', 'msedge.exe']
+    : ['chromium', 'google-chrome', 'google-chrome-stable', 'chromium-browser', 'chrome'];
   for (const dir of pathDirs) {
     for (const bin of binaries) {
       const fullPath = `${dir}/${bin}`;
