@@ -40,6 +40,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  checkProductCompliance,
 } from './scraper.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 
@@ -1382,6 +1383,38 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
       { defaultEnabled: deferredDefault, keywords: ['HTS', 'HSコード', '関税分類', 'USITC', '実在確認', '検証', '輸出', '輸入', '貿易', 'コンプライアンス'] },
+    );
+
+    // Tool: check_product_compliance (商品統合コンプライアンス一括判定) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'check_product_compliance',
+      'trade',
+      '【商品統合コンプライアンス一括判定】商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制対象判定（食品・化粧品・医薬品等）、CPSC適合証明書（GCC/CCC）および2026年eFiling義務化判定を一連のパイプラインとして一括実行し、通関前のアクションプランを含む総合診断レポートを返します。参考情報であり法的助言ではありません。',
+      {
+        url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
+        productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
+        description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
+        htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証）'),
+        targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）'),
+        material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）'),
+        productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
+      },
+      async (opts) => {
+        try {
+          const result = await checkProductCompliance(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Product compliance check error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['商品判定', 'コンプライアンス', 'FDA', 'CPSC', 'eFiling', 'GCC', 'CCC', 'HTS', '貿易一括判定', '輸出', '輸入'] },
     );
   }
 

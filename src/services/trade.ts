@@ -380,3 +380,347 @@ export async function verifyHtsCode(options: {
     source: 'usitc-hts',
   };
 }
+
+// ==========================================
+// 4. 統合商品コンプライアンス判定 (checkProductCompliance)
+// ==========================================
+
+export interface CheckProductComplianceOptions {
+  url?: string;
+  productName?: string;
+  description?: string;
+  htsCode?: string;
+  targetAge?: 'adult' | 'child' | 'unknown';
+  material?: string;
+  productCategory?: string;
+}
+
+export interface CheckProductComplianceResult {
+  product: {
+    name?: string;
+    description?: string;
+    url?: string;
+    detectedCategory?: string;
+    targetAge: 'adult' | 'child' | 'unknown';
+    material?: string;
+    htsCode: string;
+  };
+  overallStatus: 'action_required' | 'potential_action_required' | 'likely_exempt';
+  summary: string;
+  htsVerification: VerifyHtsCodeResult;
+  fda: CheckFdaRegulatedResult;
+  cpsc: CpscCertificateCheckResult;
+  actionPlan: string[];
+  disclaimer: string;
+}
+
+const CATEGORY_HTS_DEFAULTS: {
+  category: string;
+  keywords: string[];
+  defaultHts: string;
+  targetAge?: 'child' | 'adult';
+}[] = [
+  {
+    category: 'Toys',
+    keywords: ['toy', 'toys', 'doll', 'puzzle', 'lego', 'block', 'figure', 'plush', '玩具', 'おもちゃ', 'ぬいぐるみ', '知育', 'フィギュア'],
+    defaultHts: '9503.00.0073',
+    targetAge: 'child',
+  },
+  {
+    category: 'Bicycle Helmets',
+    keywords: ['helmet', 'bicycle helmet', 'bike helmet', 'ヘルメット'],
+    defaultHts: '6506.10.3045',
+  },
+  {
+    category: 'Bicycles',
+    keywords: ['bicycle', 'bike', 'cycling', '自転車'],
+    defaultHts: '8712.00.1510',
+  },
+  {
+    category: 'Cosmetics',
+    keywords: ['cosmetic', 'lotion', 'cream', 'serum', 'skincare', 'makeup', 'lipstick', 'sunscreen', '化粧品', '美容液', '乳液', '日焼け止め', 'コスメ'],
+    defaultHts: '3304.99.5000',
+  },
+  {
+    category: 'Food Preparations',
+    keywords: ['food', 'snack', 'candy', 'supplement', 'tea', 'coffee', 'confectionery', '食品', 'お菓子', 'サプリメント', '茶', '飲料'],
+    defaultHts: '2106.90.9998',
+  },
+  {
+    category: 'Pharmaceuticals',
+    keywords: ['medicine', 'pharmaceutical', 'drug', 'tablet', 'capsule', '医薬品', '薬'],
+    defaultHts: '3004.90.0000',
+  },
+  {
+    category: 'Medical Devices',
+    keywords: ['medical', 'thermometer', 'syringe', 'bandage', 'mask', '医療機器', '体温計', 'マスク'],
+    defaultHts: '9018.90.8000',
+  },
+  {
+    category: 'Infant Sleep Products',
+    keywords: ['crib', 'bassinet', 'cradle', 'baby mattress', 'ベビーベッド', 'クーファン'],
+    defaultHts: '9404.90.9622',
+    targetAge: 'child',
+  },
+  {
+    category: 'Pacifiers',
+    keywords: ['pacifier', 'teether', 'おしゃぶり', '歯固め'],
+    defaultHts: '3926.90.1600',
+    targetAge: 'child',
+  },
+  {
+    category: 'Children’s Clothing',
+    keywords: ['baby clothing', 'infant clothes', 'kids clothes', '子供服', 'ベビー服'],
+    defaultHts: '6209.20.3000',
+    targetAge: 'child',
+  },
+  {
+    category: 'Adult Clothing',
+    keywords: ['shirt', 'pants', 'jacket', 't-shirt', 'apparel', 'clothing', '服', 'シャツ', 'ジャケット'],
+    defaultHts: '6205.20.2061',
+    targetAge: 'adult',
+  },
+  {
+    category: 'Imitation Jewelry',
+    keywords: ['jewelry', 'necklace', 'earring', 'bracelet', 'accessory', 'アクセサリー', 'ネックレス', 'ピアス'],
+    defaultHts: '7117.19.9000',
+  },
+  {
+    category: 'Furniture',
+    keywords: ['furniture', 'table', 'chair', 'desk', 'cabinet', 'shelf', '家具', '机', '椅子', 'テーブル', '棚'],
+    defaultHts: '9403.60.8081',
+  },
+  {
+    category: 'Kitchenware',
+    keywords: ['kitchen', 'cookware', 'pan', 'pot', 'knife', 'spoon', 'fork', 'mug', 'cup', 'bottle', '調理器具', '包丁', '鍋', 'フライパン', 'マグカップ', 'ボトル'],
+    defaultHts: '7323.93.0080',
+  },
+  {
+    category: 'Electronics',
+    keywords: ['electronics', 'charger', 'cable', 'battery', 'headphone', 'speaker', 'adapter', '電子機器', '充電器', 'ケーブル', 'イヤホン', 'スピーカー'],
+    defaultHts: '8504.40.9580',
+  },
+];
+
+function inferTargetAge(text: string): 'child' | 'adult' | 'unknown' {
+  const lower = text.toLowerCase();
+  if (
+    /(?:child|children|baby|infant|toddler|kid|kids|boy|girl|0-3|3\+|4\+|5\+|6\+|7\+|8\+|9\+|10\+|11\+|12\+|子供|子ども|乳幼児|赤ちゃん|男の子|女の子|歳児|歳以上)/i.test(
+      lower,
+    )
+  ) {
+    return 'child';
+  }
+  if (/(?:adult|men|women|lady|gentleman|大人|成人|メンズ|レディース)/i.test(lower)) {
+    return 'adult';
+  }
+  return 'unknown';
+}
+
+function inferMaterial(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  if (/plastic|プラスチック|樹脂/i.test(lower)) return 'plastic';
+  if (/wood|wooden|木製|天然木/i.test(lower)) return 'wood';
+  if (/metal|steel|aluminum|金属|ステンレス|アルミ/i.test(lower)) return 'metal';
+  if (/cotton|綿|コットン/i.test(lower)) return 'cotton';
+  if (/glass|ガラス/i.test(lower)) return 'glass';
+  if (/leather|本革|レザー/i.test(lower)) return 'leather';
+  if (/silicone|シリコン/i.test(lower)) return 'silicone';
+  return undefined;
+}
+
+function buildIntegratedActionPlan(
+  htsResult: VerifyHtsCodeResult,
+  fdaResult: CheckFdaRegulatedResult,
+  cpscResult: CpscCertificateCheckResult,
+): {
+  overallStatus: 'action_required' | 'potential_action_required' | 'likely_exempt';
+  summary: string;
+  actionPlan: string[];
+} {
+  const actionPlan: string[] = [];
+  const summaryParts: string[] = [];
+  let isActionRequired = false;
+  let isPotentialAction = false;
+
+  // CPSCチェック
+  if (cpscResult.eFilingRequired || cpscResult.certificateRequired === true) {
+    isActionRequired = true;
+    summaryParts.push(`CPSC規制対象 (${cpscResult.certificateType}証明書作成 & eFiling電子申告が必須)`);
+    if (cpscResult.certificateType === 'CCC') {
+      actionPlan.push('【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください。');
+      actionPlan.push('【CPSC CCC】試験結果に基づき Children’s Product Certificate (CCC) を作成・発行してください。');
+    } else if (cpscResult.certificateType === 'GCC') {
+      actionPlan.push('【CPSC GCC】一般製品安全基準への適合性を確認し、General Certificate of Conformity (GCC) を作成・発行してください。');
+    }
+    if (cpscResult.eFilingRequired) {
+      actionPlan.push('【CPSC eFiling】米国税関(CBP) ACEシステムへの輸入通関申告時に証明書データを電子申告(eFiling)してください。');
+    }
+    for (const reg of cpscResult.applicableRegulations) {
+      actionPlan.push(`【適用規格】${reg.cfr}: ${reg.summary}`);
+    }
+  } else if (cpscResult.certificateRequired === 'unknown' && cpscResult.missingInfo.length > 0) {
+    isPotentialAction = true;
+    summaryParts.push('CPSC個別確認推奨（類似コードまたは対象年齢の確定が必要）');
+    actionPlan.push(...cpscResult.nextActions);
+  }
+
+  // FDAチェック
+  if (fdaResult.fdaRegulatedLikely === true) {
+    isActionRequired = true;
+    const progs = fdaResult.possiblePrograms.join('/');
+    summaryParts.push(`FDA規制対象 (${progs} プログラム管轄)`);
+    if (fdaResult.priorNoticeMayApply) {
+      actionPlan.push('【FDA Prior Notice】食品・飲料品等の輸入にあたり、米国到着前にFDAへの事前通知(Prior Notice)の提出が必須です。');
+    }
+    if (fdaResult.possiblePrograms.includes('COS')) {
+      actionPlan.push('【FDA 化粧品規制 (MoCRA)】FDA施設登録および製品リスト提出(Cosmetics Direct)要件を確認してください。');
+    }
+    if (fdaResult.possiblePrograms.includes('DEV')) {
+      actionPlan.push('【FDA 医療機器】FDA施設登録(Device Registration)および製品リスティング(Listing)、510(k)等の要否を確認してください。');
+    }
+    if (fdaResult.possiblePrograms.includes('DRU')) {
+      actionPlan.push('【FDA 医薬品】NDCコードの取得、製造所登録、新薬/OTCモノグラフ適合性を確認してください。');
+    }
+    actionPlan.push(...fdaResult.nextActions);
+  }
+
+  // HTS実在確認
+  if (htsResult.verified) {
+    if (htsResult.generalRate) {
+      actionPlan.push(`【関税情報】USITC一般関税率: ${htsResult.generalRate} (品目: ${htsResult.officialDescription || ''})`);
+    }
+  } else {
+    isPotentialAction = true;
+    actionPlan.push(`【HTS確認】HTSコード "${htsResult.htsCode}" は完全一致していません。近傍コードを確認の上、通関士等へ分類確定を依頼してください。`);
+  }
+
+  const overallStatus: 'action_required' | 'potential_action_required' | 'likely_exempt' =
+    isActionRequired ? 'action_required' : isPotentialAction ? 'potential_action_required' : 'likely_exempt';
+
+  if (actionPlan.length === 0) {
+    summaryParts.push('一般品目（現行のFDA/CPSC主要eFiling規制リスト外）');
+    actionPlan.push('一般的な米国通関手続き（インボイス、パッキングリスト、原産地証明等）に従って輸出申告を行ってください。');
+  }
+
+  return {
+    overallStatus,
+    summary: summaryParts.join(' / ') || '一般品目',
+    actionPlan,
+  };
+}
+
+/**
+ * 商品情報（URL または 商品名・説明・素材など）から、HTS実在検証・FDA規制判定・CPSC証明書/eFiling判定を一連のパイプラインとして一括実行
+ */
+export async function checkProductCompliance(
+  options: CheckProductComplianceOptions,
+): Promise<CheckProductComplianceResult> {
+  let productName = options.productName?.trim();
+  let description = options.description?.trim();
+  let targetAge = options.targetAge;
+  let material = options.material?.trim();
+  let productCategory = options.productCategory?.trim();
+  let htsCode = options.htsCode?.trim();
+
+  // 1. URL が指定されている場合はスクレイピングして商品情報を取得
+  if (options.url) {
+    try {
+      const { scrapeUrl } = await import('../scraper.js');
+      const scrapeRes = await scrapeUrl({
+        url: options.url,
+        onlyMainContent: true,
+        maxChars: 5000,
+      });
+
+      if (!productName && scrapeRes.title) {
+        productName = scrapeRes.title;
+      }
+      if (!description) {
+        description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
+      }
+    } catch (err: any) {
+      console.warn('[TradeCompliance] Scrape failed for url:', options.url, err?.message);
+    }
+  }
+
+  const combinedText = `${productName || ''} ${description || ''} ${productCategory || ''} ${material || ''}`.trim();
+
+  // 2. 属性の自動推定（未指定の場合）
+  if (!targetAge || targetAge === 'unknown') {
+    targetAge = inferTargetAge(combinedText);
+  }
+  if (!material) {
+    material = inferMaterial(combinedText);
+  }
+
+  let detectedCategory: string | undefined = undefined;
+  if (!htsCode) {
+    // カテゴリ別デフォルトHTS候補の検索
+    const matched = CATEGORY_HTS_DEFAULTS.find((entry) =>
+      entry.keywords.some((kw) => combinedText.toLowerCase().includes(kw.toLowerCase())),
+    );
+    if (matched) {
+      htsCode = matched.defaultHts;
+      detectedCategory = matched.category;
+      if (targetAge === 'unknown' && matched.targetAge) {
+        targetAge = matched.targetAge;
+      }
+    } else if (material === 'wood') {
+      htsCode = '9403.60.8081';
+      detectedCategory = 'Wooden Articles';
+    } else if (material === 'metal') {
+      htsCode = '7326.90.8688';
+      detectedCategory = 'Metal Articles';
+    } else if (material === 'cotton') {
+      htsCode = '6307.90.9889';
+      detectedCategory = 'Textile Articles';
+    } else {
+      htsCode = '3926.90.9985'; // General Plastic/Household Articles
+      detectedCategory = 'General Goods';
+    }
+  }
+
+  const effectiveDescription = description || productName || combinedText || 'Product description for compliance check';
+
+  // 3. パイプライン並行実行 (HTS検証, FDA判定, CPSC判定)
+  const [htsVerification, fdaResult, cpscResult] = await Promise.all([
+    verifyHtsCode({ htsCode, productDescription: effectiveDescription }),
+    Promise.resolve(checkFdaRegulated({ htsCode, productDescription: effectiveDescription })),
+    checkCpscCertificate({
+      htsCode,
+      targetAge: targetAge || 'unknown',
+      material,
+      productCategory: productCategory || detectedCategory,
+      description: effectiveDescription,
+    }),
+  ]);
+
+  // 4. アクションプラン & 総合レポート生成
+  const { overallStatus, summary, actionPlan } = buildIntegratedActionPlan(
+    htsVerification,
+    fdaResult,
+    cpscResult,
+  );
+
+  return {
+    product: {
+      name: productName,
+      description: effectiveDescription,
+      url: options.url,
+      detectedCategory: detectedCategory || productCategory,
+      targetAge: targetAge || 'unknown',
+      material,
+      htsCode,
+    },
+    overallStatus,
+    summary,
+    htsVerification,
+    fda: fdaResult,
+    cpsc: cpscResult,
+    actionPlan,
+    disclaimer:
+      '本判定結果は参考情報を提供するものであり、法的助言・通関確定情報ではありません。正式な判断は米国CBP、FDA、CPSC公式情報および通関士・弁護士等の専門家にご確認ください。',
+  };
+}
+

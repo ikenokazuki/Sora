@@ -1271,14 +1271,14 @@ export function groupCookiesByDomain(
  */
 
 /** ページ末尾まで段階的にスクロールし、IntersectionObserverベースの遅延ロードを発火させる */
-async function autoScrollPage(page: Page, maxScrolls = 15): Promise<void> {
+async function autoScrollPage(page: Page, maxScrolls = 8): Promise<void> {
   try {
     await page.evaluate(async (limit: number) => {
       const step = window.innerHeight;
       let lastHeight = 0;
       for (let i = 0; i < limit; i++) {
         window.scrollBy(0, step);
-        await new Promise((r) => setTimeout(r, 120));
+        await new Promise((r) => setTimeout(r, 80));
         const height = document.body.scrollHeight;
         // 最下部に到達し、かつ新規コンテンツの追加も止まったら終了（無限スクロール対策）
         if (window.scrollY + window.innerHeight >= height && height === lastHeight) break;
@@ -1392,6 +1392,7 @@ export async function fetchWithStealthBrowser(
   clipSelector?: string,
   customCookies?: CookieParam[],
   waitUntil: 'networkidle0' | 'networkidle2' = 'networkidle2',
+  needScreenshot = false,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
@@ -1412,7 +1413,8 @@ export async function fetchWithStealthBrowser(
 
     try {
       const page: Page = await context.newPage();
-      await setupPageSecurity(page);
+      // スクリーンショット非要求時は画像・メディア・フォント・広告トラッカーを高速遮断
+      await setupPageSecurity(page, !needScreenshot && !clipSelector);
       try {
         const defaultUa = await browser.userAgent();
         await page.setUserAgent(buildUserAgentFromDefault(defaultUa), buildUserAgentMetadata(defaultUa));
@@ -1537,17 +1539,19 @@ export async function fetchWithStealthBrowser(
       } catch {}
 
       let screenshot: string | undefined = undefined;
-      if (clipSelector) {
-        try {
-          const el = await page.$(clipSelector);
-          if (el) {
-            const buf = await el.screenshot({ encoding: 'base64' });
-            screenshot = buf as string;
-          }
-        } catch {}
-      } else {
-        const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
-        screenshot = buf as string;
+      if (needScreenshot || clipSelector) {
+        if (clipSelector) {
+          try {
+            const el = await page.$(clipSelector);
+            if (el) {
+              const buf = await el.screenshot({ encoding: 'base64' });
+              screenshot = buf as string;
+            }
+          } catch {}
+        } else {
+          const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
+          screenshot = buf as string;
+        }
       }
 
       return { html, title, screenshot, finalUrl };
@@ -1739,6 +1743,33 @@ export function detectSpaOrBotPage(options: {
     html.includes('Just a moment...')
   );
 }
+
+/**
+ * ブラウザレンダリング後も依然としてコンテンツが取得できていない（ブロック/空白）かを判定する。
+ * react-root や react-data などのSPAマーカーは成功の証拠なのでマッチさせず、
+ * 純粋に本文が極端に少ないか、Cloudflare等のブロック画面のままかだけを判定する。
+ */
+export function isRenderStillBlockedOrBlank(options: {
+  html: string;
+  bodyOnlyMarkdown: string;
+}): boolean {
+  const { html, bodyOnlyMarkdown } = options;
+  const hasLittleContent = bodyOnlyMarkdown.length < 50;
+  const isJsDisabledMessage =
+    /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(bodyOnlyMarkdown) ||
+    /please\s+enable\s+(?:your\s+)?javascript/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*を\s*(?:有効|オン)/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*が\s*無効/i.test(bodyOnlyMarkdown) ||
+    /^(?:loading\.*|読み込み中\.*|now loading\.*)$/i.test(bodyOnlyMarkdown);
+
+  const isChallenge =
+    html.includes('Checking your browser') ||
+    html.includes('Just a moment...') ||
+    html.includes('cf-browser-verification') ||
+    html.includes('cf-challenge');
+
+  return (hasLittleContent && isJsDisabledMessage) || isChallenge;
+}
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
@@ -1916,11 +1947,14 @@ export async function scrapeUrl(options: {
 
       // Chromium 自動昇格 または ブラウザ指定モード
       onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
+      const needScreenshot = formats.includes('screenshot');
       let browserRes = await fetchWithStealthBrowser(
         url,
         timeoutMs,
         options.clipSelector,
         options.cookies,
+        'networkidle2',
+        needScreenshot,
       );
 
       let parsed = convertHtmlToMarkdown(
@@ -1935,7 +1969,7 @@ export async function scrapeUrl(options: {
 
       // レンダリング後も空/JS警告のままなら waitUntil を変えて1回だけ再試行する
       const renderedBodyOnly = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
-      if (detectSpaOrBotPage({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
+      if (isRenderStillBlockedOrBlank({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
         botRetryCount++;
         onProgress?.({ stage: 'render', message: 'Content still blank after render, retrying with networkidle0' });
         browserRes = await fetchWithStealthBrowser(
@@ -1944,6 +1978,7 @@ export async function scrapeUrl(options: {
           options.clipSelector,
           options.cookies,
           'networkidle0',
+          needScreenshot,
         );
         parsed = convertHtmlToMarkdown(
           browserRes.html,

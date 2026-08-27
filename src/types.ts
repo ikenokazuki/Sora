@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.4.0';
+export const SORA_VERSION = '2.5.0';
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
 
@@ -492,6 +492,17 @@ export const VerifyHtsCodeRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('検証したいHTSコード（例: "9503.00.0073"）'),
   productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
 });
+
+export const ProductComplianceRequestSchema = z.object({
+  url: z.string().url('有効なURLを指定してください').optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
+  productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
+  description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
+  htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証）'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）'),
+  material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）'),
+  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
+});
+export type ProductComplianceRequestOptions = z.infer<typeof ProductComplianceRequestSchema>;
 
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
@@ -1034,6 +1045,19 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'VerifyHtsCodeResult' } },
+        },
+      },
+      '/trade/compliance': {
+        post: {
+          summary: '商品統合コンプライアンス一括判定（HTS検証・FDA判定・CPSC証明書/eFiling義務）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ProductComplianceRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'CheckProductComplianceResult' } },
         },
       },
       '/gov/diet-minutes': {

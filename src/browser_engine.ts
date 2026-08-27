@@ -305,13 +305,35 @@ export function isBlockedHostname(hostname: string): boolean {
   return false;
 }
 
-/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策） */
+const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();
+const DNS_CACHE_TTL_MS = 60_000;
+
+export const BLOCKED_TRACKER_DOMAINS = [
+  'google-analytics.com',
+  'googletagmanager.com',
+  'doubleclick.net',
+  'appsflyer.com',
+  'sentry.io',
+  'cookieyes.com',
+  'facebook.net',
+  'clarity.ms',
+  'adservice.google.',
+  'pagead2.googlesyndication.com',
+];
+
+/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策＋インメモリキャッシュ） */
 export async function validateHostIpDns(hostname: string): Promise<string[]> {
   if (process.env.ALLOW_LOCAL_FETCH === 'true') return [];
 
   const cleanHost = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
   if (isBlockedHostname(cleanHost) || isPrivateIp(cleanHost)) {
     throw new Error(`プライベートネットワークまたは安全でないホストへのアクセスは遮断されています: ${hostname}`);
+  }
+
+  const now = Date.now();
+  const cached = dnsValidationCache.get(cleanHost);
+  if (cached && cached.expiresAt > now) {
+    return cached.addresses;
   }
 
   try {
@@ -324,7 +346,9 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
         throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
       }
     }
-    return addresses.map((a) => a.address);
+    const result = addresses.map((a) => a.address);
+    dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
+    return result;
   } catch (err: any) {
     if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
       throw err;
@@ -333,16 +357,29 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
   }
 }
 
-/** Headless Chromium のページ内サブリクエスト（iframe, XHR, fetch, img 等）に対する SSRF 防御 */
-export async function setupPageSecurity(page: Page): Promise<void> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') {
-    return;
-  }
+/** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
+export async function setupPageSecurity(page: Page, blockMedia = false): Promise<void> {
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       try {
         const reqUrlStr = req.url();
+        const resourceType = req.resourceType();
+
+        // スクリーンショット非要求時の画像・フォント・メディア・広告トラッカーの高速遮断
+        if (blockMedia) {
+          if (['image', 'media', 'font'].includes(resourceType)) {
+            return req.abort('blockedbyclient');
+          }
+          if (BLOCKED_TRACKER_DOMAINS.some((d) => reqUrlStr.includes(d))) {
+            return req.abort('blockedbyclient');
+          }
+        }
+
+        if (process.env.ALLOW_LOCAL_FETCH === 'true') {
+          return req.continue();
+        }
+
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
           return req.continue();
         }
@@ -359,6 +396,14 @@ export async function setupPageSecurity(page: Page): Promise<void> {
         if (isBlockedHostname(host) || isPrivateIp(host)) {
           return req.abort('accessdenied');
         }
+
+        // キャッシュ付きホスト検証
+        const now = Date.now();
+        const cached = dnsValidationCache.get(host);
+        if (cached && cached.expiresAt > now) {
+          return req.continue();
+        }
+
         try {
           const addresses = await dnsPromises.lookup(host, { all: true });
           for (const addr of addresses) {
@@ -366,6 +411,10 @@ export async function setupPageSecurity(page: Page): Promise<void> {
               return req.abort('accessdenied');
             }
           }
+          dnsValidationCache.set(host, {
+            addresses: addresses.map((a) => a.address),
+            expiresAt: now + DNS_CACHE_TTL_MS,
+          });
         } catch {}
         req.continue();
       } catch {
