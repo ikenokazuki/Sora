@@ -726,7 +726,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(searchCatalog(dummyCatalog, '')).toEqual([]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 4 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 11 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -760,13 +760,20 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const toolNames = body.result.tools.map((t: any) => t.name);
     expect(toolNames).toContain('scrape');
-    expect(toolNames).toContain('search_web');
     expect(toolNames).toContain('search_deep');
     expect(toolNames).toContain('search_tools');
-    expect(toolNames.length).toBe(4);
+    expect(toolNames).toContain('check_product_compliance');
+    expect(toolNames).toContain('get_weather');
+    expect(toolNames).toContain('search_route');
+    expect(toolNames).toContain('search_chiebukuro');
+    expect(toolNames).toContain('search_realtime');
+    expect(toolNames).toContain('search_disaster_warnings');
+    expect(toolNames).toContain('search_earthquake');
+    expect(toolNames).toContain('search_laws');
+    expect(toolNames.length).toBe(11);
   });
 
-  it('McpSessionManager should dynamically enable tools via search_tools in stateful session', async () => {
+  it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
     const manager = new McpSessionManager();
     const parseRes = async (res: Response) => {
       const text = await res.text();
@@ -813,7 +820,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     await manager.handleRequest(notifyReq);
 
-    // 2. Initial tools/list (should be 4 core tools)
+    // 2. Initial tools/list (should be 11 core tools)
     const listReq1 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -827,13 +834,13 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes1 = await manager.handleRequest(listReq1);
     const listBody1: any = await parseRes(listRes1);
     const names1 = listBody1.result.tools.map((t: any) => t.name);
-    expect(names1.length).toBe(4);
+    expect(names1.length).toBe(11);
     expect(names1).toContain('scrape');
-    expect(names1).toContain('search_web');
     expect(names1).toContain('search_deep');
+    expect(names1).toContain('check_product_compliance');
     expect(names1).toContain('search_tools');
 
-    // 3. Attempting to call disabled tool directly should fail
+    // 3. Attempting to call standby tool (search_song) directly should fail
     const callDisabledReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -846,7 +853,7 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
-        params: { name: 'get_weather', arguments: { city: '天童市' } },
+        params: { name: 'search_song', arguments: { title: 'アイドル' } },
       }),
     });
     const callDisabledRes = await manager.handleRequest(callDisabledReq);
@@ -854,7 +861,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(callDisabledBody.result?.isError).toBe(true);
     expect(callDisabledBody.result?.content?.[0]?.text).toContain('disabled');
 
-    // 4. Call search_tools to activate weather
+    // 4. Call search_tools to activate song search
     const searchReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -867,14 +874,14 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 4,
         method: 'tools/call',
-        params: { name: 'search_tools', arguments: { query: '天気' } },
+        params: { name: 'search_tools', arguments: { query: '楽曲' } },
       }),
     });
     const searchRes = await manager.handleRequest(searchReq);
     const searchBody: any = await parseRes(searchRes);
-    expect(searchBody.result?.content?.[0]?.text).toContain('get_weather');
+    expect(searchBody.result?.content?.[0]?.text).toContain('search_song');
 
-    // 5. tools/list now includes get_weather (5 tools)
+    // 5. tools/list now includes search_song (12 tools)
     const listReq2 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -888,8 +895,8 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes2 = await manager.handleRequest(listReq2);
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
-    expect(names2.length).toBe(5);
-    expect(names2).toContain('get_weather');
+    expect(names2.length).toBe(12);
+    expect(names2).toContain('search_song');
 
     // 6. Search for non-existent tool returns helpful message
     const searchNoneReq = new Request('http://localhost/mcp', {
@@ -1163,7 +1170,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.5.0');
+    expect(data.version).toBe('2.6.0');
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
@@ -3733,29 +3740,38 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   });
 
-  it('MCP server should register all 36 tools and support dynamic discovery of new tools', () => {
+  it('MCP server should register all 36 tools and enable 11 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    // Core 4 tools are enabled by default
+    // Core 11 tools are enabled by default for seamless 1-hop autonomous invocation
     expect(enabledTools).toContain('scrape');
-    expect(enabledTools).toContain('search_web');
     expect(enabledTools).toContain('search_deep');
     expect(enabledTools).toContain('search_tools');
-    expect(enabledTools.length).toBe(4);
+    expect(enabledTools).toContain('check_product_compliance');
+    expect(enabledTools).toContain('get_weather');
+    expect(enabledTools).toContain('search_route');
+    expect(enabledTools).toContain('search_chiebukuro');
+    expect(enabledTools).toContain('search_realtime');
+    expect(enabledTools).toContain('search_disaster_warnings');
+    expect(enabledTools).toContain('search_earthquake');
+    expect(enabledTools).toContain('search_laws');
+    expect(enabledTools.length).toBe(11);
 
     const serverAll = createMcpServer({ deferTools: false });
-    const toolsAll = Object.keys((serverAll as any)._registeredTools);
-    expect(toolsAll).toContain('search_diet_minutes');
-    expect(toolsAll).toContain('get_elevation');
-    expect(toolsAll).toContain('get_flight_status');
-    expect(toolsAll).toContain('check_cpsc_certificate');
-    expect(toolsAll).toContain('check_fda_regulated');
-    expect(toolsAll).toContain('verify_hts_code');
-    expect(toolsAll).toContain('check_product_compliance');
-    expect(toolsAll).toContain('watch_delete');
-    expect(toolsAll.length).toBe(36);
+    const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
+      .filter(([_, handle]: [string, any]) => handle.enabled !== false)
+      .map(([name]) => name);
+    expect(enabledToolsAll).toContain('search_diet_minutes');
+    expect(enabledToolsAll).toContain('get_elevation');
+    expect(enabledToolsAll).toContain('get_flight_status');
+    expect(enabledToolsAll).toContain('check_cpsc_certificate');
+    expect(enabledToolsAll).toContain('check_fda_regulated');
+    expect(enabledToolsAll).toContain('verify_hts_code');
+    expect(enabledToolsAll).toContain('check_product_compliance');
+    expect(enabledToolsAll).toContain('watch_delete');
+    expect(enabledToolsAll.length).toBe(36);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
