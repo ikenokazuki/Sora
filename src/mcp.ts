@@ -43,6 +43,7 @@ import {
   checkProductCompliance,
 } from './scraper.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
+import { SORA_VERSION } from './types.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -140,7 +141,7 @@ export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 
 export function createMcpServer(options?: McpServerOptions): McpServer {
   const mcpServer = new McpServer({
     name: 'Sora',
-    version: '2.0.0',
+    version: SORA_VERSION,
   });
 
   const toolCatalog = new Map<string, ToolCatalogEntry>();
@@ -483,7 +484,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
+      { defaultEnabled: deferredDefault, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
     );
   }
 
@@ -659,7 +660,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['知恵袋', 'Q&A', '質問回答', '悩み', 'Yahoo'] },
+      { defaultEnabled: true, keywords: ['知恵袋', 'Q&A', '質問回答', '悩み', 'Yahoo'] },
     );
 
     // Tool 11: suggest_keywords (サジェスト / キーワード補完) - DEFERRED
@@ -753,7 +754,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['リアルタイム検索', 'X', 'Twitter', 'ツイート', 'トレンド', '速報'] },
+      { defaultEnabled: true, keywords: ['リアルタイム検索', 'X', 'Twitter', 'ツイート', 'トレンド', '速報'] },
     );
 
     // Tool 13: search_trend (Yahoo トレンド急上昇) - DEFERRED
@@ -829,7 +830,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['乗換案内', '電車', 'ルート', '経路', '交通', '時刻表'] },
+      { defaultEnabled: true, keywords: ['乗換案内', '電車', 'ルート', '経路', '交通', '時刻表'] },
     );
 
     // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結) - DEFERRED
@@ -856,7 +857,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['天気予報', '気象', '気温', '降水確率', '週間天気', '天気'] },
+      { defaultEnabled: true, keywords: ['天気予報', '気象', '気温', '降水確率', '週間天気', '天気'] },
     );
 
     // Tool: get_flight_status (フライト航空運行情報) - DEFERRED
@@ -945,7 +946,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['気象警報', '注意報', '特別警報', '防災', '気象庁', '大雨', '台風'] },
+      { defaultEnabled: true, keywords: ['気象警報', '注意報', '特別警報', '防災', '気象庁', '大雨', '台風'] },
     );
 
     // Tool 18: search_earthquake (リアルタイム地震速報・履歴) - DEFERRED
@@ -972,7 +973,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
+      { defaultEnabled: true, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
     );
 
     // Tool: get_elevation (国土地理院 住所ジオコーディング & 標高・海抜判定) - DEFERRED
@@ -1235,7 +1236,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['法令検索', '法律', '政令', 'e-Gov', '条文検索'] },
+      { defaultEnabled: true, keywords: ['法令検索', '法律', '政令', 'e-Gov', '条文検索'] },
     );
 
     // Tool 26: get_law_text (e-Gov 法令条文詳細取得) - DEFERRED
@@ -1414,7 +1415,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['商品判定', 'コンプライアンス', 'FDA', 'CPSC', 'eFiling', 'GCC', 'CCC', 'HTS', '貿易一括判定', '輸出', '輸入'] },
+      { defaultEnabled: true, keywords: ['商品判定', 'コンプライアンス', 'FDA', 'CPSC', 'eFiling', 'GCC', 'CCC', 'HTS', '貿易一括判定', '輸出', '輸入'] },
     );
   }
 
