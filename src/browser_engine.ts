@@ -425,3 +425,55 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
     console.warn('[Sora] Warning: Failed to set request interception for page security:', err);
   }
 }
+
+/**
+ * 画面上に非表示となっている不要ノード（CSS display:none, visibility:hidden, hidden属性, aria-hidden等）を
+ * DOMツリーから安全に剪定（Prune）し、LLM誤読・ハルシネーションを防ぐ。
+ */
+export async function pruneInvisibleElements(page: Page): Promise<void> {
+  try {
+    if (page.isClosed()) return;
+    await page
+      .evaluate(() => {
+        try {
+          // 1. 標準的な不可視・テンプレート要素の先行除去
+          const staticTags = document.querySelectorAll('noscript, template, [hidden]');
+          staticTags.forEach((el) => {
+            try {
+              el.remove();
+            } catch {}
+          });
+
+          // 2. DOMツリーの走査とComputed Styleによる不可視要素の剪定
+          if (!document.body) return;
+          const allElements = Array.from(document.body.querySelectorAll('*'));
+          for (const el of allElements) {
+            if (!el.isConnected) continue;
+
+            const tag = el.tagName.toLowerCase();
+            // script, style, link, meta 等はパーサー処理（JSON-LD等）のために維持
+            if (['script', 'style', 'meta', 'link', 'title'].includes(tag)) continue;
+
+            try {
+              const style = window.getComputedStyle(el);
+              if (
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                style.visibility === 'collapse'
+              ) {
+                el.remove();
+                continue;
+              }
+
+              if (el.getAttribute('aria-hidden') === 'true' && el.classList.contains('visually-hidden')) {
+                el.remove();
+                continue;
+              }
+            } catch {}
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  } catch {}
+}
+

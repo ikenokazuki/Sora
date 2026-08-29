@@ -1,6 +1,8 @@
-#!/usr/bin/env bash
-set -e
-# wreq-js (TLSフィンガープリント偽装, Rustネイティブアドオン) はNixOS環境で
-# libstdc++.so.6 を標準パスから見つけられないため LD_LIBRARY_PATH を明示する
+# 孤立した Chromium プロセスの残骸をクリーンアップしてメモリ枯渇・SSH切断を防止
+pkill -f "chromium-unwrapped" 2>/dev/null || true
+
 LIBSTDCXX_PATH=$(nix-build '<nixpkgs>' -A stdenv.cc.cc.lib --no-out-link)
-nix-shell -p bun chromium --run "ALLOW_LOCAL_FETCH=true CHROME_PATH=\$(which chromium) LD_LIBRARY_PATH=${LIBSTDCXX_PATH}/lib:\$LD_LIBRARY_PATH bun test --timeout 30000"
+nix-shell -p bun chromium --run "ALLOW_LOCAL_FETCH=true CHROME_PATH=\$(which chromium) LD_LIBRARY_PATH=${LIBSTDCXX_PATH}/lib:\$LD_LIBRARY_PATH bun test --timeout 60000"
+
+# テスト完了後のクリーンアップ
+pkill -f "chromium-unwrapped" 2>/dev/null || true

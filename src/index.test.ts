@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog } from './mcp.js';
+import { SORA_VERSION } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
 import {
@@ -726,7 +727,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(searchCatalog(dummyCatalog, '')).toEqual([]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 11 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 12 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -760,6 +761,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const toolNames = body.result.tools.map((t: any) => t.name);
     expect(toolNames).toContain('scrape');
+    expect(toolNames).toContain('search_web');
     expect(toolNames).toContain('search_deep');
     expect(toolNames).toContain('search_tools');
     expect(toolNames).toContain('check_product_compliance');
@@ -770,7 +772,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_disaster_warnings');
     expect(toolNames).toContain('search_earthquake');
     expect(toolNames).toContain('search_laws');
-    expect(toolNames.length).toBe(11);
+    expect(toolNames.length).toBe(12);
   });
 
   it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
@@ -834,9 +836,10 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes1 = await manager.handleRequest(listReq1);
     const listBody1: any = await parseRes(listRes1);
     const names1 = listBody1.result.tools.map((t: any) => t.name);
-    expect(names1.length).toBe(11);
+    expect(names1.length).toBe(12);
     expect(names1).toContain('scrape');
     expect(names1).toContain('search_deep');
+    expect(names1).toContain('search_web');
     expect(names1).toContain('check_product_compliance');
     expect(names1).toContain('search_tools');
 
@@ -895,8 +898,11 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes2 = await manager.handleRequest(listReq2);
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
-    expect(names2.length).toBe(12);
+    // クエリ「楽曲」は search_song（"楽曲タイトル"）と search_music（"楽曲・アルバム"）の
+    // 両方の description に部分一致するため、2件同時に有効化されるのが正しい挙動
+    expect(names2.length).toBe(names1.length + 2);
     expect(names2).toContain('search_song');
+    expect(names2).toContain('search_music');
 
     // 6. Search for non-existent tool returns helpful message
     const searchNoneReq = new Request('http://localhost/mcp', {
@@ -1170,7 +1176,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.6.0');
+    expect(data.version).toBe(SORA_VERSION);
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
@@ -1229,6 +1235,52 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.screenshot).toBeDefined();
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      server.stop();
+    }
+  });
+
+  it('scrape should capture fullPage screenshot by default and handle long pages', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping Chromium fullPage screenshot test (Chromium not found on host)');
+      return;
+    }
+
+    const longHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head><title>Long Page Test</title></head>
+      <body>
+        <div style="height: 1000px; background: #f0f0f0;">Top Content</div>
+        <div style="height: 1000px; background: #e0e0e0;">Middle Content</div>
+        <div id="footer" style="height: 500px; background: #d0d0d0;">Bottom Footer Content</div>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(longHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+
+    try {
+      const res = await scrapeUrl({
+        url: `http://127.0.0.1:${server.port}/long-page`,
+        mode: 'browser',
+        formats: ['screenshot'],
+        fullPage: true,
+      });
+
+      expect(res.screenshot).toBeDefined();
+      expect(typeof res.screenshot).toBe('string');
+      expect((res.screenshot || '').length).toBeGreaterThan(1000);
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
       server.stop();
     }
   });
@@ -3231,7 +3283,7 @@ describe('Sora REST & MCP Endpoints', () => {
     await manager.handleRequest(notifyReq);
 
     // 全モジュールのツールを有効化するために主要カテゴリを検索
-    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade'];
+    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade', 'media'];
     for (let i = 0; i < categories.length; i++) {
       const sReq = new Request('http://localhost/mcp', {
         method: 'POST',
@@ -3281,7 +3333,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(36); // 35 standard tools + search_tools
+    expect(body.result.tools.length).toBe(37); // 36 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3740,13 +3792,14 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   });
 
-  it('MCP server should register all 36 tools and enable 11 core hybrid tools by default', () => {
+  it('MCP server should register all 37 tools and enable 12 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    // Core 11 tools are enabled by default for seamless 1-hop autonomous invocation
+    // Core 12 tools are enabled by default for seamless 1-hop autonomous invocation
     expect(enabledTools).toContain('scrape');
+    expect(enabledTools).toContain('search_web');
     expect(enabledTools).toContain('search_deep');
     expect(enabledTools).toContain('search_tools');
     expect(enabledTools).toContain('check_product_compliance');
@@ -3757,7 +3810,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledTools).toContain('search_disaster_warnings');
     expect(enabledTools).toContain('search_earthquake');
     expect(enabledTools).toContain('search_laws');
-    expect(enabledTools.length).toBe(11);
+    expect(enabledTools.length).toBe(12);
 
     const serverAll = createMcpServer({ deferTools: false });
     const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
@@ -3770,8 +3823,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('check_fda_regulated');
     expect(enabledToolsAll).toContain('verify_hts_code');
     expect(enabledToolsAll).toContain('check_product_compliance');
+    expect(enabledToolsAll).toContain('inspect_image');
     expect(enabledToolsAll).toContain('watch_delete');
-    expect(enabledToolsAll.length).toBe(36);
+    expect(enabledToolsAll.length).toBe(37);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -3959,11 +4013,13 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.product.material).toBe('wood');
     expect(res.product.htsCode).toBe('9503.00.0073');
     expect(res.overallStatus).toBe('action_required');
-    expect(res.cpsc.certificateRequired).toBe(true);
-    expect(res.cpsc.certificateType).toBe('CCC');
-    expect(res.cpsc.eFilingRequired).toBe(true);
-    expect(res.fda.fdaRegulatedLikely).toBe(false);
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('CCC');
+    expect(res.cpsc!.eFilingRequired).toBe(true);
+    expect(res.fda!.fdaRegulatedLikely).toBe(false);
     expect(res.actionPlan.some((a) => a.includes('CCC'))).toBe(true);
+    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr.includes('16 CFR 1501'))).toBe(true);
+    expect(res.actionPlan.some((a) => a.includes('16 CFR 1501'))).toBe(true);
   });
 
   it('checkProductCompliance should correctly evaluate explicit HTS code and helmet category', async () => {
@@ -3974,10 +4030,11 @@ describe('Sora REST & MCP Endpoints', () => {
       targetAge: 'adult',
     });
 
-    expect(res.cpsc.certificateRequired).toBe(true);
-    expect(res.cpsc.certificateType).toBe('GCC');
-    expect(res.cpsc.eFilingRequired).toBe(true);
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('GCC');
+    expect(res.cpsc!.eFilingRequired).toBe(true);
     expect(res.overallStatus).toBe('action_required');
+    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr === '個別規格要確認')).toBe(true);
     expect(res.actionPlan.some((a) => a.includes('GCC'))).toBe(true);
   });
 
@@ -3987,9 +4044,9 @@ describe('Sora REST & MCP Endpoints', () => {
       description: 'Organic skincare lotion and beauty cosmetic cream.',
     });
 
-    expect(res.fda.fdaRegulatedLikely).toBe(true);
-    expect(res.fda.possiblePrograms).toContain('COS');
-    expect(res.cpsc.certificateRequired).not.toBe(true);
+    expect(res.fda!.fdaRegulatedLikely).toBe(true);
+    expect(res.fda!.possiblePrograms).toContain('COS');
+    expect(res.cpsc!.certificateRequired).not.toBe(true);
     expect(res.overallStatus).toBe('action_required');
     expect(res.actionPlan.some((a) => a.includes('MoCRA'))).toBe(true);
   });
@@ -4000,9 +4057,9 @@ describe('Sora REST & MCP Endpoints', () => {
       description: 'Japanese dietary food snack and organic powdered beverage.',
     });
 
-    expect(res.fda.fdaRegulatedLikely).toBe(true);
-    expect(res.fda.possiblePrograms).toContain('FOO');
-    expect(res.fda.priorNoticeMayApply).toBe(true);
+    expect(res.fda!.fdaRegulatedLikely).toBe(true);
+    expect(res.fda!.possiblePrograms).toContain('FOO');
+    expect(res.fda!.priorNoticeMayApply).toBe(true);
     expect(res.overallStatus).toBe('action_required');
     expect(res.actionPlan.some((a) => a.includes('Prior Notice'))).toBe(true);
   });
@@ -4016,10 +4073,98 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.product.targetAge).toBe('unknown');
     expect(res.product.material).toBe('wood');
     expect(res.product.htsCode).toBe('9403.60.8081');
-    expect(res.cpsc.certificateRequired).not.toBe(true);
-    expect(res.cpsc.eFilingRequired).toBe(false);
-    expect(res.fda.fdaRegulatedLikely).toBe(false);
+    expect(res.cpsc!.certificateRequired).not.toBe(true);
+    expect(res.cpsc!.eFilingRequired).toBe(false);
+    expect(res.fda!.fdaRegulatedLikely).toBe(false);
     expect(['likely_exempt', 'potential_action_required']).toContain(res.overallStatus);
+  });
+
+  it('checkProductCompliance should route Electronics with button/coin battery to CPSC Button Cell & Coin Batteries HTS', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Wireless Remote Control',
+      description: 'A small electronics remote control device with charger cable.',
+      targetAge: 'adult',
+      hasBattery: true,
+      batteryType: 'button_coin',
+    });
+
+    expect(res.product.htsCode).toBe('8506.10.0010');
+    expect(res.product.detectedCategory).toBe('Button Cell & Coin Batteries');
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('GCC');
+    expect(res.cpsc!.applicableRegulations.some((r) => r.summary.includes('Button Cell & Coin Batteries'))).toBe(true);
+  });
+
+  it('checkProductCompliance should append DOT/PHMSA hazmat note for non-button electronics batteries', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Rechargeable Power Bank',
+      description: 'A rechargeable electronics power bank with lithium-ion battery and USB cable.',
+      targetAge: 'adult',
+      hasBattery: true,
+      batteryType: 'other',
+    });
+
+    expect(res.product.htsCode).toBe('8504.40.9580');
+    expect(res.actionPlan.some((a) => a.includes('UN3480') || a.includes('PHMSA'))).toBe(true);
+  });
+
+  it('checkProductCompliance should ask about battery presence/type when Electronics category is matched without hasBattery', async () => {
+    const res = await checkProductCompliance({
+      productName: 'USB Charging Cable',
+      description: 'A charger cable for electronics devices.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('電池'))).toBe(true);
+  });
+
+  it('checkProductCompliance should ask for missing material on Kitchenware without a foodContact dead-end', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Kitchen Mug',
+      description: 'A mug for everyday kitchen use, dishwasher safe.',
+      foodContact: true,
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('素材'))).toBe(true);
+    expect(res.clarifyingQuestions?.some((q) => q.includes('食品接触'))).toBe(false);
+    expect(res.htsVerification).toBeUndefined();
+  });
+
+  it('checkProductCompliance should run the full pipeline once Kitchenware material and foodContact are both supplied', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Kitchen Mug',
+      description: 'A mug for everyday kitchen use, dishwasher safe.',
+      material: 'ceramic',
+      foodContact: true,
+    });
+
+    expect(res.overallStatus).not.toBe('needs_more_info');
+    expect(res.clarifyingQuestions).toBeUndefined();
+    expect(res.htsVerification).toBeDefined();
+    expect(res.fda).toBeDefined();
+    expect(res.cpsc).toBeDefined();
+  });
+
+  it('checkProductCompliance should ask for targetAge when Bicycle Helmet category is matched without it', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Adjustable Helmet',
+      description: 'A protective head helmet with an adjustable strap for outdoor use.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('対象ユーザー'))).toBe(true);
+  });
+
+  it('checkProductCompliance should return the fallback clarifying question when no category matches', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Quantum Widget Model X',
+      description: 'A completely novel gadget with no established classification.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.length).toBe(1);
+    expect(res.clarifyingQuestions?.[0]).toContain('正確なHTSコードの分類が困難');
   });
 
   it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
@@ -4041,6 +4186,147 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.actionPlan.length).toBeGreaterThan(0);
     expect(json.disclaimer).toBeTruthy();
   });
+
+  it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm</title>
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org/",
+              "@type": "Product",
+              "name": "【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm",
+              "brand": { "@type": "Brand", "name": "SimpleSideMascots" },
+              "sku": "lJrP9Y",
+              "offers": {
+                "@type": "Offer",
+                "availability": "http://schema.org/InStock",
+                "price": "5200",
+                "priceCurrency": "JPY"
+              }
+            }
+          </script>
+        </head>
+        <body>
+          <main>
+            <h1>【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm</h1>
+            <div class="price">
+              <span class="price-item">¥5,200</span>
+              <span class="badge price__badge-sold-out visually-hidden" aria-hidden="true">売り切れ</span>
+              <span style="display: none">完売しました</span>
+            </div>
+            <p>※こちらは通常販売の商品となります。サイズ：約30cm 素材：ショートボア</p>
+          </main>
+        </body>
+      </html>
+    `;
+
+    const res = convertHtmlToMarkdown(html, 'https://example.com/products/asamimichan', 10000);
+    expect(res.availability).toBe('InStock');
+    expect(res.price).toBe('5200');
+    expect(res.priceCurrency).toBe('JPY');
+    expect(res.brand).toBe('SimpleSideMascots');
+    expect(res.sku).toBe('lJrP9Y');
+    // Frontmatter に availability と price が反映されていること
+    expect(res.markdown).toContain('availability: "InStock"');
+    expect(res.markdown).toContain('price: "5200 JPY"');
+    // 非表示バッジ・スタイル付きの「売り切れ」「完売しました」が本文から除外されていること
+    expect(res.markdown).not.toContain('売り切れ');
+    expect(res.markdown).not.toContain('完売しました');
+    expect(res.markdown).toContain('ショートボア');
+  });
+
+  it('convertHtmlToMarkdown should correctly handle OutOfStock product availability from JSON-LD', () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>売り切れ商品テスト</title>
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org/",
+              "@type": "Product",
+              "name": "限定マグカップ",
+              "offers": {
+                "@type": "Offer",
+                "availability": "http://schema.org/OutOfStock",
+                "price": "1800",
+                "priceCurrency": "JPY"
+              }
+            }
+          </script>
+        </head>
+        <body>
+          <main>
+            <h1>限定マグカップ</h1>
+            <p>陶器製マグカップ</p>
+          </main>
+        </body>
+      </html>
+    `;
+
+    const res = convertHtmlToMarkdown(html, 'https://example.com/products/mug', 10000);
+    expect(res.availability).toBe('OutOfStock');
+    expect(res.price).toBe('1800');
+    expect(res.markdown).toContain('availability: "OutOfStock"');
+  });
+
+  describe('inspect_image and local WASM ocr_image tests', () => {
+    it('detectImageMimeType should accurately identify image formats from magic bytes', async () => {
+      const { detectImageMimeType } = await import('./services/image_inspect.js');
+
+      // JPEG: FF D8 FF
+      const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+      expect(detectImageMimeType(jpeg)).toBe('image/jpeg');
+
+      // PNG: 89 50 4E 47
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+      expect(detectImageMimeType(png)).toBe('image/png');
+
+      // GIF: 47 49 46 38
+      const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+      expect(detectImageMimeType(gif)).toBe('image/gif');
+
+      // WebP: 52 49 46 46 ... 57 45 42 50
+      const webp = new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+      ]);
+      expect(detectImageMimeType(webp)).toBe('image/webp');
+    });
+
+    it('fetchImageBuffer should block private IPs (SSRF protection)', async () => {
+      const { fetchImageBuffer } = await import('./services/image_inspect.js');
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      delete process.env.ALLOW_LOCAL_FETCH;
+
+      try {
+        await expect(fetchImageBuffer('http://127.0.0.1/test.jpg')).rejects.toThrow();
+        await expect(fetchImageBuffer('http://192.168.1.1/secret.png')).rejects.toThrow();
+        await expect(fetchImageBuffer('http://169.254.169.254/latest/meta-data/')).rejects.toThrow();
+        await expect(fetchImageBuffer('ftp://example.com/test.jpg')).rejects.toThrow();
+      } finally {
+        if (prevEnv !== undefined) {
+          process.env.ALLOW_LOCAL_FETCH = prevEnv;
+        }
+      }
+    });
+
+    it('POST /media/inspect-image should validate request input', async () => {
+      const req = new Request('http://localhost/media/inspect-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'not-a-valid-url' }),
+      });
+      const res = await app.fetch(req);
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBeDefined();
+    });
+  });
 });
+
+
 
 

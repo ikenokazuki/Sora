@@ -41,11 +41,12 @@ import {
   checkFdaRegulated,
   verifyHtsCode,
   checkProductCompliance,
+  inspectImage,
 } from './scraper.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
@@ -157,6 +158,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableMusic = isModuleActive('music', options?.modules);
   const shouldEnableGov = isModuleActive('gov', options?.modules);
   const shouldEnableTrade = isModuleActive('trade', options?.modules);
+  const shouldEnableMedia = isModuleActive('media', options?.modules) || isModuleActive('web', options?.modules);
 
   // =========================================================================
   // 🌐 Category 1: Core Web & Crawling (モジュール: 'web')
@@ -186,6 +188,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables']))
           .optional()
           .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
+        fullPage: z
+          .boolean()
+          .optional()
+          .describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
         fastOnly: z
           .boolean()
           .optional()
@@ -352,7 +358,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。記事本文を深く読み込んで包括的・根拠ある回答を作成したい場合に最適です（URL一覧のみでよい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。1回の呼び出しで記事本文まで深く読み込み、包括的・根拠ある回答を作成したい場合に最適です（広く候補URL一覧を探して個別スクレイプしたい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -464,7 +470,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_web',
       'web',
-      '【Web検索・概要/URL一覧取得】Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。本文を深く読み込む必要がなく、検索結果の一覧・URL を確認したい場合に最適です（記事本文まで一度に読みたい場合は search_deep を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【Web検索・候補一覧探索】Web 検索を実行し、タイトル・概要スニペット・URL 一覧を高速取得します。まず広く情報を探したい場合や、候補URLをリストアップしてから必要なページだけを scrape で詳細取得したい場合に最適です（記事本文まで一括でまとめて読みたい場合は search_deep を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "東京都 天気", "Next.js 15")'),
         includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
@@ -484,7 +490,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
+      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
     );
   }
 
@@ -527,7 +533,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
             html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
             screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)'),
-            screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: false)'),
+            screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)'),
             maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
           })
           .optional()
@@ -1392,15 +1398,18 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'check_product_compliance',
       'trade',
-      '【商品統合コンプライアンス一括判定】商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制対象判定（食品・化粧品・医薬品等）、CPSC適合証明書（GCC/CCC）および2026年eFiling義務化判定を一連のパイプラインとして一括実行し、通関前のアクションプランを含む総合診断レポートを返します。参考情報であり法的助言ではありません。',
+      '【商品統合コンプライアンス一括判定】商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制対象判定（食品・化粧品・医薬品等）、CPSC適合証明書（GCC/CCC）および2026年eFiling義務化判定を一連のパイプラインとして一括実行し、通関前のアクションプランを含む総合診断レポートを返します。参考情報であり法的助言ではありません。カテゴリ判定に必須の情報（対象年齢・素材・食品接触用途・電池使用有無等）が不足している場合は判定を実行せず overallStatus:"needs_more_info" と clarifyingQuestions（確認質問の配列）のみを返すので、ユーザーに質問内容を確認した上で targetAge/material/foodContact/hasBattery/batteryType 等の該当パラメータを補って本ツールを再度呼び出してください。targetAge/material/foodContact/hasBattery/batteryType はユーザーが明示的に述べた情報のみを渡し、商品名からの推測やWeb検索結果で埋めないでください（誤った前提での判定を防ぐため）。',
       {
         url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
         productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
         description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
         htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証）'),
-        targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）'),
-        material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）'),
+        targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+        material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
         productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
+        foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+        hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+        batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       },
       async (opts) => {
         try {
@@ -1420,7 +1429,48 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   }
 
   // =========================================================================
-  // 🔍 Category 9: Tool Discovery & Dynamic Activation (メタツール) - CORE (defaultEnabled: true)
+  // 📷 Category 9: Media & Vision (モジュール: 'media')
+  // =========================================================================
+  if (shouldEnableMedia) {
+    // Tool: inspect_image (画像取得 & マルチモーダル視覚入力 Base64 返却) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'inspect_image',
+      'media',
+      '【画像視覚解析・マルチモーダル入力】WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが視覚的に直接読み取れる形式（MCP ImageContent）で返却します。※重要: アイキャッチや装飾用画像、本文テキストで既に説明されている画像には呼び出さないでください。イベント告知チラシ、タイムテーブル、表、スクリーンショットなど、画像内に重要な文字や詳細情報が含まれており、ユーザーへの回答に不可欠な画像（1〜2枚）に限定して呼び出してください。',
+      {
+        url: z.string().url().describe('読み取り対象の画像URL (https://...)'),
+      },
+      async (opts) => {
+        try {
+          const result = await inspectImage(opts);
+          return {
+            content: [
+              {
+                type: 'image',
+                data: result.imageContent.data,
+                mimeType: result.imageContent.mimeType,
+              },
+              {
+                type: 'text',
+                text: result.markdown || `Image loaded: ${result.url}`,
+              },
+            ],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Image inspection error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['画像', 'チラシ', 'タイムテーブル', '告知', 'ポスター', '写真', 'スクリーンショット', '視覚', 'inspect', 'image', 'media'] },
+    );
+  }
+
+  // =========================================================================
+  // 🔍 Category 10: Tool Discovery & Dynamic Activation (メタツール) - CORE (defaultEnabled: true)
   // =========================================================================
   mcpServer.tool(
     'search_tools',

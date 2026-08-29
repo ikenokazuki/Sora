@@ -220,39 +220,57 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 35 ツール / 9つのモジュール & 動的ツール発見)
+## 2. 提供 MCP ツール一覧 (全 37 ツール / 10 のモジュール & ハイブリッド 12 コア構成)
 
-Sora は、目的に応じて **9つの論理モジュール（全 35 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **10 個の論理モジュール（全 37 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントのコンテキスト肥大化（35 ツールのスキーマだけで 12,000〜25,000 トークン消費）を防ぐため、**初期露出は 4 つのコアツールのみ** に厳選されています。
+Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントが日常的・頻繁に使う **代表的な 12 個のコアツールを初期有効（★ CORE）** とし、残りの 25 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
-- **初期有効 (★ CORE 4ツール)**: `scrape`, `search_web`, `search_deep`, `search_tools`
-- **動的有効化 (・ DEFERRED 30ツール)**: フライト・標高/ジオコード・国会会議録・天気・乗換・知恵袋・X速報・画像・ニュース・音楽・法令・交通情報・差分監視・米国貿易コンプライアンス（CPSC/FDA/HTSコード検証）など
-
-エージェントが `search_tools({ query: "知恵袋" })` や `search_tools({ query: "天気" })`、`search_tools({ query: "フライト" })`、`search_tools({ query: "国会" })` を呼び出すと、該当ツールが**同一セッション内で即座に自動有効化**され、次回の `tools/list` および `tools/call` で利用可能になります。
+- **初期有効 (★ CORE 12 ツール)**:
+  - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
+  - `search_web`: 最速 1-hop Web 検索（候補 URL・スニペット即応）
+  - `search_deep`: 深層統合検索・本文一括スクレイピング & リアルタイム速報
+  - `search_tools`: 専用ツールのオンデマンド動的検索・有効化（Tool Search Tool）
+  - `check_product_compliance`: 商品統合コンプライアンス一括診断（HTSコード/FDA/CPSC/eFiling）
+  - `get_weather`: 気象庁 1,805 市区町村天気予報
+  - `search_route`: Yahoo! 乗換案内・IC 運賃
+  - `search_chiebukuro`: Yahoo! 知恵袋 Q&A 検索
+  - `search_realtime`: Yahoo! リアルタイム検索（X/Twitter 最新投稿・画像 URL 抽出）
+  - `search_disaster_warnings`: 気象庁 警報・注意報
+  - `search_earthquake`: 気象庁 地震情報
+  - `search_laws`: e-Gov 法令キーワード検索
+- **動的有効化 (・ DEFERRED 25 ツール)**:
+  - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
+  - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
+  - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得
+  - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
+  - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
+  - `check_fda_regulated`: 米国 FDA 規制判定
+  - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
+  - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
+  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                  Sora - Modular MCP                                                   │
-├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┤
-│ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │
-│ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │
-│ ★scrape         │ ・browser_action  │ ・search_image   │ ・search_route  │・search_    │・watch_       │・search_laws │
-│ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│
-│ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ・get_weather   │  warnings   │・watch_check  │・search_diet_│
-│ ★search_tools   │    セッション保持)│ ・search_chiebukuro│ (気象庁天気)  │・search_    │・watch_list   │  minutes     │
-│ ・scrape_batch  │                   │ ・search_realtime│ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │
-│ ・map_site      │                   │ ・search_trend   │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤
-│ ・crawl_site    │                   │ ・suggest_keywords│・get_flight_    │  elevation  │ (`music`)     │              │
-│                 │                   │                  │   status (航空) │ (国土地理院)│・search_song  │              │
-│                 │                   │                  │                 │             │・search_artist│              │
-│                 │                   │                  │                 │             │・search_music │              │
-└─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┘
-★ = 初期常時有効 (CORE: 4ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 31ツール)
-
-🚢 Trade Compliance (`trade`) モジュールは図には未収録（詳細は Module 9 参照）:
-・check_cpsc_certificate（米国CPSC適合証明書eFiling判定）・check_fda_regulated（米国FDA規制対象簡易判定）・verify_hts_code（HTS/HSコード実在確認・検証）
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                         Sora - Modular MCP                                                        │
+├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┬───────────┤
+│ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │ 📦 Trade  │
+│ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │ (`trade`) │
+│ ★scrape         │ ・browser_action  │ ・search_image   │ ★search_route   │★search_     │・watch_       │★search_laws  │★check_    │
+│ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
+│ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ★get_weather    │  warnings   │・watch_check  │・search_diet_│  compli-  │
+│ ★search_tools   │    セッション保持)│ ★search_chie-    │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
+│ ・scrape_batch  │                   │   bukuro         │ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・verify_  │
+│ ・map_site      │                   │ ★search_realtime │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
+│ ・crawl_site    │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・check_   │
+│                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  fda_check│
+│                 │                   │   keywords       │                 │             │・search_artist│・inspect_    │・check_   │
+│                 │                   │                  │                 │             │・search_music │  image       │  cpsc_    │
+│                 │                   │                  │                 │             │               │ (マルチモ    │  check    │
+│                 │                   │                  │                 │             │               │  ーダル視覚) │           │
+└─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
+★ = 初期常時有効 (CORE: 12ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 25ツール)
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -1402,6 +1420,31 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   }
   ```
 
+### 3.20 画像取得 & マルチモーダル視覚入力 (`POST /media/inspect-image`)
+WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが視覚的に直接読み取れる形式（MCP `ImageContent` / Base64）に変換して返却します。タイムテーブル、告知チラシ、図表、領収書、スクリーンショットなどの画像内詳細情報をマルチモーダルAIが100%の精度で解読可能にします。
+
+- **リクエスト**:
+  ```json
+  {
+    "url": "https://example.com/timetable.jpg"
+  }
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "success": true,
+    "url": "https://example.com/timetable.jpg",
+    "mimeType": "image/jpeg",
+    "sizeBytes": 284082,
+    "markdown": "![画像](https://example.com/timetable.jpg)\n\n- **フォーマット**: `image/jpeg`\n- **サイズ**: 277 KB\n- **ステータス**: MCP ImageContent としてマルチモーダル視覚入力にロード完了",
+    "imageContent": {
+      "type": "image",
+      "data": "/9j/4AAQSkZJRgABAQAAAQABAAD...",
+      "mimeType": "image/jpeg"
+    }
+  }
+  ```
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ
@@ -1415,19 +1458,17 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 - **🛡️ 多重 SSRF & DNS Rebinding 防御**:
   - プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）、CGNAT（`100.64.0.0/10`）、IPv6 特殊アドレス、クラウドメタデータ IP（`169.254.169.254`）への内部アクセスを遮断。
   - `dns.promises.lookup` による事前名前解決を行い、ドメイン偽装による **DNS Rebinding 攻撃** も接続前に即時ブロック。
+- **📸 フルページスクリーンショット & Lazy-load 自動スクロール (`fullPage: true`)**:
+  - `formats: ['screenshot']` 時にページ最下部まで 1 枚の縦長画像として丸ごと撮影。自動スクロールにより遅延読み込み画像や動的要素を確実に描画させてから撮影（最大高さ 15,000px 安全ガード付き）。
+- **🛍️ EC/Shopify DOM 剪定 & JSON-LD 在庫・価格メタデータ抽出**:
+  - Shopify 等の EC サイトで隠し「売り切れ」バッジやカートモーダルを誤認して抽出するのを防止し、JSON-LD の `InStock` / `OutOfStock`、価格、ブランド、SKU を正確に抽出。
 - **⚡ Single-Flight Cache (In-flight Deduplication)**:
   - 同一 URL への並行リクエスト発生時、Promise を共有して 1 回の外部通信に集約。Thundering Herd（キャッシュスタンピード）を防ぎ、外部サーバーとローカルリソースを保護。
 - **🚦 ブラウザ同時実行制限 (Concurrency Control)**:
   - `SimpleSemaphore` により Chromium プロセスの同時実行数（`MAX_CONCURRENT_BROWSERS`、デフォルト 5）を安全に制御。サーバーの CPU/メモリ枯渇を防止。
 - **🔒 Timing-Safe 認証 & 日次クォータ・レートリミット制御**:
   - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
-  - 環境変数 `DAILY_REQUEST_LIMIT` により API キー別の日次リクエスト上限を判定（超過時 `429 Too Many Requests`）。レスポンスヘッダーに `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` を標準付与。
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
-- **🧠 BM25+ 多信号ハイブリッド・リランキング (`rerankSearchResults`)**:
-  - タイトル完全一致（重み 3.0）、本文 BM25 スコア（重み 1.0）、公的・学術ドメイン信頼度ボーナス（`.go.jp`, `.gov`, `.ac.jp`, `.org`、重み 1.5）を組み合わせ、AI エージェントにとって最も信頼性の高い情報を最上位にソート。
-- **⏱️ キャッシュ鮮度メタデータ & Jitter スロットリング**:
-  - 同一ドメインへの過剰な連続アクセスを 150ms + Jitter（0〜100ms ゆらぎ）で自動抑制。
-  - キャッシュヒット時はレスポンスヘッダーに `X-Cache: HIT`、オブジェクト内に `cachedAt`（生成日時）および `ageSeconds`（キャッシュ経過秒数）を付与し、LLM が情報の鮮度を即座に判定可能。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
   - いずれかの依存関係で障害検知時、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ自動で障害通知 Webhook を発火。
