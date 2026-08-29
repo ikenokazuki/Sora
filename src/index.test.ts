@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog } from './mcp.js';
+import { SORA_VERSION } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
 import {
@@ -1175,7 +1176,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.6.0');
+    expect(data.version).toBe(SORA_VERSION);
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
