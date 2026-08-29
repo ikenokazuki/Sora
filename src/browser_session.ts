@@ -14,6 +14,7 @@ import {
   bypassCloudflareTurnstile,
   browserSemaphore,
   humanMouseMove,
+  pruneInvisibleElements,
   type BrowserActionStep,
 } from './scraper.js';
 
@@ -512,6 +513,10 @@ export async function handleBrowserSessionAction(
     let html: string | undefined;
     let screenshot: string | undefined;
 
+    if (extract.html || extract.markdown !== false) {
+      await pruneInvisibleElements(page);
+    }
+
     if (extract.html) {
       html = await page.content().catch(() => '');
     }
@@ -540,12 +545,33 @@ export async function handleBrowserSessionAction(
       }
       if (!screenshot && extract.screenshot) {
         try {
+          const isFull = extract.screenshotFullPage ?? true;
+          if (isFull) {
+            await page.evaluate(async () => {
+              const maxScroll = Math.min(document.body.scrollHeight, 15000);
+              const step = 800;
+              for (let y = 0; y < maxScroll; y += step) {
+                window.scrollTo(0, y);
+                await new Promise((r) => setTimeout(r, 40));
+              }
+              window.scrollTo(0, 0);
+            });
+            await new Promise((r) => setTimeout(r, 150));
+          }
           screenshot = (await page.screenshot({
-            fullPage: extract.screenshotFullPage ?? false,
+            fullPage: isFull,
             type: 'png',
             encoding: 'base64',
           })) as string;
-        } catch {}
+        } catch {
+          try {
+            screenshot = (await page.screenshot({
+              fullPage: false,
+              type: 'png',
+              encoding: 'base64',
+            })) as string;
+          } catch {}
+        }
       }
     }
 
