@@ -31,6 +31,7 @@ export * from './services/music.js';
 export * from './services/gov.js';
 export * from './services/health.js';
 export * from './services/trade.js';
+export * from './services/image_inspect.js';
 
 import type {
   ScrapeFormat,
@@ -92,6 +93,7 @@ import {
   isBlockedHostname,
   validateHostIpDns,
   setupPageSecurity,
+  pruneInvisibleElements,
 } from './browser_engine.js';
 
 import { parsePdfToMarkdown } from './pdf.js';
@@ -882,20 +884,33 @@ export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean
   });
 }
 
-export function extractMetadataFromJsonLd(items: any[]): {
+export interface JsonLdMetadata {
   publishedTime?: string;
   author?: string;
   siteName?: string;
   description?: string;
   ogImage?: string;
-} {
-  const result: {
-    publishedTime?: string;
-    author?: string;
-    siteName?: string;
-    description?: string;
-    ogImage?: string;
-  } = {};
+  productName?: string;
+  availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
+  price?: string;
+  priceCurrency?: string;
+  brand?: string;
+  sku?: string;
+}
+
+function normalizeAvailability(val: any): string | undefined {
+  if (typeof val !== 'string') return undefined;
+  const lower = val.toLowerCase();
+  if (lower.includes('instock')) return 'InStock';
+  if (lower.includes('outofstock') || lower.includes('soldout')) return 'OutOfStock';
+  if (lower.includes('preorder')) return 'PreOrder';
+  if (lower.includes('discontinued')) return 'Discontinued';
+  if (lower.includes('limitedavailability')) return 'LimitedAvailability';
+  return val.replace(/^https?:\/\/schema\.org\//i, '');
+}
+
+export function extractMetadataFromJsonLd(items: any[]): JsonLdMetadata {
+  const result: JsonLdMetadata = {};
 
   const flatObjects: any[] = [];
   function flatten(obj: any) {
@@ -957,6 +972,50 @@ export function extractMetadataFromJsonLd(items: any[]): {
         }
       }
     }
+
+    // 商品 (Schema.org Product / Offer) の解析
+    const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
+    const isProduct = /Product/i.test(typeStr);
+    const isOffer = /Offer/i.test(typeStr);
+
+    if (isProduct) {
+      if (!result.productName && typeof item.name === 'string') {
+        result.productName = item.name;
+      }
+      if (!result.brand) {
+        if (typeof item.brand === 'string') result.brand = item.brand;
+        else if (item.brand && typeof item.brand.name === 'string') result.brand = item.brand.name;
+      }
+      if (!result.sku && typeof item.sku === 'string') {
+        result.sku = item.sku;
+      }
+      if (item.offers) {
+        const offersList = Array.isArray(item.offers) ? item.offers : [item.offers];
+        for (const offer of offersList) {
+          if (!result.availability && offer.availability) {
+            result.availability = normalizeAvailability(offer.availability);
+          }
+          if (!result.price && (offer.price !== undefined || offer.lowPrice !== undefined)) {
+            result.price = String(offer.price ?? offer.lowPrice);
+          }
+          if (!result.priceCurrency && typeof offer.priceCurrency === 'string') {
+            result.priceCurrency = offer.priceCurrency;
+          }
+        }
+      }
+    }
+
+    if (isOffer) {
+      if (!result.availability && item.availability) {
+        result.availability = normalizeAvailability(item.availability);
+      }
+      if (!result.price && (item.price !== undefined || item.lowPrice !== undefined)) {
+        result.price = String(item.price ?? item.lowPrice);
+      }
+      if (!result.priceCurrency && typeof item.priceCurrency === 'string') {
+        result.priceCurrency = item.priceCurrency;
+      }
+    }
   }
 
   return result;
@@ -978,6 +1037,11 @@ export function convertHtmlToMarkdown(
   publishedTime?: string;
   author?: string;
   siteName?: string;
+  availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
+  price?: string;
+  priceCurrency?: string;
+  brand?: string;
+  sku?: string;
   isTruncated: boolean;
   links: string[];
   images?: ImageItem[];
@@ -994,8 +1058,11 @@ export function convertHtmlToMarkdown(
   const jsonLd: any[] = [];
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
-      const parsed = JSON.parse($(el).text());
-      if (parsed) jsonLd.push(parsed);
+      const text = $(el).text().trim();
+      if (text) {
+        const parsed = JSON.parse(text);
+        if (parsed) jsonLd.push(parsed);
+      }
     } catch {}
   });
 
@@ -1038,6 +1105,25 @@ export function convertHtmlToMarkdown(
     $('meta[property="og:site_name"]').attr('content') ||
     jsonLdMeta.siteName ||
     undefined;
+
+  const availability =
+    jsonLdMeta.availability ||
+    ($('meta[property="og:availability"]').attr('content')?.toLowerCase().includes('instock') ? 'InStock' : undefined);
+
+  const price =
+    jsonLdMeta.price ||
+    $('meta[property="og:price:amount"]').attr('content') ||
+    $('meta[property="product:price:amount"]').attr('content') ||
+    undefined;
+
+  const priceCurrency =
+    jsonLdMeta.priceCurrency ||
+    $('meta[property="og:price:currency"]').attr('content') ||
+    $('meta[property="product:price:currency"]').attr('content') ||
+    undefined;
+
+  const brand = jsonLdMeta.brand || $('meta[property="og:brand"]').attr('content') || undefined;
+  const sku = jsonLdMeta.sku || undefined;
 
   // 3. リンク一覧の抽出
   const links: string[] = [];
@@ -1131,6 +1217,21 @@ export function convertHtmlToMarkdown(
   }
   $(noiseSelectors.join(', ')).remove();
 
+  // 8.1 構造化データ（InStock / OutOfStock）および CSS セマンティクスに基づく非表示バッジの剪定
+  if (availability === 'InStock') {
+    $(
+      '.price__badge-sold-out, .badge--sold-out, [class*="badge-sold-out" i], [class*="badge--soldout" i], [class*="sold-out" i], [class*="out-of-stock" i], .sold-out-badge, .out-of-stock-badge'
+    ).remove();
+  } else if (availability === 'OutOfStock') {
+    $(
+      '.price__badge-sale, .badge--sale, [class*="badge-sale" i], .on-sale-badge'
+    ).remove();
+  }
+
+  // Shopify / 標準ECのDOM状態に基づく追加剪定（.price に .price--sold-out が無ければ売り切れバッジを削除）
+  $('.price:not(.price--sold-out) .price__badge-sold-out, .price:not([class*="sold-out"]) [class*="sold-out"]').remove();
+  $('.price.price--sold-out .price__badge-sale, .price[class*="sold-out"] [class*="sale"]').remove();
+
   // 8.5 コードブロックの言語情報保持 (Readability パージ対策)
   $('pre code, pre').each((_, el) => {
     const cls = $(el).attr('class') || '';
@@ -1173,6 +1274,10 @@ export function convertHtmlToMarkdown(
   if (publishedTime) frontmatterLines.push(`publishedTime: "${publishedTime}"`);
   if (author) frontmatterLines.push(`author: "${author}"`);
   if (siteName) frontmatterLines.push(`siteName: "${siteName}"`);
+  if (availability) frontmatterLines.push(`availability: "${availability}"`);
+  if (price) frontmatterLines.push(`price: "${price}${priceCurrency ? ' ' + priceCurrency : ''}"`);
+  if (brand) frontmatterLines.push(`brand: "${brand}"`);
+  if (sku) frontmatterLines.push(`sku: "${sku}"`);
   const header = frontmatterLines.length > 0 ? `---\n${frontmatterLines.join('\n')}\n---\n\n` : '';
 
   // 11. HTML -> Markdown 変換 & クレンジング
@@ -1191,6 +1296,11 @@ export function convertHtmlToMarkdown(
     publishedTime,
     author,
     siteName,
+    availability,
+    price,
+    priceCurrency,
+    brand,
+    sku,
     isTruncated,
     links,
     images: images.length > 0 ? images : undefined,
@@ -1271,14 +1381,14 @@ export function groupCookiesByDomain(
  */
 
 /** ページ末尾まで段階的にスクロールし、IntersectionObserverベースの遅延ロードを発火させる */
-async function autoScrollPage(page: Page, maxScrolls = 15): Promise<void> {
+async function autoScrollPage(page: Page, maxScrolls = 8): Promise<void> {
   try {
     await page.evaluate(async (limit: number) => {
       const step = window.innerHeight;
       let lastHeight = 0;
       for (let i = 0; i < limit; i++) {
         window.scrollBy(0, step);
-        await new Promise((r) => setTimeout(r, 120));
+        await new Promise((r) => setTimeout(r, 80));
         const height = document.body.scrollHeight;
         // 最下部に到達し、かつ新規コンテンツの追加も止まったら終了（無限スクロール対策）
         if (window.scrollY + window.innerHeight >= height && height === lastHeight) break;
@@ -1392,6 +1502,8 @@ export async function fetchWithStealthBrowser(
   clipSelector?: string,
   customCookies?: CookieParam[],
   waitUntil: 'networkidle0' | 'networkidle2' = 'networkidle2',
+  needScreenshot = false,
+  fullPage = true,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
@@ -1412,7 +1524,8 @@ export async function fetchWithStealthBrowser(
 
     try {
       const page: Page = await context.newPage();
-      await setupPageSecurity(page);
+      // スクリーンショット非要求時は画像・メディア・フォント・広告トラッカーを高速遮断
+      await setupPageSecurity(page, !needScreenshot && !clipSelector);
       try {
         const defaultUa = await browser.userAgent();
         await page.setUserAgent(buildUserAgentFromDefault(defaultUa), buildUserAgentMetadata(defaultUa));
@@ -1504,10 +1617,11 @@ export async function fetchWithStealthBrowser(
       } catch {}
 
       // SPA取りこぼし対策: 遅延ロードを発火させ、DOMが落ち着くまで待ち、
-      // shadow root の中身を抽出可能な形に展開してから content() を取る
+      // shadow root の中身を抽出可能な形に展開し、不可視ノードを剪定してから content() を取る
       await autoScrollPage(page);
       await waitForDomStable(page);
       await inlineShadowDomContent(page);
+      await pruneInvisibleElements(page);
 
       const finalUrl = page.url();
       const title = await page.title();
@@ -1537,17 +1651,40 @@ export async function fetchWithStealthBrowser(
       } catch {}
 
       let screenshot: string | undefined = undefined;
-      if (clipSelector) {
-        try {
-          const el = await page.$(clipSelector);
-          if (el) {
-            const buf = await el.screenshot({ encoding: 'base64' });
+      if (needScreenshot || clipSelector) {
+        if (clipSelector) {
+          try {
+            const el = await page.$(clipSelector);
+            if (el) {
+              const buf = await el.screenshot({ encoding: 'base64' });
+              screenshot = buf as string;
+            }
+          } catch {}
+        } else {
+          try {
+            if (fullPage) {
+              // Lazy-load 画像や動的要素を確実に描画させるため、ページ最下部へスクロールして戻す
+              try {
+                await page.evaluate(async () => {
+                  const scrollH = Math.min(document.body?.scrollHeight || document.documentElement?.scrollHeight || 0, 15000);
+                  if (scrollH > 1000) {
+                    window.scrollTo(0, scrollH);
+                    await new Promise((r) => setTimeout(r, 60));
+                    window.scrollTo(0, 0);
+                  }
+                });
+              } catch {}
+            }
+            const buf = await page.screenshot({ encoding: 'base64', fullPage });
             screenshot = buf as string;
+          } catch {
+            // fullPage 失敗時はビューポート撮影にフォールバック
+            try {
+              const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
+              screenshot = buf as string;
+            } catch {}
           }
-        } catch {}
-      } else {
-        const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
-        screenshot = buf as string;
+        }
       }
 
       return { html, title, screenshot, finalUrl };
@@ -1739,6 +1876,33 @@ export function detectSpaOrBotPage(options: {
     html.includes('Just a moment...')
   );
 }
+
+/**
+ * ブラウザレンダリング後も依然としてコンテンツが取得できていない（ブロック/空白）かを判定する。
+ * react-root や react-data などのSPAマーカーは成功の証拠なのでマッチさせず、
+ * 純粋に本文が極端に少ないか、Cloudflare等のブロック画面のままかだけを判定する。
+ */
+export function isRenderStillBlockedOrBlank(options: {
+  html: string;
+  bodyOnlyMarkdown: string;
+}): boolean {
+  const { html, bodyOnlyMarkdown } = options;
+  const hasLittleContent = bodyOnlyMarkdown.length < 50;
+  const isJsDisabledMessage =
+    /javascript\s+(?:is\s+)?(?:disabled|required|needed|must be enabled)/i.test(bodyOnlyMarkdown) ||
+    /please\s+enable\s+(?:your\s+)?javascript/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*を\s*(?:有効|オン)/i.test(bodyOnlyMarkdown) ||
+    /javascript\s*が\s*無効/i.test(bodyOnlyMarkdown) ||
+    /^(?:loading\.*|読み込み中\.*|now loading\.*)$/i.test(bodyOnlyMarkdown);
+
+  const isChallenge =
+    html.includes('Checking your browser') ||
+    html.includes('Just a moment...') ||
+    html.includes('cf-browser-verification') ||
+    html.includes('cf-challenge');
+
+  return (hasLittleContent && isJsDisabledMessage) || isChallenge;
+}
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
@@ -1746,6 +1910,7 @@ export async function scrapeUrl(options: {
   renderJs?: boolean;
   fastOnly?: boolean;
   formats?: ScrapeFormat[];
+  fullPage?: boolean;
   onlyMainContent?: boolean;
   selectors?: Record<string, string>;
   clipSelector?: string;
@@ -1881,6 +2046,11 @@ export async function scrapeUrl(options: {
             publishedTime: parsed.publishedTime,
             author: parsed.author,
             siteName: parsed.siteName,
+            availability: parsed.availability,
+            price: parsed.price,
+            priceCurrency: parsed.priceCurrency,
+            brand: parsed.brand,
+            sku: parsed.sku,
             links: formats.includes('links') ? parsed.links : undefined,
             images: formats.includes('images') ? parsed.images : undefined,
             jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
@@ -1916,11 +2086,16 @@ export async function scrapeUrl(options: {
 
       // Chromium 自動昇格 または ブラウザ指定モード
       onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
+      const needScreenshot = formats.includes('screenshot');
+      const fullPage = options.fullPage ?? true;
       let browserRes = await fetchWithStealthBrowser(
         url,
         timeoutMs,
         options.clipSelector,
         options.cookies,
+        'networkidle2',
+        needScreenshot,
+        fullPage,
       );
 
       let parsed = convertHtmlToMarkdown(
@@ -1935,7 +2110,7 @@ export async function scrapeUrl(options: {
 
       // レンダリング後も空/JS警告のままなら waitUntil を変えて1回だけ再試行する
       const renderedBodyOnly = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
-      if (detectSpaOrBotPage({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
+      if (isRenderStillBlockedOrBlank({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
         botRetryCount++;
         onProgress?.({ stage: 'render', message: 'Content still blank after render, retrying with networkidle0' });
         browserRes = await fetchWithStealthBrowser(
@@ -1944,6 +2119,8 @@ export async function scrapeUrl(options: {
           options.clipSelector,
           options.cookies,
           'networkidle0',
+          needScreenshot,
+          fullPage,
         );
         parsed = convertHtmlToMarkdown(
           browserRes.html,
@@ -1969,6 +2146,11 @@ export async function scrapeUrl(options: {
         publishedTime: parsed.publishedTime,
         author: parsed.author,
         siteName: parsed.siteName,
+        availability: parsed.availability,
+        price: parsed.price,
+        priceCurrency: parsed.priceCurrency,
+        brand: parsed.brand,
+        sku: parsed.sku,
         screenshot: formats.includes('screenshot') ? browserRes.screenshot : undefined,
         links: formats.includes('links') ? parsed.links : undefined,
         images: formats.includes('images') ? parsed.images : undefined,

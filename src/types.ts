@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.4.0';
+export const SORA_VERSION = '2.6.0';
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
 
@@ -91,6 +91,11 @@ export interface ScrapeResult {
   linksWithStatus?: LinkStatus[];
   images?: ImageItem[];
   jsonLd?: any[];
+  availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
+  price?: string;
+  priceCurrency?: string;
+  brand?: string;
+  sku?: string;
   tables?: TableData[];
   extracted?: Record<string, string | null>;
   metadata?: Record<string, any>;
@@ -225,6 +230,7 @@ export const ScrapeRequestSchema = z.object({
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])'),
+  fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
   onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)'),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
   clipSelector: z.string().optional().describe('特定要素のみを切り抜いてスクリーンショット撮影する CSS セレクタ (例: "#chart")'),
@@ -493,6 +499,20 @@ export const VerifyHtsCodeRequestSchema = z.object({
   productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
 });
 
+export const ProductComplianceRequestSchema = z.object({
+  url: z.string().url('有効なURLを指定してください').optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
+  productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
+  description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
+  htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証）'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+  material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+});
+export type ProductComplianceRequestOptions = z.infer<typeof ProductComplianceRequestSchema>;
+
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
   lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
@@ -509,7 +529,10 @@ export const FlightStatusRequestSchema = z.object({
   keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
-export type FlightStatusOptions = z.infer<typeof FlightStatusRequestSchema>;
+export const InspectImageRequestSchema = z.object({
+  url: z.string().url('有効な画像URLを指定してください').describe('読み取り対象の画像URL (https://...)'),
+});
+export type InspectImageOptions = z.infer<typeof InspectImageRequestSchema>;
 
 // ==========================================
 // Zod -> OpenAPI 3.0 自動スキーマジェネレーター
@@ -1036,6 +1059,19 @@ export function generateOpenApiDocument() {
           responses: { '200': { description: 'VerifyHtsCodeResult' } },
         },
       },
+      '/trade/compliance': {
+        post: {
+          summary: '商品統合コンプライアンス一括判定（HTS検証・FDA判定・CPSC証明書/eFiling義務）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(ProductComplianceRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'CheckProductComplianceResult' } },
+        },
+      },
       '/gov/diet-minutes': {
         post: {
           summary: '国会会議録検索 API (衆参両院の本会議・委員会発言記録・議員答弁全文検索)',
@@ -1073,6 +1109,19 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'FlightStatusResult' } },
+        },
+      },
+      '/media/inspect-image': {
+        post: {
+          summary: '画像取得 & MCP 視覚入力（Base64）変換 API',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(InspectImageRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'InspectImageResult' } },
         },
       },
     },
