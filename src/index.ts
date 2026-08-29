@@ -53,6 +53,9 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  checkProductCompliance,
+  inspectImage,
+  InspectImageRequestSchema,
   checkDetailedHealth,
   closeSharedBrowser,
   isSharedBrowserConnected,
@@ -77,6 +80,7 @@ import {
   CpscCertificateCheckRequestSchema,
   FdaRegulatedCheckRequestSchema,
   VerifyHtsCodeRequestSchema,
+  ProductComplianceRequestSchema,
   generateOpenApiDocument,
   SORA_VERSION,
   type ApiErrorResponse,
@@ -291,6 +295,7 @@ app.get('/', (c) => {
       tradeCpscCheck: 'POST /trade/cpsc-check',
       tradeFdaCheck: 'POST /trade/fda-check',
       tradeHtsVerify: 'POST /trade/hts-verify',
+      tradeCompliance: 'POST /trade/compliance',
       map: 'POST /map',
       crawl: 'POST /crawl',
       crawlStream: 'POST /crawl/stream',
@@ -1312,6 +1317,28 @@ app.post('/trade/hts-verify', async (c) => {
   }
 });
 
+// 商品統合コンプライアンス一括判定 (POST /trade/compliance)
+app.post('/trade/compliance', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = ProductComplianceRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid product compliance parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await checkProductCompliance(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Product compliance check failed', 'TRADE_ERROR', 500);
+  }
+});
+
 // 国会会議録検索 (POST /gov/diet-minutes & GET /gov/diet-minutes)
 app.post('/gov/diet-minutes', async (c) => {
   let rawBody: any;
@@ -1470,6 +1497,32 @@ app.get('/traffic/flight/:airport', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  }
+});
+
+// ==========================================
+// 3.4 Media & Vision OCR APIs
+// ==========================================
+app.post('/media/inspect-image', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = InspectImageRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
+    return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await inspectImage(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'Image inspection failed', 'MEDIA_ERROR', 500);
   }
 });
 
