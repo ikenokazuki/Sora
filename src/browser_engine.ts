@@ -305,13 +305,35 @@ export function isBlockedHostname(hostname: string): boolean {
   return false;
 }
 
-/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策） */
+const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();
+const DNS_CACHE_TTL_MS = 60_000;
+
+export const BLOCKED_TRACKER_DOMAINS = [
+  'google-analytics.com',
+  'googletagmanager.com',
+  'doubleclick.net',
+  'appsflyer.com',
+  'sentry.io',
+  'cookieyes.com',
+  'facebook.net',
+  'clarity.ms',
+  'adservice.google.',
+  'pagead2.googlesyndication.com',
+];
+
+/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策＋インメモリキャッシュ） */
 export async function validateHostIpDns(hostname: string): Promise<string[]> {
   if (process.env.ALLOW_LOCAL_FETCH === 'true') return [];
 
   const cleanHost = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
   if (isBlockedHostname(cleanHost) || isPrivateIp(cleanHost)) {
     throw new Error(`プライベートネットワークまたは安全でないホストへのアクセスは遮断されています: ${hostname}`);
+  }
+
+  const now = Date.now();
+  const cached = dnsValidationCache.get(cleanHost);
+  if (cached && cached.expiresAt > now) {
+    return cached.addresses;
   }
 
   try {
@@ -324,7 +346,9 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
         throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
       }
     }
-    return addresses.map((a) => a.address);
+    const result = addresses.map((a) => a.address);
+    dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
+    return result;
   } catch (err: any) {
     if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
       throw err;
@@ -333,16 +357,29 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
   }
 }
 
-/** Headless Chromium のページ内サブリクエスト（iframe, XHR, fetch, img 等）に対する SSRF 防御 */
-export async function setupPageSecurity(page: Page): Promise<void> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') {
-    return;
-  }
+/** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
+export async function setupPageSecurity(page: Page, blockMedia = false): Promise<void> {
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       try {
         const reqUrlStr = req.url();
+        const resourceType = req.resourceType();
+
+        // スクリーンショット非要求時の画像・フォント・メディア・広告トラッカーの高速遮断
+        if (blockMedia) {
+          if (['image', 'media', 'font'].includes(resourceType)) {
+            return req.abort('blockedbyclient');
+          }
+          if (BLOCKED_TRACKER_DOMAINS.some((d) => reqUrlStr.includes(d))) {
+            return req.abort('blockedbyclient');
+          }
+        }
+
+        if (process.env.ALLOW_LOCAL_FETCH === 'true') {
+          return req.continue();
+        }
+
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
           return req.continue();
         }
@@ -359,6 +396,14 @@ export async function setupPageSecurity(page: Page): Promise<void> {
         if (isBlockedHostname(host) || isPrivateIp(host)) {
           return req.abort('accessdenied');
         }
+
+        // キャッシュ付きホスト検証
+        const now = Date.now();
+        const cached = dnsValidationCache.get(host);
+        if (cached && cached.expiresAt > now) {
+          return req.continue();
+        }
+
         try {
           const addresses = await dnsPromises.lookup(host, { all: true });
           for (const addr of addresses) {
@@ -366,6 +411,10 @@ export async function setupPageSecurity(page: Page): Promise<void> {
               return req.abort('accessdenied');
             }
           }
+          dnsValidationCache.set(host, {
+            addresses: addresses.map((a) => a.address),
+            expiresAt: now + DNS_CACHE_TTL_MS,
+          });
         } catch {}
         req.continue();
       } catch {
@@ -376,3 +425,55 @@ export async function setupPageSecurity(page: Page): Promise<void> {
     console.warn('[Sora] Warning: Failed to set request interception for page security:', err);
   }
 }
+
+/**
+ * 画面上に非表示となっている不要ノード（CSS display:none, visibility:hidden, hidden属性, aria-hidden等）を
+ * DOMツリーから安全に剪定（Prune）し、LLM誤読・ハルシネーションを防ぐ。
+ */
+export async function pruneInvisibleElements(page: Page): Promise<void> {
+  try {
+    if (page.isClosed()) return;
+    await page
+      .evaluate(() => {
+        try {
+          // 1. 標準的な不可視・テンプレート要素の先行除去
+          const staticTags = document.querySelectorAll('noscript, template, [hidden]');
+          staticTags.forEach((el) => {
+            try {
+              el.remove();
+            } catch {}
+          });
+
+          // 2. DOMツリーの走査とComputed Styleによる不可視要素の剪定
+          if (!document.body) return;
+          const allElements = Array.from(document.body.querySelectorAll('*'));
+          for (const el of allElements) {
+            if (!el.isConnected) continue;
+
+            const tag = el.tagName.toLowerCase();
+            // script, style, link, meta 等はパーサー処理（JSON-LD等）のために維持
+            if (['script', 'style', 'meta', 'link', 'title'].includes(tag)) continue;
+
+            try {
+              const style = window.getComputedStyle(el);
+              if (
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                style.visibility === 'collapse'
+              ) {
+                el.remove();
+                continue;
+              }
+
+              if (el.getAttribute('aria-hidden') === 'true' && el.classList.contains('visually-hidden')) {
+                el.remove();
+                continue;
+              }
+            } catch {}
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  } catch {}
+}
+

@@ -58,6 +58,7 @@ import {
   dbGetDomainCookies,
   dbSaveDomainStorage,
   dbGetDomainStorage,
+  isRenderStillBlockedOrBlank,
   getOrCreateHttpSession,
   closeHttpSession,
   dbListWatchTargets,
@@ -87,6 +88,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  checkProductCompliance,
   detectSpaOrBotPage,
   pickProxyUrl,
   pickBrowserProfile,
@@ -724,7 +726,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(searchCatalog(dummyCatalog, '')).toEqual([]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 4 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 12 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -761,10 +763,18 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_web');
     expect(toolNames).toContain('search_deep');
     expect(toolNames).toContain('search_tools');
-    expect(toolNames.length).toBe(4);
+    expect(toolNames).toContain('check_product_compliance');
+    expect(toolNames).toContain('get_weather');
+    expect(toolNames).toContain('search_route');
+    expect(toolNames).toContain('search_chiebukuro');
+    expect(toolNames).toContain('search_realtime');
+    expect(toolNames).toContain('search_disaster_warnings');
+    expect(toolNames).toContain('search_earthquake');
+    expect(toolNames).toContain('search_laws');
+    expect(toolNames.length).toBe(12);
   });
 
-  it('McpSessionManager should dynamically enable tools via search_tools in stateful session', async () => {
+  it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
     const manager = new McpSessionManager();
     const parseRes = async (res: Response) => {
       const text = await res.text();
@@ -811,7 +821,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     await manager.handleRequest(notifyReq);
 
-    // 2. Initial tools/list (should be 4 core tools)
+    // 2. Initial tools/list (should be 11 core tools)
     const listReq1 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -825,13 +835,14 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes1 = await manager.handleRequest(listReq1);
     const listBody1: any = await parseRes(listRes1);
     const names1 = listBody1.result.tools.map((t: any) => t.name);
-    expect(names1.length).toBe(4);
+    expect(names1.length).toBe(12);
     expect(names1).toContain('scrape');
-    expect(names1).toContain('search_web');
     expect(names1).toContain('search_deep');
+    expect(names1).toContain('search_web');
+    expect(names1).toContain('check_product_compliance');
     expect(names1).toContain('search_tools');
 
-    // 3. Attempting to call disabled tool directly should fail
+    // 3. Attempting to call standby tool (search_song) directly should fail
     const callDisabledReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -844,7 +855,7 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
-        params: { name: 'get_weather', arguments: { city: '天童市' } },
+        params: { name: 'search_song', arguments: { title: 'アイドル' } },
       }),
     });
     const callDisabledRes = await manager.handleRequest(callDisabledReq);
@@ -852,7 +863,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(callDisabledBody.result?.isError).toBe(true);
     expect(callDisabledBody.result?.content?.[0]?.text).toContain('disabled');
 
-    // 4. Call search_tools to activate weather
+    // 4. Call search_tools to activate song search
     const searchReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -865,14 +876,14 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 4,
         method: 'tools/call',
-        params: { name: 'search_tools', arguments: { query: '天気' } },
+        params: { name: 'search_tools', arguments: { query: '楽曲' } },
       }),
     });
     const searchRes = await manager.handleRequest(searchReq);
     const searchBody: any = await parseRes(searchRes);
-    expect(searchBody.result?.content?.[0]?.text).toContain('get_weather');
+    expect(searchBody.result?.content?.[0]?.text).toContain('search_song');
 
-    // 5. tools/list now includes get_weather (5 tools)
+    // 5. tools/list now includes search_song (12 tools)
     const listReq2 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -886,8 +897,11 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes2 = await manager.handleRequest(listReq2);
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
-    expect(names2.length).toBe(5);
-    expect(names2).toContain('get_weather');
+    // クエリ「楽曲」は search_song（"楽曲タイトル"）と search_music（"楽曲・アルバム"）の
+    // 両方の description に部分一致するため、2件同時に有効化されるのが正しい挙動
+    expect(names2.length).toBe(names1.length + 2);
+    expect(names2).toContain('search_song');
+    expect(names2).toContain('search_music');
 
     // 6. Search for non-existent tool returns helpful message
     const searchNoneReq = new Request('http://localhost/mcp', {
@@ -1161,7 +1175,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
-    expect(data.version).toBe('2.4.0');
+    expect(data.version).toBe('2.6.0');
     expect(data.endpoints.searchImage).toBeDefined();
     expect(data.endpoints.searchVideo).toBeDefined();
     expect(data.endpoints.searchNews).toBeDefined();
@@ -1220,6 +1234,52 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.screenshot).toBeDefined();
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      server.stop();
+    }
+  });
+
+  it('scrape should capture fullPage screenshot by default and handle long pages', async () => {
+    const chromePath = resolveChromiumPath();
+    if (!chromePath) {
+      console.log('Skipping Chromium fullPage screenshot test (Chromium not found on host)');
+      return;
+    }
+
+    const longHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head><title>Long Page Test</title></head>
+      <body>
+        <div style="height: 1000px; background: #f0f0f0;">Top Content</div>
+        <div style="height: 1000px; background: #e0e0e0;">Middle Content</div>
+        <div id="footer" style="height: 500px; background: #d0d0d0;">Bottom Footer Content</div>
+      </body>
+      </html>
+    `;
+
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(longHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      },
+    });
+
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+
+    try {
+      const res = await scrapeUrl({
+        url: `http://127.0.0.1:${server.port}/long-page`,
+        mode: 'browser',
+        formats: ['screenshot'],
+        fullPage: true,
+      });
+
+      expect(res.screenshot).toBeDefined();
+      expect(typeof res.screenshot).toBe('string');
+      expect((res.screenshot || '').length).toBeGreaterThan(1000);
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = prevEnv;
       server.stop();
     }
   });
@@ -3222,7 +3282,7 @@ describe('Sora REST & MCP Endpoints', () => {
     await manager.handleRequest(notifyReq);
 
     // 全モジュールのツールを有効化するために主要カテゴリを検索
-    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade'];
+    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade', 'media'];
     for (let i = 0; i < categories.length; i++) {
       const sReq = new Request('http://localhost/mcp', {
         method: 'POST',
@@ -3272,7 +3332,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(35); // 34 standard tools + search_tools
+    expect(body.result.tools.length).toBe(37); // 36 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3349,7 +3409,7 @@ describe('Sora REST & MCP Endpoints', () => {
     // 実行環境のChromiumが検出できるなら、そのメジャーバージョンに一致していること
     const actual = getChromiumMajorVersion();
     if (actual !== undefined) {
-      expect(profile).toBe(`chrome_${actual}`);
+      expect(profile as string).toBe(`chrome_${actual}`);
     }
   });
 
@@ -3731,28 +3791,40 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   });
 
-  it('MCP server should register all 35 tools and support dynamic discovery of new tools', () => {
+  it('MCP server should register all 37 tools and enable 12 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    // Core 4 tools are enabled by default
+    // Core 12 tools are enabled by default for seamless 1-hop autonomous invocation
     expect(enabledTools).toContain('scrape');
     expect(enabledTools).toContain('search_web');
     expect(enabledTools).toContain('search_deep');
     expect(enabledTools).toContain('search_tools');
-    expect(enabledTools.length).toBe(4);
+    expect(enabledTools).toContain('check_product_compliance');
+    expect(enabledTools).toContain('get_weather');
+    expect(enabledTools).toContain('search_route');
+    expect(enabledTools).toContain('search_chiebukuro');
+    expect(enabledTools).toContain('search_realtime');
+    expect(enabledTools).toContain('search_disaster_warnings');
+    expect(enabledTools).toContain('search_earthquake');
+    expect(enabledTools).toContain('search_laws');
+    expect(enabledTools.length).toBe(12);
 
     const serverAll = createMcpServer({ deferTools: false });
-    const toolsAll = Object.keys((serverAll as any)._registeredTools);
-    expect(toolsAll).toContain('search_diet_minutes');
-    expect(toolsAll).toContain('get_elevation');
-    expect(toolsAll).toContain('get_flight_status');
-    expect(toolsAll).toContain('check_cpsc_certificate');
-    expect(toolsAll).toContain('check_fda_regulated');
-    expect(toolsAll).toContain('verify_hts_code');
-    expect(toolsAll).toContain('watch_delete');
-    expect(toolsAll.length).toBe(35);
+    const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
+      .filter(([_, handle]: [string, any]) => handle.enabled !== false)
+      .map(([name]) => name);
+    expect(enabledToolsAll).toContain('search_diet_minutes');
+    expect(enabledToolsAll).toContain('get_elevation');
+    expect(enabledToolsAll).toContain('get_flight_status');
+    expect(enabledToolsAll).toContain('check_cpsc_certificate');
+    expect(enabledToolsAll).toContain('check_fda_regulated');
+    expect(enabledToolsAll).toContain('verify_hts_code');
+    expect(enabledToolsAll).toContain('check_product_compliance');
+    expect(enabledToolsAll).toContain('inspect_image');
+    expect(enabledToolsAll).toContain('watch_delete');
+    expect(enabledToolsAll.length).toBe(37);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -3903,6 +3975,357 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(parsed.markdown).toContain('定期公演 vol.15');
     expect(parsed.markdown).toContain('対バンフェス2026');
   });
+
+  it('isRenderStillBlockedOrBlank should not trigger retry on rendered React SPA with content', () => {
+    // レンダリング成功したReact SPA (id="react-root" があっても本文が十分あれば再試行しない)
+    const successResult = isRenderStillBlockedOrBlank({
+      html: '<div id="react-root"><div class="calendar"><h3>Live Schedule</h3><p>August 2026</p></div></div>',
+      bodyOnlyMarkdown: '### Live Schedule\n\nAugust 2026\n\n『 Girl’Bomb!! 〜 真夏の祭典 〜 』\n\n『森宮藍presents「もりもりまつり！」』',
+    });
+    expect(successResult).toBe(false);
+
+    // まだJS無効警告で止まっている失敗ケース
+    const failedResult = isRenderStillBlockedOrBlank({
+      html: '<div id="react-root"><div class="loading">Please enable JavaScript to use this app</div></div>',
+      bodyOnlyMarkdown: 'Please enable JavaScript to use this app',
+    });
+    expect(failedResult).toBe(true);
+
+    // Cloudflare チャレンジ画面の失敗ケース
+    const challengeResult = isRenderStillBlockedOrBlank({
+      html: '<html><head><title>Just a moment...</title></head><body>Checking your browser...</body></html>',
+      bodyOnlyMarkdown: 'Checking your browser before accessing the site.',
+    });
+    expect(challengeResult).toBe(true);
+  });
+
+  // =========================================================================
+  // 🚢 checkProductCompliance (商品統合コンプライアンス一括判定) テスト
+  // =========================================================================
+  it('checkProductCompliance should infer toy attributes and require CPSC CCC and eFiling', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Wooden Building Blocks for Toddlers',
+      description: 'Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.',
+    });
+
+    expect(res.product.targetAge).toBe('child');
+    expect(res.product.material).toBe('wood');
+    expect(res.product.htsCode).toBe('9503.00.0073');
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('CCC');
+    expect(res.cpsc!.eFilingRequired).toBe(true);
+    expect(res.fda!.fdaRegulatedLikely).toBe(false);
+    expect(res.actionPlan.some((a) => a.includes('CCC'))).toBe(true);
+    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr.includes('16 CFR 1501'))).toBe(true);
+    expect(res.actionPlan.some((a) => a.includes('16 CFR 1501'))).toBe(true);
+  });
+
+  it('checkProductCompliance should correctly evaluate explicit HTS code and helmet category', async () => {
+    const res = await checkProductCompliance({
+      htsCode: '6506103045',
+      productName: 'Aerodynamic Bicycle Helmet',
+      description: 'Protective adult cycling helmet with adjustable chin strap.',
+      targetAge: 'adult',
+    });
+
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('GCC');
+    expect(res.cpsc!.eFilingRequired).toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr === '個別規格要確認')).toBe(true);
+    expect(res.actionPlan.some((a) => a.includes('GCC'))).toBe(true);
+  });
+
+  it('checkProductCompliance should detect cosmetics and flag FDA regulation', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Moisturizing Face Cream and Serum',
+      description: 'Organic skincare lotion and beauty cosmetic cream.',
+    });
+
+    expect(res.fda!.fdaRegulatedLikely).toBe(true);
+    expect(res.fda!.possiblePrograms).toContain('COS');
+    expect(res.cpsc!.certificateRequired).not.toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.actionPlan.some((a) => a.includes('MoCRA'))).toBe(true);
+  });
+
+  it('checkProductCompliance should detect food preparations and flag Prior Notice', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Green Tea Matcha Snack Confectionery',
+      description: 'Japanese dietary food snack and organic powdered beverage.',
+    });
+
+    expect(res.fda!.fdaRegulatedLikely).toBe(true);
+    expect(res.fda!.possiblePrograms).toContain('FOO');
+    expect(res.fda!.priorNoticeMayApply).toBe(true);
+    expect(res.overallStatus).toBe('action_required');
+    expect(res.actionPlan.some((a) => a.includes('Prior Notice'))).toBe(true);
+  });
+
+  it('checkProductCompliance should classify general adult furniture without requiring CPSC CCC', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Solid Oak Dining Table for Living Room',
+      description: 'Modern minimalist wooden dining table for home furniture.',
+    });
+
+    expect(res.product.targetAge).toBe('unknown');
+    expect(res.product.material).toBe('wood');
+    expect(res.product.htsCode).toBe('9403.60.8081');
+    expect(res.cpsc!.certificateRequired).not.toBe(true);
+    expect(res.cpsc!.eFilingRequired).toBe(false);
+    expect(res.fda!.fdaRegulatedLikely).toBe(false);
+    expect(['likely_exempt', 'potential_action_required']).toContain(res.overallStatus);
+  });
+
+  it('checkProductCompliance should route Electronics with button/coin battery to CPSC Button Cell & Coin Batteries HTS', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Wireless Remote Control',
+      description: 'A small electronics remote control device with charger cable.',
+      targetAge: 'adult',
+      hasBattery: true,
+      batteryType: 'button_coin',
+    });
+
+    expect(res.product.htsCode).toBe('8506.10.0010');
+    expect(res.product.detectedCategory).toBe('Button Cell & Coin Batteries');
+    expect(res.cpsc!.certificateRequired).toBe(true);
+    expect(res.cpsc!.certificateType).toBe('GCC');
+    expect(res.cpsc!.applicableRegulations.some((r) => r.summary.includes('Button Cell & Coin Batteries'))).toBe(true);
+  });
+
+  it('checkProductCompliance should append DOT/PHMSA hazmat note for non-button electronics batteries', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Rechargeable Power Bank',
+      description: 'A rechargeable electronics power bank with lithium-ion battery and USB cable.',
+      targetAge: 'adult',
+      hasBattery: true,
+      batteryType: 'other',
+    });
+
+    expect(res.product.htsCode).toBe('8504.40.9580');
+    expect(res.actionPlan.some((a) => a.includes('UN3480') || a.includes('PHMSA'))).toBe(true);
+  });
+
+  it('checkProductCompliance should ask about battery presence/type when Electronics category is matched without hasBattery', async () => {
+    const res = await checkProductCompliance({
+      productName: 'USB Charging Cable',
+      description: 'A charger cable for electronics devices.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('電池'))).toBe(true);
+  });
+
+  it('checkProductCompliance should ask for missing material on Kitchenware without a foodContact dead-end', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Kitchen Mug',
+      description: 'A mug for everyday kitchen use, dishwasher safe.',
+      foodContact: true,
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('素材'))).toBe(true);
+    expect(res.clarifyingQuestions?.some((q) => q.includes('食品接触'))).toBe(false);
+    expect(res.htsVerification).toBeUndefined();
+  });
+
+  it('checkProductCompliance should run the full pipeline once Kitchenware material and foodContact are both supplied', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Kitchen Mug',
+      description: 'A mug for everyday kitchen use, dishwasher safe.',
+      material: 'ceramic',
+      foodContact: true,
+    });
+
+    expect(res.overallStatus).not.toBe('needs_more_info');
+    expect(res.clarifyingQuestions).toBeUndefined();
+    expect(res.htsVerification).toBeDefined();
+    expect(res.fda).toBeDefined();
+    expect(res.cpsc).toBeDefined();
+  });
+
+  it('checkProductCompliance should ask for targetAge when Bicycle Helmet category is matched without it', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Adjustable Helmet',
+      description: 'A protective head helmet with an adjustable strap for outdoor use.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.some((q) => q.includes('対象ユーザー'))).toBe(true);
+  });
+
+  it('checkProductCompliance should return the fallback clarifying question when no category matches', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Quantum Widget Model X',
+      description: 'A completely novel gadget with no established classification.',
+    });
+
+    expect(res.overallStatus).toBe('needs_more_info');
+    expect(res.clarifyingQuestions?.length).toBe(1);
+    expect(res.clarifyingQuestions?.[0]).toContain('正確なHTSコードの分類が困難');
+  });
+
+  it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
+    const req = new Request('http://localhost/trade/compliance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: 'Kids Plastic Doll Toy',
+        description: 'Doll figure with accessories for children',
+      }),
+    });
+
+    const res = await app.fetch(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.product.targetAge).toBe('child');
+    expect(json.overallStatus).toBe('action_required');
+    expect(json.cpsc.certificateType).toBe('CCC');
+    expect(json.actionPlan.length).toBeGreaterThan(0);
+    expect(json.disclaimer).toBeTruthy();
+  });
+
+  it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm</title>
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org/",
+              "@type": "Product",
+              "name": "【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm",
+              "brand": { "@type": "Brand", "name": "SimpleSideMascots" },
+              "sku": "lJrP9Y",
+              "offers": {
+                "@type": "Offer",
+                "availability": "http://schema.org/InStock",
+                "price": "5200",
+                "priceCurrency": "JPY"
+              }
+            }
+          </script>
+        </head>
+        <body>
+          <main>
+            <h1>【あさみみちゃん】あさみみちゃんぬいぐるみ（おすわり）30cm</h1>
+            <div class="price">
+              <span class="price-item">¥5,200</span>
+              <span class="badge price__badge-sold-out visually-hidden" aria-hidden="true">売り切れ</span>
+              <span style="display: none">完売しました</span>
+            </div>
+            <p>※こちらは通常販売の商品となります。サイズ：約30cm 素材：ショートボア</p>
+          </main>
+        </body>
+      </html>
+    `;
+
+    const res = convertHtmlToMarkdown(html, 'https://example.com/products/asamimichan', 10000);
+    expect(res.availability).toBe('InStock');
+    expect(res.price).toBe('5200');
+    expect(res.priceCurrency).toBe('JPY');
+    expect(res.brand).toBe('SimpleSideMascots');
+    expect(res.sku).toBe('lJrP9Y');
+    // Frontmatter に availability と price が反映されていること
+    expect(res.markdown).toContain('availability: "InStock"');
+    expect(res.markdown).toContain('price: "5200 JPY"');
+    // 非表示バッジ・スタイル付きの「売り切れ」「完売しました」が本文から除外されていること
+    expect(res.markdown).not.toContain('売り切れ');
+    expect(res.markdown).not.toContain('完売しました');
+    expect(res.markdown).toContain('ショートボア');
+  });
+
+  it('convertHtmlToMarkdown should correctly handle OutOfStock product availability from JSON-LD', () => {
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>売り切れ商品テスト</title>
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org/",
+              "@type": "Product",
+              "name": "限定マグカップ",
+              "offers": {
+                "@type": "Offer",
+                "availability": "http://schema.org/OutOfStock",
+                "price": "1800",
+                "priceCurrency": "JPY"
+              }
+            }
+          </script>
+        </head>
+        <body>
+          <main>
+            <h1>限定マグカップ</h1>
+            <p>陶器製マグカップ</p>
+          </main>
+        </body>
+      </html>
+    `;
+
+    const res = convertHtmlToMarkdown(html, 'https://example.com/products/mug', 10000);
+    expect(res.availability).toBe('OutOfStock');
+    expect(res.price).toBe('1800');
+    expect(res.markdown).toContain('availability: "OutOfStock"');
+  });
+
+  describe('inspect_image and local WASM ocr_image tests', () => {
+    it('detectImageMimeType should accurately identify image formats from magic bytes', async () => {
+      const { detectImageMimeType } = await import('./services/image_inspect.js');
+
+      // JPEG: FF D8 FF
+      const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+      expect(detectImageMimeType(jpeg)).toBe('image/jpeg');
+
+      // PNG: 89 50 4E 47
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+      expect(detectImageMimeType(png)).toBe('image/png');
+
+      // GIF: 47 49 46 38
+      const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+      expect(detectImageMimeType(gif)).toBe('image/gif');
+
+      // WebP: 52 49 46 46 ... 57 45 42 50
+      const webp = new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+      ]);
+      expect(detectImageMimeType(webp)).toBe('image/webp');
+    });
+
+    it('fetchImageBuffer should block private IPs (SSRF protection)', async () => {
+      const { fetchImageBuffer } = await import('./services/image_inspect.js');
+      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      delete process.env.ALLOW_LOCAL_FETCH;
+
+      try {
+        await expect(fetchImageBuffer('http://127.0.0.1/test.jpg')).rejects.toThrow();
+        await expect(fetchImageBuffer('http://192.168.1.1/secret.png')).rejects.toThrow();
+        await expect(fetchImageBuffer('http://169.254.169.254/latest/meta-data/')).rejects.toThrow();
+        await expect(fetchImageBuffer('ftp://example.com/test.jpg')).rejects.toThrow();
+      } finally {
+        if (prevEnv !== undefined) {
+          process.env.ALLOW_LOCAL_FETCH = prevEnv;
+        }
+      }
+    });
+
+    it('POST /media/inspect-image should validate request input', async () => {
+      const req = new Request('http://localhost/media/inspect-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'not-a-valid-url' }),
+      });
+      const res = await app.fetch(req);
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBeDefined();
+    });
+  });
 });
+
+
 
 
