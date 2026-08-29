@@ -1,6 +1,6 @@
 {
   "name": "sora",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
