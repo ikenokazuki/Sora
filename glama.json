@@ -1,9 +1,8 @@
 {
-  "$schema": "https://glama.ai/mcp/schema.json",
   "name": "sora",
   "displayName": "Sora (All-in-One Web Scraping & Japan Infra MCP)",
   "description": "Ultra-fast web scraping, stealth browser automation, and 37 Japanese public/infrastructure tools for AI agents. Open-source Firecrawl & Tavily alternative.",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "license": "BUSL-1.1",
   "homepage": "https://github.com",
   "repository": {
