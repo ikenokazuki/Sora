@@ -234,6 +234,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)'),
+        stripLinks: z
+          .boolean()
+          .optional()
+          .describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)'),
+        filterLinkDensity: z
+          .boolean()
+          .optional()
+          .describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)'),
         highlightMatches: z
           .boolean()
           .optional()
@@ -278,9 +286,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries });
           return {
             content: [
               {
@@ -325,15 +333,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         chunkSize: z.number().int().min(1).optional().describe('チャンク文字数目安'),
         validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
         formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+        stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
+        filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
         highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
         maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
         webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
         retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent }) => {
         try {
-          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent });
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent });
           return {
             content: [
               {
