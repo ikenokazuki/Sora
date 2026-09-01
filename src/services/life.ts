@@ -3,7 +3,7 @@ import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
 import { getFromCache, setToCache, CACHE_TTL_WEATHER } from '../cache.js';
 import type { TransitSearchOptions, WeatherForecastOptions } from '../types.js';
 
-export const USER_AGENT =
+const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 export { MUNICIPALITY_CITY_MAP };

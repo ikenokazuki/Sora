@@ -1019,21 +1019,25 @@ export function calculateContentQuality(params: {
   const lowerMd = markdown.toLowerCase();
   const lowerHtml = html ? html.toLowerCase() : '';
 
+  const textLen = markdown.trim().length;
+
   // 1. Bot / Challenge / JS 必須ページの検出 (致命的低品質)
+  // 本文が充実している正常なページで g-recaptcha 等のスクリプトが含まれるだけのケースでの誤検知を防止
   const isBotChallenge =
     (lowerMd.includes('cloudflare') && (lowerMd.includes('ray id') || lowerMd.includes('just a moment') || lowerMd.includes('verify you are human'))) ||
     lowerMd.includes('attention required! | cloudflare') ||
     lowerMd.includes('ddos-guard') ||
-    lowerMd.includes('access denied') ||
-    lowerMd.includes('bot detection') ||
+    (lowerMd.includes('access denied') && textLen < 500) ||
+    (lowerMd.includes('bot detection') && textLen < 500) ||
     lowerHtml.includes('cf-browser-verification') ||
-    lowerHtml.includes('g-recaptcha');
+    (lowerHtml.includes('g-recaptcha') && textLen < 200);
 
   const isJsRequired =
-    lowerMd.includes('enable javascript') ||
-    lowerMd.includes('please turn javascript on') ||
-    lowerMd.includes('javascript is required') ||
-    lowerMd.includes('javascript must be enabled');
+    (lowerMd.includes('enable javascript') ||
+      lowerMd.includes('please turn javascript on') ||
+      lowerMd.includes('javascript is required') ||
+      lowerMd.includes('javascript must be enabled')) &&
+    textLen < 300;
 
   if (isBotChallenge || isJsRequired) {
     if (isBotChallenge) reasons.push('bot_challenge_detected');
@@ -1042,7 +1046,6 @@ export function calculateContentQuality(params: {
   }
 
   // 2. 本文コンテンツ量判定
-  const textLen = markdown.trim().length;
   if (textLen < 50) {
     score -= 40;
     reasons.push('thin_content');
