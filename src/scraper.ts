@@ -308,6 +308,8 @@ export async function scrapeUrl(options: {
   const retries = Math.min(Math.max(options.retries ?? 0, 0), 3);
   const retryDelayMs = options.retryDelayMs ?? 1000;
   const onProgress = options.onProgress;
+  const shouldExtractHighlights =
+    options.extractHighlights ?? (Boolean(options.query) && options.extractHighlights !== false);
 
   onProgress?.({ stage: 'start', message: `Starting scrape for ${url}` });
 
@@ -315,7 +317,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${options.extractHighlights || false}:${options.onlyHighlights || false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   if (!options.noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
@@ -353,7 +355,7 @@ export async function scrapeUrl(options: {
             const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
             result = await finalizeScrapeResult(pdfResult, {
               query: options.query,
-              shouldExtractHighlights: options.extractHighlights ?? (options.onlyHighlights ? true : false),
+              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
               shouldOnlyHighlights: options.onlyHighlights ?? false,
               shouldExtractSummary: options.extractSummary ?? false,
               shouldExtractCitations: options.extractCitations ?? false,
@@ -437,7 +439,7 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
             result = await finalizeScrapeResult(result, {
               query: options.query,
-              shouldExtractHighlights: options.extractHighlights ?? (options.onlyHighlights ? true : false),
+              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
               shouldOnlyHighlights: options.onlyHighlights ?? false,
               shouldExtractSummary: options.extractSummary ?? false,
               shouldExtractCitations: options.extractCitations ?? false,
@@ -546,7 +548,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
         result = await finalizeScrapeResult(result, {
           query: options.query,
-          shouldExtractHighlights: options.extractHighlights ?? (options.onlyHighlights ? true : false),
+          shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
           shouldOnlyHighlights: options.onlyHighlights ?? false,
           shouldExtractSummary: options.extractSummary ?? false,
           shouldExtractCitations: options.extractCitations ?? false,
