@@ -396,8 +396,8 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "夜に駆ける")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、アーティスト代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "YOASOBI", "Official髭男dism")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "季節外れのリナリア")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、アーティスト代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "君と見るそら", "CUTIE STREET")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 | `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行します（汎用・後方互換用）。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm", "artistTerm", "albumTerm"<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 
 ---
@@ -571,6 +571,17 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "publishedTime": "2026-08-22T10:00:00Z",
   "author": "開発チーム",
   "siteName": "Tech Blog",
+  "quality": 92,
+  "completeness": 100,
+  "pageType": "article",
+  "qualityReasons": ["substantial_content", "has_headings", "has_json_ld", "has_rich_metadata"],
+  "missingFields": [],
+  "evidence": {
+    "title": { "value": "最新アップデートのお知らせ", "source": "dom" },
+    "publishedTime": { "value": "2026-08-22T10:00:00Z", "source": "jsonld" },
+    "author": { "value": "開発チーム", "source": "meta" },
+    "siteName": { "value": "Tech Blog", "source": "dom" }
+  },
   "extracted": {
     "productName": "Sora プレミアムキーボード",
     "price": "¥24,800",
@@ -629,6 +640,10 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **⚡ 超高速 抽出型自動要約 (`extractSummary: true`)**: 外部 LLM API を呼ばず、内部アルゴリズムによりミリ秒単位で重要文（TL;DR 要約）`summary: string[]` を自動生成します。
 > 
+> **🎯 スクレイピング品質スコア & 充足度保証 (`quality` & `completeness`)**: コンテンツ量・見出し構造・Schema.org 構造化データ・Bot対策判定から 0〜100 の品質スコア `quality` とページ種別（`article`, `product`, `qa`, `generic`）に応じた重要項目の充足率 `completeness`、欠損項目 `missingFields` をインメモリで超高速判定（< 0.1ms）して付与します。
+> 
+> **🔍 出処根拠追跡 & クロスバリデーション (`evidence`)**: 抽出された価格・在庫・著者・公開日時などの各フィールドがどこから抽出されたか（`jsonld`, `meta`, `dom`）の出処根拠（Provenance）を `evidence` マップとして返却し、ハルシネーション検出や検証を容易にします。
+> 
 > **🎯 検索結果の重複排除 (`dedup: true`)**: ニュース検索やリアルタイム検索で、コピペ投稿や転載記事を類似度判定で自動排除し、ユニークな情報のみを厳選します。
 > 
 > **🔄 自動リトライポリシー (`retries` & `retryDelayMs`)**: 接続失敗や 429/503 エラー時に指数バックオフで自動再試行し、耐障害性を向上させます。
@@ -638,6 +653,14 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。
 > 
 > **🧹 ユーザー指定ノイズセレクタ除去 (`removeSelectors`)**: `removeSelectors: [".ad", ".comments", "#related-articles"]` を指定し、特定ブロックを Markdown 変換前に徹底パージできます。
+> 
+> **✂️ リンク URL プレーンテキスト化 (`stripLinks: true`)**: Markdown 内のリンク `[テキスト](URL)` から URL 表記を削ぎ落とし `テキスト` のみに変換します。LLM のトークン消費を 20〜40% 削減し、純粋な文章コンテキストのみを効率的に渡せます。
+> 
+> **🌲 リンク密度フィルター (`filterLinkDensity: true`)**: タグ一覧、関連記事リスト、ナビゲーションメニューなど、実効テキストに対するリンク文字数の割合（リンク密度）が極端に高いノイズブロックを自動検出してパージします。
+> 
+> **🛡️ 間接プロンプトインジェクション & 不可視 CSS 徹底防御**: `<!-- ... -->` の HTML コメントや、`text-indent: -9999px`、`color: transparent`、`opacity: 0`、`font-size: 0` 等の悪意ある隠しテキストを DOM レベルで完全パージします。また、`<|im_start|>`, `[INST]`, `<<SYS>>` 等の LLM 特殊制御トークン文字列も安全に無害化（サニタイズ）します。
+> 
+> **🚫 Data URI / Base64 画像の完全無害化**: HTML 内に埋め込まれた長大な `data:image/...;base64,...` 文字列を完全除去し、`alt` 属性が存在する場合は `[画像: 説明文]` に置換してトークンの枯渇を 100% 防止します。
 > 
 > **📖 対話型 API ドキュメント (`GET /docs`)**: ブラウザから `http://localhost:3016/docs` にアクセスすると、Swagger UI から全 API を直接テスト実行（Try it out）できます。
 
