@@ -1,0 +1,53 @@
+{
+  "$schema": "https://glama.ai/mcp/schema.json",
+  "name": "sora",
+  "displayName": "Sora (All-in-One Web Scraping & Japan Infra MCP)",
+  "description": "Ultra-fast web scraping, stealth browser automation, and 37 Japanese public/infrastructure tools for AI agents. Open-source Firecrawl & Tavily alternative.",
+  "version": "2.8.0",
+  "license": "BUSL-1.1",
+  "homepage": "https://github.com",
+  "repository": {
+    "type": "git"
+  },
+  "runtime": "bun",
+  "entrypoint": "src/stdio.ts",
+  "transport": {
+    "type": "stdio",
+    "command": "bun",
+    "args": ["run", "src/stdio.ts"]
+  },
+  "tools": [
+    {
+      "name": "scrape",
+      "description": "Scrape a single URL with fast static fetch or stealth browser rendering into token-optimized Markdown."
+    },
+    {
+      "name": "browser_action",
+      "description": "Execute interactive multi-turn browser action sequences (clicks, fills, screenshots, scrolling) on modern SPAs."
+    },
+    {
+      "name": "search",
+      "description": "Deep web search with realtime social trends and optional deep scraping."
+    },
+    {
+      "name": "weather_forecast",
+      "description": "Get real-time weather forecasts and rain radar for Japanese cities."
+    },
+    {
+      "name": "disaster_earthquake",
+      "description": "Fetch live earthquake seismic intensity and tsunami warning information."
+    },
+    {
+      "name": "traffic_road",
+      "description": "Fetch real-time JARTIC road traffic regulations and congestion reports."
+    },
+    {
+      "name": "gov_law_search",
+      "description": "Search Japanese statutory laws and extract legal articles via e-Gov Law API v2."
+    },
+    {
+      "name": "gov_diet_minutes",
+      "description": "Search official Japanese National Diet speeches and committee minutes."
+    }
+  ]
+}

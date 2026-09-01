@@ -1,8 +1,6 @@
 import { extractText, getMeta } from 'unpdf';
 import { safeTruncateMarkdown, estimateTokens } from './enrichment.js';
-import type { ScrapeResult } from './types.js';
-
-export const DEFAULT_MAX_CHARS = 30_000;
+import { type ScrapeResult, DEFAULT_MAX_CHARS } from './types.js';
 
 /** PDF バッファからテキスト・メタデータを抽出し Markdown へ構造化 */
 export async function parsePdfToMarkdown(
