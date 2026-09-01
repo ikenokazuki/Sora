@@ -4,7 +4,8 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.7.0';
+export const SORA_VERSION = '2.8.0';
+export const DEFAULT_MAX_CHARS = 30_000;
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
 
@@ -62,6 +63,11 @@ export interface CookieParam {
   sameSite?: 'Strict' | 'Lax' | 'None';
 }
 
+export interface FieldEvidence {
+  value: string | number | boolean;
+  source: 'jsonld' | 'dom' | 'meta';
+}
+
 export interface ScrapeResult {
   url: string;
   title: string;
@@ -103,6 +109,14 @@ export interface ScrapeResult {
   html?: string;
   rawHtml?: string;
   screenshot?: string; // base64 PNG
+  quality?: number;
+  completeness?: number;
+  pageType?: 'article' | 'product' | 'qa' | 'generic';
+  qualityReasons?: string[];
+  missingFields?: string[];
+  evidence?: Record<string, FieldEvidence>;
+  qualityDistribution?: Record<string, number>;
+  avgQuality?: number;
 }
 
 export interface BrowserActionStep {
@@ -246,6 +260,8 @@ export const ScrapeRequestSchema = z.object({
   chunkSize: z.number().int().min(1).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)'),
   validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか'),
   formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+  stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)'),
+  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)'),
   highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか'),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか'),
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
@@ -263,6 +279,8 @@ export const BatchScrapeRequestSchema = z.object({
   formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列'),
+  stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
+  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
   query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
