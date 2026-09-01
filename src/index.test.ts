@@ -4435,6 +4435,33 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(stripped.completeness).toBeDefined();
       expect(stripped.evidence).toBeDefined();
     });
+
+    it('calculateContentQuality should not falsely flag rich pages containing g-recaptcha script as bot challenge', () => {
+      const richMarkdown = '## オンブレチェックシャツ\n\n大人気のオンブレチェック柄を採用した長袖シャツ。\n'.repeat(20);
+      const htmlWithRecaptcha = '<html><body>' + richMarkdown + '<script src="https://www.google.com/recaptcha/api.js"></script><div class="g-recaptcha"></div></body></html>';
+      const result = calculateContentQuality({
+        markdown: richMarkdown,
+        title: 'オンブレチェックシャツ | WEGO ONLINE STORE',
+        html: htmlWithRecaptcha,
+      });
+
+      expect(result.score).toBeGreaterThanOrEqual(70);
+      expect(result.reasons).not.toContain('bot_challenge_detected');
+    });
+
+    it('scrapeUrl should extract highlights when extractHighlights: true is passed alongside query', async () => {
+      const result = await scrapeUrl({
+        url: 'https://example.com',
+        query: 'domain',
+        extractHighlights: true,
+        noCache: true,
+      });
+
+      expect(result.highlights).toBeDefined();
+      expect(result.highlights!.length).toBeGreaterThan(0);
+      expect(result.highlights![0].toLowerCase()).toContain('domain');
+      expect(result.textFragmentUrl).toBeDefined();
+    });
   });
 });
 
