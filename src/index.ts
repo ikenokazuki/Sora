@@ -141,6 +141,10 @@ app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'DENY');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const path = c.req.path;
+  if (path !== '/docs' && path !== '/swagger' && path !== '/') {
+    c.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none';");
+  }
   return next();
 });
 
