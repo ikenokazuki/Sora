@@ -1,4 +1,5 @@
 import { promises as dnsPromises } from 'dns';
+import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
 import type {
   Citation,
   MarkdownChunk,
@@ -6,6 +7,7 @@ import type {
   ScrapeResult,
   TableData,
   MediaInfo,
+  FieldEvidence,
 } from './types.js';
 
 /** テキストの推定トークン数を算出（日本語は1.3文字/トークン、英語は4文字/トークン） */
@@ -57,6 +59,10 @@ export function cleanMarkdownTokens(markdown: string): string {
     .replace(/[ \t]+$/gm, '')
     // 7. ゼロ幅文字・不可視制御文字の除去 (間接プロンプトインジェクション緩和)
     .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
+    // 8. LLM 特殊制御トークンの無害化 (間接プロンプトインジェクション防御)
+    .replace(/<\|(?:im_start|im_end|endoftext|system|user|assistant|startoftext)\|>/gi, (m) => `[${m.slice(1, -1)}]`)
+    .replace(/\[\/?(?:INST|SYS)\]/gi, (m) => `\\[${m.slice(1, -1)}\\]`)
+    .replace(/<<\/?SYS>>/gi, (m) => `\\<\\<${m.slice(2, -2)}\\>\\>`)
     .trim();
 }
 
@@ -302,48 +308,13 @@ async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
     const u = new URL(urlStr);
     if (!['http:', 'https:'].includes(u.protocol)) return false;
     const h = u.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
-    if (
-      h === 'localhost' ||
-      h === '127.0.0.1' ||
-      h === '::1' ||
-      h === '::' ||
-      h === '0.0.0.0' ||
-      h.endsWith('.localhost') ||
-      h.endsWith('.local') ||
-      h.endsWith('.internal') ||
-      h === '169.254.169.254' ||
-      h === 'metadata.google.internal' ||
-      h === 'metadata.internal' ||
-      h === 'instance-data' ||
-      h.startsWith('10.') ||
-      h.startsWith('192.168.') ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h) ||
-      h.startsWith('169.254.') ||
-      h.startsWith('fc') ||
-      h.startsWith('fd') ||
-      h.startsWith('fe80:') ||
-      h.startsWith('ff')
-    ) {
+    if (isBlockedHostname(h) || isPrivateIp(h)) {
       return false;
     }
     const addresses = await dnsPromises.lookup(h, { all: true });
     for (const addr of addresses) {
       const a = addr.address.toLowerCase().trim().replace(/^\[|\]$/g, '');
-      if (
-        a === '127.0.0.1' ||
-        a === '::1' ||
-        a === '0.0.0.0' ||
-        a === '::' ||
-        a === '169.254.169.254' ||
-        a.startsWith('10.') ||
-        a.startsWith('192.168.') ||
-        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(a) ||
-        a.startsWith('169.254.') ||
-        a.startsWith('fc') ||
-        a.startsWith('fd') ||
-        a.startsWith('fe80:') ||
-        a.startsWith('ff')
-      ) {
+      if (isBlockedHostname(a) || isPrivateIp(a)) {
         return false;
       }
     }
@@ -1024,3 +995,268 @@ export function chooseBestDescription(
     .slice(0, 250)
     .trim();
 }
+
+/**
+ * 高速インメモリ品質スコアリング
+ * - Bot/Challenge/JS 検出
+ * - 本文量
+ * - 見出し階層構造
+ * - JSON-LD
+ * - メタデータ
+ * - リンク密度ペナルティ
+ */
+export function calculateContentQuality(params: {
+  markdown: string;
+  title?: string;
+  description?: string;
+  jsonLd?: any[];
+  html?: string;
+}): { score: number; reasons: string[] } {
+  const { markdown = '', title = '', description = '', jsonLd = [], html = '' } = params;
+  let score = 50; // 初期ベースライン
+  const reasons: string[] = [];
+
+  const lowerMd = markdown.toLowerCase();
+  const lowerHtml = html ? html.toLowerCase() : '';
+
+  // 1. Bot / Challenge / JS 必須ページの検出 (致命的低品質)
+  const isBotChallenge =
+    (lowerMd.includes('cloudflare') && (lowerMd.includes('ray id') || lowerMd.includes('just a moment') || lowerMd.includes('verify you are human'))) ||
+    lowerMd.includes('attention required! | cloudflare') ||
+    lowerMd.includes('ddos-guard') ||
+    lowerMd.includes('access denied') ||
+    lowerMd.includes('bot detection') ||
+    lowerHtml.includes('cf-browser-verification') ||
+    lowerHtml.includes('g-recaptcha');
+
+  const isJsRequired =
+    lowerMd.includes('enable javascript') ||
+    lowerMd.includes('please turn javascript on') ||
+    lowerMd.includes('javascript is required') ||
+    lowerMd.includes('javascript must be enabled');
+
+  if (isBotChallenge || isJsRequired) {
+    if (isBotChallenge) reasons.push('bot_challenge_detected');
+    if (isJsRequired) reasons.push('js_required_detected');
+    return { score: 10, reasons };
+  }
+
+  // 2. 本文コンテンツ量判定
+  const textLen = markdown.trim().length;
+  if (textLen < 50) {
+    score -= 40;
+    reasons.push('thin_content');
+  } else if (textLen < 200) {
+    score -= 15;
+  } else if (textLen > 2000) {
+    score += 25;
+    reasons.push('substantial_content');
+  } else if (textLen > 500) {
+    score += 15;
+    reasons.push('substantial_content');
+  }
+
+  // 3. 見出し階層構造 (H1, H2, H3 等の Markdown 見出し)
+  if (/^#{1,6}\s+.+/m.test(markdown)) {
+    score += 15;
+    reasons.push('has_headings');
+  }
+
+  // 4. 構造化データ (Schema.org / JSON-LD)
+  if (jsonLd && jsonLd.length > 0) {
+    score += 15;
+    reasons.push('has_json_ld');
+  }
+
+  // 5. メタデータ充実度 (タイトルと説明文)
+  if (title.trim().length >= 3 && description.trim().length >= 10) {
+    score += 10;
+    reasons.push('has_rich_metadata');
+  }
+
+  // 6. リンク密度過多ペナルティ (本文がほぼリンク集・ナビゲーションの残り)
+  if (textLen > 100) {
+    const linkMatches = markdown.match(/\[([^\]]+)\]\([^)]+\)/g) || [];
+    const linkTextLen = linkMatches.reduce((acc, m) => acc + m.length, 0);
+    const linkDensity = linkTextLen / textLen;
+    if (linkDensity > 0.6) {
+      score -= 20;
+      reasons.push('excessive_link_density');
+    }
+  }
+
+  // 0 〜 100 にクランプ
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  return { score: finalScore, reasons };
+}
+
+/**
+ * ページ種別（Article, Product, Q&A, Generic）の高速判定
+ */
+export function detectPageType(params: {
+  jsonLd?: any[];
+  meta?: Record<string, string | undefined>;
+  url?: string;
+  markdown?: string;
+}): 'article' | 'product' | 'qa' | 'generic' {
+  const { jsonLd = [], meta = {}, url = '', markdown = '' } = params;
+
+  // 1. JSON-LD の @type 検査
+  for (const item of jsonLd) {
+    const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : (item['@type'] || '');
+    if (/Product|Offer|IndividualProduct|ProductModel/i.test(typeStr)) return 'product';
+    if (/Article|NewsArticle|BlogPosting|TechArticle|Report/i.test(typeStr)) return 'article';
+    if (/QAPage|Question|Answer/i.test(typeStr)) return 'qa';
+  }
+
+  // 2. OpenGraph / Twitter meta タグ
+  const ogType = (meta['og:type'] || meta['ogType'] || '').toLowerCase();
+  if (ogType.includes('article')) return 'article';
+  if (ogType.includes('product')) return 'product';
+
+  // 3. URL やコンテンツのヒューリスティクス
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.includes('/item/') || lowerUrl.includes('/product/') || lowerUrl.includes('/goods/') || lowerUrl.includes('/p/')) {
+    return 'product';
+  }
+  if (lowerUrl.includes('/blog/') || lowerUrl.includes('/news/') || lowerUrl.includes('/articles/') || lowerUrl.includes('/story/')) {
+    return 'article';
+  }
+  if (lowerUrl.includes('/qa/') || lowerUrl.includes('/questions/') || lowerUrl.includes('/chiebukuro')) {
+    return 'qa';
+  }
+
+  // 4. 価格・カート表記
+  if (/(?:¥|￥|\$|€|税込|税別|カートに入れる|今すぐ購入|カートに追加)/.test(markdown) && /(?:在庫あり|在庫切れ|品切れ|価格)/.test(markdown)) {
+    return 'product';
+  }
+
+  return 'generic';
+}
+
+/**
+ * ページ種別ごとの抽出充足度（Completeness 0〜100）と欠損フィールドの算出
+ */
+export function calculateExtractionCompleteness(params: {
+  pageType: 'article' | 'product' | 'qa' | 'generic';
+  title?: string;
+  content?: string;
+  publishedTime?: string;
+  author?: string;
+  price?: string;
+  availability?: string;
+  images?: any[];
+  description?: string;
+}): { completeness: number; missingFields: string[] } {
+  const { pageType, title, content, publishedTime, author, price, availability, images, description } = params;
+  const missing: string[] = [];
+  let score = 0;
+
+  const hasTitle = !!(title && title.trim().length > 0);
+  const hasContent = !!(content && content.trim().length >= 50);
+
+  if (pageType === 'article') {
+    if (hasTitle) score += 30; else missing.push('title');
+    if (hasContent) score += 30; else missing.push('content');
+    if (publishedTime) score += 20; else missing.push('publishedTime');
+    if (author) score += 20; else missing.push('author');
+  } else if (pageType === 'product') {
+    if (hasTitle) score += 25; else missing.push('title');
+    if (price) score += 25; else missing.push('price');
+    if (availability) score += 25; else missing.push('availability');
+    if ((images && images.length > 0) || description || hasContent) score += 25; else missing.push('description');
+  } else if (pageType === 'qa') {
+    if (hasTitle) score += 30; else missing.push('title');
+    if (hasContent) score += 40; else missing.push('answers');
+    if (author || publishedTime) score += 30; else missing.push('metadata');
+  } else {
+    // generic
+    if (hasTitle) score += 40; else missing.push('title');
+    if (hasContent) score += 60; else missing.push('content');
+  }
+
+  return { completeness: Math.min(100, score), missingFields: missing };
+}
+
+/**
+ * フィールド取得元根拠（Evidence / Provenance）の追跡・集約
+ */
+export function collectFieldEvidence(params: {
+  jsonLd?: any[];
+  meta?: Record<string, string | undefined>;
+  title?: string;
+  description?: string;
+  publishedTime?: string;
+  author?: string;
+  price?: string;
+  availability?: string;
+  siteName?: string;
+}): Record<string, FieldEvidence> {
+  const { jsonLd = [], meta = {}, title, description, publishedTime, author, price, availability, siteName } = params;
+  const evidence: Record<string, FieldEvidence> = {};
+
+  // JSON-LD から取得されたか確認するヘルパー
+  const isInJsonLd = (val: string | undefined): boolean => {
+    if (!val) return false;
+    const s = JSON.stringify(jsonLd);
+    return s.includes(val);
+  };
+
+  // Meta から取得されたか確認するヘルパー
+  const isInMeta = (val: string | undefined): boolean => {
+    if (!val) return false;
+    return Object.values(meta).some((v) => typeof v === 'string' && (v === val || v.includes(val)));
+  };
+
+  if (title) {
+    evidence.title = {
+      value: title,
+      source: isInJsonLd(title) ? 'jsonld' : (isInMeta(title) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (description) {
+    evidence.description = {
+      value: description,
+      source: isInJsonLd(description) ? 'jsonld' : (isInMeta(description) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (publishedTime) {
+    evidence.publishedTime = {
+      value: publishedTime,
+      source: isInJsonLd(publishedTime) ? 'jsonld' : (isInMeta(publishedTime) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (author) {
+    evidence.author = {
+      value: author,
+      source: isInJsonLd(author) ? 'jsonld' : (isInMeta(author) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (price) {
+    evidence.price = {
+      value: price,
+      source: isInJsonLd(price) ? 'jsonld' : (isInMeta(price) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (availability) {
+    evidence.availability = {
+      value: availability,
+      source: isInJsonLd(availability) ? 'jsonld' : (isInMeta(availability) ? 'meta' : 'dom'),
+    };
+  }
+
+  if (siteName) {
+    evidence.siteName = {
+      value: siteName,
+      source: isInJsonLd(siteName) ? 'jsonld' : (isInMeta(siteName) ? 'meta' : 'dom'),
+    };
+  }
+
+  return evidence;
+}
+

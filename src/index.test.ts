@@ -26,6 +26,10 @@ import {
   generatePromptContext,
   highlightQueryMatchesInMarkdown,
   calculateContentStats,
+  calculateContentQuality,
+  detectPageType,
+  calculateExtractionCompleteness,
+  collectFieldEvidence,
   extractCitationsFromMarkdown,
   chunkMarkdownContent,
   validateExtractedLinks,
@@ -2583,6 +2587,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.openapi).toBe('3.0.0');
     expect(doc.info.title).toContain('Sora');
     expect(doc.paths['/scrape'].post.requestBody.content['application/json'].schema.type).toBe('object');
+    const scrapeProps = doc.paths['/scrape'].post.requestBody.content['application/json'].schema.properties;
+    expect(scrapeProps.stripLinks).toBeDefined();
+    expect(scrapeProps.filterLinkDensity).toBeDefined();
     expect(doc.paths['/scrape/stream']).toBeDefined();
     expect(doc.paths['/scrape/batch']).toBeDefined();
     expect(doc.paths['/weather']).toBeDefined();
@@ -4323,6 +4330,110 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error).toBeDefined();
+    });
+  });
+
+  describe('Quality Assurance & Provenance Engine', () => {
+    it('calculateContentQuality should penalize bot challenges and JS disabled pages', () => {
+      const challengeRes = calculateContentQuality({
+        markdown: 'Just a moment... Enable JavaScript and cookies to continue. Cloudflare Ray ID: 8b1234567890',
+        html: '<div class="cf-browser-verification">Please wait</div>',
+      });
+      expect(challengeRes.score).toBeLessThanOrEqual(20);
+      expect(challengeRes.reasons).toContain('bot_challenge_detected');
+
+      const jsDisabledRes = calculateContentQuality({
+        markdown: 'Please enable JavaScript to view this website properly.',
+      });
+      expect(jsDisabledRes.score).toBeLessThanOrEqual(20);
+      expect(jsDisabledRes.reasons).toContain('js_required_detected');
+    });
+
+    it('calculateContentQuality should reward structured data, headings, and rich content', () => {
+      const richRes = calculateContentQuality({
+        markdown: '# 記事タイトル\n\n## 導入\n\n' + 'これは十分な長さを持つ高品質な記事本文です。'.repeat(30),
+        title: '記事タイトル - 公式サイト',
+        description: 'この記事は技術的な詳細と最新の動向について解説する高品質な解説記事です。',
+        jsonLd: [{ '@type': 'Article', headline: '記事タイトル' }],
+      });
+      expect(richRes.score).toBeGreaterThanOrEqual(80);
+      expect(richRes.reasons).toContain('has_headings');
+      expect(richRes.reasons).toContain('has_json_ld');
+      expect(richRes.reasons).toContain('substantial_content');
+      expect(richRes.reasons).toContain('has_rich_metadata');
+    });
+
+    it('calculateContentQuality should penalize excessive link density', () => {
+      const linksOnly = '[リンク1](https://example.com/1) [リンク2](https://example.com/2) [リンク3](https://example.com/3) [リンク4](https://example.com/4) [リンク5](https://example.com/5) [リンク6](https://example.com/6)';
+      const linkRes = calculateContentQuality({
+        markdown: linksOnly,
+        title: 'リンク集',
+      });
+      expect(linkRes.reasons).toContain('excessive_link_density');
+    });
+
+    it('detectPageType should accurately identify article, product, qa, and generic pages', () => {
+      expect(detectPageType({ jsonLd: [{ '@type': 'NewsArticle' }] })).toBe('article');
+      expect(detectPageType({ jsonLd: [{ '@type': 'Product' }] })).toBe('product');
+      expect(detectPageType({ jsonLd: [{ '@type': 'QAPage' }] })).toBe('qa');
+      expect(detectPageType({ url: 'https://example.com/goods/12345' })).toBe('product');
+      expect(detectPageType({ url: 'https://example.com/blog/2026/08/new-release' })).toBe('article');
+      expect(detectPageType({ url: 'https://example.com/about' })).toBe('generic');
+    });
+
+    it('calculateExtractionCompleteness should assess required fields per page type', () => {
+      const articleFull = calculateExtractionCompleteness({
+        pageType: 'article',
+        title: 'テスト記事',
+        content: '十分な長さのある本文テキストです。'.repeat(10),
+        publishedTime: '2026-08-20T12:00:00Z',
+        author: '山田太郎',
+      });
+      expect(articleFull.completeness).toBe(100);
+      expect(articleFull.missingFields).toHaveLength(0);
+
+      const articleMissing = calculateExtractionCompleteness({
+        pageType: 'article',
+        title: 'タイトルのみ',
+        content: '',
+      });
+      expect(articleMissing.completeness).toBeLessThan(50);
+      expect(articleMissing.missingFields).toContain('content');
+      expect(articleMissing.missingFields).toContain('publishedTime');
+    });
+
+    it('collectFieldEvidence should trace data origin across jsonld, meta, and dom', () => {
+      const evidence = collectFieldEvidence({
+        jsonLd: [{ '@type': 'Product', name: 'MacBook Pro', offers: { price: '248000' } }],
+        meta: {
+          'og:title': 'MacBook Pro',
+          author: 'Apple',
+          description: '最新の M4 Max 搭載ノートブック',
+        },
+        title: 'MacBook Pro',
+        price: '248000',
+        author: 'Apple',
+        siteName: 'Apple Store Online',
+      });
+
+      expect(evidence.price?.source).toBe('jsonld');
+      expect(evidence.author?.source).toBe('meta');
+      expect(evidence.siteName?.source).toBe('dom');
+    });
+
+    it('convertHtmlToMarkdown should support stripLinks and filterLinkDensity options', () => {
+      const html = '<html><body><h1>テスト</h1><p>詳細は<a href="https://example.com/doc">こちらのドキュメント</a>と<img src="https://example.com/pic.png" alt="画像">をご覧ください。</p></body></html>';
+      
+      const normal = convertHtmlToMarkdown(html, 'https://example.com', 5000);
+      expect(normal.markdown).toContain('[こちらのドキュメント](https://example.com/doc)');
+
+      const stripped = convertHtmlToMarkdown(html, 'https://example.com', 5000, false, true, undefined, undefined, true);
+      expect(stripped.markdown).not.toContain('(https://example.com/doc)');
+      expect(stripped.markdown).toContain('こちらのドキュメント');
+      expect(stripped.markdown).toContain('![画像](https://example.com/pic.png)');
+      expect(stripped.quality).toBeDefined();
+      expect(stripped.completeness).toBeDefined();
+      expect(stripped.evidence).toBeDefined();
     });
   });
 });

@@ -1,15 +1,28 @@
 {
   "name": "sora",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "stdio": "bun run src/stdio.ts",
     "test": "bun test",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js"
   },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "scraper",
+    "firecrawl",
+    "tavily",
+    "deep-search",
+    "stealth-browser",
+    "weather",
+    "disaster-prevention",
+    "traffic"
+  ],
   "dependencies": {
     "@hono/mcp": "^0.3.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
