@@ -40,6 +40,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  predictHtsCode,
   checkProductCompliance,
   inspectImage,
 } from './scraper.js';
@@ -1338,7 +1339,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'check_cpsc_certificate',
       'trade',
-      '【米国CPSC適合証明書 eFiling判定】HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBPへの電子申告（eFiling）義務有無を判定し、eCFR公式APIで取得した根拠条文（16 CFR）を提示します。参考情報であり法的助言ではありません。',
+      '【米国CPSC適合証明書 eFiling完全義務化判定】HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling: フルPGAまたはProduct Registry参照）要否を判定し、非対象時のACE免責申告コード(Disclaimer)やeCFR公式API根拠条文（16 CFR）を提示します。参考情報であり法的助言ではありません。',
       {
         htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
         targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（子供向け製品かどうかはCPSC判定の主要分岐点、安全基準の絞り込みに使用）'),
@@ -1362,16 +1363,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['CPSC', 'GCC', 'CCC', 'eFiling', '適合証明書', '輸出', '輸入', 'HTS', '貿易', 'コンプライアンス'] },
     );
 
-    // Tool: check_fda_regulated (FDA規制対象HS Chapter単位判定) - DEFERRED
+    // Tool: check_fda_regulated (FDA規制対象実務判定 FD1〜FD4) - DEFERRED
     registerTool(
       mcpServer,
       toolCatalog,
       'check_fda_regulated',
       'trade',
-      '【米国FDA規制対象 簡易判定】HTSコードから、米国FDA（食品医薬品局）管轄の可能性をHS Chapter単位で粗く判定します。HTSコードとFDA規制フラグ(FD1〜FD4)の機械可読な公式対応表は存在しないため、この判定はHS分類の一般知識に基づく目安であり、精密なリスト照合ではありません。参考情報であり法的助言ではありません。',
+      '【米国FDA規制対象 実務判定】HTSコードおよび商品情報から、米国CBP/FDA実務で用いられるPGAフラグ（FD1: 用途によりFDA/食品接触物質, FD2: 食品以外必須/化粧品・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知PNC絶対必須）を判定し、Prior NoticeやMoCRA、ACE免責(Disclaimer)申告要件を提示します。参考情報であり法的助言ではありません。',
       {
-        htsCode: z.string().min(1).describe('HTSコード（例: "3004.90.0000"）'),
-        productDescription: z.string().optional().describe('製品の自由記述説明（Chapterだけでは判定が曖昧なケースの補助情報）'),
+        htsCode: z.string().min(1).describe('HTSコード（例: "3004.90.0000", "2106.90.9998"）'),
+        productDescription: z.string().optional().describe('製品の自由記述説明（用途・素材等の補助情報）'),
+        foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFDA適用分岐に使用'),
       },
       async (opts) => {
         try {
@@ -1386,7 +1388,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['FDA', '食品医薬品局', 'Prior Notice', '事前通知', 'FD Flag', '輸出', '輸入', 'HTS', '貿易', 'コンプライアンス'] },
+      { defaultEnabled: deferredDefault, keywords: ['FDA', '食品医薬品局', 'Prior Notice', '事前通知', 'FD Flag', 'MoCRA', '輸出', '輸入', 'HTS', '貿易', 'コンプライアンス'] },
     );
 
     // Tool: verify_hts_code (HTS/HSコード実在確認・検証) - DEFERRED
@@ -1395,10 +1397,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'verify_hts_code',
       'trade',
-      '【HTS/HSコード実在確認・検証】LLMや利用者が製品の素材・用途・機能・加工度合いから推論したHTSコード候補を、米国USITC公式データ(hts.usitc.gov)と照合し、実在確認・正式な品目説明・関税率を取得します。キーワード検索によるコードの一意特定は不可能なため、このツールは逆に「候補コードの裏取り」を行います。HTSコードを推論する際は必ず製品の素材・用途・機能・加工度合いを踏まえて候補を絞り込んでから、このツールで検証してください。参考情報であり法的な分類判断ではありません。',
+      '【HTS/HSコード実在確認・検証】推論・入手したHTSコード候補を米国USITC公式データ(hts.usitc.gov)と照合し、実在確認・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条に基づくChapter 99特別追加関税リスクの確認ガイダンスも返します。参考情報であり法的な分類判断ではありません。',
       {
-        htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）。推論・入手した候補コードを渡す'),
-        productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
+        htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）'),
+        productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。推論根拠の明示'),
       },
       async (opts) => {
         try {
@@ -1413,7 +1415,39 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['HTS', 'HSコード', '関税分類', 'USITC', '実在確認', '検証', '輸出', '輸入', '貿易', 'コンプライアンス'] },
+      { defaultEnabled: deferredDefault, keywords: ['HTS', 'HSコード', '関税分類', 'USITC', '実在確認', '検証', '関税率', '輸出', '輸入', '貿易', 'コンプライアンス'] },
+    );
+
+    // Tool: predict_hts_code (商品情報からのHTS/HSコード推測エンジン) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'predict_hts_code',
+      'trade',
+      '【商品情報からのHTS/HSコード推測】商品名・説明文・素材・カテゴリ・用途から、USITC公式現行関税率表とセマンティック照合を行い、最も確度の高い10桁統計細分HTSコード候補、一般関税率、および連動するCPSC/FDA規制要件（eFiling義務、FDフラグ、Prior Notice要否）を自動推測します。参考情報であり法的な分類確定ではありません。',
+      {
+        productName: z.string().min(1).describe('商品名・品名（例: "Wooden Building Blocks for Toddlers", "Ceramic Coffee Mug", "Green Tea"）'),
+        description: z.string().optional().describe('商品の詳細説明、機能、用途など'),
+        material: z.string().optional().describe('主な素材（例: wood, ceramic, cotton, stainless steel, plastic）'),
+        productCategory: z.string().optional().describe('製品カテゴリ（例: Toys, Tableware, Apparel, Cosmetics, Food, Electronics）'),
+        targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下, adult: 大人/一般, unknown: 不明）'),
+        foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true/false）'),
+        hasBattery: z.boolean().optional().describe('電池・バッテリーを搭載しているか（true/false）'),
+      },
+      async (opts) => {
+        try {
+          const result = await predictHtsCode(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `HTS code prediction error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['HTS推測', 'HS推測', '関税分類推測', 'コード検索', 'USITC', '輸出', '輸入', '貿易', 'コンプライアンス'] },
     );
 
     // Tool: check_product_compliance (商品統合コンプライアンス一括判定) - DEFERRED
@@ -1422,12 +1456,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'check_product_compliance',
       'trade',
-      '【商品統合コンプライアンス一括判定】商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制対象判定（食品・化粧品・医薬品等）、CPSC適合証明書（GCC/CCC）および2026年eFiling義務化判定を一連のパイプラインとして一括実行し、通関前のアクションプランを含む総合診断レポートを返します。参考情報であり法的助言ではありません。カテゴリ判定に必須の情報（対象年齢・素材・食品接触用途・電池使用有無等）が不足している場合は判定を実行せず overallStatus:"needs_more_info" と clarifyingQuestions（確認質問の配列）のみを返すので、ユーザーに質問内容を確認した上で targetAge/material/foodContact/hasBattery/batteryType 等の該当パラメータを補って本ツールを再度呼び出してください。targetAge/material/foodContact/hasBattery/batteryType はユーザーが明示的に述べた情報のみを渡し、商品名からの推測やWeb検索結果で埋めないでください（誤った前提での判定を防ぐため）。',
+      '【商品統合コンプライアンス一括判定】商品ページのURL、または商品名・説明・素材・カテゴリから、HTS推測・実在検証（関税率取得）、FDA実務判定（FD1〜FD4フラグ・Prior Notice・MoCRA）、CPSC適合証明書（GCC/CCC）および2026年7月完全義務化されたeFiling判定を一連のパイプラインとして一括実行し、通関前のアクションプランを含む総合診断レポートを返します。参考情報であり法的助言ではありません。カテゴリ判定に必須の情報が不足している場合は overallStatus:"needs_more_info" と clarifyingQuestions を返します。',
       {
         url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
         productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
         description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
-        htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証）'),
+        htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証。未指定時は推測エンジンで自動特定）'),
         targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
         material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
         productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
