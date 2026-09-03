@@ -136,6 +136,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `POST /browser/action` (初回実行) | **約 1.4 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
 | `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 | `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
+| `POST /trade/hts-predict` (HTSコード推測) | **約 0.2 〜 0.4 秒** | **0.5 ms** | 商品名・素材からの10桁HTS自動推測＋関税率＋多層防御ヒアリング誘導 |
 
 #### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
 
