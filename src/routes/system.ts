@@ -62,6 +62,7 @@ systemRoutes.get('/', (c) => {
       tradeCpscCheck: 'POST /trade/cpsc-check',
       tradeFdaCheck: 'POST /trade/fda-check',
       tradeHtsVerify: 'POST /trade/hts-verify',
+      tradeHtsPredict: 'POST /trade/hts-predict',
       tradeCompliance: 'POST /trade/compliance',
       map: 'POST /map',
       crawl: 'POST /crawl',
