@@ -60,4 +60,5 @@ jobs:
         with:
           generate_release_notes: true
           name: "Sora Release ${{ github.ref_name }}"
+          body_path: RELEASE_NOTES.md
 
