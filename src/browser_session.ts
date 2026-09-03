@@ -13,6 +13,7 @@ import {
   applyStealthEvasions,
   bypassCloudflareTurnstile,
   browserSemaphore,
+  recordBrowserUsage,
   humanMouseMove,
   pruneInvisibleElements,
   type BrowserActionStep,
@@ -415,6 +416,7 @@ export async function handleBrowserSessionAction(
       await evictOldestSessionIfNeeded();
 
       await browserSemaphore.acquire();
+      recordBrowserUsage();
       try {
         const browserRes = await getBrowser();
         browserInstance = browserRes.browser;
@@ -453,6 +455,7 @@ export async function handleBrowserSessionAction(
   } else {
     // ワンショット実行（セッション管理なし・即破棄）
     await browserSemaphore.acquire();
+    recordBrowserUsage();
     try {
       const browserRes = await getBrowser();
       browserInstance = browserRes.browser;
