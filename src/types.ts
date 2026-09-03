@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.9.0';
+export const SORA_VERSION = '2.10.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
@@ -534,6 +534,17 @@ export const ProductComplianceRequestSchema = z.object({
   batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
 });
 export type ProductComplianceRequestOptions = z.infer<typeof ProductComplianceRequestSchema>;
+
+export const PredictHtsCodeRequestSchema = z.object({
+  productName: z.string().min(1, 'productName は必須です').describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers"）'),
+  description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
+  material: z.string().optional().describe('主な素材（例: wood, metal, ceramic, plastic, cotton, glass）'),
+  productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か'),
+});
+export type PredictHtsCodeRequestOptions = z.infer<typeof PredictHtsCodeRequestSchema>;
 
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
@@ -1092,6 +1103,19 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'CheckProductComplianceResult' } },
+        },
+      },
+      '/trade/hts-predict': {
+        post: {
+          summary: '商品情報からのHTS/HSコード推測（USITC公式API連動・候補提示・関税率取得）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(PredictHtsCodeRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'PredictHtsCodeResult' } },
         },
       },
       '/gov/diet-minutes': {
