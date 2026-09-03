@@ -43,6 +43,7 @@ import {
   checkProductCompliance,
   inspectImage,
 } from './scraper.js';
+import { formatCompactScrapeResult } from './response_cleaner.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
 
@@ -285,15 +286,24 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .max(3)
           .optional()
           .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
+        verbose: z
+          .boolean()
+          .optional()
+          .describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
+        keepDataImages: z
+          .boolean()
+          .optional()
+          .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages });
+          const formatted = formatCompactScrapeResult(result, { verbose });
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(result, null, 2),
+                text: JSON.stringify(formatted, null, 2),
               },
             ],
           };
@@ -340,15 +350,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
         retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+        verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose }) => {
         try {
           const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent });
+          const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(result, null, 2),
+                text: JSON.stringify({ ...result, results: formattedResults }, null, 2),
               },
             ],
           };
@@ -382,8 +394,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
         dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+        verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -398,6 +411,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             extractHighlights,
             dedup,
             onlyMainContent,
+            verbose,
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
