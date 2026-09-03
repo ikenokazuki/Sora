@@ -9,6 +9,7 @@ import { getProxyConfig } from './browser_engine.js';
 import {
   isBlockedHostname,
   isPrivateIp,
+  parseIpv4ToUint32,
   matchUrlPattern,
   decodeHtmlBuffer,
   extractWithSelectors,
@@ -51,6 +52,9 @@ import {
   runWithSingleFlight,
   validateHostIpDns,
   SimpleSemaphore,
+  recordBrowserUsage,
+  maybeRotateSharedBrowser,
+  closeDatabase,
   dbGetCache,
   dbSetCache,
   dbDeleteCache,
@@ -173,6 +177,22 @@ describe('web-fetcher Core Functions', () => {
     expect(cleaned).not.toContain('javascript:void(0)');
     expect(cleaned).toContain('Click Here');
     expect(cleaned).not.toContain('\n\n\n');
+  });
+
+  it('cleanMarkdownTokens should replace base64 inline images with [画像: alt] and purge empty ones, but keep them when keepDataImages=true', () => {
+    const mdWithBase64 = `
+      # Report
+      ![Sales Chart](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)
+      ![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==)
+      ![Normal](https://example.com/logo.png)
+    `;
+    const defaultCleaned = cleanMarkdownTokens(mdWithBase64);
+    expect(defaultCleaned).toContain('[画像: Sales Chart]');
+    expect(defaultCleaned).not.toContain('data:image/png;base64');
+    expect(defaultCleaned).toContain('![Normal](https://example.com/logo.png)');
+
+    const preserved = cleanMarkdownTokens(mdWithBase64, true);
+    expect(preserved).toContain('data:image/png;base64');
   });
 
   it('convertHtmlToMarkdown should purge cookie banners, extract metadata (publishedTime, author, siteName), format GFM tables and preserve codeblock languages', () => {
@@ -2516,6 +2536,18 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(activeWorkers).toBe(0);
   });
 
+  it('recordBrowserUsage and maybeRotateSharedBrowser should track usage and handle rotation on idle', () => {
+    expect(typeof recordBrowserUsage).toBe('function');
+    for (let i = 0; i < 205; i++) {
+      recordBrowserUsage();
+    }
+    expect(() => maybeRotateSharedBrowser()).not.toThrow();
+  });
+
+  it('closeDatabase should close SQLite connection cleanly without throwing', () => {
+    expect(() => closeDatabase()).not.toThrow();
+  });
+
   it('REST API should validate input with Zod and return structured error response with code and retryable', async () => {
     // 1. URL 未指定時の Zod バリデーションエラー & 構造化レスポンス
     const res = await app.request('/scrape', {
@@ -2690,6 +2722,39 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(isPrivateIp('172.31.255.255')).toBe(true);
     expect(isPrivateIp('8.8.8.8')).toBe(false);
     expect(isPrivateIp('1.1.1.1')).toBe(false);
+
+    // 難読化 IP バイパス防御 (8進数, 16進数, 短縮, dword, IPv6埋め込み)
+    expect(isPrivateIp('0177.0.0.1')).toBe(true); // 8進数 loopback
+    expect(isPrivateIp('0x7f000001')).toBe(true); // 16進数 dword
+    expect(isPrivateIp('0x7f.0.0.1')).toBe(true); // 16進数 dotted
+    expect(isPrivateIp('127.1')).toBe(true); // 短縮表記
+    expect(isPrivateIp('2130706433')).toBe(true); // 10進数 dword (127.0.0.1)
+    expect(isPrivateIp('012.0.0.1')).toBe(true); // 8進数 10.0.0.1
+    expect(isPrivateIp('0xa000001')).toBe(true); // 16進数 10.0.0.1
+    expect(isPrivateIp('::ffff:127.0.0.1')).toBe(true); // IPv6 埋め込み
+    expect(isPrivateIp('::ffff:7f00:1')).toBe(true); // IPv6 埋め込み hex
+    expect(isBlockedHostname('0177.0.0.1')).toBe(true);
+    expect(isBlockedHostname('0x7f000001')).toBe(true);
+    expect(isBlockedHostname('127.1')).toBe(true);
+  });
+
+  it('parseIpv4ToUint32 should correctly parse decimal, octal, hex, and shortened notation', () => {
+    // 127.0.0.1 => 0x7f000001 = 2130706433
+    expect(parseIpv4ToUint32('127.0.0.1')).toBe(2130706433);
+    expect(parseIpv4ToUint32('0177.0.0.1')).toBe(2130706433);
+    expect(parseIpv4ToUint32('0x7f.0.0.1')).toBe(2130706433);
+    expect(parseIpv4ToUint32('0x7f000001')).toBe(2130706433);
+    expect(parseIpv4ToUint32('2130706433')).toBe(2130706433);
+    expect(parseIpv4ToUint32('127.1')).toBe(2130706433);
+
+    // 10.0.0.1 => 0x0a000001 = 167772161
+    expect(parseIpv4ToUint32('10.0.0.1')).toBe(167772161);
+    expect(parseIpv4ToUint32('012.0.0.1')).toBe(167772161);
+
+    // Invalid IPs
+    expect(parseIpv4ToUint32('not-an-ip')).toBeNull();
+    expect(parseIpv4ToUint32('1.2.3.4.5')).toBeNull();
+    expect(parseIpv4ToUint32('256.0.0.1')).toBeNull();
   });
 
   // ==========================================

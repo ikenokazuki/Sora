@@ -435,3 +435,13 @@ export function dbGetDomainStorage(domain: string): Record<string, string> | und
     return undefined;
   }
 }
+
+/** サーバー終了時の SQLite データベース安全クローズ */
+export function closeDatabase(): void {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {}
+    dbInstance = null;
+  }
+}

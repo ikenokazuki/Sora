@@ -6,6 +6,7 @@ import {
   getBrowser,
   getChromiumMajorVersion,
   pruneInvisibleElements,
+  recordBrowserUsage,
   resolveChromiumPath,
   setupPageSecurity,
 } from './browser_engine.js';
@@ -281,11 +282,18 @@ export async function waitForDomStable(page: Page, quietMs = 1200, timeoutMs = 5
             lastGrowth = Date.now();
           }
 
-          if (!hasVisibleLoading && Date.now() - lastGrowth >= quiet) {
+          // 本文（article, main, または 400文字以上のテキスト）がすでにレンダリング完了しており、
+          // スピナーも消えている場合は、待機時間を 350ms に短縮して高速早期リターン
+          const hasMainContent = Boolean(
+            doc?.querySelector('article, main, [role="main"]') || textLength >= 400
+          );
+          const effectiveQuiet = (hasMainContent && !hasVisibleLoading) ? Math.min(quiet, 350) : quiet;
+
+          if (!hasVisibleLoading && Date.now() - lastGrowth >= effectiveQuiet) {
             return;
           }
 
-          await new Promise((r) => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 80));
         }
       },
       quietMs,
@@ -335,6 +343,7 @@ export async function fetchWithStealthBrowser(
 
   await throttleDomain(url);
   await browserSemaphore.acquire();
+  recordBrowserUsage();
 
   try {
     const { browser, isDedicated } = await getBrowser();

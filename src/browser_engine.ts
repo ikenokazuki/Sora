@@ -209,6 +209,20 @@ export async function closeSharedBrowser(): Promise<void> {
   }
 }
 
+let sharedBrowserUsageCount = 0;
+const MAX_SHARED_BROWSER_USES = 200;
+
+export function recordBrowserUsage(): void {
+  sharedBrowserUsageCount++;
+}
+
+export function maybeRotateSharedBrowser(): void {
+  if (browserSemaphore.activeCount === 0 && sharedBrowserUsageCount >= MAX_SHARED_BROWSER_USES) {
+    sharedBrowserUsageCount = 0;
+    void closeSharedBrowser();
+  }
+}
+
 /** 簡易セマフォ（ブラウザ同時実行数制限） */
 export class SimpleSemaphore {
   private current = 0;
@@ -232,6 +246,8 @@ export class SimpleSemaphore {
     const next = this.queue.shift();
     if (next) {
       next();
+    } else if (this.current === 0) {
+      maybeRotateSharedBrowser();
     }
   }
 
@@ -247,21 +263,118 @@ export class SimpleSemaphore {
 export const MAX_CONCURRENT_BROWSERS = parseInt(process.env.MAX_CONCURRENT_BROWSERS || '5', 10);
 export const browserSemaphore = new SimpleSemaphore(Math.max(1, Math.min(MAX_CONCURRENT_BROWSERS, 50)));
 
+/**
+ * 任意の IPv4 表記（10進ドット、8進数、16進数、短縮表記、32bit整数）を 32bit 符号なし整数に正規化する。
+ * SSRF バイパス攻撃（0177.0.0.1 や 0x7f000001、127.1 等）を確実に検知・遮断するために使用。
+ */
+export function parseIpv4ToUint32(host: string): number | null {
+  const clean = host.toLowerCase().trim().replace(/^\[|\]$/g, '');
+  const parts = clean.split('.');
+  if (parts.length > 4 || parts.length === 0) return null;
+
+  const values: number[] = [];
+  for (const p of parts) {
+    if (!p) return null;
+    let val: number;
+    if (p.startsWith('0x')) {
+      val = parseInt(p.slice(2), 16);
+    } else if (p.startsWith('0') && p.length > 1 && !/[89a-f]/i.test(p)) {
+      val = parseInt(p, 8);
+    } else if (/^\d+$/.test(p)) {
+      val = parseInt(p, 10);
+    } else {
+      return null;
+    }
+    if (isNaN(val) || val < 0) return null;
+    values.push(val);
+  }
+
+  let ip = 0;
+  if (values.length === 1) {
+    ip = values[0];
+  } else if (values.length === 2) {
+    if (values[0] > 0xff || values[1] > 0xffffff) return null;
+    ip = ((values[0] << 24) >>> 0) + values[1];
+  } else if (values.length === 3) {
+    if (values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff) return null;
+    ip = ((values[0] << 24) >>> 0) + (values[1] << 16) + values[2];
+  } else if (values.length === 4) {
+    if (values.some((v) => v > 0xff)) return null;
+    ip = ((values[0] << 24) >>> 0) + (values[1] << 16) + (values[2] << 8) + values[3];
+  } else {
+    return null;
+  }
+  return ip >>> 0;
+}
+
+export function isPrivateIpUint32(num: number): boolean {
+  const b0 = (num >>> 24) & 0xff;
+  const b1 = (num >>> 16) & 0xff;
+  const b2 = (num >>> 8) & 0xff;
+
+  // 0.0.0.0/8 (Current network / broadcast)
+  if (b0 === 0) return true;
+  // 10.0.0.0/8 (Private)
+  if (b0 === 10) return true;
+  // 127.0.0.0/8 (Loopback)
+  if (b0 === 127) return true;
+  // 100.64.0.0/10 (CGNAT / RFC 6598)
+  if (b0 === 100 && b1 >= 64 && b1 <= 127) return true;
+  // 169.254.0.0/16 (Link-Local / Cloud Metadata)
+  if (b0 === 169 && b1 === 254) return true;
+  // 172.16.0.0/12 (Private)
+  if (b0 === 172 && b1 >= 16 && b1 <= 31) return true;
+  // 192.0.2.0/24 (TEST-NET-1)
+  if (b0 === 192 && b1 === 0 && b2 === 2) return true;
+  // 192.168.0.0/16 (Private)
+  if (b0 === 192 && b1 === 168) return true;
+  // 198.18.0.0/15 (Benchmark testing)
+  if (b0 === 198 && (b1 === 18 || b1 === 19)) return true;
+  // 198.51.100.0/24 (TEST-NET-2)
+  if (b0 === 198 && b1 === 51 && b2 === 100) return true;
+  // 203.0.113.0/24 (TEST-NET-3)
+  if (b0 === 203 && b1 === 0 && b2 === 113) return true;
+  // 224.0.0.0/4 (Multicast) & 240.0.0.0/4 (Reserved) & 255.255.255.255 (Broadcast)
+  if (b0 >= 224) return true;
+
+  return false;
+}
+
 export function isPrivateIp(ip: string): boolean {
-  const trimmed = ip.trim().toLowerCase();
-  if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === '0.0.0.0' || trimmed === '::') return true;
+  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
+
+  // 1. IPv6 の直接判定
+  if (trimmed === '::1' || trimmed === '::') return true;
+  if (trimmed.startsWith('fc') || trimmed.startsWith('fd') || trimmed.startsWith('fe80:') || trimmed.startsWith('ff')) return true;
+
+  // IPv6 埋め込み IPv4 (例: ::ffff:127.0.0.1, ::ffff:7f00:1, ::ffff:7f00:0001)
+  if (trimmed.startsWith('::ffff:')) {
+    const mapped = trimmed.replace(/^::ffff:/, '');
+    if (mapped.includes(':')) {
+      const hexParts = mapped.split(':');
+      if (hexParts.length === 2) {
+        const hi = parseInt(hexParts[0], 16);
+        const lo = parseInt(hexParts[1], 16);
+        if (!isNaN(hi) && !isNaN(lo)) {
+          const num = (((hi & 0xffff) << 16) | (lo & 0xffff)) >>> 0;
+          return isPrivateIpUint32(num);
+        }
+      }
+    }
+    return isPrivateIp(mapped);
+  }
+
+  // 2. 任意の進数・短縮表記を含む IPv4 の 32bit 整数への正規化
+  const num = parseIpv4ToUint32(trimmed);
+  if (num !== null) {
+    return isPrivateIpUint32(num);
+  }
+
+  // 3. 一般的なプレフィックスフォールバック
   if (trimmed.startsWith('10.') || trimmed.startsWith('192.168.') || trimmed.startsWith('0.')) return true;
   if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(trimmed)) return true;
-  if (trimmed.startsWith('169.254.')) return true; // リンクローカル / クラウドメタデータ (AWS/GCP)
-  // CGNAT (Carrier-Grade NAT / RFC 6598: 100.64.0.0/10)
-  if (/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(trimmed)) return true;
-  // TEST-NET & Benchmark (RFC 5737 / RFC 2544)
-  if (/^198\.(1[8-9])\./.test(trimmed)) return true;
-  if (trimmed.startsWith('192.0.2.') || trimmed.startsWith('198.51.100.') || trimmed.startsWith('203.0.113.')) return true;
-  // Multicast & Reserved
-  if (/^(22[4-9]|23[0-9]|24[0-9]|25[0-5])\./.test(trimmed)) return true;
-  // IPv6 ULA, Link-local, Multicast, Doc
-  if (trimmed.startsWith('fc') || trimmed.startsWith('fd') || trimmed.startsWith('fe80:') || trimmed.startsWith('ff')) return true;
+  if (trimmed.startsWith('169.254.')) return true;
+
   return false;
 }
 
@@ -292,17 +405,7 @@ export function isBlockedHostname(hostname: string): boolean {
   ) {
     return true;
   }
-  if (/^\d+$/.test(h)) {
-    try {
-      const num = parseInt(h, 10);
-      const ip = `${(num >> 24) & 255}.${(num >> 16) & 255}.${(num >> 8) & 255}.${num & 255}`;
-      if (isPrivateIp(ip)) return true;
-    } catch {}
-  }
-  if (isPrivateIp(h)) {
-    return true;
-  }
-  return false;
+  return isPrivateIp(h);
 }
 
 const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();

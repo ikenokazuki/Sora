@@ -41,16 +41,27 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
-/** 不要な空リンク、無効な JavaScript リンク、連続空行をパージしてトークンを削減 */
-export function cleanMarkdownTokens(markdown: string): string {
+/** 不要な空リンク、無効な JavaScript リンク、連続空行、巨大な base64 インライン画像をパージしてトークンを削減 */
+export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
-  return markdown
+  let cleaned = markdown
     // 1. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
     .replace(/\[(?:\s|&nbsp;)*\]\([^)]*\)/g, '')
     // 2. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
     .replace(/\[([^\]]+)\]\(javascript:[^)]*\)/gi, '$1')
     // 3. 空の画像タグの除去: ![](url), ![] (url)
-    .replace(/!\[(?:\s|&nbsp;)*\]\s*\([^)]*\)/g, '')
+    .replace(/!\[(?:\s|&nbsp;)*\]\s*\([^)]*\)/g, '');
+
+  // 3.1. 巨大な base64 インライン画像の置換・パージ (LLM トークン浪費防止)
+  // keepDataImages が false の場合、data:image/... を [画像: alt] に置換、alt が空なら完全除去
+  if (!keepDataImages) {
+    cleaned = cleaned.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_, alt) => {
+      const trimmedAlt = alt.trim();
+      return trimmedAlt ? `[画像: ${trimmedAlt}]` : '';
+    });
+  }
+
+  return cleaned
     // 4. 空白のみの行を完全な空行に統一
     .replace(/^[ \t]+$/gm, '')
     // 5. 3連続以上の空行を2行に圧縮
