@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.10.0';
+export const SORA_VERSION = '2.11.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
@@ -1056,7 +1056,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/cpsc-check': {
         post: {
-          summary: '米国CPSC適合証明書 (GCC/CCC) eFiling完全義務化 & ACE免責判定',
+          summary: '米国CPSC適合証明書 (GCC/CCC) eFiling完全義務化 & ACE免責判定 (動的ヒアリング誘導対応)',
           requestBody: {
             content: {
               'application/json': {
@@ -1069,7 +1069,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/fda-check': {
         post: {
-          summary: '米国FDA規制対象 実務判定（PGAフラグ FD1〜FD4・Prior Notice・MoCRA要件）',
+          summary: '米国FDA規制対象 実務判定（PGAフラグ FD1〜FD4・Prior Notice・MoCRA要件・動的ヒアリング誘導対応）',
           requestBody: {
             content: {
               'application/json': {
@@ -1082,7 +1082,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/hts-verify': {
         post: {
-          summary: 'HTS/HSコード実在確認・検証（USITC公式データ照合）',
+          summary: 'HTS/HSコード実在確認・検証（USITC公式データ照合・10桁特定ヒアリング誘導対応）',
           requestBody: {
             content: {
               'application/json': {
@@ -1095,7 +1095,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/compliance': {
         post: {
-          summary: '商品統合コンプライアンス一括判定（HTS検証・FDA判定・CPSC証明書/eFiling義務）',
+          summary: '商品統合コンプライアンス一括判定（HTS検証・FDA判定・CPSC証明書/eFiling義務・総合ヒアリング誘導）',
           requestBody: {
             content: {
               'application/json': {
@@ -1108,7 +1108,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/hts-predict': {
         post: {
-          summary: '商品情報からのHTS/HSコード推測（USITC公式API連動・候補提示・関税率取得）',
+          summary: '商品情報からのHTS/HSコード推測（USITC公式API連動・候補提示・関税率取得・先回り推測抑止&動的質問生成）',
           requestBody: {
             content: {
               'application/json': {
