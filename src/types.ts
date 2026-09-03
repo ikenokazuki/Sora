@@ -512,8 +512,9 @@ export const CpscCertificateCheckRequestSchema = z.object({
 });
 
 export const FdaRegulatedCheckRequestSchema = z.object({
-  htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "3004.90.0000"）'),
-  productDescription: z.string().optional().describe('製品の自由記述説明（Chapterだけでは判定が曖昧なケースの補助情報）'),
+  htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "3004.90.0000", "2106.90.9998"）'),
+  productDescription: z.string().optional().describe('製品の自由記述説明（用途・素材等の補助情報）'),
+  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFD1適用分岐に使用'),
 });
 
 export const VerifyHtsCodeRequestSchema = z.object({
@@ -1055,7 +1056,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/cpsc-check': {
         post: {
-          summary: '米国CPSC適合証明書 (GCC/CCC) eFiling義務化判定',
+          summary: '米国CPSC適合証明書 (GCC/CCC) eFiling完全義務化 & ACE免責判定',
           requestBody: {
             content: {
               'application/json': {
@@ -1068,7 +1069,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/fda-check': {
         post: {
-          summary: '米国FDA規制対象 簡易判定（HS Chapter単位）',
+          summary: '米国FDA規制対象 実務判定（PGAフラグ FD1〜FD4・Prior Notice・MoCRA要件）',
           requestBody: {
             content: {
               'application/json': {
