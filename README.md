@@ -1239,69 +1239,69 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 ---
 
 ### 3.18 米国CPSC適合証明書 eFiling完全義務化 & ACE免責判定 (`POST /trade/cpsc-check`)
-HTSコードと製品情報から、米国CPSC管轄品目の適合証明書（GCC/CCC）発行要否、および2026年7月8日より完全義務化された米国税関（CBP）ACEシステムへの電子申告（eFiling: De Minimis免責除外なし）義務を判定します。非規制対象品や類似コード品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`）を案内します。
+HTSコードと製品情報から、米国CPSC管轄品目の適合証明書（GCC/CCC）発行要否、および2026年7月8日より完全義務化された米国税関（CBP）ACEシステムへの電子申告（eFiling: De Minimis免責除外なし）義務を判定します。対象年齢（`targetAge`）や素材が未確定の場合は先回りの推測を避け、`clarifyingQuestions`（確認質問）と `impactExplanation`（実務的影響）を返却します。非規制対象品や類似コード品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`）を案内します。
 
 - **リクエスト**:
   ```json
   {
     "htsCode": "9503.00.0073",
-    "targetAge": "child"
+    "targetAge": "unknown"
   }
   ```
-- **レスポンス例**:
+- **レスポンス例 (年齢未確定時)**:
   ```json
   {
-    "certificateRequired": true,
-    "certificateType": "CCC",
-    "eFilingRequired": true,
-    "applicableRegulations": [
-      {
-        "cfr": "CPSC HTS Guidance List (2026年完全義務化施行)",
-        "summary": "HTSコード \"9503.00.0073\" は \"Toys\" カテゴリとしてCPSC eFiling対象HTSリストに掲載",
-        "excerpt": "CPSC believes this HTS code is likely to include a product subject to a mandatory standard... (2026年7月8日よりCBP ACEでの電子申告eFilingが完全義務化。非対象品はACE Disclaimerが必要。)",
-        "sourceUrl": "https://www.cpsc.gov/s3fs-public/CPSC-Guidance-and-HTS-List-for-Filing-of-Electronic-Certificates-6B-Cleared.pdf"
-      }
+    "certificateRequired": "unknown",
+    "certificateType": "unknown",
+    "eFilingRequired": false,
+    "applicableRegulations": [ ... ],
+    "inputCompleteness": "partial",
+    "missingInputs": ["targetAge"],
+    "clarifyingQuestions": [
+      "この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？"
     ],
-    "disclaimerCodeHint": "A (Not Regulated by CPSC) または B (Not Subject to Mandatory Standard)",
-    "missingInfo": [],
+    "impactExplanation": "対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。",
     "nextActions": [
-      "CCC（子供向け製品証明書）を発行し、認定試験機関のテストレポートを保管してください。",
-      "【2026年完全義務化】米国到着前にCBP ACEシステムへ電子申告(eFiling)を行ってください。"
+      "不足情報（対象年齢など）を補って再判定してください。"
     ],
     "disclaimer": "本ツールは参考情報を提供するものであり、法的助言ではありません。..."
   }
   ```
 
 ### 3.19 米国FDA規制対象 実務判定 (`POST /trade/fda-check`)
-HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1〜FD4）を判定し、Prior Notice要否やMoCRA、ACE免責（Disclaimer）申告コードを案内します。食器・調理器具等の食品接触物質（FCS）は `foodContact` パラメータで厳密に分岐判定します。
+HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1〜FD4）を判定し、Prior Notice要否やMoCRA、ACE免責（Disclaimer）申告コードを案内します。食器・調理器具等の食品接触物質（FD1）では `foodContact` 未指定時に先回り推測を行わず、`clarifyingQuestions`（飲食用途か装飾用か）と `impactExplanation` を返却します。
 
 - **リクエスト**:
   ```json
   {
-    "htsCode": "0902.10.10.15",
-    "productDescription": "Organic Japanese matcha green tea powder"
+    "htsCode": "6912.00.4100",
+    "productDescription": "Ceramic coffee mugs"
   }
   ```
-- **レスポンス例 (FD4: 食品必須)**:
+- **レスポンス例 (食品接触用途未指定時)**:
   ```json
   {
     "fdaRegulatedLikely": true,
-    "fdFlag": "FD4",
-    "possiblePrograms": ["FOO"],
-    "priorNoticeMayApply": true,
-    "priorNoticeRequired": true,
-    "matchedChapter": "09",
-    "confidence": "chapter-level-estimate",
-    "missingInfo": [],
-    "nextActions": [
-      "【FDA Prior Notice】食品・飲料品等の輸入にあたり、米国到着前にFDAへの事前通知(Prior Notice)の提出が必須です。"
+    "fdFlag": "FD1",
+    "possiblePrograms": ["FCS"],
+    "priorNoticeMayApply": false,
+    "matchedSubheading": "6912",
+    "confidence": "hts-flag-match",
+    "inputCompleteness": "partial",
+    "missingInputs": ["foodContact"],
+    "clarifyingQuestions": [
+      "この製品は飲食物に直接接触する用途（飲食・調理・保存等）ですか？それとも装飾・観賞用等の非食品用途ですか？"
     ],
-    "disclaimer": "本ツールは参考情報を提供するものであり、法的助言ではありません。米国CBP ACEにおけるFDA規制フラグ(FD1〜FD4)に基づく通関要件の目安です。..."
+    "impactExplanation": "本品目（FD1）は食品接触用途（飲食・調理用）である場合のみFDA食品接触物質安全基準（溶出試験等）が適用されます。装飾・工業用等の非接触用途であればACE通関時にDisclaimer（免責申告：コードA）が可能です。",
+    "requiredActions": [
+      "【FDA食品接触物質 (FCS)】食品・飲料用容器・食器の場合、FDA食品接触安全基準（溶出試験・鉛・カドミウム・BPA等）適合確認が必要です。非食品接触用途の場合はACE Disclaimerを申告してください。"
+    ],
+    "disclaimer": "本ツールは参考情報を提供するものであり、法的助言ではありません。..."
   }
   ```
 
 ### 3.20 HTS/HSコード実在確認・検証 (`POST /trade/hts-verify`)
-LLM・利用者が推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式品目名・一般関税率を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。`productDescription`（推論根拠）は必須項目です。
+LLM・利用者が推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式品目名・一般関税率を取得します。6桁サブヘディングまでしか一致しない場合は `clarifyingQuestions` で10桁統計細分の特定に必要な追加仕様をヒアリング誘導します。HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。
 
 - **リクエスト**:
   ```json
@@ -1323,7 +1323,9 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
     "otherRate": "70%",
     "specialRate": "Free (AU, BH, CL, CO, ...)",
     "nearbyCandidates": [],
-    "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。最終的な分類確定にはCBPのCROSS判定検索（rulings.cbp.gov）や通関士等の専門家への確認が必要です。なお、HTS Revision 18等の大統領布告・通商法301条（中国原産品追加関税等）に基づくChapter 99の特別追加関税は別途個別確認が必要です。",
+    "inputCompleteness": "complete",
+    "impactExplanation": "米国USITC公式関税率表にて10桁統計細分コードの実在および一般関税率が確認されました。",
+    "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。...",
     "source": "usitc-hts"
   }
   ```
@@ -1331,53 +1333,38 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 ### 3.21 商品情報からのHTS/HSコード推測 (`POST /trade/hts-predict`)
 商品名・説明文・素材・用途・対象年齢・食品接触有無から、セマンティックスコアリングと米国USITC公式API（hts.usitc.gov）を連携させた2段階ハイブリッド照合により、米国通関申告に必須となる10桁HTSコードおよび一般関税率・関連PGA規制（CPSC/FDA）を自動推測します。
 
-- **リクエスト**:
+> **多層防御・先回り推測の防止**: LLMが素材や対象年齢を一般論ででっち上げてツールを呼び出さないよう、スキーマとプロンプトで「不明な任意項目は省略すること」を徹底しています。品名のみ等の部分的な入力に対しても暫定推測結果を返しつつ、`missingInputs`（未指定項目）、`clarifyingQuestions`（LLMがユーザーへ確認すべき質問文）、`impactExplanation`（情報不足による関税率や規制の分岐説明）を返却し、自然な追加ヒアリングを誘導します。
+
+- **リクエスト (品名のみの最小入力例)**:
   ```json
   {
-    "productName": "Pokemon Pikachu Plush Toy",
-    "productDescription": "Stuffed plush toy doll for children",
-    "material": "cotton",
-    "targetAge": "child"
+    "productName": "Travel Coffee Mug",
+    "description": "Insulated mug for hot drinks"
   }
   ```
-- **レスポンス例**:
+- **レスポンス例 (動的ヒアリング誘導)**:
   ```json
   {
-    "detectedSubheading": "9503.00",
-    "category": "Toys",
+    "detectedSubheading": "6912.00",
+    "category": "Tableware",
     "bestMatch": {
-      "htsCode": "9503.00.00.11",
-      "description": "Under 3 years of age",
-      "parentDescription": "Tricycles, scooters, pedal cars and similar wheeled toys; dollsʼ carriages; dolls, other toys...",
-      "generalRate": "Free",
-      "score": 27,
+      "htsCode": "6912.00.4100",
+      "description": "Mugs and other steins",
+      "generalRate": "5.7%",
+      "score": 32,
       "confidence": "high",
-      "reason": "商品名・説明文・素材から \"Toys\" (Subheading 9503.00) と分類し、USITC公式品目定義とのセマンティック照合により最適コードを特定しました。",
-      "cpsc": {
-        "certificateRequired": "unknown",
-        "certificateType": "unknown",
-        "eFilingRequired": false,
-        "applicableRegulations": [
-          {
-            "cfr": "CPSC HTS Guidance List (2026年完全義務化施行)",
-            "summary": "HTSコード \"9503.00.00.11\" は完全一致しないが、同じ6桁分類 (950300) の \"Toys\" カテゴリに類似コード \"9503000090\" がCPSC eFiling対象HTSリストに掲載",
-            "excerpt": "CPSC believes this HTS code is likely to include a product subject to a mandatory standard... (2026年7月8日よりCBP ACEでの電子申告eFilingが完全義務化。非対象品はACE Disclaimerが必要。)",
-            "sourceUrl": "https://www.cpsc.gov/s3fs-public/CPSC-Guidance-and-HTS-List-for-Filing-of-Electronic-Certificates-6B-Cleared.pdf"
-          }
-        ],
-        "disclaimerCodeHint": "A (Not Regulated) または B (Not Subject to Mandatory Standard)"
-      },
-      "fda": {
-        "fdaRegulatedLikely": false,
-        "fdFlag": "none",
-        "possiblePrograms": [],
-        "priorNoticeMayApply": false
-      }
+      "reason": "商品名・説明文から \"Tableware\" (Subheading 6912.00) と分類し、USITC公式品目定義とのセマンティック照合により最適コードを特定しました。",
+      "cpsc": { ... },
+      "fda": { "fdFlag": "FD1", "fdaRegulatedLikely": true, "possiblePrograms": ["FCS"] }
     },
-    "candidates": [
-      { "htsCode": "9503.00.00.11", "description": "Under 3 years of age", "generalRate": "Free", "score": 27 },
-      { "htsCode": "9503.00.00.13", "description": "3 to 12 years of age", "generalRate": "Free", "score": 27 }
+    "candidates": [ ... ],
+    "inputCompleteness": "partial",
+    "missingInputs": ["material", "foodContact"],
+    "clarifyingQuestions": [
+      "製品の主要素材は何ですか？（例: 陶磁器、ガラス、プラスチック、ステンレス、木、綿など。素材の違いによってHTSコードおよび一般関税率が大きく変動します）",
+      "この製品は飲食物に直接接触する用途（飲食・調理・保存等）で使用されますか？それとも装飾・観賞用等の非食品用途ですか？（食品接触用途の場合、FDAの事前通知(Prior Notice)や食品接触安全基準が適用されます）"
     ],
+    "impactExplanation": "一部の情報（material、foodContact）が未指定のため、代表的な仕様を前提とした暫定的なHTSコード候補を提示しています。実務上、【素材の違いによりHTSコードおよび一般関税率が大きく変動（例: 0%〜20%以上）、食品接触用途の場合はFDA食品安全基準適用、非接触の場合はACE免責(Disclaimer)申告が可能】という重大な分岐が生じるため、正確な関税率算出および通関規制判定には追加情報の確認を強く推奨します。",
     "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。..."
   }
   ```
