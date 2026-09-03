@@ -57,7 +57,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準拠しており、初期状態では 4 つのコアツールのみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます。
+Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準拠しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 25 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 37 ツール）。
 
 ```json
 {
@@ -72,7 +72,7 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 35 エンドポイントが自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 44 エンドポイントが自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -456,7 +456,7 @@ SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎
 {
   "status": "ok",
   "service": "sora",
-  "version": "2.0.0",
+  "version": "2.9.0",
   "uptimeSeconds": 1420,
   "timestamp": "2026-08-24T18:00:00.000Z",
   "dependencies": {
@@ -558,30 +558,16 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "query": "新機能 リリース"
 }
 ```
-- **レスポンス例**:
+- **レスポンス例 (デフォルト: Compact Mode - LLMトークンを50%以上削減)**:
 ```json
 {
   "url": "https://example.com/article",
   "title": "最新アップデートのお知らせ",
   "content": "---\ntitle: \"最新アップデートのお知らせ\"\nurl: \"https://example.com/article\"\npublishedTime: \"2026-08-22T10:00:00Z\"\nauthor: \"開発チーム\"\nsiteName: \"Tech Blog\"\n---\n\n...",
-  "isTruncated": false,
-  "contentType": "text/html",
-  "source": "web",
-  "renderedWithBrowser": false,
+  "pageType": "article",
   "publishedTime": "2026-08-22T10:00:00Z",
   "author": "開発チーム",
   "siteName": "Tech Blog",
-  "quality": 92,
-  "completeness": 100,
-  "pageType": "article",
-  "qualityReasons": ["substantial_content", "has_headings", "has_json_ld", "has_rich_metadata"],
-  "missingFields": [],
-  "evidence": {
-    "title": { "value": "最新アップデートのお知らせ", "source": "dom" },
-    "publishedTime": { "value": "2026-08-22T10:00:00Z", "source": "jsonld" },
-    "author": { "value": "開発チーム", "source": "meta" },
-    "siteName": { "value": "Tech Blog", "source": "dom" }
-  },
   "extracted": {
     "productName": "Sora プレミアムキーボード",
     "price": "¥24,800",
@@ -606,6 +592,15 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   ]
 }
 ```
+
+> [!NOTE]
+> **🪶 Compact Response Mode & `verbose: true`**:
+> v2.9.0 より、LLM のコンテキスト窓を節約するため、デフォルトでは内部評価メトリクス（`quality`, `completeness`, `qualityReasons`, `missingFields`, `evidence`, `renderedWithBrowser` 等）を自動パージした軽量レスポンスを返します。
+> デバッグや品質検証などで全内部メトリクスが必要な場合は、リクエストに `"verbose": true`（または `/search?verbose=true`）を指定してください。
+
+> [!NOTE]
+> **🧹 Base64 インライン画像の自動置換・パージ & `keepDataImages: true`**:
+> Web ページ内の巨大なインライン画像（`data:image/png;base64,...`）は、LLM のトークンを大量消費する原因となります。Sora では自動的に `![画像: alt属性]` へ置換してパージします。画像を Base64 のまま保持したい場合は `"keepDataImages": true` を指定してください。
 
 > [!TIP]
 > **🇯🇵 日本語レガシーサイト自動対応**: `Shift_JIS (CP932)` や `EUC-JP` の Web サイトも文字コードを自動判定してデコードします。文字化けの心配はありません。
@@ -640,9 +635,9 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **⚡ 超高速 抽出型自動要約 (`extractSummary: true`)**: 外部 LLM API を呼ばず、内部アルゴリズムによりミリ秒単位で重要文（TL;DR 要約）`summary: string[]` を自動生成します。
 > 
-> **🎯 スクレイピング品質スコア & 充足度保証 (`quality` & `completeness`)**: コンテンツ量・見出し構造・Schema.org 構造化データ・Bot対策判定から 0〜100 の品質スコア `quality` とページ種別（`article`, `product`, `qa`, `generic`）に応じた重要項目の充足率 `completeness`、欠損項目 `missingFields` をインメモリで超高速判定（< 0.1ms）して付与します。
+> **🎯 スクレイピング品質スコア & 充足度保証 (`quality` & `completeness` / ※ `verbose: true` 指定時)**: コンテンツ量・見出し構造・Schema.org 構造化データ・Bot対策判定から 0〜100 の品質スコア `quality` とページ種別（`article`, `product`, `qa`, `generic`）に応じた重要項目の充足率 `completeness`、欠損項目 `missingFields` をインメモリで超高速判定（< 0.1ms）して付与します。
 > 
-> **🔍 出処根拠追跡 & クロスバリデーション (`evidence`)**: 抽出された価格・在庫・著者・公開日時などの各フィールドがどこから抽出されたか（`jsonld`, `meta`, `dom`）の出処根拠（Provenance）を `evidence` マップとして返却し、ハルシネーション検出や検証を容易にします。
+> **🔍 出処根拠追跡 & クロスバリデーション (`evidence` / ※ `verbose: true` 指定時)**: 抽出された価格・在庫・著者・公開日時などの各フィールドがどこから抽出されたか（`jsonld`, `meta`, `dom`）の出処根拠（Provenance）を `evidence` マップとして返却し、ハルシネーション検出や検証を容易にします。
 > 
 > **🎯 検索結果の重複排除 (`dedup: true`)**: ニュース検索やリアルタイム検索で、コピペ投稿や転載記事を類似度判定で自動排除し、ユニークな情報のみを厳選します。
 > 
