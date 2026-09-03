@@ -1210,6 +1210,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(data.endpoints.transitRoute).toBeDefined();
     expect(data.endpoints.weather).toBeDefined();
     expect(data.endpoints.browserAction).toBeDefined();
+    expect(data.endpoints.tradeHtsPredict).toBeDefined();
   });
 
   it('executeBrowserActions should handle full browser interaction lifecycle when Chromium is available', async () => {
@@ -4372,6 +4373,42 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.bestMatch.htsCode.startsWith('6506')).toBe(true);
     expect(json.bestMatch.cpsc.certificateType).toBe('GCC');
     expect(json.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('POST /trade/fda-check should parse foodContact and evaluate FD1 status', async () => {
+    // 飲食用途の陶磁器食器 (Chapter 69) -> FD1, FDA対象
+    const reqFoodContact = new Request('http://localhost/trade/fda-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        htsCode: '6912.00.4100',
+        productDescription: 'Ceramic coffee mugs',
+        foodContact: true,
+      }),
+    });
+    const resFoodContact = await app.fetch(reqFoodContact);
+    expect(resFoodContact.status).toBe(200);
+    const jsonFoodContact = (await resFoodContact.json()) as any;
+    expect(jsonFoodContact.fdFlag).toBe('FD1');
+    expect(jsonFoodContact.fdaRegulatedLikely).toBe(true);
+    expect(jsonFoodContact.nextActions.some((a: string) => a.includes('食品接触安全基準'))).toBe(true);
+
+    // 装飾用・非飲食用途の陶磁器 (Chapter 69) -> FD1, FDA非対象・ACE免責案内
+    const reqNonFood = new Request('http://localhost/trade/fda-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        htsCode: '6912.00.4100',
+        productDescription: 'Decorative display ceramic plate',
+        foodContact: false,
+      }),
+    });
+    const resNonFood = await app.fetch(reqNonFood);
+    expect(resNonFood.status).toBe(200);
+    const jsonNonFood = (await resNonFood.json()) as any;
+    expect(jsonNonFood.fdFlag).toBe('FD1');
+    expect(jsonNonFood.fdaRegulatedLikely).toBe(false);
+    expect(jsonNonFood.nextActions.some((a: string) => a.includes('免責') || a.includes('Disclaimer'))).toBe(true);
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
