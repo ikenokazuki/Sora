@@ -97,6 +97,7 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  predictHtsCode,
   checkProductCompliance,
   detectSpaOrBotPage,
   pickProxyUrl,
@@ -3405,7 +3406,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(37); // 36 standard tools + search_tools
+    expect(body.result.tools.length).toBe(38); // 37 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3864,7 +3865,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   });
 
-  it('MCP server should register all 37 tools and enable 12 core hybrid tools by default', () => {
+  it('MCP server should register all 38 tools and enable 12 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -3894,10 +3895,11 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('check_cpsc_certificate');
     expect(enabledToolsAll).toContain('check_fda_regulated');
     expect(enabledToolsAll).toContain('verify_hts_code');
+    expect(enabledToolsAll).toContain('predict_hts_code');
     expect(enabledToolsAll).toContain('check_product_compliance');
     expect(enabledToolsAll).toContain('inspect_image');
     expect(enabledToolsAll).toContain('watch_delete');
-    expect(enabledToolsAll.length).toBe(37);
+    expect(enabledToolsAll.length).toBe(38);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -3936,7 +3938,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(result.fdaRegulatedLikely).toBe(true);
     expect(result.possiblePrograms).toContain('DRU');
     expect(result.matchedChapter).toBe('30');
-    expect(result.confidence).toBe('chapter-level-estimate');
+    expect(result.confidence).toBe('hts-flag-match');
   });
 
   it('checkFdaRegulated should flag cosmetics (chapter 33) with COS program', () => {
@@ -4257,6 +4259,119 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.cpsc.certificateType).toBe('CCC');
     expect(json.actionPlan.length).toBeGreaterThan(0);
     expect(json.disclaimer).toBeTruthy();
+  });
+
+  it('predictHtsCode should predict 9503 toy HTS code with CCC and eFiling requirement', async () => {
+    const res = await predictHtsCode({
+      productName: 'Wooden Building Blocks Set',
+      description: 'Educational building blocks for toddlers aged 3 to 12 years',
+      material: 'wood',
+      targetAge: 'child',
+    });
+
+    expect(res.detectedSubheading).toBe('9503.00');
+    expect(res.category).toBe('Toys');
+    expect(res.bestMatch.htsCode.startsWith('9503')).toBe(true);
+    expect(res.bestMatch.cpsc?.certificateRequired).toBe(true);
+    expect(res.bestMatch.cpsc?.certificateType).toBe('CCC');
+    expect(res.bestMatch.cpsc?.eFilingRequired).toBe(true);
+    expect(res.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('predictHtsCode should predict 6912 ceramic tableware and flag FDA FD1 FCS', async () => {
+    const res = await predictHtsCode({
+      productName: 'Ceramic Coffee Mug',
+      description: 'Stoneware coffee mug for kitchen use',
+      material: 'ceramic',
+      foodContact: true,
+    });
+
+    expect(res.detectedSubheading).toBe('6912.00');
+    expect(res.bestMatch.htsCode.startsWith('6912')).toBe(true);
+    expect(res.bestMatch.fda?.fdFlag).toBe('FD1');
+    expect(res.bestMatch.fda?.fdaRegulatedLikely).toBe(true);
+    expect(res.bestMatch.fda?.possiblePrograms).toContain('FCS');
+  });
+
+  it('predictHtsCode should predict 3304 cosmetic lotion with FDA FD2 COS MoCRA requirement', async () => {
+    const res = await predictHtsCode({
+      productName: 'Hydrating Face Moisturizer Cream',
+      description: 'Organic skincare beauty lotion',
+    });
+
+    expect(res.detectedSubheading).toBe('3304.99');
+    expect(res.bestMatch.htsCode.startsWith('3304')).toBe(true);
+    expect(res.bestMatch.fda?.fdFlag).toBe('FD2');
+    expect(res.bestMatch.fda?.possiblePrograms).toContain('COS');
+    expect(res.bestMatch.fda?.requiredActions?.some((a) => a.includes('MoCRA'))).toBe(true);
+  });
+
+  it('predictHtsCode should predict 0902 green tea with FDA FD4 Prior Notice requirement', async () => {
+    const res = await predictHtsCode({
+      productName: 'Japanese Organic Matcha Green Tea Powder',
+      description: 'Pure powdered green tea leaves for beverage',
+    });
+
+    expect(res.detectedSubheading).toBe('0902.10');
+    expect(res.bestMatch.htsCode.startsWith('0902')).toBe(true);
+    expect(res.bestMatch.fda?.fdFlag).toBe('FD4');
+    expect(res.bestMatch.fda?.priorNoticeRequired).toBe(true);
+  });
+
+  it('checkFdaRegulated should evaluate FD1-FD4 flags and foodContact differentiation', () => {
+    // FD4: 食品
+    const resFood = checkFdaRegulated({ htsCode: '0902.10.0000' });
+    expect(resFood.fdFlag).toBe('FD4');
+    expect(resFood.priorNoticeRequired).toBe(true);
+
+    // FD2: 医薬品
+    const resDrug = checkFdaRegulated({ htsCode: '3004.90.0000' });
+    expect(resDrug.fdFlag).toBe('FD2');
+    expect(resDrug.possiblePrograms).toContain('DRU');
+
+    // FD1: 食器（foodContact: true）
+    const resDishContact = checkFdaRegulated({ htsCode: '6912.00.1000', foodContact: true });
+    expect(resDishContact.fdFlag).toBe('FD1');
+    expect(resDishContact.fdaRegulatedLikely).toBe(true);
+
+    // FD1: 食器（foodContact: false）
+    const resDishExempt = checkFdaRegulated({ htsCode: '6912.00.1000', foodContact: false });
+    expect(resDishExempt.fdFlag).toBe('FD1');
+    expect(resDishExempt.fdaRegulatedLikely).toBe(false);
+  });
+
+  it('checkCpscCertificate should specify 2026-07 mandatory eFiling status and disclaimer code', async () => {
+    // 規制対象品（玩具）: eFiling完全義務化、免責コードは不要（undefined）
+    const resRegulated = await checkCpscCertificate({ htsCode: '9503.00.0073', targetAge: 'child' });
+    expect(resRegulated.eFilingRequired).toBe(true);
+    expect(resRegulated.nextActions.some((a) => a.includes('eFiling') || a.includes('電子申告'))).toBe(true);
+    expect(resRegulated.disclaimerCodeHint).toBeUndefined();
+
+    // 規制非該当・未掲載品（ネジ等）: ACE免責コードAを提示
+    const resUnmapped = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
+    expect(resUnmapped.eFilingRequired).toBe(false);
+    expect(resUnmapped.disclaimerCodeHint).toContain('A');
+  });
+
+  it('POST /trade/hts-predict REST endpoint should return predicted HTS code and PGA analysis', async () => {
+    const req = new Request('http://localhost/trade/hts-predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: 'Adult Bicycle Helmet',
+        description: 'Protective road cycling helmet for adults',
+        targetAge: 'adult',
+      }),
+    });
+
+    const res = await app.fetch(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.detectedSubheading).toBe('6506.10');
+    expect(json.category).toBe('Bicycle Helmets');
+    expect(json.bestMatch.htsCode.startsWith('6506')).toBe(true);
+    expect(json.bestMatch.cpsc.certificateType).toBe('GCC');
+    expect(json.candidates.length).toBeGreaterThan(0);
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
