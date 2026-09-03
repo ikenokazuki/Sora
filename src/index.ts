@@ -58,8 +58,10 @@ import {
   InspectImageRequestSchema,
   checkDetailedHealth,
   closeSharedBrowser,
+  closeDatabase,
   isSharedBrowserConnected,
 } from './scraper.js';
+import { formatCompactScrapeResult } from './response_cleaner.js';
 import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
@@ -415,8 +417,9 @@ app.post('/scrape', async (c) => {
   }
 
   try {
+    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
     const result = await scrapeUrl(parsed.data);
-    return c.json(result);
+    return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err: any) {
     const msg = err.message || 'Scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
@@ -481,8 +484,10 @@ app.post('/scrape/batch', async (c) => {
   }
 
   try {
+    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
     const result = await scrapeBatchUrls(parsed.data);
-    return c.json(result);
+    const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
+    return c.json({ ...result, results: formattedResults });
   } catch (err: any) {
     const msg = err.message || 'Batch scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
@@ -672,6 +677,7 @@ app.post('/search', async (c) => {
       onlyMainContent,
       formats,
       dedup: body?.dedup,
+      verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });
 
     return c.json(finalResponse);
@@ -1590,9 +1596,25 @@ app.get('/swagger', (c) => {
 });
 
 if (import.meta.main) {
-  Bun.serve({
+  const server = Bun.serve({
     port: PORT,
     fetch: app.fetch,
   });
   console.log(`Starting Sora service on port ${PORT}...`);
+
+  const cleanup = async (signal: string) => {
+    console.log(`Received ${signal}, shutting down Sora gracefully...`);
+    try {
+      server.stop(true);
+      await closeAllBrowserSessions();
+      await closeSharedBrowser();
+      closeDatabase();
+    } catch (err) {
+      console.error('Error during graceful shutdown:', err);
+    }
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => cleanup('SIGTERM'));
+  process.on('SIGINT', () => cleanup('SIGINT'));
 }

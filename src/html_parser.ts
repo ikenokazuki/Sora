@@ -411,6 +411,7 @@ export function convertHtmlToMarkdown(
   removeSelectors?: string[],
   stripLinks?: boolean,
   filterLinkDensity?: boolean,
+  keepDataImages = false,
 ): {
   title: string;
   markdown: string;
@@ -667,7 +668,7 @@ export function convertHtmlToMarkdown(
 
   // 11. HTML -> Markdown 変換 & クレンジング
   let markdown = header + turndown.turndown(contentHtml);
-  markdown = cleanMarkdownTokens(markdown);
+  markdown = cleanMarkdownTokens(markdown, keepDataImages);
 
   if (stripLinks) {
     markdown = markdown.replace(/(?<!\!)\[([^\]]+)\]\([^)]+\)/g, '$1');

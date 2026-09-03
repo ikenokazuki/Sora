@@ -298,6 +298,7 @@ export async function scrapeUrl(options: {
   retryDelayMs?: number;
   noCache?: boolean;
   timeoutMs?: number;
+  keepDataImages?: boolean;
   onProgress?: (event: { stage: 'start' | 'fetch' | 'render' | 'enrich' | 'done'; message: string; data?: any }) => void;
 }): Promise<ScrapeResult> {
   const url = options.url;
@@ -384,6 +385,7 @@ export async function scrapeUrl(options: {
             options.removeSelectors,
             options.stripLinks,
             options.filterLinkDensity,
+            options.keepDataImages,
           );
 
           const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
@@ -481,6 +483,7 @@ export async function scrapeUrl(options: {
           options.removeSelectors,
           options.stripLinks,
           options.filterLinkDensity,
+          options.keepDataImages,
         );
 
         const renderedBodyOnly = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
@@ -506,6 +509,7 @@ export async function scrapeUrl(options: {
             options.removeSelectors,
             options.stripLinks,
             options.filterLinkDensity,
+            options.keepDataImages,
           );
         }
 
@@ -999,6 +1003,7 @@ export async function integratedSearch(options: {
   onlyMainContent?: boolean;
   formats?: ScrapeFormat[];
   dedup?: boolean;
+  verbose?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1079,10 +1084,20 @@ export async function integratedSearch(options: {
             publishedTime: scrape.publishedTime,
             author: scrape.author,
             siteName: scrape.siteName,
+            pageType: scrape.pageType,
             highlights: scrape.highlights,
             textFragmentUrl: scrape.textFragmentUrl,
             cached: scrape.cached,
           };
+
+          if (scrape.isTruncated) {
+            enrichedItem.isTruncated = true;
+          }
+          if (options.verbose) {
+            enrichedItem.quality = scrape.quality;
+            enrichedItem.completeness = scrape.completeness;
+            enrichedItem.evidence = scrape.evidence;
+          }
 
           if (formats.includes('markdown')) {
             enrichedItem.markdown = scrape.content;
