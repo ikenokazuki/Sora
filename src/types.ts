@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.8.1';
+export const SORA_VERSION = '2.9.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
@@ -269,6 +269,8 @@ export const ScrapeRequestSchema = z.object({
   retryDelayMs: z.number().int().min(1).optional().describe('リトライ待機ディレイ (ミリ秒)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか'),
   timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
+  keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)'),
 });
 
 export const BatchScrapeRequestSchema = z.object({
@@ -285,6 +287,7 @@ export const BatchScrapeRequestSchema = z.object({
   extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
 });
 
 export const BrowserActionRequestSchema = z.object({
@@ -414,6 +417,7 @@ export const IntegratedSearchRequestSchema = z.object({
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
 });
 
 export const SuggestRequestSchema = z.object({
