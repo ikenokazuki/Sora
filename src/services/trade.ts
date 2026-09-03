@@ -19,6 +19,10 @@ export interface CpscCertificateCheckResult {
   missingInfo: string[];
   nextActions: string[];
   disclaimer: string;
+  inputCompleteness?: 'complete' | 'partial';
+  missingInputs?: string[];
+  clarifyingQuestions?: string[];
+  impactExplanation?: string;
 }
 
 const DISCLAIMER =
@@ -99,18 +103,35 @@ export async function checkCpscCertificate(options: {
 
   if (exactCategory) {
     const missingInfo: string[] = [];
+    const missingInputs: string[] = [];
+    const clarifyingQuestions: string[] = [];
+
     if (options.targetAge === 'unknown') {
       missingInfo.push('targetAge（対象年齢層）が不明です。子供向け製品か否かで適用される安全基準・証明書種別が変わります。');
+      missingInputs.push('targetAge');
+      clarifyingQuestions.push('この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？');
+    }
+    if (!options.material) {
+      missingInputs.push('material');
+      clarifyingQuestions.push('製品の主要素材は何ですか？（例: プラスチック、金属、木材、布地など。鉛・フタル酸エステル等の安全基準適用確認に必要です）');
     }
 
     const isChild = options.targetAge === 'child';
     const certificateType: CpscCertificateCheckResult['certificateType'] =
-      missingInfo.length > 0 ? 'unknown' : isChild ? 'CCC' : 'GCC';
+      options.targetAge === 'unknown' ? 'unknown' : isChild ? 'CCC' : 'GCC';
+
+    const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
+    const impactExplanation =
+      options.targetAge === 'unknown'
+        ? '対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。'
+        : missingInputs.length > 0
+          ? '主要素材が未指定のため、鉛・フタル酸エステル含有量規制や可燃性試験などの個別安全規格への該当性を精緻に特定できていません。'
+          : undefined;
 
     return {
-      certificateRequired: missingInfo.length > 0 ? 'unknown' : true,
+      certificateRequired: options.targetAge === 'unknown' ? 'unknown' : true,
       certificateType,
-      eFilingRequired: missingInfo.length === 0,
+      eFilingRequired: options.targetAge !== 'unknown',
       applicableRegulations: [
         {
           cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
@@ -127,17 +148,32 @@ export async function checkCpscCertificate(options: {
       ],
       missingInfo,
       nextActions:
-        missingInfo.length > 0
-          ? ['不足情報を補って再判定してください。']
+        options.targetAge === 'unknown'
+          ? ['不足情報（対象年齢など）を補って再判定してください。']
           : [
               `${certificateType}を発行し、CBP ACEシステムへeFilingしてください（申告方式: フルPGAメッセージセット送信、またはCPSC Product Registry事前登録による参照送信）。`,
             ],
       disclaimer: DISCLAIMER,
+      inputCompleteness,
+      missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+      clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+      impactExplanation,
     };
   }
 
   const nearMatch = findNearMatch(normalized);
   if (nearMatch) {
+    const missingInputs: string[] = [];
+    const clarifyingQuestions: string[] = [];
+    if (options.targetAge === 'unknown') {
+      missingInputs.push('targetAge');
+      clarifyingQuestions.push('この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？');
+    }
+    if (!options.material) {
+      missingInputs.push('material');
+      clarifyingQuestions.push('製品の主要素材は何ですか？（例: プラスチック、金属、木材、布地など）');
+    }
+
     return {
       certificateRequired: 'unknown',
       certificateType: 'unknown',
@@ -158,6 +194,13 @@ export async function checkCpscCertificate(options: {
         `類似カテゴリ "${nearMatch.category}" の証明書要否をCPSC公式または専門家に個別確認してください。規制対象外であることが確認できた場合は、通関ブローカーへACE免責申告（Disclaimerコード A または B）を指示してください。`,
       ],
       disclaimer: DISCLAIMER,
+      inputCompleteness: 'partial',
+      missingInputs: missingInputs.length > 0 ? missingInputs : ['exactHtsClassification'],
+      clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : [
+        `HTSコード "${htsCode}" は類似コードが見つかりました。製品の具体的な用途や仕様を教えていただけますか？`,
+      ],
+      impactExplanation:
+        'HTSコードが完全一致せず類似カテゴリに位置しているため、CPSC規制対象か免責(Disclaimer)申告可能かの切り分けが必要です。非対象品であればACEでの免責コード申告を通関業者に指示してください。',
     };
   }
 
@@ -174,6 +217,13 @@ export async function checkCpscCertificate(options: {
       'productCategory（製品カテゴリ）を追加して再判定するか、CPSC公式に個別確認してください。非規制品目であれば、ACE通関エラー防止のため免責コード（Disclaimer）での申告を通関業者へ指示してください。',
     ],
     disclaimer: DISCLAIMER,
+    inputCompleteness: 'partial',
+    missingInputs: ['productCategory'],
+    clarifyingQuestions: [
+      '製品の大まかなカテゴリ（玩具、アパレル、家具、電子機器等）または用途を教えていただけますか？',
+    ],
+    impactExplanation:
+      'CPSCのeFiling重点リストには掲載がありませんが、12歳以下の子供向け製品全般や特定安全基準品目はCPSC証明書が必要です。製品カテゴリが明確になればより精度の高い判定が可能です。',
   };
 }
 
@@ -190,6 +240,10 @@ export interface CheckFdaRegulatedResult {
   missingInfo: string[];
   nextActions: string[];
   disclaimer: string;
+  inputCompleteness?: 'complete' | 'partial';
+  missingInputs?: string[];
+  clarifyingQuestions?: string[];
+  impactExplanation?: string;
 }
 
 const DISCLAIMER_FDA =
@@ -330,6 +384,7 @@ export function checkFdaRegulated(options: {
       ],
       nextActions: ['USDA/FSISの輸入要件を確認してください。'],
       disclaimer: DISCLAIMER_FDA,
+      inputCompleteness: 'complete',
     };
   }
 
@@ -349,10 +404,33 @@ export function checkFdaRegulated(options: {
         missingInfo: ['食品非接触（装飾用途等）として申告するため、ACE通関時にDisclaimer（免責申告）を提出してください。'],
         nextActions: ['通関ブローカーへACE Disclaimer（食品非接触）コードの申告を指示してください。'],
         disclaimer: DISCLAIMER_FDA,
+        inputCompleteness: 'complete',
+        impactExplanation:
+          '食品非接触用途（装飾・ディスプレイ用等）であることが確認されたため、FDA食品安全基準は適用されません。ACE通関時のDisclaimer（免責申告：コードA）によりスムーズに通関可能です。',
       };
     }
 
     const isFcs = subMatch.programs.includes('FCS');
+    const isFoodRaw = subMatch.fdFlag === 'FD3';
+    const missingInputs: string[] = [];
+    const clarifyingQuestions: string[] = [];
+
+    if (isFcs && options.foodContact === undefined) {
+      missingInputs.push('foodContact');
+      clarifyingQuestions.push('この製品は飲食物に直接接触する用途（飲食・調理・保存等）ですか？それとも装飾・観賞用等の非食品用途ですか？');
+    } else if (isFoodRaw && options.foodContact === undefined) {
+      missingInputs.push('foodUsage');
+      clarifyingQuestions.push('この製品は食品原料・調製品として使用されますか？それとも工業・化粧品用途等の非食品用途ですか？');
+    }
+
+    const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
+    const impactExplanation =
+      isFcs && options.foodContact === undefined
+        ? '本品目（FD1）は食品接触用途（飲食・調理用）である場合のみFDA食品接触物質安全基準（溶出試験等）が適用されます。装飾・工業用等の非接触用途であればACE通関時にDisclaimer（免責申告：コードA）が可能です。'
+        : isFoodRaw && options.foodContact === undefined
+          ? '本品目（FD3）は食品用途の場合にPrior Notice提出が必須となります。非食品用途（工業原料・化粧品等）であればACE Disclaimerが可能です。'
+          : undefined;
+
     return {
       fdaRegulatedLikely: true,
       fdFlag: subMatch.fdFlag,
@@ -371,6 +449,10 @@ export function checkFdaRegulated(options: {
           : '該当FDAプログラムの具体的な登録・提出要件をFDA公式（fda.gov）または通関士にご確認ください。',
       ],
       disclaimer: DISCLAIMER_FDA,
+      inputCompleteness,
+      missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+      clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+      impactExplanation,
     };
   }
 
@@ -387,7 +469,15 @@ export function checkFdaRegulated(options: {
       missingInfo: [],
       nextActions: [],
       disclaimer: DISCLAIMER_FDA,
+      inputCompleteness: 'complete',
     };
+  }
+
+  const missingInputs: string[] = [];
+  const clarifyingQuestions: string[] = [];
+  if ((entry.programs.includes('FCS') || entry.fdFlag === 'FD1') && options.foodContact === undefined) {
+    missingInputs.push('foodContact');
+    clarifyingQuestions.push('この製品は飲食物に直接接触する用途（飲食・調理用等）で使用されますか？');
   }
 
   return {
@@ -405,6 +495,13 @@ export function checkFdaRegulated(options: {
         : 'FDA該当プログラムの具体的な登録・提出要件をFDA公式（fda.gov）または専門家に確認してください。',
     ],
     disclaimer: DISCLAIMER_FDA,
+    inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
+    missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+    clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+    impactExplanation:
+      missingInputs.length > 0
+        ? '章レベルでの推定判定です。用途や食品接触の有無によってFDA規制要件またはACE免責の適用が分岐します。'
+        : undefined,
   };
 }
 
@@ -426,6 +523,10 @@ export interface VerifyHtsCodeResult {
   nearbyCandidates: HtsCandidate[];
   disclaimer: string;
   source: 'usitc-hts';
+  inputCompleteness?: 'complete' | 'partial';
+  missingInputs?: string[];
+  clarifyingQuestions?: string[];
+  impactExplanation?: string;
 }
 
 const DISCLAIMER_USITC =
@@ -507,6 +608,8 @@ export async function verifyHtsCode(options: {
       nearbyCandidates: [],
       disclaimer: DISCLAIMER_USITC,
       source: 'usitc-hts',
+      inputCompleteness: 'complete',
+      impactExplanation: '米国USITC公式関税率表にて10桁統計細分コードの実在および一般関税率が確認されました。',
     };
   }
 
@@ -526,6 +629,13 @@ export async function verifyHtsCode(options: {
       })),
       disclaimer: DISCLAIMER_USITC,
       source: 'usitc-hts',
+      inputCompleteness: 'partial',
+      missingInputs: ['hts10DigitSubdivision'],
+      clarifyingQuestions: [
+        '正確な10桁HTS統計細分および一般関税率を特定するため、製品の詳細な素材構成比率、寸法、または特定機能（手動/電動等）を教えていただけますか？',
+      ],
+      impactExplanation:
+        '提示されたHTSコードは6桁国際共通サブヘディングのみ合致しており、米国の10桁統計細分が未確定です。統計細分によって一般関税率や適用される追加関税が異なるため、詳細仕様の確認が必要です。',
     };
   }
 
@@ -537,6 +647,13 @@ export async function verifyHtsCode(options: {
     nearbyCandidates: [],
     disclaimer: DISCLAIMER_USITC,
     source: 'usitc-hts',
+    inputCompleteness: 'partial',
+    missingInputs: ['validHtsCode'],
+    clarifyingQuestions: [
+      '指定されたHTSコードはUSITC公式データに見つかりませんでした。商品の素材・用途・品名から推測ツール（predict_hts_code）を実行するか、最新のHTSコード番号をご確認いただけますか？',
+    ],
+    impactExplanation:
+      '無効または未存在のHTSコードでは通関時にCBPシステム（ACE）でエラーとなり貨物が保留されるリスクがあります。',
   };
 }
 
@@ -577,6 +694,10 @@ export interface PredictHtsResult {
   };
   candidates: PredictHtsCandidate[];
   disclaimer: string;
+  inputCompleteness?: 'complete' | 'partial';
+  missingInputs?: string[];
+  clarifyingQuestions?: string[];
+  impactExplanation?: string;
 }
 
 interface SubheadingRule {
@@ -965,6 +1086,33 @@ function scoreHtsCandidate(
   return score;
 }
 
+function inferTargetAge(text: string): 'child' | 'adult' | 'unknown' {
+  const lower = text.toLowerCase();
+  if (
+    /(?:child|children|baby|infant|toddler|kid|kids|boy|girl|0-3|3\+|4\+|5\+|6\+|7\+|8\+|9\+|10\+|11\+|12\+|子供|子ども|乳幼児|赤ちゃん|男の子|女の子|歳児|歳以上)/i.test(
+      lower,
+    )
+  ) {
+    return 'child';
+  }
+  if (/(?:adult|men|women|lady|gentleman|大人|成人|メンズ|レディース)/i.test(lower)) {
+    return 'adult';
+  }
+  return 'unknown';
+}
+
+function inferMaterial(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  if (/plastic|プラスチック|樹脂/i.test(lower)) return 'plastic';
+  if (/wood|wooden|木製|天然木/i.test(lower)) return 'wood';
+  if (/metal|steel|aluminum|金属|ステンレス|アルミ/i.test(lower)) return 'metal';
+  if (/cotton|綿|コットン/i.test(lower)) return 'cotton';
+  if (/glass|ガラス/i.test(lower)) return 'glass';
+  if (/leather|本革|レザー/i.test(lower)) return 'leather';
+  if (/silicone|シリコン/i.test(lower)) return 'silicone';
+  return undefined;
+}
+
 /**
  * 商品情報（商品名・説明・素材・カテゴリ・用途）から、USITC公式現行関税率表と照合して確度の高いHTSコード候補・関税率・規制要件を推測
  */
@@ -1057,6 +1205,73 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
       score: s.score,
     }));
 
+  // 不足情報の動的検知
+  const missingInputs: string[] = [];
+  const clarifyingQuestions: string[] = [];
+
+  const inferredMaterial = inferMaterial(combinedText);
+  if (!options.material && !inferredMaterial) {
+    missingInputs.push('material');
+    clarifyingQuestions.push(
+      '製品の主要素材は何ですか？（例: 陶磁器、ガラス、プラスチック、ステンレス、木、綿など。素材の違いによってHTSコードおよび一般関税率が大きく変動します）',
+    );
+  }
+
+  const effectiveTargetAge =
+    options.targetAge && options.targetAge !== 'unknown' ? options.targetAge : inferTargetAge(combinedText);
+  if (effectiveTargetAge === 'unknown') {
+    missingInputs.push('targetAge');
+    clarifyingQuestions.push(
+      'この製品の対象年齢は12歳以下の子供向けですか、それとも大人・一般向けですか？（子供向けの場合、CPSC適合性試験および2026年7月完全義務化のCPC証明書eFilingが必要となります）',
+    );
+  }
+
+  // 食品接触用途の確認（食器・キッチン用品関連）
+  const hasFoodContactKeywords =
+    /(?:mug|cup|plate|bowl|bottle|tumbler|dish|glassware|ceramic|kitchen|tableware|cookware|food|container|食器|カップ|マグ|水筒|皿|調理器具|箸|スプーン|フォーク)/i.test(
+      combinedText,
+    );
+  if (hasFoodContactKeywords && options.foodContact === undefined) {
+    missingInputs.push('foodContact');
+    clarifyingQuestions.push(
+      'この製品は飲食物に直接接触する用途（飲食・調理・保存等）で使用されますか？それとも装飾・観賞用等の非食品用途ですか？（食品接触用途の場合、FDAの事前通知(Prior Notice)や食品接触安全基準が適用されます）',
+    );
+  }
+
+  // 電池・バッテリーの確認（電子機器・電動品・玩具関連）
+  const hasBatteryKeywords =
+    /(?:electronic|electric|battery|gadget|toy|watch|clock|light|led|robot|motor|drone|headphone|earphone|speaker|電子|電動|バッテリー|電池|時計|玩具)/i.test(
+      combinedText,
+    );
+  if (hasBatteryKeywords && options.hasBattery === undefined) {
+    missingInputs.push('hasBattery');
+    clarifyingQuestions.push(
+      'この製品は電池・バッテリー（ボタン電池、コイン電池、リチウムイオン電池等）を使用・内蔵・同梱していますか？（ボタン電池内蔵の場合、CPSC 16 CFR 1263規格適合やGCC証明書が必須となります）',
+    );
+  }
+
+  const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
+  let impactExplanation: string | undefined = undefined;
+  if (missingInputs.length > 0) {
+    const impacts: string[] = [];
+    if (missingInputs.includes('material')) {
+      impacts.push('素材の違いによりHTSコードおよび一般関税率が大きく変動（例: 0%〜20%以上）');
+    }
+    if (missingInputs.includes('targetAge')) {
+      impacts.push('12歳以下向けの場合はCPSC子供向け製品証明書(CPC)および2026年7月義務化eFilingが必須');
+    }
+    if (missingInputs.includes('foodContact')) {
+      impacts.push('食品接触用途の場合はFDA食品安全基準適用、非接触の場合はACE免責(Disclaimer)申告が可能');
+    }
+    if (missingInputs.includes('hasBattery')) {
+      impacts.push('ボタン電池内蔵品の場合はCPSC 16 CFR 1263規格およびGCC証明書作成が義務化');
+    }
+    impactExplanation = `一部の情報（${missingInputs.join('、')}）が未指定のため、代表的な仕様を前提とした暫定的なHTSコード候補を提示しています。実務上、【${impacts.join('、')}】という重大な分岐が生じるため、正確な関税率算出および通関規制判定には追加情報の確認を強く推奨します。`;
+  } else {
+    impactExplanation =
+      '製品情報（素材・対象年齢・用途等）が十分に提供されており、高確度なHTSコード候補および規制要件を特定しました。';
+  }
+
   return {
     detectedSubheading: targetSubheading,
     category: targetCategory,
@@ -1073,6 +1288,10 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     },
     candidates,
     disclaimer: DISCLAIMER_USITC,
+    inputCompleteness,
+    missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+    clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+    impactExplanation,
   };
 }
 
@@ -1109,8 +1328,11 @@ export interface CheckProductComplianceResult {
   };
   overallStatus: 'action_required' | 'potential_action_required' | 'likely_exempt' | 'needs_more_info';
   summary: string;
+  inputCompleteness?: 'complete' | 'partial';
+  missingInputs?: string[];
   /** 不足情報がある場合のみ設定。LLMがユーザーへ確認すべき質問リスト。 */
   clarifyingQuestions?: string[];
+  impactExplanation?: string;
   htsVerification?: VerifyHtsCodeResult;
   htsPrediction?: PredictHtsResult;
   fda?: CheckFdaRegulatedResult;
@@ -1212,33 +1434,6 @@ const CATEGORY_HTS_DEFAULTS: {
     requires: ['hasBattery'], // 電池搭載有無・種別でCPSC Button Cell & Coin Batteriesカテゴリへ分岐、DOT/PHMSA危険物表示要否にも影響
   },
 ];
-
-function inferTargetAge(text: string): 'child' | 'adult' | 'unknown' {
-  const lower = text.toLowerCase();
-  if (
-    /(?:child|children|baby|infant|toddler|kid|kids|boy|girl|0-3|3\+|4\+|5\+|6\+|7\+|8\+|9\+|10\+|11\+|12\+|子供|子ども|乳幼児|赤ちゃん|男の子|女の子|歳児|歳以上)/i.test(
-      lower,
-    )
-  ) {
-    return 'child';
-  }
-  if (/(?:adult|men|women|lady|gentleman|大人|成人|メンズ|レディース)/i.test(lower)) {
-    return 'adult';
-  }
-  return 'unknown';
-}
-
-function inferMaterial(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  if (/plastic|プラスチック|樹脂/i.test(lower)) return 'plastic';
-  if (/wood|wooden|木製|天然木/i.test(lower)) return 'wood';
-  if (/metal|steel|aluminum|金属|ステンレス|アルミ/i.test(lower)) return 'metal';
-  if (/cotton|綿|コットン/i.test(lower)) return 'cotton';
-  if (/glass|ガラス/i.test(lower)) return 'glass';
-  if (/leather|本革|レザー/i.test(lower)) return 'leather';
-  if (/silicone|シリコン/i.test(lower)) return 'silicone';
-  return undefined;
-}
 
 function buildIntegratedActionPlan(
   htsResult: VerifyHtsCodeResult,
@@ -1486,6 +1681,7 @@ export async function checkProductCompliance(
     isFallback,
   });
   if (clarifyingQuestions.length > 0) {
+    const missingInputs = matchedEntry?.requires ? [...matchedEntry.requires] : ['productDetails'];
     return {
       product: {
         name: productName,
@@ -1497,7 +1693,11 @@ export async function checkProductCompliance(
       },
       overallStatus: 'needs_more_info',
       summary: '正確な判定に必要な情報が不足しています。以下の質問にご回答ください。',
+      inputCompleteness: 'partial',
+      missingInputs,
       clarifyingQuestions,
+      impactExplanation:
+        '素材・対象年齢・飲食用途・電池等の重要属性が未確定のため、HTSコード分類（関税率）やPGA規制（CPSC/FDA）の分岐を特定できません。',
       actionPlan: ['上記の質問にご回答いただいた上で、再度お問い合わせください。'],
       disclaimer: DISCLAIMER_COMPLIANCE,
     };
@@ -1582,6 +1782,29 @@ export async function checkProductCompliance(
     );
   }
 
+  // 6. サブモジュールからの不足情報・確認質問・実務影響の統合
+  const subMissingInputs = Array.from(
+    new Set([
+      ...(htsPredictionResult?.missingInputs || []),
+      ...(cpscResult.missingInputs || []),
+      ...(fdaResult.missingInputs || []),
+      ...(htsVerification.missingInputs || []),
+    ]),
+  );
+  const subClarifyingQuestions = Array.from(
+    new Set([
+      ...(htsPredictionResult?.clarifyingQuestions || []),
+      ...(cpscResult.clarifyingQuestions || []),
+      ...(fdaResult.clarifyingQuestions || []),
+      ...(htsVerification.clarifyingQuestions || []),
+    ]),
+  );
+  const inputCompleteness: 'complete' | 'partial' = subMissingInputs.length > 0 ? 'partial' : 'complete';
+  const impactExplanation =
+    subMissingInputs.length > 0
+      ? `一部の任意属性（${subMissingInputs.join('、')}）が未指定のため、代表的な仕様に基づく診断結果です。より厳密な関税率やPGA規制判定には追加ヒアリング情報の確認を推奨します。`
+      : '提供された製品仕様（素材・年齢層・用途等）に基づき、高精度な総合コンプライアンス診断を実施しました。';
+
   return {
     product: {
       name: productName,
@@ -1594,6 +1817,10 @@ export async function checkProductCompliance(
     },
     overallStatus,
     summary,
+    inputCompleteness,
+    missingInputs: subMissingInputs.length > 0 ? subMissingInputs : undefined,
+    clarifyingQuestions: subClarifyingQuestions.length > 0 ? subClarifyingQuestions : undefined,
+    impactExplanation,
     htsVerification,
     htsPrediction: htsPredictionResult,
     fda: fdaResult,

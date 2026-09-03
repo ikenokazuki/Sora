@@ -4221,6 +4221,101 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.cpsc).toBeDefined();
   });
 
+  it('predictHtsCode should generate clarifyingQuestions and impactExplanation when critical attributes are missing', async () => {
+    // 素材・年齢・食品接触・電池が未指定のマグカップ
+    const resPartial = await predictHtsCode({
+      productName: 'Travel Coffee Mug',
+      description: 'Insulated mug for hot drinks',
+    });
+
+    expect(resPartial.inputCompleteness).toBe('partial');
+    expect(resPartial.missingInputs).toBeDefined();
+    expect(resPartial.missingInputs).toContain('material');
+    expect(resPartial.missingInputs).toContain('foodContact');
+    expect(resPartial.clarifyingQuestions).toBeDefined();
+    expect(resPartial.clarifyingQuestions?.length).toBeGreaterThan(0);
+    expect(resPartial.clarifyingQuestions?.some((q) => q.includes('素材'))).toBe(true);
+    expect(resPartial.clarifyingQuestions?.some((q) => q.includes('接触') || q.includes('食品'))).toBe(true);
+    expect(resPartial.impactExplanation).toBeDefined();
+    expect(resPartial.impactExplanation).toContain('関税率');
+  });
+
+  it('predictHtsCode should return inputCompleteness: complete when all relevant attributes are provided', async () => {
+    const resComplete = await predictHtsCode({
+      productName: 'Ceramic Coffee Mug for Adults',
+      description: 'Stoneware coffee mug for kitchen use',
+      material: 'ceramic',
+      targetAge: 'adult',
+      foodContact: true,
+      hasBattery: false,
+    });
+
+    expect(resComplete.inputCompleteness).toBe('complete');
+    expect(resComplete.missingInputs).toBeUndefined();
+    expect(resComplete.clarifyingQuestions).toBeUndefined();
+    expect(resComplete.impactExplanation).toContain('十分に提供');
+  });
+
+  it('checkCpscCertificate should return clarifyingQuestions and impactExplanation when targetAge is unknown', async () => {
+    const res = await checkCpscCertificate({
+      htsCode: '9503.00.0073',
+      targetAge: 'unknown',
+    });
+
+    expect(res.inputCompleteness).toBe('partial');
+    expect(res.missingInputs).toContain('targetAge');
+    expect(res.clarifyingQuestions).toBeDefined();
+    expect(res.clarifyingQuestions?.some((q) => q.includes('対象年齢'))).toBe(true);
+    expect(res.impactExplanation).toContain('12歳以下');
+  });
+
+  it('checkFdaRegulated should return clarifyingQuestions and impactExplanation when foodContact is undefined for FD1 tableware', () => {
+    const res = checkFdaRegulated({
+      htsCode: '6912.00.4100',
+      productDescription: 'Ceramic coffee mugs',
+    });
+
+    expect(res.inputCompleteness).toBe('partial');
+    expect(res.missingInputs).toContain('foodContact');
+    expect(res.clarifyingQuestions).toBeDefined();
+    expect(res.clarifyingQuestions?.some((q) => q.includes('飲食物') && q.includes('接触'))).toBe(true);
+    expect(res.impactExplanation).toContain('Disclaimer');
+  });
+
+  it('verifyHtsCode should return clarifyingQuestions when matched at 6-digit category level', async () => {
+    // 6桁サブヘディングで検索照合
+    const res = await verifyHtsCode({
+      htsCode: '9503.00',
+      productDescription: 'Children toys and puzzles',
+    });
+
+    expect(res.matchLevel).toBe('6-digit-category');
+    expect(res.inputCompleteness).toBe('partial');
+    expect(res.missingInputs).toContain('hts10DigitSubdivision');
+    expect(res.clarifyingQuestions).toBeDefined();
+    expect(res.clarifyingQuestions?.some((q) => q.includes('10桁'))).toBe(true);
+    expect(res.impactExplanation).toContain('6桁国際共通');
+  });
+
+  it('POST /trade/hts-predict should include clarifyingQuestions and impactExplanation when input is partial', async () => {
+    const req = new Request('http://localhost/trade/hts-predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: 'Desk Lamp',
+      }),
+    });
+
+    const res = await app.fetch(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.inputCompleteness).toBe('partial');
+    expect(json.missingInputs).toBeDefined();
+    expect(json.clarifyingQuestions).toBeDefined();
+    expect(json.clarifyingQuestions.length).toBeGreaterThan(0);
+    expect(json.impactExplanation).toBeDefined();
+  });
+
   it('checkProductCompliance should ask for targetAge when Bicycle Helmet category is matched without it', async () => {
     const res = await checkProductCompliance({
       productName: 'Adjustable Helmet',
