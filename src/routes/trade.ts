@@ -3,12 +3,14 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
+  predictHtsCode,
   checkProductCompliance,
 } from '../scraper.js';
 import {
   CpscCertificateCheckRequestSchema,
   FdaRegulatedCheckRequestSchema,
   VerifyHtsCodeRequestSchema,
+  PredictHtsCodeRequestSchema,
   ProductComplianceRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
@@ -78,6 +80,28 @@ tradeRoutes.post('/trade/hts-verify', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return formatError(c, err.message || 'HTS code verification failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// HTS/HSコード商品情報からの推測 (POST /trade/hts-predict)
+tradeRoutes.post('/trade/hts-predict', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = PredictHtsCodeRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'productName is required for HTS code prediction', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await predictHtsCode(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'HTS code prediction failed', 'TRADE_ERROR', 500);
   }
 });
 
