@@ -630,6 +630,9 @@ export function generateOpenApiDocument() {
       description: 'Unified High-Performance Web Scraping, Realtime X Search, Transit & Public Open Data Service (Distroless & Zero-Middleware)',
     },
     paths: {
+      '/': {
+        get: { summary: 'Sora サービス情報・利用可能エンドポイント一覧', responses: { '200': { description: 'OK' } } },
+      },
       '/health': {
         get: { summary: 'ヘルスチェック & コンポーネント稼働状態', responses: { '200': { description: 'OK' } } },
       },
@@ -885,6 +888,26 @@ export function generateOpenApiDocument() {
           },
           responses: { '200': { description: 'OK' } },
         },
+        get: {
+          summary: '気象庁公式オープンデータ 天気予報・概況文 (GET クエリ指定)',
+          parameters: [
+            { name: 'city', in: 'query', schema: { type: 'string' }, description: '市区町村名または都道府県名 (例: "東京", "大阪", "天童市")' },
+            { name: 'days', in: 'query', schema: { type: 'integer' }, description: '取得日数 (デフォルト: 3)' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+      '/weather/{city}': {
+        get: {
+          summary: '気象庁公式オープンデータ 天気予報・概況文 (パス指定)',
+          parameters: [
+            { name: 'city', in: 'path', required: true, schema: { type: 'string' }, description: '市区町村名または都道府県名 (例: "天童市", "箱根")' },
+            { name: 'days', in: 'query', schema: { type: 'integer' }, description: '取得日数 (デフォルト: 3)' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'OK' } },
+        },
       },
       '/disaster/warnings': {
         post: {
@@ -922,6 +945,26 @@ export function generateOpenApiDocument() {
               },
             },
           },
+          responses: { '200': { description: 'RoadTrafficResult' } },
+        },
+        get: {
+          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (GET クエリ指定)',
+          parameters: [
+            { name: 'pref', in: 'query', schema: { type: 'string' }, description: '都道府県名 (例: "東京都", "神奈川県")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'RoadTrafficResult' } },
+        },
+      },
+      '/traffic/road/{pref}': {
+        get: {
+          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (都道府県パス指定)',
+          parameters: [
+            { name: 'pref', in: 'path', required: true, schema: { type: 'string' }, description: '都道府県名 (例: "東京", "神奈川")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
           responses: { '200': { description: 'RoadTrafficResult' } },
         },
       },
@@ -1131,6 +1174,20 @@ export function generateOpenApiDocument() {
           },
           responses: { '200': { description: 'DietMinutesSearchResult' } },
         },
+        get: {
+          summary: '国会会議録検索 API (GET クエリ指定)',
+          parameters: [
+            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '検索キーワード' },
+            { name: 'speaker', in: 'query', schema: { type: 'string' }, description: '発言者名 (例: "総理大臣", "大臣")' },
+            { name: 'nameOfHouse', in: 'query', schema: { type: 'string', enum: ['衆議院', '参議院'] }, description: '議院区分' },
+            { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: '会議・委員会名' },
+            { name: 'from', in: 'query', schema: { type: 'string' }, description: '期間開始日 (YYYY-MM-DD)' },
+            { name: 'until', in: 'query', schema: { type: 'string' }, description: '期間終了日 (YYYY-MM-DD)' },
+            { name: 'limit', in: 'query', schema: { type: 'integer' }, description: '取得件数 (1〜30, デフォルト: 10)' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'DietMinutesSearchResult' } },
+        },
       },
       '/geo/elevation': {
         post: {
@@ -1144,6 +1201,16 @@ export function generateOpenApiDocument() {
           },
           responses: { '200': { description: 'ElevationResult' } },
         },
+        get: {
+          summary: '国土地理院 住所ジオコーディング & 標高（海抜）取得 API (GET クエリ指定)',
+          parameters: [
+            { name: 'address', in: 'query', schema: { type: 'string' }, description: '住所地名 (例: "東京都千代田区永田町1-7-1", "天童市")' },
+            { name: 'lat', in: 'query', schema: { type: 'number' }, description: '緯度 (address 省略時の直接指定)' },
+            { name: 'lon', in: 'query', schema: { type: 'number' }, description: '経度 (address 省略時の直接指定)' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'ElevationResult' } },
+        },
       },
       '/traffic/flight': {
         post: {
@@ -1155,6 +1222,32 @@ export function generateOpenApiDocument() {
               },
             },
           },
+          responses: { '200': { description: 'FlightStatusResult' } },
+        },
+        get: {
+          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
+          parameters: [
+            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "NRT", "成田", "KIX", "関空", "FUK", "福岡")' },
+            { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
+            { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
+            { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み (例: "NH241", "JL516")' },
+            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '航空会社名または行先キーワード' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'FlightStatusResult' } },
+        },
+      },
+      '/traffic/flight/{airport}': {
+        get: {
+          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
+          parameters: [
+            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "成田")' },
+            { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
+            { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
+            { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み' },
+            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '航空会社名または行先キーワード' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
           responses: { '200': { description: 'FlightStatusResult' } },
         },
       },
