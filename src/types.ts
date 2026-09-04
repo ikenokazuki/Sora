@@ -748,7 +748,7 @@ export function generateOpenApiDocument() {
       },
       '/search': {
         post: {
-          summary: '深層統合検索 (Web + X/Twitter + 並行本文取得・重複排除)',
+          summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
           requestBody: {
             content: {
               'application/json': {
@@ -761,7 +761,7 @@ export function generateOpenApiDocument() {
       },
       '/search/web': {
         post: {
-          summary: 'Yahoo! Web 検索',
+          summary: '万能Web検索・候補探索 (タイトル・URL・概要スニペット取得)',
           requestBody: {
             content: {
               'application/json': {
