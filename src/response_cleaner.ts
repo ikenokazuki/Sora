@@ -66,6 +66,8 @@ export function formatCompactScrapeResult(
   if (result.links && result.links.length > 0) clean.links = result.links;
   if (result.linksWithStatus && result.linksWithStatus.length > 0) clean.linksWithStatus = result.linksWithStatus;
   if (result.tables && result.tables.length > 0) clean.tables = result.tables;
+  if (result.events && result.events.length > 0) clean.events = result.events;
+  if (result.breadcrumb && result.breadcrumb.length > 0) clean.breadcrumb = result.breadcrumb;
   if (result.jsonLd && result.jsonLd.length > 0) clean.jsonLd = result.jsonLd;
   if (result.html) clean.html = result.html;
   if (result.rawHtml) clean.rawHtml = result.rawHtml;

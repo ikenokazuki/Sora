@@ -236,15 +236,31 @@ export async function autoScrollPage(page: Page, maxScrolls = 8): Promise<void> 
   } catch {}
 }
 
-export async function waitForDomStable(page: Page, quietMs = 1200, timeoutMs = 5000): Promise<void> {
+export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 5000): Promise<void> {
   try {
     await page.evaluate(
       async (quiet: number, limit: number) => {
         const start = Date.now();
-        let maxScore = -1;
-        let lastGrowth = Date.now();
         const doc = (globalThis as any).document;
         const win = (globalThis as any).window;
+        if (!doc) return;
+
+        let lastMutation = Date.now();
+        let observer: any = null;
+
+        // MutationObserver で DOM の子要素追加・属性変更・テキスト変化をリアルタイム追跡
+        if (win?.MutationObserver) {
+          observer = new win.MutationObserver(() => {
+            lastMutation = Date.now();
+          });
+          observer.observe(doc.documentElement || doc.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true,
+          });
+        }
+
         const loadingSelectors = [
           '.loading',
           '.spinner',
@@ -256,44 +272,49 @@ export async function waitForDomStable(page: Page, quietMs = 1200, timeoutMs = 5
           '.loading__content',
         ];
 
-        while (Date.now() - start < limit) {
-          let hasVisibleLoading = false;
-          if (doc && win) {
-            for (const sel of loadingSelectors) {
-              const elements = doc.querySelectorAll(sel);
-              for (let i = 0; i < elements.length; i++) {
-                const el = elements[i];
-                const style = win.getComputedStyle(el);
-                if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
-                  hasVisibleLoading = true;
-                  break;
+        try {
+          while (Date.now() - start < limit) {
+            let hasVisibleLoading = false;
+            if (win) {
+              for (const sel of loadingSelectors) {
+                const elements = doc.querySelectorAll(sel);
+                for (let i = 0; i < elements.length; i++) {
+                  const el = elements[i];
+                  const style = win.getComputedStyle(el);
+                  if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                    hasVisibleLoading = true;
+                    break;
+                  }
                 }
+                if (hasVisibleLoading) break;
               }
-              if (hasVisibleLoading) break;
             }
+
+            const textLength = doc?.body?.innerText?.length ?? 0;
+            const hasMainContent = Boolean(
+              doc?.querySelector('article, main, [role="main"]') || textLength >= 400
+            );
+
+            // メインコンテンツが存在しローディングスピナーが消えている場合は 200ms の静止で即座に完了
+            // それ以外でも 400ms または指定された quietMs の短い方で完了
+            const effectiveQuiet = hasVisibleLoading
+              ? quiet
+              : hasMainContent
+              ? Math.min(quiet, 200)
+              : Math.min(quiet, 400);
+
+            if (!hasVisibleLoading && Date.now() - lastMutation >= effectiveQuiet) {
+              return;
+            }
+
+            await new Promise((r) => setTimeout(r, 50));
           }
-
-          const textLength = doc?.body?.innerText?.length ?? 0;
-          const elementCount = doc?.querySelectorAll('*')?.length ?? 0;
-          const currentScore = textLength + elementCount * 5;
-
-          if (currentScore > maxScore || hasVisibleLoading) {
-            maxScore = currentScore;
-            lastGrowth = Date.now();
+        } finally {
+          if (observer) {
+            try {
+              observer.disconnect();
+            } catch {}
           }
-
-          // 本文（article, main, または 400文字以上のテキスト）がすでにレンダリング完了しており、
-          // スピナーも消えている場合は、待機時間を 350ms に短縮して高速早期リターン
-          const hasMainContent = Boolean(
-            doc?.querySelector('article, main, [role="main"]') || textLength >= 400
-          );
-          const effectiveQuiet = (hasMainContent && !hasVisibleLoading) ? Math.min(quiet, 350) : quiet;
-
-          if (!hasVisibleLoading && Date.now() - lastGrowth >= effectiveQuiet) {
-            return;
-          }
-
-          await new Promise((r) => setTimeout(r, 80));
         }
       },
       quietMs,
