@@ -380,7 +380,7 @@ export function isPrivateIp(ip: string): boolean {
 
 /** ブロック対象ホスト名判定ヘルパー */
 export function isBlockedHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
+  const h = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   if (
     h === 'localhost' ||
     h === '127.0.0.1' ||
@@ -469,14 +469,18 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
         const reqUrlStr = req.url();
         const resourceType = req.resourceType();
 
-        // スクリーンショット非要求時の画像・フォント・メディア・広告トラッカーの高速遮断
-        if (blockMedia) {
-          if (['image', 'media', 'font'].includes(resourceType)) {
-            return req.abort('blockedbyclient');
-          }
-          if (BLOCKED_TRACKER_DOMAINS.some((d) => reqUrlStr.includes(d))) {
-            return req.abort('blockedbyclient');
-          }
+        // 動画・音声・3Dモデル・広告トラッカーは帯域・メモリ保護のため常時高速遮断
+        if (
+          ['media'].includes(resourceType) ||
+          /\.(gltf|glb|obj|fbx|mp4|webm|m4v|m4a|mp3|ogg|wav|flac)(\?.*)?$/i.test(reqUrlStr) ||
+          BLOCKED_TRACKER_DOMAINS.some((d) => reqUrlStr.includes(d))
+        ) {
+          return req.abort('blockedbyclient');
+        }
+
+        // スクリーンショット非要求時 (blockMedia=true) は画像・Webフォントも追加遮断
+        if (blockMedia && ['image', 'font'].includes(resourceType)) {
+          return req.abort('blockedbyclient');
         }
 
         if (process.env.ALLOW_LOCAL_FETCH === 'true') {

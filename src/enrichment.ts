@@ -70,10 +70,12 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/[ \t]+$/gm, '')
     // 7. ゼロ幅文字・不可視制御文字の除去 (間接プロンプトインジェクション緩和)
     .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
-    // 8. LLM 特殊制御トークンの無害化 (間接プロンプトインジェクション防御)
+    // 8. LLM 特殊制御トークン・擬似システム命令タグの無害化 (間接プロンプトインジェクション防御)
     .replace(/<\|(?:im_start|im_end|endoftext|system|user|assistant|startoftext)\|>/gi, (m) => `[${m.slice(1, -1)}]`)
     .replace(/\[\/?(?:INST|SYS)\]/gi, (m) => `\\[${m.slice(1, -1)}\\]`)
     .replace(/<<\/?SYS>>/gi, (m) => `\\<\\<${m.slice(2, -2)}\\>\\>`)
+    .replace(/\[(?:SYSTEM|SYSTEM[ _]MESSAGE|INSTRUCTION|DEVELOPER[ _]INSTRUCTION|PROMPT):/gi, (m) => `\\[${m.slice(1)}`)
+    .replace(/<\/?(?:system|instruction|developer_instruction)>/gi, (m) => `\\<${m.slice(1, -1)}\\>`)
     .trim();
 }
 

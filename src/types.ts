@@ -36,8 +36,28 @@ export interface ImageItem {
   title?: string;
   caption?: string;
   isMainImage?: boolean;
+  isImportant?: boolean;
+  imageType?: 'flyer' | 'timetable' | 'diagram' | 'chart' | 'photo' | 'general';
   width?: number;
   height?: number;
+}
+
+export interface EventItem {
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  location?: string;
+  performer?: string;
+  description?: string;
+  url?: string;
+  eventStatus?: string;
+  eventAttendanceMode?: string;
+  offers?: {
+    price?: string;
+    priceCurrency?: string;
+    url?: string;
+    availability?: string;
+  };
 }
 
 export interface MarkdownChunk {
@@ -103,6 +123,8 @@ export interface ScrapeResult {
   brand?: string;
   sku?: string;
   tables?: TableData[];
+  events?: EventItem[];
+  breadcrumb?: string[];
   extracted?: Record<string, string | null>;
   metadata?: Record<string, any>;
   estimatedTokens?: number;
