@@ -76,6 +76,33 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
+### ④ LLM ネイティブ機能との共存・ツール呼び出しルーティング設計 (MCP Instructions & Directives)
+
+ChatGPT や ローカル LLM（Llama / Qwen / Ollama 等）と MCP を接続した際、**「LLM がツールを使わずに勝手に推測で答えてしまう」「何でも自前の Web 検索で済ませようとして専門ツールが呼ばれない」** という課題が発生しがちです。
+
+Sora では、**商用 LLM の強み（ネイティブ Web 検索）と Sora 独自機能（公式データ直結・専門判定）を完全に棲み分けるアーキテクチャ (v2.12.0+)** を標準実装しています：
+
+1. **MCP プロトコル標準 `instructions` による動的ルーティング指示**:
+   - MCP 接続時、LLM に向けて「一般的な Web 検索や URL スクレイプは LLM 自身のネイティブ機能を優先して構わないが、**Sora 独自の公的データ・リアルタイム情報・専門 API 直結機能（貿易・法令・気象・交通・リアルタイム世論・音楽等）は LLM 自前の知識による推測を厳禁とし、必ず Sora ツールを呼び出すこと**」というルーティング規約をシステムプロンプトとして自動注入します。
+2. **専門ツールへの強制ディレクティブ配置（Tool Descriptions）**:
+   - `predict_hts_code`, `get_weather`, `search_laws`, `search_realtime` 等の全 24 ツールには、冒頭に `【必須・即時推測厳禁】` や `【公式直結・推測厳禁】` を付与し、LLM による勝手な推測回答（ハルシネーション）を強力に抑止。
+3. **軽量な返却キー注記による入力・出力の分離**:
+   - トークン爆発やローカル LLM の KV キャッシュ枯渇・互換性問題を引き起こす巨大な JSON 出力スキーマは避け、ツールの説明末尾に返却キー（`返却: { ... }`）を注記することで、LLM がレスポンスの構造を理解しやすくしています。
+
+> [!TIP]
+> **ChatGPT や Cursor、Cline 等の Custom Instructions（システムプロンプト）設定例**:
+> もしクライアント側でさらに確実にツール呼び出しを徹底させたい場合は、以下をシステム指示に追加することを推奨します：
+> ```text
+> 【Sora ツール利用規約】
+> - 一般的な Web 検索や単一 URL 閲覧は自身のネイティブ検索/ブラウジング機能を利用して構いません。
+> - ただし、以下の専門・公的データ・リアルタイム情報に関しては、自身の知識で推測せず必ず Sora MCP ツールを実行してください：
+>   1. 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
+>   2. 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
+>   3. 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
+>   4. 国内交通乗換・運賃: search_route
+>   5. 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
+> ```
+
 ---
 ## Soraの由来
 Soraはアイドルグループ「[君と見るそら](https://x.com/kimisora_jpn)」から引用しました。
