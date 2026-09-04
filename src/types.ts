@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.11.0';
+export const SORA_VERSION = '2.12.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
