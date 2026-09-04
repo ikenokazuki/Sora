@@ -72,21 +72,26 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 45 エンドポイントが自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 47 エンドポイント（49 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
-### ④ LLM ネイティブ機能との共存・ツール呼び出しルーティング設計 (MCP Instructions & Directives)
+### ④ LLM ネイティブ機能との共存・2層構造ツール決定フレームワーク (Zero-Refusal & Two-Tier Architecture v2.13.0+)
 
-ChatGPT や ローカル LLM（Llama / Qwen / Ollama 等）と MCP を接続した際、**「LLM がツールを使わずに勝手に推測で答えてしまう」「何でも自前の Web 検索で済ませようとして専門ツールが呼ばれない」** という課題が発生しがちです。
+ChatGPT や Claude、ローカル LLM（Llama / Qwen / Ollama 等）と MCP を接続した際、**「専用ツールが見当たらないと『ツールがないため答えられません』と勝手に回答を拒絶してしまう」「スニペットだけで中途半端に推測してハルシネーションを起こす」** という課題が発生しがちです。
 
-Sora では、**商用 LLM の強み（ネイティブ Web 検索）と Sora 独自機能（公式データ直結・専門判定）を完全に棲み分けるアーキテクチャ (v2.12.0+)** を標準実装しています：
+Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google / Firecrawl のベストプラクティスを取り入れた 2 層構造ツール決定フレームワーク (v2.13.0+)** を標準実装しています：
 
-1. **MCP プロトコル標準 `instructions` による動的ルーティング指示**:
-   - MCP 接続時、LLM に向けて「一般的な Web 検索や URL スクレイプは LLM 自身のネイティブ機能を優先して構わないが、**Sora 独自の公的データ・リアルタイム情報・専門 API 直結機能（貿易・法令・気象・交通・リアルタイム世論・音楽等）は LLM 自前の知識による推測を厳禁とし、必ず Sora ツールを呼び出すこと**」というルーティング規約をシステムプロンプトとして自動注入します。
-2. **専門ツールへの強制ディレクティブ配置（Tool Descriptions）**:
-   - `predict_hts_code`, `get_weather`, `search_laws`, `search_realtime` 等の全 24 ツールには、冒頭に `【必須・即時推測厳禁】` や `【公式直結・推測厳禁】` を付与し、LLM による勝手な推測回答（ハルシネーション）を強力に抑止。
-3. **軽量な返却キー注記による入力・出力の分離**:
+1. **回答拒絶の全面禁止（Zero-Refusal Policy）**:
+   - MCP 初期化ハンドシェイク（`initialize`）時に注入される `instructions` において、「スケジュール専用ツール、営業時間専用ツール、発売日専用ツール等がない」という理由で回答を拒絶することを厳禁としています。
+2. **2層構造ツール決定フレームワーク (Two-Tier Architecture)**:
+   - **Tier 1（公式専門データ直結ツール・強制呼び出し）**:
+     貿易（HTS/CPSC/FDA）、日本法令・国会審議録、気象庁防災・地震・道路交通、路線乗換・フライト・標高、Xリアルタイム速報、iTunes音楽メタデータの 6 大ドメインは、モデル自前の推測を厳禁とし、必ず Sora の専用ツールを実行。
+   - **Tier 2（万能深層Web検索ツール・全実世界データ調査）**:
+     上記以外のあらゆる事実調査（ライブ・イベント・試合日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュース、技術ドキュメント等）は、**`search_deep`（推奨一次ツール）** を呼び出し、ノイズ除去された Clean Markdown 本文まで深く読み込んで包括的・根拠ある回答を構築。
+3. **Google & Firecrawl 式の本文精読（Search → Scrape）ルール**:
+   - `search_web`（URL・概要スニペット探索）を使用した場合でも、スニペットだけで開場時間や規約などの詳細が不確定な場合は、推測で終わらせず必ずヒットした公式 URL を `scrape` ツールで精読して本文を確認することを義務化。
+4. **軽量な返却キー注記による入力・出力の分離**:
    - トークン爆発やローカル LLM の KV キャッシュ枯渇・互換性問題を引き起こす巨大な JSON 出力スキーマは避け、ツールの説明末尾に返却キー（`返却: { ... }`）を注記することで、LLM がレスポンスの構造を理解しやすくしています。
 
 > [!TIP]
@@ -94,13 +99,14 @@ Sora では、**商用 LLM の強み（ネイティブ Web 検索）と Sora 独
 > もしクライアント側でさらに確実にツール呼び出しを徹底させたい場合は、以下をシステム指示に追加することを推奨します：
 > ```text
 > 【Sora ツール利用規約】
-> - 一般的な Web 検索や単一 URL 閲覧は自身のネイティブ検索/ブラウジング機能を利用して構いません。
-> - ただし、以下の専門・公的データ・リアルタイム情報に関しては、自身の知識で推測せず必ず Sora MCP ツールを実行してください：
->   1. 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
->   2. 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
->   3. 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
->   4. 国内交通乗換・運賃: search_route
->   5. 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
+> 1. 専用ツールがないことを理由に回答を拒否してはならない（ライブ日程・営業時間・発売日・最新動向等は必ず search_deep または search_web でWebから能動調査すること）。
+> 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
+>    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
+>    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
+>    - 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
+>    - 国内交通乗換・運賃: search_route
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
+> 3. search_web のスニペットだけで詳細が不十分な場合は、公式URLを scrape で精読して回答を構築すること。
 > ```
 
 ---

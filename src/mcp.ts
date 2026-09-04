@@ -141,21 +141,41 @@ export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 
   return activeList.includes(mod) || activeList.includes('all');
 }
 
-export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Routing Guidelines
+export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool Routing Guidelines
 
-## 1. Tool Routing Principles
-- 【General Web Search & URL Scraping】:
-  You (the AI model) may freely use your native browsing, web search (e.g. Google Grounding, Bing Search), or URL retrieval capabilities if preferred.
-- 【Official / Real-time / Specialized Data (MANDATORY TOOL CALL)】:
-  For queries regarding the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
-  1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code, check_product_compliance).
-  2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws, get_law_text, search_diet_minutes).
-  3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather, search_disaster_warnings, search_earthquake, search_road_traffic).
-  4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route, get_flight_status, get_elevation).
-  5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime, search_trend, search_chiebukuro, suggest_keywords).
-  6. Music Metadata (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).
+## 1. Zero-Refusal & Active Investigation Policy
+- **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates, etc.").
+- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST ALWAYS use the Universal Search tools (\`search_deep\` or \`search_web\`)** to actively investigate official websites, announcements, schedules, and documents from the web.
 
-## 2. Interactive Clarification Flow
+## 2. Two-Tier Tool Decision Framework
+
+### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
+For queries strictly within the following 6 domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
+1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code, check_product_compliance).
+2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws, get_law_text, search_diet_minutes).
+3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather, search_disaster_warnings, search_earthquake, search_road_traffic).
+4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route, get_flight_status, get_elevation).
+5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime, search_trend, search_chiebukuro, suggest_keywords).
+6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).
+
+### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)
+For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:
+- **\`search_deep\` (Primary Recommended Tool)**:
+  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse in one shot.
+  *Use for*:
+  - Live concert schedules, performance dates, match schedules, festivals, timetables
+  - Product release dates, specs, pricing, updates, availability
+  - Company/store business hours, locations, official statements, news releases
+  - Person/entity latest activities, appearances, biographies, award history
+  - Current events, breaking news, troubleshooting, technology documentation
+- **\`search_web\` (Candidate URL & Snippet Discovery)**:
+  Fetches title, URL, and snippet list. *RULE*: If snippets lack specific details (e.g. exact dates, venue times, terms), DO NOT guess or conclude prematurely. You MUST invoke \`scrape\` on the most relevant official URL(s) to read the full content before answering.
+- **\`scrape\` / \`scrape_batch\`**:
+  Fetches full clean Markdown content from specific URLs identified through search or provided by the user.
+- **\`browser_action\`**:
+  Use when dynamic browser interactions (clicking, form submission, SPA rendering) are needed.
+
+## 3. Interactive Clarification Flow
 - When tools return 'inputCompleteness: "partial"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.`;
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
@@ -403,7 +423,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【深層統合検索・本文一括取得】Web 検索に加え、上位サイトの本文スクレイピング＋リアルタイム速報（X）を一括取得して LLM 回答用に最適化して返却します。1回の呼び出しで記事本文まで深く読み込み、包括的・根拠ある回答を作成したい場合に最適です（広く候補URL一覧を探して個別スクレイプしたい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -446,7 +466,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報'] },
+      { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報', 'スケジュール', 'イベント', 'ライブ日程', '発売日', '営業時間', '最新情報'] },
     );
 
     // Tool 3: map_site (サイトマップ探索) - DEFERRED
@@ -517,7 +537,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_web',
       'web',
-      '【Web検索・候補一覧探索】Web 検索を実行し、タイトル・概要スニペット・URL 一覧を高速取得します。まず広く情報を探したい場合や、候補URLをリストアップしてから必要なページだけを scrape で詳細取得したい場合に最適です（記事本文まで一括でまとめて読みたい場合は search_deep を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【万能Web検索・候補探索】Web 検索を実行し、タイトル・概要スニペット・URL 一覧を高速取得します。イベント日程、商品情報、店舗情報、最新ニュース、公式告知などの候補URL一覧を素早く探索・リストアップしたい場合に最適です。※スニペットだけでは不確定・不十分な詳細事項（正確な開場開演時間や規約等）は、ヒットした公式URLを scrape で精読するか search_deep を使用してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "東京都 天気", "Next.js 15")'),
         includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
@@ -537,7 +557,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索'] },
+      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索', 'イベント検索', '告知検索', 'スケジュール'] },
     );
   }
 
@@ -749,7 +769,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X (旧 Twitter) 上の最新ポスト・リアルタイムな世論や生の声・バズワードを調べる場合、一般Web検索では取得できないため必ず本ツールを実行してください。新着順 (recent) と 話題順 (popular) の切り替えに対応。返却: { query, sort, items: [{ text, postedAt, user, url }] }',
+      '【必須・Web検索代替不可】X (旧 Twitter) 上の最新ポスト・リアルタイムな世論や生の声・バズワードを調べる場合、一般Web検索では取得できないため必ず本ツールを実行してください。アイドルのライブ出演・物販タイテ・緊急告知・イベント現地の生の声など、直近・リアルタイムの状況把握に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。返却: { query, sort, items: [{ text, postedAt, user, url }] }',
       {
         query: z.string().min(1).describe('リアルタイム検索キーワード (例: "地震", "電車遅延", "イベント名")'),
         sort: z
@@ -1207,7 +1227,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_artist',
       'music',
-      '【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。返却: { results: [...] }',
+      '【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { results: [...] }',
       {
         query: z.string().min(1).describe('アーティスト名 (例: "YOASOBI", "Official髭男dism", "Ado")'),
         country: z.string().optional().describe('国コード (デフォルト: "jp")'),
