@@ -4785,10 +4785,15 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.textFragmentUrl).toBeDefined();
     });
 
-    it('createMcpServer should configure SORA_MCP_INSTRUCTIONS with tool routing principles', () => {
-      expect(SORA_MCP_INSTRUCTIONS).toContain('Tool Routing Principles');
-      expect(SORA_MCP_INSTRUCTIONS).toContain('General Web Search & URL Scraping');
+    it('createMcpServer should configure SORA_MCP_INSTRUCTIONS with zero-refusal and two-tier routing principles', () => {
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Tool Routing Guidelines');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Zero-Refusal & Active Investigation Policy');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Two-Tier Tool Decision Framework');
       expect(SORA_MCP_INSTRUCTIONS).toContain('MANDATORY TOOL CALL');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Tier 1: Official Specialized Domain Directives');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Tier 2: Universal Web & Deep Search');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('search_deep');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('search_web');
       expect(SORA_MCP_INSTRUCTIONS).toContain('trade');
       expect(SORA_MCP_INSTRUCTIONS).toContain('gov');
       expect(SORA_MCP_INSTRUCTIONS).toContain('disaster');
@@ -4800,7 +4805,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect((server.server as any)._instructions).toBe(SORA_MCP_INSTRUCTIONS);
     });
 
-    it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve natural descriptions', () => {
+    it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve universal investigation descriptions', () => {
       const server = createMcpServer({ deferTools: false });
       const registeredTools: Record<string, any> = (server as any)._registeredTools || {};
 
@@ -4843,7 +4848,7 @@ describe('Sora REST & MCP Endpoints', () => {
         expect(desc).toContain('返却:');
       }
 
-      // 一般Web検索・スクレイプ系ツール：LLMネイティブ機能を阻害する強制ディレクティブを持たず、自然な説明であること
+      // 万能Web検索・スクレイプ系ツール：イベント・スケジュール等の万能調査を明記し、かつLLMネイティブ機能を阻害する強制ディレクティブを持たないこと
       const webTools = ['scrape', 'scrape_batch', 'search_web', 'search_deep'];
       for (const toolName of webTools) {
         const tool = registeredTools[toolName];
@@ -4852,6 +4857,12 @@ describe('Sora REST & MCP Endpoints', () => {
         expect(desc.includes('【必須')).toBe(false);
         expect(desc.includes('【公式')).toBe(false);
       }
+
+      // search_deep と search_web にイベント・スケジュール等の明記があること
+      expect(registeredTools['search_deep'].description).toContain('ライブ・公演日程');
+      expect(registeredTools['search_deep'].description).toContain('新製品・発売日');
+      expect(registeredTools['search_web'].description).toContain('イベント日程');
+      expect(registeredTools['search_artist'].description).toContain('ライブ・公演日程');
     });
   });
 });
