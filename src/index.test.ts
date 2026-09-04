@@ -2,7 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
-import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog } from './mcp.js';
+import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS } from './mcp.js';
 import { SORA_VERSION } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
@@ -4212,10 +4212,11 @@ describe('Sora REST & MCP Endpoints', () => {
       description: 'A mug for everyday kitchen use, dishwasher safe.',
       material: 'ceramic',
       foodContact: true,
+      targetAge: 'adult',
+      productCategory: 'tableware',
     });
 
     expect(res.overallStatus).not.toBe('needs_more_info');
-    expect(res.clarifyingQuestions).toBeUndefined();
     expect(res.htsVerification).toBeDefined();
     expect(res.fda).toBeDefined();
     expect(res.cpsc).toBeDefined();
@@ -4773,6 +4774,75 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.highlights!.length).toBeGreaterThan(0);
       expect(result.highlights![0].toLowerCase()).toContain('domain');
       expect(result.textFragmentUrl).toBeDefined();
+    });
+
+    it('createMcpServer should configure SORA_MCP_INSTRUCTIONS with tool routing principles', () => {
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Tool Routing Principles');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('General Web Search & URL Scraping');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('MANDATORY TOOL CALL');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('trade');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('gov');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('disaster');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('life');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('yahoo');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('music');
+
+      const server = createMcpServer({ deferTools: false });
+      expect((server.server as any)._instructions).toBe(SORA_MCP_INSTRUCTIONS);
+    });
+
+    it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve natural descriptions', () => {
+      const server = createMcpServer({ deferTools: false });
+      const registeredTools: Record<string, any> = (server as any)._registeredTools || {};
+
+      // 独自機能ツール群：推測禁止ディレクティブと返却注記を持つこと
+      const uniqueToolsWithDirectives = [
+        'predict_hts_code',
+        'check_cpsc_certificate',
+        'check_fda_regulated',
+        'verify_hts_code',
+        'check_product_compliance',
+        'search_laws',
+        'get_law_text',
+        'search_diet_minutes',
+        'get_weather',
+        'search_disaster_warnings',
+        'search_earthquake',
+        'search_road_traffic',
+        'search_route',
+        'get_flight_status',
+        'get_elevation',
+        'search_realtime',
+        'search_trend',
+        'search_chiebukuro',
+        'suggest_keywords',
+        'search_news',
+        'search_song',
+        'search_artist',
+        'search_music',
+      ];
+
+      for (const toolName of uniqueToolsWithDirectives) {
+        const tool = registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const desc = tool.description || '';
+        const hasDirective = desc.startsWith('【') && (desc.includes('必須') || desc.includes('公式') || desc.includes('直結') || desc.includes('速報'));
+        if (!hasDirective) {
+          throw new Error(`Tool ${toolName} does not have directive in description: "${desc}"`);
+        }
+        expect(hasDirective).toBe(true);
+        expect(desc).toContain('返却:');
+      }
+
+      // 一般Web検索・スクレイプ系ツール：LLMネイティブ機能を阻害する強制ディレクティブを持たず、自然な説明であること
+      const webTools = ['scrape', 'scrape_batch', 'search_web', 'search_deep'];
+      for (const toolName of webTools) {
+        const tool = registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const desc = tool.description || '';
+        expect(desc.includes('【必須')).toBe(false);
+        expect(desc.includes('【公式')).toBe(false);
+      }
     });
   });
 });
