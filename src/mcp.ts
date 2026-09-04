@@ -214,7 +214,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'scrape',
       'web',
-      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは自動で Stealth Chromium でレンダリングされます。※他の専門機能や拡張ツールが必要な場合は、まず search_tools でツールを検索・有効化してください。',
+      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全・高速に描画完了を待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、および重要告知画像（フライヤー・タイムテーブル・図表）スコアリングに対応。※返却: { title, content, events, breadcrumb, images, tables, pageType, publishedTime, author, siteName, ... }',
       {
         url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
         maxChars: z

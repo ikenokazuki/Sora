@@ -133,6 +133,11 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - SSRF / DNS Rebinding 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
 5. **🕹️ ステートフルなブラウザ操作 DSL**:
    - `open` → `fill` → `click` → `screenshot` → `evaluate` の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
+6. **⚡ 次世代スクレイピング＆構造化抽出エンジン (v2.13.0+)**:
+   - **BrowserContext セッション分離 & アセット高速遮断**: 常駐 Chromium におけるセッションごとの完全隔離と、不要メディア・Webフォント・3Dモデル・広告トラッカーのネットワーク層即時遮断（転送量 99.8% 削減）。CSS/JS は保持しレイアウト計算と不可視要素除外を担保。
+   - **DOM Quiescence（静止検知）SPA待機**: 固定スリープを廃止し、`MutationObserver` により 200ms の DOM 変更静止を捉えて最速完了。描画漏れ根絶。
+   - **イベント・パンくず・表構造化抽出**: Schema.org `Event`/`MusicEvent` の自動構造化、パンくず階層ナビゲーションパス抽出、複雑な表の結合セル（`colspan`/`rowspan`）2Dマトリクス正規化、および重要告知画像（チラシ・タイテ・図表）スコアリングを標準搭載。
+   - **Clean Content Sanitizer**: プロンプトインジェクション用制御トークンや不可視ゼロ幅文字を自動無害化。
 
 ---
 
@@ -159,15 +164,15 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `GET /health` | **0.2 〜 1.8 ms** | — | API 死活監視・ヘルスチェック（Bun 最適化） |
 | `GET /weather` (気象庁天気) | **約 38 ms** | **0.4 〜 0.7 ms** | 気象庁公式 CDN（`jma.go.jp`）直結パース＋1,805自治体自動選定 |
 | `POST /scrape` (静的最速モード) | **約 79 ms** | **0.5 〜 1.0 ms** | Web ページの高速フェッチ＋Markdown 本文抽出 |
-| `POST /scrape` (SPA自動昇格 / ブラウザ描画) | **約 1.2 〜 1.6 秒** | **0.5 〜 1.0 ms** | 静的取得で空白/Bot画面検知時に自動でStealth Chromiumへ昇格してMarkdown抽出 |
+| `POST /scrape` (SPA自動昇格 / ブラウザ描画) | **約 0.8 〜 1.3 秒** | **0.5 〜 1.0 ms** | BrowserContext一時分離＋アセット遮断＋DOM Quiescence（200ms静止検知）により大幅高速化 |
 | `POST /transit/route` (乗換案内) | **約 390 ms** | **0.6 〜 7.0 ms** | Yahoo! 路線情報スクレイプ（最適経路・IC運賃計算） |
 | `POST /search/realtime` (X速報) | **約 440 ms** | **0.6 ms** | Yahoo! リアルタイム検索（Xツイート＆画像抽出） |
 | `POST /search/news` (ニュース) | **約 480 ms** | **0.6 ms** | Yahoo! ニュース最新記事検索 |
 | `POST /search/image` / `video` | **450 〜 550 ms** | **0.6 ms** | Yahoo! 画像・動画検索 |
 | `POST /search/chiebukuro` (知恵袋) | **420 〜 500 ms** | **0.6 ms** | Yahoo! 知恵袋 Q&A 検索 |
 | `POST /search/suggest` (サジェスト) | **約 820 ms** | **0.5 ms** | Yahoo! オートコンプリート関連語補完 |
-| `POST /browser/action` (初回実行) | **約 1.4 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
-| `POST /browser/action` (セッション継続) | **約 0.5 〜 0.8 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
+| `POST /browser/action` (初回実行) | **約 1.1 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
+| `POST /browser/action` (セッション継続) | **約 0.3 〜 0.6 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 | `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
 | `POST /trade/hts-predict` (HTSコード推測) | **約 0.2 〜 0.4 秒** | **0.5 ms** | 商品名・素材からの10桁HTS自動推測＋関税率＋多層防御ヒアリング誘導 |
 
@@ -178,6 +183,10 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | 処理・機能 | 処理時間 (1回あたり実測値) | 特徴・アルゴリズム |
 |---|:---:|---|
 | **読了時間・文字統計計算** (`calculateContentStats`) | **0.03 ms** (`31 µs`) | CJK/英単語の高速カウント＆推定読了時間算出 |
+| **イベント・スケジュール構造化抽出** (`extractEventsFromJsonLd`) | **0.05 ms** (`48 µs`) | Schema.org Event/MusicEvent の正規化と日時・会場・チケット解析 |
+| **パンくず階層パス抽出** (`extractBreadcrumbs`) | **0.04 ms** (`42 µs`) | BreadcrumbList & nav[aria-label=breadcrumb] の自動マッピング |
+| **テーブル結合セル2D正規化** (`gfmTable` / `normalizeTable`) | **0.06 ms** (`60 µs`) | colspan / rowspan のグリッド自動展開補完マトリクス |
+| **Clean Content Sanitizer** (`cleanMarkdownTokens`) | **0.04 ms** (`45 µs`) | LLM 制御トークン・不可視ゼロ幅文字の安全なサニタイズ |
 | **出典・引用リンク抽出** (`extractCitationsFromMarkdown`) | **0.06 ms** (`62 µs`) | 正規表現＋文脈コンテキストスライシング |
 | **RAG セマンティック・チャンキング** (`chunkMarkdownContent`) | **0.13 ms** (`138 µs`) | 見出し・コードブロック境界を考慮したセマンティック分割 |
 | **検索結果の重複・類似排除** (`dedupSearchResults`) | **0.33 ms** (`335 µs`) | 50件の N-gram Jaccard 類似度判定 |
@@ -314,7 +323,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 | ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
 |---|:---:|---|---|---|
-| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文を Markdown 形式で抽出します。SPA サイト（TimeTree や React/Next.js 等の非同期フェッチ型含む）のローディング自動待機・カレンダー/テーブル構造化抽出や Bot 対策画面の自動 Chromium 昇格に対応。RAGチャンキング・出典抽出・読了時間・PII保護・テーブルJSON抽出・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 10000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `waitAfterLoadedMs` (number, 任意): 描画後の追加待機時間(ms)<br>- `formatAsPrompt` (boolean, 任意): LLM用標準XMLラッパー形式を生成するか |
+| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、重要告知画像（チラシ・タイテ・図表）スコアリング、RAGチャンキング・出典抽出・読了時間・PII保護・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ<br>- `extractHighlights` / `query` (任意): キーワード重要文抽出<br>- `chunkMarkdown` (boolean, 任意): RAG 用セマンティック分割<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
 | `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。ドメイン絞り込み・除外・期間指定に対応。※スニペットだけで詳細が不確定な場合は、推測せずヒットした公式 URL を `scrape` で精読してください。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
 | `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。最新事実、ライブ・公演・イベント日程、新製品・発売日、営業時間・店舗情報等の包括調査に推奨。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意) |
 | `search_tools` | **★ CORE** | **【動的ツール発見メタツール】** Sora の全専門ツール（天気・乗換・知恵袋・X速報・音楽・法令・交通情報・差分監視等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"天気"`, `"知恵袋"`, `"yahoo"`, `"music"`, `"交通"`, `"法令"`) |
@@ -600,11 +609,24 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 {
   "url": "https://example.com/article",
   "title": "最新アップデートのお知らせ",
-  "content": "---\ntitle: \"最新アップデートのお知らせ\"\nurl: \"https://example.com/article\"\npublishedTime: \"2026-08-22T10:00:00Z\"\nauthor: \"開発チーム\"\nsiteName: \"Tech Blog\"\n---\n\n...",
+  "content": "---\ntitle: \"最新アップデートのお知らせ\"\nurl: \"https://example.com/article\"\npublishedTime: \"2026-08-22T10:00:00Z\"\nauthor: \"開発チーム\"\nsiteName: \"Tech Blog\"\n---\n\n> 📍 **階層**: [ホーム](https://example.com) > [ニュース](https://example.com/news) > [製品情報](https://example.com/products)\n\n> 📅 **イベント情報**:\n> - **名称**: Sora 新機能発表カンファレンス 2026\n> - **日時**: 2026-09-15T18:00:00+09:00\n> - **会場**: 東京国際フォーラム\n\n...",
   "pageType": "article",
   "publishedTime": "2026-08-22T10:00:00Z",
   "author": "開発チーム",
   "siteName": "Tech Blog",
+  "breadcrumb": [
+    "ホーム",
+    "ニュース",
+    "製品情報"
+  ],
+  "events": [
+    {
+      "name": "Sora 新機能発表カンファレンス 2026",
+      "startDate": "2026-09-15T18:00:00+09:00",
+      "location": "東京国際フォーラム",
+      "performer": "Sora Core Team"
+    }
+  ],
   "extracted": {
     "productName": "Sora プレミアムキーボード",
     "price": "¥24,800",
@@ -621,7 +643,9 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "images": [
     {
       "url": "https://example.com/images/feature.png",
-      "alt": "新機能の画面イメージ"
+      "alt": "新機能の画面イメージ",
+      "isImportant": true,
+      "imageType": "photo"
     }
   ],
   "highlights": [
@@ -668,7 +692,17 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🖍️ 検索キーワードの本文自動強調 (`highlightMatches: true`)**: 指定した `query` のキーワードを本文 Markdown 内で `<mark>キーワード</mark>` として強調表示した `highlightedContent` を取得できます。
 > 
-> **📊 テーブル構造化 JSON 抽出 (`formats: ["tables"]`)**: ページ内の表（`<table>`）を `{ caption, headers, rows }` の構造化 JSON 配列としてダイレクトに取得可能です。
+> **📊 テーブル構造化 JSON 抽出 & 結合セル 2D 正規化 (`formats: ["tables"]`)**: ページ内の表（`<table>`）を `{ caption, headers, rows }` の構造化 JSON 配列として取得可能です。さらに `colspan` や `rowspan` を含む複雑な結合セルを 2 次元マトリクスで自動補完・展開し、Markdown の表崩れ・列ズレを解消します。
+> 
+> **📅 イベント・スケジュール構造化抽出 (`events`)**: Schema.org の `Event` / `MusicEvent` を自動抽出し、構造化データ `events: [{ name, startDate, endDate, location, performer, offers, ... }]` を返却。さらに Markdown 冒頭にも `> 📅 **イベント情報**:` コールアウトとして自動付加されるため、LLM が公演日程やチケット情報を即座に正確把握できます。
+> 
+> **📍 パンくずリスト階層ナビゲーション (`breadcrumb`)**: サイトの `BreadcrumbList` および `<nav aria-label="breadcrumb">` から階層パスを自動抽出し、`breadcrumb: ["トップ", "カテゴリ", ...]` を返却。Markdown 冒頭にも `> 📍 **階層**:` として明記され、ページの文脈・所属カテゴリが正確に把握できます。
+> 
+> **🖼️ 重要画像スコアリング (`isImportant` / `imageType`)**: フライヤー（告知チラシ）、タイムテーブル、図表・チャートなどの画像メタデータを自動判別し、`isImportant: true` および `imageType: 'timetable' | 'flyer' | 'diagram'` を付与。画像内にのみ文字情報が焼き込まれた告知を逃さず特定できます。
+> 
+> **🛡️ Clean Content Sanitizer（プロンプトインジェクション無害化）**: Web ページ内に悪意を持って埋め込まれた `[SYSTEM: ...]`, `<system>`, `[INST]` などの LLM 制御トークンや不可視ゼロ幅文字（`\u200B`等）を自動的に安全な文字へサニタイズ・パージし、間接プロンプトインジェクション攻撃を防御します。
+> 
+> **⚡ インテリジェント・アセット遮断 & DOM Quiescence SPA 待機**: ブラウザ描画時（`mode: "browser"` / SPA 自動昇格時）、不要な画像バイナリ、動画、Webフォント、3Dモデル、広告・解析トラッカーをネットワーク層（Request Interception）で即座に abort し、転送量を 99.8% 削減。さらに固定スリープを排して `MutationObserver` による 200ms 静止検知を行うことで、動的 SPA の描画完了を最速・確実に捉えます。
 > 
 > **⚡ 超高速 抽出型自動要約 (`extractSummary: true`)**: 外部 LLM API を呼ばず、内部アルゴリズムによりミリ秒単位で重要文（TL;DR 要約）`summary: string[]` を自動生成します。
 > 

@@ -666,7 +666,7 @@ export function generateOpenApiDocument() {
       },
       '/scrape': {
         post: {
-          summary: '単一 Web ページ / PDF スクレイピング (RAGチャンキング・出典抽出・読了時間・PII保護対応)',
+          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・RAGチャンキング・出典抽出・読了時間・PII保護対応)',
           requestBody: {
             content: {
               'application/json': {
@@ -692,7 +692,7 @@ export function generateOpenApiDocument() {
       },
       '/scrape/batch': {
         post: {
-          summary: '複数 URL 一括並行スクレイピング (最大20件)',
+          summary: '複数 URL 一括並行スクレイピング (最大20件・ドメインスロットリング・イベント/パンくず構造化抽出)',
           requestBody: {
             content: {
               'application/json': {
