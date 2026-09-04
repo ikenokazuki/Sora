@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import type {
+  EventItem,
   FieldEvidence,
   ImageItem,
   MediaInfo,
@@ -30,24 +31,40 @@ export const turndown = new TurndownService({
   strongDelimiter: '**',
 });
 
-// GFM Table サポート (HTML table -> Markdown table)
+// GFM Table サポート (HTML table -> Markdown table, colspan/rowspan グリッド正規化)
 turndown.addRule('gfmTable', {
   filter: 'table',
   replacement: function (_content, node: any) {
     const rows = Array.from((node as any).querySelectorAll('tr'));
     if (rows.length === 0) return '';
 
-    const matrix: string[][] = [];
-    for (const row of rows as any[]) {
-      const cells = Array.from((row as any).querySelectorAll('th, td')).map((c: any) =>
-        (c.textContent || '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim(),
-      );
-      if (cells.length > 0) matrix.push(cells);
-    }
-    if (matrix.length === 0) return '';
+    const grid: string[][] = [];
+    rows.forEach((row: any, rIdx: number) => {
+      let cIdx = 0;
+      const cells = Array.from((row as any).querySelectorAll('th, td'));
+      cells.forEach((cell: any) => {
+        while (grid[rIdx]?.[cIdx] !== undefined) {
+          cIdx++;
+        }
+        const text = (cell.textContent || '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim();
+        const colspan = parseInt(cell.getAttribute?.('colspan') || '1', 10) || 1;
+        const rowspan = parseInt(cell.getAttribute?.('rowspan') || '1', 10) || 1;
 
-    const maxCols = Math.max(...matrix.map((r) => r.length));
-    const normalizedMatrix = matrix.map((r) => {
+        for (let r = 0; r < rowspan; r++) {
+          const targetRow = rIdx + r;
+          if (!grid[targetRow]) grid[targetRow] = [];
+          for (let c = 0; c < colspan; c++) {
+            grid[targetRow][cIdx + c] = text;
+          }
+        }
+        cIdx += colspan;
+      });
+    });
+
+    if (grid.length === 0 || grid[0].length === 0) return '';
+
+    const maxCols = Math.max(...grid.map((r) => r.length));
+    const normalizedMatrix = grid.map((r) => {
       while (r.length < maxCols) r.push('');
       return r;
     });
@@ -269,7 +286,138 @@ export function extractWithSelectors(
   return result;
 }
 
-/** HTML から <table> データを抽出して構造化 JSON に変換 */
+/** Schema.org Event / MusicEvent 等のイベント・スケジュール構造化抽出 */
+export function extractEventsFromJsonLd(items: any[]): EventItem[] {
+  const events: EventItem[] = [];
+  const flat: any[] = [];
+  function flatten(obj: any, depth = 0) {
+    if (!obj || typeof obj !== 'object' || depth > 10) return;
+    if (Array.isArray(obj)) {
+      obj.forEach((i) => flatten(i, depth + 1));
+    } else {
+      flat.push(obj);
+      if (obj['@graph'] && Array.isArray(obj['@graph'])) {
+        obj['@graph'].forEach((i: any) => flatten(i, depth + 1));
+      }
+    }
+  }
+  items.forEach((i) => flatten(i, 0));
+
+  for (const item of flat) {
+    const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
+    if (/event/i.test(typeStr)) {
+      const name = item.name || item.headline;
+      if (!name || typeof name !== 'string') continue;
+
+      let locationStr: string | undefined;
+      if (typeof item.location === 'string') {
+        locationStr = item.location;
+      } else if (item.location && typeof item.location === 'object') {
+        locationStr = item.location.name || item.location.address?.streetAddress || item.location.address;
+        if (typeof locationStr === 'object') {
+          locationStr = JSON.stringify(locationStr);
+        }
+      }
+
+      let performerStr: string | undefined;
+      if (typeof item.performer === 'string') {
+        performerStr = item.performer;
+      } else if (Array.isArray(item.performer)) {
+        performerStr = item.performer
+          .map((p: any) => (typeof p === 'string' ? p : p.name))
+          .filter(Boolean)
+          .join(', ');
+      } else if (item.performer && typeof item.performer === 'object') {
+        performerStr = item.performer.name;
+      }
+
+      const offers = item.offers
+        ? {
+            price: item.offers.price !== undefined ? String(item.offers.price) : undefined,
+            priceCurrency: item.offers.priceCurrency,
+            url: item.offers.url,
+            availability: item.offers.availability
+              ? String(item.offers.availability).replace(/^https?:\/\/schema\.org\//i, '')
+              : undefined,
+          }
+        : undefined;
+
+      events.push({
+        name,
+        startDate: typeof item.startDate === 'string' ? item.startDate : undefined,
+        endDate: typeof item.endDate === 'string' ? item.endDate : undefined,
+        location: locationStr,
+        performer: performerStr,
+        description: typeof item.description === 'string' ? item.description : undefined,
+        url: typeof item.url === 'string' ? item.url : undefined,
+        eventStatus: item.eventStatus ? String(item.eventStatus).replace(/^https?:\/\/schema\.org\//i, '') : undefined,
+        eventAttendanceMode: item.eventAttendanceMode
+          ? String(item.eventAttendanceMode).replace(/^https?:\/\/schema\.org\//i, '')
+          : undefined,
+        offers,
+      });
+    }
+  }
+
+  return events;
+}
+
+/** パンくずリスト階層パスの抽出 (Schema.org BreadcrumbList / nav) */
+export function extractBreadcrumbs($: cheerio.CheerioAPI, jsonLdItems: any[]): string[] {
+  // 1. JSON-LD の BreadcrumbList
+  const flat: any[] = [];
+  function flatten(obj: any, depth = 0) {
+    if (!obj || typeof obj !== 'object' || depth > 10) return;
+    if (Array.isArray(obj)) {
+      obj.forEach((i) => flatten(i, depth + 1));
+    } else {
+      flat.push(obj);
+      if (obj['@graph'] && Array.isArray(obj['@graph'])) {
+        obj['@graph'].forEach((i: any) => flatten(i, depth + 1));
+      }
+    }
+  }
+  jsonLdItems.forEach((i) => flatten(i, 0));
+
+  for (const item of flat) {
+    const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
+    if (typeStr.toLowerCase().includes('breadcrumblist') && Array.isArray(item.itemListElement)) {
+      const sorted = [...item.itemListElement].sort((a, b) => (a.position || 0) - (b.position || 0));
+      const crumbs = sorted
+        .map((el) => el.name || el.item?.name || (typeof el.item === 'string' ? el.item : ''))
+        .filter(Boolean);
+      if (crumbs.length > 0) return crumbs;
+    }
+  }
+
+  // 2. HTML DOM からの抽出
+  const breadcrumbSelectors = [
+    'nav[aria-label*="breadcrumb" i]',
+    'nav[aria-label*="パンくず" i]',
+    '.breadcrumb',
+    '.breadcrumbs',
+    '[id*="breadcrumb" i]',
+    '[itemtype*="BreadcrumbList" i]',
+  ];
+
+  for (const sel of breadcrumbSelectors) {
+    const $nav = $(sel).first();
+    if ($nav.length > 0) {
+      const crumbs: string[] = [];
+      $nav.find('li, a, span[itemprop="name"]').each((_, el) => {
+        const text = $(el).clone().children('ul, ol, nav').remove().end().text().trim();
+        if (text && !['>', '/', '»', '＞', '|', '・'].includes(text) && !crumbs.includes(text)) {
+          crumbs.push(text);
+        }
+      });
+      if (crumbs.length > 1) return crumbs;
+    }
+  }
+
+  return [];
+}
+
+/** HTML から <table> データを抽出して構造化 JSON に変換 (colspan/rowspan グリッド正規化) */
 export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
   const tables: TableData[] = [];
   $('table').each((_, tableEl) => {
@@ -277,25 +425,43 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
     const id = $t.attr('id') || undefined;
     const caption = $t.find('caption').first().text().trim() || undefined;
 
-    const headers: string[] = [];
-    $t.find('tr').first().find('th, td').each((_, cell) => {
-      headers.push($(cell).text().replace(/\s+/g, ' ').trim());
+    const grid: string[][] = [];
+    $t.find('tr').each((rIdx, tr) => {
+      let cIdx = 0;
+      $(tr).find('th, td').each((_, cell) => {
+        while (grid[rIdx]?.[cIdx] !== undefined) {
+          cIdx++;
+        }
+        const $cell = $(cell);
+        const cellText = $cell.text().replace(/\s+/g, ' ').trim();
+        const colspan = parseInt($cell.attr('colspan') || '1', 10) || 1;
+        const rowspan = parseInt($cell.attr('rowspan') || '1', 10) || 1;
+
+        for (let r = 0; r < rowspan; r++) {
+          const targetRow = rIdx + r;
+          if (!grid[targetRow]) grid[targetRow] = [];
+          for (let c = 0; c < colspan; c++) {
+            grid[targetRow][cIdx + c] = cellText;
+          }
+        }
+        cIdx += colspan;
+      });
     });
 
-    if (headers.length === 0) return;
+    if (grid.length === 0 || grid[0].length === 0) return;
 
+    const headers = grid[0].map((h, i) => h || `col_${i + 1}`);
     const rows: Record<string, string>[] = [];
-    $t.find('tr').slice(1).each((_, tr) => {
+    for (let r = 1; r < grid.length; r++) {
       const rowObj: Record<string, string> = {};
       let hasData = false;
-      $(tr).find('td, th').each((cIdx, cell) => {
-        const colName = headers[cIdx] || `col_${cIdx + 1}`;
-        const cellText = $(cell).text().replace(/\s+/g, ' ').trim();
-        if (cellText) hasData = true;
-        rowObj[colName] = cellText;
+      headers.forEach((colName, c) => {
+        const val = grid[r][c] || '';
+        if (val) hasData = true;
+        rowObj[colName] = val;
       });
       if (hasData) rows.push(rowObj);
-    });
+    }
 
     if (rows.length > 0) {
       tables.push({ id, caption, headers, rows });
@@ -430,6 +596,8 @@ export function convertHtmlToMarkdown(
   images?: ImageItem[];
   jsonLd?: any[];
   tables?: TableData[];
+  events?: EventItem[];
+  breadcrumb?: string[];
   extracted?: Record<string, string | null>;
   media?: MediaInfo;
   html?: string;
@@ -457,6 +625,8 @@ export function convertHtmlToMarkdown(
 
   // JSON-LD からのメタデータ（Schema.org）抽出
   const jsonLdMeta = extractMetadataFromJsonLd(jsonLd);
+  const events = extractEventsFromJsonLd(jsonLd);
+  const breadcrumb = extractBreadcrumbs($, jsonLd);
 
   // 2. メタデータの抽出 (OGP / JSON-LD / Standard Meta)
   const title =
@@ -553,12 +723,32 @@ export function convertHtmlToMarkdown(
 
           const isMainImage = (ogImage && absUrl === ogImage) || images.length === 0;
 
+          // 重要画像（フライヤー・タイムテーブル・図表・記事メイン図）の自動スコアリング
+          const parentTag = $img.closest('article, main, figure, [role="main"]').length > 0;
+          const altLower = (alt || '').toLowerCase();
+          const titleLower = (imgTitle || '').toLowerCase();
+          const captionLower = (caption || '').toLowerCase();
+          const allText = `${altLower} ${titleLower} ${captionLower}`;
+
+          const isFlyerOrSchedule = /フライヤー|チラシ|タイムテーブル|タイテ|スケジュール|出演順|レギュレーション|特典会|告知|ポスター|flyer|timetable|schedule/i.test(allText);
+          const isDiagram = /図|チャート|グラフ|マップ|地図|系統図|間取り|フロー|diagram|chart|graph|map/i.test(allText);
+          const isImportant = isFlyerOrSchedule || isDiagram || (parentTag && Boolean(caption || (alt && alt.length >= 5)));
+
+          let imageType: 'flyer' | 'timetable' | 'diagram' | 'chart' | 'photo' | 'general' = 'general';
+          if (/タイムテーブル|タイテ|timetable|出演順/i.test(allText)) imageType = 'timetable';
+          else if (/フライヤー|チラシ|flyer|ポスター/i.test(allText)) imageType = 'flyer';
+          else if (/チャート|chart|グラフ|graph/i.test(allText)) imageType = 'chart';
+          else if (/図|diagram|マップ|地図|map/i.test(allText)) imageType = 'diagram';
+          else if (isImportant) imageType = 'photo';
+
           images.push({
             url: absUrl,
             alt,
             title: imgTitle,
             caption,
             isMainImage: isMainImage ? true : undefined,
+            isImportant: isImportant ? true : undefined,
+            imageType,
             width: !isNaN(width as number) ? width : undefined,
             height: !isNaN(height as number) ? height : undefined,
           });
@@ -666,8 +856,26 @@ export function convertHtmlToMarkdown(
   if (sku) frontmatterLines.push(`sku: "${sku}"`);
   const header = frontmatterLines.length > 0 ? `---\n${frontmatterLines.join('\n')}\n---\n\n` : '';
 
+  // パンくず階層コンテキスト & イベント概要ブロック
+  const contextPrefixLines: string[] = [];
+  if (breadcrumb.length > 0) {
+    contextPrefixLines.push(`> 📍 **階層**: ${breadcrumb.join(' > ')}`);
+  }
+  if (events.length > 0) {
+    const ev = events[0];
+    const details = [
+      ev.startDate ? `日時: ${ev.startDate}` : '',
+      ev.location ? `会場: ${ev.location}` : '',
+      ev.performer ? `出演: ${ev.performer}` : '',
+    ]
+      .filter(Boolean)
+      .join(' | ');
+    contextPrefixLines.push(`> 📅 **イベント情報**: ${ev.name}${details ? ' (' + details + ')' : ''}`);
+  }
+  const contextPrefix = contextPrefixLines.length > 0 ? `${contextPrefixLines.join('\n')}\n\n` : '';
+
   // 11. HTML -> Markdown 変換 & クレンジング
-  let markdown = header + turndown.turndown(contentHtml);
+  let markdown = header + contextPrefix + turndown.turndown(contentHtml);
   markdown = cleanMarkdownTokens(markdown, keepDataImages);
 
   if (stripLinks) {
@@ -759,6 +967,8 @@ export function convertHtmlToMarkdown(
     images: images.length > 0 ? images : undefined,
     jsonLd: jsonLd.length > 0 ? jsonLd : undefined,
     tables: tables.length > 0 ? tables : undefined,
+    events: events.length > 0 ? events : undefined,
+    breadcrumb: breadcrumb.length > 0 ? breadcrumb : undefined,
     extracted,
     media,
     html: rawHtml,

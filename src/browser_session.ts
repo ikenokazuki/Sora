@@ -422,11 +422,13 @@ export async function handleBrowserSessionAction(
         browserInstance = browserRes.browser;
         isDedicated = browserRes.isDedicated;
         // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
-        // BrowserContextを使う。別セッション(別ユーザー)間でCookieが漏れないようにする
-        // ための分離（scraper.ts の fetchWithStealthBrowser と同じ対策、実測で漏洩を確認済み）。
+        const needScreenshot = Boolean(
+          options.extract?.screenshot ||
+          options.actions?.some((a) => a.type === 'screenshot')
+        );
         context = await browserInstance.createBrowserContext();
         page = await context.newPage();
-        await setupPageSecurity(page);
+        await setupPageSecurity(page, !needScreenshot);
 
         // ダイアログ (alert / confirm / prompt) の自動承認
         page.on('dialog', async (dialog) => {
@@ -457,12 +459,16 @@ export async function handleBrowserSessionAction(
     await browserSemaphore.acquire();
     recordBrowserUsage();
     try {
+      const needScreenshot = Boolean(
+        options.extract?.screenshot ||
+        options.actions?.some((a) => a.type === 'screenshot')
+      );
       const browserRes = await getBrowser();
       browserInstance = browserRes.browser;
       isDedicated = browserRes.isDedicated;
       context = await browserInstance.createBrowserContext();
       page = await context.newPage();
-      await setupPageSecurity(page);
+      await setupPageSecurity(page, !needScreenshot);
 
       // ダイアログ (alert / confirm / prompt) の自動承認
       page.on('dialog', async (dialog) => {
