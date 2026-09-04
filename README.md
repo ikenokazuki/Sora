@@ -268,11 +268,12 @@ Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 25 ツール)**:
+- **動的有効化 (・ DEFERRED 26 ツール)**:
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
+  - `predict_hts_code`: 米国 USITC 公式 HTS/HS コード自動推測・ヒアリング誘導
   - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
   - `check_fda_regulated`: 米国 FDA 規制判定
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
@@ -289,16 +290,17 @@ Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）
 │ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
 │ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ★get_weather    │  warnings   │・watch_check  │・search_diet_│  compli-  │
 │ ★search_tools   │    セッション保持)│ ★search_chie-    │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
-│ ・scrape_batch  │                   │   bukuro         │ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・verify_  │
+│ ・scrape_batch  │                   │   bukuro         │ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・predict_ │
 │ ・map_site      │                   │ ★search_realtime │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
-│ ・crawl_site    │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・check_   │
-│                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  fda_check│
+│ ・crawl_site    │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
+│                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
 │                 │                   │   keywords       │                 │             │・search_artist│・inspect_    │・check_   │
-│                 │                   │                  │                 │             │・search_music │  image       │  cpsc_    │
-│                 │                   │                  │                 │             │               │ (マルチモ    │  check    │
-│                 │                   │                  │                 │             │               │  ーダル視覚) │           │
+│                 │                   │                  │                 │             │・search_music │  image       │  fda_regu-│
+│                 │                   │                  │                 │             │               │ (マルチモ    │  lated    │
+│                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
+│                 │                   │                  │                 │             │               │              │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 12ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 25ツール)
+★ = 初期常時有効 (CORE: 12ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 26ツール)
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -1266,6 +1268,74 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ---
 
+### 3.16 国土地理院 標高・ジオコーディング (`POST /geo/elevation` / `GET /geo/elevation`)
+国土地理院公式オープンデータと連携し、住所・地名から緯度経度を自動解決し、その地点の海抜標高（m）をミリ精度で返します。
+
+- **リクエスト (POST)**:
+  ```json
+  {
+    "address": "東京都千代田区永田町1-7-1"
+  }
+  ```
+- **リクエスト (GET)**: `GET /geo/elevation?address=富士山頂` または `GET /geo/elevation?lat=35.6812&lon=139.7671`
+- **レスポンス例**:
+  ```json
+  {
+    "query": "東京都千代田区永田町1-7-1",
+    "address": "東京都千代田区永田町1-7-1",
+    "matchedTitle": "東京都千代田区永田町一丁目",
+    "lat": 35.6797,
+    "lon": 139.7448,
+    "elevationMeters": 24.4,
+    "dataAccuracy": "5m（レーザ）",
+    "formatted": "東京都千代田区永田町一丁目 の標高 (海抜): 24.4m (精度: 5m（レーザ）)",
+    "source": "gsi"
+  }
+  ```
+
+---
+
+### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
+羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等の主要空港における国内線・国際線、出発・到着便のリアルタイム運航ステータスを取得します。
+
+- **リクエスト (POST)**:
+  ```json
+  {
+    "airport": "羽田",
+    "type": "departure",
+    "category": "domestic",
+    "flightNumber": "ANA2421"
+  }
+  ```
+- **リクエスト (GET)**: `GET /traffic/flight/羽田?type=departure&category=domestic`
+- **レスポンス例**:
+  ```json
+  {
+    "airportName": "東京国際空港(羽田空港)",
+    "airportCode": "HND",
+    "type": "departure",
+    "category": "domestic",
+    "updatedAt": "8月26日 16時10分 時点",
+    "count": 1,
+    "hasDelaysOrCancellations": true,
+    "summary": "東京国際空港(羽田空港) 国内線 出発: 対象便数 1便。 (欠航: 1便, 遅延: 0便)",
+    "flights": [
+      {
+        "scheduledTime": "06:10",
+        "airline": "全日本空輸",
+        "flightNumber": "ANA2421",
+        "isCodeshare": true,
+        "destinationOrOrigin": "那覇",
+        "status": "欠航",
+        "detail": "定刻06:10発 ANA2421便(羽田→那覇) は欠航です。"
+      }
+    ],
+    "source": "yahoo-transit"
+  }
+  ```
+
+---
+
 ### 3.18 米国CPSC適合証明書 eFiling完全義務化 & ACE免責判定 (`POST /trade/cpsc-check`)
 HTSコードと製品情報から、米国CPSC管轄品目の適合証明書（GCC/CCC）発行要否、および2026年7月8日より完全義務化された米国税関（CBP）ACEシステムへの電子申告（eFiling: De Minimis免責除外なし）義務を判定します。対象年齢（`targetAge`）や素材が未確定の場合は先回りの推測を避け、`clarifyingQuestions`（確認質問）と `impactExplanation`（実務的影響）を返却します。非規制対象品や類似コード品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`）を案内します。
 
@@ -1399,74 +1469,10 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 
 ---
 
-### 3.16 国土地理院 標高・ジオコーディング (`POST /geo/elevation` / `GET /geo/elevation`)
-国土地理院公式オープンデータと連携し、住所・地名から緯度経度を自動解決し、その地点の海抜標高（m）をミリ精度で返します。
+### 3.22 商品統合コンプライアンス一括判定 (`POST /trade/compliance`)
+商品ページのURL、または商品名・説明・素材・カテゴリから、HTS自動推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。
 
-- **リクエスト (POST)**:
-  ```json
-  {
-    "address": "東京都千代田区永田町1-7-1"
-  }
-  ```
-- **リクエスト (GET)**: `GET /geo/elevation?address=富士山頂` または `GET /geo/elevation?lat=35.6812&lon=139.7671`
-- **レスポンス例**:
-  ```json
-  {
-    "query": "東京都千代田区永田町1-7-1",
-    "address": "東京都千代田区永田町1-7-1",
-    "matchedTitle": "東京都千代田区永田町一丁目",
-    "lat": 35.6797,
-    "lon": 139.7448,
-    "elevationMeters": 24.4,
-    "dataAccuracy": "5m（レーザ）",
-    "formatted": "東京都千代田区永田町一丁目 の標高 (海抜): 24.4m (精度: 5m（レーザ）)",
-    "source": "gsi"
-  }
-  ```
-
----
-
-### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
-羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等の主要空港における国内線・国際線、出発・到着便のリアルタイム運航ステータスを取得します。
-
-- **リクエスト (POST)**:
-  ```json
-  {
-    "airport": "羽田",
-    "type": "departure",
-    "category": "domestic",
-    "flightNumber": "ANA2421"
-  }
-  ```
-- **リクエスト (GET)**: `GET /traffic/flight/羽田?type=departure&category=domestic`
-- **レスポンス例**:
-  ```json
-  {
-    "airportName": "東京国際空港(羽田空港)",
-    "airportCode": "HND",
-    "type": "departure",
-    "category": "domestic",
-    "updatedAt": "8月26日 16時10分 時点",
-    "count": 1,
-    "hasDelaysOrCancellations": true,
-    "summary": "東京国際空港(羽田空港) 国内線 出発: 対象便数 1便。 (欠航: 1便, 遅延: 0便)",
-    "flights": [
-      {
-        "scheduledTime": "06:10",
-        "airline": "全日本空輸",
-        "flightNumber": "ANA2421",
-        "isCodeshare": true,
-        "destinationOrOrigin": "那覇",
-        "status": "欠航",
-        "detail": "定刻06:10発 ANA2421便(羽田→那覇) は欠航です。"
-      }
-    ],
-    "source": "yahoo-transit"
-  }
-  ```
-
-- **商品統合コンプライアンス一括判定 (`POST /trade/compliance`)**:
-  商品ページのURL、または商品名・説明・素材・カテゴリから、HTS実在検証（関税率取得）、FDA規制判定、CPSC適合証明書（GCC/CCC）およびeFiling義務化判定を一括自動実行します。
+- **リクエスト**:
   ```bash
   curl -X POST http://localhost:3016/trade/compliance \
     -H "Content-Type: application/json" \
@@ -1475,7 +1481,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
       "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint."
     }'
   ```
-  **レスポンス例**:
+- **レスポンス例**:
   ```json
   {
     "product": {
@@ -1531,7 +1537,9 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   }
   ```
 
-### 3.22 画像取得 & マルチモーダル視覚入力 (`POST /media/inspect-image`)
+---
+
+### 3.23 画像取得 & マルチモーダル視覚入力 (`POST /media/inspect-image`)
 WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが視覚的に直接読み取れる形式（MCP `ImageContent` / Base64）に変換して返却します。タイムテーブル、告知チラシ、図表、領収書、スクリーンショットなどの画像内詳細情報をマルチモーダルAIが100%の精度で解読可能にします。
 
 - **リクエスト**:

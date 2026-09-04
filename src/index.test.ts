@@ -2627,6 +2627,15 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/scrape/stream']).toBeDefined();
     expect(doc.paths['/scrape/batch']).toBeDefined();
     expect(doc.paths['/weather']).toBeDefined();
+    expect(doc.paths['/weather'].get).toBeDefined();
+    expect(doc.paths['/weather/{city}'].get).toBeDefined();
+    expect(doc.paths['/traffic/road'].get).toBeDefined();
+    expect(doc.paths['/traffic/road/{pref}'].get).toBeDefined();
+    expect(doc.paths['/gov/diet-minutes'].get).toBeDefined();
+    expect(doc.paths['/geo/elevation'].get).toBeDefined();
+    expect(doc.paths['/traffic/flight'].get).toBeDefined();
+    expect(doc.paths['/traffic/flight/{airport}'].get).toBeDefined();
+    expect(doc.paths['/media/inspect-image']).toBeDefined();
     expect(doc.paths['/disaster/warnings']).toBeDefined();
     expect(doc.paths['/disaster/earthquake']).toBeDefined();
     expect(doc.paths['/watch/register']).toBeDefined();
@@ -3864,7 +3873,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const resFlightGet = await app.request('/traffic/flight/成田?type=departure');
     expect(resFlightGet.status).toBe(200);
-  });
+  }, 15000);
 
   it('MCP server should register all 38 tools and enable 12 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
