@@ -1,9 +1,36 @@
 import { URL } from 'url';
-import { createSession, type Session, type BrowserProfile, type Response } from 'wreq-js';
 import type { CookieParam } from 'puppeteer-core';
 import type { PersistedCookie } from './db.js';
 import { dbGetDomainCookies, dbSaveDomainCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
+
+// ==========================================
+// 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
+// ==========================================
+type WreqModule = typeof import('wreq-js');
+export type BrowserProfile = import('wreq-js').BrowserProfile;
+
+let wreqModule: WreqModule | null = null;
+let wreqLoadAttempted = false;
+
+async function getWreqModule(): Promise<WreqModule | null> {
+  if (wreqLoadAttempted) return wreqModule;
+  wreqLoadAttempted = true;
+  try {
+    wreqModule = await import('wreq-js');
+  } catch (err: any) {
+    console.warn(`[http_fetcher] wreq-js native module unavailable (${err?.message || err}). Gracefully falling back to native fetch.`);
+    wreqModule = null;
+  }
+  return wreqModule;
+}
+
+export interface UniversalHttpSession {
+  fetch(url: string, init?: any): Promise<any>;
+  setCookie(name: string, value: string, urlOrDomain?: string | URL): void;
+  getAllCookies(): Array<{ name: string; value: string; domain?: string }>;
+  close(): Promise<void>;
+}
 
 // ==========================================
 // 1. ドメイン単位の適応型レート制限 & Jitter
@@ -76,10 +103,49 @@ const HTTP_SESSION_TTL_MS = 5 * 60 * 1000; // 非アクティブ5分でクロー
 const MAX_HTTP_SESSIONS = 50; // 同時保持上限
 
 interface PooledHttpSession {
-  session: Session;
+  session: UniversalHttpSession;
   domain: string;
   lastUsed: number;
   timer: ReturnType<typeof setTimeout>;
+}
+
+class NativeFetchSession implements UniversalHttpSession {
+  private cookies = new Map<string, string>();
+
+  setCookie(name: string, value: string, _urlOrDomain?: string | URL) {
+    this.cookies.set(name, value);
+  }
+
+  getAllCookies() {
+    return Array.from(this.cookies.entries()).map(([name, value]) => ({ name, value }));
+  }
+
+  async close() {
+    this.cookies.clear();
+  }
+
+  async fetch(url: string, init: any = {}) {
+    const headers = new Headers(init.headers || {});
+    if (this.cookies.size > 0 && !headers.has('Cookie')) {
+      const cookieStr = Array.from(this.cookies.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+      headers.set('Cookie', cookieStr);
+    }
+    const res = await fetch(url, {
+      ...init,
+      headers,
+    });
+
+    // Set-Cookie ヘッダーの収集
+    const setCookieHeaders = (res.headers as any).getSetCookie?.() || [];
+    for (const sc of setCookieHeaders) {
+      const parts = sc.split(';')[0].split('=');
+      if (parts.length >= 2) {
+        this.cookies.set(parts[0].trim(), parts.slice(1).join('=').trim());
+      }
+    }
+
+    return res;
+  }
 }
 
 const httpSessionPool = new Map<string, PooledHttpSession>();
@@ -128,7 +194,7 @@ export async function getOrCreateHttpSession(
   domain: string,
   browser: BrowserProfile,
   proxyUrl?: string,
-): Promise<Session> {
+): Promise<UniversalHttpSession> {
   const existing = httpSessionPool.get(domain);
   if (existing) {
     refreshHttpSessionTimer(existing);
@@ -137,11 +203,18 @@ export async function getOrCreateHttpSession(
 
   await evictOldestHttpSessionIfNeeded();
 
-  const session = await createSession({
-    browser,
-    os: EMULATION_OS,
-    ...(proxyUrl ? { proxy: proxyUrl } : {}),
-  });
+  const mod = await getWreqModule();
+  let session: UniversalHttpSession;
+
+  if (mod) {
+    session = await mod.createSession({
+      browser,
+      os: EMULATION_OS,
+      ...(proxyUrl ? { proxy: proxyUrl } : {}),
+    });
+  } else {
+    session = new NativeFetchSession();
+  }
 
   const savedCookies = dbGetDomainCookies(domain);
   if (savedCookies && savedCookies.length > 0) {
