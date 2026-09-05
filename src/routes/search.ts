@@ -9,6 +9,7 @@ import {
   integratedSearch,
   fetchRealtimeTrends,
   normalizeRealtimeItem,
+  searchYahooRealtime,
   searchYahooImage,
   searchYahooVideo,
   searchYahooNews,
@@ -47,28 +48,24 @@ searchRoutes.post('/search/realtime', async (c) => {
       if (cached) return c.json(cached);
     }
 
-    const mcpRes = await callYahooMcp('yahoo_realtime_search', {
+    const realtimeRes = await searchYahooRealtime({
       query,
       sort,
       ...(limit ? { limit } : {}),
       ...(page ? { page } : {}),
     });
-    const content = mcpRes?.content?.[0]?.text || '';
-    let parsedData = content;
-    try {
-      const json = JSON.parse(content);
-      if (json && Array.isArray(json.items)) {
-        json.items = json.items.map((item: any) => normalizeRealtimeItem(item));
-      }
-      parsedData = json;
-    } catch {}
 
     const responseData = {
       query,
+      effectiveQuery: realtimeRes.effectiveQuery,
+      isFallback: realtimeRes.isFallback,
       sort,
       source: 'x',
       type: 'realtime',
-      data: parsedData,
+      data: {
+        count: realtimeRes.count,
+        items: realtimeRes.items,
+      },
       cached: false,
     };
 

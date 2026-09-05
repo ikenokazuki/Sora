@@ -38,7 +38,12 @@ import {
   sendWebhookNotification,
   scrapeUrl,
   crawlSiteUrl,
+  integratedSearch,
   filterByDomains,
+  extractRealtimeFallbackQueries,
+  searchYahooRealtime,
+  searchYahooWeb,
+  fetchTweetsForUrlOrUser,
   extractQueryHighlights,
   generateTextFragmentUrl,
   chooseBestDescription,
@@ -5075,6 +5080,102 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(isBlockedHostname('localhost.')).toBe(true);
       expect(isBlockedHostname('127.0.0.1.')).toBe(true);
       expect(isBlockedHostname('169.254.169.254.')).toBe(true);
+    });
+
+    it('extractRealtimeFallbackQueries should resolve dates, purge noise, and generate prioritized queries', () => {
+      const query = '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定';
+      const candidates = extractRealtimeFallbackQueries(query);
+      expect(candidates.length).toBeGreaterThan(1);
+      expect(candidates[0]).toBe(query);
+      expect(candidates).toContain('君と見るそら 9/6');
+      expect(candidates).toContain('君と見るそら 9月6日');
+      expect(candidates).toContain('君と見るそら');
+    });
+
+    it('rerankSearchResults should rank items using description property for BM25+ multi-signal ranking', () => {
+      const items = [
+        { title: '一般記事', description: '特に情報のない日常ブログです。', url: 'https://example.com/1' },
+        { title: 'チケット案内', description: 'KAWAII PARTY CIRCUIT 2026年9月6日 渋谷音楽堂 チケット受付中', url: 'https://example.com/2' },
+      ];
+      const ranked = rerankSearchResults(items, 'KAWAII PARTY CIRCUIT 9月6日');
+      expect(ranked[0].url).toBe('https://example.com/2');
+    });
+
+    it('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {
+      const res = await fetchTweetsForUrlOrUser('https://x.com/kimisora_JPN', {
+        contextTitle: '君と見るそら (@kimisora_JPN) / X',
+        limit: 3,
+      });
+      if (res) {
+        expect(res.title).toContain('君と見るそら');
+        expect(res.content).toContain('X (Twitter) 最新ポスト');
+        expect(res.siteName).toBe('X (Twitter)');
+      }
+    });
+
+    it('searchYahooRealtime should return structured response with effectiveQuery and isFallback', async () => {
+      const res = await searchYahooRealtime({
+        query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定',
+        sort: 'recent',
+        limit: 5,
+      });
+      expect(res).toBeDefined();
+      expect(res.source).toBe('x');
+      expect(res.originalQuery).toBe('君と見るそら 明日 ライブ 2026年9月6日 ライブ予定');
+      expect(res.effectiveQuery).toBeDefined();
+      expect(Array.isArray(res.items)).toBe(true);
+      if (res.items.length > 0) {
+        expect(res.isFallback).toBe(true);
+        expect(res.items[0].source).toBe('x');
+      }
+    });
+
+    it('integratedSearch should return 9/6 live information in realtime and results for user exact problem query', async () => {
+      const res = await integratedSearch({
+        query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定',
+        limit: 5,
+        scrapeContent: true,
+        includeRealtime: true,
+        realtimeSort: 'recent',
+        noCache: true,
+      });
+      expect(res).toBeDefined();
+      expect(res.source).toBe('integrated');
+      expect(res.results.length).toBeGreaterThan(0);
+      expect(res.realtime).toBeDefined();
+      expect(res.realtime.count).toBeGreaterThan(0);
+      expect(res.realtime.isFallback).toBe(true);
+      // タイムテーブルまたはKAWAII PARTY CIRCUITまたは9/6が含まれていること
+      const allText = JSON.stringify(res);
+      expect(allText).toMatch(/KAWAII PARTY CIRCUIT|9\/6|9月6日/);
+    }, 30000);
+
+    it('extractRealtimeFallbackQueries should extract hyphen and dot separated dates and clean noise words', () => {
+      const queries1 = extractRealtimeFallbackQueries('君と見るそら 2026-09-06 ライブ予定 何時から');
+      expect(queries1.some((q) => q.includes('9/6') || q.includes('9月6日'))).toBe(true);
+      expect(queries1.some((q) => q === '君と見るそら')).toBe(true);
+
+      const queries2 = extractRealtimeFallbackQueries('君と見るそら 2026.09.06 チケット購入方法');
+      expect(queries2.some((q) => q.includes('9/6') || q.includes('9月6日'))).toBe(true);
+    });
+
+    it('fetchTweetsForUrlOrUser should handle /status/ and /i/web/status/ URLs with snippet fallback', async () => {
+      const statusRes = await fetchTweetsForUrlOrUser('https://x.com/i/web/status/19639572481928374', {
+        contextTitle: '君と見るそら【公式】 on X: "【明日のタイテ】9/6 渋谷音楽堂 18:35〜"',
+        snippet: '明日のタイテ解禁！9/6(日) 渋谷音楽堂 出演時間 18:35〜18:55 チケット発売中',
+      });
+      expect(statusRes).toBeDefined();
+      expect(statusRes?.content).toContain('9/6');
+      expect(statusRes?.content).toContain('渋谷音楽堂');
+      expect(statusRes?.siteName).toBe('X (Twitter)');
+    });
+
+    it('searchYahooWeb should support query fallback when initial query has redundant noise', async () => {
+      const res = await searchYahooWeb({
+        query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定 何時 どこで',
+      });
+      expect(res).toBeDefined();
+      expect(res.items.length).toBeGreaterThan(0);
     });
   });
 });

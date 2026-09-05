@@ -828,7 +828,7 @@ export function filterByDomains(
 }
 
 /** 検索結果アイテムの BM25+ 多信号リランキング (Title, Snippet, Exact Match, Domain Trust) */
-export function rerankSearchResults<T extends { title?: string; snippet?: string; url?: string; content?: string }>(
+export function rerankSearchResults<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
   items: T[],
   query: string,
 ): T[] {
@@ -855,7 +855,7 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
 
   const scored = items.map((item, originalIndex) => {
     const title = (item.title || '').toLowerCase();
-    const snippet = (item.snippet || item.content || '').toLowerCase();
+    const snippet = (item.snippet || item.description || item.content || '').toLowerCase();
     const urlStr = (item.url || '').toLowerCase();
 
     let score = 0;
