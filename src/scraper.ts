@@ -28,6 +28,7 @@ import {
   generateTextFragmentUrl,
   highlightQueryMatchesInMarkdown,
   maskPiiInText,
+  safeTruncateMarkdown,
   sendWebhookNotification,
   validateExtractedLinks,
 } from './enrichment.js';
@@ -37,6 +38,8 @@ import {
   callYahooMcp,
   searchYahooWeb,
   normalizeRealtimeItem,
+  searchYahooRealtime,
+  fetchTweetsForUrlOrUser,
 } from './services/yahoo.js';
 
 // ==========================================
@@ -299,6 +302,8 @@ export async function scrapeUrl(options: {
   noCache?: boolean;
   timeoutMs?: number;
   keepDataImages?: boolean;
+  contextTitle?: string;
+  snippet?: string;
   onProgress?: (event: { stage: 'start' | 'fetch' | 'render' | 'enrich' | 'done'; message: string; data?: any }) => void;
 }): Promise<ScrapeResult> {
   const url = options.url;
@@ -335,6 +340,47 @@ export async function scrapeUrl(options: {
     while (attempt <= retries) {
       try {
         let result: ScrapeResult;
+
+        // X (Twitter) アカウントURL/ポストURLのインテリジェント・バイパス (未ログイン遮断回避)
+        if (/https?:\/\/(?:x\.com|twitter\.com|mobile\.twitter\.com)\/[a-zA-Z0-9_]+/i.test(url)) {
+          const tweetRes = await fetchTweetsForUrlOrUser(url, { contextTitle: options.contextTitle, snippet: options.snippet });
+          if (tweetRes) {
+            const stats = calculateContentStats(tweetRes.content);
+            const truncatedContent = safeTruncateMarkdown(tweetRes.content, maxChars);
+            const baseResult: ScrapeResult = {
+              url,
+              title: tweetRes.title,
+              content: truncatedContent,
+              isTruncated: tweetRes.content.length > maxChars,
+              contentType: 'text/markdown',
+              source: 'web',
+              links: [],
+              characterCount: stats.characterCount,
+              wordCount: stats.wordCount,
+              readingTimeMin: stats.readingTimeMin,
+              estimatedTokens: estimateTokens(tweetRes.content),
+              author: tweetRes.author,
+              publishedTime: tweetRes.publishedTime,
+              siteName: tweetRes.siteName,
+            };
+            result = await finalizeScrapeResult(baseResult, {
+              query: options.query,
+              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
+              shouldOnlyHighlights: options.onlyHighlights ?? false,
+              shouldExtractSummary: options.extractSummary ?? false,
+              shouldExtractCitations: options.extractCitations ?? false,
+              shouldChunkMarkdown: options.chunkMarkdown ?? false,
+              chunkSize: options.chunkSize ?? 1000,
+              shouldValidateLinks: options.validateLinks ?? false,
+              shouldFormatAsPrompt: options.formatAsPrompt ?? false,
+              shouldHighlightMatches: options.highlightMatches ?? false,
+              shouldMaskPii: options.maskPii ?? false,
+              webhookUrl: options.webhookUrl,
+            });
+            if (!options.noCache) setToCache(cacheKey, result);
+            return result;
+          }
+        }
 
         const isForcedBrowser = options.mode === 'browser' || options.renderJs === true;
         const isFastMode = options.mode === 'fast' || options.fastOnly === true;
@@ -1032,7 +1078,7 @@ export async function integratedSearch(options: {
   const [webParsedRes, realtimeMcpRes] = await Promise.all([
     searchYahooWeb({ query, includeDomains, excludeDomains, updated }),
     includeRealtime
-      ? callYahooMcp('yahoo_realtime_search', { query, sort: realtimeSort }).catch(() => null)
+      ? searchYahooRealtime({ query, sort: realtimeSort }).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -1049,19 +1095,22 @@ export async function integratedSearch(options: {
   const topItems = searchResults.slice(0, limit);
 
   let realtimeItems: any[] = [];
+  let realtimeMeta: any = null;
   if (realtimeMcpRes) {
-    const rtContent = realtimeMcpRes?.content?.[0]?.text || '[]';
-    try {
-      const parsed = JSON.parse(rtContent);
-      const rawList = Array.isArray(parsed) ? parsed : (parsed?.items || parsed?.results || []);
-      let mapped = rawList.map((item: any) => normalizeRealtimeItem(item));
-      if (dedup && mapped.length > 0) {
-        mapped = dedupSearchResults(mapped, (i: any) => `${i.text || i.content || ''}`);
-      }
-      realtimeItems = mapped;
-    } catch {
-      realtimeItems = [];
+    const rawList = Array.isArray(realtimeMcpRes.items) ? realtimeMcpRes.items : [];
+    let mapped = rawList.map((item: any) => normalizeRealtimeItem(item));
+    if (dedup && mapped.length > 0) {
+      mapped = dedupSearchResults(mapped, (i: any) => `${i.text || i.content || ''}`);
     }
+    realtimeItems = mapped;
+    realtimeMeta = {
+      source: 'x',
+      sort: realtimeSort,
+      count: realtimeItems.length,
+      effectiveQuery: realtimeMcpRes.effectiveQuery || query,
+      isFallback: realtimeMcpRes.isFallback || false,
+      items: realtimeItems,
+    };
   }
 
   let enrichedResults = topItems;
@@ -1070,9 +1119,12 @@ export async function integratedSearch(options: {
       topItems.map(async (item: any) => {
         const itemUrl = item.url || item.link;
         if (!itemUrl) return item;
+        const itemSnippet = item.snippet || item.description || '';
         try {
           const scrape = await scrapeUrl({
             url: itemUrl,
+            contextTitle: item.title,
+            snippet: itemSnippet,
             maxChars,
             timeoutMs: 12000,
             query,
@@ -1104,7 +1156,14 @@ export async function integratedSearch(options: {
           }
 
           if (formats.includes('markdown')) {
-            enrichedItem.markdown = scrape.content;
+            if (scrape.content && scrape.content.trim().length >= 50) {
+              enrichedItem.markdown = scrape.content;
+            } else if (itemSnippet) {
+              enrichedItem.markdown = `# ${item.title || 'Web Search Result'}\n\nURL: ${itemUrl}\n\n${itemSnippet}`;
+              enrichedItem.isSnippetFallback = true;
+            } else {
+              enrichedItem.markdown = scrape.content || '';
+            }
           }
           if (formats.includes('html')) {
             enrichedItem.html = scrape.html ?? scrape.rawHtml;
@@ -1127,9 +1186,13 @@ export async function integratedSearch(options: {
 
           return enrichedItem;
         } catch (e: any) {
+          const fallbackMd = itemSnippet
+            ? `# ${item.title || 'Web Search Result'}\n\nURL: ${itemUrl}\n\n${itemSnippet}`
+            : undefined;
           return {
             ...item,
             scrapeError: e?.message,
+            ...(formats.includes('markdown') && fallbackMd ? { markdown: fallbackMd, isSnippetFallback: true } : {}),
           };
         }
       }),
@@ -1144,12 +1207,14 @@ export async function integratedSearch(options: {
     cached: false,
   };
 
-  if (includeRealtime && realtimeItems.length > 0) {
-    finalResponse.realtime = {
+  if (includeRealtime) {
+    finalResponse.realtime = realtimeMeta || {
       source: 'x',
       sort: realtimeSort,
-      count: realtimeItems.length,
-      items: realtimeItems,
+      count: 0,
+      effectiveQuery: query,
+      isFallback: false,
+      items: [],
     };
   }
 

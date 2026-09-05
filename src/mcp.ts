@@ -12,6 +12,7 @@ import {
   crawlSiteUrl,
   fetchRealtimeTrends,
   normalizeRealtimeItem,
+  searchYahooRealtime,
   filterByDomains,
   searchYahooImage,
   searchYahooVideo,
@@ -792,31 +793,23 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async ({ query, sort, limit, page }) => {
         try {
-          const result = await callYahooMcp('yahoo_realtime_search', {
+          const result = await searchYahooRealtime({
             query,
             sort: sort || 'recent',
             ...(limit ? { limit } : {}),
             ...(page ? { page } : {}),
           });
-          const content = result?.content?.[0]?.text || '';
-          let parsedData = content;
-          try {
-            const json = JSON.parse(content);
-            if (json && Array.isArray(json.items)) {
-              json.items = json.items.map((item: any) => normalizeRealtimeItem(item));
-            }
-            parsedData = json;
-          } catch {}
 
-          let responsePayload: any = parsedData;
-          if (parsedData && typeof parsedData === 'object') {
-            responsePayload = {
-              source: 'x',
-              query,
-              sort: sort || 'recent',
-              ...(Array.isArray(parsedData) ? { items: parsedData } : parsedData),
-            };
-          }
+          const responsePayload = {
+            source: 'x',
+            query,
+            effectiveQuery: result.effectiveQuery,
+            isFallback: result.isFallback,
+            sort: sort || 'recent',
+            count: result.count,
+            items: result.items,
+          };
+
           return {
             content: [{ type: 'text', text: JSON.stringify(responsePayload, null, 2) }],
           };
