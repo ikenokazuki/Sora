@@ -19,6 +19,7 @@ import {
   annotateTextWithTemporalAnchors,
   type TemporalAnchor,
 } from './extractor/temporal_anchor.js';
+import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 export {
   normalizeSafeNumeric,
   assignBlockProvenance,
@@ -690,16 +691,16 @@ export function extractQueryHighlightDetails(
   };
 }
 
-/** クエリ関連ハイライト抽出 (後方互換用ラッパー) */
+/** クエリ関連ハイライト抽出 (ρSelect への一本化ラッパー) */
 export function extractQueryHighlights(
   content: string,
   query: string,
   maxHighlights = 3,
-  options?: QueryHighlightDetailsOptions,
+  _options?: QueryHighlightDetailsOptions,
 ): string[] {
-  const result = extractQueryHighlightDetails(content, query, {
-    ...options,
+  const result = extractQueryHighlightsRhoSelect(content, query, {
     maxHighlights,
+    overheadTokens: 96,
   });
   return result.highlights;
 }

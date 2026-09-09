@@ -118,6 +118,28 @@ export interface HighlightItem {
   temporalAnchors?: TemporalAnchor[];
 }
 
+/** ρSelect (rho-select) 実行時診断メタデータ */
+export interface RhoSelectDiagnostics {
+  candidateCount: number;
+  compactCandidateCount: number;
+  termCount: number;
+  evidenceLevels: number;
+  featureCount: number;
+  stateCount: number;
+  frontierCount: number;
+  selectedCount: number;
+  selectedTokens: number;
+  utility: number;
+  density: number;
+  lambda: number;
+  dinkelbachIterations: number;
+  directOptimumDensity: number;
+  exactAgreement: boolean;
+}
+
+/** 後方互換用エイリアス */
+export type RhoBm25Diagnostics = RhoSelectDiagnostics;
+
 /** 決定論的証拠充足性観測量 (Evidence Diagnostics) - Soraは意味判定を行わず客観的観測値のみ返却 */
 export interface EvidenceDiagnostics {
   queryCoverage: number;       // クエリ語句のうち本文または見出しに出現した割合 (0.0〜1.0)
@@ -169,6 +191,7 @@ export interface ScrapeResult {
   discrepancies?: CandidateDiscrepancy[];
   derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
+  highlightDiagnostics?: RhoSelectDiagnostics;
   textFragmentUrl?: string;
   summary?: string[];
   citations?: Citation[];
@@ -342,6 +365,9 @@ export const ScrapeRequestSchema = z.object({
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
+  highlightAlgorithm: z.enum(['rho-select', 'rho-bm25', 'legacy']).optional().default('rho-select').describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
   includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
   includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
@@ -382,6 +408,9 @@ export const BatchScrapeRequestSchema = z.object({
   query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
+  highlightAlgorithm: z.enum(['rho-select', 'rho-bm25', 'legacy']).optional().default('rho-select').describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
   includeDiagnostics: z.boolean().optional().describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
   includeDiscrepancies: z.boolean().optional().describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
@@ -434,10 +463,17 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+  highlightAlgorithm: z.enum(['rho-select', 'rho-bm25', 'legacy']).optional().default('rho-select').describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
   minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
+  maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 15000)'),
+  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+  concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3)'),
+  webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -529,6 +565,9 @@ export const IntegratedSearchRequestSchema = z.object({
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
   minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
+  highlightAlgorithm: z.enum(['rho-select', 'rho-bm25', 'legacy']).optional().default('rho-select').describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
 });
