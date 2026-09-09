@@ -160,6 +160,11 @@ searchRoutes.post('/search', async (c) => {
       onlyMainContent,
       formats,
       dedup: body?.dedup,
+      reorderUFlat: body?.reorderUFlat,
+      enablePrf: body?.enablePrf,
+      diversityWeight: body?.diversityWeight,
+      annotateTemporal: body?.annotateTemporal,
+      minimizeTables: body?.minimizeTables,
       verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });
 

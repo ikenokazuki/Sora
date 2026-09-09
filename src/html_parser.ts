@@ -18,6 +18,7 @@ import {
   estimateTokens,
   safeTruncateMarkdown,
 } from './enrichment.js';
+import { minimizeTableMatrix } from './extractor/table_minimizer.js';
 
 // ==========================================
 // 1. TurndownService インスタンス & GFM 拡張
@@ -31,7 +32,7 @@ export const turndown = new TurndownService({
   strongDelimiter: '**',
 });
 
-// GFM Table サポート (HTML table -> Markdown table, colspan/rowspan グリッド正規化)
+// GFM Table サポート (HTML table -> Markdown table, colspan/rowspan グリッド正規化 & Smart Column Pruning)
 turndown.addRule('gfmTable', {
   filter: 'table',
   replacement: function (_content, node: any) {
@@ -63,8 +64,12 @@ turndown.addRule('gfmTable', {
 
     if (grid.length === 0 || grid[0].length === 0) return '';
 
-    const maxCols = Math.max(...grid.map((r) => r.length));
-    const normalizedMatrix = grid.map((r) => {
+    // Smart Table Minimizer: 空欄列・冗長プレースホルダー列・空行の自動パージ
+    const minimizedGrid = minimizeTableMatrix(grid);
+    if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return '';
+
+    const maxCols = Math.max(...minimizedGrid.map((r) => r.length));
+    const normalizedMatrix = minimizedGrid.map((r) => {
       while (r.length < maxCols) r.push('');
       return r;
     });
@@ -450,13 +455,17 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
 
     if (grid.length === 0 || grid[0].length === 0) return;
 
-    const headers = grid[0].map((h, i) => h || `col_${i + 1}`);
+    // Smart Table Minimizer による空列・無情報列パージ
+    const minimizedGrid = minimizeTableMatrix(grid);
+    if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return;
+
+    const headers = minimizedGrid[0].map((h, i) => h || `col_${i + 1}`);
     const rows: Record<string, string>[] = [];
-    for (let r = 1; r < grid.length; r++) {
+    for (let r = 1; r < minimizedGrid.length; r++) {
       const rowObj: Record<string, string> = {};
       let hasData = false;
       headers.forEach((colName, c) => {
-        const val = grid[r][c] || '';
+        const val = minimizedGrid[r][c] || '';
         if (val) hasData = true;
         rowObj[colName] = val;
       });
