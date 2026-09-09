@@ -38,6 +38,8 @@ import {
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
 } from './enrichment.js';
+import { extractQueryHighlightsRhoSelect } from './rho_select.js';
+
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import {
@@ -123,7 +125,7 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
 // ==========================================
 // 3. スクレイピング完了処理 & オプション統合
 // ==========================================
-async function finalizeScrapeResult(
+export async function finalizeScrapeResult(
   result: ScrapeResult,
   options: {
     query?: string;
@@ -136,6 +138,10 @@ async function finalizeScrapeResult(
     reorderUFlat?: boolean;
     diversityWeight?: number;
     annotateTemporal?: boolean;
+    highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+    highlightOverheadTokens?: number;
+    highlightMaxCount?: number;
+    verbose?: boolean;
     shouldExtractSummary: boolean;
     shouldExtractCitations: boolean;
     shouldChunkMarkdown: boolean;
@@ -166,27 +172,19 @@ async function finalizeScrapeResult(
   result.readingTimeMin = stats.readingTimeMin;
 
   if (options.shouldExtractHighlights && options.query) {
-    const details = extractQueryHighlightDetails(result.content, options.query, {
-      sourceId: 'S1',
-      url: result.url,
-      publishedTime: result.publishedTime,
-      evidenceMode: options.evidenceMode,
-      reorderUFlat: options.reorderUFlat,
-      diversityWeight: options.diversityWeight,
-      annotateTemporal: options.annotateTemporal,
+    const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
+      maxHighlights: options.highlightMaxCount ?? 3,
+      overheadTokens: options.highlightOverheadTokens ?? 96,
     });
-    result.highlights = details.highlights;
-    result.highlightItems = details.highlightItems;
-    if (details.temporalAnchors && details.temporalAnchors.length > 0) {
-      result.temporalAnchors = details.temporalAnchors;
+    result.highlights = rho.highlights;
+    result.highlightItems = rho.highlights.map((h: string, idx: number) => ({
+      text: h,
+      score: Number((1.0 - idx * 0.1).toFixed(4)),
+    }));
+    if (options.verbose) {
+      result.highlightDiagnostics = rho.diagnostics;
     }
-    if (options.includeDiagnostics !== false) {
-      result.evidenceDiagnostics = details.diagnostics;
-    }
-    if (options.includeDiscrepancies) {
-      result.discrepancies = details.discrepancies;
-    }
-    if (result.highlights.length > 0) {
+    if (result.highlights && result.highlights.length > 0) {
       result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
     }
   }
@@ -352,6 +350,9 @@ export async function scrapeUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightOverheadTokens?: number;
+  highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   includeDiagnostics?: boolean;
   includeDiscrepancies?: boolean;
@@ -373,6 +374,7 @@ export async function scrapeUrl(options: {
   retryDelayMs?: number;
   noCache?: boolean;
   timeoutMs?: number;
+  verbose?: boolean;
   keepDataImages?: boolean;
   contextTitle?: string;
   snippet?: string;
@@ -395,7 +397,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 3}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   if (!options.noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
@@ -413,6 +415,10 @@ export async function scrapeUrl(options: {
       query: options.query,
       shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
       shouldOnlyHighlights: options.onlyHighlights ?? false,
+      highlightAlgorithm: options.highlightAlgorithm,
+      highlightOverheadTokens: options.highlightOverheadTokens,
+      highlightMaxCount: options.highlightMaxCount,
+      verbose: options.verbose,
       evidenceMode: options.evidenceMode,
       includeDiagnostics: options.includeDiagnostics,
       includeDiscrepancies: options.includeDiscrepancies,
@@ -696,6 +702,9 @@ export async function scrapeBatchUrls(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightOverheadTokens?: number;
+  highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   includeDiagnostics?: boolean;
   includeDiscrepancies?: boolean;
@@ -938,6 +947,9 @@ export async function crawlSiteUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightOverheadTokens?: number;
+  highlightMaxCount?: number;
   reorderUFlat?: boolean;
   diversityWeight?: number;
   annotateTemporal?: boolean;
@@ -964,6 +976,9 @@ export async function crawlSiteUrl(options: {
     query,
     extractHighlights,
     onlyHighlights,
+    highlightAlgorithm,
+    highlightOverheadTokens,
+    highlightMaxCount,
     reorderUFlat,
     diversityWeight,
     annotateTemporal,
@@ -1004,6 +1019,9 @@ export async function crawlSiteUrl(options: {
         query,
         extractHighlights,
         onlyHighlights,
+        highlightAlgorithm,
+        highlightOverheadTokens,
+        highlightMaxCount,
         reorderUFlat,
         diversityWeight,
         annotateTemporal,
@@ -1125,6 +1143,9 @@ export async function integratedSearch(options: {
   diversityWeight?: number;
   annotateTemporal?: boolean;
   minimizeTables?: boolean;
+  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightOverheadTokens?: number;
+  highlightMaxCount?: number;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1145,7 +1166,10 @@ export async function integratedSearch(options: {
   const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
   const minimizeTables = options.minimizeTables;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}`;
+  const highlightAlgorithm = options.highlightAlgorithm || 'rho-select';
+  const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
+  const highlightMaxCount = options.highlightMaxCount ?? 3;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1224,6 +1248,9 @@ export async function integratedSearch(options: {
             diversityWeight,
             annotateTemporal,
             minimizeTables,
+            highlightAlgorithm,
+            highlightOverheadTokens,
+            highlightMaxCount,
           });
 
           const enrichedItem: Record<string, any> = {
@@ -1236,6 +1263,7 @@ export async function integratedSearch(options: {
             pageType: scrape.pageType,
             highlights: scrape.highlights,
             highlightItems: scrape.highlightItems,
+            highlightDiagnostics: scrape.highlightDiagnostics,
             temporalAnchors: scrape.temporalAnchors,
             textFragmentUrl: scrape.textFragmentUrl,
             cached: scrape.cached,

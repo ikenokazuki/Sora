@@ -160,6 +160,9 @@ scrapeRoutes.post('/crawl', async (c) => {
       diversityWeight: body.diversityWeight,
       annotateTemporal: body.annotateTemporal,
       minimizeTables: body.minimizeTables,
+      highlightAlgorithm: body.highlightAlgorithm,
+      highlightOverheadTokens: body.highlightOverheadTokens,
+      highlightMaxCount: body.highlightMaxCount,
       noCache: body.noCache,
     });
 
@@ -201,6 +204,9 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         diversityWeight: body.diversityWeight,
         annotateTemporal: body.annotateTemporal,
         minimizeTables: body.minimizeTables,
+        highlightAlgorithm: body.highlightAlgorithm,
+        highlightOverheadTokens: body.highlightOverheadTokens,
+        highlightMaxCount: body.highlightMaxCount,
         noCache: body.noCache,
         onPageCrawled: (page: any, count: number) => {
           stream.writeSSE({

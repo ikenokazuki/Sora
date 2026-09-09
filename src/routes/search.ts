@@ -123,8 +123,8 @@ searchRoutes.post('/search/web', async (c) => {
   }
 });
 
-// Firecrawl / Tavily 互換統合深層検索
-searchRoutes.post('/search', async (c) => {
+// Firecrawl / Tavily 互換統合深層検索 (Deep Search)
+const handleIntegratedSearch = async (c: any) => {
   try {
     const body = await c.req.json();
     const query = body?.query;
@@ -165,6 +165,9 @@ searchRoutes.post('/search', async (c) => {
       diversityWeight: body?.diversityWeight,
       annotateTemporal: body?.annotateTemporal,
       minimizeTables: body?.minimizeTables,
+      highlightAlgorithm: body?.highlightAlgorithm,
+      highlightOverheadTokens: body?.highlightOverheadTokens,
+      highlightMaxCount: body?.highlightMaxCount,
       verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });
 
@@ -172,7 +175,11 @@ searchRoutes.post('/search', async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message || 'Integrated search failed' }, 500);
   }
-});
+};
+
+searchRoutes.post('/search', handleIntegratedSearch);
+searchRoutes.post('/search/deep', handleIntegratedSearch);
+searchRoutes.post('/deep-search', handleIntegratedSearch);
 
 // Yahoo 画像検索
 searchRoutes.post('/search/image', async (c) => {
