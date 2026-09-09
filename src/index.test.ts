@@ -400,6 +400,20 @@ describe('web-fetcher Core Functions', () => {
     expect(topHl).not.toContain('Delight');
     expect(topHl).not.toContain('好きって。');
     expect(topHl).not.toContain('待っていてね');
+
+    // 7. 800文字超の長文における Dinkelbach 法による最大密度パッセージ切り出しテスト
+    const longArticle = [
+      '# 日本の自然言語処理技術の歩み',
+      '## 第1章 歴史と概観',
+      '日本の自然言語処理は、形態素解析ツールの開発から始まりました。'.repeat(10), // 320文字
+      '近年の大規模言語モデル（LLM）の台頭に伴い、日本語ベンチマークの評価基準が大きく進化しています。特にBM25やベクトル検索とのハイブリッド手法が実用化されています。',
+      'その他、辞書ベースのルールエンジンの改良も各地の研究所で続けられています。'.repeat(10), // 400文字
+    ].join('\n\n');
+
+    const longHighlights = extractQueryHighlights(longArticle, '大規模言語モデル ハイブリッド');
+    expect(longHighlights.length).toBeGreaterThan(0);
+    expect(longHighlights[0]).toContain('大規模言語モデル（LLM）の台頭');
+    expect(longHighlights[0]).toContain('ハイブリッド手法');
   });
 
   it('generateTextFragmentUrl should create valid W3C Scroll-to-Text Fragment URLs', () => {
@@ -425,6 +439,11 @@ describe('web-fetcher Core Functions', () => {
     const relevantMeta = 'アイドルグループ「君と見るそら」の代表曲「ソライロ」のライブコール・MIX・口上まとめです。';
     const selectedRelevant = chooseBestDescription(relevantMeta, dynamicSnippet, query);
     expect(selectedRelevant).toBe(relevantMeta);
+
+    // 3. スペースなし日本語クエリでも形態素カバー率で判定できる
+    const nonSpacedQuery = 'ソライロコールまとめ';
+    const selectedNonSpaced = chooseBestDescription(relevantMeta, dynamicSnippet, nonSpacedQuery);
+    expect(selectedNonSpaced).toBe(relevantMeta);
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
@@ -2378,6 +2397,10 @@ describe('Sora REST & MCP Endpoints', () => {
     const markdown = '# タイトル\nSora は超高速なスクレイピングツールです。\n```ts\nconst sora = "fast";\n```';
     const highlighted = highlightQueryMatchesInMarkdown(markdown, 'スクレイピング');
     expect(highlighted).toContain('<mark>スクレイピング</mark>');
+
+    // スペースなし日本語クエリでも形態素・バイグラムで適切にマークされる
+    const highlightedMulti = highlightQueryMatchesInMarkdown(markdown, '高速スクレイピング');
+    expect(highlightedMulti).toContain('<mark>');
   });
 
   it('calculateContentStats should accurately calculate characterCount, wordCount, and readingTimeMin', () => {
@@ -4793,6 +4816,29 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.textFragmentUrl).toBeDefined();
     });
 
+    it('scrapeUrl should automatically extract highlights when query is passed even if extractHighlights is omitted', async () => {
+      const result = await scrapeUrl({
+        url: 'https://example.com',
+        query: 'illustrative examples',
+        noCache: true,
+      });
+
+      expect(result.highlights).toBeDefined();
+      expect(result.highlights!.length).toBeGreaterThan(0);
+      expect(result.textFragmentUrl).toBeDefined();
+    });
+
+    it('scrapeUrl should NOT extract highlights when extractHighlights: false is explicitly passed even if query is present', async () => {
+      const result = await scrapeUrl({
+        url: 'https://example.com',
+        query: 'illustrative examples',
+        extractHighlights: false,
+        noCache: true,
+      });
+
+      expect(result.highlights).toBeUndefined();
+    });
+
     it('createMcpServer should configure SORA_MCP_INSTRUCTIONS with zero-refusal and two-tier routing principles', () => {
       expect(SORA_MCP_INSTRUCTIONS).toContain('Tool Routing Guidelines');
       expect(SORA_MCP_INSTRUCTIONS).toContain('Zero-Refusal & Active Investigation Policy');
@@ -5099,6 +5145,27 @@ describe('Sora REST & MCP Endpoints', () => {
       ];
       const ranked = rerankSearchResults(items, 'KAWAII PARTY CIRCUIT 9月6日');
       expect(ranked[0].url).toBe('https://example.com/2');
+    });
+
+    it('rerankSearchResults should prioritize rare specific keywords over common query words using corpus IDF', () => {
+      // "JavaScript" は全アイテムに含まれる（高DF/低IDF）、"Bun 1.3" は item 2 にのみ含まれる（低DF/高IDF）
+      const items = [
+        { title: 'JavaScriptフレームワーク比較', snippet: '主要なJavaScriptフロントエンドの比較解説記事です。', url: 'https://example.com/js-frameworks' },
+        { title: 'JavaScript入門講座', snippet: '初心者向けのJavaScript文法や基礎知識をまとめたページ。', url: 'https://example.com/js-intro' },
+        { title: 'Bun 1.3 リリース速報', snippet: '超高速JavaScriptランタイムBun 1.3の新機能と変更点を徹底解説。', url: 'https://example.com/bun-1-3' },
+      ];
+      const ranked = rerankSearchResults(items, 'JavaScript Bun 1.3');
+      expect(ranked[0].url).toBe('https://example.com/bun-1-3');
+    });
+
+    it('rerankSearchResults should prioritize bigram composite term matches over scattered words', () => {
+      // "星" と "風" が散らばって出現する記事よりも、"星風" がバイグラムとして出現する記事が上位になる
+      const items = [
+        { title: '星の降る夜に風を感じて', snippet: '満天の星空の下で心地よい夜風を浴びながら散歩した日記。', url: 'https://example.com/star-wind' },
+        { title: '星風まどか 退団特集記事', snippet: 'トップ娘役 星風まどか さんの輝かしい舞台歴と今後の活動について。', url: 'https://example.com/hoshikaze' },
+      ];
+      const ranked = rerankSearchResults(items, '星風まどか');
+      expect(ranked[0].url).toBe('https://example.com/hoshikaze');
     });
 
     it('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {

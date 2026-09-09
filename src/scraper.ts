@@ -23,6 +23,10 @@ import {
   estimateTokens,
   extractCitationsFromMarkdown,
   extractQueryHighlights,
+  extractQueryHighlightDetails,
+  normalizeSafeNumeric,
+  reorderLostInTheMiddle,
+  expandQueryWithPseudoRelevanceFeedback,
   generateExtractiveSummary,
   generatePromptContext,
   generateTextFragmentUrl,
@@ -31,6 +35,8 @@ import {
   safeTruncateMarkdown,
   sendWebhookNotification,
   validateExtractedLinks,
+  extractTemporalAnchors,
+  annotateTextWithTemporalAnchors,
 } from './enrichment.js';
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -123,6 +129,13 @@ async function finalizeScrapeResult(
     query?: string;
     shouldExtractHighlights: boolean;
     shouldOnlyHighlights?: boolean;
+    evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
+    includeDiagnostics?: boolean;
+    includeDiscrepancies?: boolean;
+    safeNormalize?: boolean;
+    reorderUFlat?: boolean;
+    diversityWeight?: number;
+    annotateTemporal?: boolean;
     shouldExtractSummary: boolean;
     shouldExtractCitations: boolean;
     shouldChunkMarkdown: boolean;
@@ -137,24 +150,75 @@ async function finalizeScrapeResult(
   if (options.shouldMaskPii) {
     result.content = maskPiiInText(result.content);
   }
+
+  // 決定論的安全正規化 (漢数字・全角数字・物理単位)
+  if (options.safeNormalize) {
+    const norm = normalizeSafeNumeric(result.content);
+    result.content = norm.normalizedText;
+    if (norm.derivations.length > 0) {
+      result.derivations = norm.derivations;
+    }
+  }
+
   const stats = calculateContentStats(result.content);
   result.characterCount = stats.characterCount;
   result.wordCount = stats.wordCount;
   result.readingTimeMin = stats.readingTimeMin;
 
   if (options.shouldExtractHighlights && options.query) {
-    result.highlights = extractQueryHighlights(result.content, options.query);
+    const details = extractQueryHighlightDetails(result.content, options.query, {
+      sourceId: 'S1',
+      url: result.url,
+      publishedTime: result.publishedTime,
+      evidenceMode: options.evidenceMode,
+      reorderUFlat: options.reorderUFlat,
+      diversityWeight: options.diversityWeight,
+      annotateTemporal: options.annotateTemporal,
+    });
+    result.highlights = details.highlights;
+    result.highlightItems = details.highlightItems;
+    if (details.temporalAnchors && details.temporalAnchors.length > 0) {
+      result.temporalAnchors = details.temporalAnchors;
+    }
+    if (options.includeDiagnostics !== false) {
+      result.evidenceDiagnostics = details.diagnostics;
+    }
+    if (options.includeDiscrepancies) {
+      result.discrepancies = details.discrepancies;
+    }
     if (result.highlights.length > 0) {
       result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
     }
   }
-  if (options.shouldOnlyHighlights && result.highlights && result.highlights.length > 0) {
+  const isHighlightOnlyMode =
+    options.shouldOnlyHighlights ||
+    options.evidenceMode === 'highlights' ||
+    options.evidenceMode === 'contextual_highlights';
+
+  if (isHighlightOnlyMode && result.highlights && result.highlights.length > 0) {
     result.content = result.highlights.join('\n\n---\n\n');
     const updatedStats = calculateContentStats(result.content);
     result.characterCount = updatedStats.characterCount;
     result.wordCount = updatedStats.wordCount;
     result.readingTimeMin = updatedStats.readingTimeMin;
     result.estimatedTokens = estimateTokens(result.content);
+  }
+
+  if (options.annotateTemporal) {
+    if (!result.temporalAnchors || result.temporalAnchors.length === 0) {
+      const anchors = extractTemporalAnchors(result.content, result.publishedTime);
+      if (anchors.length > 0) {
+        result.temporalAnchors = anchors;
+      }
+    }
+    if (!isHighlightOnlyMode) {
+      result.content = annotateTextWithTemporalAnchors(result.content, result.publishedTime);
+      const updatedStats = calculateContentStats(result.content);
+      result.characterCount = updatedStats.characterCount;
+      result.wordCount = updatedStats.wordCount;
+      result.readingTimeMin = updatedStats.readingTimeMin;
+      result.estimatedTokens = estimateTokens(result.content);
+    }
   }
   if (options.query) {
     const topHighlight = result.highlights?.[0];
@@ -288,6 +352,14 @@ export async function scrapeUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
+  includeDiagnostics?: boolean;
+  includeDiscrepancies?: boolean;
+  safeNormalize?: boolean;
+  reorderUFlat?: boolean;
+  diversityWeight?: number;
+  annotateTemporal?: boolean;
+  minimizeTables?: boolean;
   extractSummary?: boolean;
   extractCitations?: boolean;
   chunkMarkdown?: boolean;
@@ -315,7 +387,7 @@ export async function scrapeUrl(options: {
   const retryDelayMs = options.retryDelayMs ?? 1000;
   const onProgress = options.onProgress;
   const shouldExtractHighlights =
-    options.extractHighlights ?? (Boolean(options.query) && options.extractHighlights !== false);
+    options.extractHighlights ?? (Boolean(options.query && options.query.trim()));
 
   onProgress?.({ stage: 'start', message: `Starting scrape for ${url}` });
 
@@ -323,7 +395,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   if (!options.noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
@@ -336,6 +408,28 @@ export async function scrapeUrl(options: {
   return runWithSingleFlight(cacheKey, async () => {
     let attempt = 0;
     let lastError: any = null;
+
+    const finalizeOpts = {
+      query: options.query,
+      shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
+      shouldOnlyHighlights: options.onlyHighlights ?? false,
+      evidenceMode: options.evidenceMode,
+      includeDiagnostics: options.includeDiagnostics,
+      includeDiscrepancies: options.includeDiscrepancies,
+      safeNormalize: options.safeNormalize,
+      reorderUFlat: options.reorderUFlat,
+      diversityWeight: options.diversityWeight,
+      annotateTemporal: options.annotateTemporal,
+      shouldExtractSummary: options.extractSummary ?? false,
+      shouldExtractCitations: options.extractCitations ?? false,
+      shouldChunkMarkdown: options.chunkMarkdown ?? false,
+      chunkSize: options.chunkSize ?? 1000,
+      shouldValidateLinks: options.validateLinks ?? false,
+      shouldFormatAsPrompt: options.formatAsPrompt ?? false,
+      shouldHighlightMatches: options.highlightMatches ?? false,
+      shouldMaskPii: options.maskPii ?? false,
+      webhookUrl: options.webhookUrl,
+    };
 
     while (attempt <= retries) {
       try {
@@ -363,20 +457,7 @@ export async function scrapeUrl(options: {
               publishedTime: tweetRes.publishedTime,
               siteName: tweetRes.siteName,
             };
-            result = await finalizeScrapeResult(baseResult, {
-              query: options.query,
-              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
-              shouldOnlyHighlights: options.onlyHighlights ?? false,
-              shouldExtractSummary: options.extractSummary ?? false,
-              shouldExtractCitations: options.extractCitations ?? false,
-              shouldChunkMarkdown: options.chunkMarkdown ?? false,
-              chunkSize: options.chunkSize ?? 1000,
-              shouldValidateLinks: options.validateLinks ?? false,
-              shouldFormatAsPrompt: options.formatAsPrompt ?? false,
-              shouldHighlightMatches: options.highlightMatches ?? false,
-              shouldMaskPii: options.maskPii ?? false,
-              webhookUrl: options.webhookUrl,
-            });
+            result = await finalizeScrapeResult(baseResult, finalizeOpts);
             if (!options.noCache) setToCache(cacheKey, result);
             return result;
           }
@@ -400,20 +481,7 @@ export async function scrapeUrl(options: {
           if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
             const buf = await response.arrayBuffer();
             const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
-            result = await finalizeScrapeResult(pdfResult, {
-              query: options.query,
-              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
-              shouldOnlyHighlights: options.onlyHighlights ?? false,
-              shouldExtractSummary: options.extractSummary ?? false,
-              shouldExtractCitations: options.extractCitations ?? false,
-              shouldChunkMarkdown: options.chunkMarkdown ?? false,
-              chunkSize: options.chunkSize ?? 1000,
-              shouldValidateLinks: options.validateLinks ?? false,
-              shouldFormatAsPrompt: options.formatAsPrompt ?? false,
-              shouldHighlightMatches: options.highlightMatches ?? false,
-              shouldMaskPii: options.maskPii ?? false,
-              webhookUrl: options.webhookUrl,
-            });
+            result = await finalizeScrapeResult(pdfResult, finalizeOpts);
             if (!options.noCache) setToCache(cacheKey, result);
             return result;
           }
@@ -487,20 +555,7 @@ export async function scrapeUrl(options: {
             };
 
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
-            result = await finalizeScrapeResult(result, {
-              query: options.query,
-              shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
-              shouldOnlyHighlights: options.onlyHighlights ?? false,
-              shouldExtractSummary: options.extractSummary ?? false,
-              shouldExtractCitations: options.extractCitations ?? false,
-              shouldChunkMarkdown: options.chunkMarkdown ?? false,
-              chunkSize: options.chunkSize ?? 1000,
-              shouldValidateLinks: options.validateLinks ?? false,
-              shouldFormatAsPrompt: options.formatAsPrompt ?? false,
-              shouldHighlightMatches: options.highlightMatches ?? false,
-              shouldMaskPii: options.maskPii ?? false,
-              webhookUrl: options.webhookUrl,
-            });
+            result = await finalizeScrapeResult(result, finalizeOpts);
 
             if (!options.noCache) setToCache(cacheKey, result);
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -600,20 +655,7 @@ export async function scrapeUrl(options: {
         };
 
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
-        result = await finalizeScrapeResult(result, {
-          query: options.query,
-          shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
-          shouldOnlyHighlights: options.onlyHighlights ?? false,
-          shouldExtractSummary: options.extractSummary ?? false,
-          shouldExtractCitations: options.extractCitations ?? false,
-          shouldChunkMarkdown: options.chunkMarkdown ?? false,
-          chunkSize: options.chunkSize ?? 1000,
-          shouldValidateLinks: options.validateLinks ?? false,
-          shouldFormatAsPrompt: options.formatAsPrompt ?? false,
-          shouldHighlightMatches: options.highlightMatches ?? false,
-          shouldMaskPii: options.maskPii ?? false,
-          webhookUrl: options.webhookUrl,
-        });
+        result = await finalizeScrapeResult(result, finalizeOpts);
 
         if (!options.noCache) setToCache(cacheKey, result);
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -654,6 +696,14 @@ export async function scrapeBatchUrls(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
+  includeDiagnostics?: boolean;
+  includeDiscrepancies?: boolean;
+  safeNormalize?: boolean;
+  reorderUFlat?: boolean;
+  diversityWeight?: number;
+  annotateTemporal?: boolean;
+  minimizeTables?: boolean;
   extractSummary?: boolean;
   extractCitations?: boolean;
   chunkMarkdown?: boolean;
@@ -888,6 +938,10 @@ export async function crawlSiteUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
+  reorderUFlat?: boolean;
+  diversityWeight?: number;
+  annotateTemporal?: boolean;
+  minimizeTables?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
   onPageScraped?: (page: ScrapeResult) => void;
@@ -910,6 +964,10 @@ export async function crawlSiteUrl(options: {
     query,
     extractHighlights,
     onlyHighlights,
+    reorderUFlat,
+    diversityWeight,
+    annotateTemporal,
+    minimizeTables,
     noCache,
     webhookUrl,
     onPageScraped,
@@ -921,7 +979,7 @@ export async function crawlSiteUrl(options: {
 
   const visited = new Set<string>();
   const queue: Array<{ url: string; depth: number }> = [{ url: initialUrl, depth: 0 }];
-  const pages: ScrapeResult[] = [];
+  let pages: ScrapeResult[] = [];
 
   while (queue.length > 0 && pages.length < targetLimit) {
     const item = queue.shift();
@@ -946,6 +1004,10 @@ export async function crawlSiteUrl(options: {
         query,
         extractHighlights,
         onlyHighlights,
+        reorderUFlat,
+        diversityWeight,
+        annotateTemporal,
+        minimizeTables,
         noCache,
       });
 
@@ -964,6 +1026,10 @@ export async function crawlSiteUrl(options: {
         }
       }
     } catch {}
+  }
+
+  if (reorderUFlat && pages.length > 2) {
+    pages = reorderLostInTheMiddle(pages);
   }
 
   const result = {
@@ -1054,6 +1120,11 @@ export async function integratedSearch(options: {
   formats?: ScrapeFormat[];
   dedup?: boolean;
   verbose?: boolean;
+  reorderUFlat?: boolean;
+  enablePrf?: boolean;
+  diversityWeight?: number;
+  annotateTemporal?: boolean;
+  minimizeTables?: boolean;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1065,11 +1136,16 @@ export async function integratedSearch(options: {
   const includeDomains = options.includeDomains;
   const excludeDomains = options.excludeDomains;
   const updated = options.updated;
-  const extractHighlights = options.extractHighlights ?? false;
+  const extractHighlights = options.extractHighlights ?? (Boolean(query && query.trim()));
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const dedup = options.dedup ?? false;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}`;
+  const reorderUFlat = options.reorderUFlat ?? false;
+  const enablePrf = options.enablePrf ?? false;
+  const diversityWeight = options.diversityWeight;
+  const annotateTemporal = options.annotateTemporal;
+  const minimizeTables = options.minimizeTables;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1093,6 +1169,19 @@ export async function integratedSearch(options: {
   }
 
   const topItems = searchResults.slice(0, limit);
+
+  // 擬似適合フィードバック (PRF) によるクエリ拡張
+  let effectiveQuery = query;
+  let prfInfo: { expandedQuery: string; expansionTerms: string[] } | null = null;
+  if (enablePrf && searchResults.length > 0) {
+    const topDocs = topItems.map((i: any) => `${i.title || ''} ${i.snippet || ''}`);
+    const allDocs = searchResults.map((i: any) => `${i.title || ''} ${i.snippet || ''}`);
+    const prfResult = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs);
+    if (prfResult.expansionTerms.length > 0) {
+      prfInfo = prfResult;
+      effectiveQuery = prfResult.expandedQuery;
+    }
+  }
 
   let realtimeItems: any[] = [];
   let realtimeMeta: any = null;
@@ -1127,10 +1216,14 @@ export async function integratedSearch(options: {
             snippet: itemSnippet,
             maxChars,
             timeoutMs: 12000,
-            query,
+            query: effectiveQuery,
             extractHighlights,
             onlyMainContent,
             formats,
+            reorderUFlat,
+            diversityWeight,
+            annotateTemporal,
+            minimizeTables,
           });
 
           const enrichedItem: Record<string, any> = {
@@ -1142,6 +1235,8 @@ export async function integratedSearch(options: {
             siteName: scrape.siteName,
             pageType: scrape.pageType,
             highlights: scrape.highlights,
+            highlightItems: scrape.highlightItems,
+            temporalAnchors: scrape.temporalAnchors,
             textFragmentUrl: scrape.textFragmentUrl,
             cached: scrape.cached,
           };
@@ -1199,6 +1294,11 @@ export async function integratedSearch(options: {
     );
   }
 
+  // Lost in the Middle 対策: 検索結果全体の U字型リオーダリング
+  if (reorderUFlat && enrichedResults.length > 2) {
+    enrichedResults = reorderLostInTheMiddle(enrichedResults);
+  }
+
   const finalResponse: Record<string, any> = {
     query,
     source: 'integrated',
@@ -1206,6 +1306,14 @@ export async function integratedSearch(options: {
     count: enrichedResults.length,
     cached: false,
   };
+
+  if (prfInfo) {
+    finalResponse.prf = {
+      originalQuery: query,
+      expandedQuery: prfInfo.expandedQuery,
+      expansionTerms: prfInfo.expansionTerms,
+    };
+  }
 
   if (includeRealtime) {
     finalResponse.realtime = realtimeMeta || {
