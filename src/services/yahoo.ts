@@ -403,16 +403,21 @@ export async function fetchTweetsForUrlOrUser(
     : undefined;
 
   let markdown = `# ${displayAuthor} (@${handle || displayAuthor}) - X (Twitter) 最新ポスト\n\n`;
+  if (statusId && options.snippet) {
+    markdown += `### ポスト本文\n${options.snippet}\n\n---\n\n`;
+  }
+
+  markdown += `### 最新ポスト一覧\n\n`;
   for (const tweet of matchedItems.slice(0, options.limit || 10)) {
     const dateStr = tweet.created_at
       ? new Date(tweet.created_at * 1000).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
       : '';
     const author = tweet.author_name ? `${tweet.author_name} (@${tweet.author_handle})` : `@${tweet.author_handle}`;
-    markdown += `### ${author} [${dateStr}]\n${tweet.text}\n\n`;
+    markdown += `#### ${author} [${dateStr}]\n${tweet.text}\n\n`;
   }
 
   return {
-    title: `${displayAuthor} (@${handle}) / X`,
+    title: options.contextTitle || `${displayAuthor} (@${handle}) / X`,
     content: markdown.trim(),
     author: displayAuthor,
     publishedTime: latestPublished,

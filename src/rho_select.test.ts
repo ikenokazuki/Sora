@@ -613,5 +613,155 @@ NVMe SSDにより毎秒10GBの読み書き速度を誇ります。
       expect(res.highlightDiagnostics?.exactAgreement).toBe(true);
     });
   });
+
+  // T18: Snippet & Description Supplemental Evidence Integration
+  describe('T18: Snippet & Description Supplemental Evidence Integration', () => {
+    it('should extract target evidence from snippet when markdown body only contains unrelated timeline text', async () => {
+      const { extractQueryHighlightsRhoSelect } = await import('./rho_select.js');
+
+      // 本文にはライブ日程しか存在せず、「作詞」は含まれていない
+      const bodyContent = [
+        '# 君と見るそら (@kimisora_JPN) - X (Twitter) 最新ポスト',
+        '',
+        '### 君と見るそら (@kimisora_JPN) [2026/9/9 10:21:41]',
+        '本日の君と見るそらは、 『GIGA•GIGA SONIC ～幕張メッセ直前SP～』 🗓️9/9（水） 📍CLUB CITTA 🎫 https://t.co/AMUZGAHSpH 🎁サインありチェキ＋トーク券 前方 ¥7,000 / 一般 ¥3,000 （各+1D / 当日各+¥1,000） ☁️君と見るそら出演時間☁️ ライブ 18:00〜18:25 特典会 18:35〜19:35',
+      ].join('\n');
+
+      const snippetEvidence = '内山優花プロデュース曲『季節外れのリナリア』 本日から各種音楽配信サービスにて配信スタートです 『季節外れのリナリア』 作曲:michitomo 作詞:内山優花(君と見るそら)';
+
+      const query = '君と見るそら　内山優花　作詞';
+
+      const res = extractQueryHighlightsRhoSelect(bodyContent, query, {
+        maxHighlights: 1,
+        overheadTokens: 96,
+        supplementalEvidence: [snippetEvidence],
+      });
+
+      expect(res.highlights.length).toBe(1);
+      // ライブ日程ではなく、スニペットの「季節外れのリナリア」「作詞:内山優花」が第一位ハイライトとして採択されること
+      expect(res.highlights[0]).toContain('季節外れのリナリア');
+      expect(res.highlights[0]).toContain('作詞:内山優花');
+      expect(res.highlights[0]).not.toContain('CLUB CITTA');
+    });
+
+    it('finalizeScrapeResult should automatically forward options.snippet and description to rho-select', async () => {
+      const { finalizeScrapeResult } = await import('./scraper.js');
+
+      const bodyContent = '# お知らせ\n\n最新のイベントスケジュールをお知らせします。';
+      const snippet = '内山優花プロデュース曲『季節外れのリナリア』 作曲:michitomo 作詞:内山優花(君と見るそら)';
+      const description = '君と見るそら公式アカウント。本日の君と見るそらはCLUB CITTAにてライブ出演予定です。';
+
+      const res = await finalizeScrapeResult({
+        url: 'https://x.com/kimisora_JPN/status/2094077778039808267',
+        title: '君と見るそら on X',
+        content: bodyContent,
+        markdown: bodyContent,
+        description,
+      } as any, {
+        query: '君と見るそら 内山優花 作詞',
+        shouldExtractHighlights: true,
+        highlightAlgorithm: 'rho-select',
+        snippet,
+      } as any);
+
+      expect(res.highlights?.length).toBeGreaterThanOrEqual(1);
+      const allHighlights = res.highlights?.join('\n') || '';
+      expect(allHighlights).toContain('季節外れのリナリア');
+      expect(allHighlights).toContain('作詞:内山優花');
+    });
+
+    it('should strip YAML Frontmatter, breadcrumbs, and parse list headings in topic hubs without selecting metadata', async () => {
+      const { extractQueryHighlightsRhoSelect, parseMarkdownSections } = await import('./rho_select.js');
+
+      const asahiTopicMarkdown = [
+        '---',
+        'publishedTime: "2026-06-11T06:15:00+09:00"',
+        'author: "The Asahi Shimbun Company"',
+        'siteName: "朝日新聞デジタル"',
+        '---',
+        '',
+        '> 📍 **階層**: 朝日新聞 > トピックス > 中国本土',
+        '',
+        '[朝日新聞](/)',
+        '',
+        '\\>',
+        '',
+        '[トピックス](/topics/)',
+        '',
+        '\\>',
+        '',
+        '中国本土に関する最新ニュース',
+        '',
+        '## 中国本土',
+        '',
+        '## 最新ニュース',
+        '',
+        '-   ### [台湾映画「零下五十度の抑留者」　監督「台湾は今戦争の近くにいる」](//www.asahi.com/articles/ASV8P0SGPV8PUHBI00YM.html)',
+        '',
+        '    9/05(土) 11:00 インタビュー',
+        '',
+        '    す。　私が学生だったのは、国民党政権の時代でした。学んだのは_中国本土_のことばかりです。台湾の地理や歴史を学ぶ機会がありま...',
+        '',
+        '-   ### [中国軍のSLBM発射で見えた実力とは　識者「対話の維持が不可欠」](//www.asahi.com/articles/ASV922S07V92UHBI01YM.html)',
+        '',
+        '    9/04(金) 07:00 インタビュー',
+        '',
+        '    　まず、中国は軍事的な圧力だけではなく、外交や認知戦で台湾に圧力をかけており、中国が近い将来台湾を武力侵攻したり、海上封...',
+        '',
+        '-   ### [中国半導体ＣＸＭＴが上場　時価総額７９兆円、中国本土最大](//www.asahi.com/articles/DA3S16514494.html)',
+        '',
+        '    7/28(火) 05:00',
+        '',
+        '    ベースでの時価総額は約３兆２７７２億元（約７９兆円）となり、_中国本土_市場に上場する企業で最大となった。',
+      ].join('\n');
+
+      // 1. parseMarkdownSections で Frontmatter やパンくずが除外され、リスト見出しが認識されること
+      const sections = parseMarkdownSections(asahiTopicMarkdown);
+      expect(sections.length).toBeGreaterThanOrEqual(2);
+      for (const sec of sections) {
+        expect(sec.fullText).not.toContain('publishedTime');
+        expect(sec.fullText).not.toContain('📍 **階層**');
+      }
+
+      // 2. extractQueryHighlightsRhoSelect でメタデータではなく実際のニュース記事が抽出されること
+      const res = extractQueryHighlightsRhoSelect(asahiTopicMarkdown, '中国　最新ニュース', {
+        maxHighlights: 3,
+        overheadTokens: 96,
+      });
+
+      expect(res.highlights.length).toBeGreaterThanOrEqual(1);
+      const joinedHighlights = res.highlights.join('\n');
+      expect(joinedHighlights).not.toContain('publishedTime');
+      expect(joinedHighlights).not.toContain('📍 **階層**');
+      expect(joinedHighlights).not.toContain('[朝日新聞](/)');
+      // 個別ニュース記事の内容がハイライトに含まれること
+      const containsActualNews =
+        joinedHighlights.includes('台湾映画') ||
+        joinedHighlights.includes('SLBM発射') ||
+        joinedHighlights.includes('中国半導体');
+      expect(containsActualNews).toBe(true);
+    });
+
+    it('chooseBestDescription should sanitize Frontmatter and breadcrumb symbols from dynamic snippet', async () => {
+      const { chooseBestDescription } = await import('./enrichment.js');
+
+      const dynamicSnippetWithMeta = [
+        '---',
+        'publishedTime: "2026-06-11T06:15:00+09:00"',
+        'author: "The Asahi Shimbun Company"',
+        '---',
+        '> 📍 **階層**: 朝日新聞 > トピックス > 中国本土',
+        '## 最新ニュース > 中国軍のSLBM発射で見えた実力とは',
+        'まず、中国は軍事的な圧力だけではなく外交や認知戦で台湾に圧力をかけており、最新の動向を分析します。',
+      ].join('\n');
+
+      const desc = chooseBestDescription(undefined, dynamicSnippetWithMeta, '中国　最新ニュース');
+      expect(desc).toBeDefined();
+      expect(desc).not.toContain('publishedTime');
+      expect(desc).not.toContain('📍');
+      expect(desc).toContain('中国軍のSLBM発射');
+    });
+  });
 });
+
 

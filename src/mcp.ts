@@ -44,6 +44,7 @@ import {
   predictHtsCode,
   checkProductCompliance,
   inspectImage,
+  trackPackage,
 } from './scraper.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
@@ -151,13 +152,14 @@ export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool 
 ## 2. Two-Tier Tool Decision Framework
 
 ### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
-For queries strictly within the following 6 domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
+For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
 1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code, check_product_compliance).
 2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws, get_law_text, search_diet_minutes).
 3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather, search_disaster_warnings, search_earthquake, search_road_traffic).
 4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route, get_flight_status, get_elevation).
 5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime, search_trend, search_chiebukuro, suggest_keywords).
 6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).
+7. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).
 
 ### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)
 For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:
@@ -1135,6 +1137,57 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       { defaultEnabled: deferredDefault, keywords: ['フライト', '航空', '飛行機', '空港', '欠航', '遅延', '羽田', '成田', 'JAL', 'ANA'] },
     );
+
+    // Tool: track_package (主要運送会社・UPS 荷物追跡)
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'track_package',
+      'life',
+      '【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便・西濃運輸・福山通運）およびUPSの荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups）を指定可能。未指定または "auto" の場合は伝票番号から候補会社を自動判別・並行照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl }',
+      {
+        trackingNumber: z.string().min(1).describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず、全角半角対応）'),
+        carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'auto']).optional()
+          .describe('運送会社コード: "yamato"(ヤマト運輸), "sagawa"(佐川急便), "japanpost"(日本郵便), "seino"(西濃運輸), "fukutsu"(福山通運), "ups"(UPS)。省略または "auto" で自動判別'),
+        noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか'),
+      },
+      async ({ trackingNumber, carrier, noCache }) => {
+        try {
+          const result = await trackPackage({
+            trackingNumber,
+            carrier: carrier ?? 'auto',
+            noCache: noCache ?? false,
+          });
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Package tracking error: ${err?.message || err}` }],
+          };
+        }
+      },
+      {
+        defaultEnabled: deferredDefault,
+        keywords: [
+          '荷物追跡',
+          '追跡',
+          '配送状況',
+          'ヤマト',
+          'クロネコヤマト',
+          '佐川急便',
+          '日本郵便',
+          '郵便',
+          'ゆうパック',
+          '西濃運輸',
+          '福山通運',
+          'UPS',
+          'tracking',
+          'package',
+        ],
+      },
+    );
   }
 
   // =========================================================================
@@ -1748,10 +1801,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   mcpServer.tool(
     'search_tools',
     '【ツール検索・動的有効化】現在無効化されているSoraの追加ツールをキーワードで検索し、' +
-      '一致したツールを現在のセッションで有効化します。天気・乗換案内・知恵袋・リアルタイム速報・音楽・法令・防災情報など、' +
+      '一致したツールを現在のセッションで有効化します。荷物追跡・天気・乗換案内・知恵袋・リアルタイム速報・音楽・法令・防災情報・貿易コンプライアンスなど、' +
       '専門機能を利用する際は、まずこのツールで対象ツールを検索してください。',
     {
-      query: z.string().describe('検索キーワードまたはカテゴリ名（例: "天気", "知恵袋", "乗換", "地震", "法令", "音楽", "yahoo"）'),
+      query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "天気", "知恵袋", "乗換", "地震", "法令", "音楽", "trade", "life"）'),
     },
     async ({ query }) => {
       const matches = searchCatalog(toolCatalog, query);
@@ -1774,7 +1827,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           content: [
             {
               type: 'text',
-              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令)`,
+              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換/荷物追跡), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令), trade (輸出/HTS/CPSC/FDA), media (画像検査)`,
             },
           ],
         };
