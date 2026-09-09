@@ -721,6 +721,50 @@ export const InspectImageRequestSchema = z.object({
 export type InspectImageOptions = z.infer<typeof InspectImageRequestSchema>;
 
 // ==========================================
+// 荷物追跡 (Package Tracking)
+// ==========================================
+export type CarrierCode = 'yamato' | 'sagawa' | 'japanpost' | 'seino' | 'fukutsu' | 'ups';
+export type TrackingStatus = 'delivered' | 'in_transit' | 'registered' | 'returned' | 'error' | 'not_found' | 'unknown';
+
+export interface TrackingEvent {
+  date?: string;
+  status: string;
+  location?: string;
+  description?: string;
+}
+
+export interface TrackingResult {
+  carrier: CarrierCode;
+  carrierName: string;
+  trackingNumber: string;
+  status: TrackingStatus;
+  statusText: string;
+  events: TrackingEvent[];
+  trackingUrl: string;
+  details?: {
+    origin?: string;
+    destination?: string;
+    deliveryDate?: string;
+    serviceType?: string;
+  };
+  error?: string;
+  cached?: boolean;
+  fetchedAt?: string;
+}
+
+export const TrackingRequestSchema = z.object({
+  trackingNumber: z.string().min(1, '追跡番号は必須です').describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず）'),
+  carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'auto']).optional().describe('運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, auto)。未指定または "auto" の場合は自動判別'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか'),
+});
+export interface TrackingRequest {
+  trackingNumber: string;
+  carrier?: CarrierCode | 'auto';
+  noCache?: boolean;
+}
+
+
+// ==========================================
 // Zod -> OpenAPI 3.0 自動スキーマジェネレーター
 // ==========================================
 export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
@@ -1414,6 +1458,40 @@ export function generateOpenApiDocument() {
             },
           },
           responses: { '200': { description: 'InspectImageResult' } },
+        },
+      },
+      '/tracking': {
+        post: {
+          summary: '主要運送会社・UPS 荷物追跡 API (POST JSON指定)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(TrackingRequestSchema),
+              },
+            },
+          },
+          responses: { '200': { description: 'TrackingResult' } },
+        },
+      },
+      '/tracking/{carrier}/{number}': {
+        get: {
+          summary: '主要運送会社・UPS 荷物追跡 API (運送会社 & 伝票番号指定)',
+          parameters: [
+            { name: 'carrier', in: 'path', required: true, schema: { type: 'string', enum: ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups'] }, description: '運送会社コード' },
+            { name: 'number', in: 'path', required: true, schema: { type: 'string' }, description: '追跡番号・送り状番号' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'TrackingResult' } },
+        },
+      },
+      '/tracking/{number}': {
+        get: {
+          summary: '主要運送会社・UPS 荷物追跡 API (伝票番号から自動判別)',
+          parameters: [
+            { name: 'number', in: 'path', required: true, schema: { type: 'string' }, description: '追跡番号・送り状番号' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
+          ],
+          responses: { '200': { description: 'TrackingResult' } },
         },
       },
     },
