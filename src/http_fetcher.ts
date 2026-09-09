@@ -3,6 +3,7 @@ import type { CookieParam } from 'puppeteer-core';
 import type { PersistedCookie } from './db.js';
 import { dbGetDomainCookies, dbSaveDomainCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
+import { getFallbackUserAgent } from './browser_stealth.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -126,6 +127,9 @@ class NativeFetchSession implements UniversalHttpSession {
 
   async fetch(url: string, init: any = {}) {
     const headers = new Headers(init.headers || {});
+    if (!headers.has('User-Agent') && !headers.has('user-agent')) {
+      headers.set('User-Agent', getFallbackUserAgent());
+    }
     if (this.cookies.size > 0 && !headers.has('Cookie')) {
       const cookieStr = Array.from(this.cookies.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
       headers.set('Cookie', cookieStr);
