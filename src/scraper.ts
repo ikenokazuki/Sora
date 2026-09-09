@@ -151,6 +151,7 @@ export async function finalizeScrapeResult(
     shouldHighlightMatches: boolean;
     shouldMaskPii: boolean;
     webhookUrl?: string;
+    snippet?: string;
   },
 ): Promise<ScrapeResult> {
   if (options.shouldMaskPii) {
@@ -172,9 +173,18 @@ export async function finalizeScrapeResult(
   result.readingTimeMin = stats.readingTimeMin;
 
   if (options.shouldExtractHighlights && options.query) {
+    const supplemental: string[] = [];
+    if (options.snippet && options.snippet.trim()) {
+      supplemental.push(options.snippet.trim());
+    }
+    if (result.description && result.description.trim() && result.description !== options.snippet) {
+      supplemental.push(result.description.trim());
+    }
+
     const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
       maxHighlights: options.highlightMaxCount ?? 3,
       overheadTokens: options.highlightOverheadTokens ?? 96,
+      supplementalEvidence: supplemental,
     });
     result.highlights = rho.highlights;
     result.highlightItems = rho.highlights.map((h: string, idx: number) => ({
@@ -435,6 +445,7 @@ export async function scrapeUrl(options: {
       shouldHighlightMatches: options.highlightMatches ?? false,
       shouldMaskPii: options.maskPii ?? false,
       webhookUrl: options.webhookUrl,
+      snippet: options.snippet,
     };
 
     while (attempt <= retries) {
@@ -1357,3 +1368,7 @@ export async function integratedSearch(options: {
   if (!noCache) setToCache(cacheKey, finalResponse);
   return finalResponse;
 }
+
+// 荷物追跡サービス (Package Tracking)
+export * from './services/tracking.js';
+

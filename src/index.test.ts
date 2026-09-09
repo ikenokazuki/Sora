@@ -3447,7 +3447,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(38); // 37 standard tools + search_tools
+    expect(body.result.tools.length).toBe(39); // 38 standard tools + search_tools
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3940,7 +3940,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('check_product_compliance');
     expect(enabledToolsAll).toContain('inspect_image');
     expect(enabledToolsAll).toContain('watch_delete');
-    expect(enabledToolsAll.length).toBe(38);
+    expect(enabledToolsAll).toContain('track_package');
+    expect(enabledToolsAll.length).toBe(39);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {

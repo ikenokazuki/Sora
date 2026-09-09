@@ -31,6 +31,7 @@ export type RhoSelectOptions = {
   recencyWeightFraction?: number; // default: 0.2
   dinkelbachEpsilon?: number; // default: 1e-9
   dinkelbachMaxIterations?: number; // default: 20
+  supplementalEvidence?: string[]; // 検索スニペットやメタディスクリプション等の補完証拠テキスト配列
 };
 
 export type RhoBm25Options = RhoSelectOptions;
@@ -79,7 +80,12 @@ export interface ParsedSection {
 export function parseMarkdownSections(markdown: string): ParsedSection[] {
   if (!markdown) return [];
 
-  const lines = markdown.split(/\r?\n/);
+  // 1. YAML Frontmatter (--- ... ---) を本文ハイライト候補から除外
+  let cleaned = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
+  // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) を除外
+  cleaned = cleaned.replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '');
+
+  const lines = cleaned.split(/\r?\n/);
   const sections: ParsedSection[] = [];
   let currentHeading = '';
   let currentRawHeading = '';
@@ -93,6 +99,20 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   const flush = () => {
     const fullText = currentParagraphs.join('\n').trim();
     if (fullText.length > 0) {
+      // プリアンブル（見出し未設定の先頭テキスト）のノイズ判定
+      // リンク密度が極端に高い、または純粋な矢印/パンくず記号（[リンク] > [リンク] 等）のみの場合はハイライト候補から除外
+      if (!currentHeading) {
+        const isNavOnly =
+          fullText.length < 250 &&
+          (/^(?:.*?[>›\\]\s*)+.*$/s.test(fullText) ||
+            /^(?:\[.+?\]\(.+?\)\s*(?:\\?>|›|>)?\s*)+$/s.test(fullText)) &&
+          (fullText.includes('](') || fullText.includes('>') || fullText.includes('\\>'));
+        if (isNavOnly) {
+          currentParagraphs = [];
+          return;
+        }
+      }
+
       sections.push({
         rawHeading: currentRawHeading,
         heading: currentHeading,
@@ -119,7 +139,8 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
     }
 
     if (!inCodeBlock) {
-      const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+      // 見出し検出: 通常の # 見出しに加え、リスト内の見出し (- ### や * ## 等) もサポート
+      const headingMatch = trimmed.match(/^(?:[-*+]\s+)?(#{1,6})\s+(.+)$/);
       if (headingMatch) {
         flush();
         const level = headingMatch[1].length;
@@ -315,12 +336,37 @@ export function extractQueryHighlightsRhoSelect(
     exactAgreement: true,
   };
 
-  if (!content || !query || !content.trim() || !query.trim()) {
+  const hasSupplemental = Boolean(options?.supplementalEvidence && options.supplementalEvidence.some((s) => s && s.trim().length >= 5));
+  if ((!content || !content.trim()) && !hasSupplemental) {
+    return { highlights: [], diagnostics: emptyDiagnostics };
+  }
+  if (!query || !query.trim()) {
     return { highlights: [], diagnostics: emptyDiagnostics };
   }
 
   // 1. セクション分割
-  const sections = parseMarkdownSections(content);
+  const sections = content && content.trim() ? parseMarkdownSections(content) : [];
+
+  // 補完証拠（検索スニペット、メタディスクリプション等）を候補セクションとして統合
+  if (options?.supplementalEvidence && options.supplementalEvidence.length > 0) {
+    const existingContentLower = (content || '').toLowerCase();
+    for (const supp of options.supplementalEvidence) {
+      const trimmed = supp.trim();
+      if (!trimmed || trimmed.length < 5) continue;
+      // 本文に既にほぼそのまま含まれている場合は二重追加しない
+      if (existingContentLower.includes(trimmed.toLowerCase())) continue;
+      sections.push({
+        rawHeading: '',
+        heading: '',
+        headingLevel: 0,
+        paragraphs: [trimmed],
+        fullText: trimmed,
+        charLength: trimmed.length,
+        startIndex: -1,
+      });
+    }
+  }
+
   if (sections.length === 0) {
     return { highlights: [], diagnostics: emptyDiagnostics };
   }

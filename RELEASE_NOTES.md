@@ -1,3 +1,38 @@
+# 🌤️ Sora Release v2.18.0
+
+日本の主要運送会社および国際便の横断追跡機能（`/tracking`、`track_package` MCP ツール）の新規搭載、およびトークン効率的証拠選択エンジン「ρSelect」におけるボイラープレート・メタデータ自動排除とリスト内見出し階層認識の機能強化を含む大型アップデート（v2.18.0）です。
+
+---
+
+## 🌟 v2.18.0 主なハイライト (Highlights)
+
+### 1. 📦 日本主要5社＋UPS 荷物追跡 API & MCP ツール (`POST /tracking`, `track_package`)
+- **対応キャリア**:
+  - ヤマト運輸（クロネコヤマト）
+  - 佐川急便
+  - 日本郵便（ゆうパック・書留）
+  - 西濃運輸（カンガルー便）
+  - 福山通運
+  - UPS（United Parcel Service / 国際便）
+- **高精度キャリア自動判別**:
+  - 伝票番号の桁数（10/11/12/13/18桁等）やハイフン位置、Modulus 7 および Luhn チェックサムによる自動キャリア識別。
+  - キャリア指定なし（`"carrier": "auto"`、または `GET /tracking/:number`）でも即座に対象キャリアを判定して追跡。
+- **5分間インメモリ LRU キャッシュ**:
+  - 同一伝票番号への重複問い合わせを防止し、外部サーバーへの負荷を抑制（キャッシュヒット時レイテンシ <0.5ms）。
+- **REST & MCP 両対応**:
+  - REST API: `POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`
+  - MCP ツール: `track_package`（Module 4: Japan Daily Life & Transit に統合）
+
+### 2. ⚡ ρSelect: ボイラープレート・メタデータ自動排除 & リスト内見出し認識
+- **Frontmatter & パンくずメタデータの自動排除**:
+  - Markdown 先頭の YAML frontmatter（`--- publishedTime: ... ---`）やサイト共通ナビゲーション（`> 📍 **階層**: ...`）が候補セクションに混入してハイライト選択を歪める問題を根本解決。
+- **リスト内見出し階層認識 (`- ### [記事見出し]`)**:
+  - 朝日新聞トピックスや Yahoo!ニュース等のポータルサイトで頻出する、箇条書きリスト要素内に埋め込まれた Markdown 見出し記号を正確に境界認識。一覧記事の各トピックを独立した候補セクションとして精密に分離・スコアリング。
+- **スニペットの Frontmatter クレンジング**:
+  - 検索結果レスポンスの `snippet` および `description` に混入した YAML frontmatter やパンくず文字列を事前サニタイズ。
+
+---
+
 # 🌤️ Sora Release v2.16.0
 
 日本の Web 空間と日常・行政・防災インフラを AI エージェントから自由かつ安全に利用するための Self-hosted MCP / REST 統合サーバー「Sora (空)」の最新機能アップデート（v2.16.0）です。

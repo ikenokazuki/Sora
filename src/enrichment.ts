@@ -937,12 +937,20 @@ export function chooseBestDescription(
 ): string | undefined {
   if (!metaDesc && !dynamicSnippet) return undefined;
   if (!dynamicSnippet) return metaDesc;
+  // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
+  let cleanSnippet = dynamicSnippet
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
+    .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 250)
+    .trim();
+
+  // サニタイズ後にスニペットが空または極小になった場合は metaDesc を使用
+  if (!cleanSnippet || cleanSnippet.length < 10) return metaDesc;
+
   if (!metaDesc) {
-    return dynamicSnippet
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 250)
-      .trim();
+    return cleanSnippet;
   }
   if (!query) return metaDesc;
 
@@ -963,11 +971,7 @@ export function chooseBestDescription(
   }
 
   // クエリ単語が不足している、またはサイト共通ボイラープレートの疑いがある場合は本文動的スニペットを採用
-  return dynamicSnippet
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 250)
-    .trim();
+  return cleanSnippet;
 }
 
 /**
