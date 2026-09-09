@@ -43,6 +43,10 @@ export function formatCompactScrapeResult(
 
   // オプション要求時や存在時のみ付与
   if (result.highlights && result.highlights.length > 0) clean.highlights = result.highlights;
+  if (result.highlightItems && result.highlightItems.length > 0) clean.highlightItems = result.highlightItems;
+  if (result.evidenceDiagnostics) clean.evidenceDiagnostics = result.evidenceDiagnostics;
+  if (result.discrepancies && result.discrepancies.length > 0) clean.discrepancies = result.discrepancies;
+  if (result.derivations && result.derivations.length > 0) clean.derivations = result.derivations;
   if (result.summary && result.summary.length > 0) clean.summary = result.summary;
   if (result.textFragmentUrl) clean.textFragmentUrl = result.textFragmentUrl;
   if (result.citations && result.citations.length > 0) clean.citations = result.citations;

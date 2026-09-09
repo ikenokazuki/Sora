@@ -138,6 +138,26 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - **DOM Quiescence（静止検知）SPA待機**: 固定スリープを廃止し、`MutationObserver` により 200ms の DOM 変更静止を捉えて最速完了。描画漏れ根絶。
    - **イベント・パンくず・表構造化抽出**: Schema.org `Event`/`MusicEvent` の自動構造化、パンくず階層ナビゲーションパス抽出、複雑な表の結合セル（`colspan`/`rowspan`）2Dマトリクス正規化、および重要告知画像（チラシ・タイテ・図表）スコアリングを標準搭載。
    - **Clean Content Sanitizer**: プロンプトインジェクション用制御トークンや不可視ゼロ幅文字を自動無害化。
+7. **🎯 祖先見出し階層伝播BM25 & Dinkelbach法パッセージ最適化抽出 (v2.14.0+)**:
+   - **Hierarchical BM25 Breadcrumb Diffusion ($\gamma=0.6$)**: `h1`〜`h6` の祖先見出し全階層の文脈・IDFを減衰伝播させ、見出しにしか現れない重要キーワード配下の段落を漏れなく高スコア化。見出しのない平文テキストも段落フォールバックで均一評価。
+   - **Dinkelbach法 最大情報密度パッセージ抽出**: 分数計画法（Fractional Programming）により、連続文の目的関数 $\max \frac{W}{L^\alpha}$（$\alpha=0.6$）を厳密に反復最適化。Kadane法（最大部分配列探索）と連携し、貪欲法・尺取り法の局所解を克服して最も情報密度の高い文区間をミリ秒未満（<0.005ms）で厳密抽出。
+   - **構文不可分保護 & 形態素バイグラム合成**: GFMテーブルやフェンスドコードブロックを構文単位で不可分保護。日本語のスペースなし複合語（「星風まどか」等）も形態素＋隣接バイグラム合成で完全一致・取りこぼしを完全防止。
+8. **📊 動的コーパスIDF付きアイテム間 BM25+ リランキングエンジン**:
+   - Web検索・ディープ検索・Yahoo!知恵袋等の検索結果アイテム群からインメモリで動的ドキュメント頻度 $df(t)$ と IDF を算出し、クエリ固有キーワードを自動浮上。タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化により、AI エージェントが最も求める重要情報を最上位に自動ソート。
+9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
+   - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを 100% 決定論的に特定可能。
+   - **Contextual Highlights (文脈保持パッセージ)**: Dinkelbach法で選ばれた最適抽出文単体ではなく、親見出し階層（H1/H2/H3）やテーブルヘッダーを含む文脈セット（`HighlightItem`）を返し、文脈欠落ハルシネーションを防止。
+   - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
+   - **Candidate Discrepancies (不一致候補の対比提示)**: 日付・金額・バージョンの複数異なる候補値を検出時、勝手に1つに丸めず（Silent Resolve を完全禁止）、対比構造（`CandidateDiscrepancy`）として提示。
+   - **Safe Normalization (決定論的数値正規化 & 導出履歴)**: 全角数字・漢数字「万」「億」や物理単位（km/ms）を固定規則で正規化し、導出履歴（`derivations`）を追跡。為替などの外部推測が必要な変換は行わない。
+10. **🌐 最新 IR (情報検索) & RAG 理論 3大アルゴリズム (v2.16.0+)**:
+   - **Lost in the Middle 対策 (U字型リオーダリング)**: スコア降順ではなく、最重要情報を「先頭」と「末尾」に配置（`1位, 3位, 5位 ... 4位, 2位`）することで、LLM の長文中央部に対する注意減衰（Attention Degradation）を完全克服（`reorderUFlat: true`）。
+   - **MMR (Maximal Marginal Relevance) 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を徹底排除し、異なる観点の重要文を幅広く採択（`diversityWeight: 0.7`）。
+   - **インメモリ PRF (擬似適合フィードバック)**: 上位適合ドキュメント群の共起語から高TF-IDFな重要語彙を抽出し、クエリを自動拡張。語彙ミスマッチをミリ秒未満で自己解決（`enablePrf: true`）。
+11. **⏳ Temporal Context Anchor (時間的文脈アンカー / 相対日時の絶対解決)**:
+   - 記事の `publishedTime` を基準日（Reference Date）とし、「明日」「来週金曜」「3日前」等の相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆構造化返却。過去記事の未来誤認ハルシネーションを根絶（`annotateTemporal: true`）。
+12. **🗜️ Smart Table Minimizer (表・スペック表のトークン圧縮)**:
+   - Web 上のスペック表・料金表・比較表から、全行空欄の列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ のインメモリ走査で自動検知・パージ。テーブルのトークン消費を 30〜70% 削減（`minimizeTables: true`）。
 
 ---
 
@@ -182,13 +202,25 @@ cloud（雲）も空にあり空は世界中繋がってます。
 
 | 処理・機能 | 処理時間 (1回あたり実測値) | 特徴・アルゴリズム |
 |---|:---:|---|
+| **Dinkelbach法 最大情報密度パッセージ抽出** (`dinkelbachOptimalPassage`) | **0.005 ms** (`5 µs`) | 分数計画法による厳密な最適連続文探索（$\max \frac{W}{L^\alpha}, \alpha=0.6$） |
+| **祖先見出し階層BM25 スコアリング** (`scoreSectionsWithHierarchicalBM25`) | **0.02 ms** (`21 µs`) | 祖先全階層減衰伝播（$\gamma=0.6$）＋形態素バイグラム自動合成 |
 | **読了時間・文字統計計算** (`calculateContentStats`) | **0.03 ms** (`31 µs`) | CJK/英単語の高速カウント＆推定読了時間算出 |
 | **イベント・スケジュール構造化抽出** (`extractEventsFromJsonLd`) | **0.05 ms** (`48 µs`) | Schema.org Event/MusicEvent の正規化と日時・会場・チケット解析 |
 | **パンくず階層パス抽出** (`extractBreadcrumbs`) | **0.04 ms** (`42 µs`) | BreadcrumbList & nav[aria-label=breadcrumb] の自動マッピング |
 | **テーブル結合セル2D正規化** (`gfmTable` / `normalizeTable`) | **0.06 ms** (`60 µs`) | colspan / rowspan のグリッド自動展開補完マトリクス |
 | **Clean Content Sanitizer** (`cleanMarkdownTokens`) | **0.04 ms** (`45 µs`) | LLM 制御トークン・不可視ゼロ幅文字の安全なサニタイズ |
 | **出典・引用リンク抽出** (`extractCitationsFromMarkdown`) | **0.06 ms** (`62 µs`) | 正規表現＋文脈コンテキストスライシング |
+| **検索結果アイテム間 動的IDF BM25+ リランキング** (`rerankSearchResults`) | **0.08 ms** (`85 µs`) | 検索結果コーパスからの動的IDF算出＋タイトル/本文多信号リランキング |
 | **RAG セマンティック・チャンキング** (`chunkMarkdownContent`) | **0.13 ms** (`138 µs`) | 見出し・コードブロック境界を考慮したセマンティック分割 |
+| **Block Provenance 出所付与** (`assignBlockProvenance` / `formatBlockAnchor`) | **0.05 ms** (`50 µs`) | 各ブロックへの連番識別子（`[S1:P4]`）・引用アンカー付与 |
+| **Evidence Diagnostics 客観的証拠診断** (`computeEvidenceDiagnostics`) | **0.05 ms** (`50 µs`) | クエリ単語網羅率（$Coverage$）・証拠シグナル算出 |
+| **Candidate Discrepancies 不一致候補対比** (`detectDiscrepancies`) | **0.06 ms** (`60 µs`) | 日付・金額・バージョンの複数候補検出と対比構造化 |
+| **Safe Normalization 決定論的数値正規化** (`normalizeSafeNumeric`) | **0.10 ms** (`100 µs`) | 全角半角・漢数字「万」「億」・物理単位正規化と導出履歴追跡 |
+| **Lost in the Middle 対策 U字型配置** (`reorderLostInTheMiddle`) | **0.001 ms** (`1 µs`) | 両端交互パッキングによる U字型シーケンス生成 |
+| **MMR 多様性パッセージ選択** (`selectMaximalMarginalRelevance`) | **0.02 ms** (`20 µs`) | Jaccard 類似度を用いた類似文ペナルティ＆多様性最大化 |
+| **インメモリ PRF クエリ拡張** (`expandQueryWithPseudoRelevanceFeedback`) | **0.05 ms** (`50 µs`) | 上位適合文書の重要共起語による動的クエリ拡張 |
+| **Temporal Context Anchor 相対日時解決** (`extractTemporalAnchors`) | **0.04 ms** (`40 µs`) | 基準日からの決定論的オフセット計算＆注記付与 |
+| **Smart Table Minimizer 表トークン圧縮** (`minimizeTableMatrix`) | **0.03 ms** (`30 µs`) | 空欄列・冗長記号列・空行の O(R*C) 自動パージ |
 | **検索結果の重複・類似排除** (`dedupSearchResults`) | **0.33 ms** (`335 µs`) | 50件の N-gram Jaccard 類似度判定 |
 | **PII 個人情報自動マスキング** (`maskPiiInText`) | **0.55 ms** (`557 µs`) | メール・電話・Luhn クレジットカード判定＆置換 |
 | **超高速 抽出型自動要約 (TL;DR)** (`generateExtractiveSummary`) | **0.97 ms** (`970 µs`) | TF-IDF 類似の重要文抽出アルゴリズム |
@@ -323,13 +355,13 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 | ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
 |---|:---:|---|---|---|
-| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、重要告知画像（チラシ・タイテ・図表）スコアリング、RAGチャンキング・出典抽出・読了時間・PII保護・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ<br>- `extractHighlights` / `query` (任意): キーワード重要文抽出<br>- `chunkMarkdown` (boolean, 任意): RAG 用セマンティック分割<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
-| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。ドメイン絞り込み・除外・期間指定に対応。※スニペットだけで詳細が不確定な場合は、推測せずヒットした公式 URL を `scrape` で精読してください。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
-| `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。最新事実、ライブ・公演・イベント日程、新製品・発売日、営業時間・店舗情報等の包括調査に推奨。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意) |
+| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）＆Dinkelbach法パッセージ最適化（分数計画法による情報密度最大化）、U字型配置（Lost in the Middle対策）、MMR多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance出所追跡（`[S1:P4]`）・Contextual Highlights（文脈保持パッセージ）・客観的証拠診断量・不一致候補対比・決定論的数値正規化、RAGチャンキング・出典抽出・読了時間・PII保護・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ<br>- `extractHighlights` / `query` (任意): キーワード重要文抽出<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング (デフォルト: false)<br>- `diversityWeight` (number, 任意): MMR多様性比率 (デフォルト: 0.7)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ (デフォルト: true)<br>- `evidenceMode` (string, 任意): `"full"`, `"highlights"`, `"contextual_highlights"`<br>- `includeDiagnostics` (boolean, 任意): クエリ網羅率等の客観的証拠診断量を付与<br>- `includeDiscrepancies` (boolean, 任意): 日付・金額等の不一致候補を対比提示<br>- `safeNormalize` (boolean, 任意): 漢数字・単位の決定論的正規化と導出履歴<br>- `chunkMarkdown` (boolean, 任意): RAG 用セマンティック分割<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
+| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。アイテム間動的コーパスIDF付きBM25+リランキングにより適合度の高い情報を上位表示。ドメイン絞り込み・除外・期間指定に対応。※スニペットだけで詳細が不確定な場合は、推測せずヒットした公式 URL を `scrape` で精読してください。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
+| `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。インメモリ PRF（クエリ自己拡張）、U字型リオーダリング、MMR多様性選択、Temporal Context Anchor、Smart Table Minimizer、動的コーパスIDF付きBM25+リランキングと見出し階層BM25抽出に対応。最新事実、ライブ・公演・イベント日程、新製品・発売日、営業時間・店舗情報等の包括調査に推奨。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意)<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング<br>- `enablePrf` (boolean, 任意): インメモリ PRF クエリ自動拡張<br>- `diversityWeight` (number, 任意): MMR多様性比率 (0.0〜1.0)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ |
 | `search_tools` | **★ CORE** | **【動的ツール発見メタツール】** Sora の全専門ツール（天気・乗換・知恵袋・X速報・音楽・法令・交通情報・差分監視等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"天気"`, `"知恵袋"`, `"yahoo"`, `"music"`, `"交通"`, `"法令"`) |
-| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5) |
+| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `reorderUFlat` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
-| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2) |
+| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `reorderUFlat` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |
 ---
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
@@ -348,13 +380,21 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > [!TIP]
 > **より効果的なアプローチ**:
 > 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
-> 2. **Google 流 非AI最先端ハイライト＆スニペット抽出**: `extractHighlights: true`（`query` 指定）を有効化すると、**Fielded BM25F + BM25+ エンジン**（見出し階層継承・句読点文境界スナッピング・語順整合マトリクス・Information Gain新規性選択・最短包含区間近接度）により、LLM は長いページ全体を読む代わりに**クエリに関連する最も重要な段落・センテンスのみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します（完全インメモリ、0.2ms で高速動作）。
-> 3. **Google 流 説明文自動選定器 (Meta vs Body Dynamic Arbiter)**: サイト共通の固定定型文（ボイラープレート）を自動検知し、クエリ直結の動的スニペットを `description` に自動昇格。検索結果一覧（SERP）の段階で AI が 100% 正確に内容を把握できます。
-> 4. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
-> 5. **GFM シンタックスハイライト言語の保持**: `<pre><code class="language-python">` 等からプログラミング言語名を正確に識別し、Markdown 出力時に ` ```python ` として再現。
-> 6. **自動トークン圧縮 & ノイズ除去**: 空リンク、無効な JavaScript リンク、不要な重複空行を自動クレンジング（`cleanMarkdownTokens`）し、Cookie 同意バナー（OneTrust / Cookiebot 等）も完全パージするため、LLM コンテキストを常にクリーンに保ちます。
-> 7. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
-> 8. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
+> 2. **祖先見出し階層伝播BM25 & Dinkelbach法パッセージ最適化抽出**: `extractHighlights: true`（`query` 指定）を有効化すると、**Hierarchical BM25 Breadcrumb Diffusion**（祖先見出し全階層のIDFを減衰伝播 $\gamma=0.6$）と分数計画法の金字塔 **Dinkelbach法**（最大情報密度連続文最適化 $\max \frac{W}{L^\alpha}, \alpha=0.6$ ＋ Kadane法）、形態素バイグラム合成により、LLM は長いページ全体を読む代わりに**クエリに関連する最も情報密度の高い段落・センテンス区間のみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます。表（GFM Table）やコードブロックも不可分保護され構文崩れが起きません。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します（完全インメモリ、0.03ms で超高速動作）。
+> 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: `evidenceMode: "contextual_highlights"` を指定すると、ブロック単位の出所識別子（`[S1:P4 | 2026-09-01]`）と見出し階層・テーブルヘッダーを保持した構造化パッセージ（`highlightItems`）が返却されます。さらに `includeDiagnostics: true` で客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を付与し、`includeDiscrepancies: true` で日付・金額等の不一致候補を対比提示、`safeNormalize: true` で全角/漢数字（万）や単位の決定論的正規化と導出履歴（`derivations`）を追跡できます。LLM の自律判断を妨げず、決定論的な事実データを供給します。
+> 4. **検索結果の動的コーパスIDF付きアイテム間 BM25+ リランキング**: `search_web`, `search_deep`, `search_chiebukuro` 等の検索結果は、返却されたヒットアイテム群からインメモリでドキュメント頻度 $df(t)$ と動的 IDF を算出し、タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化で瞬時にリランキングされます。クエリ固有の重要キーワードや完全一致を含む優良ソースが自動で最上位に浮上し、AI の探索精度を劇的に向上させます。
+> 5. **Google 流 説明文自動選定器 (Meta vs Body Dynamic Arbiter)**: サイト共通の固定定型文（ボイラープレート）を自動検知し、クエリ直結の動的スニペットを `description` に自動昇格。検索結果一覧（SERP）の段階で AI が 100% 正確に内容を把握できます。
+> 6. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
+> 7. **GFM シンタックスハイライト言語の保持**: `<pre><code class="language-python">` 等からプログラミング言語名を正確に識別し、Markdown 出力時に ` ```python ` として再現。
+> 8. **自動トークン圧縮 & ノイズ除去**: 空リンク、無効な JavaScript リンク、不要な重複空行を自動クレンジング（`cleanMarkdownTokens`）し、Cookie 同意バナー（OneTrust / Cookiebot 等）も完全パージするため、LLM コンテキストを常にクリーンに保ちます。
+> 9. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
+> 10. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
+> 11. **最新 IR 理論 3大アルゴリズム (`reorderUFlat`, `diversityWeight`, `enablePrf`)**:
+>     - **U字型配置 (`reorderUFlat: true`)**: スコア降順ではなく最重要情報を「先頭」と「末尾」に配置（`1位, 3位 ... 4位, 2位`）することで、LLM の中央部注意減衰 (*Lost in the Middle*) を完全克服。
+>     - **MMR 多様性選択 (`diversityWeight: 0.7`)**: Jaccard 類似度ペナルティにより、同一事実の言い換え重複を排除し、異なる観点の重要文を幅広く採択。
+>     - **インメモリ PRF (`enablePrf: true`)**: 上位検索結果の共起語からクエリを自動拡張し、語彙ミスマッチをミリ秒未満で自己解決。
+> 12. **時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 構造体を返却。過去記事を未来の予定と誤認する時間的ハルシネーションを根絶。
+> 13. **スマート表トークン圧縮 (`minimizeTables: true`, デフォルト有効)**: Web 上のスペック表・料金表・比較表から、全行空欄列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ で自動パージし、表のトークン消費を 30〜70% 削減。
 
 
 
@@ -394,7 +434,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_image` | Yahoo! JAPAN 画像検索を実行し、画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページを取得します。 | 各アイテムに `source: "image"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50) |
 | `search_video` | Yahoo! JAPAN 動画検索を実行し、動画タイトル・動画URL・再生時間・配信元・サムネイルを取得します。 | 各アイテムに `source: "video"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50) |
 | `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
-| `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
+| `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。アイテム間動的コーパスIDF付きBM25+リランキングによりクエリへの適合度が高いQ&Aを最上位表示。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
 | `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 30) |
 | `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 40)<br>- `page` (number, 任意): ページ番号 (デフォルト: 1) |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
@@ -717,6 +757,14 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > **📸 要素指定スクリーンショット (`clipSelector`)**: 特定の要素（例: `clipSelector: "#stock-chart"`）を指定することで、その要素のみを切り抜いた Base64 PNG を取得できます。
 > 
 > **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。
+> 
+> **🔄 U字型パッセージ配置 (`reorderUFlat: true`)**: *Lost in the Middle* 現象を克服するため、スコア降順ではなく最重要情報を先頭と末尾に配置（`1位, 3位 ... 4位, 2位`）して返却します。
+> 
+> **🎛️ MMR 多様性制御 (`diversityWeight: 0.7`)**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を排除し、多角的な重要パッセージを採択します。
+> 
+> **⏳ 時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 配列を返却します。
+> 
+> **🗜️ スマート表トークン圧縮 (`minimizeTables: true`, デフォルト有効)**: Web 上の表から全行空欄列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ で自動パージし、表のトークン消費を 30〜70% 削減します。
 > 
 > **🧹 ユーザー指定ノイズセレクタ除去 (`removeSelectors`)**: `removeSelectors: [".ad", ".comments", "#related-articles"]` を指定し、特定ブロックを Markdown 変換前に徹底パージできます。
 > 

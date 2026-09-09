@@ -519,12 +519,15 @@ export async function searchYahooChiebukuro(options: {
     const json = JSON.parse(content);
     json.source = 'chiebukuro';
     if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({
+      const normalized = json.items.map((item: any) => ({
         source: 'chiebukuro' as const,
         siteName: 'Yahoo!知恵袋',
         publishedTime: item.posted_at || item.updated_at,
+        snippet: item.best_answer || item.snippet || item.description || item.content,
         ...item,
       }));
+      json.items = rerankSearchResults(normalized, options.query);
+      json.count = json.items.length;
     }
     return json;
   } catch {
