@@ -24,6 +24,7 @@ flowchart LR
         subgraph Engine["Dual Scrape Engine"]
             Fast["Static Fetch + Readability + AI Chunker"]
             Browser["Stealth Chromium + Browser DSL (Tabs/Clicks)"]
+            Rho["ρSelect: Query-Bounded Fractional Optimizer"]
         end
 
         subgraph JP["Japan Life Infrastructure"]
@@ -43,6 +44,9 @@ flowchart LR
     Browser --> Sites
     JP --> PublicData
 ```
+
+> 📖 **【研究開発中】Web証拠選択エンジン「ρSelect」の数理理論ドキュメント**:  
+> トークン効率を極限まで高めるクエリ有界分数最適化エンジン「ρSelect」の初心者向け直感解説・数理理論・具体例については、[docs/rho_select.md](docs/rho_select.md) をご覧ください（※本機能は開発中の理論・実装であり、今後仕様や定式化の更新が行われる可能性があります）。
 
 ---
 
@@ -72,7 +76,7 @@ Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 47 エンドポイント（49 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 57 エンドポイント（52 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -138,10 +142,13 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - **DOM Quiescence（静止検知）SPA待機**: 固定スリープを廃止し、`MutationObserver` により 200ms の DOM 変更静止を捉えて最速完了。描画漏れ根絶。
    - **イベント・パンくず・表構造化抽出**: Schema.org `Event`/`MusicEvent` の自動構造化、パンくず階層ナビゲーションパス抽出、複雑な表の結合セル（`colspan`/`rowspan`）2Dマトリクス正規化、および重要告知画像（チラシ・タイテ・図表）スコアリングを標準搭載。
    - **Clean Content Sanitizer**: プロンプトインジェクション用制御トークンや不可視ゼロ幅文字を自動無害化。
-7. **🎯 祖先見出し階層伝播BM25 & Dinkelbach法パッセージ最適化抽出 (v2.14.0+)**:
-   - **Hierarchical BM25 Breadcrumb Diffusion ($\gamma=0.6$)**: `h1`〜`h6` の祖先見出し全階層の文脈・IDFを減衰伝播させ、見出しにしか現れない重要キーワード配下の段落を漏れなく高スコア化。見出しのない平文テキストも段落フォールバックで均一評価。
-   - **Dinkelbach法 最大情報密度パッセージ抽出**: 分数計画法（Fractional Programming）により、連続文の目的関数 $\max \frac{W}{L^\alpha}$（$\alpha=0.6$）を厳密に反復最適化。Kadane法（最大部分配列探索）と連携し、貪欲法・尺取り法の局所解を克服して最も情報密度の高い文区間をミリ秒未満（<0.005ms）で厳密抽出。
-   - **構文不可分保護 & 形態素バイグラム合成**: GFMテーブルやフェンスドコードブロックを構文単位で不可分保護。日本語のスペースなし複合語（「星風まどか」等）も形態素＋隣接バイグラム合成で完全一致・取りこぼしを完全防止。
+7. **🎯 ρSelect (クエリ有界分数最適化によるトークン効率的Web証拠選択エンジン v2.17.0+ / 開発中理論)**:
+   - **数理目的関数**: $\max_{S \subseteq V, |S| \le K} \rho_\tau(S) = \frac{U(S)}{\tau + C(S)}$。トークンコスト（加法）に対する証拠効用（正規化単調劣モジュラ）の分数密度を、有界疎動的計画法（Exact Sparse DP on `(mask, count)`）とコスト–効用 Pareto 非支配フロンティア走査により、**ヒューリスティックに頼らず 100% 厳密な大域的最適解** として選出。
+   - **Singleton Degeneracy 解消と相補的証拠選択**: 固定オーバーヘッド $\tau > 0$（デフォルト: 96）により極小ゴミ断片の選出を防止し、複数の相補的な証拠セクションを最適に採択。
+   - **補完証拠（検索スニペット・メタディスクリプション）の動的統合**: X等のログイン保護・動的ページで本文が欠落しても、検索スニペット（`snippet`）や `description` を証拠プールに自動融合し、ピンポイントな事実を確実に救出。
+   - **ボイラープレート・メタデータ自動排除 & リスト見出し階層認識 (v2.17.2+)**: ページ先頭の YAML Frontmatter（`--- publishedTime ... ---`）やパンくず記号（`> 📍 **階層**: ...`）の本文セクション混入を自動排除。トピックス一覧ページ（`- ### [記事見出し]`）も独立セクションとして階層認識し、看板メタデータではなく実際の最新ニュース・個別記事が上位選出されるよう最適化。
+   - **Dinkelbach法検証器の完全一致性**: パラメトリック反復法（Dinkelbach法）との完全一致（`exactAgreement: true`）を毎実行時検証（実測 1.5ms 動作）。
+   - 📖 **詳細な初心者向け解説＆数学理論ドキュメント**: [docs/rho_select.md](docs/rho_select.md)（※本機能は開発中の理論・実装であり、今後仕様や定式化の更新が行われる可能性があります）。
 8. **📊 動的コーパスIDF付きアイテム間 BM25+ リランキングエンジン**:
    - Web検索・ディープ検索・Yahoo!知恵袋等の検索結果アイテム群からインメモリで動的ドキュメント頻度 $df(t)$ と IDF を算出し、クエリ固有キーワードを自動浮上。タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化により、AI エージェントが最も求める重要情報を最上位に自動ソート。
 9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
@@ -158,6 +165,9 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - 記事の `publishedTime` を基準日（Reference Date）とし、「明日」「来週金曜」「3日前」等の相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆構造化返却。過去記事の未来誤認ハルシネーションを根絶（`annotateTemporal: true`）。
 12. **🗜️ Smart Table Minimizer (表・スペック表のトークン圧縮)**:
    - Web 上のスペック表・料金表・比較表から、全行空欄の列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ のインメモリ走査で自動検知・パージ。テーブルのトークン消費を 30〜70% 削減（`minimizeTables: true`）。
+13. **📦 日本主要5社＋UPS 荷物追跡 API & MCP ツール (v2.18.0+)**:
+   - ヤマト運輸、佐川急便、日本郵便（ゆうパック）、西濃運輸、福山通運、および国際大手 UPS の配達状況・追跡イベント履歴を統一スキーマで取得。
+   - 伝票番号フォーマットの静的判定＋候補キャリアへの並行投機照会（Speculative Lookup）により、運送会社が不明な場合でも自動判別（`carrier: "auto"`、応答約 200〜400ms）。公式追跡Webリンクも自動生成。
 
 ---
 
@@ -195,6 +205,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `POST /browser/action` (セッション継続) | **約 0.3 〜 0.6 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 | `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
 | `POST /trade/hts-predict` (HTSコード推測) | **約 0.2 〜 0.4 秒** | **0.5 ms** | 商品名・素材からの10桁HTS自動推測＋関税率＋多層防御ヒアリング誘導 |
+| `POST /tracking` (荷物追跡) | **約 200 〜 400 ms** | **0.5 ms** | 主要6社（ヤマト・佐川・日本郵便・西濃・福山・UPS）並行投機照会＋自動判別 |
 
 #### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
 
@@ -295,12 +306,12 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 38 ツール / 10 のモジュール & ハイブリッド 12 コア構成)
+## 2. 提供 MCP ツール一覧 (全 39 ツール / 10 のモジュール & ハイブリッド 12 コア構成)
 
-Sora は、目的に応じて **10 個の論理モジュール（全 38 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **10 個の論理モジュール（全 39 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントが日常的・頻繁に使う **代表的な 12 個のコアツールを初期有効（★ CORE）** とし、残りの 26 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントが日常的・頻繁に使う **代表的な 12 個のコアツールを初期有効（★ CORE）** とし、残りの 27 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 12 ツール)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -315,7 +326,8 @@ Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 26 ツール)**:
+- **動的有効化 (・ DEFERRED 27 ツール)**:
+  - `track_package`: 日本の主要5社（ヤマト・佐川・郵便・西濃・福山）＆UPS 荷物追跡・自動キャリア判別
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得
@@ -341,8 +353,8 @@ Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）
 │ ・map_site      │                   │ ★search_realtime │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
 │ ・crawl_site    │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
 │                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
-│                 │                   │   keywords       │                 │             │・search_artist│・inspect_    │・check_   │
-│                 │                   │                  │                 │             │・search_music │  image       │  fda_regu-│
+│                 │                   │   keywords       │ ・track_package │             │・search_artist│・inspect_    │・check_   │
+│                 │                   │                  │   (荷物追跡)    │             │・search_music │  image       │  fda_regu-│
 │                 │                   │                  │                 │             │               │ (マルチモ    │  lated    │
 │                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
 │                 │                   │                  │                 │             │               │              │  cpsc_cert│
@@ -380,7 +392,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > [!TIP]
 > **より効果的なアプローチ**:
 > 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
-> 2. **祖先見出し階層伝播BM25 & Dinkelbach法パッセージ最適化抽出**: `extractHighlights: true`（`query` 指定）を有効化すると、**Hierarchical BM25 Breadcrumb Diffusion**（祖先見出し全階層のIDFを減衰伝播 $\gamma=0.6$）と分数計画法の金字塔 **Dinkelbach法**（最大情報密度連続文最適化 $\max \frac{W}{L^\alpha}, \alpha=0.6$ ＋ Kadane法）、形態素バイグラム合成により、LLM は長いページ全体を読む代わりに**クエリに関連する最も情報密度の高い段落・センテンス区間のみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます。表（GFM Table）やコードブロックも不可分保護され構文崩れが起きません。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します（完全インメモリ、0.03ms で超高速動作）。
+> 2. **ρSelect (クエリ有界分数最適化によるトークン効率的Web証拠選択エンジン)**: `extractHighlights: true`（`query` 指定）を有効化すると、**ρSelect**（$\max_{S \subseteq V, |S| \le K} \frac{U(S)}{\tau + C(S)}$、基数制約 $|S| \le K$、Pareto 非支配フロンティア走査、Dinkelbach法検証器、Intl.Segmenter日本語形態素抽出、検索スニペット・ディスクリプション補完証拠融合）が作動し、LLM は長いページ全体を読む代わりに**クエリに関連する最も情報密度の高い段落・センテンス区間のみを集中して読める**ため、ハルシネーションを防止しつつトークン消費を 70〜90% 削減できます。表（GFM Table）やコードブロックも不可分保護され構文崩れが起きません。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します（完全インメモリ、実測 1.5ms で超高速動作）。詳細な理論および初心者向け解説は [docs/rho_select.md](docs/rho_select.md)（※開発・研究進行中）を参照。
 > 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: `evidenceMode: "contextual_highlights"` を指定すると、ブロック単位の出所識別子（`[S1:P4 | 2026-09-01]`）と見出し階層・テーブルヘッダーを保持した構造化パッセージ（`highlightItems`）が返却されます。さらに `includeDiagnostics: true` で客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を付与し、`includeDiscrepancies: true` で日付・金額等の不一致候補を対比提示、`safeNormalize: true` で全角/漢数字（万）や単位の決定論的正規化と導出履歴（`derivations`）を追跡できます。LLM の自律判断を妨げず、決定論的な事実データを供給します。
 > 4. **検索結果の動的コーパスIDF付きアイテム間 BM25+ リランキング**: `search_web`, `search_deep`, `search_chiebukuro` 等の検索結果は、返却されたヒットアイテム群からインメモリでドキュメント頻度 $df(t)$ と動的 IDF を算出し、タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化で瞬時にリランキングされます。クエリ固有の重要キーワードや完全一致を含む優良ソースが自動で最上位に浮上し、AI の探索精度を劇的に向上させます。
 > 5. **Google 流 説明文自動選定器 (Meta vs Body Dynamic Arbiter)**: サイト共通の固定定型文（ボイラープレート）を自動検知し、クエリ直結の動的スニペットを `description` に自動昇格。検索結果一覧（SERP）の段階で AI が 100% 正確に内容を把握できます。
@@ -450,6 +462,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 地点ID (例「130010」)<br>- `days` (number, 任意): 予報日数 (1〜3日, デフォルト: 3) |
 | `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
 | `get_flight_status` | 主要空港（羽田・成田・伊丹・関空・中部・新千歳・福岡・那覇等）の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 行先・航空会社名絞り込み |
+| `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および UPS の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）および公式追跡Webリンク生成に対応。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukuyama"`, `"ups"`) |
 
 ---
 
@@ -1652,6 +1665,64 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
       "data": "/9j/4AAQSkZJRgABAQAAAQABAAD...",
       "mimeType": "image/jpeg"
     }
+  }
+  ```
+
+### 3.24 荷物追跡・配達状況照会 (`POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`)
+日本の主要配送業者5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および国際配送の UPS の荷物配達状況をスクレイピング・API連携により横断追跡・正規化します。伝票番号（ハイフン有無・全角半角不問）のフォーマットや Modulus 7 / Luhn チェックサムによる運送会社自動判別に対応しています。5分間のインメモリキャッシュを内蔵。
+
+- **対応キャリア**:
+  - `yamato` (ヤマト運輸 / クロネコヤマト)
+  - `sagawa` (佐川急便)
+  - `japanpost` (日本郵便 / ゆうパック・書留)
+  - `seino` (西濃運輸 / カンガルー便)
+  - `fukutsu` / `fukuyama` (福山通運)
+  - `ups` (UPS / United Parcel Service)
+  - `auto` (自動判別: デフォルト)
+
+- **リクエスト (POST /tracking)**:
+  ```json
+  {
+    "trackingNumber": "1234-5678-9012",
+    "carrier": "auto",
+    "noCache": false
+  }
+  ```
+- **リクエスト (GET /tracking/:number または GET /tracking/:carrier/:number)**:
+  - `GET /tracking/123456789012` (自動判別)
+  - `GET /tracking/yamato/123456789012` (キャリア指定)
+  - クエリパラメータ: `?noCache=true` (キャッシュバイパス)
+
+- **レスポンス例**:
+  ```json
+  {
+    "carrier": "yamato",
+    "carrierName": "ヤマト運輸",
+    "trackingNumber": "123456789012",
+    "status": "delivered",
+    "statusText": "配達完了",
+    "deliveredAt": "2026-09-09 14:30",
+    "history": [
+      {
+        "date": "2026/09/08",
+        "time": "18:20",
+        "status": "荷物受付",
+        "location": "東京ベース店"
+      },
+      {
+        "date": "2026/09/09",
+        "time": "08:15",
+        "status": "配達中",
+        "location": "渋谷センター"
+      },
+      {
+        "date": "2026/09/09",
+        "time": "14:30",
+        "status": "配達完了",
+        "location": "渋谷センター"
+      }
+    ],
+    "cached": false
   }
   ```
 
