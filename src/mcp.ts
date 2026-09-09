@@ -248,7 +248,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractHighlights: z
           .boolean()
           .optional()
-          .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
+          .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
         onlyHighlights: z
           .boolean()
           .optional()
@@ -338,10 +338,44 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)'),
+        evidenceMode: z
+          .enum(['full', 'highlights', 'contextual_highlights'])
+          .optional()
+          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+        includeDiagnostics: z
+          .boolean()
+          .optional()
+          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
+        includeDiscrepancies: z
+          .boolean()
+          .optional()
+          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
+        safeNormalize: z
+          .boolean()
+          .optional()
+          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
+        reorderUFlat: z
+          .boolean()
+          .optional()
+          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
+        diversityWeight: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
+        annotateTemporal: z
+          .boolean()
+          .optional()
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+        minimizeTables: z
+          .boolean()
+          .optional()
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
           const formatted = formatCompactScrapeResult(result, { verbose });
           return {
             content: [
@@ -379,7 +413,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
         removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
         query: z.string().optional().describe('ハイライト抽出用キーワード'),
-        extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+        extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
         onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
         extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
         extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
@@ -393,12 +427,46 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
         webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
         retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
+        evidenceMode: z
+          .enum(['full', 'highlights', 'contextual_highlights'])
+          .optional()
+          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+        includeDiagnostics: z
+          .boolean()
+          .optional()
+          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
+        includeDiscrepancies: z
+          .boolean()
+          .optional()
+          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
+        safeNormalize: z
+          .boolean()
+          .optional()
+          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
+        reorderUFlat: z
+          .boolean()
+          .optional()
+          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
+        diversityWeight: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
+        annotateTemporal: z
+          .boolean()
+          .optional()
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+        minimizeTables: z
+          .boolean()
+          .optional()
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
         verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
         try {
-          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent });
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
           const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return {
             content: [
@@ -438,9 +506,31 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
         dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+        reorderUFlat: z
+          .boolean()
+          .optional()
+          .describe('Lost in the Middle 対策: 検索結果および抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
+        enablePrf: z
+          .boolean()
+          .optional()
+          .describe('インメモリ PRF (擬似適合フィードバック): 上位検索結果の共起語を解析してクエリを自動拡張し、語彙不足を自己補完するか (デフォルト: false)'),
+        diversityWeight: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
+        annotateTemporal: z
+          .boolean()
+          .optional()
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+        minimizeTables: z
+          .boolean()
+          .optional()
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -456,6 +546,11 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             dedup,
             onlyMainContent,
             verbose,
+            reorderUFlat,
+            enablePrf,
+            diversityWeight,
+            annotateTemporal,
+            minimizeTables,
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -515,10 +610,20 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
         extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
         onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+        reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージおよびクロール結果全体を U字型で並べ替えるか (デフォルト: false)'),
+        diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
+        annotateTemporal: z
+          .boolean()
+          .optional()
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+        minimizeTables: z
+          .boolean()
+          .optional()
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
       },
-      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights }) => {
+      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
         try {
-          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights });
+          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };

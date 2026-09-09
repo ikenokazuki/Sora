@@ -1,5 +1,36 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
+import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage, type HeadingBlock } from './extractor/hierarchical_bm25.js';
+import {
+  assignBlockProvenance,
+  formatBlockAnchor,
+  computeEvidenceDiagnostics,
+  detectDiscrepancies,
+  normalizeSafeNumeric,
+  type ProvenanceBlock,
+} from './extractor/accessibility_compiler.js';
+import {
+  reorderLostInTheMiddle,
+  selectMaximalMarginalRelevance,
+  expandQueryWithPseudoRelevanceFeedback,
+} from './extractor/information_retrieval.js';
+import {
+  extractTemporalAnchors,
+  annotateTextWithTemporalAnchors,
+  type TemporalAnchor,
+} from './extractor/temporal_anchor.js';
+export {
+  normalizeSafeNumeric,
+  assignBlockProvenance,
+  formatBlockAnchor,
+  computeEvidenceDiagnostics,
+  detectDiscrepancies,
+  reorderLostInTheMiddle,
+  selectMaximalMarginalRelevance,
+  expandQueryWithPseudoRelevanceFeedback,
+  extractTemporalAnchors,
+  annotateTextWithTemporalAnchors,
+};
 import type {
   Citation,
   MarkdownChunk,
@@ -8,6 +39,10 @@ import type {
   TableData,
   MediaInfo,
   FieldEvidence,
+  HighlightItem,
+  EvidenceDiagnostics,
+  CandidateDiscrepancy,
+  DerivationTrace,
 } from './types.js';
 
 /** テキストの推定トークン数を算出（日本語は1.3文字/トークン、英語は4文字/トークン） */
@@ -223,13 +258,11 @@ export function generatePromptContext(result: ScrapeResult): string {
 /** 検索キーワードの Markdown 本文自動強調 (<mark>単語</mark>) */
 export function highlightQueryMatchesInMarkdown(markdown: string, query: string): string {
   if (!markdown || !query) return markdown;
-  const terms = query
-    .toLowerCase()
-    .replace(/[+&|()!^"~*?:\\/]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length >= 2);
-
+  const terms = extractTermsWithBigrams(query);
   if (terms.length === 0) return markdown;
+
+  // 長い term から先に置換して部分一致の崩れを防ぐ（降順ソート）
+  const sortedTerms = terms.slice().sort((a, b) => b.length - a.length);
 
   let inCodeBlock = false;
   const lines = markdown.split('\n');
@@ -244,7 +277,8 @@ export function highlightQueryMatchesInMarkdown(markdown: string, query: string)
     }
 
     let modified = line;
-    for (const term of terms) {
+    for (const term of sortedTerms) {
+      if (term.length < 2) continue;
       const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(?<!<[^>]*)(?<!\\[[^\\]]*)(?<!\\([^\\)]*)(${esc})(?![^<]*>)(?![^\\[]*\\])(?![^\\(]*\\))`, 'gi');
       modified = modified.replace(regex, '<mark>$1</mark>');
@@ -480,312 +514,194 @@ export interface ParsedSection {
   startIndex: number;
 }
 
-/** クエリ関連ハイライト抽出 (Fielded BM25F + BM25+ & Adaptive Section Cohesion) */
-export function extractQueryHighlights(content: string, query: string, maxHighlights = 3): string[] {
-  if (!query || !content) return [];
+export interface QueryHighlightDetailsOptions {
+  sourceId?: string;
+  url?: string;
+  publishedTime?: string;
+  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
+  maxHighlights?: number;
+  reorderUFlat?: boolean;
+  diversityWeight?: number;
+  annotateTemporal?: boolean;
+}
 
-  const cleanQuery = query.toLowerCase().trim();
-  const rawTerms = cleanQuery.split(/\s+/).filter((t) => t.length >= 2);
+export interface QueryHighlightDetailsResult {
+  highlights: string[];
+  highlightItems: HighlightItem[];
+  diagnostics: EvidenceDiagnostics;
+  discrepancies: CandidateDiscrepancy[];
+  temporalAnchors: TemporalAnchor[];
+}
 
-  const termSet = new Set<string>();
-  for (const t of rawTerms) termSet.add(t);
+/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・不一致候補・時間的文脈アンカーを統合) */
+export function extractQueryHighlightDetails(
+  content: string,
+  query: string,
+  options: QueryHighlightDetailsOptions = {},
+): QueryHighlightDetailsResult {
+  const maxHighlights = options.maxHighlights ?? 3;
+  const sourceId = options.sourceId || 'S1';
+  const evidenceMode = options.evidenceMode || 'highlights';
 
-  // 日本語形態素単語分割 (Intl.Segmenter)
-  try {
-    const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
-    for (const segment of segmenter.segment(query)) {
-      if (segment.isWordLike) {
-        const word = segment.segment.toLowerCase().trim();
-        if (word.length >= 2) {
-          termSet.add(word);
-        }
-      }
-    }
-  } catch {}
-
-  const terms = Array.from(termSet);
-  if (terms.length === 0) return [];
-
-  // 1. Markdown をセクション（見出し階層）と段落ツリーに構造化パース
-  const lines = content.split(/\r?\n/);
-  const sections: ParsedSection[] = [];
-  let currentRawHeading = '';
-  let currentHeading = '';
-  let currentHeadingLevel = 0;
-  let currentParagraphLines: string[] = [];
-  let currentSectionParagraphs: string[] = [];
-  let sectionStartIndex = 0;
-
-  const flushParagraph = () => {
-    if (currentParagraphLines.length > 0) {
-      const text = currentParagraphLines.join('\n').trim();
-      if (text.length > 0 && !text.startsWith('---')) {
-        currentSectionParagraphs.push(text);
-      }
-      currentParagraphLines = [];
-    }
-  };
-
-  const flushSection = () => {
-    flushParagraph();
-    if (currentSectionParagraphs.length > 0 || currentHeading.length > 0) {
-      const fullText = currentSectionParagraphs.join('\n\n').trim();
-      if (fullText.length > 0) {
-        sections.push({
-          rawHeading: currentRawHeading,
-          heading: currentHeading,
-          headingLevel: currentHeadingLevel,
-          paragraphs: [...currentSectionParagraphs],
-          fullText,
-          charLength: fullText.length,
-          startIndex: sectionStartIndex++,
-        });
-      }
-      currentSectionParagraphs = [];
-    }
-  };
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (headingMatch) {
-      flushSection();
-      currentHeadingLevel = headingMatch[1].length;
-      currentRawHeading = line;
-      currentHeading = headingMatch[2].trim();
-    } else if (line === '') {
-      flushParagraph();
-    } else {
-      currentParagraphLines.push(rawLine);
-    }
+  if (!query || !content) {
+    return {
+      highlights: [],
+      highlightItems: [],
+      diagnostics: computeEvidenceDiagnostics(content || '', query || '', 0, 0),
+      discrepancies: [],
+      temporalAnchors: [],
+    };
   }
-  flushSection();
 
-  if (sections.length === 0) return [];
+  const terms = extractTermsWithBigrams(query);
+  const rawBlocks = parseBlocks(content);
+  if (terms.length === 0 || rawBlocks.length === 0) {
+    return {
+      highlights: [],
+      highlightItems: [],
+      diagnostics: computeEvidenceDiagnostics(content, query, 0, 0),
+      discrepancies: [],
+      temporalAnchors: [],
+    };
+  }
 
-  const avgBodyLen = sections.reduce((acc, s) => acc + s.charLength, 0) / sections.length || 100;
-  const avgHeadingLen = sections.filter((s) => s.heading.length > 0).reduce((acc, s) => acc + s.heading.length, 0) / Math.max(sections.length, 1) || 10;
+  // ブロック単位の出所識別 (Block Provenance)
+  const blocks = assignBlockProvenance(rawBlocks, sourceId, options.url, options.publishedTime);
 
-  // BM25F パラメータ
-  const k1 = 1.2;
-  const delta = 0.8; // BM25+ 長文過剰ペナルティ防止
-  const wHeading = 3.5;
-  const bHeading = 0.5;
-  const wBody = 1.0;
-  const bBody = 0.75;
-
-  interface CandidateHighlight {
-    text: string;
+  interface ScoredCandidate {
+    block: ProvenanceBlock;
     score: number;
-    heading: string;
-    sectionIndex: number;
+    snippet: string;
+    rawSnippetBody: string;
   }
 
-  const candidates: CandidateHighlight[] = [];
+  const scoredCandidates: ScoredCandidate[] = [];
 
-  for (const section of sections) {
-    const lowerHeading = section.heading.toLowerCase();
-    const lowerBody = section.fullText.toLowerCase();
+  for (const block of blocks) {
+    const score = scorePassage(block, terms, blocks);
+    if (score <= 0) continue;
 
-    // 各単語の重み付きフィールド頻度 (BM25F)
-    let totalWeightedTf = 0;
-    let distinctTermsMatched = 0;
-    const allTermPositions: number[] = [];
+    let snippetBody = block.body;
+    const isTableOrCode =
+      (block.body.includes('|') && block.body.includes('---')) ||
+      block.body.includes('```');
 
-    for (const term of terms) {
-      const termRegex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      
-      // Heading Field
-      let countHeading = 0;
-      if (lowerHeading.length > 0) {
-        const matchesH = lowerHeading.match(termRegex);
-        if (matchesH) countHeading = matchesH.length;
-      }
-
-      // Body Field
-      let countBody = 0;
-      let m: RegExpExecArray | null;
-      while ((m = termRegex.exec(lowerBody)) !== null) {
-        countBody++;
-        allTermPositions.push(m.index);
-      }
-
-      if (countHeading > 0 || countBody > 0) {
-        distinctTermsMatched++;
-        const normH = countHeading > 0 ? (countHeading / (1 - bHeading + bHeading * (lowerHeading.length / Math.max(avgHeadingLen, 5)))) : 0;
-        const normB = countBody > 0 ? (countBody / (1 - bBody + bBody * (section.charLength / Math.max(avgBodyLen, 50)))) : 0;
-        const termLengthWeight = term.length >= 4 ? 1.5 : 1.0;
-        const weightedTf = (wHeading * normH + wBody * normB) * termLengthWeight;
-        totalWeightedTf += weightedTf;
-      }
+    if (block.body.length > 800 && !isTableOrCode) {
+      snippetBody = dinkelbachOptimalPassage(block.body, terms, blocks);
     }
 
-    if (totalWeightedTf === 0) continue;
+    const headingPrefix = block.headingPath.length > 0
+      ? `## ${block.headingPath.join(' > ')}\n\n`
+      : '';
 
-    // BM25F + BM25+ スコア算出
-    let score = ((totalWeightedTf * (k1 + 1)) / (totalWeightedTf + k1)) + delta;
+    // contextual_highlights モードの場合はアンカーヘッダーを付与
+    const anchorHeader = evidenceMode === 'contextual_highlights'
+      ? `${formatBlockAnchor(block.ref)}\n`
+      : '';
 
-    // 複数単語一致の幾何級数ブースト
-    if (distinctTermsMatched > 1) {
-      score *= Math.pow(distinctTermsMatched, 1.4);
-    }
-
-    // クエリフレーズ完全一致ボーナス
-    if (cleanQuery.length >= 4 && (lowerHeading.includes(cleanQuery) || lowerBody.includes(cleanQuery))) {
-      score += 6.0;
-    }
-
-    // 複合語・フレーズ一致ボーナス
-    for (const rawT of rawTerms) {
-      if (rawT.length >= 3 && lowerHeading.includes(rawT)) {
-        score += 3.5;
-      }
-    }
-
-    // 語順・隣接度ボーナス (Left-to-Right Word Order Consistency)
-    if (rawTerms.length >= 2) {
-      let orderBonus = 0;
-      for (let i = 0; i < rawTerms.length - 1; i++) {
-        const t1 = rawTerms[i];
-        const t2 = rawTerms[i + 1];
-        const p1 = lowerBody.indexOf(t1);
-        const p2 = lowerBody.indexOf(t2, p1 >= 0 ? p1 : 0);
-        if (p1 >= 0 && p2 > p1) {
-          const dist = p2 - (p1 + t1.length);
-          if (dist < 50) {
-            orderBonus += 2.5 * (1 - dist / 50);
-          }
-        }
-      }
-      score += orderBonus;
-    }
-
-    // 鮮度バイアス (年号・日付検知)
-    const currentYear = new Date().getFullYear();
-    const hasRecentYear = lowerBody.includes(String(currentYear)) || lowerBody.includes(String(currentYear + 1));
-    if (hasRecentYear) {
-      score += 0.8;
-    }
-
-    // 近接度ボーナス (Proximity Span)
-    if (allTermPositions.length >= 2) {
-      allTermPositions.sort((a, b) => a - b);
-      const span = allTermPositions[allTermPositions.length - 1] - allTermPositions[0];
-      if (span < 200) {
-        score += 2.5 * (1 - span / 200);
-      }
-    }
-
-    // スニペット構築: 適応型セクション集約 & 文境界スナッピング (Sentence Boundary Snapping)
-    let snippetText = '';
-    const headingPrefix = section.rawHeading ? `${section.rawHeading}\n\n` : '';
-
-    // セクション長が適正（〜800文字）または見出しが直接マッチしている場合（〜1200文字まで）は完全抽出
-    const isHeadingMatched = rawTerms.some((t) => lowerHeading.includes(t));
-    if (section.charLength <= 800 || (isHeadingMatched && section.charLength <= 1200)) {
-      snippetText = headingPrefix + section.fullText;
-    } else {
-      // 長文セクションの場合: マッチ密度の最も高い段落クラスタ（KWIC ウィンドウ）を文境界で自然に抽出
-      if (allTermPositions.length > 0) {
-        const medianPos = allTermPositions[Math.floor(allTermPositions.length / 2)];
-        let start = Math.max(0, medianPos - 180);
-        let end = Math.min(section.fullText.length, medianPos + 250);
-
-        // 句読点・文境界スナッピング（文の途中でのブツ切りを防止）
-        const boundaryChars = /[\n。！？!?]/;
-        for (let i = start; i >= Math.max(0, start - 60); i--) {
-          if (boundaryChars.test(section.fullText[i])) {
-            start = i + 1;
-            break;
-          }
-        }
-        for (let i = end; i < Math.min(section.fullText.length, end + 80); i++) {
-          if (boundaryChars.test(section.fullText[i])) {
-            end = i + 1;
-            break;
-          }
-        }
-
-        const sliced = (start > 0 ? '...' : '') +
-          section.fullText.slice(start, end).trim() +
-          (end < section.fullText.length ? '...' : '');
-        snippetText = headingPrefix + sliced;
-      } else {
-        snippetText = headingPrefix + section.fullText.slice(0, 400) + '...';
-      }
-    }
-
-    candidates.push({
-      text: snippetText.trim(),
+    scoredCandidates.push({
+      block,
       score,
-      heading: section.heading,
-      sectionIndex: section.startIndex,
+      snippet: `${anchorHeader}${headingPrefix}${snippetBody}`.trim(),
+      rawSnippetBody: snippetBody,
     });
   }
 
-  if (candidates.length === 0) return [];
+  const topScore = scoredCandidates.length > 0
+    ? Math.max(...scoredCandidates.map((c) => c.score))
+    : 0;
 
-  // スコア順にソート
-  candidates.sort((a, b) => b.score - a.score);
-
-  const topScore = candidates[0].score;
-  const topCandidate = candidates[0];
-
-  // クエリの重要語（Stopword 以外の高識別語）をトップ候補が含んでいるか特定
-  const genericStopwords = new Set(['コール', 'call', 'ライブ', 'live', '曲', '歌詞', '情報', '一覧', 'まとめ']);
-  const distinctiveTerms = terms.filter(
-    (t) => (t.length >= 3 || !genericStopwords.has(t)) &&
-           (topCandidate.text.toLowerCase().includes(t) || topCandidate.heading.toLowerCase().includes(t))
+  const diagnostics = computeEvidenceDiagnostics(
+    content,
+    query,
+    scoredCandidates.length,
+    topScore,
   );
 
-  // MMR + Information Gain + 動的スコア減衰カットオフ による高精度選択
-  const selected: CandidateHighlight[] = [];
-  const selectedHeadings = new Set<string>();
-  const coveredWords = new Set<string>();
-
-  for (const cand of candidates) {
-    if (selected.length >= maxHighlights) break;
-
-    // ① 動的スコア減衰カットオフ (Relative Score Dropoff Cutoff):
-    // 1位の最高スコアに対して適合度が 45% 未満に急落した候補は、無関係なノイズとして足切り
-    if (selected.length > 0 && cand.score < topScore * 0.45) {
-      break;
-    }
-
-    // ② クエリ主要語カバレッジゲート (Core Term Coverage Gate):
-    // クエリに複数の重要語があり、1位が重要語にマッチしている場合、その重要語を一切含まない候補は足切り
-    if (selected.length > 0 && distinctiveTerms.length > 0 && rawTerms.length >= 2) {
-      const lowerCand = (cand.heading + ' ' + cand.text).toLowerCase();
-      const hasDistinctiveMatch = distinctiveTerms.some((t) => lowerCand.includes(t));
-      if (!hasDistinctiveMatch) {
-        continue;
-      }
-    }
-
-    // ③ 同一見出しからの重複ペナルティ
-    const isHeadingDuplicate = cand.heading && selectedHeadings.has(cand.heading);
-    if (isHeadingDuplicate && candidates.some((c) => c.heading && !selectedHeadings.has(c.heading) && c.score > cand.score * 0.4)) {
-      continue;
-    }
-
-    // ④ Information Gain (新規語の保有量)
-    const candWords = (cand.text.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || []);
-    let newWordCount = 0;
-    for (const w of candWords) {
-      if (!coveredWords.has(w)) newWordCount++;
-    }
-
-    // 既出情報との重複が85%を超える場合はスキップ (Information Gain < 15%)
-    if (selected.length > 0 && candWords.length >= 10 && (newWordCount / candWords.length) < 0.15) {
-      continue;
-    }
-
-    selected.push(cand);
-    if (cand.heading) selectedHeadings.add(cand.heading);
-    for (const w of candWords) coveredWords.add(w);
+  if (scoredCandidates.length === 0) {
+    return {
+      highlights: [],
+      highlightItems: [],
+      diagnostics,
+      discrepancies: [],
+      temporalAnchors: [],
+    };
   }
 
-  return selected.map((s) => s.text);
+  scoredCandidates.sort((a, b) => b.score - a.score);
+
+  // 1. スコア閾値 (topScore * 0.35) を満たす候補にフィルタ
+  const validCandidates = scoredCandidates.filter((c, idx) => idx === 0 || c.score >= topScore * 0.35);
+
+  // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
+  const diversityWeight = options.diversityWeight ?? 0.7;
+  const mmrCandidates = selectMaximalMarginalRelevance(validCandidates, {
+    getScore: (c) => c.score,
+    getText: (c) => c.rawSnippetBody,
+    limit: maxHighlights,
+    lambda: diversityWeight,
+  });
+
+  // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
+  const finalCandidates = options.reorderUFlat
+    ? reorderLostInTheMiddle(mmrCandidates)
+    : mmrCandidates;
+
+  const selectedHighlights: string[] = [];
+  const selectedItems: HighlightItem[] = [];
+  const allTemporalAnchors: TemporalAnchor[] = [];
+
+  for (const cand of finalCandidates) {
+    let snippetText = cand.snippet;
+    const itemAnchors = extractTemporalAnchors(snippetText, options.publishedTime);
+    if (itemAnchors.length > 0) {
+      allTemporalAnchors.push(...itemAnchors);
+    }
+
+    // annotateTemporal オプション指定時は決定論的インライン注記を埋め込む
+    if (options.annotateTemporal && itemAnchors.length > 0) {
+      snippetText = annotateTextWithTemporalAnchors(snippetText, options.publishedTime);
+    }
+
+    selectedHighlights.push(snippetText);
+    selectedItems.push({
+      text: snippetText,
+      score: Number(cand.score.toFixed(4)),
+      ref: cand.block.ref,
+      anchor: formatBlockAnchor(cand.block.ref),
+      ...(itemAnchors.length > 0 ? { temporalAnchors: itemAnchors } : {}),
+    });
+  }
+
+  // 不一致候補 (Candidate Discrepancies) の検出
+  const discrepancyItems = selectedItems.map((item) => ({
+    text: item.text,
+    sourceId: item.ref?.sourceId,
+    blockId: item.ref?.blockId,
+  }));
+  const discrepancies = detectDiscrepancies(discrepancyItems);
+
+  return {
+    highlights: selectedHighlights,
+    highlightItems: selectedItems,
+    diagnostics,
+    discrepancies,
+    temporalAnchors: allTemporalAnchors,
+  };
+}
+
+/** クエリ関連ハイライト抽出 (後方互換用ラッパー) */
+export function extractQueryHighlights(
+  content: string,
+  query: string,
+  maxHighlights = 3,
+  options?: QueryHighlightDetailsOptions,
+): string[] {
+  const result = extractQueryHighlightDetails(content, query, {
+    ...options,
+    maxHighlights,
+  });
+  return result.highlights;
 }
 
 /** ドメインフィルタリング (includeDomains / excludeDomains) */
@@ -827,70 +743,114 @@ export function filterByDomains(
   return filtered;
 }
 
-/** 検索結果アイテムの BM25+ 多信号リランキング (Title, Snippet, Exact Match, Domain Trust) */
+/** 検索結果アイテムの BM25+ 多信号リランキング (Title BM25, Snippet BM25, Dynamic IDF, Bigram Matching, Exact Match, Domain Trust) */
 export function rerankSearchResults<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
   items: T[],
   query: string,
 ): T[] {
   if (!items || items.length <= 1 || !query) return items;
 
-  const termSet = new Set<string>();
-  try {
-    const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
-    for (const segment of segmenter.segment(query)) {
-      if (segment.isWordLike) {
-        const word = segment.segment.toLowerCase().trim();
-        if (word.length >= 2) termSet.add(word);
-      }
-    }
-  } catch {
-    const words = query.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
-    for (const w of words) termSet.add(w);
-  }
-
-  const terms = Array.from(termSet);
+  const terms = extractTermsWithBigrams(query);
   if (terms.length === 0) return items;
 
+  const N = items.length;
   const lowerQuery = query.toLowerCase().trim();
 
-  const scored = items.map((item, originalIndex) => {
+  // 各アイテムのテキスト準備
+  const itemDocs = items.map((item) => {
     const title = (item.title || '').toLowerCase();
     const snippet = (item.snippet || item.description || item.content || '').toLowerCase();
     const urlStr = (item.url || '').toLowerCase();
+    return { title, snippet, urlStr };
+  });
 
+  // 長さ正規化用の平均長 (0除算ガード)
+  let totalTitleLen = 0;
+  let totalSnippetLen = 0;
+  for (const doc of itemDocs) {
+    totalTitleLen += doc.title.length;
+    totalSnippetLen += doc.snippet.length;
+  }
+  const avgTitleLen = Math.max(1, totalTitleLen / N);
+  const avgSnippetLen = Math.max(1, totalSnippetLen / N);
+
+  // 動的 IDF の事前計算: term が出現する文書数 df(t)
+  const dfMap = new Map<string, number>();
+  for (const term of terms) {
+    let df = 0;
+    for (const doc of itemDocs) {
+      if (doc.title.includes(term) || doc.snippet.includes(term)) {
+        df++;
+      }
+    }
+    dfMap.set(term, df);
+  }
+
+  // 出現回数カウント用ヘルパー
+  const countOccurrences = (text: string, sub: string): number => {
+    if (!text || !sub) return 0;
+    let count = 0;
+    let pos = 0;
+    while ((pos = text.indexOf(sub, pos)) !== -1) {
+      count++;
+      pos += sub.length;
+    }
+    return count;
+  };
+
+  // BM25 パラメータ
+  const k1 = 1.2;
+  const b = 0.75;
+  const wTitle = 3.0;
+  const wSnippet = 1.0;
+
+  const scored = items.map((item, originalIndex) => {
+    const doc = itemDocs[originalIndex];
     let score = 0;
 
     // 1. 完全一致ボーナス
-    if (title.includes(lowerQuery)) score += 5.0;
-    if (snippet.includes(lowerQuery)) score += 2.5;
+    if (doc.title.includes(lowerQuery)) score += 5.0;
+    if (doc.snippet.includes(lowerQuery)) score += 2.5;
 
-    // 2. 単語マッチング (タイトル加重 3.0, 本文加重 1.0)
-    let titleMatches = 0;
-    let snippetMatches = 0;
+    // 前方一致ボーナス (タイトル先頭の一致)
+    if (doc.title.startsWith(lowerQuery)) score += 2.0;
+
+    // 2. アイテム間 BM25 (TF飽和 × 長さ正規化 × 動的IDF)
+    const normTitle = 1 - b + b * (doc.title.length / avgTitleLen);
+    const normSnippet = 1 - b + b * (doc.snippet.length / avgSnippetLen);
 
     for (const term of terms) {
-      if (title.includes(term)) {
-        titleMatches++;
-        score += term.length >= 4 ? 3.5 : 2.0;
-      }
-      if (snippet.includes(term)) {
-        snippetMatches++;
-        score += term.length >= 4 ? 1.5 : 0.8;
+      const df = dfMap.get(term) || 0;
+      if (df === 0) continue;
+
+      // Robertson-Spärck Jones BM25 IDF (下限保護付き)
+      const termIdf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
+
+      const tfTitle = countOccurrences(doc.title, term);
+      const tfSnippet = countOccurrences(doc.snippet, term);
+
+      if (tfTitle > 0 || tfSnippet > 0) {
+        const bm25Title = tfTitle > 0 ? (tfTitle * (k1 + 1)) / (tfTitle + k1 * normTitle) : 0;
+        const bm25Snippet = tfSnippet > 0 ? (tfSnippet * (k1 + 1)) / (tfSnippet + k1 * normSnippet) : 0;
+
+        // バイグラム・複合語（3文字以上）はより特異度が高いため重みブースト
+        const lengthBonus = term.length >= 4 ? 1.4 : term.length >= 3 ? 1.2 : 1.0;
+        score += termIdf * (wTitle * bm25Title + wSnippet * bm25Snippet) * lengthBonus;
       }
     }
 
     // 3. ドメイン信頼度スコア (.gov, .go.jp, .ac.jp, .org ブースト)
-    if (urlStr.includes('.go.jp/') || urlStr.includes('.gov/')) score += 2.0;
-    if (urlStr.includes('.ac.jp/') || urlStr.includes('.edu/')) score += 1.5;
-    if (urlStr.includes('.org/')) score += 0.5;
+    if (doc.urlStr.includes('.go.jp/') || doc.urlStr.includes('.gov/')) score += 2.0;
+    if (doc.urlStr.includes('.ac.jp/') || doc.urlStr.includes('.edu/')) score += 1.5;
+    if (doc.urlStr.includes('.org/')) score += 0.5;
 
     // 4. 語順整合ボーナス (Word Order Consistency)
     if (terms.length >= 2) {
       for (let i = 0; i < terms.length - 1; i++) {
         const t1 = terms[i];
         const t2 = terms[i + 1];
-        const p1 = title.indexOf(t1);
-        const p2 = title.indexOf(t2, p1 >= 0 ? p1 : 0);
+        const p1 = doc.title.indexOf(t1);
+        const p2 = doc.title.indexOf(t2, p1 >= 0 ? p1 : 0);
         if (p1 >= 0 && p2 > p1 && (p2 - p1) < 40) {
           score += 2.0;
         }
@@ -898,7 +858,7 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
     }
 
     // 5. 元の検索エンジンの初期順位の僅かなバイアス (同点時の順序維持)
-    score += (items.length - originalIndex) * 0.05;
+    score += (N - originalIndex) * 0.05;
 
     return { item, score };
   });
@@ -985,19 +945,19 @@ export function chooseBestDescription(
   }
   if (!query) return metaDesc;
 
-  const cleanQuery = query.toLowerCase().trim();
-  const rawTerms = cleanQuery.split(/\s+/).filter((t) => t.length >= 2);
+  const terms = extractTermsWithBigrams(query);
+  if (terms.length === 0) return metaDesc;
   const lowerMeta = metaDesc.toLowerCase();
 
   // Meta Description 内のクエリ単語カバー率を計算
   let metaMatchedCount = 0;
-  for (const term of rawTerms) {
+  for (const term of terms) {
     if (lowerMeta.includes(term)) metaMatchedCount++;
   }
 
   // Meta Description がクエリの半分以上の単語をカバーしており、かつ適正長の場合は著者の Meta を尊重
-  const coverage = rawTerms.length > 0 ? metaMatchedCount / rawTerms.length : 1;
-  if (coverage >= 0.66 && metaDesc.length >= 40 && metaDesc.length <= 300) {
+  const coverage = metaMatchedCount / terms.length;
+  if (coverage >= 0.5 && metaDesc.length >= 40 && metaDesc.length <= 300) {
     return metaDesc;
   }
 

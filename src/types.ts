@@ -88,6 +88,67 @@ export interface FieldEvidence {
   source: 'jsonld' | 'dom' | 'meta';
 }
 
+/** ブロック単位の出所識別メタデータ (Block Provenance) */
+export interface EvidenceBlockRef {
+  sourceId: string; // 例: "S1"
+  blockId: string;  // 例: "P4"
+  url?: string;
+  publishedTime?: string;
+  updatedTime?: string;
+  nearestHeading?: string;
+  headingPath?: string[];
+}
+
+/** 時間的文脈アンカー (Temporal Context Anchor) */
+export interface TemporalAnchor {
+  expression: string;         // 例: "明日", "来週金曜日", "3日前"
+  referenceDate: string;      // 例: "2026-09-01"
+  resolvedDate: string;       // 例: "2026-09-02"
+  resolvedDayOfWeek?: string; // 例: "水曜日"
+  confidence: 'high' | 'medium';
+}
+
+/** 出所情報・スコア付きハイライトアイテム */
+export interface HighlightItem {
+  text: string;
+  score: number;
+  ref?: EvidenceBlockRef;
+  anchor?: string; // 例: "> [S1:P4 | 2026-09-01]"
+  textFragmentUrl?: string;
+  temporalAnchors?: TemporalAnchor[];
+}
+
+/** 決定論的証拠充足性観測量 (Evidence Diagnostics) - Soraは意味判定を行わず客観的観測値のみ返却 */
+export interface EvidenceDiagnostics {
+  queryCoverage: number;       // クエリ語句のうち本文または見出しに出現した割合 (0.0〜1.0)
+  matchedTerms: string[];      // マッチした語句
+  missingTerms: string[];      // マッチしなかった語句
+  candidateCount: number;      // スコア > 0 の候補ブロック数
+  topScore: number;            // 最高スコア
+  weakEvidenceSignal: boolean; // coverage < 0.35 または candidateCount === 0 の場合の客観的フラグ
+  reasons: string[];           // weak判定の客観的理由 (例: ["low_query_coverage", "no_matching_blocks"])
+}
+
+/** 不一致候補 (Candidate Discrepancy) - 勝手に解消せず上位エージェントに対比提示 */
+export interface CandidateDiscrepancy {
+  kind: 'date' | 'money' | 'version' | 'number';
+  values: Array<{
+    original: string;
+    normalized: string;
+    sourceId?: string;
+    blockId?: string;
+    context?: string;
+  }>;
+  status: 'needs_agent_resolution';
+}
+
+/** 決定論的導出メタデータ (Derivation Trace) */
+export interface DerivationTrace {
+  operation: string; // 例: "kanji_num_to_digits", "km_to_m", "fullwidth_to_halfwidth"
+  input: string;
+  output: string;
+}
+
 export interface ScrapeResult {
   url: string;
   title: string;
@@ -103,6 +164,11 @@ export interface ScrapeResult {
   author?: string;
   siteName?: string;
   highlights?: string[];
+  highlightItems?: HighlightItem[];
+  evidenceDiagnostics?: EvidenceDiagnostics;
+  discrepancies?: CandidateDiscrepancy[];
+  derivations?: DerivationTrace[];
+  temporalAnchors?: TemporalAnchor[];
   textFragmentUrl?: string;
   summary?: string[];
   citations?: Citation[];
@@ -274,8 +340,16 @@ export const ScrapeRequestSchema = z.object({
   cookies: z.array(CookieParamSchema).optional().describe('リクエスト時に送信するカスタム Cookie 配列'),
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
-  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか'),
+  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
+  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+  includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
+  includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
+  safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか'),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除'),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
   extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか'),
   extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか'),
   chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き)'),
@@ -306,8 +380,16 @@ export const BatchScrapeRequestSchema = z.object({
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
   filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
   query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
-  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
+  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
+  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+  includeDiagnostics: z.boolean().optional().describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
+  includeDiscrepancies: z.boolean().optional().describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
+  safeNormalize: z.boolean().optional().describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
 });
@@ -352,6 +434,10 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -438,6 +524,11 @@ export const IntegratedSearchRequestSchema = z.object({
   maxCharsPerResult: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
+  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)'),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
 });
