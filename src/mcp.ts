@@ -372,10 +372,28 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+        highlightAlgorithm: z
+          .enum(['rho-select', 'rho-bm25', 'legacy'])
+          .optional()
+          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+        highlightOverheadTokens: z
+          .number()
+          .int()
+          .min(1)
+          .max(4096)
+          .optional()
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+        highlightMaxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
       },
-      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
+      async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
+          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           const formatted = formatCompactScrapeResult(result, { verbose });
           return {
             content: [
@@ -462,11 +480,29 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+        highlightAlgorithm: z
+          .enum(['rho-select', 'rho-bm25', 'legacy'])
+          .optional()
+          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+        highlightOverheadTokens: z
+          .number()
+          .int()
+          .min(1)
+          .max(4096)
+          .optional()
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+        highlightMaxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
         verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
+      async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
-          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
+          const result = await scrapeBatchUrls({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return {
             content: [
@@ -528,9 +564,27 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+        highlightAlgorithm: z
+          .enum(['rho-select', 'rho-bm25', 'legacy'])
+          .optional()
+          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+        highlightOverheadTokens: z
+          .number()
+          .int()
+          .min(1)
+          .max(4096)
+          .optional()
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+        highlightMaxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
         verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -551,6 +605,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             diversityWeight,
             annotateTemporal,
             minimizeTables,
+            highlightAlgorithm,
+            highlightOverheadTokens,
+            highlightMaxCount,
           });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -562,7 +619,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報', 'スケジュール', 'イベント', 'ライブ日程', '発売日', '営業時間', '最新情報'] },
+      { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報', 'スケジュール', 'イベント', 'ライブ日程', '発売日', '営業時間', '最新情報', 'deep_search', 'deep-search', 'deep search'] },
     );
 
     // Tool 3: map_site (サイトマップ探索) - DEFERRED
@@ -620,10 +677,28 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+        highlightAlgorithm: z
+          .enum(['rho-select', 'rho-bm25', 'legacy'])
+          .optional()
+          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+        highlightOverheadTokens: z
+          .number()
+          .int()
+          .min(1)
+          .max(4096)
+          .optional()
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+        highlightMaxCount: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
       },
-      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables }) => {
+      async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
-          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables });
+          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
