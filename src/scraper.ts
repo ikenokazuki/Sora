@@ -4,6 +4,7 @@ import type { CookieParam } from 'puppeteer-core';
 import {
   type BatchScrapeResult,
   type BrowserActionOptions,
+  type HighlightAlgorithm,
   type ScrapeFormat,
   type ScrapeResult,
   type SitemapEntry,
@@ -25,6 +26,7 @@ import {
   extractQueryHighlights,
   extractQueryHighlightDetails,
   normalizeSafeNumeric,
+  rerankByDeepEvidence,
   reorderLostInTheMiddle,
   expandQueryWithPseudoRelevanceFeedback,
   generateExtractiveSummary,
@@ -39,6 +41,7 @@ import {
   annotateTextWithTemporalAnchors,
 } from './enrichment.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
+import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -138,7 +141,7 @@ export async function finalizeScrapeResult(
     reorderUFlat?: boolean;
     diversityWeight?: number;
     annotateTemporal?: boolean;
-    highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+    highlightAlgorithm?: HighlightAlgorithm;
     highlightOverheadTokens?: number;
     highlightMaxCount?: number;
     verbose?: boolean;
@@ -181,21 +184,41 @@ export async function finalizeScrapeResult(
       supplemental.push(result.description.trim());
     }
 
-    const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
-      maxHighlights: options.highlightMaxCount ?? 3,
-      overheadTokens: options.highlightOverheadTokens ?? 96,
-      supplementalEvidence: supplemental,
-    });
-    result.highlights = rho.highlights;
-    result.highlightItems = rho.highlights.map((h: string, idx: number) => ({
-      text: h,
-      score: Number((1.0 - idx * 0.1).toFixed(4)),
-    }));
-    if (options.verbose) {
-      result.highlightDiagnostics = rho.diagnostics;
-    }
-    if (result.highlights && result.highlights.length > 0) {
-      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
+    if (options.highlightAlgorithm === 'rho-select' || options.highlightAlgorithm === 'legacy' || options.highlightAlgorithm === 'rho-bm25') {
+      const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
+        maxHighlights: options.highlightMaxCount ?? 3,
+        overheadTokens: options.highlightOverheadTokens ?? 96,
+        supplementalEvidence: supplemental,
+      });
+      result.highlights = rho.highlights;
+      result.highlightItems = rho.highlights.map((h: string, idx: number) => ({
+        text: h,
+        score: Number((1.0 - idx * 0.1).toFixed(4)),
+      }));
+      if (options.verbose) {
+        result.highlightDiagnostics = rho.diagnostics;
+      }
+      if (result.highlights && result.highlights.length > 0) {
+        result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
+      }
+    } else {
+      // Default to rho-select-v2 (Canonical Engine)
+      const v2 = extractQueryHighlightsRhoV2(result.content, options.query, {
+        tau: options.highlightOverheadTokens ?? 96,
+        supplementalEvidence: supplemental,
+        highlightMaxCount: options.highlightMaxCount,
+      });
+      result.highlights = v2.highlights;
+      result.highlightItems = v2.highlightItems.map((item) => ({
+        text: item.text,
+        score: item.score,
+      }));
+      if (options.verbose) {
+        result.highlightDiagnostics = v2.diagnostics;
+      }
+      if (result.highlights && result.highlights.length > 0) {
+        result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
+      }
     }
   }
   const isHighlightOnlyMode =
@@ -294,11 +317,25 @@ export function detectSpaOrBotPage(options: {
     'cf-mitigated' in normalizedHeaders ||
     (status !== undefined && BOT_MITIGATION_STATUS_CODES.has(status) && (normalizedHeaders.server ?? '').includes('cloudflare'));
 
-  return (
-    hasLittleContent ||
-    isJsDisabledMessage ||
-    isBotChallengeStatus ||
-    isCloudflareMitigation ||
+  const isBotChallengePage =
+    html.includes('Please enable JavaScript') ||
+    html.includes('Checking your browser') ||
+    html.includes('Just a moment...') ||
+    html.includes('cf-browser-verification') ||
+    html.includes('cf-challenge');
+
+  // Bot 遮断・チャレンジまたは JS 無効化メッセージはコンテンツ量に関わらずフラグ
+  if (isJsDisabledMessage || isBotChallengeStatus || isCloudflareMitigation || isBotChallengePage) {
+    return true;
+  }
+
+  // 極端にコンテンツが少ない（50文字未満）場合は SPA/空白ページとみなす
+  if (hasLittleContent) {
+    return true;
+  }
+
+  // SPA フレームワークのマウントマーカー
+  const isSpaFrameworkMarker =
     html.includes('id="react-root"') ||
     html.includes('id="root"') ||
     html.includes('id="app"') ||
@@ -312,11 +349,16 @@ export function detectSpaOrBotPage(options: {
     html.includes('__remixContext') ||
     html.includes('client-bootstrap') ||
     html.includes('data-build=') ||
-    html.includes('data-reactroot') ||
-    html.includes('Please enable JavaScript') ||
-    html.includes('Checking your browser') ||
-    html.includes('Just a moment...')
-  );
+    html.includes('data-reactroot');
+
+  // SPA マーカーがあり、かつ本文が短文（300文字未満）の場合は
+  // クライアントレンダリング待ちのSPAと判定してブラウザ描画へ移行
+  // （300文字以上の十分な本文が既にHTML内にレンダリングされているSSR/SSGサイトはブラウザ不要）
+  if (isSpaFrameworkMarker && bodyOnlyMarkdown.length < 300) {
+    return true;
+  }
+
+  return false;
 }
 
 export function isRenderStillBlockedOrBlank(options: {
@@ -360,7 +402,7 @@ export async function scrapeUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
@@ -407,7 +449,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 3}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   if (!options.noCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
@@ -451,6 +493,7 @@ export async function scrapeUrl(options: {
     while (attempt <= retries) {
       try {
         let result: ScrapeResult;
+        let initialHttpResult: ScrapeResult | null = null;
 
         // X (Twitter) アカウントURL/ポストURLのインテリジェント・バイパス (未ログイン遮断回避)
         if (/https?:\/\/(?:x\.com|twitter\.com|mobile\.twitter\.com)\/[a-zA-Z0-9_]+/i.test(url)) {
@@ -578,20 +621,73 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
             return result;
           }
+
+          // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）
+          if (parsed.markdown && parsed.markdown.trim().length >= 50) {
+            initialHttpResult = {
+              url: finalUrl,
+              title: parsed.title,
+              content: parsed.markdown,
+              isTruncated: parsed.isTruncated,
+              contentType: 'text/html',
+              source: 'web',
+              renderedWithBrowser: false,
+              ogImage: parsed.ogImage,
+              description: parsed.description,
+              publishedTime: parsed.publishedTime,
+              author: parsed.author,
+              siteName: parsed.siteName,
+              availability: parsed.availability,
+              price: parsed.price,
+              priceCurrency: parsed.priceCurrency,
+              brand: parsed.brand,
+              sku: parsed.sku,
+              links: formats.includes('links') ? parsed.links : undefined,
+              images: formats.includes('images') ? parsed.images : undefined,
+              jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
+              tables: formats.includes('tables') ? parsed.tables : undefined,
+              events: parsed.events,
+              breadcrumb: parsed.breadcrumb,
+              extracted: parsed.extracted,
+              media: parsed.media,
+              html: formats.includes('html') ? parsed.html : undefined,
+              rawHtml: formats.includes('rawHtml') ? html : undefined,
+              estimatedTokens: parsed.estimatedTokens,
+              quality: parsed.quality,
+              completeness: parsed.completeness,
+              pageType: parsed.pageType,
+              qualityReasons: parsed.qualityReasons,
+              missingFields: parsed.missingFields,
+              evidence: parsed.evidence,
+            };
+          }
         }
 
         onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
         const needScreenshot = formats.includes('screenshot');
         const fullPage = options.fullPage ?? true;
-        let browserRes = await fetchWithStealthBrowser(
-          url,
-          timeoutMs,
-          options.clipSelector,
-          options.cookies,
-          'networkidle2',
-          needScreenshot,
-          fullPage,
-        );
+        let browserRes: { html: string; title: string; screenshot?: string; finalUrl: string };
+
+        try {
+          browserRes = await fetchWithStealthBrowser(
+            url,
+            timeoutMs,
+            options.clipSelector,
+            options.cookies,
+            'networkidle2',
+            needScreenshot,
+            fullPage,
+          );
+        } catch (browserErr: any) {
+          // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
+          if (initialHttpResult) {
+            onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
+            result = await finalizeScrapeResult(initialHttpResult, finalizeOpts);
+            if (!options.noCache) setToCache(cacheKey, result);
+            return result;
+          }
+          throw browserErr;
+        }
 
         let parsed = convertHtmlToMarkdown(
           browserRes.html,
@@ -713,7 +809,7 @@ export async function scrapeBatchUrls(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
@@ -958,7 +1054,7 @@ export async function crawlSiteUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   reorderUFlat?: boolean;
@@ -1154,7 +1250,7 @@ export async function integratedSearch(options: {
   diversityWeight?: number;
   annotateTemporal?: boolean;
   minimizeTables?: boolean;
-  highlightAlgorithm?: 'rho-select' | 'rho-bm25' | 'legacy';
+  highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
 }): Promise<Record<string, any>> {
@@ -1177,10 +1273,10 @@ export async function integratedSearch(options: {
   const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
   const minimizeTables = options.minimizeTables;
-  const highlightAlgorithm = options.highlightAlgorithm || 'rho-select';
+  const highlightAlgorithm = options.highlightAlgorithm || 'rho-select-v2';
   const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
-  const highlightMaxCount = options.highlightMaxCount ?? 3;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount}`;
+  const highlightMaxCount = options.highlightMaxCount;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1331,6 +1427,11 @@ export async function integratedSearch(options: {
         }
       }),
     );
+
+    // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
+    if (enrichedResults.length > 1) {
+      enrichedResults = rerankByDeepEvidence(enrichedResults, query);
+    }
   }
 
   // Lost in the Middle 対策: 検索結果全体の U字型リオーダリング

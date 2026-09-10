@@ -33,30 +33,46 @@ export const searchRoutes = new Hono();
 searchRoutes.post('/search/realtime', async (c) => {
   try {
     const body = await c.req.json();
-    const query = body?.query;
-    const sort = body?.sort === 'popular' ? 'popular' : 'recent';
+    const query = typeof body?.query === 'string' ? body.query : undefined;
+    const accountId = typeof body?.accountId === 'string' ? body.accountId : undefined;
+    const fromUser = typeof body?.fromUser === 'string' ? body.fromUser : undefined;
+    const toAccount = typeof body?.toAccount === 'string' ? body.toAccount : undefined;
+    const hashtags = body?.hashtags;
+    const excludeWords = body?.excludeWords;
+    const orWords = Array.isArray(body?.orWords) ? body.orWords : undefined;
+    const url = typeof body?.url === 'string' ? body.url : undefined;
+    const sort: 'recent' | 'popular' = body?.sort === 'popular' ? 'popular' : 'recent';
     const limit = typeof body?.limit === 'number' ? Math.min(Math.max(body.limit, 1), 40) : undefined;
     const page = typeof body?.page === 'number' ? Math.max(body.page, 1) : undefined;
 
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
+    if (!query && !accountId && !fromUser && !hashtags && !toAccount) {
+      return c.json({ error: 'query, accountId, or hashtags is required' }, 400);
     }
 
-    const cacheKey = `search:realtime:${query}:${sort}:${limit || 20}:${page || 1}`;
+    const options = {
+      query,
+      accountId,
+      fromUser,
+      toAccount,
+      hashtags,
+      excludeWords,
+      orWords,
+      url,
+      sort,
+      ...(limit ? { limit } : {}),
+      ...(page ? { page } : {}),
+    };
+
+    const cacheKey = `search:realtime:${query || ''}:${accountId || fromUser || ''}:${toAccount || ''}:${JSON.stringify(hashtags || '')}:${JSON.stringify(excludeWords || '')}:${sort}:${limit || 20}:${page || 1}`;
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const realtimeRes = await searchYahooRealtime({
-      query,
-      sort,
-      ...(limit ? { limit } : {}),
-      ...(page ? { page } : {}),
-    });
+    const realtimeRes = await searchYahooRealtime(options);
 
     const responseData = {
-      query,
+      query: realtimeRes.originalQuery,
       effectiveQuery: realtimeRes.effectiveQuery,
       isFallback: realtimeRes.isFallback,
       sort,
