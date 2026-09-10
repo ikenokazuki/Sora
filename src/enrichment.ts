@@ -870,24 +870,50 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
   return scored.map((s) => s.item);
 }
 
+export interface DeepEvidenceRerankOptions {
+  requirements?: string[];
+  enableRhoFeature?: boolean;
+}
+
+/**
+ * 一般的な検索ストップワード（日本語・英語）
+ */
+const COMMON_STOPWORDS = new Set([
+  'について', 'とは', '一覧', 'まとめ', '情報', '詳細', '公式', 'サイト', 'ページ',
+  '最新', 'おすすめ', '比較', 'ランキング', '紹介', '方法', 'やり方', '使い方',
+  'の', 'に', 'は', 'を', 'と', 'が', 'で', 'から', 'まで', 'より',
+  'how', 'what', 'who', 'where', 'when', 'why', 'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for',
+]);
+
+/**
+ * 意図・属性を表すキーフレーズ（Intent Attribute Terms）
+ * ユーザーが具体的な事実やメタデータを求めていることを示す属性語群
+ */
+const INTENT_ATTRIBUTE_TERMS = new Set([
+  '作詞', '作詞者', '作曲', '作曲者', '編曲', '編曲者', '作編曲', 'アーティスト', '歌手', 'ボーカル',
+  '発売日', '公開日', '配信日', 'リリース', '誕生日', '生年月日', '出身', '出身地', '本名', '年齢',
+  '営業時間', '定休日', '料金', '価格', '値段', '所在地', '住所', '電話番号', 'アクセス', '最寄り駅',
+  'キャスト', '声優', '出演者', '監督', '脚本', '原作', '著者', '作者', '執筆者', '監修',
+  '資本金', '代表者', '代表取締役', '設立', '創業', '従業員数',
+]);
+
 /**
  * 深層スクレイピング後のエビデンス駆動リランキング (Evidence-Aware Deep Reranking)
  *
- * 【問題意識】
- * スニペット段階のBM25+リランキングでは、Yahoo等の検索インデックスが合成した断片スニペットに
+ * 【位置づけ】
+ * 本機能は ρSelect のオプティマイザ本体（Optimizer Core）ではなく、
+ * 「Production Retrieval-Verification Layer（検索検証レイヤー）」として動作する。
+ *
+ * 【解決する課題】
+ * スニペット段階のBM25+リランキングでは、検索インデックスが合成した断片スニペットに
  * たまたま別文脈で単語（例: 「作詞」）が含まれていた場合、偽陽性（False Positive）として
  * 本文中にユーザーの求める回答根拠が一切存在しないページが上位に来てしまう。
  *
- * 【解決策】
- * 深層スクレイピングによって取得された本文（markdown / content）および
- * ρSelect v2 によって厳密抽出されたハイライト（highlights / highlightItems）の実態に基づき、
- * 以下の多層エビデンス信号を総合評価して最終順位を適正化する:
- * 1. クエリ重要単語（Keywords）の本文・ハイライト網羅率（Coverage）
- * 2. クエリ内の特異語・末尾語（例: 「作詞者」などの明確な意図を表すキーフレーズ）の充足性
- * 3. ρSelect v2 ハイライトスコア（highlightItems[0]?.score）
- * 4. クエリ全単語が本文またはハイライトに完全充足（100% カバレッジ）されている場合の強固なブースト
- * 5. スニペットフォールバック・スクレイピング失敗アイテムへの適正な減点
- * 6. 初期スニペット順位の適度な保持（Smoothing）
+ * 【評価プロトコル v0.1 準拠の実装】
+ * 1. 堅牢なターム分解: extractTermsWithBigrams により日本語無空白クエリでも正確にタームを抽出
+ * 2. Intent Anchor 自動選定: 固定末尾語依存を廃止し、属性語辞書またはコーパス稀少語（低DF語）から意図語を同定
+ * 3. 有界な Rank Prior: (N-index) 依存を廃止し、alpha / sqrt(rank) による正規化事前確率を採用
+ * 4. 校正済み ρSelect エビデンス: ハイライト存在基礎点と相対スケーリングによる頑健な証拠加算（Ablation対応）
  */
 export function rerankByDeepEvidence<T extends {
   title?: string;
@@ -901,73 +927,135 @@ export function rerankByDeepEvidence<T extends {
   isSnippetFallback?: boolean;
   scrapeError?: string;
   rank?: number;
-}>(items: T[], query: string): T[] {
+}>(items: T[], query: string, options?: DeepEvidenceRerankOptions): T[] {
   if (!items || items.length <= 1 || !query) return items;
 
-  const lowerQuery = query.toLowerCase().trim();
-  const queryWords = lowerQuery
-    .split(/[\s　]+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 0);
+  // 1. クエリタームの分解（日本語無空白クエリ & 空白区切りクエリ両対応: 第4.1項）
+  let queryTerms: string[] = [];
+  if (options?.requirements && options.requirements.length > 0) {
+    queryTerms = options.requirements.map((r) => r.toLowerCase().trim()).filter((r) => r.length > 0);
+  } else {
+    // 共通の extractTermsWithBigrams を使用し、空白の有無に関わらず形態素・複合語・Bigram を抽出
+    const extracted = extractTermsWithBigrams(query);
+    const whitespaceWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length > 0);
+    const termSet = new Set<string>();
+    for (const t of whitespaceWords) {
+      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) termSet.add(t);
+    }
+    for (const t of extracted) {
+      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) termSet.add(t);
+    }
+    queryTerms = Array.from(termSet);
+  }
 
-  if (queryWords.length === 0) return items;
+  if (queryTerms.length === 0) return items;
 
-  const N = items.length;
+  // 2. Intent Anchor（意図アンカー語）の自動同定 (第4.2項)
+  // 固定 lastWord を廃止し、属性語辞書合致語、または候補群中での出現頻度 (DF) が最も低い稀少語を選択
+  let intentAnchor: string | null = null;
+
+  // 属性語辞書からクエリに含まれる最も具体的な属性語（最長一致）を探索
+  const matchedAttrs: string[] = [];
+  const normalizedQuery = query.toLowerCase();
+  for (const attr of INTENT_ATTRIBUTE_TERMS) {
+    if (normalizedQuery.includes(attr.toLowerCase())) {
+      matchedAttrs.push(attr);
+    }
+  }
+  if (matchedAttrs.length > 0) {
+    // より具体的（文字数が長い）な属性語を優先（例: "作詞者" > "作詞"）
+    matchedAttrs.sort((a, b) => b.length - a.length);
+    intentAnchor = matchedAttrs[0].toLowerCase();
+  }
+
+  // 属性語がない場合、候補群中でのドキュメント頻度 df(t) が最も低い稀少語（情報量が最も高い語）を選択
+  if (!intentAnchor && queryTerms.length >= 2) {
+    let minDf = Infinity;
+    let rarestTerm = queryTerms[0];
+    // クエリ全体そのものは除外して単語単位で探索
+    const candidateTerms = queryTerms.filter((t) => t.length < query.trim().length);
+    const searchTerms = candidateTerms.length > 0 ? candidateTerms : queryTerms;
+    for (const term of searchTerms) {
+      let df = 0;
+      for (const item of items) {
+        const text = ((item.markdown || item.content || '') + ' ' + (item.title || '')).toLowerCase();
+        if (text.includes(term)) df++;
+      }
+      if (df < minDf || (df === minDf && term.length > rarestTerm.length)) {
+        minDf = df;
+        rarestTerm = term;
+      }
+    }
+    intentAnchor = rarestTerm;
+  }
+
+  // 3. 最大ハイライトスコアの取得（相対校正スケーリング用: 第4.4項）
+  let maxHighlightScore = 0;
+  for (const item of items) {
+    if (item.highlightItems && item.highlightItems.length > 0) {
+      const s = item.highlightItems[0]?.score ?? 0;
+      if (s > maxHighlightScore) maxHighlightScore = s;
+    }
+  }
 
   const scored = items.map((item, originalIndex) => {
     let score = 0;
 
-    // 本文テキスト（markdown または content）
-    const fullText = ((item.markdown || item.content || '') + ' ' + (item.title || '')).toLowerCase();
-    // ハイライトテキスト
+    const bodyText = (item.markdown || item.content || '').toLowerCase();
+    const titleText = (item.title || '').toLowerCase();
     const highlightText = (item.highlights || []).join(' ').toLowerCase();
 
-    // A. クエリ単語の本文カバレッジ & ハイライトカバレッジ
-    let coveredWordsInBody = 0;
-    let coveredWordsInHighlights = 0;
-    for (const word of queryWords) {
-      if (fullText.includes(word)) {
-        coveredWordsInBody++;
+    // A. クエリタームのカバレッジ（本文・タイトルとハイライト）
+    let coveredInBody = 0;
+    let coveredInHighlight = 0;
+    for (const term of queryTerms) {
+      if (bodyText.includes(term) || titleText.includes(term)) {
+        coveredInBody++;
       }
-      if (highlightText.includes(word)) {
-        coveredWordsInHighlights++;
+      if (highlightText.includes(term)) {
+        coveredInHighlight++;
       }
     }
 
-    const bodyCoverage = queryWords.length > 0 ? coveredWordsInBody / queryWords.length : 0;
-    const highlightCoverage = queryWords.length > 0 ? coveredWordsInHighlights / queryWords.length : 0;
+    const bodyCoverage = queryTerms.length > 0 ? coveredInBody / queryTerms.length : 0;
+    const highlightCoverage = queryTerms.length > 0 ? coveredInHighlight / queryTerms.length : 0;
 
-    // カバレッジスコア加算（本文カバレッジ最大10点、ハイライトカバレッジ最大15点）
-    score += bodyCoverage * 10.0;
-    score += highlightCoverage * 15.0;
+    score += bodyCoverage * 8.0;
+    score += highlightCoverage * 12.0;
 
-    // 全単語完全充足（100% coverage）ボーナス: 全ての要求語が揃っているドキュメントを最優先
+    // 全単語完全充足（100% coverage）ボーナス
     if (bodyCoverage >= 1.0) {
-      score += 12.0;
+      score += 10.0;
     }
     if (highlightCoverage >= 1.0) {
-      score += 8.0;
+      score += 6.0;
     }
 
-    // B. クエリ末尾語・特異語（特にユーザーの意図を直接表す最後の単語、例: 「作詞者」）の検証
-    if (queryWords.length >= 2) {
-      const lastWord = queryWords[queryWords.length - 1];
-      if (lastWord.length >= 2) {
-        if (highlightText.includes(lastWord)) {
-          score += 6.0;
-        } else if (fullText.includes(lastWord)) {
-          score += 4.0;
-        } else {
-          // 本文にもハイライトにも末尾キーフレーズが存在しない場合、ペナルティ
-          score -= 8.0;
-        }
+    // B. Intent Anchor の検証 (第4.2項)
+    if (intentAnchor) {
+      if (highlightText.includes(intentAnchor)) {
+        score += 6.0;
+      } else if (bodyText.includes(intentAnchor) || titleText.includes(intentAnchor)) {
+        score += 4.0;
+      } else {
+        // 本文にもハイライトにも意図アンカーが存在しない偽陽性へのペナルティ
+        score -= 8.0;
       }
     }
 
-    // C. ρSelect v2 ハイライトスコアの加算
-    if (item.highlightItems && item.highlightItems.length > 0) {
-      const topHighlightScore = item.highlightItems[0]?.score ?? 0;
-      score += Math.min(topHighlightScore * 5.0, 15.0);
+    // C. ρSelect v2 エビデンス特徴量（校正済み & Ablation 対応: 第4.4項）
+    const enableRho = options?.enableRhoFeature !== false;
+    if (enableRho) {
+      const hasHighlights = (item.highlights && item.highlights.length > 0) || (item.highlightItems && item.highlightItems.length > 0);
+      if (hasHighlights) {
+        score += 3.0; // ハイライト存在基礎点
+        if (maxHighlightScore > 0 && item.highlightItems && item.highlightItems.length > 0) {
+          const topScore = item.highlightItems[0]?.score ?? 0;
+          // 相対正規化により実運用スケール（0.005〜0.02）の差異を吸収
+          const normalizedRelativeRho = Math.max(0, Math.min(1, topScore / maxHighlightScore));
+          score += normalizedRelativeRho * 3.0;
+        }
+      }
     }
 
     // D. 欠陥・エラーペナルティ
@@ -978,8 +1066,11 @@ export function rerankByDeepEvidence<T extends {
       score -= 5.0;
     }
 
-    // E. 元の初期順位のスムージング（同等のエビデンスを持つ場合は初期順位を尊重）
-    score += (N - originalIndex) * 0.5;
+    // E. 正規化された Rank Prior (第4.3項: N非依存の有界減衰関数)
+    // alpha / sqrt(rank) により 1位: 2.0点, 2位: 1.41点, 10位: 0.63点と有界
+    const origRank = originalIndex + 1;
+    const rankPrior = 2.0 / Math.sqrt(origRank);
+    score += rankPrior;
 
     return { item, score, originalIndex };
   });
