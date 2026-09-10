@@ -952,9 +952,28 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X (旧 Twitter) 上の最新ポスト・リアルタイムな世論や生の声・バズワードを調べる場合、一般Web検索では取得できないため必ず本ツールを実行してください。アイドルのライブ出演・物販タイテ・緊急告知・イベント現地の生の声など、直近・リアルタイムの状況把握に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。返却: { query, sort, items: [{ text, postedAt, user, url }] }',
+      '【必須・Web検索代替不可】X (旧 Twitter) 上の最新ポスト・リアルタイムな世論や生の声・特定アカウントの告知を調べる場合に使用します。Yahoo公式仕様に基づき特定アカウント(id:xxx)、特定宛先(@xxx)、ハッシュタグ(#xxx)、除外単語(-xxx)、OR検索に対応。アイドルの物販タイテ・緊急告知・現地の生の声など直近の状況把握に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。返却: { query, sort, items: [{ text, postedAt, user, url }] }',
       {
-        query: z.string().min(1).describe('リアルタイム検索キーワード (例: "地震", "電車遅延", "イベント名")'),
+        query: z
+          .string()
+          .optional()
+          .describe('検索キーワード (例: "タイテ", "地震", "強化月間ライブ")。accountId や hashtags を指定する場合は省略可能。※クエリ内に "from:アカウント" を書いた場合も自動で "id:アカウント" に安全に正規化されます。'),
+        accountId: z
+          .string()
+          .optional()
+          .describe('【特定アカウントの発言絞り込み】Xアカウント名（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。@の有無問わず自動で id:xxx に変換します。'),
+        fromUser: z.string().optional().describe('accountId のエイリアス (LLM 互換用)'),
+        toAccount: z.string().optional().describe('【特定アカウント宛ての投稿】宛先アカウント名（@xxx に変換）'),
+        hashtags: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .describe('【特定ハッシュタグ絞り込み】ハッシュタグ（例: "#君と見るそら", "地震"）。#の有無問わず付与します。'),
+        excludeWords: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .describe('【除外キーワード】除外したい単語（-単語 に変換）'),
+        orWords: z.array(z.string()).optional().describe('【OR検索】いずれかを含む単語の配列 (単語A 単語B) に変換'),
+        url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名'),
         sort: z
           .enum(['recent', 'popular'])
           .optional()
@@ -973,10 +992,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('ページ番号 (1-based, デフォルト: 1)'),
       },
-      async ({ query, sort, limit, page }) => {
+      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page }) => {
         try {
           const result = await searchYahooRealtime({
             query,
+            accountId,
+            fromUser,
+            toAccount,
+            hashtags,
+            excludeWords,
+            orWords,
+            url,
             sort: sort || 'recent',
             ...(limit ? { limit } : {}),
             ...(page ? { page } : {}),
@@ -984,7 +1010,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
 
           const responsePayload = {
             source: 'x',
-            query,
+            query: result.originalQuery,
             effectiveQuery: result.effectiveQuery,
             isFallback: result.isFallback,
             sort: sort || 'recent',

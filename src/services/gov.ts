@@ -23,6 +23,106 @@ export interface LawDataResult {
   source: 'e-gov';
 }
 
+/** 1〜9999 までのアラビア数字を法令用漢数字に変換するヘルパー */
+export function arabicToKanjiNumber(n: number): string {
+  if (n <= 0 || !Number.isInteger(n)) return String(n);
+  const digits = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const units = [
+    { value: 1000, unit: '千' },
+    { value: 100, unit: '百' },
+    { value: 10, unit: '十' },
+  ];
+  let res = '';
+  let rem = n;
+  for (const { value, unit } of units) {
+    const q = Math.floor(rem / value);
+    if (q > 0) {
+      if (q > 1) res += digits[q];
+      res += unit;
+      rem %= value;
+    }
+  }
+  if (rem > 0) {
+    res += digits[rem];
+  }
+  return res;
+}
+
+/**
+ * 検索キーワード内の条数指定（例: 「第14条」「30条の2」「第３条」等）を
+ * 法令本文で使われる漢数字表記（「第十四条」「第三十条の二」等）に正規化
+ */
+export function normalizeLawKeyword(kw: string): string {
+  if (!kw) return '';
+  // 全角数字を半角数字に変換
+  let s = kw.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+  // 第(\d+)条 or (\d+)条 or 第(\d+)項 or 第(\d+)号 or の(\d+) を漢数字に変換
+  s = s.replace(/第?(\d+)条(?:の(\d+))?/g, (_, art, sub) => {
+    const kanjiArt = '第' + arabicToKanjiNumber(parseInt(art, 10)) + '条';
+    if (sub) {
+      return kanjiArt + 'の' + arabicToKanjiNumber(parseInt(sub, 10));
+    }
+    return kanjiArt;
+  });
+  return s;
+}
+
+/** e-Gov API から JSON データを取得（404 は検索結果0件として null 返却） */
+async function fetchGovApiJson(url: string): Promise<any> {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Sora-Gov-Law-Fetcher/1.0',
+      'Accept': 'application/json, text/plain, */*',
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (res.status === 404) {
+    // e-Gov 法令API v2 では該当結果0件のときに HTTP 404 {"code":"404001","message":"取得結果が０件です。"} が返る
+    return null;
+  }
+
+  if (!res.ok) {
+    throw new Error(`e-Gov 法令APIへのアクセスに失敗しました (HTTP ${res.status}): ${url}`);
+  }
+
+  const rawText = await res.text();
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    // 万が一 XML が返ってきた場合のフォールバック
+    const { XMLParser } = await import('fast-xml-parser');
+    const parser = new XMLParser({ ignoreAttributes: false });
+    const parsed = parser.parse(rawText);
+    const list = parsed?.Data_Root?.Appl_Data?.LawNameListInfo;
+    return Array.isArray(list) ? list : list ? [list] : [];
+  }
+}
+
+/** e-Gov 法令レスポンス JSON を LawSearchResultItem 配列に正規化 */
+function parseGovLawList(json: any): LawSearchResultItem[] {
+  if (!json) return [];
+  const list: any[] = Array.isArray(json) ? json : json?.items || json?.laws || (json?.law_info ? [json] : []);
+  const items: LawSearchResultItem[] = [];
+
+  for (const entry of list) {
+    const info = entry.law_info || entry;
+    const rev = entry.revision_info || entry;
+    const lawId = info.law_id || info.LawId;
+    if (!lawId) continue;
+
+    items.push({
+      id: String(lawId),
+      title: String(rev.law_title || rev.law_title_kana || info.LawName || info.law_title || '名称不明')
+        .replace(/<span>|<\/span>/g, ''),
+      lawNum: String(info.law_num || info.LawNo || ''),
+      promulgationDate: (info.promulgation_date || info.PromulgationDate) ? String(info.promulgation_date || info.PromulgationDate) : undefined,
+      category: (rev.category || info.law_type || info.LawType) ? String(rev.category || info.law_type || info.LawType) : undefined,
+    });
+  }
+  return items;
+}
+
 /** e-Gov 法令 API v2 キーワード法令検索 (JSON レスポンス) */
 export async function searchLaws(options: {
   keyword: string;
@@ -42,52 +142,43 @@ export async function searchLaws(options: {
     if (cached) return cached;
   }
 
-  const url = `https://laws.e-gov.go.jp/api/2/keyword?keyword=${encodeURIComponent(keyword)}`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Sora-Gov-Law-Fetcher/1.0',
-      'Accept': 'application/json, text/plain, */*',
-    },
-    signal: AbortSignal.timeout(10000),
-  });
+  const normalizedKeyword = normalizeLawKeyword(keyword);
 
-  if (!res.ok) {
-    throw new Error(`e-Gov 法令APIへのアクセスに失敗しました (HTTP ${res.status}): ${url}`);
+  // 1. 正規化キーワードで条文・キーワード検索 (/api/2/keyword)
+  const keywordUrl = `https://laws.e-gov.go.jp/api/2/keyword?keyword=${encodeURIComponent(normalizedKeyword)}`;
+  const keywordJson = await fetchGovApiJson(keywordUrl);
+  let rawItems = parseGovLawList(keywordJson);
+
+  // 2. もし正規化キーワードと元キーワードが異なり、かつ0件だった場合は元キーワードでも試行
+  if (rawItems.length === 0 && normalizedKeyword !== keyword) {
+    const origUrl = `https://laws.e-gov.go.jp/api/2/keyword?keyword=${encodeURIComponent(keyword)}`;
+    const origJson = await fetchGovApiJson(origUrl);
+    rawItems = parseGovLawList(origJson);
   }
 
-  const rawText = await res.text();
-  let json: any = [];
-  try {
-    json = JSON.parse(rawText);
-  } catch {
-    // 万が一 XML が返ってきた場合のフォールバック
-    const { XMLParser } = await import('fast-xml-parser');
-    const parser = new XMLParser({ ignoreAttributes: false });
-    const parsed = parser.parse(rawText);
-    const list = parsed?.Data_Root?.Appl_Data?.LawNameListInfo;
-    json = Array.isArray(list) ? list : list ? [list] : [];
+  // 3. 法令名（law_title）フォールバック / 補完検索
+  // クエリ内に法令名（「政党助成法」「著作権法」「民法」等の先頭単語）が含まれる場合、
+  // /api/2/laws?law_title=... でも直接検索して結果をマージ
+  const firstWord = keyword.split(/\s+/)[0];
+  if (firstWord && (firstWord.length >= 2 || firstWord.match(/(?:法|令|規則|憲法|条約)$/))) {
+    try {
+      const titleUrl = `https://laws.e-gov.go.jp/api/2/laws?law_title=${encodeURIComponent(firstWord)}`;
+      const titleJson = await fetchGovApiJson(titleUrl);
+      const titleItems = parseGovLawList(titleJson);
+      if (titleItems.length > 0) {
+        const existingIds = new Set(rawItems.map((it) => it.id));
+        const newTitleItems = titleItems.filter((it) => !existingIds.has(it.id));
+        // 完全一致する法令本則があれば優先配置
+        const exactMatch = newTitleItems.filter((it) => it.title === firstWord);
+        const otherTitleItems = newTitleItems.filter((it) => it.title !== firstWord);
+        rawItems = [...exactMatch, ...rawItems, ...otherTitleItems];
+      }
+    } catch {
+      // フォールバックのエラーは無視
+    }
   }
 
-  const list: any[] = Array.isArray(json) ? json : json?.items || json?.laws || (json?.law_info ? [json] : []);
-  const items: LawSearchResultItem[] = [];
-
-  for (const entry of list) {
-    const info = entry.law_info || entry;
-    const rev = entry.revision_info || entry;
-    const lawId = info.law_id || info.LawId;
-    if (!lawId) continue;
-
-    items.push({
-      id: String(lawId),
-      title: String(rev.law_title || rev.law_title_kana || info.LawName || info.law_title || '名称不明')
-        .replace(/<span>|<\/span>/g, ''),
-      lawNum: String(info.law_num || info.LawNo || ''),
-      promulgationDate: (info.promulgation_date || info.PromulgationDate) ? String(info.promulgation_date || info.PromulgationDate) : undefined,
-      category: (rev.category || info.law_type || info.LawType) ? String(rev.category || info.law_type || info.LawType) : undefined,
-    });
-  }
-
-  const reranked = rerankSearchResults(items, keyword);
+  const reranked = rerankSearchResults(rawItems, keyword);
   const finalItems = reranked.slice(0, limit);
 
   const result = {
@@ -242,6 +333,10 @@ export async function getLawData(options: {
     },
     signal: AbortSignal.timeout(15000),
   });
+
+  if (res.status === 404 || res.status === 400) {
+    throw new Error(`指定された法令が見つかりません (HTTP ${res.status}): ${rawId}`);
+  }
 
   if (!res.ok) {
     throw new Error(`e-Gov 法令本文の取得に失敗しました (HTTP ${res.status}): ${rawId}`);

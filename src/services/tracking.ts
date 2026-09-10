@@ -458,7 +458,7 @@ export async function trackJapanPost(trackingNumber: string): Promise<TrackingRe
       events,
       trackingUrl,
       details: {
-        serviceType: 'ゆうパック/郵便',
+        serviceType: 'ゆうパック/ゆうパケット/EMS/国際郵便',
       },
     };
   } catch (err: any) {

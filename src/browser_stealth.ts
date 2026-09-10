@@ -441,7 +441,15 @@ export async function fetchWithStealthBrowser(
       await page.evaluateOnNewDocument(patchWebRtcIpLeak);
       await page.evaluateOnNewDocument(patchCanvasFingerprint);
 
-      await page.goto(url, { waitUntil, timeout: timeoutMs });
+      try {
+        await page.goto(url, { waitUntil, timeout: timeoutMs });
+      } catch (gotoErr: any) {
+        // networkidle 等のネットワーク待機タイムアウト時でも、DOM（HTML）が読み込まれていれば処理を続行
+        const currentHtml = await page.content().catch(() => '');
+        if (!currentHtml || currentHtml.length <= 500) {
+          throw gotoErr;
+        }
+      }
 
       try {
         const viewport = page.viewport();
