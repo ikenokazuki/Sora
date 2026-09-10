@@ -19,7 +19,7 @@ import {
   annotateTextWithTemporalAnchors,
   type TemporalAnchor,
 } from './extractor/temporal_anchor.js';
-import { extractQueryHighlightsRhoSelect } from './rho_select.js';
+import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 export {
   normalizeSafeNumeric,
   assignBlockProvenance,
@@ -698,10 +698,12 @@ export function extractQueryHighlights(
   maxHighlights = 3,
   _options?: QueryHighlightDetailsOptions,
 ): string[] {
-  const result = extractQueryHighlightsRhoSelect(content, query, {
-    maxHighlights,
-    overheadTokens: 96,
+  const result = extractQueryHighlightsRhoV2(content, query, {
+    tau: 96,
   });
+  if (maxHighlights && maxHighlights > 0 && result.highlights.length > maxHighlights) {
+    return result.highlights.slice(0, maxHighlights);
+  }
   return result.highlights;
 }
 
@@ -867,6 +869,138 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.item);
 }
+
+/**
+ * 深層スクレイピング後のエビデンス駆動リランキング (Evidence-Aware Deep Reranking)
+ *
+ * 【問題意識】
+ * スニペット段階のBM25+リランキングでは、Yahoo等の検索インデックスが合成した断片スニペットに
+ * たまたま別文脈で単語（例: 「作詞」）が含まれていた場合、偽陽性（False Positive）として
+ * 本文中にユーザーの求める回答根拠が一切存在しないページが上位に来てしまう。
+ *
+ * 【解決策】
+ * 深層スクレイピングによって取得された本文（markdown / content）および
+ * ρSelect v2 によって厳密抽出されたハイライト（highlights / highlightItems）の実態に基づき、
+ * 以下の多層エビデンス信号を総合評価して最終順位を適正化する:
+ * 1. クエリ重要単語（Keywords）の本文・ハイライト網羅率（Coverage）
+ * 2. クエリ内の特異語・末尾語（例: 「作詞者」などの明確な意図を表すキーフレーズ）の充足性
+ * 3. ρSelect v2 ハイライトスコア（highlightItems[0]?.score）
+ * 4. クエリ全単語が本文またはハイライトに完全充足（100% カバレッジ）されている場合の強固なブースト
+ * 5. スニペットフォールバック・スクレイピング失敗アイテムへの適正な減点
+ * 6. 初期スニペット順位の適度な保持（Smoothing）
+ */
+export function rerankByDeepEvidence<T extends {
+  title?: string;
+  snippet?: string;
+  description?: string;
+  url?: string;
+  content?: string;
+  markdown?: string;
+  highlights?: string[];
+  highlightItems?: Array<{ text: string; score: number }>;
+  isSnippetFallback?: boolean;
+  scrapeError?: string;
+  rank?: number;
+}>(items: T[], query: string): T[] {
+  if (!items || items.length <= 1 || !query) return items;
+
+  const lowerQuery = query.toLowerCase().trim();
+  const queryWords = lowerQuery
+    .split(/[\s　]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 0);
+
+  if (queryWords.length === 0) return items;
+
+  const N = items.length;
+
+  const scored = items.map((item, originalIndex) => {
+    let score = 0;
+
+    // 本文テキスト（markdown または content）
+    const fullText = ((item.markdown || item.content || '') + ' ' + (item.title || '')).toLowerCase();
+    // ハイライトテキスト
+    const highlightText = (item.highlights || []).join(' ').toLowerCase();
+
+    // A. クエリ単語の本文カバレッジ & ハイライトカバレッジ
+    let coveredWordsInBody = 0;
+    let coveredWordsInHighlights = 0;
+    for (const word of queryWords) {
+      if (fullText.includes(word)) {
+        coveredWordsInBody++;
+      }
+      if (highlightText.includes(word)) {
+        coveredWordsInHighlights++;
+      }
+    }
+
+    const bodyCoverage = queryWords.length > 0 ? coveredWordsInBody / queryWords.length : 0;
+    const highlightCoverage = queryWords.length > 0 ? coveredWordsInHighlights / queryWords.length : 0;
+
+    // カバレッジスコア加算（本文カバレッジ最大10点、ハイライトカバレッジ最大15点）
+    score += bodyCoverage * 10.0;
+    score += highlightCoverage * 15.0;
+
+    // 全単語完全充足（100% coverage）ボーナス: 全ての要求語が揃っているドキュメントを最優先
+    if (bodyCoverage >= 1.0) {
+      score += 12.0;
+    }
+    if (highlightCoverage >= 1.0) {
+      score += 8.0;
+    }
+
+    // B. クエリ末尾語・特異語（特にユーザーの意図を直接表す最後の単語、例: 「作詞者」）の検証
+    if (queryWords.length >= 2) {
+      const lastWord = queryWords[queryWords.length - 1];
+      if (lastWord.length >= 2) {
+        if (highlightText.includes(lastWord)) {
+          score += 6.0;
+        } else if (fullText.includes(lastWord)) {
+          score += 4.0;
+        } else {
+          // 本文にもハイライトにも末尾キーフレーズが存在しない場合、ペナルティ
+          score -= 8.0;
+        }
+      }
+    }
+
+    // C. ρSelect v2 ハイライトスコアの加算
+    if (item.highlightItems && item.highlightItems.length > 0) {
+      const topHighlightScore = item.highlightItems[0]?.score ?? 0;
+      score += Math.min(topHighlightScore * 5.0, 15.0);
+    }
+
+    // D. 欠陥・エラーペナルティ
+    if (item.scrapeError) {
+      score -= 10.0;
+    }
+    if (item.isSnippetFallback) {
+      score -= 5.0;
+    }
+
+    // E. 元の初期順位のスムージング（同等のエビデンスを持つ場合は初期順位を尊重）
+    score += (N - originalIndex) * 0.5;
+
+    return { item, score, originalIndex };
+  });
+
+  scored.sort((a, b) => {
+    if (Math.abs(b.score - a.score) > 0.001) {
+      return b.score - a.score;
+    }
+    return a.originalIndex - b.originalIndex;
+  });
+
+  // rank の再付番
+  return scored.map((s, idx) => {
+    const updated = { ...s.item };
+    if (typeof updated.rank === 'number' || 'rank' in updated) {
+      updated.rank = idx + 1;
+    }
+    return updated;
+  });
+}
+
 
 /**
  * W3C Scroll to Text Fragment URL 生成 (Chromium / Google 標準)

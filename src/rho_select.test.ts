@@ -508,7 +508,7 @@ NVMe SSDにより毎秒10GBの読み書き速度を誇ります。
 
       expect(resRho.highlights?.length).toBeGreaterThanOrEqual(1);
       expect(resRho.highlightDiagnostics).toBeDefined();
-      expect(resRho.highlightDiagnostics?.exactAgreement).toBe(true);
+      expect((resRho.highlightDiagnostics as any)?.exactAgreement).toBe(true);
       expect(resRho.highlightDiagnostics?.selectedCount).toBeGreaterThanOrEqual(1);
     });
   });
@@ -583,16 +583,16 @@ NVMe SSDにより毎秒10GBの読み書き速度を誇ります。
       const { ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema, IntegratedSearchRequestSchema } = await import('./types.js');
       
       const scrapeParsed = ScrapeRequestSchema.parse({ url: 'https://example.com' });
-      expect(scrapeParsed.highlightAlgorithm).toBe('rho-select');
+      expect(scrapeParsed.highlightAlgorithm).toBe('rho-select-v2');
 
       const batchParsed = BatchScrapeRequestSchema.parse({ urls: ['https://example.com'] });
-      expect(batchParsed.highlightAlgorithm).toBe('rho-select');
+      expect(batchParsed.highlightAlgorithm).toBe('rho-select-v2');
 
       const crawlParsed = CrawlRequestSchema.parse({ url: 'https://example.com' });
-      expect(crawlParsed.highlightAlgorithm).toBe('rho-select');
+      expect(crawlParsed.highlightAlgorithm).toBe('rho-select-v2');
 
       const searchParsed = IntegratedSearchRequestSchema.parse({ query: 'テスト' });
-      expect(searchParsed.highlightAlgorithm).toBe('rho-select');
+      expect(searchParsed.highlightAlgorithm).toBe('rho-select-v2');
 
       // 2. finalizeScrapeResult via Scraper with rho-select diagnostics
       const { finalizeScrapeResult } = await import('./scraper.js');
@@ -610,7 +610,7 @@ NVMe SSDにより毎秒10GBの読み書き速度を誇ります。
 
       expect(res.highlights?.length).toBeGreaterThanOrEqual(1);
       expect(res.highlightDiagnostics).toBeDefined();
-      expect(res.highlightDiagnostics?.exactAgreement).toBe(true);
+      expect((res.highlightDiagnostics as any)?.exactAgreement).toBe(true);
     });
   });
 
