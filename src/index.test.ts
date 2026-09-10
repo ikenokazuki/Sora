@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS } from './mcp.js';
-import { SORA_VERSION } from './types.js';
+import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
 import {
@@ -41,6 +41,7 @@ import {
   integratedSearch,
   filterByDomains,
   extractRealtimeFallbackQueries,
+  buildYahooRealtimeQuery,
   searchYahooRealtime,
   searchYahooWeb,
   fetchTweetsForUrlOrUser,
@@ -96,6 +97,8 @@ import {
   searchSong,
   searchArtist,
   searchLaws,
+  arabicToKanjiNumber,
+  normalizeLawKeyword,
   getLawData,
   searchDietMinutes,
   fetchElevationAndCoordinates,
@@ -113,6 +116,7 @@ import {
   fetchWithStealthBrowser,
   resolveAirport,
   rerankSearchResults,
+  rerankByDeepEvidence,
   checkDetailedHealth,
   buildUserAgentFromDefault,
   buildUserAgentMetadata,
@@ -3132,6 +3136,53 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(lawJson.markdown).toBeDefined();
   });
 
+  it('normalizeLawKeyword should convert Arabic article numbers to Kanji', () => {
+    expect(arabicToKanjiNumber(14)).toBe('十四');
+    expect(arabicToKanjiNumber(1044)).toBe('千四十四');
+    expect(arabicToKanjiNumber(3)).toBe('三');
+    expect(normalizeLawKeyword('政党助成法 第14条')).toBe('政党助成法 第十四条');
+    expect(normalizeLawKeyword('著作権法 30条の2')).toBe('著作権法 第三十条の二');
+    expect(normalizeLawKeyword('民法 第1044条')).toBe('民法 第千四十四条');
+  });
+
+  it('searchLaws should handle article numbers like "政党助成法 第14条" without 404 error and fallback to law title', async () => {
+    const res = await searchLaws({ keyword: '政党助成法 第14条', limit: 5 });
+    expect(res).toBeDefined();
+    expect(res.source).toBe('e-gov');
+    expect(res.count).toBeGreaterThanOrEqual(1);
+    expect(res.items.some((item) => item.title === '政党助成法')).toBe(true);
+
+    // REST エンドポイント経由でも 200 OK で返ること
+    const httpRes = await app.request('/gov/laws', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: '政党助成法 第14条', limit: 5 }),
+    });
+    expect(httpRes.status).toBe(200);
+    const body = (await httpRes.json()) as any;
+    expect(body.count).toBeGreaterThanOrEqual(1);
+    expect(body.items.some((item: any) => item.title === '政党助成法')).toBe(true);
+  });
+
+  it('searchLaws should return count: 0 for non-existent laws instead of throwing 404 GOV_ERROR', async () => {
+    const res = await searchLaws({ keyword: '絶対に存在しない架空の法律999999999', noCache: true });
+    expect(res).toBeDefined();
+    expect(res.source).toBe('e-gov');
+    expect(res.count).toBe(0);
+    expect(res.items.length).toBe(0);
+
+    // REST エンドポイント経由でも 200 OK で count: 0 が返ること
+    const httpRes = await app.request('/gov/laws', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: '絶対に存在しない架空の法律999999999', noCache: true }),
+    });
+    expect(httpRes.status).toBe(200);
+    const body = (await httpRes.json()) as any;
+    expect(body.count).toBe(0);
+    expect(body.items).toEqual([]);
+  });
+
   it('POST /trade/cpsc-check should handle REST requests', async () => {
     const resEmpty = await app.request('/trade/cpsc-check', {
       method: 'POST',
@@ -3263,9 +3314,14 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(detectSpaOrBotPage({ html: `<body>${timeTreeMsg}</body>`, bodyOnlyMarkdown: timeTreeMsg })).toBe(true);
   });
 
-  it('detectSpaOrBotPage should flag known SPA mount markers', () => {
+  it('detectSpaOrBotPage should flag known SPA mount markers only when content is sparse', () => {
     expect(detectSpaOrBotPage({ html: '<div id="__next"></div>', bodyOnlyMarkdown: 'x'.repeat(100) })).toBe(true);
+    expect(detectSpaOrBotPage({ html: '<div id="__nuxt"></div>', bodyOnlyMarkdown: 'x'.repeat(100) })).toBe(true);
     expect(detectSpaOrBotPage({ html: '<html></html>', bodyOnlyMarkdown: 'x'.repeat(100) })).toBe(false);
+
+    // SSR されたページ（本文が300文字以上存在する場合）は SPA 判定しない
+    expect(detectSpaOrBotPage({ html: '<div id="__next"></div>', bodyOnlyMarkdown: 'x'.repeat(400) })).toBe(false);
+    expect(detectSpaOrBotPage({ html: '<div id="__nuxt"></div>', bodyOnlyMarkdown: 'x'.repeat(500) })).toBe(false);
   });
 
   it('detectSpaOrBotPage should flag bot-challenge HTTP status codes', () => {
@@ -5169,6 +5225,61 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(ranked[0].url).toBe('https://example.com/hoshikaze');
     });
 
+    it('rerankByDeepEvidence should prioritize articles with full evidence including key intent terms over snippet-only false positives', () => {
+      const query = '君と見るそら 季節外れのリナリア 作詞者';
+      const items = [
+        {
+          rank: 1,
+          title: '君と見るそら、「季節外れのリナリア」を配信開始',
+          snippet: 'ほとんどの曲の作詞を手がけ独自の可愛い世界観を持っている！楽曲『小悪魔ドール愛理たん』がTwitterで再生回数160万を突破した。',
+          url: 'https://example.com/tunecore-magazine',
+          markdown: '# 君と見るそら 季節外れのリナリア\n\n君と見るそらの新曲が配信開始されました。全1曲が収録されています。',
+          highlights: ['君と見るそらの「季節外れのリナリア」が配信開始された。'],
+          highlightItems: [{ text: '君と見るそらの「季節外れのリナリア」が配信開始された。', score: 0.85 }],
+        },
+        {
+          rank: 2,
+          title: '季節外れのリナリア by 君と見るそら',
+          snippet: '君と見るそら 季節外れのリナリアのシングル情報、配信ストア一覧。',
+          url: 'https://example.com/linkcore-page',
+          markdown: '# 季節外れのリナリア\n\nアーティスト: 君と見るそら\n\n- 作詞者\n  内山優花\n\n- 作曲者\n  塚田耕平',
+          highlights: ['- 作詞者\n  内山優花'],
+          highlightItems: [{ text: '- 作詞者\n  内山優花', score: 0.98 }],
+        },
+      ];
+
+      const reranked = rerankByDeepEvidence(items, query);
+      expect(reranked[0].url).toBe('https://example.com/linkcore-page');
+      expect(reranked[0].rank).toBe(1);
+      expect(reranked[1].url).toBe('https://example.com/tunecore-magazine');
+      expect(reranked[1].rank).toBe(2);
+    });
+
+    it('rerankByDeepEvidence should penalize items with scrapeError or isSnippetFallback', () => {
+      const query = 'TypeScript Bun Hono';
+      const items = [
+        {
+          rank: 1,
+          title: 'TypeScript Bun Hono エラーページ',
+          markdown: 'TypeScript Bun Hono',
+          scrapeError: 'Navigation timeout 30000ms',
+          url: 'https://example.com/error',
+        },
+        {
+          rank: 2,
+          title: 'TypeScript Bun Hono 完全ガイド',
+          markdown: 'TypeScript Bun Hono を使ったフルスタック開発のすべて。',
+          highlights: ['TypeScript Bun Hono を使ったフルスタック開発のすべて。'],
+          highlightItems: [{ text: 'TypeScript Bun Hono を使ったフルスタック開発のすべて。', score: 0.92 }],
+          url: 'https://example.com/guide',
+        },
+      ];
+
+      const reranked = rerankByDeepEvidence(items, query);
+      expect(reranked[0].url).toBe('https://example.com/guide');
+      expect(reranked[0].rank).toBe(1);
+    });
+
     it('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {
       const res = await fetchTweetsForUrlOrUser('https://x.com/kimisora_JPN', {
         contextTitle: '君と見るそら (@kimisora_JPN) / X',
@@ -5245,9 +5356,170 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res).toBeDefined();
       expect(res.items.length).toBeGreaterThan(0);
     });
+
+    it('buildYahooRealtimeQuery should construct correct queries with operators and normalize from:', () => {
+      // 1. from: -> id: の自動正規化
+      expect(buildYahooRealtimeQuery('from:Yahoo_JAPAN_PR 最新情報')).toBe('id:Yahoo_JAPAN_PR 最新情報');
+      expect(buildYahooRealtimeQuery({ query: 'from:kimisora_JPN 強化月間ライブ' })).toBe('id:kimisora_JPN 強化月間ライブ');
+
+      // 2. accountId / fromUser
+      expect(buildYahooRealtimeQuery({ accountId: 'kimisora_JPN', query: '強化月間ライブ' })).toBe('強化月間ライブ id:kimisora_JPN');
+      expect(buildYahooRealtimeQuery({ fromUser: '@kimisora_JPN', query: '強化月間ライブ' })).toBe('強化月間ライブ id:kimisora_JPN');
+      expect(buildYahooRealtimeQuery({ accountId: 'kimisora_JPN' })).toBe('id:kimisora_JPN');
+
+      // 3. toAccount
+      expect(buildYahooRealtimeQuery({ toAccount: 'Yahoo_JAPAN_PR', query: '質問' })).toBe('質問 @Yahoo_JAPAN_PR');
+
+      // 4. hashtags
+      expect(buildYahooRealtimeQuery({ query: 'ライブ', hashtags: ['君と見るそら', '#キミソラ'] })).toBe('ライブ #君と見るそら #キミソラ');
+
+      // 5. excludeWords
+      expect(buildYahooRealtimeQuery({ query: '君と見るそら', excludeWords: ['bot', '-spam'] })).toBe('君と見るそら -bot -spam');
+
+      // 6. orWords
+      expect(buildYahooRealtimeQuery({ orWords: ['君と見るそら', 'キミソラ'] })).toBe('(君と見るそら キミソラ)');
+
+      // 7. url
+      expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 x.com');
+    });
+
+    it('searchYahooRealtime should support accountId and query filtering (user confirmed pattern)', async () => {
+      const res = await searchYahooRealtime({
+        accountId: 'kimisora_JPN',
+        query: '強化月間ライブ',
+        limit: 3,
+      });
+      expect(res).toBeDefined();
+      expect(res.source).toBe('x');
+      expect(res.effectiveQuery).toContain('id:kimisora_JPN');
+      expect(res.effectiveQuery).toContain('強化月間ライブ');
+      expect(res.items.length).toBeGreaterThan(0);
+      expect(res.items[0].author_handle).toBe('kimisora_JPN');
+    });
+
+    it('POST /search/realtime should accept accountId, hashtags, and normalize from: in query', async () => {
+      // accountId + query
+      const req1 = new Request('http://localhost/search/realtime', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'kimisora_JPN', query: '強化月間ライブ', limit: 3, noCache: true }),
+      });
+      const res1 = await app.fetch(req1);
+      expect(res1.status).toBe(200);
+      const json1 = await res1.json();
+      expect(json1.source).toBe('x');
+      expect(json1.effectiveQuery).toContain('id:kimisora_JPN');
+      expect(json1.data.items.length).toBeGreaterThan(0);
+
+      // from: query normalization
+      const req2 = new Request('http://localhost/search/realtime', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'from:Yahoo_JAPAN_PR', limit: 2, noCache: true }),
+      });
+      const res2 = await app.fetch(req2);
+      expect(res2.status).toBe(200);
+      const json2 = await res2.json();
+      expect(json2.effectiveQuery).toContain('id:Yahoo_JAPAN_PR');
+      expect(json2.data.items.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 57 operations having rich 200 response schemas', () => {
+      const doc = generateOpenApiDocument();
+      expect(doc.openapi).toBe('3.0.0');
+      expect(doc.info.title).toContain('Sora');
+
+      let operationCount = 0;
+      let withContentCount = 0;
+
+      for (const [pathKey, pathItem] of Object.entries(doc.paths)) {
+        for (const [method, op] of Object.entries(pathItem as any)) {
+          if (['get', 'post', 'put', 'delete', 'patch'].includes(method)) {
+            operationCount++;
+            const opObj = op as any;
+            const res200 = opObj.responses?.['200'];
+            expect(res200).toBeDefined();
+
+            if (res200.content) {
+              withContentCount++;
+              if (res200.content['application/json']) {
+                const schema = res200.content['application/json'].schema;
+                expect(schema).toBeDefined();
+                expect(typeof schema).toBe('object');
+                // Schema must have properties or type
+                expect(schema.type).toBeDefined();
+              } else if (res200.content['text/event-stream']) {
+                expect(res200.content['text/event-stream'].schema).toBeDefined();
+              }
+            }
+          }
+        }
+      }
+
+      expect(operationCount).toBe(57);
+      expect(withContentCount).toBe(57);
+    });
+
+    it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {
+      const doc = generateOpenApiDocument();
+      const flightOp = (doc.paths['/traffic/flight'] as any)?.post;
+      expect(flightOp).toBeDefined();
+
+      const schema = flightOp.responses['200'].content['application/json'].schema;
+      expect(schema.type).toBe('object');
+      expect(schema.properties).toBeDefined();
+      expect(schema.properties.airportName).toBeDefined();
+      expect(schema.properties.airportName.description).toContain('対象空港名');
+      expect(schema.properties.airportCode).toBeDefined();
+      expect(schema.properties.airportCode.description).toContain('空港コード');
+      expect(schema.properties.summary).toBeDefined();
+      expect(schema.properties.summary.description).toContain('運航状況');
+      expect(schema.properties.flights).toBeDefined();
+      expect(schema.properties.flights.type).toBe('array');
+    });
+
+    it('POST /tracking 200 response schema should expose properties with Japanese descriptions', () => {
+      const doc = generateOpenApiDocument();
+      const trackingOp = (doc.paths['/tracking'] as any)?.post;
+      expect(trackingOp).toBeDefined();
+
+      const schema = trackingOp.responses['200'].content['application/json'].schema;
+      expect(schema.type).toBe('object');
+      expect(schema.properties).toBeDefined();
+      expect(schema.properties.trackingNumber).toBeDefined();
+      expect(schema.properties.trackingNumber.description).toContain('追跡番号');
+      expect(schema.properties.carrierName).toBeDefined();
+      expect(schema.properties.carrierName.description).toContain('運送会社表示名');
+      expect(schema.properties.status).toBeDefined();
+      expect(schema.properties.status.description).toContain('配送ステータス');
+      expect(schema.properties.details).toBeDefined();
+      expect(schema.properties.details.properties.serviceType).toBeDefined();
+      expect(schema.properties.details.properties.serviceType.description).toContain('配送サービス種別');
+      expect(schema.properties.events).toBeDefined();
+      expect(schema.properties.events.type).toBe('array');
+    });
+
+    it('GET /openapi.json endpoint should return the document with full response schemas', async () => {
+      const res = await app.request('/openapi.json');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('application/json');
+      const data = await res.json();
+      expect(data.openapi).toBe('3.0.0');
+      expect(data.paths['/traffic/flight'].post.responses['200'].content['application/json'].schema.properties.airportName).toBeDefined();
+    });
+
+    it('scrapeUrl should extract full content from note.com SSR articles without browser timeout', async () => {
+      const res = await scrapeUrl({
+        url: 'https://note.com/kimisora_mix/n/nd94f3a06fe8f',
+        timeoutMs: 12000,
+        noCache: true,
+      });
+      expect(res).toBeDefined();
+      expect(res.content.length).toBeGreaterThan(1000);
+      expect(res.content).toContain('ソライロ');
+      expect(res.renderedWithBrowser).toBe(false);
+    }, 20000);
   });
 });
-
-
-
-

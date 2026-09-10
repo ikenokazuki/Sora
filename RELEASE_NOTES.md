@@ -1,3 +1,40 @@
+# 🌤️ Sora Release v2.19.0
+
+最新の数理最適化研究に基づく証拠選択エンジン **「ρSelect v2 (Canonical Engine)」** の完全導入および深層エビデンス駆動リランキング機能の搭載アップデート（v2.19.0）です。連続スコア $r_{it} \in [0, 1]$ に対する Graded Max-Evidence 則と座標単調効用関数 $\Phi(y)$、Safe Dominance 剪定、および Exact Observed-Rank DP / Adaptive Refinement 二段階ハイブリッドソルバーを実装しました。全クエリに対して数学的オプティマイザ証明書（`certificate`: $LB \le \rho^* \le UB$）を発行し、外部監査レポート（v0.35）の全指摘事項を是正するとともに、実クエリでの偽陽性を根絶する深層エビデンス駆動リランキングおよび Markdown リスト構造保護パースを導入しました。
+
+---
+
+## 🌟 v2.19.0 主なハイライト (Highlights)
+
+### 1. 🎯 ρSelect v2: 数学的オプティマイザ証明書付き証拠選択エンジン
+- **連続スコア評価と Graded Max-Evidence**:
+  - 連続値 $r_{it} \in [0, 1]$ の適合スコアを直接扱う数理モデルへ刷新。
+- **Canonical Unconstrained Mode（自律的疎性最適化）**:
+  - ハード上限 $K$ を前提とせず、State-Witness Sparsity 定理（$|S^*| \le m$）と分数目的関数に基づき、必要最小限かつ情報密度の高い証拠集合を自律選出。
+- **Safe Dominance 剪定による状態空間 22.7倍（95.59%）削減**:
+  - パレート劣位候補を探索前に安全にパージ。実測において状態数を 1,678 → 74 へ劇的削減（レイテンシ約 52 倍 高速化）。
+- **二段階ハイブリッド・ソルバー & 数学的証明書 (`certificate`)**:
+  - Exact DP と Adaptive Refinement により大域的最適性を数学的に証明。各レスポンスに `certificate`（$LB \le \rho^* \le UB$）を添付。
+- **1,000 Seeds ストレス回帰テストスイートの完走**:
+  - 1,000 決定論的シード（4,588 assertions）による厳格な数学的性質（Exact vs Brute-force、AR Bounds、$\epsilon=0$ 収束、Dominance不変性、Ties、Fail-closed）を 100% 検証。
+
+### 2. 🔍 深層エビデンス駆動リランキング (`rerankByDeepEvidence`)
+- **スニペット段階での偽陽性の根絶**:
+  - 検索エンジンの合成スニペットに別文脈の単語が含まれていた場合の誤1位判定を解消。
+- **多層エビデンス順位補正**:
+  - 深層スクレイピング完了後、本文およびハイライトのクエリ単語カバレッジ、意図キーフレーズ（末尾語・特異語）充足、および ρSelect v2 ハイライトスコアを総合評価し、真に回答根拠を含むページを 1 位へ自動浮上。
+
+### 3. 📝 Markdown 空行区切りリスト構造保護パース
+- **クレジット・定義リストの泣き別れ防止**:
+  - `- 作詞者\n\n 内山優花` のような空行区切りインデントリストが空行で別セクションに分断されるのを防ぎ、同一セクションブロックに結合保持。
+
+### 4. 📚 監査・仕様ドキュメントの最新化
+- 理論解説: [`docs/rho_select.md`](docs/rho_select.md)
+- LLM向けハンドオーバー仕様書: [`docs/rho_select_v2_llm_handover.md`](docs/rho_select_v2_llm_handover.md)
+- 監査指摘是正・新機能実装報告書: [`docs/rho_select_v2_audit_response.md`](docs/rho_select_v2_audit_response.md)
+
+---
+
 # 🌤️ Sora Release v2.18.0
 
 日本の主要運送会社および国際便の横断追跡機能（`/tracking`、`track_package` MCP ツール）の新規搭載、およびトークン効率的証拠選択エンジン「ρSelect」におけるボイラープレート・メタデータ自動排除とリスト内見出し階層認識の機能強化を含む大型アップデート（v2.18.0）です。
