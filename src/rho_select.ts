@@ -186,9 +186,22 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
 
-    if (rawParagraphs.length > 1) {
+    // リスト構造（- 項目\n\n  値）の泣き別れを防止するマージ処理
+    const mergedParagraphs: string[] = [];
+    for (const p of rawParagraphs) {
+      const prev = mergedParagraphs.length > 0 ? mergedParagraphs[mergedParagraphs.length - 1] : null;
+      // 直前がリスト項目（- や * 等で始まる短い項目名）で、現在のブロックがその値と思われる場合は結合
+      const isListItemHeader = prev && /^[-*+]\s+[^\n]{1,40}$/.test(prev);
+      if (isListItemHeader) {
+        mergedParagraphs[mergedParagraphs.length - 1] = `${prev}\n\n${p}`;
+      } else {
+        mergedParagraphs.push(p);
+      }
+    }
+
+    if (mergedParagraphs.length > 1) {
       let offset = 0;
-      return rawParagraphs.map((p) => {
+      return mergedParagraphs.map((p) => {
         const sec: ParsedSection = {
           rawHeading: '',
           heading: '',

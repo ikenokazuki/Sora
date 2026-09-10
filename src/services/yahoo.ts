@@ -176,7 +176,106 @@ export function normalizeRealtimeItem(item: any): Record<string, any> {
   };
 }
 
-/** 検索向けフォールバック候補クエリの自動抽出 (JST 相対日付解決・記号/日付正規化・ノイズ語句パージ・重要語抽出) */
+export interface YahooRealtimeOptions {
+  query?: string;
+  accountId?: string;
+  fromUser?: string;
+  toAccount?: string;
+  hashtags?: string[] | string;
+  excludeWords?: string[] | string;
+  orWords?: string[];
+  url?: string;
+  sort?: 'recent' | 'popular';
+  limit?: number;
+  page?: number;
+  disableFallback?: boolean;
+}
+
+/**
+ * Yahoo リアルタイム検索クエリ構築・サニタイズ
+ * - X/Twitter 公式の from:xxx を Yahoo 仕様の id:xxx に自動置換
+ * - accountId / fromUser を id:xxx に変換
+ * - toAccount を @xxx に変換
+ * - hashtags を #xxx に変換
+ * - excludeWords を -xxx に変換
+ * - orWords を (A B) に変換
+ */
+export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string): string {
+  if (typeof options === 'string') {
+    return options.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+  }
+
+  let baseQuery = (options.query || '').trim();
+  // from: を id: に自動置換 (X/Twitter 記法への耐性)
+  baseQuery = baseQuery.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+
+  const tokens: string[] = [];
+
+  // 特定アカウントの投稿: id:xxx
+  const rawAccount = (options.accountId || options.fromUser || '').trim();
+  if (rawAccount) {
+    const cleanAccount = rawAccount.replace(/^@/, '');
+    const accountRegex = new RegExp(`\\b(?:id|ID):${cleanAccount}\\b`, 'i');
+    if (!accountRegex.test(baseQuery)) {
+      tokens.push(`id:${cleanAccount}`);
+    }
+  }
+
+  // 特定アカウント宛ての投稿: @xxx
+  const rawTo = (options.toAccount || '').trim();
+  if (rawTo) {
+    const cleanTo = rawTo.replace(/^@/, '');
+    const toRegex = new RegExp(`(^|\\s)@${cleanTo}\\b`, 'i');
+    if (!toRegex.test(baseQuery)) {
+      tokens.push(`@${cleanTo}`);
+    }
+  }
+
+  // 特定ハッシュタグ: #xxx
+  if (options.hashtags) {
+    const tagList = Array.isArray(options.hashtags) ? options.hashtags : [options.hashtags];
+    for (const rawTag of tagList) {
+      const cleanTag = rawTag.trim().replace(/^#/, '');
+      if (cleanTag && !baseQuery.includes(`#${cleanTag}`)) {
+        tokens.push(`#${cleanTag}`);
+      }
+    }
+  }
+
+  // 除外キーワード: -xxx
+  if (options.excludeWords) {
+    const exList = Array.isArray(options.excludeWords) ? options.excludeWords : [options.excludeWords];
+    for (const rawEx of exList) {
+      const cleanEx = rawEx.trim().replace(/^-/, '');
+      if (cleanEx && !baseQuery.includes(`-${cleanEx}`)) {
+        tokens.push(`-${cleanEx}`);
+      }
+    }
+  }
+
+  // OR検索: (A B)
+  if (options.orWords && options.orWords.length > 0) {
+    const cleanOr = options.orWords.map((w) => w.trim()).filter(Boolean);
+    if (cleanOr.length > 1) {
+      tokens.push(`(${cleanOr.join(' ')})`);
+    } else if (cleanOr.length === 1) {
+      tokens.push(cleanOr[0]);
+    }
+  }
+
+  // URL / ドメイン指定
+  if (options.url) {
+    const cleanUrl = options.url.trim();
+    if (cleanUrl && !baseQuery.includes(cleanUrl)) {
+      tokens.push(cleanUrl);
+    }
+  }
+
+  const parts = [baseQuery, ...tokens].filter(Boolean);
+  return parts.join(' ').trim();
+}
+
+/** 検索向けフォールバック候補クエリの自動抽出 (JST 相対日付解決・記号/日付正規化・ノイズ語句パージ・重要語抽出・修飾子保護) */
 export function extractRealtimeFallbackQueries(query: string): string[] {
   if (!query || typeof query !== 'string') return [];
   const normalized = query.normalize('NFKC').trim();
@@ -185,30 +284,61 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
     candidates.push(normalized);
   }
 
+  // 修飾子 (id:xxx, @xxx, #xxx, -xxx) の抽出と保護
+  const modifiers: string[] = [];
+  let remaining = normalized;
+
+  // id: / ID:
+  remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
+    modifiers.push(`id:${id}`);
+    return ' ';
+  });
+
+  // @mention (単語先頭の @)
+  remaining = remaining.replace(/(?:^|\s)@([a-zA-Z0-9_]+)/g, (_, m) => {
+    modifiers.push(`@${m}`);
+    return ' ';
+  });
+
+  // #hashtag
+  remaining = remaining.replace(/(?:^|\s)#([^\s#]+)/g, (_, tag) => {
+    modifiers.push(`#${tag}`);
+    return ' ';
+  });
+
+  // -exclude
+  remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
+    modifiers.push(`-${ex}`);
+    return ' ';
+  });
+
+  const modifierPrefix = modifiers.join(' ').trim();
+  remaining = remaining.replace(/\s+/g, ' ').trim();
+
   // 1. 日付の検出 (絶対日付 or JST 相対日付, 年月日 / スラッシュ / ハイフン / ドット)
   let targetDateStr: string | null = null;
-  const kanjiDateMatch = normalized.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
+  const kanjiDateMatch = remaining.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
   if (kanjiDateMatch) {
     const month = parseInt(kanjiDateMatch[2], 10);
     const day = parseInt(kanjiDateMatch[3], 10);
     targetDateStr = `${month}/${day}`;
   } else {
-    const ymSeparatedMatch = normalized.match(/(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})/);
+    const ymSeparatedMatch = remaining.match(/(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})/);
     if (ymSeparatedMatch) {
       targetDateStr = `${parseInt(ymSeparatedMatch[2], 10)}/${parseInt(ymSeparatedMatch[3], 10)}`;
     } else {
       // 相対日付の判定（日本時間 JST: UTC+9）
       const now = new Date();
       const jstNow = new Date(now.getTime() + (9 * 60 + now.getTimezoneOffset()) * 60000);
-      if (/(?:明日|あした|あす)/.test(normalized)) {
+      if (/(?:明日|あした|あす)/.test(remaining)) {
         const tomorrow = new Date(jstNow.getTime() + 24 * 60 * 60 * 1000);
         targetDateStr = `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`;
-      } else if (/(?:今日|本日|きょう)/.test(normalized)) {
+      } else if (/(?:今日|本日|きょう)/.test(remaining)) {
         targetDateStr = `${jstNow.getMonth() + 1}/${jstNow.getDate()}`;
-      } else if (/(?:明後日|あさって)/.test(normalized)) {
+      } else if (/(?:明後日|あさって)/.test(remaining)) {
         const dayAfter = new Date(jstNow.getTime() + 48 * 60 * 60 * 1000);
         targetDateStr = `${dayAfter.getMonth() + 1}/${dayAfter.getDate()}`;
-      } else if (/(?:昨日|きのう)/.test(normalized)) {
+      } else if (/(?:昨日|きのう)/.test(remaining)) {
         const yesterday = new Date(jstNow.getTime() - 24 * 60 * 60 * 1000);
         targetDateStr = `${yesterday.getMonth() + 1}/${yesterday.getDate()}`;
       }
@@ -217,7 +347,7 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
 
   // 2. ノイズ語句の除去 (自然言語フレーズ、助詞、冗長語)
   const noisePattern = /(?:明日|あした|あす|今日|本日|きょう|昨日|きのう|明後日|あさって|予定|スケジュール|情報|一覧|最新|公式|について|まとめ|何時|何時から|いつ|どこ|どこで|教えて|ライブ予定|ライブ情報|チケット情報|チケット一覧|開催情報|詳細|概要|購入方法|チケット購入方法|タイムテーブル|タイテ|出演時間)/g;
-  const cleaned = normalized
+  const cleaned = remaining
     .replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, '')
     .replace(/(?:\d{4}[-/.])?\d{1,2}[-/.]\d{1,2}/g, '')
     .replace(noisePattern, ' ')
@@ -227,26 +357,35 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
   const words = cleaned.split(' ').filter((w) => w.length > 0);
   const mainEntity = words[0] || '';
 
-  // 3. 候補クエリの優先度生成
+  // 3. 候補クエリの優先度生成 (修飾子を維持)
+  const attachModifiers = (str: string) => {
+    return modifierPrefix ? `${modifierPrefix} ${str}`.trim() : str.trim();
+  };
+
   if (mainEntity && targetDateStr) {
-    candidates.push(`${mainEntity} ${targetDateStr}`);
+    candidates.push(attachModifiers(`${mainEntity} ${targetDateStr}`));
     const [m, d] = targetDateStr.split('/');
-    candidates.push(`${mainEntity} ${m}月${d}日`);
+    candidates.push(attachModifiers(`${mainEntity} ${m}月${d}日`));
   }
 
   if (words.length > 1) {
-    candidates.push(words.join(' '));
+    candidates.push(attachModifiers(words.join(' ')));
   }
 
-  if (mainEntity && !candidates.includes(mainEntity)) {
-    candidates.push(mainEntity);
+  if (mainEntity) {
+    candidates.push(attachModifiers(mainEntity));
+  }
+
+  // 修飾子が存在し、キーワード単体でヒットしなかった場合のフォールバック（例: id:xxx 単体、#tag 単体）
+  if (modifierPrefix) {
+    candidates.push(modifierPrefix);
   }
 
   return Array.from(new Set(candidates.map((c) => c.trim()).filter((c) => c.length > 0)));
 }
 
 /** Yahoo リアルタイム検索 (スマートフォールバック・正規化付き) */
-export async function searchYahooRealtime(options: {
+export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   query: string;
   sort?: 'recent' | 'popular';
   limit?: number;
@@ -260,21 +399,23 @@ export async function searchYahooRealtime(options: {
   isFallback: boolean;
   source: 'x';
 }> {
-  const originalQuery = options.query;
+  const builtQuery = buildYahooRealtimeQuery(options);
+  const originalQuery = builtQuery || (typeof options === 'object' ? options.query || '' : options);
   const sort = options.sort || 'recent';
   const limit = options.limit;
   const page = options.page;
 
   const candidateQueries = options.disableFallback
-    ? [originalQuery]
-    : extractRealtimeFallbackQueries(originalQuery);
+    ? [builtQuery]
+    : extractRealtimeFallbackQueries(builtQuery);
 
   let finalItems: any[] = [];
-  let effectiveQuery = originalQuery;
+  let effectiveQuery = builtQuery;
   let isFallback = false;
 
   for (let i = 0; i < candidateQueries.length; i++) {
     const q = candidateQueries[i];
+    if (!q) continue;
     try {
       const mcpRes = await callYahooMcp('yahoo_realtime_search', {
         query: q,
@@ -347,6 +488,7 @@ export async function fetchTweetsForUrlOrUser(
     if (cleanTitle && cleanTitle.length > 2) searchQueries.push(cleanTitle);
   }
   if (handle) {
+    searchQueries.push(`id:${handle}`);
     searchQueries.push(`@${handle}`);
   }
 

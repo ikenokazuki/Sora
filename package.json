@@ -1,6 +1,6 @@
 {
   "name": "sora",
-  "version": "2.18.0",
+  "version": "2.19.0",
   "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
@@ -9,6 +9,7 @@
     "start": "bun run src/index.ts",
     "stdio": "bun run src/stdio.ts",
     "test": "bun test",
+    "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js"
   },
   "keywords": [
