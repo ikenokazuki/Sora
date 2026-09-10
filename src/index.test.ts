@@ -5280,6 +5280,119 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(reranked[0].rank).toBe(1);
     });
 
+    it('rerankByDeepEvidence should support unspaced Japanese queries and prioritize target item', () => {
+      // 評価プロトコル第4.1項: 日本語無空白クエリでも正確にターム分解されて1位に浮上すること
+      const query = '君と見るそら季節外れのリナリア作詞者';
+      const items = [
+        {
+          rank: 1,
+          title: '君と見るそら、「季節外れのリナリア」を配信開始',
+          snippet: 'ほとんどの曲の作詞を手がけ独自の可愛い世界観を持っている！楽曲『小悪魔ドール愛理たん』がTwitterで再生回数160万を突破した。',
+          url: 'https://example.com/tunecore-magazine',
+          markdown: '# 君と見るそら 季節外れのリナリア\n\n君と見るそらの新曲が配信開始されました。全1曲が収録されています。',
+          highlights: ['君と見るそらの「季節外れのリナリア」が配信開始された。'],
+          highlightItems: [{ text: '君と見るそらの「季節外れのリナリア」が配信開始された。', score: 0.0050 }],
+        },
+        {
+          rank: 2,
+          title: '季節外れのリナリア by 君と見るそら',
+          snippet: '君と見るそら 季節外れのリナリアのシングル情報、配信ストア一覧。',
+          url: 'https://example.com/linkcore-page',
+          markdown: '# 季節外れのリナリア\n\nアーティスト: 君と見るそら\n\n- 作詞者\n  内山優花\n\n- 作曲者\n  塚田耕平',
+          highlights: ['- 作詞者\n  内山優花'],
+          highlightItems: [{ text: '- 作詞者\n  内山優花', score: 0.0085 }],
+        },
+      ];
+
+      const reranked = rerankByDeepEvidence(items, query);
+      expect(reranked[0].url).toBe('https://example.com/linkcore-page');
+      expect(reranked[0].rank).toBe(1);
+      expect(reranked[1].url).toBe('https://example.com/tunecore-magazine');
+      expect(reranked[1].rank).toBe(2);
+    });
+
+    it('rerankByDeepEvidence should automatically identify intent anchor via low-DF term when no attribute word exists', () => {
+      // 評価プロトコル第4.2項: 属性辞書にない場合、候補群中で出現頻度(DF)が最も低い稀少語がアンカーとなる
+      const query = 'Python 機械学習 PyTorch2';
+      const items = [
+        {
+          rank: 1,
+          title: 'Python 機械学習 入門',
+          snippet: 'Python で機械学習を始めましょう。基本的なライブラリの使い方。',
+          url: 'https://example.com/intro',
+          markdown: '# Python 機械学習 入門\n\nScikit-learn を使ったデータ分析。',
+        },
+        {
+          rank: 2,
+          title: 'PyTorch2 新機能解説',
+          snippet: 'Python 機械学習における PyTorch2 の最新機能。',
+          url: 'https://example.com/pytorch2',
+          markdown: '# PyTorch2 リリースノート\n\nPython 機械学習における PyTorch2 のコンパイル機能とパフォーマンス。',
+          highlights: ['PyTorch2 のコンパイル機能とパフォーマンス。'],
+          highlightItems: [{ text: 'PyTorch2 のコンパイル機能とパフォーマンス。', score: 0.95 }],
+        },
+      ];
+
+      const reranked = rerankByDeepEvidence(items, query);
+      // PyTorch2 は items[1] にしか出現しない低DF稀少語（アンカー）であり、items[0] はペナルティを受ける
+      expect(reranked[0].url).toBe('https://example.com/pytorch2');
+      expect(reranked[0].rank).toBe(1);
+    });
+
+    it('rerankByDeepEvidence should support ablation study with enableRhoFeature: false', () => {
+      // 評価プロトコル第4.4項: enableRhoFeature: false (Ablation)
+      const query = 'TypeScript チュートリアル';
+      const items = [
+        {
+          rank: 1,
+          title: 'TypeScript チュートリアル 初級',
+          markdown: 'TypeScript の基本的なチュートリアルです。型システムの基本を学びます。',
+          url: 'https://example.com/doc1',
+        },
+        {
+          rank: 2,
+          title: 'TypeScript チュートリアル 応用',
+          markdown: 'TypeScript の高度なチュートリアルです。条件型やマップ型を学びます。',
+          highlights: ['条件型やマップ型を学びます。'],
+          highlightItems: [{ text: '条件型やマップ型を学びます。', score: 0.99 }],
+          url: 'https://example.com/doc2',
+        },
+      ];
+
+      // enableRhoFeature: false の場合、ハイライト加算（最大6点）は行われない
+      const rerankedAblated = rerankByDeepEvidence(items, query, { enableRhoFeature: false });
+      expect(rerankedAblated).toBeDefined();
+      expect(rerankedAblated.length).toBe(2);
+    });
+
+    it('rerankByDeepEvidence should calibrate real-world small rho scores via relative normalization', () => {
+      // 評価プロトコル第4.4項: 実運用スケール (0.0085) に対する相対正規化
+      const query = 'NixOS コンテナ 設定';
+      const items = [
+        {
+          rank: 1,
+          title: 'NixOS コンテナ 一般設定',
+          markdown: 'NixOS コンテナ 設定の概要です。',
+          highlights: ['NixOS コンテナ 設定の概要です。'],
+          highlightItems: [{ text: 'NixOS コンテナ 設定の概要です。', score: 0.0030 }],
+          url: 'https://example.com/general',
+        },
+        {
+          rank: 2,
+          title: 'NixOS コンテナ 最適化設定',
+          markdown: 'NixOS コンテナ 設定の詳細手順です。',
+          highlights: ['NixOS コンテナ 設定の詳細手順です。'],
+          highlightItems: [{ text: 'NixOS コンテナ 設定の詳細手順です。', score: 0.0085 }],
+          url: 'https://example.com/optimal',
+        },
+      ];
+
+      const reranked = rerankByDeepEvidence(items, query);
+      // スコア比 (0.0085 vs 0.0030) により items[1] が上位にリランキングされる
+      expect(reranked[0].url).toBe('https://example.com/optimal');
+      expect(reranked[0].rank).toBe(1);
+    });
+
     it('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {
       const res = await fetchTweetsForUrlOrUser('https://x.com/kimisora_JPN', {
         contextTitle: '君と見るそら (@kimisora_JPN) / X',
