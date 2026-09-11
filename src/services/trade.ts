@@ -1782,6 +1782,23 @@ export async function checkProductCompliance(
     );
   }
 
+  // 5.5. 安全弁（フェイルセーフ）：呼び出し元から指定された HTSコードと商品推定分類との章（Chapter）乖離検知
+  let hasChapterMismatch = false;
+  let mismatchWarning: string | undefined = undefined;
+  if (options.htsCode) {
+    const passedChapter = options.htsCode.replace(/\D/g, '').slice(0, 2);
+    const predictedHts = htsPredictionResult?.bestMatch?.htsCode;
+    const predictedChapter = predictedHts ? predictedHts.replace(/\D/g, '').slice(0, 2) : undefined;
+    const defaultChapter = matchedEntry?.defaultHts ? matchedEntry.defaultHts.replace(/\D/g, '').slice(0, 2) : undefined;
+
+    if (passedChapter && predictedChapter && passedChapter !== predictedChapter && (!defaultChapter || passedChapter !== defaultChapter)) {
+      hasChapterMismatch = true;
+      const estimatedCat = htsPredictionResult?.category || detectedCategory || 'General Goods';
+      mismatchWarning = `【HTSコード乖離注意】指定されたHTSコード (${options.htsCode}, Chapter ${passedChapter}) は、商品情報から推定される品目分類 (${estimatedCat}, 推奨Chapter ${predictedChapter} / コード例: ${predictedHts}) と章（Chapter）が異なっています。AI・LLMによる推測値である場合は、htsCodeを未指定（省略）にして再実行するとSoraのUSITC公式推測エンジンによる最適なコードが自動判定されます。`;
+      actionPlan.unshift(mismatchWarning);
+    }
+  }
+
   // 6. サブモジュールからの不足情報・確認質問・実務影響の統合
   const subMissingInputs = Array.from(
     new Set([
@@ -1800,10 +1817,14 @@ export async function checkProductCompliance(
     ]),
   );
   const inputCompleteness: 'complete' | 'partial' = subMissingInputs.length > 0 ? 'partial' : 'complete';
-  const impactExplanation =
+  let impactExplanation =
     subMissingInputs.length > 0
       ? `一部の任意属性（${subMissingInputs.join('、')}）が未指定のため、代表的な仕様に基づく診断結果です。より厳密な関税率やPGA規制判定には追加ヒアリング情報の確認を推奨します。`
       : '提供された製品仕様（素材・年齢層・用途等）に基づき、高精度な総合コンプライアンス診断を実施しました。';
+
+  if (hasChapterMismatch && mismatchWarning) {
+    impactExplanation = `${mismatchWarning} ${impactExplanation}`;
+  }
 
   return {
     product: {
