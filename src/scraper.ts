@@ -51,6 +51,8 @@ import {
   normalizeRealtimeItem,
   searchYahooRealtime,
   fetchTweetsForUrlOrUser,
+  extractOfficialXHandleFromWebResults,
+  mergeRealtimeItemsWithDedup,
 } from './services/yahoo.js';
 
 // ==========================================
@@ -590,6 +592,8 @@ export async function scrapeUrl(options: {
               publishedTime: parsed.publishedTime,
               author: parsed.author,
               siteName: parsed.siteName,
+              twitterHandle: parsed.twitterHandle,
+              socialLinks: parsed.socialLinks,
               availability: parsed.availability,
               price: parsed.price,
               priceCurrency: parsed.priceCurrency,
@@ -637,6 +641,8 @@ export async function scrapeUrl(options: {
               publishedTime: parsed.publishedTime,
               author: parsed.author,
               siteName: parsed.siteName,
+              twitterHandle: parsed.twitterHandle,
+              socialLinks: parsed.socialLinks,
               availability: parsed.availability,
               price: parsed.price,
               priceCurrency: parsed.priceCurrency,
@@ -742,6 +748,8 @@ export async function scrapeUrl(options: {
           publishedTime: parsed.publishedTime,
           author: parsed.author,
           siteName: parsed.siteName,
+          twitterHandle: parsed.twitterHandle,
+          socialLinks: parsed.socialLinks,
           availability: parsed.availability,
           price: parsed.price,
           priceCurrency: parsed.priceCurrency,
@@ -1235,6 +1243,7 @@ export async function integratedSearch(options: {
   scrapeContent?: boolean;
   includeRealtime?: boolean;
   realtimeSort?: 'recent' | 'popular';
+  officialAccountId?: string;
   maxChars?: number;
   noCache?: boolean;
   includeDomains?: string[];
@@ -1259,6 +1268,7 @@ export async function integratedSearch(options: {
   const scrapeContent = options.scrapeContent !== false;
   const includeRealtime = options.includeRealtime !== false;
   const realtimeSort = options.realtimeSort || 'recent';
+  const officialAccountId = options.officialAccountId?.trim()?.replace(/^@/, '');
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const noCache = options.noCache ?? false;
   const includeDomains = options.includeDomains;
@@ -1276,7 +1286,7 @@ export async function integratedSearch(options: {
   const highlightAlgorithm = options.highlightAlgorithm || 'rho-select-v2';
   const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
   const highlightMaxCount = options.highlightMaxCount;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1314,23 +1324,20 @@ export async function integratedSearch(options: {
     }
   }
 
-  let realtimeItems: any[] = [];
-  let realtimeMeta: any = null;
-  if (realtimeMcpRes) {
-    const rawList = Array.isArray(realtimeMcpRes.items) ? realtimeMcpRes.items : [];
-    let mapped = rawList.map((item: any) => normalizeRealtimeItem(item));
-    if (dedup && mapped.length > 0) {
-      mapped = dedupSearchResults(mapped, (i: any) => `${i.text || i.content || ''}`);
-    }
-    realtimeItems = mapped;
-    realtimeMeta = {
-      source: 'x',
-      sort: realtimeSort,
-      count: realtimeItems.length,
-      effectiveQuery: realtimeMcpRes.effectiveQuery || query,
-      isFallback: realtimeMcpRes.isFallback || false,
-      items: realtimeItems,
-    };
+  // 公式Xアカウントの特定 (明示指定 or Web検索結果URLからの自動抽出)
+  let targetOfficialHandle = officialAccountId;
+  if (!targetOfficialHandle && searchResults.length > 0) {
+    targetOfficialHandle = extractOfficialXHandleFromWebResults(searchResults);
+  }
+
+  // 公式枠の並行フェッチ（すでに公式IDが判明している場合）
+  let officialRealtimePromise: Promise<any> | null = null;
+  if (includeRealtime && targetOfficialHandle) {
+    officialRealtimePromise = searchYahooRealtime({
+      accountId: targetOfficialHandle,
+      limit: 5,
+      sort: 'recent',
+    }).catch(() => null);
   }
 
   let enrichedResults = topItems;
@@ -1367,6 +1374,8 @@ export async function integratedSearch(options: {
             publishedTime: scrape.publishedTime,
             author: scrape.author,
             siteName: scrape.siteName,
+            twitterHandle: scrape.twitterHandle,
+            socialLinks: scrape.socialLinks,
             pageType: scrape.pageType,
             highlights: scrape.highlights,
             highlightItems: scrape.highlightItems,
@@ -1431,6 +1440,56 @@ export async function integratedSearch(options: {
     // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
     if (enrichedResults.length > 1) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);
+    }
+  }
+
+  // スクレイプ結果からのフォールバック公式Xアカウント検出
+  if (!targetOfficialHandle && enrichedResults.length > 0) {
+    for (const r of enrichedResults) {
+      if (r.twitterHandle) {
+        targetOfficialHandle = r.twitterHandle;
+        break;
+      }
+    }
+    if (includeRealtime && targetOfficialHandle && !officialRealtimePromise) {
+      officialRealtimePromise = searchYahooRealtime({
+        accountId: targetOfficialHandle,
+        limit: 5,
+        sort: 'recent',
+      }).catch(() => null);
+    }
+  }
+
+  // リアルタイム検索結果のマージ (公式枠 ＋ 一般枠の重複排除ハイブリッド)
+  let realtimeItems: any[] = [];
+  let realtimeMeta: any = null;
+  if (includeRealtime) {
+    const rawPublicList = Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items : [];
+    let publicMapped = rawPublicList.map((item: any) => normalizeRealtimeItem(item));
+
+    let officialItems: any[] = [];
+    if (officialRealtimePromise) {
+      const officialRes = await officialRealtimePromise;
+      if (officialRes && Array.isArray(officialRes.items)) {
+        officialItems = officialRes.items.map((item: any) => normalizeRealtimeItem(item));
+      }
+    }
+
+    if (officialItems.length > 0 || publicMapped.length > 0) {
+      let merged = mergeRealtimeItemsWithDedup(officialItems, publicMapped);
+      if (dedup && merged.length > 0) {
+        merged = dedupSearchResults(merged, (i: any) => `${i.text || i.content || ''}`);
+      }
+      realtimeItems = merged;
+      realtimeMeta = {
+        source: 'x',
+        sort: realtimeSort,
+        count: realtimeItems.length,
+        effectiveQuery: realtimeMcpRes?.effectiveQuery || (targetOfficialHandle ? `id:${targetOfficialHandle}` : query),
+        isFallback: realtimeMcpRes?.isFallback || false,
+        ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
+        items: realtimeItems,
+      };
     }
   }
 
