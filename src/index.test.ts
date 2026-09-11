@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
-import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS } from './mcp.js';
+import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse } from './mcp.js';
 import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
@@ -5634,5 +5634,22 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.content).toContain('ソライロ');
       expect(res.renderedWithBrowser).toBe(false);
     }, 20000);
+
+    it('sanitizeMcpResponse should handle SSE stream and flush cleanly without leaks', async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"jsonrpc":"2.0","result":{"text":"hello"}}\n\n'));
+          controller.close();
+        },
+      });
+      const originalRes = new Response(stream, {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+
+      const sanitizedRes = await sanitizeMcpResponse(originalRes);
+      expect(sanitizedRes.headers.get('content-type')).toContain('text/event-stream');
+      const text = await sanitizedRes.text();
+      expect(text).toContain('hello');
+    });
   });
 });
