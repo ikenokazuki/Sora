@@ -2056,7 +2056,22 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
     const encoder = new TextEncoder();
     let buffer = '';
 
+    let pingTimer: any = null;
+
     const transformStream = new TransformStream({
+      start(controller) {
+        // 15秒ごとに SSE keep-alive コメントを送信して中間プロキシやクライアントの早期切断を防止
+        pingTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(': keep-alive\n\n'));
+          } catch {
+            if (pingTimer) clearInterval(pingTimer);
+          }
+        }, 15000);
+        if (typeof pingTimer === 'object' && pingTimer && 'unref' in pingTimer) {
+          pingTimer.unref();
+        }
+      },
       transform(chunk, controller) {
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
@@ -2085,6 +2100,10 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
         }
       },
       flush(controller) {
+        if (pingTimer) {
+          clearInterval(pingTimer);
+          pingTimer = null;
+        }
         if (buffer.length > 0) {
           controller.enqueue(encoder.encode(buffer));
         }

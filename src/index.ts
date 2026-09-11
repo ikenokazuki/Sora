@@ -148,6 +148,7 @@ if (typeof process !== 'undefined') {
 if (import.meta.main) {
   const server = Bun.serve({
     port: PORT,
+    idleTimeout: 255, // Bun の最大アイドルタイムアウト (255秒 = 4分15秒)。SSE ストリームや深層スクレイピング中の切断を防止
     fetch: app.fetch,
   });
   console.log(`Starting Sora service on port ${PORT}...`);
