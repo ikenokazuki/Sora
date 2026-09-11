@@ -153,7 +153,8 @@ export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool 
 
 ### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
 For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
-1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code, check_product_compliance).
+1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance, predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code).
+   - CRITICAL HTS RULE: When classifying, estimating, or predicting HTS codes for a product, invoke 'check_product_compliance' with 'htsCode' OMITTED (undefined). NEVER inject or invent your own guessed HTS code into 'htsCode'! Sora's official USITC semantic engine automatically determines the true 10-digit HTS code. You may ONLY supply 'htsCode' if the user explicitly provided a specific HTS code in their query.
 2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws, get_law_text, search_diet_minutes).
 3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather, search_disaster_warnings, search_earthquake, search_road_traffic).
 4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route, get_flight_status, get_elevation).
@@ -1696,9 +1697,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'verify_hts_code',
       'trade',
-      '【公式照合・推測厳禁】推論・入手したHTSコード候補を米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問(clarifyingQuestions)を返却します。返却: { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }',
+      '【公式照合・推測厳禁】ユーザーから明示提示されたHTSコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問(clarifyingQuestions)を返却します。返却: { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }',
       {
-        htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）。推測ではなく既知・候補のコードを指定すること'),
+        htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）。【推測入力禁止】ユーザーから明示提示された検証対象コードを指定すること'),
         productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。推論根拠の明示'),
       },
       async (opts) => {
@@ -1755,12 +1756,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'check_product_compliance',
       'trade',
-      '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。推測による安易な回答は通関事故に直結するため必ず本ツールを実行してください。返却: { overallStatus, hts, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
+      '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。LLM独自の推測HTSコードを渡すことは厳禁です。返却: { overallStatus, hts, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
       {
         url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
         productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
         description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
-        htsCode: z.string().optional().describe('既知または候補のHTSコード（指定時は最優先で検証。未指定時は推測エンジンで自動特定）'),
+        htsCode: z.string().optional().describe('ユーザーからプロンプト内で明示的に提示された既知のHTSコード（指定時は最優先で検証）。【LLM自身の推測・候補値の入力厳禁！】HTSコードを推測・特定したい場合は必ず省略（未指定）にすること。未指定時にSoraのUSITC公式推測エンジンが自動で高精度に特定します'),
         targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
         material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
         productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
