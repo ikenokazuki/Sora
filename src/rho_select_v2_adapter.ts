@@ -174,7 +174,7 @@ export function extractQueryHighlightsRhoV2(
   const delta = options.delta ?? 0.8;
 
   // 1. 候補セクションの構築
-  const candidates = buildCandidateBlocks(markdown, options.supplementalEvidence);
+  let candidates = buildCandidateBlocks(markdown, options.supplementalEvidence);
   if (candidates.length === 0) {
     const emptyCert: RhoOptimizerCertificate = {
       scope: 'score_defined_objective_only',
@@ -270,6 +270,23 @@ export function extractQueryHighlightsRhoV2(
     };
   }
 
+  // 補完証拠 (スニペット) のフォールバック制御 (カニバリゼーション防止):
+  // 本文候補が存在し、かつクエリ用語にマッチする本文エビデンスが1件以上ある場合、
+  // スニペットが短さだけで本文を駆逐するのを防ぐため、本文候補のみを採用する。
+  const bodyCandidates = candidates.filter((c) => !c.isSupplemental);
+  if (bodyCandidates.length > 0) {
+    const hasBodyMatch = bodyCandidates.some((c) =>
+      requirements.some(
+        (r) =>
+          c.heading.toLowerCase().includes(r.toLowerCase()) ||
+          c.body.toLowerCase().includes(r.toLowerCase()),
+      ),
+    );
+    if (hasBodyMatch) {
+      candidates = bodyCandidates;
+    }
+  }
+
   const n = candidates.length;
   const m = requirements.length;
 
@@ -293,8 +310,8 @@ export function extractQueryHighlightsRhoV2(
         df++;
       }
     }
-    // smoothed IDF
-    idfList[t] = Math.log(1 + (n - df + 0.5) / (df + 0.5)) + 1.0;
+    // Robertson BM25 smoothed IDF with minimum floor
+    idfList[t] = Math.max(0.1, Math.log(1 + (n - df + 0.5) / (df + 0.5)));
   }
 
   // Raw evidence matrix

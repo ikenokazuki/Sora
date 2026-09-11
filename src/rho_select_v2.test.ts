@@ -585,5 +585,81 @@ describe('ρSelect v2 Canonical Tests (Gemini Implementation Spec v1.0)', () => 
       expect(res.highlights.length).toBeGreaterThan(0);
       expect(res.diagnostics.exactAgreement).toBe(true);
     });
+
+    it('T12: Hierarchical breadcrumb context injection extracts target song section over short unrelated sections', async () => {
+      const { extractQueryHighlightsRhoV2 } = await import('./rho_select_v2_adapter.js');
+      const markdown = `---
+publishedTime: "2026-03-08T22:19:01.000+09:00"
+author: "kimisora_mix"
+siteName: "note（ノート）"
+---
+
+> 📍 **階層**: トップ > 音楽 > ポップス > 【君と見るそら】コール
+
+## ・好きって。
+
+〈イントロ〉タイガーファイヤー始動
+タイガーファイヤー(始動)
+サイバー ファイバーダイバー バイバー
+ジャージャー ファイボー ワイパー
+
+〈サビ〉意味不愛してる
+アイアイアイアイ愛してる ×2
+
+〈間奏〉虎火始動
+虎虎虎虎 ×3 虎 火
+人造 繊維 海人 振動 化繊 飛 除去
+
+〈アウトロ〉混沌MIX
+ワ×6 ワールドカオス
+諸行 木暮 時雨 神楽 金剛山 翔襲叉
+黒雲 無常 世界混沌
+
+## ・遠回りがいい
+
+〈イントロ〉スタンダード
+うりゃおい ×4 👏 ×5 しゃーいくぞ
+タイガー ファイヤー サイバー ファイバー ダイバー
+バイバー ジャージャー ファイバー ワイパー
+
+## ・青春はサイダー
+
+〈イントロ〉スタンダード
+うりゃおい ×4 👏 ×5 しゃーいくぞ
+
+## ・待っていてね
+
+〈イントロ〉スタンダード倍速
+`;
+      const supplemental = [
+        '・好きって。 ・遠回りがいい; ・青春はサイダー; ・等身大のアイラブミー; ・ソライロ; ・待っていてね; ・君とあの日の距離; ・特別な時間; ・指先の ...',
+      ];
+      const res = extractQueryHighlightsRhoV2(markdown, '君と見るそら 好きって コール', {
+        supplementalEvidence: supplemental,
+      });
+
+      expect(res.highlights.length).toBeGreaterThan(0);
+      // 本命の「好きって。」が含まれること
+      const joined = res.highlights.join('\n');
+      expect(joined).toContain('好きって。');
+      expect(joined).toContain('タイガーファイヤー始動');
+      // スニペットによるカニバリゼーションが発生していないこと
+      expect(joined).not.toContain('📌 **補完証拠 (スニペット)**');
+    });
+
+    it('T13: Fallback to supplemental evidence occurs safely when body has no relevant evidence', async () => {
+      const { extractQueryHighlightsRhoV2 } = await import('./rho_select_v2_adapter.js');
+      const emptyMarkdown = ``;
+      const supplemental = [
+        '・好きって。 ・遠回りがいい; ・青春はサイダー; ・等身大のアイラブミー; ・ソライロ',
+      ];
+      const res = extractQueryHighlightsRhoV2(emptyMarkdown, '君と見るそら 好きって コール', {
+        supplementalEvidence: supplemental,
+      });
+
+      expect(res.highlights.length).toBeGreaterThan(0);
+      expect(res.highlights[0]).toContain('📌 **補完証拠 (スニペット)**');
+    });
   });
 });
+
