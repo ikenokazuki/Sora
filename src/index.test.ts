@@ -4438,6 +4438,21 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.clarifyingQuestions?.[0]).toContain('正確なHTSコードの分類が困難');
   });
 
+  it('checkProductCompliance should warn when specified HTS code conflicts with estimated category chapter', async () => {
+    const res = await checkProductCompliance({
+      productName: 'Wooden Building Blocks for Toddlers',
+      description: 'Solid natural wood building blocks for 3-year-olds',
+      material: 'wood',
+      targetAge: 'child',
+      htsCode: '8504.40.9580', // Chapter 85 (Power supplies) - completely mismatched with Toys/Wooden articles
+    });
+
+    expect(res.actionPlan.some((p) => p.includes('【HTSコード乖離注意】'))).toBe(true);
+    expect(res.impactExplanation).toContain('【HTSコード乖離注意】');
+    expect(res.impactExplanation).toContain('8504.40.9580');
+    expect(res.impactExplanation).toContain('Chapter 85');
+  });
+
   it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
     const req = new Request('http://localhost/trade/compliance', {
       method: 'POST',
@@ -4915,8 +4930,15 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(SORA_MCP_INSTRUCTIONS).toContain('yahoo');
       expect(SORA_MCP_INSTRUCTIONS).toContain('music');
 
+      expect(SORA_MCP_INSTRUCTIONS).toContain('CRITICAL HTS RULE');
+      expect(SORA_MCP_INSTRUCTIONS).toContain("NEVER inject or invent your own guessed HTS code into 'htsCode'");
+
       const server = createMcpServer({ deferTools: false });
       expect((server.server as any)._instructions).toBe(SORA_MCP_INSTRUCTIONS);
+      const regTools: Record<string, any> = (server as any)._registeredTools || {};
+      const complianceTool = regTools['check_product_compliance'];
+      expect(complianceTool).toBeDefined();
+      expect(complianceTool.description).toContain('HTSコードを推定したい場合はhtsCode引数を必ず未指定');
     });
 
     it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve universal investigation descriptions', () => {
