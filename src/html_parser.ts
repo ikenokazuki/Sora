@@ -573,6 +573,65 @@ export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean
   });
 }
 
+/**
+ * HTML から公式 X (Twitter) アカウント情報（@handle / プロフィールURL）を抽出
+ */
+export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
+  twitterHandle?: string;
+  socialLinks?: Record<string, string>;
+} {
+  // 1. meta タグ (twitter:site, twitter:creator)
+  let handle =
+    $('meta[name="twitter:site"]').attr('content') ||
+    $('meta[property="twitter:site"]').attr('content') ||
+    $('meta[name="twitter:creator"]').attr('content') ||
+    $('meta[property="twitter:creator"]').attr('content') ||
+    undefined;
+
+  if (handle) {
+    handle = handle.trim().replace(/^@/, '');
+    if (/^[a-zA-Z0-9_]{1,30}$/.test(handle)) {
+      return {
+        twitterHandle: handle,
+        socialLinks: { twitter: `https://x.com/${handle}` },
+      };
+    }
+  }
+
+  // 2. ページ内リンク (a[href]) からの公式プロフィールリンク抽出
+  const socialLinks: Record<string, string> = {};
+  const candidates: string[] = [];
+
+  $('a[href*="twitter.com/"], a[href*="x.com/"]').each((_, el) => {
+    const href = $(el).attr('href');
+    if (!href) return;
+    // シェア用URL、インテント、ハッシュタグ、検索等を除外
+    if (/(?:intent\/|share|search|hashtag|home|explore|i\/web|privacy|tos)/i.test(href)) {
+      return;
+    }
+    const match = href.match(/(?:https?:\/\/(?:x\.com|twitter\.com)\/)(?:#!\/)?@?([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i);
+    if (match && match[1]) {
+      const h = match[1];
+      // 一般的な予約語やサービス名を除外
+      if (!/^(about|help|settings|login|signup|tos|privacy|download|jobs)$/i.test(h)) {
+        candidates.push(h);
+        if (!socialLinks.twitter) {
+          socialLinks.twitter = `https://x.com/${h}`;
+        }
+      }
+    }
+  });
+
+  if (candidates.length > 0) {
+    return {
+      twitterHandle: candidates[0],
+      socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
+    };
+  }
+
+  return {};
+}
+
 // ==========================================
 // 3. HTML -> Markdown 変換 (Readability & Token 最適化)
 // ==========================================
@@ -595,6 +654,8 @@ export function convertHtmlToMarkdown(
   publishedTime?: string;
   author?: string;
   siteName?: string;
+  twitterHandle?: string;
+  socialLinks?: Record<string, string>;
   availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
   price?: string;
   priceCurrency?: string;
@@ -958,6 +1019,8 @@ export function convertHtmlToMarkdown(
     siteName,
   });
 
+  const { twitterHandle, socialLinks } = extractTwitterHandleFromHtml($);
+
   return {
     title,
     markdown: truncatedMarkdown,
@@ -966,6 +1029,8 @@ export function convertHtmlToMarkdown(
     publishedTime,
     author,
     siteName,
+    twitterHandle,
+    socialLinks,
     availability,
     price,
     priceCurrency,

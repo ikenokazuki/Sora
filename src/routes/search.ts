@@ -148,6 +148,7 @@ const handleIntegratedSearch = async (c: any) => {
     const scrapeContent = body?.scrapeContent !== false;
     const includeRealtime = body?.includeRealtime !== false;
     const realtimeSort = body?.realtimeSort === 'popular' ? 'popular' : 'recent';
+    const officialAccountId = body?.officialAccountId;
     const maxChars = body?.maxChars || DEFAULT_MAX_CHARS;
     const noCache = body?.noCache ?? false;
     const includeDomains = body?.includeDomains;
@@ -167,6 +168,7 @@ const handleIntegratedSearch = async (c: any) => {
       scrapeContent,
       includeRealtime,
       realtimeSort,
+      officialAccountId,
       maxChars,
       noCache,
       includeDomains,
@@ -195,6 +197,7 @@ const handleIntegratedSearch = async (c: any) => {
 
 searchRoutes.post('/search', handleIntegratedSearch);
 searchRoutes.post('/search/deep', handleIntegratedSearch);
+searchRoutes.post('/search/integrated', handleIntegratedSearch);
 searchRoutes.post('/deep-search', handleIntegratedSearch);
 
 // Yahoo 画像検索

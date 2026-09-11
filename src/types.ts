@@ -227,6 +227,8 @@ export interface ScrapeResult {
   publishedTime?: string;
   author?: string;
   siteName?: string;
+  twitterHandle?: string;
+  socialLinks?: Record<string, string>;
   highlights?: string[];
   highlightItems?: HighlightItem[];
   evidenceDiagnostics?: EvidenceDiagnostics;
@@ -608,6 +610,7 @@ export const IntegratedSearchRequestSchema = z.object({
   fetchContent: z.boolean().optional().describe('上位サイトの Markdown 本文を並行取得するか (デフォルト: true)'),
   maxCharsPerResult: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
+  officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
   enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)'),
@@ -1032,6 +1035,8 @@ export const ScrapeResponseSchema = z.object({
   publishedTime: z.string().optional().describe('記事公開日時 (ISO 8601)'),
   author: z.string().optional().describe('著者・発信者名'),
   siteName: z.string().optional().describe('Web サイト名'),
+  twitterHandle: z.string().optional().describe('検出された公式Xアカウント (@handle)'),
+  socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
   evidenceDiagnostics: EvidenceDiagnosticsSchema.optional().describe('客観的な証拠充足性観測量'),
@@ -1156,6 +1161,7 @@ export const RealtimeItemSchema = z.object({
   author: z.string().optional().describe('正規化された著者表示名'),
   siteName: z.string().optional().describe('プラットフォーム名 ("X (Twitter)")'),
   source: z.literal('x').optional().describe('ソース ("x")'),
+  isOfficial: z.boolean().optional().describe('公式アカウントの発言・一次告知であるか'),
   images: z.array(z.string()).optional().describe('投稿に添付された画像 URL 配列'),
 });
 

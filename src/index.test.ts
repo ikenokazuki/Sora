@@ -7,6 +7,7 @@ import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA
 import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
+import { extractTwitterHandleFromHtml } from './html_parser.js';
 import {
   isBlockedHostname,
   isPrivateIp,
@@ -45,6 +46,8 @@ import {
   searchYahooRealtime,
   searchYahooWeb,
   fetchTweetsForUrlOrUser,
+  extractOfficialXHandleFromWebResults,
+  mergeRealtimeItemsWithDedup,
   extractQueryHighlights,
   generateTextFragmentUrl,
   chooseBestDescription,
@@ -5651,5 +5654,131 @@ describe('Sora REST & MCP Endpoints', () => {
       const text = await sanitizedRes.text();
       expect(text).toContain('hello');
     });
+
+    describe('Official X Account Detection & Hybrid Realtime Search', () => {
+      it('extractTwitterHandleFromHtml should extract official twitter handle from meta tag or links', () => {
+        // 1. meta[name="twitter:site"]
+        const html1 = '<html><head><meta name="twitter:site" content="@kimisora_JPN"></head><body></body></html>';
+        const $1 = cheerio.load(html1);
+        const res1 = extractTwitterHandleFromHtml($1);
+        expect(res1.twitterHandle).toBe('kimisora_JPN');
+        expect(res1.socialLinks?.twitter).toBe('https://x.com/kimisora_JPN');
+
+        // 2. a[href] link with x.com
+        const html2 = '<html><body><footer><a href="https://x.com/official_event_pr?lang=ja">Official X</a></footer></body></html>';
+        const $2 = cheerio.load(html2);
+        const res2 = extractTwitterHandleFromHtml($2);
+        expect(res2.twitterHandle).toBe('official_event_pr');
+
+        // 3. Share link should be ignored
+        const html3 = '<html><body><a href="https://twitter.com/share?url=xxx">Share on Twitter</a></body></html>';
+        const $3 = cheerio.load(html3);
+        const res3 = extractTwitterHandleFromHtml($3);
+        expect(res3.twitterHandle).toBeUndefined();
+      });
+
+      it('extractOfficialXHandleFromWebResults should extract handle from web search results', () => {
+        const items = [
+          { title: 'Some Blog', url: 'https://example.com/blog/1' },
+          { title: 'Official X Account', url: 'https://x.com/kimisora_JPN' },
+          { title: 'News', url: 'https://news.yahoo.co.jp/articles/123' },
+        ];
+        const handle = extractOfficialXHandleFromWebResults(items);
+        expect(handle).toBe('kimisora_JPN');
+
+        // non-profile X links like status or intent should be ignored
+        const items2 = [
+          { title: 'Tweet status', url: 'https://x.com/kimisora_JPN/status/123456789' },
+        ];
+        expect(extractOfficialXHandleFromWebResults(items2)).toBeUndefined();
+      });
+
+      it('mergeRealtimeItemsWithDedup should deduplicate posts and pin official posts to top', () => {
+        const officialItems = [
+          {
+            url: 'https://x.com/kimisora_JPN/status/100',
+            text: '本日の物販タイムテーブルを公開しました！',
+            author_handle: 'kimisora_JPN',
+          },
+          {
+            url: 'https://x.com/kimisora_JPN/status/99',
+            text: '明日のライブのリハーサル終了しました',
+            author_handle: 'kimisora_JPN',
+          },
+        ];
+
+        const publicItems = [
+          // 重複する公式ポスト（一般枠にも引っかかったケース）
+          {
+            url: 'https://x.com/kimisora_JPN/status/100',
+            text: '本日の物販タイムテーブルを公開しました！',
+            author_handle: 'kimisora_JPN',
+          },
+          // 一般ファンのポスト
+          {
+            url: 'https://x.com/fan_user/status/200',
+            text: '会場着いた！物販待機列すごい並んでる',
+            author_handle: 'fan_user',
+          },
+        ];
+
+        const merged = mergeRealtimeItemsWithDedup(officialItems, publicItems);
+        // 重複排除されて 3 件になること
+        expect(merged.length).toBe(3);
+        // 先頭2件は公式ポストで isOfficial: true が付与されていること
+        expect(merged[0].url).toBe('https://x.com/kimisora_JPN/status/100');
+        expect(merged[0].isOfficial).toBe(true);
+        expect(merged[1].url).toBe('https://x.com/kimisora_JPN/status/99');
+        expect(merged[1].isOfficial).toBe(true);
+        // 3件目は一般ポストで isOfficial: false であること
+        expect(merged[2].url).toBe('https://x.com/fan_user/status/200');
+        expect(merged[2].isOfficial).toBe(false);
+      });
+
+      it('integratedSearch should support officialAccountId and hybrid merge', async () => {
+        const res = await integratedSearch({
+          query: '君と見るそら 強化月間ライブ',
+          officialAccountId: 'kimisora_JPN',
+          includeRealtime: true,
+          limit: 2,
+          scrapeContent: false,
+          noCache: true,
+        });
+
+        expect(res).toBeDefined();
+        expect(res.source).toBe('integrated');
+        if (res.realtime) {
+          expect(res.realtime.officialAccountId).toBe('kimisora_JPN');
+          expect(Array.isArray(res.realtime.items)).toBe(true);
+          if (res.realtime.items.length > 0) {
+            const officialItem = res.realtime.items.find((i: any) => i.isOfficial === true);
+            expect(officialItem).toBeDefined();
+            expect(officialItem.author_handle).toBe('kimisora_JPN');
+          }
+        }
+      });
+
+      it('POST /search/integrated should accept officialAccountId', async () => {
+        const req = new Request('http://localhost/search/integrated', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: '君と見るそら 強化月間ライブ',
+            officialAccountId: 'kimisora_JPN',
+            limit: 1,
+            scrapeContent: false,
+            noCache: true,
+          }),
+        });
+        const res = await app.fetch(req);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        expect(json.source).toBe('integrated');
+        if (json.realtime) {
+          expect(json.realtime.officialAccountId).toBe('kimisora_JPN');
+        }
+      });
+    });
   });
 });
+
