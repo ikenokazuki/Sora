@@ -370,7 +370,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 |---|:---:|---|---|---|
 | `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）＆最新の ρSelect v2 パッセージ最適化（分数計画法による情報密度最大化と数学的オプティマイザ証明書）、U字型配置（Lost in the Middle対策）、MMR多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance出所追跡（`[S1:P4]`）・Contextual Highlights（文脈保持パッセージ）・客観的証拠診断量・不一致候補対比・決定論的数値正規化、RAGチャンキング・出典抽出・読了時間・PII保護・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ<br>- `extractHighlights` / `query` (任意): キーワード重要文抽出<br>- `highlightAlgorithm` (string, 任意): `"rho-select-v2"` (デフォルト: クエリ証明書付き最新最適化), `"rho-select"`<br>- `highlightOverheadTokens` (number, 任意): 固定オーバーヘッド τ (デフォルト: 96)<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング (デフォルト: false)<br>- `diversityWeight` (number, 任意): MMR多様性比率 (デフォルト: 0.7)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ (デフォルト: true)<br>- `evidenceMode` (string, 任意): `"full"`, `"highlights"`, `"contextual_highlights"`<br>- `includeDiagnostics` (boolean, 任意): クエリ網羅率等の客観的証拠診断量を付与<br>- `includeDiscrepancies` (boolean, 任意): 日付・金額等の不一致候補を対比提示<br>- `safeNormalize` (boolean, 任意): 漢数字・単位の決定論的正規化と導出履歴<br>- `chunkMarkdown` (boolean, 任意): RAG 用セマンティック分割<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
 | `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します。アイテム間動的コーパスIDF付きBM25+リランキングにより適合度の高い情報を上位表示。ドメイン絞り込み・除外・期間指定に対応。※スニペットだけで詳細が不確定な場合は、推測せずヒットした公式 URL を `scrape` で精読してください。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`) |
-| `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。インメモリ PRF（クエリ自己拡張）、U字型リオーダリング、MMR多様性選択、Temporal Context Anchor、Smart Table Minimizer、動的コーパスIDF付きBM25+リランキングと見出し階層BM25抽出に対応。最新事実、ライブ・公演・イベント日程、新製品・発売日、営業時間・店舗情報等の包括調査に推奨。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意)<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング<br>- `enablePrf` (boolean, 任意): インメモリ PRF クエリ自動拡張<br>- `diversityWeight` (number, 任意): MMR多様性比率 (0.0〜1.0)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ |
+| `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。インメモリ PRF（クエリ自己拡張）、U字型リオーダリング、MMR多様性選択、Temporal Context Anchor、Smart Table Minimizer、動的コーパスIDF付きBM25+リランキングと見出し階層BM25抽出に対応。公式Xアカウントの自動特定（Web検索結果・HTMLメタタグ解析）および明示指定（`officialAccountId`）による一次情報ピン留めハイブリッド取得を完備。最新事実、ライブ・公演・イベント日程、新製品・発売日、営業時間・店舗情報等の包括調査に推奨。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `officialAccountId` (string, 任意): 公式XアカウントID (例: `"kimisora_JPN"`)。指定時は公式ポストを先頭ピン留め取得<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `formats` (string[], 任意)<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング<br>- `enablePrf` (boolean, 任意): インメモリ PRF クエリ自動拡張<br>- `diversityWeight` (number, 任意): MMR多様性比率 (0.0〜1.0)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ |
 | `search_tools` | **★ CORE** | **【動的ツール発見メタツール】** Sora の全専門ツール（天気・乗換・知恵袋・X速報・音楽・法令・交通情報・差分監視等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"天気"`, `"知恵袋"`, `"yahoo"`, `"music"`, `"交通"`, `"法令"`) |
 | `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `reorderUFlat` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
@@ -916,17 +916,24 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 `POST /search` は、Web 検索・上位サイトの本文自動スクレイピング（Clean Markdown 抽出・重複排除）・X/Twitter リアルタイム速報をワンストップで一括実行する万能深層検索エンドポイントです（Firecrawl / Tavily 互換）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、時事ニュースなどの調査に最適です。
 
-- **深層検索リクエスト (`POST /search`)**:
+- **深層検索リクエスト (`POST /search` または `POST /search/deep`)**:
 ```json
 {
-  "query": "2026年 AI 最新トレンド",
+  "query": "君と見るそら 好きって コール",
+  "officialAccountId": "kimisora_JPN",
   "limit": 5,
   "scrapeContent": true,
   "includeRealtime": true,
-  "updated": "week",
+  "extractHighlights": true,
   "formats": ["markdown"]
 }
 ```
+> 💡 **公式Xアカウント自動特定 & ハイブリッド統合**:
+> `officialAccountId` を指定すると、一般ファンの投稿に加えて公式アカウント（@kimisora_JPN）の最新ポストが独立枠で取得され、重複排除された上で最上位に `isOfficial: true` でピン留めされます。また、未指定の場合でも、Web検索結果のURLやHTMLメタタグ（`twitter:site` / `twitter:creator`）から公式Xアカウントが自動検出された場合はハイブリッド統合が自動適用されます。
+>
+> 💡 **親文脈継承＆局所IDF適正化ハイライト (`extractHighlights: true`)**:
+> `ρSelect v2` が各セクションに親タイトルやパンくず階層（例: `【君と見るそら】コール > ・好きって。`）を自然に継承し、全セクション共通の低情報量語を適切に減衰させます。これにより、短文の無関係セクションに誤爆することなく、目的の曲やトピックの本文エビデンスをピンポイントで抽出します。
+
 - **HTML 形式で取得する場合**:
 ```json
 {

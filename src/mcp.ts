@@ -530,13 +530,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
         scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
         includeRealtime: z.boolean().optional().describe('リアルタイム速報（Xの生の声）を含めるか (デフォルト: true)'),
         realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報の並び順: "recent" (新着順, デフォルト) または "popular" (話題順)'),
+        officialAccountId: z
+          .string()
+          .optional()
+          .describe('【特定公式アカウント優先】人物やイベントの公式XアカウントID（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。指定時は公式最新ポストを優先取得して先頭にピン留めします（省略時もWeb検索結果から自動検出）。'),
         maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
         includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
         excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
@@ -586,7 +590,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .describe('ハイライト最大選択件数 (デフォルト: 3)'),
         verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -594,6 +598,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             scrapeContent,
             includeRealtime,
             realtimeSort,
+            officialAccountId,
             maxChars,
             includeDomains,
             excludeDomains,

@@ -82,7 +82,12 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
 
   // 1. YAML Frontmatter (--- ... ---) を本文ハイライト候補から除外
   let cleaned = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
-  // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) を除外
+  // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) からルートタイトルを抽出
+  let rootContext = '';
+  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:.*?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
+  if (breadcrumbMatch) {
+    rootContext = breadcrumbMatch[1].trim();
+  }
   cleaned = cleaned.replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '');
 
   const lines = cleaned.split(/\r?\n/);
@@ -113,9 +118,16 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
         }
       }
 
+      // H1見出しが存在しないドキュメントの場合、パンくずルートタイトルを親文脈として注入
+      let finalHeading = currentHeading;
+      const hasH1 = headingStack.some((h) => h.level === 1);
+      if (rootContext && !hasH1 && (!finalHeading || !finalHeading.includes(rootContext))) {
+        finalHeading = finalHeading ? `${rootContext} > ${finalHeading}` : rootContext;
+      }
+
       sections.push({
         rawHeading: currentRawHeading,
-        heading: currentHeading,
+        heading: finalHeading,
         headingLevel: currentLevel,
         paragraphs: currentParagraphs.slice(),
         fullText,
@@ -233,6 +245,18 @@ export function tokenizeAndSelectTerms(
   if (!rawQuery) return { terms: [], rawQuery: '' };
 
   const rawTerms = new Set<string>();
+
+  // 0. ユーザーがスペース区切りで指定したフレーズ（長さ2以上の複合語・完全一致候補）を優先保持
+  const rawPhrases = rawQuery.split(/[\s　]+/).map((p) => p.trim().toLowerCase());
+  for (const phrase of rawPhrases) {
+    if (
+      phrase.length >= 2 &&
+      !/^[、。・！？!?\s\-_=+\/\\|:;'"()[\]{}]+$/.test(phrase) &&
+      !/^(の|は|が|を|に|へ|と|で|て|た|も|から|まで|より|など)$/.test(phrase)
+    ) {
+      rawTerms.add(phrase);
+    }
+  }
 
   // 1. 英語・数値・ハイフン語
   const enWords = rawQuery.toLowerCase().match(/[a-z0-9_-]{2,}/g) || [];

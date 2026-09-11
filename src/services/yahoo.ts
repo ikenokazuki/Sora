@@ -701,3 +701,68 @@ export async function getSuggestedKeywords(options: {
     return { source: 'suggest', raw: content };
   }
 }
+
+/** Web 検索結果アイテム一覧から公式 X アカウント (@handle) を自動抽出 */
+export function extractOfficialXHandleFromWebResults(items: any[]): string | undefined {
+  if (!Array.isArray(items) || items.length === 0) return undefined;
+  for (const item of items) {
+    const url = item.url || item.link || '';
+    if (!url) continue;
+    // 投稿URL、ハッシュタグ、インテント等は除外
+    if (/(?:\/status\/|\/i\/|intent\/|share|search|hashtag)/i.test(url)) {
+      continue;
+    }
+    // x.com または twitter.com のアカウントトップURLを検出
+    const match = url.match(/^https?:\/\/(?:x\.com|twitter\.com)\/(?:#!\/)?@?([a-zA-Z0-9_]{1,30})(?:\/?|\?[^/]*)$/i);
+    if (match && match[1]) {
+      const handle = match[1];
+      // 予約語や機能パスを除外
+      if (!/^(about|help|settings|login|signup|tos|privacy|download|jobs|home|explore)$/i.test(handle)) {
+        return handle;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 公式枠と一般枠のリアルタイム検索結果を重複排除し、公式投稿を最上位に配置してマージ
+ */
+export function mergeRealtimeItemsWithDedup(
+  officialItems: any[],
+  publicItems: any[],
+): any[] {
+  const seenKeys = new Set<string>();
+  const merged: any[] = [];
+
+  // 1. 公式枠の登録 (最優先)
+  if (Array.isArray(officialItems)) {
+    for (const item of officialItems) {
+      const key = (item.url || item.id || item.text || '').trim();
+      if (key && !seenKeys.has(key)) {
+        seenKeys.add(key);
+        merged.push({
+          ...item,
+          isOfficial: true,
+        });
+      }
+    }
+  }
+
+  // 2. 一般枠の登録 (公式枠と重複しないものを追加)
+  if (Array.isArray(publicItems)) {
+    for (const item of publicItems) {
+      const key = (item.url || item.id || item.text || '').trim();
+      if (key && !seenKeys.has(key)) {
+        seenKeys.add(key);
+        merged.push({
+          ...item,
+          isOfficial: false,
+        });
+      }
+    }
+  }
+
+  return merged;
+}
+
