@@ -7,7 +7,19 @@ import { z } from 'zod';
 export const SORA_VERSION = '2.16.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
-export type ScrapeFormat = 'markdown' | 'html' | 'rawHtml' | 'links' | 'screenshot' | 'jsonLd' | 'images' | 'tables';
+export const SCRAPE_FORMATS = [
+  'markdown',
+  'html',
+  'rawHtml',
+  'links',
+  'screenshot',
+  'jsonLd',
+  'images',
+  'tables',
+] as const;
+
+export type ScrapeFormat = (typeof SCRAPE_FORMATS)[number];
+export const ScrapeFormatSchema = z.enum(SCRAPE_FORMATS);
 
 export interface TableData {
   id?: string;
@@ -398,7 +410,7 @@ export const ScrapeRequestSchema = z.object({
   mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)'),
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
-  formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])'),
   fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
   onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)'),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
@@ -444,7 +456,7 @@ export const BatchScrapeRequestSchema = z.object({
   concurrency: z.number().int().min(1).max(20).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
   maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
   mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto", "fast", "browser"'),
-  formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する出力形式配列'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列'),
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
@@ -502,7 +514,7 @@ export const CrawlRequestSchema = z.object({
   maxDepth: z.number().int().min(1).optional().describe('リンク探索の最大深度 (デフォルト: 2)'),
   includePatterns: z.array(z.string()).optional().describe('対象を絞り込むワイルドカードパターン (例: ["/docs/**", "/guide/*"])'),
   excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン (例: ["/tag/**", "*.pdf"])'),
-  formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images', 'tables'])).optional().describe('取得する形式配列'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する形式配列'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)'),
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
