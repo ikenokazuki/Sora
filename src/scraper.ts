@@ -44,6 +44,7 @@ import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
+import { projectRequestedScrapeFormats } from './search_format_projection.js';
 import {
   buildXIsolatedEvidence,
   buildXRetrievalPlan,
@@ -1487,34 +1488,15 @@ export async function integratedSearch(options: {
             enrichedItem.evidence = scrape.evidence;
           }
 
-          if (formats.includes('markdown')) {
-            if (scrape.content && scrape.content.trim().length >= 50) {
-              enrichedItem.markdown = scrape.content;
-            } else if (itemSnippet) {
-              enrichedItem.markdown = `# ${item.title || 'Web Search Result'}\n\nURL: ${itemUrl}\n\n${itemSnippet}`;
-              enrichedItem.isSnippetFallback = true;
-            } else {
-              enrichedItem.markdown = scrape.content || '';
-            }
-          }
-          if (formats.includes('html')) {
-            enrichedItem.html = scrape.html ?? scrape.rawHtml;
-          }
-          if (formats.includes('rawHtml')) {
-            enrichedItem.rawHtml = scrape.rawHtml;
-          }
-          if (formats.includes('links')) {
-            enrichedItem.links = scrape.links;
-          }
-          if (formats.includes('jsonLd') && scrape.jsonLd) {
-            enrichedItem.jsonLd = scrape.jsonLd;
-          }
-          if (formats.includes('images') && scrape.images) {
-            enrichedItem.images = scrape.images;
-          }
-          if (formats.includes('screenshot')) {
-            enrichedItem.screenshot = scrape.screenshot;
-          }
+          Object.assign(
+            enrichedItem,
+            projectRequestedScrapeFormats(scrape, formats, {
+              minMarkdownChars: 50,
+              markdownFallback: itemSnippet
+                ? `# ${item.title || 'Web Search Result'}\n\nURL: ${itemUrl}\n\n${itemSnippet}`
+                : undefined,
+            }),
+          );
 
           return enrichedItem;
         } catch (e: any) {
