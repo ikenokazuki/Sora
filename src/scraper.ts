@@ -44,6 +44,11 @@ import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
+import {
+  buildXIsolatedEvidence,
+  buildXRetrievalPlan,
+  stripXWebDiscoveryText,
+} from './x_source_isolation.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1288,7 +1293,8 @@ export async function integratedSearch(options: {
   const highlightAlgorithm = options.highlightAlgorithm || 'rho-select-v2';
   const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
   const highlightMaxCount = options.highlightMaxCount;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}`;
+  const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1312,6 +1318,12 @@ export async function integratedSearch(options: {
   }
 
   const topItems = searchResults.slice(0, limit);
+  const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];
+  const xPlanByIndex = new Map<number, (typeof xRetrievalPlan)[number]>();
+  for (const plan of xRetrievalPlan) {
+    for (const index of plan.itemIndexes) xPlanByIndex.set(index, plan);
+  }
+  const xRetrievalCache = new Map<string, Promise<any>>();
 
   // 擬似適合フィードバック (PRF) によるクエリ拡張
   let effectiveQuery = query;
@@ -1345,10 +1357,88 @@ export async function integratedSearch(options: {
   let enrichedResults = topItems;
   if (scrapeContent) {
     enrichedResults = await Promise.all(
-      topItems.map(async (item: any) => {
+      topItems.map(async (item: any, itemIndex: number) => {
         const itemUrl = item.url || item.link;
         if (!itemUrl) return item;
         const itemSnippet = item.snippet || item.description || '';
+
+        if (xSourceIsolation) {
+          const plan = xPlanByIndex.get(itemIndex);
+          if (plan) {
+            const isolatedBase = stripXWebDiscoveryText(item);
+            let retrievalPromise = xRetrievalCache.get(plan.key);
+            if (!retrievalPromise) {
+              retrievalPromise = searchYahooRealtime({
+                query,
+                ...(plan.seed.handle ? { accountId: plan.seed.handle } : {}),
+                sort: 'recent',
+                limit: 5,
+                disableFallback: true,
+              }).catch(() => null);
+              xRetrievalCache.set(plan.key, retrievalPromise);
+            }
+
+            const realtimeForSeed = await retrievalPromise;
+            const isolatedEvidence = buildXIsolatedEvidence(
+              plan.seed,
+              Array.isArray(realtimeForSeed?.items)
+                ? realtimeForSeed.items
+                : [],
+            );
+
+            const rho =
+              isolatedEvidence.eligibleForPrimaryEvidence &&
+              isolatedEvidence.markdown
+                ? extractQueryHighlightsRhoV2(
+                    isolatedEvidence.markdown,
+                    query,
+                    {
+                      overheadTokens: highlightOverheadTokens,
+                      highlightMaxCount,
+                    },
+                  )
+                : null;
+
+            const isolatedItem: Record<string, any> = {
+              ...isolatedBase,
+              source: 'x',
+              xSourceIsolation: {
+                mode: 'bounded_discovery_seed',
+                kind: plan.seed.kind,
+                ...(plan.seed.handle
+                  ? { handle: plan.seed.handle }
+                  : {}),
+                ...(plan.seed.statusId
+                  ? { statusId: plan.seed.statusId }
+                  : {}),
+                evidenceRelation: isolatedEvidence.relation,
+                exactStatusMatched:
+                  isolatedEvidence.exactStatusMatched,
+                eligibleForPrimaryEvidence:
+                  isolatedEvidence.eligibleForPrimaryEvidence,
+                webSnippetUsedAsBody: false,
+                retrievedPrimaryCount:
+                  isolatedEvidence.selectedItems.length,
+                relatedDiagnosticCount:
+                  isolatedEvidence.relatedItems.length,
+                retrievalKey: plan.key,
+              },
+              highlights: rho?.highlights,
+              highlightItems: rho?.highlightItems,
+              highlightDiagnostics: rho?.diagnostics,
+            };
+
+            if (
+              formats.includes('markdown') &&
+              isolatedEvidence.markdown
+            ) {
+              isolatedItem.markdown = isolatedEvidence.markdown;
+            }
+
+            return isolatedItem;
+          }
+        }
+
         try {
           const scrape = await scrapeUrl({
             url: itemUrl,
