@@ -89,6 +89,53 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
   });
 }
 
+export interface YahooWebQueryBatch {
+  query: string;
+  queryIndex: number;
+  items: any[];
+}
+
+export function mergeYahooWebQueryBatches(
+  batches: YahooWebQueryBatch[],
+  bindingQuery: string,
+  includeDomains?: string[],
+  excludeDomains?: string[],
+): any[] {
+  const merged: any[] = [];
+  const seen = new Set<string>();
+
+  for (const batch of batches) {
+    const normalized = batch.items.map((item: any) => ({
+      source: 'web' as const,
+      snippet: item.description || item.snippet,
+      ...item,
+      retrievalQuery: batch.query,
+      retrievalQueryIndex: batch.queryIndex,
+    }));
+
+    const filtered = filterByDomains(
+      normalized,
+      includeDomains,
+      excludeDomains,
+    );
+
+    for (const item of filtered) {
+      const urlKey =
+        typeof (item.url || item.link) === 'string'
+          ? `url:${item.url || item.link}`
+          : '';
+      const textKey =
+        `text:${item.title || ''}\n${item.snippet || item.description || ''}`;
+      const key = urlKey || textKey;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+
+  return rerankSearchResults(merged, bindingQuery);
+}
+
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
 export async function searchYahooWeb(options: {
   query: string;
@@ -102,6 +149,105 @@ export async function searchYahooWeb(options: {
     : extractRealtimeFallbackQueries(options.query);
 
   let lastParsedData: any = { items: [], count: 0, source: 'web' };
+
+  const queryUnionEnabled =
+    process.env.SORA_WEB_QUERY_UNION === 'true' &&
+    options.disableFallback !== true;
+
+  if (queryUnionEnabled) {
+    const boundedQueries = candidateQueries.slice(0, 2);
+    const batches: YahooWebQueryBatch[] = [];
+    const retrievalQueries: string[] = [];
+
+    for (let i = 0; i < boundedQueries.length; i++) {
+      const q = boundedQueries[i];
+      if (!q) continue;
+      retrievalQueries.push(q);
+
+      let effectiveWebQuery = q;
+      let webSiteArg: string | undefined = undefined;
+
+      if (options.includeDomains && options.includeDomains.length > 0) {
+        if (options.includeDomains.length === 1) {
+          webSiteArg = options.includeDomains[0];
+        } else {
+          effectiveWebQuery += ` (${options.includeDomains
+            .map((d) => `site:${d}`)
+            .join(' OR ')})`;
+        }
+      }
+
+      if (options.excludeDomains && options.excludeDomains.length > 0) {
+        effectiveWebQuery += ` ${options.excludeDomains
+          .map((d) => `-site:${d}`)
+          .join(' ')}`;
+      }
+
+      try {
+        const mcpRes = await callYahooMcp('yahoo_web_search', {
+          query: effectiveWebQuery,
+          ...(webSiteArg ? { site: webSiteArg } : {}),
+          ...(options.updated && options.updated !== 'all'
+            ? { updated: options.updated }
+            : {}),
+        });
+
+        const content = mcpRes?.content?.[0]?.text || '[]';
+        const json = JSON.parse(content);
+
+        if (json && Array.isArray(json.items)) {
+          lastParsedData = json;
+          if (json.items.length > 0) {
+            batches.push({
+              query: q,
+              queryIndex: i,
+              items: json.items,
+            });
+          }
+        }
+      } catch {
+        // One failed rescue query must not discard sibling results.
+      }
+    }
+
+    const ranked = mergeYahooWebQueryBatches(
+      batches,
+      options.query,
+      options.includeDomains,
+      options.excludeDomains,
+    );
+
+    if (ranked.length > 0) {
+      const contributedFallback = ranked.some(
+        (item: any) => (item.retrievalQueryIndex ?? 0) > 0,
+      );
+
+      return {
+        items: ranked,
+        count: ranked.length,
+        source: 'web',
+        originalQuery: options.query,
+        bindingQuery: options.query,
+        retrievalQueries,
+        effectiveQuery: options.query,
+        isFallback: contributedFallback,
+        queryUnion: true,
+      };
+    }
+
+    return {
+      ...lastParsedData,
+      items: [],
+      count: 0,
+      source: 'web',
+      originalQuery: options.query,
+      bindingQuery: options.query,
+      retrievalQueries,
+      effectiveQuery: options.query,
+      isFallback: false,
+      queryUnion: true,
+    };
+  }
 
   for (let i = 0; i < candidateQueries.length; i++) {
     const q = candidateQueries[i];
