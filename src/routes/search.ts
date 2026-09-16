@@ -5,7 +5,6 @@ import {
   getFromCache,
   setToCache,
   callYahooMcp,
-  searchYahooWeb,
   integratedSearch,
   fetchRealtimeTrends,
   normalizeRealtimeItem,
@@ -26,6 +25,7 @@ import {
   MusicSearchRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
 
 export const searchRoutes = new Hono();
 
@@ -104,39 +104,20 @@ searchRoutes.post('/search/trend', async (c) => {
   }
 });
 
-// Yahoo Web 検索
+// Yahoo Web 検索（formats 未指定は従来どおり軽量、指定時のみ追加スクレイプ）
 searchRoutes.post('/search/web', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
-
-    const includeDomains = body?.includeDomains;
-    const excludeDomains = body?.excludeDomains;
-    const updated = body?.updated;
-    const cacheKey = `search:web:${query}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    const parsedData = await searchYahooWeb({ query, includeDomains, excludeDomains, updated });
-
-    const responseData = {
-      query,
-      source: 'web',
-      type: 'web',
-      data: parsedData,
-      cached: false,
-    };
-
+    const rawBody = await c.req.json();
+    const parsed = SearchWebRequestSchema.safeParse(rawBody);
+    if (!parsed.success) return c.json({ error: 'invalid search_web request', details: parsed.error.format() }, 400);
+    const body = parsed.data;
+    const cacheKey = buildSearchWebCacheKey(body);
+    if (!body.noCache) { const cached = getFromCache<any>(cacheKey); if (cached) return c.json(cached); }
+    const parsedData = await searchWebWithFormats(body);
+    const responseData = { query: body.query, source: 'web', type: 'web', data: parsedData, cached: false };
     if (!body.noCache) setToCache(cacheKey, responseData);
     return c.json(responseData);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Web search failed' }, 500);
-  }
+  } catch (err: any) { return c.json({ error: err.message || 'Web search failed' }, 500); }
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
