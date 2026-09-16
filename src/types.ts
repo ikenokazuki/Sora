@@ -588,7 +588,7 @@ export const TransitRouteRequestSchema = z.object({
 
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
-  days: z.number().int().min(1).max(3).optional().describe('取得する予報日数 (1〜3日, デフォルト: 3)'),
+  days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -1340,7 +1340,7 @@ export const WeatherResponseSchema = z.object({
   title: z.string().describe('予報対象地域タイトル (例: "東京 の天気")'),
   publishedTime: z.string().optional().describe('気象庁発表日時 (ISO 8601)'),
   overview: z.string().optional().describe('気象概況テキスト'),
-  forecasts: z.array(WeatherDayForecastSchema).describe('日別天気予報配列 (1〜3日分)'),
+  forecasts: z.array(WeatherDayForecastSchema).describe('日別天気予報配列 (1〜8日分)'),
 });
 
 export const WarningItemSchema = z.object({
