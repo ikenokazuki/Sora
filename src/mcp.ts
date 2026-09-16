@@ -6,7 +6,6 @@ import {
   scrapeUrl,
   scrapeBatchUrls,
   callYahooMcp,
-  searchYahooWeb,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
@@ -47,6 +46,7 @@ import {
   trackPackage,
 } from './scraper.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
+import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema } from './types.js';
 
@@ -719,33 +719,23 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['クロール', '再帰巡回', 'ドメイン探索', '一括収集'] },
     );
 
-    // Tool 5: search_web (基本 Web 検索・概要取得) - CORE (defaultEnabled: true)
+    // Tool 5: search_web (基本 Web 検索 + optional requested-format extraction) - CORE
     registerTool(
       mcpServer,
       toolCatalog,
       'search_web',
       'web',
-      '【万能Web検索・候補探索】Web 検索を実行し、タイトル・概要スニペット・URL 一覧を高速取得します。イベント日程、商品情報、店舗情報、最新ニュース、公式告知などの候補URL一覧を素早く探索・リストアップしたい場合に最適です。※スニペットだけでは不確定・不十分な詳細事項（正確な開場開演時間や規約等）は、ヒットした公式URLを scrape で精読するか search_deep を使用してください。',
-      {
-        query: z.string().min(1).describe('検索キーワード (例: "東京都 天気", "Next.js 15")'),
-        includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメインリスト (例: ["natalie.mu", "oricon.co.jp"])'),
-        excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメインリスト'),
-        updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(指定なし), "day"(24時間以内), "week"(1週間以内), "year"(1年以内)'),
-      },
-      async ({ query, includeDomains, excludeDomains, updated }) => {
+      '【万能Web検索・候補探索】デフォルトは従来どおりタイトル・URL・スニペットのみを高速返却します。formats を明示した場合だけ上位検索結果を追加スクレイプし、markdown/html/rawHtml/links/screenshot/jsonLd/images/tables の指定形式を付与します。X速報・深層rerankが必要な場合は search_deep を使用してください。',
+      SEARCH_WEB_INPUT_SHAPE,
+      async (options) => {
         try {
-          const result = await searchYahooWeb({ query, includeDomains, excludeDomains, updated });
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
+          const result = await searchWebWithFormats(options as any);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         } catch (err: any) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Search error: ${err?.message || err}` }],
-          };
+          return { isError: true, content: [{ type: 'text', text: `Search error: ${err?.message || err}` }] };
         }
       },
-      { defaultEnabled: true, keywords: ['Web検索', '検索', 'URL一覧', 'Google検索', 'Yahoo検索', 'イベント検索', '告知検索', 'スケジュール'] },
+      { defaultEnabled: true, keywords: ['Web検索','検索','URL一覧','Google検索','Yahoo検索','イベント検索','告知検索','スケジュール','Markdown'] },
     );
   }
 
