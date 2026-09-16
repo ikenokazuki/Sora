@@ -245,7 +245,7 @@ function getTelopFromCode(code: string, weatherText?: string): string {
 /** 天気予報を取得 (気象庁公式オープンデータ API 直接通信 / 完全自律型) */
 export async function fetchWeatherForecast(options: WeatherForecastOptions): Promise<any> {
   const cityId = resolveCityId(options.city);
-  const days = Math.min(Math.max(options.days ?? 3, 1), 3);
+  const days = Math.min(Math.max(options.days ?? 7, 1), 8);
   const cacheKey = `weather:${cityId}:${days}`;
 
   if (!options.noCache) {
@@ -253,143 +253,148 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
     if (cached) return cached;
   }
 
-  // 1. 気象庁（JMA）公式 API 直接通信
-  try {
-    const officeCode = cityId.substring(0, 2) + '0000';
-    const [forecastRes, overviewRes] = await Promise.all([
-      fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'Sora/2.0' },
-      }),
-      fetch(`https://www.jma.go.jp/bosai/forecast/data/overview_forecast/${officeCode}.json`, {
-        headers: { 'User-Agent': 'Sora/2.0' },
-      }).catch(() => null),
-    ]);
+  // 気象庁（JMA）公式 API 直接通信（一次ソース一本化）
+  const officeCode = cityId.substring(0, 2) + '0000';
+  const [forecastRes, overviewRes] = await Promise.all([
+    fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
+      headers: { 'User-Agent': 'Sora/2.0' },
+    }),
+    fetch(`https://www.jma.go.jp/bosai/forecast/data/overview_forecast/${officeCode}.json`, {
+      headers: { 'User-Agent': 'Sora/2.0' },
+    }).catch(() => null),
+  ]);
 
-    if (forecastRes.ok) {
-      const forecastData: any = await forecastRes.json();
-      const overviewData: any = overviewRes?.ok ? await overviewRes.json() : null;
+  if (!forecastRes.ok) {
+    throw new Error(`JMA Weather API returned HTTP ${forecastRes.status}`);
+  }
 
-      const shortForecast = forecastData[0];
-      const timeDefines: string[] = shortForecast?.timeSeries?.[0]?.timeDefines || [];
-      const weatherAreas: any[] = shortForecast?.timeSeries?.[0]?.areas || [];
-      const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
-      const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
+  const forecastData: any = await forecastRes.json();
+  const overviewData: any = overviewRes?.ok ? await overviewRes.json() : null;
 
-      const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
-      const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-      const targetTemp = tempAreas[0];
+  const shortForecast = forecastData[0];
+  const weeklyForecast = forecastData[1];
 
-      const dateLabels = ['今日', '明日', '明後日'];
-      const forecasts = [];
+  const timeDefines: string[] = shortForecast?.timeSeries?.[0]?.timeDefines || [];
+  const weatherAreas: any[] = shortForecast?.timeSeries?.[0]?.areas || [];
+  const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
+  const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
 
-      for (let i = 0; i < Math.min(days, timeDefines.length); i++) {
-        const rawDate = timeDefines[i];
-        const dateStr = rawDate ? rawDate.split('T')[0] : '';
-        const wCode = targetArea?.weatherCodes?.[i] || '100';
-        const wDetail = targetArea?.weathers?.[i] || '';
-        const wind = targetArea?.winds?.[i] || null;
-        const wave = targetArea?.waves?.[i] || null;
+  const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
+  const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
+  const targetTemp = tempAreas?.[0];
 
-        forecasts.push({
-          date: dateStr,
-          dateLabel: dateLabels[i] || `${i + 1}日後`,
-          telop: getTelopFromCode(wCode, wDetail),
-          detail: {
-            weather: wDetail,
-            wind,
-            wave,
-          },
-          temperature: {
-            min: targetTemp?.temps?.[i * 2] ? `${targetTemp.temps[i * 2]}℃` : null,
-            max: targetTemp?.temps?.[i * 2 + 1] ? `${targetTemp.temps[i * 2 + 1]}℃` : null,
-          },
-          chanceOfRain: {
-            T00_06: targetPop?.pops?.[0] ? `${targetPop.pops[0]}%` : '--%',
-            T06_12: targetPop?.pops?.[1] ? `${targetPop.pops[1]}%` : '--%',
-            T12_18: targetPop?.pops?.[2] ? `${targetPop.pops[2]}%` : '--%',
-            T18_24: targetPop?.pops?.[3] ? `${targetPop.pops[3]}%` : '--%',
-          },
-          image: `https://www.jma.go.jp/bosai/forecast/img/${wCode}.svg`,
-        });
-      }
+  const dateLabels = ['今日', '明日', '明後日'];
+  const forecasts = [];
+  const seenDates = new Set<string>();
 
-      const formatted = {
-        source: 'weather',
-        cityId,
-        title: `${targetArea?.area?.name || options.city} の天気`,
-        publishedTime: shortForecast?.reportDatetime,
-        publicTime: shortForecast?.reportDatetime,
-        publishingOffice: shortForecast?.publishingOffice || '気象庁',
-        location: {
-          area: targetArea?.area?.name,
-          prefecture: targetArea?.area?.name,
-          city: options.city,
+  // 1. 短期予報 (今日・明日・明後日)
+  for (let i = 0; i < timeDefines.length; i++) {
+    const rawDate = timeDefines[i];
+    const dateStr = rawDate ? rawDate.split('T')[0] : '';
+    if (!dateStr || seenDates.has(dateStr)) continue;
+    seenDates.add(dateStr);
+
+    const wCode = targetArea?.weatherCodes?.[i] || '100';
+    const wDetail = targetArea?.weathers?.[i] || '';
+    const wind = targetArea?.winds?.[i] || null;
+    const wave = targetArea?.waves?.[i] || null;
+
+    forecasts.push({
+      date: dateStr,
+      dateLabel: dateLabels[i] || `${i + 1}日後`,
+      telop: getTelopFromCode(wCode, wDetail),
+      detail: {
+        weather: wDetail,
+        wind,
+        wave,
+      },
+      temperature: {
+        min: targetTemp?.temps?.[i * 2] ? `${targetTemp.temps[i * 2]}℃` : null,
+        max: targetTemp?.temps?.[i * 2 + 1] ? `${targetTemp.temps[i * 2 + 1]}℃` : null,
+      },
+      chanceOfRain: {
+        T00_06: targetPop?.pops?.[0] ? `${targetPop.pops[0]}%` : '--%',
+        T06_12: targetPop?.pops?.[1] ? `${targetPop.pops[1]}%` : '--%',
+        T12_18: targetPop?.pops?.[2] ? `${targetPop.pops[2]}%` : '--%',
+        T18_24: targetPop?.pops?.[3] ? `${targetPop.pops[3]}%` : '--%',
+      },
+      image: `https://www.jma.go.jp/bosai/forecast/img/${wCode}.svg`,
+    });
+  }
+
+  // 2. 週間予報 (3日目以降〜最大7日先) をマージ
+  if (weeklyForecast) {
+    const weeklyTimeDefines: string[] = weeklyForecast.timeSeries?.[0]?.timeDefines || [];
+    const weeklyWeatherAreas: any[] = weeklyForecast.timeSeries?.[0]?.areas || [];
+    const weeklyTempAreas: any[] = weeklyForecast.timeSeries?.[1]?.areas || [];
+
+    const targetWeeklyWeather =
+      weeklyWeatherAreas.find((a: any) => a.area?.code === cityId || a.area?.code === officeCode) ||
+      weeklyWeatherAreas[0];
+    const targetWeeklyTemp =
+      weeklyTempAreas.find((a: any) => a.area?.code === cityId) || weeklyTempAreas[0];
+
+    for (let j = 0; j < weeklyTimeDefines.length; j++) {
+      const rawDate = weeklyTimeDefines[j];
+      const dateStr = rawDate ? rawDate.split('T')[0] : '';
+      if (!dateStr || seenDates.has(dateStr)) continue;
+      seenDates.add(dateStr);
+
+      const wCode = targetWeeklyWeather?.weatherCodes?.[j] || '100';
+      const popVal = targetWeeklyWeather?.pops?.[j];
+      const popStr = popVal !== undefined && popVal !== '' ? `${popVal}%` : '--%';
+      const reliability = targetWeeklyWeather?.reliabilities?.[j] || undefined;
+      const minTemp = targetWeeklyTemp?.tempsMin?.[j];
+      const maxTemp = targetWeeklyTemp?.tempsMax?.[j];
+
+      const diffDays = forecasts.length;
+      forecasts.push({
+        date: dateStr,
+        dateLabel: dateLabels[diffDays] || `${diffDays + 1}日後`,
+        telop: getTelopFromCode(wCode),
+        reliability,
+        temperature: {
+          min: minTemp && minTemp !== '' ? `${minTemp}℃` : null,
+          max: maxTemp && maxTemp !== '' ? `${maxTemp}℃` : null,
         },
-        overview: overviewData?.text || overviewData?.headlineText || '',
-        description: {
-          headline: overviewData?.headlineText || '',
-          body: overviewData?.text || '',
-          text: overviewData?.text || '',
-          publicTime: overviewData?.reportDatetime || '',
+        chanceOfRain: {
+          allDay: popStr,
+          T00_06: popStr,
+          T06_12: popStr,
+          T12_18: popStr,
+          T18_24: popStr,
         },
-        forecasts,
-        link: `https://www.jma.go.jp/bosai/forecast/#area_type=class20&area_code=${cityId}`,
-        cached: false,
-      };
-
-      if (!options.noCache) setToCache(cacheKey, formatted, CACHE_TTL_WEATHER);
-      return formatted;
+        image: `https://www.jma.go.jp/bosai/forecast/img/${wCode}.svg`,
+      });
     }
-  } catch (err) {
-    // Graceful fallback to tsukumijima weather API
   }
 
-  // 2. フォールバック: tsukumijima weather API
-  const url = `https://weather.tsukumijima.net/api/forecast?city=${cityId}`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Sora/2.0 (+https://github.com/ikenokazuki/Sora)',
-      'Accept': 'application/json',
-    },
-  });
+  const resultForecasts = forecasts.slice(0, days);
 
-  if (!res.ok) {
-    throw new Error(`Weather API returned HTTP ${res.status}`);
-  }
-
-  const raw: any = await res.json();
-  const forecasts = Array.isArray(raw.forecasts) ? raw.forecasts.slice(0, days) : [];
-
-  const formattedResult = {
+  const formatted = {
     source: 'weather',
     cityId,
-    title: raw.title,
-    publicTime: raw.publicTime,
-    publicTimeFormatted: raw.publicTimeFormatted,
-    publishingOffice: raw.publishingOffice,
-    location: raw.location,
-    description: {
-      headline: raw.description?.headlineText || '',
-      body: raw.description?.bodyText || '',
-      text: raw.description?.text || '',
-      publicTime: raw.description?.publicTimeFormatted || '',
+    title: `${targetArea?.area?.name || options.city} の天気`,
+    publishedTime: shortForecast?.reportDatetime,
+    publicTime: shortForecast?.reportDatetime,
+    publishingOffice: shortForecast?.publishingOffice || '気象庁',
+    location: {
+      area: targetArea?.area?.name,
+      prefecture: targetArea?.area?.name,
+      city: options.city,
     },
-    forecasts: forecasts.map((f: any) => ({
-      date: f.date,
-      dateLabel: f.dateLabel,
-      telop: f.telop,
-      detail: f.detail,
-      temperature: {
-        min: f.temperature?.min?.celsius ? `${f.temperature.min.celsius}℃` : null,
-        max: f.temperature?.max?.celsius ? `${f.temperature.max.celsius}℃` : null,
-      },
-      chanceOfRain: f.chanceOfRain,
-      image: f.image?.url || null,
-    })),
-    link: raw.link,
+    overview: overviewData?.text || overviewData?.headlineText || '',
+    description: {
+      headline: overviewData?.headlineText || '',
+      body: overviewData?.text || '',
+      text: overviewData?.text || '',
+      publicTime: overviewData?.reportDatetime || '',
+    },
+    forecasts: resultForecasts,
+    link: `https://www.jma.go.jp/bosai/forecast/#area_type=class20&area_code=${cityId}`,
     cached: false,
   };
 
-  if (!options.noCache) setToCache(cacheKey, formattedResult, CACHE_TTL_WEATHER);
-  return formattedResult;
+  if (!options.noCache) setToCache(cacheKey, formatted, CACHE_TTL_WEATHER);
+  return formatted;
 }
