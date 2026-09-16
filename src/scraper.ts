@@ -49,7 +49,6 @@ import {
   buildXRetrievalPlan,
   stripXWebDiscoveryText,
 } from './x_source_isolation.js';
-import { selectStructuralEvidenceStudy2B } from './study2b_structural.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1296,8 +1295,7 @@ export async function integratedSearch(options: {
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
-  const structuralStudy2B = process.env.SORA_STUDY2B_STRUCTURAL === 'true';
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${structuralStudy2B ? 's2b-on' : 's2b-off'}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1479,31 +1477,6 @@ export async function integratedSearch(options: {
             textFragmentUrl: scrape.textFragmentUrl,
             cached: scrape.cached,
           };
-
-          if (
-            structuralStudy2B &&
-            extractHighlights &&
-            typeof scrape.content === 'string' &&
-            scrape.content.trim().length > 0
-          ) {
-            const structural = selectStructuralEvidenceStudy2B(
-              scrape.content,
-              query,
-              {
-                overheadTokens: highlightOverheadTokens,
-              },
-            );
-
-            if (structural.applied) {
-              enrichedItem.highlights = structural.highlights;
-              enrichedItem.highlightItems = structural.highlightItems;
-              enrichedItem.highlightDiagnostics = structural.diagnostics;
-            }
-
-            if (options.verbose) {
-              enrichedItem.structuralStudy2B = structural.diagnostics;
-            }
-          }
 
           if (scrape.isTruncated) {
             enrichedItem.isTruncated = true;
