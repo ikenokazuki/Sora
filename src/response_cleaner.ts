@@ -1,4 +1,5 @@
 import type { ScrapeResult } from './types.js';
+import { canonicalHighlightTexts } from './highlight_surface.js';
 
 export interface FormatCompactOptions {
   verbose?: boolean;
@@ -42,8 +43,8 @@ export function formatCompactScrapeResult(
   if (result.isTruncated) clean.isTruncated = true;
 
   // オプション要求時や存在時のみ付与
-  if (result.highlights && result.highlights.length > 0) clean.highlights = result.highlights;
-  if (result.highlightItems && result.highlightItems.length > 0) clean.highlightItems = result.highlightItems;
+  const canonicalHighlights = canonicalHighlightTexts(result.highlights, result.highlightItems);
+  if (canonicalHighlights) clean.highlights = canonicalHighlights;
   if (result.evidenceDiagnostics) clean.evidenceDiagnostics = result.evidenceDiagnostics;
   if (result.discrepancies && result.discrepancies.length > 0) clean.discrepancies = result.discrepancies;
   if (result.derivations && result.derivations.length > 0) clean.derivations = result.derivations;
