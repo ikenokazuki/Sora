@@ -42,6 +42,7 @@ import {
 } from './enrichment.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
+import { stripHighlightInternals } from './highlight_surface.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1496,6 +1497,12 @@ export async function integratedSearch(options: {
   // Lost in the Middle 対策: 検索結果全体の U字型リオーダリング
   if (reorderUFlat && enrichedResults.length > 2) {
     enrichedResults = reorderLostInTheMiddle(enrichedResults);
+  }
+
+  // Host-facing output boundary only. Keep highlightItems internally until
+  // deep evidence reranking has completed, then canonicalize the public surface.
+  if (!options.verbose) {
+    enrichedResults = enrichedResults.map((item: any) => stripHighlightInternals(item));
   }
 
   const finalResponse: Record<string, any> = {
