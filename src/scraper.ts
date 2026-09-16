@@ -43,6 +43,7 @@ import {
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
+import { buildSearchDiagnostics } from './search_diagnostics.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1287,7 +1288,7 @@ export async function integratedSearch(options: {
   const highlightAlgorithm = options.highlightAlgorithm || 'rho-select-v2';
   const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
   const highlightMaxCount = options.highlightMaxCount;
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}`;
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1519,6 +1520,23 @@ export async function integratedSearch(options: {
       expandedQuery: prfInfo.expandedQuery,
       expansionTerms: prfInfo.expansionTerms,
     };
+  }
+
+  if (options.verbose) {
+    finalResponse.searchDiagnostics = buildSearchDiagnostics({
+      originalQuery: query,
+      effectiveQuery,
+      webEffectiveQuery: webParsedRes?.effectiveQuery,
+      webIsFallback: webParsedRes?.isFallback,
+      webResultCount: searchResults.length,
+      includeRealtime,
+      realtimeOriginalQuery: realtimeMcpRes?.originalQuery,
+      realtimeEffectiveQuery: realtimeMcpRes?.effectiveQuery,
+      realtimeIsFallback: realtimeMcpRes?.isFallback,
+      realtimeCount: Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items.length : 0,
+      officialAccountId: targetOfficialHandle,
+      results: enrichedResults,
+    });
   }
 
   if (includeRealtime) {
