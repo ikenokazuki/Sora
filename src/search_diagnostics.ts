@@ -2,6 +2,8 @@ export interface SearchDiagnosticsInput {
   originalQuery: string;
   effectiveQuery: string;
   webEffectiveQuery?: string;
+  webBindingQuery?: string;
+  webRetrievalQueries?: string[];
   webIsFallback?: boolean;
   webResultCount: number;
   includeRealtime: boolean;
@@ -32,7 +34,11 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
 
   // The original query is always attempted by the current fallback strategy.
   addQuery(input.originalQuery);
-  addQuery(input.webEffectiveQuery);
+  if (input.webRetrievalQueries?.length) {
+    for (const query of input.webRetrievalQueries) addQuery(query);
+  } else {
+    addQuery(input.webEffectiveQuery);
+  }
   if (input.includeRealtime) {
     addQuery(input.realtimeOriginalQuery);
     addQuery(input.realtimeEffectiveQuery);
@@ -70,6 +76,11 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
     retrievalQueries,
     retrievalQueryScope: 'observed_original_and_effective_queries',
     web: {
+      bindingQuery: input.webBindingQuery || input.originalQuery,
+      retrievalQueries:
+        input.webRetrievalQueries?.length
+          ? [...input.webRetrievalQueries]
+          : [input.webEffectiveQuery || input.originalQuery],
       effectiveQuery: input.webEffectiveQuery || input.originalQuery,
       isFallback: input.webIsFallback === true,
       resultCount: input.webResultCount,
