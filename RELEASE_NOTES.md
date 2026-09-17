@@ -1,3 +1,46 @@
+# 🌤️ Sora Release v2.23.0
+
+MCP / REST の検索レスポンス整合性を保ちながら、必要なクライアントだけ返却量を大幅に削減できる **Evidence Response Mode**、`search_web` の共通 format 契約、Host-facing highlights 正規化、および検索診断の安全な拡張を統合したリリースです。
+
+既存互換性を優先し、`search_deep` の `responseMode` は引き続き **`full` がデフォルト**です。`evidence` は明示 opt-in であり、取得・ρSelect v2・Deep Evidence Rerank の精度経路は変更しません。
+
+---
+
+## 🌟 v2.23.0 主なハイライト (Highlights)
+
+### 1. 📦 `search_deep` Evidence Response Mode（明示 opt-in）
+- `responseMode: "full" | "evidence"` を MCP / REST の双方で利用可能。
+- `full` は従来互換のデフォルト。
+- `evidence` は query-selected `highlights` を保持し、安全条件を満たす結果だけ重複する全文 `markdown` を省略。
+- `markdown` を highlights で上書きせず、`highlights` も削除しません。
+- `formats:["markdown"]` の明示指定、`extractHighlights:false`、highlights 不在、scrape fallback/error、X ソースでは全文 Markdown を保持します。
+- 決定論的な real MCP + REST E2E fixture では、対象情報を保持したまま返却文字数を約 91% 削減しました（fixture 実測値であり、一般ワークロードの保証値ではありません）。
+
+### 2. 🔁 MCP / REST の検索契約整合性
+- `search_deep` の full / evidence で stable semantic surface の MCP / REST parity を実 E2E で検証。
+- `search_web` に共通 `formats` 契約を導入し、MCP / REST の双方で `markdown`, `tables`, `links`, `jsonLd` 等を同一方針で取得可能。
+- `formats` 未指定時の `search_web` は従来の軽量検索パスを維持し、追加スクレイプを行いません。
+- requested format 以外の payload を漏らさない Host projection を追加。
+
+### 3. 🎯 Host-facing highlights の正規化
+- 外部向けの標準 surface を `highlights` に統一。
+- 内部用 `highlightItems` は Deep Evidence Rerank まで保持し、通常レスポンスでは露出させません。
+- `verbose` 時のみ診断用内部情報を維持します。
+
+### 4. 🔎 安全な検索診断と実験機能
+- verbose-only の query lineage / evidence diagnostics を追加。通常レスポンス・順位決定には影響しません。
+- Web Query Union と X Source Isolation は引き続き **明示 opt-in / デフォルトOFF**。
+- Study 2B の実験実装は production candidate から除外済みで、本リリースには含めません。
+
+### 5. 🧪 回帰安全性
+- ρSelect v2 canonical tests: 23 tests / 422 assertions。
+- ρSelect v2 1,000-seed stress: 5 tests / 4,588 assertions。
+- ソライロ / 季節外れのリナリア / SPARK の precision fixtures を release gate に固定。
+- real MCP + REST Evidence E2E、real MCP + REST `search_web formats` E2E、build、version contract をリリース前に実行。
+- main と release candidate の full test suite を同一隔離環境で比較し、candidate-only failure がないことを確認してからリリースします。
+
+---
+
 # 🌤️ Sora Release v2.22.0
 
 気象庁公式オープンデータによる週間天気予報（最大7日先＝計8日間）の統合、および不要な個人ボランティアAPI（tsukumijima）フォールバックの完全撤廃アップデート（v2.22.0）です。
