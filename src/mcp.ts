@@ -47,6 +47,7 @@ import {
 } from './scraper.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
+import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema } from './types.js';
 
@@ -589,8 +590,11 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('ハイライト最大選択件数 (デフォルト: 3)'),
         verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
+        responseMode: IntegratedSearchResponseModeSchema
+          .optional()
+          .describe('Host返却モード: "full" (デフォルト・従来互換) または "evidence" (明示opt-in。query-aware highlightsを保持し、安全条件を満たす結果だけ全文markdownの重複返却を省略)'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -617,7 +621,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             highlightMaxCount,
           });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{
+              type: 'text',
+              text: serializeIntegratedSearchMcpResponse(result, {
+                responseMode,
+                explicitFormats: formats,
+                extractHighlights,
+                verbose,
+              }),
+            }],
           };
         } catch (err: any) {
           return {
