@@ -737,7 +737,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_web',
       'web',
-      '【万能Web検索・候補探索】デフォルトは従来どおりタイトル・URL・スニペットのみを高速返却します。formats を明示した場合だけ上位検索結果を追加スクレイプし、markdown/html/rawHtml/links/screenshot/jsonLd/images/tables の指定形式を付与します。X速報・深層rerankが必要な場合は search_deep を使用してください。',
+      '【万能Web検索・候補探索】ニュース、イベント日程・開催情報、発売日、営業時間、公式告知などの候補URL探索に使用します。デフォルトは従来どおりタイトル・URL・スニペットのみを高速返却します。formats を明示した場合だけ上位検索結果を追加スクレイプし、markdown/html/rawHtml/links/screenshot/jsonLd/images/tables の指定形式を付与します。X速報・深層rerankが必要な場合は search_deep を使用してください。',
       SEARCH_WEB_INPUT_SHAPE,
       async (options) => {
         try {
