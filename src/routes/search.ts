@@ -26,6 +26,7 @@ import {
 } from '../types.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
+import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 
 export const searchRoutes = new Hono();
 
@@ -138,6 +139,13 @@ const handleIntegratedSearch = async (c: any) => {
     const extractHighlights = body?.extractHighlights;
     const onlyMainContent = body?.onlyMainContent;
     const formats = body?.formats;
+    const responseModeParsed = IntegratedSearchResponseModeSchema.safeParse(
+      body?.responseMode ?? 'full',
+    );
+    if (!responseModeParsed.success) {
+      return c.json({ error: 'responseMode must be "full" or "evidence"' }, 400);
+    }
+    const responseMode = responseModeParsed.data;
 
     if (!query || typeof query !== 'string') {
       return c.json({ error: 'query is required' }, 400);
@@ -170,7 +178,14 @@ const handleIntegratedSearch = async (c: any) => {
       verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });
 
-    return c.json(finalResponse);
+    return c.json(
+      formatIntegratedSearchHostResponse(finalResponse, {
+        responseMode,
+        explicitFormats: formats,
+        extractHighlights,
+        verbose: body?.verbose ?? c.req.query('verbose') === 'true',
+      }),
+    );
   } catch (err: any) {
     return c.json({ error: err.message || 'Integrated search failed' }, 500);
   }
