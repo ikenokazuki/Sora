@@ -531,7 +531,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。返却量を抑える場合は responseMode を選択できます。質問への回答に必要な情報が局所的で query-selected highlights だけで足りる場合は evidence、全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は full を使用してください。evidence は全文と同等ではないため、必要な根拠が不足・曖昧・矛盾する場合は full または formats:["markdown"] で再取得してください。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -546,7 +546,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
         excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
         formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
-        extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: false)'),
+        extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: query指定時はtrue)'),
         dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
         reorderUFlat: z
@@ -592,7 +592,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
         responseMode: IntegratedSearchResponseModeSchema
           .optional()
-          .describe('Host返却モード: "full" (デフォルト・従来互換) または "evidence" (明示opt-in。query-aware highlightsを保持し、安全条件を満たす結果だけ全文markdownの重複返却を省略)'),
+          .describe('返却モード: "full" はデフォルト・従来互換で全文および周辺文脈を保持。"evidence" は query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
       },
       async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
         try {
