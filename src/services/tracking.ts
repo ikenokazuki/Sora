@@ -139,8 +139,8 @@ export function detectCandidates(rawNumber: string): CarrierCode[] {
     return ['japanpost'];
   }
 
-  // その他: 主要3社＋UPS
-  return ['yamato', 'sagawa', 'japanpost', 'ups'];
+  // その他: 主要3社 (UPSは強い形式 1Z... のみ候補とする)
+  return ['yamato', 'sagawa', 'japanpost'];
 }
 
 // ==========================================
@@ -761,14 +761,9 @@ export async function trackUps(trackingNumber: string): Promise<TrackingResult> 
     carrier,
     carrierName: getCarrierName(carrier),
     trackingNumber: num,
-    status: 'registered',
-    statusText: 'UPS公式追跡ページにて詳細配送状況をご確認いただけます',
-    events: [
-      {
-        status: '追跡URL生成完了',
-        description: 'UPS公式Webリンクよりリアルタイムな詳細追跡情報をご確認ください',
-      },
-    ],
+    status: 'unknown',
+    statusText: 'UPS API credentials are not configured; verify the shipment on the official UPS tracking page.',
+    events: [],
     trackingUrl,
     details: {
       serviceType: 'UPS International',
@@ -797,7 +792,7 @@ export async function trackByCarrier(carrier: CarrierCode, trackingNumber: strin
 }
 
 // ==========================================
-// 自動判別投機的並行追跡 (Auto-Detection)
+// 自動判別投機的並行追跡 (Auto-Detection / Fail-Fast)
 // ==========================================
 export async function trackPackageAuto(trackingNumber: string): Promise<TrackingResult> {
   const num = cleanTrackingNumber(trackingNumber);
@@ -808,46 +803,71 @@ export async function trackPackageAuto(trackingNumber: string): Promise<Tracking
     return trackByCarrier(candidates[0], num);
   }
 
-  // 複数候補に並行問い合わせ (Promise.allSettled)
-  const queries = candidates.map((c) => trackByCarrier(c, num));
-  const settled = await Promise.allSettled(queries);
+  const strongStatuses = new Set<TrackingStatus>(['delivered', 'in_transit', 'registered', 'returned']);
 
-  // 有効な追跡結果（not_found / error 以外）を優先的に採択
-  const validResults: TrackingResult[] = [];
-  for (const res of settled) {
-    if (res.status === 'fulfilled' && res.value.status !== 'not_found' && res.value.status !== 'error') {
-      validResults.push(res.value);
+  return new Promise<TrackingResult>((resolve) => {
+    let settledCount = 0;
+    let isResolved = false;
+    const allResults: TrackingResult[] = [];
+
+    for (const carrier of candidates) {
+      trackByCarrier(carrier, num)
+        .catch((err: any) => ({
+          carrier,
+          carrierName: getCarrierName(carrier),
+          trackingNumber: num,
+          status: 'error' as const,
+          statusText: err?.message || '照会エラー',
+          events: [],
+          trackingUrl: getCarrierTrackingUrl(carrier, num),
+          error: err?.message,
+        }))
+        .then((result) => {
+          allResults.push(result);
+          settledCount++;
+
+          // 確実な配送追跡結果（strong result）が返った時点で即座に早期解決
+          if (!isResolved && strongStatuses.has(result.status)) {
+            isResolved = true;
+            return resolve(result);
+          }
+
+          // 全候補が完了した場合のフォールバック
+          if (settledCount === candidates.length && !isResolved) {
+            isResolved = true;
+            // not_found / error 以外の情報があれば優先採択
+            const validResults = allResults.filter(
+              (r) => r.status !== 'not_found' && r.status !== 'error',
+            );
+            if (validResults.length > 0) {
+              const priority: Record<TrackingStatus, number> = {
+                delivered: 5,
+                in_transit: 4,
+                registered: 3,
+                returned: 2,
+                unknown: 1,
+                not_found: 0,
+                error: -1,
+              };
+              validResults.sort((a, b) => (priority[b.status] || 0) - (priority[a.status] || 0));
+              return resolve(validResults[0]);
+            }
+
+            // いずれもヒットしなかった場合、第1候補の not_found レスポンスを返却
+            const primaryCarrier = candidates[0];
+            return resolve({
+              carrier: primaryCarrier,
+              carrierName: getCarrierName(primaryCarrier),
+              trackingNumber: num,
+              status: 'not_found',
+              statusText: `該当するお荷物情報が見つかりませんでした (検索候補: ${candidates.map(getCarrierName).join(', ')})`,
+              events: [],
+              trackingUrl: getCarrierTrackingUrl(primaryCarrier, num),
+            });
+          }
+        });
     }
-  }
-
-  if (validResults.length > 0) {
-    // 複数ヒットした場合は、完了(delivered)や配達中(in_transit)など進捗の進んだものを優先
-    validResults.sort((a, b) => {
-      const priority: Record<TrackingStatus, number> = {
-        delivered: 5,
-        in_transit: 4,
-        registered: 3,
-        returned: 2,
-        unknown: 1,
-        not_found: 0,
-        error: -1,
-      };
-      return (priority[b.status] || 0) - (priority[a.status] || 0);
-    });
-    return validResults[0];
-  }
-
-  // いずれもヒットしなかった場合、第1候補の結果をベースに未検出レスポンスを返却
-  const primaryCarrier = candidates[0];
-  return {
-    carrier: primaryCarrier,
-    carrierName: getCarrierName(primaryCarrier),
-    trackingNumber: num,
-    status: 'not_found',
-    statusText: `該当するお荷物情報が見つかりませんでした (検索候補: ${candidates.map(getCarrierName).join(', ')})`,
-    events: [],
-    trackingUrl: getCarrierTrackingUrl(primaryCarrier, num),
-  };
+  });
 }
 
 // ==========================================
