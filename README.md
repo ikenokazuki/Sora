@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は **Anthropic 推奨の Tool Search Tool (`defer_loading`)** 仕様に準拠しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 27 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 39 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (27ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 27 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 39 ツール）。
 
 ```json
 {
@@ -93,8 +93,8 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
      貿易（HTS/CPSC/FDA）、日本法令・国会審議録、気象庁防災・地震・道路交通、路線乗換・フライト・標高、Xリアルタイム速報、iTunes音楽メタデータの 6 大ドメインは、モデル自前の推測を厳禁とし、必ず Sora の専用ツールを実行。
    - **Tier 2（万能深層Web検索ツール・全実世界データ調査）**:
      上記以外のあらゆる事実調査（ライブ・イベント・試合日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュース、技術ドキュメント等）は、**`search_deep`（推奨一次ツール）** を呼び出し、ノイズ除去された Clean Markdown 本文まで深く読み込んで包括的・根拠ある回答を構築。
-3. **Google & Firecrawl 式の本文精読（Search → Scrape）ルール**:
-   - `search_web`（URL・概要スニペット探索）を使用した場合でも、スニペットだけで開場時間や規約などの詳細が不確定な場合は、推測で終わらせず必ずヒットした公式 URL を `scrape` ツールで精読して本文を確認することを義務化。
+3. **Web 探索・本文取得の使い分けルール**:
+   - `search_web`（formats 省略時: 高速な URL・スニペット探索）を使用し、スニペットだけで開場時間や規約などの詳細が不確定な場合は、推測で終わらせず公式 URL を `scrape` ツールで精読して本文を確認することを推奨。ただし、`search_web` に `formats: ["markdown"]` を指定して同一呼出で既に本文を取得済みである場合は、二重の `scrape` 呼び出しは不要です。深層Web+X調査には `search_deep` を使用。
 4. **軽量な返却キー注記による入力・出力の分離**:
    - トークン爆発やローカル LLM の KV キャッシュ枯渇・互換性問題を引き起こす巨大な JSON 出力スキーマは避け、ツールの説明末尾に返却キー（`返却: { ... }`）を注記することで、LLM がレスポンスの構造を理解しやすくしています。
 
@@ -110,7 +110,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 >    - 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
 >    - 国内交通乗換・運賃: search_route
 >    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
-> 3. search_web のスニペットだけで詳細が不十分な場合は、公式URLを scrape で精読して回答を構築すること。
+> 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 
 ---
@@ -312,13 +312,13 @@ docker run -d \
 Sora は、目的に応じて **10 個の論理モジュール（全 39 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の公式ベストプラクティス（`defer_loading: true` 推奨）に基づき、AI エージェントが日常的・頻繁に使う **代表的な 12 個のコアツールを初期有効（★ CORE）** とし、残りの 27 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (27ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 27 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 12 ツール)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
   - `search_web`: 最速 1-hop Web 検索（候補 URL・スニペット即応、formats 指定で上位本文インライン取得対応）
   - `search_deep`: 深層統合検索・本文一括スクレイピング & リアルタイム速報（responseMode: full / evidence）
-  - `search_tools`: 専用ツールのオンデマンド動的検索・有効化（Tool Search Tool）
+  - `search_tools`: 現在 tools/list に表示されていない追加/deferred ツールの検索・動的有効化（Tool Search Tool）
   - `check_product_compliance`: 商品統合コンプライアンス一括診断（HTSコード/FDA/CPSC/eFiling）
   - `get_weather`: 気象庁 1,805 市区町村天気予報
   - `search_route`: Yahoo! 乗換案内・IC 運賃
@@ -369,9 +369,9 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
 |---|:---:|---|---|---|
 | `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）＆最新の ρSelect v2 パッセージ最適化（分数計画法による情報密度最大化と数学的オプティマイザ証明書）、U字型配置（Lost in the Middle対策）、MMR多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance出所追跡（`[S1:P4]`）・Contextual Highlights（文脈保持パッセージ）・客観的証拠診断量・不一致候補対比・決定論的数値正規化、RAGチャンキング・出典抽出・読了時間・PII保護・要約生成を完備。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `selectors` (object, 任意): ピンポイント抽出用 CSS セレクタ<br>- `extractHighlights` / `query` (任意): キーワード重要文抽出<br>- `highlightAlgorithm` (string, 任意): `"rho-select-v2"` (デフォルト: クエリ証明書付き最新最適化), `"rho-select"`<br>- `highlightOverheadTokens` (number, 任意): 固定オーバーヘッド τ (デフォルト: 96)<br>- `reorderUFlat` (boolean, 任意): U字型リオーダリング (デフォルト: false)<br>- `diversityWeight` (number, 任意): MMR多様性比率 (デフォルト: 0.7)<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `minimizeTables` (boolean, 任意): 表の空欄・冗長列自動パージ (デフォルト: true)<br>- `evidenceMode` (string, 任意): `"full"`, `"highlights"`, `"contextual_highlights"`<br>- `includeDiagnostics` (boolean, 任意): クエリ網羅率等の客観的証拠診断量を付与<br>- `includeDiscrepancies` (boolean, 任意): 日付・金額等の不一致候補を対比提示<br>- `safeNormalize` (boolean, 任意): 漢数字・単位の決定論的正規化と導出履歴<br>- `chunkMarkdown` (boolean, 任意): RAG 用セマンティック分割<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
-| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。アイテム間動的コーパスIDF付きBM25+リランキングにより適合度の高い情報を上位表示。ドメイン絞り込み・除外・期間指定に対応。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 20)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
+| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。アイテム間動的コーパスIDF付きBM25+リランキングにより適合度の高い情報を上位表示。ドメイン絞り込み・除外・期間指定に対応。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
 | `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。インメモリ PRF、U字型配置、MMR多様性選択、Temporal Context Anchor、Smart Table Minimizer、深層エビデンス駆動リランキング（`rerankByDeepEvidence`）対応。返却量を抑える場合は `responseMode` を選択可能。局所的事実で足りる場合は `evidence`、全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は `full`（デフォルト）を使用。`evidence` で根拠が不足・曖昧な場合は `full` または `formats: ["markdown"]` で再取得できます。 | Web: `source: "web"`<br>X: `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `responseMode` (string, 任意): `"full"` (デフォルト: 全文・網羅調査重視) または `"evidence"` (局所事実・ハイライト優先)<br>- `formats` (string[], 任意): 出力フォーマット（responseMode と直交して指定可能）<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `officialAccountId` (string, 任意): 公式XアカウントID<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `noCache` (boolean, 任意): キャッシュ迂回・強制最新取得<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `highlightAlgorithm` (string, 任意): `"rho-select-v2"` (デフォルト), `"rho-select"`, `"rho-bm25"`, `"legacy"`<br>- `reorderUFlat` / `enablePrf` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |
-| `search_tools` | **★ CORE** | **【動的ツール発見メタツール】** Sora の全専門ツール（天気・乗換・知恵袋・X速報・音楽・法令・交通情報・差分監視等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"天気"`, `"知恵袋"`, `"yahoo"`, `"music"`, `"交通"`, `"法令"`) |
+| `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) |
 | `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `reorderUFlat` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
 | `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `reorderUFlat` / `diversityWeight` / `annotateTemporal` / `minimizeTables` (任意) |

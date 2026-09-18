@@ -627,7 +627,7 @@ export const SEARCH_WEB_INPUT_SHAPE = {
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定時のみ上位検索結果をスクレイプし、要求形式を付与する'),
-  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 20, formats指定時は5, 最大: 20)'),
+  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)'),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('formats指定時の各ページ最大文字数 (デフォルト: 30000)'),
   onlyMainContent: z.boolean().optional().describe('formats指定時に本文領域のみ抽出するか (デフォルト: true)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
@@ -1794,7 +1794,8 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
   } else if (schema instanceof z.ZodBoolean) {
     res = { type: 'boolean' };
   } else if (schema instanceof z.ZodEnum) {
-    res = { type: 'string', enum: (schema as any)._def.values };
+    const enumValues = (schema as any).options ?? (schema as any)._def.values ?? Object.keys((schema as any)._def.entries ?? {});
+    res = { type: 'string', enum: enumValues };
   } else if (schema instanceof z.ZodLiteral) {
     res = { type: typeof (schema as any)._def.value, enum: [(schema as any)._def.value] };
   } else if (schema instanceof z.ZodArray) {
