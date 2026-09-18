@@ -117,7 +117,12 @@ export function searchCatalog(
       return (
         entry.name.toLowerCase().includes(term) ||
         entry.category.toLowerCase().includes(term) ||
-        entry.keywords.some((k) => k.toLowerCase().includes(term)) ||
+        entry.keywords.some((k) => {
+          const kLower = k.toLowerCase();
+          if (kLower.includes(term)) return true;
+          const isMeaningful = kLower.length >= 2 || /[一-龠]/.test(kLower);
+          return isMeaningful && term.includes(kLower);
+        }) ||
         entry.description.toLowerCase().includes(term)
       );
     };
@@ -153,9 +158,16 @@ export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool 
 ## 2. Dynamic Tool Discovery Protocol
 - **Visible Tools**: If the required specialized tool is visible in \`tools/list\` (e.g. \`get_weather\`, \`search_route\`, \`search_realtime\`, \`search_chiebukuro\`, \`check_product_compliance\`, \`search_disaster_warnings\`, \`search_earthquake\`, \`search_laws\`), **call it directly without calling \`search_tools\`**.
 - **Hidden / Deferred Tools**: If a required specialized tool is not visible in \`tools/list\` (e.g. \`track_package\`, \`search_song\`, \`search_artist\`, \`get_flight_status\`, \`get_law_text\`, \`search_diet_minutes\`), call \`search_tools\` with relevant keywords to search and dynamically activate it in the current session, then invoke the activated tool.
-- **Unavailable Modules**: If \`search_tools\` cannot find the requested tool, the server module may be disabled or unavailable. In this case, use an appropriate available safe fallback (e.g. \`search_deep\` or \`search_web\`) without inventing data.
+- **Unavailable Modules**: If \`search_tools\` cannot find the requested tool, the server module may be disabled or unavailable by server configuration. In this case, use an appropriate available safe fallback (e.g. \`search_deep\` or \`search_web\`) without inventing data.
 
-## 3. Two-Tier Tool Decision Framework
+## 3. Web Tool Overlap & Primary Boundaries
+- **\`search_web\`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via \`formats: ["markdown"]\`.
+- **\`search_deep\`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.
+- **\`scrape\` / \`scrape_batch\`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.
+- **\`crawl_site\`**: Same-site multi-page traversal for documentation or full-site knowledge collection.
+- **\`browser_action\`**: Interactive browser operation requiring clicks, form fills, JS execution, or complex dynamic rendering.
+
+## 4. Two-Tier Tool Decision Framework
 
 ### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
 For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol to invoke the corresponding specialized Sora MCP tool:
@@ -175,16 +187,13 @@ For ANY query requiring up-to-date facts, event dates, or external context outsi
   - **\`responseMode: "evidence"\`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.
   - **\`responseMode: "full"\` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.
   - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with \`responseMode: "full"\` or specify \`formats: ["markdown"]\` (which preserves full Markdown even in evidence mode).
+  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).
 - **\`search_web\` (Candidate Discovery & Optional 1-Call Enrichment)**:
   - **URL / Snippet Discovery**: Call with \`formats\` omitted for lightweight candidate search without scraping.
   - **Search + Content in One Call**: Specify \`formats: ["markdown"]\` (or \`formats: ["markdown", "tables"]\`) to scrape top results and attach requested formats in a single round-trip.
   - *Note*: If snippets lack specific details, read the page using \`scrape\`. However, do NOT force a redundant second \`scrape\` call if \`search_web\` with \`formats\` already retrieved the necessary content.
-- **\`scrape\` / \`scrape_batch\`**:
-  Fetches full clean Markdown or requested structured formats from specific URLs identified through search or provided by the user.
-- **\`browser_action\`**:
-  Use when dynamic browser interactions (clicking, form submission, SPA rendering) are needed.
 
-## 4. Interactive Clarification Flow
+## 5. Interactive Clarification Flow
 - When tools return 'inputCompleteness: "partial"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.`;
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
@@ -223,7 +232,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'scrape',
       'web',
-      '【単一URL・PDF本文抽出】指定した URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全・高速に描画完了を待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、および重要告知画像（フライヤー・タイムテーブル・図表）スコアリングに対応。※返却: { title, content, events, breadcrumb, images, tables, pageType, publishedTime, author, siteName, ... }',
+      '【単一URL・PDF本文抽出】指定した既知 URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action を使用してください。',
       {
         url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
         maxChars: z
@@ -524,7 +533,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['一括スクレイプ', '並行', '複数URL', 'バッチ'] },
+      { defaultEnabled: deferredDefault, keywords: ['一括スクレイプ', '一括取得', '複数URL', '並行取得', 'バッチ'] },
     );
 
     // Tool 2: search_deep (超高精度 統合検索・本文一括取得) - CORE (defaultEnabled: true)
@@ -533,7 +542,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。返却量を抑える場合は responseMode を選択できます。質問への回答に必要な情報が局所的で query-selected highlights だけで足りる場合は evidence、全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は full を使用してください。evidence は全文と同等ではないため、必要な根拠が不足・曖昧・矛盾する場合は full または formats:["markdown"] で再取得してください。',
+      '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -680,7 +689,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'crawl_site',
       'web',
-      '【サイト内再帰クロール】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、各ページの Markdown 本文を一括収集します。ドキュメントサイト等のまとめ読みに最適です。',
+      '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
         maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
@@ -732,7 +741,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['クロール', '再帰巡回', 'ドメイン探索', '一括収集'] },
+      { defaultEnabled: deferredDefault, keywords: ['クロール', 'サイト巡回', '再帰巡回', '全ページ取得', 'まとめ読み', 'ドメイン探索', '一括収集'] },
     );
 
     // Tool 5: search_web (基本 Web 検索 + optional requested-format extraction) - CORE
@@ -741,7 +750,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_web',
       'web',
-      '【万能Web検索・候補探索】ニュース、イベント日程・開催情報、発売日、営業時間、公式告知などの候補URL探索に使用します。デフォルトは従来どおりタイトル・URL・スニペットのみを高速返却します。formats を明示した場合だけ上位検索結果を追加スクレイプし、markdown/html/rawHtml/links/screenshot/jsonLd/images/tables の指定形式を付与します。X速報・深層rerankが必要な場合は search_deep を使用してください。',
+      '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLおよび概要スニペットを高速探索します（URL/スニペット探索）。formats を指定した場合は上位検索結果を追加スクレイプし、1回の呼び出しで記事本文や指定形式をインライン返却可能です（同一呼出での本文抽出）。深層Web+リアルタイムX調査や深層リランキングが必要な場合は search_deep、既知URLの精読は scrape を使用してください。',
       SEARCH_WEB_INPUT_SHAPE,
       async (options) => {
         try {
@@ -764,7 +773,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'browser_action',
       'browser',
-      '【対話型ブラウザ自動操作】Web ページを開き、クリック・テキスト入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの一連のアクションを順次実行して最終結果を返します。ボタンのテキスト指定クリックや、sessionId によるマルチターン対話セッション維持にも対応。',
+      '【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。',
       {
         url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
         sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
@@ -1209,10 +1218,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         defaultEnabled: deferredDefault,
         keywords: [
           '荷物追跡',
+          '荷物',
+          '配送',
+          '配達',
           '追跡',
           '配送状況',
+          '宅配便',
+          '宅急便',
           'ヤマト',
           'クロネコヤマト',
+          '佐川',
           '佐川急便',
           '日本郵便',
           '郵便',
@@ -1220,6 +1235,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           '西濃運輸',
           '福山通運',
           'UPS',
+          '伝票番号',
+          '送り状',
           'tracking',
           'package',
         ],
@@ -1481,7 +1498,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '曲名', 'iTunes', '音楽', 'Apple Music'] },
+      { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '楽曲', '曲名', '曲', '歌', 'ソング', 'iTunes', '音楽', 'Apple Music', 'ミュージック'] },
     );
 
     // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索) - DEFERRED
@@ -1510,7 +1527,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['アーティスト検索', 'ディスコグラフィ', '歌手', 'iTunes', 'アルバム'] },
+      { defaultEnabled: deferredDefault, keywords: ['アーティスト検索', 'アーティスト', 'ディスコグラフィ', '歌手', 'バンド', 'ミュージシャン', 'iTunes', 'アルバム'] },
     );
 
     // Tool 24: search_music (iTunes 音楽・アルバム・アーティスト汎用検索) - DEFERRED
@@ -1540,7 +1557,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', 'アルバム', 'iTunes', '音楽'] },
+      { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', '音楽検索', '音楽', '楽曲', '曲', 'アルバム', 'iTunes', 'ミュージック'] },
     );
   }
 
@@ -1854,9 +1871,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           entry.handle.enable();
           const cleanDesc = entry.description.replace(/^【.*?】/, '').slice(0, 80);
           const tag = entry.description.match(/^【(.*?)】/)?.[0] || '';
-          newlyEnabled.push(`- ${entry.name}: ${tag}${cleanDesc}...`);
+          newlyEnabled.push(`- ${entry.name}: ${tag}${cleanDesc}... (状態: 有効化完了)`);
         } else {
-          alreadyEnabled.push(entry.name);
+          alreadyEnabled.push(`- ${entry.name} (状態: 既に有効)`);
         }
       }
 
@@ -1865,7 +1882,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           content: [
             {
               type: 'text',
-              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換/荷物追跡), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令), trade (輸出/HTS/CPSC/FDA), media (画像検査)`,
+              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n該当機能のサーバーモジュールが無効化・利用不可となっている可能性があります。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換/荷物追跡), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令), trade (輸出/HTS/CPSC/FDA), media (画像検査)`,
             },
           ],
         };
@@ -1876,7 +1893,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         messages.push(`以下のツールをセッション内で有効化しました:\n${newlyEnabled.join('\n')}\n\n対象ツールを直接呼び出してください。`);
       }
       if (alreadyEnabled.length > 0) {
-        messages.push(`以下のツールはすでに有効化されています: ${alreadyEnabled.join(', ')}`);
+        messages.push(`以下のツールはすでに有効化されています:\n${alreadyEnabled.join('\n')}`);
       }
 
       return {
