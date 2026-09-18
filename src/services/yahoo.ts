@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults } from '../enrichment.js';
-import { enrichRealtimeItemsWithXDetail, defaultXDetailProvider } from './x_detail.js';
+import { enrichRealtimeItemsWithXDetail, defaultXDetailProvider, rerankRealtimeItems } from './x_detail.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -336,6 +336,7 @@ export interface YahooRealtimeOptions {
   limit?: number;
   page?: number;
   disableFallback?: boolean;
+  detailEnrichment?: boolean;
 }
 
 /**
@@ -538,6 +539,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   limit?: number;
   page?: number;
   disableFallback?: boolean;
+  detailEnrichment?: boolean;
 }): Promise<{
   items: any[];
   count: number;
@@ -551,6 +553,9 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const sort = options.sort || 'recent';
   const limit = options.limit;
   const page = options.page;
+  const detailEnrichment = typeof options === 'object' && options.detailEnrichment !== undefined
+    ? options.detailEnrichment
+    : true;
 
   const candidateQueries = options.disableFallback
     ? [builtQuery]
@@ -588,11 +593,11 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
 
   // 指示書 第7条: fallback retrieval 発生時も含め、ranking は必ず originalQuery (binding query) で行う
   if (finalItems.length > 0 && originalQuery) {
-    finalItems = rerankSearchResults(finalItems, originalQuery);
+    finalItems = rerankRealtimeItems(finalItems, originalQuery);
   }
 
   // 指示書 第8-10条: X長文投稿の適応的詳細補完 (bounded FxTwitter v2)
-  if (finalItems.length > 0 && originalQuery) {
+  if (detailEnrichment && finalItems.length > 0 && originalQuery) {
     const { items: enriched } = await enrichRealtimeItemsWithXDetail(finalItems, originalQuery);
     finalItems = enriched;
   }
