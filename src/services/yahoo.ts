@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults } from '../enrichment.js';
+import { enrichRealtimeItemsWithXDetail, defaultXDetailProvider } from './x_detail.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -585,6 +586,17 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     }
   }
 
+  // 指示書 第7条: fallback retrieval 発生時も含め、ranking は必ず originalQuery (binding query) で行う
+  if (finalItems.length > 0 && originalQuery) {
+    finalItems = rerankSearchResults(finalItems, originalQuery);
+  }
+
+  // 指示書 第8-10条: X長文投稿の適応的詳細補完 (bounded FxTwitter v2)
+  if (finalItems.length > 0 && originalQuery) {
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(finalItems, originalQuery);
+    finalItems = enriched;
+  }
+
   return {
     source: 'x',
     originalQuery,
@@ -621,6 +633,29 @@ export async function fetchTweetsForUrlOrUser(
   }
 
   if (!handle && !statusId && !options.contextTitle && !options.snippet) return null;
+
+  // statusId が判明している場合、まず FxTwitter detail を 1回直接試行 (Note Tweet 全文取得)
+  if (statusId) {
+    try {
+      const detail = await defaultXDetailProvider.fetchStatus(statusId);
+      if (detail && detail.text) {
+        const author = detail.author
+          ? `${detail.author.name} (@${detail.author.screenName})`
+          : handle ? `@${handle}` : 'X User';
+        const title = options.contextTitle || `${author} on X: "${detail.text.slice(0, 50)}..."`;
+        const markdown = `# ${title}\n\nURL: ${urlOrHandle}\nAuthor: ${author}\n\n${detail.text}`;
+        return {
+          title,
+          content: markdown.trim(),
+          author,
+          publishedTime: detail.createdAt,
+          siteName: 'X (Twitter)',
+        };
+      }
+    } catch {
+      // fail-soft: 失敗時は既存の Yahoo リアルタイム検索・スニペットフォールバックへ
+    }
+  }
 
   // 検索クエリ候補: 1) contextTitle (日本語名など), 2) @handle
   const searchQueries: string[] = [];
