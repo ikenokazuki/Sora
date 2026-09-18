@@ -47,9 +47,11 @@ import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
 import {
   buildXIsolatedEvidence,
+  buildXIsolatedEvidenceFromDirectStatus,
   buildXRetrievalPlan,
   stripXWebDiscoveryText,
 } from './x_source_isolation.js';
+import { defaultXDetailProvider } from './services/x_detail.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1368,8 +1370,20 @@ export async function integratedSearch(options: {
           const plan = xPlanByIndex.get(itemIndex);
           if (plan) {
             const isolatedBase = stripXWebDiscoveryText(item);
+
+            // 指示書 第13条: Direct X status URL の場合、既知の statusId に対してまず FxTwitter detail 1回を試行
+            let directEvidence: any = null;
+            if (plan.seed.kind === 'status' && plan.seed.statusId) {
+              try {
+                const detail = await defaultXDetailProvider.fetchStatus(plan.seed.statusId);
+                if (detail && detail.text) {
+                  directEvidence = buildXIsolatedEvidenceFromDirectStatus(plan.seed, detail);
+                }
+              } catch {}
+            }
+
             let retrievalPromise = xRetrievalCache.get(plan.key);
-            if (!retrievalPromise) {
+            if (!directEvidence && !retrievalPromise) {
               retrievalPromise = searchYahooRealtime({
                 query,
                 ...(plan.seed.handle ? { accountId: plan.seed.handle } : {}),
@@ -1380,8 +1394,8 @@ export async function integratedSearch(options: {
               xRetrievalCache.set(plan.key, retrievalPromise);
             }
 
-            const realtimeForSeed = await retrievalPromise;
-            const isolatedEvidence = buildXIsolatedEvidence(
+            const realtimeForSeed = directEvidence ? null : await retrievalPromise;
+            const isolatedEvidence = directEvidence || buildXIsolatedEvidence(
               plan.seed,
               Array.isArray(realtimeForSeed?.items)
                 ? realtimeForSeed.items
