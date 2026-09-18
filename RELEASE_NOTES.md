@@ -1,3 +1,14 @@
+# 🌤️ Sora Release v2.24.1
+
+- integrated X detail enrichmentをofficial/public merge後へ移動
+- Yahoo長文切断疑いを文字数gateで検出
+- top5をローカル評価し、Fx detail requestは最大2件
+- query relevanceでdetail候補を選択
+- 無関係な短文投稿への不要なFx取得を防止
+- Yahoo/Fx fail-soft挙動を維持
+
+---
+
 # 🌤️ Sora Release v2.24.0
 
 荷物追跡の信頼性・レイテンシを飛躍的に高める **Fail-fast Package Tracking** と、X (旧 Twitter) の長文投稿（Note Tweet 等）を正確かつ安全に補完する **Bounded X Long-form Enrichment** を統合したメジャー・マイナー機能リリースです。
