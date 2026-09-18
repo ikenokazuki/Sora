@@ -10,6 +10,7 @@
 
 import { getFromCache, setToCache, runWithSingleFlight } from '../cache.js';
 import { tokenizeAndSelectTerms, type ParsedSection } from '../rho_select.js';
+import { rerankSearchResults } from '../enrichment.js';
 
 export interface XPostDetail {
   statusId: string;
@@ -31,6 +32,15 @@ export interface XPostDetailProvider {
 const DEFAULT_FXTWITTER_BASE = 'https://api.fxtwitter.com';
 const DEFAULT_TIMEOUT_MS = 1500;
 const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export const X_DETAIL_INSPECT_LIMIT = 5;
+export const X_DETAIL_MAX_CALLS = 2;
+/**
+ * 経験的な保守的閾値 (conservative threshold)。
+ * Yahoo Realtimeで長文切断が疑われる候補を拾うためのUTF-16 code unit長基準 (text.length)。
+ * X仕様上の絶対上限という意味ではない。
+ */
+export const YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS = 240;
 
 export class FxTwitterDetailProvider implements XPostDetailProvider {
   private base: string;
@@ -69,7 +79,7 @@ export class FxTwitterDetailProvider implements XPostDetailProvider {
         const url = `${this.base}/2/status/${statusId}`;
         const res = await fetch(url, {
           headers: {
-            'User-Agent': 'Sora-Search/2.23 (Detail-Enrichment; +https://github.com/ikenokazuki/Sora)',
+            'User-Agent': 'Sora-Search/2.24 (Detail-Enrichment; +https://github.com/ikenokazuki/Sora)',
             Accept: 'application/json',
           },
           signal: AbortSignal.timeout(this.timeoutMs),
@@ -218,16 +228,64 @@ export function observeRequirements(
 }
 
 /**
+ * Determines whether a Yahoo Realtime item is suspected of being truncated.
+ * Gate: text.length >= YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS (240).
+ * Skips already enriched items, items without valid statusId, or empty text.
+ */
+export function isLikelyYahooRealtimeTruncated(item: Record<string, any>): boolean {
+  if (!item || typeof item !== 'object') return false;
+  if (item.detailEnriched === true) return false;
+
+  const statusId = String(item.id || item.statusId || item.status_id || item.tweetId || '').trim();
+  if (!/^\d+$/.test(statusId)) return false;
+
+  const text = typeof item.text === 'string' ? item.text.trim() : '';
+  if (!text) return false;
+
+  return text.length >= YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS;
+}
+
+/**
+ * Realtime 専用リランキングラッパー。
+ * 内部で一時的に { title, snippet, url, originalIndex } に投影し、既存 rerankSearchResults を利用。
+ * ランキング後に元の item 配列へ復元し、一時プロパティを漏らさない。
+ */
+export function rerankRealtimeItems(
+  items: Array<Record<string, any>>,
+  query: string,
+): Array<Record<string, any>> {
+  if (!Array.isArray(items) || items.length <= 1 || !query) {
+    return items || [];
+  }
+
+  const projected = items.map((item, originalIndex) => {
+    const authorName = item.author_name || '';
+    const authorHandle = item.author_handle ? `@${String(item.author_handle).replace(/^@/, '')}` : '';
+    const title = [authorName, authorHandle].filter(Boolean).join(' ');
+    const snippet = typeof item.text === 'string' ? item.text : '';
+    const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : '';
+    return {
+      title,
+      snippet,
+      url,
+      originalIndex,
+    };
+  });
+
+  const ranked = rerankSearchResults(projected, query);
+  return ranked.map((p) => items[p.originalIndex]);
+}
+
+/**
  * Applies bounded adaptive detail enrichment to Realtime/X search items.
  *
- * Constraints (Section 9):
- * - Never fetch all candidates.
- * - Inspect only top 2 candidates.
- * - Case A: Top candidate has all requirements -> 0 requests.
- * - Case B: Top1 has relevant seed (observed >= 1) but evidence gap (missing > 0) -> fetch top1.
- * - Case C: Top1 has 0 observed terms -> do not fetch top1, inspect top2.
- * - Case D: Top1 fetch failed/unusable and top2 has partial terms -> fetch top2.
- * - Maximum 2 FxTwitter calls per search.
+ * Architecture (v2.24.1):
+ * - Inspect up to top 5 candidates locally (X_DETAIL_INSPECT_LIMIT = 5).
+ * - Gate: text.length >= 240 (isLikelyYahooRealtimeTruncated).
+ * - Selector: query relevance (observed.length > 0 against author_name + author_handle + text).
+ * - Relevance ranking via rerankRealtimeItems with semanticQuery.
+ * - Cap external FxTwitter calls at 2 (X_DETAIL_MAX_CALLS = 2).
+ * - Fail-soft on all errors.
  */
 export async function enrichRealtimeItemsWithXDetail(
   items: Array<Record<string, any>>,
@@ -245,56 +303,50 @@ export async function enrichRealtimeItemsWithXDetail(
 
   const resultItems = items.map((it) => ({ ...it }));
   let fxCalls = 0;
-  const maxCalls = 2;
 
-  const candidateTexts = resultItems.slice(0, 5).map((it) => String(it.text || it.content || it.snippet || ''));
+  const inspectItems = resultItems.slice(0, X_DETAIL_INSPECT_LIMIT);
+  const contextTexts = inspectItems.map((it) => String(it.text || ''));
 
-  // Inspect up to top 2 items
-  for (let i = 0; i < Math.min(resultItems.length, 2) && fxCalls < maxCalls; i++) {
-    const item = resultItems[i];
-    const itemText = String(item.text || item.content || item.snippet || '');
+  // 1. Gate: Yahoo text truncation suspects
+  const suspects = inspectItems.filter(isLikelyYahooRealtimeTruncated);
+
+  // 2. Selector: Query relevance on (author_name + author_handle + text)
+  const relevantSuspects = suspects.filter((item) => {
+    const evidenceText = [item.author_name, item.author_handle, item.text].filter(Boolean).join('\n');
+    const obs = observeRequirements(semanticQuery, evidenceText, contextTexts);
+    return obs.observed.length > 0;
+  });
+
+  // 3. Ranking: Rank relevant suspects by original semantic query
+  const ranked = rerankRealtimeItems(relevantSuspects, semanticQuery);
+
+  // 4. Bounded FxTwitter fetch (capped at X_DETAIL_MAX_CALLS = 2)
+  for (const item of ranked) {
+    if (fxCalls >= X_DETAIL_MAX_CALLS) break;
+
     const statusId = String(item.id || item.statusId || item.status_id || item.tweetId || '').trim();
+    if (!/^\d+$/.test(statusId)) continue;
 
-    if (!/^\d+$/.test(statusId)) {
-      continue;
-    }
+    fxCalls++;
+    const detail = await provider.fetchStatus(statusId);
 
-    const obs = observeRequirements(semanticQuery, itemText, candidateTexts);
+    if (detail && detail.text) {
+      item.originalText = item.text;
+      item.text = detail.text;
+      item.snippet = detail.text;
+      item.markdown = detail.text;
+      item.detailEnriched = true;
+      item.detailProvider = 'fxtwitter';
 
-    const isTruncatedSnippet = /[\u2026\.\.]$/.test(itemText.trim()) || itemText.endsWith('…') || itemText.endsWith('...');
-
-    // Case A: Top candidate already observes all requirements and is NOT truncated -> No need for enrichment
-    if (obs.requirements.length > 0 && obs.missing.length === 0 && !isTruncatedSnippet) {
-      if (i === 0) {
-        // Top1 is sufficient; stop immediately
-        break;
+      if (detail.isNoteTweet) {
+        item.isNoteTweet = true;
       }
-      continue;
-    }
-
-    // Case B & Case D: Relevant seed (observed >= 1) but evidence gap (missing > 0 or truncated snippet)
-    if (obs.observed.length > 0 && (obs.missing.length > 0 || isTruncatedSnippet)) {
-      fxCalls++;
-      const detail = await provider.fetchStatus(statusId);
-
-      if (detail && detail.text) {
-        // Success: Merge full text
-        item.originalText = itemText;
-        item.text = detail.text;
-        item.snippet = detail.text;
-        item.markdown = detail.text;
-        if (detail.isNoteTweet) {
-          item.isNoteTweet = true;
-        }
-        if (detail.media && detail.media.length > 0) {
-          item.media = detail.media;
-        }
-        item.detailEnriched = true;
-        item.detailProvider = 'fxtwitter';
+      if (detail.media && detail.media.length > 0) {
+        item.media = detail.media;
       }
     }
-    // Case C: observed === 0 -> Skip without calling Fx, loop will inspect top2
   }
 
   return { items: resultItems, fxCalls };
 }
+
