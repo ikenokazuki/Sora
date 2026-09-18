@@ -241,5 +241,153 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(searchDeepDesc).not.toContain('まず search_tools で専用ツールを検索');
       expect(searchDeepDesc).toContain('responseMode');
     });
+
+    it('instructions contain tool overlap boundaries and token efficiency guidelines', () => {
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Web Tool Overlap & Primary Boundaries');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('search_web');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('search_deep');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('scrape');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('crawl_site');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('browser_action');
+      expect(SORA_MCP_INSTRUCTIONS).toContain('Token Efficiency');
+    });
+  });
+
+  describe('F. Progressive disclosure & E2E tool-list refresh', () => {
+    it('initial tools/list budget is bounded to exactly 12 core tools and measured character limits', () => {
+      const server = createMcpServer({ deferTools: true });
+      const registered = (server as any)._registeredTools;
+      const initialTools = Object.entries(registered)
+        .filter(([_, t]: [string, any]) => t.enabled)
+        .map(([name, t]: [string, any]) => ({
+          name,
+          descLength: t.description?.length || 0,
+        }));
+
+      expect(initialTools.length).toBe(12);
+      const totalDescChars = initialTools.reduce((acc, t) => acc + t.descLength, 0);
+      expect(totalDescChars).toBeLessThan(3500);
+      for (const t of initialTools) {
+        expect(t.descLength).toBeLessThan(400);
+      }
+    });
+
+    it('E2E: client receives list_changed notification and can immediately invoke newly activated tool', async () => {
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+      const { ToolListChangedNotificationSchema } = await import('@modelcontextprotocol/sdk/types.js');
+
+      const server = createMcpServer({ deferTools: true });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+      let listChangedCount = 0;
+      const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
+      client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+        listChangedCount++;
+      });
+
+      await Promise.all([
+        server.connect(serverTransport),
+        client.connect(clientTransport),
+      ]);
+
+      // 1. Initial list has 12 tools
+      const initialTools = await client.listTools();
+      expect(initialTools.tools.length).toBe(12);
+      expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
+
+      // 2. Discover and activate track_package
+      const searchResult = await client.callTool({ name: 'search_tools', arguments: { query: '荷物追跡' } });
+      expect((searchResult.content as any)[0].text).toContain('track_package');
+      expect((searchResult.content as any)[0].text).toContain('有効化完了');
+
+      // 3. Client received standard MCP notification
+      expect(listChangedCount).toBe(1);
+
+      // 4. Refreshed tools/list now includes track_package
+      const refreshedTools = await client.listTools();
+      expect(refreshedTools.tools.length).toBe(13);
+      expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
+
+      // 5. Invoke the newly activated tool directly
+      const trackResult = await client.callTool({
+        name: 'track_package',
+        arguments: { trackingNumber: '123456789012' },
+      });
+      expect(trackResult.isError ?? false).toBe(false);
+
+      await client.close();
+      await server.close();
+    });
+  });
+
+  describe('G. Module gating integrity', () => {
+    it('disabled modules are never registered and cannot be activated by search_tools', async () => {
+      // Only enable 'life' module
+      const server = createMcpServer({ deferTools: true, modules: ['life'] });
+      const registered = (server as any)._registeredTools;
+
+      // music module tools must not exist at all in registered tools
+      expect(registered['search_song']).toBeUndefined();
+      expect(registered['search_artist']).toBeUndefined();
+
+      // search_tools should not be able to find music tools
+      const searchTools = registered['search_tools'];
+      expect(searchTools).toBeDefined();
+
+      const searchResult = await searchTools.handler({ query: '音楽' });
+      const text = searchResult.content?.[0]?.text;
+      expect(text).toContain('一致する追加ツールは見つかりませんでした');
+      expect(text).toMatch(/無効化|利用不可/);
+    });
+  });
+
+  describe('H. Natural language discovery quality and lightweight output', () => {
+    it('deferred tools are discoverable by natural language terms and bidirectional containment', async () => {
+      const server = createMcpServer({ deferTools: true });
+      const searchTools = (server as any)._registeredTools['search_tools'];
+
+      // natural language tracking
+      const resTracking = await searchTools.handler({ query: 'ヤマトの追跡' });
+      expect(resTracking.content?.[0]?.text).toContain('track_package');
+
+      // natural language music
+      const resSong = await searchTools.handler({ query: '曲の検索' });
+      expect(resSong.content?.[0]?.text).toContain('search_song');
+
+      // natural language artist
+      const resArtist = await searchTools.handler({ query: '歌手' });
+      expect(resArtist.content?.[0]?.text).toContain('search_artist');
+    });
+
+    it('search_tools output is lightweight without full schema dumping', async () => {
+      const server = createMcpServer({ deferTools: true });
+      const searchTools = (server as any)._registeredTools['search_tools'];
+
+      const result = await searchTools.handler({ query: '荷物追跡' });
+      const text = result.content?.[0]?.text;
+
+      // Must have tool name and summary
+      expect(text).toContain('track_package');
+      expect(text).toContain('有効化完了');
+
+      // Must NOT dump full json-schema properties
+      expect(text).not.toContain('"properties"');
+      expect(text).not.toContain('"required"');
+      expect(text).not.toContain('"type": "string"');
+    });
+  });
+
+  describe('I. Tool overlap boundaries in descriptions', () => {
+    it('verifies critical distinction phrases in web and browser tool descriptions', () => {
+      const server = createMcpServer({ deferTools: false });
+      const registered = (server as any)._registeredTools;
+
+      expect(registered['search_web'].description).toMatch(/URL\/スニペット探索/);
+      expect(registered['search_deep'].description).toMatch(/Web\+X統合深層調査|深層エビデンス駆動リランキング/);
+      expect(registered['scrape'].description).toMatch(/既知URLの精読・本文抽出/);
+      expect(registered['crawl_site'].description).toMatch(/同一サイトの複数ページ巡回/);
+      expect(registered['browser_action'].description).toMatch(/対話・動的操作・レンダリングが必須/);
+    });
   });
 });
