@@ -1120,10 +1120,11 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.8 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /search/trend`)
-- **リアルタイム検索 (`POST /search/realtime`)**: `{ "query": "イベント名", "sort": "popular", "limit": 20, "page": 1 }`
+### 3.8 Yahoo リアルタイム検索 & トレンド (`POST /search/realtime` / `POST /realtime` / `POST /search/trend`)
+- **リアルタイム検索 (`POST /search/realtime` または `POST /realtime`)**: `{ "query": "イベント名", "sort": "popular", "limit": 20, "page": 1 }`
   - `sort`: `"recent"` (新着順, デフォルト) または `"popular"` (話題順 / エンゲージメント順)
   - 各ポストに `publishedTime` (ISO 8601 文字列), `author` (ユーザー名 + @アカウント名), `siteName: "X (Twitter)"` が統一フォーマットで自動付与されます。
+  - **X 長文投稿 (Note Tweet) 全文補完**: クエリ要求やスニペット省略記号（`…`）を検知し、上位候補を FxTwitter v2 API（最大 2 件、1,500ms fail-soft）で自動補完。完全な本文とメディアを取得可能です。
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---
@@ -1680,7 +1681,7 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   ```
 
 ### 3.24 荷物追跡・配達状況照会 (`POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`)
-日本の主要配送業者5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および国際配送の UPS の荷物配達状況をスクレイピング・API連携により横断追跡・正規化します。伝票番号（ハイフン有無・全角半角不問）のフォーマットや Modulus 7 / Luhn チェックサムによる運送会社自動判別に対応しています。5分間のインメモリキャッシュを内蔵。
+日本の主要配送業者5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および国際配送の UPS の荷物配達状況をスクレイピング・API連携により横断追跡・正規化します。伝票番号（ハイフン有無・全角半角不問）のフォーマットや Modulus 7 / Luhn チェックサムによる運送会社自動判別に対応。並行投機照会の **Fail-fast 早期確定**（結果確定時に他社タイムアウトを待たず即時返却）および UPS 認証情報未設定時の安全な `status: "unknown"` フォールバックを備えています。5分間のインメモリキャッシュを内蔵。
 
 - **対応キャリア**:
   - `yamato` (ヤマト運輸 / クロネコヤマト)

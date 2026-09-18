@@ -1,3 +1,31 @@
+# 🌤️ Sora Release v2.24.0
+
+荷物追跡の信頼性・レイテンシを飛躍的に高める **Fail-fast Package Tracking** と、X (旧 Twitter) の長文投稿（Note Tweet 等）を正確かつ安全に補完する **Bounded X Long-form Enrichment** を統合したメジャー・マイナー機能リリースです。
+
+各種 MCP ツールと REST API の全レイヤー（`search_deep` / `/search/deep`, `search_realtime` / `/realtime`, `scrape` / `/scrape`, `track_package` / `/tracking`）においてマルチサーフェスな動作整合性を完全担保しました。
+
+---
+
+## 🌟 v2.24.0 主なハイライト (Highlights)
+
+### 1. 📦 荷物追跡の信頼性・レイテンシ改善 (Track B)
+- **並行投機照会の Fail-fast 化**: 複数キャリアの並行探索において、確実な配送結果（`delivered`, `in_transit`, `registered`, `returned`）が確定した瞬間に即座に早期 return。遅延キャリアやタイムアウト待ちによるレイテンシを大幅に削減。
+- **UPS フォールバックの適正化**: API 認証情報（`UPS_CLIENT_ID` / `UPS_CLIENT_SECRET`）が未設定の場合に従来の `status: 'registered'`（虚偽の追跡完了リスク）を廃止し、安全な `status: 'unknown'` と公式追跡 Web リンク案内へ是正。
+- **伝票番号の候補推定適正化**: 汎用的な未知伝票番号から UPS を除外し、UPS 固有の形式（`^1Z[0-9A-Z]{16}$`）のみ候補として自動判定。
+
+### 2. 𝕏 X 長文投稿 (Note Tweet) の適応的全文補完
+- **Yahoo Realtime Discovery の維持**: 広範な即時検索・トレンド把握は Yahoo! リアルタイム検索の高速性を維持し、不要な外部 API コールを排除。
+- **語彙観測に基づく Bounded Enrichment**: クエリ要求とスニペットの語彙照合（`tokenizeAndSelectTerms`）および省略記号（`…` や `...`）による切り捨て検知を行い、情報欠落の兆候がある上位候補のみ FxTwitter v2 API（最大 2 件、通常 0〜1 件）で全文補完。
+- **Direct X Status URL への直結**: X ポスト URL（`/status/:id`）が指定された場合、Yahoo 検索を待たずに直接 FxTwitter detail を試行し、Note Tweet の完全な長文本文・正確な著者名・投稿日時を 1 回で抽出。
+- **100% Fail-soft & プライバシー保護**: 外部 API のタイムアウト（1,500ms）・レート制限・HTTP エラー時もエラー落ちせず Yahoo スニペットを維持。FxTwitter へは numeric statusId のみ送信し、ユーザーの生クエリやセッション情報は一切非送信。5分 TTL キャッシュと single-flight 重複排除を内蔵。
+
+### 3. 🔁 MCP & REST Multi-surface Parity
+- **REST `/realtime` エイリアス**: クライアント互換性のため、`POST /search/realtime` に加えて `POST /realtime` も同一ハンドラでマウント。
+- **Deep 統合検索・単一スクレイプ連携**: `search_deep`（MCP）および `/search/deep`（REST）の速報枠や Web 記事スクレイプ、`scrape`（MCP）および `/scrape`（REST）のすべてで X ポストの全文抽出がシームレスに機能。
+- **包括的統合テストスイート**: REST と MCP の全サーフェスを検証する `src/services/mcp_rest_deep_realtime.test.ts` を追加し、全件グリーンを恒久保証。
+
+---
+
 # 🌤️ Sora Release v2.23.1
 
 v2.23.0 で導入された各種機能と runtime 挙動を、MCP スキーマ・ツール説明・指示文（`SORA_MCP_INSTRUCTIONS`）・REST・OpenAPI・ドキュメント間で 100% 整合させる **LLM-facing Contract Synchronization & Discovery Refinement** リリースです。
