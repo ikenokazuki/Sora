@@ -305,7 +305,9 @@ describe('X Long-form Detail Provider Tests (X1 - X13)', () => {
     expect(enriched[0].text).toBe(fullFxText);
     expect(enriched[0].text).toContain('18:00〜19:00');
     expect(enriched[0].text).toContain('翌日 15:00〜16:00');
-    expect(enriched[0].originalText).toBe(partialYahooText);
+    expect(enriched[0].originalText).toBeUndefined();
+    expect(enriched[0].snippet).toBeUndefined();
+    expect(enriched[0].markdown).toBeUndefined();
     expect(enriched[0].detailEnriched).toBe(true);
   });
 
@@ -602,5 +604,157 @@ describe('v2.24.1 Section 18 Real Issue Synthetic Fixture', () => {
     expect(target?.detailEnriched).toBe(true);
     expect(target?.detailProvider).toBe('fxtwitter');
     expect(target?.text).toContain('18:00〜19:00');
+  });
+});
+
+// =============================================================================
+// 指示書 Sections 30-35: Canonical X Realtime Schema & Response Size Regression
+// =============================================================================
+describe('v2.24.1 Sections 30-35: Canonical X Schema, Author Canonicalization & Size Regression', () => {
+  const sampleNoteTweet =
+    '＼君と線香花火参加決定🎆／\n本日のタイムテーブル公開！\n線香花火 18:00〜19:00\n特典会 19:30〜20:30\n会場にてお待ちしております！';
+
+  const createMockProvider = (): XPostDetailProvider => ({
+    async fetchStatus(statusId: string) {
+      if (statusId === '2100871827090501852') {
+        return {
+          statusId: '2100871827090501852',
+          text: sampleNoteTweet,
+          isNoteTweet: true,
+          provider: 'fxtwitter',
+        };
+      }
+      return null;
+    },
+  });
+
+  it('Section 30: strips snippet, markdown, and originalText in normal response', async () => {
+    const item = {
+      id: '2100871827090501852',
+      author_name: '君と見るそら',
+      author_handle: 'kimisora_JPN',
+      author: '君と見るそら (@kimisora_JPN)',
+      author_url: 'https://x.com/kimisora_JPN?utm_source=yjrealtime',
+      text: '＼君と線香花火参加決定🎆／\n本日のタイムテーブル公開！線香花火大会の詳細情報です。'.padEnd(250, '。'),
+      snippet: '旧スニペット',
+      markdown: '旧マークダウン',
+      url: 'https://x.com/kimisora_JPN/status/2100871827090501852?utm_source=yjrealtime&utm_medium=search',
+    };
+
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(
+      [item],
+      '君と見るそら 線香花火',
+      createMockProvider(),
+      { verbose: false },
+    );
+
+    const result = enriched[0];
+    expect(result.text).toBe(sampleNoteTweet);
+    expect(result.snippet).toBeUndefined();
+    expect(result.markdown).toBeUndefined();
+    expect(result.originalText).toBeUndefined();
+    expect(result.author).toBeUndefined();
+    expect(result.author_url).toBeUndefined();
+    expect(result.detailDiagnostics).toBeUndefined();
+    expect(result.url).toBe('https://x.com/kimisora_JPN/status/2100871827090501852');
+  });
+
+  it('Section 31: canonicalizes author to author_name and author_handle without @', async () => {
+    const item = {
+      id: '2100871827090501852',
+      author_name: '君と見るそら',
+      author_handle: '@kimisora_JPN',
+      author: '君と見るそら (@kimisora_JPN)',
+      text: '＼君と線香花火参加決定🎆／\n本日のタイムテーブル公開！'.padEnd(250, '。'),
+    };
+
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(
+      [item],
+      '君と見るそら 線香花火',
+      createMockProvider(),
+    );
+
+    const result = enriched[0];
+    expect(result.author_name).toBe('君と見るそら');
+    expect(result.author_handle).toBe('kimisora_JPN');
+    expect(result.author).toBeUndefined();
+  });
+
+  it('Section 32: provides detailDiagnostics only when verbose is true', async () => {
+    const rawPartial = '＼君と線香花火参加決定🎆／\n本日のタイムテーブル公開！線香花火大会の詳細情報です。'.padEnd(250, '。');
+    const item = {
+      id: '2100871827090501852',
+      author_name: '君と見るそら',
+      author_handle: 'kimisora_JPN',
+      text: rawPartial,
+    };
+
+    // verbose: true
+    const { items: verboseEnriched } = await enrichRealtimeItemsWithXDetail(
+      [{ ...item }],
+      '君と見るそら 線香花火',
+      createMockProvider(),
+      { verbose: true },
+    );
+
+    const verboseResult = verboseEnriched[0];
+    expect(verboseResult.detailDiagnostics).toBeDefined();
+    expect(verboseResult.detailDiagnostics?.provider).toBe('fxtwitter');
+    expect(verboseResult.detailDiagnostics?.originalText).toBe(rawPartial);
+    expect(verboseResult.detailDiagnostics?.originalLength).toBe(rawPartial.length);
+    expect(verboseResult.detailDiagnostics?.enrichedLength).toBe(sampleNoteTweet.length);
+
+    // verbose: false (default normal)
+    const { items: normalEnriched } = await enrichRealtimeItemsWithXDetail(
+      [{ ...item }],
+      '君と見るそら 線香花火',
+      createMockProvider(),
+      { verbose: false },
+    );
+    expect(normalEnriched[0].detailDiagnostics).toBeUndefined();
+  });
+
+  it('Section 35: response serialized size is significantly smaller than duplicate-heavy legacy format', async () => {
+    const rawPartial = '＼君と線香花火参加決定🎆／\n本日のタイムテーブル公開！線香花火大会の詳細情報です。'.padEnd(250, '。');
+    const baseItem = {
+      id: '2100871827090501852',
+      author_name: '君と見るそら',
+      author_handle: 'kimisora_JPN',
+      text: rawPartial,
+    };
+
+    // 新形式 (canonical)
+    const { items: newItems } = await enrichRealtimeItemsWithXDetail(
+      [{ ...baseItem }],
+      '君と見るそら 線香花火',
+      createMockProvider(),
+      { verbose: false },
+    );
+
+    // 旧形式 (v2.24.0相当: text, snippet, markdown, originalText, author, author_name, author_handle の重複)
+    const oldItem = {
+      source: 'x',
+      id: '2100871827090501852',
+      author_name: '君と見るそら',
+      author_handle: 'kimisora_JPN',
+      author: '君と見るそら (@kimisora_JPN)',
+      author_url: 'https://x.com/kimisora_JPN?utm_source=yjrealtime',
+      siteName: 'X (Twitter)',
+      originalText: rawPartial,
+      text: sampleNoteTweet,
+      snippet: sampleNoteTweet,
+      markdown: sampleNoteTweet,
+      url: 'https://x.com/kimisora_JPN/status/2100871827090501852?utm_source=yjrealtime&utm_medium=search',
+      publishedTime: '2026-09-18T08:57:30.000Z',
+      detailEnriched: true,
+      detailProvider: 'fxtwitter',
+      isNoteTweet: true,
+    };
+
+    const newBytes = Buffer.byteLength(JSON.stringify(newItems[0]), 'utf-8');
+    const oldBytes = Buffer.byteLength(JSON.stringify(oldItem), 'utf-8');
+
+    expect(newBytes).toBeLessThan(oldBytes);
+    expect(newBytes).toBeLessThan(oldBytes * 0.6); // 40%以上のサイズ削減
   });
 });
