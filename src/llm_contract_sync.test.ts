@@ -281,6 +281,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const server = createMcpServer({ deferTools: true });
       const searchToolsDesc = (server as any)._registeredTools['search_tools'].description;
       expect(searchToolsDesc).not.toContain('専門機能を利用する際は、まずこのツールで対象ツールを検索してください');
+      expect(searchToolsDesc).not.toContain('search_deep 等');
       expect(searchToolsDesc).toMatch(/表示されていない|追加ツール/);
     });
 
@@ -490,6 +491,40 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(names1).toContain('search_tools');
       expect(names1).not.toContain('track_package');
 
+      // 2.5 Establish notification-capable SSE stream (standard MCP Streamable HTTP GET)
+      const sseReq = new Request('http://localhost/mcp', {
+        method: 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+      });
+      const sseRes = await manager.handleRequest(sseReq);
+      expect(sseRes.status).toBe(200);
+      expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
+      const reader = sseRes.body!.getReader();
+      const decoder = new TextDecoder();
+
+      const notificationPromise = (async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split('\n')) {
+            if (line.startsWith('data: ')) {
+              try {
+                const parsed = JSON.parse(line.replace(/^data:\s*/, ''));
+                if (parsed.method === 'notifications/tools/list_changed') {
+                  return parsed;
+                }
+              } catch {}
+            }
+          }
+        }
+        return null;
+      })();
+
       // 3. Call search_tools to activate track_package
       const callSearchReq = new Request('http://localhost/mcp', {
         method: 'POST',
@@ -511,6 +546,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(searchBody.result.content[0].text).toContain('track_package');
       expect(searchBody.result.content[0].text).toContain('有効化完了');
 
+      // 3.5 Wait for and assert notifications/tools/list_changed received via SSE stream
+      const receivedNotification = await Promise.race([
+        notificationPromise,
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Notification timeout')), 3000)),
+      ]);
+      expect(receivedNotification).not.toBeNull();
+      expect(receivedNotification.method).toBe('notifications/tools/list_changed');
+
+      await reader.cancel();
+
       // 4. Refreshed tools/list in the same session now has 13 tools including track_package
       const listReq2 = new Request('http://localhost/mcp', {
         method: 'POST',
@@ -527,6 +572,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const names2 = listBody2.result.tools.map((t: any) => t.name);
       expect(names2.length).toBe(13);
       expect(names2).toContain('track_package');
+
+      manager.clearAllSessions();
     });
   });
 
@@ -553,27 +600,55 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
     it('buildSoraMcpInstructions reflects only active modules and omits disabled module tools', () => {
       // 1. Life module only
       const lifeInstructions = buildSoraMcpInstructions(['life']);
-      expect(lifeInstructions).toContain('Package & Delivery Tracking');
-      expect(lifeInstructions).toContain('track_package');
+      // Included tools:
       expect(lifeInstructions).toContain('get_weather');
       expect(lifeInstructions).toContain('search_route');
-
-      // Disabled module tools must NOT be present
+      expect(lifeInstructions).toContain('get_flight_status');
+      expect(lifeInstructions).toContain('track_package');
+      // Excluded tools:
+      expect(lifeInstructions).not.toContain('search_disaster_warnings');
+      expect(lifeInstructions).not.toContain('search_earthquake');
+      expect(lifeInstructions).not.toContain('search_road_traffic');
+      expect(lifeInstructions).not.toContain('get_elevation');
       expect(lifeInstructions).not.toContain('search_song');
       expect(lifeInstructions).not.toContain('search_artist');
       expect(lifeInstructions).not.toContain('search_laws');
       expect(lifeInstructions).not.toContain('check_product_compliance');
-      expect(lifeInstructions).not.toContain('predict_hts_code');
-      expect(lifeInstructions).not.toContain('search_deep');
       expect(lifeInstructions).not.toContain('search_web');
+      expect(lifeInstructions).not.toContain('search_deep');
 
-      // 2. All modules
+      // 2. Disaster module only
+      const disasterInstructions = buildSoraMcpInstructions(['disaster']);
+      // Included tools:
+      expect(disasterInstructions).toContain('search_disaster_warnings');
+      expect(disasterInstructions).toContain('search_earthquake');
+      expect(disasterInstructions).toContain('search_road_traffic');
+      expect(disasterInstructions).toContain('get_elevation');
+      // Excluded tools:
+      expect(disasterInstructions).not.toContain('get_weather');
+      expect(disasterInstructions).not.toContain('search_route');
+      expect(disasterInstructions).not.toContain('get_flight_status');
+      expect(disasterInstructions).not.toContain('track_package');
+      expect(disasterInstructions).not.toContain('search_song');
+      expect(disasterInstructions).not.toContain('search_laws');
+      expect(disasterInstructions).not.toContain('search_web');
+      expect(disasterInstructions).not.toContain('search_deep');
+
+      // 3. All modules
       const allInstructions = buildSoraMcpInstructions(['all']);
       expect(allInstructions).toContain('search_deep');
       expect(allInstructions).toContain('search_web');
       expect(allInstructions).toContain('search_song');
       expect(allInstructions).toContain('search_laws');
       expect(allInstructions).toContain('check_product_compliance');
+      expect(allInstructions).toContain('get_weather');
+      expect(allInstructions).toContain('search_route');
+      expect(allInstructions).toContain('get_flight_status');
+      expect(allInstructions).toContain('track_package');
+      expect(allInstructions).toContain('search_disaster_warnings');
+      expect(allInstructions).toContain('search_earthquake');
+      expect(allInstructions).toContain('search_road_traffic');
+      expect(allInstructions).toContain('get_elevation');
     });
 
     it('disabled module discovery output reflects only active modules in available categories', async () => {
