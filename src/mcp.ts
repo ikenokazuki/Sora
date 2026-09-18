@@ -49,7 +49,7 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema } from './types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema } from './types.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -150,37 +150,41 @@ export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool 
 - **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates, etc.").
 - If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST ALWAYS use the Universal Search tools (\`search_deep\` or \`search_web\`)** to actively investigate official websites, announcements, schedules, and documents from the web.
 
-## 2. Two-Tier Tool Decision Framework
+## 2. Dynamic Tool Discovery Protocol
+- **Visible Tools**: If the required specialized tool is visible in \`tools/list\` (e.g. \`get_weather\`, \`search_route\`, \`search_realtime\`, \`search_chiebukuro\`, \`check_product_compliance\`, \`search_disaster_warnings\`, \`search_earthquake\`, \`search_laws\`), **call it directly without calling \`search_tools\`**.
+- **Hidden / Deferred Tools**: If a required specialized tool is not visible in \`tools/list\` (e.g. \`track_package\`, \`search_song\`, \`search_artist\`, \`get_flight_status\`, \`get_law_text\`, \`search_diet_minutes\`), call \`search_tools\` with relevant keywords to search and dynamically activate it in the current session, then invoke the activated tool.
+- **Unavailable Modules**: If \`search_tools\` cannot find the requested tool, the server module may be disabled or unavailable. In this case, use an appropriate available safe fallback (e.g. \`search_deep\` or \`search_web\`) without inventing data.
+
+## 3. Two-Tier Tool Decision Framework
 
 ### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
-For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. You MUST invoke the corresponding specialized Sora MCP tool:
-1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance, predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code).
+For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol to invoke the corresponding specialized Sora MCP tool:
+1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code).
    - CRITICAL HTS RULE: When classifying, estimating, or predicting HTS codes for a product, invoke 'check_product_compliance' with 'htsCode' OMITTED (undefined). NEVER inject or invent your own guessed HTS code into 'htsCode'! Sora's official USITC semantic engine automatically determines the true 10-digit HTS code. You may ONLY supply 'htsCode' if the user explicitly provided a specific HTS code in their query.
-2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws, get_law_text, search_diet_minutes).
-3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather, search_disaster_warnings, search_earthquake, search_road_traffic).
-4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route, get_flight_status, get_elevation).
-5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime, search_trend, search_chiebukuro, suggest_keywords).
+2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).
+3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather [CORE], search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic).
+4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route [CORE], get_flight_status, get_elevation).
+5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).
 6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).
 7. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).
 
 ### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)
 For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:
-- **\`search_deep\` (Primary Recommended Tool)**:
-  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse in one shot.
-  *Use for*:
-  - Live concert schedules, performance dates, match schedules, festivals, timetables
-  - Product release dates, specs, pricing, updates, availability
-  - Company/store business hours, locations, official statements, news releases
-  - Person/entity latest activities, appearances, biographies, award history
-  - Current events, breaking news, troubleshooting, technology documentation
-- **\`search_web\` (Candidate URL & Snippet Discovery)**:
-  Fetches title, URL, and snippet list. *RULE*: If snippets lack specific details (e.g. exact dates, venue times, terms), DO NOT guess or conclude prematurely. You MUST invoke \`scrape\` on the most relevant official URL(s) to read the full content before answering.
+- **\`search_deep\` (Primary Recommended Tool for Deep Web + X Investigation)**:
+  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse with Deep Evidence Rerank.
+  - **\`responseMode: "evidence"\`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.
+  - **\`responseMode: "full"\` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.
+  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with \`responseMode: "full"\` or specify \`formats: ["markdown"]\` (which preserves full Markdown even in evidence mode).
+- **\`search_web\` (Candidate Discovery & Optional 1-Call Enrichment)**:
+  - **URL / Snippet Discovery**: Call with \`formats\` omitted for lightweight candidate search without scraping.
+  - **Search + Content in One Call**: Specify \`formats: ["markdown"]\` (or \`formats: ["markdown", "tables"]\`) to scrape top results and attach requested formats in a single round-trip.
+  - *Note*: If snippets lack specific details, read the page using \`scrape\`. However, do NOT force a redundant second \`scrape\` call if \`search_web\` with \`formats\` already retrieved the necessary content.
 - **\`scrape\` / \`scrape_batch\`**:
-  Fetches full clean Markdown content from specific URLs identified through search or provided by the user.
+  Fetches full clean Markdown or requested structured formats from specific URLs identified through search or provided by the user.
 - **\`browser_action\`**:
   Use when dynamic browser interactions (clicking, form submission, SPA rendering) are needed.
 
-## 3. Interactive Clarification Flow
+## 4. Interactive Clarification Flow
 - When tools return 'inputCompleteness: "partial"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.`;
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
@@ -375,10 +379,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-        highlightAlgorithm: z
-          .enum(['rho-select', 'rho-bm25', 'legacy'])
+        highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
-          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
@@ -483,10 +486,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
-        highlightAlgorithm: z
-          .enum(['rho-select', 'rho-bm25', 'legacy'])
+        highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
-          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
@@ -531,7 +533,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_deep',
       'web',
-      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。返却量を抑える場合は responseMode を選択できます。質問への回答に必要な情報が局所的で query-selected highlights だけで足りる場合は evidence、全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は full を使用してください。evidence は全文と同等ではないため、必要な根拠が不足・曖昧・矛盾する場合は full または formats:["markdown"] で再取得してください。※他の専門機能や拡張ツールが必要な場合は、まず search_tools で専用ツールを検索・有効化してください。',
+      '【万能深層Web検索・最新事実/スケジュール/イベント調査】Web 検索に加え、上位サイトの本文スクレイピング（Clean Markdown）＋リアルタイム速報（X）を一括取得して返却します。人物やイベントの公式Xアカウント（一次情報・タイテ・緊急告知等）はWeb検索結果から自動検出され、一般の生の声と重複排除して最上位にピン留めされます。ライブ・公演日程、新製品・発売日、営業時間・店舗情報、人物・企業の最新動向、時事ニュースなど、専用APIが存在しないあらゆる実世界データの調査に必須の一次ツールです。1回の呼び出しで記事本文まで深く読み込んで包括的・根拠ある回答を作成します（広く候補URL一覧を探したい場合は search_web を使用）。返却量を抑える場合は responseMode を選択できます。質問への回答に必要な情報が局所的で query-selected highlights だけで足りる場合は evidence、全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は full を使用してください。evidence は全文と同等ではないため、必要な根拠が不足・曖昧・矛盾する場合は full または formats:["markdown"] で再取得してください。',
       {
         query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
         limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
@@ -542,9 +544,11 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .string()
           .optional()
           .describe('【特定公式アカウント優先】人物やイベントの公式XアカウントID（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。指定時は公式最新ポストを優先取得して先頭にピン留めします（省略時もWeb検索結果から自動検出）。'),
-        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)'),
+        noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
         includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
         excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
+        updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
         formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
         extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: query指定時はtrue)'),
         dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
@@ -571,10 +575,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-        highlightAlgorithm: z
-          .enum(['rho-select', 'rho-bm25', 'legacy'])
+        highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
-          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
@@ -594,7 +597,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .optional()
           .describe('返却モード: "full" はデフォルト・従来互換で全文および周辺文脈を保持。"evidence" は query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
       },
-      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, includeDomains, excludeDomains, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
+      async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -604,8 +607,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             realtimeSort,
             officialAccountId,
             maxChars,
+            noCache,
             includeDomains,
             excludeDomains,
+            updated,
             formats,
             extractHighlights,
             dedup,
@@ -696,10 +701,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .boolean()
           .optional()
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-        highlightAlgorithm: z
-          .enum(['rho-select', 'rho-bm25', 'legacy'])
+        highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
-          .describe('ハイライト選択アルゴリズム: "rho-select"(デフォルト: ρSelect トークン密度最適化), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
@@ -899,7 +903,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['ニュース検索', '記事', '時事', 'Yahoo'] },
     );
 
-    // Tool 10: search_chiebukuro (Yahoo 知恵袋検索) - DEFERRED
+    // Tool 10: search_chiebukuro (Yahoo 知恵袋検索) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -953,7 +957,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['サジェスト', '関連キーワード', '予測', 'Yahoo'] },
     );
 
-    // Tool 12: search_realtime (Yahoo リアルタイム検索) - DEFERRED
+    // Tool 12: search_realtime (Yahoo リアルタイム検索) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1069,7 +1073,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🗾 Category 4: Japanese Daily Life Services (モジュール: 'life')
   // =========================================================================
   if (shouldEnableLife) {
-    // Tool 14: search_route (電車・鉄道 乗換案内) - DEFERRED
+    // Tool 14: search_route (電車・鉄道 乗換案内) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1114,7 +1118,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: true, keywords: ['乗換案内', '電車', 'ルート', '経路', '交通', '時刻表'] },
     );
 
-    // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結) - DEFERRED
+    // Tool 15: get_weather (日本の天気予報 - 気象庁公式オープンデータ直結) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1254,7 +1258,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['道路交通情報', '通行止め', '渋滞', '高速道路', '規制', 'JARTIC'] },
     );
 
-    // Tool 17: search_disaster_warnings (気象警報・注意報) - DEFERRED
+    // Tool 17: search_disaster_warnings (気象警報・注意報) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1281,7 +1285,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: true, keywords: ['気象警報', '注意報', '特別警報', '防災', '気象庁', '大雨', '台風'] },
     );
 
-    // Tool 18: search_earthquake (リアルタイム地震速報・履歴) - DEFERRED
+    // Tool 18: search_earthquake (リアルタイム地震速報・履歴) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1544,7 +1548,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🏛️ Category 8: Government & Law Data (モジュール: 'gov')
   // =========================================================================
   if (shouldEnableGov) {
-    // Tool 25: search_laws (e-Gov キーワード法令検索) - DEFERRED
+    // Tool 25: search_laws (e-Gov キーワード法令検索) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1751,7 +1755,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['HTS推測', 'HS推測', '関税分類推測', 'コード検索', 'USITC', '輸出', '輸入', '貿易', 'コンプライアンス'] },
     );
 
-    // Tool: check_product_compliance (商品統合コンプライアンス一括判定) - DEFERRED
+    // Tool: check_product_compliance (商品統合コンプライアンス一括判定) - CORE (defaultEnabled: true)
     registerTool(
       mcpServer,
       toolCatalog,
@@ -1833,11 +1837,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // =========================================================================
   mcpServer.tool(
     'search_tools',
-    '【ツール検索・動的有効化】現在無効化されているSoraの追加ツールをキーワードで検索し、' +
-      '一致したツールを現在のセッションで有効化します。荷物追跡・天気・乗換案内・知恵袋・リアルタイム速報・音楽・法令・防災情報・貿易コンプライアンスなど、' +
-      '専門機能を利用する際は、まずこのツールで対象ツールを検索してください。',
+    '【追加ツール検索・動的有効化】現在 tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
+      '一致したツールを現在のセッションで有効化します。すでに tools/list に表示されているツールは直接実行してください。' +
+      '荷物追跡（track_package）や音楽詳細、国会会議録など、初期状態で非表示の追加機能を利用する際に使用します。' +
+      '本ツールで検索しても見つからない場合は、該当モジュールが無効化・利用不可となっている可能性があるため、利用可能な代替手段（search_deep 等）を使用してください。',
     {
-      query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "天気", "知恵袋", "乗換", "地震", "法令", "音楽", "trade", "life"）'),
+      query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
     },
     async ({ query }) => {
       const matches = searchCatalog(toolCatalog, query);
