@@ -19,6 +19,8 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
   // =========================================================================
   describe('REST Realtime Endpoints (/search/realtime and /realtime)', () => {
     it('REST /search/realtime and /realtime both succeed and return enriched X detail', async () => {
+      const longFesText = '【告知】サマーフェスティバルの詳細を発表します。今年のサマーフェスティバルは特別ステージを用意しており、アーティストの出演順や開演時間などの最新情報を順次ご案内いたします。当日は猛暑が予想されますので十分な熱中症対策をお願い申し上げます。チケットや整理券の詳細は公式サイトをご確認ください…'.padEnd(250, '。');
+
       // Mock callYahooMcp for yahoo_realtime_search
       const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_realtime_search') {
@@ -29,7 +31,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
                 text: JSON.stringify([
                   {
                     id: '2000000000000000001',
-                    text: '【告知】サマーフェスティバルの詳細を発表します…',
+                    text: longFesText,
                     author_name: '公式フェス運営',
                     author_handle: 'summer_fes',
                     created_at: Math.floor(Date.now() / 1000),
@@ -99,10 +101,12 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
   });
 
   // =========================================================================
-  // 2. REST /search/deep & /deep-search Realtime X enrichment
+  // 2. REST /search/deep & /deep-search Realtime X enrichment (Section 19)
   // =========================================================================
   describe('REST Deep Search Endpoints (/search/deep and /deep-search)', () => {
-    it('REST /search/deep incorporates enriched X items in realtime field', async () => {
+    it('REST /search/deep incorporates enriched X items after merge without pre-merge Fx calls', async () => {
+      const longOfficialText = '【速報】サマーフェスティバル物販タイテ公開！今年のサマーフェスティバルでは公式グッズやアーティストコラボグッズなど多数の限定アイテムを販売いたします。整理券の取得方法や待機列の形成時間についてのご案内です。当日は大変混雑が予想されますので公共交通機関でお越しください…'.padEnd(250, '。');
+
       const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_web_search') {
           return {
@@ -116,6 +120,11 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
                       link: 'https://example.com/summer-fes-2026',
                       snippet: 'サマーフェスティバル2026の公式案内ページです。',
                     },
+                    {
+                      title: 'サマーフェスティバル 公式X',
+                      link: 'https://x.com/summer_fes',
+                      snippet: 'サマーフェスティバル公式アカウントです。',
+                    },
                   ],
                 }),
               },
@@ -123,27 +132,51 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
           };
         }
         if (toolName === 'yahoo_realtime_search') {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify([
-                  {
-                    id: '2000000000000000002',
-                    text: '【速報】サマーフェスティバル物販タイテ公開…',
-                    author_name: '公式フェス運営',
-                    author_handle: 'summer_fes',
-                    created_at: Math.floor(Date.now() / 1000),
-                  },
-                ]),
-              },
-            ],
-          };
+          const isOfficial = typeof args?.query === 'string' && (args.query.includes('id:summer_fes') || args.query.includes('summer_fes'));
+          if (isOfficial) {
+            // Official realtime: long-form truncation suspect (length >= 240)
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify([
+                    {
+                      id: '2000000000000000002',
+                      text: longOfficialText,
+                      author_name: '公式フェス運営',
+                      author_handle: 'summer_fes',
+                      created_at: Math.floor(Date.now() / 1000),
+                    },
+                  ]),
+                },
+              ],
+            };
+          } else {
+            // Public realtime: short post (< 240 chars)
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify([
+                    {
+                      id: '2000000000000000099',
+                      text: 'サマーフェスティバルの物販って何時から並べばいいのかな？楽しみだな〜！',
+                      author_name: '一般参加者',
+                      author_handle: 'fes_fan',
+                      created_at: Math.floor(Date.now() / 1000),
+                    },
+                  ]),
+                },
+              ],
+            };
+          }
         }
         return { content: [{ type: 'text', text: '[]' }] };
       });
 
+      let fxCalls = 0;
       const fetchStatusSpy = spyOn(defaultXDetailProvider, 'fetchStatus').mockImplementation(async (id) => {
+        fxCalls++;
         if (id === '2000000000000000002') {
           return {
             statusId: id,
@@ -172,8 +205,18 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(data.realtime).toBeDefined();
         expect(data.realtime.source).toBe('x');
         expect(data.realtime.items.length).toBeGreaterThan(0);
-        expect(data.realtime.items[0].text).toContain('先行物販は午前9時開始');
-        expect(data.realtime.items[0].detailEnriched).toBe(true);
+
+        // Section 19: Only exactly 1 Fx call occurred post-merge for the official target
+        expect(fxCalls).toBe(1);
+
+        const targetItem = data.realtime.items.find((it: any) => it.id === '2000000000000000002');
+        expect(targetItem).toBeDefined();
+        expect(targetItem.text).toContain('先行物販は午前9時開始');
+        expect(targetItem.detailEnriched).toBe(true);
+
+        const publicItem = data.realtime.items.find((it: any) => it.id === '2000000000000000099');
+        expect(publicItem).toBeDefined();
+        expect(publicItem.detailEnriched).toBeUndefined();
       } finally {
         yahooSpy.mockRestore();
         fetchStatusSpy.mockRestore();
@@ -246,6 +289,8 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
       const sessionId = initRes.headers.get('mcp-session-id')!;
       expect(sessionId).toBeDefined();
 
+      const longLiveText = '【ライブ速報】アンコール曲は「青空」でした。本日のツアー最終日、会場の熱気は最高潮に達し、観客の皆様の温かいご声援に応えてダブルアンコールまで実施される感動的な夜となりました。関わってくださった全ての皆様に心より感謝申し上げます。'.padEnd(250, '！');
+
       // Setup Mocks
       const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_realtime_search') {
@@ -256,7 +301,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
                 text: JSON.stringify([
                   {
                     id: '2000000000000000004',
-                    text: '【ライブ速報】アンコール曲は「青空」でした…',
+                    text: longLiveText,
                     author_name: 'ライブ実況BOT',
                     author_handle: 'live_jikkyo',
                     created_at: Math.floor(Date.now() / 1000),

@@ -51,7 +51,7 @@ import {
   buildXRetrievalPlan,
   stripXWebDiscoveryText,
 } from './x_source_isolation.js';
-import { defaultXDetailProvider } from './services/x_detail.js';
+import { defaultXDetailProvider, enrichRealtimeItemsWithXDetail } from './services/x_detail.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1307,7 +1307,7 @@ export async function integratedSearch(options: {
   const [webParsedRes, realtimeMcpRes] = await Promise.all([
     searchYahooWeb({ query, includeDomains, excludeDomains, updated }),
     includeRealtime
-      ? searchYahooRealtime({ query, sort: realtimeSort }).catch(() => null)
+      ? searchYahooRealtime({ query, sort: realtimeSort, detailEnrichment: false }).catch(() => null)
       : Promise.resolve(null),
   ]);
 
@@ -1355,6 +1355,7 @@ export async function integratedSearch(options: {
       accountId: targetOfficialHandle,
       limit: 5,
       sort: 'recent',
+      detailEnrichment: false,
     }).catch(() => null);
   }
 
@@ -1390,6 +1391,7 @@ export async function integratedSearch(options: {
                 sort: 'recent',
                 limit: 5,
                 disableFallback: true,
+                detailEnrichment: false,
               }).catch(() => null);
               xRetrievalCache.set(plan.key, retrievalPromise);
             }
@@ -1545,6 +1547,7 @@ export async function integratedSearch(options: {
         accountId: targetOfficialHandle,
         limit: 5,
         sort: 'recent',
+        detailEnrichment: false,
       }).catch(() => null);
     }
   }
@@ -1569,6 +1572,8 @@ export async function integratedSearch(options: {
       if (dedup && merged.length > 0) {
         merged = dedupSearchResults(merged, (i: any) => `${i.text || i.content || ''}`);
       }
+      const enriched = await enrichRealtimeItemsWithXDetail(merged, query);
+      merged = enriched.items;
       realtimeItems = merged;
       realtimeMeta = {
         source: 'x',
