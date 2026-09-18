@@ -49,7 +49,7 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema } from './types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -120,8 +120,8 @@ export function searchCatalog(
         entry.keywords.some((k) => {
           const kLower = k.toLowerCase();
           if (kLower.includes(term)) return true;
-          const isMeaningful = kLower.length >= 2 || /[一-龠]/.test(kLower);
-          return isMeaningful && term.includes(kLower);
+          const allowReverseContainment = [...kLower].length >= 2;
+          return allowReverseContainment && term.includes(kLower);
         }) ||
         entry.description.toLowerCase().includes(term)
       );
@@ -149,61 +149,144 @@ export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 
   return activeList.includes(mod) || activeList.includes('all');
 }
 
-export const SORA_MCP_INSTRUCTIONS = `# Sora MCP Server - AI Interaction & Tool Routing Guidelines
+export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[]): string {
+  const hasMod = (mod: SoraModule) => isModuleActive(mod, activeModules);
 
-## 1. Zero-Refusal & Active Investigation Policy
-- **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates, etc.").
-- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST ALWAYS use the Universal Search tools (\`search_deep\` or \`search_web\`)** to actively investigate official websites, announcements, schedules, and documents from the web.
+  const hasWeb = hasMod('web');
+  const hasBrowser = hasMod('browser');
+  const hasYahoo = hasMod('yahoo');
+  const hasLife = hasMod('life');
+  const hasDisaster = hasMod('disaster');
+  const hasMusic = hasMod('music');
+  const hasGov = hasMod('gov');
+  const hasTrade = hasMod('trade');
 
-## 2. Dynamic Tool Discovery Protocol
-- **Visible Tools**: If the required specialized tool is visible in \`tools/list\` (e.g. \`get_weather\`, \`search_route\`, \`search_realtime\`, \`search_chiebukuro\`, \`check_product_compliance\`, \`search_disaster_warnings\`, \`search_earthquake\`, \`search_laws\`), **call it directly without calling \`search_tools\`**.
-- **Hidden / Deferred Tools**: If a required specialized tool is not visible in \`tools/list\` (e.g. \`track_package\`, \`search_song\`, \`search_artist\`, \`get_flight_status\`, \`get_law_text\`, \`search_diet_minutes\`), call \`search_tools\` with relevant keywords to search and dynamically activate it in the current session, then invoke the activated tool.
-- **Unavailable Modules**: If \`search_tools\` cannot find the requested tool, the server module may be disabled or unavailable by server configuration. In this case, use an appropriate available safe fallback (e.g. \`search_deep\` or \`search_web\`) without inventing data.
+  const lines: string[] = [
+    '# Sora MCP Server - AI Interaction & Tool Routing Guidelines',
+    '',
+    '## 1. Zero-Refusal & Active Investigation Policy',
+    '- **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates, etc.").',
+  ];
 
-## 3. Web Tool Overlap & Primary Boundaries
-- **\`search_web\`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via \`formats: ["markdown"]\`.
-- **\`search_deep\`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.
-- **\`scrape\` / \`scrape_batch\`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.
-- **\`crawl_site\`**: Same-site multi-page traversal for documentation or full-site knowledge collection.
-- **\`browser_action\`**: Interactive browser operation requiring clicks, form fills, JS execution, or complex dynamic rendering.
+  if (hasWeb) {
+    lines.push(
+      '- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST ALWAYS use the Universal Search tools (`search_deep` or `search_web`)** to actively investigate official websites, announcements, schedules, and documents from the web.',
+    );
+  } else {
+    lines.push(
+      '- If a query asks for factual, real-time, time-sensitive, or external information, actively investigate using the currently available tools and modules without inventing data.',
+    );
+  }
 
-## 4. Two-Tier Tool Decision Framework
+  lines.push(
+    '',
+    '## 2. Dynamic Tool Discovery Protocol',
+    '- **Visible Tools**: If the required specialized tool is visible in `tools/list`, **call it directly without calling `search_tools`**.',
+    '- **Hidden / Deferred Tools**: If a required specialized tool is not visible in `tools/list`, call `search_tools` with relevant keywords to search and dynamically activate it in the current session, then invoke the activated tool.',
+    '- **Unavailable Modules**: If `search_tools` cannot find the requested tool, the server module may be disabled or unavailable by server configuration. In this case, use an appropriate available safe fallback without inventing data.',
+  );
 
-### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)
-For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol to invoke the corresponding specialized Sora MCP tool:
-1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code).
-   - CRITICAL HTS RULE: When classifying, estimating, or predicting HTS codes for a product, invoke 'check_product_compliance' with 'htsCode' OMITTED (undefined). NEVER inject or invent your own guessed HTS code into 'htsCode'! Sora's official USITC semantic engine automatically determines the true 10-digit HTS code. You may ONLY supply 'htsCode' if the user explicitly provided a specific HTS code in their query.
-2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).
-3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather [CORE], search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic).
-4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route [CORE], get_flight_status, get_elevation).
-5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).
-6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).
-7. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).
+  if (hasWeb || hasBrowser) {
+    lines.push('', '## 3. Web Tool Overlap & Primary Boundaries');
+    if (hasWeb) {
+      lines.push(
+        '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
+        '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
+        '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
+        '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection.',
+      );
+    }
+    if (hasBrowser) {
+      lines.push(
+        '- **`browser_action`**: Interactive browser operation requiring clicks, form fills, JS execution, or complex dynamic rendering.',
+      );
+    }
+  }
 
-### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)
-For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:
-- **\`search_deep\` (Primary Recommended Tool for Deep Web + X Investigation)**:
-  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse with Deep Evidence Rerank.
-  - **\`responseMode: "evidence"\`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.
-  - **\`responseMode: "full"\` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.
-  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with \`responseMode: "full"\` or specify \`formats: ["markdown"]\` (which preserves full Markdown even in evidence mode).
-  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).
-- **\`search_web\` (Candidate Discovery & Optional 1-Call Enrichment)**:
-  - **URL / Snippet Discovery**: Call with \`formats\` omitted for lightweight candidate search without scraping.
-  - **Search + Content in One Call**: Specify \`formats: ["markdown"]\` (or \`formats: ["markdown", "tables"]\`) to scrape top results and attach requested formats in a single round-trip.
-  - *Note*: If snippets lack specific details, read the page using \`scrape\`. However, do NOT force a redundant second \`scrape\` call if \`search_web\` with \`formats\` already retrieved the necessary content.
+  lines.push('', '## 4. Two-Tier Tool Decision Framework');
 
-## 5. Interactive Clarification Flow
-- When tools return 'inputCompleteness: "partial"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.`;
+  const tier1Directives: string[] = [];
+  if (hasTrade) {
+    tier1Directives.push(
+      "1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code).\n   - CRITICAL HTS RULE: When classifying, estimating, or predicting HTS codes for a product, invoke 'check_product_compliance' with 'htsCode' OMITTED (undefined). NEVER inject or invent your own guessed HTS code into 'htsCode'! Sora's official USITC semantic engine automatically determines the true 10-digit HTS code. You may ONLY supply 'htsCode' if the user explicitly provided a specific HTS code in their query.",
+    );
+  }
+  if (hasGov) {
+    tier1Directives.push(
+      "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).",
+    );
+  }
+  if (hasDisaster || hasLife) {
+    tier1Directives.push(
+      "3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather [CORE], search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic).",
+    );
+    tier1Directives.push(
+      "4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route [CORE], get_flight_status, get_elevation).",
+    );
+  }
+  if (hasYahoo) {
+    tier1Directives.push(
+      "5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).",
+    );
+  }
+  if (hasMusic) {
+    tier1Directives.push(
+      "6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
+    );
+  }
+  if (hasLife) {
+    tier1Directives.push(
+      "7. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).",
+    );
+  }
+
+  if (tier1Directives.length > 0) {
+    lines.push(
+      '',
+      '### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)',
+      'For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol to invoke the corresponding specialized Sora MCP tool:',
+      tier1Directives.join('\n'),
+    );
+  }
+
+  if (hasWeb) {
+    lines.push(
+      '',
+      '### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)',
+      'For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:',
+      '- **`search_deep` (Primary Recommended Tool for Deep Web + X Investigation)**:',
+      '  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse with Deep Evidence Rerank.',
+      '  - **`responseMode: "evidence"`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.',
+      '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
+      '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (which preserves full Markdown even in evidence mode).',
+      '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
+      '- **`search_web` (Candidate Discovery & Optional 1-Call Enrichment)**:',
+      '  - **URL / Snippet Discovery**: Call with `formats` omitted for lightweight candidate search without scraping.',
+      '  - **Search + Content in One Call**: Specify `formats: ["markdown"]` (or `formats: ["markdown", "tables"]`) to scrape top results and attach requested formats in a single round-trip.',
+      '  - *Note*: If snippets lack specific details, read the page using `scrape`. However, do NOT force a redundant second `scrape` call if `search_web` with `formats` already retrieved the necessary content.',
+    );
+  }
+
+  lines.push(
+    '',
+    '## 5. Interactive Clarification Flow',
+    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.",
+  );
+
+  return lines.join('\n');
+}
+
+export const SORA_MCP_INSTRUCTIONS = buildSoraMcpInstructions();
 
 export function createMcpServer(options?: McpServerOptions): McpServer {
+  const instructions = buildSoraMcpInstructions(options?.modules);
   const mcpServer = new McpServer(
     {
       name: 'Sora',
       version: SORA_VERSION,
     },
     {
-      instructions: SORA_MCP_INSTRUCTIONS,
+      instructions,
     },
   );
 
@@ -543,69 +626,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'search_deep',
       'web',
       '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
-      {
-        query: z.string().min(1).describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
-        limit: z.number().int().min(1).max(20).optional().describe('スクレイピングする上位結果の件数 (デフォルト: 5, 最大: 20)'),
-        scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
-        includeRealtime: z.boolean().optional().describe('リアルタイム速報（Xの生の声）を含めるか (デフォルト: true)'),
-        realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報の並び順: "recent" (新着順, デフォルト) または "popular" (話題順)'),
-        officialAccountId: z
-          .string()
-          .optional()
-          .describe('【特定公式アカウント優先】人物やイベントの公式XアカウントID（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。指定時は公式最新ポストを優先取得して先頭にピン留めします（省略時もWeb検索結果から自動検出）。'),
-        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)'),
-        noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
-        includeDomains: z.array(z.string()).optional().describe('検索結果を絞り込むドメインリスト'),
-        excludeDomains: z.array(z.string()).optional().describe('除外するドメインリスト'),
-        updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
-        formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
-        extractHighlights: z.boolean().optional().describe('各ページからクエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: query指定時はtrue)'),
-        dedup: z.boolean().optional().describe('検索結果およびリアルタイム速報の重複・類似項目を自動排除するか (デフォルト: false)'),
-        onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
-        reorderUFlat: z
-          .boolean()
-          .optional()
-          .describe('Lost in the Middle 対策: 検索結果および抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
-        enablePrf: z
-          .boolean()
-          .optional()
-          .describe('インメモリ PRF (擬似適合フィードバック): 上位検索結果の共起語を解析してクエリを自動拡張し、語彙不足を自己補完するか (デフォルト: false)'),
-        diversityWeight: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
-        annotateTemporal: z
-          .boolean()
-          .optional()
-          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
-        minimizeTables: z
-          .boolean()
-          .optional()
-          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-        highlightAlgorithm: HighlightAlgorithmSchema
-          .optional()
-          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-        highlightOverheadTokens: z
-          .number()
-          .int()
-          .min(1)
-          .max(4096)
-          .optional()
-          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
-        highlightMaxCount: z
-          .number()
-          .int()
-          .min(1)
-          .max(10)
-          .optional()
-          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
-        verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
-        responseMode: IntegratedSearchResponseModeSchema
-          .optional()
-          .describe('返却モード: "full" はデフォルト・従来互換で全文および周辺文脈を保持。"evidence" は query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
-      },
+      INTEGRATED_SEARCH_INPUT_SHAPE,
       async ({ query, limit, scrapeContent, includeRealtime, realtimeSort, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
         try {
           const result = await integratedSearch({
@@ -1498,7 +1519,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '楽曲', '曲名', '曲', '歌', 'ソング', 'iTunes', '音楽', 'Apple Music', 'ミュージック'] },
+      { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '楽曲', '曲名', '曲の検索', '曲', '歌', 'ソング', 'iTunes', '音楽', 'Apple Music', 'ミュージック'] },
     );
 
     // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索) - DEFERRED
@@ -1878,11 +1899,27 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       }
 
       if (newlyEnabled.length === 0 && alreadyEnabled.length === 0) {
+        const activeCategories: string[] = [];
+        if (shouldEnableWeb) activeCategories.push('web (一括/クロール)');
+        if (shouldEnableBrowser) activeCategories.push('browser (操作)');
+        if (shouldEnableYahoo) activeCategories.push('yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド)');
+        if (shouldEnableLife) activeCategories.push('life (天気/乗換/荷物追跡)');
+        if (shouldEnableDisaster) activeCategories.push('disaster (道路交通/警報/地震)');
+        if (shouldEnableWatch) activeCategories.push('watch (Web監視)');
+        if (shouldEnableMusic) activeCategories.push('music (楽曲/歌手)');
+        if (shouldEnableGov) activeCategories.push('gov (法令)');
+        if (shouldEnableTrade) activeCategories.push('trade (輸出/HTS/CPSC/FDA)');
+        if (shouldEnableMedia) activeCategories.push('media (画像検査)');
+
+        const categoryText = activeCategories.length > 0
+          ? `\n現在有効なカテゴリ: ${activeCategories.join(', ')}`
+          : '';
+
         return {
           content: [
             {
               type: 'text',
-              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n該当機能のサーバーモジュールが無効化・利用不可となっている可能性があります。\n利用可能なカテゴリ: web (一括/クロール), browser (操作), yahoo (知恵袋/画像/動画/ニュース/リアルタイム/トレンド), life (天気/乗換/荷物追跡), disaster (道路交通/警報/地震), watch (Web監視), music (楽曲/歌手), gov (法令), trade (輸出/HTS/CPSC/FDA), media (画像検査)`,
+              text: `"${query}" に一致する追加ツールは見つかりませんでした。\n該当機能のサーバーモジュールが無効化・利用不可となっている可能性があります。${categoryText}`,
             },
           ],
         };
