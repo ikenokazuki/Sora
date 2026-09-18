@@ -452,6 +452,9 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 40)<br>- `page` (number, 任意): ページ番号 (デフォルト: 1) |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
 
+> 💡 **X (旧 Twitter) ポスト詳細・長文投稿（Note Tweet）の適応的補完**:  
+> X post detail enrichment may use the third-party FxTwitter/FxEmbed public API. Only the public X status ID is sent. The integration is fail-soft and can be disabled with `SORA_X_DETAIL_PROVIDER=off`.
+
 ---
 
 ### 🗾 Module 4: Japan Daily Life & Transit (`ENABLED_MODULES=life`)

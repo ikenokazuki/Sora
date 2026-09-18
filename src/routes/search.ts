@@ -31,7 +31,7 @@ import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse 
 export const searchRoutes = new Hono();
 
 // Yahoo リアルタイム検索 (X 生ツイート & フライヤー画像)
-searchRoutes.post('/search/realtime', async (c) => {
+const handleRealtimeSearch = async (c: any) => {
   try {
     const body = await c.req.json();
     const query = typeof body?.query === 'string' ? body.query : undefined;
@@ -91,7 +91,10 @@ searchRoutes.post('/search/realtime', async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message || 'Realtime search failed' }, 500);
   }
-});
+};
+
+searchRoutes.post('/search/realtime', handleRealtimeSearch);
+searchRoutes.post('/realtime', handleRealtimeSearch);
 
 // Yahoo リアルタイム急上昇トレンド
 searchRoutes.post('/search/trend', async (c) => {
