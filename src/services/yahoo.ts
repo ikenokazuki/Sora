@@ -3,7 +3,12 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults } from '../enrichment.js';
-import { enrichRealtimeItemsWithXDetail, defaultXDetailProvider, rerankRealtimeItems } from './x_detail.js';
+import {
+  enrichRealtimeItemsWithXDetail,
+  defaultXDetailProvider,
+  rerankRealtimeItems,
+  cleanRealtimeItem,
+} from './x_detail.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -302,7 +307,7 @@ export async function searchYahooWeb(options: {
   return lastParsedData;
 }
 
-/** リアルタイムアイテムの正規化 (publishedTime, author, siteName 付与) */
+/** リアルタイムアイテムの正規化 (publishedTime, author_name, author_handle, url 正規化) */
 export function normalizeRealtimeItem(item: any): Record<string, any> {
   const createdAtSec = typeof item.created_at === 'number' ? item.created_at : parseInt(item.created_at, 10);
   const publishedTime =
@@ -310,16 +315,46 @@ export function normalizeRealtimeItem(item: any): Record<string, any> {
       ? new Date(createdAtSec * 1000).toISOString()
       : undefined;
 
-  const authorHandle = item.author_handle ? `@${item.author_handle.replace(/^@/, '')}` : '';
-  const authorName = item.author_name || '';
-  const author = authorName && authorHandle ? `${authorName} (${authorHandle})` : authorName || authorHandle || undefined;
+  let authorHandle = item.author_handle ? String(item.author_handle).replace(/^@/, '') : '';
+  let authorName = item.author_name || '';
+  if (!authorName && !authorHandle && typeof item.author === 'string') {
+    const m = item.author.match(/^(.*?)(?:\s*\(@?([a-zA-Z0-9_]+)\))?$/);
+    if (m) {
+      if (m[1]?.trim()) authorName = m[1].trim();
+      if (m[2]?.trim()) authorHandle = m[2].trim();
+    }
+  }
+  if (authorHandle) {
+    authorHandle = authorHandle.replace(/^@/, '');
+  }
+
+  let url = item.url;
+  if (typeof url === 'string') {
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('utm_source');
+      u.searchParams.delete('utm_medium');
+      u.searchParams.delete('utm_campaign');
+      url = u.toString().replace(/\?$/, '');
+    } catch {}
+  }
 
   return {
     source: 'x' as const,
-    ...item,
-    publishedTime: publishedTime || item.publishedTime,
-    author: author || item.author,
-    siteName: 'X (Twitter)',
+    id: String(item.id || item.statusId || ''),
+    ...(authorName ? { author_name: authorName } : {}),
+    ...(authorHandle ? { author_handle: authorHandle } : {}),
+    text: typeof item.text === 'string' ? item.text : '',
+    ...(url ? { url } : {}),
+    ...(publishedTime || item.publishedTime ? { publishedTime: publishedTime || item.publishedTime } : {}),
+    ...(typeof item.like_count === 'number' ? { like_count: item.like_count } : {}),
+    ...(typeof item.reply_count === 'number' ? { reply_count: item.reply_count } : {}),
+    ...(typeof item.repost_count === 'number' ? { repost_count: item.repost_count } : {}),
+    ...(Array.isArray(item.media) && item.media.length > 0 ? { media: item.media } : {}),
+    ...(item.isOfficial !== undefined ? { isOfficial: item.isOfficial } : {}),
+    ...(item.detailEnriched !== undefined ? { detailEnriched: item.detailEnriched } : {}),
+    ...(item.detailProvider !== undefined ? { detailProvider: item.detailProvider } : {}),
+    ...(item.isNoteTweet !== undefined ? { isNoteTweet: item.isNoteTweet } : {}),
   };
 }
 
@@ -337,6 +372,7 @@ export interface YahooRealtimeOptions {
   page?: number;
   disableFallback?: boolean;
   detailEnrichment?: boolean;
+  verbose?: boolean;
 }
 
 /**
@@ -598,8 +634,15 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
 
   // 指示書 第8-10条: X長文投稿の適応的詳細補完 (bounded FxTwitter v2)
   if (detailEnrichment && finalItems.length > 0 && originalQuery) {
-    const { items: enriched } = await enrichRealtimeItemsWithXDetail(finalItems, originalQuery);
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(
+      finalItems,
+      originalQuery,
+      defaultXDetailProvider,
+      { verbose: options?.verbose === true },
+    );
     finalItems = enriched;
+  } else if (finalItems.length > 0) {
+    finalItems = finalItems.map((it) => cleanRealtimeItem(it, options?.verbose === true));
   }
 
   return {
