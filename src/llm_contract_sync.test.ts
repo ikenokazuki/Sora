@@ -2,11 +2,14 @@ import { describe, it, expect } from 'bun:test';
 import { z } from 'zod';
 import {
   createMcpServer,
+  buildSoraMcpInstructions,
+  McpSessionManager,
   SORA_MCP_INSTRUCTIONS,
 } from './mcp.js';
 import {
   SearchWebQuerySchema,
   IntegratedSearchRequestSchema,
+  INTEGRATED_SEARCH_INPUT_SHAPE,
   HighlightAlgorithmSchema,
   DEFAULT_HIGHLIGHT_ALGORITHM,
   HIGHLIGHT_ALGORITHMS,
@@ -142,6 +145,52 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(properties.fetchContent).toBeUndefined();
       expect(properties.maxCharsPerResult).toBeUndefined();
     });
+
+    it('deeply verifies parity of enum values, defaults, min/max, and nullability across MCP, Shared Schema, and OpenAPI', () => {
+      const server = createMcpServer({ deferTools: false });
+      const searchDeep = (server as any)._registeredTools['search_deep'];
+      const mcpShape = searchDeep.inputSchema?.shape || searchDeep.inputSchema;
+      const sharedShape = INTEGRATED_SEARCH_INPUT_SHAPE;
+      const openApiSpec = generateOpenApiDocument();
+      const openApiProps = openApiSpec.paths?.['/search']?.post?.requestBody?.content?.['application/json']?.schema?.properties || {};
+
+      // 1. Single-source identity: MCP schema has identical keys and properties from shared INTEGRATED_SEARCH_INPUT_SHAPE
+      expect(Object.keys(mcpShape).sort()).toEqual(Object.keys(sharedShape).sort());
+      for (const key of Object.keys(sharedShape)) {
+        expect(mcpShape[key]).toBeDefined();
+      }
+
+      // 2. highlightAlgorithm default & enum
+      const hlDefault = typeof (sharedShape.highlightAlgorithm as any)._def.defaultValue === 'function'
+        ? (sharedShape.highlightAlgorithm as any)._def.defaultValue()
+        : (sharedShape.highlightAlgorithm as any)._def.defaultValue;
+      expect(hlDefault).toBe('rho-select-v2');
+      expect(openApiProps.highlightAlgorithm.default).toBe('rho-select-v2');
+      const expectedAlgos = ['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy'];
+      expect(openApiProps.highlightAlgorithm.enum).toEqual(expectedAlgos);
+
+      // 3. responseMode default & enum
+      const respDefault = typeof (sharedShape.responseMode as any)._def.defaultValue === 'function'
+        ? (sharedShape.responseMode as any)._def.defaultValue()
+        : (sharedShape.responseMode as any)._def.defaultValue;
+      expect(respDefault).toBe('full');
+      expect(openApiProps.responseMode.default).toBe('full');
+      expect(openApiProps.responseMode.enum).toEqual(['full', 'evidence']);
+
+      // 4. updated enum
+      const expectedUpdated = ['all', 'day', 'week', 'year'];
+      expect(openApiProps.updated.enum).toEqual(expectedUpdated);
+
+      // 5. limit min / max
+      expect(openApiProps.limit.maximum).toBe(20);
+      expect(openApiProps.limit.minimum).toBe(1);
+
+      // 6. query is required; others are optional
+      const openApiRequired = openApiSpec.paths?.['/search']?.post?.requestBody?.content?.['application/json']?.schema?.required || [];
+      expect(openApiRequired).toContain('query');
+      expect(openApiRequired).not.toContain('responseMode');
+      expect(openApiRequired).not.toContain('limit');
+    });
   });
 
   describe('C. highlightAlgorithm parity', () => {
@@ -272,56 +321,216 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('E2E: client receives list_changed notification and can immediately invoke newly activated tool', async () => {
+    it('measures serialized initial tool definitions budget and instructions characters via MCP client', async () => {
       const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
       const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
-      const { ToolListChangedNotificationSchema } = await import('@modelcontextprotocol/sdk/types.js');
 
       const server = createMcpServer({ deferTools: true });
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-
-      let listChangedCount = 0;
-      const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
-      client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
-        listChangedCount++;
-      });
+      const client = new Client({ name: 'budget-test-client', version: '1.0.0' }, { capabilities: {} });
 
       await Promise.all([
         server.connect(serverTransport),
         client.connect(clientTransport),
       ]);
 
-      // 1. Initial list has 12 tools
       const initialTools = await client.listTools();
       expect(initialTools.tools.length).toBe(12);
-      expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
 
-      // 2. Discover and activate track_package
-      const searchResult = await client.callTool({ name: 'search_tools', arguments: { query: '荷物追跡' } });
-      expect((searchResult.content as any)[0].text).toContain('track_package');
-      expect((searchResult.content as any)[0].text).toContain('有効化完了');
+      const serializedTools = JSON.stringify(initialTools.tools);
+      const toolChars = serializedTools.length;
+      const instructionChars = SORA_MCP_INSTRUCTIONS.length;
+      const estimatedTokens = Math.ceil((toolChars + instructionChars) / 4);
 
-      // 3. Client received standard MCP notification
-      expect(listChangedCount).toBe(1);
-
-      // 4. Refreshed tools/list now includes track_package
-      const refreshedTools = await client.listTools();
-      expect(refreshedTools.tools.length).toBe(13);
-      expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
-
-      // 5. Invoke the newly activated tool directly
-      const trackResult = await client.callTool({
-        name: 'track_package',
-        arguments: { trackingNumber: '123456789012' },
-      });
-      expect(trackResult.isError ?? false).toBe(false);
+      // Regression guards with healthy safety margin
+      expect(toolChars).toBeLessThan(30000);
+      expect(instructionChars).toBeLessThan(8500);
+      expect(estimatedTokens).toBeLessThan(10000);
 
       await client.close();
       await server.close();
     });
+
+    it('E2E: client receives list_changed notification and can immediately invoke newly activated tool (with mocked external network)', async () => {
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+      const { ToolListChangedNotificationSchema } = await import('@modelcontextprotocol/sdk/types.js');
+
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: any, init?: any) => {
+        const url = typeof input === 'string' ? input : input?.url;
+        if (
+          url &&
+          (url.includes('kuronekoyamato') ||
+            url.includes('sagawa') ||
+            url.includes('japanpost') ||
+            url.includes('seino') ||
+            url.includes('fukutsu') ||
+            url.includes('ups.com'))
+        ) {
+          return new Response('<html><body>追跡モック: 配達完了</body></html>', {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' },
+          });
+        }
+        return origFetch(input, init);
+      }) as typeof fetch;
+
+      try {
+        const server = createMcpServer({ deferTools: true });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        let listChangedCount = 0;
+        const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
+        client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+          listChangedCount++;
+        });
+
+        await Promise.all([
+          server.connect(serverTransport),
+          client.connect(clientTransport),
+        ]);
+
+        // 1. Initial list has 12 tools
+        const initialTools = await client.listTools();
+        expect(initialTools.tools.length).toBe(12);
+        expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
+
+        // 2. Discover and activate track_package
+        const searchResult = await client.callTool({ name: 'search_tools', arguments: { query: '荷物追跡' } });
+        expect((searchResult.content as any)[0].text).toContain('track_package');
+        expect((searchResult.content as any)[0].text).toContain('有効化完了');
+
+        // 3. Client received standard MCP notification
+        expect(listChangedCount).toBe(1);
+
+        // 4. Refreshed tools/list now includes track_package
+        const refreshedTools = await client.listTools();
+        expect(refreshedTools.tools.length).toBe(13);
+        expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
+
+        // 5. Invoke the newly activated tool directly without external network flakiness
+        const trackResult = await client.callTool({
+          name: 'track_package',
+          arguments: { trackingNumber: '123456789012' },
+        });
+        expect(trackResult.isError ?? false).toBe(false);
+
+        await client.close();
+        await server.close();
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    it('E2E: stateful HTTP transport receives list_changed notification and refreshes tools/list', async () => {
+      const manager = new McpSessionManager();
+      const parseRes = async (res: Response) => {
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          const line = text.split('\n').find((l) => l.startsWith('data: '));
+          if (line) {
+            return JSON.parse(line.replace(/^data:\s*/, ''));
+          }
+          return null;
+        }
+      };
+
+      // 1. Initialize stateful session
+      const initReq = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'http-test-client', version: '1.0' } },
+        }),
+      });
+      const initRes = await manager.handleRequest(initReq);
+      expect(initRes.status).toBe(200);
+      const sessionId = initRes.headers.get('mcp-session-id')!;
+      expect(sessionId).toBeDefined();
+
+      // 1.5 Send initialized notification
+      const notifyReq = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+      });
+      await manager.handleRequest(notifyReq);
+
+      // 2. Initial tools/list (should be 12 core tools)
+      const listReq1 = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const listRes1 = await manager.handleRequest(listReq1);
+      const listBody1: any = await parseRes(listRes1);
+      const names1 = listBody1.result.tools.map((t: any) => t.name);
+      expect(names1.length).toBe(12);
+      expect(names1).toContain('scrape');
+      expect(names1).toContain('search_deep');
+      expect(names1).toContain('search_tools');
+      expect(names1).not.toContain('track_package');
+
+      // 3. Call search_tools to activate track_package
+      const callSearchReq = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'search_tools', arguments: { query: '荷物追跡' } },
+        }),
+      });
+      const callSearchRes = await manager.handleRequest(callSearchReq);
+      const searchBody: any = await parseRes(callSearchRes);
+      expect(searchBody.result.content[0].text).toContain('track_package');
+      expect(searchBody.result.content[0].text).toContain('有効化完了');
+
+      // 4. Refreshed tools/list in the same session now has 13 tools including track_package
+      const listReq2 = new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-session-id': sessionId,
+          'mcp-protocol-version': '2024-11-05',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/list', params: {} }),
+      });
+      const listRes2 = await manager.handleRequest(listReq2);
+      const listBody2: any = await parseRes(listRes2);
+      const names2 = listBody2.result.tools.map((t: any) => t.name);
+      expect(names2.length).toBe(13);
+      expect(names2).toContain('track_package');
+    });
   });
 
-  describe('G. Module gating integrity', () => {
+  describe('G. Module gating integrity & module-aware instructions', () => {
     it('disabled modules are never registered and cannot be activated by search_tools', async () => {
       // Only enable 'life' module
       const server = createMcpServer({ deferTools: true, modules: ['life'] });
@@ -339,6 +548,45 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const text = searchResult.content?.[0]?.text;
       expect(text).toContain('一致する追加ツールは見つかりませんでした');
       expect(text).toMatch(/無効化|利用不可/);
+    });
+
+    it('buildSoraMcpInstructions reflects only active modules and omits disabled module tools', () => {
+      // 1. Life module only
+      const lifeInstructions = buildSoraMcpInstructions(['life']);
+      expect(lifeInstructions).toContain('Package & Delivery Tracking');
+      expect(lifeInstructions).toContain('track_package');
+      expect(lifeInstructions).toContain('get_weather');
+      expect(lifeInstructions).toContain('search_route');
+
+      // Disabled module tools must NOT be present
+      expect(lifeInstructions).not.toContain('search_song');
+      expect(lifeInstructions).not.toContain('search_artist');
+      expect(lifeInstructions).not.toContain('search_laws');
+      expect(lifeInstructions).not.toContain('check_product_compliance');
+      expect(lifeInstructions).not.toContain('predict_hts_code');
+      expect(lifeInstructions).not.toContain('search_deep');
+      expect(lifeInstructions).not.toContain('search_web');
+
+      // 2. All modules
+      const allInstructions = buildSoraMcpInstructions(['all']);
+      expect(allInstructions).toContain('search_deep');
+      expect(allInstructions).toContain('search_web');
+      expect(allInstructions).toContain('search_song');
+      expect(allInstructions).toContain('search_laws');
+      expect(allInstructions).toContain('check_product_compliance');
+    });
+
+    it('disabled module discovery output reflects only active modules in available categories', async () => {
+      const server = createMcpServer({ deferTools: true, modules: ['life'] });
+      const searchTools = (server as any)._registeredTools['search_tools'];
+
+      const searchResult = await searchTools.handler({ query: '音楽' });
+      const text = searchResult.content?.[0]?.text;
+
+      expect(text).toContain('現在有効なカテゴリ: life (天気/乗換/荷物追跡)');
+      expect(text).not.toContain('music (楽曲/歌手)');
+      expect(text).not.toContain('gov (法令)');
+      expect(text).not.toContain('trade (輸出/HTS/CPSC/FDA)');
     });
   });
 
@@ -358,6 +606,22 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // natural language artist
       const resArtist = await searchTools.handler({ query: '歌手' });
       expect(resArtist.content?.[0]?.text).toContain('search_artist');
+    });
+
+    it('prevents false-positive 1-character reverse containment while activating intended tools', async () => {
+      const server = createMcpServer({ deferTools: true });
+      const searchTools = (server as any)._registeredTools['search_tools'];
+
+      // "歌手" must activate search_artist, but NOT search_song via 1-char "歌"
+      const resArtist = await searchTools.handler({ query: '歌手' });
+      const artistText = resArtist.content?.[0]?.text || '';
+      expect(artistText).toContain('search_artist');
+      expect(artistText).not.toContain('search_song');
+
+      // "ヤマトの追跡" must activate track_package via 3-char "ヤマト"
+      const resTracking = await searchTools.handler({ query: 'ヤマトの追跡' });
+      const trackingText = resTracking.content?.[0]?.text || '';
+      expect(trackingText).toContain('track_package');
     });
 
     it('search_tools output is lightweight without full schema dumping', async () => {
