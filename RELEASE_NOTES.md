@@ -1,11 +1,16 @@
 # 🌤️ Sora Release v2.24.1
 
-- integrated X detail enrichmentをofficial/public merge後へ移動
-- Yahoo長文切断疑いを文字数gateで検出
-- top5をローカル評価し、Fx detail requestは最大2件
-- query relevanceでdetail候補を選択
-- 無関係な短文投稿への不要なFx取得を防止
-- Yahoo/Fx fail-soft挙動を維持
+v2.24.0 で導入した X long-form enrichment に対する Hotfix リリースです。
+
+- **post-merge X long-form detail selection**: Yahoo official/public マージ後に全文取得候補を選定
+- **Yahoo truncation gate**: Yahoo 本文が切断疑い（`text.length >= 240`）の投稿のみを Gate 通過
+- **max two Fx detail calls**: 上位 5 件をローカル評価し、FxTwitter HTTP 呼び出しは最大 2 件に制限
+- **query relevance selection**: original semantic query relevance に基づき Fx detail 候補を選択
+- **canonical X text response**: `text` を唯一の canonical 本文に一本化
+- **canonical author_name/author_handle response**: `author_name` + `author_handle` を canonical author 表現とし、`@` を除去
+- **removal of redundant long-form response fields**: 通常レスポンスから `snippet`, `markdown`, `originalText`, `author`, `author_url`, `siteName` を完全に除外し、レスポンスサイズを大幅に削減（`verbose: true` のみ `detailDiagnostics` を付与）
+- **URL normalization**: host-facing X URL から Yahoo トラッキングパラメータ（`utm_source`, `utm_medium`, `utm_campaign`）を自動除去
+- **Yahoo/Fx fail-soft挙動の維持**: 外部 API エラーやタイムアウト時もエラーを発生させず安定フォールバック
 
 ---
 
