@@ -1,3 +1,33 @@
+# 🌤️ Sora Release v2.23.1
+
+v2.23.0 で導入された各種機能と runtime 挙動を、MCP スキーマ・ツール説明・指示文（`SORA_MCP_INSTRUCTIONS`）・REST・OpenAPI・ドキュメント間で 100% 整合させる **LLM-facing Contract Synchronization & Discovery Refinement** リリースです。
+
+検索・retrieval・ranking・ρSelect v2 の精度経路は変更せず、LLM が迷わず正確にツールを選択・発見・活用できるプロトコル契約を強化しました。
+
+---
+
+## 🌟 v2.23.1 主なハイライト (Highlights)
+
+### 1. 🔁 `search_deep` スキーマの Single-Source 化 & 完全パリティ
+- `src/mcp.ts` 内の手動インラインスキーマ定義を撤廃し、共有スキーマ `INTEGRATED_SEARCH_INPUT_SHAPE` に一本化。
+- OpenAPI 生成における Zod 3.24+ の enum 欠落バグを修正し、REST / MCP / OpenAPI 間の全 enum・default・境界値の一致をテストで恒久保証。
+- `search_web` の `limit` 説明文言をランタイム挙動（最大: 20。formats指定時: 5。未指定時: provider 既定件数維持）と完全同期。
+
+### 2. 🧩 Module-Aware な MCP ガイダンス & 厳格な分離
+- `buildSoraMcpInstructions(activeModules)` を導入し、有効なモジュールのみ Tier 1 ディレクティブおよびツールガイダンスを動的生成。
+- `life` モジュールと `disaster` モジュールの instructions 定義を完全に分離し、片方のみ有効な構成でも他方のツール名が漏出しないよう適正化。
+- `search_tools` の候補なしメッセージに表示される「利用可能なカテゴリ」も現在アクティブなモジュールのみ動的反映。
+
+### 3. 🔍 段階的ツール発見 (Progressive Discovery) の品質向上
+- `search_tools` の自然言語判定における逆包含処理を 2 文字以上（`[...kLower].length >= 2`）に限定。「歌手」で「歌」を含む `search_song` が誤活性化される 1 文字誤マッチを排除。
+- `search_tools` の description から固定ツール名（`search_deep 等`）を削除し、モジュール無効構成でも矛盾しない client-neutral な案内に統一。
+- 初期 12 コアツールの定義文字数を 19,963 文字、instructions を 6,102 文字に最適化（初期コンテキスト消費を全登録比約 70% 削減）。
+
+### 4. ⚡ MCP Standard Streamable HTTP 通知の E2E 実証
+- MCP SDK 標準の Streamable HTTP（GET SSE ストリーム）経由で、`search_tools` 実行時に `notifications/tools/list_changed` が確実にクライアントへ届き、同一セッション内で `tools/list` が動的リフレッシュされる E2E 通信を実証。
+
+---
+
 # 🌤️ Sora Release v2.23.0
 
 MCP / REST の検索レスポンス整合性を保ちながら、必要なクライアントだけ返却量を大幅に削減できる **Evidence Response Mode**、`search_web` の共通 format 契約、Host-facing highlights 正規化、および検索診断の安全な拡張を統合したリリースです。
