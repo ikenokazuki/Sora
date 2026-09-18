@@ -51,7 +51,11 @@ import {
   buildXRetrievalPlan,
   stripXWebDiscoveryText,
 } from './x_source_isolation.js';
-import { defaultXDetailProvider, enrichRealtimeItemsWithXDetail } from './services/x_detail.js';
+import {
+  defaultXDetailProvider,
+  enrichRealtimeItemsWithXDetail,
+  cleanRealtimeItem,
+} from './services/x_detail.js';
 
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
@@ -1572,8 +1576,13 @@ export async function integratedSearch(options: {
       if (dedup && merged.length > 0) {
         merged = dedupSearchResults(merged, (i: any) => `${i.text || i.content || ''}`);
       }
-      const enriched = await enrichRealtimeItemsWithXDetail(merged, query);
-      merged = enriched.items;
+      const enriched = await enrichRealtimeItemsWithXDetail(
+        merged,
+        query,
+        defaultXDetailProvider,
+        { verbose: options.verbose === true },
+      );
+      merged = enriched.items.map((it: any) => cleanRealtimeItem(it, options.verbose === true));
       realtimeItems = merged;
       realtimeMeta = {
         source: 'x',

@@ -77,6 +77,12 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(data1.data.items[0].text).toContain('開場は10時、開演は12時');
         expect(data1.data.items[0].detailEnriched).toBe(true);
         expect(data1.data.items[0].isNoteTweet).toBe(true);
+        expect(data1.data.items[0].snippet).toBeUndefined();
+        expect(data1.data.items[0].markdown).toBeUndefined();
+        expect(data1.data.items[0].originalText).toBeUndefined();
+        expect(data1.data.items[0].author).toBeUndefined();
+        expect(data1.data.items[0].author_name).toBe('公式フェス運営');
+        expect(data1.data.items[0].author_handle).toBe('summer_fes');
 
         // Test 2: POST /realtime (alias parity)
         const res2 = await app.request('/realtime', {
@@ -213,10 +219,22 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(targetItem).toBeDefined();
         expect(targetItem.text).toContain('先行物販は午前9時開始');
         expect(targetItem.detailEnriched).toBe(true);
+        expect(targetItem.snippet).toBeUndefined();
+        expect(targetItem.markdown).toBeUndefined();
+        expect(targetItem.originalText).toBeUndefined();
+        expect(targetItem.author).toBeUndefined();
+        expect(targetItem.author_name).toBe('公式フェス運営');
+        expect(targetItem.author_handle).toBe('summer_fes');
 
         const publicItem = data.realtime.items.find((it: any) => it.id === '2000000000000000099');
         expect(publicItem).toBeDefined();
         expect(publicItem.detailEnriched).toBeUndefined();
+        expect(publicItem.snippet).toBeUndefined();
+        expect(publicItem.markdown).toBeUndefined();
+        expect(publicItem.originalText).toBeUndefined();
+        expect(publicItem.author).toBeUndefined();
+        expect(publicItem.author_name).toBe('一般参加者');
+        expect(publicItem.author_handle).toBe('fes_fan');
       } finally {
         yahooSpy.mockRestore();
         fetchStatusSpy.mockRestore();
