@@ -1,3 +1,5 @@
+import type { XPostDetail } from './services/x_detail.js';
+
 export type XDiscoveryKind = 'status' | 'profile';
 export type XEvidenceRelation =
   | 'exact_status'
@@ -242,6 +244,40 @@ function formatMarkdown(
   });
 
   return `${title}\n\n${blocks.join('\n\n')}`.trim();
+}
+
+/**
+ * Builds isolated exact primary evidence directly from a verified XPostDetail.
+ * Used for Direct X status URLs where status ID is known upfront.
+ */
+export function buildXIsolatedEvidenceFromDirectStatus(
+  seed: XDiscoverySeed,
+  detail: XPostDetail,
+): XIsolatedEvidence {
+  const authorName = seed.handle ? `@${seed.handle}` : 'X post';
+  const item: Record<string, any> = {
+    id: detail.statusId,
+    statusId: detail.statusId,
+    text: detail.text,
+    content: detail.text,
+    source: 'x',
+    author: authorName,
+    author_handle: seed.handle,
+    url: seed.url,
+    isNoteTweet: detail.isNoteTweet,
+    media: detail.media,
+  };
+
+  const md = formatMarkdown('# X post — exact status verified', [item]);
+
+  return {
+    relation: 'exact_status',
+    markdown: md,
+    selectedItems: [item],
+    relatedItems: [],
+    exactStatusMatched: true,
+    eligibleForPrimaryEvidence: true,
+  };
 }
 
 /**
