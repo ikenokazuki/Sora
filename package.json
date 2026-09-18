@@ -10,6 +10,7 @@
     "stdio": "bun run src/stdio.ts",
     "test": "bun test",
     "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
+    "bench:evidence": "bun run benchmarks/evidence_compiler.ts",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js"
   },
   "keywords": [
