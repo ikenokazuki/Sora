@@ -216,27 +216,27 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).",
     );
   }
-  if (hasDisaster || hasLife) {
+  if (hasLife) {
     tier1Directives.push(
-      "3. Japan Weather & Disaster Information (Japan Meteorological Agency direct CDN, JARTIC road traffic, P2P Earthquake): Use 'disaster' / 'life' tools (get_weather [CORE], search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic).",
+      "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Japan Domestic Transit & Flights (Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations, GSI elevation): Use 'life' / 'disaster' tools (search_route [CORE], get_flight_status, get_elevation).",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).",
+    );
+  }
+  if (hasDisaster) {
+    tier1Directives.push(
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation).",
     );
   }
   if (hasYahoo) {
     tier1Directives.push(
-      "5. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).",
+      "6. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).",
     );
   }
   if (hasMusic) {
     tier1Directives.push(
-      "6. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
-    );
-  }
-  if (hasLife) {
-    tier1Directives.push(
-      "7. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).",
+      "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
     );
   }
 
@@ -1878,7 +1878,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     '【追加ツール検索・動的有効化】現在 tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
       '一致したツールを現在のセッションで有効化します。すでに tools/list に表示されているツールは直接実行してください。' +
       '荷物追跡（track_package）や音楽詳細、国会会議録など、初期状態で非表示の追加機能を利用する際に使用します。' +
-      '本ツールで検索しても見つからない場合は、該当モジュールが無効化・利用不可となっている可能性があるため、利用可能な代替手段（search_deep 等）を使用してください。',
+      '本ツールで検索しても見つからない場合は、該当モジュールが無効化・利用不可となっている可能性があります。' +
+      '現在 tools/list に表示されている利用可能なツールや他の手段を使用してください。',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
     },
