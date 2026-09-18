@@ -1,10 +1,10 @@
-import { z } from 'zod';
-import type { ScrapeFormat } from './types.js';
+import {
+  type ScrapeFormat,
+  IntegratedSearchResponseModeSchema,
+  type IntegratedSearchResponseMode,
+} from './types.js';
 
-export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
-export type IntegratedSearchResponseMode = z.infer<
-  typeof IntegratedSearchResponseModeSchema
->;
+export { IntegratedSearchResponseModeSchema, type IntegratedSearchResponseMode };
 
 export interface IntegratedSearchHostResponseOptions {
   responseMode?: IntegratedSearchResponseMode;
