@@ -153,7 +153,18 @@ export interface RhoSelectDiagnostics {
 export type RhoBm25Diagnostics = RhoSelectDiagnostics;
 
 /** ハイライト選択アルゴリズム種別 */
-export type HighlightAlgorithm = 'rho-select' | 'rho-select-v2' | 'rho-bm25' | 'legacy';
+export const HIGHLIGHT_ALGORITHMS = [
+  'rho-select',
+  'rho-select-v2',
+  'rho-bm25',
+  'legacy',
+] as const;
+
+export type HighlightAlgorithm = (typeof HIGHLIGHT_ALGORITHMS)[number];
+
+export const HighlightAlgorithmSchema = z.enum(HIGHLIGHT_ALGORITHMS);
+
+export const DEFAULT_HIGHLIGHT_ALGORITHM: HighlightAlgorithm = 'rho-select-v2';
 
 export interface RhoOptimizerCertificate {
   scope: 'score_defined_objective_only';
@@ -604,37 +615,56 @@ export const WeatherRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
-export const SearchWebQuerySchema = z.object({
+export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
+export type IntegratedSearchResponseMode = z.infer<
+  typeof IntegratedSearchResponseModeSchema
+>;
+export const DEFAULT_INTEGRATED_SEARCH_RESPONSE_MODE: IntegratedSearchResponseMode = 'full';
+
+export const SEARCH_WEB_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('Web 検索キーワード'),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列 (例: ["natalie.mu"])'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
-  updated: z.enum(['day', 'week', 'month', 'year']).optional().describe('期間指定: "day"(24h以内), "week"(1週間以内), "month"(1ヶ月以内), "year"(1年以内)'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
-  page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
-});
+  updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('指定時のみ上位検索結果をスクレイプし、要求形式を付与する'),
+  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 20, formats指定時は5, 最大: 20)'),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('formats指定時の各ページ最大文字数 (デフォルト: 30000)'),
+  onlyMainContent: z.boolean().optional().describe('formats指定時に本文領域のみ抽出するか (デフォルト: true)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
+};
+export const SearchWebQuerySchema = z.object(SEARCH_WEB_INPUT_SHAPE);
+export const SearchWebRequestSchema = SearchWebQuerySchema;
+export type SearchWebRequest = z.infer<typeof SearchWebRequestSchema>;
 
-export const IntegratedSearchRequestSchema = z.object({
-  query: z.string().min(1, 'query は必須です').describe('検索キーワード'),
+export const INTEGRATED_SEARCH_INPUT_SHAPE = {
+  query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
+  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)'),
+  scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
+  includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
+  realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)'),
+  officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
-  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)'),
-  fetchContent: z.boolean().optional().describe('上位サイトの Markdown 本文を並行取得するか (デフォルト: true)'),
-  maxCharsPerResult: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
-  includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
-  officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
+  updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
+  extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)'),
+  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
   enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)'),
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
   minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
-  highlightAlgorithm: z.enum(['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy']).optional().default('rho-select-v2').describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
-});
+  responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード: "full" はデフォルト・従来互換で全文および周辺文脈を保持。"evidence" は query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
+};
+export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
+export type IntegratedSearchRequest = z.infer<typeof IntegratedSearchRequestSchema>;
 
 export const SuggestRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索語句プレフィックス'),
@@ -1757,6 +1787,10 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
     res = { type: 'string' };
   } else if (schema instanceof z.ZodNumber) {
     res = { type: 'number' };
+    const min = (schema as any).minValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'min' || c.check === 'min')?.value;
+    const max = (schema as any).maxValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'max' || c.check === 'max')?.value;
+    if (min !== undefined) res.minimum = min;
+    if (max !== undefined) res.maximum = max;
   } else if (schema instanceof z.ZodBoolean) {
     res = { type: 'boolean' };
   } else if (schema instanceof z.ZodEnum) {
