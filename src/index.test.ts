@@ -160,19 +160,22 @@ describe('web-fetcher Core Functions', () => {
     }
   });
 
-  it('normalizeRealtimeItem should convert UNIX timestamp to ISO publishedTime and format author', () => {
+  it('normalizeRealtimeItem should convert UNIX timestamp to ISO publishedTime and canonicalize author', () => {
     const rawItem = {
       id: '123456789',
       text: 'テスト投稿です #テスト',
       created_at: 1787386954,
       author_name: '太郎',
-      author_handle: 'taro_yamada',
-      url: 'https://x.com/taro_yamada/status/123456789',
+      author_handle: '@taro_yamada',
+      url: 'https://x.com/taro_yamada/status/123456789?utm_source=yjrealtime&utm_medium=search',
     };
     const normalized = normalizeRealtimeItem(rawItem);
     expect(normalized.source).toBe('x');
-    expect(normalized.siteName).toBe('X (Twitter)');
-    expect(normalized.author).toBe('太郎 (@taro_yamada)');
+    expect(normalized.author_name).toBe('太郎');
+    expect(normalized.author_handle).toBe('taro_yamada');
+    expect(normalized.author).toBeUndefined();
+    expect(normalized.siteName).toBeUndefined();
+    expect(normalized.url).toBe('https://x.com/taro_yamada/status/123456789');
     expect(normalized.publishedTime).toBe(new Date(1787386954 * 1000).toISOString());
   });
 

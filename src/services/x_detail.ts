@@ -276,6 +276,71 @@ export function rerankRealtimeItems(
   return ranked.map((p) => items[p.originalIndex]);
 }
 
+export interface EnrichRealtimeOptions {
+  verbose?: boolean;
+}
+
+/**
+ * Canonical X realtime response cleaner.
+ * - text を canonical 本文に一本化
+ * - author_name + author_handle を canonical author 表現にする
+ * - snippet, markdown, author, originalText, author_url, siteName などの重複を除去
+ * - verbose: true の場合のみ detailDiagnostics を保持
+ * - Yahoo tracking parameter (?utm_source=... 等) を url から除去
+ */
+export function cleanRealtimeItem(
+  item: Record<string, any>,
+  verbose = false,
+): Record<string, any> {
+  let url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : undefined;
+  if (url) {
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('utm_source');
+      u.searchParams.delete('utm_medium');
+      u.searchParams.delete('utm_campaign');
+      url = u.toString().replace(/\?$/, '');
+    } catch {}
+  }
+
+  let authorName = item.author_name;
+  let authorHandle = item.author_handle;
+  if (!authorName && !authorHandle && typeof item.author === 'string') {
+    const m = item.author.match(/^(.*?)(?:\s*\(@?([a-zA-Z0-9_]+)\))?$/);
+    if (m) {
+      if (m[1]?.trim()) authorName = m[1].trim();
+      if (m[2]?.trim()) authorHandle = m[2].trim();
+    }
+  }
+  if (authorHandle) {
+    authorHandle = String(authorHandle).replace(/^@/, '');
+  }
+
+  const cleaned: Record<string, any> = {
+    source: 'x' as const,
+    id: String(item.id || item.statusId || ''),
+    ...(authorName ? { author_name: authorName } : {}),
+    ...(authorHandle ? { author_handle: authorHandle } : {}),
+    text: typeof item.text === 'string' ? item.text : '',
+    ...(url ? { url } : {}),
+    ...(item.publishedTime ? { publishedTime: item.publishedTime } : {}),
+    ...(typeof item.like_count === 'number' ? { like_count: item.like_count } : {}),
+    ...(typeof item.reply_count === 'number' ? { reply_count: item.reply_count } : {}),
+    ...(typeof item.repost_count === 'number' ? { repost_count: item.repost_count } : {}),
+    ...(Array.isArray(item.media) && item.media.length > 0 ? { media: item.media } : {}),
+    ...(item.isOfficial !== undefined ? { isOfficial: item.isOfficial } : {}),
+    ...(item.detailEnriched !== undefined ? { detailEnriched: item.detailEnriched } : {}),
+    ...(item.detailProvider !== undefined ? { detailProvider: item.detailProvider } : {}),
+    ...(item.isNoteTweet !== undefined ? { isNoteTweet: item.isNoteTweet } : {}),
+  };
+
+  if (verbose && item.detailDiagnostics) {
+    cleaned.detailDiagnostics = item.detailDiagnostics;
+  }
+
+  return cleaned;
+}
+
 /**
  * Applies bounded adaptive detail enrichment to Realtime/X search items.
  *
@@ -285,20 +350,22 @@ export function rerankRealtimeItems(
  * - Selector: query relevance (observed.length > 0 against author_name + author_handle + text).
  * - Relevance ranking via rerankRealtimeItems with semanticQuery.
  * - Cap external FxTwitter calls at 2 (X_DETAIL_MAX_CALLS = 2).
+ * - Canonical response: text is single source of truth; snippet/markdown/originalText/author stripped.
  * - Fail-soft on all errors.
  */
 export async function enrichRealtimeItemsWithXDetail(
   items: Array<Record<string, any>>,
   rawQuery: string,
   provider: XPostDetailProvider = defaultXDetailProvider,
+  options?: EnrichRealtimeOptions,
 ): Promise<{ items: Array<Record<string, any>>; fxCalls: number }> {
   if (!Array.isArray(items) || items.length === 0) {
-    return { items: items || [], fxCalls: 0 };
+    return { items: (items || []).map((it) => cleanRealtimeItem(it, options?.verbose === true)), fxCalls: 0 };
   }
 
   const semanticQuery = extractSemanticQuery(rawQuery);
   if (!semanticQuery) {
-    return { items, fxCalls: 0 };
+    return { items: items.map((it) => cleanRealtimeItem(it, options?.verbose === true)), fxCalls: 0 };
   }
 
   const resultItems = items.map((it) => ({ ...it }));
@@ -331,10 +398,8 @@ export async function enrichRealtimeItemsWithXDetail(
     const detail = await provider.fetchStatus(statusId);
 
     if (detail && detail.text) {
-      item.originalText = item.text;
+      const originalText = item.text;
       item.text = detail.text;
-      item.snippet = detail.text;
-      item.markdown = detail.text;
       item.detailEnriched = true;
       item.detailProvider = 'fxtwitter';
 
@@ -344,9 +409,23 @@ export async function enrichRealtimeItemsWithXDetail(
       if (detail.media && detail.media.length > 0) {
         item.media = detail.media;
       }
+
+      delete item.snippet;
+      delete item.markdown;
+      delete item.originalText;
+
+      if (options?.verbose) {
+        item.detailDiagnostics = {
+          provider: 'fxtwitter',
+          originalText: typeof originalText === 'string' ? originalText : '',
+          originalLength: typeof originalText === 'string' ? originalText.length : 0,
+          enrichedLength: detail.text.length,
+        };
+      }
     }
   }
 
-  return { items: resultItems, fxCalls };
+  const cleanedItems = resultItems.map((it) => cleanRealtimeItem(it, options?.verbose === true));
+  return { items: cleanedItems, fxCalls };
 }
 
