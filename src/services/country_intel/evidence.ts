@@ -21,6 +21,20 @@ export function canonicalizeEvidenceUrl(url: string): string {
   return canonical.toString();
 }
 
+const MULTI_LABEL_PUBLIC_SUFFIXES = new Set(['co.uk', 'com.au', 'co.jp', 'co.kr', 'co.nz', 'com.br']);
+
+export function canonicalPublisherDomain(url: string): string | undefined {
+  try {
+    const hostname = new URL(canonicalizeEvidenceUrl(url)).hostname.toLowerCase().replace(/^www\./u, '');
+    const labels = hostname.split('.').filter(Boolean);
+    if (labels.length < 3) return hostname || undefined;
+    const suffix = labels.slice(-2).join('.');
+    return MULTI_LABEL_PUBLIC_SUFFIXES.has(suffix) ? labels.slice(-3).join('.') : suffix;
+  } catch {
+    return undefined;
+  }
+}
+
 export function hashEvidenceContent(text: string): string {
   const normalized = normalizeEvidenceContent(text) ?? '';
   return createHash('sha256').update(normalized).digest('hex');
@@ -73,9 +87,10 @@ export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[]
     urls.set(canonicalUrl, index);
 
     if (item.contentHash !== undefined) {
-      const matchingContent = contentHashes.get(item.contentHash);
+      const contentKey = `${item.contentHash}\u0000${canonicalPublisherDomain(item.url) ?? 'unknown'}`;
+      const matchingContent = contentHashes.get(contentKey);
       if (matchingContent !== undefined) union(matchingContent, index);
-      contentHashes.set(item.contentHash, index);
+      contentHashes.set(contentKey, index);
     }
   }
 
