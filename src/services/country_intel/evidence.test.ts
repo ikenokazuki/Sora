@@ -105,44 +105,40 @@ test('deduplicates canonical URLs and exact normalized content', () => {
     latencyClass: 'near_realtime',
   }, japan, now);
   const exactContentCopy = normalizeEvidence({
-    url: 'https://another.example.com/story',
+    url: 'https://another-publisher.test/story',
     excerpt: 'Japan\u3000 earthquake',
     sourceType: 'international_media',
     primarySource: false,
     latencyClass: 'near_realtime',
   }, japan, now);
 
-  expect(deduplicateEvidence([trackingUrlCopy, canonical, exactContentCopy])).toHaveLength(1);
+  expect(deduplicateEvidence([trackingUrlCopy, canonical, exactContentCopy]))
+    .toEqual([trackingUrlCopy, exactContentCopy]);
 });
 
-test('deduplicates connected URL and content groups in every bridge order', () => {
-  const canonical = normalizeEvidence({
-    url: 'https://example.com/a',
-    excerpt: 'content A',
+test('deduplicates identical content only within the same canonical publisher domain', () => {
+  const first = normalizeEvidence({
+    url: 'https://news.example.co.uk/a',
+    excerpt: 'wire content',
     sourceType: 'international_media',
     primarySource: false,
     latencyClass: 'near_realtime',
   }, japan, now);
-  const trackingCopy = normalizeEvidence({
-    url: 'https://example.com/a?utm_source=newsletter',
-    excerpt: 'content B',
+  const samePublisher = normalizeEvidence({
+    url: 'https://archive.example.co.uk/b',
+    excerpt: 'wire content',
     sourceType: 'international_media',
     primarySource: false,
     latencyClass: 'near_realtime',
   }, japan, now);
-  const contentCopy = normalizeEvidence({
-    url: 'https://another.example.com/story',
-    excerpt: 'content B',
+  const syndicationCopy = normalizeEvidence({
+    url: 'https://another-publisher.example.com/story',
+    excerpt: 'wire content',
     sourceType: 'international_media',
     primarySource: false,
     latencyClass: 'near_realtime',
   }, japan, now);
 
-  for (const items of [
-    [canonical, trackingCopy, contentCopy],
-    [trackingCopy, contentCopy, canonical],
-    [contentCopy, trackingCopy, canonical],
-  ]) {
-    expect(deduplicateEvidence(items)).toEqual([items[0]]);
-  }
+  expect(deduplicateEvidence([first, samePublisher, syndicationCopy]))
+    .toEqual([first, syndicationCopy]);
 });

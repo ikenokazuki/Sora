@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
-import { canonicalizeEvidenceUrl } from './evidence.js';
-import type { IntelEvent, IntelEntity, IntelTarget } from './types.js';
-import type { CountryEvidence } from './types.js';
+import { canonicalPublisherDomain, canonicalizeEvidenceUrl } from './evidence.js';
+import type { CountryEvidence, IntelEntity, IntelEvent, IntelTarget } from './types.js';
 import type { IntelEventDraft } from './event_extract.js';
 
-const WIRE_PROVIDER = /^(?:\s*[\[(])?\s*(reuters|associated press|ap|afp)\s*(?:[\])]|[-,:])/iu;
+const WIRE_BYLINE = /\(\s*(reuters|associated press|ap|afp)\s*\)\s*[-,:]/iu;
 const WIRE_NAMES: Record<string, string> = {
   reuters: 'reuters',
   'associated press': 'ap',
@@ -17,8 +16,8 @@ function wireProvider(evidence: CountryEvidence): string | undefined {
   const publisher = evidence.publisher?.normalize('NFKC').trim().toLowerCase();
   if (publisher && WIRE_NAMES[publisher]) return WIRE_NAMES[publisher];
   const byline = [evidence.title, evidence.excerpt]
-    .find((text) => text && WIRE_PROVIDER.test(text))
-    ?.match(WIRE_PROVIDER)?.[1]?.toLowerCase();
+    .map((text) => text?.match(WIRE_BYLINE)?.[1]?.toLowerCase())
+    .find(Boolean);
   return byline ? WIRE_NAMES[byline] : undefined;
 }
 
@@ -26,12 +25,7 @@ export function sourceFamily(evidence: CountryEvidence): string {
   const wire = wireProvider(evidence);
   if (wire) return `wire:${wire}`;
   if (evidence.contentHash) return `content:${evidence.contentHash}`;
-
-  try {
-    return `domain:${new URL(canonicalizeEvidenceUrl(evidence.url)).hostname.toLowerCase().replace(/^www\./u, '')}`;
-  } catch {
-    return `unknown:${evidence.id}`;
-  }
+  return `domain:${canonicalPublisherDomain(evidence.url) ?? `unknown:${evidence.id}`}`;
 }
 
 function titleTokens(title: string): Set<string> {
@@ -51,34 +45,53 @@ function titleSimilarity(left: string, right: string): number {
   return shared / (leftTokens.size + rightTokens.size - shared);
 }
 
-function entityKeys(draft: IntelEventDraft): Set<string> {
-  return new Set(
-    [...draft.actors, ...draft.targets]
-      .flatMap((entity) => [entity.canonicalId, entity.countryCode, entity.name])
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.normalize('NFKC').toLocaleLowerCase('en-US')),
-  );
-}
-
-function hasEntityOverlap(left: IntelEventDraft, right: IntelEventDraft): boolean {
-  const leftKeys = entityKeys(left);
-  return [...entityKeys(right)].some((key) => leftKeys.has(key));
+function locationsCompatible(left: IntelEventDraft, right: IntelEventDraft): boolean {
+  const leftLocation = left.location;
+  const rightLocation = right.location;
+  if (!leftLocation || !rightLocation) return true;
+  if (leftLocation.countryCode && rightLocation.countryCode && leftLocation.countryCode !== rightLocation.countryCode) return false;
+  if (leftLocation.name && rightLocation.name && leftLocation.name !== rightLocation.name) return false;
+  return true;
 }
 
 function sameLocation(left: IntelEventDraft, right: IntelEventDraft): boolean {
   const leftLocation = left.location;
   const rightLocation = right.location;
-  if (!leftLocation || !rightLocation) return false;
+  if (!leftLocation || !rightLocation || !locationsCompatible(left, right)) return false;
   return Boolean(
     (leftLocation.countryCode && leftLocation.countryCode === rightLocation.countryCode)
     || (leftLocation.name && leftLocation.name === rightLocation.name),
   );
 }
 
+function sameSpecificPlace(left: IntelEventDraft, right: IntelEventDraft): boolean {
+  return Boolean(left.location?.name && left.location.name === right.location?.name);
+}
+
+function timestamp(value: string | undefined): number | undefined {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function nearTime(left: IntelEventDraft, right: IntelEventDraft): boolean {
-  if (!left.occurredAt || !right.occurredAt) return false;
-  const difference = Math.abs(Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
-  return Number.isFinite(difference) && difference <= NEAR_TIME_MS;
+  const leftTime = timestamp(left.occurredAt);
+  const rightTime = timestamp(right.occurredAt);
+  return leftTime !== undefined && rightTime !== undefined && Math.abs(leftTime - rightTime) <= NEAR_TIME_MS;
+}
+
+function specificEntityKeys(draft: IntelEventDraft): Set<string> {
+  return new Set(
+    [...draft.actors, ...draft.targets]
+      .filter((entity) => entity.canonicalId || !['country', 'people_nationality', 'unknown', 'none'].includes(entity.type ?? 'unknown'))
+      .flatMap((entity) => [entity.canonicalId, entity.name])
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.normalize('NFKC').toLocaleLowerCase('en-US')),
+  );
+}
+
+function hasSpecificEntityOverlap(left: IntelEventDraft, right: IntelEventDraft): boolean {
+  const leftKeys = specificEntityKeys(left);
+  return [...specificEntityKeys(right)].some((key) => leftKeys.has(key));
 }
 
 function shouldMerge(
@@ -87,24 +100,22 @@ function shouldMerge(
   leftEvidence: CountryEvidence | undefined,
   rightEvidence: CountryEvidence | undefined,
 ): boolean {
-  if (left.type !== right.type) return false;
+  if (left.regionId !== right.regionId || left.type !== right.type || !locationsCompatible(left, right)) return false;
   const sameCanonicalUrl = Boolean(leftEvidence && rightEvidence
     && canonicalizeEvidenceUrl(leftEvidence.url) === canonicalizeEvidenceUrl(rightEvidence.url));
   const leftFamily = leftEvidence && sourceFamily(leftEvidence);
   const rightFamily = rightEvidence && sourceFamily(rightEvidence);
   const sameWireFamily = Boolean(leftFamily && leftFamily === rightFamily && leftFamily.startsWith('wire:'));
-  const sameCanonicalOrWireFamily = Boolean(leftEvidence && rightEvidence
-    && (sameCanonicalUrl || sameWireFamily));
   const sameContentHash = Boolean(leftEvidence?.contentHash && leftEvidence.contentHash === rightEvidence?.contentHash);
-  const matches = [
-    hasEntityOverlap(left, right),
-    sameLocation(left, right),
-    nearTime(left, right),
+  const strongSignals = [
     titleSimilarity(left.title, right.title) >= 0.72,
-    sameCanonicalOrWireFamily,
+    sameCanonicalUrl,
     sameContentHash,
+    hasSpecificEntityOverlap(left, right),
+    sameSpecificPlace(left, right),
   ].filter(Boolean).length;
-  return matches >= 2;
+  const supportingSignals = [sameLocation(left, right), nearTime(left, right), sameWireFamily].filter(Boolean).length;
+  return strongSignals > 0 && strongSignals + supportingSignals >= 2;
 }
 
 function uniqueByKey<T extends IntelEntity | IntelTarget>(items: T[]): T[] {
@@ -116,56 +127,88 @@ function uniqueByKey<T extends IntelEntity | IntelTarget>(items: T[]): T[] {
   return [...unique.values()];
 }
 
-function earliest(values: string[]): string {
-  return [...values].sort()[0];
+function normalizedBounds(values: string[]): { first?: string; last?: string } {
+  const timestamps = values
+    .map((value) => timestamp(value))
+    .filter((value): value is number => value !== undefined)
+    .sort((left, right) => left - right);
+  return timestamps.length
+    ? { first: new Date(timestamps[0]).toISOString(), last: new Date(timestamps.at(-1)!).toISOString() }
+    : {};
 }
 
-function latest(values: string[]): string {
-  return [...values].sort().at(-1)!;
+function consensusLocation(drafts: IntelEventDraft[]): IntelEventDraft['location'] | undefined {
+  const known = drafts.map((draft) => draft.location).filter((location): location is NonNullable<IntelEventDraft['location']> => Boolean(location));
+  if (!known.length) return undefined;
+  const candidate = known[0];
+  if (known.some((location) => (
+    (candidate.countryCode && location.countryCode && candidate.countryCode !== location.countryCode)
+    || (candidate.name && location.name && candidate.name !== location.name)
+  ))) return undefined;
+  const countryCode = known.find((location) => location.countryCode)?.countryCode;
+  const name = known.find((location) => location.name)?.name;
+  return { ...(countryCode ? { countryCode } : {}), ...(name ? { name } : {}) };
 }
 
 function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEvidence>): IntelEvent {
   const drafts = [...cluster].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId));
   const evidence = drafts.map((draft) => evidenceById.get(draft.evidenceId)).filter((item): item is CountryEvidence => Boolean(item));
   const evidenceIds = drafts.map((draft) => draft.evidenceId);
+  const occurred = normalizedBounds(drafts.map((draft) => draft.occurredAt).filter((value): value is string => Boolean(value)));
+  const seen = normalizedBounds(drafts.flatMap((draft) => [draft.firstSeenAt, draft.lastSeenAt]));
   const sourceFamilies = new Set(evidence.map(sourceFamily));
-  const occurredAt = drafts.map((draft) => draft.occurredAt).filter((value): value is string => Boolean(value));
-  const firstSeenAt = earliest(drafts.map((draft) => draft.firstSeenAt));
-  const lastSeenAt = latest(drafts.map((draft) => draft.lastSeenAt));
   const title = drafts.map((draft) => draft.title).sort()[0];
   const confidence = sourceFamilies.size >= 2 ? 'high' : evidence.some((item) => item.primarySource) || drafts.length > 1 ? 'medium' : 'low';
-  const idMaterial = [drafts[0].regionId, drafts[0].type, title, occurredAt[0] ?? '', ...evidenceIds].join('\n');
+  const idMaterial = [drafts[0].regionId, drafts[0].type, title, occurred.first ?? '', ...evidenceIds].join('\n');
 
   return {
     id: `evt_${createHash('sha256').update(idMaterial).digest('hex').slice(0, 20)}`,
     regionId: drafts[0].regionId,
     type: drafts[0].type,
     title,
-    occurredAt: occurredAt.length ? earliest(occurredAt) : undefined,
-    location: drafts[0].location,
+    occurredAt: occurred.first,
+    location: consensusLocation(drafts),
     actors: uniqueByKey(drafts.flatMap((draft) => draft.actors)),
     targets: uniqueByKey(drafts.flatMap((draft) => draft.targets)),
     evidenceIds,
     evidenceCount: evidenceIds.length,
     independentSourceCount: sourceFamilies.size || evidenceIds.length,
     primarySourceCount: evidence.filter((item) => item.primarySource).length,
-    firstSeenAt,
-    lastSeenAt,
+    firstSeenAt: seen.first ?? new Date(0).toISOString(),
+    lastSeenAt: seen.last ?? new Date(0).toISOString(),
     confidence,
   };
 }
 
 export function clusterEvents(drafts: IntelEventDraft[], evidence: CountryEvidence[]): IntelEvent[] {
+  const orderedDrafts = [...drafts].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId));
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
-  const clusters: IntelEventDraft[][] = [];
+  const parents = orderedDrafts.map((_, index) => index);
+  const find = (index: number): number => {
+    if (parents[index] !== index) parents[index] = find(parents[index]);
+    return parents[index];
+  };
+  const union = (left: number, right: number): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+  };
 
-  for (const draft of [...drafts].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId))) {
-    const matchingCluster = clusters.find((cluster) => shouldMerge(
-      cluster[0], draft, evidenceById.get(cluster[0].evidenceId), evidenceById.get(draft.evidenceId),
-    ));
-    if (matchingCluster) matchingCluster.push(draft);
-    else clusters.push([draft]);
+  for (let left = 0; left < orderedDrafts.length; left++) {
+    for (let right = left + 1; right < orderedDrafts.length; right++) {
+      if (shouldMerge(
+        orderedDrafts[left], orderedDrafts[right],
+        evidenceById.get(orderedDrafts[left].evidenceId), evidenceById.get(orderedDrafts[right].evidenceId),
+      )) union(left, right);
+    }
   }
 
-  return clusters.map((cluster) => toEvent(cluster, evidenceById)).sort((left, right) => left.id.localeCompare(right.id));
+  const clusters = new Map<number, IntelEventDraft[]>();
+  for (const [index, draft] of orderedDrafts.entries()) {
+    const root = find(index);
+    const cluster = clusters.get(root);
+    if (cluster) cluster.push(draft);
+    else clusters.set(root, [draft]);
+  }
+  return [...clusters.values()].map((cluster) => toEvent(cluster, evidenceById)).sort((left, right) => left.id.localeCompare(right.id));
 }
