@@ -221,7 +221,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): 'track_package' is a deferred tool (hidden by default). You MUST first call 'search_tools' with query '荷物追跡' to dynamically activate it, then call 'track_package'.",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): 'track_package' is a deferred tool (hidden by default). You MUST first call 'search_tools' with query '荷物追跡' to dynamically activate it, then call 'track_package'.",
     );
   }
   if (hasDisaster) {
@@ -1205,24 +1205,31 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: deferredDefault, keywords: ['フライト', '航空', '飛行機', '空港', '欠航', '遅延', '羽田', '成田', 'JAL', 'ANA'] },
     );
 
-    // Tool: track_package (主要運送会社・UPS 荷物追跡)
+    // Tool: track_package (主要運送会社・UPS・FedEx・DHL Express 荷物追跡)
     registerTool(
       mcpServer,
       toolCatalog,
       'track_package',
       'life',
-      '【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便・西濃運輸・福山通運）およびUPSの荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups）を指定可能。未指定または "auto" の場合は伝票番号から候補会社を自動判別・並行照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl }',
+      '【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便 国内+国際EMS/UPU S10・西濃運輸・福山通運）および国際配送（UPS・FedEx・DHL Express）の荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl）を指定可能。未指定または "auto" の場合は伝票番号から候補会社をローカル自動判別・検証照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl }',
       {
         trackingNumber: z.string().min(1).describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず、全角半角対応）'),
-        carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'auto']).optional()
-          .describe('運送会社コード: "yamato"(ヤマト運輸), "sagawa"(佐川急便), "japanpost"(日本郵便), "seino"(西濃運輸), "fukutsu"(福山通運), "ups"(UPS)。省略または "auto" で自動判別'),
+        carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional()
+          .describe('運送会社コード: "yamato"(ヤマト運輸), "sagawa"(佐川急便), "japanpost"(日本郵便 国内+国際), "seino"(西濃運輸), "fukutsu"(福山通運), "ups"(UPS), "fedex"(FedEx), "dhl"(DHL Express)。省略または "auto" で自動判別'),
+        preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional()
+          .describe('優先的に検証する運送会社候補のヒント配列'),
+        originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
+        destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
         noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか'),
       },
-      async ({ trackingNumber, carrier, noCache }) => {
+      async ({ trackingNumber, carrier, preferredCarriers, originCountry, destinationCountry, noCache }) => {
         try {
           const result = await trackPackage({
             trackingNumber,
             carrier: carrier ?? 'auto',
+            preferredCarriers,
+            originCountry,
+            destinationCountry,
             noCache: noCache ?? false,
           });
           return {
@@ -1256,6 +1263,13 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           '西濃運輸',
           '福山通運',
           'UPS',
+          'FedEx',
+          'フェデックス',
+          'DHL',
+          'DHL Express',
+          'EMS',
+          '国際郵便',
+          'UPU',
           '伝票番号',
           '送り状',
           'tracking',
