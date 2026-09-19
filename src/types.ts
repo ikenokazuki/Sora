@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.24.3';
+export const SORA_VERSION = '2.25.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -817,7 +817,18 @@ export type InspectImageOptions = z.infer<typeof InspectImageRequestSchema>;
 // ==========================================
 // 荷物追跡 (Package Tracking)
 // ==========================================
-export type CarrierCode = 'yamato' | 'sagawa' | 'japanpost' | 'seino' | 'fukutsu' | 'ups';
+export const CARRIER_CODES = [
+  'yamato',
+  'sagawa',
+  'japanpost',
+  'seino',
+  'fukutsu',
+  'ups',
+  'fedex',
+  'dhl',
+] as const;
+export type CarrierCode = (typeof CARRIER_CODES)[number];
+export type TrackingResolvedCarrier = CarrierCode | 'unknown';
 export type TrackingStatus = 'delivered' | 'in_transit' | 'registered' | 'returned' | 'error' | 'not_found' | 'unknown';
 
 export interface TrackingEvent {
@@ -828,7 +839,7 @@ export interface TrackingEvent {
 }
 
 export interface TrackingResult {
-  carrier: CarrierCode;
+  carrier: TrackingResolvedCarrier;
   carrierName: string;
   trackingNumber: string;
   status: TrackingStatus;
@@ -841,6 +852,36 @@ export interface TrackingResult {
     deliveryDate?: string;
     serviceType?: string;
   };
+  postal?: {
+    network?: 'upu';
+    international?: boolean;
+    issuingCountry?: string;
+    serviceIndicator?: string;
+  };
+  detection?: {
+    mode?: 'auto' | 'explicit';
+    verified?: boolean;
+    ambiguous?: boolean;
+    selectedCarrier?: TrackingResolvedCarrier;
+    attemptedCarriers?: CarrierCode[];
+    candidates?: Array<{
+      carrier: CarrierCode;
+      score: number;
+      strength: 'exclusive' | 'strong' | 'weak';
+      reasons: string[];
+    }>;
+  };
+  resolvedCarrier?: {
+    code: TrackingResolvedCarrier;
+    name: string;
+    confidence: 'exclusive' | 'strong' | 'weak';
+    verification: 'strong' | 'weak' | 'none';
+    method: string;
+  };
+  verification?: {
+    level: 'strong' | 'weak' | 'none';
+    reasons: string[];
+  };
   error?: string;
   cached?: boolean;
   fetchedAt?: string;
@@ -848,13 +889,21 @@ export interface TrackingResult {
 
 export const TrackingRequestSchema = z.object({
   trackingNumber: z.string().min(1, '追跡番号は必須です').describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず）'),
-  carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'auto']).optional().describe('運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, auto)。未指定または "auto" の場合は自動判別'),
+  carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional().describe('運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl, auto)。未指定または "auto" の場合は自動判別'),
+  preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列'),
+  originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
+  destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか'),
+  verbose: z.boolean().optional().describe('詳細な detection 判定情報をレスポンスに含めるか'),
 });
 export interface TrackingRequest {
   trackingNumber: string;
   carrier?: CarrierCode | 'auto';
+  preferredCarriers?: CarrierCode[];
+  originCountry?: string;
+  destinationCountry?: string;
   noCache?: boolean;
+  verbose?: boolean;
 }
 
 
@@ -1762,14 +1811,44 @@ export const TrackingDetailsSchema = z.object({
 });
 
 export const TrackingResultSchema = z.object({
-  carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups']).describe('運送会社識別コード'),
-  carrierName: z.string().describe('運送会社表示名 (例: "ヤマト運輸", "佐川急便", "日本郵便", "西濃運輸", "福山通運", "UPS")'),
+  carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'unknown']).describe('運送会社識別コード'),
+  carrierName: z.string().describe('運送会社表示名 (例: "ヤマト運輸", "佐川急便", "日本郵便", "西濃運輸", "福山通運", "UPS", "FedEx", "DHL Express", "不明")'),
   trackingNumber: z.string().describe('追跡番号・送り状お問い合わせ番号'),
   status: z.enum(['delivered', 'in_transit', 'registered', 'returned', 'error', 'not_found', 'unknown']).describe('統一配送ステータスコード: "delivered"(配達完了), "in_transit"(輸送中), "registered"(荷物受付), "returned"(返送), "error"(エラー), "not_found"(未登録), "unknown"(不明)'),
   statusText: z.string().describe('配送ステータスの日本語表示テキスト (例: "配達完了", "配達中", "輸送中")'),
   events: z.array(TrackingEventSchema).describe('荷物の追跡履歴イベント配列 (時系列)'),
   trackingUrl: z.string().describe('各運送会社の公式追跡 Web ページ URL'),
   details: TrackingDetailsSchema.optional().describe('荷物詳細情報 (発送元、お届け先、配達日、サービス種別等)'),
+  postal: z.object({
+    network: z.string().optional().describe('国際郵便ネットワーク (例: "upu")'),
+    international: z.boolean().optional().describe('国際郵便か'),
+    issuingCountry: z.string().optional().describe('UPU S10 発行国コード (ISO 2文字)'),
+    serviceIndicator: z.string().optional().describe('UPU S10 サービス識別子 (例: "EE", "CP", "RA")'),
+  }).optional().describe('国際郵便 (UPU S10) メタデータ'),
+  detection: z.object({
+    mode: z.enum(['auto', 'explicit']).optional().describe('検出モード'),
+    verified: z.boolean().optional().describe('強い検証に成功したか'),
+    ambiguous: z.boolean().optional().describe('複数社で競合したか'),
+    selectedCarrier: z.string().optional().describe('選定された運送会社'),
+    attemptedCarriers: z.array(z.string()).optional().describe('検証試行した運送会社一覧'),
+    candidates: z.array(z.object({
+      carrier: z.string().describe('候補運送会社'),
+      score: z.number().describe('ローカルスコア'),
+      strength: z.enum(['exclusive', 'strong', 'weak']).describe('候補強度'),
+      reasons: z.array(z.string()).describe('判定理由'),
+    })).optional().describe('ローカル判定候補一覧'),
+  }).optional().describe('自動判別・検証診断情報 (verbose: true 時)'),
+  resolvedCarrier: z.object({
+    code: z.string().describe('確定した運送会社コード'),
+    name: z.string().describe('確定した運送会社名称'),
+    confidence: z.enum(['exclusive', 'strong', 'weak']).describe('判定信頼度'),
+    verification: z.enum(['strong', 'weak', 'none']).describe('検証レベル'),
+    method: z.string().describe('判定方式'),
+  }).optional().describe('確定運送会社サマリー'),
+  verification: z.object({
+    level: z.enum(['strong', 'weak', 'none']).describe('検証レベル'),
+    reasons: z.array(z.string()).describe('検証判定理由'),
+  }).optional().describe('配送エビデンス検証情報'),
   error: z.string().optional().describe('追跡失敗時のエラーメッセージ'),
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
   fetchedAt: z.string().optional().describe('追跡情報取得日時 (ISO 8601)'),
