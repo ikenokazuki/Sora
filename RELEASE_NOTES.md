@@ -1,9 +1,10 @@
-# 🌤️ Sora Release v2.24.2
+# 🌤️ Sora Release v2.24.3
 
-MCP クライアント（LibreChat 等）における荷物追跡ツール（`track_package`）の即時利用を可能にする Hotfix リリースです。
+コアツール枠（厳格な初期 12 ツール構成）の復元と、遅延ツール動的有効化（Two-Tier Tool Architecture）の LLM 誘導プロンプトを強化した Hotfix リリースです。
 
-- **`track_package` の CORE ツール昇格**: 初期状態で非表示となる遅延読み込み（deferred）から、常に有効な CORE ツール（`defaultEnabled: true`）へ昇格。
-- **MCP クライアント互換性向上**: 初期接続時の `tools/list` に `track_package` が直接含まれるようになり、`search_tools` による動的有効化ステップを経ずに、LibreChat や各社 MCP エージェントから即座に荷物追跡（ヤマト・佐川・郵便・西濃・福山・UPS）が呼び出し可能になりました。
+- **初期コアツール枠の復元（12 ツール制限の厳格な遵守）**: `track_package` を初期 CORE ツールから元の遅延読み込み（`defaultEnabled: deferredDefault`）へ戻し、初期 `tools/list` のツール数を 12 ツール（11 コア + `search_tools`）に復元。コンテキストトークン効率を最優先とする設計原則を徹底。
+- **動的有効化誘導プロンプトの強化**: `buildSoraMcpInstructions` 内の Tier 1 指示において、`track_package` が初期非表示の遅延ツール（DEFERRED）であることを明記し、利用前に必ず `search_tools(query: '荷物追跡')` を呼び出して動的有効化してから使用することを LLM に一意に指示・誘導。
+- **コントラクトテストの整合性担保**: 初期 12 ツール構成および `track_package` の動的有効化フローに対するテストアサーションを同期（29 tests 全件 PASS）。
 
 ---
 
