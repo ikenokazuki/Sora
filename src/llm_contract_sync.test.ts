@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import { z } from 'zod';
 import {
   createMcpServer,
   buildSoraMcpInstructions,
   McpSessionManager,
   SORA_MCP_INSTRUCTIONS,
+  clearSharedActivatedTools,
 } from './mcp.js';
 import {
   SearchWebQuerySchema,
@@ -18,6 +19,10 @@ import {
 import { SEARCH_WEB_INPUT_SHAPE } from './search_web_formats.js';
 
 describe('Sora v2.23.0 LLM Contract Synchronization', () => {
+  beforeEach(() => {
+    clearSharedActivatedTools();
+  });
+
   describe('A. search_web contract parity', () => {
     it('SEARCH_WEB_INPUT_SHAPE and SearchWebQuerySchema must have canonical contract fields', () => {
       // Runtime shape
@@ -729,6 +734,36 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(registered['scrape'].description).toMatch(/既知URLの精読・本文抽出/);
       expect(registered['crawl_site'].description).toMatch(/同一サイトの複数ページ巡回/);
       expect(registered['browser_action'].description).toMatch(/対話・動的操作・レンダリングが必須/);
+    });
+  });
+
+  describe('J. Dynamic tool preservation across client re-initialization (LibreChat Re-init resilience)', () => {
+    it('preserves dynamically activated tools when client re-connects or re-initializes server', async () => {
+      // 1. Initial server instance has 12 tools and does NOT include search_news
+      const server1 = createMcpServer({ deferTools: true });
+      const reg1 = (server1 as any)._registeredTools;
+      expect(Object.keys(reg1).filter((k) => reg1[k].enabled).length).toBe(12);
+      expect(reg1['search_news']?.enabled).toBe(false);
+
+      // 2. Discover and activate search_news via search_tools
+      const searchTools1 = reg1['search_tools'];
+      const activateResult = await searchTools1.handler({ query: 'ニュース' });
+      expect(activateResult.content[0].text).toContain('search_news');
+      expect(activateResult.content[0].text).toContain('有効化完了');
+      expect(reg1['search_news'].enabled).toBe(true);
+
+      // 3. Client (e.g. LibreChat) re-initializes connection, creating a fresh server instance
+      const server2 = createMcpServer({ deferTools: true });
+      const reg2 = (server2 as any)._registeredTools;
+
+      // 4. In server2, search_news is automatically preserved as enabled in tools/list!
+      expect(reg2['search_news']?.enabled).toBe(true);
+      const enabledTools2 = Object.keys(reg2).filter((k) => reg2[k].enabled);
+      expect(enabledTools2).toContain('search_news');
+      expect(enabledTools2.length).toBe(13);
+
+      // 5. Tool can be executed directly on the new server instance without "temporarily unavailable" error
+      expect(typeof reg2['search_news'].handler).toBe('function');
     });
   });
 });
