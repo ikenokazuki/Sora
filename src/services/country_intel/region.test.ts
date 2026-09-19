@@ -13,3 +13,27 @@ test('resolves deterministic country identities and preserves ambiguity', () => 
   expect(resolveRegion('대한민국')).toMatchObject({ countryCode: 'KR', confidence: 'high' });
   expect(resolveRegion('Georgia')).toMatchObject({ name: 'Georgia', confidence: 'low' });
 });
+
+test('resolves country codes only to country identities', () => {
+  expect(resolveRegion('US')).toMatchObject({
+    id: 'country:US',
+    countryCode: 'US',
+    confidence: 'high',
+  });
+  expect(resolveRegion('US-GA')).toMatchObject({
+    id: 'subdivision:US-GA',
+    subdivisionCode: 'US-GA',
+    confidence: 'high',
+  });
+});
+
+test('returns identity arrays that cannot mutate stored geographic data', () => {
+  const first = resolveRegion('South Korea');
+  first.languages.push('en');
+  first.aliases.push('mutated alias');
+
+  expect(resolveRegion('South Korea')).toMatchObject({
+    languages: ['ko'],
+    aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'],
+  });
+});
