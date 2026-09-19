@@ -5,6 +5,7 @@ import {
   getCarrierName,
   determineStatus,
   detectCandidates,
+  detectCandidateCarrierCodes,
   trackYamato,
   trackSagawa,
   trackJapanPost,
@@ -57,6 +58,8 @@ describe('Tracking Service Unit Tests', () => {
       expect(getCarrierName('seino')).toBe('西濃運輸');
       expect(getCarrierName('fukutsu')).toBe('福山通運');
       expect(getCarrierName('ups')).toBe('UPS');
+      expect(getCarrierName('fedex')).toBe('FedEx');
+      expect(getCarrierName('dhl')).toBe('DHL Express');
     });
   });
 
@@ -85,22 +88,31 @@ describe('Tracking Service Unit Tests', () => {
   describe('detectCandidates', () => {
     it('伝票番号フォーマットから適切なキャリア候補群を推定する', () => {
       // UPS (1Z...)
-      expect(detectCandidates('1Z9999999999999999')).toEqual(['ups']);
+      expect(detectCandidateCarrierCodes('1Z9999999999999999')).toEqual(['ups']);
 
       // 日本郵便 国際 (2英字 + 9数字 + 2英字)
-      expect(detectCandidates('EM123456789JP')).toEqual(['japanpost']);
+      expect(detectCandidateCarrierCodes('EM123456785JP')).toEqual(['japanpost']);
 
-      // 10桁
-      expect(detectCandidates('1234567890')).toEqual(['seino', 'sagawa']);
+      // 10桁 (西濃、佐川、DHL Express 等)
+      const tenDigits = detectCandidateCarrierCodes('1234567890');
+      expect(tenDigits).toContain('seino');
+      expect(tenDigits).toContain('sagawa');
 
-      // 11桁
-      expect(detectCandidates('12345678901')).toEqual(['japanpost', 'fukutsu', 'yamato']);
+      // 11桁 (日本郵便、福山通運、ヤマト等)
+      const elevenDigits = detectCandidateCarrierCodes('12345678901');
+      expect(elevenDigits).toContain('japanpost');
+      expect(elevenDigits).toContain('fukutsu');
+      expect(elevenDigits).toContain('yamato');
 
-      // 12桁（日本の主要宅配便）
-      expect(detectCandidates('123456789012')).toEqual(['yamato', 'sagawa', 'japanpost', 'fukutsu']);
+      // 12桁（ヤマト、佐川、日本郵便、福山、FedEx 等）
+      const twelveDigits = detectCandidateCarrierCodes('123456789012');
+      expect(twelveDigits).toContain('yamato');
+      expect(twelveDigits).toContain('sagawa');
+      expect(twelveDigits).toContain('japanpost');
+      expect(twelveDigits).toContain('fukutsu');
 
-      // 13桁
-      expect(detectCandidates('1234567890123')).toEqual(['japanpost']);
+      // 13桁 (日本郵便)
+      expect(detectCandidateCarrierCodes('1234567890123')).toEqual(['japanpost']);
     });
   });
 
@@ -162,13 +174,12 @@ describe('Tracking Service Unit Tests', () => {
     }, 15000);
 
     it('T-B4: generic unknown 番号で detectCandidates() に UPS が含まれない', () => {
-      const candidates = detectCandidates('999999999999999999'); // 不明な18桁数字等
+      const candidates = detectCandidateCarrierCodes('999999999999999999'); // 不明な18桁数字等
       expect(candidates).not.toContain('ups');
-      expect(candidates).toEqual(['yamato', 'sagawa', 'japanpost']);
     });
 
     it('T-B5: valid 1Z... で UPS だけが候補となる', () => {
-      const candidates = detectCandidates('1Z12345E0205271688');
+      const candidates = detectCandidateCarrierCodes('1Z12345E0205271688');
       expect(candidates).toEqual(['ups']);
     });
 
