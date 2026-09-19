@@ -21,15 +21,20 @@ export function canonicalizeEvidenceUrl(url: string): string {
   return canonical.toString();
 }
 
-const MULTI_LABEL_PUBLIC_SUFFIXES = new Set(['co.uk', 'com.au', 'co.jp', 'co.kr', 'co.nz', 'com.br']);
+const COUNTRY_SECOND_LEVEL_LABELS = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org', 'mil']);
+const KNOWN_GENERIC_TLDS = new Set(['ai', 'app', 'biz', 'com', 'dev', 'edu', 'gov', 'info', 'int', 'io', 'mil', 'name', 'net', 'org', 'pro', 'test', 'xyz']);
 
 export function canonicalPublisherDomain(url: string): string | undefined {
   try {
     const hostname = new URL(canonicalizeEvidenceUrl(url)).hostname.toLowerCase().replace(/^www\./u, '');
     const labels = hostname.split('.').filter(Boolean);
     if (labels.length < 3) return hostname || undefined;
-    const suffix = labels.slice(-2).join('.');
-    return MULTI_LABEL_PUBLIC_SUFFIXES.has(suffix) ? labels.slice(-3).join('.') : suffix;
+    const topLevel = labels.at(-1)!;
+    const secondLevel = labels.at(-2)!;
+    if (topLevel.length === 2) {
+      return COUNTRY_SECOND_LEVEL_LABELS.has(secondLevel) ? labels.slice(-3).join('.') : hostname;
+    }
+    return KNOWN_GENERIC_TLDS.has(topLevel) ? labels.slice(-2).join('.') : hostname;
   } catch {
     return undefined;
   }
