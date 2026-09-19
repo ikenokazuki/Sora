@@ -1,3 +1,39 @@
+# 🌤️ Sora Release v2.25.0
+
+伝票番号の形式衝突と投機競合（first-response-wins）を排除し、決定論的かつ高信頼な配送追跡を実現する **Tracking v2 アーキテクチャ** を導入したメジャー・マイナー機能リリースです。
+
+> **原則: Detect locally. Verify narrowly. Never guess.**
+> （推測するな。観測せよ。最速応答は勝者ではない。確実な配送エビデンスのみを採用する。）
+
+### 🌟 主な機能と改善 (Highlights)
+
+1. **Carrier Adapter & Registry 刷新 (8キャリア対応)**
+   - 運送会社ごとの追跡・検証責任をアダプタへ完全分離。
+   - 国内 5 大キャリア（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）に加えて、国際配送（UPS、FedEx、DHL Express）の計 8 社へ正式対応。
+
+2. **Ranked Local Detection (非推測・完全ローカル判定)**
+   - ネットワーク通信を一切行わず、全キャリアアダプタの形式ルール・チェックディジット・正規表現に基づきスコアと強度を判定・順位付け。
+   - **UPS 1Z Exclusive**: UPS 固有の `^1Z[0-9A-Z]{16}$` は他社候補を一切呼び出さず単一照会。
+   - **UPU S10 国際郵便**: 公式重みベクトル `[8, 6, 4, 2, 3, 5, 9, 7]` によるチェックディジット検証と `postal` メタデータ付与。外国発行（US 等）の EMS 番号も日本郵便国際追跡へ安全にルーティング。
+
+3. **Bounded Wave Verification (最大 4 回制限・段階的並行照会)**
+   - 候補上位から最大 2 社ずつ並列照会（Wave 1: Top 2、Wave 2: Next 2）。
+   - Wave 1 で確実なエビデンス（`strong`）が確認された時点で後続 Wave を即時中止（Short-circuit）。
+   - ネットワーク照会は最大 4 回に厳格制限し、外部サービスへの不要な高負荷やレイテンシ遅延を防止。
+
+4. **Verified Carrier Adoption (Fastest Is Not Winner)**
+   - 最速で返ってきたこと自体を勝者決定の理由とせず、配送イベント履歴や詳細情報が存在する `verification.level === 'strong'` の結果のみを勝者として採用。
+   - API クレデンシャル未設定時の Web URL 案内（URL-only）が auto winner になることを厳格に防止。
+
+5. **Multiple Strong Conflict 判定**
+   - 同一伝票番号で複数社が有効な配送実績を返した場合、単一キャリアを推測・偽装せず `ambiguous: true` / `status: 'unknown'` として安全に競合をユーザーへ通知。
+
+6. **REST / MCP / OpenAPI 契約同期**
+   - MCP `track_package` および REST `/tracking` において 8 社キャリアコード（`fedex`, `dhl` を含む）と `preferredCarriers`, `originCountry`, `destinationCountry` ヒントパラメータを完全サポート。
+   - 初期 12 コアツール構成（Two-Tier Tool Architecture）とコンテキストトークン効率を維持。
+
+---
+
 # 🌤️ Sora Release v2.24.3
 
 コアツール枠（厳格な初期 12 ツール構成）の復元と、遅延ツール動的有効化（Two-Tier Tool Architecture）の LLM 誘導プロンプトを強化した Hotfix リリースです。
