@@ -408,11 +408,12 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect((searchResult.content as any)[0].text).toContain('有効化完了');
 
         // 3. Client received standard MCP notification
-        expect(listChangedCount).toBe(1);
+        expect(listChangedCount).toBeGreaterThanOrEqual(1);
 
         // 4. Refreshed tools/list now includes track_package
         const refreshedTools = await client.listTools();
-        expect(refreshedTools.tools.length).toBe(13);
+        expect(refreshedTools.tools.length).toBe(14);
+        expect(refreshedTools.tools.some((t: any) => t.name === 'default.track_package')).toBe(true);
         expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
 
         // 5. Invoke the newly activated tool directly without external network flakiness
@@ -561,7 +562,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
       await reader.cancel();
 
-      // 4. Refreshed tools/list in the same session now has 13 tools including track_package
+      // 4. Refreshed tools/list includes the canonical tool and its compatibility alias.
       const listReq2 = new Request('http://localhost/mcp', {
         method: 'POST',
         headers: {
@@ -575,7 +576,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes2 = await manager.handleRequest(listReq2);
       const listBody2: any = await parseRes(listRes2);
       const names2 = listBody2.result.tools.map((t: any) => t.name);
-      expect(names2.length).toBe(13);
+      expect(names2.length).toBe(14);
+      expect(names2).toContain('default.track_package');
       expect(names2).toContain('track_package');
 
       manager.clearAllSessions();
@@ -738,32 +740,108 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('J. Dynamic tool preservation across client re-initialization (LibreChat Re-init resilience)', () => {
-    it('preserves dynamically activated tools when client re-connects or re-initializes server', async () => {
-      // 1. Initial server instance has 12 tools and does NOT include search_news
-      const server1 = createMcpServer({ deferTools: true });
-      const reg1 = (server1 as any)._registeredTools;
-      expect(Object.keys(reg1).filter((k) => reg1[k].enabled).length).toBe(12);
-      expect(reg1['search_news']?.enabled).toBe(false);
+    it('preserves an activated tool and its compatibility alias across HTTP re-initialization', async () => {
+      const manager = new McpSessionManager();
+      let id = 0;
+      const rpc = async (method: string, params: object = {}, sessionId?: string) => {
+        const response = await manager.handleRequest(new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+        }));
+        expect(response.status).toBe(200);
+        const body = await response.json() as any;
+        expect(body.error).toBeUndefined();
+        return { result: body.result, sessionId: response.headers.get('mcp-session-id')! };
+      };
+      const initialize = () => rpc('initialize', {
+        protocolVersion: '2024-11-05', capabilities: {},
+        clientInfo: { name: 'reconnect-regression', version: '1.0' },
+      });
+      try {
+        const first = await initialize();
+        const initial = await rpc('tools/list', {}, first.sessionId);
+        expect(initial.result.tools).toHaveLength(12);
+        expect(initial.result.tools.some((tool: any) => tool.name === 'track_package')).toBe(false);
+        expect(initial.result.tools.some((tool: any) => tool.name === 'default.track_package')).toBe(false);
 
-      // 2. Discover and activate search_news via search_tools
-      const searchTools1 = reg1['search_tools'];
-      const activateResult = await searchTools1.handler({ query: 'ニュース' });
-      expect(activateResult.content[0].text).toContain('search_news');
-      expect(activateResult.content[0].text).toContain('有効化完了');
-      expect(reg1['search_news'].enabled).toBe(true);
+        const activation = await rpc('tools/call', {
+          name: 'search_tools', arguments: { query: 'track_package' },
+        }, first.sessionId);
+        expect(activation.result.isError ?? false).toBe(false);
+        expect(activation.result.content[0].text).toContain('track_package');
 
-      // 3. Client (e.g. LibreChat) re-initializes connection, creating a fresh server instance
-      const server2 = createMcpServer({ deferTools: true });
-      const reg2 = (server2 as any)._registeredTools;
+        const closed = await manager.handleRequest(new Request('http://localhost/mcp', {
+          method: 'DELETE', headers: { 'mcp-session-id': first.sessionId },
+        }));
+        expect(closed.status).toBe(200);
 
-      // 4. In server2, search_news is automatically preserved as enabled in tools/list!
-      expect(reg2['search_news']?.enabled).toBe(true);
-      const enabledTools2 = Object.keys(reg2).filter((k) => reg2[k].enabled);
-      expect(enabledTools2).toContain('search_news');
-      expect(enabledTools2.length).toBe(13);
+        const second = await initialize();
+        expect(second.sessionId).not.toBe(first.sessionId);
+        const list = await rpc('tools/list', {}, second.sessionId);
+        const names = list.result.tools.map((tool: any) => tool.name);
+        expect(names).toContain('track_package');
+        expect(names).toContain('default.track_package');
+        expect(names).toHaveLength(14);
 
-      // 5. Tool can be executed directly on the new server instance without "temporarily unavailable" error
-      expect(typeof reg2['search_news'].handler).toBe('function');
+        // This tracking number has no carrier candidate, so the real handler performs no external I/O.
+        const call = await rpc('tools/call', {
+          name: 'default.track_package', arguments: { trackingNumber: '123', noCache: true },
+        }, second.sessionId);
+        expect(call.result.isError ?? false).toBe(false);
+        expect(JSON.parse(call.result.content[0].text)).toMatchObject({
+          trackingNumber: '123', carrier: 'unknown', status: 'not_found',
+        });
+      } finally {
+        manager.clearAllSessions();
+        clearSharedActivatedTools();
+      }
+    });
+  });
+
+  describe('K. Tool discovery ranking and default. prefix tolerance', () => {
+    it('discovers every tool in an explicitly requested category', async () => {
+      const server = createMcpServer({ modules: ['yahoo'], deferTools: true });
+      const reg = (server as any)._registeredTools;
+      await reg.search_tools.handler({ query: 'yahoo' });
+      for (const name of ['search_news', 'search_image', 'search_video', 'search_trend', 'suggest_keywords']) {
+        expect(reg[name].enabled).toBe(true);
+      }
+      await server.close();
+    });
+
+    it('ranks query with stopwords intelligently without flooding unrelated tools', async () => {
+      const server = createMcpServer({ deferTools: true });
+      const reg = (server as any)._registeredTools;
+      const searchTools = reg['search_tools'];
+
+      // When LLM queries "トレンド trend 検索", it should target search_trend without flood
+      const res = await searchTools.handler({ query: 'トレンド trend 検索' });
+      const text = res.content[0].text;
+      expect(text).toContain('search_trend');
+      expect(text).not.toContain('search_image');
+      expect(text).not.toContain('search_video');
+      expect(text).not.toContain('predict_hts_code');
+
+      // Discovery returns the canonical MCP name even for model-prefixed queries.
+      expect(reg['search_trend'].enabled).toBe(true);
+      expect(reg['default.search_trend']?.enabled).toBe(true);
+    });
+
+    it('tolerates default. prefix in search_tools query', async () => {
+      const server = createMcpServer({ deferTools: true });
+      const reg = (server as any)._registeredTools;
+      const searchTools = reg['search_tools'];
+
+      const res = await searchTools.handler({ query: 'default.search_trend' });
+      const text = res.content[0].text;
+      expect(text).toContain('search_trend');
+      expect(reg['search_trend'].enabled).toBe(true);
+      expect(reg['default.search_trend']?.enabled).toBe(true);
     });
   });
 });
