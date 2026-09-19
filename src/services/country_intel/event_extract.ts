@@ -54,9 +54,19 @@ function actionType(text: string): ActionType {
   return ACTION_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? 'other';
 }
 
+function uniqueByKey<T extends IntelEntity | IntelTarget>(items: T[]): T[] {
+  const unique = new Map<string, T>();
+  for (const item of items) {
+    const key = [item.canonicalId, item.countryCode, item.type, item.name].join('\u0000');
+    if (!unique.has(key)) unique.set(key, item);
+  }
+  return [...unique.values()];
+}
+
 function actors(text: string): IntelEntity[] {
-  const match = ACTOR_PATTERNS.find(([pattern]) => pattern.test(text));
-  return match ? [{ name: match[2], type: match[1] }] : [];
+  return uniqueByKey(ACTOR_PATTERNS
+    .filter(([pattern]) => pattern.test(text))
+    .map(([, type, name]) => ({ name, type })));
 }
 
 function japaneseTargetType(region: RegionIdentity): 'foreign_government' | 'domestic_government' {
@@ -64,19 +74,35 @@ function japaneseTargetType(region: RegionIdentity): 'foreign_government' | 'dom
 }
 
 function targets(text: string, region: RegionIdentity): IntelTarget[] {
+  const found: IntelTarget[] = [];
   if (/\b(?:Japanese|Japan) government\b|日本政府/iu.test(text)) {
-    return [{ name: 'Japanese government', type: japaneseTargetType(region), countryCode: 'JP' }];
+    found.push({ name: 'Japanese government', type: japaneseTargetType(region), countryCode: 'JP' });
   }
   if (/\bJapanese (?:people|nationals)\b|日本人|日本国民/iu.test(text)) {
-    return [{ name: 'Japanese people', type: 'people_nationality', countryCode: 'JP' }];
+    found.push({ name: 'Japanese people', type: 'people_nationality', countryCode: 'JP' });
   }
   if (/\bJapanese products?\b|日本製品/iu.test(text)) {
-    return [{ name: 'Japanese products', type: 'product', countryCode: 'JP' }];
+    found.push({ name: 'Japanese products', type: 'product', countryCode: 'JP' });
   }
-  if (/\bJapan(?:ese)?\b|日本/iu.test(text)) {
-    return [{ name: 'Japan', type: 'country', countryCode: 'JP' }];
+  if (/\bJapan\b|日本(?!政府|人|国民|製品)/iu.test(text)) {
+    found.push({ name: 'Japan', type: 'country', countryCode: 'JP' });
   }
-  return [];
+  return uniqueByKey(found);
+}
+
+function normalizedText(text: string | undefined): string | undefined {
+  const normalized = text?.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  return normalized || undefined;
+}
+
+function normalizedTimestamp(timestamp: string | undefined): string | undefined {
+  const epoch = timestamp ? Date.parse(timestamp) : Number.NaN;
+  return Number.isFinite(epoch) ? new Date(epoch).toISOString() : undefined;
+}
+
+function locationName(text: string): string | undefined {
+  const place = text.match(/\b(Seoul|Busan|Tokyo)\b|ソウル|釜山|東京/iu)?.[0];
+  return place ? place.normalize('NFKC') : undefined;
 }
 
 export function extractEvent(
@@ -84,19 +110,26 @@ export function extractEvent(
   region: RegionIdentity,
   now: Date,
 ): IntelEventDraft | undefined {
-  const title = (evidence.title ?? evidence.excerpt)?.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  const title = normalizedText(evidence.title) ?? normalizedText(evidence.excerpt);
   if (!title) return undefined;
+  const excerpt = normalizedText(evidence.excerpt);
+  const titleAction = actionType(title);
+  const details = excerpt && excerpt !== title ? excerpt : undefined;
+  const location = {
+    ...(evidence.eventCountry ? { countryCode: evidence.eventCountry } : {}),
+    ...(locationName([title, details].filter(Boolean).join(' ')) ? { name: locationName([title, details].filter(Boolean).join(' ')) } : {}),
+  };
+  const seenAt = normalizedTimestamp(evidence.retrievedAt) ?? now.toISOString();
 
-  const seenAt = evidence.retrievedAt || now.toISOString();
   return {
     evidenceId: evidence.id,
     regionId: evidence.regionId,
-    type: actionType(title),
+    type: titleAction === 'other' && details ? actionType(details) : titleAction,
     title,
-    occurredAt: evidence.publishedAt,
-    location: evidence.eventCountry ? { countryCode: evidence.eventCountry } : undefined,
-    actors: actors(title),
-    targets: targets(title, region),
+    occurredAt: normalizedTimestamp(evidence.publishedAt),
+    location: Object.keys(location).length ? location : undefined,
+    actors: uniqueByKey([actors(title), details ? actors(details) : []].flat()),
+    targets: uniqueByKey([targets(title, region), details ? targets(details, region) : []].flat()),
     firstSeenAt: seenAt,
     lastSeenAt: seenAt,
   };
