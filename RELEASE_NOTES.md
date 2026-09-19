@@ -1,3 +1,12 @@
+# 🌤️ Sora Release v2.24.2
+
+MCP クライアント（LibreChat 等）における荷物追跡ツール（`track_package`）の即時利用を可能にする Hotfix リリースです。
+
+- **`track_package` の CORE ツール昇格**: 初期状態で非表示となる遅延読み込み（deferred）から、常に有効な CORE ツール（`defaultEnabled: true`）へ昇格。
+- **MCP クライアント互換性向上**: 初期接続時の `tools/list` に `track_package` が直接含まれるようになり、`search_tools` による動的有効化ステップを経ずに、LibreChat や各社 MCP エージェントから即座に荷物追跡（ヤマト・佐川・郵便・西濃・福山・UPS）が呼び出し可能になりました。
+
+---
+
 # 🌤️ Sora Release v2.24.1
 
 v2.24.0 で導入した X long-form enrichment に対する Hotfix リリースです。
