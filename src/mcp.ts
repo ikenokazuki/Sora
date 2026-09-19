@@ -126,8 +126,8 @@ const SEARCH_STOP_WORDS = new Set([
 
 /**
  * ツールカタログからキーワードにマッチするエントリを検索します。
- * 空白区切りの複数キーワードに対応し、ストップワード（検索、ツール等）を除去した上で
- * ツール名・キーワード配列・カテゴリ名・説明文の一致度をスコアリングしてランキング返却します。
+ * 空白区切りの複数キーワードに対応し、ストップワード（検索、ツール等）を除去します。
+ * 数値スコアではなく、一致の種類を優先順位として扱います。
  */
 export function searchCatalog(
   toolCatalog: Map<string, ToolCatalogEntry>,
@@ -146,72 +146,41 @@ export function searchCatalog(
   );
   if (categoryMatches.length > 0) return categoryMatches;
 
-  const scoredEntries: { entry: ToolCatalogEntry; score: number }[] = [];
-
-  for (const entry of toolCatalog.values()) {
-    let entryScore = 0;
+  const entries = [...toolCatalog.values()];
+  const valuesFor = (entry: ToolCatalogEntry) => {
     const nameLower = entry.name.toLowerCase();
-    const catLower = entry.category.toLowerCase();
-    const descLower = entry.description.toLowerCase();
-    const kwLowers = entry.keywords.map((k) => k.toLowerCase());
+    return {
+      name: nameLower,
+      category: entry.category.toLowerCase(),
+      description: entry.description.toLowerCase(),
+      keywords: entry.keywords.map((keyword) => keyword.toLowerCase()),
+    };
+  };
+  const matchesTerm = (entry: ToolCatalogEntry, term: string) => {
+    const values = valuesFor(entry);
+    return values.name.includes(term)
+      || values.category.includes(term)
+      || values.description.includes(term)
+      || values.keywords.some(
+        (keyword) => keyword.includes(term) || ([...keyword].length >= 2 && term.includes(keyword)),
+      );
+  };
 
-    let matchCount = 0;
+  const tiers = [
+    entries.filter((entry) => {
+      const name = entry.name.toLowerCase();
+      return name === normalizedQuery
+        || name === `search_${normalizedQuery}`
+        || name === `get_${normalizedQuery}`;
+    }),
+    entries.filter((entry) => entry.keywords.some(
+      (keyword) => keyword.toLowerCase() === normalizedQuery,
+    )),
+    entries.filter((entry) => terms.every((term) => matchesTerm(entry, term))),
+    entries.filter((entry) => terms.some((term) => matchesTerm(entry, term))),
+  ];
 
-    for (const term of terms) {
-      let termScore = 0;
-
-      // 1. 完全一致・ツール名プレフィックス/サフィックス (+100)
-      if (nameLower === term || nameLower === `search_${term}` || nameLower === `get_${term}`) {
-        termScore = Math.max(termScore, 100);
-      } else if (nameLower.includes(term)) {
-        termScore = Math.max(termScore, 70);
-      }
-
-      // 2. キーワード配列との一致 (+50 / 部分一致 +35)
-      for (const kw of kwLowers) {
-        if (kw === term) {
-          termScore = Math.max(termScore, 50);
-        } else if (kw.includes(term) || ([...kw].length >= 2 && term.includes(kw))) {
-          termScore = Math.max(termScore, 35);
-        }
-      }
-
-      // 3. カテゴリ名一致 (+25)
-      if (catLower === term || catLower.includes(term)) {
-        termScore = Math.max(termScore, 25);
-      }
-
-      // 4. 説明文に含まれる (+10)
-      if (descLower.includes(term)) {
-        termScore = Math.max(termScore, 10);
-      }
-
-      if (termScore > 0) {
-        matchCount++;
-        entryScore += termScore;
-      }
-    }
-
-    if (entryScore > 0) {
-      const coverageMultiplier = matchCount / terms.length;
-      scoredEntries.push({
-        entry,
-        score: entryScore * (0.5 + 0.5 * coverageMultiplier),
-      });
-    }
-  }
-
-  if (scoredEntries.length === 0) return [];
-
-  // スコア降順ソート
-  scoredEntries.sort((a, b) => b.score - a.score);
-
-  const topScore = scoredEntries[0].score;
-  // 最高スコアの 50% 以上の適合度を持つエントリを最大 3 件まで選定
-  return scoredEntries
-    .filter((item) => item.score >= topScore * 0.5)
-    .slice(0, 3)
-    .map((item) => item.entry);
+  return (tiers.find((matches) => matches.length > 0) ?? []).slice(0, 3);
 }
 
 /** モジュールが有効化されているかを判定 */
