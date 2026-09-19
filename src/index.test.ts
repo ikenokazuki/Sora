@@ -793,6 +793,35 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(searchCatalog(dummyCatalog, '')).toEqual([]);
   });
 
+  it('searchCatalog should prefer an exact keyword over a partial tool-name match', () => {
+    const dummyCatalog = new Map<string, any>([
+      [
+        'fetch_headlines',
+        {
+          name: 'fetch_headlines',
+          category: 'web',
+          description: 'Fetch current headlines',
+          keywords: ['news'],
+          handle: {},
+        },
+      ],
+      [
+        'search_news_archive',
+        {
+          name: 'search_news_archive',
+          category: 'web',
+          description: 'Search an archive',
+          keywords: [],
+          handle: {},
+        },
+      ],
+    ]);
+
+    expect(searchCatalog(dummyCatalog, 'news').map((entry) => entry.name)).toEqual([
+      'fetch_headlines',
+    ]);
+  });
+
   it('POST /mcp should respond to initial tools/list with 12 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
@@ -5813,4 +5842,3 @@ describe('Sora REST & MCP Endpoints', () => {
     });
   });
 });
-
