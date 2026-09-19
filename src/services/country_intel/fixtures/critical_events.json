@@ -1,0 +1,78 @@
+[
+  {
+    "fixture": "日本で大地震",
+    "evidence": {
+      "id": "critical-earthquake",
+      "regionId": "country:KR",
+      "url": "https://example.test/earthquake",
+      "title": "日本で大地震、救助活動が続く",
+      "eventCountry": "JP",
+      "sourceType": "international_media",
+      "publishedAt": "2026-09-18T08:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "日本製品不買イベント",
+    "evidence": {
+      "id": "critical-boycott",
+      "regionId": "country:KR",
+      "url": "https://example.test/boycott",
+      "title": "日本製品不買イベントを開催",
+      "eventCountry": "KR",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T09:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "歴史記念日の記事",
+    "evidence": {
+      "id": "critical-memorial",
+      "regionId": "country:KR",
+      "url": "https://example.test/memorial",
+      "title": "歴史記念日の記事を掲載",
+      "eventCountry": "KR",
+      "sourceType": "calendar",
+      "publishedAt": "2026-09-18T10:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "historical"
+    }
+  },
+  {
+    "fixture": "日本政府の政策を批判",
+    "evidence": {
+      "id": "critical-government",
+      "regionId": "country:KR",
+      "url": "https://example.test/government",
+      "title": "日本政府の政策を批判",
+      "eventCountry": "KR",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T11:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "新聞が政治家の日本批判を引用",
+    "evidence": {
+      "id": "critical-quote",
+      "regionId": "country:KR",
+      "url": "https://example.test/quote",
+      "title": "新聞が政治家の日本批判を引用",
+      "eventCountry": "KR",
+      "publisher": "Example News",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T12:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  }
+]
