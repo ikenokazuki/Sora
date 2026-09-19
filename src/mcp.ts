@@ -65,6 +65,7 @@ export interface ToolCatalogEntry {
   description: string;
   keywords: string[];
   handle: RegisteredTool;
+  compatibilityHandle?: RegisteredTool;
 }
 
 /**
@@ -98,55 +99,119 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   if (!isEnabled) {
     handle.disable();
   }
+
+  // LibreChat may look up the model-emitted `default.` name verbatim before dispatch.
+  // Publish that alias only alongside an activated deferred tool, keeping startup lean.
+  const compatibilityHandle = !opts.defaultEnabled
+    ? mcpServer.tool(`default.${name}`, description, schema, handler)
+    : undefined;
+  if (!isEnabled) compatibilityHandle?.disable();
+
   toolCatalog.set(name, {
     name,
     category,
     description,
     keywords: opts.keywords ?? [],
     handle,
+    compatibilityHandle,
   });
   return handle;
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  '検索', 'けんさく', 'けんさ', '探す', 'さがす', '調べる', 'しらべる', '調査',
+  'ツール', 'つーる', 'tool', 'tools', 'search', 'find', 'get',
+  'の', 'を', 'に', 'で', 'と', 'は', 'が', 'も',
+]);
+
 /**
  * ツールカタログからキーワードにマッチするエントリを検索します。
- * 空白区切りの複数キーワードに対応し、ツール名・カテゴリ名・キーワード配列・説明文のいずれかに
- * 部分一致するツールを抽出します。
+ * 空白区切りの複数キーワードに対応し、ストップワード（検索、ツール等）を除去した上で
+ * ツール名・キーワード配列・カテゴリ名・説明文の一致度をスコアリングしてランキング返却します。
  */
 export function searchCatalog(
   toolCatalog: Map<string, ToolCatalogEntry>,
   query: string,
 ): ToolCatalogEntry[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
+  const normalizedQuery = query.trim().toLowerCase().replace(/^default\./, '');
+  if (!normalizedQuery) return [];
 
-  const terms = q.split(/\s+/).filter(Boolean);
-  const allMatches: ToolCatalogEntry[] = [];
-  const someMatches: ToolCatalogEntry[] = [];
+  const rawTerms = normalizedQuery.split(/\s+/).filter(Boolean);
+  const meaningfulTerms = rawTerms.filter((t) => !SEARCH_STOP_WORDS.has(t));
+  const terms = meaningfulTerms.length > 0 ? meaningfulTerms : rawTerms;
+
+  // 明示的なカテゴリ指定は、そのカテゴリ全体を公開する契約を維持する。
+  const categoryMatches = [...toolCatalog.values()].filter(
+    (entry) => entry.category.toLowerCase() === normalizedQuery,
+  );
+  if (categoryMatches.length > 0) return categoryMatches;
+
+  const scoredEntries: { entry: ToolCatalogEntry; score: number }[] = [];
 
   for (const entry of toolCatalog.values()) {
-    const isMatch = (term: string) => {
-      return (
-        entry.name.toLowerCase().includes(term) ||
-        entry.category.toLowerCase().includes(term) ||
-        entry.keywords.some((k) => {
-          const kLower = k.toLowerCase();
-          if (kLower.includes(term)) return true;
-          const allowReverseContainment = [...kLower].length >= 2;
-          return allowReverseContainment && term.includes(kLower);
-        }) ||
-        entry.description.toLowerCase().includes(term)
-      );
-    };
+    let entryScore = 0;
+    const nameLower = entry.name.toLowerCase();
+    const catLower = entry.category.toLowerCase();
+    const descLower = entry.description.toLowerCase();
+    const kwLowers = entry.keywords.map((k) => k.toLowerCase());
 
-    if (terms.every(isMatch)) {
-      allMatches.push(entry);
-    } else if (terms.some(isMatch)) {
-      someMatches.push(entry);
+    let matchCount = 0;
+
+    for (const term of terms) {
+      let termScore = 0;
+
+      // 1. 完全一致・ツール名プレフィックス/サフィックス (+100)
+      if (nameLower === term || nameLower === `search_${term}` || nameLower === `get_${term}`) {
+        termScore = Math.max(termScore, 100);
+      } else if (nameLower.includes(term)) {
+        termScore = Math.max(termScore, 70);
+      }
+
+      // 2. キーワード配列との一致 (+50 / 部分一致 +35)
+      for (const kw of kwLowers) {
+        if (kw === term) {
+          termScore = Math.max(termScore, 50);
+        } else if (kw.includes(term) || ([...kw].length >= 2 && term.includes(kw))) {
+          termScore = Math.max(termScore, 35);
+        }
+      }
+
+      // 3. カテゴリ名一致 (+25)
+      if (catLower === term || catLower.includes(term)) {
+        termScore = Math.max(termScore, 25);
+      }
+
+      // 4. 説明文に含まれる (+10)
+      if (descLower.includes(term)) {
+        termScore = Math.max(termScore, 10);
+      }
+
+      if (termScore > 0) {
+        matchCount++;
+        entryScore += termScore;
+      }
+    }
+
+    if (entryScore > 0) {
+      const coverageMultiplier = matchCount / terms.length;
+      scoredEntries.push({
+        entry,
+        score: entryScore * (0.5 + 0.5 * coverageMultiplier),
+      });
     }
   }
 
-  return allMatches.length > 0 ? allMatches : someMatches;
+  if (scoredEntries.length === 0) return [];
+
+  // スコア降順ソート
+  scoredEntries.sort((a, b) => b.score - a.score);
+
+  const topScore = scoredEntries[0].score;
+  // 最高スコアの 50% 以上の適合度を持つエントリを最大 3 件まで選定
+  return scoredEntries
+    .filter((item) => item.score >= topScore * 0.5)
+    .slice(0, 3)
+    .map((item) => item.entry);
 }
 
 /** モジュールが有効化されているかを判定 */
@@ -1918,6 +1983,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         SHARED_ACTIVATED_TOOLS.add(entry.name);
         if (!entry.handle.enabled) {
           entry.handle.enable();
+          entry.compatibilityHandle?.enable();
           const cleanDesc = entry.description.replace(/^【.*?】/, '').slice(0, 80);
           const tag = entry.description.match(/^【(.*?)】/)?.[0] || '';
           newlyEnabled.push(`- ${entry.name}: ${tag}${cleanDesc}... (状態: 有効化完了)`);
