@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import {
+  canonicalPublisherDomain,
   canonicalizeEvidenceUrl,
   deduplicateEvidence,
   hashEvidenceContent,
@@ -39,6 +40,16 @@ test('keeps publisher and event geography independent', () => {
 test('canonicalizes only tracking URL parameters while preserving sorted meaningful parameters', () => {
   expect(canonicalizeEvidenceUrl('https://example.com/a?z=2&utm_source=x&a=1&gclid=ad#section'))
     .toBe('https://example.com/a?a=1&z=2');
+});
+
+test('derives conservative registrable publisher domains', () => {
+  expect(canonicalPublisherDomain('https://alpha.org.uk/a')).toBe('alpha.org.uk');
+  expect(canonicalPublisherDomain('https://beta.org.uk/a')).toBe('beta.org.uk');
+  expect(canonicalPublisherDomain('https://news.alpha.org.uk/a')).toBe('alpha.org.uk');
+  expect(canonicalPublisherDomain('https://www.alpha.org.uk/a')).toBe('alpha.org.uk');
+  expect(canonicalPublisherDomain('https://news.alpha.com.au/a')).toBe('alpha.com.au');
+  expect(canonicalPublisherDomain('https://news.alpha.co.jp/a')).toBe('alpha.co.jp');
+  expect(canonicalPublisherDomain('https://news.alpha.unknown/a')).toBe('news.alpha.unknown');
 });
 
 test('hashes NFKC text with collapsed whitespace', () => {
