@@ -3,7 +3,8 @@ import { canonicalPublisherDomain, canonicalizeEvidenceUrl } from './evidence.js
 import type { CountryEvidence, IntelEntity, IntelEvent, IntelTarget } from './types.js';
 import type { IntelEventDraft } from './event_extract.js';
 
-const WIRE_BYLINE = /\(\s*(reuters|associated press|ap|afp)\s*\)\s*[-,:]/iu;
+const WIRE_BYLINE = /^\s*(?:\(\s*(reuters|associated press|ap|afp)\s*\)(?:\s+|\s*[-–—,:])|(reuters|associated press|ap|afp)\s*[-–—,:])/iu;
+const WIRE_DATELINE = /^(?:[A-Z][A-Z .'-]{1,60}|[A-Z][A-Za-z .'-]{1,60},\s*[A-Z][A-Za-z.]*\s+\d{1,2})\s*\(\s*(reuters|associated press|ap|afp)\s*\)\s*[-–—,:]/iu;
 const WIRE_NAMES: Record<string, string> = {
   reuters: 'reuters',
   'associated press': 'ap',
@@ -16,7 +17,8 @@ function wireProvider(evidence: CountryEvidence): string | undefined {
   const publisher = evidence.publisher?.normalize('NFKC').trim().toLowerCase();
   if (publisher && WIRE_NAMES[publisher]) return WIRE_NAMES[publisher];
   const byline = [evidence.title, evidence.excerpt]
-    .map((text) => text?.match(WIRE_BYLINE)?.[1]?.toLowerCase())
+    .map((text) => text?.match(WIRE_BYLINE)?.[1] ?? text?.match(WIRE_BYLINE)?.[2] ?? text?.match(WIRE_DATELINE)?.[1])
+    .map((provider) => provider?.toLowerCase())
     .find(Boolean);
   return byline ? WIRE_NAMES[byline] : undefined;
 }
@@ -82,7 +84,10 @@ function nearTime(left: IntelEventDraft, right: IntelEventDraft): boolean {
 function specificEntityKeys(draft: IntelEventDraft): Set<string> {
   return new Set(
     [...draft.actors, ...draft.targets]
-      .filter((entity) => entity.canonicalId || !['country', 'people_nationality', 'unknown', 'none'].includes(entity.type ?? 'unknown'))
+      .filter((entity) => entity.canonicalId || (
+        !['country', 'people_nationality', 'unknown', 'none'].includes(entity.type ?? 'unknown')
+        && !['activist', 'foreign ministry', 'government', 'japanese government', 'japanese products', 'military', 'politician', 'police', 'protester', 'protesters'].includes(entity.name.toLocaleLowerCase('en-US'))
+      ))
       .flatMap((entity) => [entity.canonicalId, entity.name])
       .filter((value): value is string => Boolean(value))
       .map((value) => value.normalize('NFKC').toLocaleLowerCase('en-US')),
@@ -193,13 +198,26 @@ export function clusterEvents(drafts: IntelEventDraft[], evidence: CountryEviden
     const rightRoot = find(right);
     if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
   };
+  const componentsCompatible = (left: number, right: number): boolean => {
+    const regions = new Set<string>();
+    const countries = new Set<string>();
+    const names = new Set<string>();
+    for (const [index, draft] of orderedDrafts.entries()) {
+      const root = find(index);
+      if (root !== left && root !== right) continue;
+      if (draft.regionId) regions.add(draft.regionId);
+      if (draft.location?.countryCode) countries.add(draft.location.countryCode);
+      if (draft.location?.name) names.add(draft.location.name);
+    }
+    return regions.size <= 1 && countries.size <= 1 && names.size <= 1;
+  };
 
   for (let left = 0; left < orderedDrafts.length; left++) {
     for (let right = left + 1; right < orderedDrafts.length; right++) {
       if (shouldMerge(
         orderedDrafts[left], orderedDrafts[right],
         evidenceById.get(orderedDrafts[left].evidenceId), evidenceById.get(orderedDrafts[right].evidenceId),
-      )) union(left, right);
+      ) && componentsCompatible(find(left), find(right))) union(left, right);
     }
   }
 

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import criticalFixtures from './fixtures/critical_events.json' with { type: 'json' };
 import wireFixtures from './fixtures/wire_syndication.json' with { type: 'json' };
 import { clusterEvents, sourceFamily } from './event_cluster.js';
-import { extractEvent } from './event_extract.js';
+import { extractEvent, type IntelEventDraft } from './event_extract.js';
 import { deduplicateEvidence, normalizeEvidence, type EvidenceInput } from './evidence.js';
 import type { CountryEvidence, RegionIdentity } from './types.js';
 
@@ -120,6 +120,19 @@ test('does not mistake a mention of a wire service for syndication metadata', ()
   expect(sourceFamily(evidence)).toBe('domain:example.test');
 });
 
+test('recognizes only leading wire bylines and bounded datelines', () => {
+  const source = (title: string): CountryEvidence => ({
+    id: title, regionId: region.id, url: 'https://publisher.test/report', title,
+    sourceType: 'local_media', retrievedAt: now.toISOString(), primarySource: false,
+    latencyClass: 'near_realtime',
+  });
+
+  expect(sourceFamily(source('Reuters — report'))).toBe('wire:reuters');
+  expect(sourceFamily(source('SEOUL, Sept 19 (Reuters) — report'))).toBe('wire:reuters');
+  expect(sourceFamily(source('WASHINGTON (AP) – report'))).toBe('wire:ap');
+  expect(sourceFamily(source('The article says "(Reuters) - report"'))).toBe('domain:publisher.test');
+});
+
 test('recognizes bounded wire datelines and canonical publisher domains', () => {
   const dateline = (title: string, url: string): CountryEvidence => ({
     id: title, regionId: region.id, url, title, sourceType: 'local_media',
@@ -178,6 +191,39 @@ test('does not merge drafts across regions or conflicting known event countries'
 
   expect(clusterEvents(crossRegion.map((item) => extractEvent(item, region, now)!), crossRegion)).toHaveLength(2);
   expect(clusterEvents(conflictingLocations.map((item) => extractEvent(item, region, now)!), conflictingLocations)).toHaveLength(2);
+});
+
+test('does not bridge conflicting locations through an unknown location', () => {
+  const evidence: CountryEvidence[] = [
+    { id: 'bridge-jp', regionId: region.id, url: 'https://a.test/jp', title: 'Japan protest', eventCountry: 'JP', sourceType: 'local_media', publishedAt: '2026-09-18T10:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+    { id: 'bridge-unknown', regionId: region.id, url: 'https://b.test/unknown', title: 'Japan protest', sourceType: 'local_media', publishedAt: '2026-09-18T11:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+    { id: 'bridge-kr', regionId: region.id, url: 'https://c.test/kr', title: 'Japan protest', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T12:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+  ];
+  const drafts = evidence.map((item) => extractEvent(item, region, now)!);
+  const signature = (items: CountryEvidence[], candidateDrafts: IntelEventDraft[]) => clusterEvents(candidateDrafts, items)
+    .map((event) => event.evidenceIds).sort();
+
+  expect(signature(evidence, drafts)).toEqual([['bridge-jp', 'bridge-unknown'], ['bridge-kr']]);
+  expect(signature([...evidence].reverse(), [...drafts].reverse())).toEqual([['bridge-jp', 'bridge-unknown'], ['bridge-kr']]);
+});
+
+test('does not treat generic actor roles as a strong event-specific match', () => {
+  const evidence: CountryEvidence[] = [
+    { id: 'tax', regionId: region.id, url: 'https://a.test/tax', title: 'protesters condemn tax policy', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T10:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+    { id: 'labour', regionId: region.id, url: 'https://b.test/labour', title: 'protesters condemn labour policy', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T11:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+  ];
+
+  expect(clusterEvents(evidence.map((item) => extractEvent(item, region, now)!), evidence)).toHaveLength(2);
+});
+
+test('uses a canonical entity ID as a strong event-specific match', () => {
+  const evidence: CountryEvidence[] = [
+    { id: 'kim-one', regionId: region.id, url: 'https://a.test/kim-one', title: 'policy statement', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T10:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+    { id: 'kim-two', regionId: region.id, url: 'https://b.test/kim-two', title: 'different policy statement', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T11:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+  ];
+  const drafts = evidence.map((item) => ({ ...extractEvent(item, region, now)!, actors: [{ name: 'Minister Kim', type: 'politician' as const, canonicalId: 'person:kim' }] }));
+
+  expect(clusterEvents(drafts, evidence)).toHaveLength(1);
 });
 
 test('normalizes mixed-offset timestamps and chooses chronological bounds', () => {
