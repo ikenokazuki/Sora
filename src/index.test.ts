@@ -950,7 +950,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const searchBody: any = await parseRes(searchRes);
     expect(searchBody.result?.content?.[0]?.text).toContain('search_song');
 
-    // 5. tools/list now includes search_song (12 tools)
+    // 5. tools/list now includes activated tools and their compatibility aliases.
     const listReq2 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -965,10 +965,12 @@ describe('Sora REST & MCP Endpoints', () => {
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
     // クエリ「楽曲」は search_song（"楽曲タイトル"）と search_music（"楽曲・アルバム"）の
-    // 両方の description に部分一致するため、2件同時に有効化されるのが正しい挙動
-    expect(names2.length).toBe(names1.length + 2);
+    // 両方の description に部分一致し、正式名2件と互換名2件が公開される。
+    expect(names2.length).toBe(names1.length + 4);
     expect(names2).toContain('search_song');
     expect(names2).toContain('search_music');
+    expect(names2).toContain('default.search_song');
+    expect(names2).toContain('default.search_music');
 
     // 6. Search for non-existent tool returns helpful message
     const searchNoneReq = new Request('http://localhost/mcp', {
@@ -3513,7 +3515,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.length).toBe(39); // 38 standard tools + search_tools
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(39);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(27);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
