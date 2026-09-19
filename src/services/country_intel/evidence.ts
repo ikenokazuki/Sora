@@ -22,8 +22,13 @@ export function canonicalizeEvidenceUrl(url: string): string {
 }
 
 export function hashEvidenceContent(text: string): string {
-  const normalized = text.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  const normalized = normalizeEvidenceContent(text) ?? '';
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+function normalizeEvidenceContent(text: string | undefined): string | undefined {
+  const normalized = text?.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  return normalized || undefined;
 }
 
 export function normalizeEvidence(
@@ -33,7 +38,7 @@ export function normalizeEvidence(
 ): CountryEvidence {
   const { content: inputContent, url, ...evidence } = input;
   const canonicalUrl = canonicalizeEvidenceUrl(url);
-  const content = inputContent ?? input.excerpt;
+  const content = normalizeEvidenceContent(inputContent) ?? normalizeEvidenceContent(input.excerpt);
   const contentHash = content === undefined ? undefined : hashEvidenceContent(content);
   const idMaterial = [region.id, canonicalUrl, input.publishedAt ?? '', contentHash ?? ''].join('\n');
 
@@ -48,17 +53,37 @@ export function normalizeEvidence(
 }
 
 export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[] {
-  const urls = new Set<string>();
-  const contentHashes = new Set<string>();
+  const parents = items.map((_, index) => index);
+  const find = (index: number): number => {
+    if (parents[index] !== index) parents[index] = find(parents[index]);
+    return parents[index];
+  };
+  const union = (left: number, right: number): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+  };
+  const urls = new Map<string, number>();
+  const contentHashes = new Map<string, number>();
 
-  return items.filter((item) => {
+  for (const [index, item] of items.entries()) {
     const canonicalUrl = canonicalizeEvidenceUrl(item.url);
-    if (urls.has(canonicalUrl) || (item.contentHash !== undefined && contentHashes.has(item.contentHash))) {
-      return false;
-    }
+    const matchingUrl = urls.get(canonicalUrl);
+    if (matchingUrl !== undefined) union(matchingUrl, index);
+    urls.set(canonicalUrl, index);
 
-    urls.add(canonicalUrl);
-    if (item.contentHash !== undefined) contentHashes.add(item.contentHash);
-    return true;
-  });
+    if (item.contentHash !== undefined) {
+      const matchingContent = contentHashes.get(item.contentHash);
+      if (matchingContent !== undefined) union(matchingContent, index);
+      contentHashes.set(item.contentHash, index);
+    }
+  }
+
+  const firstByComponent = new Map<number, number>();
+  for (const index of items.keys()) {
+    const component = find(index);
+    if (!firstByComponent.has(component)) firstByComponent.set(component, index);
+  }
+
+  return items.filter((_, index) => firstByComponent.get(find(index)) === index);
 }

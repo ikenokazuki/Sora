@@ -45,6 +45,50 @@ test('hashes NFKC text with collapsed whitespace', () => {
   expect(hashEvidenceContent('  Japan\u3000 earthquake\n')).toBe(hashEvidenceContent('Japan earthquake'));
 });
 
+test('hashes distinct normalized content separately', () => {
+  expect(hashEvidenceContent('Japan earthquake')).not.toBe(hashEvidenceContent('Japan earthquake response'));
+});
+
+test('uses a nonblank excerpt when content is blank', () => {
+  const withExcerpt = normalizeEvidence({
+    url: 'https://example.com/with-excerpt',
+    content: ' \u3000\n ',
+    excerpt: 'Japan earthquake',
+    sourceType: 'international_media',
+    primarySource: false,
+    latencyClass: 'near_realtime',
+  }, japan, now);
+  const withoutExcerpt = normalizeEvidence({
+    url: 'https://example.com/without-excerpt',
+    content: ' \u3000\n ',
+    sourceType: 'international_media',
+    primarySource: false,
+    latencyClass: 'near_realtime',
+  }, japan, now);
+
+  expect(withExcerpt.contentHash).toBe(hashEvidenceContent('Japan earthquake'));
+  expect(withoutExcerpt.contentHash).toBeUndefined();
+});
+
+test('keeps evidence IDs stable across retrieval clocks and changes them for ID material', () => {
+  const input = {
+    url: 'https://example.com/a?utm_source=x',
+    excerpt: 'Japan earthquake',
+    publishedAt: '2026-09-18T00:00:00.000Z',
+    sourceType: 'international_media' as const,
+    primarySource: false,
+    latencyClass: 'near_realtime' as const,
+  };
+  const first = normalizeEvidence(input, japan, now);
+  const retrievedLater = normalizeEvidence(input, japan, new Date('2026-09-20T00:00:00Z'));
+  const changedPublication = normalizeEvidence({ ...input, publishedAt: '2026-09-17T00:00:00.000Z' }, japan, now);
+  const changedRegion = normalizeEvidence(input, { ...japan, id: 'country:KR' }, now);
+
+  expect(retrievedLater.id).toBe(first.id);
+  expect(changedPublication.id).not.toBe(first.id);
+  expect(changedRegion.id).not.toBe(first.id);
+});
+
 test('deduplicates canonical URLs and exact normalized content', () => {
   const trackingUrlCopy = normalizeEvidence({
     url: 'https://example.com/a?utm_source=newsletter',
@@ -69,4 +113,36 @@ test('deduplicates canonical URLs and exact normalized content', () => {
   }, japan, now);
 
   expect(deduplicateEvidence([trackingUrlCopy, canonical, exactContentCopy])).toHaveLength(1);
+});
+
+test('deduplicates connected URL and content groups in every bridge order', () => {
+  const canonical = normalizeEvidence({
+    url: 'https://example.com/a',
+    excerpt: 'content A',
+    sourceType: 'international_media',
+    primarySource: false,
+    latencyClass: 'near_realtime',
+  }, japan, now);
+  const trackingCopy = normalizeEvidence({
+    url: 'https://example.com/a?utm_source=newsletter',
+    excerpt: 'content B',
+    sourceType: 'international_media',
+    primarySource: false,
+    latencyClass: 'near_realtime',
+  }, japan, now);
+  const contentCopy = normalizeEvidence({
+    url: 'https://another.example.com/story',
+    excerpt: 'content B',
+    sourceType: 'international_media',
+    primarySource: false,
+    latencyClass: 'near_realtime',
+  }, japan, now);
+
+  for (const items of [
+    [canonical, trackingCopy, contentCopy],
+    [trackingCopy, contentCopy, canonical],
+    [contentCopy, trackingCopy, canonical],
+  ]) {
+    expect(deduplicateEvidence(items)).toEqual([items[0]]);
+  }
 });
