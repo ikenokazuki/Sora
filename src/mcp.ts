@@ -221,7 +221,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package).",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post, Seino, Fukuyama Transporting, UPS delivery status & event history): Use 'life' tool (track_package [CORE]).",
     );
   }
   if (hasDisaster) {
@@ -1236,7 +1236,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
       {
-        defaultEnabled: deferredDefault,
+        defaultEnabled: true,
         keywords: [
           '荷物追跡',
           '荷物',
@@ -1877,7 +1877,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     'search_tools',
     '【追加ツール検索・動的有効化】現在 tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
       '一致したツールを現在のセッションで有効化します。すでに tools/list に表示されているツールは直接実行してください。' +
-      '荷物追跡（track_package）や音楽詳細、国会会議録など、初期状態で非表示の追加機能を利用する際に使用します。' +
+      'フライト情報（get_flight_status）や音楽詳細、国会会議録など、初期状態で非表示の追加機能を利用する際に使用します。' +
       '本ツールで検索しても見つからない場合は、該当モジュールが無効化・利用不可となっている可能性があります。' +
       '現在 tools/list に表示されている利用可能なツールや他の手段を使用してください。',
     {
