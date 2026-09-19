@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { trackPackage, cleanTrackingNumber } from '../services/tracking.js';
-import { TrackingRequestSchema } from '../types.js';
+import { TrackingRequestSchema, CARRIER_CODES } from '../types.js';
 
 export const trackingRoutes = new Hono();
 
@@ -39,7 +39,7 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
     const numberParam = c.req.param('number');
     const noCache = c.req.query('noCache') === 'true';
 
-    const validCarriers = ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'auto'];
+    const validCarriers: string[] = [...CARRIER_CODES, 'auto'];
     if (!validCarriers.includes(carrierParam)) {
       return c.json(
         {
