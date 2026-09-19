@@ -1,0 +1,546 @@
+import { z } from 'zod';
+
+export const COUNTRY_INTEL_TOPICS = [
+  'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',
+  'political_violence', 'economy', 'trade', 'business', 'disasters', 'health',
+  'humanitarian', 'social_issues', 'public_opinion', 'calendar', 'holidays',
+  'commemorations', 'foreign_relations', 'japan_related_events', 'media_activity',
+  'social_observations',
+] as const;
+
+export type CountryIntelTopic = (typeof COUNTRY_INTEL_TOPICS)[number];
+
+export interface CountryContextRequest {
+  region: string;
+  query?: string;
+  topics?: CountryIntelTopic[];
+  period?: '7d' | '30d' | '90d';
+  includeSocial?: boolean;
+  noCache?: boolean;
+  verbose?: boolean;
+}
+
+export const CountryContextRequestSchema = z.object({
+  region: z.string().trim().min(1),
+  query: z.string().min(1).optional(),
+  topics: z.array(z.enum(COUNTRY_INTEL_TOPICS)).optional(),
+  period: z.enum(['7d', '30d', '90d']).default('30d'),
+  includeSocial: z.boolean().default(false),
+  noCache: z.boolean().default(false),
+  verbose: z.boolean().default(false),
+});
+
+export interface RegionIdentity {
+  id: string;
+  name: string;
+  nativeName?: string;
+  countryCode?: string;
+  subdivisionCode?: string;
+  parentCountryCode?: string;
+  languages: string[];
+  aliases: string[];
+  timezone?: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export const RegionIdentitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  nativeName: z.string().optional(),
+  countryCode: z.string().optional(),
+  subdivisionCode: z.string().optional(),
+  parentCountryCode: z.string().optional(),
+  languages: z.array(z.string()),
+  aliases: z.array(z.string()),
+  timezone: z.string().optional(),
+  confidence: z.enum(['low', 'medium', 'high']),
+});
+
+export type EvidenceSourceType =
+  | 'official'
+  | 'structured_dataset'
+  | 'representative_poll'
+  | 'research'
+  | 'major_local_media'
+  | 'local_media'
+  | 'international_media'
+  | 'social'
+  | 'calendar'
+  | 'other';
+
+export type EvidenceLatencyClass = 'realtime' | 'near_realtime' | 'delayed' | 'historical';
+
+export interface CountryEvidence {
+  id: string;
+  regionId: string;
+  url: string;
+  title?: string;
+  publisher?: string;
+  publisherCountry?: string;
+  eventCountry?: string;
+  mentionedCountries?: string[];
+  sourceType: EvidenceSourceType;
+  language?: string;
+  publishedAt?: string;
+  retrievedAt: string;
+  excerpt?: string;
+  contentHash?: string;
+  primarySource: boolean;
+  latencyClass: EvidenceLatencyClass;
+  eventClusterId?: string;
+}
+
+export const CountryEvidenceSchema = z.object({
+  id: z.string(),
+  regionId: z.string(),
+  url: z.string(),
+  title: z.string().optional(),
+  publisher: z.string().optional(),
+  publisherCountry: z.string().optional(),
+  eventCountry: z.string().optional(),
+  mentionedCountries: z.array(z.string()).optional(),
+  sourceType: z.enum(['official', 'structured_dataset', 'representative_poll', 'research', 'major_local_media', 'local_media', 'international_media', 'social', 'calendar', 'other']),
+  language: z.string().optional(),
+  publishedAt: z.string().optional(),
+  retrievedAt: z.string(),
+  excerpt: z.string().optional(),
+  contentHash: z.string().optional(),
+  primarySource: z.boolean(),
+  latencyClass: z.enum(['realtime', 'near_realtime', 'delayed', 'historical']),
+  eventClusterId: z.string().optional(),
+});
+
+export type ActorType =
+  | 'government'
+  | 'head_of_state'
+  | 'head_of_government'
+  | 'foreign_ministry'
+  | 'politician'
+  | 'political_party'
+  | 'parliament'
+  | 'military'
+  | 'police'
+  | 'court'
+  | 'company'
+  | 'industry_group'
+  | 'media'
+  | 'journalist'
+  | 'ngo'
+  | 'protester'
+  | 'activist'
+  | 'general_public'
+  | 'survey_respondent'
+  | 'unknown';
+
+export const ACTOR_TYPES = [
+  'government', 'head_of_state', 'head_of_government', 'foreign_ministry',
+  'politician', 'political_party', 'parliament', 'military', 'police', 'court',
+  'company', 'industry_group', 'media', 'journalist', 'ngo', 'protester',
+  'activist', 'general_public', 'survey_respondent', 'unknown',
+] as const satisfies readonly ActorType[];
+
+export interface IntelEntity {
+  name: string;
+  type?: ActorType;
+  countryCode?: string;
+  canonicalId?: string;
+}
+
+export const IntelEntitySchema = z.object({
+  name: z.string(),
+  type: z.enum(ACTOR_TYPES).optional(),
+  countryCode: z.string().optional(),
+  canonicalId: z.string().optional(),
+});
+
+export type TargetType =
+  | 'country'
+  | 'foreign_government'
+  | 'domestic_government'
+  | 'people_nationality'
+  | 'company'
+  | 'product'
+  | 'culture'
+  | 'historical_entity'
+  | 'territory'
+  | 'politician'
+  | 'political_party'
+  | 'policy'
+  | 'institution'
+  | 'other'
+  | 'none'
+  | 'unknown';
+
+export const TARGET_TYPES = [
+  'country', 'foreign_government', 'domestic_government', 'people_nationality',
+  'company', 'product', 'culture', 'historical_entity', 'territory', 'politician',
+  'political_party', 'policy', 'institution', 'other', 'none', 'unknown',
+] as const satisfies readonly TargetType[];
+
+export interface IntelTarget {
+  name: string;
+  type: TargetType;
+  countryCode?: string;
+  canonicalId?: string;
+}
+
+export const IntelTargetSchema = z.object({
+  name: z.string(),
+  type: z.enum(TARGET_TYPES),
+  countryCode: z.string().optional(),
+  canonicalId: z.string().optional(),
+});
+
+export type ActionType =
+  | 'statement'
+  | 'meeting'
+  | 'agreement'
+  | 'sanction'
+  | 'boycott'
+  | 'protest'
+  | 'demonstration'
+  | 'strike'
+  | 'violence'
+  | 'threat'
+  | 'arrest'
+  | 'election'
+  | 'legislation'
+  | 'military_activity'
+  | 'trade_restriction'
+  | 'business_action'
+  | 'cultural_event'
+  | 'memorial_event'
+  | 'celebration'
+  | 'disaster_response'
+  | 'other';
+
+export const ACTION_TYPES = [
+  'statement', 'meeting', 'agreement', 'sanction', 'boycott', 'protest',
+  'demonstration', 'strike', 'violence', 'threat', 'arrest', 'election',
+  'legislation', 'military_activity', 'trade_restriction', 'business_action',
+  'cultural_event', 'memorial_event', 'celebration', 'disaster_response', 'other',
+] as const satisfies readonly ActionType[];
+
+export interface IntelEvent {
+  id: string;
+  regionId: string;
+  type: ActionType;
+  title: string;
+  occurredAt?: string;
+  location?: { name?: string; countryCode?: string };
+  actors: IntelEntity[];
+  targets: IntelTarget[];
+  evidenceIds: string[];
+  evidenceCount: number;
+  independentSourceCount: number;
+  primarySourceCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+export const IntelEventSchema = z.object({
+  id: z.string(),
+  regionId: z.string(),
+  type: z.enum(ACTION_TYPES),
+  title: z.string(),
+  occurredAt: z.string().optional(),
+  location: z.object({ name: z.string().optional(), countryCode: z.string().optional() }).optional(),
+  actors: z.array(IntelEntitySchema),
+  targets: z.array(IntelTargetSchema),
+  evidenceIds: z.array(z.string()),
+  evidenceCount: z.number(),
+  independentSourceCount: z.number(),
+  primarySourceCount: z.number(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  confidence: z.enum(['low', 'medium', 'high']),
+});
+
+export interface CountrySource {
+  id: string;
+  regionId: string;
+  domain: string;
+  sourceType: string;
+  discoveredAt: string;
+  verifiedAt?: string;
+  verificationStatus: 'verified' | 'candidate' | 'rejected' | 'stale';
+  discoveryMethod: 'manual_seed' | 'search' | 'rss' | 'sitemap' | 'official_link' | 'wikidata' | 'other';
+}
+
+export const CountrySourceSchema = z.object({
+  id: z.string(),
+  regionId: z.string(),
+  domain: z.string(),
+  sourceType: z.string(),
+  discoveredAt: z.string(),
+  verifiedAt: z.string().optional(),
+  verificationStatus: z.enum(['verified', 'candidate', 'rejected', 'stale']),
+  discoveryMethod: z.enum(['manual_seed', 'search', 'rss', 'sitemap', 'official_link', 'wikidata', 'other']),
+});
+
+export type ProviderRunStatus = 'success' | 'partial' | 'unavailable' | 'rate_limited' | 'error';
+
+export interface ProviderRun {
+  provider: string;
+  startedAt: string;
+  finishedAt?: string;
+  status: ProviderRunStatus;
+  itemCount: number;
+  coverage?: string[];
+  latencyMs?: number;
+  errorCode?: string;
+}
+
+export const ProviderRunSchema = z.object({
+  provider: z.string(),
+  startedAt: z.string(),
+  finishedAt: z.string().optional(),
+  status: z.enum(['success', 'partial', 'unavailable', 'rate_limited', 'error']),
+  itemCount: z.number(),
+  coverage: z.array(z.string()).optional(),
+  latencyMs: z.number().optional(),
+  errorCode: z.string().optional(),
+});
+
+export interface PollObservation {
+  id: string;
+  regionId: string;
+  pollster: string;
+  fieldStart?: string;
+  fieldEnd?: string;
+  sampleSize?: number;
+  population?: string;
+  mode?: string;
+  question: string;
+  responses: { label: string; value: number }[];
+  sourceUrl: string;
+  evidenceId: string;
+}
+
+export const PollObservationSchema = z.object({
+  id: z.string(),
+  regionId: z.string(),
+  pollster: z.string(),
+  fieldStart: z.string().optional(),
+  fieldEnd: z.string().optional(),
+  sampleSize: z.number().optional(),
+  population: z.string().optional(),
+  mode: z.string().optional(),
+  question: z.string(),
+  responses: z.array(z.object({ label: z.string(), value: z.number() })),
+  sourceUrl: z.string(),
+  evidenceId: z.string(),
+});
+
+export type CalendarEventType =
+  | 'public_holiday'
+  | 'official_observance'
+  | 'memorial'
+  | 'anniversary'
+  | 'religious'
+  | 'international_observance'
+  | 'other';
+
+export interface CalendarEvent {
+  id: string;
+  date: string;
+  title: string;
+  type: CalendarEventType;
+  official: boolean;
+  relatedCountries?: string[];
+  sourceUrl: string;
+  evidenceId?: string;
+}
+
+export const CalendarEventSchema = z.object({
+  id: z.string(),
+  date: z.string(),
+  title: z.string(),
+  type: z.enum(['public_holiday', 'official_observance', 'memorial', 'anniversary', 'religious', 'international_observance', 'other']),
+  official: z.boolean(),
+  relatedCountries: z.array(z.string()).optional(),
+  sourceUrl: z.string(),
+  evidenceId: z.string().optional(),
+});
+
+export type BaselineOrigin = 'external_historical' | 'local_observed' | 'mixed' | 'insufficient';
+
+export interface TemporalMetric {
+  key: string;
+  current: number;
+  window: string;
+  baseline?: { median?: number; mad?: number; sampleCount: number; origin: BaselineOrigin };
+  anomalyZ?: number;
+  direction: 'rising' | 'stable' | 'falling' | 'unknown';
+}
+
+export const TemporalMetricSchema = z.object({
+  key: z.string(),
+  current: z.number(),
+  window: z.string(),
+  baseline: z.object({
+    median: z.number().optional(),
+    mad: z.number().optional(),
+    sampleCount: z.number(),
+    origin: z.enum(['external_historical', 'local_observed', 'mixed', 'insufficient']),
+  }).optional(),
+  anomalyZ: z.number().optional(),
+  direction: z.enum(['rising', 'stable', 'falling', 'unknown']),
+});
+
+export interface ForeignRelationContext {
+  counterpartCountryCode: string;
+  officialEvents: IntelEvent[];
+  protestEvents: IntelEvent[];
+  tradeEvents: IntelEvent[];
+  businessEvents: IntelEvent[];
+  culturalEvents: IntelEvent[];
+  violenceEvents: IntelEvent[];
+  relevantPolls: PollObservation[];
+  mediaMetrics: TemporalMetric[];
+  recentEventIds: string[];
+}
+
+export const ForeignRelationContextSchema = z.object({
+  counterpartCountryCode: z.string(),
+  officialEvents: z.array(IntelEventSchema),
+  protestEvents: z.array(IntelEventSchema),
+  tradeEvents: z.array(IntelEventSchema),
+  businessEvents: z.array(IntelEventSchema),
+  culturalEvents: z.array(IntelEventSchema),
+  violenceEvents: z.array(IntelEventSchema),
+  relevantPolls: z.array(PollObservationSchema),
+  mediaMetrics: z.array(TemporalMetricSchema),
+  recentEventIds: z.array(z.string()),
+});
+
+export interface JapanContextView {
+  countryCode: 'JP';
+  officialEvents: IntelEvent[];
+  protests: IntelEvent[];
+  boycotts: IntelEvent[];
+  tradeRestrictions: IntelEvent[];
+  culturalEvents: IntelEvent[];
+  violenceEvents: IntelEvent[];
+  polls: PollObservation[];
+  mediaMetrics: TemporalMetric[];
+}
+
+export const JapanContextViewSchema = z.object({
+  countryCode: z.literal('JP'),
+  officialEvents: z.array(IntelEventSchema),
+  protests: z.array(IntelEventSchema),
+  boycotts: z.array(IntelEventSchema),
+  tradeRestrictions: z.array(IntelEventSchema),
+  culturalEvents: z.array(IntelEventSchema),
+  violenceEvents: z.array(IntelEventSchema),
+  polls: z.array(PollObservationSchema),
+  mediaMetrics: z.array(TemporalMetricSchema),
+});
+
+export type CoverageState = 'good' | 'partial' | 'limited';
+
+export interface CoverageReport {
+  overall: CoverageState;
+  byArea: {
+    politics: CoverageState;
+    economy: CoverageState;
+    security: CoverageState;
+    disaster: CoverageState;
+    health: CoverageState;
+    polls: CoverageState;
+    media: CoverageState;
+    social: CoverageState;
+    calendar: CoverageState;
+    foreignRelations: CoverageState;
+  };
+  missingEvidence: string[];
+  unavailableProviders: string[];
+}
+
+const CoverageStateSchema = z.enum(['good', 'partial', 'limited']);
+
+export const CoverageReportSchema = z.object({
+  overall: CoverageStateSchema,
+  byArea: z.object({
+    politics: CoverageStateSchema,
+    economy: CoverageStateSchema,
+    security: CoverageStateSchema,
+    disaster: CoverageStateSchema,
+    health: CoverageStateSchema,
+    polls: CoverageStateSchema,
+    media: CoverageStateSchema,
+    social: CoverageStateSchema,
+    calendar: CoverageStateSchema,
+    foreignRelations: CoverageStateSchema,
+  }),
+  missingEvidence: z.array(z.string()),
+  unavailableProviders: z.array(z.string()),
+});
+
+export interface SituationSection {
+  summaryFacts: string[];
+  eventIds: string[];
+  metrics: TemporalMetric[];
+  evidenceIds: string[];
+}
+
+export const SituationSectionSchema = z.object({
+  summaryFacts: z.array(z.string()),
+  eventIds: z.array(z.string()),
+  metrics: z.array(TemporalMetricSchema),
+  evidenceIds: z.array(z.string()),
+});
+
+export type EvidenceStrength = 'PRIMARY' | 'CORROBORATED' | 'SECONDARY' | 'WEAK' | 'UNVERIFIED';
+
+export interface CountryContextReport {
+  contextId: string;
+  region: RegionIdentity;
+  asOf: string;
+  situation: {
+    politics: SituationSection;
+    economy: SituationSection;
+    security: SituationSection;
+    disasters: SituationSection;
+    health: SituationSection;
+    humanitarian: SituationSection;
+    social: SituationSection;
+  };
+  elections: IntelEvent[];
+  calendar: CalendarEvent[];
+  foreignRelations: ForeignRelationContext[];
+  japan?: JapanContextView;
+  polls: PollObservation[];
+  keyEvents: IntelEvent[];
+  temporalMetrics: TemporalMetric[];
+  providerCoverage: ProviderRun[];
+  coverage: CoverageReport;
+  evidence: CountryEvidence[];
+}
+
+export const CountryContextReportSchema = z.object({
+  contextId: z.string(),
+  region: RegionIdentitySchema,
+  asOf: z.string(),
+  situation: z.object({
+    politics: SituationSectionSchema,
+    economy: SituationSectionSchema,
+    security: SituationSectionSchema,
+    disasters: SituationSectionSchema,
+    health: SituationSectionSchema,
+    humanitarian: SituationSectionSchema,
+    social: SituationSectionSchema,
+  }),
+  elections: z.array(IntelEventSchema),
+  calendar: z.array(CalendarEventSchema),
+  foreignRelations: z.array(ForeignRelationContextSchema),
+  japan: JapanContextViewSchema.optional(),
+  polls: z.array(PollObservationSchema),
+  keyEvents: z.array(IntelEventSchema),
+  temporalMetrics: z.array(TemporalMetricSchema),
+  providerCoverage: z.array(ProviderRunSchema),
+  coverage: CoverageReportSchema,
+  evidence: z.array(CountryEvidenceSchema),
+});
