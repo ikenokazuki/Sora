@@ -226,7 +226,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         .filter(([_, handle]: [string, any]) => handle.enabled !== false)
         .map(([name]) => name);
 
-      expect(enabledTools.length).toBe(12);
+      expect(enabledTools.length).toBe(13);
       const expectedCore = [
         'scrape',
         'search_web',
@@ -240,23 +240,24 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'search_disaster_warnings',
         'search_earthquake',
         'search_laws',
+        'track_package',
       ];
       for (const name of expectedCore) {
         expect(enabledTools).toContain(name);
       }
-      expect(enabledTools).not.toContain('track_package');
+      expect(enabledTools).not.toContain('get_flight_status');
     });
 
-    it('search_tools enables deferred tools like track_package', async () => {
+    it('search_tools enables deferred tools like get_flight_status', async () => {
       const server = createMcpServer({ deferTools: true });
       const searchTools = (server as any)._registeredTools['search_tools'];
       expect(searchTools).toBeDefined();
 
-      const result = await searchTools.handler({ query: '荷物追跡' });
-      expect(result.content?.[0]?.text).toContain('track_package');
+      const result = await searchTools.handler({ query: 'フライト' });
+      expect(result.content?.[0]?.text).toContain('get_flight_status');
 
       const registered = (server as any)._registeredTools;
-      expect(registered['track_package'].enabled).toBe(true);
+      expect(registered['get_flight_status'].enabled).toBe(true);
     });
   });
 
@@ -314,9 +315,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           descLength: t.description?.length || 0,
         }));
 
-      expect(initialTools.length).toBe(12);
+      expect(initialTools.length).toBe(13);
       const totalDescChars = initialTools.reduce((acc, t) => acc + t.descLength, 0);
-      expect(totalDescChars).toBeLessThan(3500);
+      expect(totalDescChars).toBeLessThan(4000);
       for (const t of initialTools) {
         expect(t.descLength).toBeLessThan(400);
       }
@@ -336,7 +337,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       ]);
 
       const initialTools = await client.listTools();
-      expect(initialTools.tools.length).toBe(12);
+      expect(initialTools.tools.length).toBe(13);
 
       const serializedTools = JSON.stringify(initialTools.tools);
       const toolChars = serializedTools.length;
@@ -362,14 +363,12 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         const url = typeof input === 'string' ? input : input?.url;
         if (
           url &&
-          (url.includes('kuronekoyamato') ||
-            url.includes('sagawa') ||
-            url.includes('japanpost') ||
-            url.includes('seino') ||
-            url.includes('fukutsu') ||
-            url.includes('ups.com'))
+          (url.includes('flight') ||
+            url.includes('airport') ||
+            url.includes('jal') ||
+            url.includes('ana'))
         ) {
-          return new Response('<html><body>追跡モック: 配達完了</body></html>', {
+          return new Response('<html><body>フライトモック: 定刻</body></html>', {
             status: 200,
             headers: { 'Content-Type': 'text/html' },
           });
@@ -392,30 +391,31 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           client.connect(clientTransport),
         ]);
 
-        // 1. Initial list has 12 tools
+        // 1. Initial list has 13 tools including track_package, but not deferred get_flight_status
         const initialTools = await client.listTools();
-        expect(initialTools.tools.length).toBe(12);
-        expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
+        expect(initialTools.tools.length).toBe(13);
+        expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
+        expect(initialTools.tools.some((t: any) => t.name === 'get_flight_status')).toBe(false);
 
-        // 2. Discover and activate track_package
-        const searchResult = await client.callTool({ name: 'search_tools', arguments: { query: '荷物追跡' } });
-        expect((searchResult.content as any)[0].text).toContain('track_package');
+        // 2. Discover and activate get_flight_status
+        const searchResult = await client.callTool({ name: 'search_tools', arguments: { query: 'フライト' } });
+        expect((searchResult.content as any)[0].text).toContain('get_flight_status');
         expect((searchResult.content as any)[0].text).toContain('有効化完了');
 
         // 3. Client received standard MCP notification
         expect(listChangedCount).toBe(1);
 
-        // 4. Refreshed tools/list now includes track_package
+        // 4. Refreshed tools/list now includes get_flight_status
         const refreshedTools = await client.listTools();
-        expect(refreshedTools.tools.length).toBe(13);
-        expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
+        expect(refreshedTools.tools.length).toBe(14);
+        expect(refreshedTools.tools.some((t: any) => t.name === 'get_flight_status')).toBe(true);
 
         // 5. Invoke the newly activated tool directly without external network flakiness
-        const trackResult = await client.callTool({
-          name: 'track_package',
-          arguments: { trackingNumber: '123456789012' },
+        const flightResult = await client.callTool({
+          name: 'get_flight_status',
+          arguments: { flightNumber: 'JL123' },
         });
-        expect(trackResult.isError ?? false).toBe(false);
+        expect(flightResult.isError ?? false).toBe(false);
 
         await client.close();
         await server.close();
@@ -485,11 +485,12 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes1 = await manager.handleRequest(listReq1);
       const listBody1: any = await parseRes(listRes1);
       const names1 = listBody1.result.tools.map((t: any) => t.name);
-      expect(names1.length).toBe(12);
+      expect(names1.length).toBe(13);
       expect(names1).toContain('scrape');
       expect(names1).toContain('search_deep');
       expect(names1).toContain('search_tools');
-      expect(names1).not.toContain('track_package');
+      expect(names1).toContain('track_package');
+      expect(names1).not.toContain('get_flight_status');
 
       // 2.5 Establish notification-capable SSE stream (standard MCP Streamable HTTP GET)
       const sseReq = new Request('http://localhost/mcp', {
@@ -525,7 +526,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         return null;
       })();
 
-      // 3. Call search_tools to activate track_package
+      // 3. Call search_tools to activate get_flight_status
       const callSearchReq = new Request('http://localhost/mcp', {
         method: 'POST',
         headers: {
@@ -538,12 +539,12 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           jsonrpc: '2.0',
           id: 3,
           method: 'tools/call',
-          params: { name: 'search_tools', arguments: { query: '荷物追跡' } },
+          params: { name: 'search_tools', arguments: { query: 'フライト' } },
         }),
       });
       const callSearchRes = await manager.handleRequest(callSearchReq);
       const searchBody: any = await parseRes(callSearchRes);
-      expect(searchBody.result.content[0].text).toContain('track_package');
+      expect(searchBody.result.content[0].text).toContain('get_flight_status');
       expect(searchBody.result.content[0].text).toContain('有効化完了');
 
       // 3.5 Wait for and assert notifications/tools/list_changed received via SSE stream
@@ -556,7 +557,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
       await reader.cancel();
 
-      // 4. Refreshed tools/list in the same session now has 13 tools including track_package
+      // 4. Refreshed tools/list in the same session now has 14 tools including get_flight_status
       const listReq2 = new Request('http://localhost/mcp', {
         method: 'POST',
         headers: {
@@ -570,8 +571,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes2 = await manager.handleRequest(listReq2);
       const listBody2: any = await parseRes(listRes2);
       const names2 = listBody2.result.tools.map((t: any) => t.name);
-      expect(names2.length).toBe(13);
-      expect(names2).toContain('track_package');
+      expect(names2.length).toBe(14);
+      expect(names2).toContain('get_flight_status');
 
       manager.clearAllSessions();
     });
@@ -703,11 +704,11 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const server = createMcpServer({ deferTools: true });
       const searchTools = (server as any)._registeredTools['search_tools'];
 
-      const result = await searchTools.handler({ query: '荷物追跡' });
+      const result = await searchTools.handler({ query: 'フライト' });
       const text = result.content?.[0]?.text;
 
       // Must have tool name and summary
-      expect(text).toContain('track_package');
+      expect(text).toContain('get_flight_status');
       expect(text).toContain('有効化完了');
 
       // Must NOT dump full json-schema properties
