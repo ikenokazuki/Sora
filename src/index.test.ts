@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
-import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse } from './mcp.js';
+import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse, clearSharedActivatedTools } from './mcp.js';
 import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
@@ -589,6 +589,10 @@ describe('web-fetcher Auth Middleware', () => {
 });
 
 describe('Sora REST & MCP Endpoints', () => {
+  beforeEach(() => {
+    clearSharedActivatedTools();
+  });
+
   it('GET /health should return 200 OK with service details', async () => {
     const res = await app.fetch(new Request('http://localhost/health'));
     expect(res.status).toBe(200);

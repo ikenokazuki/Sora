@@ -68,9 +68,20 @@ export interface ToolCatalogEntry {
 }
 
 /**
+ * プロセス内で動的に有効化（search_tools）されたツールの一覧。
+ * MCP クライアント（LibreChat 等）が未知のツール呼び出し時にサーバーを自動再初期化（Re-initialize）
+ * しても、有効化状態がリセットされずに tools/list に確実に反映されるよう保持します。
+ */
+export const SHARED_ACTIVATED_TOOLS = new Set<string>();
+
+export function clearSharedActivatedTools(): void {
+  SHARED_ACTIVATED_TOOLS.clear();
+}
+
+/**
  * ツール登録用ヘルパー。
- * defaultEnabled が false の場合は即座に handle.disable() を呼び出して
- * 初期状態では tools/list に露出しないようにし、カタログにメタ情報を保管します。
+ * defaultEnabled が false で、かつ過去に search_tools で動的有効化されていない場合は
+ * handle.disable() を呼び出して初期 tools/list に露出しないようにし、カタログにメタ情報を保管します。
  */
 export function registerTool<Args extends ZodRawShapeCompat>(
   mcpServer: McpServer,
@@ -83,7 +94,8 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   opts: { defaultEnabled: boolean; keywords?: string[] },
 ): RegisteredTool {
   const handle = mcpServer.tool(name, description, schema, handler);
-  if (!opts.defaultEnabled) {
+  const isEnabled = opts.defaultEnabled || SHARED_ACTIVATED_TOOLS.has(name);
+  if (!isEnabled) {
     handle.disable();
   }
   toolCatalog.set(name, {
@@ -1903,6 +1915,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       const alreadyEnabled: string[] = [];
 
       for (const entry of matches) {
+        SHARED_ACTIVATED_TOOLS.add(entry.name);
         if (!entry.handle.enabled) {
           entry.handle.enable();
           const cleanDesc = entry.description.replace(/^【.*?】/, '').slice(0, 80);
