@@ -221,6 +221,12 @@ test('migrates a legacy file idempotently with foreign keys and required indexes
       expect.objectContaining({ table: 'intel_events' }),
       expect.objectContaining({ table: 'intel_evidence' }),
     ]));
+  expect(db.query<{ table: string; on_delete: string }, []>("PRAGMA foreign_key_list('intel_events')").all())
+    .toContainEqual(expect.objectContaining({ table: 'intel_reports', on_delete: 'SET NULL' }));
+  expect(db.query<{ table: string; on_delete: string }, []>("PRAGMA foreign_key_list('intel_poll_observations')").all())
+    .toContainEqual(expect.objectContaining({ table: 'intel_evidence', on_delete: 'SET NULL' }));
+  expect(db.query<{ table: string; on_delete: string }, []>("PRAGMA foreign_key_list('intel_calendar_events')").all())
+    .toContainEqual(expect.objectContaining({ table: 'intel_evidence', on_delete: 'SET NULL' }));
 
   const migrationCount = db.query<{ count: number }, []>('SELECT count(*) AS count FROM schema_migrations').get()!.count;
   runMigrations(db);
@@ -241,7 +247,7 @@ test('migrates a legacy file idempotently with foreign keys and required indexes
   expect(indexes).toEqual(expect.arrayContaining([
     'idx_country_sources_region', 'idx_country_sources_domain',
     'idx_provider_runs_report', 'idx_provider_runs_provider_started',
-    'idx_evidence_region_published', 'idx_evidence_retrieved', 'idx_evidence_expires',
+    'idx_evidence_region_published', 'idx_evidence_retrieved', 'idx_evidence_excerpt_expires',
     'idx_events_region_occurred', 'idx_events_report', 'idx_events_expires',
     'idx_event_evidence_evidence', 'idx_polls_region_observed',
     'idx_daily_metrics_region_observed', 'idx_daily_metrics_expires',
@@ -250,7 +256,7 @@ test('migrates a legacy file idempotently with foreign keys and required indexes
 
   for (const [table, columns] of [
     ['intel_reports', ['as_of', 'created_at', 'expires_at']],
-    ['intel_evidence', ['published_at', 'retrieved_at', 'expires_at']],
+    ['intel_evidence', ['published_at', 'retrieved_at', 'excerpt_expires_at']],
     ['intel_events', ['occurred_at', 'first_seen_at', 'last_seen_at', 'expires_at']],
     ['intel_provider_runs', ['started_at', 'finished_at']],
     ['country_sources', ['discovered_at', 'verified_at']],
@@ -331,9 +337,16 @@ test('prunes only expired country intelligence rows and keeps retention boundari
   saveCountryContext(report('ctx_recent', now, expiredEventEvidence, expiredEvent));
 
   const result = pruneCountryIntel(now);
-  expect(result).toEqual({ reports: 1, evidence: 2, events: 1, dailyMetrics: 1 });
+  expect(result).toEqual({ reports: 1, evidenceExcerpts: 2, events: 1, dailyMetrics: 1 });
   expect(db.query('SELECT context_id FROM intel_reports WHERE context_id = ?').get('ctx_expired')).toBeNull();
-  expect(db.query('SELECT id FROM intel_events WHERE id = ?').get('event-recent')).toEqual({ id: 'event-recent' });
+  expect(db.query('SELECT id, report_id FROM intel_events WHERE id = ?').get('event-recent'))
+    .toEqual({ id: 'event-recent', report_id: null });
+  expect(db.query('SELECT id, excerpt FROM intel_evidence ORDER BY id').all()).toEqual([
+    { id: 'evidence-expired', excerpt: null },
+    { id: 'evidence-old-event', excerpt: null },
+  ]);
+  expect(db.query('SELECT event_id, evidence_id FROM intel_event_evidence').all())
+    .toEqual([{ event_id: 'event-recent', evidence_id: 'evidence-expired' }]);
   expect(db.query('SELECT metric_key FROM intel_daily_metrics ORDER BY metric_key').all())
     .toEqual([{ metric_key: 'boundary' }, { metric_key: 'media_cluster_count' }]);
   expect(db.query('SELECT id FROM country_sources').get()).toEqual({ id: 'source-existing' });
@@ -350,6 +363,42 @@ test('prunes only expired country intelligence rows and keeps retention boundari
   expect(reopened.query('SELECT key FROM cache_entries').get()).toEqual({ key: 'cache-existing' });
   expect(reopened.query('SELECT domain FROM domain_cookies').get()).toEqual({ domain: 'cookie.example' });
   expect(reopened.query('SELECT domain FROM domain_storage').get()).toEqual({ domain: 'storage.example' });
+  expect(pruneCountryIntel(now)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0 });
+});
+
+test('nulls poll and calendar evidence links when evidence metadata is explicitly deleted', () => {
+  const db = initDatabase();
+  const now = Date.UTC(2026, 8, 21);
+  const itemEvidence = evidence('evidence-fk-lifecycle', now);
+  const itemEvent = event('event-fk-lifecycle', itemEvidence.id, now);
+  const itemReport = report('ctx_fk_lifecycle', now, itemEvidence, itemEvent);
+  saveCountryContext(itemReport);
+
+  db.query('DELETE FROM intel_evidence WHERE id = ?').run(itemEvidence.id);
+
+  expect(db.query('SELECT evidence_id FROM intel_poll_observations WHERE id = ?').get('poll-ctx_fk_lifecycle'))
+    .toEqual({ evidence_id: null });
+  expect(db.query('SELECT evidence_id FROM intel_calendar_events WHERE id = ?').get('calendar-ctx_fk_lifecycle'))
+    .toEqual({ evidence_id: null });
+  expect(db.query('SELECT event_id FROM intel_event_evidence WHERE event_id = ?').get(itemEvent.id)).toBeNull();
+});
+
+test('rejects fractional and out-of-range numeric epoch milliseconds atomically', () => {
+  initDatabase();
+  const now = Date.UTC(2026, 8, 21);
+  const itemEvidence = evidence('evidence-invalid-epoch', now);
+  const itemEvent = event('event-invalid-epoch', itemEvidence.id, now);
+
+  for (const [contextId, observedAt] of [
+    ['ctx_fractional_epoch', now + 0.5],
+    ['ctx_out_of_range_epoch', Number.MAX_SAFE_INTEGER],
+  ] as const) {
+    const itemReport = report(contextId, now, itemEvidence, itemEvent);
+    expect(() => saveCountryContext(itemReport, {
+      dailyMetrics: [{ regionId: 'country:KR', observedAt, metric: metric() }],
+    })).toThrow();
+    expect(getCountryContext(contextId)).toBeUndefined();
+  }
 });
 
 test('passively checkpoints WAL and reports main WAL and SHM sizes', () => {
@@ -378,7 +427,7 @@ test('retains events for one calendar year and daily metrics for two across leap
     }],
   });
 
-  expect(pruneCountryIntel(pruneAt)).toEqual({ reports: 0, evidence: 0, events: 0, dailyMetrics: 0 });
+  expect(pruneCountryIntel(pruneAt)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0 });
   expect(getDb().query('SELECT id FROM intel_events WHERE id = ?').get(itemEvent.id)).toEqual({ id: itemEvent.id });
   expect(getDb().query('SELECT metric_key FROM intel_daily_metrics WHERE metric_key = ?').get('leap-retention'))
     .toEqual({ metric_key: 'leap-retention' });
