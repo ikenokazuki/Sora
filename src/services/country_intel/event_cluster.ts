@@ -4,7 +4,7 @@ import type { CountryEvidence, IntelEntity, IntelEvent, IntelTarget } from './ty
 import type { IntelEventDraft } from './event_extract.js';
 
 const WIRE_BYLINE = /^\s*(?:\(\s*(reuters|associated press|ap|afp)\s*\)(?:\s+|\s*[-–—,:])|(reuters|associated press|ap|afp)\s*[-–—,:])/iu;
-const WIRE_DATELINE = /^(?:[A-Z][A-Z .'-]{1,60}|[A-Z][A-Za-z .'-]{1,60},\s*[A-Z][A-Za-z.]*\s+\d{1,2})\s*\(\s*(reuters|associated press|ap|afp)\s*\)\s*[-–—,:]/iu;
+const WIRE_DATELINE = /^(?:[A-Z][A-Z .'-]{1,60}|[A-Z][A-Za-z .'-]{1,60},\s*[A-Z][A-Za-z.]*\s+\d{1,2})\s*\(\s*(Reuters|REUTERS|reuters|Associated Press|ASSOCIATED PRESS|associated press|AP|ap|AFP|afp)\s*\)\s*[-–—,:]/u;
 const WIRE_NAMES: Record<string, string> = {
   reuters: 'reuters',
   'associated press': 'ap',
@@ -84,13 +84,14 @@ function nearTime(left: IntelEventDraft, right: IntelEventDraft): boolean {
 function specificEntityKeys(draft: IntelEventDraft): Set<string> {
   return new Set(
     [...draft.actors, ...draft.targets]
-      .filter((entity) => entity.canonicalId || (
-        !['country', 'people_nationality', 'unknown', 'none'].includes(entity.type ?? 'unknown')
-        && !['activist', 'foreign ministry', 'government', 'japanese government', 'japanese products', 'military', 'politician', 'police', 'protester', 'protesters'].includes(entity.name.toLocaleLowerCase('en-US'))
-      ))
-      .flatMap((entity) => [entity.canonicalId, entity.name])
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.normalize('NFKC').toLocaleLowerCase('en-US')),
+      .flatMap((entity) => {
+        if (entity.canonicalId) return [`id:${entity.canonicalId.normalize('NFKC').toLocaleLowerCase('en-US')}`];
+        const name = entity.name.normalize('NFKC').toLocaleLowerCase('en-US');
+        return !['country', 'people_nationality', 'unknown', 'none'].includes(entity.type ?? 'unknown')
+          && !['activist', 'activists', 'foreign ministry', 'government', 'japanese government', 'japanese products', 'military', 'politician', 'police', 'protester', 'protesters'].includes(name)
+          ? [`name:${name}`]
+          : [];
+      }),
   );
 }
 
