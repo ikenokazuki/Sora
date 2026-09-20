@@ -1875,3 +1875,15 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 詳細については [LICENSE](LICENSE) をご確認ください。
 
 Copyright (c) 2026 ikeno
+
+## 🌍 Country Intelligence v1 (v2.26.0 release candidate)
+
+Evidence-backed country context via `POST /intelligence/country` and deferred MCP tool `research_country_context` (module `intel`, activate with `search_tools` query `国地域`).
+
+- Request: `{ region, query?, topics?, period?: "7d"|"30d"|"90d", includeSocial?, noCache?, verbose? }`. Omitting `topics` queries every enabled provider within bounded two-pass caps (12 + 8).
+- Report separates article/evidence count, event cluster count, and independent source counts. Publisher geography never becomes event geography. Ambiguous regions (e.g. `Georgia`) stay low-confidence.
+- Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
+- Providers: GDELT DOC/events, GDACS, World Bank (temporal observations only), Nager holidays (calendars only), Wikidata (source discovery only), official/media web, Yahoo realtime JP (optional social observations, never polls or representative opinion).
+- No sentiment, hostility, anti-Japan, safety, or risk scores by design.
+- Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts 180 days. Retrieval: `GET /intelligence/context/:contextId`.
+- Opt-in live smoke: `bun run test:intel:live` (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
