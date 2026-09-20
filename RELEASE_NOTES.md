@@ -1,3 +1,14 @@
+# 🧭 Sora Release v2.26.0 (candidate)
+
+### Country Intelligence v1 — evidence-backed country context
+
+- New `POST /intelligence/country` + `GET /intelligence/context/:contextId`, and deferred MCP tool `research_country_context` (`intel` module, `search_tools` keyword `国地域`).
+- Deterministic pipeline: conservative region resolution, isolated providers with timeout/retry/cache, normalized evidence, conservative event clustering, factual temporal/relation context, SQLite persistence.
+- Report counts keep articles, event clusters, and independent sources separate; publisher country never leaks into event country; ambiguous regions stay low-confidence.
+- Partial-report semantics: a single provider 429/timeout degrades coverage instead of failing the report.
+- Explicitly no sentiment, hostility, anti-Japan, safety, or risk classifiers or scores.
+- Persistence requires `SORA_DB_PATH=/data/sora.db` on a mounted `/data` volume (`VOLUME ["/data"]` declared in Dockerfile/Containerfile). Opt-in smoke: `bun run test:intel:live`.
+
 # 🌤️ Sora Release v2.25.0
 
 ### MCP 遅延ツールの LibreChat 互換修正
