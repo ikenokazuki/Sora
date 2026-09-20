@@ -102,6 +102,17 @@ export function buildForeignRelations(
 ): ForeignRelationContext[] {
   const relations = new Map<string, ForeignRelationContext>();
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  for (const poll of polls) {
+    for (const counterpartCountryCode of new Set(evidenceById.get(poll.evidenceId)?.mentionedCountries ?? [])) {
+      const relation = relations.get(counterpartCountryCode) ?? {
+        counterpartCountryCode,
+        officialEvents: [], protestEvents: [], tradeEvents: [], businessEvents: [], culturalEvents: [], violenceEvents: [],
+        relevantPolls: [], mediaMetrics: [...mediaMetrics], recentEventIds: [],
+      };
+      if (!relations.has(counterpartCountryCode)) relations.set(counterpartCountryCode, relation);
+      relation.relevantPolls.push(poll);
+    }
+  }
   for (const event of events) {
     const counterparts = new Set(event.targets.map((target) => target.countryCode).filter((code): code is string => Boolean(code)));
     for (const evidenceId of event.evidenceIds) {
@@ -117,9 +128,6 @@ export function buildForeignRelations(
       relationBucket(event, relation);
       if (!relation.recentEventIds.includes(event.id)) relation.recentEventIds.push(event.id);
     }
-  }
-  for (const relation of relations.values()) {
-    relation.relevantPolls.push(...polls.filter((poll) => evidenceById.get(poll.evidenceId)?.mentionedCountries?.includes(relation.counterpartCountryCode)));
   }
   return [...relations.values()].sort((left, right) => left.counterpartCountryCode.localeCompare(right.counterpartCountryCode));
 }
@@ -162,7 +170,7 @@ export function buildCoverage(
   const evidenceIds = new Set(evidence.map(({ id }) => id));
   for (const area of Object.keys(AREA_ALIASES) as (keyof CoverageReport['byArea'])[]) {
     const coveredRuns = areaRuns(area, runs);
-    const hasEvidence = coveredRuns.some(({ provider }) => evidenceByProviderArea[`${provider}:${area}`]?.some((id) => evidenceIds.has(id)));
+    const hasEvidence = coveredRuns.some(({ provider, itemCount }) => itemCount > 0 && evidenceByProviderArea[`${provider}:${area}`]?.some((id) => evidenceIds.has(id)));
     byArea[area] = coverageState(coveredRuns, hasEvidence);
     if (!hasEvidence) missingEvidence.push(area);
   }
