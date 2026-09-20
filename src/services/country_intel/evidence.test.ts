@@ -52,6 +52,11 @@ test('derives conservative registrable publisher domains', () => {
   expect(canonicalPublisherDomain('https://news.alpha.unknown/a')).toBe('news.alpha.unknown');
 });
 
+test('keeps publishers on private multipart suffixes independent', () => {
+  expect(canonicalPublisherDomain('https://alpha.blogspot.com/a')).toBe('alpha.blogspot.com');
+  expect(canonicalPublisherDomain('https://beta.blogspot.com/b')).toBe('beta.blogspot.com');
+});
+
 test('hashes NFKC text with collapsed whitespace', () => {
   expect(hashEvidenceContent('  Japan\u3000 earthquake\n')).toBe(hashEvidenceContent('Japan earthquake'));
 });
