@@ -22,7 +22,6 @@ export function canonicalizeEvidenceUrl(url: string): string {
 }
 
 const COUNTRY_SECOND_LEVEL_LABELS = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org', 'mil']);
-const KNOWN_GENERIC_TLDS = new Set(['ai', 'app', 'biz', 'com', 'dev', 'edu', 'gov', 'info', 'int', 'io', 'mil', 'name', 'net', 'org', 'pro', 'test', 'xyz']);
 
 export function canonicalPublisherDomain(url: string): string | undefined {
   try {
@@ -34,7 +33,7 @@ export function canonicalPublisherDomain(url: string): string | undefined {
     if (topLevel.length === 2) {
       return COUNTRY_SECOND_LEVEL_LABELS.has(secondLevel) ? labels.slice(-3).join('.') : hostname;
     }
-    return KNOWN_GENERIC_TLDS.has(topLevel) ? labels.slice(-2).join('.') : hostname;
+    return hostname;
   } catch {
     return undefined;
   }
