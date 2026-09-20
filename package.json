@@ -10,7 +10,8 @@
     "stdio": "bun run src/stdio.ts",
     "test": "bun test",
     "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
-    "build": "bun build ./src/index.ts --target=bun --outfile server.js"
+    "build": "bun build ./src/index.ts --target=bun --outfile server.js",
+    "test:intel:live": "bun run src/services/country_intel/live_smoke.ts"
   },
   "keywords": [
     "mcp",

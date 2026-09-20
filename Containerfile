@@ -58,3 +58,4 @@ ENV PORT=8000 \
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/bun", "/app/server.js"]
 
+VOLUME ["/data"]
