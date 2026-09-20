@@ -97,6 +97,19 @@ test('attaches a poll only to counterparts mentioned by its evidence', () => {
   expect(relations.find(({ counterpartCountryCode }) => counterpartCountryCode === 'US')?.relevantPolls).toEqual([]);
 });
 
+test('builds a counterpart relation from poll evidence without an event', () => {
+  const jpPoll = { ...basePoll, evidenceId: 'poll-jp-only' };
+  const relations = buildForeignRelations(
+    [], [jpPoll], [], [{ ...evidence, id: 'poll-jp-only', mentionedCountries: ['JP'] }],
+  );
+
+  expect(relations).toEqual([expect.objectContaining({
+    counterpartCountryCode: 'JP',
+    recentEventIds: [],
+    relevantPolls: [jpPoll],
+  })]);
+});
+
 test('projects Japan fields only from the JP relation', () => {
   const relations = buildForeignRelations(
     [event('jp-protest', 'protest', 'JP'), event('jp-boycott', 'boycott', 'JP'), event('jp-trade', 'trade_restriction', 'JP'), event('us-protest', 'protest', 'US')],
@@ -148,4 +161,13 @@ test('keeps an uncovered provider area limited when another area has evidence', 
   expect(coverage.byArea.politics).toBe('good');
   expect(coverage.byArea.economy).toBe('limited');
   expect(coverage.missingEvidence).toContain('economy');
+});
+
+test('keeps mapped evidence limited when its successful provider returned no items', () => {
+  const coverage = buildCoverage([
+    { provider: 'news', startedAt: '2026-01-01T00:00:00.000Z', status: 'success', itemCount: 0, coverage: ['politics'] },
+  ], [evidence], { 'news:politics': ['evidence-1'] });
+
+  expect(coverage.byArea.politics).toBe('limited');
+  expect(coverage.missingEvidence).toContain('politics');
 });
