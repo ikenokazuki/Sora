@@ -80,8 +80,8 @@ export function computeTemporalMetric(
   origin: BaselineOrigin,
 ): TemporalMetric {
   const baselineSamples = samples.filter(Number.isFinite);
-  if (baselineSamples.length === 0) {
-    return { key, current, window, baseline: { sampleCount: 0, origin }, direction: 'unknown' };
+  if (baselineSamples.length < 3) {
+    return { key, current, window, baseline: { sampleCount: baselineSamples.length, origin: 'insufficient' }, direction: 'unknown' };
   }
   const center = median(baselineSamples);
   const mad = median(baselineSamples.map((sample) => Math.abs(sample - center)));
@@ -98,20 +98,28 @@ export function buildForeignRelations(
   events: readonly IntelEvent[],
   polls: readonly PollObservation[],
   mediaMetrics: readonly TemporalMetric[],
+  evidence: readonly CountryEvidence[] = [],
 ): ForeignRelationContext[] {
   const relations = new Map<string, ForeignRelationContext>();
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   for (const event of events) {
     const counterparts = new Set(event.targets.map((target) => target.countryCode).filter((code): code is string => Boolean(code)));
+    for (const evidenceId of event.evidenceIds) {
+      for (const countryCode of evidenceById.get(evidenceId)?.mentionedCountries ?? []) counterparts.add(countryCode);
+    }
     for (const counterpartCountryCode of counterparts) {
       const relation = relations.get(counterpartCountryCode) ?? {
         counterpartCountryCode,
         officialEvents: [], protestEvents: [], tradeEvents: [], businessEvents: [], culturalEvents: [], violenceEvents: [],
-        relevantPolls: [...polls], mediaMetrics: [...mediaMetrics], recentEventIds: [],
+        relevantPolls: [], mediaMetrics: [...mediaMetrics], recentEventIds: [],
       };
       if (!relations.has(counterpartCountryCode)) relations.set(counterpartCountryCode, relation);
       relationBucket(event, relation);
       if (!relation.recentEventIds.includes(event.id)) relation.recentEventIds.push(event.id);
     }
+  }
+  for (const relation of relations.values()) {
+    relation.relevantPolls.push(...polls.filter((poll) => evidenceById.get(poll.evidenceId)?.mentionedCountries?.includes(relation.counterpartCountryCode)));
   }
   return [...relations.values()].sort((left, right) => left.counterpartCountryCode.localeCompare(right.counterpartCountryCode));
 }
@@ -139,17 +147,22 @@ function areaRuns(area: keyof CoverageReport['byArea'], runs: readonly ProviderR
 }
 
 function coverageState(runs: readonly ProviderRun[], hasEvidence: boolean): CoverageState {
-  if (!hasEvidence || runs.length === 0 || !runs.some(({ itemCount }) => itemCount > 0)) return 'limited';
+  if (!hasEvidence || runs.length === 0) return 'limited';
   if (runs.every(({ status }) => status === 'success')) return 'good';
   return runs.some(({ status }) => status === 'partial' || status === 'success') ? 'partial' : 'limited';
 }
 
-export function buildCoverage(runs: readonly ProviderRun[], evidence: readonly CountryEvidence[]): CoverageReport {
+export function buildCoverage(
+  runs: readonly ProviderRun[],
+  evidence: readonly CountryEvidence[],
+  evidenceByProviderArea: Readonly<Record<string, readonly string[]>> = {},
+): CoverageReport {
   const byArea = {} as CoverageReport['byArea'];
   const missingEvidence: string[] = [];
+  const evidenceIds = new Set(evidence.map(({ id }) => id));
   for (const area of Object.keys(AREA_ALIASES) as (keyof CoverageReport['byArea'])[]) {
     const coveredRuns = areaRuns(area, runs);
-    const hasEvidence = evidence.length > 0 && coveredRuns.some(({ itemCount }) => itemCount > 0);
+    const hasEvidence = coveredRuns.some(({ provider }) => evidenceByProviderArea[`${provider}:${area}`]?.some((id) => evidenceIds.has(id)));
     byArea[area] = coverageState(coveredRuns, hasEvidence);
     if (!hasEvidence) missingEvidence.push(area);
   }
