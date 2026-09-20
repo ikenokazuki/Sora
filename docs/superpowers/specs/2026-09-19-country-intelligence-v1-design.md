@@ -181,4 +181,3 @@ The separate live smoke command runs bounded checks for South Korea, Taiwan, Uni
 ## Release and compatibility
 
 The feature is a `v2.26.0` minor-release candidate. Version files change only in the repository's release step after implementation and verification. Existing Tracking, Watch, Search, Browser, Yahoo, Media, routes, schemas, and tables remain backward compatible. The feature branch starts from current `origin/main` commit `6f7616f`, which already includes the LibreChat deferred-tool fixes beyond the `d0894c6` reference in the original instruction.
-
