@@ -4004,7 +4004,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 39 tools and enable 12 core hybrid tools by default', () => {
+  it('MCP server should register all 40 tools and enable 12 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4039,7 +4039,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('inspect_image');
     expect(enabledToolsAll).toContain('watch_delete');
     expect(enabledToolsAll).toContain('track_package');
-    expect(enabledToolsAll.length).toBe(39);
+    expect(enabledToolsAll).toContain('research_country_context');
+    expect(enabledToolsAll.length).toBe(40);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -5603,7 +5604,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 57 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 59 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5635,8 +5636,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(57);
-      expect(withContentCount).toBe(57);
+      expect(operationCount).toBe(59);
+      expect(withContentCount).toBe(59);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {
