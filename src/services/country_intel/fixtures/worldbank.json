@@ -1,0 +1,15 @@
+[
+  { "page": 1, "total": 1 },
+  [
+    {
+      "indicator": { "id": "NY.GDP.MKTP.CD", "value": "GDP (current US$)" },
+      "country": { "id": "KR", "value": "Korea, Rep." },
+      "countryiso3code": "KOR",
+      "date": "2024",
+      "value": 1712345678901.5,
+      "unit": "",
+      "obs_status": "",
+      "decimal": 0
+    }
+  ]
+]
