@@ -15,6 +15,7 @@ import { createGdeltEventsProvider } from './providers/gdelt_events.js';
 import { createGdacsProvider } from './providers/gdacs.js';
 import { createWorldBankProvider } from './providers/worldbank.js';
 import { createNagerProvider } from './providers/nager.js';
+import { closeDb } from '../../db.js';
 
 const fixtureDir = join(import.meta.dir, 'fixtures');
 const load = (name: string) => JSON.parse(readFileSync(join(fixtureDir, name), 'utf8'));
@@ -62,6 +63,7 @@ if (failures > 0) {
 
 if (!process.argv.includes('--live')) {
   console.log('offline parser contracts passed. Re-run with --live for provider reachability.');
+  closeDb();
   process.exit(0);
 }
 
@@ -75,3 +77,6 @@ for (const name of ['South Korea', 'Taiwan', 'United States', 'France', 'Indones
     console.error(`${name}: smoke error: ${error instanceof Error ? error.message : error}`);
   }
 }
+
+closeDb();
+process.exit(0);
