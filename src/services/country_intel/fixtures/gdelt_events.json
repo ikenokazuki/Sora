@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "GLOBALEVENTID": "123456789",
+      "SQLDATE": "20260910",
+      "Actor1CountryCode": "KOR",
+      "ActionGeo_CountryCode": "KOR",
+      "EventCode": "010",
+      "NumArticles": 5,
+      "SOURCEURL": "https://www.koreaherald.com/article/123"
+    }
+  ]
+}
