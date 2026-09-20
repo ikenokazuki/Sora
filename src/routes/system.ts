@@ -41,6 +41,8 @@ systemRoutes.get('/', (c) => {
       searchNews: 'POST /search/news',
       searchChiebukuro: 'POST /search/chiebukuro',
       searchSuggest: 'POST /search/suggest',
+      intelligenceCountry: 'POST /intelligence/country',
+      intelligenceContext: 'GET /intelligence/context/:contextId',
       transitRoute: 'POST /transit/route',
       weather: 'POST/GET /weather, GET /weather/:city',
       disasterWarnings: 'POST /disaster/warnings',
