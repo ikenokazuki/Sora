@@ -15,10 +15,10 @@ const basePoll: PollObservation = {
   responses: [{ label: 'positive', value: 40 }], sourceUrl: 'https://poll.example.test/1', evidenceId: 'evidence-1',
 };
 
-function event(id: string, type: IntelEvent['type'], countryCode: string): IntelEvent {
+function event(id: string, type: IntelEvent['type'], countryCode?: string, evidenceIds: string[] = []): IntelEvent {
   return {
     id, regionId: 'country:KR', type, title: id,
-    actors: [], targets: [{ name: countryCode, type: 'country', countryCode }], evidenceIds: [],
+    actors: [], targets: countryCode ? [{ name: countryCode, type: 'country', countryCode }] : [], evidenceIds,
     evidenceCount: 0, independentSourceCount: 0, primarySourceCount: 0,
     firstSeenAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z', confidence: 'low',
   };
@@ -50,17 +50,51 @@ test('cold start records insufficient baseline', () => {
     .toEqual({ sampleCount: 0, origin: 'insufficient' });
 });
 
+test('requires three usable samples before calculating an anomaly', () => {
+  for (const [samples, sampleCount] of [[[1], 1], [[1, 2], 2], [[1, Number.NaN, 2], 2]] as const) {
+    const metric = computeTemporalMetric('media_cluster_count', 3, '24h', samples, 'external_historical');
+    expect(metric).toMatchObject({
+      baseline: { sampleCount, origin: 'insufficient' },
+      direction: 'unknown',
+    });
+    expect(metric.anomalyZ).toBeUndefined();
+  }
+});
+
 test('groups relation events by every explicit counterpart without Japan special cases', () => {
   const metrics: TemporalMetric[] = [{ key: 'media_cluster_count', current: 3, window: '7d', direction: 'rising' }];
   const relations = buildForeignRelations(
     [event('jp-protest', 'protest', 'JP'), event('jp-boycott', 'boycott', 'JP'), event('us-trade', 'trade_restriction', 'US')],
-    [basePoll], metrics,
+    [basePoll], metrics, [{ ...evidence, mentionedCountries: ['JP', 'US'] }],
   );
 
   expect(relations).toEqual(expect.arrayContaining([
     expect.objectContaining({ counterpartCountryCode: 'JP', recentEventIds: ['jp-protest', 'jp-boycott'], relevantPolls: [basePoll], mediaMetrics: metrics }),
     expect.objectContaining({ counterpartCountryCode: 'US', recentEventIds: ['us-trade'], relevantPolls: [basePoll], mediaMetrics: metrics }),
   ]));
+});
+
+test('builds a counterpart relation from event evidence mentions alone', () => {
+  const relations = buildForeignRelations(
+    [event('mentioned-event', 'statement', undefined, ['mentioned-evidence'])], [], [],
+    [{ ...evidence, id: 'mentioned-evidence', mentionedCountries: ['CA'] }],
+  );
+
+  expect(relations).toEqual([expect.objectContaining({
+    counterpartCountryCode: 'CA',
+    officialEvents: [expect.objectContaining({ id: 'mentioned-event' })],
+  })]);
+});
+
+test('attaches a poll only to counterparts mentioned by its evidence', () => {
+  const jpPoll = { ...basePoll, evidenceId: 'poll-jp' };
+  const relations = buildForeignRelations(
+    [event('jp-event', 'statement', 'JP'), event('us-event', 'statement', 'US')], [jpPoll], [],
+    [{ ...evidence, id: 'poll-jp', mentionedCountries: ['JP'] }],
+  );
+
+  expect(relations.find(({ counterpartCountryCode }) => counterpartCountryCode === 'JP')?.relevantPolls).toEqual([jpPoll]);
+  expect(relations.find(({ counterpartCountryCode }) => counterpartCountryCode === 'US')?.relevantPolls).toEqual([]);
 });
 
 test('projects Japan fields only from the JP relation', () => {
@@ -97,11 +131,21 @@ test('keeps successful covered collection distinct from unavailable areas', () =
   const coverage = buildCoverage([
     { provider: 'news', startedAt: '2026-01-01T00:00:00.000Z', status: 'success', itemCount: 1, coverage: ['politics'] },
     { provider: 'social', startedAt: '2026-01-01T00:00:00.000Z', status: 'partial', itemCount: 1, coverage: ['social'] },
-  ], [evidence]);
+  ], [evidence], { 'news:politics': ['evidence-1'], 'social:social': ['evidence-1'] });
 
   expect(coverage.byArea.politics).toBe('good');
   expect(coverage.byArea.social).toBe('partial');
   expect(coverage.byArea.health).toBe('limited');
   expect(coverage.missingEvidence).toContain('health');
   expect(coverage.unavailableProviders).toEqual([]);
+});
+
+test('keeps an uncovered provider area limited when another area has evidence', () => {
+  const coverage = buildCoverage([
+    { provider: 'news', startedAt: '2026-01-01T00:00:00.000Z', status: 'success', itemCount: 1, coverage: ['politics', 'economy'] },
+  ], [evidence], { 'news:politics': ['evidence-1'] });
+
+  expect(coverage.byArea.politics).toBe('good');
+  expect(coverage.byArea.economy).toBe('limited');
+  expect(coverage.missingEvidence).toContain('economy');
 });
