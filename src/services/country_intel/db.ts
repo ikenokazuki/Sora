@@ -35,7 +35,7 @@ export interface CountryContextRecords {
 
 export interface CountryIntelPruneResult {
   reports: number;
-  evidence: number;
+  evidenceExcerpts: number;
   events: number;
   dailyMetrics: number;
 }
@@ -51,7 +51,9 @@ export interface CountryIntelDbMetrics {
 function epoch(value: string | number | undefined): number | null {
   if (value === undefined) return null;
   const timestamp = typeof value === 'number' ? value : Date.parse(value);
-  if (!Number.isFinite(timestamp)) throw new TypeError(`Invalid timestamp: ${value}`);
+  if (!Number.isSafeInteger(timestamp) || Number.isNaN(new Date(timestamp).getTime())) {
+    throw new TypeError(`Invalid epoch milliseconds: ${value}`);
+  }
   return timestamp;
 }
 
@@ -164,7 +166,7 @@ export function saveCountryContext(
       db.query(`INSERT INTO intel_evidence(
         id, region_id, url, title, publisher, publisher_country, event_country,
         mentioned_countries_json, source_type, language, published_at, retrieved_at,
-        excerpt, content_hash, primary_source, latency_class, event_cluster_id, expires_at
+        excerpt, content_hash, primary_source, latency_class, event_cluster_id, excerpt_expires_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         region_id = excluded.region_id,
@@ -183,7 +185,7 @@ export function saveCountryContext(
         primary_source = excluded.primary_source,
         latency_class = excluded.latency_class,
         event_cluster_id = excluded.event_cluster_id,
-        expires_at = excluded.expires_at`)
+        excerpt_expires_at = excluded.excerpt_expires_at`)
         .run(
           item.id, item.regionId, item.url, item.title ?? null, item.publisher ?? null,
           item.publisherCountry ?? null, item.eventCountry ?? null, json(item.mentionedCountries),
@@ -252,7 +254,7 @@ export function saveCountryContext(
         .run(
           item.id, item.regionId, item.pollster, epoch(item.fieldStart), epoch(item.fieldEnd),
           observedAt, item.sampleSize ?? null, item.population ?? null, item.mode ?? null,
-          item.question, JSON.stringify(item.responses), item.sourceUrl, item.evidenceId,
+          item.question, JSON.stringify(item.responses), item.sourceUrl, item.evidenceId ?? null,
         );
     }
 
@@ -315,12 +317,15 @@ export function pruneCountryIntel(now = Date.now()): CountryIntelPruneResult {
     ).get(now)!.count;
     const result = {
       reports: count('intel_reports'),
-      evidence: count('intel_evidence'),
+      evidenceExcerpts: db.query<{ count: number }, [number]>(
+        'SELECT count(*) AS count FROM intel_evidence WHERE excerpt IS NOT NULL AND excerpt_expires_at < ?',
+      ).get(now)!.count,
       events: count('intel_events'),
       dailyMetrics: count('intel_daily_metrics'),
     };
     db.query('DELETE FROM intel_reports WHERE expires_at < ?').run(now);
-    db.query('DELETE FROM intel_evidence WHERE expires_at < ?').run(now);
+    db.query(`UPDATE intel_evidence SET excerpt = NULL
+      WHERE excerpt IS NOT NULL AND excerpt_expires_at < ?`).run(now);
     db.query('DELETE FROM intel_events WHERE expires_at < ?').run(now);
     db.query('DELETE FROM intel_daily_metrics WHERE expires_at < ?').run(now);
     return result;

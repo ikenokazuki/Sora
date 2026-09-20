@@ -63,14 +63,14 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
       primary_source INTEGER NOT NULL,
       latency_class TEXT NOT NULL,
       event_cluster_id TEXT,
-      expires_at INTEGER NOT NULL
+      excerpt_expires_at INTEGER NOT NULL
     )`,
     'CREATE INDEX idx_evidence_region_published ON intel_evidence(region_id, published_at)',
     'CREATE INDEX idx_evidence_retrieved ON intel_evidence(retrieved_at)',
-    'CREATE INDEX idx_evidence_expires ON intel_evidence(expires_at)',
+    'CREATE INDEX idx_evidence_excerpt_expires ON intel_evidence(excerpt_expires_at)',
     `CREATE TABLE intel_events (
       id TEXT PRIMARY KEY,
-      report_id TEXT NOT NULL,
+      report_id TEXT,
       region_id TEXT NOT NULL,
       type TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -84,7 +84,8 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
       first_seen_at INTEGER NOT NULL,
       last_seen_at INTEGER NOT NULL,
       confidence TEXT NOT NULL,
-      expires_at INTEGER NOT NULL
+      expires_at INTEGER NOT NULL,
+      FOREIGN KEY(report_id) REFERENCES intel_reports(context_id) ON DELETE SET NULL
     )`,
     'CREATE INDEX idx_events_region_occurred ON intel_events(region_id, occurred_at)',
     'CREATE INDEX idx_events_report ON intel_events(report_id)',
@@ -110,7 +111,8 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
       question TEXT NOT NULL,
       responses_json TEXT NOT NULL,
       source_url TEXT NOT NULL,
-      evidence_id TEXT NOT NULL
+      evidence_id TEXT,
+      FOREIGN KEY(evidence_id) REFERENCES intel_evidence(id) ON DELETE SET NULL
     )`,
     'CREATE INDEX idx_polls_region_observed ON intel_poll_observations(region_id, observed_at)',
     `CREATE TABLE intel_daily_metrics (
@@ -137,7 +139,8 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
       official INTEGER NOT NULL,
       related_countries_json TEXT,
       source_url TEXT NOT NULL,
-      evidence_id TEXT
+      evidence_id TEXT,
+      FOREIGN KEY(evidence_id) REFERENCES intel_evidence(id) ON DELETE SET NULL
     )`,
     'CREATE INDEX idx_calendar_region_event ON intel_calendar_events(region_id, event_at)',
   ],
