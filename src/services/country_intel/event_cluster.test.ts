@@ -117,7 +117,7 @@ test('does not mistake a mention of a wire service for syndication metadata', ()
     latencyClass: 'near_realtime',
   };
 
-  expect(sourceFamily(evidence)).toBe('domain:example.test');
+  expect(sourceFamily(evidence)).toBe('domain:independent.example.test');
 });
 
 test('recognizes only leading wire bylines and bounded datelines', () => {
@@ -130,6 +130,8 @@ test('recognizes only leading wire bylines and bounded datelines', () => {
   expect(sourceFamily(source('Reuters — report'))).toBe('wire:reuters');
   expect(sourceFamily(source('SEOUL, Sept 19 (Reuters) — report'))).toBe('wire:reuters');
   expect(sourceFamily(source('WASHINGTON (AP) – report'))).toBe('wire:ap');
+  expect(sourceFamily(source('PARIS (AFP) — report'))).toBe('wire:afp');
+  expect(sourceFamily(source('The article says (Reuters) - report'))).toBe('domain:publisher.test');
   expect(sourceFamily(source('The article says "(Reuters) - report"'))).toBe('domain:publisher.test');
 });
 
@@ -214,6 +216,23 @@ test('does not treat generic actor roles as a strong event-specific match', () =
   ];
 
   expect(clusterEvents(evidence.map((item) => extractEvent(item, region, now)!), evidence)).toHaveLength(2);
+});
+
+test.each([
+  ['without canonical IDs', [undefined, undefined]],
+  ['with different canonical IDs', ['group:tax', 'group:labour']],
+])('does not merge unrelated same-day activists %s', (_case, canonicalIds) => {
+  const evidence: CountryEvidence[] = [
+    { id: 'activists-tax', regionId: region.id, url: 'https://a.test/tax', title: 'tax rules challenged', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T10:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+    { id: 'activists-labour', regionId: region.id, url: 'https://b.test/labour', title: 'labour reform opposed', eventCountry: 'KR', sourceType: 'local_media', publishedAt: '2026-09-18T11:00:00Z', retrievedAt: now.toISOString(), primarySource: false, latencyClass: 'near_realtime' },
+  ];
+  const drafts = evidence.map((item, index) => ({
+    ...extractEvent(item, region, now)!,
+    type: 'protest' as const,
+    actors: [{ name: 'activists', type: 'activist' as const, canonicalId: canonicalIds[index] }],
+  }));
+
+  expect(clusterEvents(drafts, evidence)).toHaveLength(2);
 });
 
 test('uses a canonical entity ID as a strong event-specific match', () => {
