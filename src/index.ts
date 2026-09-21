@@ -25,6 +25,7 @@ import { watchRoutes } from './routes/watch.js';
 import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
+import { startCountryCollector, type CollectorHandle } from './services/country_intel/collector.js';
 
 export { formatError, mcpSessionManager };
 
@@ -155,10 +156,15 @@ if (import.meta.main) {
   });
   console.log(`Starting Sora service on port ${PORT}...`);
 
+  let countryCollector: CollectorHandle | undefined;
+  if (process.env.SORA_COLLECTOR_ENABLED === '1') {
+    countryCollector = startCountryCollector();
+  }
   const cleanup = async (signal: string) => {
     console.log(`Received ${signal}, shutting down Sora gracefully...`);
     try {
       server.stop(true);
+      await countryCollector?.stop();
       await gracefulShutdown();
     } catch (err) {
       console.error('Error during graceful shutdown:', err);
