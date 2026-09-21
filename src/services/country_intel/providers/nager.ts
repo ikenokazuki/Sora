@@ -22,7 +22,10 @@ export function createNagerProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
   return {
     id: 'nager', areas: ['calendar', 'holidays'], latencyClass: 'delayed', defaultTtlSeconds: 86400,
     async run(input: ProviderInput, signal: AbortSignal) {
-      const cc = input.region.countryCode ?? 'KR';
+      const cc = input.region.countryCode;
+      if (!cc) {
+        return { items: [], coverage: ['calendar'], status: 'unavailable' as const, errorCode: 'PROVIDER_REGION_UNSUPPORTED' };
+      }
       const year = new Date().getUTCFullYear();
       let res: Response;
       try { res = await runFetch(buildNagerUrl(year, cc), { signal }); }
