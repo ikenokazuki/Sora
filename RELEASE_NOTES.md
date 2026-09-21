@@ -1,4 +1,9 @@
-# 🧭 Sora Release v2.26.0 (candidate)
+# 🧭 Sora Release v2.27.0
+
+### Realtime compact default + Country Intelligence v1
+
+- `search_realtime` / `search_web` / `search_deep` return compact responses by default (answer-required fields only); pass `verbose: true` for retrieval diagnostics (`retrievalQueries` / `contributingQueries` / `resultsMerged` etc.). REST `/search/realtime` and `/search/web` behave the same with cache keys separated by verbosity.
+- `search_realtime` description shortened to stay within the 400-char initial tools/list budget (33 contract tests pass).
 
 ### Country Intelligence v1 — evidence-backed country context
 
