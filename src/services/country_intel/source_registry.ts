@@ -94,6 +94,8 @@ export async function verifyCountrySource(
           ...source,
           verificationStatus: 'verified',
           verifiedAt: new Date((dependencies.now ?? Date.now)()).toISOString(),
+          // availability check のみが根拠。identity verification とは分離する。
+          verificationBasis: source.verificationBasis ?? 'availability_only',
         };
       }
       if (response.status < 300 || response.status >= 400) return unverified(source);
