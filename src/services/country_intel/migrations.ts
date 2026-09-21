@@ -169,4 +169,61 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
     'CREATE INDEX idx_metric_obs_region_observed ON intel_metric_observations(region_id, observed_at)',
     'CREATE INDEX idx_metric_obs_expires ON intel_metric_observations(expires_at)',
   ],
+},
+{
+  version: 3,
+  name: 'evidence details, context links, source states and change history',
+ statements: [
+    `CREATE TABLE intel_evidence_details (
+     evidence_id TEXT PRIMARY KEY,
+      provider_id TEXT NOT NULL,
+      provider_item_id TEXT NOT NULL,
+      source_record_url TEXT NOT NULL,
+      content_kind TEXT NOT NULL,
+      language TEXT,
+      blocks_json TEXT NOT NULL,
+      structured_json TEXT,
+      occurred_at INTEGER,
+      published_at INTEGER,
+      updated_at INTEGER,
+      retrieved_at INTEGER NOT NULL,
+      valid_from INTEGER,
+      valid_until INTEGER,
+      time_basis TEXT NOT NULL,
+      geography_basis TEXT NOT NULL,
+      source_status TEXT NOT NULL,
+      content_truncated INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`,
+    'CREATE INDEX idx_evidence_details_provider ON intel_evidence_details(provider_id, provider_item_id)',
+   'CREATE INDEX idx_evidence_details_expires ON intel_evidence_details(expires_at)',
+    `CREATE TABLE intel_context_evidence (
+     context_id TEXT NOT NULL,
+      evidence_id TEXT NOT NULL,
+      sort_key TEXT NOT NULL,
+      PRIMARY KEY(context_id, evidence_id)
+    )`,
+   'CREATE INDEX idx_context_evidence_evidence ON intel_context_evidence(evidence_id)',
+    `CREATE TABLE intel_source_states (
+     source_id TEXT PRIMARY KEY,
+      last_checked_at INTEGER,
+      last_success_at INTEGER,
+      provider_updated_at INTEGER,
+      last_error_code TEXT,
+      etag TEXT,
+      last_modified TEXT,
+      retry_at INTEGER,
+      cursor TEXT,
+      window_json TEXT
+    )`,
+    `CREATE TABLE intel_context_changes (
+      id TEXT PRIMARY KEY,
+      context_id TEXT NOT NULL,
+      observed_at INTEGER NOT NULL,
+      change_kind TEXT NOT NULL,
+      evidence_id TEXT,
+      summary_json TEXT
+    )`,
+    'CREATE INDEX idx_context_changes_context ON intel_context_changes(context_id, observed_at)',
+  ],
 }];
