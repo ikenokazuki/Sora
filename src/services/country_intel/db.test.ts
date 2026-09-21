@@ -142,6 +142,12 @@ function metric(key = 'media_cluster_count'): TemporalMetric {
 
 function report(contextId: string, asOf: number, itemEvidence: CountryEvidence, itemEvent: IntelEvent): CountryContextReport {
   const section = { summaryFacts: [], eventIds: [], metrics: [], evidenceIds: [] };
+  const domains = {
+    content: { regionId: 'country:KR', attention: [], disaster: [], socialActivity: [], calendar: [], coverage: 'limited' as const },
+    marketing: { regionId: 'country:KR', attention: [], businessActivity: [], calendar: [], socialActivity: [], disruption: [], coverage: 'limited' as const },
+    travel: { regionId: 'country:KR', disruptionSignals: [], disasterSignals: [], healthSignals: [], calendarSignals: [], coverage: 'limited' as const },
+    finance: { regionId: 'country:KR', economy: [], trade: [], businessAction: [], policyActivity: [], coverage: 'limited' as const },
+  };
   const coverageByArea = {
     politics: 'partial', economy: 'limited', security: 'limited', disaster: 'limited',
     health: 'limited', polls: 'partial', media: 'partial', social: 'limited',
@@ -164,6 +170,8 @@ function report(contextId: string, asOf: number, itemEvidence: CountryEvidence, 
     polls: [poll(`poll-${contextId}`, itemEvidence.id, asOf)],
     keyEvents: [itemEvent],
     temporalMetrics: [metric()],
+    signals: [],
+    domains,
     providerCoverage: [{
       provider: 'fixture', startedAt: new Date(asOf - 100).toISOString(),
       finishedAt: new Date(asOf).toISOString(), status: 'success', itemCount: 1,
