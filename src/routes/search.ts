@@ -24,6 +24,7 @@ import {
   ArtistSearchRequestSchema,
   MusicSearchRequestSchema,
 } from '../types.js';
+import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
@@ -43,12 +44,17 @@ const handleRealtimeSearch = async (c: any) => {
     const orWords = Array.isArray(body?.orWords) ? body.orWords : undefined;
     const url = typeof body?.url === 'string' ? body.url : undefined;
     const sort: 'recent' | 'popular' = body?.sort === 'popular' ? 'popular' : 'recent';
-    const limit = typeof body?.limit === 'number' ? Math.min(Math.max(body.limit, 1), 40) : undefined;
-    const page = typeof body?.page === 'number' ? Math.max(body.page, 1) : undefined;
-
-    if (!query && !accountId && !fromUser && !hashtags && !toAccount) {
-      return c.json({ error: 'query, accountId, or hashtags is required' }, 400);
+    if (body?.sort !== undefined && body.sort !== 'recent' && body.sort !== 'popular') {
+      return c.json({ error: 'sort must be "recent" or "popular"' }, 400);
     }
+    if (body?.limit !== undefined && (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 40)) {
+      return c.json({ error: 'limit must be an integer 1-40' }, 400);
+    }
+    if (body?.page !== undefined && (!Number.isInteger(body.page) || body.page < 1)) {
+      return c.json({ error: 'page must be an integer >= 1' }, 400);
+    }
+    const limit = typeof body?.limit === 'number' ? body.limit : undefined;
+    const page = typeof body?.page === 'number' ? body.page : undefined;
 
     const options = {
       query,
@@ -60,23 +66,39 @@ const handleRealtimeSearch = async (c: any) => {
       orWords,
       url,
       sort,
-      ...(limit ? { limit } : {}),
-      ...(page ? { page } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(page !== undefined ? { page } : {}),
       ...(body?.verbose === true ? { verbose: true } : {}),
     };
 
-    const cacheKey = `search:realtime:${query || ''}:${accountId || fromUser || ''}:${toAccount || ''}:${JSON.stringify(hashtags || '')}:${JSON.stringify(excludeWords || '')}:${sort}:${limit || 20}:${page || 1}:${body?.verbose === true ? 'verbose' : 'compact'}`;
+    let cacheKey: string;
+    try {
+      if (!buildYahooRealtimeQuery(options)) {
+        return c.json({ error: 'query, accountId, hashtags, or other search constraints are required' }, 400);
+      }
+      cacheKey = `${buildRealtimeSearchCacheKey(options)}:${body?.verbose === true ? 'verbose' : 'compact'}`;
+    } catch (err: any) {
+      return c.json({ error: err.message || 'Invalid realtime request' }, 400);
+    }
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const realtimeRes = await searchYahooRealtime(options);
+    let realtimeRes: any;
+    try {
+      realtimeRes = await searchYahooRealtime(options);
+    } catch (err: any) {
+      return c.json({ error: err.message || 'Realtime search failed' }, 502);
+    }
 
     const responseData = {
       query: realtimeRes.originalQuery,
       effectiveQuery: realtimeRes.effectiveQuery,
       isFallback: realtimeRes.isFallback,
+      ...(realtimeRes.partial === true
+        ? { partial: true, providerErrors: realtimeRes.providerErrors || [] }
+        : {}),
       sort,
       source: 'x',
       type: 'realtime',
@@ -100,7 +122,7 @@ const handleRealtimeSearch = async (c: any) => {
       cached: false,
     };
 
-    if (!body.noCache) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
+    if (!body.noCache && realtimeRes.partial !== true) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
     return c.json(responseData);
   } catch (err: any) {
     return c.json({ error: err.message || 'Realtime search failed' }, 500);

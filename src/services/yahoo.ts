@@ -9,6 +9,7 @@ import {
   rerankRealtimeItems,
   cleanRealtimeItem,
 } from './x_detail.js';
+import { searchYahooRealtimePage } from './yahoo_realtime_api.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -384,21 +385,49 @@ export interface YahooRealtimeOptions {
  * - excludeWords を -xxx に変換
  * - orWords を (A B) に変換
  */
+const REALTIME_HANDLE_RE = /^[A-Za-z0-9_]{1,30}$/;
+const REALTIME_TOKEN_RE = /^[^\s()"'“”‘’『』「」]+$/;
+
+/** URLや引用文字列の内部を除き、単独の from:演算子だけ id:へ変換する */
+function convertFromOperatorToId(query: string): string {
+  return query.replace(/(^|[\s(])from:([A-Za-z0-9_]+)/gi, '$1id:$2');
+}
+
+function hasQueryToken(baseQuery: string, token: string): boolean {
+  return baseQuery.split(/\s+/).includes(token);
+}
+
+function assertRealtimeHandle(value: string, option: string): string {
+  const clean = value.trim().replace(/^@/, '');
+  if (!REALTIME_HANDLE_RE.test(clean)) {
+    throw new Error(`Invalid ${option}: use 1-30 chars of A-Za-z0-9_ (got "${value}")`);
+  }
+  return clean;
+}
+
+function assertRealtimeToken(value: string, option: string): string {
+  const clean = value.trim();
+  if (!clean || !REALTIME_TOKEN_RE.test(clean)) {
+    throw new Error(`Invalid ${option}: single token without spaces or query syntax (got "${value}")`);
+  }
+  return clean;
+}
+
 export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string): string {
   if (typeof options === 'string') {
-    return options.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+    return convertFromOperatorToId(options).trim();
   }
 
   let baseQuery = (options.query || '').trim();
   // from: を id: に自動置換 (X/Twitter 記法への耐性)
-  baseQuery = baseQuery.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+  baseQuery = convertFromOperatorToId(baseQuery).trim();
 
   const tokens: string[] = [];
 
   // 特定アカウントの投稿: id:xxx
   const rawAccount = (options.accountId || options.fromUser || '').trim();
   if (rawAccount) {
-    const cleanAccount = rawAccount.replace(/^@/, '');
+    const cleanAccount = assertRealtimeHandle(rawAccount, options.accountId ? 'accountId' : 'fromUser');
     const accountRegex = new RegExp(`\\b(?:id|ID):${cleanAccount}\\b`, 'i');
     if (!accountRegex.test(baseQuery)) {
       tokens.push(`id:${cleanAccount}`);
@@ -408,7 +437,7 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   // 特定アカウント宛ての投稿: @xxx
   const rawTo = (options.toAccount || '').trim();
   if (rawTo) {
-    const cleanTo = rawTo.replace(/^@/, '');
+    const cleanTo = assertRealtimeHandle(rawTo, 'toAccount');
     const toRegex = new RegExp(`(^|\\s)@${cleanTo}\\b`, 'i');
     if (!toRegex.test(baseQuery)) {
       tokens.push(`@${cleanTo}`);
@@ -419,8 +448,9 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   if (options.hashtags) {
     const tagList = Array.isArray(options.hashtags) ? options.hashtags : [options.hashtags];
     for (const rawTag of tagList) {
-      const cleanTag = rawTag.trim().replace(/^#/, '');
-      if (cleanTag && !baseQuery.includes(`#${cleanTag}`)) {
+      if (!rawTag.trim()) continue;
+      const cleanTag = assertRealtimeToken(rawTag.trim().replace(/^#/, ''), 'hashtags');
+      if (!hasQueryToken(baseQuery, `#${cleanTag}`)) {
         tokens.push(`#${cleanTag}`);
       }
     }
@@ -430,8 +460,9 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   if (options.excludeWords) {
     const exList = Array.isArray(options.excludeWords) ? options.excludeWords : [options.excludeWords];
     for (const rawEx of exList) {
-      const cleanEx = rawEx.trim().replace(/^-/, '');
-      if (cleanEx && !baseQuery.includes(`-${cleanEx}`)) {
+      if (!rawEx.trim()) continue;
+      const cleanEx = assertRealtimeToken(rawEx.trim().replace(/^-/, ''), 'excludeWords');
+      if (!hasQueryToken(baseQuery, `-${cleanEx}`)) {
         tokens.push(`-${cleanEx}`);
       }
     }
@@ -439,7 +470,10 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
 
   // OR検索: (A B)
   if (options.orWords && options.orWords.length > 0) {
-    const cleanOr = options.orWords.map((w) => w.trim()).filter(Boolean);
+    const cleanOr = options.orWords
+      .map((w) => (w || '').trim())
+      .filter(Boolean)
+      .map((w) => assertRealtimeToken(w, 'orWords'));
     if (cleanOr.length > 1) {
       tokens.push(`(${cleanOr.join(' ')})`);
     } else if (cleanOr.length === 1) {
@@ -449,14 +483,46 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
 
   // URL / ドメイン指定
   if (options.url) {
-    const cleanUrl = options.url.trim();
-    if (cleanUrl && !baseQuery.includes(cleanUrl)) {
-      tokens.push(cleanUrl);
+    const rawUrl = options.url.trim();
+    if (rawUrl) {
+      if (/\s/.test(rawUrl)) throw new Error(`Invalid url: must not contain spaces (got "${options.url}")`);
+      const urlToken = /^(?:URL|url):/.test(rawUrl) ? rawUrl : `URL:${rawUrl}`;
+      if (!hasQueryToken(baseQuery, urlToken)) {
+        tokens.push(urlToken);
+      }
     }
   }
 
   const parts = [baseQuery, ...tokens].filter(Boolean);
   return parts.join(' ').trim();
+}
+
+/**
+ * 複雑な検索式の判定。OR括弧・URL条件・引用符・未対応演算子を含む式は
+ * 意味を変える自動relaxの対象にせず、原式の単発取得に固定する。
+ */
+export function requiresExactRealtimeQuery(query: string): boolean {
+  const q = (query || '').trim();
+  if (!q) return false;
+  if (/[()]/.test(q)) return true;
+  if (/["'“”‘’『』「」]/.test(q)) return true;
+  if (/\bOR\b/i.test(q)) return true;
+  if (/https?:\/\//i.test(q)) return true;
+  if (/(?:^|\s)(?:URL|url):/.test(q)) return true;
+  return false;
+}
+
+/** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
+export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
+  return JSON.stringify([
+    'search:realtime:json-v1',
+    buildYahooRealtimeQuery(options),
+    options.sort ?? 'recent',
+    options.limit ?? 20,
+    options.page ?? 1,
+    options.disableFallback === true,
+    (options as any)?.verbose === true,
+  ]);
 }
 
 /** 検索向けフォールバック候補クエリの自動抽出 (JST 相対日付解決・記号/日付正規化・ノイズ語句パージ・重要語抽出・修飾子保護) */
@@ -792,6 +858,30 @@ export function mergeRealtimeQueryBatches(
   return { items: merged, contributingQueries };
 }
 
+/** provider応答の読み取り。JSON直取得の {items} と既存MCP形状の両方を受け付ける。 */
+function readRealtimeProviderList(res: any): any[] {
+  if (!res || typeof res !== 'object') throw new Error('Invalid realtime provider response shape');
+  if (Array.isArray((res as any).items)) return (res as any).items;
+  const content = (res as any)?.content?.[0]?.text;
+  if (typeof content !== 'string' || !content) throw new Error('Invalid realtime provider response shape');
+  const parsed = JSON.parse(content);
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray((parsed as any).items)) return (parsed as any).items;
+  throw new Error('Invalid realtime provider response shape');
+}
+
+/** 既定の realtime 取得。Yahoo JSON を直接呼び、MCP互換形状で返す。バイナリ不使用。 */
+export async function callYahooRealtimeJson(toolName: string, args: Record<string, any>): Promise<any> {
+  void toolName;
+  const page = await searchYahooRealtimePage({
+    query: args.query,
+    sort: args.sort,
+    limit: args.limit,
+    page: args.page,
+  });
+  return { content: [{ text: JSON.stringify({ items: page.items }) }] };
+}
+
 async function fetchRealtimeBatch(
   query: string,
   queryIndex: number,
@@ -799,6 +889,7 @@ async function fetchRealtimeBatch(
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch> {
   try {
     const mcpRes = await callMcp('yahoo_realtime_search', {
@@ -807,12 +898,10 @@ async function fetchRealtimeBatch(
       ...(limit ? { limit } : {}),
       ...(page ? { page } : {}),
     });
-    const content = mcpRes?.content?.[0]?.text || '';
-    if (!content) return { query, queryIndex, items: [] };
-    const parsed = JSON.parse(content);
-    const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
+    const rawList = readRealtimeProviderList(mcpRes);
     return { query, queryIndex, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
-  } catch {
+  } catch (err: any) {
+    errors?.push({ query, message: err?.message || String(err) });
     return { query, queryIndex, items: [] };
   }
 }
@@ -824,13 +913,16 @@ function runRealtimeWave(
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch[]> {
   return Promise.allSettled(
-    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp)),
+    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, errors)),
   ).then((settled) =>
-    settled.map((r, i) =>
-      r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, items: [] },
-    ),
+    settled.map((r, i) => {
+      if (r.status === 'fulfilled') return r.value;
+      errors?.push({ query: queries[i], message: 'wave settled without a response' });
+      return { query: queries[i], queryIndex: startIndex + i, items: [] };
+    }),
   );
 }
 
@@ -858,6 +950,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   requiredTerms: string[];
   coveredTerms: string[];
   missingTerms: string[];
+  partial?: boolean;
+  providerErrors?: Array<{ query: string; message: string }>;
 }> {
   const builtQuery = buildYahooRealtimeQuery(options);
   const originalQuery = builtQuery || (typeof options === 'object' ? options.query || '' : options);
@@ -867,7 +961,24 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const detailEnrichment = typeof options === 'object' && options.detailEnrichment !== undefined
     ? options.detailEnrichment
     : true;
-  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooMcp;
+  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooRealtimeJson;
+
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 40)) {
+    throw new Error(`Invalid realtime limit: integer 1-40 expected (got ${String(limit)})`);
+  }
+  if (page !== undefined && (!Number.isInteger(page) || page < 1)) {
+    throw new Error(`Invalid realtime page: integer >= 1 expected (got ${String(page)})`);
+  }
+
+  // provider障害と正常0件を区別する。wave内の1件でも正常応答があれば継続する。
+  const providerErrors: Array<{ query: string; message: string }> = [];
+  const throwIfTotalFailure = (items: any[]) => {
+    if (items.length === 0 && providerErrors.length > 0) {
+      throw new Error(
+        `Yahoo realtime provider failed: ${providerErrors.map((e) => `${e.query}: ${e.message}`).join('; ')}`,
+      );
+    }
+  };
 
   const finish = async (
     batches: YahooRealtimeQueryBatch[],
@@ -876,6 +987,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     coverage: RealtimeCoverageEvaluation,
     exactVariants: string[],
   ) => {
+    // 全取得がprovider障害で空の場合は0件成功に見せかけず例外にする。
+    throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
     const retrievalQueries = batches.map((b) => b.query);
     const resultsMerged = contributingQueries.length >= 2;
@@ -915,16 +1028,36 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       requiredTerms: coverage.requiredTerms,
       coveredTerms: coverage.bestCoveredTerms,
       missingTerms: coverage.missingTerms,
+      ...(providerErrors.length > 0 ? { partial: true, providerErrors: [...providerErrors] } : {}),
     };
   };
 
   if ((options as any)?.disableFallback === true) {
     const q = builtQuery;
-    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp) : [];
+    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, providerErrors) : [];
     const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
+    throwIfTotalFailure(merged.items);
     const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
     return finish(batches, batches.length > 0 ? 1 : 0, 'fallback_disabled', coverage, q ? [q] : []);
+  }
+
+  // 複雑な式・2ページ目以降は原式の単発取得に固定し、意味を変えるrelaxを行わない。
+  if (requiresExactRealtimeQuery(builtQuery) || (page !== undefined && page > 1)) {
+    const batches = builtQuery
+      ? await runRealtimeWave([builtQuery], 0, sort, limit, page, callMcp, providerErrors)
+      : [];
+    const requirements = extractRealtimeIntentRequirements(originalQuery);
+    const merged = mergeRealtimeQueryBatches(batches);
+    throwIfTotalFailure(merged.items);
+    const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
+    return finish(
+      batches,
+      batches.length > 0 ? 1 : 0,
+      coverage.hasFullCoverage ? 'full_coverage' : 'no_next_candidate',
+      coverage,
+      builtQuery ? [builtQuery] : [],
+    );
   }
 
   const requirements = extractRealtimeIntentRequirements(originalQuery);
@@ -947,7 +1080,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // Wave 1: exact intent (original + canonical syntax variant)
   const wave1Queries = takeBudget(exactVariants);
   if (wave1Queries.length > 0) {
-    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp);
+    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp, providerErrors);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
@@ -971,7 +1104,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   );
   const wave2Queries = takeBudget(wave2Candidates);
   if (wave2Queries.length > 0) {
-    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp);
+    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, providerErrors);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
@@ -1006,13 +1139,14 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   if (wave3Queries.length === 0) {
     return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
   }
-  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp);
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, providerErrors);
   for (const b of res3) {
     batches.push(b);
     executed.add(b.query);
   }
   executedWaves = 3;
   coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
   if (coverage.hasFullCoverage) {
     return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
   }
@@ -1093,10 +1227,8 @@ export async function fetchTweetsForUrlOrUser(
 
   for (const q of searchQueries) {
     try {
-      const res = await callYahooMcp('yahoo_realtime_search', { query: q, sort: 'recent', limit: options.limit || 15 });
-      const content = res?.content?.[0]?.text || '';
-      const parsed = JSON.parse(content);
-      const items = Array.isArray(parsed) ? parsed : parsed?.items || [];
+      const page = await searchYahooRealtimePage({ query: q, sort: 'recent', limit: options.limit || 15 });
+      const items = page.items;
       if (items.length > 0) {
         // handle がある場合は、その本人のポストを優先、なければ関連ポスト
         if (handle) {
@@ -1106,13 +1238,13 @@ export async function fetchTweetsForUrlOrUser(
           );
           if (selfTweets.length > 0) {
             matchedItems = selfTweets;
-            authorName = selfTweets[0].author_name || selfTweets[0].author || handle;
+            authorName = selfTweets[0].author_name || (selfTweets[0] as any).author || handle;
             break;
           }
         }
         if (matchedItems.length === 0) {
           matchedItems = items;
-          authorName = items[0].author_name || items[0].author || handle;
+          authorName = items[0].author_name || (items[0] as any).author || handle;
           break;
         }
       }
@@ -1361,4 +1493,3 @@ export function mergeRealtimeItemsWithDedup(
 
   return merged;
 }
-

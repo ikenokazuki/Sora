@@ -1129,6 +1129,12 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - `sort`: `"recent"` (新着順, デフォルト) または `"popular"` (話題順 / エンゲージメント順)
   - 各ポストに `publishedTime` (ISO 8601 文字列), `author` (ユーザー名 + @アカウント名), `siteName: "X (Twitter)"` が統一フォーマットで自動付与されます。
   - **X 長文投稿 (Note Tweet) 全文補完**: クエリ要求やスニペット省略記号（`…`）を検知し、上位候補を FxTwitter v2 API（最大 2 件、1,500ms fail-soft）で自動補完。完全な本文とメディアを取得可能です。
+  - Xリアルタイム検索はYahooのJSON取得を直接呼びます (MCPバイナリ不使用)。Web・画像・動画・ニュース・知恵袋は従来どおりMCPバイナリを使用します。
+  - 検索演算子はYahoo公式仕様どおりに送信します: `id:xxx` (投稿者) / `@xxx` (宛先) / `#tag` / `-除外` / `(A B)` (OR) / `URL:value` / URL直接入力。複数語と組み合わせ可能です (例: `君と見るそら ライブ 出演 id:kimisora_JPN`)。
+  - 構造化 `url` オプションは `URL:` 演算子として送信します。
+  - OR・URL条件・引用符を含む複雑な式は、意味を変える自動relaxを行わず原式の単発取得になります。
+  - `page` は1始まりでYahoo側は40件固定幅 (`page=2` はoffset 40)。`limit` は1〜40 (デフォルト20)。
+  - provider障害時は成功扱いの0件ではなくエラー (HTTP 502 / MCP `isError`) を返します。一部失敗時は `partial: true` と `providerErrors` を付けて成功分を返します。
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---

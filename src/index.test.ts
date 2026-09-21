@@ -5558,7 +5558,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(buildYahooRealtimeQuery({ orWords: ['君と見るそら', 'キミソラ'] })).toBe('(君と見るそら キミソラ)');
 
       // 7. url
-      expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 x.com');
+      expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 URL:x.com');
     });
 
     it('searchYahooRealtime should support accountId and query filtering (user confirmed pattern)', async () => {
