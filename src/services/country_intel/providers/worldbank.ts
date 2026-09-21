@@ -1,3 +1,4 @@
+import { iso2ToIso3 } from '../geo_codes.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import type { GdeltFetch } from './gdelt.js';
@@ -21,7 +22,11 @@ export function createWorldBankProvider(fetchFn?: GdeltFetch): CountryIntelProvi
   return {
     id: 'worldbank', areas: ['economy', 'historical_context'], latencyClass: 'historical', defaultTtlSeconds: 86400,
     async run(input: ProviderInput, signal: AbortSignal) {
-      const cc = input.region.countryCode ?? 'KOR';
+      const iso3 = input.region.countryCode ? iso2ToIso3(input.region.countryCode) : undefined;
+      if (!iso3) {
+        return { items: [], coverage: ['economy'], status: 'unavailable' as const, errorCode: 'PROVIDER_REGION_UNSUPPORTED' };
+      }
+      const cc = iso3;
       const url = buildWorldBankUrl(cc);
       let res: Response;
       try { res = await runFetch(url, { signal }); }

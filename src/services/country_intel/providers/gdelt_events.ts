@@ -1,3 +1,4 @@
+import { normalizeProviderCountryCode } from '../geo_codes.js';
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
@@ -18,16 +19,22 @@ function parseSqlDate(value?: string): string | undefined {
 }
 
 export function parseGdeltEventsResponse(fixture: GdeltEventsFixture, input: ProviderInput, now = new Date()): AcquisitionItem[] {
-  return (fixture.events ?? []).filter((e) => e.SOURCEURL).map((row) => ({
+  return (fixture.events ?? []).filter((e) => e.SOURCEURL).map((row) => {
+    const eventCountry = normalizeProviderCountryCode('gdelt_geo', row.ActionGeo_CountryCode);
+    const mentionedCountries = [row.Actor1CountryCode, row.ActionGeo_CountryCode]
+      .map((code) => normalizeProviderCountryCode('gdelt_geo', code))
+      .filter((code): code is string => Boolean(code));
+    return {
     evidence: normalizeEvidence({
       url: row.SOURCEURL!, title: `GDELT event ${row.GLOBALEVENTID ?? 'unknown'}`,
-      eventCountry: row.ActionGeo_CountryCode || undefined,
-      mentionedCountries: [row.Actor1CountryCode, row.ActionGeo_CountryCode].filter((v): v is string => Boolean(v)),
+      eventCountry,
+      mentionedCountries: mentionedCountries.length ? mentionedCountries : undefined,
       sourceType: 'structured_dataset', publishedAt: parseSqlDate(row.SQLDATE),
       excerpt: `EventCode ${row.EventCode ?? 'unknown'} articles ${row.NumArticles ?? 0}`,
       primarySource: false, latencyClass: 'delayed',
     }, input.region, now),
-  }));
+    };
+  });
 }
 
 export function createGdeltEventsProvider(fetchFn?: GdeltFetch): CountryIntelProvider {

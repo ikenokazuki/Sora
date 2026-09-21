@@ -5,8 +5,9 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 export interface GdeltDocArticle { url: string; title?: string; seendate?: string; domain?: string; language?: string; sourcecountry?: string; }
 export interface GdeltDocFixture { articles?: GdeltDocArticle[]; }
 
-export function buildGdeltDocUrl(query: string, maxRecords = 25): string {
+export function buildGdeltDocUrl(query: string, maxRecords = 25, period?: string): string {
   const params = new URLSearchParams({ query, mode: 'ArtList', format: 'json', maxrecords: String(maxRecords), sort: 'DateDesc' });
+  if (period === '7d' || period === '30d' || period === '90d') params.set('timespan', period);
   return `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
 }
 
@@ -38,7 +39,7 @@ export function createGdeltProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
     id: 'gdelt', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 3600,
     async run(input: ProviderInput, signal: AbortSignal): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
       const query = input.queries.find((q) => q.providerId === 'gdelt')?.query ?? input.region.name;
-      const url = buildGdeltDocUrl(query);
+      const url = buildGdeltDocUrl(query, 25, input.request.period);
       let res: Response;
       try { res = await runFetch(url, { signal }); }
       catch (e) { if (signal.aborted) throw e; throw new ProviderNetworkError(String(e)); }
