@@ -3,7 +3,7 @@ import { resolveRegion } from './region.js';
 import { deduplicateEvidence } from './evidence.js';
 import { extractEvent } from './event_extract.js';
 import { clusterEvents } from './event_cluster.js';
-import { buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
+import { assembleSituation, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
 import { planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
@@ -30,10 +30,6 @@ export interface ResearchDependencies {
 
 export function getPersistedCountryContext(contextId: string): CountryContextReport | undefined {
   return getCountryContext(contextId);
-}
-
-function emptySection(): SituationSection {
-  return { summaryFacts: [], eventIds: [], metrics: [], evidenceIds: [] };
 }
 
 export async function researchCountryContext(
@@ -123,17 +119,7 @@ export async function researchCountryContext(
     coverage.overall = 'partial';
   }
 
-  const keyEventIds = keyEvents.map((event) => event.id);
-  const evidenceIds = evidence.map((item) => item.id);
-  const situation: CountryContextReport['situation'] = {
-    politics: { ...emptySection(), eventIds: keyEventIds, evidenceIds },
-    economy: emptySection(),
-    security: emptySection(),
-    disasters: emptySection(),
-    health: emptySection(),
-    humanitarian: emptySection(),
-    social: emptySection(),
-  };
+  const situation = assembleSituation(keyEvents, evidence, request.period);
 
   const report = CountryContextReportSchema.parse({
     contextId: randomUUID(),
