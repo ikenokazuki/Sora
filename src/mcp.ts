@@ -46,6 +46,7 @@ import {
   trackPackage,
 } from './scraper.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
+import { formatCompactRealtimeResponse } from './search_compact.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
@@ -1039,7 +1040,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X (旧 Twitter) 上の最新ポスト・リアルタイムな世論や生の声・特定アカウントの告知を調べる場合に使用します。Yahoo公式仕様に基づき特定アカウント(id:xxx)、特定宛先(@xxx)、ハッシュタグ(#xxx)、除外単語(-xxx)、OR検索に対応。アイドルの物販タイテ・緊急告知・現地の生の声など直近の状況把握に最適です。新着順 (recent) と 話題順 (popular) の切り替えに対応。返却: { query, sort, items: [{ text, postedAt, user, url }] }',
+      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, count, items: [{ id, author_name, author_handle, text, url, publishedTime }] } (verbose:trueで検索診断追加)',
       {
         query: z
           .string()
@@ -1078,8 +1079,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(1)
           .optional()
           .describe('ページ番号 (1-based, デフォルト: 1)'),
+        verbose: z
+          .boolean()
+          .optional()
+          .describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)'),
       },
-      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page }) => {
+      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, verbose }) => {
         try {
           const result = await searchYahooRealtime({
             query,
@@ -1093,17 +1098,24 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             sort: sort || 'recent',
             ...(limit ? { limit } : {}),
             ...(page ? { page } : {}),
+            ...(verbose === true ? { verbose: true } : {}),
           });
 
-          const responsePayload = {
-            source: 'x',
-            query: result.originalQuery,
-            effectiveQuery: result.effectiveQuery,
-            isFallback: result.isFallback,
-            sort: sort || 'recent',
-            count: result.count,
-            items: result.items,
-          };
+          const responsePayload = formatCompactRealtimeResponse(
+            {
+              source: 'x',
+              query: result.originalQuery,
+              effectiveQuery: result.effectiveQuery,
+              isFallback: result.isFallback,
+              retrievalQueries: (result as any).retrievalQueries || [],
+              contributingQueries: (result as any).contributingQueries || [],
+              resultsMerged: (result as any).resultsMerged || false,
+              sort: sort || 'recent',
+              count: result.count,
+              items: result.items,
+            },
+            { verbose },
+          );
 
           return {
             content: [{ type: 'text', text: JSON.stringify(responsePayload, null, 2) }],

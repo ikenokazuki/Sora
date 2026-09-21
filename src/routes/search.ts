@@ -62,9 +62,10 @@ const handleRealtimeSearch = async (c: any) => {
       sort,
       ...(limit ? { limit } : {}),
       ...(page ? { page } : {}),
+      ...(body?.verbose === true ? { verbose: true } : {}),
     };
 
-    const cacheKey = `search:realtime:${query || ''}:${accountId || fromUser || ''}:${toAccount || ''}:${JSON.stringify(hashtags || '')}:${JSON.stringify(excludeWords || '')}:${sort}:${limit || 20}:${page || 1}`;
+    const cacheKey = `search:realtime:${query || ''}:${accountId || fromUser || ''}:${toAccount || ''}:${JSON.stringify(hashtags || '')}:${JSON.stringify(excludeWords || '')}:${sort}:${limit || 20}:${page || 1}:${body?.verbose === true ? 'verbose' : 'compact'}`;
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
       if (cached) return c.json(cached);
@@ -79,6 +80,19 @@ const handleRealtimeSearch = async (c: any) => {
       sort,
       source: 'x',
       type: 'realtime',
+      // Verbose-only provenance: compact by default, full diagnostics on demand.
+      ...(body?.verbose === true
+        ? {
+            retrievalQueries: realtimeRes.retrievalQueries,
+            contributingQueries: realtimeRes.contributingQueries,
+            resultsMerged: realtimeRes.resultsMerged,
+            executedWaves: realtimeRes.executedWaves,
+            stopReason: realtimeRes.stopReason,
+            requiredTerms: realtimeRes.requiredTerms,
+            coveredTerms: realtimeRes.coveredTerms,
+            missingTerms: realtimeRes.missingTerms,
+          }
+        : {}),
       data: {
         count: realtimeRes.count,
         items: realtimeRes.items,
@@ -115,7 +129,7 @@ searchRoutes.post('/search/web', async (c) => {
     const parsed = SearchWebRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: 'invalid search_web request', details: parsed.error.format() }, 400);
     const body = parsed.data;
-    const cacheKey = buildSearchWebCacheKey(body);
+    const cacheKey = `${buildSearchWebCacheKey(body)}:${body.verbose === true ? 'verbose' : 'compact'}`;
     if (!body.noCache) { const cached = getFromCache<any>(cacheKey); if (cached) return c.json(cached); }
     const parsedData = await searchWebWithFormats(body);
     const responseData = { query: body.query, source: 'web', type: 'web', data: parsedData, cached: false };

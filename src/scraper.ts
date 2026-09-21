@@ -44,6 +44,7 @@ import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
+import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
 import {
   buildXIsolatedEvidence,
@@ -1590,6 +1591,9 @@ export async function integratedSearch(options: {
         count: realtimeItems.length,
         effectiveQuery: realtimeMcpRes?.effectiveQuery || (targetOfficialHandle ? `id:${targetOfficialHandle}` : query),
         isFallback: realtimeMcpRes?.isFallback || false,
+        ...(Array.isArray(realtimeMcpRes?.retrievalQueries) ? { retrievalQueries: realtimeMcpRes.retrievalQueries } : {}),
+        ...(Array.isArray(realtimeMcpRes?.contributingQueries) ? { contributingQueries: realtimeMcpRes.contributingQueries } : {}),
+        ...(realtimeMcpRes?.resultsMerged !== undefined ? { resultsMerged: realtimeMcpRes.resultsMerged } : {}),
         ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
         items: realtimeItems,
       };
@@ -1636,6 +1640,14 @@ export async function integratedSearch(options: {
       realtimeOriginalQuery: realtimeMcpRes?.originalQuery,
       realtimeEffectiveQuery: realtimeMcpRes?.effectiveQuery,
       realtimeIsFallback: realtimeMcpRes?.isFallback,
+      realtimeRetrievalQueries: realtimeMcpRes?.retrievalQueries,
+      realtimeContributingQueries: realtimeMcpRes?.contributingQueries,
+      realtimeResultsMerged: realtimeMcpRes?.resultsMerged,
+      realtimeExecutedWaves: realtimeMcpRes?.executedWaves,
+      realtimeStopReason: realtimeMcpRes?.stopReason,
+      realtimeRequiredTerms: realtimeMcpRes?.requiredTerms,
+      realtimeCoveredTerms: realtimeMcpRes?.coveredTerms,
+      realtimeMissingTerms: realtimeMcpRes?.missingTerms,
       realtimeCount: Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items.length : 0,
       officialAccountId: targetOfficialHandle,
       results: enrichedResults,
@@ -1653,8 +1665,14 @@ export async function integratedSearch(options: {
     };
   }
 
-  if (!noCache) setToCache(cacheKey, finalResponse);
-  return finalResponse;
+  // Public boundary: verbose keeps full diagnostics, default returns compact.
+  // Retrieval/rerank internals above are untouched. Cache the shaped
+  // response (the cache key already separates verbose from compact).
+  const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {
+    verbose: options.verbose === true,
+  });
+  if (!noCache) setToCache(cacheKey, publicResponse);
+  return publicResponse;
 }
 
 // 荷物追跡サービス (Package Tracking)

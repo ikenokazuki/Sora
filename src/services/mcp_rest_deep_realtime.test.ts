@@ -83,6 +83,9 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(data1.data.items[0].author).toBeUndefined();
         expect(data1.data.items[0].author_name).toBe('公式フェス運営');
         expect(data1.data.items[0].author_handle).toBe('summer_fes');
+        expect(data1.retrievalQueries).toBeUndefined();
+        expect(data1.contributingQueries).toBeUndefined();
+        expect(data1.stopReason).toBeUndefined();
 
         // Test 2: POST /realtime (alias parity)
         const res2 = await app.request('/realtime', {
@@ -99,6 +102,48 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(data2.type).toBe('realtime');
         expect(data2.data.items.length).toBe(1);
         expect(data2.data.items[0].text).toContain('開場は10時、開演は12時');
+      } finally {
+        yahooSpy.mockRestore();
+        fetchStatusSpy.mockRestore();
+      }
+    });
+
+    it('REST realtime exposes retrieval provenance only in verbose mode', async () => {
+      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName) => {
+        if (toolName === 'yahoo_realtime_search') {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify([{ id: '2000000000000000002', text: 'SPARK 出演 辞退', author_handle: 'kimisora_JPN' }]),
+            }],
+          };
+        }
+        return { content: [{ type: 'text', text: '[]' }] };
+      });
+      const fetchStatusSpy = spyOn(defaultXDetailProvider, 'fetchStatus').mockResolvedValue(null);
+
+      try {
+        const compact = await app.request('/search/realtime', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'SPARK 出演 辞退 id:kimisora_JPN', noCache: true }),
+        });
+        const verbose = await app.request('/search/realtime', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: 'SPARK 出演 辞退 id:kimisora_JPN', verbose: true, noCache: true }),
+        });
+        const compactBody = (await compact.json()) as any;
+        const verboseBody = (await verbose.json()) as any;
+
+        expect(compact.status).toBe(200);
+        expect(verbose.status).toBe(200);
+        expect(compactBody.retrievalQueries).toBeUndefined();
+        expect(compactBody.data.items[0].id).toBe('2000000000000000002');
+        expect(verboseBody.retrievalQueries.length).toBeGreaterThan(0);
+        expect(verboseBody.contributingQueries.length).toBeGreaterThan(0);
+        expect(verboseBody.stopReason).toBe('full_coverage');
+        expect(verboseBody.data.items[0].id).toBe(compactBody.data.items[0].id);
       } finally {
         yahooSpy.mockRestore();
         fetchStatusSpy.mockRestore();
@@ -399,6 +444,43 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(realtimeParsed.items.length).toBeGreaterThan(0);
         expect(realtimeParsed.items[0].text).toContain('アンコール曲は「青空」でした');
         expect(realtimeParsed.items[0].detailEnriched).toBe(true);
+        expect(realtimeParsed.retrievalQueries).toBeUndefined();
+        expect(realtimeParsed.contributingQueries).toBeUndefined();
+
+        const verboseRealtimeCallRes = await app.request('/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'mcp-session-id': sessionId,
+            'mcp-protocol-version': '2024-11-05',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 12,
+            method: 'tools/call',
+            params: {
+              name: 'search_realtime',
+              arguments: {
+                query: 'ライブ速報 アンコール',
+                verbose: true,
+              },
+            },
+          }),
+        });
+        const verboseRealtimeRaw = await verboseRealtimeCallRes.text();
+        let verboseRealtimeBody: any;
+        try {
+          verboseRealtimeBody = JSON.parse(verboseRealtimeRaw);
+        } catch {
+          const line = verboseRealtimeRaw.split('\n').find((l) => l.startsWith('data: '));
+          if (line) verboseRealtimeBody = JSON.parse(line.replace(/^data:\s*/, ''));
+        }
+        const verboseRealtimeParsed = JSON.parse(verboseRealtimeBody.result.content[0].text);
+        expect(verboseRealtimeCallRes.status).toBe(200);
+        expect(verboseRealtimeParsed.retrievalQueries.length).toBeGreaterThan(0);
+        expect(verboseRealtimeParsed.contributingQueries.length).toBeGreaterThan(0);
+        expect(verboseRealtimeParsed.items[0].id).toBe(realtimeParsed.items[0].id);
 
         // Call MCP tool: search_deep
         const deepCallRes = await app.request('/mcp', {
