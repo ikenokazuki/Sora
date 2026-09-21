@@ -20,11 +20,21 @@ function stubFetch(failHost?: string) {
     'api.worldbank.org': load('worldbank.json'),
     'date.nager.at': load('nager.json'),
     'www.wikidata.org': load('wikidata.json'),
+    'earthquake.usgs.gov': load('usgs.json'),
+    'eonet.gsfc.nasa.gov': load('eonet.json'),
   };
+  const xmlFeed = readFileSync(join(fixtureDir, 'feed-generic.xml'), 'utf8');
   globalThis.fetch = (async (input: any) => {
-    const host = new URL(String(input)).hostname;
-    if (failHost && host.includes(failHost)) throw new Error('provider down');
-    const payload = byHost[host];
+    const url = new URL(String(input));
+    if (failHost && url.hostname.includes(failHost)) throw new Error('provider down');
+    if (url.hostname === 'data.gdeltproject.org') {
+      if (url.pathname.endsWith('lastupdate.txt')) return new Response('1 a http://data.gdeltproject.org/gdeltv2/20260921181500.export.CSV.zip\n', { status: 200, headers: { 'content-type': 'text/plain' } });
+      return new Response('not found', { status: 404 });
+    }
+    if (url.hostname === 'feeds.bbci.co.uk' || url.hostname === 'news.un.org' || url.hostname === 'www.ecb.europa.eu') {
+      return new Response(xmlFeed, { status: 200, headers: { 'content-type': 'application/rss+xml' } });
+    }
+    const payload = byHost[url.hostname];
     if (payload === undefined) return new Response('not found', { status: 404 });
     return Response.json(payload);
   }) as typeof fetch;

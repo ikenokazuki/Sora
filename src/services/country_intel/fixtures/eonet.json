@@ -1,0 +1,6 @@
+{
+  "events": [
+    {"id": "EONET_1", "title": "Typhoon SAUDEL-26", "description": "Tropical cyclone in the western Pacific.", "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_1", "categories": [{"title": "Severe Storms"}], "sources": [{"url": "https://www.gdacs.org/report.aspx?eventtype=TC&eventid=1001305"}], "geometry": [{"date": "2026-09-21T12:00:00Z", "coordinates": [130.0, 20.0]}]},
+    {"id": "EONET_2", "title": "Wildfire in Attica", "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_2", "categories": [{"title": "Wildfires"}], "sources": [], "geometry": [{"date": "2026-09-20T00:00:00Z", "coordinates": [24.0, 38.0]}]}
+  ]
+}
