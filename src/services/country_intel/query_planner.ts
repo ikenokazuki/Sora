@@ -63,9 +63,7 @@ export function planCountryResearchPass1(
   capabilities: readonly ProviderCapability[],
 ): ResearchQuery[] {
   const topics = request.topics?.length ? [...request.topics] : [...COUNTRY_INTEL_TOPICS];
-  const baseQuery = [region.name, request.query?.trim(), request.topics?.join(' ')]
-    .filter(Boolean)
-    .join(' ');
+  const baseQuery = [region.name, request.query?.trim()].filter(Boolean).join(' ');
   return capabilities.slice(0, LIMITS.maxPass1Queries).map((capability) => ({
     pass: 1 as const,
     providerId: capability.id,
@@ -82,9 +80,7 @@ export function planCountryResearchPass2(
   input: Pass2SourceInput = {},
 ): ResearchQuery[] {
   const topics = request.topics?.length ? [...request.topics] : [...COUNTRY_INTEL_TOPICS];
-  const baseQuery = [region.name, request.query?.trim(), request.topics?.join(' ')]
-    .filter(Boolean)
-    .join(' ');
+  const baseQuery = [region.name, request.query?.trim()].filter(Boolean).join(' ');
   const webProvider = capabilities.find(({ id }) => id.includes('web'))?.id
     ?? capabilities[0]?.id
     ?? 'official_web';

@@ -14,6 +14,6 @@ export function buildTravelView(input: DomainViewInput): TravelContextView {
     disruptionSignals: pick(input.signals, ['violence_event_count', 'military_activity_count']),
     disasterSignals: pick(input.signals, ['disaster_event_count']),
     healthSignals: [],
-    calendarSignals: [],
+    calendarSignals: pick(input.signals, ['calendar_event_count']),
   };
 }
