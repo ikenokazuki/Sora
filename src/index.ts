@@ -24,6 +24,7 @@ import { publicDataRoutes } from './routes/public_data.js';
 import { watchRoutes } from './routes/watch.js';
 import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
+import { intelligenceRoutes } from './routes/intelligence.js';
 
 export { formatError, mcpSessionManager };
 
@@ -116,6 +117,7 @@ app.route('/', publicDataRoutes);
 app.route('/', watchRoutes);
 app.route('/', mediaRoutes);
 app.route('/', trackingRoutes);
+app.route('/', intelligenceRoutes);
 
 // ==========================================
 // 4. グレースフル・シャットダウン (ブラウザプロセス・DB完全解放)
