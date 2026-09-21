@@ -65,11 +65,23 @@ export function getPersistedCountryContext(contextId: string): CountryContextRep
   return getCountryContext(contextId);
 }
 
+/** 空文字の query / topics は未指定とみなす (空値を送るクライアントの許容)。 */
+export function normalizeCountryRequest(rawRequest: CountryContextRequest): CountryContextRequest {
+  const raw = rawRequest as unknown as Record<string, unknown>;
+  const query = typeof raw.query === 'string' && raw.query.trim().length === 0 ? undefined : raw.query;
+  let topics = raw.topics;
+  if (Array.isArray(topics)) {
+    const kept = topics.filter((topic) => typeof topic === 'string' && topic.trim().length > 0);
+    topics = kept.length > 0 ? kept : undefined;
+  }
+  return { ...(raw as object), query, topics } as CountryContextRequest;
+}
+
 export async function researchCountryContext(
   rawRequest: CountryContextRequest,
   dependencies: ResearchDependencies = {},
 ): Promise<CountryContextReport> {
-  const request = CountryContextRequestSchema.parse(rawRequest);
+  const request = CountryContextRequestSchema.parse(normalizeCountryRequest(rawRequest));
   const nowDate = dependencies.now?.() ?? new Date();
   const region = resolveRegion(request.region);
   const providers = dependencies.providers ?? [];

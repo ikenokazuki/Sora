@@ -45,6 +45,14 @@ function evidenceProvider(id: string, title: string, extra: Record<string, unkno
 }
 
 describe('country report', () => {
+  test('treats empty query and blank topics as unspecified', async () => {
+    const report = await researchCountryContext(
+      { region: '中華人民共和国', query: '', topics: [''] } as any,
+      { providers: [], now, cache: null },
+    );
+    expect(report.region.countryCode).toBe('CN');
+  });
+
   test('assembles and persists a comprehensive evidence-backed report', async () => {
     const report = await researchCountryContext(
       { region: 'South Korea' },
