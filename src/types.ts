@@ -587,17 +587,17 @@ export const TrendSearchRequestSchema = z.object({
 });
 
 export const RealtimeSearchRequestSchema = z.object({
-  query: z.string().optional().describe('リアルタイム検索キーワード (例: "地震", "タイテ", "告知")。※accountId や hashtags を指定する場合は省略可能'),
+  query: z.string().optional().describe('リアルタイム検索キーワード (例: "地震", "タイテ", "告知")。※accountId・hashtags・url・orWords等を指定する場合は省略可能'),
   accountId: z.string().optional().describe('【特定アカウントの投稿絞り込み】Xアカウント名（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。@の有無問わず自動で id:xxx に変換します。'),
   fromUser: z.string().optional().describe('accountId のエイリアス (LLM 互換用)'),
   toAccount: z.string().optional().describe('【特定アカウント宛ての投稿】宛先アカウント名（@xxx に変換）'),
   hashtags: z.union([z.string(), z.array(z.string())]).optional().describe('【特定ハッシュタグ絞り込み】ハッシュタグ名（例: "#君と見るそら", "地震"）。#の有無問わず付与します。'),
   excludeWords: z.union([z.string(), z.array(z.string())]).optional().describe('【除外キーワード】除外したい単語（-単語 に変換）'),
   orWords: z.array(z.string()).optional().describe('【OR検索】いずれかを含む単語の配列 (単語A 単語B) に変換'),
-  url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名'),
+  url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)'),
   limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)'),
-  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1。Yahoo側は40件固定幅で取得)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -1261,7 +1261,9 @@ export const RealtimeItemSchema = z.object({
 export const RealtimeSearchResponseSchema = z.object({
   query: z.string().describe('指定された検索キーワード'),
   effectiveQuery: z.string().describe('実際に使用された有効クエリ (フォールバック適用後)'),
-  isFallback: z.boolean().describe('スマートフォールバック（日付・語句抽出）が適用されたか'),
+  isFallback: z.boolean().describe('元の検索意図を緩めたクエリが結果に寄与したか'),
+  partial: z.boolean().optional().describe('一部の取得が失敗し成功分のみを返す場合に true。providerErrors を伴う'),
+  providerErrors: z.array(z.object({ query: z.string(), message: z.string() })).optional().describe('失敗した取得クエリと理由の一覧'),
   sort: z.enum(['recent', 'popular']).describe('ソート順 ("recent" または "popular")'),
   source: z.literal('x').describe('ソース ("x")'),
   type: z.literal('realtime').describe('タイプ ("realtime")'),
