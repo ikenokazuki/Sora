@@ -14,7 +14,7 @@ export function buildMarketingView(input: DomainViewInput): MarketingContextView
     coverage: input.coverage,
     attention: pick(input.signals, ['media_article_count', 'media_cluster_count']),
     businessActivity: pick(input.signals, ['business_action_count', 'trade_restriction_count']),
-    calendar: [],
+    calendar: pick(input.signals, ['calendar_event_count']),
     socialActivity: pick(input.signals, ['social_observation_count', 'protest_event_count']),
     disruption: pick(input.signals, ['disaster_event_count', 'violence_event_count']),
   };

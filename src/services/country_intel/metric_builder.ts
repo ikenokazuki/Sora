@@ -28,6 +28,7 @@ export function buildMetricObservations(
   events: readonly IntelEvent[],
   acquired: readonly AcquiredItem[],
   context: MetricBuildContext,
+  calendars: readonly { id: string }[] = [],
 ): MetricObservation[] {
   const evidenceWithProvider = acquired.flatMap((wrapped) =>
     wrapped.item.evidence ? [{ evidence: wrapped.item.evidence, providerId: wrapped.providerId }] : [],
@@ -86,6 +87,7 @@ export function buildMetricObservations(
   observe('social_observation_count', 'count',
     evidenceIdsOf((item) => item.sourceType === 'social').length,
     evidenceIdsOf((item) => item.sourceType === 'social'));
+  observe('calendar_event_count', 'count', calendars.length, []);
   const primary = evidenceIdsOf((item) => item.primarySource);
   const total = evidenceWithProvider.length;
   observations.push(toMetricObservation({
