@@ -4,10 +4,17 @@ import { deduplicateEvidence } from './evidence.js';
 import { extractEvent } from './event_extract.js';
 import { clusterEvents } from './event_cluster.js';
 import { assembleSituation, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
+import { buildMetricObservations } from './metric_builder.js';
+import { deriveIntelligenceSignal } from '../intelligence/signals.js';
+import { buildContentView } from '../intelligence/domains/content.js';
+import { buildMarketingView } from '../intelligence/domains/marketing.js';
+import { buildTravelView } from '../intelligence/domains/travel.js';
+import { buildFinanceView } from '../intelligence/domains/finance.js';
+import type { IntelligenceSignal } from '../intelligence/types.js';
 import { planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
-import { getCountryContext, getVerifiedCountrySources, saveCountryContext } from './db.js';
+import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveMetricObservations } from './db.js';
 import { verifyCountrySource } from './source_registry.js';
 import {
   CountryContextRequestSchema,
@@ -166,6 +173,49 @@ export async function researchCountryContext(
 
   const situation = assembleSituation(keyEvents, evidence, request.period);
 
+  // 分野横断で使える metric 観測 → signal → domain view。推奨・評価は含めない。
+  const observations = buildMetricObservations(keyEvents, acquisition.items, {
+    regionId: region.id,
+    window: request.period,
+    observedAt: nowDate.toISOString(),
+  });
+  saveMetricObservations(observations.map((observation) => ({
+    regionId: observation.regionId,
+    metricKey: observation.metricKey,
+    metricKind: observation.metricKind,
+    window: observation.window,
+    observedAt: observation.observedAt,
+    currentValue: observation.currentValue,
+    origin: observation.origin,
+    providerIds: observation.providerIds,
+    evidenceIds: observation.evidenceIds,
+  })));
+  const signals: IntelligenceSignal[] = observations.map((observation) =>
+    deriveIntelligenceSignal({
+      metricKey: observation.metricKey,
+      regionId: observation.regionId,
+      value: observation.currentValue,
+      window: observation.window,
+      observedAt: observation.observedAt,
+      origin: observation.origin,
+      evidenceIds: observation.evidenceIds,
+      providerIds: observation.providerIds,
+      coverage: coverage.overall,
+      baselineSamples: queryBaselineObservations(
+        observation.regionId,
+        observation.metricKey,
+        observation.window,
+      ).map((stored) => stored.currentValue),
+    }),
+  );
+  const domainInput = { regionId: region.id, signals, coverage: coverage.overall };
+  const domains = {
+    content: buildContentView(domainInput),
+    marketing: buildMarketingView(domainInput),
+    travel: buildTravelView(domainInput),
+    finance: buildFinanceView(domainInput),
+  };
+
   const report = CountryContextReportSchema.parse({
     contextId: randomUUID(),
     region,
@@ -178,6 +228,8 @@ export async function researchCountryContext(
     polls,
     keyEvents,
     temporalMetrics,
+    signals,
+    domains,
     providerCoverage: acquisition.runs,
     coverage,
     evidence,
