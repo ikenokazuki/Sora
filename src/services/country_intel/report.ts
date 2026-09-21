@@ -98,7 +98,6 @@ export async function researchCountryContext(
     timeoutMs: dependencies.timeoutMs ?? 10_000,
     noCache: request.noCache,
     cache: dependencies.cache ?? null,
-    now: () => nowDate.getTime(),
   };
 
   // Pass 1: 広域収集 → evidence 正規化・source candidate 発見。
