@@ -46,6 +46,7 @@ afterEach(() => {
 describe('intel maintenance', () => {
   test('warns for ephemeral container paths, not the persistent volume', () => {
     expect(ephemeralDbWarning('/app/data/sora.db')).toMatch(/\/data/);
+    expect(ephemeralDbWarning('./data/sora.db')).toBeDefined();
     expect(ephemeralDbWarning('/data/sora.db')).toBeUndefined();
   });
   test('prune keeps fresh reports and metrics report storage bytes', () => {

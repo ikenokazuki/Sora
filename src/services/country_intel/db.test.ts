@@ -11,6 +11,8 @@ import {
   pruneCountryIntel,
   runMigrations,
   saveCountryContext,
+  saveEvidenceDetails,
+  getEvidenceDetails,
 } from './db.js';
 import type {
   CalendarEvent,
@@ -439,4 +441,25 @@ test('retains events for one calendar year and daily metrics for two across leap
   expect(getDb().query('SELECT id FROM intel_events WHERE id = ?').get(itemEvent.id)).toEqual({ id: itemEvent.id });
   expect(getDb().query('SELECT metric_key FROM intel_daily_metrics WHERE metric_key = ?').get('leap-retention'))
     .toEqual({ metric_key: 'leap-retention' });
+});
+
+test('persists evidence details with context links and survives reopen', () => {
+  const details = [{
+    evidenceId: 'evd-test-1',
+    providerId: 'gdacs',
+    providerItemId: 'FL-1104081-19',
+    sourceRecordUrl: 'https://www.gdacs.org/report.aspx?eventid=1104081&episodeid=19&eventtype=FL',
+    contentKind: 'structured_record' as const,
+    blocks: [{ index: 0, text: 'Flood affecting Myanmar and China' }],
+    structuredData: { affectedCountryCodes: ['MM', 'CN'] },
+    retrievedAt: '2026-09-22T00:00:00.000Z',
+    timeBasis: 'retrieved',
+    geographyBasis: 'provider_affected_countries',
+    sourceStatus: 'unverified' as const,
+    contentTruncated: false,
+  }];
+  saveEvidenceDetails('ctx-detail-1', details);
+  closeDb();
+  expect(getEvidenceDetails('ctx-detail-1', ['evd-test-1'])).toEqual(details);
+  expect(getEvidenceDetails('ctx-other', ['evd-test-1'])).toEqual([]);
 });
