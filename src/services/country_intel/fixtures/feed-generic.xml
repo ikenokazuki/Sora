@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example World</title>
+    <language>en</language>
+    <item>
+      <title>Central bank holds rates steady</title>
+      <link>https://example.org/news/rates-1</link>
+      <description>The central bank kept its policy rate unchanged and noted inflation risks.</description>
+      <pubDate>Mon, 21 Sep 2026 10:00:00 GMT</pubDate>
+      <guid>rates-1</guid>
+    </item>
+  </channel>
+</rss>
