@@ -1,7 +1,10 @@
 export { researchCountryContext, getPersistedCountryContext, type ResearchDependencies } from './report.js';
 export { resolveRegion } from './region.js';
-export { planCountryResearch } from './query_planner.js';
-export { runProviders, providerCacheKey, ProviderHttpError, ProviderNetworkError } from './provider_registry.js';
+export { planCountryResearch, planCountryResearchPass1, planCountryResearchPass2, isPass2EligibleSource } from './query_planner.js';
+export { runProviders, runProviderPass, providerCacheKey, ProviderHttpError, ProviderNetworkError } from './provider_registry.js';
+export { iso3ToIso2, iso2ToIso3, fipsToIso2, cameoCountryToIso2, normalizeProviderCountryCode } from './geo_codes.js';
+export { getVerifiedCountrySources } from './db.js';
+export { createDefaultCountryIntelDependencies, researchCountryWithDefaults, defaultCountryIntelProviderIds } from './runtime.js';
 export { normalizeEvidence, deduplicateEvidence } from './evidence.js';
 export { extractEvent } from './event_extract.js';
 export { clusterEvents, sourceFamily } from './event_cluster.js';

@@ -3,10 +3,12 @@ import { resolveRegion } from './region.js';
 import { deduplicateEvidence } from './evidence.js';
 import { extractEvent } from './event_extract.js';
 import { clusterEvents } from './event_cluster.js';
-import { buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
-import { planCountryResearch } from './query_planner.js';
-import { runProviders, type CountryIntelProvider, type ProviderCache } from './provider_registry.js';
-import { getCountryContext, saveCountryContext } from './db.js';
+import { assembleSituation, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
+import { planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
+import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type ProviderCache } from './provider_registry.js';
+import type { ProviderRun } from './types.js';
+import { getCountryContext, getVerifiedCountrySources, saveCountryContext } from './db.js';
+import { verifyCountrySource } from './source_registry.js';
 import {
   CountryContextRequestSchema,
   CountryContextReportSchema,
@@ -22,14 +24,45 @@ export interface ResearchDependencies {
   now?: () => Date;
   cache?: ProviderCache | null;
   timeoutMs?: number;
+  /** pass1 で発見した candidate の検証器。未指定時は availability check のみ。 */
+  sourceVerifier?: (source: CountrySource) => Promise<CountrySource>;
+}
+
+const RUN_SEVERITY: Record<ProviderRun['status'], number> = {
+  error: 5,
+  rate_limited: 4,
+  unavailable: 3,
+  partial: 2,
+  success: 1,
+};
+
+/** pass 別の run を provider 単位に集約する。件数は加算し、状態は深刻な方を残す。 */
+export function mergeProviderRuns(runs: readonly ProviderRun[]): ProviderRun[] {
+  const byProvider = new Map<string, ProviderRun[]>();
+  for (const run of runs) {
+    const list = byProvider.get(run.provider) ?? [];
+    list.push(run);
+    byProvider.set(run.provider, list);
+  }
+  return [...byProvider.values()].map((group) => {
+    if (group.length === 1) return group[0];
+    const worst = group.reduce((left, right) =>
+      RUN_SEVERITY[right.status] > RUN_SEVERITY[left.status] ? right : left);
+    return {
+      provider: group[0].provider,
+      startedAt: group.map((run) => run.startedAt).sort()[0],
+      finishedAt: group.map((run) => run.finishedAt ?? run.startedAt).sort().at(-1),
+      status: worst.status,
+      itemCount: group.reduce((sum, run) => sum + run.itemCount, 0),
+      coverage: [...new Set(group.flatMap((run) => run.coverage ?? []))],
+      latencyMs: group.reduce((sum, run) => sum + (run.latencyMs ?? 0), 0),
+      ...(worst.errorCode ? { errorCode: worst.errorCode } : {}),
+    };
+  });
 }
 
 export function getPersistedCountryContext(contextId: string): CountryContextReport | undefined {
   return getCountryContext(contextId);
-}
-
-function emptySection(): SituationSection {
-  return { summaryFacts: [], eventIds: [], metrics: [], evidenceIds: [] };
 }
 
 export async function researchCountryContext(
@@ -41,19 +74,58 @@ export async function researchCountryContext(
   const region = resolveRegion(request.region);
   const providers = dependencies.providers ?? [];
   const capabilities = providers.map((provider) => ({ id: provider.id, areas: [...provider.areas] }));
-  const plan = planCountryResearch(request, region, capabilities, dependencies.sources ?? []);
-  const acquisition = await runProviders(plan, providers, {
+  const verifySource = dependencies.sourceVerifier ?? ((source) => verifyCountrySource(source));
+  const runOptions = {
     timeoutMs: dependencies.timeoutMs ?? 10_000,
     noCache: request.noCache,
     cache: dependencies.cache ?? null,
     now: () => nowDate.getTime(),
-  });
+  };
 
-  const evidence = deduplicateEvidence(acquisition.items.flatMap((item) => (item.evidence ? [item.evidence] : [])));
-  const polls = acquisition.items.flatMap((item) => (item.poll ? [item.poll] : []));
-  const calendar = acquisition.items.flatMap((item) => (item.calendar ? [item.calendar] : []));
-  const temporalMetrics = acquisition.items.flatMap((item) => (item.metric ? [item.metric] : []));
-  const sources = acquisition.items.flatMap((item) => (item.source ? [item.source] : []));
+  // Pass 1: 広域収集 → evidence 正規化・source candidate 発見。
+  const pass1Plan = {
+    request,
+    region,
+    pass1: planCountryResearchPass1(request, region, capabilities),
+    pass2: [],
+    limits: { maxPass1Queries: 12 as const, maxPass2Queries: 8 as const, maxItemsPerQuery: 100 as const },
+  };
+  const pass1 = await runProviderPass(pass1Plan, 1, providers, runOptions);
+
+  // pass1 で発見した candidate を検証する。availability_only は candidate のまま。
+  const discovered = pass1.items.flatMap((wrapped) => (wrapped.item.source ? [wrapped.item.source] : []));
+  const newlyVerified: CountrySource[] = [];
+  for (const candidate of discovered) {
+    if (candidate.verificationStatus === 'verified') {
+      newlyVerified.push(candidate);
+      continue;
+    }
+    try {
+      const checked = await verifySource(candidate);
+      if (checked.verificationStatus === 'verified' && checked.verificationBasis !== 'availability_only') {
+        newlyVerified.push(checked);
+      }
+    } catch {}
+  }
+
+  // Pass 2: 検証済み source (今回 + 過去の地域 source + 依存注入) のみで深掘りする。
+  const storedVerified = getVerifiedCountrySources(region.id);
+  const injectedVerified = (dependencies.sources ?? []).filter((source) => source.verificationStatus === 'verified');
+  const pass2Queries = planCountryResearchPass2(request, region, capabilities, {
+    verifiedSources: [...newlyVerified, ...storedVerified, ...injectedVerified],
+  });
+  const pass2Plan = { ...pass1Plan, pass1: [], pass2: pass2Queries };
+  const pass2 = await runProviderPass(pass2Plan, 2, providers, runOptions);
+
+  const mergedItems: AcquiredItem[] = [...pass1.items, ...pass2.items];
+  const mergedRuns: ProviderRun[] = mergeProviderRuns([...pass1.runs, ...pass2.runs]);
+  const acquisition = { items: mergedItems, runs: mergedRuns };
+
+  const evidence = deduplicateEvidence(acquisition.items.flatMap((wrapped) => (wrapped.item.evidence ? [wrapped.item.evidence] : [])));
+  const polls = acquisition.items.flatMap((wrapped) => (wrapped.item.poll ? [wrapped.item.poll] : []));
+  const calendar = acquisition.items.flatMap((wrapped) => (wrapped.item.calendar ? [wrapped.item.calendar] : []));
+  const temporalMetrics = acquisition.items.flatMap((wrapped) => (wrapped.item.metric ? [wrapped.item.metric] : []));
+  const sources = acquisition.items.flatMap((wrapped) => (wrapped.item.source ? [wrapped.item.source] : []));
 
   const drafts = evidence
     .map((item) => extractEvent(item, region, nowDate))
@@ -63,12 +135,13 @@ export async function researchCountryContext(
   const foreignRelations = buildForeignRelations(keyEvents, polls, temporalMetrics, evidence);
   const japan = buildJapanView(foreignRelations);
 
-  const evidenceIds = evidence.map((item) => item.id);
+  // 各 provider が実際に取得した evidence のみ紐付ける。他者の借用は禁止。
   const evidenceByProviderArea: Record<string, readonly string[]> = {};
-  for (const run of acquisition.runs) {
-    if (run.itemCount <= 0) continue;
-    for (const area of run.coverage ?? []) {
-      evidenceByProviderArea[`${run.provider}:${area}`] = evidenceIds;
+  for (const wrapped of acquisition.items) {
+    if (!wrapped.item.evidence) continue;
+    for (const area of wrapped.areas) {
+      const key = `${wrapped.providerId}:${area}`;
+      evidenceByProviderArea[key] = [...(evidenceByProviderArea[key] ?? []), wrapped.item.evidence.id];
     }
   }
   const coverage = buildCoverage(acquisition.runs, evidence, evidenceByProviderArea);
@@ -79,16 +152,7 @@ export async function researchCountryContext(
     coverage.overall = 'partial';
   }
 
-  const keyEventIds = keyEvents.map((event) => event.id);
-  const situation: CountryContextReport['situation'] = {
-    politics: { ...emptySection(), eventIds: keyEventIds, evidenceIds },
-    economy: emptySection(),
-    security: emptySection(),
-    disasters: emptySection(),
-    health: emptySection(),
-    humanitarian: emptySection(),
-    social: emptySection(),
-  };
+  const situation = assembleSituation(keyEvents, evidence, request.period);
 
   const report = CountryContextReportSchema.parse({
     contextId: randomUUID(),
