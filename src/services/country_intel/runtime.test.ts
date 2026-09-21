@@ -56,7 +56,7 @@ test('REST and MCP use the same default country-intelligence runtime', async () 
 
 test('default runtime never substitutes a fallback country', async () => {
   expect(createDefaultCountryIntelDependencies().providers?.map((p) => p.id))
-    .toEqual(defaultCountryIntelProviderIds);
+    .toEqual([...defaultCountryIntelProviderIds]);
   stubFetch();
   try {
     const report = await researchCountryWithDefaults(
