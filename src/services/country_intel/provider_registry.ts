@@ -280,5 +280,8 @@ export async function runProviderPass(
     pass1: pass === 1 ? [...plan.pass1] : [],
     pass2: pass === 2 ? [...plan.pass2] : [],
   };
-  return runProviders(passPlan, providers, options);
+  // その pass に query がない provider は実行しない (全取得の二重化を防ぐ)。
+  const queries = pass === 1 ? passPlan.pass1 : passPlan.pass2;
+  const withQueries = new Set(queries.map((query) => query.providerId));
+  return runProviders(passPlan, providers.filter((provider) => withQueries.has(provider.id)), options);
 }
