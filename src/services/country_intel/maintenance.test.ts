@@ -12,11 +12,19 @@ let previousPath: string | undefined;
 
 function minimalReport(contextId: string): CountryContextReport {
   const section = { summaryFacts: [], eventIds: [], metrics: [], evidenceIds: [] };
+  const domains = {
+    content: { regionId: 'KOR', attention: [], disaster: [], socialActivity: [], calendar: [], coverage: 'limited' as const },
+    marketing: { regionId: 'KOR', attention: [], businessActivity: [], calendar: [], socialActivity: [], disruption: [], coverage: 'limited' as const },
+    travel: { regionId: 'KOR', disruptionSignals: [], disasterSignals: [], healthSignals: [], calendarSignals: [], coverage: 'limited' as const },
+    finance: { regionId: 'KOR', economy: [], trade: [], businessAction: [], policyActivity: [], coverage: 'limited' as const },
+  };
   return {
     contextId, region: { id: 'KOR', name: 'South Korea', countryCode: 'KR', languages: ['ko'], aliases: [], confidence: 'high' },
     asOf: new Date('2026-09-19T00:00:00Z').toISOString(),
     situation: { politics: section, economy: section, security: section, disasters: section, health: section, humanitarian: section, social: section },
     elections: [], calendar: [], foreignRelations: [], polls: [], keyEvents: [], temporalMetrics: [], providerCoverage: [],
+    signals: [],
+    domains,
     coverage: { overall: 'limited', byArea: { politics: 'limited', economy: 'limited', security: 'limited', disaster: 'limited', health: 'limited', polls: 'limited', media: 'limited', social: 'limited', calendar: 'limited', foreignRelations: 'limited' }, missingEvidence: [], unavailableProviders: [] },
     evidence: [],
   };

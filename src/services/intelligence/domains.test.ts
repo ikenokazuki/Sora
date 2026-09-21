@@ -4,7 +4,6 @@ import { buildMarketingView } from './domains/marketing.js';
 import { buildTravelView } from './domains/travel.js';
 import { buildFinanceView } from './domains/finance.js';
 import type { IntelligenceSignal } from './types.js';
-import type { CoverageReport } from '../country_intel/types.js';
 
 function signal(key: string): IntelligenceSignal {
   return {
@@ -14,7 +13,7 @@ function signal(key: string): IntelligenceSignal {
   };
 }
 
-const coverage = { overall: 'good' } as CoverageReport;
+const coverage = 'good' as const;
 const signals = [
   signal('media_article_count'),
   signal('protest_event_count'),

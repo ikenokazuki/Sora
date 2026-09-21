@@ -45,6 +45,20 @@ function evidenceProvider(id: string, title: string, extra: Record<string, unkno
 }
 
 describe('country report', () => {
+  test('attaches signals and domain views without recommendations', async () => {
+    const report = await researchCountryContext(
+      { region: 'South Korea' },
+      { providers: [evidenceProvider('gdelt', 'Protest rally in Seoul streets')], now, cache: null },
+    );
+    expect(report.signals.length).toBeGreaterThan(0);
+    expect(report.signals.some((signal) => signal.key === 'protest_event_count')).toBe(true);
+    expect(report.domains.content.attention.map((signal) => signal.key)).toContain('media_article_count');
+    expect(report.domains.finance).toBeDefined();
+    expect(report.domains.travel).toBeDefined();
+    expect(report.domains.marketing).toBeDefined();
+    expect(JSON.stringify({ signals: report.signals, domains: report.domains }).toLowerCase()).not.toContain('recommend');
+  });
+
   test('treats empty query and blank topics as unspecified', async () => {
     const report = await researchCountryContext(
       { region: 'China', query: '', topics: [''] } as any,
