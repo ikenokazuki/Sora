@@ -40,6 +40,7 @@ export interface CountryIntelPruneResult {
   evidenceExcerpts: number;
   events: number;
   dailyMetrics: number;
+  details: number;
 }
 
 export interface CountryIntelDbMetrics {
@@ -458,6 +459,7 @@ export function pruneMetricObservations(now = Date.now()): number {
 export function pruneCountryIntel(now = Date.now()): CountryIntelPruneResult {
   const db = getDb();
   return db.transaction(() => {
+    const expiredDetails = db.query<{ count: number }, [number]>('SELECT count(*) AS count FROM intel_evidence_details WHERE expires_at < ?').get(now)!.count;
     const count = (table: string) => db.query<{ count: number }, [number]>(
       `SELECT count(*) AS count FROM ${table} WHERE expires_at < ?`,
     ).get(now)!.count;
@@ -468,7 +470,10 @@ export function pruneCountryIntel(now = Date.now()): CountryIntelPruneResult {
       ).get(now)!.count,
       events: count('intel_events'),
       dailyMetrics: count('intel_daily_metrics'),
+      details: expiredDetails,
     };
+    db.query('DELETE FROM intel_context_evidence WHERE evidence_id IN (SELECT evidence_id FROM intel_evidence_details WHERE expires_at < ?)').run(now);
+    db.query('DELETE FROM intel_evidence_details WHERE expires_at < ?').run(now);
     db.query('DELETE FROM intel_reports WHERE expires_at < ?').run(now);
     db.query(`UPDATE intel_evidence SET excerpt = NULL
       WHERE excerpt IS NOT NULL AND excerpt_expires_at < ?`).run(now);
@@ -499,7 +504,7 @@ export function getCountryIntelDbMetrics(): CountryIntelDbMetrics {
   return { path, mainBytes, walBytes, shmBytes, totalBytes: mainBytes + walBytes + shmBytes };
 }
 
-import type { EvidenceDetail, SourceState } from './detail.js';
+import type { ContextChange, ContextUpdates, EvidenceDetail, EvidencePage, SourceState } from './detail.js';
 import { EvidenceDetailSchema } from './detail.js';
 
 interface EvidenceDetailRow {
@@ -605,4 +610,71 @@ export function readSourceState(sourceId: string): SourceState | undefined {
 export function writeSourceState(state: SourceState): void {
   const toEpoch = (value: string | undefined): number | null => (value === undefined ? null : epoch(value));
   getDb().query('INSERT INTO intel_source_states(source_id, last_checked_at, last_success_at, provider_updated_at, last_error_code, etag, last_modified, retry_at, cursor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET last_checked_at = excluded.last_checked_at, last_success_at = excluded.last_success_at, provider_updated_at = excluded.provider_updated_at, last_error_code = excluded.last_error_code, etag = excluded.etag, last_modified = excluded.last_modified, retry_at = excluded.retry_at, cursor = excluded.cursor').run(state.sourceId, toEpoch(state.lastCheckedAt), toEpoch(state.lastSuccessfulFetchAt), toEpoch(state.providerUpdatedAt), state.lastErrorCode ?? null, state.etag ?? null, state.lastModified ?? null, toEpoch(state.retryAt), state.cursor ?? null);
+}
+
+const PAGE_CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
+
+function encodePageCursor(contextId: string, offset: number, now: number): string {
+  return Buffer.from(JSON.stringify({ v: 1, contextId, offset, exp: now + PAGE_CURSOR_TTL_MS }), 'utf8').toString('base64url');
+}
+
+function decodePageCursor(contextId: string, cursor: string, now: number): number {
+  let payload: { v?: unknown; contextId?: unknown; offset?: unknown; exp?: unknown };
+  try {
+    payload = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  } catch {
+    throw new RangeError('Invalid evidence page cursor');
+  }
+  if (payload.v !== 1 || payload.contextId !== contextId || typeof payload.offset !== 'number' || payload.offset < 0 || !(typeof payload.exp === 'number' && payload.exp > now)) {
+    throw new RangeError('Invalid evidence page cursor');
+  }
+  return Math.floor(payload.offset);
+}
+
+function countContextEvidence(contextId: string): number {
+  const row = getDb().query<{ count: number }, [string]>('SELECT count(*) AS count FROM intel_context_evidence WHERE context_id = ?').get(contextId);
+  return row?.count ?? 0;
+}
+
+export function getEvidencePage(contextId: string, options: { ids?: readonly string[]; cursor?: string; limit?: number } = {}): EvidencePage {
+  const limit = Math.min(Math.max(options.limit ?? 40, 1), 100);
+  const totalStored = countContextEvidence(contextId);
+  if (options.ids) {
+    return { contextId, items: getEvidenceDetails(contextId, options.ids).slice(0, limit), totalStored };
+  }
+  const offset = options.cursor ? decodePageCursor(contextId, options.cursor, Date.now()) : 0;
+  const rows = getDb().query<{ evidence_id: string }, [string, number, number]>('SELECT evidence_id FROM intel_context_evidence WHERE context_id = ? ORDER BY sort_key ASC, evidence_id ASC LIMIT ? OFFSET ?').all(contextId, limit + 1, offset);
+  const pageIds = rows.slice(0, limit).map((row) => row.evidence_id);
+  const byId = new Map(getEvidenceDetails(contextId, pageIds).map((detail) => [detail.evidenceId, detail]));
+  return {
+    contextId,
+    items: pageIds.flatMap((id) => { const detail = byId.get(id); return detail ? [detail] : []; }),
+    totalStored,
+    ...(rows.length > limit ? { nextCursor: encodePageCursor(contextId, offset + limit, Date.now()) } : {}),
+  };
+}
+
+interface ContextChangeRow {
+  id: string;
+  context_id: string;
+  observed_at: number;
+  change_kind: string;
+  evidence_id: string | null;
+  summary_json: string | null;
+}
+
+export function getContextUpdates(contextId: string, cursor?: string): ContextUpdates {
+  const since = cursor ? Date.parse(cursor) : 0;
+  if (cursor && !Number.isFinite(since)) throw new RangeError('Invalid updates cursor');
+  const rows = getDb().query<ContextChangeRow, [string, number]>('SELECT id, context_id, observed_at, change_kind, evidence_id, summary_json FROM intel_context_changes WHERE context_id = ? AND observed_at > ? ORDER BY observed_at ASC LIMIT 100').all(contextId, Number.isFinite(since) ? since : 0);
+  const changes: ContextChange[] = rows.map((row) => ({
+    id: row.id,
+    contextId: row.context_id,
+    observedAt: new Date(row.observed_at).toISOString(),
+    changeKind: row.change_kind,
+    ...(row.evidence_id ? { evidenceId: row.evidence_id } : {}),
+    ...(row.summary_json ? { summary: JSON.parse(row.summary_json) } : {}),
+  }));
+  const last = changes.at(-1);
+  return { contextId, changes, ...(last ? { nextCursor: last.observedAt } : {}) };
 }
