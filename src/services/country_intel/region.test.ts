@@ -37,3 +37,22 @@ test('returns identity arrays that cannot mutate stored geographic data', () => 
     aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'],
   });
 });
+
+test('resolves common countries to ISO alpha-2', () => {
+  expect(resolveRegion('Japan').countryCode).toBe('JP');
+  expect(resolveRegion('France').countryCode).toBe('FR');
+  expect(resolveRegion('Indonesia').countryCode).toBe('ID');
+  expect(resolveRegion('South Korea').countryCode).toBe('KR');
+  expect(resolveRegion('Taiwan').countryCode).toBe('TW');
+});
+
+test('accepts ISO2 and ISO3 identifiers', () => {
+  expect(resolveRegion('JP').countryCode).toBe('JP');
+  expect(resolveRegion('JPN').countryCode).toBe('JP');
+  expect(resolveRegion('KOR').countryCode).toBe('KR');
+});
+
+test('does not silently substitute Korea for unresolved region', () => {
+  const region = resolveRegion('Unknown Example Region');
+  expect(region.countryCode).toBeUndefined();
+});
