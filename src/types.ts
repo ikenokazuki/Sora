@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
+import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 /**
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
@@ -3172,6 +3173,46 @@ export function generateOpenApiDocument() {
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(CountryContextReportSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/intelligence/context/{contextId}/evidence': {
+        get: {
+          summary: '根拠原文・構造化データのページ取得',
+          parameters: [
+            { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
+            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (省略時はページ走査)' },
+            { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '次ページカーソル' },
+            { name: 'limit', in: 'query', required: false, schema: { type: 'integer' }, description: '取得件数 (最大100)' },
+          ],
+          responses: {
+            '200': {
+              description: '根拠詳細ページ',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(EvidencePageSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/intelligence/context/{contextId}/updates': {
+        get: {
+          summary: '追加・訂正・削除・取得障害の差分取得',
+          parameters: [
+            { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
+            { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '差分カーソル' },
+          ],
+          responses: {
+            '200': {
+              description: 'コンテキスト差分',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(ContextUpdatesSchema),
                 },
               },
             },
