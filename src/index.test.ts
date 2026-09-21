@@ -3494,7 +3494,7 @@ describe('Sora REST & MCP Endpoints', () => {
     await manager.handleRequest(notifyReq);
 
     // 全モジュールのツールを有効化するために主要カテゴリを検索
-    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade', 'media'];
+    const categories = ['web', 'browser', 'yahoo', 'life', 'disaster', 'watch', 'music', 'gov', 'trade', 'media', 'intel'];
     for (let i = 0; i < categories.length; i++) {
       const sReq = new Request('http://localhost/mcp', {
         method: 'POST',
@@ -3544,8 +3544,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(39);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(27);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(40);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(28);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {

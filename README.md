@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (27ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 27 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 39 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 28 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 40 ツール）。
 
 ```json
 {
@@ -76,7 +76,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 57 エンドポイント（52 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 59 エンドポイント（54 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -307,12 +307,12 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 39 ツール / 10 のモジュール & ハイブリッド 12 コア構成)
+## 2. 提供 MCP ツール一覧 (全 40 ツール / 11 のモジュール & ハイブリッド 12 コア構成)
 
-Sora は、目的に応じて **10 個の論理モジュール（全 39 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 40 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (27ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 27 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 28 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 12 ツール)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -381,7 +381,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 遅延ツールは `search_tools` で有効化すると、正式名（例: `search_trend`）と LibreChat 互換名（`default.search_trend`）が公開されます。初期公開は12ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
-有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全39ツールを公開します。
+有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全40ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -1792,7 +1792,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `NODE_ENV` | *(未設定)* | `production` を指定すると **Fail-Closed** 動作になり、認証キーが未設定のまま起動した場合に全リクエストを `401` で拒否します（未指定時は Fail-Open） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 39 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 40 ツール静的一括ロード |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
@@ -1876,7 +1876,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 
 Copyright (c) 2026 ikeno
 
-## 🌍 Country Intelligence v1 (v2.26.0 release candidate)
+## 🌍 Country Intelligence v1 (v2.27.0)
 
 Evidence-backed country context via `POST /intelligence/country` and deferred MCP tool `research_country_context` (module `intel`, activate with `search_tools` query `国地域`).
 
@@ -1886,4 +1886,8 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 - Providers: GDELT DOC/events, GDACS, World Bank (temporal observations only), Nager holidays (calendars only), Wikidata (source discovery only), official/media web, Yahoo realtime JP (optional social observations, never polls or representative opinion).
 - No sentiment, hostility, anti-Japan, safety, or risk scores by design.
 - Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts 180 days. Retrieval: `GET /intelligence/context/:contextId`.
-- Opt-in live smoke: `bun run test:intel:live` (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
+- Opt-in live smoke: `bun run test:intel:live`
+
+### Realtime / Web compact default (v2.27.0)
+
+`search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
