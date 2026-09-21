@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { CountryContextRequestSchema } from '../services/country_intel/types.js';
-import { getPersistedCountryContext, researchCountryContext } from '../services/country_intel/report.js';
+import { getPersistedCountryContext, type researchCountryContext } from '../services/country_intel/report.js';
+import { researchCountryWithDefaults } from '../services/country_intel/runtime.js';
 import { formatError } from './utils.js';
 
 export interface IntelligenceRouteDeps {
@@ -9,7 +10,7 @@ export interface IntelligenceRouteDeps {
 }
 
 export function createIntelligenceRoutes(deps: IntelligenceRouteDeps = {}) {
-  const research = deps.research ?? researchCountryContext;
+  const research = deps.research ?? researchCountryWithDefaults;
   const retrieve = deps.retrieve ?? getPersistedCountryContext;
   const routes = new Hono();
 
