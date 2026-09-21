@@ -4,6 +4,7 @@ import { createGdeltExportProvider } from './providers/gdelt_files.js';
 import { createUsgsProvider } from './providers/usgs.js';
 import { createEonetProvider } from './providers/eonet.js';
 import { createGlobalFeedsProvider } from './providers/feeds.js';
+import { createBlueskyProvider } from './providers/bluesky.js';
 import { createGdeltProvider, type GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
 import { createWikidataProvider } from './providers/wikidata.js';
@@ -12,7 +13,7 @@ import type { CountryContextReport, CountryContextRequest } from './types.js';
 
 /** fetch 注入のみで構成できる default provider。official_web / yahoo_realtime は別途追加する。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt', 'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'worldbank', 'nager', 'wikidata',
+  'gdelt', 'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -33,6 +34,7 @@ export function createDefaultCountryIntelDependencies(
       createUsgsProvider(fetchFn),
       createEonetProvider(fetchFn),
       createGlobalFeedsProvider(fetchFn),
+      createBlueskyProvider(),
       createWorldBankProvider(fetchFn),
       createNagerProvider(fetchFn),
       createWikidataProvider(fetchFn),
