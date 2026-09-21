@@ -266,7 +266,14 @@ export interface CountrySource {
   verifiedAt?: string;
   verificationStatus: 'verified' | 'candidate' | 'rejected' | 'stale';
   discoveryMethod: 'manual_seed' | 'search' | 'rss' | 'sitemap' | 'official_link' | 'wikidata' | 'other';
+  verificationBasis?: CountrySourceVerificationBasis;
 }
+
+export const CountrySourceVerificationBasisSchema = z.enum([
+  'manual_seed', 'official_crosslink', 'trusted_registry', 'availability_only',
+]);
+
+export type CountrySourceVerificationBasis = z.infer<typeof CountrySourceVerificationBasisSchema>;
 
 export const CountrySourceSchema = z.object({
   id: z.string(),
@@ -277,6 +284,7 @@ export const CountrySourceSchema = z.object({
   verifiedAt: z.string().optional(),
   verificationStatus: z.enum(['verified', 'candidate', 'rejected', 'stale']),
   discoveryMethod: z.enum(['manual_seed', 'search', 'rss', 'sitemap', 'official_link', 'wikidata', 'other']),
+  verificationBasis: CountrySourceVerificationBasisSchema.optional(),
 });
 
 export type ProviderRunStatus = 'success' | 'partial' | 'unavailable' | 'rate_limited' | 'error';
