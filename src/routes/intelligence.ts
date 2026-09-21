@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { CountryContextRequestSchema } from '../services/country_intel/types.js';
-import { getPersistedCountryContext, type researchCountryContext } from '../services/country_intel/report.js';
+import { getPersistedCountryContext, normalizeCountryRequest, type researchCountryContext } from '../services/country_intel/report.js';
 import { researchCountryWithDefaults } from '../services/country_intel/runtime.js';
 import { formatError } from './utils.js';
 
@@ -21,7 +21,9 @@ export function createIntelligenceRoutes(deps: IntelligenceRouteDeps = {}) {
     } catch {
       return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
     }
-    const parsed = CountryContextRequestSchema.safeParse(rawBody);
+    const parsed = CountryContextRequestSchema.safeParse(
+      normalizeCountryRequest((rawBody ?? {}) as never),
+    );
     if (!parsed.success) {
       return formatError(c, 'Invalid country context parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
     }

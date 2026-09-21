@@ -16,7 +16,8 @@ function identity(region: Omit<RegionIdentity, 'confidence'>): RegionRecord {
 
 /** ISO catalogue由来の国レコード。nativeName/aliases は既存の監査済み分のみ保持する。 */
 const CATALOGUE_EXTRA: Readonly<Record<string, { nativeName?: string; aliases?: readonly string[]; languages?: readonly string[]; timezone?: string }>> = Object.freeze({
-  KR: { nativeName: '대한민국', aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'], languages: ['ko'], timezone: 'Asia/Seoul' },
+  KR: { nativeName: '대한민국', aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)', '大韓民国'], languages: ['ko'], timezone: 'Asia/Seoul' },
+  CN: { aliases: ['中華人民共和国'], languages: ['zh'], timezone: 'Asia/Shanghai' },
   GE: { nativeName: 'საქართველო', languages: ['ka'], timezone: 'Asia/Tbilisi' },
   US: { aliases: ['United States of America', 'USA'], languages: ['en'], timezone: 'America/New_York' },
 });
