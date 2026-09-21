@@ -11,6 +11,14 @@ export interface SearchDiagnosticsInput {
   realtimeEffectiveQuery?: string;
   realtimeIsFallback?: boolean;
   realtimeCount?: number;
+  realtimeRetrievalQueries?: string[];
+  realtimeContributingQueries?: string[];
+  realtimeResultsMerged?: boolean;
+  realtimeExecutedWaves?: number;
+  realtimeStopReason?: string;
+  realtimeRequiredTerms?: string[];
+  realtimeCoveredTerms?: string[];
+  realtimeMissingTerms?: string[];
   officialAccountId?: string;
   results: Array<Record<string, any>>;
 }
@@ -92,6 +100,14 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
             effectiveQuery: input.realtimeEffectiveQuery || input.originalQuery,
             isFallback: input.realtimeIsFallback === true,
             count: input.realtimeCount ?? 0,
+            ...(input.realtimeRetrievalQueries ? { retrievalQueries: [...input.realtimeRetrievalQueries] } : {}),
+            ...(input.realtimeContributingQueries ? { contributingQueries: [...input.realtimeContributingQueries] } : {}),
+            ...(input.realtimeResultsMerged !== undefined ? { resultsMerged: input.realtimeResultsMerged } : {}),
+            ...(input.realtimeExecutedWaves !== undefined ? { executedWaves: input.realtimeExecutedWaves } : {}),
+            ...(input.realtimeStopReason ? { stopReason: input.realtimeStopReason } : {}),
+            ...(input.realtimeRequiredTerms ? { requiredTerms: [...input.realtimeRequiredTerms] } : {}),
+            ...(input.realtimeCoveredTerms ? { coveredTerms: [...input.realtimeCoveredTerms] } : {}),
+            ...(input.realtimeMissingTerms ? { missingTerms: [...input.realtimeMissingTerms] } : {}),
             ...(input.officialAccountId ? { officialAccountId: input.officialAccountId } : {}),
           },
         }
