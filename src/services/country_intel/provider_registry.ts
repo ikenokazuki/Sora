@@ -9,11 +9,13 @@ import type {
   TemporalMetric,
 } from './types.js';
 import type { ResearchPlan, ResearchQuery } from './query_planner.js';
+import type { EvidenceDetail } from './detail.js';
 
 export type { ProviderCapability, ResearchPlan, ResearchPlanLimits, ResearchQuery } from './query_planner.js';
 
 export interface AcquisitionItem {
   evidence?: CountryEvidence;
+  detail?: EvidenceDetail;
   poll?: PollObservation;
   calendar?: CalendarEvent;
   metric?: TemporalMetric;
