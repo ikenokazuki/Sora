@@ -1,0 +1,97 @@
+[
+  {
+    "fixture": "日本で大地震",
+    "evidence": {
+      "id": "critical-earthquake",
+      "regionId": "country:KR",
+      "url": "https://example.test/earthquake",
+      "title": "日本で大地震、救助活動が続く",
+      "excerpt": "日本で大地震が発生し、救助活動が続いている。",
+      "eventCountry": "JP",
+      "sourceType": "international_media",
+      "publishedAt": "2026-09-18T08:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "日本製品不買イベント",
+    "evidence": {
+      "id": "critical-boycott",
+      "regionId": "country:KR",
+      "url": "https://example.test/boycott",
+      "title": "地域の催しについて",
+      "excerpt": "日本製品不買イベントを開催した。",
+      "eventCountry": "KR",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T09:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "歴史記念日の記事",
+    "evidence": {
+      "id": "critical-memorial",
+      "regionId": "country:KR",
+      "url": "https://example.test/memorial",
+      "title": "歴史記念日の記事を掲載",
+      "eventCountry": "KR",
+      "sourceType": "calendar",
+      "publishedAt": "2026-09-18T10:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "historical"
+    }
+  },
+  {
+    "fixture": "日本政府の政策を批判",
+    "evidence": {
+      "id": "critical-government",
+      "regionId": "country:KR",
+      "url": "https://example.test/government",
+      "title": "日本政府の政策を批判",
+      "excerpt": "日本政府の政策を批判した。",
+      "eventCountry": "KR",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T11:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "新聞が政治家の日本批判を引用",
+    "evidence": {
+      "id": "critical-quote",
+      "regionId": "country:KR",
+      "url": "https://example.test/quote",
+      "title": "新聞記事",
+      "excerpt": "新聞が政治家の日本批判を引用した。",
+      "eventCountry": "KR",
+      "publisher": "Example News",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T12:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  },
+  {
+    "fixture": "複数の日本対象",
+    "evidence": {
+      "id": "critical-multiple-targets",
+      "regionId": "country:KR",
+      "url": "https://example.test/multiple-targets",
+      "title": "日本政府、日本人、日本製品、日本をめぐる声明",
+      "eventCountry": "KR",
+      "sourceType": "major_local_media",
+      "publishedAt": "2026-09-18T13:00:00.000Z",
+      "retrievedAt": "2026-09-19T00:00:00.000Z",
+      "primarySource": false,
+      "latencyClass": "near_realtime"
+    }
+  }
+]

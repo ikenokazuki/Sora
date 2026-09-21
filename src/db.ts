@@ -2,8 +2,45 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
+import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
 
 let dbInstance: Database | null = null;
+
+export interface DbMigration {
+  version: number;
+  name: string;
+  up: (db: Database) => void;
+}
+
+function hasMigration(db: Database, version: number): boolean {
+  return db.query('SELECT 1 FROM schema_migrations WHERE version = ?').get(version) !== null;
+}
+
+export function applyMigrations(db: Database, migrations: readonly DbMigration[]): void {
+  db.run(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at INTEGER NOT NULL
+  )`);
+  const apply = db.transaction((migration: DbMigration) => {
+    migration.up(db);
+    db.query('INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)')
+      .run(migration.version, migration.name, Date.now());
+  });
+  for (const migration of migrations) {
+    if (!hasMigration(db, migration.version)) apply(migration);
+  }
+}
+
+function applyCountryIntelMigrations(db: Database): void {
+  applyMigrations(db, COUNTRY_INTEL_MIGRATIONS.map(({ version, name, statements }) => ({
+    version,
+    name,
+    up(database) {
+      for (const statement of statements) database.run(statement);
+    },
+  })));
+}
 
 export function getDatabasePath(): string {
   if (process.env.NODE_ENV === 'test' && !process.env.SORA_DB_PATH) {
@@ -98,6 +135,8 @@ export function initDatabase(dbPath?: string): Database {
       updated_at INTEGER NOT NULL
     );
   `);
+
+  applyCountryIntelMigrations(db);
 
   dbInstance = db;
 
