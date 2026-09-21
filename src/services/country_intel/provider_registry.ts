@@ -20,6 +20,13 @@ export interface AcquisitionItem {
   source?: CountrySource;
 }
 
+/** provider identity を保持した取得アイテム。flatMap時に失わない。 */
+export interface AcquiredItem {
+  providerId: string;
+  areas: readonly string[];
+  item: AcquisitionItem;
+}
+
 export interface ProviderInput {
   request: ResearchPlan['request'];
   region: ResearchPlan['region'];
@@ -42,7 +49,7 @@ export interface CountryIntelProvider {
 }
 
 export interface AcquisitionResult {
-  items: AcquisitionItem[];
+  items: AcquiredItem[];
   runs: ProviderRun[];
 }
 
@@ -192,7 +199,7 @@ async function runOne(
   plan: ResearchPlan,
   provider: CountryIntelProvider,
   options: RunProviderOptions,
-): Promise<{ items: AcquisitionItem[]; run: ProviderRun }> {
+): Promise<{ items: AcquiredItem[]; run: ProviderRun }> {
   const now = options.now ?? Date.now;
   const started = now();
   const startedAt = new Date(started).toISOString();
@@ -214,14 +221,19 @@ async function runOne(
       }
     }
     const finished = now();
+    const items = result.items.map((item) => ({
+      providerId: provider.id,
+      areas: [...provider.areas],
+      item,
+    }));
     return {
-      items: result.items,
+      items,
       run: {
         provider: provider.id,
         startedAt,
         finishedAt: new Date(finished).toISOString(),
         status: result.status ?? 'success',
-        itemCount: result.items.length,
+        itemCount: items.length,
         coverage: result.coverage ?? [...provider.areas],
         latencyMs: Math.max(0, finished - started),
         errorCode: result.errorCode ?? statusErrorCode(result.status),
@@ -254,4 +266,19 @@ export async function runProviders(
     items: results.flatMap((result) => result.items),
     runs: results.map((result) => result.run),
   };
+}
+
+/** 指定 pass の query のみを実行する。pass1 と pass2 を時系列で分離するために使う。 */
+export async function runProviderPass(
+  plan: ResearchPlan,
+  pass: 1 | 2,
+  providers: readonly CountryIntelProvider[],
+  options: RunProviderOptions = {},
+): Promise<AcquisitionResult> {
+  const passPlan: ResearchPlan = {
+    ...plan,
+    pass1: pass === 1 ? [...plan.pass1] : [],
+    pass2: pass === 2 ? [...plan.pass2] : [],
+  };
+  return runProviders(passPlan, providers, options);
 }
