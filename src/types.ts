@@ -4,7 +4,7 @@ import { z } from 'zod';
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.25.0';
+export const SORA_VERSION = '2.26.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -631,6 +631,7 @@ export const SEARCH_WEB_INPUT_SHAPE = {
   maxChars: z.number().int().min(1).max(50_000).optional().describe('formats指定時の各ページ最大文字数 (デフォルト: 30000)'),
   onlyMainContent: z.boolean().optional().describe('formats指定時に本文領域のみ抽出するか (デフォルト: true)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
+  verbose: z.boolean().optional().describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)'),
 };
 export const SearchWebQuerySchema = z.object(SEARCH_WEB_INPUT_SHAPE);
 export const SearchWebRequestSchema = SearchWebQuerySchema;

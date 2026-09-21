@@ -79,13 +79,16 @@ describe('Phase 3 bounded Web query union', () => {
     expect(source).toContain('candidateQueries.slice(0, 2)');
   });
 
-  test('realtime fallback remains unchanged by Phase 3', () => {
+  test('realtime retrieval v1 uses wave union instead of first-nonempty-wins', () => {
     const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
     const start = source.indexOf('export async function searchYahooRealtime');
     const end = source.indexOf('/** X (Twitter)', start);
     const realtimeSource = source.slice(start, end);
-    expect(realtimeSource).toContain('break;');
     expect(realtimeSource).not.toContain('SORA_WEB_QUERY_UNION');
+    expect(realtimeSource).toContain('MAX_REALTIME_RETRIEVAL_QUERIES');
+    expect(realtimeSource).toContain('runRealtimeWave');
+    expect(realtimeSource).toContain('retrievalQueries');
+    expect(source).toContain('Promise.allSettled');
   });
 
   test('integrated cache separates union OFF and ON', () => {
