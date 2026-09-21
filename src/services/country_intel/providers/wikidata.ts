@@ -11,14 +11,31 @@ export function buildWikidataUrl(query: string): string {
 function domainOf(url: string): string | undefined {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return undefined; }
 }
+
+function isWikidataEntityUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.includes('://') ? url : `https:${url}`);
+    return parsed.hostname.toLowerCase().endsWith('wikidata.org')
+      && /^\/wiki\//i.test(parsed.pathname);
+  } catch { return false; }
+}
+
 export function parseWikidataResponse(fixture: WikidataFixture, input: ProviderInput, now = new Date()): AcquisitionItem[] {
-  return (fixture.search ?? []).filter((s) => s.url && domainOf(s.url)).map((s) => ({
-    source: {
-      id: `wikidata:${s.id ?? domainOf(s.url!)}`, regionId: input.region.id, domain: domainOf(s.url!)!,
-      sourceType: 'official', discoveredAt: now.toISOString(),
-      verificationStatus: 'candidate' as const, discoveryMethod: 'wikidata' as const,
-    },
-  }));
+  // v1: entity identification のみ。entity ページを official source として扱わない。
+  // entity 以外のドメインも official とは断定せず、種別未確定の candidate に留める。
+  return (fixture.search ?? []).flatMap((s) => {
+    if (!s.url) return [];
+    if (isWikidataEntityUrl(s.url)) return [];
+    const domain = domainOf(s.url);
+    if (!domain) return [];
+    return [{
+      source: {
+        id: `wikidata:${s.id ?? domain}`, regionId: input.region.id, domain,
+        sourceType: 'other', discoveredAt: now.toISOString(),
+        verificationStatus: 'candidate' as const, discoveryMethod: 'wikidata' as const,
+      },
+    }];
+  });
 }
 export function createWikidataProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
