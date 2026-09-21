@@ -309,6 +309,38 @@ export function getCountryContext(contextId: string): CountryContextReport | und
   return row ? JSON.parse(row.report_json) as CountryContextReport : undefined;
 }
 
+interface CountrySourceRow {
+  id: string;
+  region_id: string;
+  domain: string;
+  source_type: string;
+  discovered_at: number;
+  verified_at: number | null;
+  verification_status: CountrySource['verificationStatus'];
+  discovery_method: CountrySource['discoveryMethod'];
+}
+
+/** 指定 region で検証済みの source を返す。pass2 計画の入力に使う。 */
+export function getVerifiedCountrySources(regionId: string): CountrySource[] {
+  const rows = getDb().query<CountrySourceRow, [string]>(
+    `SELECT id, region_id, domain, source_type, discovered_at, verified_at,
+      verification_status, discovery_method
+     FROM country_sources
+     WHERE region_id = ? AND verification_status = 'verified'
+     ORDER BY verified_at DESC`,
+  ).all(regionId);
+  return rows.map((row) => ({
+    id: row.id,
+    regionId: row.region_id,
+    domain: row.domain,
+    sourceType: row.source_type,
+    discoveredAt: new Date(row.discovered_at).toISOString(),
+    ...(row.verified_at !== null ? { verifiedAt: new Date(row.verified_at).toISOString() } : {}),
+    verificationStatus: row.verification_status,
+    discoveryMethod: row.discovery_method,
+  }));
+}
+
 export function pruneCountryIntel(now = Date.now()): CountryIntelPruneResult {
   const db = getDb();
   return db.transaction(() => {
