@@ -347,7 +347,7 @@ test('prunes only expired country intelligence rows and keeps retention boundari
   saveCountryContext(report('ctx_recent', now, expiredEventEvidence, expiredEvent));
 
   const result = pruneCountryIntel(now);
-  expect(result).toEqual({ reports: 1, evidenceExcerpts: 2, events: 1, dailyMetrics: 1 });
+  expect(result).toEqual({ reports: 1, evidenceExcerpts: 2, events: 1, dailyMetrics: 1, details: 0 });
   expect(db.query('SELECT context_id FROM intel_reports WHERE context_id = ?').get('ctx_expired')).toBeNull();
   expect(db.query('SELECT id, report_id FROM intel_events WHERE id = ?').get('event-recent'))
     .toEqual({ id: 'event-recent', report_id: null });
@@ -373,7 +373,7 @@ test('prunes only expired country intelligence rows and keeps retention boundari
   expect(reopened.query('SELECT key FROM cache_entries').get()).toEqual({ key: 'cache-existing' });
   expect(reopened.query('SELECT domain FROM domain_cookies').get()).toEqual({ domain: 'cookie.example' });
   expect(reopened.query('SELECT domain FROM domain_storage').get()).toEqual({ domain: 'storage.example' });
-  expect(pruneCountryIntel(now)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0 });
+  expect(pruneCountryIntel(now)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0, details: 0 });
 });
 
 test('nulls poll and calendar evidence links when evidence metadata is explicitly deleted', () => {
@@ -437,7 +437,7 @@ test('retains events for one calendar year and daily metrics for two across leap
     }],
   });
 
-  expect(pruneCountryIntel(pruneAt)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0 });
+  expect(pruneCountryIntel(pruneAt)).toEqual({ reports: 0, evidenceExcerpts: 0, events: 0, dailyMetrics: 0, details: 0 });
   expect(getDb().query('SELECT id FROM intel_events WHERE id = ?').get(itemEvent.id)).toEqual({ id: itemEvent.id });
   expect(getDb().query('SELECT metric_key FROM intel_daily_metrics WHERE metric_key = ?').get('leap-retention'))
     .toEqual({ metric_key: 'leap-retention' });

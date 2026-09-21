@@ -505,6 +505,91 @@ export const SituationSectionSchema = z.object({
 
 export type EvidenceStrength = 'PRIMARY' | 'CORROBORATED' | 'SECONDARY' | 'WEAK' | 'UNVERIFIED';
 
+export type FactBasis = 'provider_field' | 'source_excerpt' | 'rule_derived';
+export const FactBasisSchema = z.enum(['provider_field', 'source_excerpt', 'rule_derived']);
+
+export type Domain = 'general' | 'content' | 'marketing' | 'finance' | 'tourism' | 'travel';
+export const DomainSchema = z.enum(['general', 'content', 'marketing', 'finance', 'tourism', 'travel']);
+
+export interface Fact {
+  id: string;
+  topic: string;
+  text: string;
+  basis: FactBasis;
+  evidenceIds: string[];
+}
+
+export const FactSchema = z.object({
+  id: z.string(),
+  topic: z.string(),
+  text: z.string(),
+  basis: FactBasisSchema,
+  evidenceIds: z.array(z.string()),
+});
+
+export interface Limitation {
+  code: string;
+  area: string;
+  providerId?: string;
+  message: string;
+  evidenceIds: string[];
+}
+
+export const LimitationSchema = z.object({
+  code: z.string(),
+  area: z.string(),
+  providerId: z.string().optional(),
+  message: z.string(),
+  evidenceIds: z.array(z.string()),
+});
+
+export interface DomainContext {
+  domain: Domain;
+  factors: Fact[];
+  missingInformation: Limitation[];
+}
+
+export const DomainContextSchema = z.object({
+  domain: DomainSchema,
+  factors: z.array(FactSchema),
+  missingInformation: z.array(LimitationSchema),
+});
+
+export interface CollectionGap {
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export const CollectionGapSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  reason: z.string(),
+});
+
+export interface ActualWindow {
+  from: string;
+  to: string;
+  complete: boolean;
+  gaps: CollectionGap[];
+}
+
+export const ActualWindowSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  complete: z.boolean(),
+  gaps: z.array(CollectionGapSchema),
+});
+
+export interface RefreshState {
+  state: 'complete' | 'partial' | 'pending';
+  refreshId: string;
+}
+
+export const RefreshStateSchema = z.object({
+  state: z.enum(['complete', 'partial', 'pending']),
+  refreshId: z.string(),
+});
 export interface CountryContextReport {
   contextId: string;
   region: RegionIdentity;
@@ -535,6 +620,11 @@ export interface CountryContextReport {
   providerCoverage: ProviderRun[];
   coverage: CoverageReport;
   evidence: CountryEvidence[];
+  schemaVersion?: string;
+  domainContext?: Partial<Record<Domain, DomainContext>>;
+  limitations?: Limitation[];
+  refreshState?: RefreshState;
+  actualWindows?: ActualWindow[];
 }
 
 export const CountryContextReportSchema = z.object({
@@ -562,4 +652,10 @@ export const CountryContextReportSchema = z.object({
   providerCoverage: z.array(ProviderRunSchema),
   coverage: CoverageReportSchema,
   evidence: z.array(CountryEvidenceSchema),
+  schemaVersion: z.string().optional(),
+  domainContext: z.record(DomainSchema, DomainContextSchema).optional(),
+  limitations: z.array(LimitationSchema).optional(),
+  refreshState: RefreshStateSchema.optional(),
+  actualWindows: z.array(ActualWindowSchema).optional(),
 });
+

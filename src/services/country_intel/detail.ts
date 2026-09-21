@@ -85,3 +85,25 @@ export interface CollectionWindow {
   complete: boolean;
   gaps: { from: string; to: string; reason: string }[];
 }
+
+export interface EvidencePage {
+  contextId: string;
+  items: EvidenceDetail[];
+  totalStored: number;
+  nextCursor?: string;
+}
+
+export interface ContextChange {
+  id: string;
+  contextId: string;
+  observedAt: string;
+  changeKind: string;
+  evidenceId?: string;
+  summary?: Record<string, unknown>;
+}
+
+export interface ContextUpdates {
+  contextId: string;
+  changes: ContextChange[];
+  nextCursor?: string;
+}
