@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
 
 /**
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
@@ -3129,6 +3130,46 @@ export function generateOpenApiDocument() {
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(TrackingResultSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/intelligence/country': {
+        post: {
+          summary: '国地域コンテキスト生成 (証拠基盤・永続化レポート)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(CountryContextRequestSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '国地域コンテキストレポート',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(CountryContextReportSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/intelligence/context/{contextId}': {
+        get: {
+          summary: '永続化済み国地域コンテキスト取得',
+          parameters: [
+            { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
+          ],
+          responses: {
+            '200': {
+              description: '国地域コンテキストレポート',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(CountryContextReportSchema),
                 },
               },
             },

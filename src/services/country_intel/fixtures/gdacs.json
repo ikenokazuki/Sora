@@ -1,0 +1,16 @@
+{
+  "features": [
+    {
+      "properties": {
+        "eventid": "TC-2026-0001-KOR",
+        "eventtype": "TC",
+        "severity": "Moderate",
+        "fromdate": "2026-09-10T00:00:00Z",
+        "todate": "2026-09-12T00:00:00Z",
+        "country": "KOR",
+        "url": "https://www.gdacs.org/report.aspx?eventid=123",
+        "title": "Tropical Cyclone in Korea"
+      }
+    }
+  ]
+}
