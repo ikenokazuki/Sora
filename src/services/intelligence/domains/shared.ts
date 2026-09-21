@@ -1,15 +1,14 @@
-import type { CoverageReport } from '../../country_intel/types.js';
 import type { IntelligenceSignal } from '../types.js';
 
 export interface DomainViewInput {
   regionId: string;
   signals: readonly IntelligenceSignal[];
-  coverage: CoverageReport;
+  coverage: IntelligenceSignal['coverage'];
 }
 
 export interface DomainViewBase {
   regionId: string;
-  coverage: CoverageReport;
+  coverage: IntelligenceSignal['coverage'];
 }
 
 /** 指定 key 群の signal だけを薄く並べ替える。未知 key は無理に分類しない。 */

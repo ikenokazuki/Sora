@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { DomainViewsSchema, IntelligenceSignalSchema, type IntelligenceSignal } from '../intelligence/types.js';
+
 export const COUNTRY_INTEL_TOPICS = [
   'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',
   'political_violence', 'economy', 'trade', 'business', 'disasters', 'health',
@@ -523,6 +525,13 @@ export interface CountryContextReport {
   polls: PollObservation[];
   keyEvents: IntelEvent[];
   temporalMetrics: TemporalMetric[];
+  signals: IntelligenceSignal[];
+  domains: {
+    content: { regionId: string; attention: IntelligenceSignal[]; disaster: IntelligenceSignal[]; socialActivity: IntelligenceSignal[]; calendar: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    marketing: { regionId: string; attention: IntelligenceSignal[]; businessActivity: IntelligenceSignal[]; calendar: IntelligenceSignal[]; socialActivity: IntelligenceSignal[]; disruption: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    travel: { regionId: string; disruptionSignals: IntelligenceSignal[]; disasterSignals: IntelligenceSignal[]; healthSignals: IntelligenceSignal[]; calendarSignals: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    finance: { regionId: string; economy: IntelligenceSignal[]; trade: IntelligenceSignal[]; businessAction: IntelligenceSignal[]; policyActivity: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+  };
   providerCoverage: ProviderRun[];
   coverage: CoverageReport;
   evidence: CountryEvidence[];
@@ -548,6 +557,8 @@ export const CountryContextReportSchema = z.object({
   polls: z.array(PollObservationSchema),
   keyEvents: z.array(IntelEventSchema),
   temporalMetrics: z.array(TemporalMetricSchema),
+  signals: z.array(IntelligenceSignalSchema),
+  domains: DomainViewsSchema,
   providerCoverage: z.array(ProviderRunSchema),
   coverage: CoverageReportSchema,
   evidence: z.array(CountryEvidenceSchema),
