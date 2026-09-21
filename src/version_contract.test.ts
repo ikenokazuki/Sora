@@ -5,6 +5,6 @@ describe('version contract', () => {
   test('runtime matches package', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     expect(SORA_VERSION).toBe(pkg.version);
-    expect(SORA_VERSION).toBe('2.28.0');
+    expect(SORA_VERSION).toBe('2.29.0');
   });
 });
