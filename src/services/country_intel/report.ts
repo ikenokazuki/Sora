@@ -14,14 +14,17 @@ import type { IntelligenceSignal } from '../intelligence/types.js';
 import { planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
-import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveMetricObservations } from './db.js';
+import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
+import { buildDomainContext, evidenceToFacts } from './domain_details.js';
 import { verifyCountrySource } from './source_registry.js';
 import {
   CountryContextRequestSchema,
   CountryContextReportSchema,
+  type ActualWindow,
   type CountryContextReport,
   type CountryContextRequest,
   type CountrySource,
+  type Limitation,
   type SituationSection,
 } from './types.js';
 
@@ -215,8 +218,31 @@ export async function researchCountryContext(
     finance: buildFinanceView(domainInput),
   };
 
+  const contextId = randomUUID();
+  const details = acquisition.items.flatMap((wrapped) => (wrapped.item.detail ? [wrapped.item.detail] : []));
+  const facts = evidenceToFacts(mergedItems);
+  const limitations: Limitation[] = acquisition.runs
+    .filter((run) => run.status !== 'success')
+    .map((run) => ({
+      code: run.status === 'rate_limited' ? 'rate_limited' : run.status === 'error' ? 'provider_error' : 'provider_unavailable',
+      area: (run.coverage ?? []).join(',') || 'general',
+      providerId: run.provider,
+      message: run.provider + ' ' + run.status + (run.errorCode ? ' ' + run.errorCode : ''),
+      evidenceIds: [],
+    }));
+  const succeeded = acquisition.runs.some((run) => run.status === 'success' || run.status === 'partial');
+  const runFailed = acquisition.runs.some((run) => run.status === 'unavailable' || run.status === 'rate_limited' || run.status === 'error');
+  const periodDays = request.period === '7d' ? 7 : request.period === '90d' ? 90 : 30;
+  const windowFrom = new Date(nowDate.getTime() - periodDays * 86_400_000).toISOString();
+  const windowTo = nowDate.toISOString();
+  const actualWindows: ActualWindow[] = [{
+    from: windowFrom,
+    to: windowTo,
+    complete: acquisition.runs.length > 0 && !runFailed,
+    gaps: acquisition.runs.filter((run) => run.status !== 'success').map((run) => ({ from: windowFrom, to: windowTo, reason: run.provider + ':' + run.status })),
+  }];
   const report = CountryContextReportSchema.parse({
-    contextId: randomUUID(),
+    contextId,
     region,
     asOf: nowDate.toISOString(),
     situation,
@@ -232,6 +258,18 @@ export async function researchCountryContext(
     providerCoverage: acquisition.runs,
     coverage,
     evidence,
+    schemaVersion: '2',
+    domainContext: {
+      general: buildDomainContext('general', facts, limitations),
+      content: buildDomainContext('content', facts, limitations),
+      marketing: buildDomainContext('marketing', facts, limitations),
+      finance: buildDomainContext('finance', facts, limitations),
+      tourism: buildDomainContext('tourism', facts, limitations),
+      travel: buildDomainContext('travel', facts, limitations),
+    },
+    limitations,
+    refreshState: { state: !runFailed && succeeded ? 'complete' : succeeded ? 'partial' : 'pending', refreshId: contextId },
+    actualWindows,
   } satisfies CountryContextReport);
 
   saveCountryContext(report, {
@@ -242,5 +280,6 @@ export async function researchCountryContext(
     calendar,
     sources,
   });
+  saveEvidenceDetails(contextId, details);
   return report;
 }
