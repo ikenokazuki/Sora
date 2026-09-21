@@ -1,0 +1,51 @@
+{
+  "features": [
+    {
+      "properties": {
+        "eventid": "TC-2026-0001-KOR",
+        "eventtype": "TC",
+        "severity": "Moderate",
+        "fromdate": "2026-09-10T00:00:00Z",
+        "todate": "2026-09-12T00:00:00Z",
+        "country": "South Korea",
+        "url": "https://www.gdacs.org/report.aspx?eventid=111",
+        "title": "Tropical Cyclone in Korea"
+      }
+    },
+    {
+      "properties": {
+        "eventid": "EQ-2026-0002-USA",
+        "eventtype": "EQ",
+        "severity": "High",
+        "fromdate": "2026-09-11T00:00:00Z",
+        "todate": "2026-09-11T00:00:00Z",
+        "country": "United States",
+        "url": "https://www.gdacs.org/report.aspx?eventid=222",
+        "title": "Earthquake in California"
+      }
+    },
+    {
+      "properties": {
+        "eventid": "FL-2026-0003-FRA",
+        "eventtype": "FL",
+        "severity": "Low",
+        "fromdate": "2026-09-09T00:00:00Z",
+        "todate": "2026-09-10T00:00:00Z",
+        "country": "France",
+        "url": "https://www.gdacs.org/report.aspx?eventid=333",
+        "title": "Flood in France"
+      }
+    },
+    {
+      "properties": {
+        "eventid": "WF-2026-0004-UNK",
+        "eventtype": "WF",
+        "severity": "Low",
+        "fromdate": "2026-09-09T00:00:00Z",
+        "todate": "2026-09-10T00:00:00Z",
+        "url": "https://www.gdacs.org/report.aspx?eventid=444",
+        "title": "Wildfire with unknown geography"
+      }
+    }
+  ]
+}
