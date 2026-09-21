@@ -1970,8 +1970,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async (opts) => {
         try {
-          const { researchCountryContext } = await import('./services/country_intel/report.js');
-          const result = await researchCountryContext(opts as never);
+          const { researchCountryWithDefaults } = await import('./services/country_intel/runtime.js');
+          const result = await researchCountryWithDefaults(opts as never);
           return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: `Country intelligence error: ${err instanceof Error ? err.message : err}` }] };
