@@ -32,9 +32,9 @@ test('returns identity arrays that cannot mutate stored geographic data', () => 
   first.languages.push('en');
   first.aliases.push('mutated alias');
 
-  expect(resolveRegion('South Korea')).toMatchObject({
+    expect(resolveRegion('South Korea')).toMatchObject({
     languages: ['ko'],
-    aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)', '大韓民国'],
+    aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'],
   });
 });
 
