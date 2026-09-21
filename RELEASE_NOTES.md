@@ -1,5 +1,13 @@
 # 🧭 Sora Release v2.27.0
 
+## Xリアルタイム検索の直接JSON移行 (unreleased)
+- `search_realtime` / `POST /search/realtime` / `POST /realtime` / `search_deep` 内のX取得・X投稿URL解決が、Yahoo MCPバイナリ経由からYahooのJSON取得の直接呼び出しに切り替わりました。Yahoo HTMLのトップ枠 (`bestTweet`) にだけ存在した投稿の取りこぼしを解消します。
+- Yahoo公式の検索演算子 (`id:` / `@` / `#` / `-` / `(A B)` / `URL:` / URL直接入力) と複数語・アカウント指定の併用に対応し、OR・URL条件を含む式の意味を変える自動relaxは行いません。
+- 構造化 `url` は `URL:` 演算子として送信するよう修正しました (従来は通常語として追加)。
+- `page` は公開1始まり・Yahoo側40件固定幅、`limit` は1〜40・デフォルト20。provider障害はHTTP 502 / MCPエラーとして返し、一部失敗時は `partial` 付きで成功分を返します。
+- Web・画像・動画・ニュース・知恵袋の取得は従来どおりMCPバイナリを使用し、バイナリ配置も維持します。
+- Country Intelligence 側は geo 正規化・provenance・検証済み two-pass・metric/signal 基盤・domain view・default runtime を追加しました (詳細は intel 実装メモ)。
+
 ### Realtime compact default + Country Intelligence v1
 
 - `search_realtime` / `search_web` / `search_deep` return compact responses by default (answer-required fields only); pass `verbose: true` for retrieval diagnostics (`retrievalQueries` / `contributingQueries` / `resultsMerged` etc.). REST `/search/realtime` and `/search/web` behave the same with cache keys separated by verbosity.
