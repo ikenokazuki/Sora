@@ -18,6 +18,34 @@ export function parseGdeltSeendate(value?: string): string | undefined {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
+export interface GdeltTimelinePoint { date: string; value: number; }
+export interface GdeltTimelineFixture { timeline?: { series?: string; data?: { date?: string; value?: number }[] }[]; }
+
+export interface HistoricalMediaObservation {
+  date: string;
+  value: number;
+  origin: 'provider_historical';
+}
+
+/** GDELT DOC timeline (TimelineVol) URL。履歴ベースライン用の観測系列を取得する。 */
+export function buildGdeltTimelineUrl(query: string, maxRecords = 25): string {
+  const params = new URLSearchParams({ query, mode: 'TimelineVol', format: 'json' });
+  void maxRecords;
+  return `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
+}
+
+/** 保存した timeline JSON を比較可能な日次バケットへ変換する。実通信しない。 */
+export function parseGdeltTimeline(fixture: GdeltTimelineFixture): HistoricalMediaObservation[] {
+  const series = (fixture.timeline ?? []).find((entry) => entry.series === 'Volume')
+    ?? fixture.timeline?.[0];
+  if (!series || !Array.isArray(series.data)) return [];
+  return series.data.flatMap((point) => {
+    const day = typeof point.date === 'string' ? /^(\d{4})(\d{2})(\d{2})/.exec(point.date) : null;
+    if (!day || typeof point.value !== 'number' || !Number.isFinite(point.value)) return [];
+    return [{ date: `${day[1]}-${day[2]}-${day[3]}`, value: point.value, origin: 'provider_historical' as const }];
+  });
+}
+
 export function parseGdeltDocResponse(fixture: GdeltDocFixture, input: ProviderInput, now = new Date()): AcquisitionItem[] {
   const region = input.region;
   return (fixture.articles ?? []).filter((a) => a.url).map((article) => ({
