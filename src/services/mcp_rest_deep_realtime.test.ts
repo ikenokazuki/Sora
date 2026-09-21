@@ -22,7 +22,8 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
       const longFesText = '【告知】サマーフェスティバルの詳細を発表します。今年のサマーフェスティバルは特別ステージを用意しており、アーティストの出演順や開演時間などの最新情報を順次ご案内いたします。当日は猛暑が予想されますので十分な熱中症対策をお願い申し上げます。チケットや整理券の詳細は公式サイトをご確認ください…'.padEnd(250, '。');
 
       // Mock callYahooMcp for yahoo_realtime_search
-      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
+      // Realtime取得はJSON直取得へ移行したため、モック対象も新シームにする。
+      const yahooSpy = spyOn(yahooService, 'callYahooRealtimeJson').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_realtime_search') {
           return {
             content: [
@@ -109,7 +110,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
     });
 
     it('REST realtime exposes retrieval provenance only in verbose mode', async () => {
-      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName) => {
+      const yahooSpy = spyOn(yahooService, 'callYahooRealtimeJson').mockImplementation(async (toolName) => {
         if (toolName === 'yahoo_realtime_search') {
           return {
             content: [{
@@ -158,7 +159,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
     it('REST /search/deep incorporates enriched X items after merge without pre-merge Fx calls', async () => {
       const longOfficialText = '【速報】サマーフェスティバル物販タイテ公開！今年のサマーフェスティバルでは公式グッズやアーティストコラボグッズなど多数の限定アイテムを販売いたします。整理券の取得方法や待機列の形成時間についてのご案内です。当日は大変混雑が予想されますので公共交通機関でお越しください…'.padEnd(250, '。');
 
-      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
+      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName) => {
         if (toolName === 'yahoo_web_search') {
           return {
             content: [
@@ -182,6 +183,9 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
             ],
           };
         }
+        return { content: [{ type: 'text', text: '[]' }] };
+      });
+      const yahooRealtimeSpy = spyOn(yahooService, 'callYahooRealtimeJson').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_realtime_search') {
           const isOfficial = typeof args?.query === 'string' && (args.query.includes('id:summer_fes') || args.query.includes('summer_fes'));
           if (isOfficial) {
@@ -282,6 +286,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(publicItem.author_handle).toBe('fes_fan');
       } finally {
         yahooSpy.mockRestore();
+        yahooRealtimeSpy.mockRestore();
         fetchStatusSpy.mockRestore();
       }
     });
@@ -355,25 +360,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
       const longLiveText = '【ライブ速報】アンコール曲は「青空」でした。本日のツアー最終日、会場の熱気は最高潮に達し、観客の皆様の温かいご声援に応えてダブルアンコールまで実施される感動的な夜となりました。関わってくださった全ての皆様に心より感謝申し上げます。'.padEnd(250, '！');
 
       // Setup Mocks
-      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName, args) => {
-        if (toolName === 'yahoo_realtime_search') {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify([
-                  {
-                    id: '2000000000000000004',
-                    text: longLiveText,
-                    author_name: 'ライブ実況BOT',
-                    author_handle: 'live_jikkyo',
-                    created_at: Math.floor(Date.now() / 1000),
-                  },
-                ]),
-              },
-            ],
-          };
-        }
+      const yahooSpy = spyOn(yahooService, 'callYahooMcp').mockImplementation(async (toolName) => {
         if (toolName === 'yahoo_web_search') {
           return {
             content: [
@@ -388,6 +375,27 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
                     },
                   ],
                 }),
+              },
+            ],
+          };
+        }
+        return { content: [{ type: 'text', text: '[]' }] };
+      });
+      const yahooRealtimeSpy = spyOn(yahooService, 'callYahooRealtimeJson').mockImplementation(async (toolName) => {
+        if (toolName === 'yahoo_realtime_search') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify([
+                  {
+                    id: '2000000000000000004',
+                    text: longLiveText,
+                    author_name: 'ライブ実況BOT',
+                    author_handle: 'live_jikkyo',
+                    created_at: Math.floor(Date.now() / 1000),
+                  },
+                ]),
               },
             ],
           };
@@ -521,6 +529,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(deepParsed.realtime.items[0].text).toContain('アンコール曲は「青空」でした');
       } finally {
         yahooSpy.mockRestore();
+        yahooRealtimeSpy.mockRestore();
         fetchStatusSpy.mockRestore();
       }
     });
