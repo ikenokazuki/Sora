@@ -3,11 +3,13 @@ import type {
   CountryEvidence,
   CoverageReport,
   CoverageState,
+  CountryContextReport,
   ForeignRelationContext,
   IntelEvent,
   JapanContextView,
   PollObservation,
   ProviderRun,
+  SituationSection,
   TemporalMetric,
 } from './types.js';
 
@@ -147,6 +149,69 @@ export function buildJapanView(relations: readonly ForeignRelationContext[]): Ja
     polls: relation.relevantPolls,
     mediaMetrics: relation.mediaMetrics,
   };
+}
+
+type SituationArea = keyof CountryContextReport['situation'];
+
+const SITUATION_CLASSIFICATION: Readonly<Record<string, SituationArea>> = Object.freeze({
+  election: 'politics',
+  legislation: 'politics',
+  trade_restriction: 'economy',
+  business_action: 'economy',
+  military_activity: 'security',
+  violence: 'security',
+  threat: 'security',
+  disaster_response: 'disasters',
+  protest: 'social',
+  demonstration: 'social',
+  strike: 'social',
+});
+
+function emptySituationSection(): SituationSection {
+  return { summaryFacts: [], eventIds: [], metrics: [], evidenceIds: [] };
+}
+
+/** イベントを分類可能な section にだけ配置する。分類不能は section に入れない。 */
+export function assembleSituation(
+  events: readonly IntelEvent[],
+  evidence: readonly CountryEvidence[],
+  window: string,
+): CountryContextReport['situation'] {
+  void window;
+  const evidenceByEvent = new Map<string, CountryEvidence[]>();
+  for (const item of evidence) {
+    if (!item.eventClusterId) continue;
+    const list = evidenceByEvent.get(item.eventClusterId) ?? [];
+    list.push(item);
+    evidenceByEvent.set(item.eventClusterId, list);
+  }
+  const situation: CountryContextReport['situation'] = {
+    politics: emptySituationSection(),
+    economy: emptySituationSection(),
+    security: emptySituationSection(),
+    disasters: emptySituationSection(),
+    health: emptySituationSection(),
+    humanitarian: emptySituationSection(),
+    social: emptySituationSection(),
+  };
+  const byArea = new Map<SituationArea, IntelEvent[]>();
+  for (const event of events) {
+    const area = SITUATION_CLASSIFICATION[event.type];
+    if (!area) continue;
+    const list = byArea.get(area) ?? [];
+    list.push(event);
+    byArea.set(area, list);
+  }
+  for (const [area, areaEvents] of byArea) {
+    const section = situation[area];
+    section.eventIds = areaEvents.map((event) => event.id);
+    section.evidenceIds = [...new Set(areaEvents.flatMap((event) => event.evidenceIds))];
+    const kinds = [...new Set(areaEvents.map((event) => event.type))].sort();
+    const scope = kinds.length === 1 ? `${kinds[0]} ` : '';
+    const unit = areaEvents.length === 1 ? 'event cluster was' : 'event clusters were';
+    section.summaryFacts = [`${areaEvents.length} ${scope}${unit} observed in the requested period.`];
+  }
+  return situation;
 }
 
 function areaRuns(area: keyof CoverageReport['byArea'], runs: readonly ProviderRun[]): ProviderRun[] {

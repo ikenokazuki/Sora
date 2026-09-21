@@ -1,3 +1,4 @@
+import { normalizeProviderCountryCode } from '../geo_codes.js';
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
@@ -8,19 +9,34 @@ export interface GdacsFixture { features?: { properties?: GdacsProperties }[]; }
 
 export function buildGdacsUrl(): string { return 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventtypes=TC,FL,EQ,VO,DR,WF'; }
 
+/** GDACS の country 表記を要求 region と照合する。解決不能・不一致は除外する。 */
+function belongsToRegion(country: string | undefined, input: ProviderInput): string | undefined {
+  if (!country) return undefined;
+  const code = normalizeProviderCountryCode('gdacs', country);
+  if (code) return input.region.countryCode === code ? code : undefined;
+  const wanted = country.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+  const names = [input.region.name, ...(input.region.aliases ?? [])]
+    .map((name) => name.normalize('NFKC').trim().toLocaleLowerCase('en-US'));
+  return names.includes(wanted) ? input.region.countryCode : undefined;
+}
+
 export function parseGdacsResponse(fixture: GdacsFixture, input: ProviderInput, now = new Date()): AcquisitionItem[] {
-  return (fixture.features ?? []).filter((f) => f.properties?.url).map((feature) => {
+  return (fixture.features ?? []).flatMap((feature) => {
+    if (!feature.properties?.url) return [];
+    const eventCountry = belongsToRegion(feature.properties.country, input);
+    // Unknown geography は要求 region へ自動帰属させない。
+    if (!eventCountry) return [];
     const p = feature.properties!;
-    return {
+    return [{
       evidence: normalizeEvidence({
         url: p.url!, title: p.title ?? `GDACS ${p.eventtype ?? 'event'} ${p.eventid ?? ''}`.trim(),
-        eventCountry: p.country || undefined,
-        mentionedCountries: p.country ? [p.country] : undefined,
+        eventCountry,
+        mentionedCountries: [eventCountry],
         sourceType: 'structured_dataset', publishedAt: p.fromdate,
         excerpt: `${p.eventtype ?? 'event'} severity ${p.severity ?? 'unknown'} ${p.fromdate ?? ''} to ${p.todate ?? ''}`.trim(),
         primarySource: false, latencyClass: 'near_realtime',
       }, input.region, now),
-    };
+    }];
   });
 }
 
