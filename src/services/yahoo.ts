@@ -568,7 +568,273 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
   return Array.from(new Set(candidates.map((c) => c.trim()).filter((c) => c.length > 0)));
 }
 
-/** Yahoo リアルタイム検索 (スマートフォールバック・正規化付き) */
+/** Realtime Retrieval v1: retrieval bounds (wave max 2, total max 5) */
+export const MAX_REALTIME_RETRIEVAL_QUERIES = 5;
+export const MAX_REALTIME_QUERIES_PER_WAVE = 2;
+
+export interface RealtimeIntentRequirements {
+  semanticRequirements: string[];
+  protectedModifiers: string[];
+}
+
+function splitRealtimeQueryParts(query: string): { semantics: string[]; modifiers: string[] } {
+  const normalized = (query || '').replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').normalize('NFKC');
+  const modifiers: string[] = [];
+  let remaining = ` ${normalized} `;
+  remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
+    modifiers.push(`id:${id}`);
+    return ' ';
+  });
+  remaining = remaining.replace(/(?:^|\s)@([a-zA-Z0-9_]+)/g, (_, m) => {
+    modifiers.push(`@${m}`);
+    return ' ';
+  });
+  remaining = remaining.replace(/(?:^|\s)#([^\s#]+)/g, (_, tag) => {
+    modifiers.push(`#${tag}`);
+    return ' ';
+  });
+  remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
+    modifiers.push(`-${ex}`);
+    return ' ';
+  });
+  const semantics = remaining.replace(/\s+/g, ' ').trim().split(' ').filter((w) => w.length > 0);
+  return { semantics, modifiers };
+}
+
+/**
+ * Realtime Retrieval v1: original queryのみからintent requirementsを決定論的に抽出する。
+ * candidate contextに依存するobserveRequirements()は停止判定に使わない。
+ * 空白区切りsemantic termsはatomic requirementとして保持し、bigram縮約しない。
+ */
+export function extractRealtimeIntentRequirements(query: string): RealtimeIntentRequirements {
+  if (!query || typeof query !== 'string') return { semanticRequirements: [], protectedModifiers: [] };
+  const { semantics, modifiers } = splitRealtimeQueryParts(query);
+  return { semanticRequirements: semantics, protectedModifiers: modifiers };
+}
+
+/**
+ * Wave 1 exact-intent variants: original + 意味を削らないcanonical syntax variant
+ * (protected modifiersを先頭へ移動)。同一文字列なら重複排除。semantic fallbackではない。
+ */
+export function buildRealtimeExactQueryVariants(query: string): string[] {
+  const original = (query || '').trim();
+  if (!original) return [];
+  const { semantics, modifiers } = splitRealtimeQueryParts(original);
+  const canonical = [...modifiers, ...semantics].join(' ').trim();
+  const variants = [original];
+  if (canonical && canonical !== original) variants.push(canonical);
+  return variants.slice(0, MAX_REALTIME_QUERIES_PER_WAVE);
+}
+
+/**
+ * Wave 2 minimal relaxation: drop-oneのみ。全subset(2^N)生成は禁止。
+ * best itemのmissing termsを多く保持するcandidateを優先し、同点はoriginal順序で決定論的に並べる。
+ * protected modifiersは常に維持し、modifier-only queryは生成しない。
+ */
+export function buildRealtimeRelaxationCandidates(
+  semanticRequirements: string[],
+  protectedModifiers: string[],
+  missingTerms: string[],
+  executedQueries: Set<string> | string[],
+): string[] {
+  if (!Array.isArray(semanticRequirements) || semanticRequirements.length <= 1) return [];
+  const executed = executedQueries instanceof Set ? executedQueries : new Set(executedQueries || []);
+  const missingSet = new Set((missingTerms || []).map((t) => t.toLowerCase()));
+  const prefix = (protectedModifiers || []).join(' ').trim();
+  const scored: Array<{ query: string; score: number; dropped: number }> = [];
+  for (let drop = 0; drop < semanticRequirements.length; drop++) {
+    const retained = semanticRequirements.filter((_, i) => i !== drop);
+    if (retained.length === 0) continue;
+    const body = retained.join(' ').trim();
+    const q = prefix ? `${prefix} ${body}`.trim() : body;
+    if (!q || executed.has(q)) continue;
+    let score = 0;
+    for (const term of retained) {
+      if (missingSet.has(term.toLowerCase())) score++;
+    }
+    scored.push({ query: q, score, dropped: drop });
+  }
+  scored.sort((a, b) => b.score - a.score || a.dropped - b.dropped);
+  return scored.map((s) => s.query);
+}
+
+export interface RealtimeCoverageEvaluation {
+  requiredTerms: string[];
+  bestCoveredTerms: string[];
+  missingTerms: string[];
+  hasFullCoverage: boolean;
+  authorConstraintSatisfied: boolean;
+}
+
+/**
+ * per-item coverageでretrieval qualityを判定する。corpus全体の分散存在では判定しない。
+ * -excludeはpositive coverage requirementにしない。authorはid: constraintのみ検証する。
+ */
+export function evaluateRealtimeRetrievalCoverage(
+  items: Array<Record<string, any>>,
+  requirements: RealtimeIntentRequirements,
+): RealtimeCoverageEvaluation {
+  const requiredTerms = requirements?.semanticRequirements || [];
+  const protectedModifiers = requirements?.protectedModifiers || [];
+  const idHandles = protectedModifiers
+    .filter((m) => /^id:/i.test(m))
+    .map((m) => m.slice(3).replace(/^@/, '').toLowerCase())
+    .filter(Boolean);
+  let bestCovered: string[] = [];
+  let bestMissing: string[] = [...requiredTerms];
+  let authorSatisfied = idHandles.length === 0;
+  if (!Array.isArray(items) || items.length === 0 || requiredTerms.length === 0) {
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        const handle = String(item?.author_handle || '').replace(/^@/, '').toLowerCase();
+        if (idHandles.length > 0 && idHandles.includes(handle)) {
+          authorSatisfied = true;
+          break;
+        }
+      }
+      if (idHandles.length === 0) authorSatisfied = true;
+    }
+    return {
+      requiredTerms,
+      bestCoveredTerms: bestCovered,
+      missingTerms: bestMissing,
+      hasFullCoverage: requiredTerms.length === 0 && authorSatisfied && items.length > 0,
+      authorConstraintSatisfied: authorSatisfied,
+    };
+  }
+  for (const item of items) {
+    const haystack = [
+      item?.author_name || '',
+      item?.author_handle || '',
+      item?.author_handle ? `@${String(item.author_handle).replace(/^@/, '')}` : '',
+      item?.text || '',
+    ].join(' ').toLowerCase();
+    const covered = requiredTerms.filter((t) => haystack.includes(t.toLowerCase()));
+    if (covered.length > bestCovered.length) {
+      bestCovered = covered;
+      const coveredSet = new Set(covered.map((t) => t.toLowerCase()));
+      bestMissing = requiredTerms.filter((t) => !coveredSet.has(t.toLowerCase()));
+    }
+    const handle = String(item?.author_handle || '').replace(/^@/, '').toLowerCase();
+    if (idHandles.length > 0 && idHandles.includes(handle)) authorSatisfied = true;
+  }
+  if (idHandles.length === 0) authorSatisfied = true;
+  return {
+    requiredTerms,
+    bestCoveredTerms: bestCovered,
+    missingTerms: bestMissing,
+    hasFullCoverage: bestMissing.length === 0 && authorSatisfied,
+    authorConstraintSatisfied: authorSatisfied,
+  };
+}
+
+/**
+ * canonical post identity: status ID > URL内status ID > normalized URL > stable fallback。
+ * text単独をidentityにしない。同一本文・別IDは別postとして保持する。
+ */
+export function getRealtimeCanonicalIdentity(item: Record<string, any>): string {
+  if (!item || typeof item !== 'object') return '';
+  const directId = String(item.id || item.statusId || item.status_id || item.tweetId || '').trim();
+  if (/^\d+$/.test(directId)) return `status:${directId}`;
+  const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : '';
+  if (url) {
+    const m = url.match(/(?:\/status\/|\/i\/web\/status\/)(\d+)/i);
+    if (m && m[1]) return `status:${m[1]}`;
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('utm_source');
+      u.searchParams.delete('utm_medium');
+      u.searchParams.delete('utm_campaign');
+      const normalized = u.toString().replace(/\?$/, '').toLowerCase();
+      if (normalized) return `url:${normalized}`;
+    } catch {
+      return `url:${url.trim().toLowerCase()}`;
+    }
+  }
+  const handle = String(item.author_handle || item.author_name || '').replace(/^@/, '').trim().toLowerCase();
+  const time = String(item.publishedTime || item.created_at || '').trim();
+  const text = (typeof item.text === 'string' ? item.text : '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (text) return `fallback:${handle}|${time}|${text.slice(0, 240)}`;
+  return '';
+}
+
+export interface YahooRealtimeQueryBatch {
+  query: string;
+  queryIndex: number;
+  items: any[];
+}
+
+/**
+ * plan順でmergeしcanonical identityでdedupする。Promise completion順にしない。
+ * contributingQueriesはmerged poolへunique postを1件以上提供したquery。
+ */
+export function mergeRealtimeQueryBatches(
+  batches: YahooRealtimeQueryBatch[],
+): { items: any[]; contributingQueries: string[] } {
+  const seen = new Set<string>();
+  const merged: any[] = [];
+  const contributed = new Set<string>();
+  for (const batch of batches) {
+    if (!batch || !Array.isArray(batch.items)) continue;
+    for (const item of batch.items) {
+      const key = getRealtimeCanonicalIdentity(item);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      contributed.add(batch.query);
+      merged.push(item);
+    }
+  }
+  const order = new Map<string, number>();
+  batches.forEach((b, i) => {
+    if (!order.has(b.query)) order.set(b.query, i);
+  });
+  const contributingQueries = [...contributed].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  return { items: merged, contributingQueries };
+}
+
+async function fetchRealtimeBatch(
+  query: string,
+  queryIndex: number,
+  sort: 'recent' | 'popular',
+  limit: number | undefined,
+  page: number | undefined,
+  callMcp: typeof callYahooMcp,
+): Promise<YahooRealtimeQueryBatch> {
+  try {
+    const mcpRes = await callMcp('yahoo_realtime_search', {
+      query,
+      sort,
+      ...(limit ? { limit } : {}),
+      ...(page ? { page } : {}),
+    });
+    const content = mcpRes?.content?.[0]?.text || '';
+    if (!content) return { query, queryIndex, items: [] };
+    const parsed = JSON.parse(content);
+    const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
+    return { query, queryIndex, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
+  } catch {
+    return { query, queryIndex, items: [] };
+  }
+}
+
+function runRealtimeWave(
+  queries: string[],
+  startIndex: number,
+  sort: 'recent' | 'popular',
+  limit: number | undefined,
+  page: number | undefined,
+  callMcp: typeof callYahooMcp,
+): Promise<YahooRealtimeQueryBatch[]> {
+  return Promise.allSettled(
+    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp)),
+  ).then((settled) =>
+    settled.map((r, i) =>
+      r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, items: [] },
+    ),
+  );
+}
+
+/** Yahoo リアルタイム検索 (Retrieval v1: bounded query union + parallel waves + adaptive stop) */
 export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   query: string;
   sort?: 'recent' | 'popular';
@@ -576,6 +842,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   page?: number;
   disableFallback?: boolean;
   detailEnrichment?: boolean;
+  verbose?: boolean;
 }): Promise<{
   items: any[];
   count: number;
@@ -583,6 +850,14 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   originalQuery: string;
   isFallback: boolean;
   source: 'x';
+  retrievalQueries: string[];
+  contributingQueries: string[];
+  resultsMerged: boolean;
+  executedWaves: number;
+  stopReason: string;
+  requiredTerms: string[];
+  coveredTerms: string[];
+  missingTerms: string[];
 }> {
   const builtQuery = buildYahooRealtimeQuery(options);
   const originalQuery = builtQuery || (typeof options === 'object' ? options.query || '' : options);
@@ -592,67 +867,159 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const detailEnrichment = typeof options === 'object' && options.detailEnrichment !== undefined
     ? options.detailEnrichment
     : true;
+  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooMcp;
 
-  const candidateQueries = options.disableFallback
-    ? [builtQuery]
-    : extractRealtimeFallbackQueries(builtQuery);
-
-  let finalItems: any[] = [];
-  let effectiveQuery = builtQuery;
-  let isFallback = false;
-
-  for (let i = 0; i < candidateQueries.length; i++) {
-    const q = candidateQueries[i];
-    if (!q) continue;
-    try {
-      const mcpRes = await callYahooMcp('yahoo_realtime_search', {
-        query: q,
-        sort,
-        ...(limit ? { limit } : {}),
-        ...(page ? { page } : {}),
-      });
-      const content = mcpRes?.content?.[0]?.text || '';
-      if (!content) continue;
-
-      const parsed = JSON.parse(content);
-      const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
-      if (rawList.length > 0) {
-        finalItems = rawList.map((item: any) => normalizeRealtimeItem(item));
-        effectiveQuery = q;
-        isFallback = i > 0;
-        break;
-      }
-    } catch {
-      // 次の候補を試行
+  const finish = async (
+    batches: YahooRealtimeQueryBatch[],
+    executedWaves: number,
+    stopReason: string,
+    coverage: RealtimeCoverageEvaluation,
+    exactVariants: string[],
+  ) => {
+    const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
+    const retrievalQueries = batches.map((b) => b.query);
+    const resultsMerged = contributingQueries.length >= 2;
+    const exactSet = new Set(exactVariants);
+    const isFallback = contributingQueries.some((q) => !exactSet.has(q));
+    const effectiveQuery = contributingQueries.length === 1
+      ? contributingQueries[0]
+      : originalQuery;
+    let finalItems = merged.length > 0 && originalQuery ? rerankRealtimeItems(merged, originalQuery) : merged;
+    const requestedLimit = limit;
+    if (typeof requestedLimit === 'number' && requestedLimit >= 0) {
+      finalItems = finalItems.slice(0, requestedLimit);
     }
-  }
-
-  // 指示書 第7条: fallback retrieval 発生時も含め、ranking は必ず originalQuery (binding query) で行う
-  if (finalItems.length > 0 && originalQuery) {
-    finalItems = rerankRealtimeItems(finalItems, originalQuery);
-  }
-
-  // 指示書 第8-10条: X長文投稿の適応的詳細補完 (bounded FxTwitter v2)
-  if (detailEnrichment && finalItems.length > 0 && originalQuery) {
-    const { items: enriched } = await enrichRealtimeItemsWithXDetail(
-      finalItems,
+    if (detailEnrichment && finalItems.length > 0 && originalQuery) {
+      const { items: enriched } = await enrichRealtimeItemsWithXDetail(
+        finalItems,
+        originalQuery,
+        defaultXDetailProvider,
+        { verbose: (options as any)?.verbose === true },
+      );
+      finalItems = enriched;
+    } else if (finalItems.length > 0) {
+      finalItems = finalItems.map((it) => cleanRealtimeItem(it, (options as any)?.verbose === true));
+    }
+    return {
+      source: 'x' as const,
       originalQuery,
-      defaultXDetailProvider,
-      { verbose: options?.verbose === true },
-    );
-    finalItems = enriched;
-  } else if (finalItems.length > 0) {
-    finalItems = finalItems.map((it) => cleanRealtimeItem(it, options?.verbose === true));
+      effectiveQuery,
+      isFallback,
+      count: finalItems.length,
+      items: finalItems,
+      retrievalQueries,
+      contributingQueries,
+      resultsMerged,
+      executedWaves,
+      stopReason,
+      requiredTerms: coverage.requiredTerms,
+      coveredTerms: coverage.bestCoveredTerms,
+      missingTerms: coverage.missingTerms,
+    };
+  };
+
+  if ((options as any)?.disableFallback === true) {
+    const q = builtQuery;
+    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp) : [];
+    const requirements = extractRealtimeIntentRequirements(originalQuery);
+    const merged = mergeRealtimeQueryBatches(batches);
+    const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
+    return finish(batches, batches.length > 0 ? 1 : 0, 'fallback_disabled', coverage, q ? [q] : []);
   }
 
-  return {
-    source: 'x',
-    originalQuery,
-    effectiveQuery,
-    isFallback,
-    count: finalItems.length,
-    items: finalItems,
+  const requirements = extractRealtimeIntentRequirements(originalQuery);
+  const exactVariants = buildRealtimeExactQueryVariants(builtQuery);
+  const batches: YahooRealtimeQueryBatch[] = [];
+  const executed = new Set<string>();
+  let executedWaves = 0;
+
+  const takeBudget = (candidates: string[]): string[] => {
+    const out: string[] = [];
+    for (const q of candidates) {
+      if (batches.length + out.length >= MAX_REALTIME_RETRIEVAL_QUERIES) break;
+      if (out.length >= MAX_REALTIME_QUERIES_PER_WAVE) break;
+      if (!q || executed.has(q)) continue;
+      out.push(q);
+    }
+    return out;
   };
+
+  // Wave 1: exact intent (original + canonical syntax variant)
+  const wave1Queries = takeBudget(exactVariants);
+  if (wave1Queries.length > 0) {
+    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp);
+    for (const b of res) {
+      batches.push(b);
+      executed.add(b.query);
+    }
+    executedWaves = 1;
+  }
+  let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  if (coverage.hasFullCoverage) {
+    return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
+  }
+  if (requirements.semanticRequirements.length === 0) {
+    return finish(batches, executedWaves, 'no_semantic_requirements', coverage, exactVariants);
+  }
+
+  // Wave 2: minimal relaxation (missing-term-driven drop-one, max 2)
+  const wave2Candidates = buildRealtimeRelaxationCandidates(
+    requirements.semanticRequirements,
+    requirements.protectedModifiers,
+    coverage.missingTerms,
+    executed,
+  );
+  const wave2Queries = takeBudget(wave2Candidates);
+  if (wave2Queries.length > 0) {
+    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp);
+    for (const b of res) {
+      batches.push(b);
+      executed.add(b.query);
+    }
+    executedWaves = 2;
+  }
+  coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  if (coverage.hasFullCoverage) {
+    return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
+  }
+  if (batches.length >= MAX_REALTIME_RETRIEVAL_QUERIES) {
+    return finish(batches, executedWaves, 'query_budget', coverage, exactVariants);
+  }
+
+  // Wave 3: bounded rescue (unexecuted drop-one remainder + missing-term singles)
+  const rescue: string[] = [];
+  const remainder = buildRealtimeRelaxationCandidates(
+    requirements.semanticRequirements,
+    requirements.protectedModifiers,
+    coverage.missingTerms,
+    executed,
+  );
+  for (const q of remainder) {
+    if (!executed.has(q) && !rescue.includes(q)) rescue.push(q);
+  }
+  const prefix = requirements.protectedModifiers.join(' ').trim();
+  for (const term of coverage.missingTerms) {
+    const q = prefix ? `${prefix} ${term}`.trim() : term.trim();
+    if (q && !executed.has(q) && !rescue.includes(q) && term.trim()) rescue.push(q);
+  }
+  const wave3Queries = takeBudget(rescue);
+  if (wave3Queries.length === 0) {
+    return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
+  }
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp);
+  for (const b of res3) {
+    batches.push(b);
+    executed.add(b.query);
+  }
+  executedWaves = 3;
+  coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  if (coverage.hasFullCoverage) {
+    return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
+  }
+  if (batches.length >= MAX_REALTIME_RETRIEVAL_QUERIES) {
+    return finish(batches, executedWaves, 'query_budget', coverage, exactVariants);
+  }
+  return finish(batches, executedWaves, 'waves_complete', coverage, exactVariants);
 }
 
 /** X (Twitter) アカウントページやポストURLからリアルタイム検索・スニペットを用いてコンテンツを抽出（未ログイン遮断バイパス） */
