@@ -498,3 +498,111 @@ export function getCountryIntelDbMetrics(): CountryIntelDbMetrics {
   const shmBytes = path === ':memory:' ? 0 : fileSize(`${path}-shm`);
   return { path, mainBytes, walBytes, shmBytes, totalBytes: mainBytes + walBytes + shmBytes };
 }
+
+import type { EvidenceDetail, SourceState } from './detail.js';
+import { EvidenceDetailSchema } from './detail.js';
+
+interface EvidenceDetailRow {
+  evidence_id: string;
+  provider_id: string;
+  provider_item_id: string;
+  source_record_url: string;
+  content_kind: EvidenceDetail['contentKind'];
+  language: string | null;
+  blocks_json: string;
+  structured_json: string | null;
+  occurred_at: number | null;
+  published_at: number | null;
+  updated_at: number | null;
+  retrieved_at: number;
+  valid_from: number | null;
+  valid_until: number | null;
+  time_basis: string;
+  geography_basis: string;
+  source_status: EvidenceDetail['sourceStatus'];
+  content_truncated: number;
+}
+
+function toEvidenceDetail(row: EvidenceDetailRow): EvidenceDetail {
+  const asIso = (value: number | null): string | undefined => (value === null ? undefined : new Date(value).toISOString());
+  return {
+    evidenceId: row.evidence_id,
+    providerId: row.provider_id,
+    providerItemId: row.provider_item_id,
+    sourceRecordUrl: row.source_record_url,
+    contentKind: row.content_kind,
+    ...(row.language ? { language: row.language } : {}),
+    blocks: JSON.parse(row.blocks_json),
+    ...(row.structured_json ? { structuredData: JSON.parse(row.structured_json) } : {}),
+    ...(asIso(row.occurred_at) ? { occurredAt: asIso(row.occurred_at) } : {}),
+    ...(asIso(row.published_at) ? { publishedAt: asIso(row.published_at) } : {}),
+    ...(asIso(row.updated_at) ? { updatedAt: asIso(row.updated_at) } : {}),
+    retrievedAt: new Date(row.retrieved_at).toISOString(),
+    ...(asIso(row.valid_from) ? { validFrom: asIso(row.valid_from) } : {}),
+    ...(asIso(row.valid_until) ? { validUntil: asIso(row.valid_until) } : {}),
+    timeBasis: row.time_basis,
+    geographyBasis: row.geography_basis,
+    sourceStatus: row.source_status,
+    contentTruncated: row.content_truncated === 1,
+  };
+}
+
+/** Saves detail rows (context-linked). */
+export function saveEvidenceDetails(contextId: string, details: readonly EvidenceDetail[]): void {
+  const db = getDb();
+  const save = db.transaction(() => {
+    details.forEach((raw, index) => {
+      const detail = EvidenceDetailSchema.parse(raw);
+      const retrievedAt = epoch(detail.retrievedAt);
+      if (retrievedAt === null) throw new TypeError('Invalid retrievedAt');
+      db.query('INSERT INTO intel_evidence_details(' + 'evidence_id, provider_id, provider_item_id, source_record_url, content_kind, language, blocks_json, structured_json, occurred_at, published_at, updated_at, retrieved_at, valid_from, valid_until, time_basis, geography_basis, source_status, content_truncated, expires_at' + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(evidence_id) DO UPDATE SET provider_id = excluded.provider_id, provider_item_id = excluded.provider_item_id, source_record_url = excluded.source_record_url, content_kind = excluded.content_kind, language = excluded.language, blocks_json = excluded.blocks_json, structured_json = excluded.structured_json, occurred_at = excluded.occurred_at, published_at = excluded.published_at, updated_at = excluded.updated_at, retrieved_at = excluded.retrieved_at, valid_from = excluded.valid_from, valid_until = excluded.valid_until, time_basis = excluded.time_basis, geography_basis = excluded.geography_basis, source_status = excluded.source_status, content_truncated = excluded.content_truncated, expires_at = excluded.expires_at').run(detail.evidenceId, detail.providerId, detail.providerItemId, detail.sourceRecordUrl, detail.contentKind, detail.language ?? null, JSON.stringify(detail.blocks), detail.structuredData ? JSON.stringify(detail.structuredData) : null, epoch(detail.occurredAt), epoch(detail.publishedAt), epoch(detail.updatedAt), retrievedAt, epoch(detail.validFrom), epoch(detail.validUntil), detail.timeBasis, detail.geographyBasis, detail.sourceStatus, detail.contentTruncated ? 1 : 0, retrievedAt + EVIDENCE_RETENTION);
+      db.query('INSERT INTO intel_context_evidence(context_id, evidence_id, sort_key) VALUES (?, ?, ?) ON CONFLICT(context_id, evidence_id) DO UPDATE SET sort_key = excluded.sort_key').run(contextId, detail.evidenceId, String(index).padStart(6, '0'));
+    });
+  });
+  save();
+}
+
+export function getEvidenceDetails(contextId: string, ids: readonly string[]): EvidenceDetail[] {
+  if (ids.length === 0) return [];
+  const db = getDb();
+  const out: EvidenceDetail[] = [];
+  for (const id of ids) {
+    const row = db.query<EvidenceDetailRow, [string, string]>('SELECT d.evidence_id, d.provider_id, d.provider_item_id, d.source_record_url, d.content_kind, d.language, d.blocks_json, d.structured_json, d.occurred_at, d.published_at, d.updated_at, d.retrieved_at, d.valid_from, d.valid_until, d.time_basis, d.geography_basis, d.source_status, d.content_truncated FROM intel_evidence_details d INNER JOIN intel_context_evidence c ON c.evidence_id = d.evidence_id WHERE c.context_id = ? AND d.evidence_id = ?').get(contextId, id);
+    if (row) out.push(toEvidenceDetail(row));
+  }
+  return out;
+}
+
+interface SourceStateRow {
+  source_id: string;
+  last_checked_at: number | null;
+  last_success_at: number | null;
+  provider_updated_at: number | null;
+  last_error_code: string | null;
+  etag: string | null;
+  last_modified: string | null;
+  retry_at: number | null;
+  cursor: string | null;
+}
+
+export function readSourceState(sourceId: string): SourceState | undefined {
+  const row = getDb().query<SourceStateRow, [string]>('SELECT source_id, last_checked_at, last_success_at, provider_updated_at, last_error_code, etag, last_modified, retry_at, cursor FROM intel_source_states WHERE source_id = ?').get(sourceId);
+  if (!row) return undefined;
+  const asIso = (value: number | null): string | undefined => (value === null ? undefined : new Date(value).toISOString());
+  return {
+    sourceId: row.source_id,
+    ...(asIso(row.last_checked_at) ? { lastCheckedAt: asIso(row.last_checked_at) } : {}),
+    ...(asIso(row.last_success_at) ? { lastSuccessfulFetchAt: asIso(row.last_success_at) } : {}),
+    ...(asIso(row.provider_updated_at) ? { providerUpdatedAt: asIso(row.provider_updated_at) } : {}),
+    ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
+    ...(row.etag ? { etag: row.etag } : {}),
+    ...(row.last_modified ? { lastModified: row.last_modified } : {}),
+    ...(asIso(row.retry_at) ? { retryAt: asIso(row.retry_at) } : {}),
+    ...(row.cursor ? { cursor: row.cursor } : {}),
+  };
+}
+
+export function writeSourceState(state: SourceState): void {
+  const toEpoch = (value: string | undefined): number | null => (value === undefined ? null : epoch(value));
+  getDb().query('INSERT INTO intel_source_states(source_id, last_checked_at, last_success_at, provider_updated_at, last_error_code, etag, last_modified, retry_at, cursor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET last_checked_at = excluded.last_checked_at, last_success_at = excluded.last_success_at, provider_updated_at = excluded.provider_updated_at, last_error_code = excluded.last_error_code, etag = excluded.etag, last_modified = excluded.last_modified, retry_at = excluded.retry_at, cursor = excluded.cursor').run(state.sourceId, toEpoch(state.lastCheckedAt), toEpoch(state.lastSuccessfulFetchAt), toEpoch(state.providerUpdatedAt), state.lastErrorCode ?? null, state.etag ?? null, state.lastModified ?? null, toEpoch(state.retryAt), state.cursor ?? null);
+}
