@@ -1114,6 +1114,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               query: result.originalQuery,
               effectiveQuery: result.effectiveQuery,
               isFallback: result.isFallback,
+              ...((result as any).partial === true
+                ? { partial: true, providerErrors: (result as any).providerErrors || [] }
+                : {}),
               retrievalQueries: (result as any).retrievalQueries || [],
               contributingQueries: (result as any).contributingQueries || [],
               resultsMerged: (result as any).resultsMerged || false,
