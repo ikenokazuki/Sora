@@ -7,6 +7,8 @@ describe('intel contract parity', () => {
     const doc = generateOpenApiDocument() as { paths: Record<string, unknown> };
     expect(doc.paths['/intelligence/country']).toBeDefined();
     expect(doc.paths['/intelligence/context/{contextId}']).toBeDefined();
+    expect(doc.paths['/intelligence/context/{contextId}/evidence']).toBeDefined();
+    expect(doc.paths['/intelligence/context/{contextId}/updates']).toBeDefined();
     expect(buildSoraMcpInstructions()).toContain('research_country_context');
     expect(buildSoraMcpInstructions(['web'])).not.toContain('research_country_context');
   });

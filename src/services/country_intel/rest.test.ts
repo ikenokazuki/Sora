@@ -27,4 +27,16 @@ describe('intelligence REST', () => {
     const missing = await app.request('/intelligence/context/nope');
     expect(missing.status).toBe(404);
   });
+  test('GET serves evidence pages and update diffs', async () => {
+    const page = { contextId: 'ctx-1', items: [], totalStored: 0 };
+    const app = createIntelligenceRoutes({ research: (async () => report) as never, retrieve: (() => report) as never, page: (() => page) as never, updates: (() => ({ contextId: 'ctx-1', changes: [] })) as never });
+    const evidence = await app.request('/intelligence/context/ctx-1/evidence?limit=10');
+    expect(evidence.status).toBe(200);
+    expect((await evidence.json() as { totalStored: number }).totalStored).toBe(0);
+    const badLimit = await app.request('/intelligence/context/ctx-1/evidence?limit=500');
+    expect(badLimit.status).toBe(400);
+    const updates = await app.request('/intelligence/context/ctx-1/updates');
+    expect(updates.status).toBe(200);
+    expect((await updates.json() as { changes: unknown[] }).changes).toEqual([]);
+  });
 });
