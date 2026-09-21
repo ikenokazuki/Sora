@@ -144,4 +144,29 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
     )`,
     'CREATE INDEX idx_calendar_region_event ON intel_calendar_events(region_id, event_at)',
   ],
+},
+{
+  version: 2,
+  name: 'metric observations for baseline-eligible history',
+  statements: [
+    `CREATE TABLE intel_metric_observations (
+      region_id TEXT NOT NULL,
+      metric_key TEXT NOT NULL,
+      metric_kind TEXT NOT NULL,
+      window TEXT NOT NULL,
+      bucket_start INTEGER,
+      bucket_end INTEGER,
+      observed_at INTEGER NOT NULL,
+      current_value REAL NOT NULL,
+      origin TEXT NOT NULL,
+      baseline_eligible INTEGER NOT NULL,
+      provider_ids_json TEXT,
+      evidence_ids_json TEXT,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY(region_id, metric_key, window, bucket_end, origin, observed_at)
+    )`,
+    'CREATE INDEX idx_metric_obs_region_key_bucket ON intel_metric_observations(region_id, metric_key, bucket_end)',
+    'CREATE INDEX idx_metric_obs_region_observed ON intel_metric_observations(region_id, observed_at)',
+    'CREATE INDEX idx_metric_obs_expires ON intel_metric_observations(expires_at)',
+  ],
 }];
