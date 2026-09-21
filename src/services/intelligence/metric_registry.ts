@@ -14,6 +14,7 @@ const DEFINITIONS: readonly MetricDefinition[] = Object.freeze([
   { key: 'media_article_count', kind: 'count', baselineMode: 'provider_history', minBaselineSamples: 14 },
   { key: 'media_cluster_count', kind: 'count', baselineMode: 'provider_history', minBaselineSamples: 14 },
   { key: 'social_observation_count', kind: 'count', baselineMode: 'provider_history', minBaselineSamples: 14 },
+  { key: 'calendar_event_count', kind: 'count', baselineMode: 'provider_history', minBaselineSamples: 14 },
   { key: 'primary_source_ratio', kind: 'share', baselineMode: 'provider_history', minBaselineSamples: 14 },
   { key: 'source_diversity', kind: 'level', baselineMode: 'none', minBaselineSamples: 14 },
   // World Bank GDP 等の level は、そのまま異常度へ変換しない。
