@@ -28,6 +28,39 @@ export interface ResearchDependencies {
   sourceVerifier?: (source: CountrySource) => Promise<CountrySource>;
 }
 
+const RUN_SEVERITY: Record<ProviderRun['status'], number> = {
+  error: 5,
+  rate_limited: 4,
+  unavailable: 3,
+  partial: 2,
+  success: 1,
+};
+
+/** pass 別の run を provider 単位に集約する。件数は加算し、状態は深刻な方を残す。 */
+export function mergeProviderRuns(runs: readonly ProviderRun[]): ProviderRun[] {
+  const byProvider = new Map<string, ProviderRun[]>();
+  for (const run of runs) {
+    const list = byProvider.get(run.provider) ?? [];
+    list.push(run);
+    byProvider.set(run.provider, list);
+  }
+  return [...byProvider.values()].map((group) => {
+    if (group.length === 1) return group[0];
+    const worst = group.reduce((left, right) =>
+      RUN_SEVERITY[right.status] > RUN_SEVERITY[left.status] ? right : left);
+    return {
+      provider: group[0].provider,
+      startedAt: group.map((run) => run.startedAt).sort()[0],
+      finishedAt: group.map((run) => run.finishedAt ?? run.startedAt).sort().at(-1),
+      status: worst.status,
+      itemCount: group.reduce((sum, run) => sum + run.itemCount, 0),
+      coverage: [...new Set(group.flatMap((run) => run.coverage ?? []))],
+      latencyMs: group.reduce((sum, run) => sum + (run.latencyMs ?? 0), 0),
+      ...(worst.errorCode ? { errorCode: worst.errorCode } : {}),
+    };
+  });
+}
+
 export function getPersistedCountryContext(contextId: string): CountryContextReport | undefined {
   return getCountryContext(contextId);
 }
@@ -85,7 +118,7 @@ export async function researchCountryContext(
   const pass2 = await runProviderPass(pass2Plan, 2, providers, runOptions);
 
   const mergedItems: AcquiredItem[] = [...pass1.items, ...pass2.items];
-  const mergedRuns: ProviderRun[] = [...pass1.runs, ...pass2.runs];
+  const mergedRuns: ProviderRun[] = mergeProviderRuns([...pass1.runs, ...pass2.runs]);
   const acquisition = { items: mergedItems, runs: mergedRuns };
 
   const evidence = deduplicateEvidence(acquisition.items.flatMap((wrapped) => (wrapped.item.evidence ? [wrapped.item.evidence] : [])));
