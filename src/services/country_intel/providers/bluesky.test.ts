@@ -33,7 +33,7 @@ describe('bluesky', () => {
 
   test('unconfigured social reports not_configured instead of silence', async () => {
     const provider = createBlueskyProvider();
-    const region = { id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [], confidence: 'high' } as const;
+    const region = { id: 'country:CN', name: 'China', countryCode: 'CN' as string, languages: [] as string[], aliases: [] as string[], confidence: 'high' as const };
     const quiet = await provider.run({ request: { region: 'CN' } as never, region, queries: [] }, new AbortController().signal);
     expect(quiet.items).toEqual([]);
     expect(quiet.status).toBeUndefined();

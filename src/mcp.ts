@@ -2042,7 +2042,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       async (opts) => {
         try {
           const { getEvidencePage } = await import('./services/country_intel/db.js');
-          const result = getEvidencePage(opts.contextId, { evidenceIds: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
+          const result = getEvidencePage(opts.contextId, { ids: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
           const text = JSON.stringify(result, null, 2);
           return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
