@@ -23,3 +23,5 @@ EXPOSE 8000
 # デフォルトは stdio MCP サーバー（Glama / AI クライアント用）
 # HTTP サーバーとして起動する場合は CMD ["bun", "run", "src/index.ts"]
 CMD ["bun", "run", "src/stdio.ts"]
+
+VOLUME ["/data"]

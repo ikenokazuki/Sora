@@ -52,7 +52,7 @@ import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpRespons
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
@@ -207,6 +207,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const hasMusic = hasMod('music');
   const hasGov = hasMod('gov');
   const hasTrade = hasMod('trade');
+  const hasIntel = hasMod('intel');
 
   const lines: string[] = [
     '# Sora MCP Server - AI Interaction & Tool Routing Guidelines',
@@ -286,6 +287,11 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
     );
   }
+  if (hasIntel) {
+    tier1Directives.push(
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): 'research_country_context' is a deferred tool (hidden by default). You MUST first call 'search_tools' with query '国地域' to dynamically activate it, then call 'research_country_context'.",
+    );
+  }
 
   if (tier1Directives.length > 0) {
     lines.push(
@@ -351,6 +357,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableGov = isModuleActive('gov', options?.modules);
   const shouldEnableTrade = isModuleActive('trade', options?.modules);
   const shouldEnableMedia = isModuleActive('media', options?.modules) || isModuleActive('web', options?.modules);
+  const shouldEnableIntel = isModuleActive('intel', options?.modules);
 
   // =========================================================================
   // 🌐 Category 1: Core Web & Crawling (モジュール: 'web')
@@ -1939,6 +1946,38 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
       { defaultEnabled: deferredDefault, keywords: ['画像', 'チラシ', 'タイムテーブル', '告知', 'ポスター', '写真', 'スクリーンショット', '視覚', 'inspect', 'image', 'media'] },
+    );
+  }
+
+  // =========================================================================
+  // 🌍 Category 9: Country & Region Intelligence (モジュール: 'intel')
+  // =========================================================================
+  if (shouldEnableIntel) {
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'research_country_context',
+      'intel',
+      '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・カレンダー・世論調査・対日関係を証拠付き構造化レポートとして取得します。感情・敵意・リスク判定なし。返却: CountryContextReport',
+      {
+        region: z.string().min(1).describe('国・地域名またはコード (例: "South Korea", "KR", "台湾")'),
+        query: z.string().optional().describe('追加の調査クエリ'),
+        topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
+        period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
+        includeSocial: z.boolean().optional().describe('Yahoo realtime 由来の social 観測を含めるか'),
+        noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+        verbose: z.boolean().optional().describe('詳細出力を要求するか'),
+      },
+      async (opts) => {
+        try {
+          const { researchCountryContext } = await import('./services/country_intel/report.js');
+          const result = await researchCountryContext(opts as never);
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: `Country intelligence error: ${err instanceof Error ? err.message : err}` }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', 'カントリー', 'country', '地域情勢', '海外情勢', 'intel', 'intelligence', 'コンテキスト'] },
     );
   }
 
