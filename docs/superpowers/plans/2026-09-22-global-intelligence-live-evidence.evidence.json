@@ -1,0 +1,586 @@
+{
+  "kind": "read_only_feasibility_measurements",
+  "baseCommit": "a6ecb7c",
+  "notProductionImplementation": true,
+  "notes": [
+    "One sample per source and environment; not p95 or an availability SLA.",
+    "HTTP 200 is not proof of current content or complete geographic coverage.",
+    "Feed timestamp extraction in the probe is heuristic; adapter tests must validate exact timestamp semantics.",
+    "No Yahoo Realtime endpoint was requested.",
+    "No post text or social account identifiers were retained."
+  ],
+  "http": [
+    {
+      "environment": "host",
+      "checkedAt": "2026-09-21T18:25:42.019Z",
+      "timeoutMs": 20000,
+      "concurrency": 3,
+      "results": [
+        {
+          "name": "usgs",
+          "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
+          "startedAt": "2026-09-21T18:25:24.501Z",
+          "finishedAt": "2026-09-21T18:25:24.835Z",
+          "status": 200,
+          "latencyMs": 334,
+          "bytes": 2402,
+          "contentType": "application/json; charset=utf-8",
+          "lastModified": "Mon, 21 Sep 2026 18:24:48 GMT",
+          "retryAfter": null,
+          "itemCount": 3,
+          "providerGeneratedAt": "2026-09-21T18:24:48.000Z",
+          "latestRecordAt": "2026-09-21T18:16:19.560Z",
+          "timestampMeaning": "record updated"
+        },
+        {
+          "name": "gdelt_updates",
+          "url": "https://data.gdeltproject.org/gdeltv2/lastupdate.txt",
+          "startedAt": "2026-09-21T18:25:24.502Z",
+          "finishedAt": "2026-09-21T18:25:24.698Z",
+          "status": 200,
+          "latencyMs": 196,
+          "bytes": 320,
+          "contentType": "text/plain",
+          "lastModified": "Mon, 21 Sep 2026 18:20:36 GMT",
+          "retryAfter": null,
+          "latestRecordAt": "2026-09-21T18:30:00Z",
+          "exportUrl": "http://data.gdeltproject.org/gdeltv2/20260921183000.export.CSV.zip"
+        },
+        {
+          "name": "gdacs_rss",
+          "url": "https://www.gdacs.org/xml/rss.xml",
+          "startedAt": "2026-09-21T18:25:24.502Z",
+          "finishedAt": "2026-09-21T18:25:28.684Z",
+          "status": 200,
+          "latencyMs": 4183,
+          "bytes": 1264997,
+          "contentType": "application/xml",
+          "lastModified": "Mon, 21 Sep 2026 18:16:01 GMT",
+          "retryAfter": null,
+          "itemCount": 414,
+          "latestRecordAt": "2026-09-21T18:15:03.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "eonet",
+          "url": "https://eonet.gsfc.nasa.gov/api/v3/events?limit=5&days=30",
+          "startedAt": "2026-09-21T18:25:28.694Z",
+          "finishedAt": "2026-09-21T18:25:29.783Z",
+          "status": 200,
+          "latencyMs": 1089,
+          "bytes": 21429,
+          "contentType": "application/rss+xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 5,
+          "latestRecordAt": "2026-09-21T12:00:00.000Z",
+          "timestampMeaning": "geometry observation; not publication time"
+        },
+        {
+          "name": "bbc_world",
+          "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+          "startedAt": "2026-09-21T18:25:28.694Z",
+          "finishedAt": "2026-09-21T18:25:28.769Z",
+          "status": 200,
+          "latencyMs": 75,
+          "bytes": 24920,
+          "contentType": "text/xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 32,
+          "latestRecordAt": "2026-09-21T17:48:23.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "un_news",
+          "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+          "startedAt": "2026-09-21T18:25:28.694Z",
+          "finishedAt": "2026-09-21T18:25:28.740Z",
+          "status": 200,
+          "latencyMs": 46,
+          "bytes": 33581,
+          "contentType": "application/rss+xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 30,
+          "latestRecordAt": "2026-09-21T12:00:00.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "who_news",
+          "url": "https://www.who.int/rss-feeds/news-english.xml",
+          "startedAt": "2026-09-21T18:25:29.784Z",
+          "finishedAt": "2026-09-21T18:25:30.115Z",
+          "status": 200,
+          "latencyMs": 331,
+          "bytes": 140952,
+          "contentType": "application/rss+xml",
+          "lastModified": "Mon, 21 Sep 2026 10:13:49 GMT",
+          "retryAfter": null,
+          "itemCount": 25,
+          "latestRecordAt": "2026-02-25T18:06:55.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "ecb_press",
+          "url": "https://www.ecb.europa.eu/rss/press.html",
+          "startedAt": "2026-09-21T18:25:29.784Z",
+          "finishedAt": "2026-09-21T18:25:30.545Z",
+          "status": 200,
+          "latencyMs": 761,
+          "bytes": 5678,
+          "contentType": "application/rss+xml",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 15,
+          "latestRecordAt": "2026-09-21T10:00:00.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "gdelt_doc",
+          "url": "https://api.gdeltproject.org/api/v2/doc/doc?query=China&mode=ArtList&format=json&maxrecords=10&timespan=24h",
+          "startedAt": "2026-09-21T18:25:29.784Z",
+          "finishedAt": "2026-09-21T18:25:42.018Z",
+          "status": 429,
+          "latencyMs": 12235,
+          "bytes": 444,
+          "contentType": null,
+          "lastModified": null,
+          "retryAfter": null,
+          "errorExcerpt": "Please limit requests to one every 5 seconds or contact kalev.leetaru5@gmail.com for larger queries. All high-traffic users should switch to our ngrams dataset: https://blog.gdeltproject.org/using-the-new-web-ngrams-dataset-to-find-relevant"
+        }
+      ]
+    },
+    {
+      "environment": "container",
+      "checkedAt": "2026-09-21T18:26:06.020Z",
+      "timeoutMs": 20000,
+      "concurrency": 3,
+      "results": [
+        {
+          "name": "usgs",
+          "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
+          "startedAt": "2026-09-21T18:25:46.174Z",
+          "finishedAt": "2026-09-21T18:25:46.515Z",
+          "status": 200,
+          "latencyMs": 341,
+          "bytes": 2402,
+          "contentType": "application/json; charset=utf-8",
+          "lastModified": "Mon, 21 Sep 2026 18:24:48 GMT",
+          "retryAfter": null,
+          "itemCount": 3,
+          "providerGeneratedAt": "2026-09-21T18:24:48.000Z",
+          "latestRecordAt": "2026-09-21T18:16:19.560Z",
+          "timestampMeaning": "record updated"
+        },
+        {
+          "name": "gdelt_updates",
+          "url": "https://data.gdeltproject.org/gdeltv2/lastupdate.txt",
+          "startedAt": "2026-09-21T18:25:46.174Z",
+          "finishedAt": "2026-09-21T18:25:46.376Z",
+          "status": 200,
+          "latencyMs": 203,
+          "bytes": 320,
+          "contentType": "text/plain",
+          "lastModified": "Mon, 21 Sep 2026 18:20:36 GMT",
+          "retryAfter": null,
+          "latestRecordAt": "2026-09-21T18:30:00Z",
+          "exportUrl": "http://data.gdeltproject.org/gdeltv2/20260921183000.export.CSV.zip"
+        },
+        {
+          "name": "gdacs_rss",
+          "url": "https://www.gdacs.org/xml/rss.xml",
+          "startedAt": "2026-09-21T18:25:46.174Z",
+          "finishedAt": "2026-09-21T18:25:49.385Z",
+          "status": 200,
+          "latencyMs": 3211,
+          "bytes": 1264997,
+          "contentType": "application/xml",
+          "lastModified": "Mon, 21 Sep 2026 18:16:01 GMT",
+          "retryAfter": null,
+          "itemCount": 414,
+          "latestRecordAt": "2026-09-21T18:15:03.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "eonet",
+          "url": "https://eonet.gsfc.nasa.gov/api/v3/events?limit=5&days=30",
+          "startedAt": "2026-09-21T18:25:49.390Z",
+          "finishedAt": "2026-09-21T18:25:50.411Z",
+          "status": 200,
+          "latencyMs": 1021,
+          "bytes": 21429,
+          "contentType": "application/rss+xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 5,
+          "latestRecordAt": "2026-09-21T12:00:00.000Z",
+          "timestampMeaning": "geometry observation; not publication time"
+        },
+        {
+          "name": "bbc_world",
+          "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+          "startedAt": "2026-09-21T18:25:49.390Z",
+          "finishedAt": "2026-09-21T18:25:49.448Z",
+          "status": 200,
+          "latencyMs": 59,
+          "bytes": 24920,
+          "contentType": "text/xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 32,
+          "latestRecordAt": "2026-09-21T17:48:23.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "un_news",
+          "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+          "startedAt": "2026-09-21T18:25:49.390Z",
+          "finishedAt": "2026-09-21T18:25:49.401Z",
+          "status": 200,
+          "latencyMs": 12,
+          "bytes": 33581,
+          "contentType": "application/rss+xml; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 30,
+          "latestRecordAt": "2026-09-21T12:00:00.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "who_news",
+          "url": "https://www.who.int/rss-feeds/news-english.xml",
+          "startedAt": "2026-09-21T18:25:50.412Z",
+          "finishedAt": "2026-09-21T18:25:50.474Z",
+          "status": 200,
+          "latencyMs": 62,
+          "bytes": 140952,
+          "contentType": "application/rss+xml",
+          "lastModified": "Mon, 21 Sep 2026 10:13:49 GMT",
+          "retryAfter": null,
+          "itemCount": 25,
+          "latestRecordAt": "2026-02-25T18:06:55.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "ecb_press",
+          "url": "https://www.ecb.europa.eu/rss/press.html",
+          "startedAt": "2026-09-21T18:25:50.412Z",
+          "finishedAt": "2026-09-21T18:25:50.952Z",
+          "status": 200,
+          "latencyMs": 540,
+          "bytes": 5678,
+          "contentType": "application/rss+xml",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 15,
+          "latestRecordAt": "2026-09-21T10:00:00.000Z",
+          "timestampMeaning": "latest parseable feed publication/update tag; provider semantics require adapter validation",
+          "validFeed": true
+        },
+        {
+          "name": "gdelt_doc",
+          "url": "https://api.gdeltproject.org/api/v2/doc/doc?query=China&mode=ArtList&format=json&maxrecords=10&timespan=24h",
+          "startedAt": "2026-09-21T18:25:50.412Z",
+          "finishedAt": "2026-09-21T18:26:06.020Z",
+          "status": 200,
+          "latencyMs": 15608,
+          "bytes": 3579,
+          "contentType": "application/json; charset=utf-8",
+          "lastModified": null,
+          "retryAfter": null,
+          "itemCount": 10,
+          "latestRecordAt": "2026-09-21T13:00:00.000Z",
+          "timestampMeaning": "GDELT seen time; not publisher publication time"
+        }
+      ]
+    }
+  ],
+  "social": [
+    {
+      "environment": "host",
+      "url": "wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents?collections=app.bsky.feed.post&kinds=commit",
+      "startedAt": "2026-09-21T18:26:33.353Z",
+      "finishedAt": "2026-09-21T18:26:33.818Z",
+      "status": "received_live_records",
+      "opened": true,
+      "messages": 5,
+      "commits": 5,
+      "firstEventMs": 455,
+      "latestTime": "2026-09-21T18:26:33.764350Z",
+      "durationMs": 465
+    },
+    {
+      "environment": "container",
+      "url": "wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents?collections=app.bsky.feed.post&kinds=commit",
+      "startedAt": "2026-09-21T18:26:33.996Z",
+      "finishedAt": "2026-09-21T18:26:34.413Z",
+      "status": "received_live_records",
+      "opened": true,
+      "messages": 5,
+      "commits": 5,
+      "firstEventMs": 381,
+      "latestTime": "2026-09-21T18:26:34.358803Z",
+      "durationMs": 417
+    }
+  ],
+  "supplemental": [
+    {
+      "name": "usgs_second",
+      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
+      "startedAt": "2026-09-21T18:27:01.314974+00:00",
+      "status": 200,
+      "latencyMs": 372,
+      "bytes": 2402,
+      "contentType": "application/json; charset=utf-8",
+      "generatedAt": "2026-09-21T18:26:23+00:00",
+      "itemCount": 3
+    },
+    {
+      "name": "france24_fr",
+      "url": "https://www.france24.com/fr/rss",
+      "startedAt": "2026-09-21T18:27:01.316532+00:00",
+      "error": "HTTP Error 403: Forbidden",
+      "latencyMs": 97
+    },
+    {
+      "name": "dw_de",
+      "url": "https://rss.dw.com/rdf/rss-de-all",
+      "startedAt": "2026-09-21T18:27:01.316893+00:00",
+      "status": 200,
+      "latencyMs": 488,
+      "bytes": 257563,
+      "contentType": "text/xml; charset=UTF-8",
+      "itemCount": 88,
+      "dates": [
+        "2026-09-21T18:26:03Z",
+        "2026-09-21T13:21:00Z",
+        "2026-09-21T12:23:00Z"
+      ]
+    },
+    {
+      "name": "who_don",
+      "url": "https://www.who.int/emergencies/disease-outbreak-news",
+      "startedAt": "2026-09-21T18:27:01.415944+00:00",
+      "error": "HTTP Error 403: Forbidden",
+      "latencyMs": 67
+    },
+    {
+      "name": "bsky_search",
+      "url": "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=China&sort=latest&limit=5",
+      "startedAt": "2026-09-21T18:27:01.485245+00:00",
+      "error": "HTTP Error 403: Forbidden",
+      "latencyMs": 72
+    }
+  ],
+  "articleExtraction": [
+    {
+      "name": "bbc",
+      "url": "https://www.bbc.co.uk/news/articles/cw4gm7l742dmo?at_medium=RSS&at_campaign=rss",
+      "status": 200,
+      "ms": 312,
+      "extractedCharacters": 6079,
+      "paragraphs": 36
+    },
+    {
+      "name": "un",
+      "url": "https://news.un.org/feed/view/en/story/2026/09/1168386",
+      "status": 200,
+      "ms": 389,
+      "extractedCharacters": 3026,
+      "paragraphs": 15
+    }
+  ],
+  "sqlite": {
+    "path": "./data/sora.db",
+    "quickCheck": [
+      {
+        "quick_check": "ok"
+      }
+    ],
+    "journalMode": [
+      {
+        "journal_mode": "wal"
+      }
+    ],
+    "tables": [
+      "intel_reports",
+      "intel_provider_runs",
+      "intel_evidence",
+      "intel_events",
+      "intel_event_evidence",
+      "intel_poll_observations",
+      "intel_daily_metrics",
+      "intel_calendar_events",
+      "intel_metric_observations"
+    ],
+    "reportCount": {
+      "count": 1
+    },
+    "workingDirectory": "/app",
+    "resolvedPath": "/app/data/sora.db",
+    "volumeDestination": "/data",
+    "databaseOnMountedVolume": false,
+    "checkMode": "readonly"
+  },
+  "socialConfirmation": {
+    "environment": "host",
+    "url": "wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents?collections=app.bsky.feed.post&kinds=commit",
+    "startedAt": "2026-09-21T18:43:22.835Z",
+    "finishedAt": "2026-09-21T18:43:23.308Z",
+    "status": "received_live_records",
+    "opened": true,
+    "messages": 5,
+    "commits": 5,
+    "operations": {
+      "create": 5,
+      "update": 0,
+      "delete": 0
+    },
+    "firstEventMs": 379,
+    "latestTime": "2026-09-21T18:43:23.253392Z",
+    "durationMs": 473
+  },
+  "acceptance": {
+    "date": "2026-09-22",
+    "stubbedReport40": {
+      "n": 30,
+      "p50ms": 10,
+      "p95ms": 17
+    },
+    "liveChina30d": {
+      "asOf": "2026-09-21T19:40:13.983Z",
+      "schemaVersion": "2",
+      "coverage": "partial",
+      "providers": [
+        {
+          "p": "gdelt",
+          "s": "success",
+          "n": 25,
+          "ms": 15121
+        },
+        {
+          "p": "gdelt_export",
+          "s": "unavailable",
+          "n": 0,
+          "ms": 514,
+          "e": "PROVIDER_HTTP_5XX"
+        },
+        {
+          "p": "gdacs",
+          "s": "unavailable",
+          "n": 0,
+          "ms": 25001,
+          "e": "PROVIDER_TIMEOUT"
+        },
+        {
+          "p": "usgs",
+          "s": "success",
+          "n": 248,
+          "ms": 373
+        },
+        {
+          "p": "eonet",
+          "s": "success",
+          "n": 50,
+          "ms": 1480
+        },
+        {
+          "p": "global_feeds",
+          "s": "success",
+          "n": 77,
+          "ms": 984
+        },
+        {
+          "p": "bluesky",
+          "s": "success",
+          "n": 0,
+          "ms": 2
+        },
+        {
+          "p": "worldbank",
+          "s": "unavailable",
+          "n": 0,
+          "ms": 25001,
+          "e": "PROVIDER_TIMEOUT"
+        },
+        {
+          "p": "nager",
+          "s": "success",
+          "n": 6,
+          "ms": 87
+        },
+        {
+          "p": "wikidata",
+          "s": "success",
+          "n": 0,
+          "ms": 804
+        }
+      ],
+      "evidence": 400,
+      "keyEvents": 377,
+      "calendar": 6,
+      "metrics": [],
+      "limitations": [
+        {
+          "code": "provider_unavailable",
+          "area": "current_events,historical_context",
+          "providerId": "gdelt_export",
+          "message": "gdelt_export unavailable PROVIDER_HTTP_5XX",
+          "evidenceIds": []
+        },
+        {
+          "code": "provider_unavailable",
+          "area": "disasters",
+          "providerId": "gdacs",
+          "message": "gdacs unavailable PROVIDER_TIMEOUT",
+          "evidenceIds": []
+        },
+        {
+          "code": "provider_unavailable",
+          "area": "economy,historical_context",
+          "providerId": "worldbank",
+          "message": "worldbank unavailable PROVIDER_TIMEOUT",
+          "evidenceIds": []
+        }
+      ],
+      "refreshState": {
+        "state": "partial",
+        "refreshId": "9ff2e720-da79-44b6-9873-db4090d474aa"
+      },
+      "windows": [
+        {
+          "from": "2026-08-22T19:40:13.983Z",
+          "to": "2026-09-21T19:40:13.983Z",
+          "complete": false,
+          "gaps": [
+            {
+              "from": "2026-08-22T19:40:13.983Z",
+              "to": "2026-09-21T19:40:13.983Z",
+              "reason": "gdelt_export:unavailable"
+            },
+            {
+              "from": "2026-08-22T19:40:13.983Z",
+              "to": "2026-09-21T19:40:13.983Z",
+              "reason": "gdacs:unavailable"
+            },
+            {
+              "from": "2026-08-22T19:40:13.983Z",
+              "to": "2026-09-21T19:40:13.983Z",
+              "reason": "worldbank:unavailable"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
