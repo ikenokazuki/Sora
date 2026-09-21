@@ -14,6 +14,6 @@ export function buildContentView(input: DomainViewInput): ContentContextView {
     attention: pick(input.signals, ['media_article_count', 'media_cluster_count', 'event_cluster_count']),
     disaster: pick(input.signals, ['disaster_event_count']),
     socialActivity: pick(input.signals, ['social_observation_count', 'protest_event_count']),
-    calendar: [],
+    calendar: pick(input.signals, ['calendar_event_count']),
   };
 }

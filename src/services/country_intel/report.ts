@@ -177,7 +177,7 @@ export async function researchCountryContext(
     regionId: region.id,
     window: request.period,
     observedAt: nowDate.toISOString(),
-  });
+  }, calendar);
   saveMetricObservations(observations.map((observation) => ({
     regionId: observation.regionId,
     metricKey: observation.metricKey,
