@@ -2,6 +2,8 @@ import type { Database } from 'bun:sqlite';
 import { statSync } from 'fs';
 import { applyMigrations, getDb } from '../../db.js';
 import { COUNTRY_INTEL_MIGRATIONS } from './migrations.js';
+import { isBaselineEligible } from '../intelligence/observations.js';
+import type { MetricKind, ObservationOrigin } from '../intelligence/types.js';
 import type {
   CalendarEvent,
   CountryContextReport,
@@ -307,6 +309,150 @@ export function getCountryContext(contextId: string): CountryContextReport | und
     'SELECT report_json FROM intel_reports WHERE context_id = ?',
   ).get(contextId);
   return row ? JSON.parse(row.report_json) as CountryContextReport : undefined;
+}
+
+interface CountrySourceRow {
+  id: string;
+  region_id: string;
+  domain: string;
+  source_type: string;
+  discovered_at: number;
+  verified_at: number | null;
+  verification_status: CountrySource['verificationStatus'];
+  discovery_method: CountrySource['discoveryMethod'];
+}
+
+/** 指定 region で検証済みの source を返す。pass2 計画の入力に使う。 */
+export function getVerifiedCountrySources(regionId: string): CountrySource[] {
+  const rows = getDb().query<CountrySourceRow, [string]>(
+    `SELECT id, region_id, domain, source_type, discovered_at, verified_at,
+      verification_status, discovery_method
+     FROM country_sources
+     WHERE region_id = ? AND verification_status = 'verified'
+     ORDER BY verified_at DESC`,
+  ).all(regionId);
+  return rows.map((row) => ({
+    id: row.id,
+    regionId: row.region_id,
+    domain: row.domain,
+    sourceType: row.source_type,
+    discoveredAt: new Date(row.discovered_at).toISOString(),
+    ...(row.verified_at !== null ? { verifiedAt: new Date(row.verified_at).toISOString() } : {}),
+    verificationStatus: row.verification_status,
+    discoveryMethod: row.discovery_method,
+  }));
+}
+
+export interface MetricObservationInput {
+  regionId: string;
+  metricKey: string;
+  metricKind: MetricKind;
+  window: string;
+  bucketStart?: string | number;
+  bucketEnd?: string | number;
+  observedAt: string | number;
+  currentValue: number;
+  origin: ObservationOrigin;
+  providerIds?: readonly string[];
+  evidenceIds?: readonly string[];
+  expiresAt?: number;
+}
+
+export interface StoredMetricObservation extends MetricObservationInput {
+  baselineEligible: boolean;
+  expiresAt: number;
+}
+
+function epochOrDay(value: string | number | undefined): number | null {
+  if (value === undefined) return null;
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null;
+  const asDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (asDay) return Date.parse(`${asDay[1]}-${asDay[2]}-${asDay[3]}T00:00:00Z`);
+  return epoch(value);
+}
+
+const OBSERVATION_RETENTION = 2 * 365 * DAY;
+
+/** 観測を保存する。同一次元の再送は置換し、sample を水増ししない。 */
+export function saveMetricObservations(inputs: readonly MetricObservationInput[]): void {
+  const db = getDb();
+  const save = db.transaction(() => {
+    for (const input of inputs) {
+      const observedAt = epoch(input.observedAt);
+      if (observedAt === null) throw new TypeError(`Invalid observedAt: ${input.observedAt}`);
+      db.query(`INSERT INTO intel_metric_observations(
+        region_id, metric_key, metric_kind, window, bucket_start, bucket_end,
+        observed_at, current_value, origin, baseline_eligible,
+        provider_ids_json, evidence_ids_json, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(region_id, metric_key, window, bucket_end, origin, observed_at) DO UPDATE SET
+        metric_kind = excluded.metric_kind, current_value = excluded.current_value,
+        baseline_eligible = excluded.baseline_eligible,
+        provider_ids_json = excluded.provider_ids_json, evidence_ids_json = excluded.evidence_ids_json,
+        expires_at = excluded.expires_at`)
+        .run(
+          input.regionId, input.metricKey, input.metricKind, input.window,
+          epochOrDay(input.bucketStart), epochOrDay(input.bucketEnd), observedAt, input.currentValue,
+          input.origin, isBaselineEligible(input.origin) ? 1 : 0,
+          json(input.providerIds ?? []), json(input.evidenceIds ?? []),
+          input.expiresAt ?? observedAt + OBSERVATION_RETENTION,
+        );
+    }
+  });
+  save();
+}
+
+interface MetricObservationRow {
+  region_id: string;
+  metric_key: string;
+  metric_kind: MetricKind;
+  window: string;
+  bucket_start: number | null;
+  bucket_end: number | null;
+  observed_at: number;
+  current_value: number;
+  origin: ObservationOrigin;
+  baseline_eligible: number;
+  provider_ids_json: string | null;
+  evidence_ids_json: string | null;
+  expires_at: number;
+}
+
+/** baseline 対象の観測だけを bucket 順に返す。ad-hoc は除外する。 */
+export function queryBaselineObservations(
+  regionId: string,
+  metricKey: string,
+  window: string,
+): StoredMetricObservation[] {
+  const rows = getDb().query<MetricObservationRow, [string, string, string]>(
+    `SELECT region_id, metric_key, metric_kind, window, bucket_start, bucket_end,
+      observed_at, current_value, origin, baseline_eligible,
+      provider_ids_json, evidence_ids_json, expires_at
+     FROM intel_metric_observations
+     WHERE region_id = ? AND metric_key = ? AND window = ? AND baseline_eligible = 1
+     ORDER BY bucket_end ASC, observed_at ASC`,
+  ).all(regionId, metricKey, window);
+  return rows.map((row) => ({
+    regionId: row.region_id,
+    metricKey: row.metric_key,
+    metricKind: row.metric_kind,
+    window: row.window,
+    ...(row.bucket_start !== null ? { bucketStart: row.bucket_start } : {}),
+    ...(row.bucket_end !== null ? { bucketEnd: row.bucket_end } : {}),
+    observedAt: row.observed_at,
+    currentValue: row.current_value,
+    origin: row.origin,
+    providerIds: row.provider_ids_json ? JSON.parse(row.provider_ids_json) : [],
+    evidenceIds: row.evidence_ids_json ? JSON.parse(row.evidence_ids_json) : [],
+    baselineEligible: row.baseline_eligible === 1,
+    expiresAt: row.expires_at,
+  }));
+}
+
+/** 期限切れの観測を削除する。有効な履歴 baseline は残す。 */
+export function pruneMetricObservations(now = Date.now()): number {
+  const result = getDb().query(`DELETE FROM intel_metric_observations WHERE expires_at < ?`).run(now);
+  return Number(result.changes ?? 0);
 }
 
 export function pruneCountryIntel(now = Date.now()): CountryIntelPruneResult {
