@@ -1,3 +1,11 @@
+# Global Intelligence v2 — live evidence without Yahoo realtime (unreleased)
+
+Country Intelligence restores event content instead of counts: GDACS real-shape parsing (url objects, affected countries, severity), GDELT Events export ingestion with region filtering and honest period gaps, USGS/EONET/global feeds, 6 World Bank indicators with full series, holiday scope details, and article-body extraction.
+
+- Report v2 (schemaVersion 2, additive): domainContext facts per domain, provider limitations, refreshState, actualWindows with gaps, persisted evidence details with cursor paging and change diffs.
+- MCP intel: research_country_context now returns text JSON plus validated structuredContent; new get_country_context, get_country_context_evidence, get_country_context_updates. REST adds the matching evidence and updates endpoints. Yahoo realtime is never used on this path.
+- Collection durability: evidence details, source cursors, and change history persist (migration v3); single-owner collector lease; stale/unknown/clock-anomaly freshness instead of silent success.
+
 # 🧭 Sora Release v2.27.0
 
 ## Xリアルタイム検索の直接JSON移行 (unreleased)

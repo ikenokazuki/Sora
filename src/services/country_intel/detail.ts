@@ -107,3 +107,25 @@ export interface ContextUpdates {
   changes: ContextChange[];
   nextCursor?: string;
 }
+
+export const EvidencePageSchema = z.object({
+  contextId: z.string(),
+  items: z.array(EvidenceDetailSchema),
+  totalStored: z.number(),
+  nextCursor: z.string().optional(),
+});
+
+export const ContextChangeSchema = z.object({
+  id: z.string(),
+  contextId: z.string(),
+  observedAt: z.string(),
+  changeKind: z.string(),
+  evidenceId: z.string().optional(),
+  summary: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const ContextUpdatesSchema = z.object({
+  contextId: z.string(),
+  changes: z.array(ContextChangeSchema),
+  nextCursor: z.string().optional(),
+});

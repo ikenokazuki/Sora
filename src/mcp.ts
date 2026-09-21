@@ -1,5 +1,5 @@
 import { McpServer, type RegisteredTool, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import {
@@ -51,6 +51,8 @@ import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_forma
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
+import { CountryContextReportSchema, type CountryContextReport } from './services/country_intel/types.js';
+import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -58,6 +60,7 @@ export type GhostFetchModule = SoraModule; // backward-compatibility alias
 export interface McpServerOptions {
   modules?: (SoraModule | 'all')[];
   deferTools?: boolean;
+  intelResearch?: (request: unknown) => Promise<unknown>;
 }
 
 export interface ToolCatalogEntry {
@@ -116,6 +119,19 @@ export function registerTool<Args extends ZodRawShapeCompat>(
     handle,
     compatibilityHandle,
   });
+  return handle;
+}
+
+export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
+  const config = { description, inputSchema: schema, outputSchema, annotations: { readOnlyHint: true } };
+  const handle = mcpServer.registerTool(name, config, handler as never);
+  const isEnabled = opts.defaultEnabled || SHARED_ACTIVATED_TOOLS.has(name);
+  if (!isEnabled) {
+    handle.disable();
+  }
+  const compatibilityHandle = !opts.defaultEnabled ? mcpServer.registerTool('default.' + name, config, handler as never) : undefined;
+  if (!isEnabled) compatibilityHandle?.disable();
+  toolCatalog.set(name, { name, category, description, keywords: opts.keywords ?? [], handle, compatibilityHandle });
   return handle;
 }
 
@@ -1956,7 +1972,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🌍 Category 9: Country & Region Intelligence (モジュール: 'intel')
   // =========================================================================
   if (shouldEnableIntel) {
-    registerTool(
+    registerStructuredTool(
       mcpServer,
       toolCatalog,
       'research_country_context',
@@ -1967,20 +1983,96 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         query: z.string().optional().describe('追加の調査クエリ'),
         topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
         period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
-        includeSocial: z.boolean().optional().describe('Yahoo realtime 由来の social 観測を含めるか'),
+        includeSocial: z.boolean().optional().describe('構成済み国際SNS観測を含めるか (未構成時は不足情報として報告、日本もYahoo不使用)'),
         noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
         verbose: z.boolean().optional().describe('詳細出力を要求するか'),
       },
+      CountryContextReportSchema,
       async (opts) => {
         try {
-          const { researchCountryWithDefaults } = await import('./services/country_intel/runtime.js');
-          const result = await researchCountryWithDefaults(opts as never);
-          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+          const research = options?.intelResearch ?? (async (request: unknown) => {
+            const { researchCountryWithDefaults } = await import('./services/country_intel/runtime.js');
+            return researchCountryWithDefaults(request as never);
+          });
+          const result = (await research(opts)) as CountryContextReport;
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: `Country intelligence error: ${err instanceof Error ? err.message : err}` }] };
         }
       },
       { defaultEnabled: deferredDefault, keywords: ['国地域', 'カントリー', 'country', '地域情勢', '海外情勢', 'intel', 'intelligence', 'コンテキスト'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context',
+      'intel',
+      '保存済み国地域レポートをcontextIdで取得します。返却: CountryContextReport',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+      },
+      CountryContextReportSchema,
+      async (opts) => {
+        try {
+          const { getPersistedCountryContext } = await import('./services/country_intel/report.js');
+          const result = getPersistedCountryContext(opts.contextId) as CountryContextReport | undefined;
+          if (!result) return { isError: true, content: [{ type: 'text', text: 'Country context not found: ' + opts.contextId }] };
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', 'コンテキスト', 'context', 'スナップショット'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context_evidence',
+      'intel',
+      'レポートの根拠原文・構造化データをページ取得します。属さないIDは拒否。',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+        evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (省略時はページ走査)'),
+        cursor: z.string().optional().describe('次ページカーソル'),
+        limit: z.number().int().min(1).max(100).optional().describe('取得件数 (最大100)'),
+      },
+      EvidencePageSchema,
+      async (opts) => {
+        try {
+          const { getEvidencePage } = await import('./services/country_intel/db.js');
+          const result = getEvidencePage(opts.contextId, { evidenceIds: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', '根拠', 'evidence', '原文', '詳細'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context_updates',
+      'intel',
+      '前回以降の追加・訂正・削除・取得障害の差分を取得します。',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+        cursor: z.string().optional().describe('差分カーソル'),
+      },
+      ContextUpdatesSchema,
+      async (opts) => {
+        try {
+          const { getContextUpdates } = await import('./services/country_intel/db.js');
+          const result = getContextUpdates(opts.contextId, opts.cursor);
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', '更新', '差分', 'updates'] },
     );
   }
 
