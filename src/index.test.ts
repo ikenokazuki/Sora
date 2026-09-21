@@ -3544,8 +3544,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(40);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(28);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(43);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4040,7 +4040,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('watch_delete');
     expect(enabledToolsAll).toContain('track_package');
     expect(enabledToolsAll).toContain('research_country_context');
-    expect(enabledToolsAll.length).toBe(40);
+    expect(enabledToolsAll.length).toBe(43);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -5604,7 +5604,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 59 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 61 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5636,8 +5636,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(59);
-      expect(withContentCount).toBe(59);
+      expect(operationCount).toBe(61);
+      expect(withContentCount).toBe(61);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {
