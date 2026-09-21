@@ -30,7 +30,7 @@ describe('structured providers', () => {
   test('gdelt events keeps structured event geography', () => {
     expect(buildGdeltEventsUrl('Korea', 50)).toContain('https://api.gdeltproject.org/api/v2/events/events?');
     const [item] = parseGdeltEventsResponse(load('gdelt_events.json'), baseInput('gdelt_events'), now);
-    expect(item.evidence?.eventCountry).toBe('KOR');
+    expect(item.evidence?.eventCountry).toBe('KR');
     expect(item.evidence?.sourceType).toBe('structured_dataset');
     expect(item.evidence?.latencyClass).toBe('delayed');
     expect(item.evidence?.publishedAt).toBe('2026-09-10T00:00:00Z');
@@ -38,7 +38,7 @@ describe('structured providers', () => {
   test('gdacs parses disaster alert with event country', () => {
     expect(buildGdacsUrl()).toContain('https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH');
     const [item] = parseGdacsResponse(load('gdacs.json'), baseInput('gdacs'), now);
-    expect(item.evidence?.eventCountry).toBe('KOR');
+    expect(item.evidence?.eventCountry).toBe('KR');
     expect(item.evidence?.sourceType).toBe('structured_dataset');
     expect(item.evidence?.latencyClass).toBe('near_realtime');
   });
@@ -61,6 +61,7 @@ describe('structured providers', () => {
     const [item] = parseWikidataResponse(load('wikidata.json'), baseInput('wikidata'), now);
     expect(item.source?.verificationStatus).toBe('candidate');
     expect(item.source?.domain).toBe('mofa.go.kr');
+    expect(item.source?.sourceType).not.toBe('official');
     expect(item.evidence).toBeUndefined();
   });
 });
