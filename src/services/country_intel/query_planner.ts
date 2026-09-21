@@ -44,28 +44,53 @@ function sourceHost(domain: string): string | undefined {
   }
 }
 
-export function planCountryResearch(
+export interface Pass2SourceInput {
+  verifiedSources?: readonly CountrySource[];
+  /** 未検証 candidate。pass2 query には使用しない (テストで固定)。 */
+  candidates?: readonly CountrySource[];
+}
+
+/** identity が検証された source のみ pass2 で使用する。availability_only は除外する。 */
+export function isPass2EligibleSource(source: CountrySource): boolean {
+  return source.verificationStatus === 'verified'
+    && Boolean(source.verifiedAt)
+    && source.verificationBasis !== 'availability_only';
+}
+
+export function planCountryResearchPass1(
   request: CountryContextRequest,
   region: RegionIdentity,
   capabilities: readonly ProviderCapability[],
-  sources: readonly CountrySource[],
-): ResearchPlan {
+): ResearchQuery[] {
   const topics = request.topics?.length ? [...request.topics] : [...COUNTRY_INTEL_TOPICS];
   const baseQuery = [region.name, request.query?.trim(), request.topics?.join(' ')]
     .filter(Boolean)
     .join(' ');
-  const pass1 = capabilities.slice(0, LIMITS.maxPass1Queries).map((capability) => ({
+  return capabilities.slice(0, LIMITS.maxPass1Queries).map((capability) => ({
     pass: 1 as const,
     providerId: capability.id,
     query: baseQuery,
     topics,
     maxItems: LIMITS.maxItemsPerQuery,
   }));
+}
+
+export function planCountryResearchPass2(
+  request: CountryContextRequest,
+  region: RegionIdentity,
+  capabilities: readonly ProviderCapability[],
+  input: Pass2SourceInput = {},
+): ResearchQuery[] {
+  const topics = request.topics?.length ? [...request.topics] : [...COUNTRY_INTEL_TOPICS];
+  const baseQuery = [region.name, request.query?.trim(), request.topics?.join(' ')]
+    .filter(Boolean)
+    .join(' ');
   const webProvider = capabilities.find(({ id }) => id.includes('web'))?.id
     ?? capabilities[0]?.id
     ?? 'official_web';
-  const pass2 = sources
-    .filter((source) => source.verificationStatus === 'verified' && source.verifiedAt)
+  void input.candidates;
+  return (input.verifiedSources ?? [])
+    .filter(isPass2EligibleSource)
     .flatMap((source) => {
       const domain = sourceHost(source.domain);
       return domain ? [{ source, domain }] : [];
@@ -79,7 +104,16 @@ export function planCountryResearch(
       maxItems: LIMITS.maxItemsPerQuery,
       sourceDomain: domain,
     }));
+}
 
+export function planCountryResearch(
+  request: CountryContextRequest,
+  region: RegionIdentity,
+  capabilities: readonly ProviderCapability[],
+  sources: readonly CountrySource[],
+): ResearchPlan {
+  const pass1 = planCountryResearchPass1(request, region, capabilities);
+  const pass2 = planCountryResearchPass2(request, region, capabilities, { verifiedSources: sources });
   return {
     request: { ...request, topics: request.topics ? [...request.topics] : undefined },
     region: { ...region, languages: [...region.languages], aliases: [...region.aliases] },
