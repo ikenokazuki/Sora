@@ -1,0 +1,7 @@
+{
+  "metadata": {"generated": 1758482783000},
+  "features": [
+    {"id": "us7000ab12", "properties": {"mag": 5.2, "place": "120 km SE of Nanjing, China", "time": 1758482799560, "updated": 1758482900000, "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us7000ab12", "tsunami": 0, "status": "reviewed", "type": "earthquake"}, "geometry": {"coordinates": [119.5, 31.2, 10.0]}},
+    {"id": "us7000ab13", "properties": {"mag": 4.1, "place": "offshore Taiwan", "time": 1758481000000, "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us7000ab13", "status": "automatic", "type": "earthquake"}, "geometry": {"coordinates": [122.0, 24.5, 35.0]}}
+  ]
+}
