@@ -406,3 +406,28 @@ function buildStoredZip(name: string, text: string): Uint8Array {
   out.set(new Uint8Array(end.buffer), localSize + 46 + nameBytes.length);
   return out;
 }
+
+describe("v3 gdelt bodies", () => {
+  test("export rows without headlines gain bodies through enrichment", async () => {
+    const { createGdeltExportProvider } = await import("./providers/gdelt_files.js");
+    const zipBytes = new Uint8Array(readFileSync(join(import.meta.dir, "fixtures", "live-contracts", "gdelt-export-sample.zip")));
+    const fetchFn = (async (url: string) => {
+      if (url.endsWith("lastupdate.txt")) {
+        return new Response("1 a http://data.gdeltproject.org/gdeltv2/20260921181500.export.CSV.zip\n", { status: 200, headers: { "content-type": "text/plain" } });
+      }
+      return new Response(zipBytes, { status: 200, headers: { "content-type": "application/zip" } });
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const report = await researchCountryContext({ region: "China" }, {
+      providers: [createGdeltExportProvider({ fetchFn })],
+      scrapeArticle: async (url: string) => ({ content: "Full story about Nanjing trade talks.\n\nDelegates met on September 20.", title: "Nanjing trade talks" }),
+      now, cache: null,
+    });
+    expect(report.enrichment?.upgraded).toBeGreaterThan(0);
+    // 見出しなし行はイベント化しないが、地域直結の本文として残る。
+    expect(report.evidence[0]?.regionLink).toBe('direct');
+    const bodies = (report.evidenceDetails ?? []).filter((d) => d.contentKind === "extracted_text");
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies[0].blocks.map((b) => b.text).join("\n")).toContain("Nanjing");
+    expect(report.domainContext?.general?.factors.map((f) => f.text).join("\n")).toContain("Nanjing trade talks");
+  });
+});
