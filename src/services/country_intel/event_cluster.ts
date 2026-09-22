@@ -164,7 +164,8 @@ function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEv
   const seen = normalizedBounds(drafts.flatMap((draft) => [draft.firstSeenAt, draft.lastSeenAt]));
   const sourceFamilies = new Set(evidence.map(sourceFamily));
   const title = drafts.map((draft) => draft.title).sort()[0];
-  const excerpt = evidence.map((item) => item.excerpt?.normalize('NFKC').replace(/\s+/gu, ' ').trim()).find((itemText) => itemText)?.slice(0, 500);
+  const excerptRaw = evidence.map((item) => item.excerpt?.normalize('NFKC').replace(/\s+/gu, ' ').trim()).find((itemText) => itemText);
+  const excerpt = excerptRaw?.slice(0, 500);
   const confidence = sourceFamilies.size >= 2 ? 'high' : evidence.some((item) => item.primarySource) || drafts.length > 1 ? 'medium' : 'low';
   const idMaterial = [drafts[0].regionId, drafts[0].type, title, occurred.first ?? '', ...evidenceIds].join('\n');
 
@@ -174,6 +175,7 @@ function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEv
     type: drafts[0].type,
     title,
     ...(excerpt ? { excerpt } : {}),
+    ...(excerptRaw && excerptRaw.length > 500 ? { excerptTruncated: true } : {}),
     occurredAt: occurred.first,
     location: consensusLocation(drafts),
     actors: uniqueByKey(drafts.flatMap((draft) => draft.actors)),

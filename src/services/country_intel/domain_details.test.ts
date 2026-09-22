@@ -38,3 +38,29 @@ describe('domain details', () => {
     expect(facts[0].basis).toBe('source_excerpt');
   });
 });
+import type { IntelEvent } from './types.js';
+
+describe('domain selection', () => {
+  const disasterEvent = (id: string): IntelEvent => ({ id: 'evt-' + id, regionId: 'country:CN', type: 'disaster_response', title: 'quake', actors: [], targets: [], evidenceIds: [id], evidenceCount: 1, independentSourceCount: 1, primarySourceCount: 0, firstSeenAt: '2026-09-22T00:00:00Z', lastSeenAt: '2026-09-22T00:00:00Z', confidence: 'low' });
+  const tradeEvent = (id: string): IntelEvent => ({ ...disasterEvent(id), id: 'evt-' + id, type: 'trade_restriction', title: 'trade' });
+  const fact = (id: string, topic: string, evidenceId: string): Fact => ({ id, topic, text: id + ' text', basis: 'source_excerpt', evidenceIds: [evidenceId] });
+
+  test('finance prefers trade facts while general keeps everything', () => {
+    const facts = [fact('f1', 'disasters', 'ev-quake'), fact('f2', 'economy', 'ev-trade')];
+    const events = [disasterEvent('ev-quake'), tradeEvent('ev-trade')];
+    expect(buildDomainContext('finance', facts, [], events).factors.map((entry) => entry.id)).toEqual(['f2']);
+    expect(buildDomainContext('general', facts, [], events).factors.map((entry) => entry.id)).toEqual(['f1', 'f2']);
+  });
+
+  test('falls back to all facts when nothing matches', () => {
+    const facts = [fact('f1', 'economy', 'ev-x')];
+    expect(buildDomainContext('content', facts, [], []).factors.map((entry) => entry.id)).toEqual(['f1']);
+  });
+
+  test('long facts are flagged as truncated', () => {
+    const longText = 'x'.repeat(1500);
+    const facts = evidenceToFacts([{ providerId: 'p', areas: ['disasters'], item: { evidence: { id: 'ev-1', regionId: 'country:CN', url: 'https://example.org/1', title: 'T', excerpt: longText, sourceType: 'structured_dataset', retrievedAt: '2026-09-22T00:00:00Z', primarySource: false, latencyClass: 'near_realtime' } } }]);
+    expect(facts[0].text).toHaveLength(1000);
+    expect(facts[0].truncated).toBe(true);
+  });
+});

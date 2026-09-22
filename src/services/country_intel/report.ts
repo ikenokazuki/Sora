@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveRegion } from './region.js';
 import { deduplicateEvidence } from './evidence.js';
 import { extractEvent, type IntelEventDraft } from './event_extract.js';
+import type { EvidenceDetail } from './detail.js';
 import { clusterEvents } from './event_cluster.js';
 import { assembleSituation, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
 import { buildMetricObservations } from './metric_builder.js';
@@ -24,6 +25,7 @@ import {
   type CountryContextReport,
   type CountryContextRequest,
   type CountryEvidence,
+  type IntelEvent,
   type CountrySource,
   type Limitation,
   type RegionIdentity,
@@ -87,6 +89,40 @@ export function normalizeCountryRequest(rawRequest: CountryContextRequest): Coun
     topics = kept.length > 0 ? kept : undefined;
   }
   return { ...(raw as object), query, topics } as CountryContextRequest;
+}
+
+function indicatorsFromStructuredData(data: Record<string, unknown> | undefined): { label: string; value: string }[] {
+  if (!data) return [];
+  const indicators: { label: string; value: string }[] = [];
+  for (const [label, value] of Object.entries(data)) {
+    if (/url$/i.test(label) || value === undefined || value === null) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      const text = String(value).trim();
+      if (text) indicators.push({ label, value: text.slice(0, 200) });
+    } else if (Array.isArray(value)) {
+      const parts = value.filter((entry): entry is string | number => typeof entry === 'string' || typeof entry === 'number').map(String);
+      if (parts.length > 0) indicators.push({ label, value: parts.join(', ').slice(0, 200) });
+    }
+    if (indicators.length >= 8) break;
+  }
+  return indicators;
+}
+
+export function attachEventIndicators(
+  events: IntelEvent[],
+  details: readonly EvidenceDetail[],
+): IntelEvent[] {
+  const detailByEvidence = new Map<string, EvidenceDetail>();
+  for (const detail of details) {
+    if (!detailByEvidence.has(detail.evidenceId)) detailByEvidence.set(detail.evidenceId, detail);
+  }
+  return events.map((event) => {
+    const detail = event.evidenceIds
+      .map((id) => detailByEvidence.get(id))
+      .find((found): found is EvidenceDetail => found?.structuredData !== undefined);
+    const indicators = detail ? indicatorsFromStructuredData(detail.structuredData) : undefined;
+    return indicators && indicators.length > 0 ? { ...event, indicators } : event;
+  });
 }
 
 export function filterRegionRelevantDrafts(
@@ -172,7 +208,8 @@ export async function researchCountryContext(
   const drafts = evidence
     .map((item) => extractEvent(item, region, nowDate))
     .filter((draft): draft is NonNullable<typeof draft> => draft !== undefined);
-  const keyEvents = clusterEvents(filterRegionRelevantDrafts(drafts, evidence, region), evidence);
+  const details = acquisition.items.flatMap((wrapped) => (wrapped.item.detail ? [wrapped.item.detail] : []));
+  const keyEvents = attachEventIndicators(clusterEvents(filterRegionRelevantDrafts(drafts, evidence, region), evidence), details);
   const elections = keyEvents.filter((event) => event.type === 'election');
   const foreignRelations = buildForeignRelations(keyEvents, polls, temporalMetrics, evidence);
   const japan = buildJapanView(foreignRelations);
@@ -240,7 +277,6 @@ export async function researchCountryContext(
   };
 
   const contextId = randomUUID();
-  const details = acquisition.items.flatMap((wrapped) => (wrapped.item.detail ? [wrapped.item.detail] : []));
   const facts = evidenceToFacts(mergedItems);
   const limitations: Limitation[] = acquisition.runs
     .filter((run) => run.status !== 'success')
@@ -281,12 +317,12 @@ export async function researchCountryContext(
     evidence,
     schemaVersion: '2',
     domainContext: {
-      general: buildDomainContext('general', facts, limitations),
-      content: buildDomainContext('content', facts, limitations),
-      marketing: buildDomainContext('marketing', facts, limitations),
-      finance: buildDomainContext('finance', facts, limitations),
-      tourism: buildDomainContext('tourism', facts, limitations),
-      travel: buildDomainContext('travel', facts, limitations),
+      general: buildDomainContext('general', facts, limitations, keyEvents),
+      content: buildDomainContext('content', facts, limitations, keyEvents),
+      marketing: buildDomainContext('marketing', facts, limitations, keyEvents),
+      finance: buildDomainContext('finance', facts, limitations, keyEvents),
+      tourism: buildDomainContext('tourism', facts, limitations, keyEvents),
+      travel: buildDomainContext('travel', facts, limitations, keyEvents),
     },
     limitations,
     refreshState: { state: !runFailed && succeeded ? 'complete' : succeeded ? 'partial' : 'pending', refreshId: contextId },
