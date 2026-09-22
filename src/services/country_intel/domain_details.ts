@@ -19,11 +19,10 @@ export function buildDomainContext(
   );
   const missingInformation = [...limitations];
   if (domain === 'general') {
+    // 候補欄は地域指定検索由来の記事だけ。無属性の世界フィード分は証拠一覧に残し、ここには入れない。
     const candidateFactors = facts.filter((fact) =>
-      !relevantFacts.includes(fact) && fact.evidenceIds.some((id) => {
-        const link = relevance.get(id);
-        return link === 'candidate' || link === 'unknown';
-      }),
+      !relevantFacts.includes(fact)
+      && fact.evidenceIds.some((id) => relevance.get(id) === 'candidate'),
     );
     if (relevantFacts.length === 0) {
       missingInformation.push({
@@ -118,7 +117,7 @@ export function evidenceToFacts(items: readonly AcquiredItem[]): Fact[] {
     const detail: EvidenceDetail | undefined = wrapped.item.detail;
     if (detail?.contentKind === 'extracted_text' && detail.blocks.length > 0) {
       const body = detail.blocks.map((block) => block.text).join('\n');
-      const title = clean(evidence.title);
+      const title = clean(detail.resolvedTitle ?? evidence.title);
       const raw = title ? title + ' \u2014 ' + body : body;
       if (!raw) return [];
       return [{
