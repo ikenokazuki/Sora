@@ -41,6 +41,7 @@ export function parseGdeltEventsResponse(fixture: GdeltEventsFixture, input: Pro
       sourceRecordUrl: row.SOURCEURL!,
       contentKind: 'title_only',
       blocks: [],
+      structuredData: { eventCode: row.EventCode, numArticles: row.NumArticles },
       publishedAt: parseSqlDate(row.SQLDATE),
       retrievedAt: now.toISOString(),
       timeBasis: 'provider_event_date',

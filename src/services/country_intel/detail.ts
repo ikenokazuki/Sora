@@ -19,6 +19,8 @@ export interface EvidenceDetail {
   providerItemId: string;
   sourceRecordUrl: string;
   contentKind: EvidenceContentKind;
+  /** 本文取得で判明した記事題名。見出しなしレコードの表示に使う。 */
+  resolvedTitle?: string;
   language?: string;
   blocks: EvidenceTextBlock[];
   structuredData?: Record<string, unknown>;
@@ -40,6 +42,7 @@ export const EvidenceDetailSchema = z.object({
   providerItemId: z.string(),
   sourceRecordUrl: z.string(),
   contentKind: EvidenceContentKindSchema,
+  resolvedTitle: z.string().optional(),
   language: z.string().optional(),
   blocks: z.array(EvidenceTextBlockSchema),
   structuredData: z.record(z.string(), z.unknown()).optional(),

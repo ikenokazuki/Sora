@@ -49,6 +49,8 @@ export interface CountryIntelProvider {
   areas: readonly string[];
   /** 1回の実行で遡れる収集範囲（日数）。未申告は不明扱い。actualWindows の注記に使う。 */
   collectionWindowDays?: number;
+  /** provider 固有の実行上限ms。未指定時は run 時の timeoutMs を使う。 */
+  timeoutMs?: number;
   latencyClass: CountryEvidence['latencyClass'];
   defaultTtlSeconds: number;
   run(input: ProviderInput, signal: AbortSignal): Promise<ProviderResult>;
@@ -242,7 +244,7 @@ async function runOne(
     let result: ProviderResult | undefined;
     if (!options.noCache && cache) result = cache.get(key)?.value;
     if (!result) {
-      const signal = AbortSignal.timeout(options.timeoutMs ?? 10_000);
+      const signal = AbortSignal.timeout(provider.timeoutMs ?? options.timeoutMs ?? 10_000);
       result = await callProvider(provider, {
         request: plan.request,
         region: plan.region,
