@@ -16,6 +16,7 @@ export function classifyRegionLink(
   item: CountryEvidence,
   region: RegionIdentity,
   queryTargeted: boolean,
+  textMentioned = false,
 ): RegionLinkResult {
   const code = region.countryCode;
   if (!code) return { link: 'unknown', reasons: ['region-unresolved'] };
@@ -25,12 +26,54 @@ export function classifyRegionLink(
       ? { link: 'related', reasons: ['mentioned-alongside-foreign-event'] }
       : { link: 'related', reasons: ['mentioned'] };
   }
+  if (textMentioned) {
+    return item.eventCountry
+      ? { link: 'related', reasons: ['text-mentioned-alongside-foreign-event'] }
+      : { link: 'related', reasons: ['text-mentioned'] };
+  }
   if (item.eventCountry) return { link: 'unrelated', reasons: ['foreign-event-country:' + item.eventCountry] };
   if (item.sourceType === 'structured_dataset') {
     return { link: 'unknown', reasons: ['structured-unattributed'] };
   }
   if (queryTargeted) return { link: 'candidate', reasons: ['region-query-unverified'] };
   return { link: 'unknown', reasons: ['no-attribution'] };
+}
+
+
+/** 言及針。ICUの地域表示名で多言語化する汎用機構で、個別国の表記ハードコードはしない。 */
+export function regionMentionNeedles(region: RegionIdentity, extraLocales: readonly string[] = []): string[] {
+  const locales = [...new Set([...(region.languages ?? []), ...extraLocales, 'en'])];
+  const needles = new Set<string>();
+  for (const value of [region.name, region.nativeName, ...(region.aliases ?? [])]) {
+    if (value && value.trim().length > 1) needles.add(value.normalize('NFKC'));
+  }
+  if (region.countryCode) {
+    for (const locale of locales) {
+      try {
+        const display = new Intl.DisplayNames([locale], { type: 'region' }).of(region.countryCode);
+        if (display && display.trim().length > 1) needles.add(display.normalize('NFKC'));
+      } catch { /* ICU欠落時は無視 */ }
+    }
+  }
+  return [...needles];
+}
+
+/** 本文・見出しの地域言及。ラテン文字は大小無視、CJKは部分一致。 */
+export function textMentionsRegion(text: string | undefined, region: RegionIdentity, extraLocales: readonly string[] = []): boolean {
+  if (!text) return false;
+  const normalized = text.normalize('NFKC');
+  const lowered = normalized.toLocaleLowerCase('en-US');
+  return regionMentionNeedles(region, extraLocales).some((needle) => {
+    if (/[\p{Script=Latin}]/u.test(needle)) return lowered.includes(needle.toLocaleLowerCase('en-US'));
+    return normalized.includes(needle);
+  });
+}
+
+/** 候補の本文確認。本文に地域言及があればrelatedへ昇格する。候補以外・言及なしは触らない。 */
+export function upgradeCandidateWithBody(link: RegionLink, bodyText: string | undefined, region: RegionIdentity, extraLocales: readonly string[] = []): RegionLinkResult | undefined {
+  if (link !== 'candidate') return undefined;
+  if (!textMentionsRegion(bodyText, region, extraLocales)) return undefined;
+  return { link: 'related', reasons: ['body-mention'] };
 }
 
 /**
