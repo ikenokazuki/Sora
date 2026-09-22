@@ -1,7 +1,19 @@
 import { describe, expect, test } from 'bun:test';
-import { buildGoogleNewsSearchUrl, decodeGoogleNewsUrl } from './google_news.js';
+import { buildGoogleNewsSearchUrl } from './google_news.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseYahooWebHtml } from '../../yahoo.js';
+describe('yahoo direct fallback', () => {
+  test('parses live result html into publisher urls', () => {
+    const html = readFileSync(join(import.meta.dir, '..', 'fixtures', 'yahoo-web-china.html'), 'utf8');
+    const items = parseYahooWebHtml(html);
+    expect(items.length).toBeGreaterThan(5);
+    expect(items[0].url).toMatch(/^https?:\/\//);
+    expect(items[0].url).not.toContain('yahoo.co.jp');
+    expect(items.every((item) => item.title && item.title.length > 0)).toBe(true);
+  });
+});
 import { currentEventsPageFor, extractRegionBullets } from './wiki_current.js';
-import { buildGtrendsDailyUrl, parseGtrendsDaily } from './gtrends.js';
 import { parseGdeltExport, summarizeGdeltTone } from './gdelt_files.js';
 import type { ProviderInput } from '../provider_registry.js';
 const inputFor = (region: Record<string, unknown>): ProviderInput => ({ request: { region: 'X' } as never, region: region as never, queries: [] });
@@ -20,11 +32,12 @@ describe('social sensing providers', () => {
     expect(url).not.toContain('gl=');
     expect(url).toContain('hl=en');
   });
-  test('google news redirect urls decode to publisher', () => {
-    const inner = 'https://example.org/article/1';
-    const token = Buffer.from('prefix\x08' + inner + '\x08suffix', 'latin1').toString('base64url');
-    expect(decodeGoogleNewsUrl('https://news.google.com/__i/rss/rd/articles/' + token + '?oc=5')).toBe(inner);
-    expect(decodeGoogleNewsUrl('https://example.org/direct')).toBe('https://example.org/direct');
+  test('google news prefers source publisher urls', async () => {
+    const xml = '<rss version="2.0"><channel><item><title>T</title><link>https://news.google.com/rss/articles/CBMiX</link><source url="https://www.bbc.com">BBC</source></item><item><title>U</title><link>https://example.org/direct</link></item></channel></rss>';
+    const { parseFeed } = await import('./feeds.js');
+    const [a, b] = parseFeed(xml, 'google-news');
+    expect(a.sourceUrl).toBe('https://www.bbc.com');
+    expect(b.sourceUrl).toBeUndefined();
   });
   test('current events page uses UTC month and day', () => {
     expect(currentEventsPageFor(new Date('2026-09-22T00:00:00Z'))).toBe('Portal:Current events/2026 September 22');
@@ -32,19 +45,6 @@ describe('social sensing providers', () => {
   test('region bullets keep mentions and drop the rest', () => {
     const wiki = ['* [[Typhoon Ragasa]] makes landfall in [[Japan]], killing 3.', '* Election results announced in [[France]].', '** sub bullet Japan nested, skipped.', '* Plain line without links.'].join('\n');
     expect(extractRegionBullets(wiki, JP.region)).toEqual(['Typhoon Ragasa makes landfall in Japan, killing 3.']);
-  });
-  test('gtrends strips xssi prefix and caps entries', () => {
-    const body = ")]}',\n" + JSON.stringify({ default: { trendingSearchesDays: [{ trendingSearches: [{ title: { query: 'Japan election' }, formattedTraffic: '50K+' }, { title: {} }] }] } });
-    const entries = parseGtrendsDaily(body);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].query).toBe('Japan election');
-    expect(entries[0].traffic).toBe('50K+');
-  });
-  test('gtrends rejects broken json', () => {
-    expect(parseGtrendsDaily('not json')).toEqual([]);
-  });
-  test('gtrends url carries geo from region', () => {
-    expect(buildGtrendsDailyUrl(JP.region)).toContain('geo=JP');
   });
   test('gdelt export parses tone and summarizes region rows', () => {
     const cols = new Array(61).fill('');
@@ -75,13 +75,6 @@ describe('social sensing provider runs', () => {
     const result = await createWikiCurrentProvider(stubFetch(body, 'application/json'), new Date('2026-09-22T00:00:00Z')).run(JP, signal);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].evidence?.title).toContain('Japan');
-  });
-  test('gtrends run maps queries to evidence', async () => {
-    const { createGtrendsProvider } = await import('./gtrends.js');
-    const body = ")]}',\n" + JSON.stringify({ default: { trendingSearchesDays: [{ trendingSearches: [{ title: { query: 'Japan election' }, formattedTraffic: '50K+' }] }] } });
-    const result = await createGtrendsProvider(stubFetch(body)).run(JP, signal);
-    expect(result.items).toHaveLength(1);
-    expect(result.items[0].detail?.structuredData).toMatchObject({ traffic: '50K+' });
   });
 });
 

@@ -1,28 +1,6 @@
 import { feedEntriesToAcquisition, parseFeed } from './feeds.js';
 export const GOOGLE_NEWS_RSS_BASE = 'https://news.google.com/rss/search';
 export const GOOGLE_NEWS_MAX_ITEMS = 15;
-
-/** RSS itemのGoogle内リダイレクトURLから発行者URLを復元。失敗時は原文のまま。 */
-export function decodeGoogleNewsUrl(url: string): string {
-  const m = /\/__i\/rss\/rd\/articles\/([A-Za-z0-9_-]+)/.exec(url);
-  if (!m) return url;
-  let raw: string;
-  try {
-    raw = Buffer.from(m[1] ?? '', 'base64url').toString('latin1');
-  } catch {
-    return url;
-  }
-  const candidates = (raw.match(/https?:\/\/[^\x00-\x20"'\\<>]+/g) ?? []).flatMap((candidate) => {
-    try {
-      return [new URL(candidate).toString()];
-    } catch {
-      return [];
-    }
-  });
-  const unique = [...new Set(candidates)];
-  if (unique.length !== 1) return url;
-  return unique[0] ?? url;
-}
 import type { SourceCatalogEntry } from '../source_catalog.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
@@ -71,7 +49,8 @@ export function createGoogleNewsProvider(fetchFn?: GdeltFetch): CountryIntelProv
         throw new ProviderNetworkError(String(e));
       }
       const xml = await res.text();
-      const entries = parseFeed(xml, 'google-news').map((entry) => (entry.link ? { ...entry, link: decodeGoogleNewsUrl(entry.link) } : entry));
+      // source要素の発行者URLを優先。なければRSSリンクを使う。
+      const entries = parseFeed(xml, 'google-news').map((entry) => (entry.sourceUrl ? { ...entry, link: entry.sourceUrl } : entry));
       const items = feedEntriesToAcquisition(entries, CATALOG_ENTRY, input, new Date());
       return { items: items.slice(0, GOOGLE_NEWS_MAX_ITEMS), coverage: ['media_activity'] };
     },

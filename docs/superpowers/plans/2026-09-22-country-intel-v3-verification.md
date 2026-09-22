@@ -78,3 +78,12 @@
 - Trends dailytrends endpoint format stands; live fetch still pending container recovery (browser tool cannot read XSSI-JSON, sandbox has no egress, podman socket unreachable).
 - intel suite: 221 pass / 0 fail.
 
+
+## Full live verification (2026-09-22, network open, 14 providers)
+- China+social: 15.6s, keyEvents 6, evidence 608, details 608, enrichment 10/12. Japan+social: 8.7s, keyEvents 10 (all Japan-attributed quakes/typhoons), evidence 537, enrichment 12/12. Schema v3.
+- Provider outcomes live: 12-13 success per run. baidu_hot honest timeout from JP host (API+HTML both time out; works from alternate egress). bluesky honest PROVIDER_HTTP_4XX when social requested. wikidata/worldbank/nager metrics+calendar fine. Tone metric present (CN -2.34 falling, JP +0.16 stable).
+- Root cause found and fixed: Yahoo MCP binary returns 429 from this egress, so official_web went 0 items. Added direct-fetch fallback (server-rendered result list, direct publisher URLs). Live: official_web 27-30 items. Google News links are opaque /rss/articles IDs (not decodable protobuf), so evidence now prefers per-item source publisher URLs (live: reuters.com etc.).
+- Removed gtrends: dailytrends endpoint retired (404 for all geos incl. US baseline; deprecation confirmed Nov 2024). Deletion only, no replacement; attention coverage stays via news RSS + tone.
+- Remaining thin areas (both countries): politics/security/health/polls/social/foreignRelations missing, finance economy/trade and businessActivity zero. Disaster+calendar+attention+tone carry posting judgment; politics surfaces only as unevaluated evidence/candidates.
+- intel suite: 218 pass / 0 fail with live network (bun default 5s timeout too short for live-fetch tests; use --timeout 60000).
+

@@ -6,7 +6,6 @@ import { createEonetProvider } from './providers/eonet.js';
 import { createGlobalFeedsProvider } from './providers/feeds.js';
 import { createGoogleNewsProvider } from './providers/google_news.js';
 import { createWikiCurrentProvider } from './providers/wiki_current.js';
-import { createGtrendsProvider } from './providers/gtrends.js';
 import { createBaiduHotProvider } from './providers/baidu_hot.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
 import type { GdeltFetch } from './providers/gdelt.js';
@@ -21,7 +20,7 @@ import type { CountryContextReport, CountryContextRequest, CountrySource } from 
 
 /** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。gdelt DOC は上流復旧まで除外（本体・テストは残す）。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'gtrends', 'baidu_hot', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'baidu_hot', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -52,12 +51,15 @@ export function createScrapeArticleAdapter(): (url: string, signal: AbortSignal)
 /** Yahoo Web 検索アダプタ。地域条件を落とすフォールバック再検索は行わない。 */
 export function createYahooWebSearchAdapter(): (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]> {
   return async (query: string, maxItems: number, signal: AbortSignal) => {
-    const { searchYahooWeb } = await import('../yahoo.js');
+    const { searchYahooWeb, fetchYahooWebDirect } = await import('../yahoo.js');
     if (signal.aborted) return [];
-    const result = await searchYahooWeb({ query, disableFallback: true });
+    let result: { items?: Array<Record<string, unknown>> } | undefined;
+    try {
+      result = await searchYahooWeb({ query, disableFallback: true });
+    } catch {}
     if (signal.aborted) return [];
     const items = Array.isArray(result?.items) ? result.items : [];
-    return items.slice(0, Math.max(0, maxItems)).flatMap((item: Record<string, unknown>) => {
+    const mapped = items.slice(0, Math.max(0, maxItems)).flatMap((item: Record<string, unknown>) => {
       const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : undefined;
       if (!url) return [];
       const title = typeof item.title === 'string' ? item.title : undefined;
@@ -66,6 +68,14 @@ export function createYahooWebSearchAdapter(): (query: string, maxItems: number,
       const publishedAt = typeof item.publishedAt === 'string' ? item.publishedAt : undefined;
       return [{ url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}), ...(domain ? { domain } : {}), ...(publishedAt ? { publishedAt } : {}) }];
     });
+    // MCPバイナリ429時の直取得フォールバック。地域条件は維持する。
+    if (mapped.length > 0 || signal.aborted) return mapped;
+    try {
+      const direct = await fetchYahooWebDirect(query, maxItems, signal);
+      return direct.map((item) => ({ url: item.url, ...(item.title ? { title: item.title } : {}), ...(item.snippet ? { snippet: item.snippet } : {}), ...(item.domain ? { domain: item.domain } : {}) }));
+    } catch {
+      return [];
+    }
   };
 }
 
@@ -87,7 +97,6 @@ export function createDefaultCountryIntelDependencies(
       createGlobalFeedsProvider(fetchFn),
       createGoogleNewsProvider(fetchFn),
       createWikiCurrentProvider(fetchFn),
-      createGtrendsProvider(fetchFn),
       createBaiduHotProvider(fetchFn),
       createOfficialWebProvider({
         searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter(),
