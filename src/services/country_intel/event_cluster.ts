@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalPublisherDomain, canonicalizeEvidenceUrl } from './evidence.js';
 import type { CountryEvidence, IntelEntity, IntelEvent, IntelTarget } from './types.js';
+import type { EvidenceDetail } from './detail.js';
 import type { IntelEventDraft } from './event_extract.js';
 
 const WIRE_BYLINE = /^\s*(?:\(\s*(reuters|associated press|ap|afp)\s*\)(?:\s+|\s*[-–—,:])|(reuters|associated press|ap|afp)\s*[-–—,:])/iu;
@@ -75,10 +76,35 @@ function timestamp(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** クラスタ近接の手掛かり。occurredAt がなければ公開日を使う（出力の occurredAt とは別）。 */
+function timeHint(draft: IntelEventDraft): number | undefined {
+  return timestamp(draft.occurredAt) ?? timestamp(draft.publishedAt);
+}
+
 function nearTime(left: IntelEventDraft, right: IntelEventDraft): boolean {
-  const leftTime = timestamp(left.occurredAt);
-  const rightTime = timestamp(right.occurredAt);
+  const leftTime = timeHint(left);
+  const rightTime = timeHint(right);
   return leftTime !== undefined && rightTime !== undefined && Math.abs(leftTime - rightTime) <= NEAR_TIME_MS;
+}
+
+/** 両方の時刻が判明し 72h を超えて離れている場合は統合しない（同一安定IDを除く）。 */
+function farApart(left: IntelEventDraft, right: IntelEventDraft): boolean {
+  const leftTime = timeHint(left);
+  const rightTime = timeHint(right);
+  return leftTime !== undefined && rightTime !== undefined && Math.abs(leftTime - rightTime) > NEAR_TIME_MS;
+}
+
+/**
+ * provider が管理する安定イベントID。structured_record の providerItemId だけを使う。
+ * 抜粋フィードの記事IDはイベントIDではないため対象外。
+ */
+export function stableProviderKey(
+  draft: IntelEventDraft,
+  details?: ReadonlyMap<string, EvidenceDetail>,
+): string | undefined {
+  const detail = details?.get(draft.evidenceId);
+  if (!detail || detail.contentKind !== 'structured_record' || !detail.providerItemId) return undefined;
+  return detail.providerId + ':' + detail.providerItemId;
 }
 
 function specificEntityKeys(draft: IntelEventDraft): Set<string> {
@@ -105,8 +131,17 @@ function shouldMerge(
   right: IntelEventDraft,
   leftEvidence: CountryEvidence | undefined,
   rightEvidence: CountryEvidence | undefined,
+  details?: ReadonlyMap<string, EvidenceDetail>,
 ): boolean {
   if (left.regionId !== right.regionId || left.type !== right.type || !locationsCompatible(left, right)) return false;
+  const leftStable = stableProviderKey(left, details);
+  const rightStable = stableProviderKey(right, details);
+  if (leftStable && rightStable) {
+    if (leftStable === rightStable) return true;
+    if (farApart(left, right)) return false;
+  } else if (farApart(left, right)) {
+    return false;
+  }
   const sameCanonicalUrl = Boolean(leftEvidence && rightEvidence
     && canonicalizeEvidenceUrl(leftEvidence.url) === canonicalizeEvidenceUrl(rightEvidence.url));
   const leftFamily = leftEvidence && sourceFamily(leftEvidence);
@@ -121,6 +156,8 @@ function shouldMerge(
     sameSpecificPlace(left, right),
   ].filter(Boolean).length;
   const supportingSignals = [sameLocation(left, right), nearTime(left, right), sameWireFamily].filter(Boolean).length;
+  // 同一 provider で安定IDが異なる記録は別イベントの可能性が高い。強い根拠が2つ必要。
+  if (leftStable && rightStable && leftStable !== rightStable) return strongSignals >= 2;
   return strongSignals > 0 && strongSignals + supportingSignals >= 2;
 }
 
@@ -160,14 +197,26 @@ function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEv
   const drafts = [...cluster].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId));
   const evidence = drafts.map((draft) => evidenceById.get(draft.evidenceId)).filter((item): item is CountryEvidence => Boolean(item));
   const evidenceIds = drafts.map((draft) => draft.evidenceId);
-  const occurred = normalizedBounds(drafts.map((draft) => draft.occurredAt).filter((value): value is string => Boolean(value)));
   const seen = normalizedBounds(drafts.flatMap((draft) => [draft.firstSeenAt, draft.lastSeenAt]));
   const sourceFamilies = new Set(evidence.map(sourceFamily));
-  const title = drafts.map((draft) => draft.title).sort()[0];
-  const excerptRaw = evidence.map((item) => item.excerpt?.normalize('NFKC').replace(/\s+/gu, ' ').trim()).find((itemText) => itemText);
+  // 抜粋・日時を結び付ける代表レコードを選ぶ。別レコードの日付と抜粋の合成を避ける。
+  const primaryById = new Map(evidence.map((item) => [item.id, item.primarySource]));
+  const occurredValue = (draft: IntelEventDraft): number => {
+    const parsed = draft.occurredAt ? Date.parse(draft.occurredAt) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  };
+  const representative = [...drafts].sort((left, right) =>
+    occurredValue(left) - occurredValue(right)
+    || Number(primaryById.get(right.evidenceId) ?? false) - Number(primaryById.get(left.evidenceId) ?? false)
+    || left.evidenceId.localeCompare(right.evidenceId),
+  )[0];
+  const representativeEvidence = evidenceById.get(representative.evidenceId);
+  const title = representative.title;
+  const excerptRaw = representativeEvidence?.excerpt?.normalize('NFKC').replace(/\s+/gu, ' ').trim()
+    || evidence.map((item) => item.excerpt?.normalize('NFKC').replace(/\s+/gu, ' ').trim()).find((itemText) => itemText);
   const excerpt = excerptRaw?.slice(0, 500);
   const confidence = sourceFamilies.size >= 2 ? 'high' : evidence.some((item) => item.primarySource) || drafts.length > 1 ? 'medium' : 'low';
-  const idMaterial = [drafts[0].regionId, drafts[0].type, title, occurred.first ?? '', ...evidenceIds].join('\n');
+  const idMaterial = [drafts[0].regionId, drafts[0].type, title, representative.occurredAt ?? '', ...evidenceIds].join('\n');
 
   return {
     id: `evt_${createHash('sha256').update(idMaterial).digest('hex').slice(0, 20)}`,
@@ -176,7 +225,7 @@ function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEv
     title,
     ...(excerpt ? { excerpt } : {}),
     ...(excerptRaw && excerptRaw.length > 500 ? { excerptTruncated: true } : {}),
-    occurredAt: occurred.first,
+    occurredAt: representative.occurredAt,
     location: consensusLocation(drafts),
     actors: uniqueByKey(drafts.flatMap((draft) => draft.actors)),
     targets: uniqueByKey(drafts.flatMap((draft) => draft.targets)),
@@ -190,9 +239,10 @@ function toEvent(cluster: IntelEventDraft[], evidenceById: Map<string, CountryEv
   };
 }
 
-export function clusterEvents(drafts: IntelEventDraft[], evidence: CountryEvidence[]): IntelEvent[] {
+export function clusterEvents(drafts: IntelEventDraft[], evidence: CountryEvidence[], details?: readonly EvidenceDetail[]): IntelEvent[] {
   const orderedDrafts = [...drafts].sort((left, right) => left.evidenceId.localeCompare(right.evidenceId));
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  const detailByEvidence = new Map((details ?? []).map((detail) => [detail.evidenceId, detail]));
   const parents = orderedDrafts.map((_, index) => index);
   const find = (index: number): number => {
     if (parents[index] !== index) parents[index] = find(parents[index]);
@@ -222,6 +272,7 @@ export function clusterEvents(drafts: IntelEventDraft[], evidence: CountryEviden
       if (shouldMerge(
         orderedDrafts[left], orderedDrafts[right],
         evidenceById.get(orderedDrafts[left].evidenceId), evidenceById.get(orderedDrafts[right].evidenceId),
+        detailByEvidence,
       ) && componentsCompatible(find(left), find(right))) union(left, right);
     }
   }

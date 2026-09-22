@@ -12,6 +12,14 @@ export interface IntelEventDraft {
   type: ActionType;
   title: string;
   occurredAt?: string;
+  /** 記事の公開日。occurredAt とは別に保持する。 */
+  publishedAt?: string;
+  /** 構造化レコードの更新日。 */
+  updatedAt?: string;
+  /** occurredAt の根拠。structured は provider の観測・発生日、published は記事公開日の代用。 */
+  timeBasis?: 'structured' | 'published';
+  /** 証拠の発生国（確定分のみ）。クラスタ同一性に使う。 */
+  eventCountry?: string;
   location?: { name?: string; countryCode?: string };
   actors: IntelEntity[];
   targets: IntelTarget[];
@@ -109,6 +117,7 @@ export function extractEvent(
   evidence: CountryEvidence,
   region: RegionIdentity,
   now: Date,
+  structured?: { occurredAt?: string; updatedAt?: string },
 ): IntelEventDraft | undefined {
   const title = normalizedText(evidence.title) ?? normalizedText(evidence.excerpt);
   if (!title) return undefined;
@@ -120,13 +129,19 @@ export function extractEvent(
     ...(locationName([title, details].filter(Boolean).join(' ')) ? { name: locationName([title, details].filter(Boolean).join(' ')) } : {}),
   };
   const seenAt = normalizedTimestamp(evidence.retrievedAt) ?? now.toISOString();
+  const publishedAt = normalizedTimestamp(evidence.publishedAt);
+  const structuredAt = normalizedTimestamp(structured?.occurredAt);
 
   return {
     evidenceId: evidence.id,
     regionId: evidence.regionId,
     type: titleAction === 'other' && details ? actionType(details) : titleAction,
     title,
-    occurredAt: normalizedTimestamp(evidence.publishedAt),
+    occurredAt: structuredAt ?? publishedAt,
+    ...(publishedAt ? { publishedAt } : {}),
+    ...(normalizedTimestamp(structured?.updatedAt) ? { updatedAt: normalizedTimestamp(structured?.updatedAt) } : {}),
+    ...(structuredAt ? { timeBasis: 'structured' as const } : publishedAt ? { timeBasis: 'published' as const } : {}),
+    ...(evidence.eventCountry ? { eventCountry: evidence.eventCountry } : {}),
     location: Object.keys(location).length ? location : undefined,
     actors: uniqueByKey([actors(title), details ? actors(details) : []].flat()),
     targets: uniqueByKey([targets(title, region), details ? targets(details, region) : []].flat()),

@@ -48,6 +48,7 @@ export function createEonetProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'eonet', areas: ['disasters'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
+    collectionWindowDays: 30,
     async run(input: ProviderInput, signal: AbortSignal) {
       let res: Response;
       try {

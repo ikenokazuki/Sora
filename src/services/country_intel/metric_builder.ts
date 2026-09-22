@@ -29,9 +29,13 @@ export function buildMetricObservations(
   acquired: readonly AcquiredItem[],
   context: MetricBuildContext,
   calendars: readonly { id: string }[] = [],
+  relevantEvidenceIds?: ReadonlySet<string>,
 ): MetricObservation[] {
+  // 無関係な海外情報を件数に混ぜない。候補は件数に含めない。
   const evidenceWithProvider = acquired.flatMap((wrapped) =>
-    wrapped.item.evidence ? [{ evidence: wrapped.item.evidence, providerId: wrapped.providerId }] : [],
+    wrapped.item.evidence && (!relevantEvidenceIds || relevantEvidenceIds.has(wrapped.item.evidence.id))
+      ? [{ evidence: wrapped.item.evidence, providerId: wrapped.providerId }]
+      : [],
   );
   const observations: MetricObservation[] = [];
   const observe = (
