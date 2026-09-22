@@ -7,7 +7,7 @@ import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 import { GLOBAL_FEED_CATALOG, type SourceCatalogEntry } from '../source_catalog.js';
 
-export interface FeedEntry { title?: string; link?: string; description?: string; publishedAt?: string; language?: string; guid?: string; }
+export interface FeedEntry { title?: string; link?: string; description?: string; publishedAt?: string; language?: string; guid?: string; sourceUrl?: string; }
 
 function entryLink(link: unknown): string | undefined {
   if (typeof link === 'string') return link || undefined;
@@ -31,6 +31,15 @@ function entryText(value: unknown): string | undefined {
   if (value && typeof value === 'object') {
     const text = (value as Record<string, unknown>)['#text'];
     if (typeof text === 'string') return text.trim() || undefined;
+  }
+  return undefined;
+}
+
+/** RSS source要素のurl属性（Google Newsの発行者URLなど）。 */
+function sourceUrl(value: unknown): string | undefined {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const url = (value as Record<string, unknown>)['@_url'];
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) return url;
   }
   return undefined;
 }
@@ -60,6 +69,7 @@ export function parseFeed(xml: string, sourceId: string): FeedEntry[] {
       publishedAt: entryText(item['pubDate']) ?? entryText(item['dc:date']) ?? entryText(item['updated']),
       guid: entryText(item['guid']),
       language,
+      sourceUrl: sourceUrl(item['source']),
     }));
   }
   const feed = parsed['feed'] as Record<string, unknown> | undefined;
