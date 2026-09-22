@@ -30,7 +30,7 @@ export interface ResearchPlan {
 }
 
 const LIMITS: ResearchPlanLimits = {
-  maxPass1Queries: 12,
+  maxPass1Queries: 16,
   maxPass2Queries: 8,
   maxItemsPerQuery: 100,
 };

@@ -220,9 +220,9 @@ describe('bounded planning', () => {
       verifiedSources,
     );
 
-    expect(result.pass1.length).toBeLessThanOrEqual(12);
+    expect(result.pass1.length).toBeLessThanOrEqual(16);
     expect(result.pass2.length).toBeLessThanOrEqual(8);
-    expect(result.limits).toEqual({ maxPass1Queries: 12, maxPass2Queries: 8, maxItemsPerQuery: 100 });
+    expect(result.limits).toEqual({ maxPass1Queries: 16, maxPass2Queries: 8, maxItemsPerQuery: 100 });
     expect(result.pass2.some((query) => query.sourceDomain === 'candidate.example')).toBe(false);
   });
 });

@@ -4,6 +4,9 @@ import { createGdeltExportProvider } from './providers/gdelt_files.js';
 import { createUsgsProvider } from './providers/usgs.js';
 import { createEonetProvider } from './providers/eonet.js';
 import { createGlobalFeedsProvider } from './providers/feeds.js';
+import { createGoogleNewsProvider } from './providers/google_news.js';
+import { createWikiCurrentProvider } from './providers/wiki_current.js';
+import { createGtrendsProvider } from './providers/gtrends.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
 import type { GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
@@ -17,7 +20,7 @@ import type { CountryContextReport, CountryContextRequest, CountrySource } from 
 
 /** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。gdelt DOC は上流復旧まで除外（本体・テストは残す）。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'gtrends', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -81,6 +84,9 @@ export function createDefaultCountryIntelDependencies(
       createUsgsProvider(fetchFn),
       createEonetProvider(fetchFn),
       createGlobalFeedsProvider(fetchFn),
+      createGoogleNewsProvider(fetchFn),
+      createWikiCurrentProvider(fetchFn),
+      createGtrendsProvider(fetchFn),
       createOfficialWebProvider({
         searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter(),
         verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
