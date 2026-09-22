@@ -5,8 +5,9 @@ import { fetchProviderResponse } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 export const BAIDU_HOT_URL = 'https://top.baidu.com/board?tab=realtime';
+export const BAIDU_HOT_API_URL = 'https://top.baidu.com/api/board?tab=realtime';
 export const BAIDU_HOT_MAX_ITEMS = 30;
-export interface BaiduHotEntry { rank: number; query: string; desc: string; hotIndex: string; url: string; }
+export interface BaiduHotEntry { rank: number; query: string; desc: string; hotIndex: string; url: string; tag: string; }
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
@@ -37,6 +38,7 @@ export function entriesFromHotList(list: readonly Record<string, unknown>[]): Ba
       desc: asText(item['desc']) || asText(item['digest']) || asText(item['content']),
       hotIndex: asText(item['hotScore']) || asText(item['hot_index']) || asText(item['heatScore']) || asText(item['score']) || asText(item['hotValue']),
       url: asText(item['url']) || asText(item['link']) || BAIDU_HOT_URL,
+      tag: asText(item['hotTag']) || asText(item['tag']),
     }];
   });
 }
@@ -57,6 +59,22 @@ export function parseBaiduHotHtml(html: string): BaiduHotEntry[] {
   }
   return [];
 }
+
+/** JSON API応答の解析。実測構造 data.cards[].content[] (query/desc/hotScore/url/hotTag)。 */
+export function jsonHotEntries(text: string): BaiduHotEntry[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(text) as unknown;
+  } catch {
+    return [];
+  }
+  const lists = findHotLists(data);
+  for (const list of lists) {
+    const entries = entriesFromHotList(list);
+    if (entries.length >= 5) return entries;
+  }
+  return [];
+}
 export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
@@ -64,22 +82,27 @@ export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
     collectionWindowDays: 1,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
-      let res: Response;
-      try {
-        res = await fetchProviderResponse(BAIDU_HOT_URL, { sourceId: 'baidu_hot', timeoutMs: 8000, format: 'text', signal, fetchFn: runFetch });
-      } catch (e) {
-        if (signal.aborted) throw e;
-        if (e instanceof ProviderHttpError) throw e;
-        throw new ProviderNetworkError(String(e));
-      }
-      const entries = parseBaiduHotHtml(await res.text());
+      const fetchText = async (url: string): Promise<string> => {
+        let res: Response;
+        try {
+          res = await fetchProviderResponse(url, { sourceId: 'baidu_hot', timeoutMs: 8000, format: 'text', signal, fetchFn: runFetch });
+        } catch (e) {
+          if (signal.aborted) throw e;
+          if (e instanceof ProviderHttpError) throw e;
+          throw new ProviderNetworkError(String(e));
+        }
+        return res.text();
+      };
+      // JSON API優先、失敗時はHTMLへフォールバック。両方だめなら欠落明示。
+      let entries = jsonHotEntries(await fetchText(BAIDU_HOT_API_URL));
+      if (!entries.length) entries = parseBaiduHotHtml(await fetchText(BAIDU_HOT_URL));
       if (!entries.length) throw new ProviderHttpError(502, undefined, 'Baidu hot list envelope unexpected');
       const at = new Date().toISOString();
       const now = new Date();
       const items: AcquisitionItem[] = entries.map((entry) => {
         const excerpt = entry.hotIndex ? entry.query + ' (hot ' + entry.hotIndex + ') ' + entry.desc : (entry.query + ' ' + entry.desc);
         const evidence = normalizeEvidence({ url: entry.url, title: '#' + String(entry.rank) + ' ' + entry.query, excerpt: excerpt.slice(0, 2000), publisher: 'Baidu Hot Search', language: 'zh', sourceType: 'structured_dataset', primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
-        const detail: EvidenceDetail = { evidenceId: evidence.id, providerId: 'baidu_hot', providerItemId: 'hot-' + String(entry.rank), sourceRecordUrl: entry.url, contentKind: 'excerpt', language: 'zh', blocks: [{ index: entry.rank, text: excerpt.slice(0, 2000) }], structuredData: { rank: entry.rank, hotIndex: entry.hotIndex }, retrievedAt: at, timeBasis: 'provider_publication', geographyBasis: 'unknown', sourceStatus: 'unverified', contentTruncated: excerpt.length > 2000 };
+        const detail: EvidenceDetail = { evidenceId: evidence.id, providerId: 'baidu_hot', providerItemId: 'hot-' + String(entry.rank), sourceRecordUrl: entry.url, contentKind: 'excerpt', language: 'zh', blocks: [{ index: entry.rank, text: excerpt.slice(0, 2000) }], structuredData: { rank: entry.rank, hotIndex: entry.hotIndex, tag: entry.tag }, retrievedAt: at, timeBasis: 'provider_publication', geographyBasis: 'unknown', sourceStatus: 'unverified', contentTruncated: excerpt.length > 2000 };
         return { evidence, detail, areas: ['media_activity'] as readonly string[] };
       });
       return { items, coverage: ['media_activity'] };
