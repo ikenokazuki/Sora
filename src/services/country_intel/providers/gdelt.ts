@@ -61,6 +61,16 @@ export function parseGdeltDocResponse(fixture: GdeltDocFixture, input: ProviderI
 
 export type GdeltFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
+/** GDELT DOC 失敗の発生段階。接続・ヘッダー・本文・解析を区別する。 */
+export type GdeltDocStage = 'connect' | 'headers' | 'body' | 'parse';
+
+export class GdeltDocError extends ProviderHttpError {
+  constructor(readonly stage: GdeltDocStage, status = 502, message?: string) {
+    super(status, undefined, message ?? ('GDELT DOC failed at ' + stage));
+    this.name = 'GdeltDocError';
+  }
+}
+
 export function createGdeltProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
@@ -70,12 +80,20 @@ export function createGdeltProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
       const url = buildGdeltDocUrl(query, 25, input.request.period);
       let res: Response;
       try { res = await runFetch(url, { signal }); }
-      catch (e) { if (signal.aborted) throw e; throw new ProviderNetworkError(String(e)); }
-      if (!res.ok) throw new ProviderHttpError(res.status);
+      catch (e) {
+        if (signal.aborted) throw e;
+        throw new ProviderNetworkError('GDELT DOC connect failed: ' + String(e));
+      }
+      if (!res.ok) throw new GdeltDocError('headers', res.status, 'GDELT DOC HTTP ' + String(res.status));
       const contentType = res.headers.get('content-type') ?? '';
-      if (!contentType.includes('json')) throw new ProviderHttpError(502, undefined, 'GDELT unexpected content type');
-      const data = (await res.json()) as GdeltDocFixture;
-      if (!Array.isArray((data as GdeltDocFixture).articles)) throw new ProviderHttpError(502, undefined, 'GDELT envelope missing articles');
+      if (!contentType.includes('json')) throw new GdeltDocError('headers', 502, 'GDELT unexpected content type');
+      let data: GdeltDocFixture;
+      try {
+        data = (await res.json()) as GdeltDocFixture;
+      } catch {
+        throw new GdeltDocError('body', 502, 'GDELT DOC body read failed');
+      }
+      if (!Array.isArray(data.articles)) throw new GdeltDocError('parse', 502, 'GDELT envelope missing articles');
       return { items: parseGdeltDocResponse(data, input, new Date()), coverage: ['media_activity'] };
     },
   };

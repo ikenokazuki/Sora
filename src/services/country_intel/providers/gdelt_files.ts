@@ -1,7 +1,8 @@
+import yauzl from 'yauzl';
 import { normalizeProviderCountryCode } from '../geo_codes.js';
 import type { CollectionWindow } from '../detail.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
-import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
+import { ProviderHttpError, ProviderLocalError, ProviderNetworkError } from '../provider_registry.js';
 import { fetchProviderResponse } from '../provider_http.js';
 import { parseGdeltEventsResponse, type GdeltEventRow } from './gdelt_events.js';
 import type { GdeltFetch } from './gdelt.js';
@@ -85,11 +86,70 @@ export async function collectGdeltWindow(window: CollectionWindow, deps: GdeltWi
   return { ...window, complete: false, gaps: [{ from: window.from, to: window.to, reason: 'period_gap: ingested ' + ingested + ' of ' + expected + ' export files' }] };
 }
 
-async function unzipStdin(input: Uint8Array): Promise<string> {
-  const proc = Bun.spawn(['unzip', '-p', '-'], { stdin: input, stdout: 'pipe', stderr: 'pipe' });
-  const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  if (code !== 0) throw new Error('unzip failed: ' + err.slice(0, 200));
-  return out;
+export const GDELT_EXPORT_ZIP_BYTES_MAX = 5 * 1024 * 1024;
+export const GDELT_EXPORT_CSV_CHARS_MAX = 50 * 1024 * 1024;
+
+/** yauzl でメモリ内解凍する。対象の .export.CSV だけを読む。独自ZIPパーサーは作らない。 */
+export function unzipGdeltExport(input: Uint8Array): Promise<string> {
+  if (input.length > GDELT_EXPORT_ZIP_BYTES_MAX) {
+    return Promise.reject(new ProviderLocalError('SIZE_LIMIT', 'GDELT export zip exceeds 5MiB'));
+  }
+  return new Promise<string>((resolve, reject) => {
+    yauzl.fromBuffer(Buffer.from(input), { lazyEntries: true }, (error, zip) => {
+      if (error || !zip) {
+        reject(new ProviderLocalError('DECOMPRESS_FAILED', 'GDELT export zip open failed'));
+        return;
+      }
+      let found = false;
+      let settled = false;
+      const fail = (code: ProviderLocalError['code'], message: string): void => {
+        if (settled) return;
+        settled = true;
+        try { zip.close(); } catch { /* already closed */ }
+        reject(new ProviderLocalError(code, message));
+      };
+      zip.on('error', () => fail('DECOMPRESS_FAILED', 'GDELT export zip read failed'));
+      zip.on('end', () => {
+        if (!found) fail('DECOMPRESS_FAILED', 'GDELT export CSV missing in zip');
+      });
+      zip.on('entry', (entry) => {
+        if (settled) return;
+        if (!entry.fileName.endsWith('.export.CSV')) {
+          zip.readEntry();
+          return;
+        }
+        if (found) {
+          zip.readEntry();
+          return;
+        }
+        found = true;
+        zip.openReadStream(entry, (streamError, stream) => {
+          if (streamError || !stream) {
+            fail('DECOMPRESS_FAILED', 'GDELT export entry open failed');
+            return;
+          }
+          const chunks: Buffer[] = [];
+          let size = 0;
+          stream.on('data', (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > GDELT_EXPORT_CSV_CHARS_MAX) {
+              fail('SIZE_LIMIT', 'GDELT export CSV exceeds 50MiB');
+              return;
+            }
+            chunks.push(chunk);
+          });
+          stream.on('error', () => fail('DECOMPRESS_FAILED', 'GDELT export entry read failed'));
+          stream.on('end', () => {
+            if (settled) return;
+            settled = true;
+            try { zip.close(); } catch { /* already closed */ }
+            resolve(Buffer.concat(chunks).toString('utf8'));
+          });
+        });
+      });
+      zip.readEntry();
+    });
+  });
 }
 
 export interface GdeltExportProviderDeps {
@@ -99,9 +159,10 @@ export interface GdeltExportProviderDeps {
 
 export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): CountryIntelProvider {
   const runFetch: GdeltFetch = deps.fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
-  const decompress = deps.decompressZip ?? unzipStdin;
+  const decompress = deps.decompressZip ?? unzipGdeltExport;
   return {
     id: 'gdelt_export', areas: ['current_events', 'historical_context'], latencyClass: 'delayed', defaultTtlSeconds: 900,
+    collectionWindowDays: 1 / 96,
     async run(input: ProviderInput, signal: AbortSignal): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
       let updateRes: Response;
       try {
@@ -128,7 +189,8 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
         tsv = await decompress(bytes);
       } catch (e) {
         if (signal.aborted) throw e;
-        throw new ProviderHttpError(502, undefined, 'GDELT export decompression failed');
+        if (e instanceof ProviderLocalError) throw e;
+        throw new ProviderLocalError('DECOMPRESS_FAILED', 'GDELT export decompression failed');
       }
       const rows = filterGdeltRowsForRegion(parseGdeltExport(tsv), input.region);
       return { items: parseGdeltEventsResponse({ events: rows }, input, new Date()), coverage: ['current_events'] };

@@ -52,6 +52,7 @@ export function createUsgsProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'usgs', areas: ['disasters'], latencyClass: 'near_realtime', defaultTtlSeconds: 300,
+    collectionWindowDays: 1,
     async run(input: ProviderInput, signal: AbortSignal) {
       let res: Response;
       try {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { DomainViewsSchema, IntelligenceSignalSchema, type IntelligenceSignal } from '../intelligence/types.js';
+import { EvidenceDetailSchema } from './detail.js';
 
 export const COUNTRY_INTEL_TOPICS = [
   'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',
@@ -72,6 +73,9 @@ export type EvidenceSourceType =
 
 export type EvidenceLatencyClass = 'realtime' | 'near_realtime' | 'delayed' | 'historical';
 
+export type RegionLink = 'direct' | 'related' | 'candidate' | 'unrelated' | 'unknown';
+export const RegionLinkSchema = z.enum(['direct', 'related', 'candidate', 'unrelated', 'unknown']);
+
 export interface CountryEvidence {
   id: string;
   regionId: string;
@@ -90,6 +94,17 @@ export interface CountryEvidence {
   primarySource: boolean;
   latencyClass: EvidenceLatencyClass;
   eventClusterId?: string;
+  /** 取得経路。重複排除で失わない。 */
+  acquisition?: {
+    providerId: string;
+    providerItemId?: string;
+    query?: string;
+    queryTargetedRegion?: boolean;
+    collectionScope?: string;
+  };
+  /** 対象地域との関係。 */
+  regionLink?: RegionLink;
+  regionLinkReasons?: string[];
 }
 
 export const CountryEvidenceSchema = z.object({
@@ -110,6 +125,15 @@ export const CountryEvidenceSchema = z.object({
   primarySource: z.boolean(),
   latencyClass: z.enum(['realtime', 'near_realtime', 'delayed', 'historical']),
   eventClusterId: z.string().optional(),
+  acquisition: z.object({
+    providerId: z.string(),
+    providerItemId: z.string().optional(),
+    query: z.string().optional(),
+    queryTargetedRegion: z.boolean().optional(),
+    collectionScope: z.string().optional(),
+  }).optional(),
+  regionLink: RegionLinkSchema.optional(),
+  regionLinkReasons: z.array(z.string()).optional(),
 });
 
 export type ActorType =
@@ -554,12 +578,15 @@ export const LimitationSchema = z.object({
 export interface DomainContext {
   domain: Domain;
   factors: Fact[];
+  /** 地域指定検索由来の未確認候補。確認済み factors とは分けて返す。 */
+  candidateFactors?: Fact[];
   missingInformation: Limitation[];
 }
 
 export const DomainContextSchema = z.object({
   domain: DomainSchema,
   factors: z.array(FactSchema),
+  candidateFactors: z.array(FactSchema).optional(),
   missingInformation: z.array(LimitationSchema),
 });
 
@@ -628,6 +655,18 @@ export interface CountryContextReport {
   providerCoverage: ProviderRun[];
   coverage: CoverageReport;
   evidence: CountryEvidence[];
+  /** 初回応答に同梱する詳細。keyEvents・factors・metrics・calendar の参照先を含む。 */
+  evidenceDetails?: EvidenceDetail[];
+  /** 本文補完の結果。 */
+  enrichment?: {
+    attempted: number;
+    upgraded: number;
+    failed: number;
+    skippedBudget: number;
+    unavailable: boolean;
+    truncatedDetails: number;
+    omittedDetails: number;
+  };
   schemaVersion?: string;
   domainContext?: Partial<Record<Domain, DomainContext>>;
   limitations?: Limitation[];
@@ -660,6 +699,16 @@ export const CountryContextReportSchema = z.object({
   providerCoverage: z.array(ProviderRunSchema),
   coverage: CoverageReportSchema,
   evidence: z.array(CountryEvidenceSchema),
+  evidenceDetails: z.array(EvidenceDetailSchema).optional(),
+  enrichment: z.object({
+    attempted: z.number(),
+    upgraded: z.number(),
+    failed: z.number(),
+    skippedBudget: z.number(),
+    unavailable: z.boolean(),
+    truncatedDetails: z.number(),
+    omittedDetails: z.number(),
+  }).optional(),
   schemaVersion: z.string().optional(),
   domainContext: z.record(DomainSchema, DomainContextSchema).optional(),
   limitations: z.array(LimitationSchema).optional(),
