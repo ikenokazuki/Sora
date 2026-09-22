@@ -8,7 +8,7 @@ export const WIKI_CURRENT_API = 'https://en.wikipedia.org/w/api.php';
 export const WIKI_CURRENT_MAX_ITEMS = 10;
 export function currentEventsPageFor(date: Date): string {
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  return 'Portal:Current events/' + months[date.getUTCMonth()] + '_' + String(date.getUTCDate());
+  return 'Portal:Current events/' + String(date.getUTCFullYear()) + ' ' + months[date.getUTCMonth()] + ' ' + String(date.getUTCDate());
 }
 export function regionMatchKeys(region: ProviderInput['region']): string[] {
   const keys = [region.name, region.nativeName, region.countryCode, ...(region.aliases ?? [])];
