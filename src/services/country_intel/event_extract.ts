@@ -22,7 +22,7 @@ export interface IntelEventDraft {
 const ACTION_PATTERNS: readonly [RegExp, ActionType][] = [
   [/\b(?:boycott|boycotts?)\b|不買/iu, 'boycott'],
   [/\b(?:memorial|commemoration|anniversary)\b|記念日|追悼/iu, 'memorial_event'],
-  [/\b(?:earthquake|tsunami|flood|wildfire|disaster)\b|大?地震|津波|洪水|災害/iu, 'disaster_response'],
+  [/\b(?:earthquake|tsunami|flood|wildfire|disaster|typhoon|cyclone|volcano|drought|landslide)\b|大?地震|津波|洪水|災害/iu, 'disaster_response'],
   [/\b(?:protest|demonstration|rally)\b|抗議|デモ/iu, 'protest'],
   [/\b(?:sanction|sanctions)\b|制裁/iu, 'sanction'],
   [/\b(?:arrest|arrested)\b|逮捕/iu, 'arrest'],
@@ -34,7 +34,7 @@ const ACTION_PATTERNS: readonly [RegExp, ActionType][] = [
   [/\b(?:threat|threatened)\b|脅迫/iu, 'threat'],
   [/\b(?:violence|violent|attack)\b|暴力|襲撃/iu, 'violence'],
   [/\b(?:military|troops|naval)\b|軍事|部隊/iu, 'military_activity'],
-  [/\b(?:trade restriction|export ban|import ban)\b|輸出規制|輸入規制/iu, 'trade_restriction'],
+  [/\b(?:trade restriction|export bans?|export controls?|export restrictions?|import bans?|import controls?|import restrictions?)\b|輸出規制|輸入規制/iu, 'trade_restriction'],
   [/\b(?:cultural event|festival|exhibition)\b|文化イベント|祭り|展覧会/iu, 'cultural_event'],
   [/\b(?:celebration|celebrate)\b|祝賀/iu, 'celebration'],
   [/\b(?:critic(?:ize|ise|ism)|said|statement|quoted)\b|批判|引用|発言/iu, 'statement'],
