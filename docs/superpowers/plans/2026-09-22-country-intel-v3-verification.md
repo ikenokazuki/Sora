@@ -51,3 +51,9 @@
 - intel suite: 205 pass / 0 fail (+2 new selection tests). Typecheck via bunx unavailable offline (registry refused); bun test compiles touched modules clean.
 - Live re-verify pending (container access down this session): CN/FR/TV re-run + feed fetch confirmation before main merge.
 
+
+## SNS posting inputs (2026-09-22, code+unit, no live yet)
+- New providers: google_news (country-edition RSS, region-derived gl/hl/ceid, max 15), wiki_current (Current Events bullets mentioning region, max 10), gtrends (daily per geo, failure-tolerant). GDELT export adds AvgTone parse + gdelt_media_tone metric (no new fetch).
+- Fixed real regression found by tests: pass1 cap 12 dropped wikidata when providers grew 10->13. Cap raised to 16 (code + test expectation).
+- intel suite: 213 pass / 0 fail (+8 new). Live verify pending (container down): new hosts + tone metric + 13-provider route before main merge.
+

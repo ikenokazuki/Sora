@@ -15,6 +15,7 @@ const IDX_SQLDATE = 1;
 const IDX_ACTOR1_COUNTRY = 7;
 const IDX_EVENT_CODE = 26;
 const IDX_NUM_ARTICLES = 33;
+const IDX_AVG_TONE = 34;
 const IDX_ACTION_GEO_COUNTRY = 53;
 const IDX_SOURCE_URL = 60;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
@@ -27,6 +28,7 @@ export function parseGdeltExport(tsv: string): GdeltEventRow[] {
     if (cols.length !== GDELT_EXPORT_COLUMNS) return [];
     if (!cols[IDX_SOURCE_URL]) return [];
     const articles = Number(cols[IDX_NUM_ARTICLES]);
+    const tone = Number(cols[IDX_AVG_TONE]);
     return [{
       GLOBALEVENTID: cols[IDX_GLOBALEVENTID] || undefined,
       SQLDATE: cols[IDX_SQLDATE] || undefined,
@@ -34,6 +36,7 @@ export function parseGdeltExport(tsv: string): GdeltEventRow[] {
       ActionGeo_CountryCode: cols[IDX_ACTION_GEO_COUNTRY] || undefined,
       EventCode: cols[IDX_EVENT_CODE] || undefined,
       ...(Number.isFinite(articles) && cols[IDX_NUM_ARTICLES] !== '' ? { NumArticles: articles } : {}),
+      ...(Number.isFinite(tone) && cols[IDX_AVG_TONE] !== '' ? { AvgTone: tone } : {}),
       SOURCEURL: cols[IDX_SOURCE_URL],
     }];
   });
@@ -157,6 +160,13 @@ export interface GdeltExportProviderDeps {
   decompressZip?: (bytes: Uint8Array) => Promise<string>;
 }
 
+/** 地域行のtone集計。新規取得なし。toneなし行は除外。 */
+export function summarizeGdeltTone(rows: readonly GdeltEventRow[]): { count: number; avgTone: number } | undefined {
+  const tones = rows.flatMap((row) => (typeof row.AvgTone === 'number' && Number.isFinite(row.AvgTone) ? [row.AvgTone] : []));
+  if (!tones.length) return undefined;
+  return { count: tones.length, avgTone: tones.reduce((a, b) => a + b, 0) / tones.length };
+}
+
 export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): CountryIntelProvider {
   const runFetch: GdeltFetch = deps.fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   const decompress = deps.decompressZip ?? unzipGdeltExport;
@@ -193,7 +203,19 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
         throw new ProviderLocalError('DECOMPRESS_FAILED', 'GDELT export decompression failed');
       }
       const rows = filterGdeltRowsForRegion(parseGdeltExport(tsv), input.region);
-      return { items: parseGdeltEventsResponse({ events: rows }, input, new Date()), coverage: ['current_events'] };
+      const items = parseGdeltEventsResponse({ events: rows }, input, new Date());
+      const tone = summarizeGdeltTone(rows);
+      if (tone) {
+        items.push({
+          metric: {
+            key: 'gdelt_media_tone',
+            current: Math.round(tone.avgTone * 100) / 100,
+            window: '15m',
+            direction: tone.avgTone > 1 ? 'rising' : tone.avgTone < -1 ? 'falling' : 'stable',
+          },
+        });
+      }
+      return { items, coverage: ['current_events'] };
     },
   };
 }
