@@ -21,7 +21,7 @@ describe('social sensing providers', () => {
     expect(url).toContain('hl=en');
   });
   test('current events page uses UTC month and day', () => {
-    expect(currentEventsPageFor(new Date('2026-09-22T00:00:00Z'))).toBe('Portal:Current events/September_22');
+    expect(currentEventsPageFor(new Date('2026-09-22T00:00:00Z'))).toBe('Portal:Current events/2026 September 22');
   });
   test('region bullets keep mentions and drop the rest', () => {
     const wiki = ['* [[Typhoon Ragasa]] makes landfall in [[Japan]], killing 3.', '* Election results announced in [[France]].', '** sub bullet Japan nested, skipped.', '* Plain line without links.'].join('\n');
@@ -48,5 +48,33 @@ describe('social sensing providers', () => {
     expect(rows[0].AvgTone).toBe(-3.5);
     expect(summarizeGdeltTone(rows)).toEqual({ count: 1, avgTone: -3.5 });
     expect(summarizeGdeltTone([{ SOURCEURL: 'https://example.org/b' }])).toBeUndefined();
+  });
+});
+
+describe('social sensing provider runs', () => {
+  const stubFetch = (body: string, contentType = 'text/plain'): never =>
+    ((() => Promise.resolve(new Response(body, { headers: { 'content-type': contentType } }))) as unknown as never);
+  const signal = AbortSignal.timeout(5000);
+  test('google news run emits acquisition items', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const rss = '<rss version="2.0"><channel><item><title>Japan quake</title><link>https://example.org/q</link><description>shaking</description></item></channel></rss>';
+    const result = await createGoogleNewsProvider(stubFetch(rss, 'application/rss+xml')).run(JP, signal);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].evidence?.publisher).toBe('Google News');
+  });
+  test('wiki current run keeps region bullets only', async () => {
+    const { createWikiCurrentProvider } = await import('./wiki_current.js');
+    const wikitext = '* Typhoon hits [[Japan]], one dead.\n* Election in [[France]].\n';
+    const body = JSON.stringify({ parse: { title: 'Portal:Current events/2026 September 22', wikitext: { '*': wikitext } } });
+    const result = await createWikiCurrentProvider(stubFetch(body, 'application/json'), new Date('2026-09-22T00:00:00Z')).run(JP, signal);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].evidence?.title).toContain('Japan');
+  });
+  test('gtrends run maps queries to evidence', async () => {
+    const { createGtrendsProvider } = await import('./gtrends.js');
+    const body = ")]}',\n" + JSON.stringify({ default: { trendingSearchesDays: [{ trendingSearches: [{ title: { query: 'Japan election' }, formattedTraffic: '50K+' }] }] } });
+    const result = await createGtrendsProvider(stubFetch(body)).run(JP, signal);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].detail?.structuredData).toMatchObject({ traffic: '50K+' });
   });
 });
