@@ -44,3 +44,10 @@
 - GDELT DOC removed from defaults (code + tests kept). Typical response back to ~7s.
 - Bluesky request search implemented + unit tested; live public searchPosts returns 403 from server networks (searchActors 200, UA-independent) -> honest provider error + limitation. Authenticated access is future work.
 - intel suite: 203 pass / 0 fail.
+
+## Keyless acquisition expansion (2026-09-22, no container, code+unit only)
+- Regional RSS: catalog 3 globals + 10 regional feeds (Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia). URLs from prior live probe session (counts 20-103 items); NHK/Kyodo/Xinhua/CNA guesses 404, excluded. Selection is globals + countryCode match, max 6 per request; unknown countries keep globals. Unit tests cover CN selection, unknown-country fallback, 6-cap.
+- Official seeds: 15 domains/8 countries -> 37 domains/20 countries (+IT/ES/CA/AU/IN/BR/MX/TH/VN/ID/PH/SG gov + statistics portals). Region attribution unchanged (query+evidence, never domain).
+- intel suite: 205 pass / 0 fail (+2 new selection tests). Typecheck via bunx unavailable offline (registry refused); bun test compiles touched modules clean.
+- Live re-verify pending (container access down this session): CN/FR/TV re-run + feed fetch confirmation before main merge.
+
