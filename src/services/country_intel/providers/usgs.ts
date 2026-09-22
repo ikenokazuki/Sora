@@ -1,4 +1,5 @@
 import { normalizeEvidence } from '../evidence.js';
+import { inferCountryCodesFromText } from '../place_country.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import { fetchProviderResponse } from '../provider_http.js';
@@ -19,9 +20,13 @@ export function parseUsgsResponse(fixture: UsgsFixture, input: ProviderInput, no
     const recordUrl = typeof p.url === 'string' && p.url ? p.url : (feature.id ? 'https://earthquake.usgs.gov/earthquakes/eventpage/' + feature.id : undefined);
     if (!recordUrl) return [];
     const occurredAt = asIso(p.time);
-    const title = 'M' + String(p.mag ?? '?') + ' - ' + (p.place ?? 'unknown location');
-    const excerpt = ['magnitude', String(p.mag ?? 'unknown'), 'depth', String(feature.geometry?.coordinates?.[2] ?? 'unknown') + 'km', p.place ?? '', occurredAt ?? ''].join(' ').trim();
-    const evidence = normalizeEvidence({ url: recordUrl, title, excerpt, publisher: 'USGS', sourceType: 'structured_dataset', publishedAt: occurredAt, primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
+    const coordinates = feature.geometry?.coordinates;
+    const place = p.place ?? 'unknown location';
+    const eventType = typeof p.type === 'string' && p.type.trim() ? p.type.trim() : 'seismic event';
+    const title = 'M' + String(p.mag ?? '?') + ' - ' + place;
+    const excerpt = [eventType, 'magnitude', String(p.mag ?? 'unknown'), 'depth', String(coordinates?.[2] ?? 'unknown') + 'km', place, occurredAt ?? ''].join(' ').trim();
+    const codes = inferCountryCodesFromText(place);
+    const evidence = normalizeEvidence({ url: recordUrl, title, excerpt, publisher: 'USGS', ...(codes.length === 1 ? { eventCountry: codes[0] } : {}), ...(codes.length > 0 ? { mentionedCountries: codes } : {}), sourceType: 'structured_dataset', publishedAt: occurredAt, primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
     const detail: EvidenceDetail = {
       evidenceId: evidence.id,
       providerId: 'usgs',
@@ -29,7 +34,7 @@ export function parseUsgsResponse(fixture: UsgsFixture, input: ProviderInput, no
       sourceRecordUrl: recordUrl,
       contentKind: 'structured_record',
       blocks: [{ index, text: excerpt }],
-      structuredData: { mag: p.mag, place: p.place, depthKm: feature.geometry?.coordinates?.[2], tsunami: p.tsunami, status: p.status, eventType: p.type },
+      structuredData: { mag: p.mag, place: p.place, longitude: coordinates?.[0], latitude: coordinates?.[1], depthKm: coordinates?.[2], tsunami: p.tsunami, status: p.status, eventType: p.type },
       occurredAt,
       publishedAt: occurredAt,
       updatedAt: asIso(p.updated),
