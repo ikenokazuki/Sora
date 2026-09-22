@@ -5,17 +5,19 @@ import { createUsgsProvider } from './providers/usgs.js';
 import { createEonetProvider } from './providers/eonet.js';
 import { createGlobalFeedsProvider } from './providers/feeds.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
-import { createGdeltProvider, type GdeltFetch } from './providers/gdelt.js';
+import type { GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
 import { createWikidataProvider } from './providers/wikidata.js';
 import { createWorldBankProvider } from './providers/worldbank.js';
 import { createOfficialWebProvider, type WebSearchItem } from './providers/official_web.js';
 import type { ScrapedArticle } from './providers/official_web.js';
-import type { CountryContextReport, CountryContextRequest } from './types.js';
+import { OFFICIAL_DOMAIN_SEEDS, seedDomainsForCountry } from './official_domains.js';
+import { resolveRegion } from './region.js';
+import type { CountryContextReport, CountryContextRequest, CountrySource } from './types.js';
 
-/** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。 */
+/** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。gdelt DOC は上流復旧まで除外（本体・テストは残す）。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt', 'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -74,13 +76,15 @@ export function createDefaultCountryIntelDependencies(
       ?? options.scrapeArticle
       ?? (process.env.SORA_INTEL_SCRAPE === 'off' ? undefined : createScrapeArticleAdapter()),
     providers: [
-      createGdeltProvider(fetchFn),
       createGdeltExportProvider({ fetchFn }),
       createGdacsProvider(fetchFn),
       createUsgsProvider(fetchFn),
       createEonetProvider(fetchFn),
       createGlobalFeedsProvider(fetchFn),
-      createOfficialWebProvider({ searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter() }),
+      createOfficialWebProvider({
+        searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter(),
+        verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
+      }),
       createBlueskyProvider(),
       createWorldBankProvider(fetchFn),
       createNagerProvider(fetchFn),
@@ -95,5 +99,22 @@ export function researchCountryWithDefaults(
   overrides: Omit<ResearchDependencies, 'providers'> = {},
   options: DefaultRuntimeOptions = {},
 ): Promise<CountryContextReport> {
-  return researchCountryContext(request, createDefaultCountryIntelDependencies(overrides, options));
+  const region = resolveRegion(request.region);
+  const nowIso = new Date().toISOString();
+  const seedSources: CountrySource[] = seedDomainsForCountry(region.countryCode).map((domain) => ({
+    id: 'seed:' + domain,
+    regionId: region.id,
+    domain,
+    sourceType: 'official',
+    discoveredAt: nowIso,
+    verifiedAt: nowIso,
+    verificationStatus: 'verified' as const,
+    discoveryMethod: 'manual_seed' as const,
+    verificationBasis: 'manual_seed' as const,
+  }));
+  const merged = createDefaultCountryIntelDependencies(
+    { ...overrides, sources: [...(overrides.sources ?? []), ...seedSources] },
+    options,
+  );
+  return researchCountryContext(request, merged);
 }
