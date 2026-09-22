@@ -38,12 +38,15 @@ function evidenceProvider(id: string): CountryIntelProvider {
 describe('report v2', () => {
   test('report carries versioned domain context and persisted details', async () => {
     const report = await researchCountryContext({ region: 'South Korea' }, { providers: [evidenceProvider('gdelt')], now, cache: null });
-    expect(report.schemaVersion).toBe('2');
+    expect(report.schemaVersion).toBe('3');
     expect(Object.keys(report.domainContext ?? {}).sort()).toEqual(['content', 'finance', 'general', 'marketing', 'tourism', 'travel']);
-    expect(report.domainContext?.content?.factors.length).toBeGreaterThan(0);
+    // 地域指定検索の未確認記事は候補欄に入り、確認済み factors には混ざらない。
+    expect(report.domainContext?.general?.candidateFactors?.length).toBeGreaterThan(0);
+    expect(report.domainContext?.general?.candidateFactors?.[0].text).toContain('trade agreement');
     expect(report.refreshState?.state).toBe('complete');
     expect(report.actualWindows?.[0]?.complete).toBe(true);
-    expect(report.limitations).toEqual([]);
+    // 本文取得器なしでは抜粋のまま残し、不足として明記する。
+    expect(report.limitations?.map((info) => info.code)).toEqual(['social_not_requested', 'article_enrichment_unavailable']);
     const page = getEvidencePage(report.contextId, { limit: 40 });
     expect(page.totalStored).toBe(1);
     expect(page.items[0].blocks[0].text).toContain('trade agreement');

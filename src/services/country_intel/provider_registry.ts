@@ -20,6 +20,8 @@ export interface AcquisitionItem {
   calendar?: CalendarEvent;
   metric?: TemporalMetric;
   source?: CountrySource;
+  /** レコード単位の分野。未指定時は provider 申告を使う。集約の media_activity 等で上書きしない。 */
+  areas?: readonly string[];
 }
 
 /** provider identity を保持した取得アイテム。flatMap時に失わない。 */
@@ -45,6 +47,8 @@ export interface ProviderResult {
 export interface CountryIntelProvider {
   id: string;
   areas: readonly string[];
+  /** 1回の実行で遡れる収集範囲（日数）。未申告は不明扱い。actualWindows の注記に使う。 */
+  collectionWindowDays?: number;
   latencyClass: CountryEvidence['latencyClass'];
   defaultTtlSeconds: number;
   run(input: ProviderInput, signal: AbortSignal): Promise<ProviderResult>;
@@ -69,6 +73,15 @@ export interface RunProviderOptions {
   maxRetryAfterMs?: number;
 }
 
+/** 本文補完の予算。未指定の項目は report 側の既定値を使う。 */
+export interface EnrichBudget {
+  maxItems?: number;
+  concurrency?: number;
+  perItemMs?: number;
+  maxCharsPerItem?: number;
+  totalChars?: number;
+}
+
 export class ProviderHttpError extends Error {
   constructor(
     readonly status: number,
@@ -84,6 +97,22 @@ export class ProviderNetworkError extends Error {
   constructor(message = 'Provider network error') {
     super(message);
     this.name = 'ProviderNetworkError';
+  }
+}
+
+/** 外部HTTPではなく自側の処理（解凍・解析・依存欠落・予算切れ）の失敗。 */
+export class ProviderLocalError extends Error {
+  constructor(
+    readonly code:
+      | 'DECOMPRESS_FAILED'
+      | 'DECOMPRESS_MISSING'
+      | 'PARSE_FAILED'
+      | 'SIZE_LIMIT'
+      | 'BUDGET_EXHAUSTED',
+    message?: string,
+  ) {
+    super(message ?? ('Provider local failure ' + code));
+    this.name = 'ProviderLocalError';
   }
 }
 
@@ -134,6 +163,7 @@ function failure(error: unknown): { status: ProviderRunStatus; errorCode: string
     if (error.status >= 400) return { status: 'error', errorCode: 'PROVIDER_HTTP_4XX' };
   }
   if (isNetwork(error)) return { status: 'unavailable', errorCode: 'PROVIDER_NETWORK' };
+  if (error instanceof ProviderLocalError) return { status: 'error', errorCode: 'PROVIDER_LOCAL_' + error.code };
   return { status: 'error', errorCode: 'PROVIDER_ERROR' };
 }
 
@@ -225,7 +255,7 @@ async function runOne(
     const finished = now();
     const items = result.items.map((item) => ({
       providerId: provider.id,
-      areas: [...provider.areas],
+      areas: [...(item.areas ?? provider.areas)],
       item,
     }));
     return {

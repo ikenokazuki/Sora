@@ -57,6 +57,17 @@ describe('domain selection', () => {
     expect(buildDomainContext('content', facts, [], []).factors.map((entry) => entry.id)).toEqual(['f1']);
   });
 
+  test('with relevance, unmatched domains stay empty with a missing reason', () => {
+    const facts = [fact('f1', 'economy', 'ev-x')];
+    const relevance = new Map([['ev-x', 'candidate' as const]]);
+    const view = buildDomainContext('content', facts, [], [], relevance);
+    expect(view.factors).toEqual([]);
+    expect(view.missingInformation.some((info) => info.code === 'factors_missing')).toBe(true);
+    const general = buildDomainContext('general', facts, [], [], relevance);
+    expect(general.factors).toEqual([]);
+    expect(general.candidateFactors?.map((entry) => entry.id)).toEqual(['f1']);
+  });
+
   test('long facts are flagged as truncated', () => {
     const longText = 'x'.repeat(1500);
     const facts = evidenceToFacts([{ providerId: 'p', areas: ['disasters'], item: { evidence: { id: 'ev-1', regionId: 'country:CN', url: 'https://example.org/1', title: 'T', excerpt: longText, sourceType: 'structured_dataset', retrievedAt: '2026-09-22T00:00:00Z', primarySource: false, latencyClass: 'near_realtime' } } }]);

@@ -38,6 +38,7 @@ export function createNagerProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'nager', areas: ['calendar', 'holidays'], latencyClass: 'delayed', defaultTtlSeconds: 86400,
+    collectionWindowDays: 365,
     async run(input: ProviderInput, signal: AbortSignal) {
       const cc = input.region.countryCode;
       if (!cc) {

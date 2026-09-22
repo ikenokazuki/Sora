@@ -9,15 +9,38 @@ import { createGdeltProvider, type GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
 import { createWikidataProvider } from './providers/wikidata.js';
 import { createWorldBankProvider } from './providers/worldbank.js';
+import { createOfficialWebProvider, type WebSearchItem } from './providers/official_web.js';
 import type { CountryContextReport, CountryContextRequest } from './types.js';
 
-/** fetch 注入のみで構成できる default provider。official_web / yahoo_realtime は別途追加する。 */
+/** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt', 'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt', 'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
   fetchFn?: GdeltFetch;
+  /** official_web の検索器。未指定時は実在の Yahoo Web 検索を使う（地域条件を落とす再検索は無効）。 */
+  officialWebSearch?: (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]>;
+}
+
+/** Yahoo Web 検索アダプタ。地域条件を落とすフォールバック再検索は行わない。 */
+export function createYahooWebSearchAdapter(): (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]> {
+  return async (query: string, maxItems: number, signal: AbortSignal) => {
+    const { searchYahooWeb } = await import('../yahoo.js');
+    if (signal.aborted) return [];
+    const result = await searchYahooWeb({ query, disableFallback: true });
+    if (signal.aborted) return [];
+    const items = Array.isArray(result?.items) ? result.items : [];
+    return items.slice(0, Math.max(0, maxItems)).flatMap((item: Record<string, unknown>) => {
+      const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : undefined;
+      if (!url) return [];
+      const title = typeof item.title === 'string' ? item.title : undefined;
+      const snippet = typeof item.snippet === 'string' ? item.snippet : typeof item.description === 'string' ? item.description : undefined;
+      const domain = typeof item.domain === 'string' ? item.domain : undefined;
+      const publishedAt = typeof item.publishedAt === 'string' ? item.publishedAt : undefined;
+      return [{ url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}), ...(domain ? { domain } : {}), ...(publishedAt ? { publishedAt } : {}) }];
+    });
+  };
 }
 
 export function createDefaultCountryIntelDependencies(
@@ -34,6 +57,7 @@ export function createDefaultCountryIntelDependencies(
       createUsgsProvider(fetchFn),
       createEonetProvider(fetchFn),
       createGlobalFeedsProvider(fetchFn),
+      createOfficialWebProvider({ searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter() }),
       createBlueskyProvider(),
       createWorldBankProvider(fetchFn),
       createNagerProvider(fetchFn),

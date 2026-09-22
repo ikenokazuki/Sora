@@ -38,6 +38,8 @@ export interface GdacsFixture { features?: { properties?: GdacsProperties; geome
 
 export function buildGdacsUrl(): string { return 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventtypes=TC,FL,EQ,VO,DR,WF'; }
 
+export const GDACS_RSS_URL = 'https://www.gdacs.org/xml/rss.xml';
+
 function linkValue(links: GdacsLinkEntry[] | undefined, keys: readonly string[]): string | undefined {
   if (!Array.isArray(links)) return undefined;
   for (const key of keys) {
@@ -190,19 +192,50 @@ export function createGdacsProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'gdacs', areas: ['disasters'], latencyClass: 'near_realtime', defaultTtlSeconds: 1800,
+    collectionWindowDays: 30,
     async run(input: ProviderInput, signal: AbortSignal) {
-      let res: Response;
-      try {
-        res = await fetchProviderResponse(buildGdacsUrl(), { sourceId: 'gdacs', timeoutMs: 15000, format: 'json', signal, fetchFn: runFetch });
-      } catch (e) {
-        if (signal.aborted) throw e;
-        if (e instanceof ProviderHttpError) throw e;
-        throw new ProviderNetworkError(String(e));
-      }
-      if (!(res.headers.get('content-type') ?? '').includes('json')) throw new ProviderHttpError(502, undefined, 'GDACS unexpected content type');
-      const data = (await res.json()) as GdacsFixture;
-      if (!Array.isArray(data.features)) throw new ProviderHttpError(502, undefined, 'GDACS envelope missing features');
-      return { items: parseGdacsApi(data, input, new Date()), coverage: ['disasters'] };
+      const apiItems = await fetchGdacsApi(runFetch, signal).catch((error: unknown) => {
+        if (signal.aborted) throw error;
+        return null;
+      });
+      if (apiItems) return { items: apiItems.items(input, new Date()), coverage: ['disasters'] };
+      // API 失敗時のみ RSS へ一度フォールバックする。成功分は report 側で保持される。
+      const rssItems = await fetchGdacsRss(runFetch, signal);
+      return { items: rssItems(input, new Date()), coverage: ['disasters'], status: 'partial' as const, errorCode: 'GDACS_API_FALLBACK_RSS' };
     },
   };
+}
+
+async function fetchGdacsApi(
+  runFetch: GdeltFetch,
+  signal: AbortSignal,
+): Promise<{ items(input: ProviderInput, now: Date): AcquisitionItem[] } | null> {
+  let res: Response;
+  try {
+    res = await fetchProviderResponse(buildGdacsUrl(), { sourceId: 'gdacs', timeoutMs: 15000, format: 'json', signal, fetchFn: runFetch });
+  } catch (e) {
+    if (signal.aborted) throw e;
+    if (e instanceof ProviderHttpError) throw e;
+    throw new ProviderNetworkError(String(e));
+  }
+  if (!(res.headers.get('content-type') ?? '').includes('json')) throw new ProviderHttpError(502, undefined, 'GDACS unexpected content type');
+  const data = (await res.json()) as GdacsFixture;
+  if (!Array.isArray(data.features)) throw new ProviderHttpError(502, undefined, 'GDACS envelope missing features');
+  return { items: (input, now) => parseGdacsApi(data, input, now) };
+}
+
+async function fetchGdacsRss(
+  runFetch: GdeltFetch,
+  signal: AbortSignal,
+): Promise<(input: ProviderInput, now: Date) => AcquisitionItem[]> {
+  let res: Response;
+  try {
+    res = await fetchProviderResponse(GDACS_RSS_URL, { sourceId: 'gdacs-rss', timeoutMs: 15000, format: 'xml', signal, fetchFn: runFetch });
+  } catch (e) {
+    if (signal.aborted) throw e;
+    if (e instanceof ProviderHttpError) throw e;
+    throw new ProviderNetworkError(String(e));
+  }
+  const xml = await res.text();
+  return (input, now) => parseGdacsFeed(xml, input, now);
 }

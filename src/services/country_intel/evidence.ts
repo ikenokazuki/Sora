@@ -70,7 +70,7 @@ export function normalizeEvidence(
   };
 }
 
-export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[] {
+function componentRoots(items: CountryEvidence[]): number[] {
   const parents = items.map((_, index) => index);
   const find = (index: number): number => {
     if (parents[index] !== index) parents[index] = find(parents[index]);
@@ -83,13 +83,11 @@ export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[]
   };
   const urls = new Map<string, number>();
   const contentHashes = new Map<string, number>();
-
   for (const [index, item] of items.entries()) {
     const canonicalUrl = canonicalizeEvidenceUrl(item.url);
     const matchingUrl = urls.get(canonicalUrl);
     if (matchingUrl !== undefined) union(matchingUrl, index);
     urls.set(canonicalUrl, index);
-
     if (item.contentHash !== undefined) {
       const contentKey = `${item.contentHash}\u0000${canonicalPublisherDomain(item.url) ?? 'unknown'}`;
       const matchingContent = contentHashes.get(contentKey);
@@ -97,12 +95,37 @@ export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[]
       contentHashes.set(contentKey, index);
     }
   }
+  return items.map((_, index) => find(index));
+}
 
+export function deduplicateEvidence(items: CountryEvidence[]): CountryEvidence[] {
+  const roots = componentRoots(items);
   const firstByComponent = new Map<number, number>();
   for (const index of items.keys()) {
-    const component = find(index);
+    const component = roots[index];
     if (!firstByComponent.has(component)) firstByComponent.set(component, index);
   }
+  return items.filter((_, index) => firstByComponent.get(roots[index]) === index);
+}
 
-  return items.filter((_, index) => firstByComponent.get(find(index)) === index);
+/**
+ * 重複排除と同時に旧ID→代表IDの対応を返す。本文・イベント・指標の
+ * 参照統一に使う。代表は各連結成分の先頭レコード。
+ */
+export function deduplicateEvidenceWithRemap(items: CountryEvidence[]): {
+  evidence: CountryEvidence[];
+  remap: Map<string, string>;
+} {
+  const evidence = deduplicateEvidence(items);
+  const roots = componentRoots(items);
+  const representativeByComponent = new Map<number, string>();
+  for (const [index, item] of items.entries()) {
+    const component = roots[index];
+    if (!representativeByComponent.has(component)) representativeByComponent.set(component, item.id);
+  }
+  const remap = new Map<string, string>();
+  for (const [index, item] of items.entries()) {
+    remap.set(item.id, representativeByComponent.get(roots[index])!);
+  }
+  return { evidence, remap };
 }

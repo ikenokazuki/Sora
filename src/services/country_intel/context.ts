@@ -1,4 +1,5 @@
 import type {
+  ActualWindow,
   BaselineOrigin,
   CountryEvidence,
   CoverageReport,
@@ -215,8 +216,13 @@ export function assembleSituation(
 }
 
 function areaRuns(area: keyof CoverageReport['byArea'], runs: readonly ProviderRun[]): ProviderRun[] {
-  const aliases = new Set(AREA_ALIASES[area].map((item) => item.replace(/[^a-z]/giu, '').toLocaleLowerCase('en-US')));
-  return runs.filter(({ coverage }) => coverage?.some((item) => aliases.has(item.replace(/[^a-z]/giu, '').toLocaleLowerCase('en-US'))) ?? false);
+  const aliases = new Set(AREA_ALIASES[area].map(normalizeAreaKey));
+  return runs.filter(({ coverage }) => coverage?.some((item) => aliases.has(normalizeAreaKey(item))) ?? false);
+}
+
+/** 分野名の表記ゆれ（disaster/disasters 等）を入口で正規化する。 */
+export function normalizeAreaKey(value: string): string {
+  return value.replace(/[^a-z]/giu, '').toLocaleLowerCase('en-US');
 }
 
 function coverageState(runs: readonly ProviderRun[], hasEvidence: boolean): CoverageState {
@@ -229,13 +235,28 @@ export function buildCoverage(
   runs: readonly ProviderRun[],
   evidence: readonly CountryEvidence[],
   evidenceByProviderArea: Readonly<Record<string, readonly string[]>> = {},
+  extraIds: readonly string[] = [],
 ): CoverageReport {
   const byArea = {} as CoverageReport['byArea'];
   const missingEvidence: string[] = [];
-  const evidenceIds = new Set(evidence.map(({ id }) => id));
+  // 記事以外の統計・カレンダー（detail/calendar の ID）も対応する証拠として評価する。
+  const evidenceIds = new Set([...evidence.map(({ id }) => id), ...extraIds]);
   for (const area of Object.keys(AREA_ALIASES) as (keyof CoverageReport['byArea'])[]) {
     const coveredRuns = areaRuns(area, runs);
-    const hasEvidence = coveredRuns.some(({ provider, itemCount }) => itemCount > 0 && evidenceByProviderArea[`${provider}:${area}`]?.some((id) => evidenceIds.has(id)));
+    // provider 申告の分野名は表記ゆれがあるため正規化して突き合わせる。
+    // 例: Coverage の disaster に対し provider は disasters を申告する。
+    const aliases = AREA_ALIASES[area].map(normalizeAreaKey);
+    const hasEvidence = coveredRuns.some(
+      ({ provider, itemCount }) => itemCount > 0 && aliases.some((alias) =>
+        Object.entries(evidenceByProviderArea).some(([key, ids]) => {
+          const separator = key.indexOf(':');
+          return separator >= 0
+            && key.slice(0, separator) === provider
+            && normalizeAreaKey(key.slice(separator + 1)) === alias
+            && ids.some((id) => evidenceIds.has(id));
+        }),
+      ),
+    );
     byArea[area] = coverageState(coveredRuns, hasEvidence);
     if (!hasEvidence) missingEvidence.push(area);
   }
@@ -245,4 +266,45 @@ export function buildCoverage(
     missingEvidence,
     unavailableProviders: runs.filter(({ status }) => ['unavailable', 'rate_limited', 'error'].includes(status)).map(({ provider }) => provider),
   };
+}
+
+export interface ProviderWindowHint {
+  provider: string;
+  status: ProviderRun['status'];
+  /** 申告された収集範囲（日数）。未申告は不明。 */
+  collectionWindowDays?: number;
+}
+
+/** 収集範囲の表示。1日未満は時間・分で表す。 */
+export function formatWindowDays(days: number): string {
+  if (days >= 1) return '~' + String(Math.round(days * 10) / 10) + 'd';
+  const minutes = Math.round(days * 24 * 60);
+  if (minutes >= 60) return '~' + String(Math.round(minutes / 60 * 10) / 10) + 'h';
+  return '~' + String(Math.max(1, minutes)) + 'min';
+}
+
+/**
+ * 要求期間のコピーではなく取得元の実収集範囲から期間を生成する。
+ * 24時間フィードや最新15分 Export だけで 30 日間を完全取得した扱いにしない。
+ */
+export function buildActualWindows(
+  from: string,
+  to: string,
+  runs: readonly ProviderRun[],
+  hints: readonly ProviderWindowHint[],
+  periodDays: number,
+): ActualWindow[] {
+  const gaps: { from: string; to: string; reason: string }[] = [];
+  for (const run of runs) {
+    if (run.status !== 'success') {
+      gaps.push({ from, to, reason: run.provider + ':' + run.status + (run.errorCode ? ' ' + run.errorCode : '') });
+    }
+  }
+  for (const hint of hints) {
+    if (hint.status !== 'success' || hint.collectionWindowDays === undefined) continue;
+    if (hint.collectionWindowDays < periodDays) {
+      gaps.push({ from, to, reason: hint.provider + ':partial_window covers ' + formatWindowDays(hint.collectionWindowDays) + ' of ' + String(periodDays) + 'd' });
+    }
+  }
+  return [{ from, to, complete: gaps.length === 0 && runs.length > 0, gaps }];
 }
