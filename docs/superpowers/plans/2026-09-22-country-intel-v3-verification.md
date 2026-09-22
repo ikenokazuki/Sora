@@ -38,3 +38,9 @@
 - Scraped headlines resolve into `resolvedTitle` and lead factor text (live: De Beers, Pinglu Canal readable).
 - GDACS: API 8s + RSS fallback incl. timeouts, 18s cap (live: recovered, 6 China events).
 - intel suite: 197 pass / 0 fail.
+
+## Acquisition strengthening (2026-09-22, live cn8 + social)
+- Official seeds (15 domains, 8 countries): China run hits 20 seed-domain evidence items; 66 official-source items; refresh complete; 6.9s.
+- GDELT DOC removed from defaults (code + tests kept). Typical response back to ~7s.
+- Bluesky request search implemented + unit tested; live public searchPosts returns 403 from server networks (searchActors 200, UA-independent) -> honest provider error + limitation. Authenticated access is future work.
+- intel suite: 203 pass / 0 fail.

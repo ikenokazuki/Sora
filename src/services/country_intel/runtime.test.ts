@@ -116,3 +116,39 @@ test("default runtime wires the built-in article fetcher unless disabled", async
     else process.env.SORA_INTEL_SCRAPE = previous;
   }
 });
+
+test("official seeds verify seed domains and inject pass2 site queries", async () => {
+  const { OFFICIAL_DOMAIN_SEEDS, seedDomainsForCountry } = await import("./official_domains.js");
+  expect(OFFICIAL_DOMAIN_SEEDS.length).toBeGreaterThan(10);
+  expect(seedDomainsForCountry("CN")).toContain("fmprc.gov.cn");
+  expect(seedDomainsForCountry("XX")).toEqual([]);
+  const { webItemsToAcquisition } = await import("./providers/official_web.js");
+  const region = { id: "country:CN", name: "China", countryCode: "CN", languages: [], aliases: [], confidence: "high" as const };
+  const input = { request: { region: "China" } as never, region, queries: [] };
+  const items = webItemsToAcquisition(
+    [{ url: "https://fmprc.gov.cn/press.html", title: "Press" }],
+    input,
+    OFFICIAL_DOMAIN_SEEDS.map((s) => s.domain),
+    new Date("2026-09-22T00:00:00Z"),
+  );
+  expect(items[0].evidence?.sourceType).toBe("official");
+  expect(items[0].evidence?.primarySource).toBe(true);
+});
+
+test("seed sources drive pass2 site queries for the requested country", async () => {
+  const seen: string[] = [];
+  const report = await researchCountryWithDefaults(
+    { region: "China", noCache: true },
+    { cache: null, now: () => new Date("2026-09-19T00:00:00Z") },
+    { officialWebSearch: async (query: string) => { seen.push(query); return []; } },
+  );
+  expect(report.region.countryCode).toBe("CN");
+  expect(seen.some((q) => q.includes("site:fmprc.gov.cn"))).toBe(true);
+  expect(seen.some((q) => q.includes("site:whitehouse.gov"))).toBe(false);
+});
+
+test("gdelt doc stays out of the default provider set", async () => {
+  const { defaultCountryIntelProviderIds, createDefaultCountryIntelDependencies } = await import("./runtime.js");
+  expect(defaultCountryIntelProviderIds).not.toContain("gdelt");
+  expect(createDefaultCountryIntelDependencies().providers?.map((p) => p.id)).not.toContain("gdelt");
+});
