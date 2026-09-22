@@ -71,3 +71,10 @@
 - New: baidu_hot provider (CN-only). Baidu realtime board live-verified readable without auth: 40+ ranked topics with hot index, includes mourning-grade and scandal topics. Weibo hot search is login/JS-walled, deprioritized.
 - intel suite: 219 pass / 0 fail.
 
+
+## Unconfirmed items follow-up (2026-09-22)
+- Baidu JSON API (top.baidu.com/api/board?tab=realtime) live-verified without auth: errno/data.cards[].content[] with query/desc/hotScore/url/hotTag. Provider now JSON-first, HTML fallback. Test uses live-shape fixture.
+- Google News RSS search URL scheme confirmed current via 2024-2026 docs and active templates (rss/search?q=&hl=&gl=&ceid=). Item links are Google-internal redirects, so a best-effort publisher-URL decoder was added (single-URL payloads only, ambiguity keeps original; real-payload hit rate pending container).
+- Trends dailytrends endpoint format stands; live fetch still pending container recovery (browser tool cannot read XSSI-JSON, sandbox has no egress, podman socket unreachable).
+- intel suite: 221 pass / 0 fail.
+

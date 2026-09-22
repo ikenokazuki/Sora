@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildGoogleNewsSearchUrl } from './google_news.js';
+import { buildGoogleNewsSearchUrl, decodeGoogleNewsUrl } from './google_news.js';
 import { currentEventsPageFor, extractRegionBullets } from './wiki_current.js';
 import { buildGtrendsDailyUrl, parseGtrendsDaily } from './gtrends.js';
 import { parseGdeltExport, summarizeGdeltTone } from './gdelt_files.js';
@@ -19,6 +19,12 @@ describe('social sensing providers', () => {
     const url = buildGoogleNewsSearchUrl(inputFor({ id: 'x', name: 'Nowhere', languages: [] }).region) ?? '';
     expect(url).not.toContain('gl=');
     expect(url).toContain('hl=en');
+  });
+  test('google news redirect urls decode to publisher', () => {
+    const inner = 'https://example.org/article/1';
+    const token = Buffer.from('prefix\x08' + inner + '\x08suffix', 'latin1').toString('base64url');
+    expect(decodeGoogleNewsUrl('https://news.google.com/__i/rss/rd/articles/' + token + '?oc=5')).toBe(inner);
+    expect(decodeGoogleNewsUrl('https://example.org/direct')).toBe('https://example.org/direct');
   });
   test('current events page uses UTC month and day', () => {
     expect(currentEventsPageFor(new Date('2026-09-22T00:00:00Z'))).toBe('Portal:Current events/2026 September 22');
@@ -92,6 +98,16 @@ describe('baidu hot search', () => {
   test('rejects pages without embedded topics', async () => {
     const { parseBaiduHotHtml } = await import('./baidu_hot.js');
     expect(parseBaiduHotHtml('<html><body>login required</body></html>')).toEqual([]);
+  });
+  test('parses live-shape api json', async () => {
+    const { jsonHotEntries } = await import('./baidu_hot.js');
+    const content = ['陈观泰离世', 'T2', 'T3', 'T4', 'T5', 'T6'].map((query) => ({
+      query, desc: 'desc', hotScore: '712万', url: 'https://www.baidu.com/s?wd=' + encodeURIComponent(query), hotTag: 'hot', img: '', index: 'https://top.baidu.com/board/detail?b=1',
+    }));
+    const entries = jsonHotEntries(JSON.stringify({ errno: 0, data: { cards: [{ content }] }, cost: { params: 1 } }));
+    expect(entries).toHaveLength(6);
+    expect(entries[0]).toMatchObject({ rank: 1, query: '陈观泰离世', hotIndex: '712万', tag: 'hot' });
+    expect(jsonHotEntries('not json')).toEqual([]);
   });
   test('runs for CN only', async () => {
     const { createBaiduHotProvider } = await import('./baidu_hot.js');
