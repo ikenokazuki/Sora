@@ -117,6 +117,12 @@ export function feedEntriesToAcquisition(entries: FeedEntry[], entry: SourceCata
   });
 }
 
+/** 地域に合うフィード選択。共通＋対象国一致、上限6。 */
+export function selectFeedsForRegion(catalog: readonly SourceCatalogEntry[], countryCode: string | undefined, limit = 6): SourceCatalogEntry[] {
+  const matched = catalog.filter((entry) => !(entry.countryCodes?.length) || (countryCode && entry.countryCodes.includes(countryCode)));
+  return matched.slice(0, limit);
+}
+
 export function createGlobalFeedsProvider(fetchFn?: GdeltFetch, catalog: readonly SourceCatalogEntry[] = GLOBAL_FEED_CATALOG): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
@@ -125,7 +131,8 @@ export function createGlobalFeedsProvider(fetchFn?: GdeltFetch, catalog: readonl
     async run(input: ProviderInput, signal: AbortSignal) {
       const all: AcquisitionItem[] = [];
       const now = new Date();
-      for (const entry of catalog.slice(0, 4)) {
+      const feeds = selectFeedsForRegion(catalog, input.region?.countryCode);
+      for (const entry of feeds) {
         let res: Response;
         try {
           res = await fetchProviderResponse(entry.url, { sourceId: entry.id, timeoutMs: 10000, format: 'xml', signal, fetchFn: runFetch });
