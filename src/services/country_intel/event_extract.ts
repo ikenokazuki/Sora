@@ -45,6 +45,7 @@ const ACTION_PATTERNS: readonly [RegExp, ActionType][] = [
   [/\b(?:trade restriction|export bans?|export controls?|export restrictions?|import bans?|import controls?|import restrictions?)\b|輸出規制|輸入規制/iu, 'trade_restriction'],
   [/\b(?:cultural event|festival|exhibition)\b|文化イベント|祭り|展覧会/iu, 'cultural_event'],
   [/\b(?:celebration|celebrate)\b|祝賀/iu, 'celebration'],
+  [/\b(?:economy|economic|trade|tariff|gdp|cpi|recession|stimulus)\b|经济|経済|貿易|関税|景気/iu, 'business_action'],
   [/\b(?:critic(?:ize|ise|ism)|said|statement|quoted)\b|批判|引用|発言/iu, 'statement'],
 ];
 
@@ -58,7 +59,8 @@ const ACTOR_PATTERNS: readonly [RegExp, IntelEntity['type'], string][] = [
   [/\b(?:military|army)\b|軍/iu, 'military', 'military'],
 ];
 
-function actionType(text: string): ActionType {
+/** クラスタと単独観測で共有する見出し型付け。順序依存（先勝ち）のため並びを変えない。 */
+export function classifyActionType(text: string): ActionType {
   return ACTION_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? 'other';
 }
 
@@ -122,7 +124,7 @@ export function extractEvent(
   const title = normalizedText(evidence.title) ?? normalizedText(evidence.excerpt);
   if (!title) return undefined;
   const excerpt = normalizedText(evidence.excerpt);
-  const titleAction = actionType(title);
+  const titleAction = classifyActionType(title);
   const details = excerpt && excerpt !== title ? excerpt : undefined;
   const location = {
     ...(evidence.eventCountry ? { countryCode: evidence.eventCountry } : {}),
@@ -135,7 +137,7 @@ export function extractEvent(
   return {
     evidenceId: evidence.id,
     regionId: evidence.regionId,
-    type: titleAction === 'other' && details ? actionType(details) : titleAction,
+    type: titleAction === 'other' && details ? classifyActionType(details) : titleAction,
     title,
     occurredAt: structuredAt ?? publishedAt,
     ...(publishedAt ? { publishedAt } : {}),

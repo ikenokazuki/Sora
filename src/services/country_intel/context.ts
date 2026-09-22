@@ -5,6 +5,7 @@ import type {
   CoverageReport,
   CoverageState,
   CountryContextReport,
+  Fact,
   ForeignRelationContext,
   IntelEvent,
   JapanContextView,
@@ -13,6 +14,8 @@ import type {
   SituationSection,
   TemporalMetric,
 } from './types.js';
+import type { RegionLink } from './region_link.js';
+import { classifyActionType } from './event_extract.js';
 
 const AREA_ALIASES: Record<keyof CoverageReport['byArea'], readonly string[]> = {
   politics: ['politics', 'elections'],
@@ -213,6 +216,82 @@ export function assembleSituation(
     section.summaryFacts = [`${areaEvents.length} ${scope}${unit} observed in the requested period.`];
   }
   return situation;
+}
+
+/** 単独観測の昇格対象。分野タグ付きの証拠だけを扱い、無属性ニュースの政治・治安への誤分類はしない。 */
+const PROMOTABLE_TOPIC_TO_AREA: Readonly<Record<string, SituationArea>> = Object.freeze({
+  economy: 'economy',
+  disasters: 'disasters',
+  humanitarian: 'humanitarian',
+  social_observations: 'social',
+});
+const SINGLE_OBSERVATION_CAP = 5;
+
+function oneLineEvidence(evidence: CountryEvidence): string {
+  const title = evidence.title?.normalize('NFKC').replace(/\s+/gu, ' ').trim() || evidence.url;
+  const date = evidence.publishedAt?.slice(0, 10) ?? 'date unknown';
+  const publisher = evidence.publisher?.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+  const tail = publisher ? publisher + ', ' + date : date;
+  return (title + ' — ' + tail).slice(0, 200);
+}
+
+/**
+ * クラスタのない分野に、地域関連の確認済み単独証拠を構造化で載せる。
+ * eventIds は作らない（単独観測と分かる形）。非LLM・抽出のみ。
+ */
+export function promoteSingleObservations(
+  situation: CountryContextReport['situation'],
+  facts: readonly Fact[],
+  evidenceById: ReadonlyMap<string, CountryEvidence>,
+  links: ReadonlyMap<string, RegionLink>,
+  clusteredEvidenceIds: ReadonlySet<string>,
+): void {
+  const promoted = new Set<string>();
+  const collect = (match: (fact: Fact, evidence: CountryEvidence) => SituationArea | undefined): Map<SituationArea, CountryEvidence[]> => {
+    const buckets = new Map<SituationArea, CountryEvidence[]>();
+    for (const fact of facts) {
+      for (const id of fact.evidenceIds) {
+        if (promoted.has(id) || clusteredEvidenceIds.has(id)) continue;
+        const link = links.get(id);
+        if (link !== 'direct' && link !== 'related') continue;
+        const evidence = evidenceById.get(id);
+        if (!evidence) continue;
+        const area = match(fact, evidence);
+        if (!area) continue;
+        promoted.add(id);
+        const list = buckets.get(area) ?? [];
+        list.push(evidence);
+        buckets.set(area, list);
+      }
+    }
+    return buckets;
+  };
+  const assign = (buckets: Map<SituationArea, CountryEvidence[]>): void => {
+    for (const [area, candidates] of buckets) {
+      const section = situation[area];
+      if (section.eventIds.length > 0 || section.evidenceIds.length > 0) continue;
+      candidates.sort((a, b) => {
+        if (a.primarySource !== b.primarySource) return a.primarySource ? -1 : 1;
+        const at = a.publishedAt ?? '';
+        const bt = b.publishedAt ?? '';
+        if (at !== bt) return at < bt ? 1 : -1;
+        return a.id < b.id ? -1 : 1;
+      });
+      const picked = candidates.slice(0, SINGLE_OBSERVATION_CAP);
+      section.evidenceIds = picked.map((evidence) => evidence.id);
+      const head = picked.length === 1
+        ? '1 single observation (uncorroborated, no event cluster) in the requested period.'
+        : picked.length + ' single observations (uncorroborated, no event cluster) in the requested period.';
+      section.summaryFacts = [head, ...picked.map(oneLineEvidence)];
+    }
+  };
+  // 1) 分野タグ付きの fast path。2) 見出し型付け（クラスタと同一規則・見出しのみ）。
+  assign(collect((fact) => PROMOTABLE_TOPIC_TO_AREA[fact.topic]));
+  assign(collect((fact, evidence) => {
+    if (!evidence.title) return undefined;
+    const area = SITUATION_CLASSIFICATION[classifyActionType(evidence.title)];
+    return area;
+  }));
 }
 
 function areaRuns(area: keyof CoverageReport['byArea'], runs: readonly ProviderRun[]): ProviderRun[] {
