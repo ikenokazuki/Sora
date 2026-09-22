@@ -101,3 +101,10 @@
 - TopHub mirror (tophub.today/n/Jb0vmloB1G) returned HTTP 200 with ~50 Baidu topics earlier in the session, then flipped to 403 安全验证 (bot challenge for datacenter IPs, same class as Baidu direct captcha/SYN-drop). Stages are API 5s -> HTML 5s -> TopHub 8s with a 20s provider cap so the outer 10s default can no longer cut the chain; the first live run exposed exactly that cut (baidu_hot unavailable at 10.0s) and the cap fixed it. Live mirror rescue is fixture-proven but currently unverifiable from the JP verification network; failures stay honest errors, never fake data.
 - Unrelated transient: gdelt_export 4xx on the FR run while the CN run 1 minute earlier succeeded with the same code (58 items). Upstream flakiness, not this change.
 - intel suite: 221 pass / 0 fail (218 baseline + 3 new: planned-query URL, TopHub decode/dedupe, mirror fallback incl. 20s cap). Scratch live scripts removed before commit.
+
+
+## so360 query search for CN (2026-09-22, live-verified)
+- Sogou serves a JS antispider page even cookied (SUV/SNUID signing needs JS) -> rejected. s.weibo.com and m.weibo.cn both 302 to passport visitor walls (login cookie needed, against the keyless rule). TopHub Weibo node shares the 403 gating. Weibo routes parked.
+- 360 Search works keyless: first 302 sets a cookie, following it with the cookie returns HTTP 200 with SSR results; data-mdurl carries publisher-direct URLs. New CN-only provider so360_search (planned query first, 1 page, max 10, per-fetch 6s, 14s cap). Repro tests first (parse/mdurl-only, planned query URL, cookie redirect, non-CN skip).
+- Live CN + query 经济: 16.1s, details 615, so360_search success 7 items in 2.5s (china-cer.com.cn, finance.china.com.cn, sdchina.com with dates/numbers). domestic finance layer restored. baidu_hot still honest 4xx.
+- intel suite: 225 pass / 0 fail (221 + 4 new).
