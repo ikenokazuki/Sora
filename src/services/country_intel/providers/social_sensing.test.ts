@@ -68,6 +68,18 @@ describe('social sensing provider runs', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].evidence?.publisher).toBe('Google News');
   });
+  test('google news run uses the planned request query', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    let captured = '';
+    const fetchFn = (async (url: string) => {
+      captured = url;
+      return new Response('<rss version="2.0"><channel><item><title>E</title><link>https://example.org/e</link></item></channel></rss>', { headers: { 'content-type': 'application/rss+xml' } });
+    }) as unknown as never;
+    const input = { ...JP, queries: [{ pass: 1 as const, providerId: 'google_news', query: 'Japan economy', topics: [], maxItems: 15 }] };
+    const result = await createGoogleNewsProvider(fetchFn).run(input, signal);
+    expect(result.items).toHaveLength(1);
+    expect(captured).toContain('q=Japan+economy');
+  });
   test('wiki current run keeps region bullets only', async () => {
     const { createWikiCurrentProvider } = await import('./wiki_current.js');
     const wikitext = '* Typhoon hits [[Japan]], one dead.\n* Election in [[France]].\n';
@@ -111,5 +123,30 @@ describe('baidu hot search', () => {
     expect(cn.items[0].evidence?.publisher).toBe('Baidu Hot Search');
     const jp = await createBaiduHotProvider(fetchFn).run(JP, AbortSignal.timeout(5000));
     expect(jp.items).toEqual([]);
+  });
+  test('parses tophub mirror links with decode, dedupe and cap', async () => {
+    const { parseTopHubBaiduHtml } = await import('./baidu_hot.js');
+    const link = (wd: string) => '<a href="https://www.baidu.com/s?wd=' + wd + '">x</a>';
+    const html = '<html><body>'
+      + link(encodeURIComponent('中美关系')) + link(encodeURIComponent('中美关系'))
+      + link(encodeURIComponent('中国女排')) + '<a href="https://tophub.today/n/other">other</a>'
+      + '</body></html>';
+    const entries = parseTopHubBaiduHtml(html);
+    expect(entries.map((e) => e.query)).toEqual(['中美关系', '中国女排']);
+    expect(entries[0]).toMatchObject({ rank: 1 });
+    expect(entries[0].url).toContain('baidu.com/s?wd=');
+  });
+  test('falls back to tophub when direct baidu is unreachable', async () => {
+    const { createBaiduHotProvider } = await import('./baidu_hot.js');
+    expect(createBaiduHotProvider().timeoutMs).toBe(20000);
+    const topics = ['话题A', '话题B', '话题C', '话题D', '话题E', '话题F'];
+    const mirror = '<html><body>' + topics.map((q) => '<a href="https://www.baidu.com/s?wd=' + encodeURIComponent(q) + '">' + q + '</a>').join('') + '</body></html>';
+    const fetchFn = (async (url: string) => {
+      if (String(url).includes('tophub.today')) return new Response(mirror, { headers: { 'content-type': 'text/html' } });
+      throw new Error('socket timeout');
+    }) as unknown as never;
+    const result = await createBaiduHotProvider(fetchFn).run(CN, AbortSignal.timeout(5000));
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items[0].evidence?.publisher).toBe('Baidu Hot Search');
   });
 });

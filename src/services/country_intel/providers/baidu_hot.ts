@@ -6,6 +6,8 @@ import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 export const BAIDU_HOT_URL = 'https://top.baidu.com/board?tab=realtime';
 export const BAIDU_HOT_API_URL = 'https://top.baidu.com/api/board?tab=realtime';
+/** Baidu直が遮断される回線向けのミラー。公式JSON/HTMLを優先し、最後の救済に使う。 */
+export const BAIDU_HOT_TOPHUB_URL = 'https://tophub.today/n/Jb0vmloB1G';
 export const BAIDU_HOT_MAX_ITEMS = 30;
 export interface BaiduHotEntry { rank: number; query: string; desc: string; hotIndex: string; url: string; tag: string; }
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -75,17 +77,48 @@ export function jsonHotEntries(text: string): BaiduHotEntry[] {
   }
   return [];
 }
+/** TopHubミラーからBaidu検索リンクを復元する。wd値をデコードし、順序保持で重複排除、上限30。 */
+export function parseTopHubBaiduHtml(html: string): BaiduHotEntry[] {
+  const seen = new Set<string>();
+  const entries: BaiduHotEntry[] = [];
+  const re = /https:\/\/www\.baidu\.com\/s\?wd=([^"'\s<>]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const raw = (m[1] ?? '').split('&')[0] ?? '';
+    let query = '';
+    try {
+      query = decodeURIComponent(raw.replace(/\+/g, ' '));
+    } catch {
+      continue;
+    }
+    query = query.trim();
+    if (!query || seen.has(query)) continue;
+    seen.add(query);
+    if (entries.length >= BAIDU_HOT_MAX_ITEMS) break;
+    entries.push({
+      rank: entries.length + 1,
+      query,
+      desc: '',
+      hotIndex: '',
+      url: 'https://www.baidu.com/s?wd=' + encodeURIComponent(query),
+      tag: '',
+    });
+  }
+  return entries;
+}
 export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'baidu_hot', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
+    /** 直2段の待機で外側10秒を使い切らないよう固有上限を持つ。全体30秒予算内。 */
+    timeoutMs: 20000,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
-      const fetchText = async (url: string): Promise<string> => {
+      const fetchText = async (url: string, timeoutMs = 8000): Promise<string> => {
         let res: Response;
         try {
-          res = await fetchProviderResponse(url, { sourceId: 'baidu_hot', timeoutMs: 8000, format: 'text', signal, fetchFn: runFetch });
+          res = await fetchProviderResponse(url, { sourceId: 'baidu_hot', timeoutMs, format: 'text', signal, fetchFn: runFetch });
         } catch (e) {
           if (signal.aborted) throw e;
           if (e instanceof ProviderHttpError) throw e;
@@ -93,10 +126,30 @@ export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
         }
         return res.text();
       };
-      // JSON API優先、失敗時はHTMLへフォールバック。両方だめなら欠落明示。
-      let entries = jsonHotEntries(await fetchText(BAIDU_HOT_API_URL));
-      if (!entries.length) entries = parseBaiduHotHtml(await fetchText(BAIDU_HOT_URL));
-      if (!entries.length) throw new ProviderHttpError(502, undefined, 'Baidu hot list envelope unexpected');
+      // JSON API優先、HTML、TopHubミラーの順に救済する。各段の取得失敗は次段へ進む。中断だけは即時送出。
+      let entries: BaiduHotEntry[] = [];
+      let lastError: unknown;
+      const stages: Array<() => Promise<BaiduHotEntry[]>> = [
+        async () => jsonHotEntries(await fetchText(BAIDU_HOT_API_URL, 5000)),
+        async () => parseBaiduHotHtml(await fetchText(BAIDU_HOT_URL, 5000)),
+        async () => parseTopHubBaiduHtml(await fetchText(BAIDU_HOT_TOPHUB_URL, 8000)),
+      ];
+      for (const stage of stages) {
+        try {
+          const found = await stage();
+          if (found.length) {
+            entries = found;
+            break;
+          }
+        } catch (e) {
+          if (signal.aborted) throw e;
+          lastError = e;
+        }
+      }
+      if (!entries.length) {
+        if (lastError instanceof ProviderHttpError) throw lastError;
+        throw new ProviderHttpError(502, undefined, 'Baidu hot list envelope unexpected');
+      }
       const at = new Date().toISOString();
       const now = new Date();
       const items: AcquisitionItem[] = entries.map((entry) => {
