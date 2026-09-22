@@ -11,6 +11,9 @@ import {
 const fixtureDir = join(import.meta.dir, 'fixtures');
 const load = (name: string) => JSON.parse(readFileSync(join(fixtureDir, name), 'utf8'));
 
+// 既定 runtime の実スクレイパを止め、fixture のみで完結させる。
+process.env.SORA_INTEL_SCRAPE = 'off';
+
 const realFetch = globalThis.fetch;
 
 function stubFetch(failHost?: string) {
@@ -93,5 +96,23 @@ test('one unavailable provider does not fail the complete report', async () => {
     expect(report.evidence.length).toBeGreaterThan(0);
   } finally {
     globalThis.fetch = realFetch;
+  }
+});
+
+test("default runtime wires the built-in article fetcher unless disabled", async () => {
+  const { createDefaultCountryIntelDependencies } = await import("./runtime.js");
+  const scraper = await import("../../scraper.js");
+  expect(typeof scraper.scrapeUrl).toBe("function");
+  const previous = process.env.SORA_INTEL_SCRAPE;
+  try {
+    delete process.env.SORA_INTEL_SCRAPE;
+    expect(typeof createDefaultCountryIntelDependencies().scrapeArticle).toBe("function");
+    process.env.SORA_INTEL_SCRAPE = "off";
+    expect(createDefaultCountryIntelDependencies().scrapeArticle).toBeUndefined();
+    const custom = async () => ({});
+    expect(createDefaultCountryIntelDependencies({ scrapeArticle: custom }).scrapeArticle).toBe(custom);
+  } finally {
+    if (previous === undefined) delete process.env.SORA_INTEL_SCRAPE;
+    else process.env.SORA_INTEL_SCRAPE = previous;
   }
 });
