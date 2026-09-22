@@ -289,3 +289,12 @@ test('keeps same-country protests on different dates separate', () => {
 
   expect(clusterEvents(evidence.map((item) => extractEvent(item, region, now)!), evidence)).toHaveLength(2);
 });
+
+import { classifyActionType } from './event_extract.js';
+
+test('classifyActionType shares cluster rules and prefers econ over statement', () => {
+  expect(classifyActionType('選挙結果が確定')).toBe('election');
+  expect(classifyActionType('中国经济形势分析')).toBe('business_action');
+  expect(classifyActionType('economy expert said markets fell')).toBe('business_action');
+  expect(classifyActionType('今日の出来事')).toBe('other');
+});

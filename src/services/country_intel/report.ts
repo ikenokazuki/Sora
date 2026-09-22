@@ -4,7 +4,7 @@ import { deduplicateEvidenceWithRemap } from './evidence.js';
 import { extractEvent, type IntelEventDraft } from './event_extract.js';
 import type { EvidenceDetail } from './detail.js';
 import { clusterEvents } from './event_cluster.js';
-import { assembleSituation, buildActualWindows, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
+import { assembleSituation, buildActualWindows, buildCoverage, buildForeignRelations, buildJapanView, promoteSingleObservations } from './context.js';
 import { buildMetricObservations } from './metric_builder.js';
 import { deriveIntelligenceSignal } from '../intelligence/signals.js';
 import { buildContentView } from '../intelligence/domains/content.js';
@@ -17,7 +17,7 @@ import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type Enr
 import type { ProviderRun } from './types.js';
 import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
 import { buildDomainContext, evidenceToFacts } from './domain_details.js';
-import { classifyRegionLink, isQueryTargeted, type RegionLink } from './region_link.js';
+import { classifyRegionLink, isQueryTargeted, textMentionsRegion, upgradeCandidateWithBody, type RegionLink } from './region_link.js';
 import { articleBlocks, type ScrapedArticle } from './providers/official_web.js';
 import { verifyCountrySource } from './source_registry.js';
 import {
@@ -383,7 +383,12 @@ export async function researchCountryContext(
     const providerId = source?.providerId ?? 'unknown';
     const providerQueries = queriesByProvider.get(providerId) ?? [];
     const targeted = isQueryTargeted(providerQueries, region);
-    const classified = classifyRegionLink(item, region, targeted);
+    const textHit = textMentionsRegion(
+      [item.title, item.excerpt].filter((value): value is string => Boolean(value)).join('\n'),
+      region,
+      [item.language, ...region.languages].filter((value): value is string => Boolean(value)),
+    );
+    const classified = classifyRegionLink(item, region, targeted, textHit);
     links.set(item.id, classified.link);
     const providerDef = providers.find((provider) => provider.id === providerId);
     return {
@@ -538,9 +543,38 @@ export async function researchCountryContext(
   });
   // 参照を代表IDへ統一する。重複排除で消えたIDの参照は残さない。
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  // 本文取得後の確認。候補のまま残った証拠の本文に地域言及があればrelatedへ昇格する。
+  for (const [id, detail] of finalDetailById) {
+    if (links.get(id) !== 'candidate' || detail.contentKind !== 'extracted_text' || detail.blocks.length === 0) continue;
+    const current = evidenceById.get(id);
+    if (!current) continue;
+    const upgraded = upgradeCandidateWithBody(
+      'candidate',
+      detail.blocks.map((block) => block.text).join('\n'),
+      region,
+      [current.language, ...region.languages].filter((value): value is string => Boolean(value)),
+    );
+    if (!upgraded) continue;
+    links.set(id, upgraded.link);
+    const index = evidence.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const previous = evidence[index] as CountryEvidence;
+      const next: CountryEvidence = { ...previous, regionLink: upgraded.link, regionLinkReasons: [...(previous.regionLinkReasons ?? []), ...upgraded.reasons] };
+      evidence[index] = next;
+      evidenceById.set(id, next);
+    }
+  }
   const facts = evidenceToFacts(enrichedItems)
     .map((fact) => ({ ...fact, evidenceIds: fact.evidenceIds.map((id) => remap.get(id) ?? id) }))
     .filter((fact) => fact.evidenceIds.length > 0 && fact.evidenceIds.every((id) => evidenceById.has(id)));
+  // クラスタのない分野に確認済み単独証拠を構造化で載せる。eventIdsは作らない。
+  promoteSingleObservations(
+    situation,
+    facts,
+    evidenceById,
+    links,
+    new Set(keyEvents.flatMap((event) => event.evidenceIds)),
+  );
   const limitations: Limitation[] = acquisition.runs
     .filter((run) => run.status !== 'success')
     .map((run) => ({
