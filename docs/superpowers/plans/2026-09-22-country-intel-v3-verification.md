@@ -118,3 +118,10 @@
 - 症状: bun実行で毎回 `[http_fetcher] wreq-js native module unavailable` → native fetch退行。原因はlibstdc++.so.6欠落 (cause: ERR_DLOPEN_FAILED)。binding実体は正常でnodeでは読める。
 - 復旧: devは~/.bashrcにLD_LIBRARY_PATH追加 (nix-ld lib、fresh login shellで133 profiles確認、http_fetcher経路でexample.com 200確認、指紋chrome_149)。prodはDockerfileにlibstdc++6明示 (chromium依存で実質含有のはずが保証化)。
 - テスト: src/wreq_availability.test.ts追加 (profiles>0)。指紋安定テスト既存通過。なおBaidu/Weiboの壁種別には効かないことを確認済み。
+
+
+## Structured situation fill + mention detection (2026-09-23)
+- 原因: situationはクラスタ由来のみで単独証拠が入らず、言及走査自体が不在 (mentionedCountriesは構造化providerのみ設定) のためクエリ検索系295件がcandidate凍結。enrichment後も再判定なし。
+- 実装 (非LLM・抽出のみ、スキーマ変更なし): (1) promoteSingleObservations - クラスタ皆無の分野にdirect/related単独を最大5件、eventIdsは作らず単独明示・公式一次優先・新着順。(2) classifyActionTypeをクラスタと共有 (見出しのみ型付け、11の高信号型のみ昇格)。経済語 (economy/经济/経済/貿易/関税/景気/GDP/CPI等) をbusiness_actionに追加 (statementより前)。(3) ICU汎用多言語言及検出 (国別表記ハードコードなし、証拠言語+地域言語+en) を取得時とenrichment後の本文確認に適用。candidateからrelatedへの昇格は本文言及時のみ。
+- Live CN+经济 16.1s: economy 12件 (3源泉: global_feeds/so360/official_web、関税協議・入境経済・統計局等)、security・social各1件。FR+economie 12.2s: economy 5件 (仏財務省・仏銀・Insee等背景資料)。単独クラスタは件数欄が正直 (evi:1/indep:1) のためLLM側で重み付け可能。DDG liteは空フォーム、Xinhua ENはRSSなしで不採用。
+- intel suite: 237 pass / 0 fail。health/humanitarianは該当型がなく空のまま (正直)。
