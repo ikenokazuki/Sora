@@ -78,3 +78,29 @@ describe('social sensing provider runs', () => {
     expect(result.items[0].detail?.structuredData).toMatchObject({ traffic: '50K+' });
   });
 });
+
+describe('baidu hot search', () => {
+  const CN = inputFor({ id: 'country:CN', name: 'China', countryCode: 'CN', languages: ['zh'], aliases: [] });
+  const htmlOf = (state: unknown): string => '<html><script>window.__INITIAL_STATE__=' + JSON.stringify(state) + ';</script></html>';
+  test('finds topic lists without fixed key names', async () => {
+    const { parseBaiduHotHtml } = await import('./baidu_hot.js');
+    const words = ['Test Topic', 'T2', 'T3', 'T4', 'T5', 'T6'].map((word) => ({ word, hotScore: '700万', desc: 'desc here', url: 'https://example.org/t' }));
+    const entries = parseBaiduHotHtml(htmlOf({ data: { cards: [{ content: words }] } }));
+    expect(entries).toHaveLength(6);
+    expect(entries[0]).toMatchObject({ rank: 1, query: 'Test Topic', hotIndex: '700万' });
+  });
+  test('rejects pages without embedded topics', async () => {
+    const { parseBaiduHotHtml } = await import('./baidu_hot.js');
+    expect(parseBaiduHotHtml('<html><body>login required</body></html>')).toEqual([]);
+  });
+  test('runs for CN only', async () => {
+    const { createBaiduHotProvider } = await import('./baidu_hot.js');
+    const topics = ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'].map((query) => ({ query, hotValue: '1万' }));
+    const fetchFn = (() => Promise.resolve(new Response(htmlOf({ content: topics }), { headers: { 'content-type': 'text/html' } }))) as unknown as never;
+    const cn = await createBaiduHotProvider(fetchFn).run(CN, AbortSignal.timeout(5000));
+    expect(cn.items.length).toBeGreaterThan(0);
+    expect(cn.items[0].evidence?.publisher).toBe('Baidu Hot Search');
+    const jp = await createBaiduHotProvider(fetchFn).run(JP, AbortSignal.timeout(5000));
+    expect(jp.items).toEqual([]);
+  });
+});

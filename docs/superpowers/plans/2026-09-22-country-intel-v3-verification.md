@@ -64,3 +64,10 @@
 - GDELT AvgTone index 34 confirmed against export 2.1 column spec (GLOBALEVENTID 0 ... NumArticles 33, AvgTone 34).
 - intel suite: 216 pass / 0 fail (+3 run-level tests).
 
+
+## China voice (2026-09-22)
+- Collection runs from JP servers, so GFW does not block us. Per-provider CN: GDELT rows+tone, SCMP/Nikkei/Yonhap RSS (SCMP live-verified 50 items), GDACS/USGS/EONET, Wiki bullets, Yahoo site: seeds, WorldBank/Nager all fine.
+- Google News gl=CN reachable from JP in principle, live fetch pending. Trends geo=CN exists but mainland data is thin, expect sparse results, tolerant by design.
+- New: baidu_hot provider (CN-only). Baidu realtime board live-verified readable without auth: 40+ ranked topics with hot index, includes mourning-grade and scandal topics. Weibo hot search is login/JS-walled, deprioritized.
+- intel suite: 219 pass / 0 fail.
+
