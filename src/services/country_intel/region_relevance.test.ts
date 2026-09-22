@@ -119,3 +119,24 @@ describe('region relevance', () => {
     expect(texts).toContain('magnitude 5.2');
   });
 });
+
+describe('event indicators', () => {
+  test('structured observations ride along on events', async () => {
+    const { attachEventIndicators } = await import('./report.js');
+    const { normalizeEvidence: normalize } = await import('./evidence.js');
+    const region: any = { id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [], confidence: 'high' };
+    const evidence = normalize({ url: 'https://example.org/q/1', title: 'M5.2 quake', excerpt: 'earthquake near Nanjing', publisher: 'Bench', eventCountry: 'CN', sourceType: 'structured_dataset', publishedAt: '2026-09-21T00:00:00Z', primarySource: false, latencyClass: 'near_realtime' }, region, now());
+    const report = await researchCountryContext({ region: 'China' }, {
+      providers: [{ id: 'q', areas: ['disasters'], latencyClass: 'near_realtime', defaultTtlSeconds: 60,
+        async run(input: any) {
+          return { items: [{ evidence, detail: { evidenceId: evidence.id, providerId: 'q', providerItemId: 'q1', sourceRecordUrl: 'https://example.org/q/1', contentKind: 'structured_record', blocks: [], structuredData: { mag: 5.2, depthKm: 10, place: 'Nanjing, China' }, retrievedAt: '2026-09-22T00:00:00Z', timeBasis: 't', geographyBasis: 'g', sourceStatus: 'unverified', contentTruncated: false } }], coverage: ['disasters'] };
+        } }],
+      now,
+      cache: null,
+    });
+    const quake = report.keyEvents.find((event) => event.title.includes('M5.2'))!;
+    expect(quake.indicators).toContainEqual({ label: 'mag', value: '5.2' });
+    expect(quake.indicators).toContainEqual({ label: 'depthKm', value: '10' });
+    expect(attachEventIndicators).toBeDefined();
+  });
+});
