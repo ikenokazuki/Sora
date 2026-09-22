@@ -226,10 +226,21 @@ export async function enrichDetailsWithArticles(
   const totalChars = budget.totalChars ?? DEFAULT_ENRICH_BUDGET.totalChars;
   const rank = (link: RegionLink | undefined): number =>
     link === 'direct' ? 0 : link === 'related' ? 1 : link === 'candidate' ? 2 : 3;
+  // 参照数の多い記事・新しい記事を優先する。予算内の当たりを良くする。
+  const articlesOf = (detail: EvidenceDetail): number => {
+    const value = detail.structuredData?.numArticles;
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+  const timeOf = (detail: EvidenceDetail): number => {
+    const parsed = Date.parse(detail.publishedAt ?? detail.occurredAt ?? '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
   const candidates = details
     .filter((detail) => detail.contentKind !== 'extracted_text'
       && (rank(links.get(detail.evidenceId)) <= 2))
-    .sort((left, right) => rank(links.get(left.evidenceId)) - rank(links.get(right.evidenceId)))
+    .sort((left, right) => rank(links.get(left.evidenceId)) - rank(links.get(right.evidenceId))
+      || articlesOf(right) - articlesOf(left)
+      || timeOf(right) - timeOf(left))
     .slice(0, Math.max(0, maxItems));
   const outcome: EnrichmentOutcome = {
     attempted: 0, upgraded: 0, failed: 0, skippedBudget: 0,
@@ -270,6 +281,7 @@ export async function enrichDetailsWithArticles(
         if (split.truncated) outcome.truncatedDetails += 1;
         upgraded.set(target.evidenceId, {
           ...target, contentKind: 'extracted_text', blocks: split.blocks, contentTruncated: split.truncated,
+          ...(target.contentKind === 'title_only' && scraped.title ? { resolvedTitle: scraped.title } : {}),
         });
         outcome.upgraded += 1;
       } catch {

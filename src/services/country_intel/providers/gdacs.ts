@@ -188,19 +188,20 @@ export function parseGdacsFeed(xml: string, input: ProviderInput, now = new Date
   });
 }
 
-export function createGdacsProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
+export function createGdacsProvider(fetchFn?: GdeltFetch, opts: { apiTimeoutMs?: number; rssTimeoutMs?: number } = {}): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
+  const apiTimeoutMs = Math.max(500, opts.apiTimeoutMs ?? 8000);
+  const rssTimeoutMs = Math.max(500, opts.rssTimeoutMs ?? 8000);
   return {
     id: 'gdacs', areas: ['disasters'], latencyClass: 'near_realtime', defaultTtlSeconds: 1800,
     collectionWindowDays: 30,
+    // API＋RSS の合計で収める。全体締め切り（29秒）内に収める。
+    timeoutMs: 18_000,
     async run(input: ProviderInput, signal: AbortSignal) {
-      const apiItems = await fetchGdacsApi(runFetch, signal).catch((error: unknown) => {
-        if (signal.aborted) throw error;
-        return null;
-      });
+      const apiItems = await fetchGdacsApi(runFetch, signal, apiTimeoutMs).catch(() => null);
       if (apiItems) return { items: apiItems.items(input, new Date()), coverage: ['disasters'] };
-      // API 失敗時のみ RSS へ一度フォールバックする。成功分は report 側で保持される。
-      const rssItems = await fetchGdacsRss(runFetch, signal);
+      // API 失敗時（タイムアウト含む）は RSS へ一度フォールバックする。成功分は report 側で保持される。
+      const rssItems = await fetchGdacsRss(runFetch, signal, rssTimeoutMs);
       return { items: rssItems(input, new Date()), coverage: ['disasters'], status: 'partial' as const, errorCode: 'GDACS_API_FALLBACK_RSS' };
     },
   };
@@ -209,10 +210,11 @@ export function createGdacsProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
 async function fetchGdacsApi(
   runFetch: GdeltFetch,
   signal: AbortSignal,
+  timeoutMs: number,
 ): Promise<{ items(input: ProviderInput, now: Date): AcquisitionItem[] } | null> {
   let res: Response;
   try {
-    res = await fetchProviderResponse(buildGdacsUrl(), { sourceId: 'gdacs', timeoutMs: 15000, format: 'json', signal, fetchFn: runFetch });
+    res = await fetchProviderResponse(buildGdacsUrl(), { sourceId: 'gdacs', timeoutMs, format: 'json', signal, fetchFn: runFetch });
   } catch (e) {
     if (signal.aborted) throw e;
     if (e instanceof ProviderHttpError) throw e;
@@ -227,10 +229,11 @@ async function fetchGdacsApi(
 async function fetchGdacsRss(
   runFetch: GdeltFetch,
   signal: AbortSignal,
+  timeoutMs: number,
 ): Promise<(input: ProviderInput, now: Date) => AcquisitionItem[]> {
   let res: Response;
   try {
-    res = await fetchProviderResponse(GDACS_RSS_URL, { sourceId: 'gdacs-rss', timeoutMs: 15000, format: 'xml', signal, fetchFn: runFetch });
+    res = await fetchProviderResponse(GDACS_RSS_URL, { sourceId: 'gdacs-rss', timeoutMs, format: 'xml', signal, fetchFn: runFetch });
   } catch (e) {
     if (signal.aborted) throw e;
     if (e instanceof ProviderHttpError) throw e;
