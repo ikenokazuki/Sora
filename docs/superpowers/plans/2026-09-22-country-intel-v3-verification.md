@@ -125,3 +125,8 @@
 - 実装 (非LLM・抽出のみ、スキーマ変更なし): (1) promoteSingleObservations - クラスタ皆無の分野にdirect/related単独を最大5件、eventIdsは作らず単独明示・公式一次優先・新着順。(2) classifyActionTypeをクラスタと共有 (見出しのみ型付け、11の高信号型のみ昇格)。経済語 (economy/经济/経済/貿易/関税/景気/GDP/CPI等) をbusiness_actionに追加 (statementより前)。(3) ICU汎用多言語言及検出 (国別表記ハードコードなし、証拠言語+地域言語+en) を取得時とenrichment後の本文確認に適用。candidateからrelatedへの昇格は本文言及時のみ。
 - Live CN+经济 16.1s: economy 12件 (3源泉: global_feeds/so360/official_web、関税協議・入境経済・統計局等)、security・social各1件。FR+economie 12.2s: economy 5件 (仏財務省・仏銀・Insee等背景資料)。単独クラスタは件数欄が正直 (evi:1/indep:1) のためLLM側で重み付け可能。DDG liteは空フォーム、Xinhua ENはRSSなしで不採用。
 - intel suite: 237 pass / 0 fail。health/humanitarianは該当型がなく空のまま (正直)。
+
+## weibo_hot provider live-verified
+- hotSearch keyless OK with browser UA plus Referer, no-UA bun fetch gets 403. CN-only max30 8s cap fail-open.
+- Live CN 30 items in 275ms. Trending only, no keyword search. xianbao timeout parked, m.weibo.cn UID 302 parked.
+- intel suite 241 pass 0 fail with timeout 60000.
