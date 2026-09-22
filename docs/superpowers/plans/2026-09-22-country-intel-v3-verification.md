@@ -108,3 +108,13 @@
 - 360 Search works keyless: first 302 sets a cookie, following it with the cookie returns HTTP 200 with SSR results; data-mdurl carries publisher-direct URLs. New CN-only provider so360_search (planned query first, 1 page, max 10, per-fetch 6s, 14s cap). Repro tests first (parse/mdurl-only, planned query URL, cookie redirect, non-CN skip).
 - Live CN + query 经济: 16.1s, details 615, so360_search success 7 items in 2.5s (china-cer.com.cn, finance.china.com.cn, sdchina.com with dates/numbers). domestic finance layer restored. baidu_hot still honest 4xx.
 - intel suite: 225 pass / 0 fail (221 + 4 new).
+
+
+## so.com経由のsite:weibo.com (2026-09-23, 不採用)
+- 取得自体は成功 (HTTP 200, 228KB, 投稿URL 8件)。だが日付検証で最新が2026年8月20日、他は2022-2024年。遅延は数十分ではなく数週間〜年単位。site:演算も緩く無関係ヒットとプロフィール頁が混入。追跡調査には使えるが投稿判断の材料にならないため不採用。直のso360検索は維持。
+
+
+## wreq-js native restoration (2026-09-23, intelとは別件)
+- 症状: bun実行で毎回 `[http_fetcher] wreq-js native module unavailable` → native fetch退行。原因はlibstdc++.so.6欠落 (cause: ERR_DLOPEN_FAILED)。binding実体は正常でnodeでは読める。
+- 復旧: devは~/.bashrcにLD_LIBRARY_PATH追加 (nix-ld lib、fresh login shellで133 profiles確認、http_fetcher経路でexample.com 200確認、指紋chrome_149)。prodはDockerfileにlibstdc++6明示 (chromium依存で実質含有のはずが保証化)。
+- テスト: src/wreq_availability.test.ts追加 (profiles>0)。指紋安定テスト既存通過。なおBaidu/Weiboの壁種別には効かないことを確認済み。
