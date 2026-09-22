@@ -228,6 +228,7 @@ export interface IntelEvent {
   regionId: string;
   type: ActionType;
   title: string;
+  excerpt?: string;
   occurredAt?: string;
   location?: { name?: string; countryCode?: string };
   actors: IntelEntity[];
@@ -246,6 +247,7 @@ export const IntelEventSchema = z.object({
   regionId: z.string(),
   type: z.enum(ACTION_TYPES),
   title: z.string(),
+  excerpt: z.string().optional(),
   occurredAt: z.string().optional(),
   location: z.object({ name: z.string().optional(), countryCode: z.string().optional() }).optional(),
   actors: z.array(IntelEntitySchema),
@@ -658,4 +660,3 @@ export const CountryContextReportSchema = z.object({
   refreshState: RefreshStateSchema.optional(),
   actualWindows: z.array(ActualWindowSchema).optional(),
 });
-

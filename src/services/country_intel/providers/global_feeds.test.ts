@@ -30,12 +30,15 @@ describe('global feeds', () => {
     expect(entry.publishedAt).toBe('2026-09-21T10:00:00Z');
   });
 
-  test('usgs keeps magnitude and depth without asserting a country', () => {
+  test('usgs attributes ISO country names from place without dropping records', () => {
     const fixture = JSON.parse(readFileSync(join(fixtureDir, 'usgs.json'), 'utf8'));
     const items = parseUsgsResponse(fixture, input, now);
     expect(items).toHaveLength(2);
-    expect(items[0].evidence?.eventCountry).toBeUndefined();
-    expect(items[0].detail?.structuredData).toMatchObject({ mag: 5.2, depthKm: 10 });
+    expect(items[0].evidence?.eventCountry).toBe('CN');
+    expect(items[0].evidence?.mentionedCountries).toEqual(['CN']);
+    expect(items[1].evidence?.eventCountry).toBe('TW');
+    expect(items[0].evidence?.excerpt).toContain('earthquake');
+    expect(items[0].detail?.structuredData).toMatchObject({ mag: 5.2, depthKm: 10, longitude: 119.5, latitude: 31.2 });
     expect(items[0].detail?.providerItemId).toBe('us7000ab12');
   });
 
@@ -44,7 +47,7 @@ describe('global feeds', () => {
     const items = parseEonetResponse(fixture, input, now);
     expect(items).toHaveLength(2);
     expect(items[0].detail?.providerId).toBe('eonet');
-    expect(items[0].detail?.structuredData).toMatchObject({ geometryDates: ['2026-09-21T12:00:00Z'] });
+    expect(items[0].detail?.structuredData).toMatchObject({ geometryDates: ['2026-09-21T12:00:00Z'], coordinates: [130, 20] });
   });
 
   test('catalog has no realtime search dependency', () => {

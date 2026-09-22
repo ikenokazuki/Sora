@@ -1,4 +1,5 @@
 import { normalizeEvidence } from '../evidence.js';
+import { inferCountryCodesFromText } from '../place_country.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import { fetchProviderResponse } from '../provider_http.js';
@@ -19,8 +20,10 @@ export function parseEonetResponse(fixture: EonetFixture, input: ProviderInput, 
     if (!event.id || !url) return [];
     const dates = (event.geometry ?? []).map((g) => g.date).filter((d): d is string => typeof d === 'string');
     const title = event.title ?? 'EONET event ' + event.id;
-    const excerpt = [title, event.description ?? '', dates[0] ?? ''].join(' ').trim().slice(0, 2000);
-    const evidence = normalizeEvidence({ url, title, excerpt, publisher: 'NASA EONET', sourceType: 'structured_dataset', publishedAt: dates[0], primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
+    const categories = (event.categories ?? []).map((c) => c.title).filter((c): c is string => typeof c === 'string' && c.length > 0);
+    const excerpt = [title, categories.join(' '), event.description ?? '', dates[0] ?? ''].join(' ').trim().slice(0, 2000);
+    const codes = inferCountryCodesFromText([title, event.description ?? ''].join(' '));
+    const evidence = normalizeEvidence({ url, title, excerpt, publisher: 'NASA EONET', ...(codes.length === 1 ? { eventCountry: codes[0] } : {}), ...(codes.length > 0 ? { mentionedCountries: codes } : {}), sourceType: 'structured_dataset', publishedAt: dates[0], primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
     const detail: EvidenceDetail = {
       evidenceId: evidence.id,
       providerId: 'eonet',
@@ -28,7 +31,7 @@ export function parseEonetResponse(fixture: EonetFixture, input: ProviderInput, 
       sourceRecordUrl: url,
       contentKind: 'structured_record',
       blocks: [{ index, text: excerpt }],
-      structuredData: { categories: (event.categories ?? []).map((c) => c.title), sources: (event.sources ?? []).map((s) => s.url), geometryDates: dates },
+      structuredData: { categories, sources: (event.sources ?? []).map((s) => s.url), geometryDates: dates, coordinates: event.geometry?.[0]?.coordinates },
       occurredAt: dates[0],
       publishedAt: dates[0],
       retrievedAt: now.toISOString(),
