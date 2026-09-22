@@ -113,7 +113,7 @@ export function feedEntriesToAcquisition(entries: FeedEntry[], entry: SourceCata
       sourceStatus: 'unverified',
       contentTruncated: (item.description?.length ?? 0) > 2000,
     };
-    return [{ evidence, detail }];
+    return [{ evidence, detail, areas: [entry.areas[0] ?? 'media_activity'] }];
   });
 }
 
@@ -121,6 +121,7 @@ export function createGlobalFeedsProvider(fetchFn?: GdeltFetch, catalog: readonl
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'global_feeds', areas: ['media_activity', 'current_events', 'humanitarian', 'economy'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
+    collectionWindowDays: 1,
     async run(input: ProviderInput, signal: AbortSignal) {
       const all: AcquisitionItem[] = [];
       const now = new Date();

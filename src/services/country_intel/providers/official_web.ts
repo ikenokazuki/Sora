@@ -12,6 +12,8 @@ export interface OfficialWebDeps {
   scrapeUrl?: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>;
   verifiedDomains?: readonly string[];
   maxArticles?: number;
+  /** 本文取得の1件あたりの上限ms。既定 4000。残り時間と小さい方を使う。 */
+  scrapeBudgetMs?: number;
 }
 function hostOf(url: string): string | undefined {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return undefined; }
@@ -85,12 +87,12 @@ export function createOfficialWebProvider(deps: OfficialWebDeps): CountryIntelPr
         if (signal.aborted) throw e;
         throw new ProviderNetworkError(String(e));
       }
-      if (scrape) await upgradeWithArticles(all, scrape, maxArticles, signal);
+      if (scrape) await upgradeWithArticles(all, scrape, maxArticles, signal, deps.scrapeBudgetMs ?? 4000);
       return { items: all, coverage: ['official'] };
     },
   };
 }
-async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>, maxArticles: number, parent: AbortSignal): Promise<void> {
+async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>, maxArticles: number, parent: AbortSignal, budgetMs: number): Promise<void> {
   const targets = items.filter((item) => item.evidence && item.detail).slice(0, Math.max(0, maxArticles));
   let cursor = 0;
   const workers = [0, 1].map(async () => {
@@ -100,7 +102,7 @@ async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: strin
       cursor += 1;
       const url = item.evidence!.url;
       try {
-        const timeout = AbortSignal.timeout(15000);
+        const timeout = AbortSignal.timeout(Math.max(500, budgetMs));
         const signal = parent.aborted ? parent : AbortSignal.any([parent, timeout]);
         const scraped = await scrape(url, signal);
         const markdown = scraped.markdown ?? scraped.content;

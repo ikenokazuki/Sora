@@ -6,6 +6,12 @@ export { iso3ToIso2, iso2ToIso3, fipsToIso2, cameoCountryToIso2, normalizeProvid
 export { getVerifiedCountrySources } from './db.js';
 export { createDefaultCountryIntelDependencies, researchCountryWithDefaults, defaultCountryIntelProviderIds } from './runtime.js';
 export { normalizeEvidence, deduplicateEvidence } from './evidence.js';
+export { deduplicateEvidenceWithRemap } from './evidence.js';
+export { classifyRegionLink, isQueryTargeted, type RegionLink } from './region_link.js';
+export { filterEventsByWindow, filterRegionRelevantDrafts, enrichDetailsWithArticles } from './report.js';
+export { buildActualWindows, normalizeAreaKey } from './context.js';
+export { formatWindowDays } from './context.js';
+export { unzipGdeltExport } from './providers/gdelt_files.js';
 export { extractEvent } from './event_extract.js';
 export { clusterEvents, sourceFamily } from './event_cluster.js';
 export { createGdeltProvider, parseGdeltDocResponse } from './providers/gdelt.js';
