@@ -87,3 +87,17 @@
 - Remaining thin areas (both countries): politics/security/health/polls/social/foreignRelations missing, finance economy/trade and businessActivity zero. Disaster+calendar+attention+tone carry posting judgment; politics surfaces only as unevaluated evidence/candidates.
 - intel suite: 218 pass / 0 fail with live network (bun default 5s timeout too short for live-fetch tests; use --timeout 60000).
 
+
+
+## Query-targeted Google News + TopHub fallback (2026-09-22, new code, live network)
+- google_news now uses the planned pass-1 query (region + request query) with region-name fallback; gl/hl/ceid derivation unchanged, no country tables. Repro tests added first (planned-query URL, TopHub decode/dedupe, mirror fallback, 20s cap).
+- 3-country live (30d, includeSocial false, noCache, direct bun run of the new code):
+  | run | elapsed | details | google-news | official_web | baidu_hot | keyEvents |
+  |---|---|---|---|---|---|---|
+  | CN + query 经济 | 17.2s | 601 | 10 (economist.com, merics.org, bloomberg.com) | 27 | error PROVIDER_HTTP_4XX (honest) | 6 disaster-only |
+  | FR + query economie | 8.2s | 435 | 13 (tresor.economie.gouv.fr, banque-france.fr, semafor, mediapart) | 27 | n/a (non-CN, empty success) | 1 |
+  | TV, no query | 6.1s | 370 | 15 via region-name fallback | 9 | n/a | 0 |
+- Query synthesis is generic: FR economy sources prove the benefit is not China-only. Region-matched feeds also fired generically (dw-top + france24-en for FR).
+- TopHub mirror (tophub.today/n/Jb0vmloB1G) returned HTTP 200 with ~50 Baidu topics earlier in the session, then flipped to 403 安全验证 (bot challenge for datacenter IPs, same class as Baidu direct captcha/SYN-drop). Stages are API 5s -> HTML 5s -> TopHub 8s with a 20s provider cap so the outer 10s default can no longer cut the chain; the first live run exposed exactly that cut (baidu_hot unavailable at 10.0s) and the cap fixed it. Live mirror rescue is fixture-proven but currently unverifiable from the JP verification network; failures stay honest errors, never fake data.
+- Unrelated transient: gdelt_export 4xx on the FR run while the CN run 1 minute earlier succeeded with the same code (58 items). Upstream flakiness, not this change.
+- intel suite: 221 pass / 0 fail (218 baseline + 3 new: planned-query URL, TopHub decode/dedupe, mirror fallback incl. 20s cap). Scratch live scripts removed before commit.
