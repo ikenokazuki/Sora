@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { feedEntriesToAcquisition, parseFeed } from './feeds.js';
+import { feedEntriesToAcquisition, parseFeed, selectFeedsForRegion } from './feeds.js';
 import { parseUsgsResponse } from './usgs.js';
 import { parseEonetResponse } from './eonet.js';
 import { GLOBAL_FEED_CATALOG } from '../source_catalog.js';
@@ -54,5 +54,21 @@ describe('global feeds', () => {
     const urls = GLOBAL_FEED_CATALOG.map((entry) => entry.url).join(' ');
     expect(urls).not.toMatch(/yahoo|realtime/i);
     expect(GLOBAL_FEED_CATALOG.map((entry) => entry.id)).toEqual(expect.arrayContaining(['bbc-world', 'un-news', 'ecb-press']));
+  });
+
+  test('region selection keeps globals and matches country, caps at six', () => {
+    const selected = selectFeedsForRegion(GLOBAL_FEED_CATALOG, 'CN');
+    const ids = selected.map((entry) => entry.id);
+    expect(ids).toContain('bbc-world');
+    expect(ids).toContain('scmp-hk');
+    expect(ids).toContain('nikkei-asia');
+    expect(ids).not.toContain('cbc-top');
+    expect(selected.length).toBeLessThanOrEqual(6);
+  });
+
+  test('unknown country still gets global feeds', () => {
+    const selected = selectFeedsForRegion(GLOBAL_FEED_CATALOG, 'TV');
+    expect(selected.length).toBeGreaterThan(0);
+    expect(selected.every((entry) => !(entry.countryCodes?.length))).toBe(true);
   });
 });
