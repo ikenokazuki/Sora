@@ -57,3 +57,10 @@
 - Fixed real regression found by tests: pass1 cap 12 dropped wikidata when providers grew 10->13. Cap raised to 16 (code + test expectation).
 - intel suite: 213 pass / 0 fail (+8 new). Live verify pending (container down): new hosts + tone metric + 13-provider route before main merge.
 
+
+## Live check via browser (2026-09-22, container still down)
+- Wiki Current Events live: portal day pages need year (Portal:Current events/2026 September 22). Initial year-less title 404s and falls back to search page. Fixed currentEventsPageFor + test. Extractor verified against live-format bullets (CN/FR matched, JP/TV correctly empty).
+- Google News RSS + Trends API: not openable via browser tool (reader rejects XML/XSSI-JSON). Endpoint formats are long-standing documented; provider-level run tests added (stub fetch, all three emit items). Live fetch still pending container recovery.
+- GDELT AvgTone index 34 confirmed against export 2.1 column spec (GLOBALEVENTID 0 ... NumArticles 33, AvgTone 34).
+- intel suite: 216 pass / 0 fail (+3 run-level tests).
+
