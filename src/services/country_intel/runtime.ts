@@ -10,6 +10,7 @@ import { createNagerProvider } from './providers/nager.js';
 import { createWikidataProvider } from './providers/wikidata.js';
 import { createWorldBankProvider } from './providers/worldbank.js';
 import { createOfficialWebProvider, type WebSearchItem } from './providers/official_web.js';
+import type { ScrapedArticle } from './providers/official_web.js';
 import type { CountryContextReport, CountryContextRequest } from './types.js';
 
 /** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。 */
@@ -21,6 +22,25 @@ export interface DefaultRuntimeOptions {
   fetchFn?: GdeltFetch;
   /** official_web の検索器。未指定時は実在の Yahoo Web 検索を使う（地域条件を落とす再検索は無効）。 */
   officialWebSearch?: (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]>;
+  /**
+   * 本文補完の取得器。未指定時は内蔵スクレイパ（fast mode、ブラウザなし）を使う。
+   * `SORA_INTEL_SCRAPE=off` で無効化できる。テストは明示的に上書きすること。
+   */
+  scrapeArticle?: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>;
+}
+
+/** 内蔵スクレイパの本文取得アダプタ。fast mode（ブラウザなし）、再試行なし。 */
+export function createScrapeArticleAdapter(): (url: string, signal: AbortSignal) => Promise<ScrapedArticle> {
+  return async (url: string, signal: AbortSignal) => {
+    if (signal.aborted) throw signal.reason;
+    const { scrapeUrl } = await import('../../scraper.js');
+    const result = await scrapeUrl({
+      url, mode: 'fast', maxChars: 12000, timeoutMs: 4000, retries: 0,
+      onlyMainContent: true, extractHighlights: false, noCache: true,
+    });
+    if (signal.aborted) throw signal.reason;
+    return { content: result.content, title: result.title };
+  };
 }
 
 /** Yahoo Web 検索アダプタ。地域条件を落とすフォールバック再検索は行わない。 */
@@ -50,6 +70,9 @@ export function createDefaultCountryIntelDependencies(
   const fetchFn = options.fetchFn;
   return {
     ...overrides,
+    scrapeArticle: overrides.scrapeArticle
+      ?? options.scrapeArticle
+      ?? (process.env.SORA_INTEL_SCRAPE === 'off' ? undefined : createScrapeArticleAdapter()),
     providers: [
       createGdeltProvider(fetchFn),
       createGdeltExportProvider({ fetchFn }),
