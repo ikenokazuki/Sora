@@ -308,6 +308,41 @@ export async function searchYahooWeb(options: {
   return lastParsedData;
 }
 
+export interface YahooWebDirectItem { url: string; title?: string; snippet?: string; domain?: string; }
+
+function stripYahooTags(text: string): string {
+  return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+}
+
+/** Yahoo Web検索結果HTMLの直解析。MCPバイナリ429時のフォールバック用。 */
+export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectItem[] {
+  const out: YahooWebDirectItem[] = [];
+  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0] ?? html;
+  const itemRe = /<li><a href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>(?:<div>(.*?)<\/div>)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(webSection)) !== null) {
+    const url = m[1] ?? '';
+    if (!url || out.some((item) => item.url === url)) continue;
+    const title = stripYahooTags(m[2] ?? '');
+    const snippet = stripYahooTags(m[3] ?? '');
+    let domain: string | undefined;
+    try {
+      domain = new URL(url).hostname.replace(/^www\./, '');
+    } catch {}
+    out.push({ url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}), ...(domain ? { domain } : {}) });
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+/** 直接fetchによるYahoo Web検索。MCPが429/空振りの場合のみ使う。 */
+export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal): Promise<YahooWebDirectItem[]> {
+  const params = new URLSearchParams({ p: query, ei: 'UTF-8' });
+  const res = await fetch('https://search.yahoo.co.jp/search?' + params.toString(), { signal });
+  if (!res.ok) throw new Error('Yahoo direct fetch failed: ' + res.status);
+  return parseYahooWebHtml(await res.text(), maxItems);
+}
+
 /** リアルタイムアイテムの正規化 (publishedTime, author_name, author_handle, url 正規化) */
 export function normalizeRealtimeItem(item: any): Record<string, any> {
   const createdAtSec = typeof item.created_at === 'number' ? item.created_at : parseInt(item.created_at, 10);
