@@ -30,3 +30,11 @@
 - GDELT export rows carry `title_only` details pointing at `SOURCEURL`, so headline-less rows gain bodies.
 - Live China re-run: 16.4s, enrichment 11/12 upgraded 1 failed, `extracted_text` 11, body chars 39K -> 86K, fact max 1000 chars (16 truncated+flagged). `article_enrichment_unavailable` gone.
 - intel suite: 192 pass / 0 fail.
+
+## Follow-up improvements (2026-09-22, live cn7)
+- Candidates limited to region-query prose; unattributed global records are evidence-only (cn: candidates 340 -> 89).
+- GDELT DOC: 8s first attempt + one 7d retry, 16s cap; still PROVIDER_TIMEOUT live (endpoint hangs, unresolved upstream). Request time 28.2s -> 18.7s.
+- Enrichment ranking: region link, article count, recency. GDELT export rows carry numArticles.
+- Scraped headlines resolve into `resolvedTitle` and lead factor text (live: De Beers, Pinglu Canal readable).
+- GDACS: API 8s + RSS fallback incl. timeouts, 18s cap (live: recovered, 6 China events).
+- intel suite: 197 pass / 0 fail.

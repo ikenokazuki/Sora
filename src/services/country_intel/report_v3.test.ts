@@ -125,6 +125,11 @@ describe('v3 region links', () => {
     const general = report.domainContext?.general;
     expect(general?.factors.map((fact) => fact.text).join('\n')).not.toContain('Beijing');
     expect(general?.candidateFactors?.map((fact) => fact.text).join('\n')).toContain('Beijing');
+    // 無属性・無関係分は候補欄に入れず、証拠一覧に残す。
+    const candidateTexts = (general?.candidateFactors ?? []).map((fact) => fact.text).join('\n');
+    expect(candidateTexts).not.toContain('Pahala');
+    expect(candidateTexts).not.toContain('Ridgecrest');
+    expect(report.evidence.map((item) => item.title).join('\n')).toContain('Pahala');
     const metrics = new Map(report.temporalMetrics.map((metric) => [metric.key, metric.current]));
     const signals = new Map(report.signals.map((signal) => [signal.key, signal]));
     expect(signals.get('disaster_event_count')?.value).toBe(report.keyEvents.filter((event) => event.type === 'disaster_response').length);
@@ -427,7 +432,106 @@ describe("v3 gdelt bodies", () => {
     expect(report.evidence[0]?.regionLink).toBe('direct');
     const bodies = (report.evidenceDetails ?? []).filter((d) => d.contentKind === "extracted_text");
     expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies[0].resolvedTitle).toBe('Nanjing trade talks');
     expect(bodies[0].blocks.map((b) => b.text).join("\n")).toContain("Nanjing");
     expect(report.domainContext?.general?.factors.map((f) => f.text).join("\n")).toContain("Nanjing trade talks");
+  });
+});
+
+describe("v3 doc rescue", () => {
+  test("gdelt doc falls back to 7d once and reports it", async () => {
+    const { createGdeltProvider } = await import("./providers/gdelt.js");
+    expect(createGdeltProvider().timeoutMs).toBe(16000);
+    let calls = 0;
+    const article = { url: "https://example.org/doc/1", title: "China trade talks advance", seendate: "20260920T120000Z", domain: "example.org", language: "en" };
+    const fetchFn = (async (url: string) => {
+      calls += 1;
+      if (calls === 1) throw new Error("provider down");
+      return Response.json({ articles: [article] });
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const input = { request: { region: "China", period: "30d" } as never, region: { id: "country:CN", name: "China", countryCode: "CN", languages: [], aliases: [], confidence: "high" as const }, queries: [] };
+    const result = await createGdeltProvider(fetchFn).run(input, AbortSignal.timeout(5000));
+    expect(calls).toBe(2);
+    expect(result.items).toHaveLength(1);
+    expect(result.status).toBe("partial");
+    expect(result.errorCode).toBe("GDELT_DOC_FALLBACK_7D");
+  });
+
+  test("gdelt doc keeps the original error when the fallback also fails", async () => {
+    const { createGdeltProvider } = await import("./providers/gdelt.js");
+    const { ProviderNetworkError } = await import("./provider_registry.js");
+    const fetchFn = (async () => { throw new Error("down"); }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const input = { request: { region: "China", period: "30d" } as never, region: { id: "country:CN", name: "China", countryCode: "CN", languages: [], aliases: [], confidence: "high" as const }, queries: [] };
+    await expect(createGdeltProvider(fetchFn).run(input, AbortSignal.timeout(5000))).rejects.toThrow(ProviderNetworkError);
+  });
+});
+
+describe("v3 enrich ranking", () => {
+  test("high-article-count direct rows win the budget", async () => {
+    const { enrichDetailsWithArticles } = await import("./report.js");
+    const detail = (id: string, articles: number) => ({
+      evidenceId: id, providerId: "gdelt_export", providerItemId: id, sourceRecordUrl: "https://example.org/" + id,
+      contentKind: "title_only" as const, blocks: [], structuredData: { numArticles: articles },
+      publishedAt: "2026-09-21T00:00:00Z", retrievedAt: "2026-09-22T00:00:00Z",
+      timeBasis: "t", geographyBasis: "g", sourceStatus: "unverified" as const, contentTruncated: false,
+    });
+    const seen: string[] = [];
+    const { details, outcome } = await enrichDetailsWithArticles(
+      [detail("low", 1), detail("high", 10)],
+      new Map([["low", "direct" as const], ["high", "direct" as const]]),
+      async (url: string) => { seen.push(url); return { content: "body" }; },
+      { maxItems: 1 },
+      () => 30000,
+    );
+    expect(seen).toEqual(["https://example.org/high"]);
+    expect(outcome.upgraded).toBe(1);
+    expect(details.find((d) => d.evidenceId === "high")?.contentKind).toBe("extracted_text");
+  });
+});
+
+describe("v3 provider time budgets", () => {
+  test("gdelt doc cuts a hanging first attempt and falls back", async () => {
+    const { createGdeltProvider } = await import("./providers/gdelt.js");
+    const article = { url: "https://example.org/doc/9", title: "Hang then fallback", seendate: "20260920T120000Z", domain: "example.org" };
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      // 初回はハングし、中断だけ受け付ける。2回目は即応答。
+      if (!fetchFnCalled.done) {
+        fetchFnCalled.done = true;
+        await new Promise((_resolve, reject) => {
+          if (signal?.aborted) reject(signal.reason);
+          else signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+        throw new Error("unreachable");
+      }
+      return Response.json({ articles: [article] });
+    }) as unknown as (url: string, init?: RequestInit) => Promise<Response>;
+    const fetchFnCalled = { done: false };
+    const input = { request: { region: "China", period: "30d" } as never, region: { id: "country:CN", name: "China", countryCode: "CN", languages: [], aliases: [], confidence: "high" as const }, queries: [] };
+    const t = Date.now();
+    const result = await createGdeltProvider(fetchFn, { firstAttemptMs: 200 }).run(input, AbortSignal.timeout(5000));
+    expect(Date.now() - t).toBeLessThan(4000);
+    expect(result.items).toHaveLength(1);
+    expect(result.errorCode).toBe("GDELT_DOC_FALLBACK_7D");
+  });
+
+  test("gdacs api hang falls back to rss within budget", async () => {
+    const { createGdacsProvider } = await import("./providers/gdacs.js");
+    const rss = readFileSync(join(import.meta.dir, "fixtures", "live-contracts", "gdacs-rss-sample.xml"), "utf8");
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      if (url.includes("rss.xml")) return new Response(rss, { status: 200, headers: { "content-type": "application/rss+xml" } });
+      const signal = init?.signal as AbortSignal | undefined;
+      await new Promise((_resolve, reject) => {
+        if (signal?.aborted) reject(signal.reason);
+        else signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+      throw new Error("unreachable");
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const input = { request: { region: "China" } as never, region: { id: "country:CN", name: "China", countryCode: "CN", languages: [], aliases: [], confidence: "high" as const }, queries: [] };
+    const t = Date.now();
+    const result = await createGdacsProvider(fetchFn, { apiTimeoutMs: 200, rssTimeoutMs: 3000 }).run(input, AbortSignal.timeout(8000));
+    expect(Date.now() - t).toBeLessThan(7000);
+    expect(result.items).toHaveLength(1);
+    expect(result.errorCode).toBe("GDACS_API_FALLBACK_RSS");
   });
 });

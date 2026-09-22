@@ -71,30 +71,56 @@ export class GdeltDocError extends ProviderHttpError {
   }
 }
 
-export function createGdeltProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
+export function createGdeltProvider(fetchFn?: GdeltFetch, opts: { firstAttemptMs?: number } = {}): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
+  const firstAttemptMs = Math.max(500, opts.firstAttemptMs ?? 8000);
   return {
     id: 'gdelt', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 3600,
+    // 初回＋縮小再試行の合計で収める。全体締め切り（29秒）内に収める。
+    timeoutMs: 16_000,
     async run(input: ProviderInput, signal: AbortSignal): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
-      const query = input.queries.find((q) => q.providerId === 'gdelt')?.query ?? input.region.name;
-      const url = buildGdeltDocUrl(query, 25, input.request.period);
-      let res: Response;
-      try { res = await runFetch(url, { signal }); }
-      catch (e) {
-        if (signal.aborted) throw e;
-        throw new ProviderNetworkError('GDELT DOC connect failed: ' + String(e));
-      }
-      if (!res.ok) throw new GdeltDocError('headers', res.status, 'GDELT DOC HTTP ' + String(res.status));
-      const contentType = res.headers.get('content-type') ?? '';
-      if (!contentType.includes('json')) throw new GdeltDocError('headers', 502, 'GDELT unexpected content type');
-      let data: GdeltDocFixture;
       try {
-        data = (await res.json()) as GdeltDocFixture;
-      } catch {
-        throw new GdeltDocError('body', 502, 'GDELT DOC body read failed');
+        const firstCap = AbortSignal.timeout(firstAttemptMs);
+        const firstSignal = signal.aborted ? signal : AbortSignal.any([signal, firstCap]);
+        return await fetchGdeltDoc(runFetch, input, firstSignal, input.request.period);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (error instanceof ProviderHttpError && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
+        // 1回だけ期間を縮めて再試行する（残り時間内）。失敗時は最初のエラーを投げる。
+        try {
+          const fallback = await fetchGdeltDoc(runFetch, input, signal, '7d');
+          return { ...fallback, status: 'partial' as const, errorCode: 'GDELT_DOC_FALLBACK_7D' };
+        } catch {
+          throw error;
+        }
       }
-      if (!Array.isArray(data.articles)) throw new GdeltDocError('parse', 502, 'GDELT envelope missing articles');
-      return { items: parseGdeltDocResponse(data, input, new Date()), coverage: ['media_activity'] };
     },
   };
+}
+
+async function fetchGdeltDoc(
+  runFetch: GdeltFetch,
+  input: ProviderInput,
+  signal: AbortSignal,
+  period: string | undefined,
+): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
+  const query = input.queries.find((q) => q.providerId === 'gdelt')?.query ?? input.region.name;
+  const url = buildGdeltDocUrl(query, 25, period);
+  let res: Response;
+  try { res = await runFetch(url, { signal }); }
+  catch (e) {
+    if (signal.aborted) throw e;
+    throw new ProviderNetworkError('GDELT DOC connect failed: ' + String(e));
+  }
+  if (!res.ok) throw new GdeltDocError('headers', res.status, 'GDELT DOC HTTP ' + String(res.status));
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('json')) throw new GdeltDocError('headers', 502, 'GDELT unexpected content type');
+  let data: GdeltDocFixture;
+  try {
+    data = (await res.json()) as GdeltDocFixture;
+  } catch {
+    throw new GdeltDocError('body', 502, 'GDELT DOC body read failed');
+  }
+  if (!Array.isArray(data.articles)) throw new GdeltDocError('parse', 502, 'GDELT envelope missing articles');
+  return { items: parseGdeltDocResponse(data, input, new Date()), coverage: ['media_activity'] };
 }
