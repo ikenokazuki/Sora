@@ -5,7 +5,7 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 
-export interface GdeltEventRow { GLOBALEVENTID?: string; SQLDATE?: string; Actor1CountryCode?: string; ActionGeo_CountryCode?: string; EventCode?: string; NumArticles?: number; SOURCEURL?: string; }
+export interface GdeltEventRow { GLOBALEVENTID?: string; SQLDATE?: string; Actor1CountryCode?: string; ActionGeo_CountryCode?: string; EventCode?: string; NumArticles?: number; AvgTone?: number; SOURCEURL?: string; }
 export interface GdeltEventsFixture { events?: GdeltEventRow[]; }
 
 export function buildGdeltEventsUrl(query: string, maxRecords = 50): string {
