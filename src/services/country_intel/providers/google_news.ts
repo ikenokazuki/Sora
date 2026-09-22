@@ -7,9 +7,9 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 import { fetchProviderResponse } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 
-/** 地域派生のみでURL生成。gl=国コード、hl=第一言語、ceid=国:言語。国別テーブルは持たない。 */
-export function buildGoogleNewsSearchUrl(region: ProviderInput['region']): string | undefined {
-  const query = region.name?.trim();
+/** クエリは計画済み要求文を優先し、なければ地域名へ戻す。gl/hl/ceidは地域派生のみ。国別テーブルは持たない。 */
+export function buildGoogleNewsSearchUrl(region: ProviderInput['region'], queryText?: string): string | undefined {
+  const query = queryText?.trim() ? queryText.trim() : region.name?.trim();
   if (!query) return undefined;
   const lang = region.languages?.[0] || 'en';
   const params = new URLSearchParams({ q: query, hl: lang });
@@ -38,7 +38,8 @@ export function createGoogleNewsProvider(fetchFn?: GdeltFetch): CountryIntelProv
     id: 'google_news', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
     async run(input: ProviderInput, signal: AbortSignal) {
-      const url = buildGoogleNewsSearchUrl(input.region);
+      const planned = input.queries.map((q) => q.query).find((q) => q && q.trim());
+      const url = buildGoogleNewsSearchUrl(input.region, planned);
       if (!url) return { items: [] as AcquisitionItem[], coverage: [] };
       let res: Response;
       try {
