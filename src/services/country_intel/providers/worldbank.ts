@@ -62,6 +62,7 @@ export function createWorldBankProvider(fetchFn?: GdeltFetch, indicators: readon
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'worldbank', areas: ['economy', 'historical_context'], latencyClass: 'historical', defaultTtlSeconds: 86400,
+    collectionWindowDays: 3650,
     async run(input: ProviderInput, signal: AbortSignal) {
       const iso3 = input.region.countryCode ? iso2ToIso3(input.region.countryCode) : undefined;
       if (!iso3) {
