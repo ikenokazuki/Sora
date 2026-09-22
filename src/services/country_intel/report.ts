@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolveRegion } from './region.js';
 import { deduplicateEvidence } from './evidence.js';
-import { extractEvent } from './event_extract.js';
+import { extractEvent, type IntelEventDraft } from './event_extract.js';
 import { clusterEvents } from './event_cluster.js';
 import { assembleSituation, buildCoverage, buildForeignRelations, buildJapanView } from './context.js';
 import { buildMetricObservations } from './metric_builder.js';
@@ -23,8 +23,10 @@ import {
   type ActualWindow,
   type CountryContextReport,
   type CountryContextRequest,
+  type CountryEvidence,
   type CountrySource,
   type Limitation,
+  type RegionIdentity,
   type SituationSection,
 } from './types.js';
 
@@ -85,6 +87,25 @@ export function normalizeCountryRequest(rawRequest: CountryContextRequest): Coun
     topics = kept.length > 0 ? kept : undefined;
   }
   return { ...(raw as object), query, topics } as CountryContextRequest;
+}
+
+export function filterRegionRelevantDrafts(
+  drafts: IntelEventDraft[],
+  evidence: CountryEvidence[],
+  region: RegionIdentity,
+): IntelEventDraft[] {
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  const regionCode = region.countryCode;
+  return drafts.filter((draft) => {
+    if (draft.type === 'other') return false;
+    const item = evidenceById.get(draft.evidenceId);
+    if (!item || !regionCode) return true;
+    if (item.eventCountry && item.eventCountry !== regionCode) {
+      return item.mentionedCountries?.includes(regionCode) ?? false;
+    }
+    if (!item.eventCountry && item.sourceType === 'structured_dataset') return false;
+    return true;
+  });
 }
 
 export async function researchCountryContext(
@@ -151,7 +172,7 @@ export async function researchCountryContext(
   const drafts = evidence
     .map((item) => extractEvent(item, region, nowDate))
     .filter((draft): draft is NonNullable<typeof draft> => draft !== undefined);
-  const keyEvents = clusterEvents(drafts, evidence);
+  const keyEvents = clusterEvents(filterRegionRelevantDrafts(drafts, evidence, region), evidence);
   const elections = keyEvents.filter((event) => event.type === 'election');
   const foreignRelations = buildForeignRelations(keyEvents, polls, temporalMetrics, evidence);
   const japan = buildJapanView(foreignRelations);
