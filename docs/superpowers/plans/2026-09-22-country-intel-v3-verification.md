@@ -24,3 +24,9 @@
 ## Open issues
 - GDELT DOC timeout root cause unknown (staged diagnostics added: connect/headers/body/parse).
 - Production wiring of article scraper (budget exists, default unwired).
+
+## Article bodies (wired 2026-09-22)
+- Default runtime now scrapes via built-in fast-mode scraper (`SORA_INTEL_SCRAPE=off` disables; tests stay hermetic).
+- GDELT export rows carry `title_only` details pointing at `SOURCEURL`, so headline-less rows gain bodies.
+- Live China re-run: 16.4s, enrichment 11/12 upgraded 1 failed, `extracted_text` 11, body chars 39K -> 86K, fact max 1000 chars (16 truncated+flagged). `article_enrichment_unavailable` gone.
+- intel suite: 192 pass / 0 fail.

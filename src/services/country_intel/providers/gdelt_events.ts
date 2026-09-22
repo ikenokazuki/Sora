@@ -3,6 +3,7 @@ import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import type { GdeltFetch } from './gdelt.js';
+import type { EvidenceDetail } from '../detail.js';
 
 export interface GdeltEventRow { GLOBALEVENTID?: string; SQLDATE?: string; Actor1CountryCode?: string; ActionGeo_CountryCode?: string; EventCode?: string; NumArticles?: number; SOURCEURL?: string; }
 export interface GdeltEventsFixture { events?: GdeltEventRow[]; }
@@ -24,16 +25,30 @@ export function parseGdeltEventsResponse(fixture: GdeltEventsFixture, input: Pro
     const mentionedCountries = [row.Actor1CountryCode, row.ActionGeo_CountryCode]
       .map((code) => normalizeProviderCountryCode('gdelt_geo', code))
       .filter((code): code is string => Boolean(code));
-    return {
-    evidence: normalizeEvidence({
+    const evidence = normalizeEvidence({
       url: row.SOURCEURL!, title: `GDELT event ${row.GLOBALEVENTID ?? 'unknown'}`,
       eventCountry,
       mentionedCountries: mentionedCountries.length ? mentionedCountries : undefined,
       sourceType: 'structured_dataset', publishedAt: parseSqlDate(row.SQLDATE),
       excerpt: `EventCode ${row.EventCode ?? 'unknown'} articles ${row.NumArticles ?? 0}`,
       primarySource: false, latencyClass: 'delayed',
-    }, input.region, now),
+    }, input.region, now);
+    // 記事URLを保持する。本文補完の対象にする（見出しなしレコードの解消）。
+    const detail: EvidenceDetail = {
+      evidenceId: evidence.id,
+      providerId: 'gdelt_export',
+      providerItemId: row.GLOBALEVENTID ?? row.SOURCEURL!,
+      sourceRecordUrl: row.SOURCEURL!,
+      contentKind: 'title_only',
+      blocks: [],
+      publishedAt: parseSqlDate(row.SQLDATE),
+      retrievedAt: now.toISOString(),
+      timeBasis: 'provider_event_date',
+      geographyBasis: 'provider_action_geo',
+      sourceStatus: 'unverified',
+      contentTruncated: false,
     };
+    return { evidence, detail };
   });
 }
 
