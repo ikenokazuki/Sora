@@ -229,6 +229,8 @@ export interface IntelEvent {
   type: ActionType;
   title: string;
   excerpt?: string;
+  excerptTruncated?: boolean;
+  indicators?: { label: string; value: string }[];
   occurredAt?: string;
   location?: { name?: string; countryCode?: string };
   actors: IntelEntity[];
@@ -248,6 +250,8 @@ export const IntelEventSchema = z.object({
   type: z.enum(ACTION_TYPES),
   title: z.string(),
   excerpt: z.string().optional(),
+  excerptTruncated: z.boolean().optional(),
+  indicators: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
   occurredAt: z.string().optional(),
   location: z.object({ name: z.string().optional(), countryCode: z.string().optional() }).optional(),
   actors: z.array(IntelEntitySchema),
@@ -519,6 +523,7 @@ export interface Fact {
   text: string;
   basis: FactBasis;
   evidenceIds: string[];
+  truncated?: boolean;
 }
 
 export const FactSchema = z.object({
@@ -527,6 +532,7 @@ export const FactSchema = z.object({
   text: z.string(),
   basis: FactBasisSchema,
   evidenceIds: z.array(z.string()),
+  truncated: z.boolean().optional(),
 });
 
 export interface Limitation {
