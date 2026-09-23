@@ -9,6 +9,11 @@ import { createWikiCurrentProvider } from './providers/wiki_current.js';
 import { createBaiduHotProvider } from './providers/baidu_hot.js';
 import { createSo360SearchProvider } from './providers/so360_search.js';
 import { createWeiboHotProvider } from './providers/weibo_hot.js';
+import { createZhihuHotProvider } from './providers/zhihu_hot.js';
+import { createToutiaoHotProvider } from './providers/toutiao_hot.js';
+import { createWallstreetLiveProvider } from './providers/wallstreet_live.js';
+import { createCctvNewsProvider } from './providers/cctv_news.js';
+import { createThepaperHotProvider } from './providers/thepaper_hot.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
 import type { GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
@@ -22,7 +27,7 @@ import type { CountryContextReport, CountryContextRequest, CountrySource } from 
 
 /** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。gdelt DOC は上流復旧まで除外（本体・テストは残す）。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'zhihu_hot', 'toutiao_hot', 'wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -102,6 +107,11 @@ export function createDefaultCountryIntelDependencies(
       createBaiduHotProvider(fetchFn),
       createSo360SearchProvider(fetchFn),
       createWeiboHotProvider(fetchFn),
+      createZhihuHotProvider(fetchFn),
+      createToutiaoHotProvider(fetchFn),
+      createWallstreetLiveProvider(fetchFn),
+      createCctvNewsProvider(fetchFn),
+      createThepaperHotProvider(fetchFn),
       createOfficialWebProvider({
         searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter(),
         verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
