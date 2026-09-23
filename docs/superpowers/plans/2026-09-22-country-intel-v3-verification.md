@@ -130,3 +130,5 @@
 - hotSearch keyless OK with browser UA plus Referer, no-UA bun fetch gets 403. CN-only max30 8s cap fail-open.
 - Live CN 30 items in 275ms. Trending only, no keyword search. xianbao timeout parked, m.weibo.cn UID 302 parked.
 - intel suite 241 pass 0 fail with timeout 60000.
+- intel suite 241 pass 0 fail with timeout 60000.
+- 2026-09-23 realtime follow-up: Weibo ranks from realpos with ads dropped and stable topic ids; Google News keeps article links with publisherUrl recorded; GDELT tone direction is unknown without a baseline; pass1 cap 24 with region-applicable selection and explicit omitted providers; new keyless CN providers zhihu_hot/toutiao_hot/wallstreet_live/cctv_news/thepaper_hot plus NewsNow fallback in weibo_hot (defaults 15 to 20 providers); scheduled hot collection with 30-day history, backoff, and report recentContext (topics/reports/sources/limitations). Full suite: 869 pass, 3 pre-existing environmental failures (2 Yahoo live, 1 slow seed test passing with --timeout 60000).

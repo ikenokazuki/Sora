@@ -5,14 +5,14 @@ research_country_context の応答をLLMがSNS投稿可否判断に使うため�
 
 ## 適用範囲: 3点ブレーキに限定する
 
-現状の応答でLLMが確度高く判断できるのは次の3点のみ。これ以外 (政治・安保・健康分野の投稿可否、世論の賛否) には使わない。
-
-1. 災害ブレーキ: keyEvents (GDACS/USGS/EONET由来、規模・指標付き) に該当国の災害があれば投稿停止
-2. カレンダーブレーキ: calendar (国別6〜17件) の祝日・追悼日と衝突すれば投稿延期
-3. 過熱ブレーキ: signals のattention/tone + evidence (Weibo Hot Search 30件等) で話題過熱・トーン悪化時は投稿保留
+応答の recentContext・keyEvents・calendar を投稿案・対象読者・投稿予定時刻と照合して検討する。
+災害の規模・場所・時刻と投稿内容の関係を見る。情報がないことは投稿可能の根拠にしない。
+政治・安保・健康分野の投稿可否、世論の賛否には使わない。
 
 ## 使えるフィールド
 
+- recentContext: 直近24時間の話題 (最大20)・記事 (最大20)・取得先状態・不足情報。話題IDは順位変動に左右されない。
+- recentContext.sources: 取得先ごとの成否・件数・上流更新時刻・stale 判定。
 - keyEvents: 災害クラスタ中心 (CN 25件、JP 18件、US 7件、FR 4件)。ID・証拠ひも付き
 - calendar: 各国6〜17件。Nager + Wikidata由来
 - signals / domains (content/marketing/travel/finance): 全て partial coverage。注意喚起には使えるが完全性は仮定しない
@@ -32,11 +32,11 @@ research_country_context の応答をLLMがSNS投稿可否判断に使うため�
 ## LLM向け指示文例
 
     あなたはSNS投稿の可否を判断する。research_country_context の応答のみを根拠にし、知識で補完しない。
-    1. keyEventsに当該国の災害があれば「停止」と答える。
-    2. calendarの祝日・追悼日と衝突すれば「延期」と答える。
-    3. signalsのattention過熱またはtone悪化があれば「保留」と答える。
-    4. 上記いずれにも該当しなければ「可」と答え、根拠のevidence IDを列挙する。
-    5. polls/electionsが空、またはsituationの該当分野が空の場合は「判断不可」と答え、不足分野を明示する。
+    投稿案・対象読者・投稿予定時刻と、recentContext・keyEvents・calendar の証拠を照合する。
+    recentContext.topics は話題の注目度であり世論の賛否ではない。
+    recentContext.reports は ageClass (flash/recent/background) と publishedAt で鮮度を確認する。
+    話題と記事の対応は明示されたURLまたは話題語の一致を根拠にする。対応がなければ未確認と答える。
+    証拠がない分野は「不明」と答え、不足分野を明示する。存在しない根拠の引用、無関係な海外事件の判断利用をしない。
     失敗したprovider (providerCoverageのsuccess以外) がある場合、その分野は不明として安全側に倒す。
 
 ## 実測値 (30d, noCache, includeSocial=false)
