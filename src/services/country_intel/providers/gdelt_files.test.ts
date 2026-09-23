@@ -46,4 +46,19 @@ describe('gdelt files', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].evidence?.eventCountry).toBe('CN');
   });
+  test('tone snapshot carries no trend direction without a baseline', async () => {
+    const toneFetch = (async (url: string) => {
+      if (url.endsWith('lastupdate.txt')) return new Response('1 a http://data.gdeltproject.org/gdeltv2/20260921181500.export.CSV.zip', { status: 200 });
+      return new Response('zip-bytes', { status: 200 });
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const cols = new Array(61).fill('');
+    cols[0] = '9'; cols[33] = '5'; cols[34] = '-3.5'; cols[53] = 'CH'; cols[60] = 'https://example.org/tone';
+    const toneTsv = cols.join('\t');
+    const toneProvider = createGdeltExportProvider({ fetchFn: toneFetch, decompressZip: async () => toneTsv });
+    const toneInput = { request: { region: 'CN' } as never, region: china, queries: [] };
+    const toneResult = await toneProvider.run(toneInput, new AbortController().signal);
+    const tone = toneResult.items.flatMap((item) => item.metric ? [item.metric] : []).find((metric) => metric.key === 'gdelt_media_tone');
+    expect(tone?.current).toBe(-3.5);
+    expect(tone?.direction).toBe('unknown');
+  });
 });

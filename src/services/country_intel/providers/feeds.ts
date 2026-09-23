@@ -115,7 +115,7 @@ export function feedEntriesToAcquisition(entries: FeedEntry[], entry: SourceCata
       contentKind: 'excerpt',
       ...(item.language ? { language: item.language } : {}),
       blocks: excerpt ? [{ index, text: excerpt }] : [],
-      structuredData: { publisher: entry.publisher },
+      structuredData: { publisher: entry.publisher, ...(item.sourceUrl ? { publisherUrl: item.sourceUrl } : {}) },
       publishedAt: item.publishedAt,
       retrievedAt: now.toISOString(),
       timeBasis: 'provider_publication',
