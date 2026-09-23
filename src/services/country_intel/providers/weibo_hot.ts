@@ -9,7 +9,12 @@ export const WEIBO_HOT_PAGE_URL = 'https://weibo.com/hot';
 export const WEIBO_HOT_MAX_ITEMS = 30;
 const WEIBO_HOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
-export interface WeiboHotEntry { rank: number; query: string; hotIndex: string; tag: string; }
+export interface WeiboHotEntry { id: string; query: string; hotIndex: string; tag: string; rank: number | null; pinned: boolean; }
+
+/** 順位変動に左右されない話題ID。前後の#と空白を正規化する。 */
+export function normalizeWeiboTopicId(query: string): string {
+  return query.normalize('NFKC').replace(/\s+/g, ' ').trim().replace(/^#+|#+$/g, '').trim();
+}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
@@ -21,6 +26,14 @@ function asText(value: unknown): string {
 
 function asNum(value: unknown): string {
   return typeof value === 'number' ? String(value) : asText(value);
+}
+
+function asRank(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function isAdRecord(record: Record<string, unknown> | undefined): boolean {
+  return record?.['is_ad'] === 1 || record?.['is_ad'] === true || record?.['topic_ad'] === 1 || record?.['topic_ad'] === true;
 }
 
 /** live実測構造 data.realtime[] + data.hotgovs[]。話題把握用、任意検索ではない。 */
@@ -36,12 +49,20 @@ export function parseWeiboHotJson(text: string): WeiboHotEntry[] {
   const realtime = inner?.['realtime'];
   const hotgovs = inner?.['hotgovs'];
   const entries: WeiboHotEntry[] = [];
+  const seen = new Set<string>();
+  const push = (query: string, hotIndex: string, tag: string, rank: number | null, pinned: boolean): void => {
+    const id = normalizeWeiboTopicId(query);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    entries.push({ id, query: query.trim(), hotIndex, tag, rank, pinned });
+  };
   if (Array.isArray(hotgovs)) {
     for (const item of hotgovs.slice(0, 3)) {
       const record = asRecord(item);
       const query = asText(record?.['word']) || asText(record?.['note']);
       if (!query.trim()) continue;
-      entries.push({ rank: 0, query: query.trim(), hotIndex: '', tag: asText(record?.['icon_desc']) || 'gov' });
+      push(query, '', asText(record?.['icon_desc']) || 'gov', null, true);
+      if (entries.length >= WEIBO_HOT_MAX_ITEMS) break;
     }
   }
   if (!Array.isArray(realtime)) {
@@ -50,10 +71,11 @@ export function parseWeiboHotJson(text: string): WeiboHotEntry[] {
   }
   for (const item of realtime) {
     const record = asRecord(item);
+    if (isAdRecord(record)) continue;
     const query = asText(record?.['word']) || asText(record?.['note']) || asText(record?.['word_scheme']);
     if (!query.trim()) continue;
     const tag = asText(record?.['label_name']) || asText(record?.['icon_desc']);
-    entries.push({ rank: entries.length + 1, query: query.trim(), hotIndex: asNum(record?.['num']), tag });
+    push(query, asNum(record?.['num']), tag, asRank(record?.['realpos']), false);
     if (entries.length >= WEIBO_HOT_MAX_ITEMS) break;
   }
   if (!entries.length) throw new ProviderHttpError(502, undefined, 'Weibo hot list envelope unexpected');
@@ -67,7 +89,7 @@ export function weiboHotItemUrl(query: string): string {
 export function createWeiboHotProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
-    id: 'weibo_hot', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
+    id: 'weibo_hot', areas: ['media_activity', 'current_events'], regions: ['CN'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
     timeoutMs: 8000,
     async run(input: ProviderInput, signal: AbortSignal) {
@@ -97,9 +119,10 @@ export function createWeiboHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
       const now = new Date();
       const items: AcquisitionItem[] = entries.map((entry, index) => {
         const url = weiboHotItemUrl(entry.query);
-        const excerpt = entry.hotIndex ? entry.query + ' (hot ' + entry.hotIndex + ')' + (entry.tag ? ' [' + entry.tag + ']' : '') : entry.query;
-        const evidence = normalizeEvidence({ url, title: '#' + String(index + 1) + ' ' + entry.query, excerpt: excerpt.slice(0, 2000), publisher: 'Weibo Hot Search', language: 'zh', sourceType: 'structured_dataset', primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
-        const detail: EvidenceDetail = { evidenceId: evidence.id, providerId: 'weibo_hot', providerItemId: 'hot-' + String(index + 1), sourceRecordUrl: url, contentKind: 'excerpt', language: 'zh', blocks: [{ index: index + 1, text: excerpt.slice(0, 2000) }], structuredData: { rank: index + 1, hotIndex: entry.hotIndex, tag: entry.tag }, retrievedAt: at, timeBasis: 'provider_publication', geographyBasis: 'unknown', sourceStatus: 'unverified', contentTruncated: excerpt.length > 2000 };
+        const rankLabel = entry.rank !== null ? 'rank ' + String(entry.rank) : entry.pinned ? 'pinned' : 'unranked';
+        const excerpt = entry.query + ' (observed ' + rankLabel + (entry.hotIndex ? ', hot ' + entry.hotIndex : '') + (entry.tag ? ' [' + entry.tag + ']' : '') + ')';
+        const evidence = normalizeEvidence({ url, title: entry.query, excerpt: excerpt.slice(0, 2000), publisher: 'Weibo Hot Search', language: 'zh', sourceType: 'structured_dataset', primarySource: false, latencyClass: 'near_realtime' }, input.region, now);
+        const detail: EvidenceDetail = { evidenceId: evidence.id, providerId: 'weibo_hot', providerItemId: 'weibo:' + entry.id, sourceRecordUrl: url, contentKind: 'excerpt', language: 'zh', blocks: [{ index, text: excerpt.slice(0, 2000) }], structuredData: { topicId: entry.id, rank: entry.rank, pinned: entry.pinned, hotIndex: entry.hotIndex, tag: entry.tag }, retrievedAt: at, timeBasis: 'provider_observation', geographyBasis: 'unknown', sourceStatus: 'unverified', contentTruncated: excerpt.length > 2000 };
         return { evidence, detail, areas: ['media_activity'] as readonly string[] };
       });
       return { items, coverage: ['media_activity'] };

@@ -211,7 +211,8 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
             key: 'gdelt_media_tone',
             current: Math.round(tone.avgTone * 100) / 100,
             window: '15m',
-            direction: tone.avgTone > 1 ? 'rising' : tone.avgTone < -1 ? 'falling' : 'stable',
+            // 単発の平均値は傾向ではない。比較対象なしに方向を付けない。
+            direction: 'unknown',
           },
         });
       }

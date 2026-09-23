@@ -38,7 +38,7 @@ export function buildSo360SearchUrl(query: string): string {
 export function createSo360SearchProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
-    id: 'so360_search', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
+    id: 'so360_search', areas: ['media_activity', 'current_events'], regions: ['CN'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
     /** Cookie配布302の2段取得を外側10秒既定内に収める。 */
     timeoutMs: 14000,

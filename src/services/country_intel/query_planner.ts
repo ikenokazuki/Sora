@@ -4,6 +4,8 @@ import type { CountryContextRequest, CountryIntelTopic, CountrySource, RegionIde
 export interface ProviderCapability {
   id: string;
   areas: readonly string[];
+  /** 対応国コード。未指定・空は全地域で実行する。 */
+  regions?: readonly string[];
 }
 
 export interface ResearchQuery {
@@ -16,7 +18,7 @@ export interface ResearchQuery {
 }
 
 export interface ResearchPlanLimits {
-  maxPass1Queries: 12;
+  maxPass1Queries: 24;
   maxPass2Queries: 8;
   maxItemsPerQuery: 100;
 }
@@ -29,8 +31,8 @@ export interface ResearchPlan {
   limits: ResearchPlanLimits;
 }
 
-const LIMITS: ResearchPlanLimits = {
-  maxPass1Queries: 16,
+export const LIMITS: ResearchPlanLimits = {
+  maxPass1Queries: 24,
   maxPass2Queries: 8,
   maxItemsPerQuery: 100,
 };
@@ -64,13 +66,47 @@ export function planCountryResearchPass1(
 ): ResearchQuery[] {
   const topics = request.topics?.length ? [...request.topics] : [...COUNTRY_INTEL_TOPICS];
   const baseQuery = [region.name, request.query?.trim()].filter(Boolean).join(' ');
-  return capabilities.slice(0, LIMITS.maxPass1Queries).map((capability) => ({
-    pass: 1 as const,
-    providerId: capability.id,
-    query: baseQuery,
-    topics,
-    maxItems: LIMITS.maxItemsPerQuery,
-  }));
+  return applicableCapabilities(region, capabilities)
+    .slice(0, LIMITS.maxPass1Queries)
+    .map((capability) => ({
+      pass: 1 as const,
+      providerId: capability.id,
+      query: baseQuery,
+      topics,
+      maxItems: LIMITS.maxItemsPerQuery,
+    }));
+}
+
+/** 地域に対応する取得先だけを残す。地域未解決時は落とさない。 */
+export function applicableCapabilities(
+  region: RegionIdentity,
+  capabilities: readonly ProviderCapability[],
+): ProviderCapability[] {
+  return capabilities.filter((capability) =>
+    !(capability.regions?.length)
+    || !region.countryCode
+    || capability.regions.includes(region.countryCode),
+  );
+}
+
+/** 地域条件で除外した取得先ID。未実行の理由付けに使う。 */
+export function inapplicableProviderIds(
+  region: RegionIdentity,
+  capabilities: readonly ProviderCapability[],
+): string[] {
+  return capabilities
+    .filter((capability) => !applicableCapabilities(region, [capability]).length)
+    .map((capability) => capability.id);
+}
+
+/** 対応地域だが上限で落とした取得先ID。黙って消さない。 */
+export function cappedProviderIds(
+  region: RegionIdentity,
+  capabilities: readonly ProviderCapability[],
+): string[] {
+  return applicableCapabilities(region, capabilities)
+    .slice(LIMITS.maxPass1Queries)
+    .map((capability) => capability.id);
 }
 
 export function planCountryResearchPass2(

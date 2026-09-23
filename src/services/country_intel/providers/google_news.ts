@@ -50,8 +50,8 @@ export function createGoogleNewsProvider(fetchFn?: GdeltFetch): CountryIntelProv
         throw new ProviderNetworkError(String(e));
       }
       const xml = await res.text();
-      // source要素の発行者URLを優先。なければRSSリンクを使う。
-      const entries = parseFeed(xml, 'google-news').map((entry) => (entry.sourceUrl ? { ...entry, link: entry.sourceUrl } : entry));
+      // 記事リンクを保持する。発行者URLはstructuredData.publisherUrlに残る。
+      const entries = parseFeed(xml, 'google-news');
       const items = feedEntriesToAcquisition(entries, CATALOG_ENTRY, input, new Date());
       return { items: items.slice(0, GOOGLE_NEWS_MAX_ITEMS), coverage: ['media_activity'] };
     },
