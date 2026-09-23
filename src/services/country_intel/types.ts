@@ -625,6 +625,82 @@ export const RefreshStateSchema = z.object({
   state: z.enum(['complete', 'partial', 'pending']),
   refreshId: z.string(),
 });
+export interface RecentTopic {
+  topicId: string;
+  title: string;
+  providers: string[];
+  rank?: number;
+  hot?: string;
+  pinned?: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  evidenceIds: string[];
+  previousRank?: number;
+  rankChange?: 'up' | 'down' | 'steady';
+}
+export const RecentTopicSchema = z.object({
+  topicId: z.string(),
+  title: z.string(),
+  providers: z.array(z.string()),
+  rank: z.number().optional(),
+  hot: z.string().optional(),
+  pinned: z.boolean().optional(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  evidenceIds: z.array(z.string()),
+  previousRank: z.number().optional(),
+  rankChange: z.enum(['up', 'down', 'steady']).optional(),
+});
+export interface RecentReport {
+  evidenceId: string;
+  title: string;
+  publisher?: string;
+  url: string;
+  publishedAt?: string;
+  ageClass: 'flash' | 'recent' | 'background' | 'unknown';
+}
+export const RecentReportSchema = z.object({
+  evidenceId: z.string(),
+  title: z.string(),
+  publisher: z.string().optional(),
+  url: z.string(),
+  publishedAt: z.string().optional(),
+  ageClass: z.enum(['flash', 'recent', 'background', 'unknown']),
+});
+export interface RecentSourceState {
+  provider: string;
+  status: ProviderRun['status'];
+  finishedAt?: string;
+  itemCount: number;
+  errorCode?: string;
+  upstreamUpdatedAt?: string;
+  stale: boolean;
+}
+export const RecentSourceStateSchema = z.object({
+  provider: z.string(),
+  status: z.enum(['success', 'partial', 'unavailable', 'rate_limited', 'error']),
+  finishedAt: z.string().optional(),
+  itemCount: z.number(),
+  errorCode: z.string().optional(),
+  upstreamUpdatedAt: z.string().optional(),
+  stale: z.boolean(),
+});
+export interface RecentContext {
+  generatedAt: string;
+  windowHours: 24;
+  topics: RecentTopic[];
+  reports: RecentReport[];
+  sources: RecentSourceState[];
+  limitations: Limitation[];
+}
+export const RecentContextSchema = z.object({
+  generatedAt: z.string(),
+  windowHours: z.literal(24),
+  topics: z.array(RecentTopicSchema),
+  reports: z.array(RecentReportSchema),
+  sources: z.array(RecentSourceStateSchema),
+  limitations: z.array(LimitationSchema),
+});
 export interface CountryContextReport {
   contextId: string;
   region: RegionIdentity;
@@ -672,6 +748,8 @@ export interface CountryContextReport {
   limitations?: Limitation[];
   refreshState?: RefreshState;
   actualWindows?: ActualWindow[];
+  /** 直近24時間の話題・記事の要約。任意。 */
+  recentContext?: RecentContext;
 }
 
 export const CountryContextReportSchema = z.object({
@@ -714,4 +792,5 @@ export const CountryContextReportSchema = z.object({
   limitations: z.array(LimitationSchema).optional(),
   refreshState: RefreshStateSchema.optional(),
   actualWindows: z.array(ActualWindowSchema).optional(),
+  recentContext: RecentContextSchema.optional(),
 });
