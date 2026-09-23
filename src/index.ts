@@ -26,6 +26,7 @@ import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { startCountryCollector, type CollectorHandle } from './services/country_intel/collector.js';
+import { createHotCollectorJobs, hotCollectRegions } from './services/country_intel/hot_collector.js';
 
 export { formatError, mcpSessionManager };
 
@@ -158,7 +159,7 @@ if (import.meta.main) {
 
   let countryCollector: CollectorHandle | undefined;
   if (process.env.SORA_COLLECTOR_ENABLED === '1') {
-    countryCollector = startCountryCollector();
+    countryCollector = startCountryCollector(createHotCollectorJobs(hotCollectRegions()));
   }
   const cleanup = async (signal: string) => {
     console.log(`Received ${signal}, shutting down Sora gracefully...`);
