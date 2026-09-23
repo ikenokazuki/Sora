@@ -226,4 +226,13 @@ export const COUNTRY_INTEL_MIGRATIONS: readonly SqlMigration[] = [{
     )`,
     'CREATE INDEX idx_context_changes_context ON intel_context_changes(context_id, observed_at)',
   ],
+},
+{
+  version: 4,
+  name: 'scheduled hot list observations',
+  statements: [
+    'CREATE TABLE intel_hot_observations (source_id TEXT NOT NULL, topic_id TEXT NOT NULL, region_id TEXT NOT NULL, observed_at INTEGER NOT NULL, rank INTEGER, hot TEXT, pinned INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, url TEXT NOT NULL, upstream_updated_at INTEGER, expires_at INTEGER NOT NULL, PRIMARY KEY (source_id, topic_id, observed_at))',
+    'CREATE INDEX idx_hot_obs_source_observed ON intel_hot_observations (source_id, observed_at)',
+    'CREATE INDEX idx_hot_obs_expires ON intel_hot_observations (expires_at)',
+  ],
 }];

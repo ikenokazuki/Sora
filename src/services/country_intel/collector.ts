@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from '../../db.js';
 import { readSourceState, writeSourceState } from './db.js';
-import type { EvidenceDetail } from './detail.js';
+import type { EvidenceDetail, SourceState } from './detail.js';
 
 export interface CollectionBatch { cursor: string; details: EvidenceDetail[]; }
 
@@ -18,11 +18,19 @@ export async function collectSourceOnce(sourceId: string, collect: () => Promise
   const checkedAt = new Date().toISOString();
   try {
     const batch = await collect();
-    writeSourceState({ ...before, sourceId, cursor: batch.cursor, lastCheckedAt: checkedAt, lastSuccessfulFetchAt: checkedAt });
+    writeSourceState({ ...before, sourceId, cursor: batch.cursor, lastCheckedAt: checkedAt, lastSuccessfulFetchAt: checkedAt, lastErrorCode: undefined, retryAt: undefined });
   } catch (error) {
-    writeSourceState({ ...before, sourceId, lastCheckedAt: checkedAt, lastErrorCode: error instanceof Error ? error.message.slice(0, 200) : 'COLLECT_FAILED' });
+    writeSourceState({ ...before, sourceId, lastCheckedAt: checkedAt, lastErrorCode: error instanceof Error ? error.message.slice(0, 200) : 'COLLECT_FAILED', retryAt: new Date(Date.parse(checkedAt) + collectorBackoffMs(before, Date.parse(checkedAt))).toISOString() });
     throw error;
   }
+}
+/** 失敗時は5分→10分→20分→最大30分で再試行する。 */
+export function collectorBackoffMs(previous: SourceState | undefined, now: number): number {
+  const FIVE_MINUTES = 5 * 60_000;
+  const MAX_DELAY = 30 * 60_000;
+  const previousDelay = previous?.retryAt && previous?.lastCheckedAt ? Date.parse(previous.retryAt) - Date.parse(previous.lastCheckedAt) : Number.NaN;
+  if (!Number.isFinite(previousDelay) || (previousDelay as number) <= 0) return FIVE_MINUTES;
+  return Math.min(MAX_DELAY, (previousDelay as number) * 2);
 }
 
 export function acquireCollectorLease(ownerId: string = randomUUID(), ttlMs = 60_000, now: number = Date.now()): boolean {
@@ -53,6 +61,8 @@ export function startCountryCollector(jobs: readonly CollectionJob[] = [], optio
       const now = Date.now();
       for (const job of jobs) {
         if (stopped) return;
+        const state = readSourceState(job.sourceId);
+        if (state?.retryAt && Date.parse(state.retryAt) > now) continue;
         if (now - (lastRun.get(job.sourceId) ?? 0) < job.intervalMs) continue;
         lastRun.set(job.sourceId, now);
         try {
