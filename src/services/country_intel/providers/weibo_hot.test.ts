@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { normalizeWeiboTopicId, parseWeiboHotJson, weiboHotItemUrl } from './weibo_hot.js';
+import { normalizeWeiboTopicId, parseNewsnowWeiboMirror, parseWeiboHotJson, weiboHotItemUrl } from './weibo_hot.js';
 import type { ProviderInput } from '../provider_registry.js';
 const inputFor = (region: Record<string, unknown>): ProviderInput =>
   ({ request: { region: 'X' } as never, region: region as never, queries: [] });
@@ -48,5 +48,26 @@ describe('weibo hot', () => {
   });
   test('rejects unexpected envelope', () => {
     expect(() => parseWeiboHotJson('{"ok":1,"data":{}}')).toThrow();
+  });
+  test('falls back to the newsnow mirror only when direct fetch fails', async () => {
+    const { createWeiboHotProvider } = await import('./weibo_hot.js');
+    const mirror = JSON.stringify({ updatedTime: 1790141512432, items: [{ title: 'mirror-a', url: 'https://s.weibo.com/x' }, { title: '', url: '' }] });
+    const calls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(url);
+      if (url.includes('weibo.com/ajax')) throw new Error('direct down');
+      return new Response(mirror, { headers: { 'content-type': 'application/json' } });
+    }) as unknown as never;
+    const result = await createWeiboHotProvider(fetchFn).run(CN, AbortSignal.timeout(5000));
+    expect(calls).toHaveLength(2);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].detail?.structuredData).toMatchObject({ retrievedVia: 'newsnow', topicId: 'mirror-a' });
+    expect(parseNewsnowWeiboMirror(mirror).upstreamUpdatedAt).toBe(new Date(1790141512432).toISOString());
+  });
+  test('keeps the direct error when the mirror also fails', async () => {
+    const { createWeiboHotProvider } = await import('./weibo_hot.js');
+    const { ProviderNetworkError } = await import('../provider_registry.js');
+    const fetchFn = (async () => { throw new Error('all down'); }) as unknown as never;
+    await expect(createWeiboHotProvider(fetchFn).run(CN, AbortSignal.timeout(5000))).rejects.toThrow(ProviderNetworkError);
   });
 });
