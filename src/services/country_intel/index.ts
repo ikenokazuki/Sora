@@ -8,6 +8,8 @@ export { createDefaultCountryIntelDependencies, researchCountryWithDefaults, def
 export { normalizeEvidence, deduplicateEvidence } from './evidence.js';
 export { deduplicateEvidenceWithRemap } from './evidence.js';
 export { classifyRegionLink, isQueryTargeted, type RegionLink } from './region_link.js';
+export { buildRecentContext, HOT_CONTEXT_PROVIDERS, ARTICLE_CONTEXT_PROVIDERS } from './recent_context.js';
+export { collectHotSource, createHotCollectorJobs, diffHotSnapshots, hotCollectRegions } from './hot_collector.js';
 export { filterEventsByWindow, filterRegionRelevantDrafts, enrichDetailsWithArticles } from './report.js';
 export { buildActualWindows, normalizeAreaKey } from './context.js';
 export { formatWindowDays } from './context.js';
