@@ -47,6 +47,8 @@ export interface ProviderResult {
 export interface CountryIntelProvider {
   id: string;
   areas: readonly string[];
+  /** 対応国コード。未指定は全地域で実行する。 */
+  regions?: readonly string[];
   /** 1回の実行で遡れる収集範囲（日数）。未申告は不明扱い。actualWindows の注記に使う。 */
   collectionWindowDays?: number;
   /** provider 固有の実行上限ms。未指定時は run 時の timeoutMs を使う。 */

@@ -80,6 +80,15 @@ describe('social sensing provider runs', () => {
     expect(result.items).toHaveLength(1);
     expect(captured).toContain('q=Japan+economy');
   });
+  test('google news run keeps the article link and records the publisher url', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const rss = '<rss version="2.0"><channel><item><title>BBC story</title><link>https://news.google.com/rss/articles/CBMiX</link><source url="https://www.bbc.com">BBC</source></item></channel></rss>';
+    const result = await createGoogleNewsProvider(stubFetch(rss, 'application/rss+xml')).run(JP, signal);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].evidence?.url).toBe('https://news.google.com/rss/articles/CBMiX');
+    expect(result.items[0].detail?.sourceRecordUrl).toBe('https://news.google.com/rss/articles/CBMiX');
+    expect(result.items[0].detail?.structuredData).toMatchObject({ publisherUrl: 'https://www.bbc.com' });
+  });
   test('wiki current run keeps region bullets only', async () => {
     const { createWikiCurrentProvider } = await import('./wiki_current.js');
     const wikitext = '* Typhoon hits [[Japan]], one dead.\n* Election in [[France]].\n';
