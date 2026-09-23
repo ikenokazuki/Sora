@@ -678,3 +678,94 @@ export function getContextUpdates(contextId: string, cursor?: string): ContextUp
   const last = changes.at(-1);
   return { contextId, changes, ...(last ? { nextCursor: last.observedAt } : {}) };
 }
+
+const HOT_OBSERVATION_RETENTION = 30 * DAY;
+
+export interface HotObservationInput {
+  sourceId: string;
+  topicId: string;
+  regionId: string;
+  observedAt: string | number;
+  rank?: number | null;
+  hot?: string;
+  pinned?: boolean;
+  title: string;
+  url: string;
+  upstreamUpdatedAt?: string | number;
+}
+
+export interface HotObservation {
+  sourceId: string;
+  topicId: string;
+  regionId: string;
+  observedAt: string;
+  rank?: number;
+  hot?: string;
+  pinned: boolean;
+  title: string;
+  url: string;
+  upstreamUpdatedAt?: string;
+}
+
+/** 熱榜の観測履歴を保存する。同一次元の再送は置換する。 */
+export function saveHotObservations(inputs: readonly HotObservationInput[]): void {
+  const db = getDb();
+  const save = db.transaction(() => {
+    for (const input of inputs) {
+      const observedAt = epoch(input.observedAt);
+      if (observedAt === null) throw new TypeError('Invalid observedAt: ' + String(input.observedAt));
+      const upstream = input.upstreamUpdatedAt === undefined ? null : epoch(input.upstreamUpdatedAt);
+      if (input.upstreamUpdatedAt !== undefined && upstream === null) throw new TypeError('Invalid upstreamUpdatedAt');
+      db.query('INSERT INTO intel_hot_observations(source_id, topic_id, region_id, observed_at, rank, hot, pinned, title, url, upstream_updated_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_id, topic_id, observed_at) DO UPDATE SET region_id = excluded.region_id, rank = excluded.rank, hot = excluded.hot, pinned = excluded.pinned, title = excluded.title, url = excluded.url, upstream_updated_at = excluded.upstream_updated_at, expires_at = excluded.expires_at')
+        .run(input.sourceId, input.topicId, input.regionId, observedAt, input.rank ?? null, input.hot ?? null, input.pinned ? 1 : 0, input.title, input.url, upstream, observedAt + HOT_OBSERVATION_RETENTION);
+    }
+  });
+  save();
+}
+
+interface HotObservationRow {
+  source_id: string;
+  topic_id: string;
+  region_id: string;
+  observed_at: number;
+  rank: number | null;
+  hot: string | null;
+  pinned: number;
+  title: string;
+  url: string;
+  upstream_updated_at: number | null;
+}
+
+function toHotObservation(row: HotObservationRow): HotObservation {
+  return {
+    sourceId: row.source_id,
+    topicId: row.topic_id,
+    regionId: row.region_id,
+    observedAt: new Date(row.observed_at).toISOString(),
+    ...(row.rank !== null ? { rank: row.rank } : {}),
+    ...(row.hot ? { hot: row.hot } : {}),
+    pinned: row.pinned === 1,
+    title: row.title,
+    url: row.url,
+    ...(row.upstream_updated_at !== null ? { upstreamUpdatedAt: new Date(row.upstream_updated_at).toISOString() } : {}),
+  };
+}
+
+function hotSnapshotAt(sourceId: string, observedAt: number): HotObservation[] {
+  const rows = getDb().query<HotObservationRow, [string, number]>('SELECT source_id, topic_id, region_id, observed_at, rank, hot, pinned, title, url, upstream_updated_at FROM intel_hot_observations WHERE source_id = ? AND observed_at = ? ORDER BY rank ASC, topic_id ASC').all(sourceId, observedAt);
+  return rows.map(toHotObservation);
+}
+
+/** 最新と直前の観測スナップショットを返す。差分計算用。 */
+export function latestHotSnapshots(sourceId: string): { latest: HotObservation[]; previous: HotObservation[] } {
+  const stamps = getDb().query<{ observed_at: number }, [string]>('SELECT DISTINCT observed_at FROM intel_hot_observations WHERE source_id = ? ORDER BY observed_at DESC LIMIT 2').all(sourceId);
+  const latest = stamps[0] ? hotSnapshotAt(sourceId, stamps[0].observed_at) : [];
+  const previous = stamps[1] ? hotSnapshotAt(sourceId, stamps[1].observed_at) : [];
+  return { latest, previous };
+}
+
+/** 期限切れの熱榜観測を削除する。 */
+export function pruneHotObservations(now = Date.now()): number {
+  const result = getDb().query('DELETE FROM intel_hot_observations WHERE expires_at < ?').run(now);
+  return Number(result.changes ?? 0);
+}
