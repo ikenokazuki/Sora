@@ -16,6 +16,8 @@ import { LIMITS, cappedProviderIds, inapplicableProviderIds, planCountryResearch
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type EnrichBudget, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
 import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
+import { getCountryContext, getVerifiedCountrySources, latestHotSnapshots, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
+import { buildRecentContext } from './recent_context.js';
 import { buildDomainContext, evidenceToFacts } from './domain_details.js';
 import { classifyRegionLink, isQueryTargeted, textMentionsRegion, upgradeCandidateWithBody, type RegionLink } from './region_link.js';
 import { articleBlocks, type ScrapedArticle } from './providers/official_web.js';
@@ -651,6 +653,27 @@ export async function researchCountryContext(
   ]);
   const evidenceDetails = finalDetails.filter((detail) => referencedIds.has(detail.evidenceId));
   enriched.outcome.omittedDetails = finalDetails.length - evidenceDetails.length;
+  // 直近の話題・記事を任意フィールドにまとめる。推奨・評価は含めない。
+  const hotPreviousRanks = new Map<string, Map<string, number>>();
+  for (const sourceId of ['weibo_hot', 'zhihu_hot', 'toutiao_hot']) {
+    try {
+      const snapshot = latestHotSnapshots(sourceId);
+      if (snapshot.latest.length === 0) continue;
+      hotPreviousRanks.set(sourceId, new Map(
+        snapshot.latest.flatMap((row) => (row.rank === undefined ? [] : [[row.topicId, row.rank] as const])),
+      ));
+    } catch { /* 履歴なしでも応答は作る */ }
+  }
+  const recentContext = buildRecentContext({
+    now: nowDate,
+    region,
+    items: enrichedItems,
+    runs: acquisition.runs,
+    evidenceById,
+    detailsById: finalDetailById,
+    previousRanks: hotPreviousRanks,
+    limitations,
+  });
   const report = CountryContextReportSchema.parse({
     contextId,
     region,
@@ -682,6 +705,7 @@ export async function researchCountryContext(
     limitations,
     refreshState: { state: !runFailed && succeeded ? 'complete' : succeeded ? 'partial' : 'pending', refreshId: contextId },
     actualWindows,
+    recentContext,
   } satisfies CountryContextReport);
 
   saveCountryContext(report, {
