@@ -109,7 +109,7 @@ export function parseTopHubBaiduHtml(html: string): BaiduHotEntry[] {
 export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
-    id: 'baidu_hot', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
+    id: 'baidu_hot', areas: ['media_activity', 'current_events'], regions: ['CN'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
     /** 直2段の待機で外側10秒を使い切らないよう固有上限を持つ。全体30秒予算内。 */
     timeoutMs: 20000,

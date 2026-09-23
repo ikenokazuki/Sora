@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseWeiboHotJson, weiboHotItemUrl } from './weibo_hot.js';
+import { normalizeWeiboTopicId, parseWeiboHotJson, weiboHotItemUrl } from './weibo_hot.js';
 import type { ProviderInput } from '../provider_registry.js';
 const inputFor = (region: Record<string, unknown>): ProviderInput =>
   ({ request: { region: 'X' } as never, region: region as never, queries: [] });
@@ -9,19 +9,25 @@ const liveShape = JSON.stringify({
   data: {
     hotgovs: [{ word: '#test gov#', icon_desc: '热' }],
     realtime: [
-      { word: 'topic-a', note: 'topic-a', num: 100, label_name: '新', icon_desc: '新' },
-      { word: 'topic-b', note: 'topic-b', num: 50, label_name: '', icon_desc: '' },
+      { word: 'topic-a', note: 'topic-a', num: 100, label_name: '新', icon_desc: '新', realpos: 1, rank: 0 },
+      { word: 'topic-b', note: 'topic-b', num: 50, label_name: '', icon_desc: '', realpos: 2, rank: 1 },
+      { word: 'ad-topic', note: 'ad-topic', num: 40, is_ad: 1, topic_ad: 1, realpos: null, rank: 2 },
     ],
   },
 });
 describe('weibo hot', () => {
   test('parses live-shape realtime plus gov', () => {
     const entries = parseWeiboHotJson(liveShape);
-    expect(entries.length).toBe(3);
-    expect(entries[1].query).toBe('topic-a');
-    expect(entries[1].hotIndex).toBe('100');
-    expect(entries[1].tag).toBe('新');
+    expect(entries.map((entry) => entry.query)).toEqual(['#test gov#', 'topic-a', 'topic-b']);
+    expect(entries[0]).toMatchObject({ pinned: true, rank: null });
+    expect(entries[1]).toMatchObject({ query: 'topic-a', hotIndex: '100', tag: '新', rank: 1, pinned: false });
+    expect(entries[1].id).toBe(normalizeWeiboTopicId('topic-a'));
     expect(weiboHotItemUrl('topic-a')).toContain('s.weibo.com');
+  });
+  test('uses realpos rank and drops ad rows', () => {
+    const entries = parseWeiboHotJson(liveShape);
+    expect(entries.some((entry) => entry.query === 'ad-topic')).toBe(false);
+    expect(entries.map((entry) => entry.rank)).toEqual([null, 1, 2]);
   });
   test('emits acquisition items for CN only', async () => {
     const { createWeiboHotProvider } = await import('./weibo_hot.js');
@@ -29,6 +35,9 @@ describe('weibo hot', () => {
     const result = await createWeiboHotProvider(fetchFn).run(CN, AbortSignal.timeout(5000));
     expect(result.items).toHaveLength(3);
     expect(result.items[0].evidence?.publisher).toBe('Weibo Hot Search');
+    expect(result.items[1].detail?.providerItemId).toBe('weibo:' + normalizeWeiboTopicId('topic-a'));
+    expect(result.items[1].detail?.timeBasis).toBe('provider_observation');
+    expect(result.items[1].detail?.structuredData).toMatchObject({ topicId: normalizeWeiboTopicId('topic-a'), rank: 1, pinned: false });
     expect(result.coverage).toEqual(['media_activity']);
   });
   test('skips non-CN regions without fetch', async () => {

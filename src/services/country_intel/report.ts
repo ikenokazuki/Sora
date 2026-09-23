@@ -12,7 +12,7 @@ import { buildMarketingView } from '../intelligence/domains/marketing.js';
 import { buildTravelView } from '../intelligence/domains/travel.js';
 import { buildFinanceView } from '../intelligence/domains/finance.js';
 import type { IntelligenceSignal } from '../intelligence/types.js';
-import { planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
+import { LIMITS, cappedProviderIds, inapplicableProviderIds, planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type EnrichBudget, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
 import { getCountryContext, getVerifiedCountrySources, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
@@ -301,7 +301,11 @@ export async function researchCountryContext(
   const nowDate = dependencies.now?.() ?? new Date();
   const region = resolveRegion(request.region);
   const providers = dependencies.providers ?? [];
-  const capabilities = providers.map((provider) => ({ id: provider.id, areas: [...provider.areas] }));
+  const capabilities = providers.map((provider) => ({
+    id: provider.id,
+    areas: [...provider.areas],
+    ...(provider.regions ? { regions: [...provider.regions] } : {}),
+  }));
   const verifySource = dependencies.sourceVerifier ?? ((source) => verifyCountrySource(source));
   const runOptions = {
     // 広域取得は開始から最大15秒。残り時間が短い場合は前倒しで切り上げる。
@@ -319,7 +323,7 @@ export async function researchCountryContext(
     region,
     pass1: planCountryResearchPass1(request, region, capabilities),
     pass2: [],
-    limits: { maxPass1Queries: 12 as const, maxPass2Queries: 8 as const, maxItemsPerQuery: 100 as const },
+    limits: { ...LIMITS },
   };
   const pass1 = await runProviderPass(pass1Plan, 1, providers, runOptions);
 
@@ -353,7 +357,25 @@ export async function researchCountryContext(
 
   const mergedItems: AcquiredItem[] = [...pass1.items, ...pass2.items];
   const mergedRuns: ProviderRun[] = mergeProviderRuns([...pass1.runs, ...pass2.runs]);
-  const acquisition = { items: mergedItems, runs: mergedRuns };
+  // 地域非対応で未実行の provider も coverage に残す。黙って消さない。
+  const plannedIds = new Set([...pass1Plan.pass1, ...pass2Queries].map((query) => query.providerId));
+  const unsupported = new Set(inapplicableProviderIds(region, capabilities));
+  const plannedRuns: ProviderRun[] = [...mergedRuns];
+  for (const provider of providers) {
+    if (plannedIds.has(provider.id) || plannedRuns.some((run) => run.provider === provider.id)) continue;
+    if (!unsupported.has(provider.id)) continue;
+    plannedRuns.push({
+      provider: provider.id,
+      startedAt: nowDate.toISOString(),
+      finishedAt: nowDate.toISOString(),
+      status: 'unavailable',
+      itemCount: 0,
+      coverage: [...provider.areas],
+      latencyMs: 0,
+      errorCode: 'PROVIDER_REGION_UNSUPPORTED',
+    });
+  }
+  const acquisition = { items: mergedItems, runs: plannedRuns };
 
   const periodDays = request.period === '7d' ? 7 : request.period === '90d' ? 90 : 30;
   const windowFrom = new Date(nowDate.getTime() - periodDays * 86_400_000).toISOString();
@@ -584,6 +606,13 @@ export async function researchCountryContext(
       message: run.provider + ' ' + run.status + (run.errorCode ? ' ' + run.errorCode : ''),
       evidenceIds: [],
     }));
+  // 対応地域だが上限で落とした取得先は limitation で明示する。
+  for (const providerId of cappedProviderIds(region, capabilities)) {
+    limitations.push({
+      code: 'provider_plan_capped', area: 'general', providerId,
+      message: providerId + ' omitted by pass1 plan cap', evidenceIds: [],
+    });
+  }
   // 未要求の SNS と要求済みだが未構成・失敗の SNS を区別する。
   if (!request.includeSocial) {
     limitations.push({
