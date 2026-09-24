@@ -185,6 +185,10 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         }
         return { content: [{ type: 'text', text: '[]' }] };
       });
+      // searchYahooWeb tries direct fetch first; keep this test hermetic.
+      const yahooDirectSpy = spyOn(yahooService, 'fetchYahooWebDirect').mockImplementation(async () => {
+        throw new Error('direct down (test)');
+      });
       const yahooRealtimeSpy = spyOn(yahooService, 'callYahooRealtimeJson').mockImplementation(async (toolName, args) => {
         if (toolName === 'yahoo_realtime_search') {
           const isOfficial = typeof args?.query === 'string' && (args.query.includes('id:summer_fes') || args.query.includes('summer_fes'));
@@ -286,6 +290,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         expect(publicItem.author_handle).toBe('fes_fan');
       } finally {
         yahooSpy.mockRestore();
+        yahooDirectSpy.mockRestore();
         yahooRealtimeSpy.mockRestore();
         fetchStatusSpy.mockRestore();
       }

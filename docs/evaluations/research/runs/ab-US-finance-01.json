@@ -1,0 +1,44 @@
+[
+  {
+    "caseId": "US-finance-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:30:56Z",
+    "endedAt": "2026-09-24T06:31:06Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["web:us-search1"] },
+      { "id": "change", "supported": true, "evidenceIds": ["web:us-search1"], "notes": "25bp stated; prev 3.50-3.75 derived arithmetically, not quoted" },
+      { "id": "time", "supported": false, "evidenceIds": ["web:us-search1"], "notes": "announced Sep 16 2pm EDT confirmed; effective date unconfirmed" },
+      { "id": "meaning", "supported": true, "evidenceIds": ["web:us-search1"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 10000,
+    "notes": "A=1 generic web search, snippets only. FOMC named as decision body (B missed this). Scorer=runner."
+  },
+  {
+    "caseId": "US-finance-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:30:10Z",
+    "endedAt": "2026-09-24T06:30:23Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["evd_6cad44e98210bd0df220"] },
+      { "id": "change", "supported": true, "evidenceIds": ["evd_6cad44e98210bd0df220", "evd_a2c8e8ace460ace2b23a"] },
+      { "id": "time", "supported": false, "evidenceIds": ["evd_6cad44e98210bd0df220"], "notes": "September 2026 only; Sep 16 day-level unconfirmed in retrieved evidence" },
+      { "id": "meaning", "supported": false, "evidenceIds": [], "notes": "FOMC unnamed in retrieved excerpts (generic Fed only); federalreserve.gov absent" }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 13058,
+    "notes": "B=researchCountryWithDefaults live (54 evidence, 20 recent, 0 dangling). fedprimerate page carries stale 2025/Current labels (aggregator hazard, secondary). Strict binary scoring applied."
+  }
+]
