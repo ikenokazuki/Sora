@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "KR-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:06:00Z",
+    "endedAt": "2026-09-24T09:11:00Z",
+    "requirements": [
+      {"id": "entry", "supported": true, "evidenceIds": ["web:kr-t1"], "notes": "K-ETA免除2026年末まで延長、e-Arrival Card必須化を確認"},
+      {"id": "transport", "supported": true, "evidenceIds": ["web:kr-t2"], "notes": "秋夕臨時でAREX運行中を確認、10/2-5の確定運休なし"},
+      {"id": "hazards", "supported": true, "evidenceIds": ["web:kr-t2"], "notes": "8/31南部豪雨は終了済みと分離、10/2-5向け確定警報なし"},
+      {"id": "dates", "supported": true, "evidenceIds": ["web:kr-t1", "web:kr-t2"], "notes": "免除期限12/31と必須化時期を区別"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索2クエリ。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "KR-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:03:00Z",
+    "endedAt": "2026-09-24T09:06:00Z",
+    "requirements": [
+      {"id": "entry", "supported": false, "evidenceIds": [], "notes": "K-ETAやe-Arrivalへの言及なし"},
+      {"id": "transport", "supported": false, "evidenceIds": [], "notes": "AREXや空港アクセスへの言及なし"},
+      {"id": "hazards", "supported": false, "evidenceIds": [], "notes": "ホルムズやベネズエラ等で韓国旅行のhazardsなし"},
+      {"id": "dates", "supported": true, "evidenceIds": [], "notes": "証拠にpublishedAtあり"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": null,
+    "notes": "Bは前任取得のライブ報告50件を採点。recent20件の参照切れ0。"}
+]

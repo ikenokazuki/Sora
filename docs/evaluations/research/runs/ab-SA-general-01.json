@@ -1,0 +1,77 @@
+[
+  {
+    "caseId": "SA-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:22:16Z",
+    "endedAt": "2026-09-24T07:22:25Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "no specific 2027 track"
+      },
+      {
+        "id": "eligibility",
+        "supported": true,
+        "evidenceIds": [
+          "web:sag-a1"
+        ],
+        "notes": "grant rule official; English cutoff track-specific"
+      },
+      {
+        "id": "deadline",
+        "supported": false,
+        "notes": "grad 2027 deadlines unconfirmed"
+      },
+      {
+        "id": "unknown",
+        "supported": true,
+        "notes": "confirmed vs unconfirmed distinguished"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 9000,
+    "notes": "A=1 search. Scorer=runner."
+  },
+  {
+    "caseId": "SA-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:17:35.730Z",
+    "endedAt": "2026-09-24T07:17:46.526Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "aggregator list, no 2027 track"
+      },
+      {
+        "id": "eligibility",
+        "supported": false,
+        "notes": "no scholarship rule"
+      },
+      {
+        "id": "deadline",
+        "supported": false
+      },
+      {
+        "id": "unknown",
+        "supported": false
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 10796,
+    "notes": "B live (26 ev). Scorer=runner."
+  }
+]

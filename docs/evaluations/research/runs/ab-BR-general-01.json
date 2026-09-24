@@ -1,0 +1,74 @@
+[
+  {
+    "caseId": "BR-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:22:32Z",
+    "endedAt": "2026-09-24T07:22:41Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "no English-medium master advertised"
+      },
+      {
+        "id": "eligibility",
+        "supported": false,
+        "notes": "no track, no requirements"
+      },
+      {
+        "id": "deadline",
+        "supported": false,
+        "notes": "no 2027 English-track notice"
+      },
+      {
+        "id": "unknown",
+        "supported": true,
+        "notes": "not-found verdict with grounds"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 3,
+    "primaryEvidenceFitting": 3,
+    "criticalErrors": 0,
+    "elapsedMs": 9000,
+    "notes": "A=1 search. Designed unpublished case; proficiency-exam vs medium separated. Scorer=runner."
+  },
+  {
+    "caseId": "BR-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:20:36.551Z",
+    "endedAt": "2026-09-24T07:21:46.647Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "only dubious mirror article"
+      },
+      {
+        "id": "eligibility",
+        "supported": false
+      },
+      {
+        "id": "deadline",
+        "supported": false
+      },
+      {
+        "id": "unknown",
+        "supported": false,
+        "notes": "no not-found statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 70096,
+    "notes": "B live (35 ev). 70s exceeds 60s budget. Kyrgyz-mirror source-quality watch. Scorer=runner."
+  }
+]

@@ -1,0 +1,87 @@
+[
+ {
+  "caseId": "MX-marketing-01",
+  "arm": "A",
+  "plan": "fixed",
+  "model": "muse-spark-1.3-contributor",
+  "startedAt": "2026-09-24T09:20:30Z",
+  "endedAt": "2026-09-24T09:21:30Z",
+  "requirements": [
+   {
+    "id": "current-context",
+    "supported": true,
+    "evidenceIds": [
+     "web:mx-m1",
+     "web:mx-m2"
+    ],
+    "notes": "Sep 19 2026 Simulacro Nacional drill + 1985/2017 memorial (FB/WI Sep 19 2026). Dated, directly relevant to Sep 25 post; no current-year real disaster."
+   },
+   {
+    "id": "language-context",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No translation/culture source."
+   },
+   {
+    "id": "industry-reaction",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "Fresh Cup Aug 31 union-boycott ask is US + outside 7d; no MX cafe boycott."
+   },
+   {
+    "id": "scope",
+    "supported": true,
+    "evidenceIds": [],
+    "notes": "Web-only; X originals unobserved. Limits stated."
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 2,
+  "primaryEvidence": 2,
+  "primaryEvidenceFitting": 2,
+  "criticalErrors": 0,
+  "elapsedMs": 5000,
+  "notes": "A=2 Tavily queries. Scorer=runner, no blinding."
+ },
+ {
+  "caseId": "MX-marketing-01",
+  "arm": "B",
+  "plan": "fixed",
+  "model": "muse-spark-1.3-contributor",
+  "startedAt": "2026-09-24T09:20:31Z",
+  "endedAt": "2026-09-24T09:20:39Z",
+  "requirements": [
+   {
+    "id": "current-context",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "34ev has no simulacro/memorial; only Baja M2.15 + UN generic. NM quakes are foreign."
+   },
+   {
+    "id": "language-context",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No translation/culture evidence."
+   },
+   {
+    "id": "industry-reaction",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No cafe boycott evidence."
+   },
+   {
+    "id": "scope",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "34ev, no gap notice. 6-7 New Mexico keyEvents are target-foreign (critical)."
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 0,
+  "primaryEvidence": 2,
+  "primaryEvidenceFitting": 0,
+  "criticalErrors": 1,
+  "elapsedMs": 7879,
+  "notes": "B=researchCountryWithDefaults live noCache 34ev (second run, ms measured). recent20 refs 0 dangling."
+ }
+]

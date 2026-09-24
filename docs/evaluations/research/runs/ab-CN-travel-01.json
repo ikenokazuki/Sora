@@ -1,0 +1,82 @@
+[
+  {
+    "caseId": "CN-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:39:34Z",
+    "endedAt": "2026-09-24T06:39:46Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": true,
+        "evidenceIds": [
+          "web:cn-t1"
+        ]
+      },
+      {
+        "id": "transport",
+        "supported": true,
+        "evidenceIds": [
+          "web:cn-t2"
+        ]
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "only 2021-typhoon noise, nothing current"
+      },
+      {
+        "id": "dates",
+        "supported": true,
+        "evidenceIds": [
+          "web:cn-t1",
+          "web:cn-t2"
+        ]
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 1,
+    "criticalErrors": 0,
+    "elapsedMs": 12000,
+    "notes": "A=2 searches. Old-typhoon noise excluded. Scorer=runner."
+  },
+  {
+    "caseId": "CN-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:35:53.864Z",
+    "endedAt": "2026-09-24T06:36:12.340Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": false,
+        "notes": "no visa-free evidence"
+      },
+      {
+        "id": "transport",
+        "supported": false,
+        "notes": "no Maglev/Metro"
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "ended storms only"
+      },
+      {
+        "id": "dates",
+        "supported": true
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 18476,
+    "notes": "B live (97 ev, 1 dangling). Ended-cyclone keyEvents repeat. Scorer=runner."
+  }
+]
