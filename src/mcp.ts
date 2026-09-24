@@ -1,4 +1,5 @@
 import { McpServer, type RegisteredTool, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { readFileSync } from 'node:fs';
 import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
@@ -1977,15 +1978,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       toolCatalog,
       'research_country_context',
       'intel',
-      '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・カレンダー・世論調査・対日関係を証拠付き構造化レポートとして取得します。感情・敵意・リスク判定なし。返却: CountryContextReport',
+      '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・旅行・カレンダー・世論調査を分野横断で取得します。初回応答は代表証拠、全件はcontextIdで参照可能。評価・推奨は含めません。限界: 一部証拠は公表日時なし、SNSは対象言語・範囲限定、未観測範囲の明示は呼出元が確認すること。本ツール単独で判断の十分性を保証しない。調査手順はリソース sora-skill://sora-deep-research を読む。返却: CountryContextReport',
       {
         region: z.string().min(1).describe('国・地域名またはコード (例: "South Korea", "KR", "台湾")'),
         query: z.string().optional().describe('追加の調査クエリ'),
         topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
         period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
-        includeSocial: z.boolean().optional().describe('構成済み国際SNS観測を含めるか (未構成時は不足情報として報告、日本もYahoo不使用)'),
+        includeSocial: z.boolean().optional().describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
         noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
-        verbose: z.boolean().optional().describe('詳細出力を要求するか'),
+        verbose: z.boolean().optional().describe('全件の詳細出力を要求するか (既定は分野別の代表証拠)'),
       },
       CountryContextReportSchema,
       async (opts) => {
@@ -2147,6 +2148,36 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       };
     },
   );
+
+  // 深層調査スキルをMCPリソースとして配布する。接続した呼出元は
+  // sora-skill://sora-deep-research を読むだけで手順を取得できる。
+  try {
+    const skillUrls = [
+      new URL('../plugins/sora-deep-research/skills/sora-deep-research/SKILL.md', import.meta.url),
+      new URL('../docs/skills/sora-research/SKILL.md', import.meta.url),
+    ];
+    let skillText: string | null = null;
+    for (const u of skillUrls) {
+      try {
+        const text = readFileSync(u, 'utf8');
+        if (text.trim()) {
+          skillText = text;
+          break;
+        }
+      } catch {}
+    }
+    if (skillText) {
+      const text = skillText;
+      mcpServer.resource(
+        'sora-deep-research-skill',
+        'sora-skill://sora-deep-research',
+        { mimeType: 'text/markdown' },
+        async (uri) => ({
+          contents: [{ uri: uri.href, mimeType: 'text/markdown', text }],
+        }),
+      );
+    }
+  } catch {}
 
   return mcpServer;
 }
