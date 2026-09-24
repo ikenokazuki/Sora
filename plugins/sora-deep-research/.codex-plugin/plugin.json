@@ -1,0 +1,11 @@
+{
+  "name": "sora-deep-research",
+  "version": "0.1.0",
+  "description": "Sora MCPと組む深層調査スキル。確認事項・証拠・不足の記録で反復調査し、取得失敗と0件を区別する。",
+  "author": {
+    "name": "Sora"
+  },
+  "license": "BUSL-1.1",
+  "keywords": ["research", "deep-research", "mcp", "skill", "sora"],
+  "skills": ["./skills/sora-deep-research"]
+}
