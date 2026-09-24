@@ -36,3 +36,8 @@
 | ID-quake（改訂） | Java earthquake September 2026 magnitude | HTTP 429 |
 | GB-value（改訂） | Bank of England base rate decision September 2026 | HTTP 429 |
 | GB-time（改訂） | Bank of England rate announcement effective date September 2026 | HTTP 429 |
+
+## KR重点追跡（不足の再調査）
+
+- hazard: 工場火災は大田の3/23（死14・傷60、計74）と確定し期間外で除外。9/18-25のソウル災害・追悼は未確認のまま。
+- industry: NikkeiのURLが途中で切れて取得失敗。FB鏡像はあるが日付未確認のため不採用。Tank Day宣伝の7日以内投稿は未確認のまま。
