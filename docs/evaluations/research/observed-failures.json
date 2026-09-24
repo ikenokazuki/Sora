@@ -1,0 +1,150 @@
+{
+  "purpose": "既存実測の失敗例。新方式の採用判断や網羅性の評価をこれだけで行わない。",
+  "cases": [
+    {
+      "id": "US-She",
+      "contextId": "c4abc66a-6bf0-44bf-a44a-24620422fc45",
+      "asOf": "2026-09-23T13:15:53.550Z",
+      "sourceArtifact": "/tmp/sora-eval-US.json",
+      "domain": "finance",
+      "observedFact": {
+        "topic": "current_events",
+        "text": "She Got Pregnant By An Inmate While Hooking Up With Him At The Prison She Was Working At - Chip Chick — ---\npublishedTime: \"2026-09-23T11:40:02+00:00\"\nauthor: \"Emily Chan\"\nsiteName: \"Chip Chick\"\n---\n> 📍 **階層**: Home > She Got Pregnant By An Inmate While Hooking Up With Him At The Prison She Was Working At\n![Blonde girl",
+        "evidenceIds": [
+          "evd_26edbe41e2fc541bd024"
+        ]
+      },
+      "evidence": {
+        "id": "evd_26edbe41e2fc541bd024",
+        "url": "https://www.chipchick.com/2026/09/she-got-pregnant-by-an-inmate-while-hooking-up-with-him-at-the-prison-she-was-working-at",
+        "title": "GDELT event 1324480491",
+        "publishedAt": "2026-09-23T00:00:00Z",
+        "retrievedAt": "2026-09-23T13:15:55.029Z",
+        "regionLink": "direct",
+        "acquisition": {
+          "providerId": "gdelt_export",
+          "providerItemId": "1324480491",
+          "query": "United States central bank interest rate inflation",
+          "queryTargetedRegion": true,
+          "collectionScope": "~0.010416666666666666d"
+        }
+      },
+      "failure": "金利・インフレ調査の主要な金融材料として適合しない",
+      "expectedBehavior": "目的への適合性と時点を確認し、確認できなければ主要な判断根拠として提示せず候補・背景に分ける"
+    },
+    {
+      "id": "CN-BAVI",
+      "contextId": "ecd7f9a6-e8c5-48e2-83f0-89cae78a8153",
+      "asOf": "2026-09-23T13:16:01.739Z",
+      "sourceArtifact": "/tmp/sora-eval-CN.json",
+      "domain": "travel",
+      "observedFact": {
+        "topic": "disasters",
+        "text": "Tropical Cyclone BAVI-26 — TC Tropical Storm (maximum wind speed of 287 km/h) 2026-07-01T00:00:00 to 2026-07-11T18:00:00",
+        "evidenceIds": [
+          "evd_876942d113ba660c5097"
+        ]
+      },
+      "evidence": {
+        "id": "evd_876942d113ba660c5097",
+        "url": "https://www.gdacs.org/report.aspx?episodeid=44&eventid=1001279&eventtype=TC",
+        "title": "Tropical Cyclone BAVI-26",
+        "publishedAt": "2026-07-01T00:00:00",
+        "retrievedAt": "2026-09-23T13:16:03.895Z",
+        "regionLink": "direct",
+        "acquisition": {
+          "providerId": "gdacs",
+          "providerItemId": "TC:1001279:44",
+          "query": "China 旅游 航班 停运",
+          "queryTargetedRegion": true,
+          "collectionScope": "~30d"
+        }
+      },
+      "failure": "終了した台風を現在の旅行障害と区別する必要がある",
+      "expectedBehavior": "目的への適合性と時点を確認し、確認できなければ主要な判断根拠として提示せず候補・背景に分ける"
+    },
+    {
+      "id": "CN-Godfather",
+      "contextId": "ecd7f9a6-e8c5-48e2-83f0-89cae78a8153",
+      "asOf": "2026-09-23T13:16:01.739Z",
+      "sourceArtifact": "/tmp/sora-eval-CN.json",
+      "domain": "travel",
+      "observedFact": {
+        "topic": "current_events",
+        "text": "Godfather of AI Yoshua Bengio warns Aussies about the technology’s threat to humanity | PerthNow — ---\npublishedTime: \"2026-09-23T11:32:10.000Z\"\nsiteName: \"PerthNow\"\n---\n> 📍 **階層**: Home > News > Godfather of AI Yoshua Bengio warns Aussies about the technology’s threat to humanity\nThe Godfather of AI has warned Austral",
+        "evidenceIds": [
+          "evd_3b9be68dacc01cee7d0e"
+        ]
+      },
+      "evidence": {
+        "id": "evd_3b9be68dacc01cee7d0e",
+        "url": "https://www.perthnow.com.au/news/godfather-of-ai-yoshua-bengio-warns-aussies-about-the-technologys-threat-to-humanity-c-22917722",
+        "title": "GDELT event 1324480411",
+        "publishedAt": "2026-09-23T00:00:00Z",
+        "retrievedAt": "2026-09-23T13:16:03.444Z",
+        "regionLink": "direct",
+        "acquisition": {
+          "providerId": "gdelt_export",
+          "providerItemId": "1324480411",
+          "query": "China 旅游 航班 停运",
+          "queryTargetedRegion": true,
+          "collectionScope": "~0.010416666666666666d"
+        }
+      },
+      "failure": "旅行・運休調査への適合を裏付けていない",
+      "expectedBehavior": "目的への適合性と時点を確認し、確認できなければ主要な判断根拠として提示せず候補・背景に分ける"
+    },
+    {
+      "id": "CN-dangling-references",
+      "contextId": "ecd7f9a6-e8c5-48e2-83f0-89cae78a8153",
+      "asOf": "2026-09-23T13:16:01.739Z",
+      "sourceArtifact": "/tmp/sora-eval-CN.json",
+      "missingReferences": [
+        {
+          "evidenceId": "evd_42f6643aa85be7d835a5"
+        },
+        {
+          "evidenceId": "evd_ca77143098af58d229d5"
+        },
+        {
+          "evidenceId": "evd_f6a51de6d06eb7b9aea5"
+        },
+        {
+          "evidenceId": "evd_888ffe2bc48164686651"
+        },
+        {
+          "evidenceId": "evd_cd4f71252f1c95548d6c"
+        }
+      ],
+      "failure": "recentContextの参照先が同じ応答のevidenceに存在しない",
+      "expectedBehavior": "同一contextで根拠を解決できるよう、最終証拠集合とrecentContextを整合させる。2026-09-24の読み取り専用監査で5件とも保存先にも存在しないことを確認。",
+      "storageAudit": "reference-integrity-audit.json"
+    },
+    {
+      "id": "CN-social-empty",
+      "contextId": "ecd7f9a6-e8c5-48e2-83f0-89cae78a8153",
+      "asOf": "2026-09-23T13:16:01.739Z",
+      "sourceArtifact": "/tmp/sora-eval-CN.json",
+      "request": {
+        "region": "CN",
+        "query": "旅游 航班 停运",
+        "topics": [
+          "travel"
+        ],
+        "includeSocial": true
+      },
+      "socialEvidenceCount": 0,
+      "limitationCodes": [
+        "provider_error",
+        "provider_error",
+        "provider_error",
+        "provider_region_unsupported",
+        "provider_coverage_gap",
+        "headline_only_source",
+        "response_sampled"
+      ],
+      "failure": "SNS要求に対する0件の観測範囲・不足が明示されていない",
+      "expectedBehavior": "投稿の不存在と取得0件を分離し、熱榜と投稿本文を区別する"
+    }
+  ]
+}

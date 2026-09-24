@@ -1,0 +1,121 @@
+{
+ "caseId": "BR-general-01",
+ "arm": "B",
+ "plan": "fixed",
+ "startedAt": "2026-09-24T07:20:36.551Z",
+ "endedAt": "2026-09-24T07:21:46.647Z",
+ "elapsedMs": 70096,
+ "providers": [
+  {
+   "provider": "gdelt_export",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "gdacs",
+   "status": "success",
+   "itemCount": 1
+  },
+  {
+   "provider": "usgs",
+   "status": "success",
+   "itemCount": 266
+  },
+  {
+   "provider": "eonet",
+   "status": "success",
+   "itemCount": 50
+  },
+  {
+   "provider": "global_feeds",
+   "status": "success",
+   "itemCount": 67
+  },
+  {
+   "provider": "google_news",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "bing_news",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "wiki_current",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "wallstreet_live",
+   "status": "success",
+   "itemCount": 30
+  },
+  {
+   "provider": "official_web",
+   "status": "success",
+   "itemCount": 20
+  },
+  {
+   "provider": "bluesky",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "worldbank",
+   "status": "success",
+   "itemCount": 6
+  },
+  {
+   "provider": "nager",
+   "status": "success",
+   "itemCount": 15
+  },
+  {
+   "provider": "wikidata",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "baidu_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "so360_search",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "weibo_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "zhihu_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "toutiao_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "cctv_news",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "thepaper_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "yahoo_realtime",
+   "status": "unavailable",
+   "itemCount": 0
+  }
+ ],
+ "evidenceCount": 34
+}

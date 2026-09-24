@@ -5501,7 +5501,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.results.length).toBeGreaterThan(0);
       expect(res.realtime).toBeDefined();
       expect(res.realtime.count).toBeGreaterThan(0);
-      expect(res.realtime.isFallback).toBe(true);
+      // 直接取得が成功する場合はフォールバックではない。wreq統一で直接経路が復旧したため false を期待する。
+      expect(res.realtime.isFallback).toBe(false);
       // タイムテーブルまたはKAWAII PARTY CIRCUITまたは9/6が含まれていること
       const allText = JSON.stringify(res);
       expect(allText).toMatch(/KAWAII PARTY CIRCUIT|9\/6|9月6日/);

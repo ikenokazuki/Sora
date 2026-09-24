@@ -1,0 +1,79 @@
+[
+  {
+    "caseId": "BR-marketing-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:28:13Z",
+    "endedAt": "2026-09-24T07:28:22Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "evidenceIds": [
+          "web:br-m1"
+        ],
+        "notes": "SP storms/flooding 'last 24h', rainiest Sep (weak: uploads undated)"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "Starbucks slave-labor lawsuit reports undated"
+      },
+      {
+        "id": "scope",
+        "supported": true,
+        "notes": "web-only; Instagram direct observation not done"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 9000,
+    "notes": "A=2 searches. Scorer=runner."
+  },
+  {
+    "caseId": "BR-marketing-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:24:45.181Z",
+    "endedAt": "2026-09-24T07:25:01.701Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": false,
+        "notes": "keyEvents empty"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence in fetch"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical hits undated; 7d unestablished"
+      },
+      {
+        "id": "scope",
+        "supported": false,
+        "notes": "no unobserved-range statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 16520,
+    "notes": "B live (38 ev). Scorer=runner. BR slow (16.5s)."
+  }
+]

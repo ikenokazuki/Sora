@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults } from '../enrichment.js';
+import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
@@ -150,7 +151,34 @@ export async function searchYahooWeb(options: {
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
   disableFallback?: boolean;
-}): Promise<any> {
+}, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
+  const callMcp: typeof callYahooMcp =
+    (deps as any)?.callYahooMcp ?? (options as any)?._callMcp ?? callYahooMcp;
+  const providerErrors: Array<{ query: string; message: string }> = [];
+  const fetchDirect: typeof fetchYahooWebDirect =
+    (deps as any)?.fetchYahooWebDirect ?? fetchYahooWebDirect;
+  // The bundled MCP binary carries a fingerprint Yahoo currently rate-limits
+  // (HTTP 429) while direct fetches with a browser fingerprint succeed.
+  // Direct fetch is therefore the primary route; the binary is the alternate.
+  const normDirectItem = (item: any): any => ({
+    source: 'web' as const,
+    title: item.title,
+    url: item.url,
+    description: item.snippet,
+    snippet: item.snippet,
+    ...(item.domain ? { domain: item.domain } : {}),
+    directFetch: true,
+  });
+  // Burst calls trigger upstream 429. Wait once (bounded) after a
+  // rate-limit failure before the next candidate; never retry unboundedly.
+  const retryWaitMs = Math.min(Math.max(Number(process.env.SORA_WEB_RETRY_WAIT_MS ?? 1200), 0), 5000);
+  let waitedOnce = false;
+  const maybeWaitAfterRateLimit = async (message: string): Promise<void> => {
+    if (waitedOnce || retryWaitMs <= 0) return;
+    if (!/429|too many requests|rate limit/i.test(message)) return;
+    waitedOnce = true;
+    await new Promise((r) => setTimeout(r, retryWaitMs));
+  };
   const candidateQueries = options.disableFallback
     ? [options.query]
     : extractRealtimeFallbackQueries(options.query);
@@ -191,29 +219,46 @@ export async function searchYahooWeb(options: {
       }
 
       try {
-        const mcpRes = await callYahooMcp('yahoo_web_search', {
-          query: effectiveWebQuery,
-          ...(webSiteArg ? { site: webSiteArg } : {}),
-          ...(options.updated && options.updated !== 'all'
-            ? { updated: options.updated }
-            : {}),
-        });
+        let batchJson: any = null;
+        try {
+          const directItems = await fetchDirect(effectiveWebQuery, 10);
+          if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
+        } catch (err) {
+          providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+        }
+        if (!batchJson) {
+          const mcpRes = await callMcp('yahoo_web_search', {
+            query: effectiveWebQuery,
+            ...(webSiteArg ? { site: webSiteArg } : {}),
+            ...(options.updated && options.updated !== 'all'
+              ? { updated: options.updated }
+              : {}),
+          });
 
-        const content = mcpRes?.content?.[0]?.text || '[]';
-        const json = JSON.parse(content);
+          const content = mcpRes?.content?.[0]?.text || '[]';
+          if (mcpRes?.isError) {
+            providerErrors.push({ query: q, message: String(content).slice(0, 300) });
+            if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(String(content));
+            continue;
+          }
+          batchJson = JSON.parse(content);
+        }
 
-        if (json && Array.isArray(json.items)) {
-          lastParsedData = json;
-          if (json.items.length > 0) {
+        if (batchJson && Array.isArray(batchJson.items)) {
+          lastParsedData = batchJson;
+          if (batchJson.items.length > 0) {
             batches.push({
               query: q,
               queryIndex: i,
-              items: json.items,
+              items: batchJson.items,
             });
           }
         }
-      } catch {
-        // One failed rescue query must not discard sibling results.
+      } catch (err) {
+        // One failed rescue query must not discard sibling results; record it.
+        const message = ((err as Error)?.message ?? String(err)).slice(0, 300);
+        providerErrors.push({ query: q, message });
+        if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(message);
       }
     }
 
@@ -239,6 +284,7 @@ export async function searchYahooWeb(options: {
         effectiveQuery: options.query,
         isFallback: contributedFallback,
         queryUnion: true,
+        ...(providerErrors.length > 0 ? { providerErrors } : {}),
       };
     }
 
@@ -253,6 +299,7 @@ export async function searchYahooWeb(options: {
       effectiveQuery: options.query,
       isFallback: false,
       queryUnion: true,
+      providerErrors,
     };
   }
 
@@ -274,14 +321,29 @@ export async function searchYahooWeb(options: {
     }
 
     try {
-      const mcpRes = await callYahooMcp('yahoo_web_search', {
-        query: effectiveWebQuery,
-        ...(webSiteArg ? { site: webSiteArg } : {}),
-        ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
-      });
+      let json: any = null;
+      try {
+        const directItems = await fetchDirect(effectiveWebQuery, 10);
+        if (directItems.length > 0) json = { items: directItems.map(normDirectItem) };
+      } catch (err) {
+        providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+      }
+      if (!json) {
+        const mcpRes = await callMcp('yahoo_web_search', {
+          query: effectiveWebQuery,
+          ...(webSiteArg ? { site: webSiteArg } : {}),
+          ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
+        });
 
-      const content = mcpRes?.content?.[0]?.text || '[]';
-      const json = JSON.parse(content);
+        const content = mcpRes?.content?.[0]?.text || '[]';
+        if (mcpRes?.isError) {
+          const message = String(content).slice(0, 300);
+          providerErrors.push({ query: q, message });
+          if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
+          continue;
+        }
+        json = JSON.parse(content);
+      }
       if (json && Array.isArray(json.items) && json.items.length > 0) {
         const normalizedItems = json.items.map((item: any) => ({
           source: 'web' as const,
@@ -295,17 +357,26 @@ export async function searchYahooWeb(options: {
         json.source = 'web';
         json.effectiveQuery = q;
         json.isFallback = i > 0;
+        if (providerErrors.length > 0) json.providerErrors = providerErrors;
         return json;
       }
       if (json && Array.isArray(json.items)) {
         lastParsedData = json;
       }
-    } catch {
-      // 候補クエリの次を試行
+    } catch (err) {
+      // 候補クエリの次を試行（失敗は記録する）
+      const message = ((err as Error)?.message ?? String(err)).slice(0, 300);
+      providerErrors.push({ query: q, message });
+      if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
     }
   }
 
-  return lastParsedData;
+  return {
+    ...lastParsedData,
+    items: [],
+    count: 0,
+    providerErrors,
+  };
 }
 
 export interface YahooWebDirectItem { url: string; title?: string; snippet?: string; domain?: string; }
@@ -317,28 +388,56 @@ function stripYahooTags(text: string): string {
 /** Yahoo Web検索結果HTMLの直解析。MCPバイナリ429時のフォールバック用。 */
 export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectItem[] {
   const out: YahooWebDirectItem[] = [];
-  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0] ?? html;
-  const itemRe = /<li><a href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>(?:<div>(.*?)<\/div>)?/g;
-  let m: RegExpExecArray | null;
-  while ((m = itemRe.exec(webSection)) !== null) {
-    const url = m[1] ?? '';
-    if (!url || out.some((item) => item.url === url)) continue;
-    const title = stripYahooTags(m[2] ?? '');
-    const snippet = stripYahooTags(m[3] ?? '');
+  const push = (rawUrl: string, rawTitle: string, rawSnippet: string): void => {
+    const url = stripYahooTags(rawUrl ?? '');
+    if (!url || out.some((item) => item.url === url)) return;
+    const title = stripYahooTags(rawTitle ?? '');
+    const snippet = stripYahooTags(rawSnippet ?? '');
     let domain: string | undefined;
     try {
       domain = new URL(url).hostname.replace(/^www\./, '');
     } catch {}
     out.push({ url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}), ...(domain ? { domain } : {}) });
+  };
+  // 現行マークアップ: sw-Card のタイトルリンクと概要文。旧フィクスチャにない場合の第一候補。
+  const cardRe = /<a href="(https?:\/\/[^"]+)"[^>]*class="sw-Card__titleInner"[^>]*>(?:<br\/>)?<h3[^>]*><span>(.*?)<\/span>/g;
+  let c: RegExpExecArray | null;
+  while ((c = cardRe.exec(html)) !== null) {
+    const after = html.slice(c.index, c.index + 8000);
+    const s = after.match(/<p class="sw-Card__summary">(.*?)<\/p>/s);
+    push(c[1] ?? '', c[2] ?? '', s ? s[1] : '');
+    if (out.length >= maxItems) return out;
+  }
+  if (out.length > 0) return out;
+  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0] ?? html;
+  const itemRe = /<li><a href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>(?:<div>(.*?)<\/div>)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(webSection)) !== null) {
+    push(m[1] ?? '', m[2] ?? '', m[3] ?? '');
     if (out.length >= maxItems) break;
   }
   return out;
 }
 
 /** 直接fetchによるYahoo Web検索。MCPが429/空振りの場合のみ使う。 */
+/** 直接fetchによるYahoo Web検索。MCPバイナリの指紋が制限される場合の主経路。 */
+// ブラウザ指紋・間隔調整・SSRF検証は http_fetcher に集約。ここでは検索用ヘッダだけ足す。
+const YAHOO_WEB_DIRECT_HEADERS: Record<string, string> = {
+  Referer: 'https://search.yahoo.co.jp/',
+};
 export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal): Promise<YahooWebDirectItem[]> {
   const params = new URLSearchParams({ p: query, ei: 'UTF-8' });
-  const res = await fetch('https://search.yahoo.co.jp/search?' + params.toString(), { signal });
+  const url = 'https://search.yahoo.co.jp/search?' + params.toString();
+  const pending = fetchWithSafeRedirects(url, 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
+  const { response: res } = signal
+    ? await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        if (signal.aborted) reject(signal.reason);
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }),
+    ])
+    : await pending;
   if (!res.ok) throw new Error('Yahoo direct fetch failed: ' + res.status);
   return parseYahooWebHtml(await res.text(), maxItems);
 }

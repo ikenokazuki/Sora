@@ -2,6 +2,7 @@
  * Yahoo pagination JSON (`timeline.entry`) を既存Sora provider形式へ変換する。
  * ranking・クエリ生成・response圧縮は行わない。yahoo.ts / scraper.ts をimportしない。
  */
+import { fetchWithSafeRedirects } from '../http_fetcher.js';
 
 export interface YahooRealtimePageOptions {
   query: string;
@@ -153,7 +154,6 @@ export function parseYahooRealtimePayload(payload: unknown): YahooRealtimeProvid
 }
 
 const DEFAULT_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   Accept: 'application/json, text/plain, */*',
   Referer: 'https://search.yahoo.co.jp/realtime/search',
 };
@@ -164,8 +164,17 @@ export async function searchYahooRealtimePage(
   deps?: { fetchImpl?: RealtimeFetch; timeoutMs?: number },
 ): Promise<YahooRealtimePage> {
   const url = buildYahooRealtimeApiUrl(options);
-  const fetchImpl: RealtimeFetch = deps?.fetchImpl ?? fetch;
   const timeoutMs = deps?.timeoutMs ?? 15000;
+  // 指紋は http_fetcher（wreq impersonation）に集約。独自fetch・独自UAは使わない。
+  const fetchImpl: RealtimeFetch = deps?.fetchImpl ?? (async (input, init) => {
+    const headers: Record<string, string> = {};
+    const raw = init?.headers;
+    if (raw instanceof Headers) raw.forEach((v, k) => { headers[k] = v; });
+    else if (Array.isArray(raw)) for (const [k, v] of raw) headers[k] = v;
+    else if (raw) Object.assign(headers, raw);
+    const { response } = await fetchWithSafeRedirects(String(input), timeoutMs, 2, headers);
+    return response;
+  });
   let response: Response;
   try {
     response = await fetchImpl(url.toString(), {

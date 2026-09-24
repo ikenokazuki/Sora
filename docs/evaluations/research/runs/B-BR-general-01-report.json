@@ -1,0 +1,4503 @@
+{
+ "contextId": "b515d7d7-fd71-4568-b9c2-bccdf719b2ac",
+ "region": {
+  "id": "country:BR",
+  "name": "Brazil",
+  "countryCode": "BR",
+  "languages": [],
+  "aliases": [],
+  "confidence": "high"
+ },
+ "asOf": "2026-09-24T07:20:36.564Z",
+ "situation": {
+  "politics": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "economy": {
+   "summaryFacts": [
+    "1 business_action event cluster was observed in the requested period."
+   ],
+   "eventIds": [
+    "evt_eab98a35de5724952707"
+   ],
+   "metrics": [],
+   "evidenceIds": [
+    "evd_7f26daa55656bba692e9"
+   ]
+  },
+  "security": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "disasters": {
+   "summaryFacts": [
+    "1 single observation (uncorroborated, no event cluster) in the requested period.",
+    "Flood in Brazil — 2026-02-03"
+   ],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": [
+    "evd_cf22f5352ae2f2d4fa18"
+   ]
+  },
+  "health": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "humanitarian": {
+   "summaryFacts": [
+    "1 single observation (uncorroborated, no event cluster) in the requested period.",
+    "Diplomacy is the way to address global challenges, Brazil tells General Assembly — UN News - Global perspective Human stories, Tue, 22 Se"
+   ],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": [
+    "evd_80fcbbc073bb66dc9cd0"
+   ]
+  },
+  "social": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  }
+ },
+ "elections": [],
+ "calendar": [
+  {
+   "id": "nager:BR:2026-01-01",
+   "date": "2026-01-01",
+   "title": "Confraternização Universal",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-02-16",
+   "date": "2026-02-16",
+   "title": "Carnaval",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-02-17",
+   "date": "2026-02-17",
+   "title": "Carnaval",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-04-03",
+   "date": "2026-04-03",
+   "title": "Sexta-feira Santa",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-04-05",
+   "date": "2026-04-05",
+   "title": "Domingo de Páscoa",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-04-21",
+   "date": "2026-04-21",
+   "title": "Dia de Tiradentes",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-05-01",
+   "date": "2026-05-01",
+   "title": "Dia do Trabalhador",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-06-04",
+   "date": "2026-06-04",
+   "title": "Corpus Christi",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-07-09",
+   "date": "2026-07-09",
+   "title": "Revolução Constitucionalista de 1932",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-09-07",
+   "date": "2026-09-07",
+   "title": "Dia da Independência",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-10-12",
+   "date": "2026-10-12",
+   "title": "Nossa Senhora Aparecida",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-11-02",
+   "date": "2026-11-02",
+   "title": "Dia de Finados",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-11-15",
+   "date": "2026-11-15",
+   "title": "Proclamação da República",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-11-20",
+   "date": "2026-11-20",
+   "title": "Dia da Consciência Negra",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  },
+  {
+   "id": "nager:BR:2026-12-25",
+   "date": "2026-12-25",
+   "title": "Natal",
+   "type": "public_holiday",
+   "official": true,
+   "relatedCountries": [
+    "BR"
+   ],
+   "sourceUrl": "https://date.nager.at/"
+  }
+ ],
+ "foreignRelations": [],
+ "polls": [],
+ "keyEvents": [
+  {
+   "id": "evt_eab98a35de5724952707",
+   "regionId": "country:BR",
+   "type": "business_action",
+   "title": "ADMINISTRATIVE COUNCIL FOR ECONOMIC DEFENSE",
+   "excerpt": "Furthermore, in 2019, CADE also extended the agreements signed with the Brazilian Institute of Studies on Competition, Consumer Affairs, and International Trade ...",
+   "actors": [],
+   "targets": [],
+   "evidenceIds": [
+    "evd_7f26daa55656bba692e9"
+   ],
+   "evidenceCount": 1,
+   "independentSourceCount": 1,
+   "primarySourceCount": 0,
+   "firstSeenAt": "2026-09-24T07:20:40.916Z",
+   "lastSeenAt": "2026-09-24T07:20:40.916Z",
+   "confidence": "low"
+  }
+ ],
+ "temporalMetrics": [
+  {
+   "key": "worldbank:NY.GDP.MKTP.CD",
+   "current": 2279920092492.13,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:NY.GDP.MKTP.KD.ZG",
+   "current": 2.2857464902475,
+   "window": "yearly",
+   "direction": "falling"
+  },
+  {
+   "key": "worldbank:FP.CPI.TOTL.ZG",
+   "current": 5.01675279604836,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:SL.UEM.TOTL.ZS",
+   "current": 5.97,
+   "window": "yearly",
+   "direction": "falling"
+  },
+  {
+   "key": "worldbank:SP.POP.TOTL",
+   "current": 212812405,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:NE.TRD.GNFS.ZS",
+   "current": 35.2914822615074,
+   "window": "yearly",
+   "direction": "falling"
+  }
+ ],
+ "signals": [
+  {
+   "key": "event_cluster_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_7f26daa55656bba692e9"
+   ],
+   "providerIds": [
+    "official_web"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "business_action_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_7f26daa55656bba692e9"
+   ],
+   "providerIds": [
+    "official_web"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "official_event_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "independent_source_event_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "media_article_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 7,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 7,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_5485ba40f033a0f5176c",
+    "evd_0accb1db689554d65437",
+    "evd_0254e934de21b27ce7fe",
+    "evd_325a8179ef0f7052e25b",
+    "evd_10532460d09523b3cda6",
+    "evd_7f26daa55656bba692e9",
+    "evd_d25f928eab3c015833a9"
+   ],
+   "providerIds": [
+    "official_web"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "social_observation_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "calendar_event_count",
+   "regionId": "country:BR",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "primary_source_ratio",
+   "regionId": "country:BR",
+   "kind": "share",
+   "value": 0.2727272727272727,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:20:36.564Z",
+   "baseline": {
+    "median": 0.2727272727272727,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_80fcbbc073bb66dc9cd0",
+    "evd_fe6c0562ba2409954418",
+    "evd_fc509a3acd894d866485"
+   ],
+   "providerIds": [
+    "gdacs",
+    "global_feeds",
+    "official_web"
+   ],
+   "coverage": "partial"
+  }
+ ],
+ "domains": {
+  "content": {
+   "regionId": "country:BR",
+   "attention": [
+    {
+     "key": "event_cluster_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "media_article_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 7,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 7,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c",
+      "evd_0accb1db689554d65437",
+      "evd_0254e934de21b27ce7fe",
+      "evd_325a8179ef0f7052e25b",
+      "evd_10532460d09523b3cda6",
+      "evd_7f26daa55656bba692e9",
+      "evd_d25f928eab3c015833a9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "disaster": [],
+   "socialActivity": [
+    {
+     "key": "social_observation_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "calendar": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  },
+  "marketing": {
+   "regionId": "country:BR",
+   "attention": [
+    {
+     "key": "media_article_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 7,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 7,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c",
+      "evd_0accb1db689554d65437",
+      "evd_0254e934de21b27ce7fe",
+      "evd_325a8179ef0f7052e25b",
+      "evd_10532460d09523b3cda6",
+      "evd_7f26daa55656bba692e9",
+      "evd_d25f928eab3c015833a9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "businessActivity": [
+    {
+     "key": "business_action_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "calendar": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "socialActivity": [
+    {
+     "key": "social_observation_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "disruption": [],
+   "coverage": "partial"
+  },
+  "travel": {
+   "regionId": "country:BR",
+   "disruptionSignals": [],
+   "disasterSignals": [],
+   "healthSignals": [],
+   "calendarSignals": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  },
+  "finance": {
+   "regionId": "country:BR",
+   "economy": [
+    {
+     "key": "business_action_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "trade": [],
+   "businessAction": [
+    {
+     "key": "business_action_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "policyActivity": [
+    {
+     "key": "event_cluster_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "official_event_count",
+     "regionId": "country:BR",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:20:36.564Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  }
+ },
+ "providerCoverage": [
+  {
+   "provider": "gdelt_export",
+   "startedAt": "2026-09-24T07:20:36.570Z",
+   "finishedAt": "2026-09-24T07:20:37.581Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "current_events"
+   ],
+   "latencyMs": 1011
+  },
+  {
+   "provider": "gdacs",
+   "startedAt": "2026-09-24T07:20:36.571Z",
+   "finishedAt": "2026-09-24T07:20:38.291Z",
+   "status": "success",
+   "itemCount": 1,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 1720
+  },
+  {
+   "provider": "usgs",
+   "startedAt": "2026-09-24T07:20:36.572Z",
+   "finishedAt": "2026-09-24T07:20:36.976Z",
+   "status": "success",
+   "itemCount": 266,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 404
+  },
+  {
+   "provider": "eonet",
+   "startedAt": "2026-09-24T07:20:36.572Z",
+   "finishedAt": "2026-09-24T07:20:38.055Z",
+   "status": "success",
+   "itemCount": 50,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 1483
+  },
+  {
+   "provider": "global_feeds",
+   "startedAt": "2026-09-24T07:20:36.572Z",
+   "finishedAt": "2026-09-24T07:20:38.172Z",
+   "status": "success",
+   "itemCount": 67,
+   "coverage": [
+    "media_activity"
+   ],
+   "latencyMs": 1600
+  },
+  {
+   "provider": "google_news",
+   "startedAt": "2026-09-24T07:20:36.573Z",
+   "finishedAt": "2026-09-24T07:20:37.069Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [],
+   "gaps": [
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    },
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    }
+   ],
+   "latencyMs": 496
+  },
+  {
+   "provider": "bing_news",
+   "startedAt": "2026-09-24T07:20:36.582Z",
+   "finishedAt": "2026-09-24T07:20:40.229Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [],
+   "gaps": [
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    },
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    }
+   ],
+   "latencyMs": 3647
+  },
+  {
+   "provider": "wiki_current",
+   "startedAt": "2026-09-24T07:20:36.583Z",
+   "finishedAt": "2026-09-24T07:20:37.812Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "current_events"
+   ],
+   "latencyMs": 1229
+  },
+  {
+   "provider": "wallstreet_live",
+   "startedAt": "2026-09-24T07:20:36.583Z",
+   "finishedAt": "2026-09-24T07:20:38.528Z",
+   "status": "success",
+   "itemCount": 30,
+   "coverage": [
+    "media_activity"
+   ],
+   "latencyMs": 1945
+  },
+  {
+   "provider": "official_web",
+   "startedAt": "2026-09-24T07:20:36.584Z",
+   "finishedAt": "2026-09-24T07:20:41.552Z",
+   "status": "success",
+   "itemCount": 20,
+   "coverage": [
+    "official"
+   ],
+   "gaps": [],
+   "latencyMs": 2083
+  },
+  {
+   "provider": "bluesky",
+   "startedAt": "2026-09-24T07:20:36.584Z",
+   "finishedAt": "2026-09-24T07:20:36.587Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "social_observations"
+   ],
+   "latencyMs": 3
+  },
+  {
+   "provider": "worldbank",
+   "startedAt": "2026-09-24T07:20:36.585Z",
+   "finishedAt": "2026-09-24T07:20:36.905Z",
+   "status": "success",
+   "itemCount": 6,
+   "coverage": [
+    "economy"
+   ],
+   "latencyMs": 320
+  },
+  {
+   "provider": "nager",
+   "startedAt": "2026-09-24T07:20:36.586Z",
+   "finishedAt": "2026-09-24T07:20:36.718Z",
+   "status": "success",
+   "itemCount": 15,
+   "coverage": [
+    "calendar"
+   ],
+   "latencyMs": 132
+  },
+  {
+   "provider": "wikidata",
+   "startedAt": "2026-09-24T07:20:36.586Z",
+   "finishedAt": "2026-09-24T07:20:37.261Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "source_discovery"
+   ],
+   "latencyMs": 675
+  },
+  {
+   "provider": "baidu_hot",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "so360_search",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "weibo_hot",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "zhihu_hot",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "toutiao_hot",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "cctv_news",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "thepaper_hot",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "yahoo_realtime",
+   "startedAt": "2026-09-24T07:20:36.564Z",
+   "finishedAt": "2026-09-24T07:20:36.564Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "social_observations"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  }
+ ],
+ "coverage": {
+  "overall": "partial",
+  "byArea": {
+   "politics": "limited",
+   "economy": "good",
+   "security": "limited",
+   "disaster": "good",
+   "health": "limited",
+   "polls": "limited",
+   "media": "partial",
+   "social": "limited",
+   "calendar": "good",
+   "foreignRelations": "limited"
+  },
+  "missingEvidence": [
+   "politics",
+   "security",
+   "health",
+   "polls",
+   "social",
+   "foreignRelations"
+  ],
+  "unavailableProviders": [
+   "baidu_hot",
+   "so360_search",
+   "weibo_hot",
+   "zhihu_hot",
+   "toutiao_hot",
+   "cctv_news",
+   "thepaper_hot",
+   "yahoo_realtime"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "evd_cf22f5352ae2f2d4fa18",
+   "regionId": "country:BR",
+   "url": "https://www.gdacs.org/report.aspx?episodeid=25&eventid=1103757&eventtype=FL",
+   "title": "Flood in Brazil",
+   "eventCountry": "BR",
+   "mentionedCountries": [
+    "BR"
+   ],
+   "sourceType": "structured_dataset",
+   "publishedAt": "2026-02-03T01:00:00",
+   "retrievedAt": "2026-09-24T07:20:38.287Z",
+   "excerpt": "FL Magnitude 0  2026-02-03T01:00:00 to 2026-03-31T01:00:00",
+   "contentHash": "be76872bf835f6789bc24244849e26e7d09476598ae78e48445d6e7d4238f6e2",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "gdacs",
+    "providerItemId": "FL:1103757:25",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~30d"
+   },
+   "regionLink": "direct",
+   "regionLinkReasons": [
+    "event-country"
+   ]
+  },
+  {
+   "id": "evd_1e5c2c401dd713b2433a",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_campaign=rss&at_medium=RSS",
+   "title": "AI superpower ambitions take centre stage as Trump and Xi meet",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The US and China are vying for AI supremacy while seeking to keep it under human control.",
+   "contentHash": "e981223cfef285d4cb74bfdf9c633bdc3dcf6d917a9d7c6b7c1e659942772b6c",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo#0",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_dc29846d9660f378173c",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_campaign=rss&at_medium=RSS",
+   "title": "Iran's president tells Trump it will never 'bend the knee'",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Masoud Pezeshkian's defiant speech to the UN comes after the US president threatened to \"annihilate\" Iran if a peace deal is not agreed soon.",
+   "contentHash": "8ac765409ea45db98f0670f201cf3ef07c0eb5afa17498163f1cf6e67626336e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo#0",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_8634e7f0acee8cddff72",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_campaign=rss&at_medium=RSS",
+   "title": "Trump's Board of Peace unveils $2.45bn plan to begin Gaza's reconstruction",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The figure was announced during a meeting of the group's board at the sidelines of the UN General Assembly in New York.",
+   "contentHash": "2e483f13a67b2a7003bccb90ec16893a1db142e02d7d15fb5af6e47f4794c55f",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o#0",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_a26b919eeb603cfee03d",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_campaign=rss&at_medium=RSS",
+   "title": "Dramatic eviction of woman aged 87 highlights Spain's housing shortage",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The tenant of the flat in Madrid, Maricarmen, was unable to pay the rent set by the firm which recently bought it.",
+   "contentHash": "0b0b8d3583be92d9099ec74e89805f8be4737db833f03b4555fe558d5e7bb0d8",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o#0",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_77424437af8f61d9a538",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_campaign=rss&at_medium=RSS",
+   "title": "UK survivor of Canadian poison seller says he exploited her despair",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Elisabeth Belien tells Kenneth Law's sentencing hearing she took the poison when she was just 23 years old.",
+   "contentHash": "b7db63f9f09c033cb0c646d8ab4b45df69ee8d9ec30eb83c6e3c647e92b78862",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o#1",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_f130a3827c8b903fa5f0",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_campaign=rss&at_medium=RSS",
+   "title": "Dolly Parton's manager accuses her nephew of 'threats and intimidation'",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Bryan Seaver, who announced Parton's death to the world, is accused of trying to extort her estate.",
+   "contentHash": "634ee9a21a61d218196b06e39c9e7ed68a07834e4a2253ecbdf5cd285ab4b9ff",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o#1",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_8dcba55f30ec9b30663f",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_campaign=rss&at_medium=RSS",
+   "title": "Harvey Weinstein sentenced to 15 years in prison for sexual assault",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Assault survivor Miriam Haley said the \"devastating effect on my life and sense of security that may never go away\".",
+   "contentHash": "2c3133706b84a1b41640df44cd0e342e345cdd09c3d383087a9d9c980c7933b0",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cm98626n260yo#1",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_af14294104381dd811e1",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_campaign=rss&at_medium=RSS",
+   "title": "Poland accuses Russian military helicopter of violating its airspace",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Poland says the aircraft stayed in its skies for 42 seconds, forcing the Nato member to scramble its fighter jets.",
+   "contentHash": "7682dbc87ca30a337d8e46d2ad13ef37b284d4b48eada057a7176a69a2eec3cc",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo#1",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_34a9591ef49ea45fb9dd",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_campaign=rss&at_medium=RSS",
+   "title": "Eleven killed in mass shooting at house in South Africa",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "One of those killed is believed to be a pregnant woman, police said.",
+   "contentHash": "021d45d1631cdbb4119e2571121a5911a7f4308106551a03f28bfb008d00169a",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo#1",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_c514dbdd2ba68364be4d",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_campaign=rss&at_medium=RSS",
+   "title": "Eating garden weeds to survive in Russian-occupied city cut off from food and water",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The BBC has spoken to residents in the Russian-occupied Ukrainian town of Oleshky who say they are being \"constantly shelled\".",
+   "contentHash": "6f079aeda64234cc3dde618ba86b9600791ec96e81f18e421b69252102a3ceda",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo#2",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_be3015f86eb4045bc460",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_campaign=rss&at_medium=RSS",
+   "title": "'Make women feel seen': Why the Dutch have a new word for labia",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Campaigners hope the new words will lead to less body shaming and more sex positivity.",
+   "contentHash": "d1b9ea794692fa51622f4c72319f2d54b8fc18c98a79ced4bbc7bdd2b29fa88e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cn4klprmr0go#2",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_b1de20207828e4d914b2",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_campaign=rss&at_medium=RSS",
+   "title": "Indians are discovering the thrill of shopping without paying",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Dopamine sites mimic shopping’s thrill without the spending, turning the ritual of consumption into a digital game.",
+   "contentHash": "d7ace4c2c06fa45cd5242f0f3751143f2f44546cecdd827b4b8dbbf91738bb79",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo#2",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_d7b618ffc009f42dbde9",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_campaign=rss&at_medium=RSS",
+   "title": "A red carpet and military flyover - How Trump welcomed Xi",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The two B-1 bombers that flew overhead are a key part of the US's combat arsenal, and produce a notoriously loud roar when they pass by.",
+   "contentHash": "77769d3510c0784b978246563938c4491784cf5eaff15fddaa024067d605c8f4",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c6804ne8knklo#3",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_3f7b51ddd188b30b7d10",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_campaign=rss&at_medium=RSS",
+   "title": "Watch: The arms race in space and how the UK is defending itself",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "The UK has jammed satellites to defend itself from hostile threats, the BBC has been told.",
+   "contentHash": "78d8dcdfca8764d3995f1b8752d3bcd9752c0d458e4d3beb0cd8fbbbd7b0323e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo#3",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_41990ef832f67bc89621",
+   "regionId": "country:BR",
+   "url": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_campaign=rss&at_medium=RSS",
+   "title": "Watch: How toxic smog from wildfires is making Indonesians sick",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Around 175,000 people in Indonesia have suffered from respiratory illness since August.",
+   "contentHash": "ea641dc18ed3fa79cb1ca7a15da9dd2d5c670bb7766c35ca86bf04490c1e35a3",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c962j1jgx884o#3",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_5e798d9ac67ea1e08414",
+   "regionId": "country:BR",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+   "title": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday.",
+   "contentHash": "532cf9a15c5ce3b9bad4605b1160746358e4ac380487254155e3daeca2b14d5f",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168420",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_349e28c7e46dec8ee4fa",
+   "regionId": "country:BR",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168419",
+   "title": "Equality ‘ends at the doors of the Security Council’, Kenya’s Ruto tells General Assembly",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”.",
+   "contentHash": "0fefbadcd5b9a00a5ca07803b91d7d5738646f1dc493b06e427501105b603d92",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168419",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_6da01e903f4be52b433f",
+   "regionId": "country:BR",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168418",
+   "title": "Guterres calls on countries to set clear timelines for transition away from fossil fuels",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "“We are the first generation with the tools to end the fossil fuel age – and the last who can avert climate catastrophe,” UN Secretary-General António Guterres said on Wednesday, calling on countries to draw up credible roadmaps with clear timelines to transition away from fossil fuels.",
+   "contentHash": "2b542ef3c818a837e7d8d2e00c2609234e684def0dccd7bdf8a16bdcfc6ec437",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168418",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_80fcbbc073bb66dc9cd0",
+   "regionId": "country:BR",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168395",
+   "title": "Diplomacy is the way to address global challenges, Brazil tells General Assembly",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Tue, 22 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "excerpt": "Brazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.",
+   "contentHash": "37f0f5e79b1f1cd02d7af45e51282dd91c3d634d1efde8bc5bde6e53e354735b",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168395",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_327052f90cdd7f41d755",
+   "regionId": "country:BR",
+   "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "title": "Philip R. Lane: The Outlook for the Euro Area Economy",
+   "publisher": "European Central Bank",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_473ac3671bd8ba466aab",
+   "regionId": "country:BR",
+   "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "title": "The digitalisation of money, payments and finance",
+   "publisher": "European Central Bank",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_785372791ad4796f64b2",
+   "regionId": "country:BR",
+   "url": "https://wallstreetcn.com/livenews/3170159",
+   "title": "三大运营商暂停金融分期业务，“0元购机”全面停办",
+   "publisher": "WallStreetCN Live",
+   "sourceType": "major_local_media",
+   "language": "zh",
+   "publishedAt": "2026-09-24T07:19:17.000Z",
+   "retrievedAt": "2026-09-24T07:20:38.527Z",
+   "excerpt": "从知情人士处获悉，三大运营商旗下的金融分期业务今日起将全面暂停，已有多地运营商员工收到通知。目前，三大运营商客服均已确认此事。知情人士表示，9月24日起，三大运营商金融分期购机业务将停止新受理，不能再新增办理橙分期/沃分期/和包分期这类0元拿手机业务。已经办理的老用户则不受影响，分期合约继续生效。分期业务暂停，预计将会对运营商线下营业厅的业绩造成一定影响。 针对此事，截至发稿前，三大运营商官方暂无回应，不过客服均确认了该消息。(新浪科技)",
+   "contentHash": "f28f5464f88984b876866a39f7e221a6d0220db58cee6f8daa04138a92974f45",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "wallstreet_live",
+    "providerItemId": "wscn:3170159",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_2b557f4bbae5196e63aa",
+   "regionId": "country:BR",
+   "url": "https://wallstreetcn.com/livenews/3170157",
+   "title": "商务部：在中美经贸磋商机制下 双方就人工智能进行了首次对话",
+   "publisher": "WallStreetCN Live",
+   "sourceType": "major_local_media",
+   "language": "zh",
+   "publishedAt": "2026-09-24T07:16:14.000Z",
+   "retrievedAt": "2026-09-24T07:20:38.527Z",
+   "excerpt": "9月24日，商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展，他指出，中美双方就人工智能进行了首次对话。何亚东指出，近日中美两国经贸团队在美国举行了第八轮经贸磋商，双方以两国元首重要共识为引领，秉持相互尊重、和平共处、合作共赢原则，围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流，达成了多项共识。在中美经贸磋商机制下，双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。（证券时报）",
+   "contentHash": "2e8c8604bde3ccc11164f9266ddf75f901f3bb37ee1530f9f927caf3e57f30ea",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "wallstreet_live",
+    "providerItemId": "wscn:3170157",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_5485ba40f033a0f5176c",
+   "regionId": "country:BR",
+   "url": "https://www.globaladmissions.com/university/universidade-de-sao-paulo",
+   "title": "Universidade de São Paulo, Brazil - Global Admissions",
+   "publisher": "globaladmissions.com",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "excerpt": "125 programmes at Universidade de São Paulo in São Paulo, Brazil, open to international students. Compare tuition, entry requirements and application deadl…",
+   "contentHash": "a3a24e44de3a9afdc889a1cbd940be5146d2aefe1bfc9d38b90afb9149eb1cc1",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.globaladmissions.com/university/universidade-de-sao-paulo",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_0accb1db689554d65437",
+   "regionId": "country:BR",
+   "url": "https://www.educations.com/masters-degrees/brazil/sao-paulo",
+   "title": "58 Masters Degree Programs in São Paulo Brazil",
+   "publisher": "educations.com",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "excerpt": "Located in the heart of a downtown campus, the Brazil Studio offers a bilingual program that allows an accelerated acculturation to the Portuguese language ...",
+   "contentHash": "f2dcce84980f03daf101027eba70a3535565098513ce9e7e9263a2eb6882628d",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.educations.com/masters-degrees/brazil/sao-paulo",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_0254e934de21b27ce7fe",
+   "regionId": "country:BR",
+   "url": "https://www.reddit.com/r/Brazil/comments/195sbss/im_a_foreign_student_who_wants_to_get_masters/",
+   "title": "I'm a foreign student who wants to get master's degree in São ...",
+   "publisher": "reddit.com",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "excerpt": "You have to write a project in Portuguese to be accepted in Brazilian post-graduation courses and in many programs you usually have to sit for ...",
+   "contentHash": "66e9ead42800646c5d8a42a2365ea62d14f8bb2ec087afeb0cf03f5a1d4a313c",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.reddit.com/r/Brazil/comments/195sbss/im_a_foreign_student_who_wants_to_get_masters/",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_fe6c0562ba2409954418",
+   "regionId": "country:BR",
+   "url": "https://www.gov.br/mdic/pt-br/images/REPOSITORIO/sdci/Catalogo-de-oportunidades-1-edicao-2012-ingles.pdf",
+   "title": "Catalog of Investment Opportunities in Brazil - Portal Gov.br",
+   "publisher": "gov.br",
+   "sourceType": "official",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ...",
+   "contentHash": "6854fec382ce87b5d7124131d7fc5f00f5e9227a3ceb12aac13ba397931def78",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.gov.br/mdic/pt-br/images/REPOSITORIO/sdci/Catalogo-de-oportunidades-1-edicao-2012-ingles.pdf",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_325a8179ef0f7052e25b",
+   "regionId": "country:BR",
+   "url": "https://repositorio.ipea.gov.br/bitstreams/fcb034ad-3b36-40a6-994b-7105ea3bdce4/download",
+   "title": "THE INTERNATIONALIZATION OF BRAZILIAN ...",
+   "publisher": "repositorio.ipea.gov.br",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "This paper looks at the reasons behind internationalization in Brazilian Higher Education. Institutions (HEIs) and different mechanisms that can be used by ...",
+   "contentHash": "b4ecb3b2ed817a460a2c3c1afcbb12bf02fcaf87e5905d9855037a84fa7a2810",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://repositorio.ipea.gov.br/bitstreams/fcb034ad-3b36-40a6-994b-7105ea3bdce4/download",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_fc509a3acd894d866485",
+   "regionId": "country:BR",
+   "url": "https://www.gov.br/mre/en/subjects/culture-and-education/educational-themes/study-opportunities-for-international-applicants/higher-education-in-brazil",
+   "title": "Higher education in Brazil — Ministério das Relações Exteriores",
+   "publisher": "gov.br",
+   "sourceType": "official",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "International students can enter higher education in Brazil for free through the Brazilian Program for Exchange Students (PEC). PEC logo english.",
+   "contentHash": "3edc08478ad8c46789f1b2797433d5bd753c4928a576812941cf4da0d26dce11",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.gov.br/mre/en/subjects/culture-and-education/educational-themes/study-opportunities-for-international-applicants/higher-education-in-brazil",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_10532460d09523b3cda6",
+   "regionId": "country:BR",
+   "url": "https://www.ipea.gov.br/revistas/index.php/rtm/article/download/711/499",
+   "title": "ten years of the brics network university (brics nu) - Ipea",
+   "publisher": "ipea.gov.br",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "In terms of academic excellence, Brazil has 35 institutions in the QS World University Rankings 2025, with the University of São Paulo (USP) among the top 100.",
+   "contentHash": "836e10c28c159356d38565a106938423e6c2eaad953dddf54b57867fa4d68229",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.ipea.gov.br/revistas/index.php/rtm/article/download/711/499",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_7f26daa55656bba692e9",
+   "regionId": "country:BR",
+   "url": "https://cdn.cade.gov.br/portal-ingles/topics/publications/CADE-yearbook/CADE%20Yearbook%202019_final.pdf",
+   "title": "ADMINISTRATIVE COUNCIL FOR ECONOMIC DEFENSE",
+   "publisher": "cdn.cade.gov.br",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "Furthermore, in 2019, CADE also extended the agreements signed with the Brazilian Institute of Studies on Competition, Consumer Affairs, and International Trade ...",
+   "contentHash": "40d283ed4a5c3c77e2954e7ebde159033d6d2bf4d443ec135d8c052a26e5a95d",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://cdn.cade.gov.br/portal-ingles/topics/publications/CADE-yearbook/CADE%20Yearbook%202019_final.pdf",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_d25f928eab3c015833a9",
+   "regionId": "country:BR",
+   "url": "https://repositorio.ipea.gov.br/server/api/core/bitstreams/31dd4217-6b1f-47e6-8e8f-44f0ef8656a2/content",
+   "title": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ...",
+   "publisher": "repositorio.ipea.gov.br",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "The rapid advancement of technology highlights the emerging rivalry between the United. States and China, particularly in 5G employment.",
+   "contentHash": "793fc3818f2cd297d8187cc9cf66d64c05a97eefaee515d1c4ed939d01250d26",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://repositorio.ipea.gov.br/server/api/core/bitstreams/31dd4217-6b1f-47e6-8e8f-44f0ef8656a2/content",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_76bd4e56f609ca602673",
+   "regionId": "country:BR",
+   "url": "https://www.gov.br/mre/pt-br/embaixada-bridgetown/postgraduate-student-agreement-programme-pec-pg-for-admission-in-2026",
+   "title": "Postgraduate Student Agreement Programme (PEC-PG) for ...",
+   "publisher": "gov.br",
+   "sourceType": "official",
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "excerpt": "All courses are taught in Portuguese; therefore, candidates must demonstrate Portuguese language proficiency to enter the programme. One way is ...",
+   "contentHash": "c98ba0c14f85a0f807583d09ad8653c0cb92dfd853972560f82e260f78d6cd35",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://www.gov.br/mre/pt-br/embaixada-bridgetown/postgraduate-student-agreement-programme-pec-pg-for-admission-in-2026",
+    "query": "Brazil Universidade de Sao Paulo English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  }
+ ],
+ "evidenceDetails": [
+  {
+   "evidenceId": "evd_80fcbbc073bb66dc9cd0",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168395",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168395",
+   "contentKind": "extracted_text",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---"
+    },
+    {
+     "index": 1,
+     "text": "## Diplomacy is the way to address global challenges, Brazil tells General Assembly"
+    },
+    {
+     "index": 2,
+     "text": "22 September 2026 [UN Affairs](/en/news/topic/un-affairs)"
+    },
+    {
+     "index": 3,
+     "text": "Brazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history."
+    },
+    {
+     "index": 4,
+     "text": "Opening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide."
+    },
+    {
+     "index": 5,
+     "text": "According to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed."
+    },
+    {
+     "index": 6,
+     "text": "He said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and growing geopolitical tensions."
+    },
+    {
+     "index": 7,
+     "text": "“We are all held hostage by the inaction of the Security Council” he said, stressing that Brazil has spoken out against the use of veto power by permanent members in the chamber since the first general assembly meeting in 1946."
+    },
+    {
+     "index": 8,
+     "text": "### **World of conflict**"
+    },
+    {
+     "index": 9,
+     "text": "The Brazilian leader recalled that the previous year had seen the highest number of armed conflicts registered since the Second World War."
+    },
+    {
+     "index": 10,
+     "text": "He called for regional conflicts to be contained before they escalate into “tragedies of global proportions”."
+    },
+    {
+     "index": 11,
+     "text": "Turning to the conflict in the Middle East, Lula said that “generations of Palestinians” will now carry “the pain and trauma left by the genocide of women and children,” criticising the expansion of Israeli settlements in the West Bank – all making a two-State solution increasingly difficult to achieve."
+    },
+    {
+     "index": 12,
+     "text": "Lula also addressed the war between Russia and Ukraine, saying the conflict had continued to claim lives and that there would be “no winners on the battlefield”."
+    },
+    {
+     "index": 13,
+     "text": "### **Brazil’s path**"
+    },
+    {
+     "index": 14,
+     "text": "He also highlighted key policies at home, noting that Brazil has once again made inroads against hunger and adopted a new law to combat corruption and organised crime – which has led to a record level of seizures of drugs, assets and illicit funds."
+    },
+    {
+     "index": 15,
+     "text": "“The fight against corruption shall remain relentless,\" Lula said. \"No matter who it hurts. No one is above the law.”"
+    },
+    {
+     "index": 16,
+     "text": "### **Trusting science**"
+    },
+    {
+     "index": 17,
+     "text": "On climate change, President Lula said that, in an era of disinformation, those who reject scientific evidence are denying reality."
+    },
+    {
+     "index": 18,
+     "text": "He said economic development should always go hand in hand with environmental protection."
+    },
+    {
+     "index": 19,
+     "text": "The president also called for greater regulation of large technology companies and artificial intelligence (AI), warning against a technological race without ethical safeguards."
+    },
+    {
+     "index": 20,
+     "text": "In his closing remarks, Lula highlighted the UN's historic role in decolonisation, human rights, sustainable development and the protection of migrants and refugees."
+    },
+    {
+     "index": 21,
+     "text": "He called on Member States to find the political will to once again make the UN a “temple of peace”"
+    },
+    {
+     "index": 22,
+     "text": "♦ Receive daily updates directly in your inbox - [**Subscribe here**](<https://news.un.org/en/content/un-newsletter-subscribe?utm_source=UN News&utm_medium=email&utm_campaign=un_news_newsletter>) to a topic."
+    },
+    {
+     "index": 23,
+     "text": "♦ Download the UN News app for your [**iOS**](https://itunes.apple.com/us/app/un-news-reader/id496893005?mt=8) or [**Android**](https://play.google.com/store/apps/details?id=org.un.mobile.news&hl=en) devices."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Tue, 22 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_5485ba40f033a0f5176c",
+   "providerId": "official_web",
+   "providerItemId": "https://www.globaladmissions.com/university/universidade-de-sao-paulo",
+   "sourceRecordUrl": "https://www.globaladmissions.com/university/universidade-de-sao-paulo",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---"
+    },
+    {
+     "index": 1,
+     "text": "> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo"
+    },
+    {
+     "index": 2,
+     "text": "The University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines."
+    },
+    {
+     "index": 3,
+     "text": "USP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institutions. The university's museums and cultural programs offer free access to exhibitions and events, enriching student life beyond the classroom."
+    },
+    {
+     "index": 4,
+     "text": "International students are supported through campus international offices and integrated services that assist with visas, housing and academic integration. Strong ties to industry and public research projects create internships and collaborative opportunities across Brazil and abroad. For students seeking a large, research-driven university with diverse programs, vibrant campus culture and extensive resources, USP offers a platform for rigorous study, cultural immersion and meaningful professional development."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_0254e934de21b27ce7fe",
+   "providerId": "official_web",
+   "providerItemId": "https://www.reddit.com/r/Brazil/comments/195sbss/im_a_foreign_student_who_wants_to_get_masters/",
+   "sourceRecordUrl": "https://www.reddit.com/r/Brazil/comments/195sbss/im_a_foreign_student_who_wants_to_get_masters/",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "You've been blocked by network security."
+    },
+    {
+     "index": 1,
+     "text": "To continue, log in to your Reddit account or use your developer token"
+    },
+    {
+     "index": 2,
+     "text": "If you think you've been blocked by mistake, file a ticket below and we'll look into it."
+    },
+    {
+     "index": 3,
+     "text": "[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)"
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_325a8179ef0f7052e25b",
+   "providerId": "official_web",
+   "providerItemId": "https://repositorio.ipea.gov.br/bitstreams/fcb034ad-3b36-40a6-994b-7105ea3bdce4/download",
+   "sourceRecordUrl": "https://repositorio.ipea.gov.br/bitstreams/fcb034ad-3b36-40a6-994b-7105ea3bdce4/download",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and deciding upon various forms of internationalization.\nKeywords: internationalization of scientific institutions; financing for the internationalization of\neducation; Brazilian institutes of higher education; South-South cooperation for education; North-South\ncooperation for education.\nA INTERNACIONALIZAÇÃO DOS PROGRAMAS DE PÓS-GRADUAÇÃO\nBRASILEIROS: UMA ABORDAGEM ESTRATÉGICA\nEste artigo analisa estratégias que podem ser utilizadas para melhorar a internacionalização\ndas instituições científicas brasileiras. Examina as razões por trás da internacionalização nas\nInstituições de Ensino Superior (IES) brasileiras e diferentes mecanismos que podem ser usados\npelas próprias instituições, agências financiadoras, bem como pesquisadores individuais, para\nmelhorar o impacto internacional de suas pesquisas e a produção de ex-alunos de qualidade\npara resolver os problemas colocados pela sociedade. Questionamos por que instituições e\npesquisadores devem considerar a internacionalização da pesquisa e do ensino, e uma abordagem\noperacional é propost"
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": true
+  },
+  {
+   "evidenceId": "evd_fc509a3acd894d866485",
+   "providerId": "official_web",
+   "providerItemId": "https://www.gov.br/mre/en/subjects/culture-and-education/educational-themes/study-opportunities-for-international-applicants/higher-education-in-brazil",
+   "sourceRecordUrl": "https://www.gov.br/mre/en/subjects/culture-and-education/educational-themes/study-opportunities-for-international-applicants/higher-education-in-brazil",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "⏳"
+    },
+    {
+     "index": 1,
+     "text": "## Conexão Temporariamente Restrita"
+    },
+    {
+     "index": 2,
+     "text": "Identificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes."
+    },
+    {
+     "index": 3,
+     "text": "ID de Referência do Chamado"
+    },
+    {
+     "index": 4,
+     "text": "B15\\_15532754749504476983"
+    },
+    {
+     "index": 5,
+     "text": "Informe o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_10532460d09523b3cda6",
+   "providerId": "official_web",
+   "providerItemId": "https://www.ipea.gov.br/revistas/index.php/rtm/article/download/711/499",
+   "sourceRecordUrl": "https://www.ipea.gov.br/revistas/index.php/rtm/article/download/711/499",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Superior – CAPES), given the agency’s recent role in strengthening BRICS NU. The\nmain findings indicate that academic mobility – the primary proxy for university cooperation –\namong BRICS countries remains incipient, with most of its determinants still favoring ties with\nthe so-called global North. Therefore, strengthening intra-bloc academic cooperation requires,\ninexorably, exogenous stimuli through national and multilateral actions. In this regard, BRICS\nNU represents an important instrument for the decolonization of academic relations among its\nmember states. However, what can be observed so far are challenges in enabling the Network\nUniversity to fully achieve its initial purposes, mainly due to shortcomings in governance and\nfunding, as well as overlaps with other similar but less institutionalized mechanisms. It is\ntherefore essential to revitalize BRICS NU’s structure through the action of national authorities\n(such as CAPES in Brazil), which, nevertheless, also requires coordination efforts among member\ncountries – something that has thus fa"
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": true
+  },
+  {
+   "evidenceId": "evd_d25f928eab3c015833a9",
+   "providerId": "official_web",
+   "providerItemId": "https://repositorio.ipea.gov.br/server/api/core/bitstreams/31dd4217-6b1f-47e6-8e8f-44f0ef8656a2/content",
+   "sourceRecordUrl": "https://repositorio.ipea.gov.br/server/api/core/bitstreams/31dd4217-6b1f-47e6-8e8f-44f0ef8656a2/content",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual approach that involves considering U.S. cybersecurity standards while attracting\nChinese investments to enhance its digital infrastructure. This strategy illustrates Brazil’s pursuit\nof autonomy in a polarized international environment, securing its technological future amid\ngreat-power competition.\nKeywords: 5G technology; United States-China rivalry; Brazil’s re-industrialization; pragmatic\nforeign policy; technological advancement.\n1. Researcher of the Pacific Alliance Countries Research Center, Institute of Regional and International Studies, University\nof International Business and Economics. Master of Internacional Politics of CASS. PhD student of Internacional Politics\nof CASS. Orcid: https://orcid.org/0009-0007-7742-2403. E-mail: liu.jia@uibe.edu.cn.\n2. Researcher in the Postdoctoral Program at the Department of Political Science at the State University of Campinas;\nassociate researcher and member of the Management Committee of the National Institute of Science and Technology\nfor Studies on the United States (INCT-INEU); and PhD i"
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": true
+  },
+  {
+   "evidenceId": "evd_cf22f5352ae2f2d4fa18",
+   "providerId": "gdacs",
+   "providerItemId": "FL:1103757:25",
+   "sourceRecordUrl": "https://www.gdacs.org/report.aspx?eventid=1103757&episodeid=25&eventtype=FL",
+   "contentKind": "structured_record",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Flood in Brazil"
+    }
+   ],
+   "structuredData": {
+    "eventType": "FL",
+    "eventId": 1103757,
+    "episodeId": 25,
+    "alertLevel": "Orange",
+    "affectedCountryCodes": [
+     "BR"
+    ],
+    "severityText": "Magnitude 0 ",
+    "fromdate": "2026-02-03T01:00:00",
+    "todate": "2026-03-31T01:00:00"
+   },
+   "occurredAt": "2026-02-03T01:00:00",
+   "publishedAt": "2026-02-03T01:00:00",
+   "updatedAt": "2026-07-31T17:10:19",
+   "retrievedAt": "2026-09-24T07:20:38.287Z",
+   "timeBasis": "provider_event_window",
+   "geographyBasis": "provider_affected_countries",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_1e5c2c401dd713b2433a",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 1,
+     "text": "The US and China are vying for AI supremacy while seeking to keep it under human control."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_dc29846d9660f378173c",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 2,
+     "text": "Masoud Pezeshkian's defiant speech to the UN comes after the US president threatened to \"annihilate\" Iran if a peace deal is not agreed soon."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_8634e7f0acee8cddff72",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 4,
+     "text": "The figure was announced during a meeting of the group's board at the sidelines of the UN General Assembly in New York."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_a26b919eeb603cfee03d",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 5,
+     "text": "The tenant of the flat in Madrid, Maricarmen, was unable to pay the rent set by the firm which recently bought it."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_77424437af8f61d9a538",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 6,
+     "text": "Elisabeth Belien tells Kenneth Law's sentencing hearing she took the poison when she was just 23 years old."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_f130a3827c8b903fa5f0",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 7,
+     "text": "Bryan Seaver, who announced Parton's death to the world, is accused of trying to extort her estate."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_8dcba55f30ec9b30663f",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cm98626n260yo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 8,
+     "text": "Assault survivor Miriam Haley said the \"devastating effect on my life and sense of security that may never go away\"."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_af14294104381dd811e1",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 9,
+     "text": "Poland says the aircraft stayed in its skies for 42 seconds, forcing the Nato member to scramble its fighter jets."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_34a9591ef49ea45fb9dd",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 11,
+     "text": "One of those killed is believed to be a pregnant woman, police said."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_c514dbdd2ba68364be4d",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 14,
+     "text": "The BBC has spoken to residents in the Russian-occupied Ukrainian town of Oleshky who say they are being \"constantly shelled\"."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_be3015f86eb4045bc460",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cn4klprmr0go#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 15,
+     "text": "Campaigners hope the new words will lead to less body shaming and more sex positivity."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_b1de20207828e4d914b2",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 16,
+     "text": "Dopamine sites mimic shopping’s thrill without the spending, turning the ritual of consumption into a digital game."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_d7b618ffc009f42dbde9",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c6804ne8knklo#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 18,
+     "text": "The two B-1 bombers that flew overhead are a key part of the US's combat arsenal, and produce a notoriously loud roar when they pass by."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_3f7b51ddd188b30b7d10",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 19,
+     "text": "The UK has jammed satellites to defend itself from hostile threats, the BBC has been told."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_41990ef832f67bc89621",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c962j1jgx884o#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 20,
+     "text": "Around 175,000 people in Indonesia have suffered from respiratory illness since August."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_5e798d9ac67ea1e08414",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168420",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_349e28c7e46dec8ee4fa",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168419",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168419",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 1,
+     "text": "Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_6da01e903f4be52b433f",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168418",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168418",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 2,
+     "text": "“We are the first generation with the tools to end the fossil fuel age – and the last who can avert climate catastrophe,” UN Secretary-General António Guterres said on Wednesday, calling on countries to draw up credible roadmaps with clear timelines to transition away from fossil fuels."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_327052f90cdd7f41d755",
+   "providerId": "ecb-press",
+   "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "sourceRecordUrl": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "contentKind": "title_only",
+   "language": "en",
+   "blocks": [],
+   "structuredData": {
+    "publisher": "European Central Bank"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_473ac3671bd8ba466aab",
+   "providerId": "ecb-press",
+   "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "sourceRecordUrl": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "contentKind": "title_only",
+   "language": "en",
+   "blocks": [],
+   "structuredData": {
+    "publisher": "European Central Bank"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+   "retrievedAt": "2026-09-24T07:20:36.572Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_785372791ad4796f64b2",
+   "providerId": "wallstreet_live",
+   "providerItemId": "wscn:3170159",
+   "sourceRecordUrl": "https://wallstreetcn.com/livenews/3170159",
+   "contentKind": "excerpt",
+   "language": "zh",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "从知情人士处获悉，三大运营商旗下的金融分期业务今日起将全面暂停，已有多地运营商员工收到通知。目前，三大运营商客服均已确认此事。知情人士表示，9月24日起，三大运营商金融分期购机业务将停止新受理，不能再新增办理橙分期/沃分期/和包分期这类0元拿手机业务。已经办理的老用户则不受影响，分期合约继续生效。分期业务暂停，预计将会对运营商线下营业厅的业绩造成一定影响。 针对此事，截至发稿前，三大运营商官方暂无回应，不过客服均确认了该消息。(新浪科技)"
+    }
+   ],
+   "structuredData": {
+    "liveId": "3170159"
+   },
+   "publishedAt": "2026-09-24T07:19:17.000Z",
+   "retrievedAt": "2026-09-24T07:20:38.527Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_2b557f4bbae5196e63aa",
+   "providerId": "wallstreet_live",
+   "providerItemId": "wscn:3170157",
+   "sourceRecordUrl": "https://wallstreetcn.com/livenews/3170157",
+   "contentKind": "excerpt",
+   "language": "zh",
+   "blocks": [
+    {
+     "index": 1,
+     "text": "9月24日，商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展，他指出，中美双方就人工智能进行了首次对话。何亚东指出，近日中美两国经贸团队在美国举行了第八轮经贸磋商，双方以两国元首重要共识为引领，秉持相互尊重、和平共处、合作共赢原则，围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流，达成了多项共识。在中美经贸磋商机制下，双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。（证券时报）"
+    }
+   ],
+   "structuredData": {
+    "liveId": "3170157"
+   },
+   "publishedAt": "2026-09-24T07:16:14.000Z",
+   "retrievedAt": "2026-09-24T07:20:38.527Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_0accb1db689554d65437",
+   "providerId": "official_web",
+   "providerItemId": "https://www.educations.com/masters-degrees/brazil/sao-paulo",
+   "sourceRecordUrl": "https://www.educations.com/masters-degrees/brazil/sao-paulo",
+   "contentKind": "excerpt",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Located in the heart of a downtown campus, the Brazil Studio offers a bilingual program that allows an accelerated acculturation to the Portuguese language ..."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:37.357Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_fe6c0562ba2409954418",
+   "providerId": "official_web",
+   "providerItemId": "https://www.gov.br/mdic/pt-br/images/REPOSITORIO/sdci/Catalogo-de-oportunidades-1-edicao-2012-ingles.pdf",
+   "sourceRecordUrl": "https://www.gov.br/mdic/pt-br/images/REPOSITORIO/sdci/Catalogo-de-oportunidades-1-edicao-2012-ingles.pdf",
+   "contentKind": "excerpt",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ..."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_7f26daa55656bba692e9",
+   "providerId": "official_web",
+   "providerItemId": "https://cdn.cade.gov.br/portal-ingles/topics/publications/CADE-yearbook/CADE%20Yearbook%202019_final.pdf",
+   "sourceRecordUrl": "https://cdn.cade.gov.br/portal-ingles/topics/publications/CADE-yearbook/CADE%20Yearbook%202019_final.pdf",
+   "contentKind": "excerpt",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Furthermore, in 2019, CADE also extended the agreements signed with the Brazilian Institute of Studies on Competition, Consumer Affairs, and International Trade ..."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_76bd4e56f609ca602673",
+   "providerId": "official_web",
+   "providerItemId": "https://www.gov.br/mre/pt-br/embaixada-bridgetown/postgraduate-student-agreement-programme-pec-pg-for-admission-in-2026",
+   "sourceRecordUrl": "https://www.gov.br/mre/pt-br/embaixada-bridgetown/postgraduate-student-agreement-programme-pec-pg-for-admission-in-2026",
+   "contentKind": "excerpt",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "All courses are taught in Portuguese; therefore, candidates must demonstrate Portuguese language proficiency to enter the programme. One way is ..."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:20:40.916Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  }
+ ],
+ "enrichment": {
+  "attempted": 12,
+  "upgraded": 7,
+  "failed": 5,
+  "skippedBudget": 0,
+  "unavailable": false,
+  "truncatedDetails": 3,
+  "omittedDetails": 421
+ },
+ "schemaVersion": "3",
+ "domainContext": {
+  "general": {
+   "domain": "general",
+   "factors": [
+    {
+     "id": "fact-0-evd_cf22f5352ae2f2d4fa18",
+     "topic": "disasters",
+     "text": "Flood in Brazil — FL Magnitude 0 2026-02-03T01:00:00 to 2026-03-31T01:00:00",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_cf22f5352ae2f2d4fa18"
+     ]
+    },
+    {
+     "id": "fact-362-evd_80fcbbc073bb66dc9cd0",
+     "topic": "humanitarian",
+     "text": "Diplomacy is the way to address global challenges, Brazil tells General Assembly — ---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## Diplomacy is the way to address global challenges, Brazil tells General Assembly\n22 September 2026 [UN Affairs](/en/news/topic/un-affairs)\nBrazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.\nOpening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide.\nAccording to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed.\nHe said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and gr",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_80fcbbc073bb66dc9cd0"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-444-evd_fe6c0562ba2409954418",
+     "topic": "official",
+     "text": "Catalog of Investment Opportunities in Brazil - Portal Gov.br — This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fe6c0562ba2409954418"
+     ]
+    },
+    {
+     "id": "fact-417-evd_0accb1db689554d65437",
+     "topic": "official",
+     "text": "58 Masters Degree Programs in São Paulo Brazil — Located in the heart of a downtown campus, the Brazil Studio offers a bilingual program that allows an accelerated acculturation to the Portuguese language ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0accb1db689554d65437"
+     ]
+    },
+    {
+     "id": "fact-448-evd_7f26daa55656bba692e9",
+     "topic": "official",
+     "text": "ADMINISTRATIVE COUNCIL FOR ECONOMIC DEFENSE — Furthermore, in 2019, CADE also extended the agreements signed with the Brazilian Institute of Studies on Competition, Consumer Affairs, and International Trade ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_7f26daa55656bba692e9"
+     ]
+    }
+   ],
+   "candidateFactors": [
+    {
+     "id": "fact-384-evd_785372791ad4796f64b2",
+     "topic": "media_activity",
+     "text": "三大运营商暂停金融分期业务,“0元购机”全面停办 — 从知情人士处获悉,三大运营商旗下的金融分期业务今日起将全面暂停,已有多地运营商员工收到通知。目前,三大运营商客服均已确认此事。知情人士表示,9月24日起,三大运营商金融分期购机业务将停止新受理,不能再新增办理橙分期/沃分期/和包分期这类0元拿手机业务。已经办理的老用户则不受影响,分期合约继续生效。分期业务暂停,预计将会对运营商线下营业厅的业绩造成一定影响。 针对此事,截至发稿前,三大运营商官方暂无回应,不过客服均确认了该消息。(新浪科技)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_785372791ad4796f64b2"
+     ]
+    },
+    {
+     "id": "fact-339-evd_5e798d9ac67ea1e08414",
+     "topic": "humanitarian",
+     "text": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN — Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5e798d9ac67ea1e08414"
+     ]
+    },
+    {
+     "id": "fact-369-evd_327052f90cdd7f41d755",
+     "topic": "economy",
+     "text": "Philip R. Lane: The Outlook for the Euro Area Economy",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_327052f90cdd7f41d755"
+     ]
+    },
+    {
+     "id": "fact-451-evd_76bd4e56f609ca602673",
+     "topic": "official",
+     "text": "Postgraduate Student Agreement Programme (PEC-PG) for ... — All courses are taught in Portuguese; therefore, candidates must demonstrate Portuguese language proficiency to enter the programme. One way is ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_76bd4e56f609ca602673"
+     ]
+    },
+    {
+     "id": "fact-385-evd_2b557f4bbae5196e63aa",
+     "topic": "media_activity",
+     "text": "商务部:在中美经贸磋商机制下 双方就人工智能进行了首次对话 — 9月24日,商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展,他指出,中美双方就人工智能进行了首次对话。何亚东指出,近日中美两国经贸团队在美国举行了第八轮经贸磋商,双方以两国元首重要共识为引领,秉持相互尊重、和平共处、合作共赢原则,围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流,达成了多项共识。在中美经贸磋商机制下,双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。(证券时报)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_2b557f4bbae5196e63aa"
+     ]
+    },
+    {
+     "id": "fact-340-evd_349e28c7e46dec8ee4fa",
+     "topic": "humanitarian",
+     "text": "Equality ‘ends at the doors of the Security Council’, Kenya’s Ruto tells General Assembly — Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_349e28c7e46dec8ee4fa"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "content": {
+   "domain": "content",
+   "factors": [
+    {
+     "id": "fact-0-evd_cf22f5352ae2f2d4fa18",
+     "topic": "disasters",
+     "text": "Flood in Brazil — FL Magnitude 0 2026-02-03T01:00:00 to 2026-03-31T01:00:00",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_cf22f5352ae2f2d4fa18"
+     ]
+    },
+    {
+     "id": "fact-362-evd_80fcbbc073bb66dc9cd0",
+     "topic": "humanitarian",
+     "text": "Diplomacy is the way to address global challenges, Brazil tells General Assembly — ---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## Diplomacy is the way to address global challenges, Brazil tells General Assembly\n22 September 2026 [UN Affairs](/en/news/topic/un-affairs)\nBrazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.\nOpening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide.\nAccording to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed.\nHe said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and gr",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_80fcbbc073bb66dc9cd0"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "marketing": {
+   "domain": "marketing",
+   "factors": [
+    {
+     "id": "fact-0-evd_cf22f5352ae2f2d4fa18",
+     "topic": "disasters",
+     "text": "Flood in Brazil — FL Magnitude 0 2026-02-03T01:00:00 to 2026-03-31T01:00:00",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_cf22f5352ae2f2d4fa18"
+     ]
+    },
+    {
+     "id": "fact-362-evd_80fcbbc073bb66dc9cd0",
+     "topic": "humanitarian",
+     "text": "Diplomacy is the way to address global challenges, Brazil tells General Assembly — ---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## Diplomacy is the way to address global challenges, Brazil tells General Assembly\n22 September 2026 [UN Affairs](/en/news/topic/un-affairs)\nBrazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.\nOpening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide.\nAccording to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed.\nHe said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and gr",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_80fcbbc073bb66dc9cd0"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "finance": {
+   "domain": "finance",
+   "factors": [
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-444-evd_fe6c0562ba2409954418",
+     "topic": "official",
+     "text": "Catalog of Investment Opportunities in Brazil - Portal Gov.br — This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fe6c0562ba2409954418"
+     ]
+    },
+    {
+     "id": "fact-417-evd_0accb1db689554d65437",
+     "topic": "official",
+     "text": "58 Masters Degree Programs in São Paulo Brazil — Located in the heart of a downtown campus, the Brazil Studio offers a bilingual program that allows an accelerated acculturation to the Portuguese language ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0accb1db689554d65437"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "tourism": {
+   "domain": "tourism",
+   "factors": [
+    {
+     "id": "fact-362-evd_80fcbbc073bb66dc9cd0",
+     "topic": "humanitarian",
+     "text": "Diplomacy is the way to address global challenges, Brazil tells General Assembly — ---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## Diplomacy is the way to address global challenges, Brazil tells General Assembly\n22 September 2026 [UN Affairs](/en/news/topic/un-affairs)\nBrazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.\nOpening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide.\nAccording to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed.\nHe said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and gr",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_80fcbbc073bb66dc9cd0"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-444-evd_fe6c0562ba2409954418",
+     "topic": "official",
+     "text": "Catalog of Investment Opportunities in Brazil - Portal Gov.br — This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fe6c0562ba2409954418"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "travel": {
+   "domain": "travel",
+   "factors": [
+    {
+     "id": "fact-362-evd_80fcbbc073bb66dc9cd0",
+     "topic": "humanitarian",
+     "text": "Diplomacy is the way to address global challenges, Brazil tells General Assembly — ---\npublishedTime: \"2026-09-22T12:07:24-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## Diplomacy is the way to address global challenges, Brazil tells General Assembly\n22 September 2026 [UN Affairs](/en/news/topic/un-affairs)\nBrazilian President Luiz Inácio Lula da Silva told the General Assembly on Tuesday that the UN needs to become a “temple of peace” once again, as it confronts one of the most critical periods in its 80-year history.\nOpening this year’s General Debate, the President – known to all as Lula – expressed his indignation at the widespread attacks taking place on multilateralism worldwide.\nAccording to the Brazilian leader, more effective diplomacy is the only way for collective challenges to be successfully addressed.\nHe said the organization's credibility has been weakened due to paralysis of the [Security Council](https://main.un.org/securitycouncil/), the use of veto powers and gr",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_80fcbbc073bb66dc9cd0"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-446-evd_fc509a3acd894d866485",
+     "topic": "official",
+     "text": "Higher education in Brazil — Ministério das Relações Exteriores — ⏳\n## Conexão Temporariamente Restrita\nIdentificamos um volume incomum de requisições originadas da sua rede nas últimas horas. O acesso foi pausado preventivamente por alguns instantes.\nID de Referência do Chamado\nB15\\_15532754749504476983\nInforme o ID de referência acima ao suporte caso precise de assistência. Certifique-se de que não está utilizando proxies ou VPNs públicas.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fc509a3acd894d866485"
+     ]
+    },
+    {
+     "id": "fact-414-evd_5485ba40f033a0f5176c",
+     "topic": "official",
+     "text": "Universidade de São Paulo, Brazil - Global Admissions — ---\nauthor: \"Global Admissions\"\nsiteName: \"Global Admissions\"\n---\n> 📍 **階層**: Home > Universities > Study in Brazil > Universidade de São Paulo\nThe University of São Paulo is Brazil's largest and most research-intensive public university, with a wide-reaching impact on national science and culture since 1934. Enrolling close to 100,000 students, USP combines comprehensive undergraduate and graduate offerings with world-class research output that contributes a substantial share of Brazil's scholarly production. Multiple campuses, including the notable Ribeirão Preto site, provide varied academic environments across disciplines.\nUSP's strengths include medicine, engineering, natural sciences, social sciences and the arts, supported by extensive laboratories, museums and cultural centers. Students benefit from rich research opportunities, interdisciplinary centers and practical training in hospitals, laboratories and public institut",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_5485ba40f033a0f5176c"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-421-evd_0254e934de21b27ce7fe",
+     "topic": "official",
+     "text": "I'm a foreign student who wants to get master's degree in São ... — You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\n[Log in](https://www.reddit.com/login/) [File a ticket](https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=21879292693140)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_0254e934de21b27ce7fe"
+     ]
+    },
+    {
+     "id": "fact-445-evd_325a8179ef0f7052e25b",
+     "topic": "official",
+     "text": "THE INTERNATIONALIZATION OF BRAZILIAN ... — THE INTERNATIONALIZATION OF BRAZILIAN POSTGRADUATE\nPROGRAMS: A STRATEGIC APPROACH1\nTimothy Finan2\nAbilio Afonso Baeta Neves3\nConcepta McManus4\nThis paper looks at the reasons behind internationalization in Brazilian Higher Education\nInstitutions (HEIs) and different mechanisms that can be used by the institutions themselves,\nfinancing agencies, as well as individual researchers to improve the international impact of their\nresearch and the production of quality alumni to solve problems posed by society. We question\nwhy institutions and researchers should consider the internationalization of research and teaching,\nand an operational approach is proposed. The need for strategic priorities and partnerships is\nhighlighted as well as methods for monitoring and evaluating these methods. We also show that\ninstitutions should question how initiatives fit within the institution’s mission and overall strategy,\nand how they can go about framing and decid",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_325a8179ef0f7052e25b"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-447-evd_10532460d09523b3cda6",
+     "topic": "official",
+     "text": "ten years of the brics network university (brics nu) - Ipea — ACADEMIC COOPERATION WITHIN BRICS: TEN YEARS\nOF THE BRICS NETWORK UNIVERSITY (BRICS NU) FROM\nA BRAZILIAN PERSPECTIVE\nRafael de Moraes Baldrighi1\nLuiz Marcelo Michelon Zardo2\nThis paper proposes a diagnosis of the state of the art of academic cooperation at the university\nlevel among BRICS member countries. To this end, our analysis emphasizes the history and\nrecent evolution of the BRICS Network University (BRICS NU), which thus far constitutes the\nbloc’s main initiative in this field. Methodologically, the study relies on primary sources such as\nofficial documents, normative acts, and quantitative data, complemented marginally by secondary\nsources, including previously published works on the subject. In addition, a semi-structured\ninterview was conducted with the Director of International Relations of the Federal Agency for\nSupport and Evaluation of Graduate Education (Coordenação de Aperfeiçoamento de Pessoal\nde Nível Supe",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_10532460d09523b3cda6"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-449-evd_d25f928eab3c015833a9",
+     "topic": "official",
+     "text": "STRATEGIC MANEUVERING IN BRAZIL'S 5G DEPLOYMENT ... — STRATEGIC MANEUVERING IN BRAZIL’S 5G DEPLOYMENT\nAMIDST UNITED STATES-CHINA TECHNOLOGICAL RIVALRY\nLiu Jia1\nNeusa Maria Pereira Bojikian2\nAline Tedeschi3\nRafael Ioris4\nIury França5\nThe rapid advancement of technology highlights the emerging rivalry between the United\nStates and China, particularly in 5G employment. U.S. sanctions on Chinese 5G technologies\nput significant pressure on Brazil, which seeks to balance foreign influences while advancing\nits re-industrialization plan. This study uses an institutionalist approach to analyze government\ndocuments, corporate papers, and think tank communications from 2017 onwards, examining the\npolitical and economic contestations between the U.S. and China over 5G technology, and Brazil’s\nstrategic responses to it. The study reveals that Brazil’s pragmatic foreign policy aims to mitigate\nthe negative impacts of the U.S.-China rivalry, ensuring Brazil’s technological advancement\nthrough a dual ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_d25f928eab3c015833a9"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-444-evd_fe6c0562ba2409954418",
+     "topic": "official",
+     "text": "Catalog of Investment Opportunities in Brazil - Portal Gov.br — This is the first edition of the Catalogue of Investment Opportunities. This publication comprises information on investment projects in Brazil, ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fe6c0562ba2409954418"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  }
+ },
+ "limitations": [
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "baidu_hot",
+   "message": "baidu_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "so360_search",
+   "message": "so360_search skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "weibo_hot",
+   "message": "weibo_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "zhihu_hot",
+   "message": "zhihu_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "toutiao_hot",
+   "message": "toutiao_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "cctv_news",
+   "message": "cctv_news skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "thepaper_hot",
+   "message": "thepaper_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "social_observations",
+   "providerId": "yahoo_realtime",
+   "message": "yahoo_realtime skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "google_news",
+   "message": "google_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "google_news",
+   "message": "google_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "bing_news",
+   "message": "bing_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "bing_news",
+   "message": "bing_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "social_not_requested",
+   "area": "social",
+   "message": "social observations were not requested (includeSocial=false)",
+   "evidenceIds": []
+  },
+  {
+   "code": "response_sampled",
+   "area": "general",
+   "message": "Initial response shows 34/434 evidence records and 34/434 details. Full context: get_country_context or GET /intelligence/context/b515d7d7-fd71-4568-b9c2-bccdf719b2ac; details: get_country_context_evidence or GET /intelligence/context/b515d7d7-fd71-4568-b9c2-bccdf719b2ac/evidence.",
+   "evidenceIds": []
+  }
+ ],
+ "refreshState": {
+  "state": "partial",
+  "refreshId": "b515d7d7-fd71-4568-b9c2-bccdf719b2ac"
+ },
+ "actualWindows": [
+  {
+   "from": "2026-08-25T07:20:36.564Z",
+   "to": "2026-09-24T07:20:36.564Z",
+   "complete": false,
+   "gaps": [
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "baidu_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "so360_search:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "weibo_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "zhihu_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "toutiao_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "cctv_news:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "thepaper_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "yahoo_realtime:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "gdelt_export:partial_window covers ~15min of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "usgs:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "global_feeds:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "google_news:partial_window covers ~7d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "bing_news:partial_window covers ~7d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "wiki_current:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:20:36.564Z",
+     "to": "2026-09-24T07:20:36.564Z",
+     "reason": "wallstreet_live:partial_window covers ~1d of 30d"
+    }
+   ]
+  }
+ ],
+ "recentContext": {
+  "generatedAt": "2026-09-24T07:20:36.564Z",
+  "windowHours": 24,
+  "topics": [],
+  "reports": [
+   {
+    "evidenceId": "evd_c514dbdd2ba68364be4d",
+    "title": "Eating garden weeds to survive in Russian-occupied city cut off from food and water",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_be3015f86eb4045bc460",
+    "title": "'Make women feel seen': Why the Dutch have a new word for labia",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_b1de20207828e4d914b2",
+    "title": "Indians are discovering the thrill of shopping without paying",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_d7b618ffc009f42dbde9",
+    "title": "A red carpet and military flyover - How Trump welcomed Xi",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_1e5c2c401dd713b2433a",
+    "title": "AI superpower ambitions take centre stage as Trump and Xi meet",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_3f7b51ddd188b30b7d10",
+    "title": "Watch: The arms race in space and how the UK is defending itself",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_8634e7f0acee8cddff72",
+    "title": "Trump's Board of Peace unveils $2.45bn plan to begin Gaza's reconstruction",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_77424437af8f61d9a538",
+    "title": "UK survivor of Canadian poison seller says he exploited her despair",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_8dcba55f30ec9b30663f",
+    "title": "Harvey Weinstein sentenced to 15 years in prison for sexual assault",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_327052f90cdd7f41d755",
+    "title": "Philip R. Lane: The Outlook for the Euro Area Economy",
+    "publisher": "European Central Bank",
+    "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+    "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_dc29846d9660f378173c",
+    "title": "Iran's president tells Trump it will never 'bend the knee'",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_473ac3671bd8ba466aab",
+    "title": "The digitalisation of money, payments and finance",
+    "publisher": "European Central Bank",
+    "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+    "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_41990ef832f67bc89621",
+    "title": "Watch: How toxic smog from wildfires is making Indonesians sick",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_af14294104381dd811e1",
+    "title": "Poland accuses Russian military helicopter of violating its airspace",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_34a9591ef49ea45fb9dd",
+    "title": "Eleven killed in mass shooting at house in South Africa",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_a26b919eeb603cfee03d",
+    "title": "Dramatic eviction of woman aged 87 highlights Spain's housing shortage",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_f130a3827c8b903fa5f0",
+    "title": "Dolly Parton's manager accuses her nephew of 'threats and intimidation'",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_5e798d9ac67ea1e08414",
+    "title": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN",
+    "publisher": "UN News - Global perspective Human stories",
+    "url": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+    "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_349e28c7e46dec8ee4fa",
+    "title": "Equality ‘ends at the doors of the Security Council’, Kenya’s Ruto tells General Assembly",
+    "publisher": "UN News - Global perspective Human stories",
+    "url": "https://news.un.org/feed/view/en/story/2026/09/1168419",
+    "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_6da01e903f4be52b433f",
+    "title": "Guterres calls on countries to set clear timelines for transition away from fossil fuels",
+    "publisher": "UN News - Global perspective Human stories",
+    "url": "https://news.un.org/feed/view/en/story/2026/09/1168418",
+    "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+    "ageClass": "recent"
+   }
+  ],
+  "sources": [
+   {
+    "provider": "gdelt_export",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:37.581Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "global_feeds",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:38.172Z",
+    "itemCount": 67,
+    "stale": false
+   },
+   {
+    "provider": "google_news",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:37.069Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "bing_news",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:40.229Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "wallstreet_live",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:38.528Z",
+    "itemCount": 30,
+    "stale": false
+   },
+   {
+    "provider": "official_web",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:20:41.552Z",
+    "itemCount": 20,
+    "stale": false
+   },
+   {
+    "provider": "baidu_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "so360_search",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "weibo_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "zhihu_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "toutiao_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "cctv_news",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "thepaper_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:20:36.564Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   }
+  ],
+  "limitations": [
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "baidu_hot",
+    "message": "baidu_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "so360_search",
+    "message": "so360_search skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "weibo_hot",
+    "message": "weibo_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "zhihu_hot",
+    "message": "zhihu_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "toutiao_hot",
+    "message": "toutiao_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "cctv_news",
+    "message": "cctv_news skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "thepaper_hot",
+    "message": "thepaper_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "google_news",
+    "message": "google_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "google_news",
+    "message": "google_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "bing_news",
+    "message": "bing_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "bing_news",
+    "message": "bing_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "gdelt_export",
+    "message": "gdelt_export returned no items in this request",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "google_news",
+    "message": "google_news returned no items in this request",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "bing_news",
+    "message": "bing_news returned no items in this request",
+    "evidenceIds": []
+   }
+  ]
+ }
+}

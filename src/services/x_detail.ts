@@ -9,6 +9,7 @@
  */
 
 import { getFromCache, setToCache, runWithSingleFlight } from '../cache.js';
+import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { tokenizeAndSelectTerms, type ParsedSection } from '../rho_select.js';
 import { rerankSearchResults } from '../enrichment.js';
 
@@ -77,13 +78,8 @@ export class FxTwitterDetailProvider implements XPostDetailProvider {
 
       try {
         const url = `${this.base}/2/status/${statusId}`;
-        const res = await fetch(url, {
-          headers: {
-            'User-Agent': 'Sora-Search/2.24 (Detail-Enrichment; +https://github.com/ikenokazuki/Sora)',
-            Accept: 'application/json',
-          },
-          signal: AbortSignal.timeout(this.timeoutMs),
-        });
+        // 指紋・間隔・SSRF検証は http_fetcher に集約。独自UAは付けない。
+        const { response: res } = await fetchWithSafeRedirects(url, this.timeoutMs, 2, { Accept: 'application/json' });
 
         if (!res.ok) {
           return null;
@@ -428,4 +424,3 @@ export async function enrichRealtimeItemsWithXDetail(
   const cleanedItems = resultItems.map((it) => cleanRealtimeItem(it, options?.verbose === true));
   return { items: cleanedItems, fxCalls };
 }
-

@@ -1,0 +1,44 @@
+[
+  {
+    "caseId": "IN-finance-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:33:47Z",
+    "endedAt": "2026-09-24T06:33:54Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["web:in-search1"] },
+      { "id": "change", "supported": true, "evidenceIds": ["web:in-search1"] },
+      { "id": "time", "supported": true, "evidenceIds": ["web:in-search1"] },
+      { "id": "meaning", "supported": true, "evidenceIds": ["web:in-search1"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=1 generic web search. Excluded an inconsistent copy (June hold at 5.50% mixed with neutral-stance text) as noise. Scorer=runner."
+  },
+  {
+    "caseId": "IN-finance-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:33:20Z",
+    "endedAt": "2026-09-24T06:33:28Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["evd_a73611e544e1a7758cda", "evd_06ff4873594ee33d1dea"] },
+      { "id": "change", "supported": true, "evidenceIds": ["evd_06ff4873594ee33d1dea"] },
+      { "id": "time", "supported": true, "evidenceIds": ["evd_8daaf0094392c29fdfa6"] },
+      { "id": "meaning", "supported": true, "evidenceIds": ["evd_8daaf0094392c29fdfa6", "evd_06ff4873594ee33d1dea"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 5,
+    "primaryEvidenceFitting": 1,
+    "criticalErrors": 0,
+    "elapsedMs": 7961,
+    "notes": "B=researchCountryWithDefaults live (58 evidence, 20 recent, 0 dangling). RBI primary pages retrieved (Aug 5 2026 statement + MPC resolution). Stale PIB vintages mixed in (June 2025, 4.4%)."
+  }
+]

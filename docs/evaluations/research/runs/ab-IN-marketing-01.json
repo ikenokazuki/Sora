@@ -1,0 +1,82 @@
+[
+  {
+    "caseId": "IN-marketing-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:28:04Z",
+    "endedAt": "2026-09-24T07:28:11Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "evidenceIds": [
+          "web:in-m1"
+        ],
+        "notes": "Delhi Yamuna flood red alert, IMD Sep 24"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": true,
+        "evidenceIds": [
+          "web:in-m2"
+        ],
+        "notes": "Starbucks India boycott, Snackfax Sep 21 2026"
+      },
+      {
+        "id": "scope",
+        "supported": true,
+        "notes": "web-only; Instagram direct observation not done"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=2 searches. Scorer=runner."
+  },
+  {
+    "caseId": "IN-marketing-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:24:32.255Z",
+    "endedAt": "2026-09-24T07:24:40.010Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": false,
+        "notes": "Florida wildfire misfit on India query"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence in fetch"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical hits undated; 7d unestablished"
+      },
+      {
+        "id": "scope",
+        "supported": false,
+        "notes": "no unobserved-range statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 1,
+    "elapsedMs": 7755,
+    "notes": "B live (47 ev). Scorer=runner. CRITICAL: Florida items returned for India query (travel-IN misfit recurrence)."
+  }
+]

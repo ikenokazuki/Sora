@@ -1,0 +1,78 @@
+[
+  {
+    "caseId": "BR-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:40:03Z",
+    "endedAt": "2026-09-24T06:40:16Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": false,
+        "notes": "2023 agreement expires Sep 29 2026; Oct rule unresolvable"
+      },
+      {
+        "id": "transport",
+        "supported": false,
+        "notes": "no GRU link"
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "no CEMADEN"
+      },
+      {
+        "id": "dates",
+        "supported": true,
+        "evidenceIds": [
+          "web:br-t1"
+        ],
+        "notes": "validity window datable"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 13000,
+    "notes": "A=1 search. Conflicting vintages correctly left unresolved. Scorer=runner."
+  },
+  {
+    "caseId": "BR-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:36:48.351Z",
+    "endedAt": "2026-09-24T06:37:57.181Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": false,
+        "notes": "no Itamaraty evidence"
+      },
+      {
+        "id": "transport",
+        "supported": false,
+        "notes": "deregulation article only"
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "no CEMADEN"
+      },
+      {
+        "id": "dates",
+        "supported": true
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 68830,
+    "notes": "B live (45 ev). 68.8s exceeds 60s extended budget. Scorer=runner."
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "contextId": "ecd7f9a6-e8c5-48e2-83f0-89cae78a8153",
+  "database": "/tmp/sora-eval-purpose.db",
+  "method": "read-only SQLite; full report, context links and details checked",
+  "checkedOn": "2026-09-24",
+  "records": [
+    {
+      "evidenceId": "evd_42f6643aa85be7d835a5",
+      "inFullReport": false,
+      "contextLinked": false,
+      "detailStored": false,
+      "url": "https://en.yna.co.kr/view/AEN20260923011200315",
+      "canonicalCandidatesByExactUrl": []
+    },
+    {
+      "evidenceId": "evd_888ffe2bc48164686651",
+      "inFullReport": false,
+      "contextLinked": false,
+      "detailStored": false,
+      "url": "https://en.yna.co.kr/view/AEN20260923010400315",
+      "canonicalCandidatesByExactUrl": []
+    },
+    {
+      "evidenceId": "evd_ca77143098af58d229d5",
+      "inFullReport": false,
+      "contextLinked": false,
+      "detailStored": false,
+      "url": "https://en.yna.co.kr/view/AEN20260923010900320",
+      "canonicalCandidatesByExactUrl": []
+    },
+    {
+      "evidenceId": "evd_cd4f71252f1c95548d6c",
+      "inFullReport": false,
+      "contextLinked": false,
+      "detailStored": false,
+      "url": "https://en.yna.co.kr/view/AEN20260923010300315",
+      "canonicalCandidatesByExactUrl": []
+    },
+    {
+      "evidenceId": "evd_f6a51de6d06eb7b9aea5",
+      "inFullReport": false,
+      "contextLinked": false,
+      "detailStored": false,
+      "url": "https://en.yna.co.kr/view/AEN20260923010600320",
+      "canonicalCandidatesByExactUrl": []
+    }
+  ]
+}
