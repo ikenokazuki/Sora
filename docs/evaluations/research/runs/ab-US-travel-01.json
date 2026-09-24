@@ -1,0 +1,85 @@
+[
+  {
+    "caseId": "US-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:39:23Z",
+    "endedAt": "2026-09-24T06:39:34Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-t1"
+        ]
+      },
+      {
+        "id": "transport",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-t1"
+        ]
+      },
+      {
+        "id": "hazards",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-t2"
+        ],
+        "notes": "noreaster Sep 26-27 pre-trip, dated"
+      },
+      {
+        "id": "dates",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-t1",
+          "web:us-t2"
+        ]
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 11000,
+    "notes": "A=2 searches. Scorer=runner."
+  },
+  {
+    "caseId": "US-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:35:40.239Z",
+    "endedAt": "2026-09-24T06:35:47.989Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": false,
+        "notes": "no ESTA/VWP"
+      },
+      {
+        "id": "transport",
+        "supported": false,
+        "notes": "no AirTrain"
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "no NYC hazard"
+      },
+      {
+        "id": "dates",
+        "supported": true
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7750,
+    "notes": "B live (51 ev). Refugee/entry-restriction sheets misfit-prone. Scorer=runner."
+  }
+]

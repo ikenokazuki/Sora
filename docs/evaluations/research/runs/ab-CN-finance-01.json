@@ -1,0 +1,44 @@
+[
+  {
+    "caseId": "CN-finance-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:32:28Z",
+    "endedAt": "2026-09-24T06:32:35Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["web:cn-search1"] },
+      { "id": "change", "supported": true, "evidenceIds": ["web:cn-search1"] },
+      { "id": "time", "supported": true, "evidenceIds": ["web:cn-search1"] },
+      { "id": "meaning", "supported": true, "evidenceIds": ["web:cn-search1"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=1 generic web search (Japanese). Sep 20 2026 fixing, 16th straight hold, CFETS monthly mechanism all in snippets. Scorer=runner."
+  },
+  {
+    "caseId": "CN-finance-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:31:30Z",
+    "endedAt": "2026-09-24T06:31:48Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["evd_33a61e99042276550009", "evd_0290f871a4de04a88afc"] },
+      { "id": "change", "supported": false, "evidenceIds": ["evd_33a61e99042276550009"], "notes": "newest fixing in evidence is Aug 20 (15th hold); Sep 16th hold unconfirmed" },
+      { "id": "time", "supported": false, "evidenceIds": [], "notes": "Sep 2026 fixing date absent from retrieved evidence" },
+      { "id": "meaning", "supported": true, "evidenceIds": ["evd_17cdb4b30c13360aa0df"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 18047,
+    "notes": "B=researchCountryWithDefaults live (99 evidence, 20 recent, 1 dangling ref evd_2f17c0751c7b39d7ad3a). Stale vintages mixed in (Feb 2024 cut, Aug 2023, 15-month label). Freshness loss vs A."
+  }
+]

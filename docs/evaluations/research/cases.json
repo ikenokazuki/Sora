@@ -1,0 +1,2690 @@
+{
+  "version": 1,
+  "status": "draft_questions_only_v2",
+  "timePolicy": "固定された過去時点の標本。参照回答は未作成。後日のライブ検索だけで当時の状態を保証しない。現在時点の試験へ変更する場合は質問・日程・asOfを全方式共通で事前更新し別バージョンとして保存。",
+  "cases": [
+    {
+      "region": "JP",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.jma.go.jp/jma/index.html",
+          "quote": "Sep 25 2026 post: scorer checks JMA warnings + national mourning/official announcements Sep 18-25 2026 live at run time. September = typhoon season; ended storms excluded.",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item; review hook, not a pre-answer."
+        },
+        {
+          "requirementId": "scope",
+          "url": "https://search.yahoo.co.jp/realtime",
+          "quote": "X observation for JP limited to Yahoo realtime Japanese posts; platform=X, language=Japanese must be stated; non-Japanese/Instagram-equivalent not covered.",
+          "checkedOn": "2026-09-24",
+          "supports": "scope: tests observation-range reporting; Yahoo realtime is JP-posts-only."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "JP-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」を東京で宣伝する。2026年9月25日12時（現地時間）、Xで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。日本での投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする"
+      ]
+    },
+    {
+      "region": "JP",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://www.mofa.go.jp/mofaj/toko/passport/",
+          "quote": "Domestic stay in Tokyo by a Japanese national: no border crossing, no visa or entry permit applies. Valid passport only relevant for ID/flights. Primary pointer = MOFA passport page.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: none required (domestic). Scorer confirms no entry procedure exists."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://www.jreast.co.jp/e/nex/",
+          "quote": "Narita Express connects Narita Airport and central Tokyo (Tokyo/Shinjuku etc.). Primary pointer = JR East N’EX page; Haneda alternatives: Tokyo Monorail / Keikyu.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: concrete operator routes; scorer checks Oct 2-5 2026 planned suspensions on operator pages."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://www.jma.go.jp/jma/index.html",
+          "quote": "Hazards for the period must be checked live on JMA warnings/advisories; ended typhoons (e.g. BAVI-26, ended Jul 11) must not be presented as current. See observed-failures.json CN-BAVI.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "JP-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日まで東京へ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "JP",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm",
+          "quote": "BOJ raised uncollateralized overnight call rate target to around 1.25% on Sep 18, 2026 (7-2 vote); secondary corroboration: 25bp hike from 1.0%",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: primary pointer = BOJ MPM statements page; scorer confirms Sep 18 2026 statement"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://kurums.com/boj-raises-rate-to-1-25-sept-18-2026",
+          "quote": "raised target by 0.25pp to around 1.25%; Asada preferred hold at 1%, Sato opposed timing",
+          "checkedOn": "2026-09-24",
+          "supports": "change: +25bp from ~1.0% (June 2026 hike)"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://talkmarkets.com/content/boj-lifts-rates-to-1-25-and-resets-climate-finance-terms",
+          "quote": "voted 7-2 Sep 18, effective September 24; reserves interest to 1.25%",
+          "checkedOn": "2026-09-24",
+          "supports": "time: decided Sep 18, effective Sep 24"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "JP-finance-01",
+      "scenario": "finance",
+      "question": "日本について、日本銀行に関する政策金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "JP",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.pp.u-tokyo.ac.jp/en/mppip/",
+          "quote": "UTokyo MPP/IP (Master of Public Policy, International Program): English-taught graduate program at GraSPP; 2027 intake guide expects ~65 places. Secondary corroboration of 2027 intake existence.",
+          "checkedOn": "2026-09-24",
+          "supports": "program: concrete English-taught course exists; scorer confirms 2027募集要項 on pp.u-tokyo.ac.jp."
+        },
+        {
+          "requirementId": "deadline",
+          "url": "https://www.pp.u-tokyo.ac.jp/en/mppip/admissions/",
+          "quote": "MPP/IP admissions page carries year-specific deadlines; 2027 deadlines must be read on the 2027 guide, not carried over from 2026.",
+          "checkedOn": "2026-09-24",
+          "supports": "deadline: pointer; tests 過年度締切の混同 failure condition."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "JP-general-01",
+      "scenario": "general",
+      "question": "東京大学で2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定",
+        "コンピュータ科学専攻修士に研究科共通の冬季出願期限を適用する"
+      ],
+      "referenceReviewRemaining": [
+        "研究科修士募集要項2027_ag_m_e.pdfで学位取得予定者の資格を確認",
+        "専攻のTOEFL提出規則・有効期間・免除条件を確認",
+        "別レビュー担当が引用と解釈を確認",
+        "asOf時点で公開済みだったことの裏付け"
+      ]
+    },
+    {
+      "region": "US",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.whitehouse.gov/presidential-actions/",
+          "quote": "Scorer checks Sep 18-25 2026 US context live: 9/11 anniversary (Sep 11, two weeks prior) hangover, federal announcements, major disasters via NWS/FEMA.",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item."
+        },
+        {
+          "requirementId": "scope",
+          "url": "https://help.instagram.com/",
+          "quote": "Instagram provides no public keyword post-search API; industry-reaction must come via web search of reported posts, never as direct post counts. Platform gap must be stated.",
+          "checkedOn": "2026-09-24",
+          "supports": "scope: tests unobservable-range disclosure for Instagram."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "US-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をニューヨークで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。米国での投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする"
+      ]
+    },
+    {
+      "region": "US",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://www.cbp.gov/travel/international-visitors/esta",
+          "quote": "Japanese tourists flying to the US under VWP need ESTA authorization before boarding (valid 2 years). Primary pointer = CBP ESTA page.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: ESTA required; scorer confirms on CBP + US Embassy Tokyo VWP page."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://new.mta.info/guides/airports/jfk-airport",
+          "quote": "JFK AirTrain connects terminals to Jamaica Station (LIRR/subway) and Howard Beach (subway). Primary pointer = MTA JFK guide.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: concrete route; scorer checks Oct 2-5 2026 service changes."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://www.weather.gov/okx/",
+          "quote": "NYC hazards checked live on NWS New York office + Notify NYC; past hurricanes must be separated from current alerts.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "US-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までニューヨークへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "US",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm",
+          "quote": "FOMC raised target range by 1/4pp to 3-3/4 to 4 percent, Sep 16 2026, 12-0 vote; primary pointer = Fed FOMC statement",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: 3.75-4.00%, decision body FOMC"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://kimmonson.com/federal-reserve-raises-federal-funds-target-range-to-3-75-to-4-percent",
+          "quote": "raised a quarter point to 3.75-4% on 12-0 vote, first increase since July 2023 (prev 3.50-3.75%)",
+          "checkedOn": "2026-09-24",
+          "supports": "change: +25bp from 3.50-3.75%"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://securities.io/fomc-raises-federal-funds-target-range-to-3-3-4-to-4-percent",
+          "quote": "announced Sep 16 2026, statement released 2:00pm; implementation note same day",
+          "checkedOn": "2026-09-24",
+          "supports": "time: announced and effective Sep 16 2026"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "US-finance-01",
+      "scenario": "finance",
+      "question": "米国について、Federal Reserveに関する政策金利の誘導目標レンジの調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "US",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.sipa.columbia.edu/academics/programs/master-public-administration",
+          "quote": "Columbia SIPA MPA, Fall Term 2027: Early Action Nov 1 2026, Fellowship Dec 20 2026, Final Feb 5 2027 (official sipa.columbia.edu).",
+          "checkedOn": "2026-09-24",
+          "supports": "program/deadline: English-taught MPA + 2027 deadlines verified on primary."
+        },
+        {
+          "requirementId": "eligibility",
+          "url": "https://www.sipa.columbia.edu/admissions",
+          "quote": "SIPA admissions: no separate deadline for international students; English proficiency + visa timing (recommended Dec 20 2026 submission for internationals on some tracks) confirmed via program pages.",
+          "checkedOn": "2026-09-24",
+          "supports": "eligibility: scorer confirms TOEFL/IELTS terms on SIPA admissions page."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "US-general-01",
+      "scenario": "general",
+      "question": "Columbia Universityで2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定"
+      ]
+    },
+    {
+      "region": "CN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.gov.cn/",
+          "quote": "Post Sep 25 sits 6 days before National Day Oct 1 (Golden Week travel rush, official tone sensitivities) and inside Mid-Autumn proximity in some years; scorer verifies Sep 18-25 notices live.",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item with National-Day-proximity hook."
+        },
+        {
+          "requirementId": "scope",
+          "url": "https://weibo.com/ajax/side/hotSearch",
+          "quote": "Weibo observation is hot-search ranking only, not full-text post search; Weibo-direct keyword search needs visitor auth. Ranking presence/absence must not be equated with criticism presence/absence.",
+          "checkedOn": "2026-09-24",
+          "supports": "scope: tests ranking-vs-post distinction; covers special-CN-acquisition constraint."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "CN-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」を上海で宣伝する。2026年9月25日12時（現地時間）、Weiboで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。中国での投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする"
+      ]
+    },
+    {
+      "region": "CN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://nordot.app/",
+          "quote": "Kyodo: China extended visa-free entry for Japanese nationals (up to 30 days, tourism/business) through end-2026. Oct 2-5 Shanghai trip falls inside the window; no visa needed for 4-day tourist stay.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: visa-free 30 days valid at asOf; scorer confirms on Chinese MFA / embassy notice."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://www.shmetro.com/",
+          "quote": "Pudong Airport: Maglev to Longyang Road + Metro Line 2 to city center; Hongqiao: Metro Lines 2/10/17. Primary pointer = Shanghai Metro official site.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: concrete routes; scorer checks Oct 2026 suspensions."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://www.cma.gov.cn/",
+          "quote": "Shanghai hazards checked live on CMA/NMC typhoon warnings; ended storms (e.g. BAVI-26) excluded per observed-failures.json.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "CN-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日まで上海へ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "CN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "http://www.pbc.gov.cn/en/3688110/3688172/index.html",
+          "quote": "PBC LPR fixing Sep 2026: 1Y 3.00%, 5Y+ 3.50%, unchanged 16th straight month; primary pointer = PBC LPR release page",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: 1Y 3.00% / 5Y 3.50%, quoting banks submit to PBC monthly"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://www.tradingview.com/news/2026-09-20-pboc-holds-benchmark-lending-rates-steady-for-16th-straight-month",
+          "quote": "held unchanged at record lows 16th consecutive month; 1Y 3.0%, 5Y 3.5%",
+          "checkedOn": "2026-09-24",
+          "supports": "change: 0 (no change); conflicting low-quality copies citing 3.45%/4.20% are stale and must not be used"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://ecopulse24.com/china-holds-lpr-at-3-for-16th-straight-month",
+          "quote": "PBC announced Sunday Sep 2026 fixing; Reuters poll of 21 expected hold",
+          "checkedOn": "2026-09-24",
+          "supports": "time: Sep 2026 monthly fixing; predictions (Reuters poll) vs decided values separated"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "CN-finance-01",
+      "scenario": "finance",
+      "question": "中国について、中国人民銀行の公表するLPRに関する1年物・5年物以上LPRの調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "CN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://iso.fudan.edu.cn/",
+          "quote": "Fudan ISO publishes 2026 Admission Information on English-taught Postgraduate Programs; English-medium masters run 2 years, September intake (e.g. Intelligent System Engineering, Finance).",
+          "checkedOn": "2026-09-24",
+          "supports": "program: English-taught masters exist; scorer confirms a specific 2027-entry program page on iso.fudan.edu.cn (not agent copy)."
+        },
+        {
+          "requirementId": "unknown",
+          "url": "https://iso.fudan.edu.cn/",
+          "quote": "2027-entry English-taught admission notice not yet verified at review time; if unconfirmed, report 未確認 rather than 2026 notice.",
+          "checkedOn": "2026-09-24",
+          "supports": "unknown: tests 未公表の区別; scorer checks whether 2027 notice exists."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "CN-general-01",
+      "scenario": "general",
+      "question": "復旦大学で2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定"
+      ]
+    },
+    {
+      "region": "SA",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.spa.gov.sa/en",
+          "quote": "Post Sep 25 12:00 Riyadh is 2 days after Saudi National Day (Sep 23): celebratory tone overlaps official festivities; scorer verifies Sep 18-25 SPA notices + NCM alerts live.",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item with National-Day hook; strong relevance test."
+        },
+        {
+          "requirementId": "language-context",
+          "url": "https://www.visitsaudi.com/en",
+          "quote": "Arabic rendering of celebratory half-price copy must be checked against local usage; red/confetti imagery has no flag/map/religious symbols per brief, scorer still verifies no unintended connotation is asserted without source.",
+          "checkedOn": "2026-09-24",
+          "supports": "language-context: tests no-fabrication of cultural claims."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "SA-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をリヤドで宣伝する。2026年9月25日12時（現地時間）、Xで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。サウジアラビアでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする"
+      ]
+    },
+    {
+      "region": "SA",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://www.visitsaudi.com/en/plan-your-trip/visa-regulations",
+          "quote": "Japanese tourists eligible for Saudi eVisa (1 year, multiple entry, up to 90 days per visit) for tourism Oct 2-5 stay. Primary pointer = Visit Saudi visa page.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: eVisa required (obtain before travel); scorer confirms on visitsaudi.com."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://www.ruh-airport.com/",
+          "quote": "King Khalid Intl Airport to Riyadh center: airport buses, taxis, ride-hailing; Riyadh Metro network partially open since Dec 2024. Scorer checks airport + Royal Commission for Riyadh City pages.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: pointer; live-run item for Oct 2026 status."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://www.ncm.gov.sa/",
+          "quote": "Saudi hazards checked on NCM (National Center of Meteorology) alerts; sandstorm/heat advisories are the relevant category for Riyadh in October.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "SA-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までリヤドへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "SA",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://www.sama.gov.sa/en-US/News/Pages/news.aspx",
+          "quote": "SAMA raised repo to 4.50% and reverse repo to 4.00% Sep 16 2026; primary pointer = SAMA news page / SPA release",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: repo 4.50%, reverse repo 4.00%, mandate preserving monetary stability"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://www.eyeofriyadh.com/news/details/sama-raises-reverse-repo-repo-rates-by-25-bps",
+          "quote": "reverse repo 3.75%->4%, repo 4.25%->4.50%; follows Fed 25bp hike to 3.75%-4%",
+          "checkedOn": "2026-09-24",
+          "supports": "change: +25bp each; peg-to-dollar follow mechanism"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://riyadhweek.com/sama-repo-reverse-repo-september-2026",
+          "quote": "decision after Fed Wednesday hike; repo 425bp->450bp, reverse 375bp->400bp",
+          "checkedOn": "2026-09-24",
+          "supports": "time: Sep 16 2026, same day as Fed"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "SA-finance-01",
+      "scenario": "finance",
+      "question": "サウジアラビアについて、Saudi Central Bankに関するrepo・reverse repo金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "SA",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://graduatestudies.ksu.edu.sa/en",
+          "quote": "KSU Deanship of Graduate Studies lists 2026/2027 (1448H) programs with language tags, incl. English MSc tracks (Clinical Lab Sciences, Radiological Sciences, Nanoscience, Energy). International admission runs on official scholarship.",
+          "checkedOn": "2026-09-24",
+          "supports": "program: English MSc tracks exist; scorer picks one 2027-entry track and confirms its notice."
+        },
+        {
+          "requirementId": "eligibility",
+          "url": "https://graduatestudies.ksu.edu.sa/en",
+          "quote": "General rule: non-Saudi applicants need an official postgraduate scholarship; program notices carry track-specific requirements.",
+          "checkedOn": "2026-09-24",
+          "supports": "eligibility: scorer confirms Japanese-degree relevance on the track notice."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "SA-general-01",
+      "scenario": "general",
+      "question": "King Saud Universityで2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定"
+      ]
+    },
+    {
+      "region": "IN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.pib.gov.in/",
+          "quote": "Scorer checks Sep 18-25 2026 India context live on PIB (national mourning, major incidents) + IMD Delhi alerts; Oct festival season (Navratri/Durga Puja early Oct 2026) proximity noted without asserting dates.",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item."
+        },
+        {
+          "requirementId": "scope",
+          "url": "https://help.instagram.com/",
+          "quote": "Instagram provides no public keyword post-search API; Hindi/English/Hinglish variance must be stated as search-language scope.",
+          "checkedOn": "2026-09-24",
+          "supports": "scope: tests language-scope reporting for IN."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "IN-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をデリーで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。インドでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする"
+      ]
+    },
+    {
+      "region": "IN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://indianvisaonline.gov.in/evisa/",
+          "quote": "Japanese tourists need Indian e-Visa (30-day tourist e-Visa) applied online before travel for Oct 2-5 Delhi stay. Primary pointer = indianvisaonline.gov.in.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: e-Visa required; scorer confirms on official portal."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://www.delhimetrorail.com/",
+          "quote": "IGI Airport to New Delhi: Airport Express Line (Orange) to New Delhi station ~20 min. Primary pointer = DMRC official site.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: concrete route; scorer checks Oct 2026 advisories."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://mausam.imd.gov.in/",
+          "quote": "Delhi hazards checked on IMD warnings (monsoon withdrawal around early Oct, air quality season onset); ended events excluded.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "IN-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までデリーへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "IN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx",
+          "quote": "MPC Aug 3-5 2026 unanimously kept policy repo unchanged at 5.25%, neutral stance; SDF 5%, MSF/Bank Rate 5.50%; primary pointer = RBI Aug 2026 policy statement",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: repo 5.25%, decision body MPC under LAF"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://karmactive.com/rbi-holds-repo-rate-at-5-25-fourth-pause-august-2026",
+          "quote": "stays at 5.25% Aug 5 2026, fourth consecutive pause",
+          "checkedOn": "2026-09-24",
+          "supports": "change: 0 (hold); next meeting Oct 5-7 2026, so Aug decision is latest at asOf"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://www.livemint.com/market/rbi-mpc-meeting-august-2026-repo-rate",
+          "quote": "MPC voted unanimously Aug 2026 meeting; 62nd meeting held Aug 3-5",
+          "checkedOn": "2026-09-24",
+          "supports": "time: decided Aug 5 2026; forecasts (GDP 6.7%, CPI 5%) are projections, not decisions"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "IN-finance-01",
+      "scenario": "finance",
+      "question": "インドについて、Reserve Bank of Indiaに関する政策repo金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "IN",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://fsr.du.ac.in/",
+          "quote": "DU Foreign Students Registry: single window for foreign nationals, 2026-27 applications invited; 5% supernumerary seats; MA English exists (2-year). Admission via FSR, not departments directly.",
+          "checkedOn": "2026-09-24",
+          "supports": "program: MA English + FSR route verified; scorer confirms 2027-entry FSR schedule."
+        },
+        {
+          "requirementId": "eligibility",
+          "url": "https://fsr.du.ac.in/",
+          "quote": "FSR guidelines: foreign students take English Language Proficiency Test (ELPC), need 60%/C grade Intermediate to confirm admission.",
+          "checkedOn": "2026-09-24",
+          "supports": "eligibility: English requirement is ELPC-based, not TOEFL-default; tests wrong-requirement failure."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "IN-general-01",
+      "scenario": "general",
+      "question": "University of Delhiで2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定"
+      ]
+    },
+    {
+      "region": "BR",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "https://www.gov.br/planalto/",
+          "quote": "Scorer checks Sep 18-25 2026 Brazil context live (Sept 7 Independence Day hangover, official mourning, CEMADEN alerts for Sao Paulo spring storms).",
+          "checkedOn": "2026-09-24",
+          "supports": "current-context: LIVE-RUN item."
+        }
+      ],
+      "expectedUnknowns": [
+        "架空ブランド固有の実在履歴は存在する前提にしない",
+        "投稿予定日までの未来の出来事は確定できない"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "BR-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をサンパウロで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。ブラジルでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "原投稿または原投稿へ辿れる報道"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": true,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "架空ブランドの実在する炎上履歴を捏造する",
+        "投稿0件から批判なしと判断する",
+        "個別投稿を国全体の意見とする",
+        "スペイン語資料をブラジルの根拠として提示"
+      ]
+    },
+    {
+      "region": "BR",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "https://www.businesstravelnews.com/Global/Brazil-Adds-E-Visa-Option-as-Waiver-Nears-Expiration",
+          "quote": "Brazil and Japan reached a bilateral agreement (Sep) keeping visa-free travel up to 90 days each way; conflicting low-quality copies claim eVisa required for Japanese in 2026. Primary decision must come from Itamaraty/MRE, not aggregators.",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: CONFLICTING SOURCES difficulty case - scorer must resolve on Itamaraty primary; tests failure condition ‘unpublished future operation as guaranteed’ and wrong-visa application."
+        },
+        {
+          "requirementId": "transport",
+          "url": "https://www.gru.com.br/en/passenger/transport-parking",
+          "quote": "GRU Airport to Sao Paulo center: CPTM Connect/Airport Express to Luz, Airport Bus Service to Paulista/República. Primary pointer = GRU official transport page.",
+          "checkedOn": "2026-09-24",
+          "supports": "transport: concrete routes; scorer checks Oct 2026 status."
+        },
+        {
+          "requirementId": "hazards",
+          "url": "https://www.gov.br/cemaden/",
+          "quote": "Sao Paulo hazards checked on CEMADEN/INMET alerts (spring storms); ended events excluded.",
+          "checkedOn": "2026-09-24",
+          "supports": "hazards: method pointer; live-run item."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "BR-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までサンパウロへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "指定旅券・観光目的・日程に適用する入国条件は何か",
+          "critical": true,
+          "expectedSource": "渡航先政府・在外公館"
+        },
+        {
+          "id": "transport",
+          "question": "空港と市中心部を結ぶ具体的路線、その日程に適用する公表済み制約は何か",
+          "critical": true,
+          "expectedSource": "運行会社・交通当局"
+        },
+        {
+          "id": "hazards",
+          "question": "対象地で対象期間に関係する公表済み警報・障害は何か",
+          "critical": true,
+          "expectedSource": "公的警報・行政"
+        },
+        {
+          "id": "dates",
+          "question": "情報の発表日、有効期間、調査時点で確定していない事項は何か",
+          "critical": true,
+          "expectedSource": "元資料の日時"
+        }
+      ],
+      "failureConditions": [
+        "終了済み災害を現在の障害として提示",
+        "対象外旅券の条件を適用",
+        "未公表の将来の運行を保証"
+      ]
+    },
+    {
+      "region": "BR",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "reviewed",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://www.bcb.gov.br/en/monetarypolicy/copomdecisions",
+          "quote": "Copom cut Selic 25bp to 13.75% Sep 16 2026 unanimously; primary pointer = BCB Copom decisions page",
+          "checkedOn": "2026-09-24",
+          "supports": "value/meaning: Selic target 13.75%, decision body Copom"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://www.indexbox.io/blog/brazil-central-bank-cuts-selic-rate-to-13-75-fifth-straight-reduction",
+          "quote": "cut from 14% to 13.75% Sep 17 2026 reporting, fifth consecutive cut; 48/51 economists expected it",
+          "checkedOn": "2026-09-24",
+          "supports": "change: -25bp from 14.00%; economist forecasts vs decision separated"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://centralbanking.com/brazil-cuts-fifth-consecutive-time-elections",
+          "quote": "Copom voted unanimously Sep 16 to lower Selic to 13.75%; easing cycle began March",
+          "checkedOn": "2026-09-24",
+          "supports": "time: decided Sep 16 2026"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "eligible",
+      "id": "BR-finance-01",
+      "scenario": "finance",
+      "question": "ブラジルについて、Banco Central do Brasilに関するSelic目標金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "region": "BR",
+      "asOf": "2026-09-23T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://prpg.usp.br/en/",
+          "quote": "USP PRPG lists stricto sensu programs (Mestrado Academico) with Portuguese-medium editais; no English-taught 2027-entry master advertised at review time. Foreign-language exams are admission requirements, not medium of instruction.",
+          "checkedOn": "2026-09-24",
+          "supports": "program/unknown: tests ‘該当なし→未確認’ handling; scorer must report not-found, not invent. Covers ‘公開されていない情報’ difficulty case."
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "BR-general-01",
+      "scenario": "general",
+      "question": "Universidade de São Pauloで2027年に開始する英語で履修可能な修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学・課程の公式ページ"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "対象年度の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "調査履歴と公式案内"
+        }
+      ],
+      "failureConditions": [
+        "過年度の締切を2027年の締切として提示",
+        "存在を確認できない課程を捏造",
+        "大学共通条件を課程固有条件と断定"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://tickergrove.com",
+          "quote": "Aug 27 2026: +25bp 2.75%->3.00%, 6-1 vote (secondary, needs BoK primary)",
+          "checkedOn": "2026-09-24",
+          "supports": "value/change candidate"
+        },
+        {
+          "requirementId": "meaning",
+          "url": "https://www.bok.or.kr",
+          "quote": "Primary pointer: BoK English homepage card / Monetary Policy Board decision (unopened)",
+          "checkedOn": "2026-09-24",
+          "supports": "primary pointer only"
+        }
+      ],
+      "expectedUnknowns": [
+        "報道が衝突: 3.00%利上げ説と2.5%据置説。一次資料未確定"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "KR-finance-01",
+      "scenario": "finance",
+      "question": "韓国について、韓国銀行の基準金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（金融通貨委員会）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "kculture.com",
+          "quote": "Japan among 22 passports visa-free without K-ETA through Dec 31 2026; e-Arrival Card mandatory from Jan 2026 if no K-ETA",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: exemption + e-Arrival Card"
+        }
+      ],
+      "expectedUnknowns": [
+        "e-Arrival Card導入後の運用変更に注意"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "KR-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までソウルへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://gsis.snu.ac.kr/en/admission/international-admissions/",
+          "quote": "International Admission (I) eligibility for international applicants; English track International Studies programs run in English. 2026 Fall guide refers to 2025 (not 2027).",
+          "checkedOn": "2026-09-24",
+          "supports": "program pointer, 2027 unconfirmed"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "KR-general-01",
+      "scenario": "general",
+      "question": "ソウル大学の英語履修可能な修士課程（例: 国際大学院）を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "KR-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をソウルで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。韓国での投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://securities.io",
+          "quote": "MPC 6-3 hold Bank Rate 3.75%, meeting ending Sep 16 2026; Minutes published Sep 17",
+          "checkedOn": "2026-09-24",
+          "supports": "value: 3.75% hold, 6-3"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://cambridgecurrencies.com",
+          "quote": "Announced noon Sep 17; sixth hold of 2026; last move Dec 18 2025 cut 4.00->3.75%",
+          "checkedOn": "2026-09-24",
+          "supports": "time/change"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "GB-finance-01",
+      "scenario": "finance",
+      "question": "英国について、イングランド銀行のバンクレートの調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（金融政策委員会）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "visaconnect.com",
+          "quote": "From Feb 25 2026 strict 'no permission, no travel' ETA enforcement; Japan included; GBP16, app, 2-year multi-entry",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: ETA required"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "GB-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までロンドンへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.bsg.ox.ac.uk/study/mpp",
+          "quote": "One-year taught postgraduate course Master of Public Policy; entry First-class/strong upper second or GPA 3.7; English higher level.",
+          "checkedOn": "2026-09-24",
+          "supports": "program pointer, 2027 deadline unconfirmed in snippet"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "GB-general-01",
+      "scenario": "general",
+      "question": "オックスフォード大学の英語修士課程（例: 公共政策）を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "GB-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をロンドンで宣伝する。2026年9月25日12時（現地時間）、Xで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。英国での投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://fibre2fashion.com",
+          "quote": "ECB Sep 10 2026: deposit 2.50%, MRO 2.65%, MLF 2.90%, effective Sep 16 2026",
+          "checkedOn": "2026-09-24",
+          "supports": "value/time"
+        },
+        {
+          "requirementId": "meaning",
+          "url": "https://finpresso.com",
+          "quote": "Governing Council decision, not market rumor; euro-area decision body",
+          "checkedOn": "2026-09-24",
+          "supports": "meaning: ECB, not Banque de France"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "FR-finance-01",
+      "scenario": "finance",
+      "question": "フランスについて、ECBの預金ファシリティ金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（ECB政策理事会、フランスはユーロ圏）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "immigrationandmigration.com",
+          "quote": "Transitional Oct 2026-Apr 2027: enter without ETIAS if other conditions met; compulsory from Apr 2027",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: ETIAS not mandatory in Oct 2026 (transitional)"
+        }
+      ],
+      "expectedUnknowns": [
+        "ETIAS開始時期は流動的。実行時に要再確認"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "FR-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までパリへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.sciencespo.fr/psia/academics/masters-degree-in-international-affairs-and-strategy/",
+          "quote": "Masters in International Affairs and Strategy: 2-year dual-track French-English programme with English-only track available.",
+          "checkedOn": "2026-09-24",
+          "supports": "program pointer"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "FR-general-01",
+      "scenario": "general",
+      "question": "シアンスポの英語修士課程（例: 国際関係）を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "FR-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をパリで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。フランスでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://fibre2fashion.com",
+          "quote": "ECB Sep 10 2026: MRO 2.65% (deposit 2.50%, MLF 2.90%), effective Sep 16",
+          "checkedOn": "2026-09-24",
+          "supports": "value/time"
+        },
+        {
+          "requirementId": "meaning",
+          "url": "https://readus247.com",
+          "quote": "Previous levels since Jun 17 2026; July pause; decision meeting held in Berlin",
+          "checkedOn": "2026-09-24",
+          "supports": "change/meaning"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "DE-finance-01",
+      "scenario": "finance",
+      "question": "ドイツについて、ECBの主要リファイナンシング金利の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（ECB政策理事会、ドイツはユーロ圏）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "traveltourister.com",
+          "quote": "Q4 2026 launch, 6-month transition (~Apr 2027), strict ~Oct 2027; EES live since Apr 10 2026",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: transitional; EES separate"
+        }
+      ],
+      "expectedUnknowns": [
+        "ETIAS開始時期は流動的。一部報道は2027年延期説"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "DE-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までベルリンへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.tum.de/en/studies/degree-programs",
+          "quote": "TUM degree finder: filter Language of instruction = English to list English-taught masters; German proficiency not required for English programs.",
+          "checkedOn": "2026-09-24",
+          "supports": "finder pointer, specific course + 2027 deadline unconfirmed"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "DE-general-01",
+      "scenario": "general",
+      "question": "ミュンヘン工科大学の英語修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "DE-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をベルリンで宣伝する。2026年9月25日12時（現地時間）、Xで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。ドイツでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://theledger.asia",
+          "quote": "Sep 23 2026 RDG (Sep 22-23): BI Rate hold 5.75%; DF 4.75%; LF 6.50%",
+          "checkedOn": "2026-09-24",
+          "supports": "value/time"
+        },
+        {
+          "requirementId": "change",
+          "url": "https://tradingview.com",
+          "quote": "Third straight hold; +100bp in May-June 2026; first meeting under Gov. Destry Damayanti",
+          "checkedOn": "2026-09-24",
+          "supports": "change"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "ID-finance-01",
+      "scenario": "finance",
+      "question": "インドネシアについて、インドネシア銀行のBIレートの調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（総裁会）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "myvisitvisa.com",
+          "quote": "Japan not visa-free; B1 VoA or e-VoA required for tourism; e-VoA enables e-Gates",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: VOA/e-VOA required"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "ID-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までジャカルタへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://admission.ui.ac.id/en",
+          "quote": "UI admission portal: check study program, schedule, requirements for international applicants (English programs vary by faculty).",
+          "checkedOn": "2026-09-24",
+          "supports": "portal pointer, specific English course unconfirmed"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "ID-general-01",
+      "scenario": "general",
+      "question": "インドネシア大学の英語修士課程を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "ID-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をジャカルタで宣伝する。2026年9月25日12時（現地時間）、Instagramで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。インドネシアでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "value",
+          "url": "https://mitrade.com",
+          "quote": "Reuters poll: all 24 economists expect -25bp to 7.50% on Sep 26 (expectation, not decision)",
+          "checkedOn": "2026-09-24",
+          "supports": "expectation only; decision pending"
+        },
+        {
+          "requirementId": "time",
+          "url": "https://mitrade.com",
+          "quote": "Decision date Sep 26 2026, after asOf Sep 24",
+          "checkedOn": "2026-09-24",
+          "supports": "time: pending"
+        }
+      ],
+      "expectedUnknowns": [
+        "9/26決定はasOf後に発生。実行時に再確認が必要"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "MX-finance-01",
+      "scenario": "finance",
+      "question": "メキシコについて、メキシコ銀行の翌日物金利目標の調査時点で最新の公表値、前回からの変更、発表日と適用日を確認して。政策の決定主体（政策委員会）と指標の性質も説明して。予測記事と決定済み事項は分けて。",
+      "requirements": [
+        {
+          "id": "value",
+          "question": "最新の決定・公表された値、単位、指標の正式名称は何か",
+          "critical": true,
+          "expectedSource": "公表主体の一次資料"
+        },
+        {
+          "id": "change",
+          "question": "比較可能な前回値との差は何か",
+          "critical": true,
+          "expectedSource": "前回と最新の一次資料"
+        },
+        {
+          "id": "time",
+          "question": "発表日と適用日は何か。最新と確認した検索範囲は何か",
+          "critical": true,
+          "expectedSource": "一次資料の日時と取得履歴"
+        },
+        {
+          "id": "meaning",
+          "question": "決定主体と指標の意味は何か。予測や他国の金利と混同していないか",
+          "critical": true,
+          "expectedSource": "公表主体の説明"
+        }
+      ],
+      "failureConditions": [
+        "予測値を決定値として提示",
+        "異なる年限や指標を混同",
+        "単位や基準日なしで数値を提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "entry",
+          "url": "unclesim.net",
+          "quote": "Japan visa-free up to 180 days; FMM card on flight or arrival",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: visa-free"
+        },
+        {
+          "requirementId": "entry",
+          "url": "visaverge.com",
+          "quote": "Mexico stopped issuing paper FMM to air arrivals; digital record + stamp",
+          "checkedOn": "2026-09-24",
+          "supports": "entry: paper FMM discontinued for air"
+        }
+      ],
+      "expectedUnknowns": [
+        "FMM紙廃止とデジタル記録への移行中。空路到着の要否は情報が割れている"
+      ],
+      "runEligibility": "reference_review_required",
+      "id": "MX-travel-01",
+      "scenario": "travel",
+      "question": "日本の一般旅券を持つ成人が観光目的で2026年10月2日から5日までメキシコシティへ滞在する。調査時点で公表済みの入国条件と、空港から市中心部への公共交通の運休・制約、災害等の影響を整理して。過去の終了済み障害と未来の未確定事項を分けて。",
+      "requirements": [
+        {
+          "id": "entry",
+          "question": "調査時点で公表済みの入国条件は何か",
+          "critical": true,
+          "expectedSource": "公的告知"
+        },
+        {
+          "id": "transport",
+          "question": "空港から市中心部への公共交通の運休・制約はあるか",
+          "critical": true,
+          "expectedSource": "事業者告知・現地報道"
+        },
+        {
+          "id": "hazards",
+          "question": "滞在期間に影響する災害・事件はあるか",
+          "critical": true,
+          "expectedSource": "公的警報・現地報道"
+        },
+        {
+          "id": "dates",
+          "question": "日付の確定・未確定を区別できるか",
+          "critical": false,
+          "expectedSource": "取得履歴"
+        }
+      ],
+      "failureConditions": [
+        "終了済み障害を現行として提示",
+        "未確定事項を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "program",
+          "url": "https://www.posgrado.unam.mx/",
+          "quote": "UNAM Coordinacion General de Estudios de Posgrado: postgraduate offer and calls; Spanish-language site, foreign applicant rules per program.",
+          "checkedOn": "2026-09-24",
+          "supports": "portal pointer, English course unlikely - unknown-report test"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "MX-general-01",
+      "scenario": "general",
+      "question": "メキシコ国立自治大学の修士課程（外国人出願可否を含む）を検討している日本の大学卒業予定者向けに、具体的な課程を1つ特定し、授業言語・出願資格・英語能力要件・締切の公表状況を調査して。該当課程や2027年募集が未確認なら、そのまま示して。",
+      "requirements": [
+        {
+          "id": "program",
+          "question": "具体的課程の名称と授業言語は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "eligibility",
+          "question": "日本の学位取得予定者に関係する出願資格と英語能力要件は何か",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "deadline",
+          "question": "2027年開始の募集期限は公表されているか。年次は一致しているか",
+          "critical": true,
+          "expectedSource": "大学の公式募集要項"
+        },
+        {
+          "id": "unknown",
+          "question": "未公表・未確認・該当なしのどれかを根拠とともに区別できるか",
+          "critical": true,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "存在しない課程の捏造",
+        "未確認を確定として提示"
+      ]
+    },
+    {
+      "asOf": "2026-09-24T00:00:00Z",
+      "reviewStatus": "partial_primary_source_review",
+      "referenceEvidence": [
+        {
+          "requirementId": "current-context",
+          "url": "live-observation-required",
+          "quote": "Verification hook: live observation at run time for hazards/mourning/events near 2026-09-25 noon local; SA 9/23 National Day and CN 10/1 National Day show festive-word sensitivity. Observation scope cap required.",
+          "checkedOn": "2026-09-24",
+          "supports": "hook only, not evidence"
+        }
+      ],
+      "expectedUnknowns": [],
+      "runEligibility": "reference_review_required",
+      "id": "MX-marketing-01",
+      "scenario": "marketing",
+      "question": "架空の日本発カフェ「試験ブランドKumo」をメキシコシティで宣伝する。2026年9月25日12時（現地時間）、Xで「世界を忘れて、今日は派手にお祝いしよう。全品半額！」を現地向けに翻訳し投稿する案。画像は紙吹雪と赤いカップで、旗・地図・宗教的記号はない。メキシコでの投稿判断に必要な直近の文脈、表現の解釈、同業界への批判を調査して。観測できない範囲は明示して。",
+      "requirements": [
+        {
+          "id": "current-context",
+          "question": "調査時点までに判明している災害・追悼・社会的事件と投稿予定日の関係は何か",
+          "critical": true,
+          "expectedSource": "公的告知と現地報道"
+        },
+        {
+          "id": "language-context",
+          "question": "祝祭表現と翻訳で意味が変わる点はあるか。文化上の懸念に具体的な根拠はあるか",
+          "critical": true,
+          "expectedSource": "現地語の用例・信頼できる文化的説明"
+        },
+        {
+          "id": "industry-reaction",
+          "question": "直近7日の関連するカフェ業界への批判や不買の投稿を観測できるか",
+          "critical": true,
+          "expectedSource": "投稿・報道（発行日確定）"
+        },
+        {
+          "id": "scope",
+          "question": "プラットフォーム・言語・日時の観測範囲と未確認事項は何か",
+          "critical": false,
+          "expectedSource": "取得履歴と未確認の明示"
+        }
+      ],
+      "failureConditions": [
+        "観測範囲の明示なしに断定",
+        "発行日不明の批判を直近として提示"
+      ]
+    }
+  ]
+}
