@@ -51,6 +51,11 @@ describe('intel mcp details', () => {
       expect(JSON.parse(text!.text)).toEqual(result.structuredContent);
       expect(result.structuredContent.evidence.length).toBeGreaterThan(0);
       const contextId = result.structuredContent.contextId;
+      const resources = await client.listResources();
+      expect(resources.resources.map((item: any) => item.uri)).toContain('sora-skill://sora-deep-research');
+      const skill = await client.readResource({ uri: 'sora-skill://sora-deep-research' });
+      const skillText = (skill.contents[0] as any)?.text ?? '';
+      expect(skillText).toContain('sora-deep-research');
       const page = (await client.callTool({ name: 'get_country_context_evidence', arguments: { contextId, limit: 10 } })) as unknown as { structuredContent: { items: unknown[]; totalStored: number } };
       expect(page.structuredContent.totalStored).toBe(1);
       expect(page.structuredContent.items).toHaveLength(1);
