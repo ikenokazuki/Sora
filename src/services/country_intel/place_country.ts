@@ -20,8 +20,13 @@ export function inferCountryCodesFromText(text: string | undefined): string[] {
   const pattern = new RegExp(COUNTRY_NAME_SOURCE, 'giu');
   const codes = new Set<string>();
   for (const match of normalized.matchAll(pattern)) {
-    const code = COUNTRY_NAME_TO_ISO2.get(match[1].toLocaleLowerCase('en-US'));
-    if (code) codes.add(code);
+    const name = match[1].toLocaleLowerCase('en-US');
+    const code = COUNTRY_NAME_TO_ISO2.get(name);
+    if (!code) continue;
+    // "New Mexico" (US state) contains "Mexico" but is not the country.
+    // Mexico City etc. still match: only a preceding "New " disqualifies.
+    if (name === 'mexico' && /new\s+$/i.test(normalized.slice(0, match.index ?? 0))) continue;
+    codes.add(code);
   }
   return [...codes];
 }

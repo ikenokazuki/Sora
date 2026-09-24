@@ -1,16 +1,13 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, test, spyOn } from 'bun:test';
 import account from '../test/fixtures/yahoo-realtime/account.json';
 import { app } from './index.js';
 import { buildRealtimeSearchCacheKey, searchYahooRealtime } from './services/yahoo.js';
+import * as httpFetcher from './http_fetcher.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
-
-function stubFetch(payload: unknown, status = 200) {
-  globalThis.fetch = (async () => new Response(JSON.stringify(payload), { status })) as any;
-}
 
 test('separates different URL and OR constraints in the realtime cache', () => {
   const key = buildRealtimeSearchCacheKey;
@@ -55,7 +52,12 @@ test('reports total provider failure as an error, not zero hits', async () => {
 });
 
 test('HTTP accepts url-only input and maps provider outage to 502', async () => {
-  stubFetch(account);
+  // realtime取得は http_fetcher（wreq）経路のためモジュール差し替えで固定する。
+  const fetchSpy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockImplementation(async () => ({
+    finalUrl: 'https://search.yahoo.co.jp/realtime/search',
+    response: new Response(JSON.stringify(account), { status: 200 }),
+  }) as any);
+  try {
   const first = await app.request('/search/realtime', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -72,14 +74,23 @@ test('HTTP accepts url-only input and maps provider outage to 502', async () => 
     body: JSON.stringify({ query: 'SPARK', limit: 99 }),
   });
   expect(bad.status).toBe(400);
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });
 
 test('HTTP maps provider outage to 502', async () => {
-  stubFetch({ error: 'down' }, 503);
+  const fetchSpy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockImplementation(async () => {
+    throw new Error('down');
+  });
+  try {
   const res = await app.request('/search/realtime', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ query: 'SPARK realtime-contract-outage', noCache: true }),
   });
   expect(res.status).toBe(502);
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });

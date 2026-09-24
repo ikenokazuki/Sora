@@ -1,0 +1,80 @@
+[
+  {
+    "caseId": "US-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:21:58Z",
+    "endedAt": "2026-09-24T07:22:07Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": true,
+        "evidenceIds": [
+          "web:usg-a1"
+        ]
+      },
+      {
+        "id": "eligibility",
+        "supported": true,
+        "evidenceIds": [
+          "web:usg-a1"
+        ],
+        "notes": "cutoff via secondary"
+      },
+      {
+        "id": "deadline",
+        "supported": true,
+        "evidenceIds": [
+          "web:usg-a1"
+        ]
+      },
+      {
+        "id": "unknown",
+        "supported": true,
+        "notes": "official-track dates vs aggregator noise separated"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 9000,
+    "notes": "A=1 search. Scorer=runner."
+  },
+  {
+    "caseId": "US-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:41:31.007Z",
+    "endedAt": "2026-09-24T06:41:37.167Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "no SIPA evidence"
+      },
+      {
+        "id": "eligibility",
+        "supported": false
+      },
+      {
+        "id": "deadline",
+        "supported": false
+      },
+      {
+        "id": "unknown",
+        "supported": false
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 6160,
+    "notes": "B live (45 ev). State Dept misfits only. Scorer=runner."
+  }
+]

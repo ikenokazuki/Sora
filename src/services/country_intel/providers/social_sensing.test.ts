@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildGoogleNewsSearchUrl } from './google_news.js';
+import { buildGoogleNewsSearchUrl, planGoogleNewsQueries } from './google_news.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseYahooWebHtml } from '../../yahoo.js';
@@ -11,6 +11,14 @@ describe('yahoo direct fallback', () => {
     expect(items[0].url).toMatch(/^https?:\/\//);
     expect(items[0].url).not.toContain('yahoo.co.jp');
     expect(items.every((item) => item.title && item.title.length > 0)).toBe(true);
+  });
+  test('parses current sw-Card markup with summaries', () => {
+    const html = `<a href="https://openai.com/ja-JP/" class="sw-Card__titleInner"><br/><h3 class="x"><span>研究と実用化 - OpenAI</span></h3></a><p class="sw-Card__summary">汎用人工知能の実現につながると信じています。</p>`;
+    const items = parseYahooWebHtml(html);
+    expect(items).toHaveLength(1);
+    expect(items[0].url).toBe('https://openai.com/ja-JP/');
+    expect(items[0].title).toContain('OpenAI');
+    expect(items[0].snippet).toContain('汎用人工知能');
   });
 });
 import { currentEventsPageFor, extractRegionBullets } from './wiki_current.js';
@@ -32,11 +40,31 @@ describe('social sensing providers', () => {
     expect(url).not.toContain('gl=');
     expect(url).toContain('hl=en');
   });
+  test('google news plans local-language facets without country-specific configuration', () => {
+    const china = inputFor({ id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [] });
+    const queries = planGoogleNewsQueries(china);
+    expect(queries.map((item) => item.query)).toContain('中国 经济 when:7d');
+    expect(queries.map((item) => item.query)).toContain('中国 旅游 when:7d');
+    expect(queries.map((item) => item.query)).toContain('中国 when:7d');
+    expect(queries.every((item) => item.language === 'zh')).toBe(true);
+  });
+  test('google news keeps an explicit research question in both local and English searches', () => {
+    const china = inputFor({ id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [] });
+    china.request.query = 'EV batteries';
+    expect(planGoogleNewsQueries(china).map((item) => item.query)).toEqual([
+      '中国 EV batteries when:7d', 'China EV batteries when:7d',
+    ]);
+  });
+  test('travel topic selects tourism news on the first search', () => {
+    const input = { ...JP, request: { region: 'JP', topics: ['travel' as const] } };
+    expect(planGoogleNewsQueries(input).map((item) => item.facet)).toEqual(['tourism', 'general']);
+  });
   test('google news prefers source publisher urls', async () => {
     const xml = '<rss version="2.0"><channel><item><title>T</title><link>https://news.google.com/rss/articles/CBMiX</link><source url="https://www.bbc.com">BBC</source></item><item><title>U</title><link>https://example.org/direct</link></item></channel></rss>';
     const { parseFeed } = await import('./feeds.js');
     const [a, b] = parseFeed(xml, 'google-news');
     expect(a.sourceUrl).toBe('https://www.bbc.com');
+    expect(a.publisher).toBe('BBC');
     expect(b.sourceUrl).toBeUndefined();
   });
   test('current events page uses UTC month and day', () => {
@@ -78,7 +106,35 @@ describe('social sensing provider runs', () => {
     const input = { ...JP, queries: [{ pass: 1 as const, providerId: 'google_news', query: 'Japan economy', topics: [], maxItems: 15 }] };
     const result = await createGoogleNewsProvider(fetchFn).run(input, signal);
     expect(result.items).toHaveLength(1);
-    expect(captured).toContain('q=Japan+economy');
+    expect(captured).toContain('Japan+economy');
+  });
+  test('google news first run collects facets with actual query and subject area', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const visited: string[] = [];
+    const fetchFn = (async (url: string) => {
+      visited.push(url);
+      const q = new URL(url).searchParams.get('q') ?? '';
+      const title = q.includes('経済') ? '日本経済ニュース' : q.includes('観光') ? '日本観光ニュース' : '日本のニュース';
+      const rss = `<rss version="2.0"><channel><item><title>${title}</title><link>https://example.org/${encodeURIComponent(title)}</link><pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate></item></channel></rss>`;
+      return new Response(rss, { headers: { 'content-type': 'application/rss+xml' } });
+    }) as unknown as never;
+    const result = await createGoogleNewsProvider(fetchFn).run(JP, signal);
+    expect(visited.length).toBeGreaterThan(3);
+    const economy = result.items.find((item) => item.evidence?.title === '日本経済ニュース');
+    expect(economy?.areas).toContain('economy');
+    expect(economy?.evidence?.acquisition?.query).toContain('経済');
+    expect(result.items.some((item) => item.evidence?.title === '日本観光ニュース')).toBe(true);
+  });
+  test('google news reports an empty subject and keeps other subjects', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const fetchFn = (async (url: string) => {
+      const query = new URL(url).searchParams.get('q') ?? '';
+      const item = query.includes('観光') ? '' : '<item><title>日本のニュース</title><link>https://example.org/a</link></item>';
+      return new Response(`<rss version="2.0"><channel>${item}</channel></rss>`, { headers: { 'content-type': 'application/rss+xml' } });
+    }) as never;
+    const result = await createGoogleNewsProvider(fetchFn).run(JP, signal);
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.gaps).toContainEqual({ area: 'tourism', reason: 'tourism no_recent_items' });
   });
   test('google news run keeps the article link and records the publisher url', async () => {
     const { createGoogleNewsProvider } = await import('./google_news.js');
@@ -88,6 +144,22 @@ describe('social sensing provider runs', () => {
     expect(result.items[0].evidence?.url).toBe('https://news.google.com/rss/articles/CBMiX');
     expect(result.items[0].detail?.sourceRecordUrl).toBe('https://news.google.com/rss/articles/CBMiX');
     expect(result.items[0].detail?.structuredData).toMatchObject({ publisherUrl: 'https://www.bbc.com' });
+    expect(result.items[0].evidence?.publisher).toBe('BBC');
+  });
+  test('google news does not present its repeated HTML headline as article text', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const rss = '<rss version="2.0"><channel><item><title>Japan economy</title><link>https://news.google.com/rss/articles/abc</link><description><![CDATA[<a href="https://news.google.com/rss/articles/abc">Japan economy</a><font>Publisher</font>]]></description></item></channel></rss>';
+    const result = await createGoogleNewsProvider((async () => new Response(rss, { headers: { 'content-type': 'application/rss+xml' } })) as never).run(JP, signal);
+    expect(result.items[0].detail?.contentKind).toBe('title_only');
+    expect(result.items[0].evidence?.excerpt).toBeUndefined();
+  });
+  test('google news drops dated articles outside its seven-day search window', async () => {
+    const { createGoogleNewsProvider } = await import('./google_news.js');
+    const old = new Date(Date.now() - 9 * 86_400_000).toUTCString();
+    const fresh = new Date().toUTCString();
+    const rss = `<rss version="2.0"><channel><item><title>Old</title><link>https://example.org/old</link><pubDate>${old}</pubDate></item><item><title>Fresh</title><link>https://example.org/fresh</link><pubDate>${fresh}</pubDate></item></channel></rss>`;
+    const result = await createGoogleNewsProvider((async () => new Response(rss, { headers: { 'content-type': 'application/rss+xml' } })) as never).run(JP, signal);
+    expect(result.items.map((item) => item.evidence?.title)).toEqual(['Fresh']);
   });
   test('wiki current run keeps region bullets only', async () => {
     const { createWikiCurrentProvider } = await import('./wiki_current.js');
@@ -147,7 +219,7 @@ describe('baidu hot search', () => {
   });
   test('falls back to tophub when direct baidu is unreachable', async () => {
     const { createBaiduHotProvider } = await import('./baidu_hot.js');
-    expect(createBaiduHotProvider().timeoutMs).toBe(20000);
+    expect(createBaiduHotProvider().timeoutMs).toBe(12000);
     const topics = ['话题A', '话题B', '话题C', '话题D', '话题E', '话题F'];
     const mirror = '<html><body>' + topics.map((q) => '<a href="https://www.baidu.com/s?wd=' + encodeURIComponent(q) + '">' + q + '</a>').join('') + '</body></html>';
     const fetchFn = (async (url: string) => {

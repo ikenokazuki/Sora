@@ -1,0 +1,45 @@
+{
+  "kind": "pilot-current-vs-revised-procedure",
+  "recordedAt": "2026-09-24",
+  "caller": "muse-spark-1.3-contributor",
+  "retrievalBase": "sora-search-web-plus-scrape-only",
+  "arms": {
+    "current": "single broad query, no follow-up, first results only",
+    "revised": "ID-tagged requirements, gap-driven re-search, failure-vs-empty distinction, excerpt plus date kept"
+  },
+  "recordFormat": ["requirementId", "status", "quoteOrExcerpt", "url", "publishedAt", "retrievedAt", "attemptedQueries", "gap"],
+  "cases": [
+    {
+      "id": "pilot-KR-marketing-01",
+      "question": "Seoul cafe post on 2026-09-25 noon: any dated Sep 18-25 hazard or mourning context?",
+      "requirements": [
+        { "id": "hazard", "question": "Dated Sep 18-25 hazard or mourning event in Seoul relevant to Sep 25 post" },
+        { "id": "industry", "question": "Cafe boycott or criticism post dated within last 7 days" }
+      ]
+    },
+    {
+      "id": "pilot-CN-marketing-01",
+      "question": "Shanghai fashion post: past expression pitfalls (chopsticks ad 2018) plus any Sep 18-25 brand controversy?",
+      "requirements": [
+        { "id": "culture", "question": "Documented past expression pitfall with source and date" },
+        { "id": "current", "question": "Brand controversy dated Sep 18-25 2026, or explicitly unconfirmed" }
+      ]
+    },
+    {
+      "id": "pilot-ID-travel-01",
+      "question": "Jakarta arrival early Oct 2026: current aviation or quake disruption with dates?",
+      "requirements": [
+        { "id": "aviation", "question": "Dated aviation disruption affecting Jakarta with source and date" },
+        { "id": "quake", "question": "Dated Sep 2026 quake near Java with magnitude, place, time" }
+      ]
+    },
+    {
+      "id": "pilot-GB-finance-01",
+      "question": "Bank of England latest published rate, prior value, dates?",
+      "requirements": [
+        { "id": "value", "question": "Latest decided value, unit, formal indicator name" },
+        { "id": "time", "question": "Announcement date and effective date with source dates" }
+      ]
+    }
+  ]
+}
