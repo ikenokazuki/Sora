@@ -1,43 +1,5 @@
-import { resolveRegion } from './region.js';
-import { pruneHotObservations, saveHotObservations, type HotObservation, type HotObservationInput } from './db.js';
-import type { CollectionJob } from './collector.js';
-import type { CountryIntelProvider } from './provider_registry.js';
-import type { GdeltFetch } from './providers/gdelt.js';
-import { createWeiboHotProvider } from './providers/weibo_hot.js';
-import { createZhihuHotProvider } from './providers/zhihu_hot.js';
-import { createToutiaoHotProvider } from './providers/toutiao_hot.js';
-import { createWallstreetLiveProvider } from './providers/wallstreet_live.js';
-import { createCctvNewsProvider } from './providers/cctv_news.js';
-import { createThepaperHotProvider } from './providers/thepaper_hot.js';
-export interface HotSourceDef {
-  sourceId: string;
-  region: string;
-  intervalMs: number;
-  createProvider: (fetchFn?: GdeltFetch) => CountryIntelProvider;
-}
-const FIVE_MINUTES = 5 * 60_000;
-const TEN_MINUTES = 10 * 60_000;
-export const DEFAULT_HOT_SOURCES: readonly HotSourceDef[] = [
-  { sourceId: 'weibo_hot', region: 'CN', intervalMs: FIVE_MINUTES, createProvider: (fetchFn) => createWeiboHotProvider(fetchFn) },
-  { sourceId: 'zhihu_hot', region: 'CN', intervalMs: FIVE_MINUTES, createProvider: (fetchFn) => createZhihuHotProvider(fetchFn) },
-  { sourceId: 'toutiao_hot', region: 'CN', intervalMs: FIVE_MINUTES, createProvider: (fetchFn) => createToutiaoHotProvider(fetchFn) },
-  { sourceId: 'wallstreet_live', region: 'CN', intervalMs: FIVE_MINUTES, createProvider: (fetchFn) => createWallstreetLiveProvider(fetchFn) },
-  { sourceId: 'cctv_news', region: 'CN', intervalMs: TEN_MINUTES, createProvider: (fetchFn) => createCctvNewsProvider(fetchFn) },
-  { sourceId: 'thepaper_hot', region: 'CN', intervalMs: TEN_MINUTES, createProvider: (fetchFn) => createThepaperHotProvider(fetchFn) },
-];
-export function hotCollectRegions(env: NodeJS.ProcessEnv = process.env): string[] {
-  const list = (env.SORA_INTEL_COLLECT_REGIONS ?? '').split(',').map((part) => part.trim().toUpperCase()).filter(Boolean);
-  return list.length > 0 ? list : ['CN'];
-}
-export interface HotCollectDeps {
-  fetchFn?: GdeltFetch;
-  now?: () => number;
-}
-export interface HotCollectResult {
-  cursor: string;
-  observedAt: string;
-  observed: number;
-}
+import type { HotObservation, HotObservationInput } from './db.js';
+/** 定期収集は廃止。report.ts が問い合わせ時に保存する。残るのは変換と差分の純粋関数。 */
 function hotText(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
 }
@@ -65,28 +27,6 @@ export function toHotObservationInputs(sourceId: string, regionId: string, obser
       upstreamUpdatedAt: hotText(structured['upstreamUpdatedAt']),
     }];
   });
-}
-export async function collectHotSource(def: HotSourceDef, deps: HotCollectDeps = {}): Promise<HotCollectResult> {
-  const nowMs = deps.now?.() ?? Date.now();
-  const region = resolveRegion(def.region);
-  const provider = def.createProvider(deps.fetchFn);
-  const signal = AbortSignal.timeout(provider.timeoutMs ?? 8000);
-  const result = await provider.run({ request: { region: def.region } as never, region, queries: [] }, signal);
-  const observedAt = new Date(nowMs).toISOString();
-  const inputs = toHotObservationInputs(def.sourceId, region.id, observedAt, result.items);
-  saveHotObservations(inputs);
-  pruneHotObservations(nowMs);
-  return { cursor: observedAt, observedAt, observed: inputs.length };
-}
-export function createHotCollectorJobs(regions: readonly string[] = hotCollectRegions(), deps: HotCollectDeps = {}): CollectionJob[] {
-  return DEFAULT_HOT_SOURCES.filter((def) => regions.includes(def.region)).map((def) => ({
-    sourceId: 'hot:' + def.sourceId,
-    intervalMs: def.intervalMs,
-    collect: async () => {
-      const collected = await collectHotSource(def, deps);
-      return { cursor: collected.cursor, details: [] };
-    },
-  }));
 }
 export type HotTopicChangeKind = 'new' | 'dropped' | 'rank_up' | 'rank_down' | 'steady';
 export interface HotTopicChange {
