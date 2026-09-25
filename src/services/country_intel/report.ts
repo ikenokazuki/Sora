@@ -299,6 +299,7 @@ export async function researchCountryContext(
   dependencies: ResearchDependencies = {},
 ): Promise<CountryContextReport> {
   const request = CountryContextRequestSchema.parse(normalizeCountryRequest(rawRequest));
+  if (request.social && !request.includeSocial) throw new Error('social input requires includeSocial=true');
   const nowDate = dependencies.now?.() ?? new Date();
   const region = resolveRegion(request.region);
   const providers = dependencies.providers ?? [];
@@ -314,7 +315,7 @@ export async function researchCountryContext(
     noCache: request.noCache,
     cache: dependencies.cache ?? null,
   };
-  const deadlineMs = dependencies.deadlineMs ?? 29_000;
+  const deadlineMs = dependencies.deadlineMs ?? (request.includeSocial ? 55_000 : 29_000);
   const deadline = Date.now() + Math.max(0, deadlineMs);
   const remainingMs = (): number => Math.max(0, deadline - Date.now());
 
