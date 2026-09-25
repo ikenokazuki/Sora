@@ -273,6 +273,7 @@ export async function fetchWithSafeRedirects(
   customHeaders?: Record<string, string>,
   customCookies?: CookieParam[],
   proxyUrl?: string,
+  parentSignal?: AbortSignal,
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
   let redirects = 0;
@@ -307,11 +308,13 @@ export async function fetchWithSafeRedirects(
       ...(customHeaders || {}),
     };
 
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const combined = parentSignal ? AbortSignal.any([timeout, parentSignal]) : timeout;
     const res = await session.fetch(currentUrl, {
       method: 'GET',
       headers,
       redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: combined,
     });
 
     const contentLength = res.headers.get('content-length');

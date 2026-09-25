@@ -258,6 +258,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
         '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
+        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). X posts are out of scope here; use `search_realtime`.' ,
         '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection.',
       );
     }
@@ -853,6 +854,70 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
       { defaultEnabled: true, keywords: ['Web検索','検索','URL一覧','Google検索','Yahoo検索','イベント検索','告知検索','スケジュール','Markdown'] },
+    );
+    // Tool 5b: search_social_posts (公開SNS投稿検索: Weibo新着 / Meta公開投稿)
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'search_social_posts',
+      'web',
+      '【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。',
+      {
+        platform: z.enum(['weibo', 'threads', 'instagram', 'facebook']).describe('対象SNS'),
+        query: z.string().min(1).max(500).describe('検索語（現地語推奨）'),
+        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10, 最大: 30)'),
+        lookbackHours: z.number().int().min(1).max(2160).optional().describe('遡及時間 (デフォルト: 24, 最大: 2160)。Weiboは期間外を除外、Metaは索引期間の目安＋本文日時で再判定'),
+      },
+      async ({ platform, query, limit, lookbackHours }) => {
+        try {
+          const { createSocialService } = await import('./services/social/index.js');
+          const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('./services/social/transport.js');
+          const svc = createSocialService({
+            weiboHttp: createProdWeiboHttp(),
+            sessionOpener: createProdSessionOpener(),
+            metaHttp: createProdMetaHttp(),
+            metaBrowser: createProdMetaBrowser(),
+            webSearch: createProdWebSearch(),
+          });
+          const signal = AbortSignal.timeout(55000);
+          const result = await svc.search({ platform, query, limit: limit ?? 10, lookbackHours: lookbackHours ?? 24 }, { signal, deadlineAt: Date.now() + 55000 });
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { isError: true, content: [{ type: 'text', text: `Social search error: ${err?.message || err}` }] };
+        }
+      },
+      { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿検索', 'ソーシャル'] },
+    );
+    // Tool 5c: fetch_social_post (既知SNS投稿の取得)
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      'fetch_social_post',
+      'web',
+      '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応。Metaのコメント取得は対象外です。Xの投稿は対象外のため search_realtime を使ってください。',
+      {
+        url: z.string().min(1).describe('公開投稿URL'),
+        commentLimit: z.number().int().min(0).max(20).optional().describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
+      },
+      async ({ url, commentLimit }) => {
+        try {
+          const { createSocialService } = await import('./services/social/index.js');
+          const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('./services/social/transport.js');
+          const svc = createSocialService({
+            weiboHttp: createProdWeiboHttp(),
+            sessionOpener: createProdSessionOpener(),
+            metaHttp: createProdMetaHttp(),
+            metaBrowser: createProdMetaBrowser(),
+            webSearch: createProdWebSearch(),
+          });
+          const signal = AbortSignal.timeout(30000);
+          const result = await svc.fetch({ url, commentLimit: commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${err?.message || err}` }] };
+        }
+      },
+      { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿取得', 'コメント'] },
     );
   }
 

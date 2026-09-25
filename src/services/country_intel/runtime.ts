@@ -17,6 +17,7 @@ import { createCctvNewsProvider } from './providers/cctv_news.js';
 import { createThepaperHotProvider } from './providers/thepaper_hot.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
 import { createFediverseProvider } from './providers/fediverse.js';
+import { createSocialPostsProvider } from './providers/social_posts.js';
 import { createYahooRealtimeProvider } from './providers/yahoo_realtime_jp.js';
 import { ProviderHttpError, defaultProviderCache } from './provider_registry.js';
 import { searchYahooRealtimePage } from '../yahoo_realtime_api.js';
@@ -33,7 +34,7 @@ import type { CountryContextReport, CountryContextRequest, CountrySource } from 
 
 /** 既定 provider。地域限定の取得先は capability で対象外を示す。gdelt DOC は上流復旧まで除外。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'bing_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'zhihu_hot', 'toutiao_hot', 'wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'bluesky', 'yahoo_realtime', 'fediverse', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'bing_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'zhihu_hot', 'toutiao_hot', 'wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'bluesky', 'yahoo_realtime', 'fediverse', 'social_posts', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
@@ -150,6 +151,7 @@ export function createDefaultCountryIntelDependencies(
         }));
       } }),
       createFediverseProvider(),
+      createSocialPostsProvider(),
       createWorldBankProvider(fetchFn),
       createNagerProvider(fetchFn),
       createWikidataProvider(fetchFn),
