@@ -84,6 +84,7 @@ systemRoutes.get('/health', async (c) => {
   return c.json({
     status: 'ok',
     service: 'sora',
+    version: SORA_VERSION,
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
     yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),
@@ -143,6 +144,7 @@ systemRoutes.get('/metrics', (c) => {
   return c.json({
     status: 'ok',
     service: 'sora',
+    version: SORA_VERSION,
     uptimeSeconds: uptime,
     cache,
     botDetection,
