@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
+import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 /**
@@ -2220,6 +2221,50 @@ export function generateOpenApiDocument() {
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(SearchWebResponseSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/social/search': {
+        post: {
+          summary: '公開SNS投稿検索 (Weibo新着 / Threads・Instagram・Facebook公開投稿)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SocialSearchInputSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'SNS検索結果（本文・日時・取得状態付き）',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(SocialSearchResultSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/social/fetch': {
+        post: {
+          summary: '既知SNS投稿の取得（本文・日時・反応）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SocialFetchInputSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'SNS投稿の取得結果',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(SocialFetchResultSchema),
                 },
               },
             },

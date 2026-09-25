@@ -1,3 +1,9 @@
+# 公開SNS取得（Weibo/Threads/Instagram/Facebook）(unreleased)
+
+- MCPに `search_social_posts`（Weibo新着検索・Meta公開投稿の発見＋本文取得）と `fetch_social_post`（既知投稿の本文・日時・反応）を追加。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使う。
+- RESTに POST /social/search・POST /social/fetch を追加し、OpenAPIへ登録。
+- 国地域インテリジェンスに `social_posts` プロバイダーを追加。`includeSocial: true`＋`social` 指定で実行し、締め切りは55秒。単独SNS結果はDB保存しない。
+
 # Global Intelligence v2 — live evidence without Yahoo realtime (unreleased)
 
 Country Intelligence restores event content instead of counts: GDACS real-shape parsing (url objects, affected countries, severity), GDELT Events export ingestion with region filtering and honest period gaps, USGS/EONET/global feeds, 6 World Bank indicators with full series, holiday scope details, and article-body extraction.

@@ -224,14 +224,14 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('D. deferred tool discovery', () => {
-    it('initial tools/list with deferTools:true has exactly 12 core tools', () => {
+    it('initial tools/list with deferTools:true has exactly 14 core tools', () => {
       const server = createMcpServer({ deferTools: true });
       const registered = (server as any)._registeredTools;
       const enabledTools = Object.entries(registered)
         .filter(([_, handle]: [string, any]) => handle.enabled !== false)
         .map(([name]) => name);
 
-      expect(enabledTools.length).toBe(12);
+      expect(enabledTools.length).toBe(14);
       const expectedCore = [
         'scrape',
         'search_web',
@@ -245,6 +245,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'search_disaster_warnings',
         'search_earthquake',
         'search_laws',
+        'search_social_posts',
+        'fetch_social_post',
       ];
       for (const name of expectedCore) {
         expect(enabledTools).toContain(name);
@@ -309,7 +311,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('F. Progressive disclosure & E2E tool-list refresh', () => {
-    it('initial tools/list budget is bounded to exactly 12 core tools and measured character limits', () => {
+    it('initial tools/list budget is bounded to exactly 14 core tools and measured character limits', () => {
       const server = createMcpServer({ deferTools: true });
       const registered = (server as any)._registeredTools;
       const initialTools = Object.entries(registered)
@@ -319,7 +321,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           descLength: t.description?.length || 0,
         }));
 
-      expect(initialTools.length).toBe(12);
+      expect(initialTools.length).toBe(14);
       const totalDescChars = initialTools.reduce((acc, t) => acc + t.descLength, 0);
       expect(totalDescChars).toBeLessThan(3500);
       for (const t of initialTools) {
@@ -341,7 +343,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       ]);
 
       const initialTools = await client.listTools();
-      expect(initialTools.tools.length).toBe(12);
+      expect(initialTools.tools.length).toBe(14);
 
       const serializedTools = JSON.stringify(initialTools.tools);
       const toolChars = serializedTools.length;
@@ -399,7 +401,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
         // 1. Initial list has 12 tools
         const initialTools = await client.listTools();
-        expect(initialTools.tools.length).toBe(12);
+        expect(initialTools.tools.length).toBe(14);
         expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
 
         // 2. Discover and activate track_package
@@ -412,7 +414,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
         // 4. Refreshed tools/list now includes track_package
         const refreshedTools = await client.listTools();
-        expect(refreshedTools.tools.length).toBe(14);
+        expect(refreshedTools.tools.length).toBe(16);
         expect(refreshedTools.tools.some((t: any) => t.name === 'default.track_package')).toBe(true);
         expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
 
@@ -491,7 +493,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes1 = await manager.handleRequest(listReq1);
       const listBody1: any = await parseRes(listRes1);
       const names1 = listBody1.result.tools.map((t: any) => t.name);
-      expect(names1.length).toBe(12);
+      expect(names1.length).toBe(14);
       expect(names1).toContain('scrape');
       expect(names1).toContain('search_deep');
       expect(names1).toContain('search_tools');
@@ -576,7 +578,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes2 = await manager.handleRequest(listReq2);
       const listBody2: any = await parseRes(listRes2);
       const names2 = listBody2.result.tools.map((t: any) => t.name);
-      expect(names2.length).toBe(14);
+      expect(names2.length).toBe(16);
       expect(names2).toContain('default.track_package');
       expect(names2).toContain('track_package');
 
@@ -765,7 +767,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       try {
         const first = await initialize();
         const initial = await rpc('tools/list', {}, first.sessionId);
-        expect(initial.result.tools).toHaveLength(12);
+        expect(initial.result.tools).toHaveLength(14);
         expect(initial.result.tools.some((tool: any) => tool.name === 'track_package')).toBe(false);
         expect(initial.result.tools.some((tool: any) => tool.name === 'default.track_package')).toBe(false);
 
@@ -786,7 +788,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         const names = list.result.tools.map((tool: any) => tool.name);
         expect(names).toContain('track_package');
         expect(names).toContain('default.track_package');
-        expect(names).toHaveLength(14);
+        expect(names).toHaveLength(16);
 
         // This tracking number has no carrier candidate, so the real handler performs no external I/O.
         const call = await rpc('tools/call', {

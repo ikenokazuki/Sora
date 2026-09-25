@@ -25,9 +25,7 @@ import { watchRoutes } from './routes/watch.js';
 import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
-import { startCountryCollector, type CollectorHandle } from './services/country_intel/collector.js';
-import { createHotCollectorJobs, hotCollectRegions } from './services/country_intel/hot_collector.js';
-
+import { socialRoutes } from './routes/social.js';
 export { formatError, mcpSessionManager };
 
 export const app = new Hono();
@@ -120,6 +118,7 @@ app.route('/', watchRoutes);
 app.route('/', mediaRoutes);
 app.route('/', trackingRoutes);
 app.route('/', intelligenceRoutes);
+app.route('/', socialRoutes);
 
 // ==========================================
 // 4. グレースフル・シャットダウン (ブラウザプロセス・DB完全解放)

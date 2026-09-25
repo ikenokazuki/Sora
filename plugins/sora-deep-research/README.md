@@ -28,6 +28,7 @@ Sora MCPと組む深層調査スキルと接続設定の配布物。呼出元LLM
 ### 使い方
 
 SKILL.mdの手順に従い、確認事項ID・証拠・取得状態を記録しながら調査する。Soraサーバは取得の道具で、判断は呼出元LLMが行う。
+SNSが必要な調査では `search_social_posts`（Weibo新着・Threads/Instagram/Facebook公開投稿）と `fetch_social_post`（既知投稿の本文・日時・反応）を使う。Xは `search_realtime`、国地域の横断情報は `research_country_context`（`includeSocial`＋`social` 指定）。
 
 ## 状態と制限
 

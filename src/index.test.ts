@@ -822,7 +822,7 @@ describe('Sora REST & MCP Endpoints', () => {
     ]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 12 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 14 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -867,7 +867,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_disaster_warnings');
     expect(toolNames).toContain('search_earthquake');
     expect(toolNames).toContain('search_laws');
-    expect(toolNames.length).toBe(12);
+    expect(toolNames).toContain('search_social_posts');
+    expect(toolNames).toContain('fetch_social_post');
+    expect(toolNames.length).toBe(14);
   });
 
   it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
@@ -931,7 +933,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes1 = await manager.handleRequest(listReq1);
     const listBody1: any = await parseRes(listRes1);
     const names1 = listBody1.result.tools.map((t: any) => t.name);
-    expect(names1.length).toBe(12);
+    expect(names1).toContain('search_social_posts');
+    expect(names1).toContain('fetch_social_post');
+    expect(names1.length).toBe(14);
     expect(names1).toContain('scrape');
     expect(names1).toContain('search_deep');
     expect(names1).toContain('search_web');
@@ -3544,7 +3548,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(43);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(45);
     expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
@@ -4004,7 +4008,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 40 tools and enable 12 core hybrid tools by default', () => {
+  it('MCP server should register all 42 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4022,7 +4026,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledTools).toContain('search_disaster_warnings');
     expect(enabledTools).toContain('search_earthquake');
     expect(enabledTools).toContain('search_laws');
-    expect(enabledTools.length).toBe(12);
+    expect(enabledTools).toContain('search_social_posts');
+    expect(enabledTools).toContain('fetch_social_post');
+    expect(enabledTools.length).toBe(14);
 
     const serverAll = createMcpServer({ deferTools: false });
     const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
@@ -4040,7 +4046,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('watch_delete');
     expect(enabledToolsAll).toContain('track_package');
     expect(enabledToolsAll).toContain('research_country_context');
-    expect(enabledToolsAll.length).toBe(43);
+    expect(enabledToolsAll).toContain('search_social_posts');
+    expect(enabledToolsAll).toContain('fetch_social_post');
+    expect(enabledToolsAll.length).toBe(45);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -5605,7 +5613,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 61 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 63 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5637,8 +5645,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(61);
-      expect(withContentCount).toBe(61);
+      expect(operationCount).toBe(63);
+      expect(withContentCount).toBe(63);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {
