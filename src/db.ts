@@ -67,6 +67,7 @@ export function initDatabase(dbPath?: string): Database {
   db.run('PRAGMA synchronous = NORMAL;');
   db.run('PRAGMA foreign_keys = ON;');
   db.run('PRAGMA temp_store = MEMORY;');
+  db.run('PRAGMA busy_timeout = 5000;');
 
   // 1. 永続キャッシュテーブル
   db.run(`

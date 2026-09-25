@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { closeDb } from '../../db.js';
 import { saveHotObservations } from './db.js';
 import { researchCountryContext } from './report.js';
+import { buildRecentContext } from './recent_context.js';
+import { deduplicateEvidenceWithRemap } from './evidence.js';
 import { createWallstreetLiveProvider } from './providers/wallstreet_live.js';
 import { createWeiboHotProvider } from './providers/weibo_hot.js';
 import { createZhihuHotProvider } from './providers/zhihu_hot.js';
@@ -69,5 +71,27 @@ describe('recent context', () => {
     const source = report.recentContext?.sources.find((entry) => entry.provider === 'zhihu_hot');
     expect(source?.stale).toBe(true);
     expect(report.recentContext?.limitations.some((limitation) => limitation.providerId === 'zhihu_hot')).toBe(true);
+  });
+  // 2026-09-24 証拠参照監査の回帰テスト。2026-09-24 修正で unskip。
+  // 原因確定: buildReports が重複排除前の生 evidence.id を出し、remap を適用しない。
+  // 修正条件: 最終の証拠集合とID対応表を使い recentContext を生成する（参照の削除で通さない）。
+  test('recent reports resolve to canonical deduped evidence', () => {
+    const evidence = (id: string) => ({
+      id, regionId: 'country:CN', url: 'https://example.com/same-article', title: 'same',
+      sourceType: 'news' as const, retrievedAt: '2026-09-23T11:00:00Z',
+      publishedAt: '2026-09-23T10:00:00Z', primarySource: true, latencyClass: 'recent' as const,
+    });
+    const items = [
+      { providerId: 'global_feeds', areas: ['general'], item: { evidence: evidence('evd_first') } },
+      { providerId: 'bing_news', areas: ['general'], item: { evidence: evidence('evd_second') } },
+    ];
+    const { evidence: deduped, remap } = deduplicateEvidenceWithRemap(items.flatMap((wrapped) => (wrapped.item.evidence ? [wrapped.item.evidence] : [])));
+    const evidenceById = new Map(deduped.map((entry) => [entry.id, entry]));
+    const recent = buildRecentContext({
+      now: NOW, region: china, items, runs: [], evidenceById, detailsById: new Map(), evidenceIdRemap: remap, limitations: [],
+    });
+    for (const report of recent.reports ?? []) {
+      expect(evidenceById.has(report.evidenceId)).toBe(true);
+    }
   });
 });

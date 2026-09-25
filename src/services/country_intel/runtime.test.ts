@@ -70,6 +70,7 @@ test('REST and MCP use the same default country-intelligence runtime', async () 
 test('default runtime never substitutes a fallback country', async () => {
   expect(createDefaultCountryIntelDependencies().providers?.map((p) => p.id))
     .toEqual([...defaultCountryIntelProviderIds]);
+  expect(createDefaultCountryIntelDependencies().providers?.find((p) => p.id === 'yahoo_realtime')?.regions).toEqual(['JP']);
   stubFetch();
   try {
     const report = await researchCountryWithDefaults(
@@ -137,14 +138,19 @@ test("official seeds verify seed domains and inject pass2 site queries", async (
 
 test("seed sources drive pass2 site queries for the requested country", async () => {
   const seen: string[] = [];
-  const report = await researchCountryWithDefaults(
-    { region: "China", noCache: true },
-    { cache: null, now: () => new Date("2026-09-19T00:00:00Z") },
-    { officialWebSearch: async (query: string) => { seen.push(query); return []; } },
-  );
-  expect(report.region.countryCode).toBe("CN");
-  expect(seen.some((q) => q.includes("site:fmprc.gov.cn"))).toBe(true);
-  expect(seen.some((q) => q.includes("site:whitehouse.gov"))).toBe(false);
+  stubFetch();
+  try {
+    const report = await researchCountryWithDefaults(
+      { region: "China", noCache: true },
+      { cache: null, now: () => new Date("2026-09-19T00:00:00Z") },
+      { officialWebSearch: async (query: string) => { seen.push(query); return []; } },
+    );
+    expect(report.region.countryCode).toBe("CN");
+    expect(seen.some((q) => q.includes("site:fmprc.gov.cn"))).toBe(true);
+    expect(seen.some((q) => q.includes("site:whitehouse.gov"))).toBe(false);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("gdelt doc stays out of the default provider set", async () => {
