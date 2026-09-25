@@ -28,7 +28,8 @@ description: >
    - 失敗から学ぶ: 空振りした検索語と原因（語が広すぎる・期間外・対象違い）を記録し、同じ失敗を繰り返さない。
    - 委任文には目的・出力形式・使う道具・範囲を書く。短い指示は重複と抜けを生む。
    - 初回で最大限取得する。追加検索を前提に初回を弱くしない。
-   - 国地域の横断情報は `research_country_context`（deferred。先に `search_tools` へ「国地域」）。
+   - 国地域の横断情報は `research_country_context`
+   - SNSを含める場合は `includeSocial: true` とし、対象・検索語・期間は `social` で指定する。Weiboは新着順、MetaはWeb索引経由の発見＋本文取得。Xは `search_realtime` を使う。（deferred。先に `search_tools` へ「国地域」）。
    - 代表証拠で足りなければ `get_country_context` → `get_country_context_evidence` → `get_country_context_updates` で原文・詳細を追う。
    - 一般の事実確認は `search_web`（`formats: ["markdown"]` で同コール取得も可）または `search_deep`。
    - 既知URLの精読は `scrape`、複数は `scrape_batch`（最大20件）。
@@ -58,8 +59,10 @@ description: >
 
 ## 観測範囲の上限
 
-- `search_realtime`（Yahooリアルタイム）は日本語圏の投稿観測。日本語以外の投稿や全SNSの代替にしない。
-- Weibo熱搜相当の取得はランキング観測で、投稿全文検索ではない。
+- `search_realtime`（Yahooリアルタイム）は日本語圏のX投稿観測。日本語以外の投稿や全SNSの代替にしない。
+- `search_social_posts` はWeibo新着検索とThreads/Instagram/Facebook公開投稿の取得。Xは対象外のため `search_realtime` を使う。
+- `fetch_social_post` は既知投稿の本文・日時・反応の取得。Weiboは長文・人気コメント補完に対応。Metaのコメント取得は対象外。
+- Weibo熱搜ランキングは話題検知の候補であり、原投稿の実績として数えない。
 - 熱榜に載らないことは批判がないことの証明にならない。
 - 同じ記事の転載を複数集めても独立した裏付けに数えない。
 

@@ -109,7 +109,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
 >    - 国内交通乗換・運賃: search_route
->    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 

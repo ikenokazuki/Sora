@@ -13,12 +13,24 @@ export const COUNTRY_INTEL_TOPICS = [
 
 export type CountryIntelTopic = (typeof COUNTRY_INTEL_TOPICS)[number];
 
+export const SocialPlatformSchema = z.enum(['weibo', 'threads', 'instagram', 'facebook']);
+export type IntelSocialPlatform = z.infer<typeof SocialPlatformSchema>;
+
+export const IntelSocialInputSchema = z.object({
+  platforms: z.array(SocialPlatformSchema).optional(),
+  queries: z.array(z.object({ platform: SocialPlatformSchema, query: z.string().trim().min(1).max(500) })).optional(),
+  urls: z.array(z.string().min(1)).optional(),
+  lookbackHours: z.number().int().min(1).max(2160).optional(),
+});
+export type IntelSocialInput = z.infer<typeof IntelSocialInputSchema>;
+
 export interface CountryContextRequest {
   region: string;
   query?: string;
   topics?: CountryIntelTopic[];
   period?: '7d' | '30d' | '90d';
   includeSocial?: boolean;
+  social?: IntelSocialInput;
   noCache?: boolean;
   verbose?: boolean;
 }
@@ -29,6 +41,7 @@ export const CountryContextRequestSchema = z.object({
   topics: z.array(z.enum(COUNTRY_INTEL_TOPICS)).optional(),
   period: z.enum(['7d', '30d', '90d']).default('30d'),
   includeSocial: z.boolean().default(false),
+  social: IntelSocialInputSchema.optional(),
   noCache: z.boolean().default(false),
   verbose: z.boolean().default(false),
 });
@@ -328,6 +341,7 @@ export interface ProviderRun {
   status: ProviderRunStatus;
   itemCount: number;
   coverage?: string[];
+  gaps?: { area: string; reason: string }[];
   latencyMs?: number;
   errorCode?: string;
 }
@@ -339,6 +353,7 @@ export const ProviderRunSchema = z.object({
   status: z.enum(['success', 'partial', 'unavailable', 'rate_limited', 'error']),
   itemCount: z.number(),
   coverage: z.array(z.string()).optional(),
+  gaps: z.array(z.object({ area: z.string(), reason: z.string() })).optional(),
   latencyMs: z.number().optional(),
   errorCode: z.string().optional(),
 });
