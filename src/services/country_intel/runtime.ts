@@ -5,6 +5,7 @@ import { createUsgsProvider } from './providers/usgs.js';
 import { createEonetProvider } from './providers/eonet.js';
 import { createGlobalFeedsProvider } from './providers/feeds.js';
 import { createGoogleNewsProvider } from './providers/google_news.js';
+import { createBingNewsProvider } from './providers/bing_news.js';
 import { createWikiCurrentProvider } from './providers/wiki_current.js';
 import { createBaiduHotProvider } from './providers/baidu_hot.js';
 import { createSo360SearchProvider } from './providers/so360_search.js';
@@ -15,6 +16,10 @@ import { createWallstreetLiveProvider } from './providers/wallstreet_live.js';
 import { createCctvNewsProvider } from './providers/cctv_news.js';
 import { createThepaperHotProvider } from './providers/thepaper_hot.js';
 import { createBlueskyProvider } from './providers/bluesky.js';
+import { createFediverseProvider } from './providers/fediverse.js';
+import { createYahooRealtimeProvider } from './providers/yahoo_realtime_jp.js';
+import { ProviderHttpError, defaultProviderCache } from './provider_registry.js';
+import { searchYahooRealtimePage } from '../yahoo_realtime_api.js';
 import type { GdeltFetch } from './providers/gdelt.js';
 import { createNagerProvider } from './providers/nager.js';
 import { createWikidataProvider } from './providers/wikidata.js';
@@ -23,22 +28,32 @@ import { createOfficialWebProvider, type WebSearchItem } from './providers/offic
 import type { ScrapedArticle } from './providers/official_web.js';
 import { OFFICIAL_DOMAIN_SEEDS, seedDomainsForCountry } from './official_domains.js';
 import { resolveRegion } from './region.js';
+import { compactCountryReport } from './response.js';
 import type { CountryContextReport, CountryContextRequest, CountrySource } from './types.js';
 
-/** fetch 注入のみで構成できる default provider。yahoo_realtime は日本専用のため対象外。gdelt DOC は上流復旧まで除外（本体・テストは残す）。 */
+/** 既定 provider。地域限定の取得先は capability で対象外を示す。gdelt DOC は上流復旧まで除外。 */
 export const defaultCountryIntelProviderIds = [
-  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'zhihu_hot', 'toutiao_hot', 'wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'bluesky', 'worldbank', 'nager', 'wikidata',
+  'gdelt_export', 'gdacs', 'usgs', 'eonet', 'global_feeds', 'google_news', 'bing_news', 'wiki_current', 'baidu_hot', 'so360_search', 'weibo_hot', 'zhihu_hot', 'toutiao_hot', 'wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'bluesky', 'yahoo_realtime', 'fediverse', 'worldbank', 'nager', 'wikidata',
 ] as const;
 
 export interface DefaultRuntimeOptions {
   fetchFn?: GdeltFetch;
   /** official_web の検索器。未指定時は実在の Yahoo Web 検索を使う（地域条件を落とす再検索は無効）。 */
   officialWebSearch?: (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]>;
+  /** 無効化する provider ID（カンマ区切り）の上書き。未指定時は `SORA_INTEL_DISABLED` を読む。 */
+  disabledProviders?: readonly string[];
   /**
    * 本文補完の取得器。未指定時は内蔵スクレイパ（fast mode、ブラウザなし）を使う。
    * `SORA_INTEL_SCRAPE=off` で無効化できる。テストは明示的に上書きすること。
    */
   scrapeArticle?: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>;
+}
+
+/** 環境変数または明示指定で無効化された provider ID の集合。 */
+export function disabledCountryIntelProviders(overrides?: readonly string[]): ReadonlySet<string> {
+  const raw = overrides ?? (process.env.SORA_INTEL_DISABLED ?? '');
+  const ids = (Array.isArray(raw) ? raw : String(raw).split(',')).map((id) => id.trim()).filter(Boolean);
+  return new Set(ids);
 }
 
 /** 内蔵スクレイパの本文取得アダプタ。fast mode（ブラウザなし）、再試行なし。 */
@@ -91,8 +106,10 @@ export function createDefaultCountryIntelDependencies(
   options: DefaultRuntimeOptions = {},
 ): ResearchDependencies {
   const fetchFn = options.fetchFn;
+  const disabled = disabledCountryIntelProviders(options.disabledProviders);
   return {
     ...overrides,
+    cache: overrides.cache ?? defaultProviderCache,
     scrapeArticle: overrides.scrapeArticle
       ?? options.scrapeArticle
       ?? (process.env.SORA_INTEL_SCRAPE === 'off' ? undefined : createScrapeArticleAdapter()),
@@ -103,6 +120,7 @@ export function createDefaultCountryIntelDependencies(
       createEonetProvider(fetchFn),
       createGlobalFeedsProvider(fetchFn),
       createGoogleNewsProvider(fetchFn),
+      createBingNewsProvider(fetchFn),
       createWikiCurrentProvider(fetchFn),
       createBaiduHotProvider(fetchFn),
       createSo360SearchProvider(fetchFn),
@@ -117,15 +135,30 @@ export function createDefaultCountryIntelDependencies(
         verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
       }),
       createBlueskyProvider(),
+      createYahooRealtimeProvider({ searchYahooRealtime: async (query, signal) => {
+        if (signal.aborted) throw signal.reason;
+        const page = await searchYahooRealtimePage({ query, sort: 'recent', limit: 30 }, { timeoutMs: 8000 }).catch((error: unknown) => {
+          const match = /^Yahoo realtime HTTP (\d{3})$/.exec(error instanceof Error ? error.message : '');
+          if (match) throw new ProviderHttpError(Number(match[1]));
+          throw error;
+        });
+        if (signal.aborted) throw signal.reason;
+        return page.items.map((item) => ({
+          url: item.url, text: item.text,
+          ...(item.created_at ? { postedAt: new Date(item.created_at * 1000).toISOString() } : {}),
+        ...(item.author_handle ? { user: item.author_handle } : {}),
+        }));
+      } }),
+      createFediverseProvider(),
       createWorldBankProvider(fetchFn),
       createNagerProvider(fetchFn),
       createWikidataProvider(fetchFn),
-    ],
+    ].filter((provider) => !disabled.has(provider.id)),
   };
 }
 
 /** REST / MCP 共通の default 実行口。report() 自体は injectable なまま維持する。 */
-export function researchCountryWithDefaults(
+export async function researchCountryWithDefaults(
   request: CountryContextRequest,
   overrides: Omit<ResearchDependencies, 'providers'> = {},
   options: DefaultRuntimeOptions = {},
@@ -147,5 +180,6 @@ export function researchCountryWithDefaults(
     { ...overrides, sources: [...(overrides.sources ?? []), ...seedSources] },
     options,
   );
-  return researchCountryContext(request, merged);
+  const report = await researchCountryContext(request, merged);
+  return request.verbose ? report : compactCountryReport(report);
 }
