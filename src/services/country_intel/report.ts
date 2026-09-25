@@ -15,11 +15,12 @@ import type { IntelligenceSignal } from '../intelligence/types.js';
 import { LIMITS, cappedProviderIds, inapplicableProviderIds, planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type EnrichBudget, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
-import { getCountryContext, getVerifiedCountrySources, latestHotSnapshots, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveMetricObservations } from './db.js';
-import { buildRecentContext } from './recent_context.js';
+import { getCountryContext, getVerifiedCountrySources, latestHotSnapshots, pruneHotObservations, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveHotObservations, saveMetricObservations } from './db.js';
+import { HOT_CONTEXT_PROVIDERS, buildRecentContext } from './recent_context.js';
+import { toHotObservationInputs } from './hot_collector.js';
 import { buildDomainContext, evidenceToFacts } from './domain_details.js';
 import { classifyRegionLink, isQueryTargeted, textMentionsRegion, upgradeCandidateWithBody, type RegionLink } from './region_link.js';
-import { articleBlocks, type ScrapedArticle } from './providers/official_web.js';
+import { articleBlocks, isUsefulArticleText, type ScrapedArticle } from './providers/official_web.js';
 import { verifyCountrySource } from './source_registry.js';
 import {
   CountryContextRequestSchema,
@@ -78,6 +79,7 @@ export function mergeProviderRuns(runs: readonly ProviderRun[]): ProviderRun[] {
       status: worst.status,
       itemCount: group.reduce((sum, run) => sum + run.itemCount, 0),
       coverage: [...new Set(group.flatMap((run) => run.coverage ?? []))],
+      gaps: group.flatMap((run) => run.gaps ?? []),
       latencyMs: group.reduce((sum, run) => sum + (run.latencyMs ?? 0), 0),
       ...(worst.errorCode ? { errorCode: worst.errorCode } : {}),
     };
@@ -238,7 +240,9 @@ export async function enrichDetailsWithArticles(
   };
   const candidates = details
     .filter((detail) => detail.contentKind !== 'extracted_text'
-      && (rank(links.get(detail.evidenceId)) <= 2))
+      && detail.contentKind !== 'structured_record'
+      && (rank(links.get(detail.evidenceId)) <= 2)
+      && !detail.sourceRecordUrl.startsWith('https://news.google.com/rss/articles/'))
     .sort((left, right) => rank(links.get(left.evidenceId)) - rank(links.get(right.evidenceId))
       || articlesOf(right) - articlesOf(left)
       || timeOf(right) - timeOf(left))
@@ -268,7 +272,7 @@ export async function enrichDetailsWithArticles(
         const timeout = AbortSignal.timeout(Math.max(500, Math.min(perItemMs, remainingMs())));
         const scraped = await scrape(target.sourceRecordUrl, timeout);
         const markdown = scraped.markdown ?? scraped.content;
-        if (!markdown) {
+        if (!markdown || !isUsefulArticleText(markdown)) {
           outcome.failed += 1;
           continue;
         }
@@ -406,7 +410,11 @@ export async function researchCountryContext(
     const source = canonicalWrapped.get(item.id);
     const providerId = source?.providerId ?? 'unknown';
     const providerQueries = queriesByProvider.get(providerId) ?? [];
-    const targeted = isQueryTargeted(providerQueries, region);
+    const actualQuery = item.acquisition?.query;
+    const targeted = actualQuery
+      ? isQueryTargeted([{ query: actualQuery }], region)
+        || textMentionsRegion(actualQuery, region, [item.language ?? ''])
+      : isQueryTargeted(providerQueries, region);
     const textHit = textMentionsRegion(
       [item.title, item.excerpt].filter((value): value is string => Boolean(value)).join('\n'),
       region,
@@ -420,7 +428,7 @@ export async function researchCountryContext(
       acquisition: {
         providerId,
         ...(source?.item.detail?.providerItemId ? { providerItemId: source.item.detail.providerItemId } : {}),
-        ...(providerQueries[0] ? { query: providerQueries[0].query } : {}),
+        ...(actualQuery ? { query: actualQuery } : providerQueries[0] ? { query: providerQueries[0].query } : {}),
         queryTargetedRegion: targeted,
         ...(providerDef?.collectionWindowDays !== undefined
           ? { collectionScope: '~' + String(providerDef.collectionWindowDays) + 'd' }
@@ -602,12 +610,25 @@ export async function researchCountryContext(
   const limitations: Limitation[] = acquisition.runs
     .filter((run) => run.status !== 'success')
     .map((run) => ({
-      code: run.status === 'rate_limited' ? 'rate_limited' : run.status === 'error' ? 'provider_error' : 'provider_unavailable',
+      code: run.errorCode === 'PROVIDER_REGION_UNSUPPORTED' ? 'provider_region_unsupported'
+        : run.status === 'rate_limited' ? 'rate_limited'
+        : run.status === 'error' ? 'provider_error'
+        : run.status === 'partial' ? 'provider_partial' : 'provider_unavailable',
       area: (run.coverage ?? []).join(',') || 'general',
       providerId: run.provider,
-      message: run.provider + ' ' + run.status + (run.errorCode ? ' ' + run.errorCode : ''),
+      message: run.errorCode === 'PROVIDER_REGION_UNSUPPORTED'
+        ? run.provider + ' skipped: region not applicable (by design)'
+        : run.provider + ' ' + run.status + (run.errorCode ? ' ' + run.errorCode : ''),
       evidenceIds: [],
     }));
+  for (const run of acquisition.runs) {
+    for (const gap of run.gaps ?? []) {
+      limitations.push({
+        code: 'provider_coverage_gap', area: gap.area, providerId: run.provider,
+        message: run.provider + ': ' + gap.reason, evidenceIds: [],
+      });
+    }
+  }
   // 対応地域だが上限で落とした取得先は limitation で明示する。
   for (const providerId of cappedProviderIds(region, capabilities)) {
     limitations.push({
@@ -620,6 +641,19 @@ export async function researchCountryContext(
     limitations.push({
       code: 'social_not_requested', area: 'social',
       message: 'social observations were not requested (includeSocial=false)', evidenceIds: [],
+    });
+  }
+  // yahoo_realtime は日本語投稿のみ。LLM が証拠の言語範囲を誤らないよう明示する。
+  if (acquisition.runs.some((run) => run.provider === 'yahoo_realtime' && (run.status === 'success' || run.status === 'partial') && run.itemCount > 0)) {
+    limitations.push({
+      code: 'language_scope_ja', area: 'social', providerId: 'yahoo_realtime',
+      message: 'yahoo_realtime covers Japanese-language posts only; non-Japanese posts about the region are missing', evidenceIds: [],
+    });
+  }
+  if (acquisition.items.some((wrapped) => wrapped.providerId === 'google_news' && wrapped.item.detail?.contentKind === 'title_only')) {
+    limitations.push({
+      code: 'headline_only_source', area: 'media_activity', providerId: 'google_news',
+      message: 'Google News RSS supplies headlines and publisher links, not original article text; headline-only evidence requires corroboration', evidenceIds: [],
     });
   }
   if (enriched.outcome.unavailable && enriched.outcome.skippedBudget > 0) {
@@ -655,7 +689,7 @@ export async function researchCountryContext(
   enriched.outcome.omittedDetails = finalDetails.length - evidenceDetails.length;
   // 直近の話題・記事を任意フィールドにまとめる。推奨・評価は含めない。
   const hotPreviousRanks = new Map<string, Map<string, number>>();
-  for (const sourceId of ['weibo_hot', 'zhihu_hot', 'toutiao_hot']) {
+  for (const sourceId of HOT_CONTEXT_PROVIDERS) {
     try {
       const snapshot = latestHotSnapshots(sourceId);
       if (snapshot.latest.length === 0) continue;
@@ -671,9 +705,26 @@ export async function researchCountryContext(
     runs: acquisition.runs,
     evidenceById,
     detailsById: finalDetailById,
+    evidenceIdRemap: remap,
     previousRanks: hotPreviousRanks,
     limitations,
   });
+  // 問い合わせ時スナップショット保存。定期収集の代替。使わない利用者の分は書かない。
+  // 直前スナップショットを読んだ後で保存するため previousRank の意味は変わらない。
+  try {
+    for (const sourceId of HOT_CONTEXT_PROVIDERS) {
+      const group = enrichedItems.filter((wrapped) => wrapped.providerId === sourceId);
+      if (group.length === 0) continue;
+      const inputs = toHotObservationInputs(
+        sourceId,
+        region.id,
+        nowDate.toISOString(),
+        group.map((wrapped) => ({ evidence: wrapped.item.evidence, detail: wrapped.item.detail })),
+      );
+      saveHotObservations(inputs);
+    }
+    pruneHotObservations(nowDate.getTime());
+  } catch { /* スナップショット保存の失敗は応答を壊さない */ }
   const report = CountryContextReportSchema.parse({
     contextId,
     region,

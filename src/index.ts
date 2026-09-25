@@ -156,15 +156,10 @@ if (import.meta.main) {
   });
   console.log(`Starting Sora service on port ${PORT}...`);
 
-  let countryCollector: CollectorHandle | undefined;
-  if (process.env.SORA_COLLECTOR_ENABLED === '1') {
-    countryCollector = startCountryCollector(createHotCollectorJobs(hotCollectRegions()));
-  }
   const cleanup = async (signal: string) => {
     console.log(`Received ${signal}, shutting down Sora gracefully...`);
     try {
       server.stop(true);
-      await countryCollector?.stop();
       await gracefulShutdown();
     } catch (err) {
       console.error('Error during graceful shutdown:', err);

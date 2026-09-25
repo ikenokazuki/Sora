@@ -40,8 +40,8 @@ export function createSo360SearchProvider(fetchFn?: GdeltFetch): CountryIntelPro
   return {
     id: 'so360_search', areas: ['media_activity', 'current_events'], regions: ['CN'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
-    /** Cookie配布302の2段取得を外側10秒既定内に収める。 */
-    timeoutMs: 14000,
+    /** 2026-09-23実測で当該回線は302無限ループ/タイムアウトのため外側を10秒に締める。他回線では2段取得が通る。 */
+    timeoutMs: 10000,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
       const planned = input.queries.map((q) => q.query).find((q) => q && q.trim());
