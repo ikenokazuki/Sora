@@ -142,3 +142,5 @@ X詳細（独自UA）とYahoo時刻系（独自fetch・独自UA）をhttp_fetche
 ## 進捗 2026-09-25: fetcherへ配備
 
 web-fetcherを2.29.1-feat-intelに入れ替えた。quadlet定義の更新とnixos-rebuildで反映し、本番検索で新経路の応答を確認した。版数表示は2.29.0のまま。
+
+横断取得も本番で確認した。GB照会が42件で完走した。
