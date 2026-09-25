@@ -40,6 +40,8 @@ export interface ProviderInput {
 export interface ProviderResult {
   items: AcquisitionItem[];
   coverage?: string[];
+  /** プロバイダ内の検索経路・分野が欠落した場合の明示的な不足。 */
+  gaps?: { area: string; reason: string }[];
   status?: ProviderRunStatus;
   errorCode?: string;
 }
@@ -136,6 +138,8 @@ export function providerCacheKey(providerId: string, plan: ResearchPlan): string
     period: plan.request.period ?? '30d',
     query: plan.request.query?.trim() ?? '',
     queries,
+    includeSocial: plan.request.includeSocial ?? false,
+    social: plan.request.social ?? null,
   })}`;
 }
 
@@ -271,6 +275,7 @@ async function runOne(
         status: result.status ?? 'success',
         itemCount: items.length,
         coverage: result.coverage ?? [...provider.areas],
+        ...(result.gaps?.length ? { gaps: result.gaps } : {}),
         latencyMs: Math.max(0, finished - started),
         errorCode: result.errorCode ?? statusErrorCode(result.status),
       },

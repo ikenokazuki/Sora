@@ -221,7 +221,7 @@ export async function searchYahooWeb(options: {
       try {
         let batchJson: any = null;
         try {
-          const directItems = await fetchDirect(effectiveWebQuery, 10);
+          const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
           if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
         } catch (err) {
           providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
@@ -323,7 +323,7 @@ export async function searchYahooWeb(options: {
     try {
       let json: any = null;
       try {
-        const directItems = await fetchDirect(effectiveWebQuery, 10);
+        const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
         if (directItems.length > 0) json = { items: directItems.map(normDirectItem) };
       } catch (err) {
         providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
@@ -385,12 +385,45 @@ function stripYahooTags(text: string): string {
   return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 }
 
+/** Yahooの縦断ナビ（画像・動画・地図・リアルタイム等）へのリンクか。結果候補にしない。 */
+export function isYahooNavUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 'yahoo.co.jp' && !u.hostname.endsWith('.yahoo.co.jp')) return false;
+    return u.hostname === 'search.yahoo.co.jp' || u.pathname.includes('/search');
+  } catch {
+    return false;
+  }
+}
+
+export interface YahooWebDirectOptions {
+  updated?: 'all' | 'day' | 'week' | 'year';
+  includeDomains?: string[];
+}
+
+const UPDATED_TO_VD: Record<string, string> = { day: 'd', week: 'w', year: 'y' };
+
+/** 直接取得用の検索URLを組み立てる。期間と単一ドメイン条件を実パラメーターへ反映する。 */
+export function buildYahooWebDirectUrl(query: string, opts: YahooWebDirectOptions = {}): string {
+  let q = query;
+  if (opts.includeDomains && opts.includeDomains.length === 1) {
+    q += ' site:' + opts.includeDomains[0];
+  } else if (opts.includeDomains && opts.includeDomains.length > 1) {
+    q += ' (' + opts.includeDomains.map((d) => 'site:' + d).join(' OR ') + ')';
+  }
+  const params = new URLSearchParams({ p: q, ei: 'UTF-8' });
+  const vd = opts.updated && opts.updated !== 'all' ? UPDATED_TO_VD[opts.updated] : undefined;
+  if (vd) params.set('vd', vd);
+  return 'https://search.yahoo.co.jp/search?' + params.toString();
+}
+
 /** Yahoo Web検索結果HTMLの直解析。MCPバイナリ429時のフォールバック用。 */
 export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectItem[] {
   const out: YahooWebDirectItem[] = [];
   const push = (rawUrl: string, rawTitle: string, rawSnippet: string): void => {
     const url = stripYahooTags(rawUrl ?? '');
     if (!url || out.some((item) => item.url === url)) return;
+    if (isYahooNavUrl(url)) return;
     const title = stripYahooTags(rawTitle ?? '');
     const snippet = stripYahooTags(rawSnippet ?? '');
     let domain: string | undefined;
@@ -409,7 +442,9 @@ export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectIt
     if (out.length >= maxItems) return out;
   }
   if (out.length > 0) return out;
-  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0] ?? html;
+  // 旧形式は結果領域 #web 内だけを読む。領域自体がなければ未知HTMLとして空を返す。
+  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0];
+  if (!webSection) return out;
   const itemRe = /<li><a href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>(?:<div>(.*?)<\/div>)?/g;
   let m: RegExpExecArray | null;
   while ((m = itemRe.exec(webSection)) !== null) {
@@ -425,9 +460,8 @@ export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectIt
 const YAHOO_WEB_DIRECT_HEADERS: Record<string, string> = {
   Referer: 'https://search.yahoo.co.jp/',
 };
-export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal): Promise<YahooWebDirectItem[]> {
-  const params = new URLSearchParams({ p: query, ei: 'UTF-8' });
-  const url = 'https://search.yahoo.co.jp/search?' + params.toString();
+export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal, opts: YahooWebDirectOptions = {}): Promise<YahooWebDirectItem[]> {
+  const url = buildYahooWebDirectUrl(query, opts);
   const pending = fetchWithSafeRedirects(url, 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
   const { response: res } = signal
     ? await Promise.race([
