@@ -111,8 +111,8 @@ export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
   return {
     id: 'baidu_hot', areas: ['media_activity', 'current_events'], regions: ['CN'], latencyClass: 'near_realtime', defaultTtlSeconds: 900,
     collectionWindowDays: 1,
-    /** 直2段の待機で外側10秒を使い切らないよう固有上限を持つ。全体30秒予算内。 */
-    timeoutMs: 20000,
+    /** 遮断回線では3段全滅まで待つとCN照会が遅延する。2026-09-23実測で直タイムアウト・TopHub 403のため外側を12秒に締める。 */
+    timeoutMs: 12000,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
       const fetchText = async (url: string, timeoutMs = 8000): Promise<string> => {

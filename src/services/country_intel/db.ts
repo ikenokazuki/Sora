@@ -679,7 +679,8 @@ export function getContextUpdates(contextId: string, cursor?: string): ContextUp
   return { contextId, changes, ...(last ? { nextCursor: last.observedAt } : {}) };
 }
 
-const HOT_OBSERVATION_RETENTION = 30 * DAY;
+/** 熱榜スナップショット保持。問い合わせ時保存のため最新2件あれば足りる。7日で打ち切る。 */
+const HOT_OBSERVATION_RETENTION = 7 * DAY;
 
 export interface HotObservationInput {
   sourceId: string;

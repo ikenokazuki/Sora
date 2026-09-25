@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import * as cheerio from 'cheerio';
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
@@ -7,7 +8,7 @@ import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 import { GLOBAL_FEED_CATALOG, type SourceCatalogEntry } from '../source_catalog.js';
 
-export interface FeedEntry { title?: string; link?: string; description?: string; publishedAt?: string; language?: string; guid?: string; sourceUrl?: string; }
+export interface FeedEntry { title?: string; link?: string; description?: string; publishedAt?: string; language?: string; guid?: string; sourceUrl?: string; publisher?: string; }
 
 function entryLink(link: unknown): string | undefined {
   if (typeof link === 'string') return link || undefined;
@@ -70,6 +71,7 @@ export function parseFeed(xml: string, sourceId: string): FeedEntry[] {
       guid: entryText(item['guid']),
       language,
       sourceUrl: sourceUrl(item['source']),
+      publisher: entryText(item['source']),
     }));
   }
   const feed = parsed['feed'] as Record<string, unknown> | undefined;
@@ -97,13 +99,21 @@ export function parseFeed(xml: string, sourceId: string): FeedEntry[] {
   return [];
 }
 
+function cleanFeedText(value: string): string {
+  if (!/<[a-z!/]|&(?:#\d+|#x[\da-f]+|[a-z]+);/iu.test(value)) return value.replace(/\s+/gu, ' ').trim();
+  const $ = cheerio.load(value);
+  $('script,style').remove();
+  return $.text().replace(/\s+/gu, ' ').trim();
+}
+
 export function feedEntriesToAcquisition(entries: FeedEntry[], entry: SourceCatalogEntry, input: ProviderInput, now = new Date()): AcquisitionItem[] {
   return entries.flatMap((item, index) => {
     if (!item.link) return [];
-    const title = item.title ?? item.link;
-    const excerpt = item.description?.slice(0, 2000);
+    const title = cleanFeedText(item.title ?? item.link);
+    const rawExcerpt = item.description;
+    const excerpt = rawExcerpt ? cleanFeedText(rawExcerpt).slice(0, 2000) : undefined;
     const evidence = normalizeEvidence({
-      url: item.link, title, excerpt, publisher: entry.publisher,
+      url: item.link, title, excerpt, publisher: item.publisher ?? entry.publisher,
       sourceType: entry.sourceType, language: item.language, publishedAt: item.publishedAt,
       primarySource: entry.sourceType === 'official', latencyClass: 'near_realtime',
     }, input.region, now);
@@ -112,10 +122,10 @@ export function feedEntriesToAcquisition(entries: FeedEntry[], entry: SourceCata
       providerId: entry.id,
       providerItemId: item.guid ?? item.link,
       sourceRecordUrl: item.link,
-      contentKind: 'excerpt',
+      contentKind: excerpt ? 'excerpt' : 'title_only',
       ...(item.language ? { language: item.language } : {}),
       blocks: excerpt ? [{ index, text: excerpt }] : [],
-      structuredData: { publisher: entry.publisher, ...(item.sourceUrl ? { publisherUrl: item.sourceUrl } : {}) },
+      structuredData: { publisher: item.publisher ?? entry.publisher, ...(item.sourceUrl ? { publisherUrl: item.sourceUrl } : {}) },
       publishedAt: item.publishedAt,
       retrievedAt: now.toISOString(),
       timeBasis: 'provider_publication',

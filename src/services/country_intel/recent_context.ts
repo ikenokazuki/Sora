@@ -4,7 +4,7 @@ import type { CountryEvidence, Limitation, ProviderRun, RecentContext, RecentRep
 /** 話題リスト系。取得時刻が観測時刻であり、投稿時刻ではない。 */
 export const HOT_CONTEXT_PROVIDERS: readonly string[] = ['weibo_hot', 'zhihu_hot', 'toutiao_hot'];
 /** 記事系。publishedAt を持つ証拠を年齢付きで載せる。 */
-export const ARTICLE_CONTEXT_PROVIDERS: readonly string[] = ['wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'global_feeds', 'google_news', 'so360_search', 'baidu_hot', 'gdelt_export'];
+export const ARTICLE_CONTEXT_PROVIDERS: readonly string[] = ['wallstreet_live', 'cctv_news', 'thepaper_hot', 'official_web', 'global_feeds', 'google_news', 'bing_news', 'so360_search', 'baidu_hot', 'gdelt_export'];
 const FLASH_MS = 15 * 60_000;
 const RECENT_MS = 24 * 60 * 60_000;
 export interface RecentContextInput {
@@ -14,11 +14,16 @@ export interface RecentContextInput {
   runs: readonly ProviderRun[];
   evidenceById: ReadonlyMap<string, CountryEvidence>;
   detailsById: ReadonlyMap<string, EvidenceDetail>;
+  /** 重複排除前の生ID→代表ID。渡された場合、報告・話題の証拠参照を代表IDへ寄せる。 */
+  evidenceIdRemap?: ReadonlyMap<string, string>;
   previousRanks?: ReadonlyMap<string, ReadonlyMap<string, number>>;
   limitations: readonly Limitation[];
 }
 function detailOf(item: AcquiredItem): EvidenceDetail | undefined {
   return item.item.detail;
+}
+function canonicalEvidenceId(input: RecentContextInput, rawId: string): string {
+  return input.evidenceIdRemap?.get(rawId) ?? rawId;
 }
 function topicRecords(items: readonly AcquiredItem[]): { providerId: string; detail: EvidenceDetail }[] {
   return items.flatMap((wrapped) => {
@@ -35,7 +40,8 @@ function buildTopics(input: RecentContextInput): RecentTopic[] {
   for (const record of topicRecords(input.items)) {
     const structured = record.detail.structuredData ?? {};
     const topicId = typeof structured['topicId'] === 'string' && structured['topicId'] ? structured['topicId'] : record.detail.providerItemId;
-    const evidence = input.evidenceById.get(record.detail.evidenceId);
+    const evidenceId = canonicalEvidenceId(input, record.detail.evidenceId);
+    const evidence = input.evidenceById.get(evidenceId);
     const slot = grouped.get(topicId) ?? { title: evidence?.title ?? topicId, providers: new Set<string>(), ranks: [], hots: [], pinned: false, firstSeenAt: record.detail.retrievedAt, lastSeenAt: record.detail.retrievedAt, evidenceIds: new Set<string>() };
     slot.providers.add(record.providerId);
     if (typeof structured['rank'] === 'number') slot.ranks.push(structured['rank']);
@@ -44,7 +50,7 @@ function buildTopics(input: RecentContextInput): RecentTopic[] {
     if (structured['pinned'] === true) slot.pinned = true;
     if (record.detail.retrievedAt < slot.firstSeenAt) slot.firstSeenAt = record.detail.retrievedAt;
     if (record.detail.retrievedAt > slot.lastSeenAt) slot.lastSeenAt = record.detail.retrievedAt;
-    slot.evidenceIds.add(record.detail.evidenceId);
+    slot.evidenceIds.add(evidenceId);
     grouped.set(topicId, slot);
   }
   const topics: RecentTopic[] = [...grouped].map(([topicId, slot]) => {
@@ -89,13 +95,15 @@ function buildReports(input: RecentContextInput): RecentReport[] {
     const evidence = wrapped.item.evidence;
     if (!evidence) continue;
     if (!ARTICLE_CONTEXT_PROVIDERS.includes(wrapped.providerId)) continue;
+    const evidenceId = canonicalEvidenceId(input, evidence.id);
+    const canonical = input.evidenceById.get(evidenceId) ?? evidence;
     reports.push({
-      evidenceId: evidence.id,
-      title: evidence.title ?? evidence.url,
-      ...(evidence.publisher ? { publisher: evidence.publisher } : {}),
-      url: evidence.url,
-      ...(evidence.publishedAt ? { publishedAt: evidence.publishedAt } : {}),
-      ageClass: ageClass(evidence.publishedAt, nowMs),
+      evidenceId,
+      title: canonical.title ?? canonical.url,
+      ...(canonical.publisher ? { publisher: canonical.publisher } : {}),
+      url: canonical.url,
+      ...(canonical.publishedAt ? { publishedAt: canonical.publishedAt } : {}),
+      ageClass: ageClass(canonical.publishedAt, nowMs),
     });
   }
   reports.sort((left, right) => (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''));

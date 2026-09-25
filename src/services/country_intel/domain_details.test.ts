@@ -68,6 +68,13 @@ describe('domain selection', () => {
     expect(general.candidateFactors?.map((entry) => entry.id)).toEqual(['f1']);
   });
 
+  test('travel treats a disaster article as a disruption only when an event is identified', () => {
+    const item = fact('f-disaster', 'disasters', 'ev-disaster');
+    const relevance = new Map([['ev-disaster', 'related' as const]]);
+    expect(buildDomainContext('travel', [item], [], [], relevance).factors).toEqual([]);
+    expect(buildDomainContext('travel', [item], [], [disasterEvent('ev-disaster')], relevance).factors).toEqual([item]);
+  });
+
   test('long facts are flagged as truncated', () => {
     const longText = 'x'.repeat(1500);
     const facts = evidenceToFacts([{ providerId: 'p', areas: ['disasters'], item: { evidence: { id: 'ev-1', regionId: 'country:CN', url: 'https://example.org/1', title: 'T', excerpt: longText, sourceType: 'structured_dataset', retrievedAt: '2026-09-22T00:00:00Z', primarySource: false, latencyClass: 'near_realtime' } } }]);

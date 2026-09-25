@@ -81,23 +81,23 @@ interface DomainSalience {
 
 const DOMAIN_SALIENCE: Record<Exclude<Domain, 'general'>, DomainSalience> = {
   content: {
-    areas: ['disasters', 'media_activity', 'current_events', 'social_observations', 'humanitarian', 'official', 'calendar', 'holidays'],
+    areas: ['disasters', 'health', 'politics', 'media_activity', 'current_events', 'social_observations', 'humanitarian', 'official', 'calendar', 'holidays'],
     eventTypes: ['disaster_response', 'protest', 'demonstration', 'violence', 'threat', 'memorial_event', 'celebration', 'cultural_event', 'boycott', 'statement', 'meeting', 'election', 'strike', 'arrest', 'sanction'],
   },
   marketing: {
-    areas: ['disasters', 'media_activity', 'current_events', 'social_observations', 'calendar', 'holidays', 'economy', 'humanitarian', 'official'],
+    areas: ['disasters', 'health', 'tourism', 'politics', 'media_activity', 'current_events', 'social_observations', 'calendar', 'holidays', 'economy', 'humanitarian', 'official'],
     eventTypes: ['boycott', 'protest', 'demonstration', 'disaster_response', 'cultural_event', 'celebration', 'memorial_event', 'business_action', 'trade_restriction', 'statement', 'strike'],
   },
   finance: {
-    areas: ['economy', 'current_events', 'media_activity', 'official', 'historical_context'],
+    areas: ['economy', 'politics', 'current_events', 'media_activity', 'official', 'historical_context'],
     eventTypes: ['trade_restriction', 'business_action', 'sanction', 'agreement', 'legislation', 'election', 'meeting', 'statement'],
   },
   tourism: {
-    areas: ['disasters', 'calendar', 'holidays', 'humanitarian', 'media_activity', 'current_events', 'social_observations', 'official'],
+    areas: ['tourism', 'health', 'calendar', 'holidays', 'humanitarian', 'media_activity', 'current_events', 'social_observations', 'official'],
     eventTypes: ['disaster_response', 'violence', 'threat', 'protest', 'demonstration', 'strike', 'celebration', 'cultural_event', 'memorial_event'],
   },
   travel: {
-    areas: ['disasters', 'calendar', 'holidays', 'humanitarian', 'media_activity', 'current_events', 'social_observations', 'official'],
+    areas: ['tourism', 'health', 'calendar', 'holidays', 'humanitarian', 'media_activity', 'current_events', 'social_observations', 'official'],
     eventTypes: ['disaster_response', 'violence', 'threat', 'protest', 'demonstration', 'strike', 'celebration', 'cultural_event', 'memorial_event'],
   },
 };
