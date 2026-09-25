@@ -5,7 +5,7 @@ import { EvidenceDetailSchema } from './detail.js';
 
 export const COUNTRY_INTEL_TOPICS = [
   'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',
-  'political_violence', 'economy', 'trade', 'business', 'disasters', 'health',
+  'political_violence', 'economy', 'trade', 'business', 'tourism', 'travel', 'disasters', 'health',
   'humanitarian', 'social_issues', 'public_opinion', 'calendar', 'holidays',
   'commemorations', 'foreign_relations', 'japan_related_events', 'media_activity',
   'social_observations',
@@ -746,7 +746,7 @@ export interface CountryContextReport {
   providerCoverage: ProviderRun[];
   coverage: CoverageReport;
   evidence: CountryEvidence[];
-  /** 初回応答に同梱する詳細。keyEvents・factors・metrics・calendar の参照先を含む。 */
+  /** 初回応答に同梱する主要詳細。残りは contextId を使って evidence page から取得する。 */
   evidenceDetails?: EvidenceDetail[];
   /** 本文補完の結果。 */
   enrichment?: {

@@ -67,6 +67,13 @@ export function articleBlocks(markdown: string, maxChars = 12000): { blocks: { i
   }
   return { blocks, truncated: false };
 }
+
+/** アクセス遮断ページやメタデータだけのページを記事本文として採用しない。 */
+export function isUsefulArticleText(markdown: string): boolean {
+  const body = markdown.trim().replace(/^---\s*\n[\s\S]*?\n---\s*/u, '').trim();
+  if (!body) return false;
+  return !/^(?:#{1,6}\s*)?(?:why have i been blocked\?|access denied|attention required!?|403 forbidden|verify you are human|just a moment\b)/iu.test(body);
+}
 export function createOfficialWebProvider(deps: OfficialWebDeps): CountryIntelProvider {
   const searchWeb = deps.searchWeb ?? deps.searchYahooWeb ?? (async () => []);
   const scrape = deps.scrapeArticle ?? deps.scrapeUrl;
@@ -106,7 +113,7 @@ async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: strin
         const signal = parent.aborted ? parent : AbortSignal.any([parent, timeout]);
         const scraped = await scrape(url, signal);
         const markdown = scraped.markdown ?? scraped.content;
-        if (!markdown || parent.aborted) continue;
+        if (!markdown || !isUsefulArticleText(markdown) || parent.aborted) continue;
         const split = articleBlocks(markdown);
         if (split.blocks.length === 0) continue;
         item.detail = { ...item.detail!, contentKind: 'extracted_text', blocks: split.blocks, contentTruncated: split.truncated };

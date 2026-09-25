@@ -42,7 +42,10 @@ export function classifyRegionLink(
 
 /** 言及針。ICUの地域表示名で多言語化する汎用機構で、個別国の表記ハードコードはしない。 */
 export function regionMentionNeedles(region: RegionIdentity, extraLocales: readonly string[] = []): string[] {
-  const locales = [...new Set([...(region.languages ?? []), ...extraLocales, 'en'])];
+  let inferredLanguage: string | undefined;
+  try { if (region.countryCode) inferredLanguage = new Intl.Locale('und-' + region.countryCode).maximize().language; }
+  catch { /* ICU欠落時は既存言語へ戻す */ }
+  const locales = [...new Set([...(region.languages ?? []), ...extraLocales, inferredLanguage, 'en'].filter((value): value is string => Boolean(value)))];
   const needles = new Set<string>();
   for (const value of [region.name, region.nativeName, ...(region.aliases ?? [])]) {
     if (value && value.trim().length > 1) needles.add(value.normalize('NFKC'));
@@ -61,6 +64,12 @@ export function regionMentionNeedles(region: RegionIdentity, extraLocales: reado
 /** 本文・見出しの地域言及。ラテン文字は大小無視、CJKは部分一致。 */
 export function textMentionsRegion(text: string | undefined, region: RegionIdentity, extraLocales: readonly string[] = []): boolean {
   if (!text) return false;
+  // ISO 2文字の大文字表記と U.S. のような点付き表記。小文字の通常語は一致させない。
+  if (region.countryCode && /^[A-Z]{2}$/.test(region.countryCode)) {
+    const [first, second] = region.countryCode;
+    const code = new RegExp(`(?<![\\p{L}\\p{N}])${first}\\.?${second}\\.?(?![\\p{L}\\p{N}])`, 'u');
+    if (code.test(text)) return true;
+  }
   const normalized = text.normalize('NFKC');
   const lowered = normalized.toLocaleLowerCase('en-US');
   return regionMentionNeedles(region, extraLocales).some((needle) => {

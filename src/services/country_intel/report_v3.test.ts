@@ -6,7 +6,7 @@ import { closeDb } from '../../db.js';
 import { getCountryContext } from './db.js';
 import { normalizeEvidence } from './evidence.js';
 import { ProviderLocalError, type CountryIntelProvider } from './provider_registry.js';
-import { researchCountryContext } from './report.js';
+import { enrichDetailsWithArticles, researchCountryContext } from './report.js';
 import { parseGdeltExport, unzipGdeltExport } from './providers/gdelt_files.js';
 import { createGdacsProvider } from './providers/gdacs.js';
 import type { RegionIdentity } from './types.js';
@@ -15,6 +15,67 @@ let directory: string;
 let previousPath: string | undefined;
 const now = () => new Date('2026-09-22T00:00:00Z');
 const china: RegionIdentity = { id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [], confidence: 'high' };
+
+test('article enrichment skips Google News wrapper pages and spends its budget on direct articles', async () => {
+  const detail = (id: string, url: string) => ({
+    evidenceId: id, providerId: id, providerItemId: id, sourceRecordUrl: url,
+    contentKind: 'title_only' as const, blocks: [], retrievedAt: now().toISOString(),
+    timeBasis: 'provider_publication', geographyBasis: 'unknown',
+    sourceStatus: 'unverified' as const, contentTruncated: false,
+  });
+  const calls: string[] = [];
+  const google = 'https://news.google.com/rss/articles/abc';
+  const direct = 'https://example.org/article';
+  const result = await enrichDetailsWithArticles(
+    [detail('google', google), detail('direct', direct)],
+    new Map([['google', 'related' as const], ['direct', 'related' as const]]),
+    async (url) => { calls.push(url); return { content: 'Article body from publisher' }; },
+    { maxItems: 1 }, () => 10_000,
+  );
+  expect(calls).toEqual([direct]);
+  expect(result.details.find((item) => item.evidenceId === 'direct')?.contentKind).toBe('extracted_text');
+  expect(result.details.find((item) => item.evidenceId === 'google')?.contentKind).toBe('title_only');
+});
+
+test('article enrichment leaves an access-block page as title-only evidence', async () => {
+  const url = 'https://publisher.example/story';
+  const detail = {
+    evidenceId: 'blocked', providerId: 'official_web', providerItemId: 'blocked', sourceRecordUrl: url,
+    contentKind: 'title_only' as const, blocks: [], retrievedAt: now().toISOString(),
+    timeBasis: 'provider_publication', geographyBasis: 'unknown',
+    sourceStatus: 'unverified' as const, contentTruncated: false,
+  };
+  const result = await enrichDetailsWithArticles(
+    [detail], new Map([['blocked', 'related' as const]]),
+    async () => ({ content: '## Why have I been blocked? This website is using a security service to protect itself from online attacks.' }),
+    {}, () => 10_000,
+  );
+  expect(result.details[0].contentKind).toBe('title_only');
+  expect(result.outcome.failed).toBe(1);
+});
+
+test('report exposes a provider subject gap even when other subjects succeeded', async () => {
+  const provider: CountryIntelProvider = {
+    id: 'subjects', areas: ['economy', 'health'], latencyClass: 'near_realtime', defaultTtlSeconds: 60,
+    async run() { return { items: [], coverage: ['economy'], gaps: [{ area: 'health', reason: 'no_recent_items' }] }; },
+  };
+  const report = await researchCountryContext({ region: 'China' }, { providers: [provider], now, cache: null });
+  expect(report.limitations?.some((item) => item.code === 'provider_coverage_gap' && item.area === 'health')).toBe(true);
+  expect(report.providerCoverage[0].gaps).toEqual([{ area: 'health', reason: 'no_recent_items' }]);
+});
+
+test('region-inapplicable providers are by-design skips, not failures', async () => {
+  const cnOnly: CountryIntelProvider = {
+    id: 'cn_only', areas: ['media_activity'], regions: ['CN'],
+    latencyClass: 'near_realtime', defaultTtlSeconds: 60,
+    async run() { return { items: [] }; },
+  };
+  const report = await researchCountryContext({ region: 'Japan' }, { providers: [cnOnly], now, cache: null });
+  const skip = report.limitations?.find((item) => item.providerId === 'cn_only');
+  expect(skip?.code).toBe('provider_region_unsupported');
+  expect(report.limitations?.some((item) => item.providerId === 'cn_only' && item.code === 'provider_unavailable')).toBe(false);
+  expect(report.providerCoverage.some((run) => run.provider === 'cn_only')).toBe(true);
+});
 
 beforeEach(() => {
   closeDb();
@@ -339,6 +400,26 @@ describe('v3 coverage and contract', () => {
     expect(report.coverage.byArea.economy).toBe('good');
     expect(report.actualWindows?.[0]?.gaps.some((gap) => gap.reason.includes('feed-like:partial_window'))).toBe(true);
     expect(report.limitations?.some((info) => info.code === 'social_not_requested')).toBe(true);
+  });
+
+  test('yahoo_realtime success carries a Japanese-only language scope', async () => {
+    const { createYahooRealtimeProvider } = await import('./providers/yahoo_realtime_jp.js');
+    const stub = () => createYahooRealtimeProvider({
+      searchYahooRealtime: async () => [{ url: 'https://example.org/post/1', text: '台風の投稿', postedAt: '2026-09-22T00:00:00Z', user: 'tester' }],
+    });
+    const social = await researchCountryContext({ region: 'Japan', includeSocial: true }, {
+      providers: [stub()],
+      now, cache: null,
+    });
+    const scope = social.limitations?.find((info) => info.code === 'language_scope_ja');
+    expect(scope?.providerId).toBe('yahoo_realtime');
+    expect(scope?.area).toBe('social');
+    const silent = await researchCountryContext({ region: 'Japan' }, {
+      providers: [stub()],
+      now, cache: null,
+    });
+    expect(silent.limitations?.some((info) => info.code === 'language_scope_ja')).toBe(false);
+    expect(silent.limitations?.some((info) => info.code === 'social_not_requested')).toBe(true);
   });
 
   test('v3 round-trips through storage and v2 shapes still read back', async () => {

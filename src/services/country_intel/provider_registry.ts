@@ -126,6 +126,8 @@ const persistentCache: ProviderCache = {
   get: (key) => dbGetCache<ProviderResult>(key),
   set: (key, value, ttlSeconds) => dbSetCache(key, value, ttlSeconds),
 };
+/** 既定実行口の共有キャッシュ。明示の null 指定は無効化として維持する。 */
+export const defaultProviderCache: ProviderCache = persistentCache;
 
 export function providerCacheKey(providerId: string, plan: ResearchPlan): string {
   const topics = [...(plan.request.topics ?? [])].sort();
