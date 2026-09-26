@@ -459,30 +459,38 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
   return dbGetTenantCookies('legacy', domain);
 }
 
-export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {
+export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default'): void {
   try {
     const db = getDb();
     db.query(`
-      INSERT INTO domain_storage (domain, storage_json, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(domain) DO UPDATE SET
+      INSERT INTO domain_storage_v2 (tenant_id, domain, scope, storage_json, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
         storage_json = excluded.storage_json,
         updated_at = excluded.updated_at
-    `).run(domain, JSON.stringify(storage), Date.now());
+    `).run(tenantId, domain, scope, JSON.stringify(storage), Date.now());
   } catch {}
 }
 
-export function dbGetDomainStorage(domain: string): Record<string, string> | undefined {
+export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {
+  dbSaveTenantStorage('legacy', domain, storage);
+}
+
+export function dbGetTenantStorage(tenantId: string, domain: string, scope = 'default'): Record<string, string> | undefined {
   try {
     const db = getDb();
-    const row = db.query<{ storage_json: string }, [string]>(
-      'SELECT storage_json FROM domain_storage WHERE domain = ?',
-    ).get(domain);
+    const row = db.query<{ storage_json: string }, [string, string, string]>(
+      'SELECT storage_json FROM domain_storage_v2 WHERE tenant_id = ? AND domain = ? AND scope = ?',
+    ).get(tenantId, domain, scope);
     if (!row) return undefined;
     return JSON.parse(row.storage_json);
   } catch {
     return undefined;
   }
+}
+
+export function dbGetDomainStorage(domain: string): Record<string, string> | undefined {
+  return dbGetTenantStorage('legacy', domain);
 }
 
 /** サーバー終了時の SQLite データベース安全クローズ */
