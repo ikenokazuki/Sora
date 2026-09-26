@@ -1,0 +1,28 @@
+# Retrieval v2 / Security rollout
+
+## Rollback flags (default: v2 behavior)
+
+| Flag | Default | Legacy when `false` |
+|---|---|---|
+| `SORA_WEB_NATIVE_RANKING` | true | Single-SERP BM25 global reorder (providerRank still recorded for shadow compare) |
+| `SORA_RRF_ENABLED` | true | First-wins dedup without RRF ordering |
+| `SORA_WEB_QUERY_UNION` | false (opt-in) | Sequential first-nonempty fallback |
+| `SORA_X_SOURCE_ISOLATION` | false (opt-in) | Direct discovery text |
+| `SORA_ALLOW_ANONYMOUS` | false (closed) | Anonymous requests rejected on keyed deployments |
+| `TRUST_PROXY` | unset | X-Forwarded-For ignored for local checks |
+
+Adaptive scrape and PRF retrieval are per-request options
+(`adaptiveScrape`, `scrapeBudget`, `enablePrf`), default off.
+
+## Suggested stages
+
+1. Ship with flags at defaults; watch `sora_*` counters and latency.
+2. Compare shadow fields (`providerRank` vs reranked order) on live traffic.
+3. Expand the golden set (`eval/search_retrieval_cases.json`) toward 100 with human labels.
+4. Flip adaptive/PRF defaults only after A/B evidence (arms A-E in `scripts/eval-search-retrieval.ts`).
+
+## Open decisions
+
+- MCP tenant scoping relies on Authorization/X-API-Key; unauthenticated use shares `legacy` scope.
+- `tsc --noEmit` is CI-gated; no startup auth throw (per-request fail-closed instead).
+- Weak-evidence cases (`event-timetable-01/03`) correctly report missing evidence instead of fabricating it.
