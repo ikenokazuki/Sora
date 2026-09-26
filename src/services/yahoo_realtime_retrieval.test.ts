@@ -199,6 +199,31 @@ describe('Realtime Retrieval v1', () => {
     } as any);
     expect(res2.intent).toBe('mixed');
   });
+  test('Test10c3: provenance survives re-normalize and enrich chain', async () => {
+    const { normalizeRealtimeItem, mergeRealtimeQueryBatches, mergeRealtimeItemsWithDedup } = await import('./yahoo.js');
+    const { enrichRealtimeItemsWithXDetail } = await import('./x_detail.js');
+    const raw = [{ id: '42', author_handle: 'tester_JPN', text: 'short post', url: 'https://x.com/tester_JPN/status/42', created_at: 1758000000 }];
+    const merged = mergeRealtimeQueryBatches([{ query: 'q', queryIndex: 0, wave: 2, sort: 'recent', items: raw }] as any);
+    expect(merged.items[0].providerRank).toBe(1);
+    // scraper-side re-normalize (publicMapped) must not drop provenance
+    const renormalized = merged.items.map((it: any) => normalizeRealtimeItem(it));
+    expect(renormalized[0].providerRank).toBe(1);
+    expect(renormalized[0].retrievalWave).toBe(2);
+    const hybrid = mergeRealtimeItemsWithDedup([], renormalized);
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(hybrid, 'q', { fetchStatus: async () => null } as any, { verbose: true });
+    expect(enriched[0].providerRank).toBe(1);
+    expect(enriched[0].retrievalQuery).toBe('q');
+    expect(enriched[0].rrfScore).toBeDefined();
+  });
+  test('Test10c2: normalize preserves upstream provenance', async () => {
+    const { normalizeRealtimeItem } = await import('./yahoo.js');
+    const out: any = normalizeRealtimeItem({ id: '1', text: 'hi', url: 'https://x.com/a/status/1', providerRank: 2, retrievalQuery: 'q', retrievalQueryIndex: 1, retrievalWave: 2, rrfScore: 0.01 });
+    expect(out.providerRank).toBe(2);
+    expect(out.retrievalQuery).toBe('q');
+    expect(out.retrievalWave).toBe(2);
+    expect(out.rrfScore).toBe(0.01);
+    expect(out.text).toBe('hi');
+  });
   test('Test10b: multi-wave duplicates accumulate providerRanks and rrfScore', async () => {
     const { mergeRealtimeQueryBatches } = await import('./yahoo.js');
     const a = post('111', 'SPARK 辞退');
