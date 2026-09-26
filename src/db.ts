@@ -174,17 +174,19 @@ export function closeDb(): void {
 // 永続キャッシュ DAO
 // ==========================================
 
-export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number } | undefined {
+export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number; createdAt: number } | undefined {
   try {
     const db = getDb();
-    const row = db.query<{ value: string; expires_at: number }, [string, number]>(
-      'SELECT value, expires_at FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
+    const row = db.query<{ value: string; expires_at: number; created_at: number }, [string, number]>(
+      'SELECT value, expires_at, created_at FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
     ).get(key, Date.now());
 
     if (!row) return undefined;
     return {
       value: JSON.parse(row.value) as T,
       expiresAt: row.expires_at,
+      // created_at が無い古い行へのフォールバックは呼出側で行う
+      createdAt: row.created_at,
     };
   } catch {
     return undefined;
