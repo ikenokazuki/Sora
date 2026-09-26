@@ -1811,6 +1811,14 @@ export async function integratedSearch(options: {
       }
     } catch { }
 
+    // Attempt order index for observability (RFC schema). Main wave keeps
+    // pool order; refill and adaptive pushes append in attempt order.
+    enrichedResults.forEach((it: any, scrapeAttemptIndex: number) => {
+      if (it && typeof it === 'object' && it.scrapeAttemptIndex === undefined) {
+        it.scrapeAttemptIndex = scrapeAttemptIndex;
+      }
+    });
+
     // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
     if (enrichedResults.length > 1) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);

@@ -1049,6 +1049,7 @@ async function fetchRealtimeBatch(
     const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
   } catch {
+    try { incrementSecurityCounter('sora_x_provider_error_total'); } catch {}
     return { query, queryIndex, wave, sort, items: [] };
   }
 }
@@ -1115,6 +1116,11 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     exactVariants: string[],
   ) => {
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
+    try {
+      incrementSecurityCounter('sora_x_stop_total');
+      if (stopReason === 'query_budget') incrementSecurityCounter('sora_x_query_budget_stop_total');
+      if (stopReason === 'full_coverage') incrementSecurityCounter('sora_x_full_coverage_stop_total');
+    } catch {}
     try { incrementSecurityCounter('sora_x_wave_total', Math.max(1, executedWaves)); } catch {}
     const retrievalQueries = batches.map((b) => b.query);
     const resultsMerged = contributingQueries.length >= 2;
