@@ -4,7 +4,6 @@ import { DEFAULT_MAX_CHARS } from './types.js';
 import {
   browserSemaphore,
   getBrowser,
-  getChromiumMajorVersion,
   pruneInvisibleElements,
   recordBrowserUsage,
   resolveChromiumPath,
@@ -16,7 +15,7 @@ import {
   dbSaveDomainCookies,
   dbSaveDomainStorage,
 } from './db.js';
-import { ACCEPT_LANGUAGE, groupCookiesByDomain, throttleDomain } from './http_fetcher.js';
+import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
 
@@ -25,20 +24,31 @@ export const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 export function getFallbackUserAgent(): string {
-  const major = getChromiumMajorVersion();
-  if (!major) return USER_AGENT;
-  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+  const major = getAlignedChromeMajorVersion();
+  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + major + '.0.0.0 Safari/537.36';
+}
+
+/**
+ * 両経路で名乗る Chrome メジャーバージョン。
+ * 静的fetchは wreq-js のプロファイル上限に張り付くため、
+ * ブラウザ側も同じ値に揃えないと同一 Cookie で別バージョンを名乗る。
+ */
+export function getAlignedChromeMajorVersion(): string {
+  const m = pickBrowserProfile().match(/chrome_(\d+)/);
+  return m ? m[1] : '128';
 }
 
 export function buildUserAgentFromDefault(defaultUa: string): string {
   const match = defaultUa.match(/(?:Headless)?Chrome\/(\d+\.\d+\.\d+\.\d+)/);
-  const version = match ? match[1] : '128.0.0.0';
-  return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
+  const alignedMajor = getAlignedChromeMajorVersion();
+  const version = match ? match[1].replace(/^\d+/, alignedMajor) : alignedMajor + '.0.0.0';
+  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + version + ' Safari/537.36';
 }
 
 export function buildUserAgentMetadata(defaultUa: string): Protocol.Emulation.UserAgentMetadata {
   const match = defaultUa.match(/(?:Headless)?Chrome\/(\d+\.\d+\.\d+\.\d+)/);
-  const fullVersion = match ? match[1] : '128.0.0.0';
+  const alignedMajor = getAlignedChromeMajorVersion();
+  const fullVersion = match ? match[1].replace(/^\d+/, alignedMajor) : alignedMajor + '.0.0.0';
   const majorVersion = fullVersion.split('.')[0];
   return {
     brands: [
