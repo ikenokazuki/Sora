@@ -33,7 +33,8 @@ scrapeRoutes.post('/scrape', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const result = await scrapeUrl(parsed.data);
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const result = await scrapeUrl({ ...parsed.data, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err: any) {
     const msg = err.message || 'Scrape failed';
@@ -65,6 +66,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     try {
       await scrapeUrl({
         ...parsed.data,
+        tenantId: (c as any).get?.('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',

@@ -120,6 +120,7 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     url: options.url,
     sessionId: options.sessionId,
     ownerToken: options.ownerToken,
+    tenantId: (options as any).tenantId,
     createSession: options.createSession,
     closeSession: options.closeSession,
     actions: options.actions,
@@ -449,6 +450,7 @@ export async function scrapeUrl(options: {
   retryDelayMs?: number;
   noCache?: boolean;
   timeoutMs?: number;
+  tenantId?: string;
   verbose?: boolean;
   keepDataImages?: boolean;
   contextTitle?: string;
@@ -564,6 +566,8 @@ export async function scrapeUrl(options: {
             5,
             options.headers,
             options.cookies,
+            undefined,
+            options.tenantId ?? 'legacy',
           );
 
           const contentType = (response.headers.get('Content-Type') || '').toLowerCase();

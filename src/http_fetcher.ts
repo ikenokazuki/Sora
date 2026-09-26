@@ -278,6 +278,7 @@ export async function fetchWithSafeRedirects(
   customHeaders?: Record<string, string>,
   customCookies?: CookieParam[],
   proxyUrl?: string,
+  tenantId = 'legacy',
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
   let redirects = 0;
@@ -289,7 +290,7 @@ export async function fetchWithSafeRedirects(
   const initialDomain = new URL(initialUrl).hostname;
   const effectiveProxyUrl = proxyUrl ?? pickProxyUrl();
   const browser = pickBrowserProfile();
-  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl);
+  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId);
 
   while (redirects <= maxRedirects) {
     let parsed: URL;
