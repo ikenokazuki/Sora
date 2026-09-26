@@ -29,7 +29,10 @@ jobs:
           src/scraper_selector.test.ts src/search_diagnostics.test.ts
           src/extractor/information_retrieval.test.ts src/security/credential_scope.test.ts
           src/security/scrape_cache_isolation.test.ts src/net/safe_transport.test.ts
-          src/http_fetcher_redirect.test.ts --timeout 60000
+          src/http_fetcher_redirect.test.ts src/auth.test.ts
+          src/security/tenant_context.test.ts src/security/tenant_isolation.test.ts
+          src/browser_session_access.test.ts src/retrieval/rrf.test.ts
+          src/retrieval/requirements.test.ts --timeout 60000
   build-and-push:
     needs: [test]
     runs-on: ubuntu-latest

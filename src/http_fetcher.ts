@@ -1,7 +1,7 @@
 import { URL } from 'url';
 import type { CookieParam } from 'puppeteer-core';
 import type { PersistedCookie } from './db.js';
-import { dbGetDomainCookies, dbSaveDomainCookies } from './db.js';
+import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
 import { incrementSecurityCounter } from './security/metrics.js';
@@ -107,8 +107,14 @@ const MAX_HTTP_SESSIONS = 50; // 同時保持上限
 interface PooledHttpSession {
   session: UniversalHttpSession;
   domain: string;
+  tenantId: string;
   lastUsed: number;
   timer: ReturnType<typeof setTimeout>;
+}
+
+/** Tenant-scoped session key (RFC P1-SEC-02). Default tenant preserves single-user behavior. */
+export function sessionKey(tenantId: string, hostname: string): string {
+  return `${tenantId || 'legacy'}:${hostname.toLowerCase()}`;
 }
 
 class NativeFetchSession implements UniversalHttpSession {
@@ -159,34 +165,30 @@ function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
   clearTimeout(pooled.timer);
   pooled.lastUsed = Date.now();
   pooled.timer = setTimeout(() => {
-    void closeHttpSession(pooled.domain);
+    void closeHttpSession(pooled.domain, pooled.tenantId);
   }, HTTP_SESSION_TTL_MS);
   if (pooled.timer.unref) pooled.timer.unref();
 }
 
 async function evictOldestHttpSessionIfNeeded(): Promise<void> {
   if (httpSessionPool.size < MAX_HTTP_SESSIONS) return;
-  let oldestDomain: string | null = null;
-  let oldestTime = Infinity;
-  for (const [domain, p] of httpSessionPool.entries()) {
-    if (p.lastUsed < oldestTime) {
-      oldestTime = p.lastUsed;
-      oldestDomain = domain;
-    }
+  let oldest: PooledHttpSession | null = null;
+  for (const p of httpSessionPool.values()) {
+    if (!oldest || p.lastUsed < oldest.lastUsed) oldest = p;
   }
-  if (oldestDomain) await closeHttpSession(oldestDomain);
+  if (oldest) await closeHttpSession(oldest.domain, oldest.tenantId);
 }
 
 /** セッションをクローズし、Cookieを永続化してからプールから除去する */
-export async function closeHttpSession(domain: string): Promise<void> {
-  const pooled = httpSessionPool.get(domain);
+export async function closeHttpSession(domain: string, tenantId = 'legacy'): Promise<void> {
+  const pooled = httpSessionPool.get(sessionKey(tenantId, domain));
   if (!pooled) return;
   clearTimeout(pooled.timer);
-  httpSessionPool.delete(domain);
+  httpSessionPool.delete(sessionKey(tenantId, domain));
   try {
     const allCookies = pooled.session.getAllCookies();
     if (allCookies.length > 0) {
-      dbSaveDomainCookies(domain, allCookies as PersistedCookie[]);
+      dbSaveTenantCookies(pooled.tenantId, domain, allCookies as PersistedCookie[]);
     }
   } catch {}
   try {
@@ -199,8 +201,10 @@ export async function getOrCreateHttpSession(
   domain: string,
   browser: BrowserProfile,
   proxyUrl?: string,
+  tenantId = 'legacy',
 ): Promise<UniversalHttpSession> {
-  const existing = httpSessionPool.get(domain);
+  const key = sessionKey(tenantId, domain);
+  const existing = httpSessionPool.get(key);
   if (existing) {
     refreshHttpSessionTimer(existing);
     return existing.session;
@@ -221,7 +225,7 @@ export async function getOrCreateHttpSession(
     session = new NativeFetchSession();
   }
 
-  const savedCookies = dbGetDomainCookies(domain);
+  const savedCookies = dbGetTenantCookies(tenantId, domain);
   if (savedCookies && savedCookies.length > 0) {
     for (const c of savedCookies) {
       try {
@@ -230,9 +234,9 @@ export async function getOrCreateHttpSession(
     }
   }
 
-  const pooled: PooledHttpSession = { session, domain, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
+  const pooled: PooledHttpSession = { session, domain, tenantId, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
   clearTimeout(pooled.timer);
-  httpSessionPool.set(domain, pooled);
+  httpSessionPool.set(key, pooled);
   refreshHttpSessionTimer(pooled);
   return session;
 }
