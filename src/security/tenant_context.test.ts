@@ -10,6 +10,9 @@ describe('tenant_context (P1-SEC-01)', () => {
     expect(a.authMode).toBe('api_key');
     expect(tenantIdForApiKey('secret-2')).not.toBe(a.tenantId);
   });
+  test('anonymous shares legacy scope for single-user compat', () => {
+    expect(resolveTenantContext({}).tenantId).toBe(LEGACY_TENANT_ID);
+  });
   test('anonymous and internal modes', () => {
     expect(resolveTenantContext({}).authMode).toBe('anonymous');
     expect(resolveTenantContext({ internal: true }).tenantId).toBe('internal');

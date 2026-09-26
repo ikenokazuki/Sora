@@ -65,6 +65,16 @@ export function resolvePeerLocal(c: any): boolean {
   return isLoopbackAddress(peer);
 }
 
+let warnedNoKeyMode = false;
+/** One-time dev-mode notice: anonymous access without a configured key. */
+export function warnOnceNoKey(): void {
+  if (warnedNoKeyMode) return;
+  warnedNoKeyMode = true;
+  try {
+    console.warn('[Sora] No API key configured: anonymous access is open (set WEB_FETCHER_API_KEY, or SORA_ALLOW_ANONYMOUS=true to silence).');
+  } catch {}
+}
+
 export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler {
   return async (c, next) => {
     // 1. 公開エンドポイント（ヘルスチェック、ルート、メトリクス、ドキュメント）は認証不要
@@ -85,6 +95,7 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
     // 2. API キーが環境変数等で設定されていない場合の挙動
     const apiKey = expectedApiKey ?? process.env.WEB_FETCHER_API_KEY ?? process.env.API_KEY;
     if (!apiKey) {
+      if (process.env.SORA_ALLOW_ANONYMOUS !== 'true') warnOnceNoKey();
       if (process.env.NODE_ENV === 'production') {
         return c.json(
           {
