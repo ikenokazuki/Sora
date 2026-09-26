@@ -184,3 +184,65 @@ export function structuralMultiplier(blockText: string, facetTerm: string): numb
   }
   return best;
 }
+export function detectCurrentIntent(query: string): boolean {
+  if (!query || typeof query !== 'string') return false;
+  return /最新|現在|現行|今年|直近|今現在/.test(query);
+}
+const OLD_MARKERS = ['旧', '以前', '過去'];
+const CURRENT_MARKERS = ['現行', '現在', '最新', '今年', '直近'];
+function sentenceYears(sentence: string): number[] {
+  const out: number[] = [];
+  const re = /(\d{4})\s*年|((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})/g;
+  let m: RegExpExecArray | null;
+  try {
+    while ((m = re.exec(sentence)) !== null) {
+      const y = parseInt(m[1] || m[2], 10);
+      if (Number.isFinite(y) && y >= 1900 && y <= 2100) out.push(y);
+    }
+  } catch {}
+  return out;
+}
+export function temporalMultiplier(sentences: string[], facetTerm: string, currentIntent: boolean): number {
+  if (!currentIntent) return 1.0;
+  const facet = (facetTerm || '').toLowerCase();
+  if (!facet || !sentences) return 1.0;
+  const thisYear = new Date().getFullYear();
+  let bestBoost = 1.0;
+  let worstPenalty = 1.0;
+  let seen = false;
+  for (const raw of sentences) {
+    const s = (raw || '').toLowerCase();
+    if (s.indexOf(facet) < 0) continue;
+    seen = true;
+    let m = 1.0;
+    let hasOld = false;
+    for (const marker of OLD_MARKERS) {
+      if (s.indexOf(marker) >= 0) { hasOld = true; break; }
+    }
+    if (hasOld) {
+      m = 0.7;
+    } else {
+      const years = sentenceYears(raw);
+      let hasOldYear = false;
+      let hasCurrentYear = false;
+      for (const y of years) {
+        if (y < thisYear) hasOldYear = true;
+        if (y >= thisYear) hasCurrentYear = true;
+      }
+      if (hasOldYear && !hasCurrentYear) {
+        m = 0.75;
+      } else {
+        let hasCurrent = false;
+        for (const marker of CURRENT_MARKERS) {
+          if (s.indexOf(marker) >= 0) { hasCurrent = true; break; }
+        }
+        if (hasCurrent || hasCurrentYear) m = 1.2;
+      }
+    }
+    if (m > bestBoost) bestBoost = m;
+    if (m < worstPenalty) worstPenalty = m;
+  }
+  if (!seen) return 1.0;
+  if (bestBoost > 1.0) return bestBoost;
+  return worstPenalty;
+}
