@@ -12,7 +12,11 @@ export interface TenantContext {
 }
 
 export const LEGACY_TENANT_ID = 'legacy';
-export const ANONYMOUS_TENANT_ID = 'anonymous';
+
+// Anonymous requests share the legacy scope: per-user isolation is
+// impossible without identity, and this preserves single-user behavior
+// (pre-migration persisted state stays visible). authMode still
+// distinguishes anonymous from keyed/internal callers.
 
 export function tenantIdForApiKey(key: string): string {
   return 'key:' + createHash('sha256').update(key).digest('hex').slice(0, 16);
@@ -38,7 +42,7 @@ export function resolveTenantContext(options: {
     };
   }
   return {
-    tenantId: ANONYMOUS_TENANT_ID,
+    tenantId: LEGACY_TENANT_ID,
     requestId: options.requestId ?? randomUUID(),
     authMode: 'anonymous',
   };
