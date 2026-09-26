@@ -468,6 +468,7 @@ export async function searchYahooWeb(options: {
                   options.excludeDomains,
                 );
                 if (merged.length > 0) {
+                  try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
                   return {
                     items: merged,
                     count: merged.length,
@@ -1043,12 +1044,12 @@ async function fetchRealtimeBatch(
       ...(page ? { page } : {}),
     });
     const content = mcpRes?.content?.[0]?.text || '';
-    if (!content) return { query, queryIndex, items: [] };
+    if (!content) return { query, queryIndex, wave, sort, items: [] };
     const parsed = JSON.parse(content);
     const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
   } catch {
-    return { query, queryIndex, items: [] };
+    return { query, queryIndex, wave, sort, items: [] };
   }
 }
 
