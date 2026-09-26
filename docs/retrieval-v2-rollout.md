@@ -31,6 +31,18 @@ Adaptive scrape and PRF retrieval are per-request options
 - Adaptive confidence stayed quiet on all healthy first pages,
   so the extra query fires only on weak retrieval.
 
+## Upstream rate discipline (2026-09-27 observation)
+
+- Bulk live evaluation (12 sequential queries plus earlier probes)
+  tripped Yahoo upstream HTTP 429 for this IP; single queries had
+  succeeded minutes earlier at ~500ms with 8-10 results.
+- Raw MCP payload in that state is a 127-char 429 notice, parsed as
+  zero items. Empty results under throttle correctly read as weak
+  retrieval (adaptive would fire), not as "no evidence".
+- Consequences kept: no always-on query union, single adaptive
+  rescue at most, PRF retrieval opt-in, per-request budgets.
+- Live eval runs must be spaced out; do not re-probe while throttled.
+
 ## Open decisions
 
 - MCP tenant scoping relies on Authorization/X-API-Key; unauthenticated use shares `legacy` scope.
