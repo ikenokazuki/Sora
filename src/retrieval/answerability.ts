@@ -246,3 +246,50 @@ export function temporalMultiplier(sentences: string[], facetTerm: string, curre
   if (bestBoost > 1.0) return bestBoost;
   return worstPenalty;
 }
+export interface EvidenceCoverage {
+  mentionCoverage: number;
+  answerCoverage: number;
+  coveredRequirements: string[];
+  answeredRequirements: string[];
+  missingRequirements: string[];
+}
+export function computeEvidenceCoverage(
+  blockTexts: string[],
+  entityTerms: string[],
+  requirements: string[],
+): EvidenceCoverage {
+  const empty: EvidenceCoverage = {
+    mentionCoverage: 0,
+    answerCoverage: 0,
+    coveredRequirements: [],
+    answeredRequirements: [],
+    missingRequirements: [],
+  };
+  if (!requirements || requirements.length === 0) return empty;
+  const blocks = (blockTexts || []).map((t) => splitSentences(t || ''));
+  let mentioned = 0;
+  let answered = 0;
+  for (const req of requirements) {
+    let reqMentioned = false;
+    let reqAnswered = false;
+    for (const sentences of blocks) {
+      const ev = analyzeFacetEvidence(sentences, entityTerms || [], req);
+      if (ev.mentioned) reqMentioned = true;
+      if (ev.answered) reqAnswered = true;
+      if (reqMentioned && reqAnswered) break;
+    }
+    if (reqMentioned) {
+      mentioned += 1;
+      empty.coveredRequirements.push(req);
+    }
+    if (reqAnswered) {
+      answered += 1;
+      empty.answeredRequirements.push(req);
+    } else {
+      empty.missingRequirements.push(req);
+    }
+  }
+  empty.mentionCoverage = mentioned / requirements.length;
+  empty.answerCoverage = answered / requirements.length;
+  return empty;
+}
