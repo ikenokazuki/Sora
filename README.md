@@ -267,10 +267,11 @@ GitHub Container Registry (GHCR) から 1 コマンドで即座に起動でき�
 docker run -d \
   --name sora \
   -p 3016:8000 \
-  -e API_KEY="your-secret-api-key" \
   -e ENABLED_MODULES="all" \
   ghcr.io/ikenokazuki/sora:latest
 ```
+
+APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
 
 ### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
 
@@ -558,7 +559,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 ```
 
 #### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
-SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。異常検知時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へ自動アラート通知を行います。
+SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
 ```json
 {
   "status": "ok",
@@ -1774,7 +1775,7 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
-  - いずれかの依存関係で障害検知時、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ自動で障害通知 Webhook を発火。
+  - SQLite 障害で degraded 判定時に、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
 - **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
   - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
 - **📐 共通 Zod スキーマ & OpenAPI 3.0 完全自動生成**:
@@ -1808,7 +1809,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `MAX_CONCURRENT_BROWSERS` | `5` | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数 |
 | `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
 | `ALLOW_BROWSER_EVALUATE` | `true` | `false` 指定時に `/browser/action` での `evaluate`（任意JS実行）を完全遮断・ロックダウン |
-| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `/health?detailed=true` での外部依存障害検知時に送信する管理者アラート Webhook URL |
+| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
 | `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます） |
 | `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |

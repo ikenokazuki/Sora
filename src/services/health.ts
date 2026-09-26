@@ -88,7 +88,7 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
   const isDegraded = sqliteStatus.status === 'error';
 
-  return {
+  const report: DetailedHealthReport = {
     status: isDegraded ? 'degraded' : 'ok',
     service: 'sora',
     version: SORA_VERSION,
@@ -105,6 +105,14 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
     },
     timestamp: new Date().toISOString(),
   };
+
+  // 管理者アラートは degraded（SQLite 障害）の場合のみ送信する。
+  // 外部依存の瞬断では毎回発火させない。
+  if (isDegraded) {
+    sendAdminAlert('health.degraded', { sqlite: sqliteStatus.message ?? 'unknown' });
+  }
+
+  return report;
 }
 
 /** 管理者アラート通知 (Slack / Discord Webhook) */
