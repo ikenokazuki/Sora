@@ -890,10 +890,15 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.item);
 }
-export function reciprocalRankFusion(docRanks: Array<{ key: string; rank: number }>, k = 60): number {
+export function reciprocalRankFusion(docRanks: Array<{ key: string; rank: number }>, k = 60, weightOf?: (key: string) => number): number {
   let s = 0;
   for (const r of docRanks) {
-    s += 1 / (k + r.rank + 1);
+    let w = 1;
+    try {
+      const v = weightOf ? weightOf(r.key) : 1;
+      if (Number.isFinite(v) && v >= 0) w = v;
+    } catch {}
+    s += w / (k + r.rank + 1);
   }
   return s;
 }
