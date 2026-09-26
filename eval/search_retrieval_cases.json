@@ -662,6 +662,165 @@
           ]
         }
       ]
+    },
+    {
+      "id": "edge-empty-01",
+      "category": "ambiguous query",
+      "query": "zzzqqq novalue",
+      "requirements": [
+        "zzzqqq"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "zzzqqq novalue",
+          "queryIndex": 0,
+          "items": []
+        }
+      ]
+    },
+    {
+      "id": "edge-single-01",
+      "category": "simple factual",
+      "query": "lonely query",
+      "requirements": [
+        "lonely"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "lonely query",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "lonely result",
+              "snippet": "lonely query here",
+              "url": "https://a.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edge-slice-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "item 0 spark",
+              "snippet": "spark",
+              "url": "https://h0.example/0"
+            },
+            {
+              "title": "item 1 spark",
+              "snippet": "spark",
+              "url": "https://h1.example/1"
+            },
+            {
+              "title": "item 2 spark",
+              "snippet": "spark",
+              "url": "https://h2.example/2"
+            },
+            {
+              "title": "item 3 spark",
+              "snippet": "spark",
+              "url": "https://h3.example/3"
+            },
+            {
+              "title": "item 4 spark",
+              "snippet": "spark",
+              "url": "https://h4.example/4"
+            },
+            {
+              "title": "item 5 spark",
+              "snippet": "spark",
+              "url": "https://h5.example/5"
+            },
+            {
+              "title": "item 6 spark",
+              "snippet": "spark",
+              "url": "https://h6.example/6"
+            },
+            {
+              "title": "item 7 spark",
+              "snippet": "spark",
+              "url": "https://h7.example/7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multiquery-3way-01",
+      "category": "multi-facet",
+      "query": "X100 price review manual",
+      "requirements": [
+        "X100",
+        "price",
+        "review",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            },
+            {
+              "title": "other",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        },
+        {
+          "query": "X100 review",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 review",
+              "snippet": "review",
+              "url": "https://review.example/r"
+            },
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            }
+          ]
+        },
+        {
+          "query": "X100 manual",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/manual"
+            },
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

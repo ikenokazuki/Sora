@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-09-26T20:51:43.612Z",
+  "startedAt": "2026-09-26T20:54:55.020Z",
   "results": [
     {
       "id": "event-timetable-01",
@@ -1276,33 +1276,307 @@
           "answerScore": 0
         }
       }
+    },
+    {
+      "id": "edge-empty-01",
+      "category": "ambiguous query",
+      "query": "zzzqqq novalue",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "empty"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "empty"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [],
+          "reqCoverage": 0,
+          "uniqueDomains": 0,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [],
+          "reqCoverage": 0,
+          "uniqueDomains": 0,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [],
+          "reqCoverage": 0,
+          "uniqueDomains": 0,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [],
+          "reqCoverage": 0,
+          "uniqueDomains": 0,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [],
+          "reqCoverage": 0,
+          "uniqueDomains": 0,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "edge-single-01",
+      "category": "simple factual",
+      "query": "lonely query",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "edge-slice-01",
+      "category": "simple factual",
+      "query": "spark",
+      "confidence": {
+        "good": true,
+        "reasons": []
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "multiquery-3way-01",
+      "category": "multi-facet",
+      "query": "X100 price review manual",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:review,manual"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/price",
+            "https://review.example/r",
+            "https://maker.example/manual",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/price",
+            "https://o.example/1",
+            "https://review.example/r",
+            "https://maker.example/manual"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/price",
+            "https://o.example/1",
+            "https://review.example/r",
+            "https://maker.example/manual"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/price",
+            "https://review.example/r",
+            "https://maker.example/manual",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/price",
+            "https://review.example/r",
+            "https://maker.example/manual",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
     }
   ],
   "agg": {
     "A": {
-      "meanReqCoverage": 0.843,
-      "meanOfficialRecall": 0.944,
-      "cases": 18
+      "meanReqCoverage": 0.826,
+      "meanOfficialRecall": 0.955,
+      "cases": 22
     },
     "B": {
-      "meanReqCoverage": 0.843,
+      "meanReqCoverage": 0.826,
       "meanOfficialRecall": 1,
-      "cases": 18
+      "cases": 22
     },
     "C": {
-      "meanReqCoverage": 0.843,
+      "meanReqCoverage": 0.826,
       "meanOfficialRecall": 1,
-      "cases": 18
+      "cases": 22
     },
     "D": {
-      "meanReqCoverage": 0.898,
+      "meanReqCoverage": 0.871,
       "meanOfficialRecall": 1,
-      "cases": 18
+      "cases": 22
     },
     "E": {
-      "meanReqCoverage": 0.898,
+      "meanReqCoverage": 0.871,
       "meanOfficialRecall": 1,
-      "cases": 18
+      "cases": 22
     }
   },
   "xResults": [
@@ -1392,6 +1666,24 @@
         },
         "evidence": {
           "topId": "2",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-reaction5-01",
+      "query": "SPARK 感想",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 0.5
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 0.5
+        },
+        "evidence": {
+          "topId": "3",
           "coverage": 1
         }
       }
