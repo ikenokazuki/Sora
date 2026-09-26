@@ -44,6 +44,13 @@ Adaptive scrape and PRF retrieval are per-request options
 - Live eval runs must be spaced out; do not re-probe while throttled.
 - Re-checked later: single-query probe still 429-empty. Ban persists; live suite stays out of rotation.
 
+## Container verification (2026-09-27)
+
+- Fixed the forbidden `bun install --frozen-lockfile || bun install`
+  fallback in `Containerfile` and `Dockerfile` (RFC build rules).
+- Built the publish-path image end to end and booted it:
+  `/health` 200. Throwaway tag removed afterwards.
+
 ## Gate proof (2026-09-27, local replay of CI)
 
 - Workflow YAML parses; `bun install --frozen-lockfile` clean.
