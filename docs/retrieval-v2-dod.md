@@ -38,6 +38,15 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - [x] Attempts bounded (budget cap); Web/X policies separated.
 - [x] Final rerank uses acquired evidence (weighted coverage, dual anchor).
 
+## Dependency audit (2026-09-27, `bun audit --audit-level=high`)
+
+- fast-uri SSRF/host-confusion chain (via MCP SDK > ajv): FIXED by
+  `overrides: { "fast-uri": "^3.1.6" }` (resolved 3.1.8, audit clean).
+- extract-zip symlink traversal (via @puppeteer/browsers toolchain):
+  ACCEPTED RISK. No fixed 2.x release exists and the package is not
+  imported anywhere in `src/` (browser comes from system Chromium);
+  the vulnerable extract path is unreachable at runtime.
+
 ## Open labor
 
 - Golden set: 18 web + 3 X deterministic, 12 live-unlabeled (target 100).
