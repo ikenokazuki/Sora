@@ -384,38 +384,82 @@ export async function fetchFlightStatus(options: {
   const html = await res.text();
   const $ = cheerio.load(html);
 
-  const timeMatch = $('body').text().match(/(\d+月\d+日\s+\d+時\d+分\s+時点)/);
-  const updatedAt = timeMatch ? timeMatch[1] : new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-
   const allFlights: FlightItem[] = [];
+  let updatedAt: string | undefined;
 
-  $('tr').each((_, tr) => {
-    const tds = $(tr).find('td');
-    if (tds.length >= 6) {
-      const scheduledTime = $(tds[0]).text().trim();
-      const rawEstimated = $(tds[1]).text().trim();
-      const estimatedTime = rawEstimated === '---' || !rawEstimated ? undefined : rawEstimated;
-      const airline = $(tds[2]).text().trim();
-      const rawFlightNum = $(tds[3]).text().replace(/\s+/g, '').trim();
-      const isCodeshare = rawFlightNum.includes('※');
-      const flightNumber = rawFlightNum.replace(/※/g, '');
-      const rawDest = $(tds[4]).text().trim();
-      const destinationOrOrigin = rawDest.replace(/行$|発$/, '');
-      const status = $(tds[5]).find('span').first().text().trim() || $(tds[5]).text().trim();
-      const detail = $(tds[5]).find('p').first().text().trim() || undefined;
-
-      allFlights.push({
-        scheduledTime,
-        estimatedTime,
-        airline,
-        flightNumber,
-        isCodeshare: isCodeshare ? true : undefined,
-        destinationOrOrigin,
-        status,
-        detail,
-      });
+  // Yahoo 路線情報は Next.js 化され、一覧は __NEXT_DATA__ 内の JSON で配信される。
+  // 旧来の table/tr 構造はフォールバックとして残す。
+  // 該当区分キーは Yahoo 側の表記ゆれ（Depature）をそのまま使う。
+  const sectionKey =
+    category === 'international'
+      ? type === 'arrival' ? 'internationalArrival' : 'internationalDepature'
+      : type === 'arrival' ? 'domesticArrival' : 'domesticDepature';
+  try {
+    const nextDataRaw = $('script#__NEXT_DATA__').first().text();
+    if (nextDataRaw) {
+      const nextData = JSON.parse(nextDataRaw);
+      const pageProps = nextData?.props?.pageProps;
+      if (typeof pageProps?.updateTimeText === 'string' && pageProps.updateTimeText) {
+        updatedAt = pageProps.updateTimeText;
+      }
+      const items = pageProps?.diainfoAirportParam?.[sectionKey]?.diainfo;
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          if (!item || typeof item !== 'object') continue;
+          const diaTime = String(item.diaTime ?? '').trim();
+          const changeTime = String(item.changeTime ?? '').trim();
+          const flightNumber = String(item.letterCode ?? '').trim() + String(item.flightNumber ?? '').trim();
+          allFlights.push({
+            scheduledTime: diaTime,
+            estimatedTime: changeTime && changeTime !== diaTime ? changeTime : undefined,
+            airline: String(item.airlineName ?? '').trim(),
+            flightNumber: flightNumber.replace(/\s+/g, ''),
+            isCodeshare: item.isCodeShare ? true : undefined,
+            destinationOrOrigin: String((type === 'arrival' ? item.depatureName : item.arrivalName) ?? '').trim(),
+            status: String(item.displayStatus ?? '').trim(),
+            detail: String(item.message ?? '').trim() || undefined,
+          });
+        }
+      }
     }
-  });
+  } catch {
+    // JSON パース失敗時は旧来の tr 解析へフォールバック
+  }
+
+  if (allFlights.length === 0) {
+    $('tr').each((_, tr) => {
+      const tds = $(tr).find('td');
+      if (tds.length >= 6) {
+        const scheduledTime = $(tds[0]).text().trim();
+        const rawEstimated = $(tds[1]).text().trim();
+        const estimatedTime = rawEstimated === '---' || !rawEstimated ? undefined : rawEstimated;
+        const airline = $(tds[2]).text().trim();
+        const rawFlightNum = $(tds[3]).text().replace(/\s+/g, '').trim();
+        const isCodeshare = rawFlightNum.includes('※');
+        const flightNumber = rawFlightNum.replace(/※/g, '');
+        const rawDest = $(tds[4]).text().trim();
+        const destinationOrOrigin = rawDest.replace(/行$|発$/, '');
+        const status = $(tds[5]).find('span').first().text().trim() || $(tds[5]).text().trim();
+        const detail = $(tds[5]).find('p').first().text().trim() || undefined;
+
+        allFlights.push({
+          scheduledTime,
+          estimatedTime,
+          airline,
+          flightNumber,
+          isCodeshare: isCodeshare ? true : undefined,
+          destinationOrOrigin,
+          status,
+          detail,
+        });
+      }
+    });
+  }
+
+  if (!updatedAt) {
+    const timeMatch = $('body').text().match(/(\d+月\d+日\s+\d+時\d+分\s+時点)/);
+    updatedAt = timeMatch ? timeMatch[1] : new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+  }
 
   let filtered = allFlights;
   if (flightNumberFilter) {
@@ -460,4 +504,3 @@ export async function fetchFlightStatus(options: {
 
   return result;
 }
-
