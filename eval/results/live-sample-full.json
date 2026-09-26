@@ -1,0 +1,5 @@
+{
+  "note": "Superseded: recorded during Yahoo upstream 429 throttle; all counts are zero-artifacts, not measurements.",
+  "replacement": "eval/results/live-sample-20260927.json (pre-throttle, 4 queries)",
+  "rows": []
+}
