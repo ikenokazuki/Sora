@@ -1,0 +1,874 @@
+{
+  "startedAt": "2026-09-26T18:26:43.436Z",
+  "results": [
+    {
+      "id": "event-timetable-01",
+      "category": "event timetable",
+      "query": "君と見るそら SPARK 出演辞退",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "missing-terms:出演辞退"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:出演辞退"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://kimisora.example/official",
+            "https://spark.example/timetable",
+            "https://spark.example/lineup",
+            "https://fan.example/1"
+          ],
+          "reqCoverage": 0.667,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "B": {
+          "topUrls": [
+            "https://kimisora.example/official",
+            "https://spark.example/lineup",
+            "https://fan.example/1",
+            "https://spark.example/timetable"
+          ],
+          "reqCoverage": 0.667,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "C": {
+          "topUrls": [
+            "https://kimisora.example/official",
+            "https://spark.example/lineup",
+            "https://fan.example/1",
+            "https://spark.example/timetable"
+          ],
+          "reqCoverage": 0.667,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "D": {
+          "topUrls": [
+            "https://fan.example/1",
+            "https://kimisora.example/official",
+            "https://spark.example/timetable",
+            "https://spark.example/lineup"
+          ],
+          "reqCoverage": 0.667,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "E": {
+          "topUrls": [
+            "https://fan.example/1",
+            "https://kimisora.example/official",
+            "https://spark.example/timetable",
+            "https://spark.example/lineup"
+          ],
+          "reqCoverage": 0.667,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        }
+      }
+    },
+    {
+      "id": "event-timetable-02",
+      "category": "event timetable",
+      "query": "君と見るそら 山中湖 spark 出演時間",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:君と見るそら,山中湖,spark,出演時間"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:山中湖"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://example.com/event",
+            "https://spark.example/time"
+          ],
+          "reqCoverage": 0,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 2.5
+        },
+        "B": {
+          "topUrls": [
+            "https://example.com/event",
+            "https://spark.example/time"
+          ],
+          "reqCoverage": 0,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 2.5
+        },
+        "C": {
+          "topUrls": [
+            "https://example.com/event",
+            "https://spark.example/time"
+          ],
+          "reqCoverage": 0,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 2.5
+        },
+        "D": {
+          "topUrls": [
+            "https://example.com/event",
+            "https://spark.example/time"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 2.5
+        },
+        "E": {
+          "topUrls": [
+            "https://example.com/event",
+            "https://spark.example/time"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 2.5
+        }
+      }
+    },
+    {
+      "id": "official-info-01",
+      "category": "official information",
+      "query": "デジタル庁 Web API",
+      "confidence": {
+        "good": true,
+        "reasons": []
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://www.digital.go.jp/docs",
+            "https://blog.example/a",
+            "https://forum.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://www.digital.go.jp/docs",
+            "https://blog.example/a",
+            "https://forum.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://www.digital.go.jp/docs",
+            "https://blog.example/a",
+            "https://forum.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://www.digital.go.jp/docs",
+            "https://blog.example/a",
+            "https://forum.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://www.digital.go.jp/docs",
+            "https://blog.example/a",
+            "https://forum.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "simple-factual-01",
+      "category": "simple factual",
+      "query": "星風まどか",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/2"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/2"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/2"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/2"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/2"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "multifacet-01",
+      "category": "multi-facet",
+      "query": "製品X 発売日 価格 仕様 第三者評価",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "missing-terms:第三者評価",
+          "single-domain"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/spec",
+            "https://review.example/x",
+            "https://maker.example/product",
+            "https://maker.example/support"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/product",
+            "https://maker.example/spec",
+            "https://maker.example/support",
+            "https://review.example/x"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/product",
+            "https://maker.example/spec",
+            "https://maker.example/support",
+            "https://review.example/x"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/product",
+            "https://review.example/x",
+            "https://maker.example/spec",
+            "https://maker.example/support"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/product",
+            "https://review.example/x",
+            "https://maker.example/spec",
+            "https://maker.example/support"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "japanese-local-01",
+      "category": "Japanese local information",
+      "query": "横浜 1000CLUB アクセス",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://club.example/access",
+            "https://fan.example/live"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://club.example/access",
+            "https://fan.example/live"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://club.example/access",
+            "https://fan.example/live"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://club.example/access",
+            "https://fan.example/live"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://club.example/access",
+            "https://fan.example/live"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "comparison-01",
+      "category": "comparison",
+      "query": "A vs B battery life",
+      "confidence": {
+        "good": true,
+        "reasons": []
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://review.example/cmp",
+            "https://maker.example/a",
+            "https://maker.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://review.example/cmp",
+            "https://maker.example/a",
+            "https://maker.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://review.example/cmp",
+            "https://maker.example/a",
+            "https://maker.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://review.example/cmp",
+            "https://maker.example/a",
+            "https://maker.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://review.example/cmp",
+            "https://maker.example/a",
+            "https://maker.example/b"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "current-event-01",
+      "category": "current event",
+      "query": "SPARK lineup announcement",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://spark.example/news",
+            "https://fan.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://spark.example/news",
+            "https://fan.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://spark.example/news",
+            "https://fan.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://spark.example/news",
+            "https://fan.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://spark.example/news",
+            "https://fan.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "product-spec-01",
+      "category": "product specification",
+      "query": "X100 weight wifi spec",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/x100",
+            "https://maker.example/x100-spec",
+            "https://review.example/x100"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/x100",
+            "https://review.example/x100",
+            "https://maker.example/x100-spec"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/x100",
+            "https://review.example/x100",
+            "https://maker.example/x100-spec"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/x100",
+            "https://maker.example/x100-spec",
+            "https://review.example/x100"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/x100",
+            "https://maker.example/x100-spec",
+            "https://review.example/x100"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "research-01",
+      "category": "research-style query",
+      "query": "idol festival stage safety guidelines",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:idol"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:idol"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "ambiguous-01",
+      "category": "ambiguous query",
+      "query": "spark",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://spark.example/",
+            "https://car.example/p"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://spark.example/",
+            "https://car.example/p"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://spark.example/",
+            "https://car.example/p"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://spark.example/",
+            "https://car.example/p"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://spark.example/",
+            "https://car.example/p"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "event-timetable-03",
+      "category": "event timetable",
+      "query": "1000CLUB Yokohama show time",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:time"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:time"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://club.example/show",
+            "https://club.example/access"
+          ],
+          "reqCoverage": 0.5,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "B": {
+          "topUrls": [
+            "https://club.example/show",
+            "https://club.example/access"
+          ],
+          "reqCoverage": 0.5,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "C": {
+          "topUrls": [
+            "https://club.example/show",
+            "https://club.example/access"
+          ],
+          "reqCoverage": 0.5,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "D": {
+          "topUrls": [
+            "https://club.example/show",
+            "https://club.example/access"
+          ],
+          "reqCoverage": 0.5,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        },
+        "E": {
+          "topUrls": [
+            "https://club.example/show",
+            "https://club.example/access"
+          ],
+          "reqCoverage": 0.5,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0.5
+        }
+      }
+    }
+  ],
+  "agg": {
+    "A": {
+      "meanReqCoverage": 0.847,
+      "cases": 12
+    },
+    "B": {
+      "meanReqCoverage": 0.847,
+      "cases": 12
+    },
+    "C": {
+      "meanReqCoverage": 0.847,
+      "cases": 12
+    },
+    "D": {
+      "meanReqCoverage": 0.931,
+      "cases": 12
+    },
+    "E": {
+      "meanReqCoverage": 0.931,
+      "cases": 12
+    }
+  }
+}
