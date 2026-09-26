@@ -8,6 +8,8 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - [x] Authenticated requests bypass public cache (read/write/in-flight).
   Proof: `src/security/scrape_cache_isolation.test.ts`.
 - [x] Cookie/session tenant separation with legacy default.
+  Anonymous shares the legacy scope (no identity to isolate;
+  preserves single-user persisted state).
   Proof: `src/security/tenant_isolation.test.ts` (incl. live jar E2E).
 - [x] Cross-origin credentials stripped (auth set per RFC list).
   Proof: `src/http_fetcher_redirect.test.ts`, `src/net/safe_transport.test.ts`.
