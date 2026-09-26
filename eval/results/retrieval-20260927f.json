@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-09-26T20:54:55.020Z",
+  "startedAt": "2026-09-26T21:03:07.346Z",
   "results": [
     {
       "id": "event-timetable-01",
@@ -1550,33 +1550,178 @@
           "answerScore": 0
         }
       }
+    },
+    {
+      "id": "research-hard-01",
+      "category": "difficult research",
+      "query": "X100 thermal throttling sustained load remedy",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:throttling,load,remedy"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:throttling"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://review.example/remedy",
+            "https://maker.example/thermal",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/thermal",
+            "https://o.example/1",
+            "https://review.example/remedy"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/thermal",
+            "https://o.example/1",
+            "https://review.example/remedy"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/thermal",
+            "https://review.example/remedy",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/thermal",
+            "https://review.example/remedy",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "research-hard-02",
+      "category": "difficult research",
+      "query": "festival crowd crush prevention guidelines",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:crush"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:crush"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://org.example/safety",
+            "https://news.example/e"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
     }
   ],
   "agg": {
     "A": {
-      "meanReqCoverage": 0.826,
-      "meanOfficialRecall": 0.955,
-      "cases": 22
+      "meanReqCoverage": 0.84,
+      "meanOfficialRecall": 0.958,
+      "cases": 24
     },
     "B": {
-      "meanReqCoverage": 0.826,
+      "meanReqCoverage": 0.84,
       "meanOfficialRecall": 1,
-      "cases": 22
+      "cases": 24
     },
     "C": {
-      "meanReqCoverage": 0.826,
+      "meanReqCoverage": 0.84,
       "meanOfficialRecall": 1,
-      "cases": 22
+      "cases": 24
     },
     "D": {
-      "meanReqCoverage": 0.871,
+      "meanReqCoverage": 0.882,
       "meanOfficialRecall": 1,
-      "cases": 22
+      "cases": 24
     },
     "E": {
-      "meanReqCoverage": 0.871,
+      "meanReqCoverage": 0.882,
       "meanOfficialRecall": 1,
-      "cases": 22
+      "cases": 24
     }
   },
   "xResults": [
