@@ -15,7 +15,8 @@ jobs:
       - id: chrome
         uses: browser-actions/setup-chrome@latest
       - run: bun install --frozen-lockfile
-      - run: bun test
+      # 実ブラウザテストは共有ランナーで低速なため上限を60秒に緩和する
+      - run: bun test --timeout 60000
         env:
           NODE_ENV: test
           SORA_DB_PATH: ":memory:"

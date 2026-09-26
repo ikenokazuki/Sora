@@ -118,6 +118,7 @@ import {
   pickProxyUrl,
   pickBrowserProfile,
   MAX_SUPPORTED_CHROME_PROFILE_VERSION,
+  getAlignedChromeMajorVersion,
   getChromiumMajorVersion,
   fetchWithSafeRedirects,
   fetchWithStealthBrowser,
@@ -1444,7 +1445,8 @@ describe('Sora REST & MCP Endpoints', () => {
   it('buildUserAgentFromDefault should extract the real Chromium version and mask it as Windows Chrome (not Headless)', () => {
     const headlessUa = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36';
     const result = buildUserAgentFromDefault(headlessUa);
-    expect(result).toContain('Chrome/148.0.0.0');
+    // 静的fetch経路と同一identityにするため、メジャーはwreqプロファイルに揃える
+    expect(result).toContain('Chrome/' + getAlignedChromeMajorVersion() + '.0.0.0');
     expect(result).not.toContain('Headless');
     expect(result).toContain('Windows NT 10.0; Win64; x64');
   });
@@ -1460,12 +1462,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(fallback).toContain('Windows NT 10.0');
     expect(fallback).not.toContain('Headless');
 
-    const actual = getChromiumMajorVersion();
-    if (actual !== undefined) {
-      // 静的fetch(wreq)は実バージョンを名乗るため、フォールバックが古い固定値だと
-      // 同一Cookieでバージョンが食い違う（この矛盾は本セッションで一度潰している）
-      expect(fallback).toContain(`Chrome/${actual}.`);
-    }
+    // 静的fetch(wreq)はwreqプロファイル上限を名乗るため、フォールバックも同じ値に揃える
+    expect(fallback).toContain('Chrome/' + getAlignedChromeMajorVersion() + '.');
   });
 
   it('buildUserAgentMetadata should build Windows Client Hints metadata matching the given Chrome version (fixes CreepJS-detected UA/platform/userAgentData mismatch)', () => {
@@ -1473,8 +1471,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const meta = buildUserAgentMetadata(headlessUa);
     expect(meta.platform).toBe('Windows');
     expect(meta.mobile).toBe(false);
-    expect(meta.brands?.some((b) => b.brand === 'Google Chrome' && b.version === '148')).toBe(true);
-    expect(meta.fullVersionList?.some((b) => b.brand === 'Google Chrome' && b.version === '148.0.7778.167')).toBe(true);
+    const aligned = getAlignedChromeMajorVersion();
+    expect(meta.brands?.some((b) => b.brand === 'Google Chrome' && b.version === aligned)).toBe(true);
+    expect(meta.fullVersionList?.some((b) => b.brand === 'Google Chrome' && b.version === aligned + '.0.7778.167')).toBe(true);
   });
 
   it('WebRTC ICE candidate gathering should not leak the real local/public IP via host candidates (CreepJS-detected leak)', async () => {
@@ -1527,16 +1526,14 @@ describe('Sora REST & MCP Endpoints', () => {
     }
 
     const { browser } = await getBrowser();
-    const realDefaultUa = await browser.userAgent();
-    const realVersionMatch = realDefaultUa.match(/Chrome\/(\d+)\./);
-    expect(realVersionMatch).not.toBeNull();
 
     const page = await browser.newPage();
     try {
       await applyStealthEvasions(page);
       const uaAfter = await page.evaluate(() => navigator.userAgent);
       expect(uaAfter).not.toContain('Headless');
-      expect(uaAfter).toContain(`Chrome/${realVersionMatch![1]}`);
+      // wreq profile version for shared identity
+      expect(uaAfter).toContain('Chrome/' + getAlignedChromeMajorVersion());
     } finally {
       await page.close();
     }
