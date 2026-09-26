@@ -385,6 +385,8 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
   try {
     const res = await fetch(webhookUrl, {
       method: 'POST',
+      redirect: 'error', // SSRF: webhook先のリダイレクト追従を禁止 (redirect先の再検証なしに追従しない)
+
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'Sora-Webhook-Notifier/1.0',
@@ -843,9 +845,15 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
     }
 
     // 3. ドメイン信頼度スコア (.gov, .go.jp, .ac.jp, .org ブースト)
-    if (doc.urlStr.includes('.go.jp/') || doc.urlStr.includes('.gov/')) score += 2.0;
-    if (doc.urlStr.includes('.ac.jp/') || doc.urlStr.includes('.edu/')) score += 1.5;
-    if (doc.urlStr.includes('.org/')) score += 0.5;
+    // hostname ベース判定 (パス部分の .gov 等への誤反応を防止)
+    try {
+      const host = new URL(item.url || '').hostname.toLowerCase();
+      if (host.endsWith('.go.jp') || host === 'go.jp' || host.endsWith('.gov') || host === 'gov') score += 2.0;
+      if (host.endsWith('.ac.jp') || host.endsWith('.edu')) score += 1.5;
+      if (host.endsWith('.org')) score += 0.5;
+    } catch {
+      // URL パース失敗時はドメイン加点なし
+    }
 
     // 4. 語順整合ボーナス (Word Order Consistency)
     if (terms.length >= 2) {
@@ -868,6 +876,74 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
 
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.item);
+}
+
+/** 検索候補の診断用 lexical スコア計算 (順位変更なし・スコア保持) */
+export function scoreSearchCandidate<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
+  items: T[],
+  query: string,
+): Array<{ item: T; lexicalScore: number; originalIndex: number }> {
+  if (!items || items.length === 0 || !query) {
+    return (items || []).map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex }));
+  }
+  // 既存 rerank と同一シグナルでスコアのみ算出する。順位は変更しない。
+  // Note: rerankSearchResults との二重計算を避けるため、軽量な近似ではなく同一ロジックの
+  // スコア部分を再利用する目的。将来的には内部共通化を検討。
+  const scored = items.map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex }));
+  try {
+    // rerank 順序付け前のスコアを流用するため、一時的にソート結果と突合するのではなく
+    // 下記の簡易スコアで診断用とする。ランキング確定には使用しない。
+    const terms = extractTermsWithBigrams(query);
+    const lowerQuery = query.toLowerCase().trim();
+    for (const entry of scored) {
+      const title = (entry.item.title || '').toLowerCase();
+      const snippet = (entry.item.snippet || entry.item.description || entry.item.content || '').toLowerCase();
+      let s = 0;
+      if (title.includes(lowerQuery)) s += 5.0;
+      if (snippet.includes(lowerQuery)) s += 2.5;
+      for (const term of terms) {
+        if (!term) continue;
+        if (title.includes(term)) s += term.length >= 4 ? 1.4 : term.length >= 3 ? 1.2 : 1.0;
+        if (snippet.includes(term)) s += 0.5;
+      }
+      entry.lexicalScore = s;
+    }
+  } catch {
+    // 診断スコア失敗時は 0 のまま返す
+  }
+  return scored;
+}
+
+/** Reciprocal Rank Fusion (複数SERP統合用・provider順位保存前提) */
+export function reciprocalRankFusion(docRanks: Array<{ key: string; rank: number }>, k = 60): number {
+  let s = 0;
+  for (const r of docRanks) {
+    s += 1 / (k + r.rank + 1);
+  }
+  return s;
+}
+
+/** P2 answer-bearing: snippet/body contains answer-like signals (diagnostic, not ranking replacement) */
+export function computeAnswerability(item: { title?: string; snippet?: string; description?: string; markdown?: string; content?: string }, query: string): { score: number; signals: string[] } {
+  const signals: string[] = [];
+  let score = 0;
+  try {
+    const q = (query || "").toLowerCase();
+    const text = `${item.title || ""} ${item.snippet || item.description || ""} ${item.markdown || item.content || ""}`;
+    const has = (re: RegExp) => re.test(text);
+    const qHas = (...keys: string[]) => keys.some((k) => q.includes(k));
+    if (qHas("\u4fa1\u683c", "\u6599\u91d1", "\u5024\u6bb5")) {
+      if (has(/[\u5186\uffe5$\uff04]/) || has(/\d[\d,]*\s*\u5186/)) { score += 2; signals.push("price"); }
+    }
+    if (has(/\d{1,2}:\d{2}/) || has(/\d{1,2}\u6642/) || has(/\d+\/\d+/)) { score += 0.5; if (!signals.includes("concrete")) signals.push("concrete"); }
+    if (qHas("\u51fa\u6f14\u6642\u9593", "\u30bf\u30a4\u30c6", "\u55b6\u696d\u6642\u9593", "\u958b\u6f14")) {
+      if (has(/\d{1,2}:\d{2}/) || has(/\d{1,2}\u6642/)) { score += 2; signals.push("time"); }
+    }
+    if (qHas("\u8f9e\u9000", "\u30ad\u30e3\u30f3\u30bb\u30eb", "\u4e2d\u6b62", "\u6b20\u5e2d")) {
+      if (has(/\u8f9e\u9000|\u30ad\u30e3\u30f3\u30bb\u30eb|\u4e2d\u6b62|\u6b20\u5e2d|\u53d6\u308a\u6d88\u3057/)) { score += 2; signals.push("cancel"); }
+    }
+  } catch {} 
+  return { score, signals };
 }
 
 export interface DeepEvidenceRerankOptions {
@@ -930,22 +1006,41 @@ export function rerankByDeepEvidence<T extends {
 }>(items: T[], query: string, options?: DeepEvidenceRerankOptions): T[] {
   if (!items || items.length <= 1 || !query) return items;
 
-  // 1. クエリタームの分解（日本語無空白クエリ & 空白区切りクエリ両対応: 第4.1項）
+  // 1. クエリタームの分解（P2重み付きcoverage）
+  // Entity/要求属性 weight 3, 日付/場所 weight 2, 通常 1, 生成bigram 0.5
   let queryTerms: string[] = [];
+  const termWeights = new Map<string, number>();
   if (options?.requirements && options.requirements.length > 0) {
     queryTerms = options.requirements.map((r) => r.toLowerCase().trim()).filter((r) => r.length > 0);
+    for (const t of queryTerms) termWeights.set(t, 3.0);
   } else {
     // 共通の extractTermsWithBigrams を使用し、空白の有無に関わらず形態素・複合語・Bigram を抽出
     const extracted = extractTermsWithBigrams(query);
     const whitespaceWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length > 0);
     const termSet = new Set<string>();
+    const isDateLike = (t: string) => /\d.*[月日時\/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
     for (const t of whitespaceWords) {
-      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) termSet.add(t);
+      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) {
+        termSet.add(t);
+        let w = 3.0;
+        for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) { w = 3.0; break; } }
+        if (isDateLike(t)) w = Math.max(w, 2.0);
+        termWeights.set(t, w);
+      }
     }
     for (const t of extracted) {
-      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) termSet.add(t);
+      if (t.length >= 2 && !COMMON_STOPWORDS.has(t) && !termSet.has(t)) {
+        termSet.add(t);
+        let w = 0.5;
+        for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) { w = 3.0; break; } }
+        if (w !== 3.0 && isDateLike(t)) w = 2.0;
+        if (w !== 3.0 && w !== 2.0) w = 1.0;
+        // whitespace由来は既に3.0なので上書きしない
+        if (!termWeights.has(t)) termWeights.set(t, w);
+      }
     }
     queryTerms = Array.from(termSet);
+    for (const t of queryTerms) { if (!termWeights.has(t)) termWeights.set(t, 1.0); }
   }
 
   if (queryTerms.length === 0) return items;
@@ -968,25 +1063,35 @@ export function rerankByDeepEvidence<T extends {
     intentAnchor = matchedAttrs[0].toLowerCase();
   }
 
-  // 属性語がない場合、候補群中でのドキュメント頻度 df(t) が最も低い稀少語（情報量が最も高い語）を選択
+  // P2: Entity Anchor (2軸化)
+  let entityAnchor: string | null = null;
+  try {
+    const ws = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length >= 2 && !COMMON_STOPWORDS.has(w));
+    if (ws.length > 0) entityAnchor = ws[0];
+  } catch { }
+
+  // 属性語がない場合、候補群中でのドキュメント頻度 df(t) が最も低い稀少語（P2: df=0除外）を選択
   if (!intentAnchor && queryTerms.length >= 2) {
     let minDf = Infinity;
     let rarestTerm = queryTerms[0];
     // クエリ全体そのものは除外して単語単位で探索
     const candidateTerms = queryTerms.filter((t) => t.length < query.trim().length);
     const searchTerms = candidateTerms.length > 0 ? candidateTerms : queryTerms;
+    let foundNonZero = false;
     for (const term of searchTerms) {
       let df = 0;
       for (const item of items) {
         const text = ((item.markdown || item.content || '') + ' ' + (item.title || '')).toLowerCase();
         if (text.includes(term)) df++;
       }
+      if (df === 0) continue;
+      foundNonZero = true;
       if (df < minDf || (df === minDf && term.length > rarestTerm.length)) {
         minDf = df;
         rarestTerm = term;
       }
     }
-    intentAnchor = rarestTerm;
+    intentAnchor = foundNonZero ? rarestTerm : null;
   }
 
   // 3. 最大ハイライトスコアの取得（相対校正スケーリング用: 第4.4項）
@@ -1005,20 +1110,18 @@ export function rerankByDeepEvidence<T extends {
     const titleText = (item.title || '').toLowerCase();
     const highlightText = (item.highlights || []).join(' ').toLowerCase();
 
-    // A. クエリタームのカバレッジ（本文・タイトルとハイライト）
-    let coveredInBody = 0;
-    let coveredInHighlight = 0;
+    // A. P2重み付きカバレッジ
+    let coveredWeightBody = 0;
+    let coveredWeightHl = 0;
+    let totalWeight = 0;
     for (const term of queryTerms) {
-      if (bodyText.includes(term) || titleText.includes(term)) {
-        coveredInBody++;
-      }
-      if (highlightText.includes(term)) {
-        coveredInHighlight++;
-      }
+      const w = termWeights.get(term) ?? 1.0;
+      totalWeight += w;
+      if (bodyText.includes(term) || titleText.includes(term)) coveredWeightBody += w;
+      if (highlightText.includes(term)) coveredWeightHl += w;
     }
-
-    const bodyCoverage = queryTerms.length > 0 ? coveredInBody / queryTerms.length : 0;
-    const highlightCoverage = queryTerms.length > 0 ? coveredInHighlight / queryTerms.length : 0;
+    const bodyCoverage = totalWeight > 0 ? coveredWeightBody / totalWeight : 0;
+    const highlightCoverage = totalWeight > 0 ? coveredWeightHl / totalWeight : 0;
 
     score += bodyCoverage * 8.0;
     score += highlightCoverage * 12.0;
@@ -1029,6 +1132,17 @@ export function rerankByDeepEvidence<T extends {
     }
     if (highlightCoverage >= 1.0) {
       score += 6.0;
+    }
+
+    // B. P2 Entity+Intent 2軸anchor 近接評価
+    if (entityAnchor && intentAnchor) {
+      const body = bodyText + ' ' + titleText;
+      const pe = body.indexOf(entityAnchor);
+      const pi = intentAnchor ? body.indexOf(intentAnchor) : -1;
+      if (pe >= 0 && pi >= 0 && Math.abs(pe - pi) < 200) score += 4.0;
+      else if (pe >= 0 && pi >= 0) score += 1.0;
+    } else if (entityAnchor) {
+      if (bodyText.includes(entityAnchor) || titleText.includes(entityAnchor)) score += 1.0;
     }
 
     // B. Intent Anchor の検証 (第4.2項)
@@ -1465,4 +1579,3 @@ export function collectFieldEvidence(params: {
 
   return evidence;
 }
-

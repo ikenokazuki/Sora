@@ -301,10 +301,31 @@ export async function fetchWithSafeRedirects(
     await validateHostIpDns(parsed.hostname);
     await throttleDomain(currentUrl);
 
+    // Security: redirect時の認証漏洩防止
+    // - Authorization/Proxy-Authorization: origin変化(scheme/host/port)で除去
+    // - Cookie: ホスト変化で除去 (同一ホストのhttp->https等は維持)
+    let originChanged = false;
+    let hostChanged = false;
+    try {
+      const cur = new URL(currentUrl);
+      const init = new URL(initialUrl);
+      originChanged = cur.origin !== init.origin;
+      hostChanged = cur.hostname !== init.hostname;
+    } catch { originChanged = false; hostChanged = false; }
+    const sanitizedCustomHeaders: Record<string, string> = {};
+    if (customHeaders) {
+      for (const [k, v] of Object.entries(customHeaders)) {
+        const lk = k.toLowerCase();
+        if (originChanged && (lk === 'authorization' || lk === 'proxy-authorization')) continue;
+        if (hostChanged && lk === 'cookie') continue;
+        sanitizedCustomHeaders[k] = v;
+      }
+    }
+    const keepCookie = !hostChanged && cookieHeader;
     const headers: Record<string, string> = {
       'Accept-Language': ACCEPT_LANGUAGE,
-      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      ...(customHeaders || {}),
+      ...(keepCookie ? { Cookie: cookieHeader } : {}),
+      ...sanitizedCustomHeaders,
     };
 
     const res = await session.fetch(currentUrl, {
