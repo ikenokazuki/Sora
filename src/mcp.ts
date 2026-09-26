@@ -1,4 +1,5 @@
 import { McpServer, type RegisteredTool, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { tenantIdForApiKey } from './security/tenant_context.js';
 import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
@@ -58,6 +59,8 @@ export type GhostFetchModule = SoraModule; // backward-compatibility alias
 export interface McpServerOptions {
   modules?: (SoraModule | 'all')[];
   deferTools?: boolean;
+  /** Session-scoped activation state. A fresh set is created when omitted. */
+  sessionState?: McpSessionState;
 }
 
 export interface ToolCatalogEntry {
@@ -70,11 +73,15 @@ export interface ToolCatalogEntry {
 }
 
 /**
- * プロセス内で動的に有効化（search_tools）されたツールの一覧。
- * MCP クライアント（LibreChat 等）が未知のツール呼び出し時にサーバーを自動再初期化（Re-initialize）
- * しても、有効化状態がリセットされずに tools/list に確実に反映されるよう保持します。
+ * @deprecated Process-global activation leaks across MCP sessions/tenants.
+ * Kept for compatibility only; core code uses per-session McpSessionState.
  */
 export const SHARED_ACTIVATED_TOOLS = new Set<string>();
+
+/** Per-session dynamic tool activation (RFC P1-SEC-06). */
+export interface McpSessionState {
+  activatedTools: Set<string>;
+}
 
 export function clearSharedActivatedTools(): void {
   SHARED_ACTIVATED_TOOLS.clear();
@@ -88,6 +95,7 @@ export function clearSharedActivatedTools(): void {
 export function registerTool<Args extends ZodRawShapeCompat>(
   mcpServer: McpServer,
   toolCatalog: Map<string, ToolCatalogEntry>,
+  sessionActivated: Set<string> = SHARED_ACTIVATED_TOOLS,
   name: string,
   category: SoraModule,
   description: string,
@@ -96,7 +104,7 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   opts: { defaultEnabled: boolean; keywords?: string[] },
 ): RegisteredTool {
   const handle = mcpServer.tool(name, description, schema, handler);
-  const isEnabled = opts.defaultEnabled || SHARED_ACTIVATED_TOOLS.has(name);
+  const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {
     handle.disable();
   }
@@ -344,6 +352,13 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   );
 
   const toolCatalog = new Map<string, ToolCatalogEntry>();
+  // Session-scoped activation: search_tools enables tools for this server
+  // instance only. A caller-provided McpSessionState stays live-linked.
+  const sessionActivated: Set<string> =
+    options?.sessionState?.activatedTools ?? new Set<string>();
+  if (options?.sessionState) {
+    options.sessionState.activatedTools = sessionActivated;
+  }
   const isDeferEnabled = options?.deferTools ?? (process.env.SORA_DEFER_TOOLS !== 'false');
   const deferredDefault = !isDeferEnabled;
 
@@ -367,6 +382,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'scrape',
       'web',
       '【単一URL・PDF本文抽出】指定した既知 URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action を使用してください。',
@@ -569,6 +585,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'scrape_batch',
       'web',
       '【複数 URL 一括並行スクレイプ】複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。',
@@ -677,6 +694,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_deep',
       'web',
       '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
@@ -734,6 +752,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'map_site',
       'web',
       '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の全 URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。',
@@ -762,6 +781,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'crawl_site',
       'web',
       '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。',
@@ -823,6 +843,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_web',
       'web',
       '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLおよび概要スニペットを高速探索します（URL/スニペット探索）。formats を指定した場合は上位検索結果を追加スクレイプし、1回の呼び出しで記事本文や指定形式をインライン返却可能です（同一呼出での本文抽出）。深層Web+リアルタイムX調査や深層リランキングが必要な場合は search_deep、既知URLの精読は scrape を使用してください。',
@@ -846,6 +867,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'browser_action',
       'browser',
       '【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。',
@@ -910,6 +932,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_image',
       'yahoo',
       '【Yahoo 画像検索】画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
@@ -937,6 +960,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_video',
       'yahoo',
       '【Yahoo 動画検索】YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
@@ -964,6 +988,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_news',
       'yahoo',
       '【ニュース速報直結】大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）をYahoo!ニュースから取得します。時事問題・公式発表の調査に最適です。返却: { results: [{ title, snippet, media, publishedAt, url }] }',
@@ -991,6 +1016,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_chiebukuro',
       'yahoo',
       '【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { results: [{ questionTitle, questionBody, answerSnippet, bestAnswer }] }',
@@ -1018,6 +1044,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'suggest_keywords',
       'yahoo',
       '【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }',
@@ -1045,6 +1072,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_realtime',
       'yahoo',
       '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, count, items: [{ id, author_name, author_handle, text, url, publishedTime }] } (verbose:trueで検索診断追加)',
@@ -1141,6 +1169,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_trend',
       'yahoo',
       '【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { trends: [{ rank, keyword, score }] }',
@@ -1172,6 +1201,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_route',
       'life',
       '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ departure, arrival, duration, transferCount, fare, steps }] }',
@@ -1217,6 +1247,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_weather',
       'life',
       '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { areaName, forecasts: [{ date, weather, pop, tempMin, tempMax }] }',
@@ -1244,6 +1275,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_flight_status',
       'life',
       '【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }',
@@ -1274,6 +1306,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'track_package',
       'life',
       '【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便 国内+国際EMS/UPU S10・西濃運輸・福山通運）および国際配送（UPS・FedEx・DHL Express）の荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl）を指定可能。未指定または "auto" の場合は伝票番号から候補会社をローカル自動判別・検証照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl }',
@@ -1352,6 +1385,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_road_traffic',
       'disaster',
       '【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { roadName, conditions: [{ section, status, cause }] }',
@@ -1379,6 +1413,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_disaster_warnings',
       'disaster',
       '【気象庁公式防災直結】大雨・洪水・暴風・大雪・波浪等の特別警報・気象警報・注意報は、一般Web検索の古い情報に頼らず必ず気象庁公式データ直結の本ツールで市区町村単位でリアルタイム取得してください。返却: { areaName, warnings: [{ name, level, status }] }',
@@ -1406,6 +1441,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_earthquake',
       'disaster',
       '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, epicenter, maxIntensity, magnitude }] }',
@@ -1433,6 +1469,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_elevation',
       'disaster',
       '【国土地理院直結】住所地名からの海抜標高（m）および正確な緯度経度は、推測せず必ず国土地理院公式オープンデータ直結の本ツールでミリ精度取得してください。水害・津波リスク判定に必須です。返却: { elevationMeters, dataAccuracy, lat, lon }',
@@ -1466,6 +1503,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'watch_register',
       'watch',
       '【Webページ差分監視登録】Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
@@ -1496,6 +1534,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'watch_check',
       'watch',
       '【Webページ差分スキャン実行】登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
@@ -1522,6 +1561,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'watch_list',
       'watch',
       '【Webページ監視ターゲット一覧】現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
@@ -1546,6 +1586,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'watch_delete',
       'watch',
       '【Webページ監視ターゲット削除】指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。',
@@ -1577,6 +1618,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_song',
       'music',
       '【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { results: [{ trackName, artistName, previewUrl, artworkUrl }] }',
@@ -1605,6 +1647,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_artist',
       'music',
       '【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { results: [...] }',
@@ -1634,6 +1677,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_music',
       'music',
       '【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { results: [...] }',
@@ -1669,6 +1713,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_laws',
       'gov',
       '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { totalCount, laws: [{ lawId, lawNum, lawTitle }] }',
@@ -1696,6 +1741,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_law_text',
       'gov',
       '【公式条文直結・創作厳禁】日本の法令条文の確認では、架空の条文・条項を創作（法律ハルシネーション）せず、必ず本ツールで公式e-Govの正確な条文Markdownを取得してください。章・節・条・項・号が正確に構造化された本文を返します。返却: { lawTitle, lawNum, articles: [{ articleNumber, caption, text }] }',
@@ -1722,6 +1768,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'search_diet_minutes',
       'gov',
       '【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { totalCount, speeches: [{ speaker, speakerPosition, speech, date }] }',
@@ -1759,6 +1806,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'check_cpsc_certificate',
       'trade',
       '【必須・即時推測厳禁】米国CPSC適合証明書（GCC/CPC）要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務を判定する際は、推測せず必ず本ツールを実行してください。非対象時のACE免責申告コード(Disclaimer)や根拠条文（16 CFR）を提示します。素材や年齢層が不明な場合は推測で埋めず未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }',
@@ -1789,6 +1837,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'check_fda_regulated',
       'trade',
       '【必須・即時推測厳禁】米国FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）を判定する際は、推測せず必ず本ツールを実行してください。食器・調理器具の食品接触用途が不明な場合は推測で埋めず省略すること。判定影響と確認質問(clarifyingQuestions)を返却します。返却: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation }',
@@ -1817,6 +1866,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'verify_hts_code',
       'trade',
       '【公式照合・推測厳禁】ユーザーから明示提示されたHTSコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問(clarifyingQuestions)を返却します。返却: { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }',
@@ -1844,6 +1894,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'predict_hts_code',
       'trade',
       '【必須・即時推測厳禁】商品名・説明文・素材・用途からUSITC公式現行関税率表とセマンティック照合を行い、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を自動推測します。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略して呼び出すこと。実務的影響(impactExplanation)と確認質問(clarifyingQuestions)を返却し追加ヒアリングを誘導します。返却: { detectedSubheading, bestMatch, candidates, clarifyingQuestions, impactExplanation }',
@@ -1876,6 +1927,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'check_product_compliance',
       'trade',
       '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。LLM独自の推測HTSコードを渡すことは厳禁です。返却: { overallStatus, hts, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
@@ -1916,6 +1968,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'inspect_image',
       'media',
       '【画像視覚解析・マルチモーダル入力】WebページやSNS投稿内の重要画像URL（チラシ、時刻表、表、図等）を取得し、MCP ImageContent（Base64）として直接AIに視覚入力します。※単なるアイキャッチや装飾画像には呼び出さず、テキスト回答に不可欠な画像に限定してください。返却: ImageContent',
@@ -1956,6 +2009,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'research_country_context',
       'intel',
       '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・カレンダー・世論調査・対日関係を証拠付き構造化レポートとして取得します。感情・敵意・リスク判定なし。返却: CountryContextReport',
@@ -2000,7 +2054,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       const alreadyEnabled: string[] = [];
 
       for (const entry of matches) {
-        SHARED_ACTIVATED_TOOLS.add(entry.name);
+        sessionActivated.add(entry.name);
         if (!entry.handle.enabled) {
           entry.handle.enable();
           entry.compatibilityHandle?.enable();
@@ -2060,6 +2114,7 @@ export interface McpSessionEntry {
   server: McpServer;
   transport: WebStandardStreamableHTTPServerTransport;
   lastActive: number;
+  state: McpSessionState;
 }
 
 /**
@@ -2068,10 +2123,25 @@ export interface McpSessionEntry {
  * セッションIDに基づくルーティング、放置セッションの自動回収（TTL）、
  * 並行リクエストの安全なディスパッチを行います。
  */
+/** Tenant for MCP tool-activation scoping (RFC P1-SEC-06).
+ * Keyed deployments isolate activation per API key; unauthenticated
+ * single-user use shares the legacy scope (previous behavior). */
+export function mcpTenantFromRequest(req: Request): string {
+  try {
+    const auth = req.headers.get('authorization') || '';
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m && m[1]) return tenantIdForApiKey(m[1].trim());
+    const key = req.headers.get('x-api-key');
+    if (key && key.trim()) return tenantIdForApiKey(key.trim());
+  } catch {}
+  return 'legacy';
+}
+
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
   private cleanupInterval: any;
   private readonly sessionTtlMs: number;
+  private readonly tenantStates = new Map<string, McpSessionState>();
 
   constructor(options?: { sessionTtlMs?: number }) {
     this.sessionTtlMs = options?.sessionTtlMs ?? 60 * 60 * 1000; // 1時間 TTL
@@ -2084,6 +2154,15 @@ export class McpSessionManager {
   /**
    * HTTP リクエスト（POST / GET / DELETE）を適切なセッションのトランスポートにルーティング
    */
+  public stateForTenant(tenantId: string): McpSessionState {
+    let state = this.tenantStates.get(tenantId);
+    if (!state) {
+      state = { activatedTools: new Set<string>() };
+      this.tenantStates.set(tenantId, state);
+    }
+    return state;
+  }
+
   public async handleRequest(req: Request, options?: { parsedBody?: any }): Promise<Response> {
     const sessionId = req.headers.get('mcp-session-id');
 
@@ -2127,8 +2206,9 @@ export class McpSessionManager {
     const isInit = messages.some((m) => m && m.method === 'initialize');
 
     if (isInit) {
-      // ステートフルセッション作成
-      const server = createMcpServer();
+      // ステートフルセッション作成 (activation shared per tenant, isolated across tenants)
+      const state = this.stateForTenant(mcpTenantFromRequest(req));
+      const server = createMcpServer({ sessionState: state });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
         enableJsonResponse: true,
@@ -2137,6 +2217,7 @@ export class McpSessionManager {
             server,
             transport,
             lastActive: Date.now(),
+            state,
           });
         },
         onsessionclosed: (closedSessionId) => {
@@ -2150,7 +2231,7 @@ export class McpSessionManager {
     }
 
     // 4. initialize 以外の単発・ステートレスリクエスト (例: 単発 tools/list, tools/call)
-    const statelessServer = createMcpServer();
+    const statelessServer = createMcpServer({ sessionState: this.stateForTenant(mcpTenantFromRequest(req)) });
     const statelessTransport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
