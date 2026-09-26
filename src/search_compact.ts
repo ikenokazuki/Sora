@@ -56,11 +56,34 @@ export function formatCompactRealtimeResponse<T extends Record<string, any> | nu
   if (!result || typeof result !== 'object' || options?.verbose === true) return result;
   const out: Record<string, any> = { ...result };
   for (const key of REALTIME_VERBOSE_KEYS) delete out[key];
+  if (Array.isArray(out.items)) {
+    out.items = out.items.map(stripInternalItemKeys);
+  }
   return out as T;
 }
 
-/** Per-item web union provenance keys: internal routing only. */
-const WEB_ITEM_VERBOSE_KEYS = ['retrievalQuery', 'retrievalQueryIndex'] as const;
+/** Per-item internal routing/scoring keys (RFC compatibility).
+ * Provider ranks, fusion scores, lexical diagnostics and selection
+ * reasons are verbose-only; compact responses keep evidence fields.
+ */
+const INTERNAL_ITEM_KEYS = [
+  'providerRank',
+  'providerRanks',
+  'providerSort',
+  'retrievalQuery',
+  'retrievalQueryIndex',
+  'retrievalWave',
+  'rrfScore',
+  'lexicalScore',
+  'selectionReason',
+] as const;
+
+function stripInternalItemKeys<T>(item: T): T {
+  if (!item || typeof item !== 'object') return item;
+  const compact: Record<string, any> = { ...(item as Record<string, any>) };
+  for (const key of INTERNAL_ITEM_KEYS) delete compact[key];
+  return compact as T;
+}
 
 /**
  * Compact Yahoo Web Search response.
@@ -77,12 +100,7 @@ export function formatCompactWebSearchResponse<T extends Record<string, any> | n
   // bindingQuery always duplicates originalQuery on the union path.
   delete out.bindingQuery;
   if (Array.isArray(out.items)) {
-    out.items = out.items.map((item: any) => {
-      if (!item || typeof item !== 'object') return item;
-      const compact: Record<string, any> = { ...item };
-      for (const key of WEB_ITEM_VERBOSE_KEYS) delete compact[key];
-      return compact;
-    });
+    out.items = out.items.map(stripInternalItemKeys);
   }
   return out as T;
 }
@@ -96,8 +114,8 @@ const INTEGRATED_REALTIME_VERBOSE_KEYS = [
 
 /**
  * Compact integrated search response.
- * Web results and realtime items pass through untouched (order preserved);
- * realtime envelope provenance is verbose-only.
+ * Item order and evidence fields pass through untouched; per-item
+ * internal routing/scoring keys are verbose-only.
  * searchDiagnostics is already verbose-gated upstream; left as-is.
  */
 export function formatCompactIntegratedSearchResponse<
@@ -105,9 +123,15 @@ export function formatCompactIntegratedSearchResponse<
 >(result: T, options: CompactResponseOptions = {}): T {
   if (!result || typeof result !== 'object' || options?.verbose === true) return result;
   const out: Record<string, any> = { ...result };
+  if (Array.isArray(out.results)) {
+    out.results = out.results.map(stripInternalItemKeys);
+  }
   if (out.realtime && typeof out.realtime === 'object') {
     const realtime: Record<string, any> = { ...out.realtime };
     for (const key of INTEGRATED_REALTIME_VERBOSE_KEYS) delete realtime[key];
+    if (Array.isArray(realtime.items)) {
+      realtime.items = realtime.items.map(stripInternalItemKeys);
+    }
     out.realtime = realtime;
   }
   return out as T;
