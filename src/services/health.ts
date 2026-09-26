@@ -4,6 +4,7 @@ import { getDb } from '../db.js';
 import { sendWebhookNotification } from '../enrichment.js';
 import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
+import { SORA_VERSION } from '../types.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -14,7 +15,7 @@ export interface DependencyStatus {
 export interface DetailedHealthReport {
   status: 'ok' | 'degraded';
   service: 'sora';
-  version: '2.0.0';
+  version: typeof SORA_VERSION;
   uptimeSeconds: number;
   cachedEntries: number;
   activeBrowserSessions: number;
@@ -87,10 +88,10 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
   const isDegraded = sqliteStatus.status === 'error';
 
-  return {
+  const report: DetailedHealthReport = {
     status: isDegraded ? 'degraded' : 'ok',
     service: 'sora',
-    version: '2.0.0',
+    version: SORA_VERSION,
     uptimeSeconds,
     cachedEntries: getCacheSize(),
     activeBrowserSessions: getActiveSessionCount(),
@@ -104,6 +105,14 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
     },
     timestamp: new Date().toISOString(),
   };
+
+  // 管理者アラートは degraded（SQLite 障害）の場合のみ送信する。
+  // 外部依存の瞬断では毎回発火させない。
+  if (isDegraded) {
+    sendAdminAlert('health.degraded', { sqlite: sqliteStatus.message ?? 'unknown' });
+  }
+
+  return report;
 }
 
 /** 管理者アラート通知 (Slack / Discord Webhook) */

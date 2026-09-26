@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
+// 外部サイトへのライブ依存テストは既定でスキップし、
+// SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
+const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
 import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
@@ -2857,6 +2860,10 @@ describe('Sora REST & MCP Endpoints', () => {
     const cached = dbGetCache<{ foo: string }>('test:sqlite:key');
     expect(cached).toBeDefined();
     expect(cached?.value.foo).toBe('bar');
+    // L2 行の作成時刻が保持され、TTL 既定値からの逆算に依存しないこと
+    expect(typeof cached?.createdAt).toBe('number');
+    expect(Math.abs(Date.now() - (cached?.createdAt ?? 0))).toBeLessThan(60 * 1000);
+    expect((cached?.createdAt ?? 0)).toBeLessThanOrEqual(cached?.expiresAt ?? 0);
 
     // L1 メモリと L2 SQLite の透過的連携
     setToCache('test:hybrid:key', { data: 12345 }, 60000);
@@ -3920,7 +3927,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
   });
 
-  it('searchDietMinutes should fetch speech records from kokkai.ndl.go.jp API', async () => {
+  itLive('searchDietMinutes should fetch speech records from kokkai.ndl.go.jp API', async () => {
     const result = await searchDietMinutes({ keyword: '人工知能', limit: 3 });
     expect(result.source).toBe('kokkai-ndl');
     expect(result.count).toBeGreaterThanOrEqual(1);
@@ -3933,7 +3940,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(speech.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('fetchElevationAndCoordinates should geocode address and fetch elevation from GSI API', async () => {
+  itLive('fetchElevationAndCoordinates should geocode address and fetch elevation from GSI API', async () => {
     const resAddress = await fetchElevationAndCoordinates({ address: '東京都千代田区永田町1-7-1' });
     expect(resAddress.source).toBe('gsi');
     expect(resAddress.lat).toBeCloseTo(35.67, 1);
@@ -3946,7 +3953,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resCoords.elevationMeters).toBeGreaterThan(3000);
   });
 
-  it('fetchFlightStatus and resolveAirport should parse flight info for major airports', async () => {
+  itLive('fetchFlightStatus and resolveAirport should parse flight info for major airports', async () => {
     expect(resolveAirport('羽田').code).toBe('HND');
     expect(resolveAirport('成田').code).toBe('NRT');
     expect(resolveAirport('kix').code).toBe('KIX');
@@ -3958,17 +3965,20 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(result.airportCode).toBe('HND');
     expect(result.type).toBe('departure');
     expect(result.category).toBe('domestic');
-    expect(result.count).toBeGreaterThanOrEqual(1);
-    expect(result.flights.length).toBeGreaterThanOrEqual(1);
-
-    const flight = result.flights[0];
-    expect(flight.scheduledTime).toBeDefined();
-    expect(flight.flightNumber).toBeDefined();
-    expect(flight.destinationOrOrigin).toBeDefined();
-    expect(flight.status).toBeDefined();
+    // Yahoo 路線情報は欠航・遅延便のみ掲載のため、件数は 0 の場合もある。配管と形式を検証する。
+    expect(Array.isArray(result.flights)).toBe(true);
+    expect(result.count).toBe(result.flights.length);
+    expect(typeof result.updatedAt).toBe('string');
+    expect(result.updatedAt.length).toBeGreaterThan(0);
+    for (const flight of result.flights) {
+      expect(flight.scheduledTime).toBeDefined();
+      expect(flight.flightNumber).toBeDefined();
+      expect(flight.destinationOrOrigin).toBeDefined();
+      expect(flight.status).toBeDefined();
+    }
   });
 
-  it('REST endpoints for Diet minutes, Elevation, and Flight status should work correctly', async () => {
+  itLive('REST endpoints for Diet minutes, Elevation, and Flight status should work correctly', async () => {
     // 1. Diet minutes (POST & GET)
     const resDietPost = await app.request('/gov/diet-minutes', {
       method: 'POST',
@@ -4003,13 +4013,14 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resFlightPost.status).toBe(200);
     const jsonFlight = (await resFlightPost.json()) as any;
-    expect(jsonFlight.flights.length).toBeGreaterThanOrEqual(1);
+    // 欠航・遅延が無ければ空配列になるため件数は断定しない
+    expect(Array.isArray(jsonFlight.flights)).toBe(true);
 
     const resFlightGet = await app.request('/traffic/flight/成田?type=departure');
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 42 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 45 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
