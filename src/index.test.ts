@@ -117,6 +117,7 @@ import {
   detectSpaOrBotPage,
   pickProxyUrl,
   pickBrowserProfile,
+  MAX_SUPPORTED_CHROME_PROFILE_VERSION,
   getChromiumMajorVersion,
   fetchWithSafeRedirects,
   fetchWithStealthBrowser,
@@ -3634,7 +3635,12 @@ describe('Sora REST & MCP Endpoints', () => {
     // 実行環境のChromiumが検出できるなら、そのメジャーバージョンに一致していること
     const actual = getChromiumMajorVersion();
     if (actual !== undefined) {
-      expect(profile as string).toBe(`chrome_${actual}`);
+      if (actual <= MAX_SUPPORTED_CHROME_PROFILE_VERSION) {
+        expect(profile as string).toBe('chrome_' + String(actual));
+      } else {
+        // wreq-js が未対応の新しさの場合は到達可能な最新に張り付く（最善努力）
+        expect(profile as string).toBe('chrome_' + String(MAX_SUPPORTED_CHROME_PROFILE_VERSION));
+      }
     }
   });
 

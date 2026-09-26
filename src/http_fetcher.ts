@@ -63,6 +63,10 @@ const SUPPORTED_CHROME_PROFILE_VERSIONS = [
   136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
 ];
 
+/** wreq-js が持つ最新の Chrome プロファイル。実ブラウザがこれより新しい場合の上限。 */
+export const MAX_SUPPORTED_CHROME_PROFILE_VERSION =
+  SUPPORTED_CHROME_PROFILE_VERSIONS[SUPPORTED_CHROME_PROFILE_VERSIONS.length - 1];
+
 /** wreq-js の os オプションは既定が 'macos'。ブラウザ経路(Windows)と揃えるため明示指定する。 */
 export const EMULATION_OS = 'windows';
 
