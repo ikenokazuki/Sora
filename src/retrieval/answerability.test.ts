@@ -189,3 +189,40 @@ describe('evidence coverage diagnostics (hermetic)', () => {
     expect(res.diagnostics.missingRequirements).toEqual(['Wi-Fi']);
   });
 });
+describe('adaptive candidate expansion (hermetic)', () => {
+  function longDoc(answerAt: number, total: number): string {
+    const parts: string[] = [];
+    for (let i = 0; i < total; i++) {
+      parts.push('# S' + i);
+      parts.push('');
+      if (i === answerAt) {
+        parts.push('Astra Phone Xの価格は159,800円です。');
+      } else {
+        parts.push('価格について解説します。参考情報その' + i + '。');
+      }
+      parts.push('');
+    }
+    return parts.join(chrN());
+  }
+  test('expands beyond 12 when answer is buried', () => {
+    const res = extractQueryHighlightsRhoV2(longDoc(20, 22), 'Astra Phone X 価格', { requirements: ['価格'] });
+    expect(res.diagnostics.candidateExpansion as object).toBeDefined();
+    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
+    expect(exp.stages).toBeGreaterThan(1);
+    expect(exp.final).toBeGreaterThan(12);
+    const hasAnswer = res.highlightItems.some((h) => h.text.includes('159,800'));
+    expect(hasAnswer).toBe(true);
+  });
+  test('stops at 12 when answer is up front', () => {
+    const res = extractQueryHighlightsRhoV2(longDoc(2, 22), 'Astra Phone X 価格', { requirements: ['価格'] });
+    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
+    expect(exp.stages).toBe(1);
+    expect(exp.final).toBe(12);
+  });
+  test('opt-out runs a single full stage', () => {
+    const res = extractQueryHighlightsRhoV2(longDoc(20, 22), 'Astra Phone X 価格', { requirements: ['価格'], adaptiveCandidate: false });
+    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
+    expect(exp.stages).toBe(1);
+    expect(exp.final).toBe(22);
+  });
+});
