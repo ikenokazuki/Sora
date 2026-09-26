@@ -168,17 +168,34 @@ describe('Realtime Retrieval v1', () => {
     expect(res.items.length).toBe(2);
   });
 
-  test('Test10: final rerank uses original query', async () => {
+  test('Test10: recent mode preserves provider order (no generic lexical rerank)', async () => {
     const calls: string[] = [];
     const weak = post('111', 'SPARK 辞退');
     const strong = post('222', 'SPARK 出演 辞退 決定');
     const provider = mockMcp((q) => (q.includes('出演') && q.includes('辞退') ? [weak, strong] : [weak]), calls);
     const res: any = await searchYahooRealtime({
       query: 'SPARK 出演 辞退 id:kimisora_JPN',
+      sort: 'recent',
       ...OPT,
       _callMcp: provider,
     } as any);
-    expect(String(res.items[0].id)).toBe('222');
+    expect(String(res.items[0].id)).toBe('111');
+    expect(res.items[0].providerRank).toBe(1);
+    expect(res.items[0].retrievalWave).toBe(1);
+  });
+  test('Test10b: multi-wave duplicates accumulate providerRanks and rrfScore', async () => {
+    const { mergeRealtimeQueryBatches } = await import('./yahoo.js');
+    const a = post('111', 'SPARK 辞退');
+    const b = post('222', 'other');
+    const merged = mergeRealtimeQueryBatches([
+      { query: 'q0', queryIndex: 0, wave: 1, sort: 'recent', items: [a, b] },
+      { query: 'q1', queryIndex: 1, wave: 2, sort: 'recent', items: [a] },
+    ] as any);
+    const kept = merged.items.find((it: any) => String(it.id) === '111');
+    expect(kept.providerRank).toBe(1);
+    expect(kept.providerRanks).toHaveLength(2);
+    expect(typeof kept.rrfScore).toBe('number');
+    expect(kept.retrievalWave).toBe(1);
   });
 
   test('Test11: provenance contract', async () => {

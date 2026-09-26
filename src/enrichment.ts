@@ -749,49 +749,53 @@ export function filterByDomains(
 }
 
 /** 検索結果アイテムの BM25+ 多信号リランキング (Title BM25, Snippet BM25, Dynamic IDF, Bigram Matching, Exact Match, Domain Trust) */
-export function rerankSearchResults<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
+export interface SearchCandidateScore {
+  score: number;
+  titleScore: number;
+  snippetScore: number;
+  exactMatchScore: number;
+  sourceHintScore: number;
+}
+
+interface ScoredSearchCandidate<T> {
+  item: T;
+  originalIndex: number;
+  score: number;
+  breakdown: SearchCandidateScore;
+}
+
+// Shared lexical scoring core (RFC P0-WEB-02).
+// rerankSearchResults() is a thin ordering wrapper over this core.
+// The core is also exposed via scoreSearchCandidate() for diagnostics
+// and deep-retrieval selection. Ranking callers must not use it to
+// replace provider order on a single SERP.
+function computeCandidateScores<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
   items: T[],
   query: string,
-): T[] {
-  if (!items || items.length <= 1 || !query) return items;
-
+): Array<ScoredSearchCandidate<T>> {
   const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return items;
-
   const N = items.length;
   const lowerQuery = query.toLowerCase().trim();
-
-  // 各アイテムのテキスト準備
-  const itemDocs = items.map((item) => {
-    const title = (item.title || '').toLowerCase();
-    const snippet = (item.snippet || item.description || item.content || '').toLowerCase();
-    const urlStr = (item.url || '').toLowerCase();
-    return { title, snippet, urlStr };
-  });
-
-  // 長さ正規化用の平均長 (0除算ガード)
+  const itemDocs = items.map((item) => ({
+    title: (item.title || '').toLowerCase(),
+    snippet: (item.snippet || item.description || item.content || '').toLowerCase(),
+  }));
   let totalTitleLen = 0;
   let totalSnippetLen = 0;
   for (const doc of itemDocs) {
     totalTitleLen += doc.title.length;
     totalSnippetLen += doc.snippet.length;
   }
-  const avgTitleLen = Math.max(1, totalTitleLen / N);
-  const avgSnippetLen = Math.max(1, totalSnippetLen / N);
-
-  // 動的 IDF の事前計算: term が出現する文書数 df(t)
+  const avgTitleLen = Math.max(1, totalTitleLen / Math.max(1, N));
+  const avgSnippetLen = Math.max(1, totalSnippetLen / Math.max(1, N));
   const dfMap = new Map<string, number>();
   for (const term of terms) {
     let df = 0;
     for (const doc of itemDocs) {
-      if (doc.title.includes(term) || doc.snippet.includes(term)) {
-        df++;
-      }
+      if (doc.title.includes(term) || doc.snippet.includes(term)) df++;
     }
     dfMap.set(term, df);
   }
-
-  // 出現回数カウント用ヘルパー
   const countOccurrences = (text: string, sub: string): number => {
     if (!text || !sub) return 0;
     let count = 0;
@@ -802,119 +806,90 @@ export function rerankSearchResults<T extends { title?: string; snippet?: string
     }
     return count;
   };
-
-  // BM25 パラメータ
   const k1 = 1.2;
   const b = 0.75;
   const wTitle = 3.0;
   const wSnippet = 1.0;
-
-  const scored = items.map((item, originalIndex) => {
+  return items.map((item, originalIndex) => {
     const doc = itemDocs[originalIndex];
-    let score = 0;
-
-    // 1. 完全一致ボーナス
-    if (doc.title.includes(lowerQuery)) score += 5.0;
-    if (doc.snippet.includes(lowerQuery)) score += 2.5;
-
-    // 前方一致ボーナス (タイトル先頭の一致)
-    if (doc.title.startsWith(lowerQuery)) score += 2.0;
-
-    // 2. アイテム間 BM25 (TF飽和 × 長さ正規化 × 動的IDF)
+    let exactMatchScore = 0;
+    if (doc.title.includes(lowerQuery)) exactMatchScore += 5.0;
+    if (doc.snippet.includes(lowerQuery)) exactMatchScore += 2.5;
+    if (doc.title.startsWith(lowerQuery)) exactMatchScore += 2.0;
+    let titleScore = 0;
+    let snippetScore = 0;
     const normTitle = 1 - b + b * (doc.title.length / avgTitleLen);
     const normSnippet = 1 - b + b * (doc.snippet.length / avgSnippetLen);
-
     for (const term of terms) {
       const df = dfMap.get(term) || 0;
       if (df === 0) continue;
-
-      // Robertson-Spärck Jones BM25 IDF (下限保護付き)
       const termIdf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
-
       const tfTitle = countOccurrences(doc.title, term);
       const tfSnippet = countOccurrences(doc.snippet, term);
-
       if (tfTitle > 0 || tfSnippet > 0) {
         const bm25Title = tfTitle > 0 ? (tfTitle * (k1 + 1)) / (tfTitle + k1 * normTitle) : 0;
         const bm25Snippet = tfSnippet > 0 ? (tfSnippet * (k1 + 1)) / (tfSnippet + k1 * normSnippet) : 0;
-
-        // バイグラム・複合語（3文字以上）はより特異度が高いため重みブースト
         const lengthBonus = term.length >= 4 ? 1.4 : term.length >= 3 ? 1.2 : 1.0;
-        score += termIdf * (wTitle * bm25Title + wSnippet * bm25Snippet) * lengthBonus;
+        titleScore += termIdf * wTitle * bm25Title * lengthBonus;
+        snippetScore += termIdf * wSnippet * bm25Snippet * lengthBonus;
       }
     }
-
-    // 3. ドメイン信頼度スコア (.gov, .go.jp, .ac.jp, .org ブースト)
-    // hostname ベース判定 (パス部分の .gov 等への誤反応を防止)
+    let sourceHintScore = 0;
     try {
       const host = new URL(item.url || '').hostname.toLowerCase();
-      if (host.endsWith('.go.jp') || host === 'go.jp' || host.endsWith('.gov') || host === 'gov') score += 2.0;
-      if (host.endsWith('.ac.jp') || host.endsWith('.edu')) score += 1.5;
-      if (host.endsWith('.org')) score += 0.5;
+      if (host.endsWith('.go.jp') || host === 'go.jp' || host.endsWith('.gov') || host === 'gov') sourceHintScore += 2.0;
+      if (host.endsWith('.ac.jp') || host.endsWith('.edu')) sourceHintScore += 1.5;
+      if (host.endsWith('.org')) sourceHintScore += 0.5;
     } catch {
-      // URL パース失敗時はドメイン加点なし
     }
-
-    // 4. 語順整合ボーナス (Word Order Consistency)
     if (terms.length >= 2) {
       for (let i = 0; i < terms.length - 1; i++) {
         const t1 = terms[i];
         const t2 = terms[i + 1];
         const p1 = doc.title.indexOf(t1);
         const p2 = doc.title.indexOf(t2, p1 >= 0 ? p1 : 0);
-        if (p1 >= 0 && p2 > p1 && (p2 - p1) < 40) {
-          score += 2.0;
-        }
+        if (p1 >= 0 && p2 > p1 && (p2 - p1) < 40) titleScore += 2.0;
       }
     }
-
-    // 5. 元の検索エンジンの初期順位の僅かなバイアス (同点時の順序維持)
-    score += (N - originalIndex) * 0.05;
-
-    return { item, score };
+    const stabilityPrior = (N - originalIndex) * 0.05;
+    const score = exactMatchScore + titleScore + snippetScore + sourceHintScore + stabilityPrior;
+    return { item, originalIndex, score, breakdown: { score, titleScore, snippetScore, exactMatchScore, sourceHintScore } };
   });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.map((s) => s.item);
 }
 
-/** 検索候補の診断用 lexical スコア計算 (順位変更なし・スコア保持) */
+/** Diagnostic candidate scoring (no reordering). Shares the core with rerankSearchResults. */
 export function scoreSearchCandidate<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
   items: T[],
   query: string,
-): Array<{ item: T; lexicalScore: number; originalIndex: number }> {
+): Array<{ item: T; lexicalScore: number; originalIndex: number; breakdown: SearchCandidateScore }> {
+  const zero = (): SearchCandidateScore => ({ score: 0, titleScore: 0, snippetScore: 0, exactMatchScore: 0, sourceHintScore: 0 });
   if (!items || items.length === 0 || !query) {
-    return (items || []).map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex }));
+    return (items || []).map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex, breakdown: zero() }));
   }
-  // 既存 rerank と同一シグナルでスコアのみ算出する。順位は変更しない。
-  // Note: rerankSearchResults との二重計算を避けるため、軽量な近似ではなく同一ロジックの
-  // スコア部分を再利用する目的。将来的には内部共通化を検討。
-  const scored = items.map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex }));
-  try {
-    // rerank 順序付け前のスコアを流用するため、一時的にソート結果と突合するのではなく
-    // 下記の簡易スコアで診断用とする。ランキング確定には使用しない。
-    const terms = extractTermsWithBigrams(query);
-    const lowerQuery = query.toLowerCase().trim();
-    for (const entry of scored) {
-      const title = (entry.item.title || '').toLowerCase();
-      const snippet = (entry.item.snippet || entry.item.description || entry.item.content || '').toLowerCase();
-      let s = 0;
-      if (title.includes(lowerQuery)) s += 5.0;
-      if (snippet.includes(lowerQuery)) s += 2.5;
-      for (const term of terms) {
-        if (!term) continue;
-        if (title.includes(term)) s += term.length >= 4 ? 1.4 : term.length >= 3 ? 1.2 : 1.0;
-        if (snippet.includes(term)) s += 0.5;
-      }
-      entry.lexicalScore = s;
-    }
-  } catch {
-    // 診断スコア失敗時は 0 のまま返す
+  const terms = extractTermsWithBigrams(query);
+  if (terms.length === 0) {
+    return items.map((item, originalIndex) => ({ item, lexicalScore: 0, originalIndex, breakdown: zero() }));
   }
-  return scored;
+  return computeCandidateScores(items, query).map((s) => ({
+    item: s.item,
+    lexicalScore: s.score,
+    originalIndex: s.originalIndex,
+    breakdown: s.breakdown,
+  }));
 }
 
-/** Reciprocal Rank Fusion (複数SERP統合用・provider順位保存前提) */
+/** Legacy ordering wrapper over the shared scoring core. Do not use to replace provider order. */
+export function rerankSearchResults<T extends { title?: string; snippet?: string; description?: string; url?: string; content?: string }>(
+  items: T[],
+  query: string,
+): T[] {
+  if (!items || items.length <= 1 || !query) return items;
+  const terms = extractTermsWithBigrams(query);
+  if (terms.length === 0) return items;
+  const scored = computeCandidateScores(items, query);
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.item);
+}
 export function reciprocalRankFusion(docRanks: Array<{ key: string; rank: number }>, k = 60): number {
   let s = 0;
   for (const r of docRanks) {

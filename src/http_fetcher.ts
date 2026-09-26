@@ -4,6 +4,7 @@ import type { PersistedCookie } from './db.js';
 import { dbGetDomainCookies, dbSaveDomainCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -312,16 +313,18 @@ export async function fetchWithSafeRedirects(
       originChanged = cur.origin !== init.origin;
       hostChanged = cur.hostname !== init.hostname;
     } catch { originChanged = false; hostChanged = false; }
+    let strippedAuth = false;
     const sanitizedCustomHeaders: Record<string, string> = {};
     if (customHeaders) {
       for (const [k, v] of Object.entries(customHeaders)) {
         const lk = k.toLowerCase();
-        if (originChanged && (lk === 'authorization' || lk === 'proxy-authorization')) continue;
-        if (hostChanged && lk === 'cookie') continue;
+        if (originChanged && (lk === 'authorization' || lk === 'proxy-authorization' || lk === 'x-api-key' || lk === 'x-auth-token' || lk === 'x-access-token')) { strippedAuth = true; continue; }
+        if (hostChanged && lk === 'cookie') { strippedAuth = true; continue; }
         sanitizedCustomHeaders[k] = v;
       }
     }
     const keepCookie = !hostChanged && cookieHeader;
+    if (strippedAuth || (hostChanged && cookieHeader)) incrementSecurityCounter('sora_credential_strip_total');
     const headers: Record<string, string> = {
       'Accept-Language': ACCEPT_LANGUAGE,
       ...(keepCookie ? { Cookie: cookieHeader } : {}),
