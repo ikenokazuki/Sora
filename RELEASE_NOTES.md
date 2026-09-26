@@ -1,3 +1,10 @@
+# 監査対応パッチ (unreleased)
+
+- Yahoo 路線情報フライト一覧の Next.js 化（__NEXT_DATA__）に対応。旧 table 解析はフォールバックとして維持。
+- 詳細ヘルスが SORA_VERSION を返すよう修正。L2 キャッシュの作成時刻を永続化値から復元。古い API 使用量・監視履歴の定期 purge を追加。
+- 外部依存のライブテストを SORA_LIVE_TESTS=1 背後に分離し、CI に bun test ワークフローを追加。
+- README のツール数・モジュール・環境変数表を実態に更新。GET / 一覧に tracking/social を追加。未使用の Dockerfile・ベンチ・ゴミファイルを削除。
+
 # 公開SNS取得（Weibo/Threads/Instagram/Facebook）(unreleased)
 
 - MCPに `search_social_posts`（Weibo新着検索・Meta公開投稿の発見＋本文取得）と `fetch_social_post`（既知投稿の本文・日時・反応）を追加。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使う。
