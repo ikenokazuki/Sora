@@ -62,6 +62,15 @@ describe('P1-4 selectScrapeTargets', () => {
   });
 
 
+  test('answerability detects price and cancel signals', async () => {
+    const { computeAnswerability } = await import('./enrichment.js');
+    const price = computeAnswerability({ title: 't', snippet: '価格 3500円' } as any, 'チケット 価格');
+    expect(price.signals).toContain('price');
+    const noprice = computeAnswerability({ title: 't', snippet: 'live report' } as any, 'チケット 価格');
+    expect(noprice.signals).not.toContain('price');
+    const cancel = computeAnswerability({ title: 't', snippet: '出演辞退のお知らせ' } as any, '出演辞退');
+    expect(cancel.signals).toContain('cancel');
+  });
   test('answerability detects time signal', () => {
     const r = computeAnswerability({ title: 'live', snippet: 'live 14:10-14:30' } as any, 'live time');
     expect(r.signals).toContain('concrete');
