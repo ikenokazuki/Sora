@@ -37,7 +37,9 @@ export interface RhoSelectV2Options {
   dominancePreprocess?: boolean; // default: true
   maxIterations?: number; // default: 100
   maxStates?: number; // default: 500_000
-  highlightMaxCount?: number; // 指定時は安全なポストトランケーション (post-selection truncation) を適用
+  highlightMaxCount?: number;
+  adaptiveCandidate?: boolean;
+  candidateStages?: number[]; // 指定時は安全なポストトランケーション (post-selection truncation) を適用
   wHeading?: number; // default: 3.5
   bHeading?: number; // default: 0.5
   wBody?: number; // default: 1.0
@@ -76,6 +78,7 @@ export interface RhoSelectV2Diagnostics {
   coveredRequirements?: string[];
   answeredRequirements?: string[];
   missingRequirements?: string[];
+  candidateExpansion?: { initial: number; final: number; stages: number };
 }
 
 export interface RhoSelectV2Result {
@@ -96,6 +99,22 @@ interface CandidateBlock {
 /**
  * テキスト内での語句出現回数をカウント (大文字小文字無視)
  */
+function rankCandidatesCheap(pool: Array<{ heading: string; body: string }>, requirements: string[]): number[] {
+  const scored = pool.map((c, idx) => {
+    let s = 0;
+    const reqs = requirements || [];
+    for (const r of reqs) {
+      if (!r) continue;
+      const t = r.trim();
+      if (!t) continue;
+      s += countOccurrences(c.heading, t) * 3 + countOccurrences(c.body, t);
+    }
+    return { idx, s };
+  });
+  scored.sort((a, b) => (b.s !== a.s ? b.s - a.s : a.idx - b.idx));
+  return scored.map((e) => e.idx);
+}
+
 function chr10(): string {
   return String.fromCharCode(10);
 }
@@ -299,39 +318,43 @@ export function extractQueryHighlightsRhoV2(
 
   const n = candidates.length;
   const m = requirements.length;
+  const cheapOrder = rankCandidatesCheap(candidates, requirements);
+  const assocEntities = entityTermsForQuery(query);
+  const currentIntent = detectCurrentIntent(query);
+  const solveSubset = (sub: number[]): { scores: number[][]; weights: number[]; selection: any } => {
+    const pool = sub.map((ci) => candidates[ci]);
+    const pn = pool.length;
 
   // 3. Continuous Score Matrix r_it ∈ [0, 1] の算出 (BM25+ Lexical Scorer)
   let avgHeadingLen = 0;
   let avgBodyLen = 0;
-  for (const c of candidates) {
-    avgHeadingLen += c.heading.length;
-    avgBodyLen += c.body.length;
-  }
-  avgHeadingLen = Math.max(avgHeadingLen / n, 1);
-  avgBodyLen = Math.max(avgBodyLen / n, 1);
+    for (const c of pool) {
+      avgHeadingLen += c.heading.length;
+      avgBodyLen += c.body.length;
+    }
+    avgHeadingLen = Math.max(avgHeadingLen / pn, 1);
+    avgBodyLen = Math.max(avgBodyLen / pn, 1);
 
   // Requirement ごとの Document Frequency (DF) と local smoothed IDF
   const idfList: number[] = new Array(m);
   for (let t = 0; t < m; t++) {
     const req = requirements[t];
     let df = 0;
-    for (const c of candidates) {
+    for (const c of pool) {
       if (c.heading.toLowerCase().includes(req.toLowerCase()) || c.body.toLowerCase().includes(req.toLowerCase())) {
         df++;
       }
     }
     // Robertson BM25 smoothed IDF with minimum floor
-    idfList[t] = Math.max(0.1, Math.log(1 + (n - df + 0.5) / (df + 0.5)));
+    idfList[t] = Math.max(0.1, Math.log(1 + (pn - df + 0.5) / (df + 0.5)));
   }
 
   // Raw evidence matrix
   const rawScores: number[][] = [];
   const maxRawPerRequirement = new Array(m).fill(0);
-  const assocEntities = entityTermsForQuery(query);
-  const currentIntent = detectCurrentIntent(query);
 
-  for (let i = 0; i < n; i++) {
-    const c = candidates[i];
+    for (let i = 0; i < pn; i++) {
+      const c = pool[i];
     const row: number[] = new Array(m);
 
     const normHLen = c.heading.length / avgHeadingLen;
@@ -371,8 +394,8 @@ export function extractQueryHighlightsRhoV2(
 
   // [0, 1] への正規化
   const normalizedScores: number[][] = [];
-  for (let i = 0; i < n; i++) {
-    const row: number[] = new Array(m);
+    for (let i = 0; i < pn; i++) {
+      const row: number[] = new Array(m);
     for (let t = 0; t < m; t++) {
       const maxVal = maxRawPerRequirement[t];
       row[t] = maxVal > 0 ? Math.min(Math.max(rawScores[i][t] / maxVal, 0), 1.0) : 0.0;
@@ -394,7 +417,7 @@ export function extractQueryHighlightsRhoV2(
     }
   }
 
-  const costs = candidates.map((c) => c.cost);
+    const costs = pool.map((c) => c.cost);
 
   // 5. 低レベル Optimizer の実行
   const problem: RhoEvidenceProblem = {
@@ -412,21 +435,61 @@ export function extractQueryHighlightsRhoV2(
     maxStates: options.maxStates ?? 500_000,
   };
 
-  const selection = selectEvidenceSetRhoV2(problem, solverOptions);
+    const selection = selectEvidenceSetRhoV2(problem, solverOptions);
+    return { scores: normalizedScores, weights, selection };
+  };
+  const allIdx = candidates.map((_, ci) => ci);
+  const adaptiveCandidate = options.adaptiveCandidate ?? true;
+  const stageSizes: number[] = options.candidateStages ?? [12, 24, 48];
+  let finalSub = allIdx;
+  let finalScores: number[][] = [];
+  let finalWeights: number[] = [];
+  let selection: any = null;
+  let stagesRun = 0;
+  let finalStageSize = n;
+  if (!adaptiveCandidate || n <= 12) {
+    const r0 = solveSubset(allIdx);
+    finalScores = r0.scores;
+    finalWeights = r0.weights;
+    selection = r0.selection;
+    stagesRun = 1;
+  } else {
+    let stagePos = 0;
+    while (true) {
+      const K = stagePos < stageSizes.length ? stageSizes[stagePos] : n;
+      const sub = K >= n ? allIdx : cheapOrder.slice(0, Math.max(1, Math.min(K, n)));
+      const r = solveSubset(sub);
+      stagesRun += 1;
+      finalSub = sub;
+      finalScores = r.scores;
+      finalWeights = r.weights;
+      selection = r.selection;
+      finalStageSize = sub.length;
+      if (K >= n) break;
+      let covAns = 0;
+      try {
+        const texts = r.selection.indices.map((si: number) => candidates[sub[si]].snippetText);
+        covAns = computeEvidenceCoverage(texts, assocEntities, requirements).answerCoverage;
+      } catch {}
+      if (covAns >= 1) break;
+      stagePos += 1;
+    }
+  }
 
   // 6. 結果の構築
   const selectedIndices = selection.indices;
   let highlights: string[] = [];
   let highlightItems: RhoSelectV2HighlightItem[] = [];
 
-  for (const idx of selectedIndices) {
+  for (const si of selectedIndices) {
+    const idx = finalSub[si];
     const cand = candidates[idx];
     highlights.push(cand.snippetText);
     highlightItems.push({
       text: cand.snippetText,
       score: Number(selection.rho.toFixed(4)),
       cost: cand.cost,
-      evidenceScores: normalizedScores[idx].map((s) => Number(s.toFixed(4))),
+      evidenceScores: finalScores[si].map((s) => Number(s.toFixed(4))),
       heading: cand.heading || undefined,
     });
   }
@@ -459,7 +522,7 @@ export function extractQueryHighlightsRhoV2(
     engine: 'rho-select-v2',
     requirementsSource,
     requirements,
-    requirementWeights: weights.map((w) => Number(w.toFixed(4))),
+    requirementWeights: finalWeights.map((w) => Number(w.toFixed(4))),
     scoreReliability: { status: 'not_calibrated' },
     candidateCount: selection.diagnostics.candidateCount,
     keptCandidateCount: selection.diagnostics.keptCandidateCount,
@@ -472,6 +535,7 @@ export function extractQueryHighlightsRhoV2(
     certificate,
     ...(warningMessage ? { warning: warningMessage } : {}),
     ...(selection.diagnostics.history ? { history: selection.diagnostics.history } : {}),
+    candidateExpansion: { initial: Math.min(12, n), final: finalStageSize, stages: stagesRun },
     ...(evidenceCoverage ? {
       mentionCoverage: evidenceCoverage.mentionCoverage,
       answerCoverage: evidenceCoverage.answerCoverage,
