@@ -555,6 +555,14 @@ export function normalizeRealtimeItem(item: any): Record<string, any> {
     ...(item.detailEnriched !== undefined ? { detailEnriched: item.detailEnriched } : {}),
     ...(item.detailProvider !== undefined ? { detailProvider: item.detailProvider } : {}),
     ...(item.isNoteTweet !== undefined ? { isNoteTweet: item.isNoteTweet } : {}),
+    // Preserve upstream retrieval provenance when re-normalizing final items.
+    ...(item.providerRank !== undefined ? { providerRank: item.providerRank } : {}),
+    ...(item.providerSort ? { providerSort: item.providerSort } : {}),
+    ...(item.retrievalQuery ? { retrievalQuery: item.retrievalQuery } : {}),
+    ...(item.retrievalQueryIndex !== undefined ? { retrievalQueryIndex: item.retrievalQueryIndex } : {}),
+    ...(item.retrievalWave !== undefined ? { retrievalWave: item.retrievalWave } : {}),
+    ...(item.providerRanks !== undefined ? { providerRanks: item.providerRanks } : {}),
+    ...(item.rrfScore !== undefined ? { rrfScore: item.rrfScore } : {}),
   };
 }
 
