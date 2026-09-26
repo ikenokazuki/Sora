@@ -6,7 +6,10 @@
       "id": "live-factual-01",
       "category": "simple factual",
       "query": "君と見るそら メンバー",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "native_preferred",
+      "labelBasis": "official site top-1 vs X profile for member info",
+      "labelScope": "top-1 only, single rater, recorded sample"
     },
     {
       "id": "live-event-01",
@@ -18,13 +21,19 @@
       "id": "live-event-02",
       "category": "event timetable",
       "query": "SPARK 山中湖 タイムテーブル",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "native_preferred",
+      "labelBasis": "organizer timetable top-1 vs third-party news",
+      "labelScope": "top-1 only, single rater, recorded sample"
     },
     {
       "id": "live-official-01",
       "category": "official information",
       "query": "デジタル庁 Web API",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "native_preferred",
+      "labelBasis": "go.jp official top-1 vs lookalike blog",
+      "labelScope": "top-1 only, single rater, recorded sample"
     },
     {
       "id": "live-local-01",
