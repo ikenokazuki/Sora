@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-09-26T21:03:07.346Z",
+  "startedAt": "2026-09-26T21:36:19.886Z",
   "results": [
     {
       "id": "event-timetable-01",
@@ -1695,33 +1695,742 @@
           "answerScore": 0
         }
       }
+    },
+    {
+      "id": "limit6-01",
+      "category": "simple factual",
+      "query": "spark guide",
+      "confidence": {
+        "good": true,
+        "reasons": []
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://h0.example/0",
+            "https://h1.example/1",
+            "https://h2.example/2",
+            "https://h3.example/3",
+            "https://h4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "overlap-01",
+      "category": "official information",
+      "query": "X100 manual",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "disjoint-01",
+      "category": "multi-facet",
+      "query": "alpha beta gamma",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:beta,gamma"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://b.example/1",
+            "https://a.example/1",
+            "https://c.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/1",
+            "https://c.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/1",
+            "https://c.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/1",
+            "https://c.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://a.example/1",
+            "https://b.example/1",
+            "https://c.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 3,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "exact-01",
+      "category": "simple factual",
+      "query": "X100 official store",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/s",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/s",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/s",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/s",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/s",
+            "https://o.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "unicode-01",
+      "category": "ambiguous query",
+      "query": "SPARK party night",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:night"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:night"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://e.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://e.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://e.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://e.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://e.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "longq-01",
+      "category": "multi-facet",
+      "query": "X100 price weight wifi review manual",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:wifi,review,manual"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/pw",
+            "https://review.example/w",
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/pw",
+            "https://review.example/w",
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/pw",
+            "https://review.example/w",
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/pw",
+            "https://review.example/w",
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/pw",
+            "https://review.example/w",
+            "https://maker.example/m"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "rerank-degrade-02",
+      "category": "official information",
+      "query": "city hall hours",
+      "confidence": {
+        "good": true,
+        "reasons": []
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://b0.example/0",
+            "https://b1.example/1",
+            "https://b2.example/2",
+            "https://b3.example/3",
+            "https://b4.example/4"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 0,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://city.example/hall",
+            "https://b0.example/0",
+            "https://b1.example/1",
+            "https://b2.example/2",
+            "https://b3.example/3"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://city.example/hall",
+            "https://b0.example/0",
+            "https://b1.example/1",
+            "https://b2.example/2",
+            "https://b3.example/3"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://city.example/hall",
+            "https://b0.example/0",
+            "https://b1.example/1",
+            "https://b2.example/2",
+            "https://b3.example/3"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://city.example/hall",
+            "https://b0.example/0",
+            "https://b1.example/1",
+            "https://b2.example/2",
+            "https://b3.example/3"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 5,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "concentration-02",
+      "category": "Japanese local information",
+      "query": "ramen price downtown",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "missing-terms:price,downtown",
+          "single-domain"
+        ]
+      },
+      "evidence": {
+        "sufficient": false,
+        "reasons": [
+          "missing-evidence:price,downtown"
+        ]
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://food.example/0",
+            "https://food.example/1",
+            "https://food.example/2",
+            "https://food.example/3"
+          ],
+          "reqCoverage": 0.333,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://food.example/0",
+            "https://food.example/1",
+            "https://food.example/2",
+            "https://food.example/3"
+          ],
+          "reqCoverage": 0.333,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://food.example/0",
+            "https://food.example/1",
+            "https://food.example/2",
+            "https://food.example/3"
+          ],
+          "reqCoverage": 0.333,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://food.example/0",
+            "https://food.example/1",
+            "https://food.example/2",
+            "https://food.example/3"
+          ],
+          "reqCoverage": 0.333,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://food.example/0",
+            "https://food.example/1",
+            "https://food.example/2",
+            "https://food.example/3"
+          ],
+          "reqCoverage": 0.333,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "emptybatch-01",
+      "category": "simple factual",
+      "query": "spark",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "nourl-01",
+      "category": "simple factual",
+      "query": "spark",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://a.example/1",
+            null
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            null,
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            null,
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            null,
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            null,
+            "https://a.example/1"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 1,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
     }
   ],
   "agg": {
     "A": {
-      "meanReqCoverage": 0.84,
-      "meanOfficialRecall": 0.958,
-      "cases": 24
+      "meanReqCoverage": 0.868,
+      "meanOfficialRecall": 0.941,
+      "cases": 34
     },
     "B": {
-      "meanReqCoverage": 0.84,
+      "meanReqCoverage": 0.868,
       "meanOfficialRecall": 1,
-      "cases": 24
+      "cases": 34
     },
     "C": {
-      "meanReqCoverage": 0.84,
+      "meanReqCoverage": 0.868,
       "meanOfficialRecall": 1,
-      "cases": 24
+      "cases": 34
     },
     "D": {
-      "meanReqCoverage": 0.882,
+      "meanReqCoverage": 0.897,
       "meanOfficialRecall": 1,
-      "cases": 24
+      "cases": 34
     },
     "E": {
-      "meanReqCoverage": 0.882,
+      "meanReqCoverage": 0.897,
       "meanOfficialRecall": 1,
-      "cases": 24
+      "cases": 34
     }
   },
   "xResults": [
@@ -1829,6 +2538,42 @@
         },
         "evidence": {
           "topId": "3",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-fact-stale-01",
+      "query": "SPARK announcement",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "evidence": {
+          "topId": "1",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-tie-01",
+      "query": "SPARK news",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "evidence": {
+          "topId": "1",
           "coverage": 1
         }
       }
