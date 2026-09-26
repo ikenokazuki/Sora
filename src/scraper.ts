@@ -1307,15 +1307,16 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string, r
       .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
       .join('\n');
     const missingTerms = requiredTerms.filter((w) => !guaranteedCorpus.includes(w));
-    const guaranteedHosts = new Set(
-      guaranteed.map((it: any) => {
-        try {
-          return new URL(it.url || it.link).hostname.toLowerCase();
-        } catch {
-          return '';
-        }
-      }).filter(Boolean),
-    );
+    const guaranteedHosts = new Set<string>();
+    const guaranteedHostCounts = new Map<string, number>();
+    for (const it of guaranteed) {
+      try {
+        const h = new URL((it as any).url || (it as any).link).hostname.toLowerCase();
+        if (!h) continue;
+        guaranteedHosts.add(h);
+        guaranteedHostCounts.set(h, (guaranteedHostCounts.get(h) ?? 0) + 1);
+      } catch {}
+    }
     const scoredRest = rest.map((it: any, idx: number) => {
       const text = `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase();
       let gain = 0;
@@ -1328,10 +1329,11 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string, r
         if (text.includes(t)) gain += 2.0;
       }
       try { const ab = computeAnswerability(it, query); gain += Math.min(1.0, ab.score * 0.25); } catch {}
-      // 多様性 (新規ホスト優遇・同一ホスト3件目以降は減点)
+      // 多様性: 新規ホスト優遇、同一ホスト飽和には軽い減点
       try {
         const h = new URL(it.url || it.link).hostname.toLowerCase();
-        if (h && !guaranteedHosts.has(h)) gain += 1.0;
+        if (!h) {} else if (!guaranteedHosts.has(h)) gain += 1.0;
+        else gain -= 0.5 * (guaranteedHostCounts.get(h) ?? 1);
       } catch {
         // ホスト不明時は加算なし
       }
@@ -1349,7 +1351,7 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string, r
     const unpicked = rest.filter((it) => !pickedSet.has(it));
     return { targets: [...guaranteed, ...picked], spares: unpicked };
   } catch {
-    return { targets: pool.slice(0, limit), spares: pool.slice(limit) };
+    return { targets: pool.slice(0, limit).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason })), spares: pool.slice(limit) };
   }
 }
 

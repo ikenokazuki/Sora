@@ -21,6 +21,21 @@ describe('P1-4 selectScrapeTargets', () => {
     expect(picked).toEqual(['https://reuters.example/spark', 'https://tech.example/spark'].sort());
     expect(spares.map((s: any) => s.url)).toContain('https://official.example/4');
   });
+  test('saturated hosts are penalized in remaining slots', () => {
+    const pool = [
+      { title: 'a1', snippet: 'x', url: 'https://same.example/1', lexicalScore: 1 },
+      { title: 'a2', snippet: 'x', url: 'https://same.example/2', lexicalScore: 1 },
+      { title: 'a3', snippet: 'x', url: 'https://same.example/3', lexicalScore: 1 },
+      { title: 'a4', snippet: 'x', url: 'https://same.example/4', lexicalScore: 1 },
+      { title: 'b1', snippet: 'x', url: 'https://other.example/1', lexicalScore: 1 },
+      { title: 'c1', snippet: 'x', url: 'https://third.example/1', lexicalScore: 0 },
+    ];
+    const { targets } = selectScrapeTargets(pool as any, 5, 'zzzqq');
+    const picked = targets.slice(3).map((t: any) => t.url);
+    expect(picked).toContain('https://other.example/1');
+    expect(picked).toContain('https://third.example/1');
+    expect(picked).not.toContain('https://same.example/4');
+  });
   test('small pool falls back to slice', () => {
     const pool = [{ title: 'A', url: 'https://a.example/' }, { title: 'B', url: 'https://b.example/' }];
     const { targets, spares } = selectScrapeTargets(pool as any, 5, 'test');
