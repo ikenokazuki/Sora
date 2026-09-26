@@ -243,6 +243,30 @@ export function dbClearAllCache(): number {
   }
 }
 
+/** API 使用量の古い日次行を削除（レート制限は当日のみ参照するため既定 90 日保持） */
+export function dbPurgeOldApiUsage(maxAgeDays = 90): number {
+  try {
+    const db = getDb();
+    const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const res = db.query('DELETE FROM api_usage WHERE date < ?').run(cutoffDate);
+    return res.changes;
+  } catch {
+    return 0;
+  }
+}
+
+/** 監視差分履歴の古い行を削除（既定 180 日保持） */
+export function dbPurgeOldWatchHistory(maxAgeDays = 180): number {
+  try {
+    const db = getDb();
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const res = db.query('DELETE FROM watch_history WHERE detected_at < ?').run(cutoff);
+    return res.changes;
+  } catch {
+    return 0;
+  }
+}
+
 // ==========================================
 // 汎用 watch/diff DAO
 // ==========================================
