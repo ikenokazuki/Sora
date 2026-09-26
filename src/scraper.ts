@@ -41,6 +41,8 @@ import {
   annotateTextWithTemporalAnchors,
   computeAnswerability,
 } from './enrichment.js';
+import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
@@ -97,7 +99,10 @@ export * from './browser_stealth.js';
 import {
   decodeHtmlBuffer,
   fetchWithSafeRedirects,
+  MAX_RESPONSE_BODY_BYTES,
 } from './http_fetcher.js';
+import { readBodyWithLimit } from './net/safe_transport.js';
+import { extractQueryRequirements } from './retrieval/requirements.js';
 import {
   convertHtmlToMarkdown,
   matchUrlPattern,
@@ -469,7 +474,14 @@ export async function scrapeUrl(options: {
 
   const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
-  if (!options.noCache) {
+  // Never place credential-scoped content in public cache.
+  // Authenticated scrapes bypass shared cache on both read and write.
+  const useSharedCache =
+    !options.noCache &&
+    !hasSensitiveRequestCredentials({ headers: options.headers, cookies: options.cookies });
+  if (!useSharedCache && !options.noCache) incrementSecurityCounter('sora_private_cache_bypass_total');
+
+  if (useSharedCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) {
       onProgress?.({ stage: 'done', message: 'Cache hit', data: cached });
@@ -477,7 +489,7 @@ export async function scrapeUrl(options: {
     }
   }
 
-  return runWithSingleFlight(cacheKey, async () => {
+  const scrapeTask = async () => {
     let attempt = 0;
     let lastError: any = null;
 
@@ -536,7 +548,7 @@ export async function scrapeUrl(options: {
               siteName: tweetRes.siteName,
             };
             result = await finalizeScrapeResult(baseResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
         }
@@ -557,14 +569,14 @@ export async function scrapeUrl(options: {
           const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
 
           if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
-            const buf = await response.arrayBuffer();
+            const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
             const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
             result = await finalizeScrapeResult(pdfResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
 
-          const buf = await response.arrayBuffer();
+          const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
           const html = decodeHtmlBuffer(buf, contentType);
 
           const parsed = convertHtmlToMarkdown(
@@ -637,7 +649,7 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
             result = await finalizeScrapeResult(result, finalizeOpts);
 
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
             return result;
           }
@@ -705,7 +717,7 @@ export async function scrapeUrl(options: {
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
             result = await finalizeScrapeResult(initialHttpResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
           throw browserErr;
@@ -794,7 +806,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
         result = await finalizeScrapeResult(result, finalizeOpts);
 
-        if (!options.noCache) setToCache(cacheKey, result);
+        if (useSharedCache) setToCache(cacheKey, result);
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
         return result;
       } catch (err: any) {
@@ -808,7 +820,10 @@ export async function scrapeUrl(options: {
     }
 
     throw lastError || new Error(`スクレイピングに失敗しました: ${url}`);
-  });
+  };
+  // Credential-scoped requests must not share in-flight results either.
+  if (!useSharedCache) return scrapeTask();
+  return runWithSingleFlight(cacheKey, scrapeTask);
 }
 
 // ==========================================
@@ -1254,29 +1269,34 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
 // 10. Firecrawl / Tavily 互換 統合深層検索 (integratedSearch)
 // ==========================================
 
+/** Selection reason for observability (RFC selection reasons). */
+export type SelectionReason =
+  | 'provider_top_rank'
+  | 'rrf_top_rank'
+  | 'missing_requirement'
+  | 'source_diversity'
+  | 'official_source'
+  | 'scrape_refill';
+
 /** P1-4: Scrape対象選択 (上位3件はRRF/provider順保証 + 残りはcoverage/diversity) */
-export function selectScrapeTargets(pool: any[], limit: number, query: string): { targets: any[]; spares: any[] } {
+export function selectScrapeTargets(pool: any[], limit: number, query: string, rankKind: SelectionReason = 'provider_top_rank'): { targets: any[]; spares: any[] } {
   if (!pool || pool.length === 0 || limit <= 0) return { targets: [], spares: [] };
   if (pool.length <= limit || limit < 5) {
-    return { targets: pool.slice(0, limit), spares: pool.slice(limit) };
+    return { targets: pool.slice(0, limit).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason })), spares: pool.slice(limit) };
   }
-  const guaranteed = pool.slice(0, 3);
+  const guaranteed = pool.slice(0, 3).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason }));
   const rest = pool.slice(3);
   const needed = limit - guaranteed.length;
   if (needed <= 0) {
-    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit) };
+    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit).map((it: any) => ({ ...it })) };
   }
   try {
-    const words = query
-      .toLowerCase()
-      .trim()
-      .split(/[\s　]+/)
-      .map((w) => w.trim())
-      .filter((w) => w.length >= 2);
+    const requirements = extractQueryRequirements(query);
+    const requiredTerms = [...requirements.entityTerms, ...requirements.intentTerms];
     const guaranteedCorpus = guaranteed
       .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
       .join('\n');
-    const missingTerms = words.filter((w) => !guaranteedCorpus.includes(w));
+    const missingTerms = requiredTerms.filter((w) => !guaranteedCorpus.includes(w));
     const guaranteedHosts = new Set(
       guaranteed.map((it: any) => {
         try {
@@ -1311,13 +1331,24 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string): 
       if (b.gain !== a.gain) return b.gain - a.gain;
       return a.idx - b.idx;
     });
-    const picked = scoredRest.slice(0, needed).map((s) => s.it);
+    const picked = scoredRest.slice(0, needed).map((s) => {
+      const coversMissing = missingTerms.some((t) => `${s.it.title || ''} ${s.it.snippet || s.it.description || ''}`.toLowerCase().includes(t));
+      return { ...s.it, selectionReason: (coversMissing ? 'missing_requirement' : 'source_diversity') as SelectionReason };
+    });
     const pickedSet = new Set(picked);
     const unpicked = rest.filter((it) => !pickedSet.has(it));
     return { targets: [...guaranteed, ...picked], spares: unpicked };
   } catch {
     return { targets: pool.slice(0, limit), spares: pool.slice(limit) };
   }
+}
+
+/** RFC P0-WEB-03: usable scrape = full content, not snippet fallback. */
+export function isUsableScrape(item: any): boolean {
+  if (!item || item.scrapeError) return false;
+  if (item.isSnippetFallback) return false;
+  const md = item.markdown || '';
+  return typeof md === 'string' && md.length >= 50;
 }
 
 /** P1-3: Evidence充足判定 (adaptive scrape用) */
@@ -1452,7 +1483,7 @@ export async function integratedSearch(options: {
   // 上位3件はRRF/provider順保証、残り枠はcoverage/diversityで選択する
   const candidatePoolSize = adaptiveScrape ? Math.max(scrapeBudget, limit * 2, 10) : Math.max(limit * 2, 10);
   const candidatePool = searchResults.slice(0, candidatePoolSize);
-  const selected = selectScrapeTargets(candidatePool, limit, query);
+  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.queryUnion || webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
   const topItems = selected.targets;
   const sparePool = selected.spares;
   const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];
@@ -1663,7 +1694,7 @@ export async function integratedSearch(options: {
 
     // P0-3: 失敗分補充 (有効結果数が limit 未満かつ予備がある場合のみ1波補充)
     try {
-      const isSuccess = (it: any) => !it?.scrapeError;
+      const isSuccess = (it: any) => isUsableScrape(it);
       let successCount = enrichedResults.filter(isSuccess).length;
       if (successCount < limit && sparePool.length > 0) {
         for (const spare of sparePool) {
@@ -1672,6 +1703,7 @@ export async function integratedSearch(options: {
           const spareUrl = spareItem?.url || spareItem?.link;
           if (!spareUrl) continue;
           const spareSnippet = spareItem?.snippet || spareItem?.description || '';
+          incrementSecurityCounter('sora_scrape_refill_total');
           try {
             const scrape = await scrapeUrl({
               url: spareUrl,
@@ -1725,8 +1757,9 @@ export async function integratedSearch(options: {
                   : undefined,
               }),
             );
+            enrichedSpare.selectionReason = 'scrape_refill';
             enrichedResults.push(enrichedSpare);
-            successCount++;
+            if (isUsableScrape(enrichedSpare)) successCount++;
           } catch {
             continue;
           }
@@ -1741,6 +1774,7 @@ export async function integratedSearch(options: {
       if (adaptiveScrape && scrapeContent) {
         let ev = assessEvidenceSufficiency(enrichedResults, query);
         if (!ev.sufficient) {
+          incrementSecurityCounter('sora_deep_search_wave_total');
           const usedSpares = Math.max(0, enrichedResults.length - topItems.length);
           const remaining = sparePool.slice(usedSpares);
           for (const spare of remaining) {
@@ -1753,6 +1787,7 @@ export async function integratedSearch(options: {
               const scrape = await scrapeUrl({ url: spareUrl, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
               const enrichedSpare: Record<string, any> = { ...spareItem, ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
+              enrichedSpare.selectionReason = 'scrape_refill';
               enrichedResults.push(enrichedSpare);
               ev = assessEvidenceSufficiency(enrichedResults, query);
               if (ev.sufficient) break;

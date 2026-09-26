@@ -60,4 +60,18 @@ describe('P1-4 selectScrapeTargets', () => {
     const ranked = rerankByDeepEvidence(items as any, 'kimisora SPARK');
     expect(ranked[0].title).toContain('kimisora');
   });
+
+  test('targets carry selection reasons', () => {
+    const pool = [
+      { title: 'k1', snippet: 'kimisora', url: 'https://official.example/1' },
+      { title: 'k2', snippet: 'kimisora', url: 'https://official.example/2' },
+      { title: 'k3', snippet: 'kimisora', url: 'https://official.example/3' },
+      { title: 'k4', snippet: 'kimisora', url: 'https://official.example/4' },
+      { title: 'SPARK report', snippet: 'kimisora SPARK', url: 'https://news.example/s' },
+      { title: 'extra', snippet: 'other', url: 'https://other.example/e' },
+    ];
+    const { targets } = selectScrapeTargets(pool as any, 5, 'kimisora SPARK', 'rrf_top_rank');
+    expect(targets.slice(0, 3).every((t: any) => t.selectionReason === 'rrf_top_rank')).toBe(true);
+    expect(['missing_requirement', 'source_diversity']).toContain(targets[3].selectionReason);
+  });
 });
