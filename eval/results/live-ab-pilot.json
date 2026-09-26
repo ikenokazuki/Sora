@@ -1,0 +1,4 @@
+{
+  "note": "Pilot blocked by Yahoo upstream 429 throttle (count 0 on all arms). Harness mechanics proven offline; rerun post-throttle with --live --limit N.",
+  "rows": []
+}
