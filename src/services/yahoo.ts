@@ -61,7 +61,18 @@ async function gateYahooCall(): Promise<void> {
 }
 
 export function isYahooRateLimitText(text: string): boolean {
-  return /429|too many requests|rate[\s_-]*limit|request throttl/i.test(text || '');
+  const t = text || '';
+  if (/too many requests|rate[\s_-]*limit|request throttl/i.test(t)) return true;
+  return /(http|status|error|code)[^0-9a-z]{0,20}429/i.test(t) || /429[^0-9]{0,30}(too many|rate limit|error)/i.test(t);
+}
+
+export function yahooResultHasData(rawText: string): boolean {
+  try {
+    const parsed = JSON.parse(rawText || '');
+    if (Array.isArray(parsed)) return parsed.length > 0;
+    if (parsed && Array.isArray(parsed.items)) return parsed.items.length > 0;
+  } catch {}
+  return false;
 }
 
 export function yahooBreakerCooldownMs(): number {
@@ -150,7 +161,8 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
         try {
           const json = JSON.parse(lines[i]);
           if (json.id === 1 && json.result) {
-            if (isYahooRateLimitText(json.result?.content?.[0]?.text || '') || isYahooRateLimitText(stderr)) {
+            const rawText = json.result?.content?.[0]?.text || '';
+            if (!yahooResultHasData(rawText) && (isYahooRateLimitText(rawText) || isYahooRateLimitText(stderr))) {
               const err: any = new Error(`Yahoo provider rate limited (tool "${toolName}")`);
               err.code = 'YAHOO_RATE_LIMITED';
               try { tripYahooBreaker(); } catch {}
@@ -1086,6 +1098,7 @@ export interface YahooRealtimeQueryBatch {
   query: string;
   queryIndex: number;
   items: any[];
+  throttled?: boolean;
   wave?: number;
   sort?: 'recent' | 'popular';
 }
@@ -1164,7 +1177,9 @@ async function fetchRealtimeBatch(
     const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
   } catch (batchErr) {
-    if (isYahooRateLimitedError(batchErr)) throw batchErr;
+    if (isYahooRateLimitedError(batchErr)) {
+      return { query, queryIndex, wave, sort, items: [], throttled: true };
+    }
     try { incrementSecurityCounter('sora_x_provider_error_total'); } catch {}
     return { query, queryIndex, wave, sort, items: [] };
   }
@@ -1182,9 +1197,7 @@ async function runRealtimeWave(
   const settled = await Promise.allSettled(
     queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, wave)),
   );
-  for (const r of settled) {
-    if (r.status === 'rejected' && isYahooRateLimitedError(r.reason)) throw r.reason;
-  }
+
   return settled.map((r, i) =>
     r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, wave, sort, items: [] },
   );
@@ -1287,17 +1300,12 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
 
   if ((options as any)?.disableFallback === true) {
     const q = builtQuery;
-    let batches: YahooRealtimeQueryBatch[] = [];
-    try {
-      batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp) : [];
-    } catch (dfErr) {
-      if (isYahooRateLimitedError(dfErr)) {
-        const dfReq = extractRealtimeIntentRequirements(originalQuery);
-        const dfCov = evaluateRealtimeRetrievalCoverage([], dfReq);
-        const dfDone = await finish([], 0, 'throttled', dfCov, q ? [q] : []);
-        return { ...dfDone, throttled: true };
-      }
-      throw dfErr;
+    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp) : [];
+    if (batches.some((b) => b.throttled)) {
+      const dfReq = extractRealtimeIntentRequirements(originalQuery);
+      const dfCov = evaluateRealtimeRetrievalCoverage([], dfReq);
+      const dfDone = await finish([], 0, 'throttled', dfCov, q ? [q] : []);
+      return { ...dfDone, throttled: true };
     }
     const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
@@ -1310,6 +1318,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const batches: YahooRealtimeQueryBatch[] = [];
   const executed = new Set<string>();
   let executedWaves = 0;
+  let sawThrottle = false;
 
   const takeBudget = (candidates: string[]): string[] => {
     const out: string[] = [];
@@ -1325,22 +1334,18 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // Wave 1: exact intent (original + canonical syntax variant)
   const wave1Queries = takeBudget(exactVariants);
   if (wave1Queries.length > 0) {
-    let res: YahooRealtimeQueryBatch[];
-    try {
-      res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp);
-    } catch (w1Err) {
-      if (isYahooRateLimitedError(w1Err)) {
-        const w1Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
-        const w1Done = await finish(batches, executedWaves, 'throttled', w1Cov, exactVariants);
-        return { ...w1Done, throttled: true };
-      }
-      throw w1Err;
-    }
+    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
+      if (b.throttled) sawThrottle = true;
     }
     executedWaves = 1;
+    if (sawThrottle) {
+      const w1Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+      const w1Done = await finish(batches, executedWaves, 'throttled', w1Cov, exactVariants);
+      return { ...w1Done, throttled: true };
+    }
   }
   let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   if (coverage.hasFullCoverage) {
@@ -1359,22 +1364,18 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   );
   const wave2Queries = takeBudget(wave2Candidates);
   if (wave2Queries.length > 0) {
-    let res2: YahooRealtimeQueryBatch[];
-    try {
-      res2 = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2);
-    } catch (w2Err) {
-      if (isYahooRateLimitedError(w2Err)) {
-        const w2Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
-        const w2Done = await finish(batches, executedWaves, 'throttled', w2Cov, exactVariants);
-        return { ...w2Done, throttled: true };
-      }
-      throw w2Err;
-    }
+    const res2 = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2);
     for (const b of res2) {
       batches.push(b);
       executed.add(b.query);
+      if (b.throttled) sawThrottle = true;
     }
     executedWaves = 2;
+    if (sawThrottle) {
+      const w2Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+      const w2Done = await finish(batches, executedWaves, 'throttled', w2Cov, exactVariants);
+      return { ...w2Done, throttled: true };
+    }
   }
   coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   if (coverage.hasFullCoverage) {
@@ -1404,16 +1405,9 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   if (wave3Queries.length === 0) {
     return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
   }
-  let res3: YahooRealtimeQueryBatch[];
-  try {
-    res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3);
-  } catch (w3Err) {
-    if (isYahooRateLimitedError(w3Err)) {
-      const w3Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
-      const w3Done = await finish(batches, executedWaves, 'throttled', w3Cov, exactVariants);
-      return { ...w3Done, throttled: true };
-    }
-    throw w3Err;
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3);
+  for (const b of res3) {
+    if (b.throttled) sawThrottle = true;
   }
   for (const b of res3) {
     batches.push(b);
@@ -1421,6 +1415,10 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   }
   executedWaves = 3;
   coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  if (sawThrottle) {
+    const done = await finish(batches, executedWaves, 'throttled', coverage, exactVariants);
+    return { ...done, throttled: true };
+  }
   if (coverage.hasFullCoverage) {
     return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
   }
