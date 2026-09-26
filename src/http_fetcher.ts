@@ -335,7 +335,12 @@ export async function fetchWithSafeRedirects(
       throw new Error(`許可されていないプロトコルです: ${parsed.protocol}`);
     }
 
-    await validateHostIpDns(parsed.hostname);
+    try {
+      await validateHostIpDns(parsed.hostname);
+    } catch (e) {
+      incrementSecurityCounter('sora_redirect_block_total');
+      throw e;
+    }
     await throttleDomain(currentUrl);
 
     // Security: redirect時の認証漏洩防止
