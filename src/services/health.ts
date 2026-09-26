@@ -4,6 +4,7 @@ import { getDb } from '../db.js';
 import { sendWebhookNotification } from '../enrichment.js';
 import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
+import { SORA_VERSION } from '../types.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -14,7 +15,7 @@ export interface DependencyStatus {
 export interface DetailedHealthReport {
   status: 'ok' | 'degraded';
   service: 'sora';
-  version: '2.0.0';
+  version: typeof SORA_VERSION;
   uptimeSeconds: number;
   cachedEntries: number;
   activeBrowserSessions: number;
@@ -90,7 +91,7 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
   return {
     status: isDegraded ? 'degraded' : 'ok',
     service: 'sora',
-    version: '2.0.0',
+    version: SORA_VERSION,
     uptimeSeconds,
     cachedEntries: getCacheSize(),
     activeBrowserSessions: getActiveSessionCount(),
