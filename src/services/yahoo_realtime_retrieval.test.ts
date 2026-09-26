@@ -183,6 +183,22 @@ describe('Realtime Retrieval v1', () => {
     expect(res.items[0].providerRank).toBe(1);
     expect(res.items[0].retrievalWave).toBe(1);
   });
+  test('Test10c: intent is exposed on realtime meta', async () => {
+    const calls: string[] = [];
+    const provider = mockMcp(() => [post('1', 'SPARK 公式発表')], calls);
+    const res: any = await searchYahooRealtime({
+      query: 'SPARK 公式発表',
+      ...OPT,
+      _callMcp: provider,
+    } as any);
+    expect(res.intent).toBe('fact');
+    const res2: any = await searchYahooRealtime({
+      query: 'SPARK live',
+      ...OPT,
+      _callMcp: provider,
+    } as any);
+    expect(res2.intent).toBe('mixed');
+  });
   test('Test10b: multi-wave duplicates accumulate providerRanks and rrfScore', async () => {
     const { mergeRealtimeQueryBatches } = await import('./yahoo.js');
     const a = post('111', 'SPARK 辞退');
