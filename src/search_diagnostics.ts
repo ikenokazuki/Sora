@@ -73,6 +73,7 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
     ...(typeof item.rrfScore === 'number' ? { rrfScore: item.rrfScore } : {}),
     ...(typeof item.lexicalScore === 'number' ? { lexicalScore: item.lexicalScore } : {}),
     ...(item.selectionReason ? { selectionReason: item.selectionReason } : {}),
+    ...(typeof item.scrapeAttemptIndex === 'number' ? { scrapeAttemptIndex: item.scrapeAttemptIndex } : {}),
     ...(requirements.length > 0 ? { requirementsCovered: coveredOf(item) } : {}),
     ...(item.evidence !== undefined ? { hasEvidence: true } : {}),
     ...(item.siteName ? { siteName: item.siteName } : {}),
