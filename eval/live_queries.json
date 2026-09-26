@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "note": "Live golden-query candidates. Expectations unlabeled by design; label before A/B use.",
+  "queries": [
+    {
+      "id": "live-factual-01",
+      "category": "simple factual",
+      "query": "君と見るそら メンバー",
+      "needs_label": true
+    },
+    {
+      "id": "live-event-01",
+      "category": "event timetable",
+      "query": "君と見るそら ライブ 出演時間",
+      "needs_label": true
+    },
+    {
+      "id": "live-event-02",
+      "category": "event timetable",
+      "query": "SPARK 山中湖 タイムテーブル",
+      "needs_label": true
+    },
+    {
+      "id": "live-official-01",
+      "category": "official information",
+      "query": "デジタル庁 Web API",
+      "needs_label": true
+    },
+    {
+      "id": "live-local-01",
+      "category": "Japanese local information",
+      "query": "横浜 1000CLUB アクセス",
+      "needs_label": true
+    },
+    {
+      "id": "live-current-01",
+      "category": "current event",
+      "query": "SPARK 出演者 発表",
+      "needs_label": true
+    },
+    {
+      "id": "live-product-01",
+      "category": "product specification",
+      "query": "iPhone 重量 Wi-Fi 規格",
+      "needs_label": true
+    },
+    {
+      "id": "live-multi-01",
+      "category": "multi-facet",
+      "query": "君と見るそら チケット 料金 出演時間",
+      "needs_label": true
+    },
+    {
+      "id": "live-compare-01",
+      "category": "comparison",
+      "query": "1000CLUB キャパ 比較",
+      "needs_label": true
+    },
+    {
+      "id": "live-ambig-01",
+      "category": "ambiguous query",
+      "query": "spark",
+      "needs_label": true
+    },
+    {
+      "id": "live-cancel-01",
+      "category": "current event",
+      "query": "君と見るそら SPARK 出演辞退",
+      "needs_label": true
+    },
+    {
+      "id": "live-price-01",
+      "category": "simple factual",
+      "query": "キャラフルアイドルフェス チケット 料金",
+      "needs_label": true
+    }
+  ]
+}
