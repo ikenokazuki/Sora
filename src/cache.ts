@@ -4,6 +4,8 @@ import {
   dbDeleteCache,
   dbClearExpiredCache,
   dbClearAllCache,
+  dbPurgeOldApiUsage,
+  dbPurgeOldWatchHistory,
 } from './db.js';
 
 interface CacheEntry<T> {
@@ -60,6 +62,8 @@ export function sweepExpiredEntries(): number {
     }
   }
   dbClearExpiredCache();
+  dbPurgeOldApiUsage();
+  dbPurgeOldWatchHistory();
   return deletedCount;
 }
 
@@ -101,7 +105,11 @@ export function getFromCache<T>(key: string): (T & { cached: true; cachedAt?: st
   // 2. L2 SQLite 永続キャッシュの参照 (プロセス再起動後の復元)
   const persistent = dbGetCache<T>(key);
   if (persistent) {
-    const createdAt = persistent.expiresAt - CACHE_TTL_DEFAULT;
+    // L2 行の作成時刻をそのまま使う。欠損時のみ旧来の推定にフォールバック。
+    const createdAt =
+      typeof persistent.createdAt === 'number' && Number.isFinite(persistent.createdAt)
+        ? persistent.createdAt
+        : persistent.expiresAt - CACHE_TTL_DEFAULT;
     // L1 メモリキャッシュへ昇格
     memoryCache.set(key, {
       data: { ...persistent.value, cached: false },
