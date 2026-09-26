@@ -101,6 +101,33 @@ if (args.includes('--selftest')) {
   console.log('selftest ok: ' + cases.length + ' cases + xrank');
   process.exit(0);
 }
+type XEvalCase = { id: string; query: string; requirements: string[]; officialHandles: string[]; posts: any[] };
+const xCases: XEvalCase[] = [
+  { id: 'x-fact-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: ['official'], posts: [
+    { id: '1', author_handle: 'fan', text: 'SPARK legend live best ever', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
+    { id: '2', author_handle: 'official', text: 'SPARK announcement venue changed', publishedTime: new Date().toISOString() },
+    { id: '3', author_handle: 'fan2', text: 'random daily post', publishedTime: new Date().toISOString() },
+  ] },
+  { id: 'x-recency-01', query: 'SPARK live', requirements: ['spark'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'a', text: 'SPARK live report', publishedTime: new Date(Date.now() - 2 * 86400000).toISOString() },
+    { id: '2', author_handle: 'b', text: 'SPARK live photos', publishedTime: new Date(Date.now() - 10 * 86400000).toISOString() },
+  ] },
+];
+function scoreXCase(c: XEvalCase) {
+  const arms: Record<string, any[]> = {
+    recent: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'recent' }),
+    popular: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'popular' }),
+    evidence: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'evidence', requirements: c.requirements, officialHandles: c.officialHandles }),
+  };
+  const out: Record<string, any> = {};
+  for (const [k, items] of Object.entries(arms)) {
+    const top = items[0] || {};
+    const text = ((top as any).text || '').toLowerCase();
+    const covered = c.requirements.filter((t) => text.includes(t)).length;
+    out[k] = { topId: (top as any).id ?? null, coverage: c.requirements.length > 0 ? Number((covered / c.requirements.length).toFixed(3)) : 1 };
+  }
+  return { id: c.id, query: c.query, arms: out };
+}
 const results = cases.map(scoreCase);
 const agg: Record<string, any> = {};
 for (const arm of ['A','B','C','D','E']) {
@@ -113,10 +140,17 @@ console.log('| case | A cov | B cov | C cov | D cov | E cov |');
 console.log('|---|---|---|---|---|---|');
 for (const r of results) console.log(`| ${r.id} | ${r.arms.A.reqCoverage} | ${r.arms.B.reqCoverage} | ${r.arms.C.reqCoverage} | ${r.arms.D.reqCoverage} | ${r.arms.E.reqCoverage} |`);
 console.log('');
+const xResults = xCases.map(scoreXCase);
 console.log('Mean req coverage: ' + JSON.stringify(agg));
+console.log('');
+console.log('## X ranking eval (offline, ' + xCases.length + ' cases)');
+console.log('');
+console.log('| case | recent top | popular top | evidence top | evidence cov |');
+console.log('|---|---|---|---|---|');
+for (const r of xResults) console.log('| ' + r.id + ' | ' + r.arms.recent.topId + ' | ' + r.arms.popular.topId + ' | ' + r.arms.evidence.topId + ' | ' + r.arms.evidence.coverage + ' |');
 const outIdx = args.indexOf('--json-out');
 if (outIdx >= 0 && args[outIdx+1]) {
   mkdirSync(dirname(args[outIdx+1]), { recursive: true });
-  writeFileSync(args[outIdx+1], JSON.stringify({ startedAt: new Date().toISOString(), results, agg }, null, 2));
+  writeFileSync(args[outIdx+1], JSON.stringify({ startedAt: new Date().toISOString(), results, agg, xResults }, null, 2));
   console.log('wrote ' + args[outIdx+1]);
 }
