@@ -1,0 +1,22 @@
+name: Test
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+jobs:
+  bun-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - id: chrome
+        uses: browser-actions/setup-chrome@latest
+      - run: bun install --frozen-lockfile
+      - run: bun test
+        env:
+          NODE_ENV: test
+          SORA_DB_PATH: ":memory:"
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}

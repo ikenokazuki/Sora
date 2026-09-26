@@ -174,17 +174,19 @@ export function closeDb(): void {
 // 永続キャッシュ DAO
 // ==========================================
 
-export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number } | undefined {
+export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number; createdAt: number } | undefined {
   try {
     const db = getDb();
-    const row = db.query<{ value: string; expires_at: number }, [string, number]>(
-      'SELECT value, expires_at FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
+    const row = db.query<{ value: string; expires_at: number; created_at: number }, [string, number]>(
+      'SELECT value, expires_at, created_at FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
     ).get(key, Date.now());
 
     if (!row) return undefined;
     return {
       value: JSON.parse(row.value) as T,
       expiresAt: row.expires_at,
+      // created_at が無い古い行へのフォールバックは呼出側で行う
+      createdAt: row.created_at,
     };
   } catch {
     return undefined;
@@ -235,6 +237,30 @@ export function dbClearAllCache(): number {
   try {
     const db = getDb();
     const res = db.query('DELETE FROM cache_entries').run();
+    return res.changes;
+  } catch {
+    return 0;
+  }
+}
+
+/** API 使用量の古い日次行を削除（レート制限は当日のみ参照するため既定 90 日保持） */
+export function dbPurgeOldApiUsage(maxAgeDays = 90): number {
+  try {
+    const db = getDb();
+    const cutoffDate = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const res = db.query('DELETE FROM api_usage WHERE date < ?').run(cutoffDate);
+    return res.changes;
+  } catch {
+    return 0;
+  }
+}
+
+/** 監視差分履歴の古い行を削除（既定 180 日保持） */
+export function dbPurgeOldWatchHistory(maxAgeDays = 180): number {
+  try {
+    const db = getDb();
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const res = db.query('DELETE FROM watch_history WHERE detected_at < ?').run(cutoff);
     return res.changes;
   } catch {
     return 0;
