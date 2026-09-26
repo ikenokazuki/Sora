@@ -42,6 +42,7 @@ Adaptive scrape and PRF retrieval are per-request options
 - Consequences kept: no always-on query union, single adaptive
   rescue at most, PRF retrieval opt-in, per-request budgets.
 - Live eval runs must be spaced out; do not re-probe while throttled.
+- Re-checked later: single-query probe still 429-empty. Ban persists; live suite stays out of rotation.
 
 ## Gate proof (2026-09-27, local replay of CI)
 
