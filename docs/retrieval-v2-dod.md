@@ -49,6 +49,13 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   imported anywhere in `src/` (browser comes from system Chromium);
   the vulnerable extract path is unreachable at runtime.
 
+## Single-flight audit
+
+- `scrapeUrl`: credential-scoped requests bypass in-flight coalescing.
+- `x-detail` FxTwitter fetch uses static headers only (no user
+  credentials); shared public cache and coalescing by status ID
+  are correct there.
+
 ## Open labor
 
 - Golden set: 24 web + 8 X deterministic, 30 live-unlabeled (target 100; labeling is human labor).
