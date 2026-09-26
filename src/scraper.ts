@@ -477,6 +477,7 @@ export async function scrapeUrl(options: {
   const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   // Never place credential-scoped content in public cache.
+  // This invariant is required for multi-tenant safety.
   // Authenticated scrapes bypass shared cache on both read and write.
   const useSharedCache =
     !options.noCache &&
@@ -1896,6 +1897,7 @@ export async function integratedSearch(options: {
   }
 
   if (options.verbose) {
+    const diagRequirements = extractQueryRequirements(query);
     finalResponse.searchDiagnostics = buildSearchDiagnostics({
       originalQuery: query,
       effectiveQuery,
@@ -1916,6 +1918,7 @@ export async function integratedSearch(options: {
       realtimeRequiredTerms: realtimeMcpRes?.requiredTerms,
       realtimeCoveredTerms: realtimeMcpRes?.coveredTerms,
       realtimeMissingTerms: realtimeMcpRes?.missingTerms,
+      webRequirements: [...diagRequirements.entityTerms, ...diagRequirements.intentTerms],
       realtimeCount: Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items.length : 0,
       officialAccountId: targetOfficialHandle,
       results: enrichedResults,
