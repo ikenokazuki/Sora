@@ -1933,7 +1933,7 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
 }
 
 export function generateOpenApiDocument() {
-  return {
+  const doc = {
     openapi: '3.0.0',
     info: {
       title: 'Sora Web Scraping, Deep Search, Transit & MCP API',
@@ -3266,4 +3266,11 @@ export function generateOpenApiDocument() {
       },
     },
   };
+  const paths = doc.paths as Record<string, any>;
+  // 同一ハンドラの別名パス。実体と同一定義を参照させる（重複メンテ防止）。
+  paths['/realtime'] = paths['/search/realtime'];
+  paths['/search/deep'] = paths['/search'];
+  paths['/search/integrated'] = paths['/search'];
+  paths['/deep-search'] = paths['/search'];
+  return doc;
 }
