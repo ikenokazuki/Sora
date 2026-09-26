@@ -145,8 +145,10 @@ scrapeRoutes.post('/crawl', async (c) => {
       return c.json({ error: 'url is required' }, 400);
     }
 
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const result = await crawlSiteUrl({
       url: body.url,
+      tenantId,
       maxPages: body.maxPages,
       maxDepth: body.maxDepth,
       maxChars: body.maxChars,
@@ -190,8 +192,10 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ url: body.url, status: 'crawling' }),
       });
 
+      const streamTenant = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
         url: body.url,
+        tenantId: streamTenant,
         maxPages: body.maxPages,
         maxDepth: body.maxDepth,
         maxChars: body.maxChars,
