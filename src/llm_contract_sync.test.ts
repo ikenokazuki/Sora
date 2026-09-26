@@ -803,6 +803,48 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
     });
   });
 
+  describe('J2. Tenant activation isolation (P1-SEC-06)', () => {
+    it('shares activation within a tenant, isolates across tenants', async () => {
+      const { McpSessionManager } = await import('./mcp.js');
+      const manager = new McpSessionManager();
+      let id = 0;
+      const rpc = async (method: string, params: object = {}, sessionId?: string, bearer?: string) => {
+        const response = await manager.handleRequest(new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
+            ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}),
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+        }));
+        expect(response.status).toBe(200);
+        const body = await response.json() as any;
+        return { result: body.result, sessionId: response.headers.get('mcp-session-id')! };
+      };
+      const init = (bearer?: string) => rpc('initialize', {
+        protocolVersion: '2024-11-05', capabilities: {},
+        clientInfo: { name: 'tenant-iso', version: '1.0' },
+      }, undefined, bearer);
+      const listNames = async (sid: string, bearer?: string) => {
+        const l = await rpc('tools/list', {}, sid, bearer);
+        return l.result.tools.map((t: any) => t.name);
+      };
+      try {
+        const a1 = await init('tenant-A-key');
+        await rpc('tools/call', { name: 'search_tools', arguments: { query: 'track_package' } }, a1.sessionId, 'tenant-A-key');
+        expect(await listNames(a1.sessionId, 'tenant-A-key')).toContain('track_package');
+        const b1 = await init('tenant-B-key');
+        expect(await listNames(b1.sessionId, 'tenant-B-key')).not.toContain('track_package');
+        const a2 = await init('tenant-A-key');
+        expect(await listNames(a2.sessionId, 'tenant-A-key')).toContain('track_package');
+      } finally {
+        manager.clearAllSessions();
+      }
+    });
+  });
+
   describe('K. Tool discovery ranking and default. prefix tolerance', () => {
     it('discovers every tool in an explicitly requested category', async () => {
       const server = createMcpServer({ modules: ['yahoo'], deferTools: true });
