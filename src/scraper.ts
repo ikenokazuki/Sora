@@ -1864,6 +1864,7 @@ export async function integratedSearch(options: {
         ...(Array.isArray(realtimeMcpRes?.contributingQueries) ? { contributingQueries: realtimeMcpRes.contributingQueries } : {}),
         ...(realtimeMcpRes?.resultsMerged !== undefined ? { resultsMerged: realtimeMcpRes.resultsMerged } : {}),
         ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
+        ...(realtimeMcpRes?.intent ? { intent: realtimeMcpRes.intent } : {}),
         items: realtimeItems,
       };
     }
