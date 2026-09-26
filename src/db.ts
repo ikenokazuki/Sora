@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
+import { SECURITY_MIGRATIONS } from './security/migrations.js';
 
 let dbInstance: Database | null = null;
 
@@ -136,6 +137,7 @@ export function initDatabase(dbPath?: string): Database {
     );
   `);
 
+  applyMigrations(db, SECURITY_MIGRATIONS);
   applyCountryIntelMigrations(db);
 
   dbInstance = db;
@@ -421,25 +423,29 @@ export interface PersistedCookie {
   expiresAtMs?: number;
 }
 
-export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]): void {
+export function dbSaveTenantCookies(tenantId: string, domain: string, cookies: PersistedCookie[], scope = 'default'): void {
   try {
     const db = getDb();
     db.query(`
-      INSERT INTO domain_cookies (domain, cookies_json, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(domain) DO UPDATE SET
+      INSERT INTO domain_cookies_v2 (tenant_id, domain, scope, cookies_json, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
         cookies_json = excluded.cookies_json,
         updated_at = excluded.updated_at
-    `).run(domain, JSON.stringify(cookies), Date.now());
+    `).run(tenantId, domain, scope, JSON.stringify(cookies), Date.now());
   } catch {}
 }
 
-export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefined {
+export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]): void {
+  dbSaveTenantCookies('legacy', domain, cookies);
+}
+
+export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default'): PersistedCookie[] | undefined {
   try {
     const db = getDb();
-    const row = db.query<{ cookies_json: string }, [string]>(
-      'SELECT cookies_json FROM domain_cookies WHERE domain = ?',
-    ).get(domain);
+    const row = db.query<{ cookies_json: string }, [string, string, string]>(
+      'SELECT cookies_json FROM domain_cookies_v2 WHERE tenant_id = ? AND domain = ? AND scope = ?',
+    ).get(tenantId, domain, scope);
     if (!row) return undefined;
     const cookies: PersistedCookie[] = JSON.parse(row.cookies_json);
     const now = Date.now();
@@ -447,6 +453,10 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
   } catch {
     return undefined;
   }
+}
+
+export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefined {
+  return dbGetTenantCookies('legacy', domain);
 }
 
 export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {

@@ -151,7 +151,14 @@ if (import.meta.main) {
   const server = Bun.serve({
     port: PORT,
     idleTimeout: 255, // Bun の最大アイドルタイムアウト (255秒 = 4分15秒)。SSE ストリームや深層スクレイピング中の切断を防止
-    fetch: app.fetch,
+    fetch: (req, server) => {
+      // Socket peer address for P1-SEC-04 local checks (server-side, not client-controlled).
+      let remoteAddr: string | null = null;
+      try {
+        remoteAddr = server.requestIP(req)?.address ?? null;
+      } catch {}
+      return app.fetch(req, { remoteAddr });
+    },
   });
   console.log(`Starting Sora service on port ${PORT}...`);
 
