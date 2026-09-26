@@ -85,3 +85,13 @@ describe('fragment anchors', () => {
     }
   });
 });
+
+describe('content containers', () => {
+  it('keeps tables inside #content without nav noise takeover', () => {
+    const nav = Array.from({ length: 12 }, (_, i) => `<li><a href="/n${i}">Navigation entry number ${i} with descriptive words</a></li>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>Fee Table</title></head><body><nav><ul>${nav}</ul></nav><div id="content"><h1>Service Fees</h1><p>Our service fees depend on the plan you choose. All prices include tax and support.</p><table><tr><th>Plan</th><th>Monthly</th></tr><tr><td>Basic</td><td>1000</td></tr><tr><td>Pro</td><td>3000</td></tr></table></div></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/fees', 40000, false, true);
+    expect(result.markdown).toContain('Service Fees');
+    expect(result.markdown).toContain('3000');
+  });
+});

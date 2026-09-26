@@ -651,7 +651,7 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
   if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
   let bestHtml = '';
   let bestLen = -1;
-  $('main, [role="main"], article').each((_, el) => {
+  $('main, [role="main"], article, #content, #main').each((_, el) => {
     const $el = $(el);
     if ($el.find(STRUCTURED_CONTENT_SELECTOR).length === 0 && !$el.is(STRUCTURED_CONTENT_SELECTOR)) return;
     const len = $el.text().replace(/\s+/g, ' ').trim().length;
