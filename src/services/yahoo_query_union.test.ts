@@ -211,4 +211,28 @@ describe('Phase 3 bounded Web query union', () => {
     expect(res[0].snippet).toContain('rich');
     expect(res[0].providerRanks).toHaveLength(2);
   });
+
+  test('rollback flags restore legacy behavior', async () => {
+    const { mergeYahooWebQueryBatches: merge } = await import('./yahoo.js');
+    const { rerankSearchResults } = await import('../enrichment.js');
+    const batches = [
+      { query: 'q', queryIndex: 0, items: [
+        { title: 'aaa', url: 'https://a.example/', description: 'zzz' },
+        { title: 'qqq matchme', url: 'https://b.example/', description: 'matchme' },
+      ]},
+      { query: 'q2', queryIndex: 1, items: [
+        { title: 'qqq matchme', url: 'https://b.example/', description: 'matchme extra' },
+      ]},
+    ];
+    const prevRrf = process.env.SORA_RRF_ENABLED;
+    process.env.SORA_RRF_ENABLED = 'false';
+    const off = merge(batches as any, 'matchme');
+    expect(off.map((x: any) => x.url)).toEqual(['https://a.example/', 'https://b.example/']);
+    process.env.SORA_RRF_ENABLED = 'true';
+    const on = merge(batches as any, 'matchme');
+    expect(on[0].url).toBe('https://b.example/');
+    if (prevRrf !== undefined) process.env.SORA_RRF_ENABLED = prevRrf; else delete process.env.SORA_RRF_ENABLED;
+    expect(process.env.SORA_WEB_NATIVE_RANKING ?? 'true').toBe('true');
+    void rerankSearchResults;
+  });
 });

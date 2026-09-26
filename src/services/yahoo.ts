@@ -6,9 +6,10 @@ import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalR
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
-  rerankRealtimeItems,
+  rankRealtimeItems,
   cleanRealtimeItem,
 } from './x_detail.js';
+import { incrementSecurityCounter } from '../security/metrics.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -177,6 +178,12 @@ export function mergeYahooWebQueryBatches(
     // 診断失敗時は無視
   }
 
+  if (!isRrfEnabled()) {
+    for (const item of merged) {
+      delete (item as any).__insertionOrder;
+    }
+    return merged;
+  }
   merged.sort((a: any, b: any) => {
     if (b.rrfScore !== a.rrfScore) return b.rrfScore - a.rrfScore;
     const aMin = Math.min(...a.providerRanks.map((p: any) => p.rank));
@@ -188,6 +195,14 @@ export function mergeYahooWebQueryBatches(
     delete (item as any).__insertionOrder;
   }
   return merged;
+}
+
+/** Rollback flags (RFC rollback strategy). Default true = Retrieval v2 behavior. */
+export function isWebNativeRankingEnabled(): boolean {
+  return process.env.SORA_WEB_NATIVE_RANKING !== 'false';
+}
+export function isRrfEnabled(): boolean {
+  return process.env.SORA_RRF_ENABLED !== 'false';
 }
 
 /** Retrieval confidence 判定 (追加検索が必要な弱い取得か) */
@@ -328,6 +343,7 @@ export async function searchYahooWeb(options: {
         (item: any) => (item.retrievalQueryIndex ?? 0) > 0,
       );
 
+      try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
       return {
         items: ranked,
         count: ranked.length,
@@ -402,6 +418,16 @@ export async function searchYahooWeb(options: {
         } catch {
           // 診断失敗時は無視
         }
+        // Rollback: legacy mode restores BM25 global reorder (providerRank kept for shadow compare).
+        if (!isWebNativeRankingEnabled()) {
+          json.items = rerankSearchResults(filtered, options.query);
+          json.count = json.items.length;
+          json.source = 'web';
+          json.effectiveQuery = q;
+          json.isFallback = i > 0;
+          json.nativeRanking = false;
+          return json;
+        }
         // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
         // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
         if (i === 0 && candidateQueries.length > 1) {
@@ -462,6 +488,7 @@ export async function searchYahooWeb(options: {
         json.source = 'web';
         json.effectiveQuery = q;
         json.isFallback = i > 0;
+        try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
         return json;
       }
       if (json && Array.isArray(json.items)) {
@@ -930,6 +957,8 @@ export interface YahooRealtimeQueryBatch {
   query: string;
   queryIndex: number;
   items: any[];
+  wave?: number;
+  sort?: 'recent' | 'popular';
 }
 
 /**
@@ -939,18 +968,42 @@ export interface YahooRealtimeQueryBatch {
 export function mergeRealtimeQueryBatches(
   batches: YahooRealtimeQueryBatch[],
 ): { items: any[]; contributingQueries: string[] } {
-  const seen = new Set<string>();
+  // X retrieval provenance (P0-X-04): providerRank / providerSort /
+  // retrievalQuery / retrievalWave are preserved; repeats across
+  // waves accumulate providerRanks and an RRF confidence score (P1-X-01).
+  const seen = new Map<string, any>();
   const merged: any[] = [];
   const contributed = new Set<string>();
   for (const batch of batches) {
     if (!batch || !Array.isArray(batch.items)) continue;
-    for (const item of batch.items) {
-      const key = getRealtimeCanonicalIdentity(item);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
+    batch.items.forEach((raw: any, batchIndex: number) => {
+      const key = getRealtimeCanonicalIdentity(raw);
+      if (!key) return;
+      const existing = seen.get(key);
+      if (existing) {
+        existing.providerRanks.push({ queryIndex: batch.queryIndex, rank: batchIndex + 1 });
+        return;
+      }
+      const item = {
+        ...raw,
+        providerRank: batchIndex + 1,
+        providerSort: batch.sort,
+        retrievalQuery: batch.query,
+        retrievalQueryIndex: batch.queryIndex,
+        retrievalWave: batch.wave ?? 1,
+        providerRanks: [{ queryIndex: batch.queryIndex, rank: batchIndex + 1 }],
+      };
+      seen.set(key, item);
       contributed.add(batch.query);
       merged.push(item);
-    }
+    });
+  }
+  for (const item of merged) {
+    try {
+      item.rrfScore = reciprocalRankFusion(
+        item.providerRanks.map((pr: any) => ({ key: String(pr.queryIndex), rank: pr.rank })),
+      );
+    } catch {}
   }
   const order = new Map<string, number>();
   batches.forEach((b, i) => {
@@ -967,6 +1020,7 @@ async function fetchRealtimeBatch(
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  wave = 1,
 ): Promise<YahooRealtimeQueryBatch> {
   try {
     const mcpRes = await callMcp('yahoo_realtime_search', {
@@ -979,7 +1033,7 @@ async function fetchRealtimeBatch(
     if (!content) return { query, queryIndex, items: [] };
     const parsed = JSON.parse(content);
     const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
-    return { query, queryIndex, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
+    return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
   } catch {
     return { query, queryIndex, items: [] };
   }
@@ -992,12 +1046,13 @@ function runRealtimeWave(
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  wave = 1,
 ): Promise<YahooRealtimeQueryBatch[]> {
   return Promise.allSettled(
-    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp)),
+    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, wave)),
   ).then((settled) =>
     settled.map((r, i) =>
-      r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, items: [] },
+      r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, wave, sort, items: [] },
     ),
   );
 }
@@ -1045,6 +1100,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     exactVariants: string[],
   ) => {
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
+    try { incrementSecurityCounter('sora_x_wave_total', Math.max(1, executedWaves)); } catch {}
     const retrievalQueries = batches.map((b) => b.query);
     const resultsMerged = contributingQueries.length >= 2;
     const exactSet = new Set(exactVariants);
@@ -1052,7 +1108,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     const effectiveQuery = contributingQueries.length === 1
       ? contributingQueries[0]
       : originalQuery;
-    let finalItems = merged.length > 0 && originalQuery ? rerankRealtimeItems(merged, originalQuery) : merged;
+    // X-native policy: recent/popular preserve provider order (no generic BM25 rerank).
+    let finalItems = merged.length > 0 && originalQuery ? rankRealtimeItems(merged, { query: originalQuery, mode: sort }) : merged;
     const requestedLimit = limit;
     if (typeof requestedLimit === 'number' && requestedLimit >= 0) {
       finalItems = finalItems.slice(0, requestedLimit);
@@ -1139,7 +1196,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   );
   const wave2Queries = takeBudget(wave2Candidates);
   if (wave2Queries.length > 0) {
-    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp);
+    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
@@ -1174,7 +1231,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   if (wave3Queries.length === 0) {
     return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
   }
-  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp);
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3);
   for (const b of res3) {
     batches.push(b);
     executed.add(b.query);
