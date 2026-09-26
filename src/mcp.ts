@@ -828,7 +828,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
-          const result = await crawlSiteUrl({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+          const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -912,7 +912,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async (opts) => {
         try {
-          const result = await executeBrowserActions(opts as any);
+          const result = await executeBrowserActions({ ...(opts as any), tenantId: serverTenantId });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
