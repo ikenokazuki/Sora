@@ -604,7 +604,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
     expect(data.status).toBe('ok');
-    expect(data.version).toBe('2.30.3');
+    expect(data.version).toBe('2.30.4');
   });
 
   it('GET /metrics should return 200 OK with operational metrics', async () => {
