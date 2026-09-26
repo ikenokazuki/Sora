@@ -1,0 +1,63 @@
+import { describe, expect, test } from 'bun:test';
+import { selectScrapeTargets } from './scraper.js';
+import { computeAnswerability, rerankByDeepEvidence } from './enrichment.js';
+
+describe('P1-4 selectScrapeTargets', () => {
+  test('top3 guaranteed and diversity slots filled', () => {
+    const pool = [
+      { title: 'k1', snippet: 'kimisora', url: 'https://official.example/1', lexicalScore: 5 },
+      { title: 'k2', snippet: 'kimisora', url: 'https://official.example/2', lexicalScore: 5 },
+      { title: 'k3', snippet: 'kimisora', url: 'https://official.example/3', lexicalScore: 5 },
+      { title: 'k4', snippet: 'kimisora', url: 'https://official.example/4', lexicalScore: 5 },
+      { title: 'Reuters SPARK', snippet: 'kimisora SPARK', url: 'https://reuters.example/spark', lexicalScore: 1 },
+      { title: 'Tech SPARK', snippet: 'SPARK syutuen', url: 'https://tech.example/spark', lexicalScore: 1 },
+    ];
+    const { targets, spares } = selectScrapeTargets(pool as any, 5, 'kimisora SPARK');
+    expect(targets).toHaveLength(5);
+    expect(targets[0].url).toBe('https://official.example/1');
+    expect(targets[1].url).toBe('https://official.example/2');
+    expect(targets[2].url).toBe('https://official.example/3');
+    const picked = targets.slice(3).map((t: any) => t.url).sort();
+    expect(picked).toEqual(['https://reuters.example/spark', 'https://tech.example/spark'].sort());
+    expect(spares.map((s: any) => s.url)).toContain('https://official.example/4');
+  });
+  test('small pool falls back to slice', () => {
+    const pool = [{ title: 'A', url: 'https://a.example/' }, { title: 'B', url: 'https://b.example/' }];
+    const { targets, spares } = selectScrapeTargets(pool as any, 5, 'test');
+    expect(targets).toHaveLength(2);
+    expect(spares).toHaveLength(0);
+  });
+
+  test('assessEvidenceSufficiency detects missing terms', async () => {
+    const { assessEvidenceSufficiency } = await import('./scraper.js');
+    const good = assessEvidenceSufficiency(
+      [
+        { title: 'kimisora SPARK', markdown: 'kimisora SPARK 18:20', highlights: ['kimisora SPARK'] },
+        { title: 'timetable', markdown: 'SPARK timetable', highlights: ['timetable'] },
+        { title: 'event', markdown: 'event info', highlights: ['info'] },
+      ] as any,
+      'kimisora SPARK',
+    );
+    expect(good.sufficient).toBe(true);
+    const weak = assessEvidenceSufficiency(
+      [{ title: 'kimisora', markdown: 'kimisora only', highlights: [] }] as any,
+      'kimisora SPARK timetable',
+    );
+    expect(weak.sufficient).toBe(false);
+  });
+
+
+  test('answerability detects time signal', () => {
+    const r = computeAnswerability({ title: 'live', snippet: 'live 14:10-14:30' } as any, 'live time');
+    expect(r.signals).toContain('concrete');
+  });
+
+  test('weighted evidence prefers entity coverage', () => {
+    const items = [
+      { title: 'A', markdown: 'generic bigram text', highlights: [] },
+      { title: 'kimisora SPARK time', markdown: 'kimisora SPARK 18:20', highlights: ['kimisora SPARK'] },
+    ];
+    const ranked = rerankByDeepEvidence(items as any, 'kimisora SPARK');
+    expect(ranked[0].title).toContain('kimisora');
+  });
+});

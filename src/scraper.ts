@@ -39,6 +39,7 @@ import {
   validateExtractedLinks,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
+  computeAnswerability,
 } from './enrichment.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
@@ -1252,6 +1253,98 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
 // ==========================================
 // 10. Firecrawl / Tavily 互換 統合深層検索 (integratedSearch)
 // ==========================================
+
+/** P1-4: Scrape対象選択 (上位3件はRRF/provider順保証 + 残りはcoverage/diversity) */
+export function selectScrapeTargets(pool: any[], limit: number, query: string): { targets: any[]; spares: any[] } {
+  if (!pool || pool.length === 0 || limit <= 0) return { targets: [], spares: [] };
+  if (pool.length <= limit || limit < 5) {
+    return { targets: pool.slice(0, limit), spares: pool.slice(limit) };
+  }
+  const guaranteed = pool.slice(0, 3);
+  const rest = pool.slice(3);
+  const needed = limit - guaranteed.length;
+  if (needed <= 0) {
+    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit) };
+  }
+  try {
+    const words = query
+      .toLowerCase()
+      .trim()
+      .split(/[\s　]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 2);
+    const guaranteedCorpus = guaranteed
+      .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
+      .join('\n');
+    const missingTerms = words.filter((w) => !guaranteedCorpus.includes(w));
+    const guaranteedHosts = new Set(
+      guaranteed.map((it: any) => {
+        try {
+          return new URL(it.url || it.link).hostname.toLowerCase();
+        } catch {
+          return '';
+        }
+      }).filter(Boolean),
+    );
+    const scoredRest = rest.map((it: any, idx: number) => {
+      const text = `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase();
+      let gain = 0;
+      // lexical (diagnostic) をベースにし、順位を大きく崩さない
+      gain += typeof it.lexicalScore === 'number' ? it.lexicalScore * 0.1 : 0;
+      // RRF上位の寄与を残す (元の順位が上の候補を優遇)
+      gain += (rest.length - idx) * 0.01;
+      // 不足要求語の補完
+      for (const t of missingTerms) {
+        if (text.includes(t)) gain += 2.0;
+      }
+      try { const ab = computeAnswerability(it, query); gain += Math.min(1.0, ab.score * 0.25); } catch {}
+      // 多様性 (新規ホスト優遇・同一ホスト3件目以降は減点)
+      try {
+        const h = new URL(it.url || it.link).hostname.toLowerCase();
+        if (h && !guaranteedHosts.has(h)) gain += 1.0;
+      } catch {
+        // ホスト不明時は加算なし
+      }
+      return { it, gain, idx };
+    });
+    scoredRest.sort((a, b) => {
+      if (b.gain !== a.gain) return b.gain - a.gain;
+      return a.idx - b.idx;
+    });
+    const picked = scoredRest.slice(0, needed).map((s) => s.it);
+    const pickedSet = new Set(picked);
+    const unpicked = rest.filter((it) => !pickedSet.has(it));
+    return { targets: [...guaranteed, ...picked], spares: unpicked };
+  } catch {
+    return { targets: pool.slice(0, limit), spares: pool.slice(limit) };
+  }
+}
+
+/** P1-3: Evidence充足判定 (adaptive scrape用) */
+export function assessEvidenceSufficiency(items: any[], query: string): { sufficient: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!items || items.length === 0) return { sufficient: false, reasons: ['empty'] };
+  const success = items.filter((it: any) => !it?.scrapeError && (it?.markdown || it?.highlights || it?.highlightItems));
+  if (success.length < Math.min(3, items.length)) {
+    reasons.push('few-success');
+  }
+  try {
+    const words = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length >= 2);
+    if (words.length >= 2) {
+      const corpus = success
+        .map((it: any) => {
+          const hl = Array.isArray(it?.highlights) ? it.highlights.join('\n') : '';
+          return `${it.title || ''} \n ${it.markdown || ''} \n ${hl}`.toLowerCase();
+        })
+        .join('\n');
+      const missing = words.filter((w) => !corpus.includes(w));
+      if (missing.length > 0) reasons.push(`missing-evidence:${missing.join(',')}`);
+    }
+  } catch {
+    // 判定失敗時は不足扱いにしない
+  }
+  return { sufficient: reasons.length === 0, reasons };
+}
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1277,6 +1370,8 @@ export async function integratedSearch(options: {
   highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
+  adaptiveScrape?: boolean;
+  scrapeBudget?: number;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1303,7 +1398,9 @@ export async function integratedSearch(options: {
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}`;
+  const adaptiveScrape = options.adaptiveScrape ?? false;
+  const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1326,7 +1423,38 @@ export async function integratedSearch(options: {
     searchResults = dedupSearchResults(searchResults, (i: any) => `${i.title || ''} ${i.snippet || ''}`);
   }
 
-  const topItems = searchResults.slice(0, limit);
+  // P2: PRF retrieval (opt-in, retrieval-only, final eval binds to original query)
+  if (enablePrf && searchResults.length > 0) {
+    try {
+      const topDocs = searchResults.slice(0, 3).map((i) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const allDocs = searchResults.slice(0, 10).map((i) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const prfQ = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs);
+      if (prfQ.expansionTerms.length > 0) {
+        const prfQuery = `${query} ${prfQ.expansionTerms.slice(0, 2).join(" ")}`.slice(0, 380);
+        if (prfQuery !== query) {
+          const prfRes = await searchYahooWeb({ query: prfQuery, includeDomains, excludeDomains, updated, disableFallback: true }).catch(() => null);
+          const prfItems = Array.isArray(prfRes?.items) ? prfRes.items : [];
+          if (prfItems.length > 0) {
+            const seen = new Set(searchResults.map((it) => it.url || it.link));
+            for (const it of prfItems) {
+              const key = it.url || it.link;
+              if (!key || seen.has(key)) continue;
+              seen.add(key);
+              searchResults.push({ ...it, retrievalQuery: prfQuery, prfRetrieval: true });
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // P0-3 + P1-4: 候補プール確保とScrape対象選択
+  // 上位3件はRRF/provider順保証、残り枠はcoverage/diversityで選択する
+  const candidatePoolSize = adaptiveScrape ? Math.max(scrapeBudget, limit * 2, 10) : Math.max(limit * 2, 10);
+  const candidatePool = searchResults.slice(0, candidatePoolSize);
+  const selected = selectScrapeTargets(candidatePool, limit, query);
+  const topItems = selected.targets;
+  const sparePool = selected.spares;
   const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];
   const xPlanByIndex = new Map<number, (typeof xRetrievalPlan)[number]>();
   for (const plan of xRetrievalPlan) {
@@ -1533,6 +1661,107 @@ export async function integratedSearch(options: {
       }),
     );
 
+    // P0-3: 失敗分補充 (有効結果数が limit 未満かつ予備がある場合のみ1波補充)
+    try {
+      const isSuccess = (it: any) => !it?.scrapeError;
+      let successCount = enrichedResults.filter(isSuccess).length;
+      if (successCount < limit && sparePool.length > 0) {
+        for (const spare of sparePool) {
+          if (successCount >= limit) break;
+          const spareItem: any = spare;
+          const spareUrl = spareItem?.url || spareItem?.link;
+          if (!spareUrl) continue;
+          const spareSnippet = spareItem?.snippet || spareItem?.description || '';
+          try {
+            const scrape = await scrapeUrl({
+              url: spareUrl,
+              contextTitle: spareItem?.title,
+              snippet: spareSnippet,
+              maxChars,
+              timeoutMs: 12000,
+              query: effectiveQuery,
+              extractHighlights,
+              onlyMainContent,
+              formats,
+              reorderUFlat,
+              diversityWeight,
+              annotateTemporal,
+              minimizeTables,
+              highlightAlgorithm,
+              highlightOverheadTokens,
+              highlightMaxCount,
+            });
+            const enrichedSpare: Record<string, any> = {
+              ...spareItem,
+              ogImage: scrape.ogImage,
+              description: scrape.description,
+              publishedTime: scrape.publishedTime,
+              author: scrape.author,
+              siteName: scrape.siteName,
+              twitterHandle: scrape.twitterHandle,
+              socialLinks: scrape.socialLinks,
+              pageType: scrape.pageType,
+              highlights: scrape.highlights,
+              highlightItems: scrape.highlightItems,
+              highlightDiagnostics: scrape.highlightDiagnostics,
+              temporalAnchors: scrape.temporalAnchors,
+              textFragmentUrl: scrape.textFragmentUrl,
+              cached: scrape.cached,
+            };
+            if (scrape.isTruncated) {
+              enrichedSpare.isTruncated = true;
+            }
+            if (options.verbose) {
+              enrichedSpare.quality = scrape.quality;
+              enrichedSpare.completeness = scrape.completeness;
+              enrichedSpare.evidence = scrape.evidence;
+            }
+            Object.assign(
+              enrichedSpare,
+              projectRequestedScrapeFormats(scrape, formats, {
+                minMarkdownChars: 50,
+                markdownFallback: spareSnippet
+                  ? `# ${spareItem?.title || 'Web Search Result'}\n\nURL: ${spareUrl}\n\n${spareSnippet}`
+                  : undefined,
+              }),
+            );
+            enrichedResults.push(enrichedSpare);
+            successCount++;
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch {
+      // 補充失敗時は初回結果をそのまま返す
+    }
+
+    // P1-3: adaptive evidence 不足時の追加取得 (opt-in, 最大8件)
+    try {
+      if (adaptiveScrape && scrapeContent) {
+        let ev = assessEvidenceSufficiency(enrichedResults, query);
+        if (!ev.sufficient) {
+          const usedSpares = Math.max(0, enrichedResults.length - topItems.length);
+          const remaining = sparePool.slice(usedSpares);
+          for (const spare of remaining) {
+            if (enrichedResults.length >= scrapeBudget) break;
+            const spareItem = spare as any;
+            const spareUrl = spareItem?.url || spareItem?.link;
+            if (!spareUrl) continue;
+            const spareSnippet = spareItem?.snippet || spareItem?.description || '';
+            try {
+              const scrape = await scrapeUrl({ url: spareUrl, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+              const enrichedSpare: Record<string, any> = { ...spareItem, ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
+              Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
+              enrichedResults.push(enrichedSpare);
+              ev = assessEvidenceSufficiency(enrichedResults, query);
+              if (ev.sufficient) break;
+            } catch { continue; }
+          }
+        }
+      }
+    } catch { }
+
     // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
     if (enrichedResults.length > 1) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);
@@ -1677,4 +1906,3 @@ export async function integratedSearch(options: {
 
 // 荷物追跡サービス (Package Tracking)
 export * from './services/tracking.js';
-
