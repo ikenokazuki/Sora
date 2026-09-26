@@ -1770,6 +1770,30 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
 
 ## 4. セキュリティ & アーキテクチャ
 
+### 3.25 公開SNS投稿検索・取得 (`POST /social/search` / `POST /social/fetch`)
+Weibo新着検索とThreads/Instagram/Facebook公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使うこと。検索は最大55秒、取得は最大30秒の締め切り付き。
+
+- **リクエスト (`POST /social/search`)**:
+  ```json
+  {
+    "platform": "weibo",
+    "query": "桜",
+    "limit": 10,
+    "lookbackHours": 24
+  }
+  ```
+  `platform` は `weibo` / `threads` / `instagram` / `facebook`。`limit` は1〜30、`lookbackHours` は1〜2160。
+
+- **リクエスト (`POST /social/fetch`)**:
+  ```json
+  {
+    "url": "https://www.threads.com/@user/post/abc123",
+    "commentLimit": 10
+  }
+  ```
+
+- **レスポンス**: `status`（`ok` / `partial` / `empty` / `unavailable`）、`items`（投稿配列）、`matchedInWindow`、`unknownTime`、`failures`、`warnings` を返す。取得系は `post` 単体と `failures` / `warnings` を返す。
+
 ### 4.1 ディストロレス (Distroless) コンテナ設計
 - **ベースイメージ**: `gcr.io/distroless/cc-debian12`
 - **シェルなし・パッケージマネージャなし**: コンテナ内に `/bin/sh` や `apt`、`curl` は一切存在せず、攻撃者がシェルを奪取する余地がありません。
