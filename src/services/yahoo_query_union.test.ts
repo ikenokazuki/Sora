@@ -212,6 +212,24 @@ describe('Phase 3 bounded Web query union', () => {
     expect(res[0].providerRanks).toHaveLength(2);
   });
 
+  test('score breakdown sums to total minus stability prior', async () => {
+    const { scoreSearchCandidate } = await import('../enrichment.js');
+    const items = [
+      { title: 'X100 official store guide', snippet: 'X100 price and specs', url: 'https://maker.example/a' },
+      { title: 'random blog', snippet: 'daily life notes', url: 'https://blog.example/b' },
+      { title: 'X100 forum thread', snippet: 'X100 question', url: 'https://forum.example/c' },
+    ];
+    const scored = scoreSearchCandidate(items as any, 'X100 official store');
+    expect(scored).toHaveLength(3);
+    scored.forEach((entry: any, i: number) => {
+      const b = entry.breakdown;
+      const prior = (items.length - entry.originalIndex) * 0.05;
+      expect(entry.lexicalScore).toBeCloseTo(b.exactMatchScore + b.titleScore + b.snippetScore + b.sourceHintScore + prior, 10);
+      expect(entry.originalIndex).toBe(i);
+    });
+    // ranking wrapper preserves input order information only through scores
+    expect(scored[0].lexicalScore).toBeGreaterThan(scored[1].lexicalScore);
+  });
   test('rollback flags restore legacy behavior', async () => {
     const { mergeYahooWebQueryBatches: merge } = await import('./yahoo.js');
     const { rerankSearchResults } = await import('../enrichment.js');
