@@ -20,6 +20,7 @@ export interface SearchDiagnosticsInput {
   realtimeCoveredTerms?: string[];
   realtimeMissingTerms?: string[];
   officialAccountId?: string;
+  webRequirements?: string[];
   results: Array<Record<string, any>>;
 }
 
@@ -53,10 +54,27 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
     if (input.officialAccountId) addQuery(`id:${input.officialAccountId}`);
   }
 
+  const requirements = Array.isArray(input.webRequirements) ? input.webRequirements : [];
+  const coveredOf = (item: Record<string, any>): string[] => {
+    if (requirements.length === 0) return [];
+    const text = `${item.title || ''} ${item.snippet || item.description || ''} ${(item.highlights || []).join(' ')}`.toLowerCase();
+    return requirements.filter((r) => r && text.includes(r.toLowerCase()));
+  };
   const sourceIdentity = input.results.map((item, index) => ({
     rank: index + 1,
     source: item.source || 'web',
     ...(item.url || item.link ? { url: item.url || item.link } : {}),
+    // Retrieval provenance (RFC observability). Present only when the pipeline attached it.
+    ...(item.providerRank !== undefined ? { providerRank: item.providerRank } : {}),
+    ...(item.providerSort ? { providerSort: item.providerSort } : {}),
+    ...(item.retrievalQuery ? { retrievalQuery: item.retrievalQuery } : {}),
+    ...(item.retrievalQueryIndex !== undefined ? { retrievalQueryIndex: item.retrievalQueryIndex } : {}),
+    ...(item.retrievalWave !== undefined ? { retrievalWave: item.retrievalWave } : {}),
+    ...(typeof item.rrfScore === 'number' ? { rrfScore: item.rrfScore } : {}),
+    ...(typeof item.lexicalScore === 'number' ? { lexicalScore: item.lexicalScore } : {}),
+    ...(item.selectionReason ? { selectionReason: item.selectionReason } : {}),
+    ...(requirements.length > 0 ? { requirementsCovered: coveredOf(item) } : {}),
+    ...(item.evidence !== undefined ? { hasEvidence: true } : {}),
     ...(item.siteName ? { siteName: item.siteName } : {}),
     ...(item.pageType ? { pageType: item.pageType } : {}),
     ...(item.author ? { author: item.author } : {}),
