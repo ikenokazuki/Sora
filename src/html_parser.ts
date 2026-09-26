@@ -635,6 +635,39 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
 // ==========================================
 // 3. HTML -> Markdown 変換 (Readability & Token 最適化)
 // ==========================================
+const STRUCTURED_CONTENT_SELECTOR =
+  'table, [role="grid"], [role="gridcell"], [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]';
+
+/**
+ * Readability 結果と意味的コンテナを比較し、本文の劣化を防ぐ。
+ * Readability が表/grid を保持していれば採用し、落としている場合だけ
+ * その構造を含む最も長い意味的コンテナで救済する。先頭要素の無条件
+ * 採用や本文全体への無差別拡張はしない。
+ */
+function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): string {
+  const readability$ = cheerio.load(readabilityHtml);
+  const readabilityLen = readability$.text().replace(/\s+/g, ' ').trim().length;
+  if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
+  if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
+  let bestHtml = '';
+  let bestLen = -1;
+  $('main, [role="main"], article').each((_, el) => {
+    const $el = $(el);
+    if ($el.find(STRUCTURED_CONTENT_SELECTOR).length === 0 && !$el.is(STRUCTURED_CONTENT_SELECTOR)) return;
+    const len = $el.text().replace(/\s+/g, ' ').trim().length;
+    if (len > bestLen) {
+      bestLen = len;
+      bestHtml = $.html(el) ?? '';
+    }
+  });
+  // 構造を持つ最長コンテナが Readability の半分にも満たない短さなら
+  // ウィジェット置換とみなして Readability を維持する。
+  if (bestHtml && bestLen >= readabilityLen * 0.5) return bestHtml;
+  // 意味的コンテナ自体がないページ（カレンダー div 等）は従来どおり body を使う。
+  if (!bestHtml) return $('body').html() || readabilityHtml;
+  return readabilityHtml;
+}
+
 export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,
@@ -897,15 +930,7 @@ export function convertHtmlToMarkdown(
       const reader = new Readability(document);
       const article = reader.parse();
       if (article && article.content) {
-        const bodyTextLen = $('body').text().replace(/\s+/g, ' ').trim().length;
-        const articleTextLen = $(article.content).text().replace(/\s+/g, ' ').trim().length;
-        const hasStructuredGrid = $('[role="grid"], [role="gridcell"], table, [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]').length > 0;
-
-        if (hasStructuredGrid && articleTextLen < bodyTextLen * 0.4 && bodyTextLen > 200) {
-          contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
-        } else {
-          contentHtml = article.content;
-        }
+        contentHtml = selectMainContent($, article.content);
       }
     } catch {}
     if (!contentHtml) {
