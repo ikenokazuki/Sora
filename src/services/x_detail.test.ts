@@ -11,6 +11,8 @@ import {
   observeRequirements,
   isLikelyYahooRealtimeTruncated,
   rerankRealtimeItems,
+  rankRealtimeItems,
+  classifyRealtimeIntent,
   enrichRealtimeItemsWithXDetail,
   X_DETAIL_INSPECT_LIMIT,
   X_DETAIL_MAX_CALLS,
@@ -756,5 +758,31 @@ describe('v2.24.1 Sections 30-35: Canonical X Schema, Author Canonicalization & 
 
     expect(newBytes).toBeLessThan(oldBytes);
     expect(newBytes).toBeLessThan(oldBytes * 0.6); // 40%以上のサイズ削減
+  });
+});
+
+describe('X realtime intent (P1-X-03)', () => {
+  it('classifies fact, reaction and mixed queries', () => {
+    expect(classifyRealtimeIntent('SPARK 公式発表は?')).toBe('fact');
+    expect(classifyRealtimeIntent('SPARK みんなの反応')).toBe('reaction');
+    expect(classifyRealtimeIntent('SPARK live')).toBe('mixed');
+    expect(classifyRealtimeIntent('')).toBe('mixed');
+  });
+  it('fact intent strongly prefers official posts', () => {
+    const posts = [
+      { author_handle: 'fan', text: 'SPARK 最高', publishedTime: new Date().toISOString() },
+      { author_handle: 'official', text: 'SPARK sale', publishedTime: new Date(Date.now() - 5 * 86400000).toISOString() },
+    ];
+    const ranked = rankRealtimeItems(posts as any, { query: 'SPARK 公式発表', mode: 'evidence', requirements: ['spark'], officialHandles: ['official'] });
+    expect(ranked[0].author_handle).toBe('official');
+  });
+  it('reaction intent prefers diverse authors covering reaction terms', () => {
+    const posts = [
+      { author_handle: 'official', text: 'SPARK news', publishedTime: new Date().toISOString() },
+      { author_handle: 'fanA', text: 'SPARK 感想', publishedTime: new Date().toISOString() },
+      { author_handle: 'fanB', text: 'SPARK 反応まとめ', publishedTime: new Date().toISOString() },
+    ];
+    const ranked = rankRealtimeItems(posts as any, { query: 'SPARK 反応', mode: 'evidence', requirements: ['spark', '感想', '反応'], officialHandles: ['official'] });
+    expect(ranked.map((r: any) => r.author_handle)).toEqual(['fanA', 'fanB', 'official']);
   });
 });

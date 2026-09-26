@@ -7,7 +7,9 @@ import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
   rankRealtimeItems,
+  classifyRealtimeIntent,
   cleanRealtimeItem,
+  type RealtimeIntent,
 } from './x_detail.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 
@@ -1076,6 +1078,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   originalQuery: string;
   isFallback: boolean;
   source: 'x';
+  intent: RealtimeIntent;
   retrievalQueries: string[];
   contributingQueries: string[];
   resultsMerged: boolean;
@@ -1128,11 +1131,13 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     } else if (finalItems.length > 0) {
       finalItems = finalItems.map((it) => cleanRealtimeItem(it, (options as any)?.verbose === true));
     }
+    const intent = classifyRealtimeIntent(originalQuery);
     return {
       source: 'x' as const,
       originalQuery,
       effectiveQuery,
       isFallback,
+      intent,
       count: finalItems.length,
       items: finalItems,
       retrievalQueries,

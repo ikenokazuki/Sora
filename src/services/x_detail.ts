@@ -257,6 +257,26 @@ export interface RealtimeRankOptions {
   mode: RealtimeRankingMode;
   requirements?: string[];
   officialHandles?: string[];
+  /** Overrides auto classification. Defaults to classifyRealtimeIntent(query). */
+  intent?: RealtimeIntent;
+}
+
+/** Query intent for realtime ranking (RFC P1-X-03). */
+export type RealtimeIntent = 'fact' | 'reaction' | 'mixed';
+
+const FACT_HINTS = ['公式', '発表', '声明', 'お知らせ', '決定', '速報', '日時', '場所', '開場', '開演', '値段', '料金', 'official', 'announcement'];
+const REACTION_HINTS = ['反応', '評判', '感想', '意見', 'どう思', 'みんな', '話題', '炎上', 'バズ', 'reaction', 'review'];
+
+/** Keyword-based realtime intent classification. Defaults to mixed. */
+export function classifyRealtimeIntent(query: string): RealtimeIntent {
+  const q = (query || '').toLowerCase();
+  let fact = 0;
+  let reaction = 0;
+  for (const h of FACT_HINTS) if (q.includes(h.toLowerCase())) fact++;
+  for (const h of REACTION_HINTS) if (q.includes(h.toLowerCase())) reaction++;
+  if (fact > 0 && reaction === 0) return 'fact';
+  if (reaction > 0 && fact === 0) return 'reaction';
+  return 'mixed';
 }
 
 export function rankRealtimeItems(
@@ -287,18 +307,40 @@ export function rankRealtimeItems(
     const r = typeof it.rrfScore === 'number' ? it.rrfScore : 0;
     if (r > maxRrf) maxRrf = r;
   }
+  const intent: RealtimeIntent = options.intent ?? classifyRealtimeIntent(options.query);
+  const authorDf = new Map<string, number>();
+  if (intent === 'reaction') {
+    for (const it of items) {
+      const h = String(it.author_handle || it.author_name || '').toLowerCase();
+      authorDf.set(h, (authorDf.get(h) ?? 0) + 1);
+    }
+  }
   const now = Date.now();
   const scored = items.map((item, index) => {
     const text = `${item.text || ''}\n${item.author_name || ''} ${item.author_handle || ''}`.toLowerCase();
     let s = 0;
     const handle = String(item.author_handle || '').toLowerCase().replace(/^@/, '');
-    if (handle && official.has(handle)) s += 6;
+    const isOfficial = Boolean(handle) && official.has(handle);
+    // Reaction queries seek public voices: official posts compete on
+    // coverage alone (cap 0) so author diversity decides ties.
+    if (intent === 'fact') {
+      if (isOfficial) s += 10;
+    } else if (intent === 'reaction') {
+      // capped at 0 by design
+    } else if (isOfficial) {
+      s += 6;
+    }
     let covered = 0;
     for (const t of reqs) {
       if (t && text.includes(t)) covered++;
     }
     if (reqs.length > 0) s += 6 * (covered / reqs.length);
     if (reqs.length > 0 && covered === reqs.length) s += 8;
+    if (intent === 'reaction') {
+      const h = String(item.author_handle || item.author_name || '').toLowerCase();
+      const df = authorDf.get(h) ?? items.length;
+      s += 4 * (1 - df / Math.max(1, items.length));
+    }
     const ts = Date.parse(item.publishedTime || '') || (typeof item.created_at === 'number' ? item.created_at * 1000 : NaN);
     if (!Number.isNaN(ts)) {
       const ageH = (now - ts) / 3600000;
