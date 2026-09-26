@@ -15,7 +15,7 @@
  */
 
 import { estimateTokens } from './enrichment.js';
-import { analyzeFacetEvidence, associationMultiplier, detectCurrentIntent, entityTermsForQuery, splitSentences, structuralMultiplier, temporalMultiplier } from './retrieval/answerability.js';
+import { analyzeFacetEvidence, associationMultiplier, computeEvidenceCoverage, detectCurrentIntent, entityTermsForQuery, splitSentences, structuralMultiplier, temporalMultiplier } from './retrieval/answerability.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms, type ParsedSection } from './rho_select.js';
 import {
   selectEvidenceSetRhoV2,
@@ -71,6 +71,11 @@ export interface RhoSelectV2Diagnostics {
   certificate: RhoOptimizerCertificate;
   warning?: string;
   history?: RhoV2DiagnosticsHistoryItem[];
+  mentionCoverage?: number;
+  answerCoverage?: number;
+  coveredRequirements?: string[];
+  answeredRequirements?: string[];
+  missingRequirements?: string[];
 }
 
 export interface RhoSelectV2Result {
@@ -445,6 +450,10 @@ export function extractQueryHighlightsRhoV2(
   }
 
   const selectedTokens = highlightItems.reduce((acc, item) => acc + item.cost, 0);
+  let evidenceCoverage: { mentionCoverage: number; answerCoverage: number; coveredRequirements: string[]; answeredRequirements: string[]; missingRequirements: string[] } | null = null;
+  try {
+    evidenceCoverage = computeEvidenceCoverage(highlightItems.map((h) => h.text), assocEntities, requirements);
+  } catch {}
 
   const diagnostics: RhoSelectV2Diagnostics = {
     engine: 'rho-select-v2',
@@ -463,6 +472,13 @@ export function extractQueryHighlightsRhoV2(
     certificate,
     ...(warningMessage ? { warning: warningMessage } : {}),
     ...(selection.diagnostics.history ? { history: selection.diagnostics.history } : {}),
+    ...(evidenceCoverage ? {
+      mentionCoverage: evidenceCoverage.mentionCoverage,
+      answerCoverage: evidenceCoverage.answerCoverage,
+      coveredRequirements: evidenceCoverage.coveredRequirements,
+      answeredRequirements: evidenceCoverage.answeredRequirements,
+      missingRequirements: evidenceCoverage.missingRequirements,
+    } : {}),
   };
 
   return {
