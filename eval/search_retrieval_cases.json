@@ -821,6 +821,83 @@
           ]
         }
       ]
+    },
+    {
+      "id": "research-hard-01",
+      "category": "difficult research",
+      "query": "X100 thermal throttling sustained load remedy",
+      "requirements": [
+        "X100",
+        "thermal",
+        "sustained",
+        "remedy"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 thermal sustained",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 thermal note",
+              "snippet": "thermal sustained behavior",
+              "url": "https://maker.example/thermal"
+            },
+            {
+              "title": "unrelated",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        },
+        {
+          "query": "X100 load remedy",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 load remedy guide",
+              "snippet": "remedy steps",
+              "url": "https://review.example/remedy"
+            },
+            {
+              "title": "X100 thermal note",
+              "snippet": "thermal sustained behavior",
+              "url": "https://maker.example/thermal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-hard-02",
+      "category": "difficult research",
+      "query": "festival crowd crush prevention guidelines",
+      "requirements": [
+        "festival",
+        "crowd",
+        "prevention"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "festival crowd crush prevention guidelines",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "festival safety guidelines",
+              "snippet": "crowd prevention measures",
+              "url": "https://org.example/safety"
+            },
+            {
+              "title": "event report",
+              "snippet": "festival stage",
+              "url": "https://news.example/e"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
