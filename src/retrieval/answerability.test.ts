@@ -5,6 +5,7 @@ import {
   detectValueKinds,
   entityTermsForQuery,
   splitSentences,
+  structuralMultiplier,
 } from './answerability.js';
 import { extractQueryHighlightsRhoV2 } from '../rho_select_v2_adapter.js';
 function chrN(): string { return String.fromCharCode(10); }
@@ -69,5 +70,42 @@ describe('answerability signals (hermetic)', () => {
     expect(scores.has('correct')).toBe(true);
     expect(scores.get('correct') as number).toBeGreaterThan((scores.get('wrong') as number) || 0);
     expect(scores.get('correct') as number).toBeGreaterThan((scores.get('stuffed') as number) || 0);
+  });
+});
+describe('structural evidence signals (hermetic)', () => {
+  test('same table row key and value is very strong', () => {
+    expect(structuralMultiplier('| 重量 | 199g |', '重量')).toBe(1.8);
+    expect(structuralMultiplier('| 項目 | 値 |' + chrN() + '| --- | --- |' + chrN() + '| 重量 | 199g |', '重量')).toBe(1.8);
+  });
+  test('separator rows and key-only rows do not fire', () => {
+    expect(structuralMultiplier('| --- | --- |', '重量')).toBe(1.0);
+    expect(structuralMultiplier('| 重量 | 未定 |', '重量')).toBe(1.0);
+    expect(structuralMultiplier('plain text', '重量')).toBe(1.0);
+  });
+  test('definition key value pairs score above prose', () => {
+    expect(structuralMultiplier('重量' + chrN() + '199g', '重量')).toBe(1.4);
+  });
+  test('adapter ranks table evidence above mention-only', () => {
+    const markdown = [
+      '# 仕様表',
+      '',
+      '| 項目 | 値 |',
+      '| --- | --- |',
+      '| 重量 | 199g |',
+      '',
+      '# 解説',
+      '',
+      '重量について解説します。',
+      '',
+    ].join(chrN());
+    const res = extractQueryHighlightsRhoV2(markdown, 'Astra Phone X 重量', { requirements: ['重量'] });
+    const scores = new Map<string, number>();
+    for (const h of res.highlightItems) {
+      const ev = h.evidenceScores[0] || 0;
+      if (h.text.includes('199g')) scores.set('table', ev);
+      if (h.text.includes('解説します')) scores.set('mention', ev);
+    }
+    expect(scores.has('table')).toBe(true);
+    expect(scores.get('table') as number).toBeGreaterThan((scores.get('mention') as number) || 0);
   });
 });
