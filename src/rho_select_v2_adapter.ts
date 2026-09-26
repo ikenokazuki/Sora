@@ -15,7 +15,7 @@
  */
 
 import { estimateTokens } from './enrichment.js';
-import { analyzeFacetEvidence, associationMultiplier, entityTermsForQuery, splitSentences } from './retrieval/answerability.js';
+import { analyzeFacetEvidence, associationMultiplier, entityTermsForQuery, splitSentences, structuralMultiplier } from './retrieval/answerability.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms, type ParsedSection } from './rho_select.js';
 import {
   selectEvidenceSetRhoV2,
@@ -351,7 +351,9 @@ export function extractQueryHighlightsRhoV2(
       let evidence = baseEvidence;
       try {
         const facetEv = analyzeFacetEvidence(blockSentences, assocEntities, req);
-        evidence = baseEvidence * associationMultiplier(facetEv);
+        const structMult = structuralMultiplier(c.heading + chr10() + c.body, req);
+        const mult = Math.max(associationMultiplier(facetEv), structMult);
+        evidence = baseEvidence * mult;
       } catch {}
       row[t] = evidence;
       if (evidence > maxRawPerRequirement[t]) {

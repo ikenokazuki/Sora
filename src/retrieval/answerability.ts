@@ -141,3 +141,46 @@ export function associationMultiplier(ev: FacetEvidence): number {
   if (ev.entityAssociated) return 1.15;
   return 1.0;
 }
+export function structuralMultiplier(blockText: string, facetTerm: string): number {
+  if (!blockText || !facetTerm) return 1.0;
+  const facet = facetTerm.toLowerCase();
+  const kinds = kindsForFacet(facet);
+  const lines = blockText.split('\n').map((l) => l.trim());
+  let best = 1.0;
+  const valueHit = (cell: string): boolean => {
+    const found = detectValueKinds(cell);
+    if (kinds === null) return found.length > 0;
+    for (const k of kinds) {
+      if (found.includes(k)) return true;
+    }
+    return false;
+  };
+  for (const line of lines) {
+    if (line.length < 3 || line[0] !== '|') continue;
+    const cells = line.split('|').map((c) => c.trim()).filter((c) => c.length > 0);
+    if (cells.length < 2) continue;
+    let allSep = true;
+    for (const c of cells) {
+      if (!/^[-:]+$/.test(c)) { allSep = false; break; }
+    }
+    if (allSep) continue;
+    let keyIdx = -1;
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].toLowerCase().includes(facet)) { keyIdx = i; break; }
+    }
+    if (keyIdx < 0) continue;
+    for (let i = 0; i < cells.length; i++) {
+      if (i !== keyIdx && valueHit(cells[i])) {
+        best = Math.max(best, 1.8);
+        break;
+      }
+    }
+  }
+  const prose = lines.filter((l) => l.length > 0 && l[0] !== '|');
+  for (let i = 0; i + 1 < prose.length; i++) {
+    if (!prose[i].toLowerCase().includes(facet)) continue;
+    if (prose[i + 1].toLowerCase().includes(facet)) continue;
+    if (valueHit(prose[i + 1])) best = Math.max(best, 1.4);
+  }
+  return best;
+}
