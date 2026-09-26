@@ -599,7 +599,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
     expect(data.status).toBe('ok');
-    expect(data.version).toBe('2.30.1');
+    expect(data.version).toBe('2.30.2');
   });
 
   it('GET /metrics should return 200 OK with operational metrics', async () => {
@@ -2777,7 +2777,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.markdown).not.toContain('\u200D');
   });
 
-  it('createAuthMiddleware should enforce Fail-Closed in production when no API key is set', async () => {
+  it('createAuthMiddleware should allow requests when no API key is set (fail-open)', async () => {
     const testApp = new Hono();
     const prevNodeEnv = process.env.NODE_ENV;
     const prevKey = process.env.WEB_FETCHER_API_KEY;
@@ -2792,9 +2792,9 @@ describe('Sora REST & MCP Endpoints', () => {
       testApp.get('/test', (c) => c.json({ ok: true }));
 
       const res = await testApp.request('/test');
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(200);
       const json = (await res.json()) as any;
-      expect(json.error).toContain('Fail-Closed');
+      expect(json.ok).toBe(true);
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
       if (prevKey) process.env.WEB_FETCHER_API_KEY = prevKey;
