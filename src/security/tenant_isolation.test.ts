@@ -41,7 +41,6 @@ describe('tenant isolation (P1-SEC-02)', () => {
     const seen: Array<string | undefined> = [];
     let n = 0;
     const { createServer } = await import('node:http');
-    const { AddressInfo } = await import('node:net');
     const { scrapeUrl } = await import('../scraper.js');
     const { closeHttpSession } = await import('../http_fetcher.js');
     const server = createServer((req: any, res: any) => {
@@ -51,7 +50,7 @@ describe('tenant isolation (P1-SEC-02)', () => {
       res.end('<html><head><title>t</title></head><body><p>hello world content here and more text</p></body></html>');
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
-    const port = (server.address() as AddressInfo).port;
+    const port = (server.address() as import('node:net').AddressInfo).port;
     const url = 'http://127.0.0.1:' + port + '/jar';
     try {
       await scrapeUrl({ url, noCache: true, tenantId: 'tenantA', mode: 'fast', formats: ['markdown'] });

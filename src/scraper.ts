@@ -1462,8 +1462,8 @@ export async function integratedSearch(options: {
   // P2: PRF retrieval (opt-in, retrieval-only, final eval binds to original query)
   if (enablePrf && searchResults.length > 0) {
     try {
-      const topDocs = searchResults.slice(0, 3).map((i) => `${i.title || ""} ${i.snippet || i.description || ""}`);
-      const allDocs = searchResults.slice(0, 10).map((i) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const topDocs = searchResults.slice(0, 3).map((i: any) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const allDocs = searchResults.slice(0, 10).map((i: any) => `${i.title || ""} ${i.snippet || i.description || ""}`);
       const prfQ = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs);
       if (prfQ.expansionTerms.length > 0) {
         const prfQuery = `${query} ${prfQ.expansionTerms.slice(0, 2).join(" ")}`.slice(0, 380);
@@ -1471,7 +1471,7 @@ export async function integratedSearch(options: {
           const prfRes = await searchYahooWeb({ query: prfQuery, includeDomains, excludeDomains, updated, disableFallback: true }).catch(() => null);
           const prfItems = Array.isArray(prfRes?.items) ? prfRes.items : [];
           if (prfItems.length > 0) {
-            const seen = new Set(searchResults.map((it) => it.url || it.link));
+            const seen = new Set(searchResults.map((it: any) => it.url || it.link));
             for (const it of prfItems) {
               const key = it.url || it.link;
               if (!key || seen.has(key)) continue;
