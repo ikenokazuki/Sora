@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach } from 'bun:test';
 import {
   isYahooRateLimitText,
+  yahooResultHasData,
   isYahooRateLimitedError,
   isYahooBreakerOpen,
   tripYahooBreaker,
@@ -23,6 +24,18 @@ describe('yahoo throttle discipline (hermetic)', () => {
     expect(isYahooRateLimitText('request throttled by upstream')).toBe(true);
     expect(isYahooRateLimitText('[]')).toBe(false);
     expect(isYahooRateLimitText('')).toBe(false);
+    expect(isYahooRateLimitText('HTTP 429 Too Many Requests')).toBe(true);
+    expect(isYahooRateLimitText('error 429')).toBe(true);
+    expect(isYahooRateLimitText('価格は1,429円です')).toBe(false);
+    expect(isYahooRateLimitText('住所は東京都港区1-4-29です')).toBe(false);
+    expect(isYahooRateLimitText('cursorWf66Dt429gJBJhVN3r')).toBe(false);
+    expect(isYahooRateLimitText('status code 429')).toBe(true);
+  });
+  test('data payloads win over incidental matches', () => {
+    expect(yahooResultHasData(JSON.stringify({ items: [{ title: 'a' }] }))).toBe(true);
+    expect(yahooResultHasData(JSON.stringify([{ id: '1' }]))).toBe(true);
+    expect(yahooResultHasData(JSON.stringify({ items: [] }))).toBe(false);
+    expect(yahooResultHasData('not json')).toBe(false);
   });
   test('recognizes rate-limited errors', () => {
     const e: any = new Error('limited');
@@ -55,5 +68,24 @@ describe('yahoo throttle discipline (hermetic)', () => {
     } as any);
     expect(res.stopReason).toBe('throttled');
     expect((res as any).throttled).toBe(true);
+  });
+  test('partial wave failure keeps sibling results and stops further waves', async () => {
+    const rateErr: any = new Error('Yahoo provider rate limited');
+    rateErr.code = 'YAHOO_RATE_LIMITED';
+    let calls = 0;
+    const item = { id: '7', author_handle: 'kimisora_JPN', author_name: 'test', text: 'SPARK 出演のお知らせ', url: 'https://x.com/kimisora_JPN/status/7', created_at: 1758000000 };
+    const res = await searchYahooRealtime({
+      query: 'SPARK 出演 辞退 id:kimisora_JPN',
+      detailEnrichment: false,
+      _callMcp: async () => {
+        calls += 1;
+        if (calls === 1) throw rateErr;
+        return { content: [{ text: JSON.stringify({ items: [item] }) }] };
+      },
+    } as any);
+    expect(res.stopReason).toBe('throttled');
+    expect((res as any).throttled).toBe(true);
+    expect(res.items.length).toBeGreaterThan(0);
+    expect(calls).toBeLessThanOrEqual(2);
   });
 });
