@@ -439,6 +439,70 @@
           ]
         }
       ]
+    },
+    {
+      "id": "concentration-01",
+      "category": "Japanese local information",
+      "query": "君と見るそら SPARK チケット",
+      "requirements": [
+        "君と見るそら",
+        "SPARK",
+        "チケット"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "君と見るそら SPARK チケット",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "fan blog 1",
+              "snippet": "live report",
+              "url": "https://fan.example/a"
+            },
+            {
+              "title": "fan blog 2",
+              "snippet": "live report",
+              "url": "https://fan.example/b"
+            },
+            {
+              "title": "fan blog 3",
+              "snippet": "live report",
+              "url": "https://fan.example/c"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cancel-01",
+      "category": "current event",
+      "query": "SPARK 出演辞退 お知らせ",
+      "requirements": [
+        "SPARK",
+        "出演辞退"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK 出演辞退 お知らせ",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK 出演辞退のお知らせ",
+              "snippet": "出演キャンセル ご了承ください",
+              "url": "https://spark.example/news"
+            },
+            {
+              "title": "fan post",
+              "snippet": "live was fun",
+              "url": "https://fan.example/x"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

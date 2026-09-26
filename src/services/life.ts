@@ -347,7 +347,7 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
       const minTemp = targetWeeklyTemp?.tempsMin?.[j];
       const maxTemp = targetWeeklyTemp?.tempsMax?.[j];
 
-      const diffDays = forecasts.length;
+      const diffDays: number = forecasts.length;
       forecasts.push({
         date: dateStr,
         dateLabel: dateLabels[diffDays] || `${diffDays + 1}日後`,
