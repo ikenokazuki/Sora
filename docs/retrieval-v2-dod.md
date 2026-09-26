@@ -51,5 +51,5 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 
 ## Open labor
 
-- Golden set: 18 web + 3 X deterministic, 12 live-unlabeled (target 100).
+- Golden set: 24 web + 8 X deterministic, 30 live-unlabeled (target 100; labeling is human labor).
 - Full suite: 710/714; all 4 failures reproduce on pristine base (live Yahoo/JMA drift, zero branch-caused).
