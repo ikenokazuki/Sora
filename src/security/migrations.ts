@@ -19,4 +19,20 @@ export const SECURITY_MIGRATIONS: readonly DbMigration[] = [
         SELECT 'legacy', domain, 'default', cookies_json, updated_at FROM domain_cookies`);
     },
   },
+  {
+    version: 101,
+    name: 'tenant domain storage',
+    up(database) {
+      database.run(`CREATE TABLE IF NOT EXISTS domain_storage_v2 (
+        tenant_id TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'default',
+        storage_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (tenant_id, domain, scope)
+      )`);
+      database.run(`INSERT OR IGNORE INTO domain_storage_v2 (tenant_id, domain, scope, storage_json, updated_at)
+        SELECT 'legacy', domain, 'default', storage_json, updated_at FROM domain_storage`);
+    },
+  },
 ];
