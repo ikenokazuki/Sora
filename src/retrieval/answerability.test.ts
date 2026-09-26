@@ -3,9 +3,11 @@ import {
   analyzeFacetEvidence,
   associationMultiplier,
   detectValueKinds,
+  detectCurrentIntent,
   entityTermsForQuery,
   splitSentences,
   structuralMultiplier,
+  temporalMultiplier,
 } from './answerability.js';
 import { extractQueryHighlightsRhoV2 } from '../rho_select_v2_adapter.js';
 function chrN(): string { return String.fromCharCode(10); }
@@ -107,5 +109,49 @@ describe('structural evidence signals (hermetic)', () => {
     }
     expect(scores.has('table')).toBe(true);
     expect(scores.get('table') as number).toBeGreaterThan((scores.get('mention') as number) || 0);
+  });
+});
+describe('temporal relevance signals (hermetic)', () => {
+  test('detects current intent queries', () => {
+    expect(detectCurrentIntent('最新の価格')).toBe(true);
+    expect(detectCurrentIntent('現在の営業時間')).toBe(true);
+    expect(detectCurrentIntent('価格')).toBe(false);
+  });
+  test('penalizes old years and old markers under current intent', () => {
+    const y = new Date().getFullYear();
+    const oldYear = temporalMultiplier([(y - 2) + '年価格 139,800円'], '価格', true);
+    expect(oldYear).toBeLessThan(1.0);
+    const oldWord = temporalMultiplier(['旧価格 139,800円'], '価格', true);
+    expect(oldWord).toBeLessThan(1.0);
+    const current = temporalMultiplier(['現行価格 ' + y + '年 159,800円'], '価格', true);
+    expect(current).toBeGreaterThan(1.0);
+  });
+  test('no temporal adjustment without current intent', () => {
+    const y = new Date().getFullYear();
+    expect(temporalMultiplier([(y - 2) + '年価格 139,800円'], '価格', false)).toBe(1.0);
+  });
+  test('adapter prefers current-year evidence for latest-price queries', () => {
+    const y = new Date().getFullYear();
+    const markdown = [
+      '# 旧価格',
+      '',
+      (y - 2) + '年価格 139,800円 重量199g',
+      '',
+      '# 現行価格',
+      '',
+      '現行価格 ' + y + '年 159,800円',
+      '',
+    ].join(chrN());
+    const res = extractQueryHighlightsRhoV2(markdown, '最新価格', { requirements: ['価格', '重量'] });
+    const scores = new Map<string, number[]>();
+    for (const h of res.highlightItems) {
+      if (h.text.includes('159,800')) scores.set('current', h.evidenceScores);
+      if (h.text.includes('139,800')) scores.set('old', h.evidenceScores);
+    }
+    expect(scores.has('current')).toBe(true);
+    expect(scores.has('old')).toBe(true);
+    const cur = scores.get('current') as number[];
+    const oldScores = scores.get('old') as number[];
+    expect(cur[0]).toBeGreaterThan(oldScores[0]);
   });
 });
