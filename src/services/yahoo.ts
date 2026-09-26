@@ -398,7 +398,10 @@ export async function searchYahooWeb(options: {
       const content = mcpRes?.content?.[0]?.text || '[]';
       const json = JSON.parse(content);
       if (json && Array.isArray(json.items) && json.items.length > 0) {
-        // provider順維持: BM25全面rerankは主ランキングに使わない (P0-2)
+        // Provider ranking contains signals that are unavailable
+        // to our lightweight lexical scorer. Do not globally
+        // rerank a single SERP here. Local scores are used later
+        // for diagnostics and deep-retrieval selection only.
         const normalizedItems = json.items.map((item: any, providerRank: number) => ({
           source: 'web' as const,
           snippet: item.description || item.snippet,
