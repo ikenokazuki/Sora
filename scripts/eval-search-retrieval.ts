@@ -108,6 +108,10 @@ const xCases: XEvalCase[] = [
     { id: '2', author_handle: 'official', text: 'SPARK announcement venue changed', publishedTime: new Date().toISOString() },
     { id: '3', author_handle: 'fan2', text: 'random daily post', publishedTime: new Date().toISOString() },
   ] },
+  { id: 'x-popular-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'viral', text: 'SPARK lol', publishedTime: new Date(Date.now() - 1 * 3600000).toISOString() },
+    { id: '2', author_handle: 'fan', text: 'SPARK detailed announcement analysis', publishedTime: new Date(Date.now() - 2 * 3600000).toISOString() },
+  ] },
   { id: 'x-recency-01', query: 'SPARK live', requirements: ['spark'], officialHandles: [], posts: [
     { id: '1', author_handle: 'a', text: 'SPARK live report', publishedTime: new Date(Date.now() - 2 * 86400000).toISOString() },
     { id: '2', author_handle: 'b', text: 'SPARK live photos', publishedTime: new Date(Date.now() - 10 * 86400000).toISOString() },
@@ -132,7 +136,8 @@ const results = cases.map(scoreCase);
 const agg: Record<string, any> = {};
 for (const arm of ['A','B','C','D','E']) {
   const rs = results.map((r) => r.arms[arm].reqCoverage);
-  agg[arm] = { meanReqCoverage: Number((rs.reduce((a,b)=>a+b,0)/rs.length).toFixed(3)), cases: rs.length };
+  const os = results.map((r) => r.arms[arm].officialRecall);
+  agg[arm] = { meanReqCoverage: Number((rs.reduce((a,b)=>a+b,0)/rs.length).toFixed(3)), meanOfficialRecall: Number((os.reduce((a,b)=>a+b,0)/os.length).toFixed(3)), cases: rs.length };
 }
 console.log('## Retrieval eval (offline, ' + cases.length + ' cases)');
 console.log('');

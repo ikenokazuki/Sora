@@ -503,6 +503,57 @@
           ]
         }
       ]
+    },
+    {
+      "id": "rerank-degrade-01",
+      "category": "official information",
+      "query": "X100 official store",
+      "requirements": [
+        "X100",
+        "official",
+        "store"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official store",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100",
+              "snippet": "buy",
+              "url": "https://maker.example/official"
+            },
+            {
+              "title": "X100 official store review",
+              "snippet": "X100 official store price stock",
+              "url": "https://blog.example/1"
+            },
+            {
+              "title": "X100 official store guide",
+              "snippet": "X100 official store manual",
+              "url": "https://blog.example/2"
+            },
+            {
+              "title": "X100 official store news",
+              "snippet": "X100 official store launch",
+              "url": "https://news.example/3"
+            },
+            {
+              "title": "X100 official store forum",
+              "snippet": "X100 official store thread",
+              "url": "https://forum.example/4"
+            },
+            {
+              "title": "X100 official store wiki",
+              "snippet": "X100 official store entry",
+              "url": "https://wiki.example/5"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
