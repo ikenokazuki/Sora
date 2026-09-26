@@ -554,6 +554,114 @@
           ]
         }
       ]
+    },
+    {
+      "id": "official-02",
+      "category": "official information",
+      "query": "X100 official manual",
+      "requirements": [
+        "X100",
+        "official",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official manual",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 official manual",
+              "snippet": "X100 official manual download",
+              "url": "https://maker.example/manual"
+            },
+            {
+              "title": "unrelated blog",
+              "snippet": "daily life",
+              "url": "https://blog.example/z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multifacet-02",
+      "category": "multi-facet",
+      "query": "SPARK lineup ticket access",
+      "requirements": [
+        "SPARK",
+        "lineup",
+        "ticket",
+        "access"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK lineup ticket",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK lineup",
+              "snippet": "lineup ticket",
+              "url": "https://spark.example/lineup"
+            },
+            {
+              "title": "SPARK ticket",
+              "snippet": "ticket price",
+              "url": "https://ticket.example/spark"
+            }
+          ]
+        },
+        {
+          "query": "SPARK venue access",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK venue access",
+              "snippet": "access map",
+              "url": "https://spark.example/access"
+            },
+            {
+              "title": "SPARK lineup",
+              "snippet": "lineup ticket",
+              "url": "https://spark.example/lineup"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-02",
+      "category": "comparison",
+      "query": "A battery versus B battery",
+      "requirements": [
+        "A",
+        "battery",
+        "B"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "A battery versus B battery",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "A vs B battery test",
+              "snippet": "A battery versus B battery results",
+              "url": "https://review.example/cmp2"
+            },
+            {
+              "title": "cooking blog",
+              "snippet": "recipes",
+              "url": "https://blog.example/c"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

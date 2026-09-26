@@ -168,8 +168,10 @@ const handleIntegratedSearch = async (c: any) => {
       return c.json({ error: 'query is required' }, 400);
     }
 
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const finalResponse = await integratedSearch({
       query,
+      tenantId,
       limit,
       scrapeContent,
       includeRealtime,
