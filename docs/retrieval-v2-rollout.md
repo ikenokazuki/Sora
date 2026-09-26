@@ -21,6 +21,16 @@ Adaptive scrape and PRF retrieval are per-request options
 3. Expand the golden set (`eval/search_retrieval_cases.json`) toward 100 with human labels.
 4. Flip adaptive/PRF defaults only after A/B evidence (arms A-E in `scripts/eval-search-retrieval.ts`).
 
+## Live evidence (2026-09-27 sample, eval/results/live-sample-20260927.json)
+
+- 4/4 live queries reorder under legacy BM25; native order kept the
+  provider top in each case (official site, official X, organizer
+  timetable, digital.go.jp).
+- Legacy top-1 twice preferred third-party pages, once a lookalike
+  blog over the `.go.jp` official source.
+- Adaptive confidence stayed quiet on all healthy first pages,
+  so the extra query fires only on weak retrieval.
+
 ## Open decisions
 
 - MCP tenant scoping relies on Authorization/X-API-Key; unauthenticated use shares `legacy` scope.
