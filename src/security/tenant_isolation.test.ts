@@ -34,4 +34,38 @@ describe('tenant isolation (P1-SEC-02)', () => {
     dbSaveTenantCookies('tenantA', 'ck-iso.example', []);
     dbSaveTenantCookies('tenantB', 'ck-iso.example', []);
   });
+
+  test('tenant cookie jars are isolated end-to-end', async () => {
+    const prev = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const seen: Array<string | undefined> = [];
+    let n = 0;
+    const { createServer } = await import('node:http');
+    const { AddressInfo } = await import('node:net');
+    const { scrapeUrl } = await import('../scraper.js');
+    const { closeHttpSession } = await import('../http_fetcher.js');
+    const server = createServer((req: any, res: any) => {
+      n++;
+      seen.push(req.headers.cookie);
+      res.writeHead(200, { 'content-type': 'text/html', 'Set-Cookie': 'sess=' + n + '; Path=/' });
+      res.end('<html><head><title>t</title></head><body><p>hello world content here and more text</p></body></html>');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as AddressInfo).port;
+    const url = 'http://127.0.0.1:' + port + '/jar';
+    try {
+      await scrapeUrl({ url, noCache: true, tenantId: 'tenantA', mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ url, noCache: true, tenantId: 'tenantA', mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ url, noCache: true, tenantId: 'tenantB', mode: 'fast', formats: ['markdown'] });
+      expect(seen[0]).toBeUndefined();
+      expect(seen[1]).toContain('sess=1');
+      expect(seen[2]).toBeUndefined();
+    } finally {
+      server.close();
+      await closeHttpSession('127.0.0.1', 'tenantA').catch(() => {});
+      await closeHttpSession('127.0.0.1', 'tenantB').catch(() => {});
+      if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
+      else delete process.env.ALLOW_LOCAL_FETCH;
+    }
+  });
 });
