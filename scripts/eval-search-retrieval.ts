@@ -132,6 +132,14 @@ const xCases: XEvalCase[] = [
     { id: '4', author_handle: 'fanC', text: 'SPARK 感想です', publishedTime: new Date().toISOString() },
     { id: '5', author_handle: 'fanA', text: 'SPARK 感想2', publishedTime: new Date().toISOString() },
   ] },
+  { id: 'x-fact-stale-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: ['official'], posts: [
+    { id: '1', author_handle: 'official', text: 'SPARK announcement', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
+    { id: '2', author_handle: 'fan', text: 'SPARK announcement repost', publishedTime: new Date().toISOString() },
+  ] },
+  { id: 'x-tie-01', query: 'SPARK news', requirements: ['spark'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'a', text: 'SPARK news', publishedTime: new Date().toISOString() },
+    { id: '2', author_handle: 'b', text: 'SPARK news', publishedTime: new Date().toISOString() },
+  ] },
   { id: 'x-lexical-01', query: 'SPARK', requirements: ['spark'], officialHandles: [], posts: [
     { id: '1', author_handle: 'a', text: 'ok', publishedTime: new Date().toISOString() },
     { id: '2', author_handle: 'b', text: 'SPARK SPARK SPARK detailed', publishedTime: new Date().toISOString() },

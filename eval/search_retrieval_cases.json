@@ -898,6 +898,405 @@
           ]
         }
       ]
+    },
+    {
+      "id": "limit6-01",
+      "category": "simple factual",
+      "query": "spark guide",
+      "requirements": [
+        "spark",
+        "guide"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark guide",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark guide 0",
+              "snippet": "spark",
+              "url": "https://h0.example/0"
+            },
+            {
+              "title": "spark guide 1",
+              "snippet": "spark",
+              "url": "https://h1.example/1"
+            },
+            {
+              "title": "spark guide 2",
+              "snippet": "spark",
+              "url": "https://h2.example/2"
+            },
+            {
+              "title": "spark guide 3",
+              "snippet": "spark",
+              "url": "https://h3.example/3"
+            },
+            {
+              "title": "spark guide 4",
+              "snippet": "spark",
+              "url": "https://h4.example/4"
+            },
+            {
+              "title": "spark guide 5",
+              "snippet": "spark",
+              "url": "https://h5.example/5"
+            },
+            {
+              "title": "spark guide 6",
+              "snippet": "spark",
+              "url": "https://h6.example/6"
+            },
+            {
+              "title": "spark guide 7",
+              "snippet": "spark",
+              "url": "https://h7.example/7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlap-01",
+      "category": "official information",
+      "query": "X100 manual",
+      "requirements": [
+        "X100",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 manual",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        },
+        {
+          "query": "X100 handbook",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 handbook manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        },
+        {
+          "query": "X100 docs",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 docs manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "disjoint-01",
+      "category": "multi-facet",
+      "query": "alpha beta gamma",
+      "requirements": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "alpha",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "alpha one",
+              "snippet": "alpha",
+              "url": "https://a.example/1"
+            }
+          ]
+        },
+        {
+          "query": "beta",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "beta one",
+              "snippet": "beta",
+              "url": "https://b.example/1"
+            }
+          ]
+        },
+        {
+          "query": "gamma",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "gamma one",
+              "snippet": "gamma",
+              "url": "https://c.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exact-01",
+      "category": "simple factual",
+      "query": "X100 official store",
+      "requirements": [
+        "X100",
+        "official",
+        "store"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official store",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 official store",
+              "snippet": "X100 official store",
+              "url": "https://maker.example/s"
+            },
+            {
+              "title": "other",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unicode-01",
+      "category": "ambiguous query",
+      "query": "SPARK party night",
+      "requirements": [
+        "spark",
+        "party"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "SPARK party",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK party",
+              "snippet": "live",
+              "url": "https://e.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "longq-01",
+      "category": "multi-facet",
+      "query": "X100 price weight wifi review manual",
+      "requirements": [
+        "X100",
+        "price",
+        "weight",
+        "wifi",
+        "review",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 price weight",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 price weight",
+              "snippet": "price weight",
+              "url": "https://maker.example/pw"
+            }
+          ]
+        },
+        {
+          "query": "X100 wifi review",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 wifi review",
+              "snippet": "wifi review",
+              "url": "https://review.example/w"
+            }
+          ]
+        },
+        {
+          "query": "X100 manual",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rerank-degrade-02",
+      "category": "official information",
+      "query": "city hall hours",
+      "requirements": [
+        "city",
+        "hall",
+        "hours"
+      ],
+      "officialHosts": [
+        "city.example"
+      ],
+      "batches": [
+        {
+          "query": "city hall hours",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "city hall",
+              "snippet": "info",
+              "url": "https://city.example/hall"
+            },
+            {
+              "title": "city hall hours blog 0",
+              "snippet": "city hall hours open close",
+              "url": "https://b0.example/0"
+            },
+            {
+              "title": "city hall hours blog 1",
+              "snippet": "city hall hours open close",
+              "url": "https://b1.example/1"
+            },
+            {
+              "title": "city hall hours blog 2",
+              "snippet": "city hall hours open close",
+              "url": "https://b2.example/2"
+            },
+            {
+              "title": "city hall hours blog 3",
+              "snippet": "city hall hours open close",
+              "url": "https://b3.example/3"
+            },
+            {
+              "title": "city hall hours blog 4",
+              "snippet": "city hall hours open close",
+              "url": "https://b4.example/4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concentration-02",
+      "category": "Japanese local information",
+      "query": "ramen price downtown",
+      "requirements": [
+        "ramen",
+        "price",
+        "downtown"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "ramen price downtown",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "ramen post 0",
+              "snippet": "noodles",
+              "url": "https://food.example/0"
+            },
+            {
+              "title": "ramen post 1",
+              "snippet": "noodles",
+              "url": "https://food.example/1"
+            },
+            {
+              "title": "ramen post 2",
+              "snippet": "noodles",
+              "url": "https://food.example/2"
+            },
+            {
+              "title": "ramen post 3",
+              "snippet": "noodles",
+              "url": "https://food.example/3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "emptybatch-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark one",
+              "snippet": "spark",
+              "url": "https://a.example/1"
+            }
+          ]
+        },
+        {
+          "query": "spark empty",
+          "queryIndex": 1,
+          "items": []
+        }
+      ]
+    },
+    {
+      "id": "nourl-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark text only",
+              "snippet": "spark"
+            },
+            {
+              "title": "spark linked",
+              "snippet": "spark",
+              "url": "https://a.example/1"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
