@@ -186,6 +186,11 @@ export interface YahooWebQueryBatch {
   items: any[];
 }
 
+export function webQueryUnionWeight(queryIndex: number): number {
+  if (queryIndex <= 0) return 1.0;
+  return 0.6;
+}
+
 export function mergeYahooWebQueryBatches(
   batches: YahooWebQueryBatch[],
   bindingQuery: string,
@@ -249,6 +254,8 @@ export function mergeYahooWebQueryBatches(
   for (const item of merged) {
     item.rrfScore = reciprocalRankFusion(
       item.providerRanks.map((p: any) => ({ key: String(p.queryIndex), rank: p.rank })),
+      60,
+      (key) => webQueryUnionWeight(parseInt(key, 10)),
     );
   }
 
