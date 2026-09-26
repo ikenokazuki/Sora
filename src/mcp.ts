@@ -81,6 +81,7 @@ export const SHARED_ACTIVATED_TOOLS = new Set<string>();
 /** Per-session dynamic tool activation (RFC P1-SEC-06). */
 export interface McpSessionState {
   activatedTools: Set<string>;
+  tenantId?: string;
 }
 
 export function clearSharedActivatedTools(): void {
@@ -359,6 +360,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   if (options?.sessionState) {
     options.sessionState.activatedTools = sessionActivated;
   }
+  const serverTenantId = options?.sessionState?.tenantId ?? 'legacy';
   const isDeferEnabled = options?.deferTools ?? (process.env.SORA_DEFER_TOOLS !== 'false');
   const deferredDefault = !isDeferEnabled;
 
@@ -561,7 +563,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
-          const result = await scrapeUrl({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+          const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           const formatted = formatCompactScrapeResult(result, { verbose });
           return {
             content: [
@@ -703,6 +705,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await integratedSearch({
             query,
+            tenantId: serverTenantId,
             limit,
             scrapeContent,
             includeRealtime,
@@ -2157,7 +2160,7 @@ export class McpSessionManager {
   public stateForTenant(tenantId: string): McpSessionState {
     let state = this.tenantStates.get(tenantId);
     if (!state) {
-      state = { activatedTools: new Set<string>() };
+      state = { activatedTools: new Set<string>(), tenantId };
       this.tenantStates.set(tenantId, state);
     }
     return state;

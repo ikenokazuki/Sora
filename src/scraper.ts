@@ -1408,6 +1408,7 @@ export async function integratedSearch(options: {
   highlightMaxCount?: number;
   adaptiveScrape?: boolean;
   scrapeBudget?: number;
+  tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1436,6 +1437,7 @@ export async function integratedSearch(options: {
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
+  const requestTenantId = options.tenantId ?? 'legacy';
   const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
@@ -1629,6 +1631,7 @@ export async function integratedSearch(options: {
         try {
           const scrape = await scrapeUrl({
             url: itemUrl,
+            tenantId: requestTenantId,
             contextTitle: item.title,
             snippet: itemSnippet,
             maxChars,
@@ -1712,6 +1715,7 @@ export async function integratedSearch(options: {
           try {
             const scrape = await scrapeUrl({
               url: spareUrl,
+              tenantId: requestTenantId,
               contextTitle: spareItem?.title,
               snippet: spareSnippet,
               maxChars,
@@ -1789,7 +1793,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
               const enrichedSpare: Record<string, any> = { ...spareItem, ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
