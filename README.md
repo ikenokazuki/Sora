@@ -1795,7 +1795,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート |
 | `WEB_FETCHER_API_KEY` | *(未設定)* | **サーバー側の API 認証キー（最優先）**。設定時は `Authorization: Bearer <key>` または `X-API-Key` ヘッダーによる認証が必須化されます |
 | `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
-| `NODE_ENV` | *(未設定)* | `production` を指定すると **Fail-Closed** 動作になり、認証キーが未設定のまま起動した場合に全リクエストを `401` で拒否します（未指定時は Fail-Open） |
+| `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 40 ツール静的一括ロード |
