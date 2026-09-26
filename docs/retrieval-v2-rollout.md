@@ -43,6 +43,12 @@ Adaptive scrape and PRF retrieval are per-request options
   rescue at most, PRF retrieval opt-in, per-request budgets.
 - Live eval runs must be spaced out; do not re-probe while throttled.
 
+## Gate proof (2026-09-27, local replay of CI)
+
+- Workflow YAML parses; `bun install --frozen-lockfile` clean.
+- `bun run typecheck` clean; gate command green: 198 pass / 0 fail
+  across the exact 20 files listed in the workflow.
+
 ## Open decisions
 
 - MCP tenant scoping relies on Authorization/X-API-Key; unauthenticated use shares `legacy` scope.
