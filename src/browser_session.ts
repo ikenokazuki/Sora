@@ -32,6 +32,20 @@ function verifyOwnerToken(sessionOwnerHash?: string, requestToken?: string): boo
   return timingSafeEqual(Buffer.from(sessionOwnerHash), Buffer.from(reqHash));
 }
 
+/** Session access check: owner token plus tenant binding (RFC P1-SEC-05). */
+export function verifySessionAccess(
+  session: { ownerTokenHash?: string; tenantId?: string },
+  request: { ownerToken?: string; tenantId?: string },
+): boolean {
+  if (!verifyOwnerToken(session.ownerTokenHash, request.ownerToken)) return false;
+  // Tenant-bound sessions reject cross-tenant access. Owner-less legacy
+  // sessions stay accessible for single-user compatibility.
+  if (session.tenantId && session.tenantId !== 'legacy') {
+    if (!request.tenantId || request.tenantId !== session.tenantId) return false;
+  }
+  return true;
+}
+
 // ==========================================
 // 1. ステートフル ブラウザセッション管理
 // ==========================================
@@ -41,6 +55,7 @@ export interface BrowserSession {
   context: BrowserContext;
   dedicatedBrowser?: Browser;
   ownerTokenHash?: string;
+  tenantId?: string;
   lastActive: number;
   timer: any;
 }
@@ -48,6 +63,7 @@ export interface BrowserSession {
 export interface BrowserSessionOptions {
   sessionId?: string;
   ownerToken?: string;
+  tenantId?: string;
   createSession?: boolean;
   closeSession?: boolean;
   url?: string;
@@ -350,6 +366,10 @@ export async function handleBrowserSessionAction(
 
   // 1. セッション終了リクエストの処理
   if (options.closeSession && options.sessionId) {
+    const existing = activeSessions.get(options.sessionId);
+    if (existing && !verifySessionAccess(existing, { ownerToken: options.ownerToken, tenantId: options.tenantId })) {
+      throw new Error('Forbidden: You do not have permission to access this browser session');
+    }
     const closed = await closeBrowserSession(options.sessionId);
     return {
       source: 'browser',
@@ -406,8 +426,8 @@ export async function handleBrowserSessionAction(
     const requestedId = options.sessionId || `sess_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
     if (options.sessionId && activeSessions.has(options.sessionId)) {
       session = activeSessions.get(options.sessionId)!;
-      // セッション所有者の検証 (他者のセッション操作を防止)
-      if (!verifyOwnerToken(session.ownerTokenHash, options.ownerToken)) {
+      // セッション所有者+テナントの検証 (他者・他テナントのセッション操作を防止)
+      if (!verifySessionAccess(session, { ownerToken: options.ownerToken, tenantId: options.tenantId })) {
         throw new Error('Forbidden: You do not have permission to access this browser session');
       }
       page = session.page;
@@ -445,6 +465,7 @@ export async function handleBrowserSessionAction(
           context,
           dedicatedBrowser: isDedicated ? browserInstance : undefined,
           ownerTokenHash: hashToken(options.ownerToken),
+          tenantId: options.tenantId,
           lastActive: Date.now(),
           timer: null,
         };
