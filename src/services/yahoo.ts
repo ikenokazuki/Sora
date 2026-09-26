@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
-import { filterByDomains, rerankSearchResults } from '../enrichment.js';
+import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalRankFusion } from '../enrichment.js';
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
@@ -108,13 +108,16 @@ export function mergeYahooWebQueryBatches(
   excludeDomains?: string[],
 ): any[] {
   const merged: any[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, any>();
+  let insertionOrder = 0;
 
   for (const batch of batches) {
-    const normalized = batch.items.map((item: any) => ({
+    // providerRank は当該SERP内の元の順位 (フィルタ前のindex) を保持する
+    const normalized = batch.items.map((item: any, providerRank: number) => ({
       source: 'web' as const,
       snippet: item.description || item.snippet,
       ...item,
+      providerRank,
       retrievalQuery: batch.query,
       retrievalQueryIndex: batch.queryIndex,
     }));
@@ -133,13 +136,110 @@ export function mergeYahooWebQueryBatches(
       const textKey =
         `text:${item.title || ''}\n${item.snippet || item.description || ''}`;
       const key = urlKey || textKey;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const existing = seen.get(key);
+      if (existing) {
+        // P2:同一URLで後発SERPのsnippetが豊富な場合は保持 (first-winsによる証拠欠落防止)
+        try {
+          const curLen = `${existing.title || ""} ${existing.snippet || existing.description || ""}`.length;
+          const newLen = `${item.title || ""} ${item.snippet || item.description || ""}`.length;
+          if (newLen > curLen) {
+            if (item.title) existing.title = item.title;
+            if (item.snippet || item.description) { existing.snippet = item.snippet || item.description; if (item.description) existing.description = item.description; }
+          }
+        } catch {}
+
+        // 重複URLは初出を保持し、providerRanks のみ追記する (RRF入力用)
+        existing.providerRanks.push({ queryIndex: batch.queryIndex, rank: item.providerRank });
+        continue;
+      }
+      item.providerRanks = [{ queryIndex: batch.queryIndex, rank: item.providerRank }];
+      (item as any).__insertionOrder = insertionOrder++;
+      seen.set(key, item);
       merged.push(item);
     }
   }
 
-  return rerankSearchResults(merged, bindingQuery);
+  // RRF で複数SERP統合 (検索プロバイダ順位を壊さず統合する)
+  // 単一バッチ時は RRF 順 = providerRank 順と等価になる
+  for (const item of merged) {
+    item.rrfScore = reciprocalRankFusion(
+      item.providerRanks.map((p: any) => ({ key: String(p.queryIndex), rank: p.rank })),
+    );
+  }
+
+  // 診断用 lexical スコア (ランキング確定には使わない)
+  try {
+    const scored = scoreSearchCandidate(merged, bindingQuery);
+    for (const s of scored) {
+      (s.item as any).lexicalScore = s.lexicalScore;
+    }
+  } catch {
+    // 診断失敗時は無視
+  }
+
+  merged.sort((a: any, b: any) => {
+    if (b.rrfScore !== a.rrfScore) return b.rrfScore - a.rrfScore;
+    const aMin = Math.min(...a.providerRanks.map((p: any) => p.rank));
+    const bMin = Math.min(...b.providerRanks.map((p: any) => p.rank));
+    if (aMin !== bMin) return aMin - bMin;
+    return (a.__insertionOrder ?? 0) - (b.__insertionOrder ?? 0);
+  });
+  for (const item of merged) {
+    delete (item as any).__insertionOrder;
+  }
+  return merged;
+}
+
+/** Retrieval confidence 判定 (追加検索が必要な弱い取得か) */
+export function assessRetrievalConfidence(
+  items: any[],
+  originalQuery: string,
+): { good: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!items || items.length === 0) {
+    return { good: false, reasons: ['empty'] };
+  }
+  if (items.length < 3) {
+    reasons.push('few-results');
+  }
+  // クエリ語のカバレッジ (2語以上クエリで要求語がsnippet不在なら弱い)
+  try {
+    const words = originalQuery
+      .toLowerCase()
+      .trim()
+      .split(/[\s　]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 2);
+    if (words.length >= 2) {
+      const corpus = items
+        .slice(0, 5)
+        .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
+        .join('\n');
+      const missing = words.filter((w) => !corpus.includes(w));
+      if (missing.length > 0) {
+        reasons.push(`missing-terms:${missing.join(',')}`);
+      }
+    }
+  } catch {
+    // カバレッジ判定失敗時は無視
+  }
+  // 同一ドメイン偏り (上位5件が単一ホストなら弱い)
+  try {
+    const hosts = items.slice(0, 5).map((it: any) => {
+      try {
+        return new URL(it.url || it.link).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    }).filter(Boolean);
+    const uniq = new Set(hosts);
+    if (hosts.length >= 3 && uniq.size === 1) {
+      reasons.push('single-domain');
+    }
+  } catch {
+    // ドメイン判定失敗時は無視
+  }
+  return { good: reasons.length === 0, reasons };
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
@@ -282,14 +382,82 @@ export async function searchYahooWeb(options: {
       const content = mcpRes?.content?.[0]?.text || '[]';
       const json = JSON.parse(content);
       if (json && Array.isArray(json.items) && json.items.length > 0) {
-        const normalizedItems = json.items.map((item: any) => ({
+        // provider順維持: BM25全面rerankは主ランキングに使わない (P0-2)
+        const normalizedItems = json.items.map((item: any, providerRank: number) => ({
           source: 'web' as const,
           snippet: item.description || item.snippet,
           ...item,
+          providerRank,
+          providerRanks: [{ queryIndex: i, rank: providerRank }],
+          retrievalQuery: q,
+          retrievalQueryIndex: i,
         }));
         const filtered = filterByDomains(normalizedItems, options.includeDomains, options.excludeDomains);
-        const ranked = rerankSearchResults(filtered, options.query);
-        json.items = ranked;
+        // 診断用 lexical スコアのみ付与し、順序は provider順のまま返す
+        try {
+          const scored = scoreSearchCandidate(filtered, options.query);
+          for (const s of scored) {
+            (s.item as any).lexicalScore = s.lexicalScore;
+          }
+        } catch {
+          // 診断失敗時は無視
+        }
+        // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
+        // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
+        if (i === 0 && candidateQueries.length > 1) {
+          const conf = assessRetrievalConfidence(filtered, options.query);
+          if (!conf.good) {
+            try {
+              const rescueQ = candidateQueries[1];
+              let rescueEffective = rescueQ;
+              let rescueSiteArg: string | undefined = undefined;
+              if (options.includeDomains && options.includeDomains.length === 1) {
+                rescueSiteArg = options.includeDomains[0];
+              } else if (options.includeDomains && options.includeDomains.length > 1) {
+                rescueEffective += ` (${options.includeDomains.map((d) => `site:${d}`).join(' OR ')})`;
+              }
+              if (options.excludeDomains && options.excludeDomains.length > 0) {
+                rescueEffective += ` ${options.excludeDomains.map((d) => `-site:${d}`).join(' ')}`;
+              }
+              const rescueRes = await callYahooMcp('yahoo_web_search', {
+                query: rescueEffective,
+                ...(rescueSiteArg ? { site: rescueSiteArg } : {}),
+                ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
+              });
+              const rescueContent = rescueRes?.content?.[0]?.text || '[]';
+              const rescueJson = JSON.parse(rescueContent);
+              if (rescueJson && Array.isArray(rescueJson.items) && rescueJson.items.length > 0) {
+                const merged = mergeYahooWebQueryBatches(
+                  [
+                    { query: q, queryIndex: 0, items: json.items },
+                    { query: rescueQ, queryIndex: 1, items: rescueJson.items },
+                  ],
+                  options.query,
+                  options.includeDomains,
+                  options.excludeDomains,
+                );
+                if (merged.length > 0) {
+                  return {
+                    items: merged,
+                    count: merged.length,
+                    source: 'web',
+                    originalQuery: options.query,
+                    bindingQuery: options.query,
+                    retrievalQueries: [q, rescueQ],
+                    effectiveQuery: options.query,
+                    isFallback: true,
+                    queryUnion: false,
+                    adaptiveUnion: true,
+                    confidenceReasons: conf.reasons,
+                  };
+                }
+              }
+            } catch {
+              // 追加検索失敗時は初回結果をそのまま返す
+            }
+          }
+        }
+        json.items = filtered;
         json.count = json.items.length;
         json.source = 'web';
         json.effectiveQuery = q;
@@ -1361,4 +1529,3 @@ export function mergeRealtimeItemsWithDedup(
 
   return merged;
 }
-
