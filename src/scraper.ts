@@ -716,6 +716,7 @@ export async function scrapeUrl(options: {
             'networkidle2',
             needScreenshot,
             fullPage,
+            options.tenantId ?? 'legacy',
           );
         } catch (browserErr: any) {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
@@ -753,6 +754,7 @@ export async function scrapeUrl(options: {
             'networkidle0',
             needScreenshot,
             fullPage,
+            options.tenantId ?? 'legacy',
           );
           parsed = convertHtmlToMarkdown(
             browserRes.html,

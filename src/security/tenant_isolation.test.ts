@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { sessionKey, getOrCreateHttpSession, closeHttpSession } from '../http_fetcher.js';
-import { dbSaveTenantCookies, dbGetTenantCookies, dbSaveDomainCookies, dbGetDomainCookies } from '../db.js';
+import { dbSaveTenantCookies, dbGetTenantCookies, dbSaveDomainCookies, dbGetDomainCookies, dbSaveTenantStorage, dbGetTenantStorage } from '../db.js';
 
 describe('tenant isolation (P1-SEC-02)', () => {
   test('sessionKey scopes by tenant and host', () => {
@@ -66,5 +66,15 @@ describe('tenant isolation (P1-SEC-02)', () => {
       if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
       else delete process.env.ALLOW_LOCAL_FETCH;
     }
+  });
+
+  test('domain storage is tenant-scoped', () => {
+    dbSaveTenantStorage('tenantA', 'st-iso.example', { token: 'A' });
+    dbSaveTenantStorage('tenantB', 'st-iso.example', { token: 'B' });
+    expect(dbGetTenantStorage('tenantA', 'st-iso.example')).toEqual({ token: 'A' });
+    expect(dbGetTenantStorage('tenantB', 'st-iso.example')).toEqual({ token: 'B' });
+    expect(dbGetTenantStorage('tenantA', 'st-iso.example')).not.toEqual(dbGetTenantStorage('tenantB', 'st-iso.example'));
+    dbSaveTenantStorage('tenantA', 'st-iso.example', {});
+    dbSaveTenantStorage('tenantB', 'st-iso.example', {});
   });
 });
