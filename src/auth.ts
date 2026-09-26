@@ -43,8 +43,8 @@ export function isLoopbackAddress(ip: string): boolean {
   if (v === 'localhost' || v === '::1' || v === '0:0:0:0:0:0:0:1') return true;
   const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (m) {
-    const first = parseInt(m[1], 10);
-    if (first === 127) return true;
+    const octets = m.slice(1, 5).map((x) => parseInt(x, 10));
+    if (octets.every((x) => x >= 0 && x <= 255) && octets[0] === 127) return true;
   }
   return false;
 }

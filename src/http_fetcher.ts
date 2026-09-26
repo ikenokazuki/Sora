@@ -117,15 +117,38 @@ export function sessionKey(tenantId: string, hostname: string): string {
   return `${tenantId || 'legacy'}:${hostname.toLowerCase()}`;
 }
 
-class NativeFetchSession implements UniversalHttpSession {
-  private cookies = new Map<string, string>();
+export class NativeFetchSession implements UniversalHttpSession {
+  // Domain-scoped jar: cookies must never cross origins on redirect.
+  private cookies = new Map<string, Map<string, string>>();
 
-  setCookie(name: string, value: string, _urlOrDomain?: string | URL) {
-    this.cookies.set(name, value);
+  private static domainOf(urlOrDomain?: string | URL): string {
+    try {
+      if (!urlOrDomain) return '';
+      const s = String(urlOrDomain);
+      const host = s.includes('://') ? new URL(s).hostname : s.split('/')[0].split(':')[0];
+      return host.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  setCookie(name: string, value: string, urlOrDomain?: string | URL) {
+    const domain = NativeFetchSession.domainOf(urlOrDomain);
+    if (!domain) return;
+    let jar = this.cookies.get(domain);
+    if (!jar) {
+      jar = new Map<string, string>();
+      this.cookies.set(domain, jar);
+    }
+    jar.set(name, value);
   }
 
   getAllCookies() {
-    return Array.from(this.cookies.entries()).map(([name, value]) => ({ name, value }));
+    const out: Array<{ name: string; value: string; domain?: string }> = [];
+    for (const [domain, jar] of this.cookies.entries()) {
+      for (const [name, value] of jar.entries()) out.push({ name, value, domain });
+    }
+    return out;
   }
 
   async close() {
@@ -137,8 +160,10 @@ class NativeFetchSession implements UniversalHttpSession {
     if (!headers.has('User-Agent') && !headers.has('user-agent')) {
       headers.set('User-Agent', getFallbackUserAgent());
     }
-    if (this.cookies.size > 0 && !headers.has('Cookie')) {
-      const cookieStr = Array.from(this.cookies.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+    const host = NativeFetchSession.domainOf(url);
+    const jar = this.cookies.get(host);
+    if (jar && jar.size > 0 && !headers.has('Cookie')) {
+      const cookieStr = Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
       headers.set('Cookie', cookieStr);
     }
     const res = await fetch(url, {
@@ -146,12 +171,12 @@ class NativeFetchSession implements UniversalHttpSession {
       headers,
     });
 
-    // Set-Cookie ヘッダーの収集
+    // Set-Cookie ヘッダーの収集 (response origin scope only)
     const setCookieHeaders = (res.headers as any).getSetCookie?.() || [];
     for (const sc of setCookieHeaders) {
       const parts = sc.split(';')[0].split('=');
       if (parts.length >= 2) {
-        this.cookies.set(parts[0].trim(), parts.slice(1).join('=').trim());
+        this.setCookie(parts[0].trim(), parts.slice(1).join('=').trim(), url);
       }
     }
 
@@ -187,8 +212,14 @@ export async function closeHttpSession(domain: string, tenantId = 'legacy'): Pro
   httpSessionPool.delete(sessionKey(tenantId, domain));
   try {
     const allCookies = pooled.session.getAllCookies();
-    if (allCookies.length > 0) {
-      dbSaveTenantCookies(pooled.tenantId, domain, allCookies as PersistedCookie[]);
+    const byDomain = new Map<string, PersistedCookie[]>();
+    for (const c of allCookies) {
+      const d = (c.domain || domain).toLowerCase();
+      if (!byDomain.has(d)) byDomain.set(d, []);
+      byDomain.get(d)!.push(c as PersistedCookie);
+    }
+    for (const [d, list] of byDomain) {
+      if (list.length > 0) dbSaveTenantCookies(pooled.tenantId, d, list);
     }
   } catch {}
   try {

@@ -15,6 +15,41 @@ function listen(): Promise<{ server: Server; port: number }> {
   });
 }
 
+describe('NativeFetchSession domain-scoped jar', () => {
+  test('cookies never cross origins', async () => {
+    const { NativeFetchSession } = await import('./http_fetcher.js');
+    const seen: Record<string, string | undefined> = {};
+    const { createServer } = await import('node:http');
+    const mk = (tag: string, set?: string) => createServer((req: any, res: any) => {
+      seen[tag] = req.headers.cookie as string | undefined;
+      const h: any = { 'content-type': 'text/plain' };
+      if (set) h['Set-Cookie'] = set;
+      res.writeHead(200, h);
+      res.end('ok');
+    });
+    const sA = mk('a', 'sess=A1; Path=/');
+    const sB = mk('b');
+    await new Promise<void>((r) => sA.listen(0, '127.0.0.1', () => r()));
+    await new Promise<void>((r) => sB.listen(0, '127.0.0.2', () => r()));
+    const portA = (sA.address() as AddressInfo).port;
+    const portB = (sB.address() as AddressInfo).port;
+    const sess: any = new NativeFetchSession();
+    try {
+      await sess.fetch('http://127.0.0.1:' + portA + '/a');
+      expect(seen.a).toBeUndefined();
+      await sess.fetch('http://127.0.0.2:' + portB + '/b');
+      expect(seen.b).toBeUndefined();
+      await sess.fetch('http://127.0.0.1:' + portA + '/a2');
+      expect(seen.a).toContain('sess=A1');
+      const all = sess.getAllCookies();
+      expect(all.length).toBe(1);
+      expect(all[0].domain).toBe('127.0.0.1');
+    } finally {
+      sA.close();
+      sB.close();
+    }
+  });
+});
 describe('fetchWithSafeRedirects auth stripping', () => {
   afterEach(() => { allowLocal(false); });
   test('strips authorization on origin change, keeps it same-origin', async () => {
