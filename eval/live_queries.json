@@ -73,6 +73,114 @@
       "category": "simple factual",
       "query": "キャラフルアイドルフェス チケット 料金",
       "needs_label": true
+    },
+    {
+      "id": "live-factual-02",
+      "category": "simple factual",
+      "query": "黒氏萌楓 生年月日",
+      "needs_label": true
+    },
+    {
+      "id": "live-factual-03",
+      "category": "simple factual",
+      "query": "1000CLUB 横浜 最寄り駅",
+      "needs_label": true
+    },
+    {
+      "id": "live-official-02",
+      "category": "official information",
+      "query": "デジタル庁 所在地 連絡先",
+      "needs_label": true
+    },
+    {
+      "id": "live-official-03",
+      "category": "official information",
+      "query": "君と見るそら 公式サイト",
+      "needs_label": true
+    },
+    {
+      "id": "live-current-02",
+      "category": "current event",
+      "query": "キャラフルアイドルフェス 出演者",
+      "needs_label": true
+    },
+    {
+      "id": "live-current-03",
+      "category": "current event",
+      "query": "もりもりまつり 開催日",
+      "needs_label": true
+    },
+    {
+      "id": "live-compare-02",
+      "category": "comparison",
+      "query": "前方エリア 一般エリア 違い フェス",
+      "needs_label": true
+    },
+    {
+      "id": "live-compare-03",
+      "category": "comparison",
+      "query": "1000CLUB Zepp横浜 キャパ",
+      "needs_label": true
+    },
+    {
+      "id": "live-multi-02",
+      "category": "multi-facet",
+      "query": "SPARK チケット 値段 取り方",
+      "needs_label": true
+    },
+    {
+      "id": "live-multi-03",
+      "category": "multi-facet",
+      "query": "横浜 ライブ 当日券 料金 開場時間",
+      "needs_label": true
+    },
+    {
+      "id": "live-local-02",
+      "category": "Japanese local information",
+      "query": "渋谷VIDENT 行き方",
+      "needs_label": true
+    },
+    {
+      "id": "live-local-03",
+      "category": "Japanese local information",
+      "query": "山中湖 イベント 駐車場",
+      "needs_label": true
+    },
+    {
+      "id": "live-event-03",
+      "category": "event timetable",
+      "query": "君と見るそら 特典会 時間",
+      "needs_label": true
+    },
+    {
+      "id": "live-event-04",
+      "category": "event timetable",
+      "query": "キャラフル タイムテーブル",
+      "needs_label": true
+    },
+    {
+      "id": "live-product-02",
+      "category": "product specification",
+      "query": "X100 仕様 重量",
+      "needs_label": true
+    },
+    {
+      "id": "live-product-03",
+      "category": "product specification",
+      "query": "Wi-Fi 6E 対応機種 一覧",
+      "needs_label": true
+    },
+    {
+      "id": "live-research-02",
+      "category": "research-style query",
+      "query": "アイドルフェス 持ち物 注意点",
+      "needs_label": true
+    },
+    {
+      "id": "live-ambig-02",
+      "category": "ambiguous query",
+      "query": "きみそら",
+      "needs_label": true
     }
   ]
 }
