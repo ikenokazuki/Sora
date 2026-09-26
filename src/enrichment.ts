@@ -994,28 +994,32 @@ export function rerankByDeepEvidence<T extends {
     const whitespaceWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length > 0);
     const termSet = new Set<string>();
     const isDateLike = (t: string) => /\d.*[月日時\/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
-    for (const t of whitespaceWords) {
-      if (t.length >= 2 && !COMMON_STOPWORDS.has(t)) {
-        termSet.add(t);
-        let w = 3.0;
-        for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) { w = 3.0; break; } }
-        if (isDateLike(t)) w = Math.max(w, 2.0);
-        termWeights.set(t, w);
-      }
-    }
+    const isAttrTerm = (t: string) => {
+      for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) return true; }
+      return false;
+    };
+    // First whitespace token is the main entity (weight 3); later tokens
+    // are support (1) unless they carry attribute (3) or date (2) intent.
+    const contentWords = whitespaceWords.filter((t) => t.length >= 2 && !COMMON_STOPWORDS.has(t));
+    contentWords.forEach((t, idx) => {
+      termSet.add(t);
+      let w = idx === 0 ? 3.0 : 1.0;
+      if (isAttrTerm(t)) w = 3.0;
+      else if (isDateLike(t)) w = Math.max(w, 2.0);
+      termWeights.set(t, w);
+    });
     for (const t of extracted) {
       if (t.length >= 2 && !COMMON_STOPWORDS.has(t) && !termSet.has(t)) {
         termSet.add(t);
+        // Generated bigrams/composites start low; attribute or date signals promote them.
         let w = 0.5;
-        for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) { w = 3.0; break; } }
-        if (w !== 3.0 && isDateLike(t)) w = 2.0;
-        if (w !== 3.0 && w !== 2.0) w = 1.0;
-        // whitespace由来は既に3.0なので上書きしない
-        if (!termWeights.has(t)) termWeights.set(t, w);
+        if (isAttrTerm(t)) w = 3.0;
+        else if (isDateLike(t)) w = 2.0;
+        else w = 1.0;
+        termWeights.set(t, w);
       }
     }
     queryTerms = Array.from(termSet);
-    for (const t of queryTerms) { if (!termWeights.has(t)) termWeights.set(t, 1.0); }
   }
 
   if (queryTerms.length === 0) return items;
