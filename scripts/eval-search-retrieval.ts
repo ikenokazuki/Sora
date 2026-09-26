@@ -112,6 +112,23 @@ const xCases: XEvalCase[] = [
     { id: '1', author_handle: 'viral', text: 'SPARK lol', publishedTime: new Date(Date.now() - 1 * 3600000).toISOString() },
     { id: '2', author_handle: 'fan', text: 'SPARK detailed announcement analysis', publishedTime: new Date(Date.now() - 2 * 3600000).toISOString() },
   ] },
+  { id: 'x-rrf-01', query: 'SPARK ticket', requirements: ['spark'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'a', text: 'SPARK ticket', publishedTime: new Date().toISOString() },
+    { id: '2', author_handle: 'b', text: 'SPARK ticket', publishedTime: new Date().toISOString(), rrfScore: 0.05 },
+  ] },
+  { id: 'x-fresh-01', query: 'SPARK news', requirements: ['spark'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'a', text: 'SPARK news', publishedTime: new Date(Date.now() - 20 * 86400000).toISOString() },
+    { id: '2', author_handle: 'b', text: 'SPARK news', publishedTime: new Date().toISOString() },
+  ] },
+  { id: 'x-reaction-01', query: 'SPARK 反応', requirements: ['spark', '反応'], officialHandles: ['official'], posts: [
+    { id: '1', author_handle: 'official', text: 'SPARK news', publishedTime: new Date().toISOString() },
+    { id: '2', author_handle: 'fanA', text: 'SPARK 反応', publishedTime: new Date().toISOString() },
+    { id: '3', author_handle: 'fanB', text: 'SPARK 反応まとめ', publishedTime: new Date().toISOString() },
+  ] },
+  { id: 'x-lexical-01', query: 'SPARK', requirements: ['spark'], officialHandles: [], posts: [
+    { id: '1', author_handle: 'a', text: 'ok', publishedTime: new Date().toISOString() },
+    { id: '2', author_handle: 'b', text: 'SPARK SPARK SPARK detailed', publishedTime: new Date().toISOString() },
+  ] },
   { id: 'x-recency-01', query: 'SPARK live', requirements: ['spark'], officialHandles: [], posts: [
     { id: '1', author_handle: 'a', text: 'SPARK live report', publishedTime: new Date(Date.now() - 2 * 86400000).toISOString() },
     { id: '2', author_handle: 'b', text: 'SPARK live photos', publishedTime: new Date(Date.now() - 10 * 86400000).toISOString() },
