@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 28 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 40 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 45 ツール）。
 
 ```json
 {
@@ -308,12 +308,12 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 40 ツール / 11 のモジュール & ハイブリッド 12 コア構成)
+## 2. 提供 MCP ツール一覧 (全 45 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **11 個の論理モジュール（全 40 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 45 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 28 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 31 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 12 ツール)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -382,7 +382,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 遅延ツールは `search_tools` で有効化すると、正式名（例: `search_trend`）と LibreChat 互換名（`default.search_trend`）が公開されます。初期公開は12ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
-有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全40ツールを公開します。
+有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全45ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -536,6 +536,23 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 ---
 
 ## 3. REST API 仕様
+
+### 🖼️ Module 10: Media Inspection (`ENABLED_MODULES=media`)
+画像の取得・解析（チラシ・時刻表・告知・ポスター等の視覚情報抽出）。`web` モジュール有効時も利用可能です。
+
+| ツール名 | 説明 |
+|---|---|
+| `inspect_image` ・ DEFERRED | 画像URLから視覚情報を抽出します。`search_tools` で有効化してください。REST: `POST /media/inspect-image` |
+
+### 🌍 Module 11: Country & Region Intelligence (`ENABLED_MODULES=intel`)
+証拠基盤の国・地域コンテキスト調査。評価・推奨は含みません。詳細は「🌍 Country Intelligence」章を参照ください。
+
+| ツール名 | 説明 |
+|---|---|
+| `research_country_context` ・ DEFERRED | 指定国・地域の政治・経済・安全・災害・保健・旅行等の分野横断調査。初回は代表証拠、全件はcontextId参照 |
+| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得 |
+| `get_country_context_evidence` ・ DEFERRED | 証拠明細の取得 |
+| `get_country_context_updates` ・ DEFERRED | 更新差分の取得 |
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
@@ -1799,7 +1816,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 40 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 45 ツール静的一括ロード |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
