@@ -14,7 +14,7 @@ ENV PORT=8000
 ENV ALLOW_LOCAL_NO_AUTH=true
 
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile || bun install
+RUN bun install --frozen-lockfile
 
 COPY . .
 
