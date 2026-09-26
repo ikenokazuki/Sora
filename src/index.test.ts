@@ -2857,6 +2857,10 @@ describe('Sora REST & MCP Endpoints', () => {
     const cached = dbGetCache<{ foo: string }>('test:sqlite:key');
     expect(cached).toBeDefined();
     expect(cached?.value.foo).toBe('bar');
+    // L2 行の作成時刻が保持され、TTL 既定値からの逆算に依存しないこと
+    expect(typeof cached?.createdAt).toBe('number');
+    expect(Math.abs(Date.now() - (cached?.createdAt ?? 0))).toBeLessThan(60 * 1000);
+    expect((cached?.createdAt ?? 0)).toBeLessThanOrEqual(cached?.expiresAt ?? 0);
 
     // L1 メモリと L2 SQLite の透過的連携
     setToCache('test:hybrid:key', { data: 12345 }, 60000);
