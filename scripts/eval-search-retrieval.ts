@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { rerankSearchResults, computeAnswerability } from '../src/enrichment.js';
 import { mergeYahooWebQueryBatches, assessRetrievalConfidence } from '../src/services/yahoo.js';
 import { selectScrapeTargets, assessEvidenceSufficiency } from '../src/scraper.js';
+import { rankRealtimeItems } from '../src/services/x_detail.js';
 
 type EvalItem = { title?: string; snippet?: string; description?: string; url?: string; link?: string };
 type Batch = { query: string; queryIndex: number; items: EvalItem[] };
@@ -88,7 +89,16 @@ if (args.includes('--selftest')) {
   if (c[0] !== b[0] || c[1] !== b[1] || c[2] !== b[2]) throw new Error('C must guarantee top3');
   const weak = assessRetrievalConfidence([{ title: 'a', snippet: 'a', url: 'https://a.example/' }, { title: 'a', snippet: 'a', url: 'https://b.example/' }] as any, 'a b c');
   if (weak.good) throw new Error('confidence should flag missing terms');
-  console.log('selftest ok: ' + cases.length + ' cases');
+  // X native ranking invariants (section 50).
+  const posts = [
+    { id: '1', author_handle: 'fan', text: 'SPARK legend live best ever', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
+    { id: '2', author_handle: 'official', text: 'SPARK announcement', publishedTime: new Date().toISOString() },
+  ];
+  const recent = rankRealtimeItems(posts as any, { query: 'SPARK', mode: 'recent' });
+  if (recent[0].id !== '1') throw new Error('recent must preserve provider order');
+  const ev = rankRealtimeItems(posts as any, { query: 'SPARK announcement', mode: 'evidence', officialHandles: ['official'] });
+  if (ev[0].id !== '2') throw new Error('evidence must prefer official full-coverage post');
+  console.log('selftest ok: ' + cases.length + ' cases + xrank');
   process.exit(0);
 }
 const results = cases.map(scoreCase);
