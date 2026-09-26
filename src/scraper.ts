@@ -1296,7 +1296,7 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string, r
   const rest = pool.slice(3);
   const needed = limit - guaranteed.length;
   if (needed <= 0) {
-    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit).map((it: any) => ({ ...it })) };
+    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit) };
   }
   try {
     const requirements = extractQueryRequirements(query);
