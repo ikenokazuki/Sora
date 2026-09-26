@@ -17,6 +17,7 @@ describe('auth peer check (P1-SEC-04)', () => {
     expect(isLoopbackAddress('203.0.113.5')).toBe(false);
     expect(isLoopbackAddress('10.0.0.1')).toBe(false);
     expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(false);
+    expect(isLoopbackAddress('127.999.1.1')).toBe(false);
   });
   test('legacy fallback when peer unknown', () => {
     expect(resolvePeerLocal(mockCtx())).toBe(true);
