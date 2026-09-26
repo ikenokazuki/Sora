@@ -3,6 +3,7 @@ import {
   analyzeFacetEvidence,
   associationMultiplier,
   detectValueKinds,
+  computeEvidenceCoverage,
   detectCurrentIntent,
   entityTermsForQuery,
   splitSentences,
@@ -153,5 +154,38 @@ describe('temporal relevance signals (hermetic)', () => {
     const cur = scores.get('current') as number[];
     const oldScores = scores.get('old') as number[];
     expect(cur[0]).toBeGreaterThan(oldScores[0]);
+  });
+});
+describe('evidence coverage diagnostics (hermetic)', () => {
+  test('computes mention and answer coverage per requirement', () => {
+    const cov = computeEvidenceCoverage(
+      ['Astra Phone Xの価格は159,800円です。', '重量は199gです。', 'Wi-Fiについて解説します。'],
+      ['astra', 'phone', 'x'],
+      ['価格', '重量', 'Wi-Fi'],
+    );
+    expect(cov.mentionCoverage).toBe(1.0);
+    expect(cov.answerCoverage).toBeCloseTo(2 / 3, 10);
+    expect(cov.answeredRequirements).toEqual(['価格', '重量']);
+    expect(cov.missingRequirements).toEqual(['Wi-Fi']);
+  });
+  test('adapter diagnostics expose answer coverage and missing requirements', () => {
+    const markdown = [
+      '# 価格',
+      '',
+      'Astra Phone Xの価格は159,800円です。',
+      '',
+      '# 重量',
+      '',
+      '重量は199gです。',
+      '',
+      '# 無線',
+      '',
+      'Wi-Fiについて解説します。',
+      '',
+    ].join(chrN());
+    const res = extractQueryHighlightsRhoV2(markdown, 'Astra Phone X 価格 重量 Wi-Fi', { requirements: ['価格', '重量', 'Wi-Fi'] });
+    expect(res.diagnostics.answerCoverage).toBeCloseTo(2 / 3, 10);
+    expect(res.diagnostics.answeredRequirements).toEqual(['価格', '重量']);
+    expect(res.diagnostics.missingRequirements).toEqual(['Wi-Fi']);
   });
 });
