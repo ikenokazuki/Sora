@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
 import { dbIncrementApiUsage } from './db.js';
+import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
 
 /** タイミング攻撃（Timing Attack）を防ぐ定数時間文字列比較 */
 export function isSecureEqual(a?: string, b?: string): boolean {
@@ -26,6 +27,42 @@ export function extractAuthToken(c: any): string | undefined {
 
 export function hashApiKey(key: string): string {
   return createHash('sha256').update(key).digest('hex').slice(0, 16);
+}
+
+/** Socket peer address injected by the server wrapper (never client-controlled). */
+export function getPeerAddress(c: any): string | undefined {
+  const env = (c as any)?.env;
+  const raw = env?.remoteAddr ?? env?.remoteAddress;
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  return undefined;
+}
+
+/** Loopback check for peer IPs (RFC P1-SEC-04). Zone IDs and brackets stripped. */
+export function isLoopbackAddress(ip: string): boolean {
+  const v = ip.trim().replace(/^\[/, '').split('%')[0].split(']')[0].toLowerCase();
+  if (v === 'localhost' || v === '::1' || v === '0:0:0:0:0:0:0:1') return true;
+  const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const first = parseInt(m[1], 10);
+    if (first === 127) return true;
+  }
+  return false;
+}
+
+export function resolvePeerLocal(c: any): boolean {
+  const forwardedFor = c.req.header('x-forwarded-for');
+  const realIp = c.req.header('x-real-ip');
+  const directConnection = !forwardedFor && !realIp;
+  const peer = getPeerAddress(c);
+  if (process.env.TRUST_PROXY === 'true') {
+    const clientIp = (forwardedFor || '').split(',')[0].trim() || peer;
+    if (!clientIp) return false;
+    return isLoopbackAddress(clientIp);
+  }
+  if (!directConnection) return false;
+  // Peer unknown (unit tests, non-Bun runtimes): legacy header heuristic.
+  if (peer === undefined) return true;
+  return isLoopbackAddress(peer);
 }
 
 export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler {
@@ -60,14 +97,23 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
     } else {
       // 3. API キーの照合 (定数時間比較)
       const providedToken = extractAuthToken(c);
-      const forwardedFor = c.req.header('x-forwarded-for');
-      const realIp = c.req.header('x-real-ip');
-      const isDirectLocal = !forwardedFor && !realIp && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
+      const isDirectLocal = resolvePeerLocal(c) && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
+      const allowAnonymous = process.env.SORA_ALLOW_ANONYMOUS === 'true';
 
       if (providedToken && isSecureEqual(providedToken, apiKey)) {
         tokenHash = hashApiKey(providedToken);
+        try {
+          (c as any).set('tenant', resolveTenantContext({ apiKey: providedToken }));
+        } catch {}
       } else if (isDirectLocal) {
         tokenHash = 'local_direct';
+        try {
+          (c as any).set('tenant', resolveTenantContext({ internal: true }));
+        } catch {}
+      } else if (allowAnonymous) {
+        try {
+          (c as any).set('tenant', resolveTenantContext({}));
+        } catch {}
       } else {
         return c.json(
           {
@@ -78,6 +124,11 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
         );
       }
     }
+
+    try {
+      const existing = (c as any).get?.('tenant') as TenantContext | undefined;
+      if (!existing) (c as any).set('tenant', resolveTenantContext({}));
+    } catch {}
 
     // 4. API キーごとの日次レート制限 & クォータ制御 (SQLite 永続化)
     const todayStr = new Date().toISOString().slice(0, 10);
