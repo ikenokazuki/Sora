@@ -224,6 +224,17 @@ describe('Realtime Retrieval v1', () => {
     expect(out.rrfScore).toBe(0.01);
     expect(out.text).toBe('hi');
   });
+  test('Test10d: stop-reason counters observe finish paths', async () => {
+    const { getSecurityMetrics, resetSecurityMetrics } = await import('../security/metrics.js');
+    resetSecurityMetrics();
+    const full = post('900', 'SPARK 出演 辞退のお知らせ');
+    const provider = mockMcp(() => [full], []);
+    await searchYahooRealtime({ query: 'SPARK 出演 辞退 id:kimisora_JPN', ...OPT, _callMcp: provider } as any);
+    const m = getSecurityMetrics();
+    expect(m['sora_x_wave_total'] ?? 0).toBeGreaterThanOrEqual(1);
+    expect(m['sora_x_full_coverage_stop_total'] ?? 0).toBeGreaterThanOrEqual(1);
+    resetSecurityMetrics();
+  });
   test('Test10b: multi-wave duplicates accumulate providerRanks and rrfScore', async () => {
     const { mergeRealtimeQueryBatches } = await import('./yahoo.js');
     const a = post('111', 'SPARK 辞退');
