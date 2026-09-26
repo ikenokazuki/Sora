@@ -15,6 +15,7 @@
  */
 
 import { estimateTokens } from './enrichment.js';
+import { analyzeFacetEvidence, associationMultiplier, entityTermsForQuery, splitSentences } from './retrieval/answerability.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms, type ParsedSection } from './rho_select.js';
 import {
   selectEvidenceSetRhoV2,
@@ -90,6 +91,10 @@ interface CandidateBlock {
 /**
  * テキスト内での語句出現回数をカウント (大文字小文字無視)
  */
+function chr10(): string {
+  return String.fromCharCode(10);
+}
+
 function countOccurrences(text: string, term: string): number {
   if (!text || !term) return 0;
   const lowerText = text.toLowerCase();
@@ -317,6 +322,7 @@ export function extractQueryHighlightsRhoV2(
   // Raw evidence matrix
   const rawScores: number[][] = [];
   const maxRawPerRequirement = new Array(m).fill(0);
+  const assocEntities = entityTermsForQuery(query);
 
   for (let i = 0; i < n; i++) {
     const c = candidates[i];
@@ -324,6 +330,7 @@ export function extractQueryHighlightsRhoV2(
 
     const normHLen = c.heading.length / avgHeadingLen;
     const normBLen = c.body.length / avgBodyLen;
+    const blockSentences = splitSentences(c.heading + chr10() + c.body);
 
     for (let t = 0; t < m; t++) {
       const req = requirements[t];
@@ -340,7 +347,12 @@ export function extractQueryHighlightsRhoV2(
       const compositeTf = wHeading * normTfH + wBody * normTfB;
 
       // BM25+ 式
-      const evidence = idfList[t] * (((k1 + 1) * compositeTf) / (k1 + compositeTf) + delta);
+      const baseEvidence = idfList[t] * (((k1 + 1) * compositeTf) / (k1 + compositeTf) + delta);
+      let evidence = baseEvidence;
+      try {
+        const facetEv = analyzeFacetEvidence(blockSentences, assocEntities, req);
+        evidence = baseEvidence * associationMultiplier(facetEv);
+      } catch {}
       row[t] = evidence;
       if (evidence > maxRawPerRequirement[t]) {
         maxRawPerRequirement[t] = evidence;
