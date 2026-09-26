@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-09-26T20:07:16.726Z",
+  "startedAt": "2026-09-26T20:51:43.612Z",
   "results": [
     {
       "id": "event-timetable-01",
@@ -1069,33 +1069,240 @@
           "answerScore": 0
         }
       }
+    },
+    {
+      "id": "official-02",
+      "category": "official information",
+      "query": "X100 official manual",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://maker.example/manual",
+            "https://blog.example/z"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://maker.example/manual",
+            "https://blog.example/z"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://maker.example/manual",
+            "https://blog.example/z"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://maker.example/manual",
+            "https://blog.example/z"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://maker.example/manual",
+            "https://blog.example/z"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "multifacet-02",
+      "category": "multi-facet",
+      "query": "SPARK lineup ticket access",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results",
+          "missing-terms:access"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://spark.example/lineup",
+            "https://spark.example/access",
+            "https://ticket.example/spark"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://spark.example/lineup",
+            "https://ticket.example/spark",
+            "https://spark.example/access"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://spark.example/lineup",
+            "https://ticket.example/spark",
+            "https://spark.example/access"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://spark.example/lineup",
+            "https://spark.example/access",
+            "https://ticket.example/spark"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://spark.example/lineup",
+            "https://spark.example/access",
+            "https://ticket.example/spark"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
+    },
+    {
+      "id": "comparison-02",
+      "category": "comparison",
+      "query": "A battery versus B battery",
+      "confidence": {
+        "good": false,
+        "reasons": [
+          "few-results"
+        ]
+      },
+      "evidence": {
+        "sufficient": true,
+        "reasons": []
+      },
+      "arms": {
+        "A": {
+          "topUrls": [
+            "https://review.example/cmp2",
+            "https://blog.example/c"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "B": {
+          "topUrls": [
+            "https://review.example/cmp2",
+            "https://blog.example/c"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "C": {
+          "topUrls": [
+            "https://review.example/cmp2",
+            "https://blog.example/c"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "D": {
+          "topUrls": [
+            "https://review.example/cmp2",
+            "https://blog.example/c"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        },
+        "E": {
+          "topUrls": [
+            "https://review.example/cmp2",
+            "https://blog.example/c"
+          ],
+          "reqCoverage": 1,
+          "uniqueDomains": 2,
+          "officialRecall": 1,
+          "answerScore": 0
+        }
+      }
     }
   ],
   "agg": {
     "A": {
-      "meanReqCoverage": 0.811,
-      "meanOfficialRecall": 0.933,
-      "cases": 15
+      "meanReqCoverage": 0.843,
+      "meanOfficialRecall": 0.944,
+      "cases": 18
     },
     "B": {
-      "meanReqCoverage": 0.811,
+      "meanReqCoverage": 0.843,
       "meanOfficialRecall": 1,
-      "cases": 15
+      "cases": 18
     },
     "C": {
-      "meanReqCoverage": 0.811,
+      "meanReqCoverage": 0.843,
       "meanOfficialRecall": 1,
-      "cases": 15
+      "cases": 18
     },
     "D": {
-      "meanReqCoverage": 0.878,
+      "meanReqCoverage": 0.898,
       "meanOfficialRecall": 1,
-      "cases": 15
+      "cases": 18
     },
     "E": {
-      "meanReqCoverage": 0.878,
+      "meanReqCoverage": 0.898,
       "meanOfficialRecall": 1,
-      "cases": 15
+      "cases": 18
     }
   },
   "xResults": [
@@ -1128,6 +1335,78 @@
         "popular": {
           "topId": "1",
           "coverage": 0.5
+        },
+        "evidence": {
+          "topId": "2",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-rrf-01",
+      "query": "SPARK ticket",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "evidence": {
+          "topId": "2",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-fresh-01",
+      "query": "SPARK news",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 1
+        },
+        "evidence": {
+          "topId": "2",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-reaction-01",
+      "query": "SPARK 反応",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 0.5
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 0.5
+        },
+        "evidence": {
+          "topId": "2",
+          "coverage": 1
+        }
+      }
+    },
+    {
+      "id": "x-lexical-01",
+      "query": "SPARK",
+      "arms": {
+        "recent": {
+          "topId": "1",
+          "coverage": 0
+        },
+        "popular": {
+          "topId": "1",
+          "coverage": 0
         },
         "evidence": {
           "topId": "2",
