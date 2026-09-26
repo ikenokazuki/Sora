@@ -877,6 +877,7 @@ export async function scrapeBatchUrls(options: {
   retryDelayMs?: number;
   timeoutMs?: number;
   noCache?: boolean;
+  tenantId?: string;
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, ...scrapeOpts } = options;
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
@@ -1107,6 +1108,7 @@ export async function crawlSiteUrl(options: {
   minimizeTables?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
+  tenantId?: string;
   onPageScraped?: (page: ScrapeResult) => void;
   onPageCrawled?: (page: ScrapeResult, count: number) => void;
 }): Promise<{
@@ -1165,6 +1167,7 @@ export async function crawlSiteUrl(options: {
     try {
       const scraped = await scrapeUrl({
         url: item.url,
+        tenantId: (options as any).tenantId ?? 'legacy',
         maxChars,
         formats: Array.from(new Set([...formats, 'links'])),
         query,
