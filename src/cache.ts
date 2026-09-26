@@ -4,6 +4,8 @@ import {
   dbDeleteCache,
   dbClearExpiredCache,
   dbClearAllCache,
+  dbPurgeOldApiUsage,
+  dbPurgeOldWatchHistory,
 } from './db.js';
 
 interface CacheEntry<T> {
@@ -60,6 +62,8 @@ export function sweepExpiredEntries(): number {
     }
   }
   dbClearExpiredCache();
+  dbPurgeOldApiUsage();
+  dbPurgeOldWatchHistory();
   return deletedCount;
 }
 
