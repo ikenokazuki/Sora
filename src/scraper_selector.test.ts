@@ -62,6 +62,20 @@ describe('P1-4 selectScrapeTargets', () => {
   });
 
 
+  test('sufficiency stops answer-seeking queries on answers, not mentions', async () => {
+    const { assessEvidenceSufficiency } = await import('./scraper.js');
+    const mentionOnly = assessEvidenceSufficiency(
+      [{ title: 'Astra Phone X', markdown: 'Astra Phone Xの価格について解説します。', highlights: [] }] as any,
+      'Astra Phone X 価格',
+    );
+    expect(mentionOnly.sufficient).toBe(false);
+    expect(mentionOnly.reasons.join(' ')).toContain('missing-answer');
+    const answered = assessEvidenceSufficiency(
+      [{ title: 'Astra Phone X', markdown: 'Astra Phone Xの価格は159,800円です。', highlights: [] }] as any,
+      'Astra Phone X 価格',
+    );
+    expect(answered.sufficient).toBe(true);
+  });
   test('answerability detects price and cancel signals', async () => {
     const { computeAnswerability } = await import('./enrichment.js');
     const price = computeAnswerability({ title: 't', snippet: '価格 3500円' } as any, 'チケット 価格');
