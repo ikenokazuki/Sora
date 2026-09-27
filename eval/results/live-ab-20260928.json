@@ -1,0 +1,38 @@
+{
+  "startedAt": "2026-09-27T21:36:19.978Z",
+  "delayMs": 5000,
+  "rows": [
+    {
+      "id": "live-factual-01",
+      "category": "simple factual",
+      "query": "君と見るそら メンバー",
+      "ms": 525,
+      "count": 8,
+      "isFallback": false,
+      "arms": {
+        "A_top": "https://x.com/kimisora_JPN",
+        "B_top": "https://kimisora.love/",
+        "C_top": "https://kimisora.love/",
+        "agreeAB": false,
+        "unionCount": 10,
+        "adaptiveFired": false
+      }
+    },
+    {
+      "id": "live-event-01",
+      "category": "event timetable",
+      "query": "君と見るそら ライブ 出演時間",
+      "ms": 435,
+      "count": 9,
+      "isFallback": false,
+      "arms": {
+        "A_top": "https://ticketdive.com/event/kimisora_summer2026",
+        "B_top": "https://x.com/kimisora_JPN",
+        "C_top": "https://x.com/kimisora_JPN",
+        "agreeAB": false,
+        "unionCount": 14,
+        "adaptiveFired": false
+      }
+    }
+  ]
+}
