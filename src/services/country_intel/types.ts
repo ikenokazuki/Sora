@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { DomainViewsSchema, IntelligenceSignalSchema, type IntelligenceSignal } from '../intelligence/types.js';
-import { EvidenceDetailSchema } from './detail.js';
+import { EvidenceDetailSchema, type EvidenceDetail } from './detail.js';
 
 export const COUNTRY_INTEL_TOPICS = [
   'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',

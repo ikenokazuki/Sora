@@ -302,7 +302,7 @@ describe('v3 one-shot details', () => {
       now, cache: null, timeoutMs: 80, deadlineMs: 400,
     });
     expect(report.keyEvents.length).toBeGreaterThan(0);
-    expect(['partial', 'pending']).toContain(report.refreshState?.state);
+    expect(['partial', 'pending']).toContain(report.refreshState?.state ?? 'missing');
     expect(report.providerCoverage.some((run) => run.provider === 'slow' && run.status !== 'success')).toBe(true);
   });
 });
