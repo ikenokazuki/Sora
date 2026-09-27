@@ -2185,6 +2185,16 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(text).toContain('sora_cache_hits_total');
   });
 
+  it('GET /metrics exposes security counters in JSON and Prometheus', async () => {
+    const { incrementSecurityCounter } = await import('./security/metrics.js');
+    incrementSecurityCounter('sora_test_probe_total');
+    const prom = await app.request('/metrics?format=prometheus');
+    expect((await prom.text())).toContain('sora_test_probe_total');
+    const res = await app.fetch(new Request('http://localhost/metrics'));
+    const data = (await res.json()) as any;
+    expect(data.counters?.sora_test_probe_total).toBeGreaterThanOrEqual(1);
+  });
+
   it('decodeHtmlBuffer should automatically detect and decode Shift_JIS and UTF-8', () => {
     // 1. Shift_JIS テスト ("こんにちは世界")
     const sjisBytes = new Uint8Array([0x82, 0xb1, 0x82, 0xf1, 0x82, 0xc9, 0x82, 0xbf, 0x82, 0xcd, 0x90, 0xa2, 0x8a, 0x45]);

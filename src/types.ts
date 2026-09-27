@@ -1937,9 +1937,9 @@ export function generateOpenApiDocument() {
   const doc = {
     openapi: '3.0.0',
     info: {
-      title: 'Sora Web Scraping, Deep Search, Transit & MCP API',
+      title: 'Sora Web スクレイピング / Deep Search / 乗換 / MCP API',
       version: SORA_VERSION,
-      description: 'Unified High-Performance Web Scraping, Realtime X Search, Transit & Public Open Data Service (Distroless & Zero-Middleware)',
+      description: '日本のWeb空間と日常インフラをAIエージェントから利用するための Self-hosted MCP / REST 統合サーバー。Webスクレイピング、深層Web検索、Xリアルタイム検索、乗換・気象・防災データを単一コンテナで提供します。',
     },
     paths: {
       '/': {
