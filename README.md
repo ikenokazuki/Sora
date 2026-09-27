@@ -1865,7 +1865,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
 | `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
 | `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
-| `SORA_WEB_RETRY_WAIT_MS` | `1200` | レート制限後の次候補までの待機上限（ms）。0〜5000に丸め、1回のみ待機します |
+| `SORA_WEB_RETRY_WAIT_MS` | *(deprecated)* | 初期spacingのoverrideとしてのみ使用。通常はProvider pressure controllerが制御します |
 
 ---
 
