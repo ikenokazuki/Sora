@@ -10,10 +10,10 @@ import {
   setupPageSecurity,
 } from './browser_engine.js';
 import {
-  dbGetDomainCookies,
-  dbGetDomainStorage,
+  dbGetTenantCookies,
+  dbGetTenantStorage,
   dbSaveDomainCookies,
-  dbSaveDomainStorage,
+  dbSaveTenantStorage,
 } from './db.js';
 import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
 
@@ -366,6 +366,7 @@ export async function fetchWithStealthBrowser(
   waitUntil: 'networkidle0' | 'networkidle2' = 'networkidle2',
   needScreenshot = false,
   fullPage = true,
+  tenantId = 'legacy',
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
@@ -395,7 +396,7 @@ export async function fetchWithStealthBrowser(
       await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
 
       const domain = new URL(url).hostname;
-      const persistedCookies = dbGetDomainCookies(domain);
+      const persistedCookies = dbGetTenantCookies(tenantId, domain);
       if (persistedCookies && persistedCookies.length > 0) {
         const restoredCookies = persistedCookies.map((c) => ({
           name: c.name,
@@ -411,7 +412,7 @@ export async function fetchWithStealthBrowser(
         } catch {}
       }
 
-      const persistedStorage = dbGetDomainStorage(domain);
+      const persistedStorage = dbGetTenantStorage(tenantId, domain);
       if (persistedStorage && Object.keys(persistedStorage).length > 0) {
         await page.evaluateOnNewDocument((data: Record<string, string>) => {
           try {
@@ -500,7 +501,7 @@ export async function fetchWithStealthBrowser(
           }
         });
         if (currentStorage && Object.keys(currentStorage).length > 0) {
-          dbSaveDomainStorage(domain, currentStorage);
+          dbSaveTenantStorage(tenantId, domain, currentStorage);
         }
       } catch {}
 

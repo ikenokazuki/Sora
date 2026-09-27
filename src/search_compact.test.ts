@@ -162,7 +162,12 @@ describe('formatCompactRealtimeResponse', () => {
     expect(compact.effectiveQuery).toBe(full.effectiveQuery);
     expect(compact.isFallback).toBe(full.isFallback);
     expect(compact.count).toBe(full.items.length);
-    expect(compact.items).toEqual(full.items);
+    expect(compact.items.map((it: any) => it.id)).toEqual(full.items.map((it: any) => it.id));
+    for (const item of compact.items) {
+      for (const k of ['providerRank', 'providerRanks', 'rrfScore', 'lexicalScore', 'selectionReason']) {
+        expect(k in item).toBe(false);
+      }
+    }
   });
 
   test('verbose keeps full provenance', async () => {
@@ -273,6 +278,30 @@ describe('formatCompactRealtimeResponse', () => {
 // Web compact
 // ---------------------------------------------------------------------------
 
+describe('INTERNAL routing keys (RFC compatibility)', () => {
+  test('compact strips scores and selection reasons, verbose keeps them', async () => {
+    const mod = await import('./search_compact.js');
+    const item = {
+      title: 't', url: 'https://example.com', snippet: 's',
+      providerRank: 1, providerRanks: [{ queryIndex: 0, rank: 1 }],
+      retrievalQuery: 'q', retrievalQueryIndex: 0, retrievalWave: 1,
+      rrfScore: 0.01, lexicalScore: 3, selectionReason: 'missing_requirement',
+    };
+    const web: any = mod.formatCompactWebSearchResponse({ items: [item], count: 1, source: 'web' });
+    for (const k of ['providerRank', 'providerRanks', 'retrievalQuery', 'retrievalQueryIndex', 'retrievalWave', 'rrfScore', 'lexicalScore', 'selectionReason']) {
+      expect(k in web.items[0]).toBe(false);
+    }
+    expect(web.items[0].title).toBe('t');
+    const webV: any = mod.formatCompactWebSearchResponse({ items: [item], count: 1, source: 'web' }, { verbose: true });
+    expect(webV.items[0].rrfScore).toBe(0.01);
+    const rt: any = mod.formatCompactRealtimeResponse({ source: 'x', items: [{ ...item, id: '1', text: 'hi' }] });
+    expect('rrfScore' in rt.items[0]).toBe(false);
+    expect(rt.items[0].text).toBe('hi');
+    const integ: any = mod.formatCompactIntegratedSearchResponse({ results: [item], realtime: { source: 'x', items: [{ ...item, id: '1' }] } });
+    expect('selectionReason' in integ.results[0]).toBe(false);
+    expect('providerRank' in integ.realtime.items[0]).toBe(false);
+  });
+});
 describe('formatCompactWebSearchResponse', () => {
   test('compact strips per-item retrieval provenance, keeps evidence fields', () => {
     const full = webUnionFixture();
@@ -330,7 +359,7 @@ describe('formatCompactIntegratedSearchResponse', () => {
     const { full } = await runFullCoverageRetrieval();
     const response = integratedFixture(full);
     const compact: any = formatCompactIntegratedSearchResponse(response);
-    expect(compact.realtime.items).toEqual(full.items);
+    expect(compact.realtime.items.map((it: any) => it.id)).toEqual(full.items.map((it: any) => it.id));
     expect(compact.realtime.count).toBe(full.items.length);
     expect(compact.realtime.effectiveQuery).toBe(full.effectiveQuery);
     expect(compact.realtime.isFallback).toBe(full.isFallback);

@@ -1,9 +1,10 @@
 import { URL } from 'url';
 import type { CookieParam } from 'puppeteer-core';
 import type { PersistedCookie } from './db.js';
-import { dbGetDomainCookies, dbSaveDomainCookies } from './db.js';
+import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -110,19 +111,48 @@ const MAX_HTTP_SESSIONS = 50; // 同時保持上限
 interface PooledHttpSession {
   session: UniversalHttpSession;
   domain: string;
+  tenantId: string;
   lastUsed: number;
   timer: ReturnType<typeof setTimeout>;
 }
 
-class NativeFetchSession implements UniversalHttpSession {
-  private cookies = new Map<string, string>();
+/** Tenant-scoped session key (RFC P1-SEC-02). Default tenant preserves single-user behavior. */
+export function sessionKey(tenantId: string, hostname: string): string {
+  return `${tenantId || 'legacy'}:${hostname.toLowerCase()}`;
+}
 
-  setCookie(name: string, value: string, _urlOrDomain?: string | URL) {
-    this.cookies.set(name, value);
+export class NativeFetchSession implements UniversalHttpSession {
+  // Domain-scoped jar: cookies must never cross origins on redirect.
+  private cookies = new Map<string, Map<string, string>>();
+
+  private static domainOf(urlOrDomain?: string | URL): string {
+    try {
+      if (!urlOrDomain) return '';
+      const s = String(urlOrDomain);
+      const host = s.includes('://') ? new URL(s).hostname : s.split('/')[0].split(':')[0];
+      return host.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  setCookie(name: string, value: string, urlOrDomain?: string | URL) {
+    const domain = NativeFetchSession.domainOf(urlOrDomain);
+    if (!domain) return;
+    let jar = this.cookies.get(domain);
+    if (!jar) {
+      jar = new Map<string, string>();
+      this.cookies.set(domain, jar);
+    }
+    jar.set(name, value);
   }
 
   getAllCookies() {
-    return Array.from(this.cookies.entries()).map(([name, value]) => ({ name, value }));
+    const out: Array<{ name: string; value: string; domain?: string }> = [];
+    for (const [domain, jar] of this.cookies.entries()) {
+      for (const [name, value] of jar.entries()) out.push({ name, value, domain });
+    }
+    return out;
   }
 
   async close() {
@@ -134,8 +164,10 @@ class NativeFetchSession implements UniversalHttpSession {
     if (!headers.has('User-Agent') && !headers.has('user-agent')) {
       headers.set('User-Agent', getFallbackUserAgent());
     }
-    if (this.cookies.size > 0 && !headers.has('Cookie')) {
-      const cookieStr = Array.from(this.cookies.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+    const host = NativeFetchSession.domainOf(url);
+    const jar = this.cookies.get(host);
+    if (jar && jar.size > 0 && !headers.has('Cookie')) {
+      const cookieStr = Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
       headers.set('Cookie', cookieStr);
     }
     const res = await fetch(url, {
@@ -143,12 +175,12 @@ class NativeFetchSession implements UniversalHttpSession {
       headers,
     });
 
-    // Set-Cookie ヘッダーの収集
+    // Set-Cookie ヘッダーの収集 (response origin scope only)
     const setCookieHeaders = (res.headers as any).getSetCookie?.() || [];
     for (const sc of setCookieHeaders) {
       const parts = sc.split(';')[0].split('=');
       if (parts.length >= 2) {
-        this.cookies.set(parts[0].trim(), parts.slice(1).join('=').trim());
+        this.setCookie(parts[0].trim(), parts.slice(1).join('=').trim(), url);
       }
     }
 
@@ -162,34 +194,36 @@ function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
   clearTimeout(pooled.timer);
   pooled.lastUsed = Date.now();
   pooled.timer = setTimeout(() => {
-    void closeHttpSession(pooled.domain);
+    void closeHttpSession(pooled.domain, pooled.tenantId);
   }, HTTP_SESSION_TTL_MS);
   if (pooled.timer.unref) pooled.timer.unref();
 }
 
 async function evictOldestHttpSessionIfNeeded(): Promise<void> {
   if (httpSessionPool.size < MAX_HTTP_SESSIONS) return;
-  let oldestDomain: string | null = null;
-  let oldestTime = Infinity;
-  for (const [domain, p] of httpSessionPool.entries()) {
-    if (p.lastUsed < oldestTime) {
-      oldestTime = p.lastUsed;
-      oldestDomain = domain;
-    }
+  let oldest: PooledHttpSession | null = null;
+  for (const p of httpSessionPool.values()) {
+    if (!oldest || p.lastUsed < oldest.lastUsed) oldest = p;
   }
-  if (oldestDomain) await closeHttpSession(oldestDomain);
+  if (oldest) await closeHttpSession(oldest.domain, oldest.tenantId);
 }
 
 /** セッションをクローズし、Cookieを永続化してからプールから除去する */
-export async function closeHttpSession(domain: string): Promise<void> {
-  const pooled = httpSessionPool.get(domain);
+export async function closeHttpSession(domain: string, tenantId = 'legacy'): Promise<void> {
+  const pooled = httpSessionPool.get(sessionKey(tenantId, domain));
   if (!pooled) return;
   clearTimeout(pooled.timer);
-  httpSessionPool.delete(domain);
+  httpSessionPool.delete(sessionKey(tenantId, domain));
   try {
     const allCookies = pooled.session.getAllCookies();
-    if (allCookies.length > 0) {
-      dbSaveDomainCookies(domain, allCookies as PersistedCookie[]);
+    const byDomain = new Map<string, PersistedCookie[]>();
+    for (const c of allCookies) {
+      const d = (c.domain || domain).toLowerCase();
+      if (!byDomain.has(d)) byDomain.set(d, []);
+      byDomain.get(d)!.push(c as PersistedCookie);
+    }
+    for (const [d, list] of byDomain) {
+      if (list.length > 0) dbSaveTenantCookies(pooled.tenantId, d, list);
     }
   } catch {}
   try {
@@ -202,8 +236,10 @@ export async function getOrCreateHttpSession(
   domain: string,
   browser: BrowserProfile,
   proxyUrl?: string,
+  tenantId = 'legacy',
 ): Promise<UniversalHttpSession> {
-  const existing = httpSessionPool.get(domain);
+  const key = sessionKey(tenantId, domain);
+  const existing = httpSessionPool.get(key);
   if (existing) {
     refreshHttpSessionTimer(existing);
     return existing.session;
@@ -224,7 +260,7 @@ export async function getOrCreateHttpSession(
     session = new NativeFetchSession();
   }
 
-  const savedCookies = dbGetDomainCookies(domain);
+  const savedCookies = dbGetTenantCookies(tenantId, domain);
   if (savedCookies && savedCookies.length > 0) {
     for (const c of savedCookies) {
       try {
@@ -233,9 +269,9 @@ export async function getOrCreateHttpSession(
     }
   }
 
-  const pooled: PooledHttpSession = { session, domain, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
+  const pooled: PooledHttpSession = { session, domain, tenantId, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
   clearTimeout(pooled.timer);
-  httpSessionPool.set(domain, pooled);
+  httpSessionPool.set(key, pooled);
   refreshHttpSessionTimer(pooled);
   return session;
 }
@@ -277,6 +313,7 @@ export async function fetchWithSafeRedirects(
   customHeaders?: Record<string, string>,
   customCookies?: CookieParam[],
   proxyUrl?: string,
+  tenantId = 'legacy',
   parentSignal?: AbortSignal,
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
@@ -289,7 +326,7 @@ export async function fetchWithSafeRedirects(
   const initialDomain = new URL(initialUrl).hostname;
   const effectiveProxyUrl = proxyUrl ?? pickProxyUrl();
   const browser = pickBrowserProfile();
-  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl);
+  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId);
 
   while (redirects <= maxRedirects) {
     let parsed: URL;
@@ -303,13 +340,41 @@ export async function fetchWithSafeRedirects(
       throw new Error(`許可されていないプロトコルです: ${parsed.protocol}`);
     }
 
-    await validateHostIpDns(parsed.hostname);
+    try {
+      await validateHostIpDns(parsed.hostname);
+    } catch (e) {
+      incrementSecurityCounter('sora_redirect_block_total');
+      throw e;
+    }
     await throttleDomain(currentUrl);
 
+    // Security: redirect時の認証漏洩防止
+    // - Authorization/Proxy-Authorization: origin変化(scheme/host/port)で除去
+    // - Cookie: ホスト変化で除去 (同一ホストのhttp->https等は維持)
+    let originChanged = false;
+    let hostChanged = false;
+    try {
+      const cur = new URL(currentUrl);
+      const init = new URL(initialUrl);
+      originChanged = cur.origin !== init.origin;
+      hostChanged = cur.hostname !== init.hostname;
+    } catch { originChanged = false; hostChanged = false; }
+    let strippedAuth = false;
+    const sanitizedCustomHeaders: Record<string, string> = {};
+    if (customHeaders) {
+      for (const [k, v] of Object.entries(customHeaders)) {
+        const lk = k.toLowerCase();
+        if (originChanged && (lk === 'authorization' || lk === 'proxy-authorization' || lk === 'x-api-key' || lk === 'x-auth-token' || lk === 'x-access-token')) { strippedAuth = true; continue; }
+        if (hostChanged && lk === 'cookie') { strippedAuth = true; continue; }
+        sanitizedCustomHeaders[k] = v;
+      }
+    }
+    const keepCookie = !hostChanged && cookieHeader;
+    if (strippedAuth || (hostChanged && cookieHeader)) incrementSecurityCounter('sora_credential_strip_total');
     const headers: Record<string, string> = {
       'Accept-Language': ACCEPT_LANGUAGE,
-      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      ...(customHeaders || {}),
+      ...(keepCookie ? { Cookie: cookieHeader } : {}),
+      ...sanitizedCustomHeaders,
     };
 
     const timeout = AbortSignal.timeout(timeoutMs);

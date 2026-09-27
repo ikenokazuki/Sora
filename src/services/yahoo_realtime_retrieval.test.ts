@@ -168,17 +168,86 @@ describe('Realtime Retrieval v1', () => {
     expect(res.items.length).toBe(2);
   });
 
-  test('Test10: final rerank uses original query', async () => {
+  test('Test10: recent mode preserves provider order (no generic lexical rerank)', async () => {
     const calls: string[] = [];
     const weak = post('111', 'SPARK 辞退');
     const strong = post('222', 'SPARK 出演 辞退 決定');
     const provider = mockMcp((q) => (q.includes('出演') && q.includes('辞退') ? [weak, strong] : [weak]), calls);
     const res: any = await searchYahooRealtime({
       query: 'SPARK 出演 辞退 id:kimisora_JPN',
+      sort: 'recent',
       ...OPT,
       _callMcp: provider,
     } as any);
-    expect(String(res.items[0].id)).toBe('222');
+    expect(String(res.items[0].id)).toBe('111');
+    expect(res.items[0].providerRank).toBe(1);
+    expect(res.items[0].retrievalWave).toBe(1);
+  });
+  test('Test10c: intent is exposed on realtime meta', async () => {
+    const calls: string[] = [];
+    const provider = mockMcp(() => [post('1', 'SPARK 公式発表')], calls);
+    const res: any = await searchYahooRealtime({
+      query: 'SPARK 公式発表',
+      ...OPT,
+      _callMcp: provider,
+    } as any);
+    expect(res.intent).toBe('fact');
+    const res2: any = await searchYahooRealtime({
+      query: 'SPARK live',
+      ...OPT,
+      _callMcp: provider,
+    } as any);
+    expect(res2.intent).toBe('mixed');
+  });
+  test('Test10c3: provenance survives re-normalize and enrich chain', async () => {
+    const { normalizeRealtimeItem, mergeRealtimeQueryBatches, mergeRealtimeItemsWithDedup } = await import('./yahoo.js');
+    const { enrichRealtimeItemsWithXDetail } = await import('./x_detail.js');
+    const raw = [{ id: '42', author_handle: 'tester_JPN', text: 'short post', url: 'https://x.com/tester_JPN/status/42', created_at: 1758000000 }];
+    const merged = mergeRealtimeQueryBatches([{ query: 'q', queryIndex: 0, wave: 2, sort: 'recent', items: raw }] as any);
+    expect(merged.items[0].providerRank).toBe(1);
+    // scraper-side re-normalize (publicMapped) must not drop provenance
+    const renormalized = merged.items.map((it: any) => normalizeRealtimeItem(it));
+    expect(renormalized[0].providerRank).toBe(1);
+    expect(renormalized[0].retrievalWave).toBe(2);
+    const hybrid = mergeRealtimeItemsWithDedup([], renormalized);
+    const { items: enriched } = await enrichRealtimeItemsWithXDetail(hybrid, 'q', { fetchStatus: async () => null } as any, { verbose: true });
+    expect(enriched[0].providerRank).toBe(1);
+    expect(enriched[0].retrievalQuery).toBe('q');
+    expect(enriched[0].rrfScore).toBeDefined();
+  });
+  test('Test10c2: normalize preserves upstream provenance', async () => {
+    const { normalizeRealtimeItem } = await import('./yahoo.js');
+    const out: any = normalizeRealtimeItem({ id: '1', text: 'hi', url: 'https://x.com/a/status/1', providerRank: 2, retrievalQuery: 'q', retrievalQueryIndex: 1, retrievalWave: 2, rrfScore: 0.01 });
+    expect(out.providerRank).toBe(2);
+    expect(out.retrievalQuery).toBe('q');
+    expect(out.retrievalWave).toBe(2);
+    expect(out.rrfScore).toBe(0.01);
+    expect(out.text).toBe('hi');
+  });
+  test('Test10d: stop-reason counters observe finish paths', async () => {
+    const { getSecurityMetrics, resetSecurityMetrics } = await import('../security/metrics.js');
+    resetSecurityMetrics();
+    const full = post('900', 'SPARK 出演 辞退のお知らせ');
+    const provider = mockMcp(() => [full], []);
+    await searchYahooRealtime({ query: 'SPARK 出演 辞退 id:kimisora_JPN', ...OPT, _callMcp: provider } as any);
+    const m = getSecurityMetrics();
+    expect(m['sora_x_wave_total'] ?? 0).toBeGreaterThanOrEqual(1);
+    expect(m['sora_x_full_coverage_stop_total'] ?? 0).toBeGreaterThanOrEqual(1);
+    resetSecurityMetrics();
+  });
+  test('Test10b: multi-wave duplicates accumulate providerRanks and rrfScore', async () => {
+    const { mergeRealtimeQueryBatches } = await import('./yahoo.js');
+    const a = post('111', 'SPARK 辞退');
+    const b = post('222', 'other');
+    const merged = mergeRealtimeQueryBatches([
+      { query: 'q0', queryIndex: 0, wave: 1, sort: 'recent', items: [a, b] },
+      { query: 'q1', queryIndex: 1, wave: 2, sort: 'recent', items: [a] },
+    ] as any);
+    const kept = merged.items.find((it: any) => String(it.id) === '111');
+    expect(kept.providerRank).toBe(1);
+    expect(kept.providerRanks).toHaveLength(2);
+    expect(typeof kept.rrfScore).toBe('number');
+    expect(kept.retrievalWave).toBe(1);
   });
 
   test('Test11: provenance contract', async () => {
