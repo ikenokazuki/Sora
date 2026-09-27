@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "GB-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:00:00Z",
+    "endedAt": "2026-09-24T09:15:00Z",
+    "requirements": [
+      {"id": "program", "supported": true, "evidenceIds": ["web:gb-g1"], "notes": "MPP公式頁で1年課程を確認"},
+      {"id": "eligibility", "supported": true, "evidenceIds": ["web:gb-g1"], "notes": "IELTS7.5/TOEFL110とfirst-classを確認"},
+      {"id": "deadline", "supported": true, "evidenceIds": ["web:gb-g1"], "notes": "2027-28出願受付中とDecember締切を確認"},
+      {"id": "unknown", "supported": true, "evidenceIds": ["web:gb-g1"], "notes": "TOEFL受入見直しの注意点を分離"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 3,
+    "primaryEvidenceFitting": 3,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索1-2クエリ。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "GB-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:15:43Z",
+    "endedAt": "2026-09-24T09:15:53Z",
+    "requirements": [
+      {"id": "program", "supported": false, "evidenceIds": [], "notes": "MPPへの言及なし"},
+      {"id": "eligibility", "supported": false, "evidenceIds": [], "notes": "英語要件への言及なし"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "募集期限への言及なし"},
+      {"id": "unknown", "supported": false, "evidenceIds": [], "notes": "未確認の明示なし"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 10501,
+    "notes": "B=researchCountryWithDefaultsライブ47件。recent20件の参照切れ0。"}
+]

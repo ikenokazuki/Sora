@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
+import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
+import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 /**
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.27.0';
+export const SORA_VERSION = '2.30.4';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -588,17 +590,17 @@ export const TrendSearchRequestSchema = z.object({
 });
 
 export const RealtimeSearchRequestSchema = z.object({
-  query: z.string().optional().describe('リアルタイム検索キーワード (例: "地震", "タイテ", "告知")。※accountId や hashtags を指定する場合は省略可能'),
+  query: z.string().optional().describe('リアルタイム検索キーワード (例: "地震", "タイテ", "告知")。※accountId・hashtags・url・orWords等を指定する場合は省略可能'),
   accountId: z.string().optional().describe('【特定アカウントの投稿絞り込み】Xアカウント名（例: "Yahoo_JAPAN_PR", "kimisora_JPN"）。@の有無問わず自動で id:xxx に変換します。'),
   fromUser: z.string().optional().describe('accountId のエイリアス (LLM 互換用)'),
   toAccount: z.string().optional().describe('【特定アカウント宛ての投稿】宛先アカウント名（@xxx に変換）'),
   hashtags: z.union([z.string(), z.array(z.string())]).optional().describe('【特定ハッシュタグ絞り込み】ハッシュタグ名（例: "#君と見るそら", "地震"）。#の有無問わず付与します。'),
   excludeWords: z.union([z.string(), z.array(z.string())]).optional().describe('【除外キーワード】除外したい単語（-単語 に変換）'),
   orWords: z.array(z.string()).optional().describe('【OR検索】いずれかを含む単語の配列 (単語A 単語B) に変換'),
-  url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名'),
+  url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)'),
   limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)'),
-  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1)'),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1。Yahoo側は40件固定幅で取得)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -1262,7 +1264,9 @@ export const RealtimeItemSchema = z.object({
 export const RealtimeSearchResponseSchema = z.object({
   query: z.string().describe('指定された検索キーワード'),
   effectiveQuery: z.string().describe('実際に使用された有効クエリ (フォールバック適用後)'),
-  isFallback: z.boolean().describe('スマートフォールバック（日付・語句抽出）が適用されたか'),
+  isFallback: z.boolean().describe('元の検索意図を緩めたクエリが結果に寄与したか'),
+  partial: z.boolean().optional().describe('一部の取得が失敗し成功分のみを返す場合に true。providerErrors を伴う'),
+  providerErrors: z.array(z.object({ query: z.string(), message: z.string() })).optional().describe('失敗した取得クエリと理由の一覧'),
   sort: z.enum(['recent', 'popular']).describe('ソート順 ("recent" または "popular")'),
   source: z.literal('x').describe('ソース ("x")'),
   type: z.literal('realtime').describe('タイプ ("realtime")'),
@@ -1930,7 +1934,7 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
 }
 
 export function generateOpenApiDocument() {
-  return {
+  const doc = {
     openapi: '3.0.0',
     info: {
       title: 'Sora Web Scraping, Deep Search, Transit & MCP API',
@@ -2218,6 +2222,50 @@ export function generateOpenApiDocument() {
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(SearchWebResponseSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/social/search': {
+        post: {
+          summary: '公開SNS投稿検索 (Weibo新着 / Threads・Instagram・Facebook公開投稿)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SocialSearchInputSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'SNS検索結果（本文・日時・取得状態付き）',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(SocialSearchResultSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/social/fetch': {
+        post: {
+          summary: '既知SNS投稿の取得（本文・日時・反応）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(SocialFetchInputSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'SNS投稿の取得結果',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(SocialFetchResultSchema),
                 },
               },
             },
@@ -3177,7 +3225,53 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      '/intelligence/context/{contextId}/evidence': {
+        get: {
+          summary: '根拠原文・構造化データのページ取得',
+          parameters: [
+            { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
+            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (省略時はページ走査)' },
+            { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '次ページカーソル' },
+            { name: 'limit', in: 'query', required: false, schema: { type: 'integer' }, description: '取得件数 (最大100)' },
+          ],
+          responses: {
+            '200': {
+              description: '根拠詳細ページ',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(EvidencePageSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/intelligence/context/{contextId}/updates': {
+        get: {
+          summary: '追加・訂正・削除・取得障害の差分取得',
+          parameters: [
+            { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
+            { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '差分カーソル' },
+          ],
+          responses: {
+            '200': {
+              description: 'コンテキスト差分',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(ContextUpdatesSchema),
+                },
+              },
+            },
+          },
+        },
+      },
     },
   };
+  const paths = doc.paths as Record<string, any>;
+  // 同一ハンドラの別名パス。実体と同一定義を参照させる（重複メンテ防止）。
+  paths['/realtime'] = paths['/search/realtime'];
+  paths['/search/deep'] = paths['/search'];
+  paths['/search/integrated'] = paths['/search'];
+  paths['/deep-search'] = paths['/search'];
+  return doc;
 }
-

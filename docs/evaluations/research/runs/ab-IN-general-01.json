@@ -1,0 +1,76 @@
+[
+  {
+    "caseId": "IN-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:22:25Z",
+    "endedAt": "2026-09-24T07:22:32Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "MA English page itself unconfirmed"
+      },
+      {
+        "id": "eligibility",
+        "supported": true,
+        "evidenceIds": [
+          "web:ing-a1"
+        ]
+      },
+      {
+        "id": "deadline",
+        "supported": false,
+        "notes": "2027 FSR schedule unconfirmed"
+      },
+      {
+        "id": "unknown",
+        "supported": true,
+        "notes": "route confirmed vs pages/schedule unconfirmed"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=1 search. Scorer=runner."
+  },
+  {
+    "caseId": "IN-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:17:57.089Z",
+    "endedAt": "2026-09-24T07:18:06.799Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": false,
+        "notes": "generic pointers only"
+      },
+      {
+        "id": "eligibility",
+        "supported": false,
+        "notes": "no ELPC"
+      },
+      {
+        "id": "deadline",
+        "supported": false
+      },
+      {
+        "id": "unknown",
+        "supported": false
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 9710,
+    "notes": "B live (56 ev). Embassy notice unfitting-specific. Scorer=runner."
+  }
+]

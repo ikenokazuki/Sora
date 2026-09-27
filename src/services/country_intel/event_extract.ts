@@ -12,6 +12,14 @@ export interface IntelEventDraft {
   type: ActionType;
   title: string;
   occurredAt?: string;
+  /** 記事の公開日。occurredAt とは別に保持する。 */
+  publishedAt?: string;
+  /** 構造化レコードの更新日。 */
+  updatedAt?: string;
+  /** occurredAt の根拠。structured は provider の観測・発生日、published は記事公開日の代用。 */
+  timeBasis?: 'structured' | 'published';
+  /** 証拠の発生国（確定分のみ）。クラスタ同一性に使う。 */
+  eventCountry?: string;
   location?: { name?: string; countryCode?: string };
   actors: IntelEntity[];
   targets: IntelTarget[];
@@ -22,7 +30,7 @@ export interface IntelEventDraft {
 const ACTION_PATTERNS: readonly [RegExp, ActionType][] = [
   [/\b(?:boycott|boycotts?)\b|不買/iu, 'boycott'],
   [/\b(?:memorial|commemoration|anniversary)\b|記念日|追悼/iu, 'memorial_event'],
-  [/\b(?:earthquake|tsunami|flood|wildfire|disaster)\b|大?地震|津波|洪水|災害/iu, 'disaster_response'],
+  [/\b(?:earthquake|tsunami|flood|wildfire|disaster|typhoon|cyclone|volcano|drought|landslide)\b|大?地震|津波|洪水|災害/iu, 'disaster_response'],
   [/\b(?:protest|demonstration|rally)\b|抗議|デモ/iu, 'protest'],
   [/\b(?:sanction|sanctions)\b|制裁/iu, 'sanction'],
   [/\b(?:arrest|arrested)\b|逮捕/iu, 'arrest'],
@@ -34,9 +42,10 @@ const ACTION_PATTERNS: readonly [RegExp, ActionType][] = [
   [/\b(?:threat|threatened)\b|脅迫/iu, 'threat'],
   [/\b(?:violence|violent|attack)\b|暴力|襲撃/iu, 'violence'],
   [/\b(?:military|troops|naval)\b|軍事|部隊/iu, 'military_activity'],
-  [/\b(?:trade restriction|export ban|import ban)\b|輸出規制|輸入規制/iu, 'trade_restriction'],
+  [/\b(?:trade restriction|export bans?|export controls?|export restrictions?|import bans?|import controls?|import restrictions?)\b|輸出規制|輸入規制/iu, 'trade_restriction'],
   [/\b(?:cultural event|festival|exhibition)\b|文化イベント|祭り|展覧会/iu, 'cultural_event'],
   [/\b(?:celebration|celebrate)\b|祝賀/iu, 'celebration'],
+  [/\b(?:economy|economic|trade|tariff|gdp|cpi|recession|stimulus)\b|经济|経済|貿易|関税|景気/iu, 'business_action'],
   [/\b(?:critic(?:ize|ise|ism)|said|statement|quoted)\b|批判|引用|発言/iu, 'statement'],
 ];
 
@@ -50,7 +59,8 @@ const ACTOR_PATTERNS: readonly [RegExp, IntelEntity['type'], string][] = [
   [/\b(?:military|army)\b|軍/iu, 'military', 'military'],
 ];
 
-function actionType(text: string): ActionType {
+/** クラスタと単独観測で共有する見出し型付け。順序依存（先勝ち）のため並びを変えない。 */
+export function classifyActionType(text: string): ActionType {
   return ACTION_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? 'other';
 }
 
@@ -109,24 +119,31 @@ export function extractEvent(
   evidence: CountryEvidence,
   region: RegionIdentity,
   now: Date,
+  structured?: { occurredAt?: string; updatedAt?: string },
 ): IntelEventDraft | undefined {
   const title = normalizedText(evidence.title) ?? normalizedText(evidence.excerpt);
   if (!title) return undefined;
   const excerpt = normalizedText(evidence.excerpt);
-  const titleAction = actionType(title);
+  const titleAction = classifyActionType(title);
   const details = excerpt && excerpt !== title ? excerpt : undefined;
   const location = {
     ...(evidence.eventCountry ? { countryCode: evidence.eventCountry } : {}),
     ...(locationName([title, details].filter(Boolean).join(' ')) ? { name: locationName([title, details].filter(Boolean).join(' ')) } : {}),
   };
   const seenAt = normalizedTimestamp(evidence.retrievedAt) ?? now.toISOString();
+  const publishedAt = normalizedTimestamp(evidence.publishedAt);
+  const structuredAt = normalizedTimestamp(structured?.occurredAt);
 
   return {
     evidenceId: evidence.id,
     regionId: evidence.regionId,
-    type: titleAction === 'other' && details ? actionType(details) : titleAction,
+    type: titleAction === 'other' && details ? classifyActionType(details) : titleAction,
     title,
-    occurredAt: normalizedTimestamp(evidence.publishedAt),
+    occurredAt: structuredAt ?? publishedAt,
+    ...(publishedAt ? { publishedAt } : {}),
+    ...(normalizedTimestamp(structured?.updatedAt) ? { updatedAt: normalizedTimestamp(structured?.updatedAt) } : {}),
+    ...(structuredAt ? { timeBasis: 'structured' as const } : publishedAt ? { timeBasis: 'published' as const } : {}),
+    ...(evidence.eventCountry ? { eventCountry: evidence.eventCountry } : {}),
     location: Object.keys(location).length ? location : undefined,
     actors: uniqueByKey([actors(title), details ? actors(details) : []].flat()),
     targets: uniqueByKey([targets(title, region), details ? targets(details, region) : []].flat()),

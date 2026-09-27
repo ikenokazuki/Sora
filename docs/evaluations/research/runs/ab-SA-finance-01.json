@@ -1,0 +1,45 @@
+[
+  {
+    "caseId": "SA-finance-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:33:08Z",
+    "endedAt": "2026-09-24T06:33:17Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["web:sa-search1"] },
+      { "id": "change", "supported": true, "evidenceIds": ["web:sa-search1"] },
+      { "id": "time", "supported": false, "evidenceIds": ["web:sa-search1"], "notes": "announced Sep 16 confirmed; effective date unconfirmed" },
+      { "id": "meaning", "supported": true, "evidenceIds": ["web:sa-search1"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 9000,
+    "notes": "A=1 generic web search. Excluded a mislabeled aggregator copy claiming a cut to the same values (noise discipline). Scorer=runner."
+  },
+  {
+    "caseId": "SA-finance-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:32:50Z",
+    "endedAt": "2026-09-24T06:32:56Z",
+    "requirements": [
+      { "id": "value", "supported": false, "evidenceIds": [], "notes": "retrieved 4.25/3.75 vintages only; current 4.50/4.00 absent" },
+      { "id": "change", "supported": false, "evidenceIds": [], "notes": "retrieved cuts; reality is Sep 16 hike (directionally stale)" },
+      { "id": "time", "supported": false, "evidenceIds": [], "notes": "no Sep 2026 decision in evidence" },
+      { "id": "meaning", "supported": true, "evidenceIds": ["evd_3b3a38a4db70e6c67d0f"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 5833,
+    "primaryNote": "1 primary (old SPA decision page) unfitting for current question",
+    "notes": "B=researchCountryWithDefaults live (33 evidence, 20 recent, 0 dangling). Severe staleness: cuts retrieved, hike reality."
+  }
+]
