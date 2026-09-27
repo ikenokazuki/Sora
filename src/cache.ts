@@ -170,9 +170,10 @@ export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT): 
 // ==========================================
 const inFlightRequests = new Map<string, Promise<any>>();
 
-export async function runWithSingleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+export async function runWithSingleFlight<T>(key: string, fn: () => Promise<T>, onJoin?: () => void): Promise<T> {
   const existing = inFlightRequests.get(key);
   if (existing) {
+    try { onJoin?.(); } catch {}
     return existing as Promise<T>;
   }
 
