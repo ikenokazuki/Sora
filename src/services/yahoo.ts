@@ -158,8 +158,12 @@ export function recordYahooWebResult(err: unknown): boolean {
     isYahooRateLimitedError(err) ||
     (err instanceof Error && /429|too many requests|rate limit/i.test(err.message));
   if (limited) {
+    const circuitBefore = yahooWebPressure.snapshot().circuit;
     yahooWebPressure.onRateLimit(err instanceof YahooProviderError ? err.retryAfterMs : undefined);
     try { incrementSecurityCounter('yahoo_429_total'); } catch {}
+    if (circuitBefore !== 'open' && yahooWebPressure.snapshot().circuit === 'open') {
+      try { incrementSecurityCounter('yahoo_circuit_open_total'); } catch {}
+    }
   }
   return limited;
 }

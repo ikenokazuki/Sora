@@ -115,6 +115,18 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   - implementation: `paceForYahooPressure` capped at 250ms; `canRequest` gates follow-up queries
   - tests: fan-out-stop cases in `yahoo_search_failure.test.ts`
 
+## Ranking (spec sections 22-28, pre-existing implementation)
+
+- [x] Provider rank preservation
+  - implementation: `src/services/yahoo.ts` (native ranking default, `SORA_WEB_NATIVE_RANKING` rollback)
+  - tests: union/providerRank cases in `src/services/yahoo_query_union.test.ts`
+- [x] RRF only for multi-query
+  - implementation: `src/retrieval/rrf.ts`, weighted original 1.0 / fallback 0.6
+  - tests: `src/services/yahoo_weighted_rrf.test.ts`, `reciprocalRankFusion prefers multi-hit docs`
+- [x] Duplicate provenance
+  - implementation: `mergeYahooWebQueryBatches` appends `providerRanks` per occurrence
+  - tests: `duplicate URL keeps richest snippet` asserts two occurrences
+
 ## Evidence quality DoD (query-aware scrape RFC)
 
 - [x] Single SERP preserves Yahoo rank; providerRank and retrieval provenance survive the pipeline.
