@@ -132,10 +132,10 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   return handle;
 }
 
-export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
+export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, sessionActivated: Set<string> = SHARED_ACTIVATED_TOOLS, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
   const config = { description, inputSchema: schema, outputSchema, annotations: { readOnlyHint: true } };
   const handle = mcpServer.registerTool(name, config, handler as never);
-  const isEnabled = opts.defaultEnabled || SHARED_ACTIVATED_TOOLS.has(name);
+  const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {
     handle.disable();
   }
@@ -2099,6 +2099,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerStructuredTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'research_country_context',
       'intel',
       '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・旅行・カレンダー・世論調査を分野横断で取得します。初回応答は代表証拠、全件はcontextIdで参照可能。評価・推奨は含めません。限界: 一部証拠は公表日時なし、SNSは対象言語・範囲限定、未観測範囲の明示は呼出元が確認すること。本ツール単独で判断の十分性を保証しない。調査手順はリソース sora-skill://sora-deep-research を読む。返却: CountryContextReport',
@@ -2130,6 +2131,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerStructuredTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_country_context',
       'intel',
       '保存済み国地域レポートをcontextIdで取得します。返却: CountryContextReport',
@@ -2153,6 +2155,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerStructuredTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_country_context_evidence',
       'intel',
       'レポートの根拠原文・構造化データをページ取得します。属さないIDは拒否。',
@@ -2178,6 +2181,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     registerStructuredTool(
       mcpServer,
       toolCatalog,
+      sessionActivated,
       'get_country_context_updates',
       'intel',
       '前回以降の追加・訂正・削除・取得障害の差分を取得します。',
