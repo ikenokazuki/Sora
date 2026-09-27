@@ -59,7 +59,7 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 
 ## Open labor
 
-- Golden set: 24 web + 8 X deterministic, 30 live-unlabeled (target 100; labeling is human labor).
+- Golden set: 50 deterministic web + 10 inline X + 30 live-unlabeled (target 100; remaining labels are human labor). Offline eval: arms B-E official recall 1.0, A (legacy) 0.96.
 - Full suite (post v2.30.4 integration): 1044 pass / 4 skip / 0 fail across 112 files.
 
 ## Live throttle re-check (2026-09-27 09:16 JST)
