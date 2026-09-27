@@ -44,7 +44,7 @@ import {
 import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
-import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
+import { extractQueryHighlightsRhoV2, extractWithEscalation } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
@@ -227,11 +227,12 @@ export async function finalizeScrapeResult(
         result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
       }
     } else {
-      // Default to rho-select-v2 (Canonical Engine)
-      const v2 = extractQueryHighlightsRhoV2(result.content, options.query, {
+      // Default to rho-select-v2 (Canonical Engine) with recall escalation
+      const v2 = extractWithEscalation(result.content, options.query, {
         tau: options.highlightOverheadTokens ?? 96,
         supplementalEvidence: supplemental,
         highlightMaxCount: options.highlightMaxCount,
+        limits: { maxBlocks: 500, maxExtractionMs: 2000 },
       });
       result.highlights = v2.highlights;
       result.highlightItems = v2.highlightItems.map((item) => ({
@@ -384,6 +385,31 @@ export function detectSpaOrBotPage(options: {
   }
 
   return false;
+}
+
+/**
+ * Late browser escalation (spec section 52): static HTTP content exists but
+ * an SPA/quality signal fired. Skip the browser only when recall extraction
+ * demonstrates answers on the static body; otherwise preserve escalation.
+ * Pure function for testability; the caller counts the outcome.
+ */
+export function shouldEscalateToBrowser(args: {
+  spaDetected: boolean;
+  staticMarkdown: string;
+  query?: string;
+}): { escalate: boolean; reason: string } {
+  if (!args.spaDetected) return { escalate: false, reason: 'static-sufficient' };
+  const body = (args.staticMarkdown || '').trim();
+  if (body.length < 50) return { escalate: true, reason: 'no-static-content' };
+  if (!args.query) return { escalate: true, reason: 'no-query' };
+  try {
+    const recall = extractWithEscalation(body, args.query, { tau: 96 });
+    const coverage = recall.diagnostics.answerCoverage ?? 0;
+    if (coverage >= 0.5) return { escalate: false, reason: `recall-answers:${coverage.toFixed(2)}` };
+    return { escalate: true, reason: `weak-evidence:${coverage.toFixed(2)}` };
+  } catch {
+    return { escalate: true, reason: 'recall-failed' };
+  }
 }
 
 export function isRenderStillBlockedOrBlank(options: {
@@ -612,7 +638,24 @@ export async function scrapeUrl(options: {
             }) || (parsed.quality !== undefined && parsed.quality < 45));
           if (isSpaOrBlank) botUpgradeCount++;
 
-          if (!isSpaOrBlank) {
+          // Late escalation (spec section 52): recall extraction on the static
+          // body can demonstrate answers and skip the browser launch.
+          let recallSaved = false;
+          if (isSpaOrBlank && options.query) {
+            try {
+              const decision = shouldEscalateToBrowser({
+                spaDetected: true,
+                staticMarkdown: bodyOnlyMarkdown,
+                query: options.query,
+              });
+              recallSaved = !decision.escalate;
+            } catch { recallSaved = false; }
+          }
+          if (recallSaved) {
+            try { incrementSecurityCounter('sora_browser_recall_saved_total'); } catch {}
+          }
+
+          if (!isSpaOrBlank || recallSaved) {
             result = {
               url: finalUrl,
               title: parsed.title,
@@ -703,6 +746,7 @@ export async function scrapeUrl(options: {
           }
         }
 
+        try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
         onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
         const needScreenshot = formats.includes('screenshot');
         const fullPage = options.fullPage ?? true;
