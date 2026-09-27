@@ -4,6 +4,8 @@ import { extractWeiboBid, fetchWeiboExtend, fetchWeiboHotComments, fetchWeiboSta
 import { createWeiboSessionStore, type SimpleCookie, type WeiboSessionOpener } from './weibo_session.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema, type SocialFetchInput, type SocialFetchResult, type SocialPlatform, type SocialPost, type SocialSearchInput, type SocialSearchResult } from './types.js';
 
+export type { SocialPost } from './types.js';
+
 export interface SocialDeps {
   weiboHttp: WeiboHttp;
   sessionOpener: WeiboSessionOpener;
@@ -133,7 +135,7 @@ function metaPageToPost(platform: SocialPlatform, requestedUrl: string, finalUrl
   if (!text || !text.trim()) return null;
   const { text: sliced, truncated } = truncate(text.trim());
   let publishedAt = time.publishedAt;
-  let timeStatus = time.timeStatus;
+  let timeStatus: SocialPost['timeStatus'] = time.timeStatus;
   let publishedDate: string | undefined;
   if (!publishedAt && platform === 'instagram') {
     const parsed = parseInstagramDescription(page.ogDescription ?? '');
