@@ -1,0 +1,82 @@
+[
+  {
+    "caseId": "US-marketing-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:26:06Z",
+    "endedAt": "2026-09-24T07:27:43Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-m1"
+        ],
+        "notes": "Hochul SBA disaster-declaration request (Jul flood, NY)"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": true,
+        "evidenceIds": [
+          "web:us-m2"
+        ],
+        "notes": "SBWU boycott Sep 21 post + Aug 25 launch, dated"
+      },
+      {
+        "id": "scope",
+        "supported": true,
+        "notes": "web-only; Instagram direct observation not done"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 97000,
+    "notes": "A=2 searches. Elapsed includes scoring; searches ~10s. Scorer=runner."
+  },
+  {
+    "caseId": "US-marketing-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:23:38.486Z",
+    "endedAt": "2026-09-24T07:23:50.213Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "notes": "Iran/Trump-Xi 9/22-24"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence in fetch"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical NY-chain hits all publishedAt None; 7d unestablished"
+      },
+      {
+        "id": "scope",
+        "supported": false,
+        "notes": "no unobserved-range statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 11727,
+    "notes": "B live (45 ev). Scorer=runner. bluesky 4xx."
+  }
+]

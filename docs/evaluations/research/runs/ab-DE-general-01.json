@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "DE-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:00:00Z",
+    "endedAt": "2026-09-24T09:15:00Z",
+    "requirements": [
+      {"id": "program", "supported": true, "evidenceIds": ["web:de-g1"], "notes": "英語修士課程とfinderを特定"},
+      {"id": "eligibility", "supported": true, "evidenceIds": ["web:de-g1"], "notes": "IELTS6.5/TOEFL88を確認"},
+      {"id": "deadline", "supported": true, "evidenceIds": ["web:de-g1"], "notes": "2027年期限が複数で年次一致、課程別差異あり"},
+      {"id": "unknown", "supported": true, "evidenceIds": ["web:de-g1"], "notes": "集約情報ベースで公式未照合を明示"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 1,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索1-2クエリ。公式頁未取得のため適合は1。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "DE-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:16:01Z",
+    "endedAt": "2026-09-24T09:16:06Z",
+    "requirements": [
+      {"id": "program", "supported": false, "evidenceIds": [], "notes": "TUM課程への言及なし"},
+      {"id": "eligibility", "supported": false, "evidenceIds": [], "notes": "英語要件への言及なし"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "募集期限への言及なし"},
+      {"id": "unknown", "supported": false, "evidenceIds": [], "notes": "未確認の明示なし"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 4626,
+    "notes": "B=researchCountryWithDefaultsライブ31件。recent20件の参照切れ0。"}
+]

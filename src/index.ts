@@ -25,7 +25,7 @@ import { watchRoutes } from './routes/watch.js';
 import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
-
+import { socialRoutes } from './routes/social.js';
 export { formatError, mcpSessionManager };
 
 export const app = new Hono();
@@ -118,6 +118,7 @@ app.route('/', watchRoutes);
 app.route('/', mediaRoutes);
 app.route('/', trackingRoutes);
 app.route('/', intelligenceRoutes);
+app.route('/', socialRoutes);
 
 // ==========================================
 // 4. グレースフル・シャットダウン (ブラウザプロセス・DB完全解放)
@@ -133,16 +134,31 @@ export async function gracefulShutdown() {
   ]);
 }
 
-if (typeof process !== 'undefined') {
-  process.on('SIGINT', async () => {
-    await gracefulShutdown();
+// SIGINT/SIGTERM ハンドラは二重登録防止のため一元化する。
+// import 時と import.meta.main の両方から呼ばれる。
+let shutdownHandlersInstalled = false;
+function installShutdownHandlers(stopServer?: () => void): void {
+  if (shutdownHandlersInstalled || typeof process === 'undefined') return;
+  shutdownHandlersInstalled = true;
+  const cleanup = async (signal: string) => {
+    console.log('Received ' + signal + ', shutting down Sora gracefully...');
+    try {
+      if (stopServer) stopServer();
+    } catch (err) {
+      console.error('Error stopping server:', err);
+    }
+    try {
+      await gracefulShutdown();
+    } catch (err) {
+      console.error('Error during graceful shutdown:', err);
+    }
     process.exit(0);
-  });
-  process.on('SIGTERM', async () => {
-    await gracefulShutdown();
-    process.exit(0);
-  });
+  };
+  process.on('SIGINT', () => cleanup('SIGINT'));
+  process.on('SIGTERM', () => cleanup('SIGTERM'));
 }
+
+installShutdownHandlers();
 
 // ==========================================
 // 5. サーバー起動 (Bun.serve)
@@ -162,17 +178,5 @@ if (import.meta.main) {
   });
   console.log(`Starting Sora service on port ${PORT}...`);
 
-  const cleanup = async (signal: string) => {
-    console.log(`Received ${signal}, shutting down Sora gracefully...`);
-    try {
-      server.stop(true);
-      await gracefulShutdown();
-    } catch (err) {
-      console.error('Error during graceful shutdown:', err);
-    }
-    process.exit(0);
-  };
-
-  process.on('SIGTERM', () => cleanup('SIGTERM'));
-  process.on('SIGINT', () => cleanup('SIGINT'));
+  installShutdownHandlers(() => server.stop(true));
 }

@@ -1,0 +1,34 @@
+{
+  "source": "gdacs-api-geteventlist-search",
+  "fetchedAt": "2026-09-22T00:00:00Z",
+  "format": "api",
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "eventtype": "FL",
+        "eventid": 1104081,
+        "episodeid": 19,
+        "name": "Flood affecting Myanmar and China",
+        "description": "Orange Flood from 2026-07-31 to 2026-09-21.",
+        "alertlevel": "Orange",
+        "country": "Myanmar, China",
+        "fromdate": "2026-07-31T01:00:00",
+        "todate": "2026-09-21T01:00:00",
+        "datemodified": "2026-09-21T14:57:55",
+        "url": {
+          "report": "https://www.gdacs.org/report.aspx?eventid=1104081&episodeid=19&eventtype=FL",
+          "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=FL&eventid=1104081",
+          "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=FL&eventid=1104081&episodeid=19"
+        },
+        "affectedcountries": [
+          {"iso2": "MM", "iso3": "MMR", "countryname": "Myanmar"},
+          {"iso2": "CN", "iso3": "CHN", "countryname": "China"}
+        ],
+        "severitydata": {"severity": 752713.0, "severitytext": "Medium impact for agricultural drought in 752713 km2", "severityunit": "km2"}
+      },
+      "geometry": {"type": "Point", "coordinates": [100.0, 20.0]}
+    }
+  ]
+}
