@@ -42,7 +42,11 @@ Adaptive scrape and PRF retrieval are per-request options
 - Consequences kept: no always-on query union, single adaptive
   rescue at most, PRF retrieval opt-in, per-request budgets.
 - Live eval runs must be spaced out; do not re-probe while throttled.
-- Re-checked later: single-query probe still 429-empty. Ban persists; live suite stays out of rotation.
+- Live eval runs must be spaced out; do not re-probe while throttled.
+- Re-checked 2026-09-27 09:16 JST (00:16 UTC): single-query probe healthy
+  (`live-factual-01`, 8 items, 592ms, adaptive quiet). Ban lifted;
+  live suite returns to spaced rotation (`--limit 1-4`, no bulk 12).
+  Follow-up `--limit 4` 4/4 healthy (8/9/10/9, adaptive quiet).
 
 ## Container verification (2026-09-27)
 
