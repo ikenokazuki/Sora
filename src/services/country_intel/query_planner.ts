@@ -18,9 +18,9 @@ export interface ResearchQuery {
 }
 
 export interface ResearchPlanLimits {
-  maxPass1Queries: 24;
-  maxPass2Queries: 8;
-  maxItemsPerQuery: 100;
+  maxPass1Queries: number;
+  maxPass2Queries: number;
+  maxItemsPerQuery: number;
 }
 
 export interface ResearchPlan {
