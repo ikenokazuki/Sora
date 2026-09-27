@@ -103,6 +103,7 @@ import {
 } from './http_fetcher.js';
 import { readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
+import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
   convertHtmlToMarkdown,
   matchUrlPattern,
@@ -1382,6 +1383,21 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
         .join('\n');
       const missing = words.filter((w) => !corpus.includes(w));
       if (missing.length > 0) reasons.push(`missing-evidence:${missing.join(',')}`);
+    }
+  } catch {
+    // 判定失敗時は不足扱いにしない
+  }
+  // spec section 43: answer-seeking queries stop on answers, not mentions.
+  try {
+    const answerWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length >= 2);
+    const wantsAnswer = answerWords.some((w) => (kindsForFacet(w) || []).length > 0);
+    if (wantsAnswer && answerWords.length > 0 && success.length > 0) {
+      const blocks = success.map((it: any) => {
+        const hl = Array.isArray(it?.highlights) ? it.highlights.join('\n') : '';
+        return `${it.title || ''}\n${it.markdown || ''}\n${hl}`;
+      });
+      const coverage = computeEvidenceCoverage(blocks, entityTermsForQuery(query), answerWords);
+      if (coverage.answerCoverage < 0.5) reasons.push(`missing-answer:${coverage.answerCoverage.toFixed(2)}`);
     }
   } catch {
     // 判定失敗時は不足扱いにしない
