@@ -179,7 +179,7 @@ describe('Phase 3 bounded Web query union', () => {
   test('union is opt-in and bounded to original plus one fallback', () => {
     const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
     expect(source).toContain("process.env.SORA_WEB_QUERY_UNION === 'true'");
-    expect(source).toContain('candidateQueries.slice(0, 2)');
+    expect(source).toContain('candidateQueries.slice(0, Math.min(2, yahooQueryBudget))');
   });
 
   test('realtime retrieval v1 uses wave union instead of first-nonempty-wins', () => {
