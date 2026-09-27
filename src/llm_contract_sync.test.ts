@@ -841,6 +841,15 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(await listNames(b1.sessionId, 'tenant-B-key')).not.toContain('track_package');
         const a2 = await init('tenant-A-key');
         expect(await listNames(a2.sessionId, 'tenant-A-key')).toContain('track_package');
+        // Structured tools (registerStructuredTool) obey the same per-tenant isolation.
+        await rpc('tools/call', { name: 'search_tools', arguments: { query: 'intel' } }, a1.sessionId, 'tenant-A-key');
+        expect(await listNames(a1.sessionId, 'tenant-A-key')).toContain('get_country_context');
+        expect(await listNames(b1.sessionId, 'tenant-B-key')).not.toContain('get_country_context');
+        const a3 = await init('tenant-A-key');
+        expect(await listNames(a3.sessionId, 'tenant-A-key')).toContain('get_country_context');
+        // Late-joining tenant-B session stays isolated from A's structured activation.
+        const b2 = await init('tenant-B-key');
+        expect(await listNames(b2.sessionId, 'tenant-B-key')).not.toContain('get_country_context');
       } finally {
         manager.clearAllSessions();
       }

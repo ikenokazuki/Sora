@@ -87,6 +87,8 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   all 67 satisfy rich-schema assertions; verified no duplicate operations).
 - `tsc --noEmit` carries pre-existing `country_intel` errors identical to
   pristine `origin/main`; the merge adds zero new type errors.
+- `registerStructuredTool` unified with per-session activation (J2 extended:
+  structured `get_country_context` isolation incl. reconnect and late-joiner).
 
 ## Evidence quality DoD (query-aware scrape RFC)
 
