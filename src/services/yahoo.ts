@@ -14,6 +14,8 @@ import {
 } from './x_detail.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
+import { setYahooSearchCache, getYahooFreshCache, getYahooStaleCache } from '../retrieval/yahoo_cache.js';
+import { runWithSingleFlight } from '../cache.js';
 import { searchYahooRealtimePage } from './yahoo_realtime_api.js';
 
 // Yahoo MCP バイナリのパス
@@ -434,6 +436,24 @@ export function assessRetrievalConfidence(
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
+/** Stable coalescing key for one Yahoo Web search (flags included). */
+export function yahooWebSearchFlightKey(options: {
+  query: string;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  updated?: string;
+  disableFallback?: boolean;
+}): string {
+  const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
+  const native = process.env.SORA_WEB_NATIVE_RANKING !== 'false' ? 'native' : 'legacy';
+  const v = (options as any)?.verbose === true ? 'verbose' : 'compact';
+  return 'yahooweb:v1:' + options.query + ':' + (options.includeDomains || []).join(',') + ':' + (options.excludeDomains || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
+}
+
+/**
+ * Yahoo Web execution order (spec section 30):
+ * Fresh Cache -> SingleFlight -> Provider Controller -> Yahoo -> Stale fallback.
+ */
 export async function searchYahooWeb(options: {
   query: string;
   includeDomains?: string[];
@@ -441,6 +461,30 @@ export async function searchYahooWeb(options: {
   updated?: 'all' | 'day' | 'week' | 'year';
   disableFallback?: boolean;
 }, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
+  const flightKey = yahooWebSearchFlightKey(options);
+  const fresh = getYahooFreshCache<any>(flightKey);
+  if (fresh) {
+    try { incrementSecurityCounter('yahoo_cache_hit_total'); } catch {}
+    return { ...fresh, cached: true };
+  }
+  const res = await runWithSingleFlight(
+    flightKey,
+    () => searchYahooWebUncached(options, deps, flightKey),
+    () => { try { incrementSecurityCounter('yahoo_singleflight_join_total'); } catch {} },
+  );
+  if (res && Array.isArray(res.items) && res.items.length > 0 && !res.throttled) {
+    setYahooSearchCache(flightKey, res);
+  }
+  return res;
+}
+
+async function searchYahooWebUncached(options: {
+  query: string;
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  updated?: 'all' | 'day' | 'week' | 'year';
+  disableFallback?: boolean;
+}, deps: { callYahooMcp?: typeof callYahooMcp } | undefined, flightKey: string): Promise<any> {
   const callMcp: typeof callYahooMcp =
     (deps as any)?.callYahooMcp ?? (options as any)?._callMcp ?? callYahooMcp;
   const providerErrors: Array<{ query: string; message: string }> = [];
@@ -596,6 +640,13 @@ export async function searchYahooWeb(options: {
       };
     }
 
+    if (webUnionThrottled || providerErrors.length > 0) {
+      const staleUnion = getYahooStaleCache<any>(flightKey);
+      if (staleUnion) {
+        try { incrementSecurityCounter('yahoo_stale_hit_total'); } catch {}
+        return { ...staleUnion, stale: true, throttled: webUnionThrottled ? true : undefined, stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined };
+      }
+    }
     return {
       ...lastParsedData,
       items: [],
@@ -793,6 +844,11 @@ export async function searchYahooWeb(options: {
   }
 
   if (webSequentialThrottled) {
+    const staleSeq = getYahooStaleCache<any>(flightKey);
+    if (staleSeq) {
+      try { incrementSecurityCounter('yahoo_stale_hit_total'); } catch {}
+      return { ...staleSeq, stale: true, throttled: true, stopReason: 'provider_rate_limited' };
+    }
     return {
       ...lastParsedData,
       items: [],
@@ -808,6 +864,13 @@ export async function searchYahooWeb(options: {
       ...(providerErrors.length > 0 ? { providerErrors } : {}),
       ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
     };
+  }
+  if (providerErrors.length > 0) {
+    const staleTail = getYahooStaleCache<any>(flightKey);
+    if (staleTail) {
+      try { incrementSecurityCounter('yahoo_stale_hit_total'); } catch {}
+      return { ...staleTail, stale: true };
+    }
   }
   return {
     ...lastParsedData,
