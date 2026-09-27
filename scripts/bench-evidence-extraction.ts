@@ -30,7 +30,8 @@ async function bench(blocks: number, runs: number, adaptive: boolean): Promise<v
   times.shift();
   const med = pct(times, 50);
   const p95 = pct(times, 95);
-  console.log('blocks=' + blocks + ' adaptive=' + adaptive + ' n=' + times.length + ' median=' + med.toFixed(2) + 'ms p95=' + p95.toFixed(2) + 'ms');
+  const p99 = pct(times, 99);
+  console.log('blocks=' + blocks + ' adaptive=' + adaptive + ' n=' + times.length + ' median=' + med.toFixed(2) + 'ms p95=' + p95.toFixed(2) + 'ms p99=' + p99.toFixed(2) + 'ms');
 }
 const sizes = [100, 200, 500, 800];
 for (const s of sizes) {
