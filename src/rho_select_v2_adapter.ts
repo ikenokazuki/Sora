@@ -46,6 +46,7 @@ export interface RhoSelectV2Options {
   bBody?: number; // default: 0.75
   k1?: number; // default: 1.2
   delta?: number; // default: 0.8
+  limits?: ExtractionLimits; // default: unlimited (callers opt in)
 }
 
 export interface RhoSelectV2HighlightItem {
@@ -79,6 +80,9 @@ export interface RhoSelectV2Diagnostics {
   answeredRequirements?: string[];
   missingRequirements?: string[];
   candidateExpansion?: { initial: number; final: number; stages: number };
+  escalation?: { path: 'precision' | 'recall'; reason: string };
+  extractionMs?: number;
+  limitsApplied?: string[];
 }
 
 export interface RhoSelectV2Result {
@@ -203,7 +207,17 @@ export function extractQueryHighlightsRhoV2(
   const delta = options.delta ?? 0.8;
 
   // 1. 候補セクションの構築
+  const limits = options.limits;
+  const limitsApplied: string[] = [];
+  if (limits?.maxHtmlBytes !== undefined && limits.maxHtmlBytes >= 0 && markdown.length > limits.maxHtmlBytes) {
+    markdown = markdown.slice(0, limits.maxHtmlBytes);
+    limitsApplied.push(`input-truncated:${limits.maxHtmlBytes}`);
+  }
   let candidates = buildCandidateBlocks(markdown, options.supplementalEvidence);
+  if (limits?.maxBlocks !== undefined && limits.maxBlocks >= 0 && candidates.length > limits.maxBlocks) {
+    candidates = candidates.slice(0, limits.maxBlocks);
+    limitsApplied.push(`blocks-truncated:${limits.maxBlocks}`);
+  }
   if (candidates.length === 0) {
     const emptyCert: RhoOptimizerCertificate = {
       scope: 'score_defined_objective_only',
@@ -229,6 +243,7 @@ export function extractQueryHighlightsRhoV2(
         scoreReliability: { status: 'not_calibrated' },
         candidateCount: 0,
         keptCandidateCount: 0,
+        ...(limitsApplied.length > 0 ? { limitsApplied } : {}),
         selectedCount: 0,
         selectedTokens: 0,
         utility: 0,
@@ -288,6 +303,7 @@ export function extractQueryHighlightsRhoV2(
         scoreReliability: { status: 'not_calibrated' },
         candidateCount: candidates.length,
         keptCandidateCount: candidates.length,
+        ...(limitsApplied.length > 0 ? { limitsApplied } : {}),
         selectedCount: 0,
         selectedTokens: 0,
         utility: 0,
@@ -536,6 +552,7 @@ export function extractQueryHighlightsRhoV2(
     ...(warningMessage ? { warning: warningMessage } : {}),
     ...(selection.diagnostics.history ? { history: selection.diagnostics.history } : {}),
     candidateExpansion: { initial: Math.min(12, n), final: finalStageSize, stages: stagesRun },
+    ...(limitsApplied.length > 0 ? { limitsApplied } : {}),
     ...(evidenceCoverage ? {
       mentionCoverage: evidenceCoverage.mentionCoverage,
       answerCoverage: evidenceCoverage.answerCoverage,
@@ -551,4 +568,85 @@ export function extractQueryHighlightsRhoV2(
     certificate,
     diagnostics,
   };
+}
+
+/**
+ * Resource guards for highlight extraction (spec section 53).
+ * maxBlocks / maxExtractionMs are enforced inside the adapter.
+ * maxHtmlBytes caps adapter input chars. maxTables / maxDomNodes are
+ * enforced upstream (transport byte cap, parser table minimization).
+ */
+export interface ExtractionLimits {
+  maxHtmlBytes?: number;
+  maxBlocks?: number;
+  maxTables?: number;
+  maxDomNodes?: number;
+  maxExtractionMs?: number;
+}
+
+export interface ExtractionEscalationOptions extends RhoSelectV2Options {
+  /** Answer-coverage bar for skipping the recall pass. Default 0.5. */
+  recallAnswerThreshold?: number;
+}
+
+/**
+ * Trafilatura-style escalation (spec section 51):
+ * Fast/precision extraction first; a relaxed recall pass runs only when
+ * requirements exist yet answer coverage is weak. Returns the better
+ * pass by answer coverage (ties keep precision). Never throws for
+ * coverage reasons; time-boxed by limits.maxExtractionMs.
+ */
+export function extractWithEscalation(
+  markdown: string,
+  query: string,
+  options: ExtractionEscalationOptions = {},
+): RhoSelectV2Result {
+  const t0 = Date.now();
+  const precision = extractQueryHighlightsRhoV2(markdown, query, options);
+  const stamp = (r: RhoSelectV2Result) => {
+    try {
+      (r.diagnostics as any).extractionMs = Date.now() - t0;
+    } catch {}
+    return r;
+  };
+  const reqs = precision.diagnostics.requirements || [];
+  const precisionCoverage = precision.diagnostics.answerCoverage ?? 0;
+  const budget = options.limits?.maxExtractionMs;
+  const outOfTime = budget !== undefined && budget >= 0 && Date.now() - t0 >= budget;
+  if (
+    reqs.length === 0 ||
+    precision.diagnostics.candidateCount === 0 ||
+    precisionCoverage >= (options.recallAnswerThreshold ?? 0.5) ||
+    outOfTime
+  ) {
+    try {
+      (precision.diagnostics as any).escalation = {
+        path: 'precision',
+        reason:
+          reqs.length === 0
+            ? 'no-requirements'
+            : precision.diagnostics.candidateCount === 0
+              ? 'no-candidates'
+              : outOfTime
+                ? 'time-boxed'
+                : 'sufficient',
+      };
+    } catch {}
+    return stamp(precision);
+  }
+  const recall = extractQueryHighlightsRhoV2(markdown, query, {
+    ...options,
+    tau: (options.tau ?? options.overheadTokens ?? 96) * 2,
+    maxTerms: (options.maxTerms ?? 6) + 4,
+    adaptiveCandidate: true,
+  });
+  const recallCoverage = recall.diagnostics.answerCoverage ?? 0;
+  const winner = recallCoverage > precisionCoverage ? recall : precision;
+  try {
+    (winner.diagnostics as any).escalation = {
+      path: winner === recall ? 'recall' : 'precision',
+      reason: `precision-answer:${precisionCoverage.toFixed(2)} recall-answer:${recallCoverage.toFixed(2)}`,
+    };
+  } catch {}
+  return stamp(winner);
 }
