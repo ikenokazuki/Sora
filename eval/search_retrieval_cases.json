@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "Minimal retrieval eval set (offline synthetic). Expand to 100-300 for full A/B.",
+  "notes": "Minimal retrieval eval set (offline synthetic). 50 deterministic web cases plus inline X cases.",
   "cases": [
     {
       "id": "event-timetable-01",
@@ -1293,6 +1293,675 @@
               "title": "spark linked",
               "snippet": "spark",
               "url": "https://a.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-spec-02",
+      "category": "product specification",
+      "query": "Astra Phone X price",
+      "requirements": [
+        "Astra Phone X",
+        "price"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "Astra Phone X price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "Astra Phone X price guide",
+              "snippet": "About the price of Astra Phone X.",
+              "url": "https://guide.example/astra-price"
+            },
+            {
+              "title": "Astra Phone X official store",
+              "snippet": "Astra Phone X price 159,800 yen.",
+              "url": "https://maker.example/astra"
+            }
+          ]
+        },
+        {
+          "query": "Astra Phone X cost",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "Astra Phone X official store",
+              "snippet": "Astra Phone X price 159,800 yen.",
+              "url": "https://maker.example/astra"
+            },
+            {
+              "title": "price rumor",
+              "snippet": "unconfirmed price talk",
+              "url": "https://rumor.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-spec-03",
+      "category": "product specification",
+      "query": "Astra Phone W price",
+      "requirements": [
+        "Astra Phone W",
+        "price"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "Astra Phone W price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "Astra Phone W price 99,800 yen, also introducing Astra Phone X",
+              "snippet": "Astra Phone W costs 99,800 yen.",
+              "url": "https://maker.example/astraw"
+            },
+            {
+              "title": "Astra Phone X price 159,800 yen",
+              "snippet": "X flagship price.",
+              "url": "https://maker.example/astra"
+            }
+          ]
+        },
+        {
+          "query": "Astra Phone W cost",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "Astra Phone W review",
+              "snippet": "W review with price mentions.",
+              "url": "https://review.example/astraw"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-spec-04",
+      "category": "product specification",
+      "query": "X100 battery release date",
+      "requirements": [
+        "X100",
+        "battery",
+        "release"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 battery release date",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 battery",
+              "snippet": "5000mAh battery, released 2026-03-14.",
+              "url": "https://maker.example/x100-batt"
+            },
+            {
+              "title": "X100 overview",
+              "snippet": "general overview.",
+              "url": "https://review.example/x100"
+            }
+          ]
+        },
+        {
+          "query": "X100 specs",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 battery",
+              "snippet": "5000mAh battery, released 2026-03-14.",
+              "url": "https://maker.example/x100-batt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-03",
+      "category": "comparison",
+      "query": "1000CLUB capacity comparison",
+      "requirements": [
+        "1000CLUB",
+        "capacity"
+      ],
+      "officialHosts": [
+        "1000club.example"
+      ],
+      "batches": [
+        {
+          "query": "1000CLUB capacity comparison",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "1000CLUB capacity 1000",
+              "snippet": "Official capacity: 1000 people.",
+              "url": "https://1000club.example/floor"
+            },
+            {
+              "title": "venue comparison",
+              "snippet": "comparing hall capacities.",
+              "url": "https://hall.example/compare"
+            }
+          ]
+        },
+        {
+          "query": "1000CLUB hall size",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "1000CLUB access",
+              "snippet": "1000CLUB near Yokohama station.",
+              "url": "https://1000club.example/access"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-04",
+      "category": "comparison",
+      "query": "Astra Phone X vs W weight",
+      "requirements": [
+        "Astra Phone X",
+        "weight"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "Astra Phone X vs W weight",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X weighs 199g, W weighs 179g",
+              "snippet": "Astra Phone X weight 199g.",
+              "url": "https://maker.example/compare"
+            },
+            {
+              "title": "W review",
+              "snippet": "W impressions.",
+              "url": "https://review.example/w"
+            }
+          ]
+        },
+        {
+          "query": "Astra Phone X weight",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X weighs 199g, W weighs 179g",
+              "snippet": "Astra Phone X weight 199g.",
+              "url": "https://maker.example/compare"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "current-event-03",
+      "category": "current event",
+      "query": "SPARK lineup announcement",
+      "requirements": [
+        "SPARK",
+        "lineup"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK lineup announcement",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK 2026 lineup announced",
+              "snippet": "Organizer announces SPARK lineup.",
+              "url": "https://spark.example/lineup"
+            },
+            {
+              "title": "fan reaction",
+              "snippet": "fans react to lineup.",
+              "url": "https://fan.example/2"
+            }
+          ]
+        },
+        {
+          "query": "SPARK news",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK 2026 lineup announced",
+              "snippet": "Organizer announces SPARK lineup.",
+              "url": "https://spark.example/lineup"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "current-event-04",
+      "category": "current event",
+      "query": "SPARK ticket price",
+      "requirements": [
+        "SPARK",
+        "ticket",
+        "price"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK ticket price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK tickets 9,800 yen",
+              "snippet": "Official ticket price 9,800 yen.",
+              "url": "https://spark.example/tickets"
+            },
+            {
+              "title": "resale warning",
+              "snippet": "beware overpriced resale.",
+              "url": "https://fan.example/3"
+            }
+          ]
+        },
+        {
+          "query": "SPARK tickets",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK tickets 9,800 yen",
+              "snippet": "Official ticket price 9,800 yen.",
+              "url": "https://spark.example/tickets"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-hard-03",
+      "category": "difficult research",
+      "query": "kimisora formation 2024 members",
+      "requirements": [
+        "kimisora",
+        "formation",
+        "members"
+      ],
+      "officialHosts": [
+        "kimisora.example"
+      ],
+      "batches": [
+        {
+          "query": "kimisora formation 2024 members",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "kimisora formed 2024 with five members",
+              "snippet": "Formation history and members.",
+              "url": "https://kimisora.example/history"
+            },
+            {
+              "title": "unrelated band",
+              "snippet": "other group news.",
+              "url": "https://music.example/other"
+            }
+          ]
+        },
+        {
+          "query": "kimisora history",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "kimisora formed 2024 with five members",
+              "snippet": "Formation history and members.",
+              "url": "https://kimisora.example/history"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-hard-04",
+      "category": "difficult research",
+      "query": "1000CLUB opening year access",
+      "requirements": [
+        "1000CLUB",
+        "opening",
+        "access"
+      ],
+      "officialHosts": [
+        "1000club.example"
+      ],
+      "batches": [
+        {
+          "query": "1000CLUB opening year access",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "1000CLUB opened 2019, Yokohama access",
+              "snippet": "Opened 2019 near Yokohama.",
+              "url": "https://1000club.example/about"
+            },
+            {
+              "title": "live report",
+              "snippet": "concert report.",
+              "url": "https://fan.example/4"
+            }
+          ]
+        },
+        {
+          "query": "1000CLUB history",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "1000CLUB opened 2019, Yokohama access",
+              "snippet": "Opened 2019 near Yokohama.",
+              "url": "https://1000club.example/about"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "official-03",
+      "category": "official information",
+      "query": "digital agency API docs",
+      "requirements": [
+        "digital",
+        "API"
+      ],
+      "officialHosts": [
+        "digital.example"
+      ],
+      "batches": [
+        {
+          "query": "digital agency API docs",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "Digital Agency API reference",
+              "snippet": "Official API documentation.",
+              "url": "https://digital.example/api"
+            },
+            {
+              "title": "lookalike blog",
+              "snippet": "unofficial API notes.",
+              "url": "https://blog.example/digi"
+            }
+          ]
+        },
+        {
+          "query": "digital API reference",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "Digital Agency API reference",
+              "snippet": "Official API documentation.",
+              "url": "https://digital.example/api"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "official-04",
+      "category": "official information",
+      "query": "JMA earthquake intensity forecast",
+      "requirements": [
+        "JMA",
+        "intensity"
+      ],
+      "officialHosts": [
+        "jma.example"
+      ],
+      "batches": [
+        {
+          "query": "JMA earthquake intensity forecast",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "JMA seismic intensity scale",
+              "snippet": "Official intensity reference.",
+              "url": "https://jma.example/shindo"
+            },
+            {
+              "title": "quake app",
+              "snippet": "third-party app.",
+              "url": "https://app.example/quake"
+            }
+          ]
+        },
+        {
+          "query": "JMA shindo scale",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "JMA seismic intensity scale",
+              "snippet": "Official intensity reference.",
+              "url": "https://jma.example/shindo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multifacet-03",
+      "category": "multi-facet",
+      "query": "SPARK timetable ticket price",
+      "requirements": [
+        "SPARK",
+        "timetable",
+        "price"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK timetable ticket price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK timetable",
+              "snippet": "Stages run 11:00-20:00.",
+              "url": "https://spark.example/timetable"
+            },
+            {
+              "title": "SPARK tickets 9,800 yen",
+              "snippet": "Official ticket price.",
+              "url": "https://spark.example/tickets"
+            }
+          ]
+        },
+        {
+          "query": "SPARK schedule",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK timetable",
+              "snippet": "Stages run 11:00-20:00.",
+              "url": "https://spark.example/timetable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multifacet-04",
+      "category": "multi-facet",
+      "query": "kimisora goods price venue",
+      "requirements": [
+        "kimisora",
+        "goods",
+        "venue"
+      ],
+      "officialHosts": [
+        "kimisora.example"
+      ],
+      "batches": [
+        {
+          "query": "kimisora goods price venue",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "kimisora goods 3,500 yen",
+              "snippet": "Venue goods list with prices.",
+              "url": "https://kimisora.example/goods"
+            },
+            {
+              "title": "venue map",
+              "snippet": "hall map.",
+              "url": "https://hall.example/map"
+            }
+          ]
+        },
+        {
+          "query": "kimisora merchandise",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "kimisora goods 3,500 yen",
+              "snippet": "Venue goods list with prices.",
+              "url": "https://kimisora.example/goods"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event-timetable-04",
+      "category": "event timetable",
+      "query": "SPARK Yamanakako stage time",
+      "requirements": [
+        "SPARK",
+        "stage",
+        "time"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK Yamanakako stage time",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK stage times 13:00",
+              "snippet": "Main stage opens 13:00.",
+              "url": "https://spark.example/stages"
+            },
+            {
+              "title": "travel guide",
+              "snippet": "lake area guide.",
+              "url": "https://travel.example/lake"
+            }
+          ]
+        },
+        {
+          "query": "SPARK stages",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK stage times 13:00",
+              "snippet": "Main stage opens 13:00.",
+              "url": "https://spark.example/stages"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "simple-factual-02",
+      "category": "simple factual",
+      "query": "Astra Phone X weight",
+      "requirements": [
+        "Astra Phone X",
+        "weight"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "Astra Phone X weight",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "Astra Phone X weighs 199g",
+              "snippet": "Official weight 199g.",
+              "url": "https://maker.example/astra-specs"
+            },
+            {
+              "title": "phone news",
+              "snippet": "industry news.",
+              "url": "https://news.example/1"
+            }
+          ]
+        },
+        {
+          "query": "Astra Phone X specs",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "Astra Phone X weighs 199g",
+              "snippet": "Official weight 199g.",
+              "url": "https://maker.example/astra-specs"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "simple-factual-03",
+      "category": "simple factual",
+      "query": "SPARK venue lake",
+      "requirements": [
+        "SPARK",
+        "venue",
+        "lake"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK venue lake",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK at Lake Yamanakako",
+              "snippet": "Venue by the lake.",
+              "url": "https://spark.example/venue"
+            },
+            {
+              "title": "lake tourism",
+              "snippet": "sightseeing info.",
+              "url": "https://travel.example/2"
+            }
+          ]
+        },
+        {
+          "query": "SPARK location",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK at Lake Yamanakako",
+              "snippet": "Venue by the lake.",
+              "url": "https://spark.example/venue"
             }
           ]
         }
