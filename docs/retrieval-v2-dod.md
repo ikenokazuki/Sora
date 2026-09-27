@@ -60,6 +60,17 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 
 - Golden set: 24 web + 8 X deterministic, 30 live-unlabeled (target 100; labeling is human labor).
 - Full suite: 710/714; all 4 failures reproduce on pristine base (live Yahoo/JMA drift, zero branch-caused).
+
+## Live throttle re-check (2026-09-27 09:16 JST)
+
+- Yahoo upstream 429 ban lifted. Single-query probe healthy:
+  `live-factual-01`, 8 items, 592ms, adaptive quiet.
+  Follow-up `--limit 4` all healthy (8/9/10/9, adaptive quiet).
+- Hermetic throttle discipline green: `src/services/yahoo_throttle.test.ts` 7 pass.
+- `bun run typecheck` clean on branch `feat/search-retrieval-p0-p2` (HEAD `5b2fe51`).
+- Live suite returns to spaced rotation only (`--limit 1-4`, no bulk 12);
+  adaptive/PRF default flip still waits for A/B evidence.
+
 ## Evidence quality DoD (query-aware scrape RFC)
 
 - [x] Single SERP preserves Yahoo rank; providerRank and retrieval provenance survive the pipeline.
