@@ -148,6 +148,39 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - [x] Live spot check post-change
   - evidence: `eval/results/live-sample-20260928.json` (4/4 healthy, 8/9/10/9 items, 0 throttled, adaptive quiet)
 
+## Query Scrape (spec sections 40-46)
+
+- [x] Requirement normalization
+  - implementation: `src/retrieval/requirements.ts` (entity/intent/support terms + temporal intent, LLM-free)
+  - tests: `src/retrieval/requirements.test.ts`
+- [x] Answer-bearing
+  - implementation: `src/retrieval/answerability.ts` (price/weight/date/time/version value patterns)
+  - tests: answer-bearing cases in `src/retrieval/answerability.test.ts`
+- [x] Mention/Answer split
+  - implementation: `FacetEvidence` mentioned/answered/answeredWithEntity + `EvidenceCoverage`
+  - tests: sections 52-53, 78-80 cases in `answerability.test.ts`
+- [x] Entity relation
+  - implementation: `associationMultiplier` (entity + value proximity), wrong-entity blocks lose
+  - tests: section 80 case
+- [x] Temporal relevance
+  - implementation: `detectCurrentIntent` + `temporalMultiplier` (boost current, penalize old, no exclusion)
+  - tests: section 81 case
+- [x] AnswerCoverage stop (section 43)
+  - implementation: `assessEvidenceSufficiency` requires answerCoverage >= 0.5 for answer-seeking queries
+  - tests: mention-only insufficient / priced sufficient in `scraper_selector.test.ts`
+
+## Deep Search (spec sections 35-38)
+
+- [x] Candidate pool larger than output limit
+  - implementation: `candidatePoolSize` in `src/scraper.ts` (adaptive: max(budget, limit*2, 10))
+- [x] Adaptive scrape
+  - implementation: sufficiency-gated spare waves, budget cap, `sora_deep_search_wave_total`
+- [x] Failed scrape refill
+  - implementation: usable-evidence basis, `selectionReason: 'scrape_refill'`, `sora_scrape_refill_total`
+  - tests: gate suite (`scraper_selector.test.ts`, 205-file gate green)
+- [ ] Extraction escalation / recall path (sections 51-53)
+  - status: OPEN. No recall-extraction or late-escalation path exists yet; resource guards unimplemented.
+
 ## Evidence quality DoD (query-aware scrape RFC)
 
 - [x] Single SERP preserves Yahoo rank; providerRank and retrieval provenance survive the pipeline.
