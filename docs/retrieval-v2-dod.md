@@ -127,6 +127,27 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   - implementation: `mergeYahooWebQueryBatches` appends `providerRanks` per occurrence
   - tests: `duplicate URL keeps richest snippet` asserts two occurrences
 
+## Fresh / Stale / SingleFlight (spec sections 30-32, 58-60)
+
+- [x] Execution order fresh cache, singleflight, controller, provider, stale fallback
+  - implementation: `searchYahooWeb` wrapper + `src/retrieval/yahoo_cache.ts` (fresh 5m / stale 30m)
+  - tests: fresh-hit, stale-fallback, 10-concurrent-coalescing in `yahoo_search_failure.test.ts`
+  - commit: `8a32a8a`
+- [x] Stale served only on cooldown, open circuit, 429, or upstream errors
+  - implementation: stale lookup gated on throttled branches and error-bearing empty results
+  - tests: throttled-plus-stale case; genuine-empty stays empty
+- [x] Rejected singleflight evicted, retryable
+  - tests: `src/cache_singleflight.test.ts` (3 pass)
+- [x] Metrics
+  - implementation: `yahoo_request_total`, `yahoo_429_total`, `yahoo_circuit_open_total`,
+    `yahoo_cache_hit_total`, `yahoo_stale_hit_total`, `yahoo_singleflight_join_total`
+  - deferred: level/spacing gauges (cumulative counters only; level visible in verbose diagnostics)
+- [x] Performance gates hold after pressure work
+  - benchmark: 200 blocks adaptive p95 8.34ms (< 15ms); 800 blocks adaptive p95 11.94ms (< 40ms)
+  - bench: `scripts/bench-evidence-extraction.ts` (2026-09-28)
+- [x] Live spot check post-change
+  - evidence: `eval/results/live-sample-20260928.json` (4/4 healthy, 8/9/10/9 items, 0 throttled, adaptive quiet)
+
 ## Evidence quality DoD (query-aware scrape RFC)
 
 - [x] Single SERP preserves Yahoo rank; providerRank and retrieval provenance survive the pipeline.
