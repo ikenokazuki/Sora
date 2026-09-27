@@ -127,6 +127,21 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   - implementation: `mergeYahooWebQueryBatches` appends `providerRanks` per occurrence
   - tests: `duplicate URL keeps richest snippet` asserts two occurrences
 
+## Completion audit notes (spec sections 19, 48, 55, 69)
+
+- Section 19 variance: web retrieval coverage lives as `assessRetrievalConfidence`
+  in `src/services/yahoo.ts`, not a separate `src/retrieval/web_coverage.ts`.
+  Behavior (count/coverage/domain-diversity gating of Q1) is proven by
+  `adaptive confidence detects weak retrieval` and live evidence (adaptive quiet).
+- Section 48: continuous score matrix realized as weighted coverage + dual anchor
+  in `rerankByDeepEvidence` (entity 3 / intent 3 / temporal-location 2 / support 1).
+- Section 55 gauges (pressure level, spacing, budget as time series) deferred:
+  counters are cumulative-only; level and budget ride verbose diagnostics.
+- Section 69: buried-answer expansion proven (`expands beyond 12 when answer is buried`,
+  stages 12-24-48 in adapter); recall-escalation tie behavior pinned in escalation tests.
+- Open for Done: 100-query golden A/B with human labels, section-80 outcome
+  measurement, and push.
+
 ## Fresh / Stale / SingleFlight (spec sections 30-32, 58-60)
 
 - [x] Execution order fresh cache, singleflight, controller, provider, stale fallback
