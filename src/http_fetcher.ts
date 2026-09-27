@@ -64,6 +64,10 @@ const SUPPORTED_CHROME_PROFILE_VERSIONS = [
   136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
 ];
 
+/** wreq-js が持つ最新の Chrome プロファイル。実ブラウザがこれより新しい場合の上限。 */
+export const MAX_SUPPORTED_CHROME_PROFILE_VERSION =
+  SUPPORTED_CHROME_PROFILE_VERSIONS[SUPPORTED_CHROME_PROFILE_VERSIONS.length - 1];
+
 /** wreq-js の os オプションは既定が 'macos'。ブラウザ経路(Windows)と揃えるため明示指定する。 */
 export const EMULATION_OS = 'windows';
 
@@ -310,6 +314,7 @@ export async function fetchWithSafeRedirects(
   customCookies?: CookieParam[],
   proxyUrl?: string,
   tenantId = 'legacy',
+  parentSignal?: AbortSignal,
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
   let redirects = 0;
@@ -372,11 +377,13 @@ export async function fetchWithSafeRedirects(
       ...sanitizedCustomHeaders,
     };
 
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const combined = parentSignal ? AbortSignal.any([timeout, parentSignal]) : timeout;
     const res = await session.fetch(currentUrl, {
       method: 'GET',
       headers,
       redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: combined,
     });
 
     const contentLength = res.headers.get('content-length');

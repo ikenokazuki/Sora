@@ -55,6 +55,9 @@ systemRoutes.get('/', (c) => {
       searchSong: 'POST /search/song, POST /search/music/song',
       searchArtist: 'POST /search/artist, POST /search/music/artist',
       searchMusic: 'POST /search/music',
+      searchSocialPosts: 'POST /social/search',
+      fetchSocialPost: 'POST /social/fetch',
+      trackingLookup: 'POST /tracking, GET /tracking/:carrier/:number, GET /tracking/:number',
       govLaws: 'POST /gov/laws',
       govLawText: 'POST /gov/law-text',
       govDietMinutes: 'POST/GET /gov/diet-minutes',
@@ -84,6 +87,7 @@ systemRoutes.get('/health', async (c) => {
   return c.json({
     status: 'ok',
     service: 'sora',
+    version: SORA_VERSION,
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
     yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),
@@ -143,6 +147,7 @@ systemRoutes.get('/metrics', (c) => {
   return c.json({
     status: 'ok',
     service: 'sora',
+    version: SORA_VERSION,
     uptimeSeconds: uptime,
     cache,
     botDetection,

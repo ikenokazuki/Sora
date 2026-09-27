@@ -1,8 +1,11 @@
 import { z } from 'zod';
 
+import { DomainViewsSchema, IntelligenceSignalSchema, type IntelligenceSignal } from '../intelligence/types.js';
+import { EvidenceDetailSchema } from './detail.js';
+
 export const COUNTRY_INTEL_TOPICS = [
   'politics', 'elections', 'diplomacy', 'security', 'military', 'protests',
-  'political_violence', 'economy', 'trade', 'business', 'disasters', 'health',
+  'political_violence', 'economy', 'trade', 'business', 'tourism', 'travel', 'disasters', 'health',
   'humanitarian', 'social_issues', 'public_opinion', 'calendar', 'holidays',
   'commemorations', 'foreign_relations', 'japan_related_events', 'media_activity',
   'social_observations',
@@ -10,12 +13,24 @@ export const COUNTRY_INTEL_TOPICS = [
 
 export type CountryIntelTopic = (typeof COUNTRY_INTEL_TOPICS)[number];
 
+export const SocialPlatformSchema = z.enum(['weibo', 'threads', 'instagram', 'facebook']);
+export type IntelSocialPlatform = z.infer<typeof SocialPlatformSchema>;
+
+export const IntelSocialInputSchema = z.object({
+  platforms: z.array(SocialPlatformSchema).optional(),
+  queries: z.array(z.object({ platform: SocialPlatformSchema, query: z.string().trim().min(1).max(500) })).optional(),
+  urls: z.array(z.string().min(1)).optional(),
+  lookbackHours: z.number().int().min(1).max(2160).optional(),
+});
+export type IntelSocialInput = z.infer<typeof IntelSocialInputSchema>;
+
 export interface CountryContextRequest {
   region: string;
   query?: string;
   topics?: CountryIntelTopic[];
   period?: '7d' | '30d' | '90d';
   includeSocial?: boolean;
+  social?: IntelSocialInput;
   noCache?: boolean;
   verbose?: boolean;
 }
@@ -26,6 +41,7 @@ export const CountryContextRequestSchema = z.object({
   topics: z.array(z.enum(COUNTRY_INTEL_TOPICS)).optional(),
   period: z.enum(['7d', '30d', '90d']).default('30d'),
   includeSocial: z.boolean().default(false),
+  social: IntelSocialInputSchema.optional(),
   noCache: z.boolean().default(false),
   verbose: z.boolean().default(false),
 });
@@ -70,6 +86,9 @@ export type EvidenceSourceType =
 
 export type EvidenceLatencyClass = 'realtime' | 'near_realtime' | 'delayed' | 'historical';
 
+export type RegionLink = 'direct' | 'related' | 'candidate' | 'unrelated' | 'unknown';
+export const RegionLinkSchema = z.enum(['direct', 'related', 'candidate', 'unrelated', 'unknown']);
+
 export interface CountryEvidence {
   id: string;
   regionId: string;
@@ -88,6 +107,17 @@ export interface CountryEvidence {
   primarySource: boolean;
   latencyClass: EvidenceLatencyClass;
   eventClusterId?: string;
+  /** 取得経路。重複排除で失わない。 */
+  acquisition?: {
+    providerId: string;
+    providerItemId?: string;
+    query?: string;
+    queryTargetedRegion?: boolean;
+    collectionScope?: string;
+  };
+  /** 対象地域との関係。 */
+  regionLink?: RegionLink;
+  regionLinkReasons?: string[];
 }
 
 export const CountryEvidenceSchema = z.object({
@@ -108,6 +138,15 @@ export const CountryEvidenceSchema = z.object({
   primarySource: z.boolean(),
   latencyClass: z.enum(['realtime', 'near_realtime', 'delayed', 'historical']),
   eventClusterId: z.string().optional(),
+  acquisition: z.object({
+    providerId: z.string(),
+    providerItemId: z.string().optional(),
+    query: z.string().optional(),
+    queryTargetedRegion: z.boolean().optional(),
+    collectionScope: z.string().optional(),
+  }).optional(),
+  regionLink: RegionLinkSchema.optional(),
+  regionLinkReasons: z.array(z.string()).optional(),
 });
 
 export type ActorType =
@@ -226,6 +265,9 @@ export interface IntelEvent {
   regionId: string;
   type: ActionType;
   title: string;
+  excerpt?: string;
+  excerptTruncated?: boolean;
+  indicators?: { label: string; value: string }[];
   occurredAt?: string;
   location?: { name?: string; countryCode?: string };
   actors: IntelEntity[];
@@ -244,6 +286,9 @@ export const IntelEventSchema = z.object({
   regionId: z.string(),
   type: z.enum(ACTION_TYPES),
   title: z.string(),
+  excerpt: z.string().optional(),
+  excerptTruncated: z.boolean().optional(),
+  indicators: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
   occurredAt: z.string().optional(),
   location: z.object({ name: z.string().optional(), countryCode: z.string().optional() }).optional(),
   actors: z.array(IntelEntitySchema),
@@ -266,7 +311,14 @@ export interface CountrySource {
   verifiedAt?: string;
   verificationStatus: 'verified' | 'candidate' | 'rejected' | 'stale';
   discoveryMethod: 'manual_seed' | 'search' | 'rss' | 'sitemap' | 'official_link' | 'wikidata' | 'other';
+  verificationBasis?: CountrySourceVerificationBasis;
 }
+
+export const CountrySourceVerificationBasisSchema = z.enum([
+  'manual_seed', 'official_crosslink', 'trusted_registry', 'availability_only',
+]);
+
+export type CountrySourceVerificationBasis = z.infer<typeof CountrySourceVerificationBasisSchema>;
 
 export const CountrySourceSchema = z.object({
   id: z.string(),
@@ -277,6 +329,7 @@ export const CountrySourceSchema = z.object({
   verifiedAt: z.string().optional(),
   verificationStatus: z.enum(['verified', 'candidate', 'rejected', 'stale']),
   discoveryMethod: z.enum(['manual_seed', 'search', 'rss', 'sitemap', 'official_link', 'wikidata', 'other']),
+  verificationBasis: CountrySourceVerificationBasisSchema.optional(),
 });
 
 export type ProviderRunStatus = 'success' | 'partial' | 'unavailable' | 'rate_limited' | 'error';
@@ -288,6 +341,7 @@ export interface ProviderRun {
   status: ProviderRunStatus;
   itemCount: number;
   coverage?: string[];
+  gaps?: { area: string; reason: string }[];
   latencyMs?: number;
   errorCode?: string;
 }
@@ -299,6 +353,7 @@ export const ProviderRunSchema = z.object({
   status: z.enum(['success', 'partial', 'unavailable', 'rate_limited', 'error']),
   itemCount: z.number(),
   coverage: z.array(z.string()).optional(),
+  gaps: z.array(z.object({ area: z.string(), reason: z.string() })).optional(),
   latencyMs: z.number().optional(),
   errorCode: z.string().optional(),
 });
@@ -495,6 +550,172 @@ export const SituationSectionSchema = z.object({
 
 export type EvidenceStrength = 'PRIMARY' | 'CORROBORATED' | 'SECONDARY' | 'WEAK' | 'UNVERIFIED';
 
+export type FactBasis = 'provider_field' | 'source_excerpt' | 'rule_derived';
+export const FactBasisSchema = z.enum(['provider_field', 'source_excerpt', 'rule_derived']);
+
+export type Domain = 'general' | 'content' | 'marketing' | 'finance' | 'tourism' | 'travel';
+export const DomainSchema = z.enum(['general', 'content', 'marketing', 'finance', 'tourism', 'travel']);
+
+export interface Fact {
+  id: string;
+  topic: string;
+  text: string;
+  basis: FactBasis;
+  evidenceIds: string[];
+  truncated?: boolean;
+}
+
+export const FactSchema = z.object({
+  id: z.string(),
+  topic: z.string(),
+  text: z.string(),
+  basis: FactBasisSchema,
+  evidenceIds: z.array(z.string()),
+  truncated: z.boolean().optional(),
+});
+
+export interface Limitation {
+  code: string;
+  area: string;
+  providerId?: string;
+  message: string;
+  evidenceIds: string[];
+}
+
+export const LimitationSchema = z.object({
+  code: z.string(),
+  area: z.string(),
+  providerId: z.string().optional(),
+  message: z.string(),
+  evidenceIds: z.array(z.string()),
+});
+
+export interface DomainContext {
+  domain: Domain;
+  factors: Fact[];
+  /** 地域指定検索由来の未確認候補。確認済み factors とは分けて返す。 */
+  candidateFactors?: Fact[];
+  missingInformation: Limitation[];
+}
+
+export const DomainContextSchema = z.object({
+  domain: DomainSchema,
+  factors: z.array(FactSchema),
+  candidateFactors: z.array(FactSchema).optional(),
+  missingInformation: z.array(LimitationSchema),
+});
+
+export interface CollectionGap {
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export const CollectionGapSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  reason: z.string(),
+});
+
+export interface ActualWindow {
+  from: string;
+  to: string;
+  complete: boolean;
+  gaps: CollectionGap[];
+}
+
+export const ActualWindowSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  complete: z.boolean(),
+  gaps: z.array(CollectionGapSchema),
+});
+
+export interface RefreshState {
+  state: 'complete' | 'partial' | 'pending';
+  refreshId: string;
+}
+
+export const RefreshStateSchema = z.object({
+  state: z.enum(['complete', 'partial', 'pending']),
+  refreshId: z.string(),
+});
+export interface RecentTopic {
+  topicId: string;
+  title: string;
+  providers: string[];
+  rank?: number;
+  hot?: string;
+  pinned?: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  evidenceIds: string[];
+  previousRank?: number;
+  rankChange?: 'up' | 'down' | 'steady';
+}
+export const RecentTopicSchema = z.object({
+  topicId: z.string(),
+  title: z.string(),
+  providers: z.array(z.string()),
+  rank: z.number().optional(),
+  hot: z.string().optional(),
+  pinned: z.boolean().optional(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  evidenceIds: z.array(z.string()),
+  previousRank: z.number().optional(),
+  rankChange: z.enum(['up', 'down', 'steady']).optional(),
+});
+export interface RecentReport {
+  evidenceId: string;
+  title: string;
+  publisher?: string;
+  url: string;
+  publishedAt?: string;
+  ageClass: 'flash' | 'recent' | 'background' | 'unknown';
+}
+export const RecentReportSchema = z.object({
+  evidenceId: z.string(),
+  title: z.string(),
+  publisher: z.string().optional(),
+  url: z.string(),
+  publishedAt: z.string().optional(),
+  ageClass: z.enum(['flash', 'recent', 'background', 'unknown']),
+});
+export interface RecentSourceState {
+  provider: string;
+  status: ProviderRun['status'];
+  finishedAt?: string;
+  itemCount: number;
+  errorCode?: string;
+  upstreamUpdatedAt?: string;
+  stale: boolean;
+}
+export const RecentSourceStateSchema = z.object({
+  provider: z.string(),
+  status: z.enum(['success', 'partial', 'unavailable', 'rate_limited', 'error']),
+  finishedAt: z.string().optional(),
+  itemCount: z.number(),
+  errorCode: z.string().optional(),
+  upstreamUpdatedAt: z.string().optional(),
+  stale: z.boolean(),
+});
+export interface RecentContext {
+  generatedAt: string;
+  windowHours: 24;
+  topics: RecentTopic[];
+  reports: RecentReport[];
+  sources: RecentSourceState[];
+  limitations: Limitation[];
+}
+export const RecentContextSchema = z.object({
+  generatedAt: z.string(),
+  windowHours: z.literal(24),
+  topics: z.array(RecentTopicSchema),
+  reports: z.array(RecentReportSchema),
+  sources: z.array(RecentSourceStateSchema),
+  limitations: z.array(LimitationSchema),
+});
 export interface CountryContextReport {
   contextId: string;
   region: RegionIdentity;
@@ -515,9 +736,35 @@ export interface CountryContextReport {
   polls: PollObservation[];
   keyEvents: IntelEvent[];
   temporalMetrics: TemporalMetric[];
+  signals: IntelligenceSignal[];
+  domains: {
+    content: { regionId: string; attention: IntelligenceSignal[]; disaster: IntelligenceSignal[]; socialActivity: IntelligenceSignal[]; calendar: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    marketing: { regionId: string; attention: IntelligenceSignal[]; businessActivity: IntelligenceSignal[]; calendar: IntelligenceSignal[]; socialActivity: IntelligenceSignal[]; disruption: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    travel: { regionId: string; disruptionSignals: IntelligenceSignal[]; disasterSignals: IntelligenceSignal[]; healthSignals: IntelligenceSignal[]; calendarSignals: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+    finance: { regionId: string; economy: IntelligenceSignal[]; trade: IntelligenceSignal[]; businessAction: IntelligenceSignal[]; policyActivity: IntelligenceSignal[]; coverage: IntelligenceSignal['coverage'] };
+  };
   providerCoverage: ProviderRun[];
   coverage: CoverageReport;
   evidence: CountryEvidence[];
+  /** 初回応答に同梱する主要詳細。残りは contextId を使って evidence page から取得する。 */
+  evidenceDetails?: EvidenceDetail[];
+  /** 本文補完の結果。 */
+  enrichment?: {
+    attempted: number;
+    upgraded: number;
+    failed: number;
+    skippedBudget: number;
+    unavailable: boolean;
+    truncatedDetails: number;
+    omittedDetails: number;
+  };
+  schemaVersion?: string;
+  domainContext?: Partial<Record<Domain, DomainContext>>;
+  limitations?: Limitation[];
+  refreshState?: RefreshState;
+  actualWindows?: ActualWindow[];
+  /** 直近24時間の話題・記事の要約。任意。 */
+  recentContext?: RecentContext;
 }
 
 export const CountryContextReportSchema = z.object({
@@ -540,7 +787,25 @@ export const CountryContextReportSchema = z.object({
   polls: z.array(PollObservationSchema),
   keyEvents: z.array(IntelEventSchema),
   temporalMetrics: z.array(TemporalMetricSchema),
+  signals: z.array(IntelligenceSignalSchema),
+  domains: DomainViewsSchema,
   providerCoverage: z.array(ProviderRunSchema),
   coverage: CoverageReportSchema,
   evidence: z.array(CountryEvidenceSchema),
+  evidenceDetails: z.array(EvidenceDetailSchema).optional(),
+  enrichment: z.object({
+    attempted: z.number(),
+    upgraded: z.number(),
+    failed: z.number(),
+    skippedBudget: z.number(),
+    unavailable: z.boolean(),
+    truncatedDetails: z.number(),
+    omittedDetails: z.number(),
+  }).optional(),
+  schemaVersion: z.string().optional(),
+  domainContext: z.record(DomainSchema, DomainContextSchema).optional(),
+  limitations: z.array(LimitationSchema).optional(),
+  refreshState: RefreshStateSchema.optional(),
+  actualWindows: z.array(ActualWindowSchema).optional(),
+  recentContext: RecentContextSchema.optional(),
 });

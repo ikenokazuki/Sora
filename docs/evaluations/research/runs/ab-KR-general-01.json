@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "KR-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:00:00Z",
+    "endedAt": "2026-09-24T09:15:00Z",
+    "requirements": [
+      {"id": "program", "supported": true, "evidenceIds": ["web:kr-g1"], "notes": "SNU GSIS英語トラックと学位要件を確認"},
+      {"id": "eligibility", "supported": true, "evidenceIds": ["web:kr-g1"], "notes": "TOEFL iBT80/IELTS6.0以上を確認"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "2027年GSIS募集期限は未確認、2026年秋ガイドのみ"},
+      {"id": "unknown", "supported": true, "evidenceIds": ["web:kr-g1"], "notes": "2027年未確認を明示"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索1-2クエリ。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "KR-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:15:35Z",
+    "endedAt": "2026-09-24T09:15:43Z",
+    "requirements": [
+      {"id": "program", "supported": false, "evidenceIds": [], "notes": "課程情報なし、一般ニュースのみ"},
+      {"id": "eligibility", "supported": false, "evidenceIds": [], "notes": "出願資格への言及なし"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "募集期限への言及なし"},
+      {"id": "unknown", "supported": false, "evidenceIds": [], "notes": "未確認の明示なし"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 8047,
+    "notes": "B=researchCountryWithDefaultsライブ53件。recent20件の参照切れ0。一般件にdates要件なし。"}
+]

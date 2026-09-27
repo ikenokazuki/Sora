@@ -9,15 +9,26 @@ import type {
   TemporalMetric,
 } from './types.js';
 import type { ResearchPlan, ResearchQuery } from './query_planner.js';
+import type { EvidenceDetail } from './detail.js';
 
 export type { ProviderCapability, ResearchPlan, ResearchPlanLimits, ResearchQuery } from './query_planner.js';
 
 export interface AcquisitionItem {
   evidence?: CountryEvidence;
+  detail?: EvidenceDetail;
   poll?: PollObservation;
   calendar?: CalendarEvent;
   metric?: TemporalMetric;
   source?: CountrySource;
+  /** レコード単位の分野。未指定時は provider 申告を使う。集約の media_activity 等で上書きしない。 */
+  areas?: readonly string[];
+}
+
+/** provider identity を保持した取得アイテム。flatMap時に失わない。 */
+export interface AcquiredItem {
+  providerId: string;
+  areas: readonly string[];
+  item: AcquisitionItem;
 }
 
 export interface ProviderInput {
@@ -29,6 +40,8 @@ export interface ProviderInput {
 export interface ProviderResult {
   items: AcquisitionItem[];
   coverage?: string[];
+  /** プロバイダ内の検索経路・分野が欠落した場合の明示的な不足。 */
+  gaps?: { area: string; reason: string }[];
   status?: ProviderRunStatus;
   errorCode?: string;
 }
@@ -36,13 +49,19 @@ export interface ProviderResult {
 export interface CountryIntelProvider {
   id: string;
   areas: readonly string[];
+  /** 対応国コード。未指定は全地域で実行する。 */
+  regions?: readonly string[];
+  /** 1回の実行で遡れる収集範囲（日数）。未申告は不明扱い。actualWindows の注記に使う。 */
+  collectionWindowDays?: number;
+  /** provider 固有の実行上限ms。未指定時は run 時の timeoutMs を使う。 */
+  timeoutMs?: number;
   latencyClass: CountryEvidence['latencyClass'];
   defaultTtlSeconds: number;
   run(input: ProviderInput, signal: AbortSignal): Promise<ProviderResult>;
 }
 
 export interface AcquisitionResult {
-  items: AcquisitionItem[];
+  items: AcquiredItem[];
   runs: ProviderRun[];
 }
 
@@ -58,6 +77,15 @@ export interface RunProviderOptions {
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   maxRetryAfterMs?: number;
+}
+
+/** 本文補完の予算。未指定の項目は report 側の既定値を使う。 */
+export interface EnrichBudget {
+  maxItems?: number;
+  concurrency?: number;
+  perItemMs?: number;
+  maxCharsPerItem?: number;
+  totalChars?: number;
 }
 
 export class ProviderHttpError extends Error {
@@ -78,10 +106,28 @@ export class ProviderNetworkError extends Error {
   }
 }
 
+/** 外部HTTPではなく自側の処理（解凍・解析・依存欠落・予算切れ）の失敗。 */
+export class ProviderLocalError extends Error {
+  constructor(
+    readonly code:
+      | 'DECOMPRESS_FAILED'
+      | 'DECOMPRESS_MISSING'
+      | 'PARSE_FAILED'
+      | 'SIZE_LIMIT'
+      | 'BUDGET_EXHAUSTED',
+    message?: string,
+  ) {
+    super(message ?? ('Provider local failure ' + code));
+    this.name = 'ProviderLocalError';
+  }
+}
+
 const persistentCache: ProviderCache = {
   get: (key) => dbGetCache<ProviderResult>(key),
   set: (key, value, ttlSeconds) => dbSetCache(key, value, ttlSeconds),
 };
+/** 既定実行口の共有キャッシュ。明示の null 指定は無効化として維持する。 */
+export const defaultProviderCache: ProviderCache = persistentCache;
 
 export function providerCacheKey(providerId: string, plan: ResearchPlan): string {
   const topics = [...(plan.request.topics ?? [])].sort();
@@ -94,6 +140,8 @@ export function providerCacheKey(providerId: string, plan: ResearchPlan): string
     period: plan.request.period ?? '30d',
     query: plan.request.query?.trim() ?? '',
     queries,
+    includeSocial: plan.request.includeSocial ?? false,
+    social: plan.request.social ?? null,
   })}`;
 }
 
@@ -125,6 +173,7 @@ function failure(error: unknown): { status: ProviderRunStatus; errorCode: string
     if (error.status >= 400) return { status: 'error', errorCode: 'PROVIDER_HTTP_4XX' };
   }
   if (isNetwork(error)) return { status: 'unavailable', errorCode: 'PROVIDER_NETWORK' };
+  if (error instanceof ProviderLocalError) return { status: 'error', errorCode: 'PROVIDER_LOCAL_' + error.code };
   return { status: 'error', errorCode: 'PROVIDER_ERROR' };
 }
 
@@ -192,7 +241,7 @@ async function runOne(
   plan: ResearchPlan,
   provider: CountryIntelProvider,
   options: RunProviderOptions,
-): Promise<{ items: AcquisitionItem[]; run: ProviderRun }> {
+): Promise<{ items: AcquiredItem[]; run: ProviderRun }> {
   const now = options.now ?? Date.now;
   const started = now();
   const startedAt = new Date(started).toISOString();
@@ -203,7 +252,7 @@ async function runOne(
     let result: ProviderResult | undefined;
     if (!options.noCache && cache) result = cache.get(key)?.value;
     if (!result) {
-      const signal = AbortSignal.timeout(options.timeoutMs ?? 10_000);
+      const signal = AbortSignal.timeout(provider.timeoutMs ?? options.timeoutMs ?? 10_000);
       result = await callProvider(provider, {
         request: plan.request,
         region: plan.region,
@@ -214,15 +263,21 @@ async function runOne(
       }
     }
     const finished = now();
+    const items = result.items.map((item) => ({
+      providerId: provider.id,
+      areas: [...(item.areas ?? provider.areas)],
+      item,
+    }));
     return {
-      items: result.items,
+      items,
       run: {
         provider: provider.id,
         startedAt,
         finishedAt: new Date(finished).toISOString(),
         status: result.status ?? 'success',
-        itemCount: result.items.length,
+        itemCount: items.length,
         coverage: result.coverage ?? [...provider.areas],
+        ...(result.gaps?.length ? { gaps: result.gaps } : {}),
         latencyMs: Math.max(0, finished - started),
         errorCode: result.errorCode ?? statusErrorCode(result.status),
       },
@@ -254,4 +309,22 @@ export async function runProviders(
     items: results.flatMap((result) => result.items),
     runs: results.map((result) => result.run),
   };
+}
+
+/** 指定 pass の query のみを実行する。pass1 と pass2 を時系列で分離するために使う。 */
+export async function runProviderPass(
+  plan: ResearchPlan,
+  pass: 1 | 2,
+  providers: readonly CountryIntelProvider[],
+  options: RunProviderOptions = {},
+): Promise<AcquisitionResult> {
+  const passPlan: ResearchPlan = {
+    ...plan,
+    pass1: pass === 1 ? [...plan.pass1] : [],
+    pass2: pass === 2 ? [...plan.pass2] : [],
+  };
+  // その pass に query がない provider は実行しない (全取得の二重化を防ぐ)。
+  const queries = pass === 1 ? passPlan.pass1 : passPlan.pass2;
+  const withQueries = new Set(queries.map((query) => query.providerId));
+  return runProviders(passPlan, providers.filter((provider) => withQueries.has(provider.id)), options);
 }

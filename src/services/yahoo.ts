@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalRankFusion } from '../enrichment.js';
+import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
@@ -12,6 +13,7 @@ import {
   type RealtimeIntent,
 } from './x_detail.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
+import { searchYahooRealtimePage } from './yahoo_realtime_api.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -367,7 +369,34 @@ export async function searchYahooWeb(options: {
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
   disableFallback?: boolean;
-}): Promise<any> {
+}, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
+  const callMcp: typeof callYahooMcp =
+    (deps as any)?.callYahooMcp ?? (options as any)?._callMcp ?? callYahooMcp;
+  const providerErrors: Array<{ query: string; message: string }> = [];
+  const fetchDirect: typeof fetchYahooWebDirect =
+    (deps as any)?.fetchYahooWebDirect ?? fetchYahooWebDirect;
+  // The bundled MCP binary carries a fingerprint Yahoo currently rate-limits
+  // (HTTP 429) while direct fetches with a browser fingerprint succeed.
+  // Direct fetch is therefore the primary route; the binary is the alternate.
+  const normDirectItem = (item: any): any => ({
+    source: 'web' as const,
+    title: item.title,
+    url: item.url,
+    description: item.snippet,
+    snippet: item.snippet,
+    ...(item.domain ? { domain: item.domain } : {}),
+    directFetch: true,
+  });
+  // Burst calls trigger upstream 429. Wait once (bounded) after a
+  // rate-limit failure before the next candidate; never retry unboundedly.
+  const retryWaitMs = Math.min(Math.max(Number(process.env.SORA_WEB_RETRY_WAIT_MS ?? 1200), 0), 5000);
+  let waitedOnce = false;
+  const maybeWaitAfterRateLimit = async (message: string): Promise<void> => {
+    if (waitedOnce || retryWaitMs <= 0) return;
+    if (!/429|too many requests|rate limit/i.test(message)) return;
+    waitedOnce = true;
+    await new Promise((r) => setTimeout(r, retryWaitMs));
+  };
   const candidateQueries = options.disableFallback
     ? [options.query]
     : extractRealtimeFallbackQueries(options.query);
@@ -387,6 +416,10 @@ export async function searchYahooWeb(options: {
     for (let i = 0; i < boundedQueries.length; i++) {
       const q = boundedQueries[i];
       if (!q) continue;
+      if (isYahooBreakerOpen()) {
+        webUnionThrottled = true;
+        break;
+      }
       retrievalQueries.push(q);
 
       let effectiveWebQuery = q;
@@ -409,33 +442,50 @@ export async function searchYahooWeb(options: {
       }
 
       try {
-        const mcpRes = await callYahooMcp('yahoo_web_search', {
-          query: effectiveWebQuery,
-          ...(webSiteArg ? { site: webSiteArg } : {}),
-          ...(options.updated && options.updated !== 'all'
-            ? { updated: options.updated }
-            : {}),
-        });
+        let batchJson: any = null;
+        try {
+          const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
+          if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
+        } catch (err) {
+          providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+        }
+        if (!batchJson) {
+          const mcpRes = await callMcp('yahoo_web_search', {
+            query: effectiveWebQuery,
+            ...(webSiteArg ? { site: webSiteArg } : {}),
+            ...(options.updated && options.updated !== 'all'
+              ? { updated: options.updated }
+              : {}),
+          });
 
-        const content = mcpRes?.content?.[0]?.text || '[]';
-        const json = JSON.parse(content);
+          const content = mcpRes?.content?.[0]?.text || '[]';
+          if (mcpRes?.isError) {
+            providerErrors.push({ query: q, message: String(content).slice(0, 300) });
+            if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(String(content));
+            continue;
+          }
+          batchJson = JSON.parse(content);
+        }
 
-        if (json && Array.isArray(json.items)) {
-          lastParsedData = json;
-          if (json.items.length > 0) {
+        if (batchJson && Array.isArray(batchJson.items)) {
+          lastParsedData = batchJson;
+          if (batchJson.items.length > 0) {
             batches.push({
               query: q,
               queryIndex: i,
-              items: json.items,
+              items: batchJson.items,
             });
           }
         }
       } catch (unionErr) {
+        const message = ((unionErr as Error)?.message ?? String(unionErr)).slice(0, 300);
+        providerErrors.push({ query: q, message });
         if (isYahooRateLimitedError(unionErr)) {
           webUnionThrottled = true;
           break;
         }
         // One failed rescue query must not discard sibling results.
+        if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(message);
       }
     }
 
@@ -463,6 +513,7 @@ export async function searchYahooWeb(options: {
         isFallback: contributedFallback,
         queryUnion: true,
         ...(webUnionThrottled ? { throttled: true } : {}),
+        ...(providerErrors.length > 0 ? { providerErrors } : {}),
       };
     }
 
@@ -478,12 +529,17 @@ export async function searchYahooWeb(options: {
       isFallback: false,
       queryUnion: true,
       throttled: webUnionThrottled ? true : undefined,
+      providerErrors,
     };
   }
 
   let webSequentialThrottled = false;
   for (let i = 0; i < candidateQueries.length; i++) {
     const q = candidateQueries[i];
+    if (isYahooBreakerOpen()) {
+      webSequentialThrottled = true;
+      break;
+    }
     let effectiveWebQuery = q;
     let webSiteArg: string | undefined = undefined;
 
@@ -500,14 +556,29 @@ export async function searchYahooWeb(options: {
     }
 
     try {
-      const mcpRes = await callYahooMcp('yahoo_web_search', {
-        query: effectiveWebQuery,
-        ...(webSiteArg ? { site: webSiteArg } : {}),
-        ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
-      });
+      let json: any = null;
+      try {
+        const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
+        if (directItems.length > 0) json = { items: directItems.map(normDirectItem) };
+      } catch (err) {
+        providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+      }
+      if (!json) {
+        const mcpRes = await callMcp('yahoo_web_search', {
+          query: effectiveWebQuery,
+          ...(webSiteArg ? { site: webSiteArg } : {}),
+          ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
+        });
 
-      const content = mcpRes?.content?.[0]?.text || '[]';
-      const json = JSON.parse(content);
+        const content = mcpRes?.content?.[0]?.text || '[]';
+        if (mcpRes?.isError) {
+          const message = String(content).slice(0, 300);
+          providerErrors.push({ query: q, message });
+          if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
+          continue;
+        }
+        json = JSON.parse(content);
+      }
       if (json && Array.isArray(json.items) && json.items.length > 0) {
         // Provider ranking contains signals that are unavailable
         // to our lightweight lexical scorer. Do not globally
@@ -604,17 +675,21 @@ export async function searchYahooWeb(options: {
         json.effectiveQuery = q;
         json.isFallback = i > 0;
         try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
+        if (providerErrors.length > 0) json.providerErrors = providerErrors;
         return json;
       }
       if (json && Array.isArray(json.items)) {
         lastParsedData = json;
       }
     } catch (seqErr) {
+      const message = ((seqErr as Error)?.message ?? String(seqErr)).slice(0, 300);
+      providerErrors.push({ query: q, message });
       if (isYahooRateLimitedError(seqErr)) {
         webSequentialThrottled = true;
         break;
       }
-      // 候補クエリの次を試行
+      // 候補クエリの次を試行（失敗は記録する）
+      if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
     }
   }
 
@@ -630,9 +705,112 @@ export async function searchYahooWeb(options: {
       effectiveQuery: options.query,
       isFallback: false,
       throttled: true,
+      ...(providerErrors.length > 0 ? { providerErrors } : {}),
     };
   }
-  return lastParsedData;
+  return {
+    ...lastParsedData,
+    items: [],
+    count: 0,
+    providerErrors,
+  };
+}
+
+export interface YahooWebDirectItem { url: string; title?: string; snippet?: string; domain?: string; }
+
+function stripYahooTags(text: string): string {
+  return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+}
+
+/** Yahooの縦断ナビ（画像・動画・地図・リアルタイム等）へのリンクか。結果候補にしない。 */
+export function isYahooNavUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname !== 'yahoo.co.jp' && !u.hostname.endsWith('.yahoo.co.jp')) return false;
+    return u.hostname === 'search.yahoo.co.jp' || u.pathname.includes('/search');
+  } catch {
+    return false;
+  }
+}
+
+export interface YahooWebDirectOptions {
+  updated?: 'all' | 'day' | 'week' | 'year';
+  includeDomains?: string[];
+}
+
+const UPDATED_TO_VD: Record<string, string> = { day: 'd', week: 'w', year: 'y' };
+
+/** 直接取得用の検索URLを組み立てる。期間と単一ドメイン条件を実パラメーターへ反映する。 */
+export function buildYahooWebDirectUrl(query: string, opts: YahooWebDirectOptions = {}): string {
+  let q = query;
+  if (opts.includeDomains && opts.includeDomains.length === 1) {
+    q += ' site:' + opts.includeDomains[0];
+  } else if (opts.includeDomains && opts.includeDomains.length > 1) {
+    q += ' (' + opts.includeDomains.map((d) => 'site:' + d).join(' OR ') + ')';
+  }
+  const params = new URLSearchParams({ p: q, ei: 'UTF-8' });
+  const vd = opts.updated && opts.updated !== 'all' ? UPDATED_TO_VD[opts.updated] : undefined;
+  if (vd) params.set('vd', vd);
+  return 'https://search.yahoo.co.jp/search?' + params.toString();
+}
+
+/** Yahoo Web検索結果HTMLの直解析。MCPバイナリ429時のフォールバック用。 */
+export function parseYahooWebHtml(html: string, maxItems = 10): YahooWebDirectItem[] {
+  const out: YahooWebDirectItem[] = [];
+  const push = (rawUrl: string, rawTitle: string, rawSnippet: string): void => {
+    const url = stripYahooTags(rawUrl ?? '');
+    if (!url || out.some((item) => item.url === url)) return;
+    if (isYahooNavUrl(url)) return;
+    const title = stripYahooTags(rawTitle ?? '');
+    const snippet = stripYahooTags(rawSnippet ?? '');
+    let domain: string | undefined;
+    try {
+      domain = new URL(url).hostname.replace(/^www\./, '');
+    } catch {}
+    out.push({ url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}), ...(domain ? { domain } : {}) });
+  };
+  // 現行マークアップ: sw-Card のタイトルリンクと概要文。旧フィクスチャにない場合の第一候補。
+  const cardRe = /<a href="(https?:\/\/[^"]+)"[^>]*class="sw-Card__titleInner"[^>]*>(?:<br\/>)?<h3[^>]*><span>(.*?)<\/span>/g;
+  let c: RegExpExecArray | null;
+  while ((c = cardRe.exec(html)) !== null) {
+    const after = html.slice(c.index, c.index + 8000);
+    const s = after.match(/<p class="sw-Card__summary">(.*?)<\/p>/s);
+    push(c[1] ?? '', c[2] ?? '', s ? s[1] : '');
+    if (out.length >= maxItems) return out;
+  }
+  if (out.length > 0) return out;
+  // 旧形式は結果領域 #web 内だけを読む。領域自体がなければ未知HTMLとして空を返す。
+  const webSection = html.split('<div id="web">')[1]?.split('<div id="web_19">')[0];
+  if (!webSection) return out;
+  const itemRe = /<li><a href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>(?:<div>(.*?)<\/div>)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(webSection)) !== null) {
+    push(m[1] ?? '', m[2] ?? '', m[3] ?? '');
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+/** 直接fetchによるYahoo Web検索。MCPが429/空振りの場合のみ使う。 */
+/** 直接fetchによるYahoo Web検索。MCPバイナリの指紋が制限される場合の主経路。 */
+// ブラウザ指紋・間隔調整・SSRF検証は http_fetcher に集約。ここでは検索用ヘッダだけ足す。
+const YAHOO_WEB_DIRECT_HEADERS: Record<string, string> = {
+  Referer: 'https://search.yahoo.co.jp/',
+};
+export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal, opts: YahooWebDirectOptions = {}): Promise<YahooWebDirectItem[]> {
+  const url = buildYahooWebDirectUrl(query, opts);
+  const pending = fetchWithSafeRedirects(url, 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
+  const { response: res } = signal
+    ? await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        if (signal.aborted) reject(signal.reason);
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }),
+    ])
+    : await pending;
+  if (!res.ok) throw new Error('Yahoo direct fetch failed: ' + res.status);
+  return parseYahooWebHtml(await res.text(), maxItems);
 }
 
 /** リアルタイムアイテムの正規化 (publishedTime, author_name, author_handle, url 正規化) */
@@ -720,21 +898,49 @@ export interface YahooRealtimeOptions {
  * - excludeWords を -xxx に変換
  * - orWords を (A B) に変換
  */
+const REALTIME_HANDLE_RE = /^[A-Za-z0-9_]{1,30}$/;
+const REALTIME_TOKEN_RE = /^[^\s()"'“”‘’『』「」]+$/;
+
+/** URLや引用文字列の内部を除き、単独の from:演算子だけ id:へ変換する */
+function convertFromOperatorToId(query: string): string {
+  return query.replace(/(^|[\s(])from:([A-Za-z0-9_]+)/gi, '$1id:$2');
+}
+
+function hasQueryToken(baseQuery: string, token: string): boolean {
+  return baseQuery.split(/\s+/).includes(token);
+}
+
+function assertRealtimeHandle(value: string, option: string): string {
+  const clean = value.trim().replace(/^@/, '');
+  if (!REALTIME_HANDLE_RE.test(clean)) {
+    throw new Error(`Invalid ${option}: use 1-30 chars of A-Za-z0-9_ (got "${value}")`);
+  }
+  return clean;
+}
+
+function assertRealtimeToken(value: string, option: string): string {
+  const clean = value.trim();
+  if (!clean || !REALTIME_TOKEN_RE.test(clean)) {
+    throw new Error(`Invalid ${option}: single token without spaces or query syntax (got "${value}")`);
+  }
+  return clean;
+}
+
 export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string): string {
   if (typeof options === 'string') {
-    return options.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+    return convertFromOperatorToId(options).trim();
   }
 
   let baseQuery = (options.query || '').trim();
   // from: を id: に自動置換 (X/Twitter 記法への耐性)
-  baseQuery = baseQuery.replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').trim();
+  baseQuery = convertFromOperatorToId(baseQuery).trim();
 
   const tokens: string[] = [];
 
   // 特定アカウントの投稿: id:xxx
   const rawAccount = (options.accountId || options.fromUser || '').trim();
   if (rawAccount) {
-    const cleanAccount = rawAccount.replace(/^@/, '');
+    const cleanAccount = assertRealtimeHandle(rawAccount, options.accountId ? 'accountId' : 'fromUser');
     const accountRegex = new RegExp(`\\b(?:id|ID):${cleanAccount}\\b`, 'i');
     if (!accountRegex.test(baseQuery)) {
       tokens.push(`id:${cleanAccount}`);
@@ -744,7 +950,7 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   // 特定アカウント宛ての投稿: @xxx
   const rawTo = (options.toAccount || '').trim();
   if (rawTo) {
-    const cleanTo = rawTo.replace(/^@/, '');
+    const cleanTo = assertRealtimeHandle(rawTo, 'toAccount');
     const toRegex = new RegExp(`(^|\\s)@${cleanTo}\\b`, 'i');
     if (!toRegex.test(baseQuery)) {
       tokens.push(`@${cleanTo}`);
@@ -755,8 +961,9 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   if (options.hashtags) {
     const tagList = Array.isArray(options.hashtags) ? options.hashtags : [options.hashtags];
     for (const rawTag of tagList) {
-      const cleanTag = rawTag.trim().replace(/^#/, '');
-      if (cleanTag && !baseQuery.includes(`#${cleanTag}`)) {
+      if (!rawTag.trim()) continue;
+      const cleanTag = assertRealtimeToken(rawTag.trim().replace(/^#/, ''), 'hashtags');
+      if (!hasQueryToken(baseQuery, `#${cleanTag}`)) {
         tokens.push(`#${cleanTag}`);
       }
     }
@@ -766,8 +973,9 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
   if (options.excludeWords) {
     const exList = Array.isArray(options.excludeWords) ? options.excludeWords : [options.excludeWords];
     for (const rawEx of exList) {
-      const cleanEx = rawEx.trim().replace(/^-/, '');
-      if (cleanEx && !baseQuery.includes(`-${cleanEx}`)) {
+      if (!rawEx.trim()) continue;
+      const cleanEx = assertRealtimeToken(rawEx.trim().replace(/^-/, ''), 'excludeWords');
+      if (!hasQueryToken(baseQuery, `-${cleanEx}`)) {
         tokens.push(`-${cleanEx}`);
       }
     }
@@ -775,7 +983,10 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
 
   // OR検索: (A B)
   if (options.orWords && options.orWords.length > 0) {
-    const cleanOr = options.orWords.map((w) => w.trim()).filter(Boolean);
+    const cleanOr = options.orWords
+      .map((w) => (w || '').trim())
+      .filter(Boolean)
+      .map((w) => assertRealtimeToken(w, 'orWords'));
     if (cleanOr.length > 1) {
       tokens.push(`(${cleanOr.join(' ')})`);
     } else if (cleanOr.length === 1) {
@@ -785,14 +996,46 @@ export function buildYahooRealtimeQuery(options: YahooRealtimeOptions | string):
 
   // URL / ドメイン指定
   if (options.url) {
-    const cleanUrl = options.url.trim();
-    if (cleanUrl && !baseQuery.includes(cleanUrl)) {
-      tokens.push(cleanUrl);
+    const rawUrl = options.url.trim();
+    if (rawUrl) {
+      if (/\s/.test(rawUrl)) throw new Error(`Invalid url: must not contain spaces (got "${options.url}")`);
+      const urlToken = /^(?:URL|url):/.test(rawUrl) ? rawUrl : `URL:${rawUrl}`;
+      if (!hasQueryToken(baseQuery, urlToken)) {
+        tokens.push(urlToken);
+      }
     }
   }
 
   const parts = [baseQuery, ...tokens].filter(Boolean);
   return parts.join(' ').trim();
+}
+
+/**
+ * 複雑な検索式の判定。OR括弧・URL条件・引用符・未対応演算子を含む式は
+ * 意味を変える自動relaxの対象にせず、原式の単発取得に固定する。
+ */
+export function requiresExactRealtimeQuery(query: string): boolean {
+  const q = (query || '').trim();
+  if (!q) return false;
+  if (/[()]/.test(q)) return true;
+  if (/["'“”‘’『』「」]/.test(q)) return true;
+  if (/\bOR\b/i.test(q)) return true;
+  if (/https?:\/\//i.test(q)) return true;
+  if (/(?:^|\s)(?:URL|url):/.test(q)) return true;
+  return false;
+}
+
+/** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
+export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
+  return JSON.stringify([
+    'search:realtime:json-v1',
+    buildYahooRealtimeQuery(options),
+    options.sort ?? 'recent',
+    options.limit ?? 20,
+    options.page ?? 1,
+    options.disableFallback === true,
+    (options as any)?.verbose === true,
+  ]);
 }
 
 /** 検索向けフォールバック候補クエリの自動抽出 (JST 相対日付解決・記号/日付正規化・ノイズ語句パージ・重要語抽出・修飾子保護) */
@@ -1155,6 +1398,30 @@ export function mergeRealtimeQueryBatches(
   return { items: merged, contributingQueries };
 }
 
+/** provider応答の読み取り。JSON直取得の {items} と既存MCP形状の両方を受け付ける。 */
+function readRealtimeProviderList(res: any): any[] {
+  if (!res || typeof res !== 'object') throw new Error('Invalid realtime provider response shape');
+  if (Array.isArray((res as any).items)) return (res as any).items;
+  const content = (res as any)?.content?.[0]?.text;
+  if (typeof content !== 'string' || !content) throw new Error('Invalid realtime provider response shape');
+  const parsed = JSON.parse(content);
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray((parsed as any).items)) return (parsed as any).items;
+  throw new Error('Invalid realtime provider response shape');
+}
+
+/** 既定の realtime 取得。Yahoo JSON を直接呼び、MCP互換形状で返す。バイナリ不使用。 */
+export async function callYahooRealtimeJson(toolName: string, args: Record<string, any>): Promise<any> {
+  void toolName;
+  const page = await searchYahooRealtimePage({
+    query: args.query,
+    sort: args.sort,
+    limit: args.limit,
+    page: args.page,
+  });
+  return { content: [{ text: JSON.stringify({ items: page.items }) }] };
+}
+
 async function fetchRealtimeBatch(
   query: string,
   queryIndex: number,
@@ -1163,6 +1430,7 @@ async function fetchRealtimeBatch(
   page: number | undefined,
   callMcp: typeof callYahooMcp,
   wave = 1,
+  errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch> {
   try {
     const mcpRes = await callMcp('yahoo_realtime_search', {
@@ -1171,12 +1439,10 @@ async function fetchRealtimeBatch(
       ...(limit ? { limit } : {}),
       ...(page ? { page } : {}),
     });
-    const content = mcpRes?.content?.[0]?.text || '';
-    if (!content) return { query, queryIndex, wave, sort, items: [] };
-    const parsed = JSON.parse(content);
-    const rawList = Array.isArray(parsed) ? parsed : parsed?.items || [];
+    const rawList = readRealtimeProviderList(mcpRes);
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
-  } catch (batchErr) {
+  } catch (batchErr: any) {
+    errors?.push({ query, message: batchErr?.message || String(batchErr) });
     if (isYahooRateLimitedError(batchErr)) {
       return { query, queryIndex, wave, sort, items: [], throttled: true };
     }
@@ -1193,14 +1459,17 @@ async function runRealtimeWave(
   page: number | undefined,
   callMcp: typeof callYahooMcp,
   wave = 1,
+  errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch[]> {
   const settled = await Promise.allSettled(
-    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, wave)),
+    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, wave, errors)),
   );
 
-  return settled.map((r, i) =>
-    r.status === 'fulfilled' ? r.value : { query: queries[i], queryIndex: startIndex + i, wave, sort, items: [] },
-  );
+  return settled.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    errors?.push({ query: queries[i], message: 'wave settled without a response' });
+    return { query: queries[i], queryIndex: startIndex + i, wave, sort, items: [] };
+  });
 }
 
 /** Yahoo リアルタイム検索 (Retrieval v1: bounded query union + parallel waves + adaptive stop) */
@@ -1229,6 +1498,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   coveredTerms: string[];
   missingTerms: string[];
   throttled?: boolean;
+  partial?: boolean;
+  providerErrors?: Array<{ query: string; message: string }>;
 }> {
   const builtQuery = buildYahooRealtimeQuery(options);
   const originalQuery = builtQuery || (typeof options === 'object' ? options.query || '' : options);
@@ -1238,7 +1509,24 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const detailEnrichment = typeof options === 'object' && options.detailEnrichment !== undefined
     ? options.detailEnrichment
     : true;
-  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooMcp;
+  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooRealtimeJson;
+
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 40)) {
+    throw new Error(`Invalid realtime limit: integer 1-40 expected (got ${String(limit)})`);
+  }
+  if (page !== undefined && (!Number.isInteger(page) || page < 1)) {
+    throw new Error(`Invalid realtime page: integer >= 1 expected (got ${String(page)})`);
+  }
+
+  // provider障害と正常0件を区別する。wave内の1件でも正常応答があれば継続する。
+  const providerErrors: Array<{ query: string; message: string }> = [];
+  const throwIfTotalFailure = (items: any[]) => {
+    if (items.length === 0 && providerErrors.length > 0) {
+      throw new Error(
+        `Yahoo realtime provider failed: ${providerErrors.map((e) => `${e.query}: ${e.message}`).join('; ')}`,
+      );
+    }
+  };
 
   const finish = async (
     batches: YahooRealtimeQueryBatch[],
@@ -1247,6 +1535,9 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     coverage: RealtimeCoverageEvaluation,
     exactVariants: string[],
   ) => {
+    // 全取得がprovider障害で空の場合は0件成功に見せかけず例外にする。
+    // throttled終端は正常な停止状態（throttledマーカー付きで返却）のため除外する。
+    if (stopReason !== 'throttled') throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
     try {
       incrementSecurityCounter('sora_x_stop_total');
@@ -1295,12 +1586,13 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       requiredTerms: coverage.requiredTerms,
       coveredTerms: coverage.bestCoveredTerms,
       missingTerms: coverage.missingTerms,
+      ...(providerErrors.length > 0 ? { partial: true, providerErrors: [...providerErrors] } : {}),
     };
   };
 
   if ((options as any)?.disableFallback === true) {
     const q = builtQuery;
-    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp) : [];
+    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, 1, providerErrors) : [];
     if (batches.some((b) => b.throttled)) {
       const dfReq = extractRealtimeIntentRequirements(originalQuery);
       const dfCov = evaluateRealtimeRetrievalCoverage([], dfReq);
@@ -1309,8 +1601,27 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     }
     const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
+    throwIfTotalFailure(merged.items);
     const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
     return finish(batches, batches.length > 0 ? 1 : 0, 'fallback_disabled', coverage, q ? [q] : []);
+  }
+
+  // 複雑な式・2ページ目以降は原式の単発取得に固定し、意味を変えるrelaxを行わない。
+  if (requiresExactRealtimeQuery(builtQuery) || (page !== undefined && page > 1)) {
+    const batches = builtQuery
+      ? await runRealtimeWave([builtQuery], 0, sort, limit, page, callMcp, 1, providerErrors)
+      : [];
+    const requirements = extractRealtimeIntentRequirements(originalQuery);
+    const merged = mergeRealtimeQueryBatches(batches);
+    throwIfTotalFailure(merged.items);
+    const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
+    return finish(
+      batches,
+      batches.length > 0 ? 1 : 0,
+      coverage.hasFullCoverage ? 'full_coverage' : 'no_next_candidate',
+      coverage,
+      builtQuery ? [builtQuery] : [],
+    );
   }
 
   const requirements = extractRealtimeIntentRequirements(originalQuery);
@@ -1334,7 +1645,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // Wave 1: exact intent (original + canonical syntax variant)
   const wave1Queries = takeBudget(exactVariants);
   if (wave1Queries.length > 0) {
-    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp);
+    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp, 1, providerErrors);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
@@ -1364,7 +1675,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   );
   const wave2Queries = takeBudget(wave2Candidates);
   if (wave2Queries.length > 0) {
-    const res2 = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2);
+    const res2 = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2, providerErrors);
     for (const b of res2) {
       batches.push(b);
       executed.add(b.query);
@@ -1405,10 +1716,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   if (wave3Queries.length === 0) {
     return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
   }
-  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3);
-  for (const b of res3) {
-    if (b.throttled) sawThrottle = true;
-  }
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3, providerErrors);
   for (const b of res3) {
     batches.push(b);
     executed.add(b.query);
@@ -1419,6 +1727,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     const done = await finish(batches, executedWaves, 'throttled', coverage, exactVariants);
     return { ...done, throttled: true };
   }
+  throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
   if (coverage.hasFullCoverage) {
     return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
   }
@@ -1499,10 +1808,8 @@ export async function fetchTweetsForUrlOrUser(
 
   for (const q of searchQueries) {
     try {
-      const res = await callYahooMcp('yahoo_realtime_search', { query: q, sort: 'recent', limit: options.limit || 15 });
-      const content = res?.content?.[0]?.text || '';
-      const parsed = JSON.parse(content);
-      const items = Array.isArray(parsed) ? parsed : parsed?.items || [];
+      const page = await searchYahooRealtimePage({ query: q, sort: 'recent', limit: options.limit || 15 });
+      const items = page.items;
       if (items.length > 0) {
         // handle がある場合は、その本人のポストを優先、なければ関連ポスト
         if (handle) {
@@ -1512,13 +1819,13 @@ export async function fetchTweetsForUrlOrUser(
           );
           if (selfTweets.length > 0) {
             matchedItems = selfTweets;
-            authorName = selfTweets[0].author_name || selfTweets[0].author || handle;
+            authorName = selfTweets[0].author_name || (selfTweets[0] as any).author || handle;
             break;
           }
         }
         if (matchedItems.length === 0) {
           matchedItems = items;
-          authorName = items[0].author_name || items[0].author || handle;
+          authorName = items[0].author_name || (items[0] as any).author || handle;
           break;
         }
       }

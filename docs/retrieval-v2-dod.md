@@ -16,8 +16,9 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - [x] Redirect targets revalidated (per-hop validation in legacy path;
   stub-validated redirect tests in safe transport).
 - [x] Streaming response cap wired into scrape/image paths.
-- [ ] Fail-closed production auth: per-request 401 exists; startup throw
-  deliberately not adopted (would break imports/tests). OPEN by decision.
+- [x] Production no-key policy: deliberate fail-open (v2.30.2 integrates
+  retrieval-v2 auth: NODE_ENV gating removed because bun build inlines it;
+  per-request 401 applies when a key IS configured).
 - [x] Browser session ownership + tenant binding + close-path check.
   Proof: `src/browser_session_access.test.ts`.
 - [x] MCP activation per-tenant; legacy scope preserved unauthenticated.
@@ -59,7 +60,7 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 ## Open labor
 
 - Golden set: 24 web + 8 X deterministic, 30 live-unlabeled (target 100; labeling is human labor).
-- Full suite: 710/714; all 4 failures reproduce on pristine base (live Yahoo/JMA drift, zero branch-caused).
+- Full suite (post v2.30.4 integration): 1044 pass / 4 skip / 0 fail across 112 files.
 
 ## Live throttle re-check (2026-09-27 09:16 JST)
 
@@ -70,6 +71,22 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - `bun run typecheck` clean on branch `feat/search-retrieval-p0-p2` (HEAD `5b2fe51`).
 - Live suite returns to spaced rotation only (`--limit 1-4`, no bulk 12);
   adaptive/PRF default flip still waits for A/B evidence.
+
+## v2.30.4 integration (2026-09-28)
+
+- Merged onto `origin/main` (`ddc79b2`, v2.30.4). Conflicts resolved:
+  `src/auth.ts` (fail-open kept, NODE_ENV 401 dropped per v2.30.2),
+  `src/http_fetcher.ts` (tenantId + parentSignal kept; social callers updated),
+  `src/mcp.ts` (sessionState + intelResearch kept; stray sessionActivated
+  dropped from structured call, added to social calls),
+  `src/services/yahoo.ts` (throttle markers + providerErrors/direct-fetch kept),
+  `Dockerfile` removed upstream (frozen-only rule lives in `Containerfile`).
+- Discipline fixes from integration: breaker short-circuits direct fetch;
+  `finish` exempts `throttled` stop from total-failure throw.
+- OpenAPI operation count literal updated 63 to 67 (origin endpoint growth,
+  all 67 satisfy rich-schema assertions; verified no duplicate operations).
+- `tsc --noEmit` carries pre-existing `country_intel` errors identical to
+  pristine `origin/main`; the merge adds zero new type errors.
 
 ## Evidence quality DoD (query-aware scrape RFC)
 

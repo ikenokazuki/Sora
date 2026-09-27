@@ -1,0 +1,84 @@
+[
+  {
+    "caseId": "SA-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:39:46Z",
+    "endedAt": "2026-09-24T06:39:53Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": true,
+        "evidenceIds": [
+          "web:sa-t1"
+        ]
+      },
+      {
+        "id": "transport",
+        "supported": true,
+        "evidenceIds": [
+          "web:sa-t1"
+        ]
+      },
+      {
+        "id": "hazards",
+        "supported": false,
+        "notes": "no NCM/sandstorm alert found"
+      },
+      {
+        "id": "dates",
+        "supported": true,
+        "evidenceIds": [
+          "web:sa-t1"
+        ]
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=1 search. Scorer=runner."
+  },
+  {
+    "caseId": "SA-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:36:18.985Z",
+    "endedAt": "2026-09-24T06:36:27.727Z",
+    "requirements": [
+      {
+        "id": "entry",
+        "supported": false,
+        "notes": "no eVisa"
+      },
+      {
+        "id": "transport",
+        "supported": false,
+        "notes": "no airport link"
+      },
+      {
+        "id": "hazards",
+        "supported": true,
+        "evidenceIds": [
+          "evd:a2a383a2c9480d4dc3f4"
+        ],
+        "notes": "Houthi Riyadh Sep 21"
+      },
+      {
+        "id": "dates",
+        "supported": true
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 8742,
+    "notes": "B live (33 ev). Scorer=runner."
+  }
+]

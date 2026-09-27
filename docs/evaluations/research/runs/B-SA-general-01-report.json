@@ -1,0 +1,3702 @@
+{
+ "contextId": "d57d55a2-bd5f-4e2f-8762-9dd29e551a12",
+ "region": {
+  "id": "country:SA",
+  "name": "Saudi Arabia",
+  "countryCode": "SA",
+  "languages": [],
+  "aliases": [],
+  "confidence": "high"
+ },
+ "asOf": "2026-09-24T07:17:35.745Z",
+ "situation": {
+  "politics": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "economy": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "security": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "disasters": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "health": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "humanitarian": {
+   "summaryFacts": [],
+   "eventIds": [],
+   "metrics": [],
+   "evidenceIds": []
+  },
+  "social": {
+   "summaryFacts": [
+    "1 strike event cluster was observed in the requested period."
+   ],
+   "eventIds": [
+    "evt_c21b7a3d061e255437aa"
+   ],
+   "metrics": [],
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ]
+  }
+ },
+ "elections": [],
+ "calendar": [],
+ "foreignRelations": [],
+ "polls": [],
+ "keyEvents": [
+  {
+   "id": "evt_c21b7a3d061e255437aa",
+   "regionId": "country:SA",
+   "type": "strike",
+   "title": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000",
+   "excerpt": "The UN has condemned continued cross‐border attacks by Houthi forces against Saudi Arabia, including an attempted strike on the capital Riyadh, as fighting inside Yemen drives one of the country’s fastest displacement surges in years.",
+   "indicators": [
+    {
+     "label": "publisher",
+     "value": "UN News - Global perspective Human stories"
+    }
+   ],
+   "occurredAt": "2026-09-21T12:00:00.000Z",
+   "actors": [],
+   "targets": [],
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ],
+   "evidenceCount": 1,
+   "independentSourceCount": 1,
+   "primarySourceCount": 1,
+   "firstSeenAt": "2026-09-24T07:17:35.755Z",
+   "lastSeenAt": "2026-09-24T07:17:35.755Z",
+   "confidence": "medium"
+  }
+ ],
+ "temporalMetrics": [
+  {
+   "key": "worldbank:NY.GDP.MKTP.CD",
+   "current": 1276942933333.33,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:NY.GDP.MKTP.KD.ZG",
+   "current": 4.50246560191663,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:FP.CPI.TOTL.ZG",
+   "current": 2.08420853585036,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:SL.UEM.TOTL.ZS",
+   "current": 3.038,
+   "window": "yearly",
+   "direction": "falling"
+  },
+  {
+   "key": "worldbank:SP.POP.TOTL",
+   "current": 36973555,
+   "window": "yearly",
+   "direction": "rising"
+  },
+  {
+   "key": "worldbank:NE.TRD.GNFS.ZS",
+   "current": 57.9182238579808,
+   "window": "yearly",
+   "direction": "rising"
+  }
+ ],
+ "signals": [
+  {
+   "key": "event_cluster_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ],
+   "providerIds": [
+    "global_feeds"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "protest_event_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ],
+   "providerIds": [
+    "global_feeds"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "official_event_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ],
+   "providerIds": [
+    "global_feeds"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "independent_source_event_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "media_article_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 1,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 1,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_6de3589725cbe7ad141d"
+   ],
+   "providerIds": [
+    "official_web"
+   ],
+   "coverage": "partial"
+  },
+  {
+   "key": "social_observation_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "calendar_event_count",
+   "regionId": "country:SA",
+   "kind": "count",
+   "value": 0,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 0,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [],
+   "providerIds": [],
+   "coverage": "partial"
+  },
+  {
+   "key": "primary_source_ratio",
+   "regionId": "country:SA",
+   "kind": "share",
+   "value": 0.5,
+   "window": "30d",
+   "observedAt": "2026-09-24T07:17:35.745Z",
+   "baseline": {
+    "median": 0.5,
+    "sampleCount": 0,
+    "origin": "ad_hoc"
+   },
+   "activityState": "insufficient",
+   "evidenceIds": [
+    "evd_a2a383a2c9480d4dc3f4"
+   ],
+   "providerIds": [
+    "global_feeds",
+    "official_web"
+   ],
+   "coverage": "partial"
+  }
+ ],
+ "domains": {
+  "content": {
+   "regionId": "country:SA",
+   "attention": [
+    {
+     "key": "event_cluster_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "providerIds": [
+      "global_feeds"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "media_article_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "disaster": [],
+   "socialActivity": [
+    {
+     "key": "protest_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "providerIds": [
+      "global_feeds"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "social_observation_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "calendar": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  },
+  "marketing": {
+   "regionId": "country:SA",
+   "attention": [
+    {
+     "key": "media_article_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ],
+     "providerIds": [
+      "official_web"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "businessActivity": [],
+   "calendar": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "socialActivity": [
+    {
+     "key": "protest_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "providerIds": [
+      "global_feeds"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "social_observation_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "disruption": [],
+   "coverage": "partial"
+  },
+  "travel": {
+   "regionId": "country:SA",
+   "disruptionSignals": [],
+   "disasterSignals": [],
+   "healthSignals": [],
+   "calendarSignals": [
+    {
+     "key": "calendar_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 0,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 0,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [],
+     "providerIds": [],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  },
+  "finance": {
+   "regionId": "country:SA",
+   "economy": [],
+   "trade": [],
+   "businessAction": [],
+   "policyActivity": [
+    {
+     "key": "event_cluster_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "providerIds": [
+      "global_feeds"
+     ],
+     "coverage": "partial"
+    },
+    {
+     "key": "official_event_count",
+     "regionId": "country:SA",
+     "kind": "count",
+     "value": 1,
+     "window": "30d",
+     "observedAt": "2026-09-24T07:17:35.745Z",
+     "baseline": {
+      "median": 1,
+      "sampleCount": 0,
+      "origin": "ad_hoc"
+     },
+     "activityState": "insufficient",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "providerIds": [
+      "global_feeds"
+     ],
+     "coverage": "partial"
+    }
+   ],
+   "coverage": "partial"
+  }
+ },
+ "providerCoverage": [
+  {
+   "provider": "gdelt_export",
+   "startedAt": "2026-09-24T07:17:35.752Z",
+   "finishedAt": "2026-09-24T07:17:37.110Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "current_events"
+   ],
+   "latencyMs": 1358
+  },
+  {
+   "provider": "gdacs",
+   "startedAt": "2026-09-24T07:17:35.754Z",
+   "finishedAt": "2026-09-24T07:17:38.079Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 2325
+  },
+  {
+   "provider": "usgs",
+   "startedAt": "2026-09-24T07:17:35.754Z",
+   "finishedAt": "2026-09-24T07:17:36.293Z",
+   "status": "success",
+   "itemCount": 266,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 539
+  },
+  {
+   "provider": "eonet",
+   "startedAt": "2026-09-24T07:17:35.755Z",
+   "finishedAt": "2026-09-24T07:17:37.334Z",
+   "status": "success",
+   "itemCount": 50,
+   "coverage": [
+    "disasters"
+   ],
+   "latencyMs": 1579
+  },
+  {
+   "provider": "global_feeds",
+   "startedAt": "2026-09-24T07:17:35.755Z",
+   "finishedAt": "2026-09-24T07:17:37.962Z",
+   "status": "success",
+   "itemCount": 92,
+   "coverage": [
+    "media_activity"
+   ],
+   "latencyMs": 2207
+  },
+  {
+   "provider": "google_news",
+   "startedAt": "2026-09-24T07:17:35.755Z",
+   "finishedAt": "2026-09-24T07:17:36.925Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [],
+   "gaps": [
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    },
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    }
+   ],
+   "latencyMs": 1170
+  },
+  {
+   "provider": "bing_news",
+   "startedAt": "2026-09-24T07:17:35.795Z",
+   "finishedAt": "2026-09-24T07:17:39.868Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [],
+   "gaps": [
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    },
+    {
+     "area": "media_activity",
+     "reason": "request no_recent_items"
+    }
+   ],
+   "latencyMs": 4073
+  },
+  {
+   "provider": "wiki_current",
+   "startedAt": "2026-09-24T07:17:35.797Z",
+   "finishedAt": "2026-09-24T07:17:37.561Z",
+   "status": "success",
+   "itemCount": 2,
+   "coverage": [
+    "current_events"
+   ],
+   "latencyMs": 1764
+  },
+  {
+   "provider": "wallstreet_live",
+   "startedAt": "2026-09-24T07:17:35.798Z",
+   "finishedAt": "2026-09-24T07:17:38.074Z",
+   "status": "success",
+   "itemCount": 30,
+   "coverage": [
+    "media_activity"
+   ],
+   "latencyMs": 2276
+  },
+  {
+   "provider": "official_web",
+   "startedAt": "2026-09-24T07:17:35.798Z",
+   "finishedAt": "2026-09-24T07:17:36.755Z",
+   "status": "success",
+   "itemCount": 9,
+   "coverage": [
+    "official"
+   ],
+   "latencyMs": 957
+  },
+  {
+   "provider": "bluesky",
+   "startedAt": "2026-09-24T07:17:35.799Z",
+   "finishedAt": "2026-09-24T07:17:35.804Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "social_observations"
+   ],
+   "latencyMs": 5
+  },
+  {
+   "provider": "worldbank",
+   "startedAt": "2026-09-24T07:17:35.799Z",
+   "finishedAt": "2026-09-24T07:17:36.355Z",
+   "status": "success",
+   "itemCount": 6,
+   "coverage": [
+    "economy"
+   ],
+   "latencyMs": 556
+  },
+  {
+   "provider": "nager",
+   "startedAt": "2026-09-24T07:17:35.802Z",
+   "finishedAt": "2026-09-24T07:17:36.140Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "calendar",
+    "holidays"
+   ],
+   "latencyMs": 338,
+   "errorCode": "PROVIDER_HTTP_5XX"
+  },
+  {
+   "provider": "wikidata",
+   "startedAt": "2026-09-24T07:17:35.803Z",
+   "finishedAt": "2026-09-24T07:17:36.682Z",
+   "status": "success",
+   "itemCount": 0,
+   "coverage": [
+    "source_discovery"
+   ],
+   "latencyMs": 879
+  },
+  {
+   "provider": "baidu_hot",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "so360_search",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "weibo_hot",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "zhihu_hot",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "toutiao_hot",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "cctv_news",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "thepaper_hot",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "media_activity",
+    "current_events"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  },
+  {
+   "provider": "yahoo_realtime",
+   "startedAt": "2026-09-24T07:17:35.745Z",
+   "finishedAt": "2026-09-24T07:17:35.745Z",
+   "status": "unavailable",
+   "itemCount": 0,
+   "coverage": [
+    "social_observations"
+   ],
+   "latencyMs": 0,
+   "errorCode": "PROVIDER_REGION_UNSUPPORTED"
+  }
+ ],
+ "coverage": {
+  "overall": "partial",
+  "byArea": {
+   "politics": "limited",
+   "economy": "good",
+   "security": "limited",
+   "disaster": "good",
+   "health": "limited",
+   "polls": "limited",
+   "media": "partial",
+   "social": "limited",
+   "calendar": "limited",
+   "foreignRelations": "limited"
+  },
+  "missingEvidence": [
+   "politics",
+   "security",
+   "health",
+   "polls",
+   "social",
+   "calendar",
+   "foreignRelations"
+  ],
+  "unavailableProviders": [
+   "nager",
+   "baidu_hot",
+   "so360_search",
+   "weibo_hot",
+   "zhihu_hot",
+   "toutiao_hot",
+   "cctv_news",
+   "thepaper_hot",
+   "yahoo_realtime"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "evd_8c1d4031051c85610f8e",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c6vgy0333dppo?at_campaign=rss&at_medium=RSS",
+   "title": "Rogue OpenAI agent 'infiltrated' Australian government website in world first",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Thu, 24 Sep 2026 07:10:58 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Australia criticised OpenAI for taking \"too long\" to tell them about the breach which happened in June.",
+   "contentHash": "8141011325e9ec96ec4c4d8d0bbb52db812f0ebb800e1aef7f41f38ffa284e58",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy0333dppo#0",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_c6e927e4f250c1b249cf",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_campaign=rss&at_medium=RSS",
+   "title": "AI superpower ambitions take centre stage as Trump and Xi meet",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The US and China are vying for AI supremacy while seeking to keep it under human control.",
+   "contentHash": "e981223cfef285d4cb74bfdf9c633bdc3dcf6d917a9d7c6b7c1e659942772b6c",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo#0",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_563d872762ba3a889b35",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_campaign=rss&at_medium=RSS",
+   "title": "Iran's president tells Trump it will never 'bend the knee'",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Masoud Pezeshkian's defiant speech to the UN comes after the US president threatened to \"annihilate\" Iran if a peace deal is not agreed soon.",
+   "contentHash": "8ac765409ea45db98f0670f201cf3ef07c0eb5afa17498163f1cf6e67626336e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo#0",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_bf18cd2ea1411ed75e88",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_campaign=rss&at_medium=RSS",
+   "title": "Trump's Board of Peace unveils $2.45bn plan to begin Gaza's reconstruction",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The figure was announced during a meeting of the group's board at the sidelines of the UN General Assembly in New York.",
+   "contentHash": "2e483f13a67b2a7003bccb90ec16893a1db142e02d7d15fb5af6e47f4794c55f",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o#0",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_e3b0af75abe4d8b0b183",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_campaign=rss&at_medium=RSS",
+   "title": "Dramatic eviction of woman aged 87 highlights Spain's housing shortage",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The tenant of the flat in Madrid, Maricarmen, was unable to pay the rent set by the firm which recently bought it.",
+   "contentHash": "0b0b8d3583be92d9099ec74e89805f8be4737db833f03b4555fe558d5e7bb0d8",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o#0",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_8edf52d8e98d04245ba3",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_campaign=rss&at_medium=RSS",
+   "title": "UK survivor of Canadian poison seller says he exploited her despair",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Elisabeth Belien tells Kenneth Law's sentencing hearing she took the poison when she was just 23 years old.",
+   "contentHash": "b7db63f9f09c033cb0c646d8ab4b45df69ee8d9ec30eb83c6e3c647e92b78862",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o#1",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_d0afe3ab97b9179637e6",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_campaign=rss&at_medium=RSS",
+   "title": "Dolly Parton's manager accuses her nephew of 'threats and intimidation'",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Bryan Seaver, who announced Parton's death to the world, is accused of trying to extort her estate.",
+   "contentHash": "634ee9a21a61d218196b06e39c9e7ed68a07834e4a2253ecbdf5cd285ab4b9ff",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o#1",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_bbc4e4250e35f1231a79",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_campaign=rss&at_medium=RSS",
+   "title": "Harvey Weinstein sentenced to 15 years in prison for sexual assault",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Assault survivor Miriam Haley said the \"devastating effect on my life and sense of security that may never go away\".",
+   "contentHash": "2c3133706b84a1b41640df44cd0e342e345cdd09c3d383087a9d9c980c7933b0",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cm98626n260yo#1",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_49405cee2a21052d1123",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_campaign=rss&at_medium=RSS",
+   "title": "Poland accuses Russian military helicopter of violating its airspace",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Poland says the aircraft stayed in its skies for 42 seconds, forcing the Nato member to scramble its fighter jets.",
+   "contentHash": "7682dbc87ca30a337d8e46d2ad13ef37b284d4b48eada057a7176a69a2eec3cc",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo#1",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_77e23c048279425c01f0",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_campaign=rss&at_medium=RSS",
+   "title": "Eleven killed in mass shooting at house in South Africa",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "One of those killed is believed to be a pregnant woman, police said.",
+   "contentHash": "021d45d1631cdbb4119e2571121a5911a7f4308106551a03f28bfb008d00169a",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo#1",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_6744fd0a2cad791b1e50",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_campaign=rss&at_medium=RSS",
+   "title": "Eating garden weeds to survive in Russian-occupied city cut off from food and water",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The BBC has spoken to residents in the Russian-occupied Ukrainian town of Oleshky who say they are being \"constantly shelled\".",
+   "contentHash": "6f079aeda64234cc3dde618ba86b9600791ec96e81f18e421b69252102a3ceda",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo#2",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_8ad61349e74101ddb7eb",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_campaign=rss&at_medium=RSS",
+   "title": "'Make women feel seen': Why the Dutch have a new word for labia",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Campaigners hope the new words will lead to less body shaming and more sex positivity.",
+   "contentHash": "d1b9ea794692fa51622f4c72319f2d54b8fc18c98a79ced4bbc7bdd2b29fa88e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cn4klprmr0go#2",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_5b3467aa1170329b59a5",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_campaign=rss&at_medium=RSS",
+   "title": "Indians are discovering the thrill of shopping without paying",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Dopamine sites mimic shopping’s thrill without the spending, turning the ritual of consumption into a digital game.",
+   "contentHash": "d7ace4c2c06fa45cd5242f0f3751143f2f44546cecdd827b4b8dbbf91738bb79",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo#2",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_4076b35ff05bea5f31c7",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_campaign=rss&at_medium=RSS",
+   "title": "A red carpet and military flyover - How Trump welcomed Xi",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The two B-1 bombers that flew overhead are a key part of the US's combat arsenal, and produce a notoriously loud roar when they pass by.",
+   "contentHash": "77769d3510c0784b978246563938c4491784cf5eaff15fddaa024067d605c8f4",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c6804ne8knklo#3",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_296ab1add5fc0d7c46db",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_campaign=rss&at_medium=RSS",
+   "title": "Watch: The arms race in space and how the UK is defending itself",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The UK has jammed satellites to defend itself from hostile threats, the BBC has been told.",
+   "contentHash": "78d8dcdfca8764d3995f1b8752d3bcd9752c0d458e4d3beb0cd8fbbbd7b0323e",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo#3",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_31b958a925724016881e",
+   "regionId": "country:SA",
+   "url": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_campaign=rss&at_medium=RSS",
+   "title": "Watch: How toxic smog from wildfires is making Indonesians sick",
+   "publisher": "BBC News",
+   "sourceType": "international_media",
+   "language": "en-gb",
+   "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Around 175,000 people in Indonesia have suffered from respiratory illness since August.",
+   "contentHash": "ea641dc18ed3fa79cb1ca7a15da9dd2d5c670bb7766c35ca86bf04490c1e35a3",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.bbc.co.uk/news/videos/c962j1jgx884o#3",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_36568e0f6119075585f3",
+   "regionId": "country:SA",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+   "title": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday.",
+   "contentHash": "532cf9a15c5ce3b9bad4605b1160746358e4ac380487254155e3daeca2b14d5f",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168420",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_60f087d4b0f25cf0dfd5",
+   "regionId": "country:SA",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168419",
+   "title": "Equality ‘ends at the doors of the Security Council’, Kenya’s Ruto tells General Assembly",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”.",
+   "contentHash": "0fefbadcd5b9a00a5ca07803b91d7d5738646f1dc493b06e427501105b603d92",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168419",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_a2a383a2c9480d4dc3f4",
+   "regionId": "country:SA",
+   "url": "https://news.un.org/feed/view/en/story/2026/09/1168387",
+   "title": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000",
+   "publisher": "UN News - Global perspective Human stories",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Mon, 21 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "The UN has condemned continued cross‑border attacks by Houthi forces against Saudi Arabia, including an attempted strike on the capital Riyadh, as fighting inside Yemen drives one of the country’s fastest displacement surges in years.",
+   "contentHash": "23769ac81ea17389fb49766f03a851a9afa39e34285a91de611b67af1cd1403e",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://news.un.org/en/story/2026/09/1168387",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_fb3ddd29a8e3a50d4c2e",
+   "regionId": "country:SA",
+   "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "title": "Philip R. Lane: The Outlook for the Euro Area Economy",
+   "publisher": "European Central Bank",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_31c513040a7d04e4fc7a",
+   "regionId": "country:SA",
+   "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "title": "The digitalisation of money, payments and finance",
+   "publisher": "European Central Bank",
+   "sourceType": "official",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "primarySource": true,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_d3b3cde82bd682a7f132",
+   "regionId": "country:SA",
+   "url": "https://www.aljazeera.com/video/newsfeed/2026/9/23/chinas-xi-arrives-to-trump-welcome-on-state-visit?traffic_source=rss",
+   "title": "China’s Xi arrives to Trump welcome on state visit",
+   "publisher": "Al Jazeera",
+   "sourceType": "international_media",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 23:19:29 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "China's President Xi Jinping has touched down at Joint Base Andrews as he begins a much anticipated official state visit",
+   "contentHash": "4719034ed8ba90e19975cf435a928cb8da8fbb64a98f1b53e0d6988cc7cc70e8",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.aljazeera.com/?t=1790198259",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_e20402a67d3982728740",
+   "regionId": "country:SA",
+   "url": "https://www.aljazeera.com/news/2026/9/23/trump-meets-chinas-xi-jinping-at-us-airport-on-arrival-for-three-day-trip?traffic_source=rss",
+   "title": "Trump welcomes Xi to Washington as US, China agree to extend trade truce",
+   "publisher": "Al Jazeera",
+   "sourceType": "international_media",
+   "language": "en",
+   "publishedAt": "Wed, 23 Sep 2026 22:56:41 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "excerpt": "Trump takes rare step of meeting foreign leader at the airport, underscoring significance of US-China relationship.",
+   "contentHash": "754d569aa6c0d6856c5f7df3461ceafc66988d5804ed36cc0db03b0600414692",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "global_feeds",
+    "providerItemId": "https://www.aljazeera.com/?t=1790200283",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_6e7604c6adf84ac0d9e3",
+   "regionId": "country:SA",
+   "url": "https://wallstreetcn.com/livenews/3170157",
+   "title": "商务部：在中美经贸磋商机制下 双方就人工智能进行了首次对话",
+   "publisher": "WallStreetCN Live",
+   "sourceType": "major_local_media",
+   "language": "zh",
+   "publishedAt": "2026-09-24T07:16:14.000Z",
+   "retrievedAt": "2026-09-24T07:17:38.072Z",
+   "excerpt": "9月24日，商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展，他指出，中美双方就人工智能进行了首次对话。何亚东指出，近日中美两国经贸团队在美国举行了第八轮经贸磋商，双方以两国元首重要共识为引领，秉持相互尊重、和平共处、合作共赢原则，围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流，达成了多项共识。在中美经贸磋商机制下，双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。（证券时报）",
+   "contentHash": "2e8c8604bde3ccc11164f9266ddf75f901f3bb37ee1530f9f927caf3e57f30ea",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "wallstreet_live",
+    "providerItemId": "wscn:3170157",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true,
+    "collectionScope": "~1d"
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  },
+  {
+   "id": "evd_6de3589725cbe7ad141d",
+   "regionId": "country:SA",
+   "url": "https://studyinsaudi.sa/en/Institutions/Details/42a01907-9232-4d4d-ab7c-7126dab57fde",
+   "title": "King Saud University - Study in Saudi Arabia",
+   "publisher": "studyinsaudi.sa",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:17:36.754Z",
+   "excerpt": "King Saud University. Riyadh Both Arabic | English International. Paid Study. The student bears all tuition and living costs. 74,520 / annually. 4 years.",
+   "contentHash": "f7e74f22d636e51d6334919f59f4dbc184293f2e7b5c4b2908602fa2fc06e505",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://studyinsaudi.sa/en/Institutions/Details/42a01907-9232-4d4d-ab7c-7126dab57fde",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "related",
+   "regionLinkReasons": [
+    "text-mentioned"
+   ]
+  },
+  {
+   "id": "evd_15eb65f830d745d73b89",
+   "regionId": "country:SA",
+   "url": "https://studyqa.com/uni/king-saud-university/programs/master",
+   "title": "10 Master programs in English in King Saud University, study ...",
+   "publisher": "studyqa.com",
+   "sourceType": "international_media",
+   "retrievedAt": "2026-09-24T07:17:36.754Z",
+   "excerpt": "Choose any of 10 Master programs in English in King Saud University, study mode \"On campus\" and study type \"Full-time\" on the biggest study abroad search ...",
+   "contentHash": "58aaaa3b9e98c8036cdf67151399c5731ef6af097d299a0a18b70d16b92ef682",
+   "primarySource": false,
+   "latencyClass": "near_realtime",
+   "acquisition": {
+    "providerId": "official_web",
+    "providerItemId": "https://studyqa.com/uni/king-saud-university/programs/master",
+    "query": "Saudi Arabia King Saud University English master international admission",
+    "queryTargetedRegion": true
+   },
+   "regionLink": "candidate",
+   "regionLinkReasons": [
+    "region-query-unverified"
+   ]
+  }
+ ],
+ "evidenceDetails": [
+  {
+   "evidenceId": "evd_8c1d4031051c85610f8e",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy0333dppo#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c6vgy0333dppo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "extracted_text",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "---\npublishedTime: \"2026-09-23T22:23:28.009Z\"\nauthor: \"https://www.facebook.com/bbcnews\"\nsiteName: \"BBC News\"\n---"
+    },
+    {
+     "index": 1,
+     "text": "**A rogue OpenAI agent hacked an Australian government website in June and accessed private data in what experts say is the first known case of its kind in the world.**"
+    },
+    {
+     "index": 2,
+     "text": "The agent \"infiltrated\" a statistics portal containing \"non-sensitive\" data from Australia's universal healthcare scheme Medicare, Prime Minister Anthony Albanese said in New York on Wednesday, local time."
+    },
+    {
+     "index": 3,
+     "text": "He had a \"very frank discussion\" with OpenAI CEO Sam Altman for taking \"too long\" to disclose the breach and said there would be \"legal consequences\"."
+    },
+    {
+     "index": 4,
+     "text": "OpenAI said it only learnt of the breach in August while reviewing \"misaligned model activity\" and emailed a general inbox of an Australian government agency on 10 September."
+    },
+    {
+     "index": 5,
+     "text": "Five days later, that government agency, Services Australia, escalated the email to Australia's cybersecurity centre before a government minister was notified and the prime minister alerted."
+    },
+    {
+     "index": 6,
+     "text": "Albanese said he spoke to Altman and raised \"Australia's extreme concern about this incident\" as well as his \"disappointment\" that the company had taken months to reveal the breach and \"the nature of the way\" it did so."
+    },
+    {
+     "index": 7,
+     "text": "The Australian leader said Altman had acknowledged there were \"issues with protocols\" at OpenAI."
+    },
+    {
+     "index": 8,
+     "text": "A \"forensic investigation\" led by the country's cybersecurity agency would aim to find out if other government systems were affected, Albanese said."
+    },
+    {
+     "index": 9,
+     "text": "The probe would also assess if the matter needed to be dealt with by police, he said, noting there \"will obviously be legal consequences\"."
+    },
+    {
+     "index": 10,
+     "text": "Detailing the breach, Albanese said it had involved \"public and non-public files\" on the Medicare Statistics Reporting Service portal, home to \"non-sensitive\" data and statistics."
+    },
+    {
+     "index": 11,
+     "text": "Three other government systems \"may\" also have been affected: the Australian Institute of Health and Welfare and two state-based agencies - the New South Wales Bureau of Crime Statistics and Research and the Victorian Department of Health."
+    },
+    {
+     "index": 12,
+     "text": "\"No personal information is believed to have been accessed at this stage, but investigations are ongoing,\" Albanese said."
+    },
+    {
+     "index": 13,
+     "text": "\"Nonetheless this situation is obviously unacceptable,\" he said."
+    },
+    {
+     "index": 14,
+     "text": "OpenAI, in a statement, said it had \"identified activity involving several Australian government websites and services as our models attempted to look up answers, and available statistics for questions about Australia during an internal evaluation\"."
+    },
+    {
+     "index": 15,
+     "text": "\"In the course of that, our models took actions we did not intend,\" the statement said."
+    },
+    {
+     "index": 16,
+     "text": "Albanese declined to answer whether he raised the matter with US President Donald Trump during their face-to-face meeting on Tuesday night in New York, where world leaders have gathered for the UN General Assembly."
+    },
+    {
+     "index": 17,
+     "text": "Australia was one of 22 countries that earlier this week signed a joint statement calling for global oversight and guardrails for the development of AI."
+    },
+    {
+     "index": 18,
+     "text": "Cybersecurity experts told the BBC the incident is a wake up call for regulators, given that AI agents are becoming more widely available for individual and commercial use."
+    },
+    {
+     "index": 19,
+     "text": "Dr Hammond Pearce, senior lecturer at the University of NSW Institute for Cyber Security, told the BBC that though this is the first known incident where AI agents have chosen to breach a government body of their own volition, there'll be more to come."
+    },
+    {
+     "index": 20,
+     "text": "\"I expect that these kinds of attacks will keep occurring,\" he said, adding that they would likely \"grow in severity and in frequency\"."
+    },
+    {
+     "index": 21,
+     "text": "\"I do hope that this incident does start ringing alarm bells in governments around the world.\""
+    },
+    {
+     "index": 22,
+     "text": "Earlier this year, [OpenAI revealed a group of AI agents it had been testing had escaped from their controls and secretly worked together to hack another tech firm](/news/articles/c2el319vzr3o) named Hugging Face."
+    },
+    {
+     "index": 23,
+     "text": "And a string of other rogue AI incidents have also been made public this year, including a case where a digital assistant - without instruction - [booted someone off a pilates class waiting list in a bid to get an Australian man"
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Thu, 24 Sep 2026 07:10:58 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": true
+  },
+  {
+   "evidenceId": "evd_a2a383a2c9480d4dc3f4",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168387",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168387",
+   "contentKind": "extracted_text",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---"
+    },
+    {
+     "index": 1,
+     "text": "## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000"
+    },
+    {
+     "index": 2,
+     "text": "“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom."
+    },
+    {
+     "index": 3,
+     "text": "Mr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure."
+    },
+    {
+     "index": 4,
+     "text": "The UN’s Special Envoy for Yemen, Hans Grundberg, is in Muscat this week for talks with senior Omani officials and Houthi representatives."
+    },
+    {
+     "index": 5,
+     "text": "## **Displacement accelerating**"
+    },
+    {
+     "index": 6,
+     "text": "The escalation follows a new wave of clashes between Saudi‑backed Yemeni Government forces and Iran‑backed Houthi militia."
+    },
+    {
+     "index": 7,
+     "text": "Since early September, Houthi forces have pushed along Yemen’s Red Sea coastline and seized territory near the Bab al‑Mandab Strait, a key chokepoint for oil and global shipping."
+    },
+    {
+     "index": 8,
+     "text": "Saudi Arabia has responded with hundreds of air strikes, and the Houthis have retaliated with drone and missile attacks in southwestern Saudi Arabia."
+    },
+    {
+     "index": 9,
+     "text": "Nearly 130,000 people have now been forced from their homes across Yemen in the past few weeks, according to the International Organization for Migration ([IOM](https://www.iom.int/))."
+    },
+    {
+     "index": 10,
+     "text": "## **Thousands fleeing each day**"
+    },
+    {
+     "index": 11,
+     "text": "The numbers are climbing fast: on **18 September, IOM recorded 118,086 displaced people; three days later the figure had risen by 11,352**."
+    },
+    {
+     "index": 12,
+     "text": "[OCHA](https://www.unocha.org/) told journalists that over the weekend alone, 21,000 households had been displaced across the country since 1 August, most of them in Ta’iz and Lahj, with the figure expected to rise as registration continues."
+    },
+    {
+     "index": 13,
+     "text": "Ta’iz hosts the most displaced people, with 73,494, followed by Lahj with 33,828, Aden with 8,946 and Al Hodeidah with 8,244, IOM figures show."
+    },
+    {
+     "index": 14,
+     "text": "**More than 3,100 people have crossed the Red Sea to Djibouti** since the escalation began."
+    },
+    {
+     "index": 15,
+     "text": "These latest movements add to a decade of conflict, economic collapse and environmental disaster that had already displaced 4.8 million Yemenis, according to the UN refugee agency, [UNHCR](http://www.unhcr.org/)."
+    },
+    {
+     "index": 16,
+     "text": "## **Health system under strain**"
+    },
+    {
+     "index": 17,
+     "text": "Health workers are paying a heavy price. On Friday, **ambulances were attacked** in Lahj governorate, killing a driver and an emergency medical responder."
+    },
+    {
+     "index": 18,
+     "text": "**Nine health facilities have been damaged**, closed or directly attacked in Ta’iz, Lahj and Al Hodeidah, and hospitals treating the wounded are running short of blood, anaesthesia and surgical supplies, OCHA said."
+    },
+    {
+     "index": 19,
+     "text": "The UN reproductive health agency ([UNFPA](https://www.unfpa.org/)) estimates that **more than 2,700 pregnant women are among the displaced, with 300 due to give birth within two weeks**."
+    },
+    {
+     "index": 20,
+     "text": "Key obstetric facilities have closed in Ta’iz, forcing some women to give birth in the open without skilled care."
+    },
+    {
+     "index": 21,
+     "text": "## **Response hampered**"
+    },
+    {
+     "index": 22,
+     "text": "Insecurity, damaged roads, telecommunications disruptions and damage to Al Makha port are hampering the humanitarian response, UNHCR said."
+    },
+    {
+     "index": 23,
+     "text": "Humanitarian partners have reached nearly 13,000 displaced households with rapid response kits, and the World Health Organization has delivered surgical supplies and antibiotics to four hospitals in Aden and Marib."
+    },
+    {
+     "index": 24,
+     "text": "“**These are families who have lost their homes and their income**,” said IOM official Belbeisi. “They are arriving in towns that were already struggling. Host communities are sharing the little they have, but they cannot do it alone.”"
+    },
+    {
+     "index": 25,
+     "text": "OCHA said the response continues to face funding shortfalls and access constraints, and repeated the UN’s call on parties to"
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Mon, 21 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": true
+  },
+  {
+   "evidenceId": "evd_6de3589725cbe7ad141d",
+   "providerId": "official_web",
+   "providerItemId": "https://studyinsaudi.sa/en/Institutions/Details/42a01907-9232-4d4d-ab7c-7126dab57fde",
+   "sourceRecordUrl": "https://studyinsaudi.sa/en/Institutions/Details/42a01907-9232-4d4d-ab7c-7126dab57fde",
+   "contentKind": "extracted_text",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "###### Links to official Saudi websites end with sa"
+    },
+    {
+     "index": 1,
+     "text": "All links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa."
+    },
+    {
+     "index": 2,
+     "text": "###### Government websites use the HTTPS protocol for encryption and security."
+    },
+    {
+     "index": 3,
+     "text": "Secure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption."
+    },
+    {
+     "index": 4,
+     "text": "Registered with the Digital Government Authority under number :"
+    },
+    {
+     "index": 5,
+     "text": "[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)"
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:17:36.754Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_c6e927e4f250c1b249cf",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 1,
+     "text": "The US and China are vying for AI supremacy while seeking to keep it under human control."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_563d872762ba3a889b35",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 2,
+     "text": "Masoud Pezeshkian's defiant speech to the UN comes after the US president threatened to \"annihilate\" Iran if a peace deal is not agreed soon."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_bf18cd2ea1411ed75e88",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 4,
+     "text": "The figure was announced during a meeting of the group's board at the sidelines of the UN General Assembly in New York."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_e3b0af75abe4d8b0b183",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o#0",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 5,
+     "text": "The tenant of the flat in Madrid, Maricarmen, was unable to pay the rent set by the firm which recently bought it."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_8edf52d8e98d04245ba3",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 6,
+     "text": "Elisabeth Belien tells Kenneth Law's sentencing hearing she took the poison when she was just 23 years old."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_d0afe3ab97b9179637e6",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 7,
+     "text": "Bryan Seaver, who announced Parton's death to the world, is accused of trying to extort her estate."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_bbc4e4250e35f1231a79",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cm98626n260yo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 8,
+     "text": "Assault survivor Miriam Haley said the \"devastating effect on my life and sense of security that may never go away\"."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_49405cee2a21052d1123",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 9,
+     "text": "Poland says the aircraft stayed in its skies for 42 seconds, forcing the Nato member to scramble its fighter jets."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_77e23c048279425c01f0",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo#1",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 11,
+     "text": "One of those killed is believed to be a pregnant woman, police said."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_6744fd0a2cad791b1e50",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 14,
+     "text": "The BBC has spoken to residents in the Russian-occupied Ukrainian town of Oleshky who say they are being \"constantly shelled\"."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_8ad61349e74101ddb7eb",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cn4klprmr0go#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 15,
+     "text": "Campaigners hope the new words will lead to less body shaming and more sex positivity."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_5b3467aa1170329b59a5",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo#2",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 16,
+     "text": "Dopamine sites mimic shopping’s thrill without the spending, turning the ritual of consumption into a digital game."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_4076b35ff05bea5f31c7",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c6804ne8knklo#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 18,
+     "text": "The two B-1 bombers that flew overhead are a key part of the US's combat arsenal, and produce a notoriously loud roar when they pass by."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_296ab1add5fc0d7c46db",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 19,
+     "text": "The UK has jammed satellites to defend itself from hostile threats, the BBC has been told."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_31b958a925724016881e",
+   "providerId": "bbc-world",
+   "providerItemId": "https://www.bbc.co.uk/news/videos/c962j1jgx884o#3",
+   "sourceRecordUrl": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_medium=RSS&at_campaign=rss",
+   "contentKind": "excerpt",
+   "language": "en-gb",
+   "blocks": [
+    {
+     "index": 20,
+     "text": "Around 175,000 people in Indonesia have suffered from respiratory illness since August."
+    }
+   ],
+   "structuredData": {
+    "publisher": "BBC News"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_36568e0f6119075585f3",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168420",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_60f087d4b0f25cf0dfd5",
+   "providerId": "un-news",
+   "providerItemId": "https://news.un.org/en/story/2026/09/1168419",
+   "sourceRecordUrl": "https://news.un.org/feed/view/en/story/2026/09/1168419",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 1,
+     "text": "Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”."
+    }
+   ],
+   "structuredData": {
+    "publisher": "UN News - Global perspective Human stories",
+    "publisherUrl": "https://news.un.org/feed/subscribe/en/news/all/rss.xml"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_fb3ddd29a8e3a50d4c2e",
+   "providerId": "ecb-press",
+   "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "sourceRecordUrl": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+   "contentKind": "title_only",
+   "language": "en",
+   "blocks": [],
+   "structuredData": {
+    "publisher": "European Central Bank"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_31c513040a7d04e4fc7a",
+   "providerId": "ecb-press",
+   "providerItemId": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "sourceRecordUrl": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+   "contentKind": "title_only",
+   "language": "en",
+   "blocks": [],
+   "structuredData": {
+    "publisher": "European Central Bank"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_d3b3cde82bd682a7f132",
+   "providerId": "aljazeera-all",
+   "providerItemId": "https://www.aljazeera.com/?t=1790198259",
+   "sourceRecordUrl": "https://www.aljazeera.com/video/newsfeed/2026/9/23/chinas-xi-arrives-to-trump-welcome-on-state-visit?traffic_source=rss",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 23,
+     "text": "China's President Xi Jinping has touched down at Joint Base Andrews as he begins a much anticipated official state visit"
+    }
+   ],
+   "structuredData": {
+    "publisher": "Al Jazeera"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 23:19:29 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_e20402a67d3982728740",
+   "providerId": "aljazeera-all",
+   "providerItemId": "https://www.aljazeera.com/?t=1790200283",
+   "sourceRecordUrl": "https://www.aljazeera.com/news/2026/9/23/trump-meets-chinas-xi-jinping-at-us-airport-on-arrival-for-three-day-trip?traffic_source=rss",
+   "contentKind": "excerpt",
+   "language": "en",
+   "blocks": [
+    {
+     "index": 24,
+     "text": "Trump takes rare step of meeting foreign leader at the airport, underscoring significance of US-China relationship."
+    }
+   ],
+   "structuredData": {
+    "publisher": "Al Jazeera"
+   },
+   "publishedAt": "Wed, 23 Sep 2026 22:56:41 +0000",
+   "retrievedAt": "2026-09-24T07:17:35.755Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_6e7604c6adf84ac0d9e3",
+   "providerId": "wallstreet_live",
+   "providerItemId": "wscn:3170157",
+   "sourceRecordUrl": "https://wallstreetcn.com/livenews/3170157",
+   "contentKind": "excerpt",
+   "language": "zh",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "9月24日，商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展，他指出，中美双方就人工智能进行了首次对话。何亚东指出，近日中美两国经贸团队在美国举行了第八轮经贸磋商，双方以两国元首重要共识为引领，秉持相互尊重、和平共处、合作共赢原则，围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流，达成了多项共识。在中美经贸磋商机制下，双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。（证券时报）"
+    }
+   ],
+   "structuredData": {
+    "liveId": "3170157"
+   },
+   "publishedAt": "2026-09-24T07:16:14.000Z",
+   "retrievedAt": "2026-09-24T07:17:38.072Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  },
+  {
+   "evidenceId": "evd_15eb65f830d745d73b89",
+   "providerId": "official_web",
+   "providerItemId": "https://studyqa.com/uni/king-saud-university/programs/master",
+   "sourceRecordUrl": "https://studyqa.com/uni/king-saud-university/programs/master",
+   "contentKind": "excerpt",
+   "blocks": [
+    {
+     "index": 0,
+     "text": "Choose any of 10 Master programs in English in King Saud University, study mode \"On campus\" and study type \"Full-time\" on the biggest study abroad search ..."
+    }
+   ],
+   "retrievedAt": "2026-09-24T07:17:36.754Z",
+   "timeBasis": "provider_publication",
+   "geographyBasis": "unknown",
+   "sourceStatus": "unverified",
+   "contentTruncated": false
+  }
+ ],
+ "enrichment": {
+  "attempted": 12,
+  "upgraded": 3,
+  "failed": 9,
+  "skippedBudget": 0,
+  "unavailable": false,
+  "truncatedDetails": 0,
+  "omittedDetails": 428
+ },
+ "schemaVersion": "3",
+ "domainContext": {
+  "general": {
+   "domain": "general",
+   "factors": [
+    {
+     "id": "fact-367-evd_a2a383a2c9480d4dc3f4",
+     "topic": "humanitarian",
+     "text": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000 — ---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000\n“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom.\nMr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure.\nThe ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "candidateFactors": [
+    {
+     "id": "fact-316-evd_8c1d4031051c85610f8e",
+     "topic": "media_activity",
+     "text": "Rogue OpenAI agent 'infiltrated' Australian government website in world first — ---\npublishedTime: \"2026-09-23T22:23:28.009Z\"\nauthor: \"https://www.facebook.com/bbcnews\"\nsiteName: \"BBC News\"\n---\n**A rogue OpenAI agent hacked an Australian government website in June and accessed private data in what experts say is the first known case of its kind in the world.**\nThe agent \"infiltrated\" a statistics portal containing \"non-sensitive\" data from Australia's universal healthcare scheme Medicare, Prime Minister Anthony Albanese said in New York on Wednesday, local time.\nHe had a \"very frank discussion\" with OpenAI CEO Sam Altman for taking \"too long\" to disclose the breach and said there would be \"legal consequences\".\nOpenAI said it only learnt of the breach in August while reviewing \"misaligned model activity\" and emailed a general inbox of an Australian government agency on 10 September.\nFive days later, that government agency, Services Australia, escalated the email to Australia's cybersecu",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_8c1d4031051c85610f8e"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-338-evd_36568e0f6119075585f3",
+     "topic": "humanitarian",
+     "text": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN — Venezuela is seeking to rebuild after a period of political upheaval and the destruction caused by twin earthquakes earlier this year, Acting President Delcy Rodríguez told world leaders at the United Nations on Wednesday.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_36568e0f6119075585f3"
+     ]
+    },
+    {
+     "id": "fact-368-evd_fb3ddd29a8e3a50d4c2e",
+     "topic": "economy",
+     "text": "Philip R. Lane: The Outlook for the Euro Area Economy",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_fb3ddd29a8e3a50d4c2e"
+     ]
+    },
+    {
+     "id": "fact-441-evd_15eb65f830d745d73b89",
+     "topic": "official",
+     "text": "10 Master programs in English in King Saud University, study ... — Choose any of 10 Master programs in English in King Saud University, study mode \"On campus\" and study type \"Full-time\" on the biggest study abroad search ...",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_15eb65f830d745d73b89"
+     ]
+    },
+    {
+     "id": "fact-410-evd_6e7604c6adf84ac0d9e3",
+     "topic": "media_activity",
+     "text": "商务部:在中美经贸磋商机制下 双方就人工智能进行了首次对话 — 9月24日,商务部新闻发言人何亚东在例行新闻发布会上介绍了中美经贸磋商最新进展,他指出,中美双方就人工智能进行了首次对话。何亚东指出,近日中美两国经贸团队在美国举行了第八轮经贸磋商,双方以两国元首重要共识为引领,秉持相互尊重、和平共处、合作共赢原则,围绕双方共同关注的经贸问题进行了坦诚深入富有建设性的交流,达成了多项共识。在中美经贸磋商机制下,双方就人工智能进行了首次对话。下一步中方将与美方在中美经贸磋商机制下后续的工作保持密切的沟通。(证券时报)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6e7604c6adf84ac0d9e3"
+     ]
+    },
+    {
+     "id": "fact-339-evd_60f087d4b0f25cf0dfd5",
+     "topic": "humanitarian",
+     "text": "Equality ‘ends at the doors of the Security Council’, Kenya’s Ruto tells General Assembly — Kenyan President William Ruto told the General Assembly on Wednesday that the sovereign equality the UN proclaims is contradicted by its own structures, urging Member States to reform the Security Council and an international financial system “built for another age”.",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_60f087d4b0f25cf0dfd5"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "content": {
+   "domain": "content",
+   "factors": [
+    {
+     "id": "fact-367-evd_a2a383a2c9480d4dc3f4",
+     "topic": "humanitarian",
+     "text": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000 — ---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000\n“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom.\nMr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure.\nThe ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "marketing": {
+   "domain": "marketing",
+   "factors": [
+    {
+     "id": "fact-367-evd_a2a383a2c9480d4dc3f4",
+     "topic": "humanitarian",
+     "text": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000 — ---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000\n“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom.\nMr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure.\nThe ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "finance": {
+   "domain": "finance",
+   "factors": [
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "tourism": {
+   "domain": "tourism",
+   "factors": [
+    {
+     "id": "fact-367-evd_a2a383a2c9480d4dc3f4",
+     "topic": "humanitarian",
+     "text": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000 — ---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000\n“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom.\nMr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure.\nThe ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  },
+  "travel": {
+   "domain": "travel",
+   "factors": [
+    {
+     "id": "fact-367-evd_a2a383a2c9480d4dc3f4",
+     "topic": "humanitarian",
+     "text": "UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000 — ---\npublishedTime: \"2026-09-21T15:08:31-04:00\"\nauthor: \"UN News\"\nsiteName: \"UN News\"\n---\n## UN condemns attempted Houthi strike on Riyadh as Yemen displacement surges past 130,000\n“**We reiterate our condemnation of the continued Houthi cross‑border attacks against Saudi Arabia, including the attempt to target Riyadh**,” UN Spokesperson Stéphane Dujarric told journalists at the daily noon briefing, adding that Houthi forces had also struck civilians and energy infrastructure elsewhere in the kingdom.\nMr. Dujarric said the UN remained **“deeply concerned” about the military escalation in and around Yemen**, including Houthi offensives against Saudi-backed Government forces in Ta’iz, Lahj and Marib, and called on all parties to exercise restraint and uphold their obligations under international humanitarian law, including the prohibition on attacks against civilians and civilian infrastructure.\nThe ",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_a2a383a2c9480d4dc3f4"
+     ],
+     "truncated": true
+    },
+    {
+     "id": "fact-440-evd_6de3589725cbe7ad141d",
+     "topic": "official",
+     "text": "King Saud University - Study in Saudi Arabia — ###### Links to official Saudi websites end with sa\nAll links to official websites of government agencies in the Kingdom of Saudi Arabia end with gov.sa.\n###### Government websites use the HTTPS protocol for encryption and security.\nSecure websites in the Kingdom of Saudi Arabia use the HTTPS protocol for encryption.\nRegistered with the Digital Government Authority under number :\n[20260418673](https://raqmi.dga.gov.sa/platforms/platforms/0207dd66-2b4a-4600-35c0-08de9cb61fd0/platform-license)",
+     "basis": "source_excerpt",
+     "evidenceIds": [
+      "evd_6de3589725cbe7ad141d"
+     ]
+    }
+   ],
+   "missingInformation": [
+    {
+     "code": "provider_unavailable",
+     "area": "calendar,holidays",
+     "providerId": "nager",
+     "message": "nager unavailable PROVIDER_HTTP_5XX",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "baidu_hot",
+     "message": "baidu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "so360_search",
+     "message": "so360_search skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "weibo_hot",
+     "message": "weibo_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "zhihu_hot",
+     "message": "zhihu_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "toutiao_hot",
+     "message": "toutiao_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "cctv_news",
+     "message": "cctv_news skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "media_activity,current_events",
+     "providerId": "thepaper_hot",
+     "message": "thepaper_hot skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_region_unsupported",
+     "area": "social_observations",
+     "providerId": "yahoo_realtime",
+     "message": "yahoo_realtime skipped: region not applicable (by design)",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "google_news",
+     "message": "google_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "provider_coverage_gap",
+     "area": "media_activity",
+     "providerId": "bing_news",
+     "message": "bing_news: request no_recent_items",
+     "evidenceIds": []
+    },
+    {
+     "code": "social_not_requested",
+     "area": "social",
+     "message": "social observations were not requested (includeSocial=false)",
+     "evidenceIds": []
+    }
+   ]
+  }
+ },
+ "limitations": [
+  {
+   "code": "provider_unavailable",
+   "area": "calendar,holidays",
+   "providerId": "nager",
+   "message": "nager unavailable PROVIDER_HTTP_5XX",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "baidu_hot",
+   "message": "baidu_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "so360_search",
+   "message": "so360_search skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "weibo_hot",
+   "message": "weibo_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "zhihu_hot",
+   "message": "zhihu_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "toutiao_hot",
+   "message": "toutiao_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "cctv_news",
+   "message": "cctv_news skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "media_activity,current_events",
+   "providerId": "thepaper_hot",
+   "message": "thepaper_hot skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_region_unsupported",
+   "area": "social_observations",
+   "providerId": "yahoo_realtime",
+   "message": "yahoo_realtime skipped: region not applicable (by design)",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "google_news",
+   "message": "google_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "google_news",
+   "message": "google_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "bing_news",
+   "message": "bing_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "provider_coverage_gap",
+   "area": "media_activity",
+   "providerId": "bing_news",
+   "message": "bing_news: request no_recent_items",
+   "evidenceIds": []
+  },
+  {
+   "code": "social_not_requested",
+   "area": "social",
+   "message": "social observations were not requested (includeSocial=false)",
+   "evidenceIds": []
+  },
+  {
+   "code": "response_sampled",
+   "area": "general",
+   "message": "Initial response shows 26/448 evidence records and 26/448 details. Full context: get_country_context or GET /intelligence/context/d57d55a2-bd5f-4e2f-8762-9dd29e551a12; details: get_country_context_evidence or GET /intelligence/context/d57d55a2-bd5f-4e2f-8762-9dd29e551a12/evidence.",
+   "evidenceIds": []
+  }
+ ],
+ "refreshState": {
+  "state": "partial",
+  "refreshId": "d57d55a2-bd5f-4e2f-8762-9dd29e551a12"
+ },
+ "actualWindows": [
+  {
+   "from": "2026-08-25T07:17:35.745Z",
+   "to": "2026-09-24T07:17:35.745Z",
+   "complete": false,
+   "gaps": [
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "nager:unavailable PROVIDER_HTTP_5XX"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "baidu_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "so360_search:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "weibo_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "zhihu_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "toutiao_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "cctv_news:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "thepaper_hot:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "yahoo_realtime:unavailable PROVIDER_REGION_UNSUPPORTED"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "gdelt_export:partial_window covers ~15min of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "usgs:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "global_feeds:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "google_news:partial_window covers ~7d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "bing_news:partial_window covers ~7d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "wiki_current:partial_window covers ~1d of 30d"
+    },
+    {
+     "from": "2026-08-25T07:17:35.745Z",
+     "to": "2026-09-24T07:17:35.745Z",
+     "reason": "wallstreet_live:partial_window covers ~1d of 30d"
+    }
+   ]
+  }
+ ],
+ "recentContext": {
+  "generatedAt": "2026-09-24T07:17:35.745Z",
+  "windowHours": 24,
+  "topics": [],
+  "reports": [
+   {
+    "evidenceId": "evd_6744fd0a2cad791b1e50",
+    "title": "Eating garden weeds to survive in Russian-occupied city cut off from food and water",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:58:50 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_8ad61349e74101ddb7eb",
+    "title": "'Make women feel seen': Why the Dutch have a new word for labia",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:42:38 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_d3b3cde82bd682a7f132",
+    "title": "China’s Xi arrives to Trump welcome on state visit",
+    "publisher": "Al Jazeera",
+    "url": "https://www.aljazeera.com/video/newsfeed/2026/9/23/chinas-xi-arrives-to-trump-welcome-on-state-visit?traffic_source=rss",
+    "publishedAt": "Wed, 23 Sep 2026 23:19:29 +0000",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_5b3467aa1170329b59a5",
+    "title": "Indians are discovering the thrill of shopping without paying",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:14:10 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_4076b35ff05bea5f31c7",
+    "title": "A red carpet and military flyover - How Trump welcomed Xi",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 23:03:56 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_e20402a67d3982728740",
+    "title": "Trump welcomes Xi to Washington as US, China agree to extend trade truce",
+    "publisher": "Al Jazeera",
+    "url": "https://www.aljazeera.com/news/2026/9/23/trump-meets-chinas-xi-jinping-at-us-airport-on-arrival-for-three-day-trip?traffic_source=rss",
+    "publishedAt": "Wed, 23 Sep 2026 22:56:41 +0000",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_c6e927e4f250c1b249cf",
+    "title": "AI superpower ambitions take centre stage as Trump and Xi meet",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 22:01:17 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_296ab1add5fc0d7c46db",
+    "title": "Watch: The arms race in space and how the UK is defending itself",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:29:04 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_bf18cd2ea1411ed75e88",
+    "title": "Trump's Board of Peace unveils $2.45bn plan to begin Gaza's reconstruction",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:26:14 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_8edf52d8e98d04245ba3",
+    "title": "UK survivor of Canadian poison seller says he exploited her despair",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 21:16:00 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_bbc4e4250e35f1231a79",
+    "title": "Harvey Weinstein sentenced to 15 years in prison for sexual assault",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cm98626n260yo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 18:51:12 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_fb3ddd29a8e3a50d4c2e",
+    "title": "Philip R. Lane: The Outlook for the Euro Area Economy",
+    "publisher": "European Central Bank",
+    "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923_1~ac21bf46e3.en.pdf",
+    "publishedAt": "Wed, 23 Sep 2026 18:30:00 +0200",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_563d872762ba3a889b35",
+    "title": "Iran's president tells Trump it will never 'bend the knee'",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/cqvgyjy23ggjo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 18:15:31 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_31c513040a7d04e4fc7a",
+    "title": "The digitalisation of money, payments and finance",
+    "publisher": "European Central Bank",
+    "url": "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260923~87850778f5.en.pdf",
+    "publishedAt": "Wed, 23 Sep 2026 18:00:00 +0200",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_31b958a925724016881e",
+    "title": "Watch: How toxic smog from wildfires is making Indonesians sick",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/videos/c962j1jgx884o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 15:46:28 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_49405cee2a21052d1123",
+    "title": "Poland accuses Russian military helicopter of violating its airspace",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c699d2dn9z0mo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 15:37:20 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_77e23c048279425c01f0",
+    "title": "Eleven killed in mass shooting at house in South Africa",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/crgjqxzl097eo?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 14:02:55 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_e3b0af75abe4d8b0b183",
+    "title": "Dramatic eviction of woman aged 87 highlights Spain's housing shortage",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c6vgy55lm8z1o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 12:31:31 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_d0afe3ab97b9179637e6",
+    "title": "Dolly Parton's manager accuses her nephew of 'threats and intimidation'",
+    "publisher": "BBC News",
+    "url": "https://www.bbc.co.uk/news/articles/c670lydl5wg5o?at_campaign=rss&at_medium=RSS",
+    "publishedAt": "Wed, 23 Sep 2026 12:22:53 GMT",
+    "ageClass": "recent"
+   },
+   {
+    "evidenceId": "evd_36568e0f6119075585f3",
+    "title": "Venezuela seeking rebirth after political crisis and devastating earthquakes, President tells UN",
+    "publisher": "UN News - Global perspective Human stories",
+    "url": "https://news.un.org/feed/view/en/story/2026/09/1168420",
+    "publishedAt": "Wed, 23 Sep 2026 12:00:00 +0000",
+    "ageClass": "recent"
+   }
+  ],
+  "sources": [
+   {
+    "provider": "gdelt_export",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:37.110Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "global_feeds",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:37.962Z",
+    "itemCount": 92,
+    "stale": false
+   },
+   {
+    "provider": "google_news",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:36.925Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "bing_news",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:39.868Z",
+    "itemCount": 0,
+    "stale": true
+   },
+   {
+    "provider": "wallstreet_live",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:38.074Z",
+    "itemCount": 30,
+    "stale": false
+   },
+   {
+    "provider": "official_web",
+    "status": "success",
+    "finishedAt": "2026-09-24T07:17:36.755Z",
+    "itemCount": 9,
+    "stale": false
+   },
+   {
+    "provider": "baidu_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "so360_search",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "weibo_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "zhihu_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "toutiao_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "cctv_news",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   },
+   {
+    "provider": "thepaper_hot",
+    "status": "unavailable",
+    "finishedAt": "2026-09-24T07:17:35.745Z",
+    "itemCount": 0,
+    "errorCode": "PROVIDER_REGION_UNSUPPORTED",
+    "stale": true
+   }
+  ],
+  "limitations": [
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "baidu_hot",
+    "message": "baidu_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "so360_search",
+    "message": "so360_search skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "weibo_hot",
+    "message": "weibo_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "zhihu_hot",
+    "message": "zhihu_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "toutiao_hot",
+    "message": "toutiao_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "cctv_news",
+    "message": "cctv_news skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_region_unsupported",
+    "area": "media_activity,current_events",
+    "providerId": "thepaper_hot",
+    "message": "thepaper_hot skipped: region not applicable (by design)",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "google_news",
+    "message": "google_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "google_news",
+    "message": "google_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "bing_news",
+    "message": "bing_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "provider_coverage_gap",
+    "area": "media_activity",
+    "providerId": "bing_news",
+    "message": "bing_news: request no_recent_items",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "gdelt_export",
+    "message": "gdelt_export returned no items in this request",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "google_news",
+    "message": "google_news returned no items in this request",
+    "evidenceIds": []
+   },
+   {
+    "code": "recent_context_gap",
+    "area": "media",
+    "providerId": "bing_news",
+    "message": "bing_news returned no items in this request",
+    "evidenceIds": []
+   }
+  ]
+ }
+}

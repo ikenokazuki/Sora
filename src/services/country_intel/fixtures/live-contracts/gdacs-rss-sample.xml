@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:gdacs="https://www.gdacs.org/xml/rss.xml">
+  <channel>
+    <title>GDACS Alerts</title>
+    <item>
+      <title>Flood in China</title>
+      <link>https://www.gdacs.org/report.aspx?eventid=1104081&amp;episodeid=19&amp;eventtype=FL</link>
+      <description>Orange Flood from 2026-07-31 to 2026-09-21.</description>
+      <pubDate>Mon, 21 Sep 2026 14:57:55 GMT</pubDate>
+      <gdacs:eventtype>FL</gdacs:eventtype>
+      <gdacs:eventid>1104081</gdacs:eventid>
+      <gdacs:episodeid>19</gdacs:episodeid>
+      <gdacs:country>China</gdacs:country>
+      <gdacs:alertlevel>Orange</gdacs:alertlevel>
+    </item>
+  </channel>
+</rss>

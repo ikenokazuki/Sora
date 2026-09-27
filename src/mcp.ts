@@ -1,6 +1,7 @@
 import { McpServer, type RegisteredTool, type ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { tenantIdForApiKey } from './security/tenant_context.js';
-import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import { readFileSync } from 'node:fs';
+import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import {
@@ -52,6 +53,8 @@ import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_forma
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
+import { CountryContextReportSchema, type CountryContextReport } from './services/country_intel/types.js';
+import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -61,6 +64,7 @@ export interface McpServerOptions {
   deferTools?: boolean;
   /** Session-scoped activation state. A fresh set is created when omitted. */
   sessionState?: McpSessionState;
+  intelResearch?: (request: unknown) => Promise<unknown>;
 }
 
 export interface ToolCatalogEntry {
@@ -125,6 +129,19 @@ export function registerTool<Args extends ZodRawShapeCompat>(
     handle,
     compatibilityHandle,
   });
+  return handle;
+}
+
+export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
+  const config = { description, inputSchema: schema, outputSchema, annotations: { readOnlyHint: true } };
+  const handle = mcpServer.registerTool(name, config, handler as never);
+  const isEnabled = opts.defaultEnabled || SHARED_ACTIVATED_TOOLS.has(name);
+  if (!isEnabled) {
+    handle.disable();
+  }
+  const compatibilityHandle = !opts.defaultEnabled ? mcpServer.registerTool('default.' + name, config, handler as never) : undefined;
+  if (!isEnabled) compatibilityHandle?.disable();
+  toolCatalog.set(name, { name, category, description, keywords: opts.keywords ?? [], handle, compatibilityHandle });
   return handle;
 }
 
@@ -250,6 +267,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
         '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
+        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). X posts are out of scope here; use `search_realtime`.' ,
         '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection.',
       );
     }
@@ -861,6 +879,72 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       { defaultEnabled: true, keywords: ['Web検索','検索','URL一覧','Google検索','Yahoo検索','イベント検索','告知検索','スケジュール','Markdown'] },
     );
+    // Tool 5b: search_social_posts (公開SNS投稿検索: Weibo新着 / Meta公開投稿)
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      sessionActivated,
+      'search_social_posts',
+      'web',
+      '【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。',
+      {
+        platform: z.enum(['weibo', 'threads', 'instagram', 'facebook']).describe('対象SNS'),
+        query: z.string().min(1).max(500).describe('検索語（現地語推奨）'),
+        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10, 最大: 30)'),
+        lookbackHours: z.number().int().min(1).max(2160).optional().describe('遡及時間 (デフォルト: 24, 最大: 2160)。Weiboは期間外を除外、Metaは索引期間の目安＋本文日時で再判定'),
+      },
+      async ({ platform, query, limit, lookbackHours }) => {
+        try {
+          const { createSocialService } = await import('./services/social/index.js');
+          const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('./services/social/transport.js');
+          const svc = createSocialService({
+            weiboHttp: createProdWeiboHttp(),
+            sessionOpener: createProdSessionOpener(),
+            metaHttp: createProdMetaHttp(),
+            metaBrowser: createProdMetaBrowser(),
+            webSearch: createProdWebSearch(),
+          });
+          const signal = AbortSignal.timeout(55000);
+          const result = await svc.search({ platform, query, limit: limit ?? 10, lookbackHours: lookbackHours ?? 24 }, { signal, deadlineAt: Date.now() + 55000 });
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { isError: true, content: [{ type: 'text', text: `Social search error: ${err?.message || err}` }] };
+        }
+      },
+      { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿検索', 'ソーシャル'] },
+    );
+    // Tool 5c: fetch_social_post (既知SNS投稿の取得)
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      sessionActivated,
+      'fetch_social_post',
+      'web',
+      '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応。Metaのコメント取得は対象外です。Xの投稿は対象外のため search_realtime を使ってください。',
+      {
+        url: z.string().min(1).describe('公開投稿URL'),
+        commentLimit: z.number().int().min(0).max(20).optional().describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
+      },
+      async ({ url, commentLimit }) => {
+        try {
+          const { createSocialService } = await import('./services/social/index.js');
+          const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('./services/social/transport.js');
+          const svc = createSocialService({
+            weiboHttp: createProdWeiboHttp(),
+            sessionOpener: createProdSessionOpener(),
+            metaHttp: createProdMetaHttp(),
+            metaBrowser: createProdMetaBrowser(),
+            webSearch: createProdWebSearch(),
+          });
+          const signal = AbortSignal.timeout(30000);
+          const result = await svc.fetch({ url, commentLimit: commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${err?.message || err}` }] };
+        }
+      },
+      { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿取得', 'コメント'] },
+    );
   }
 
   // =========================================================================
@@ -1078,7 +1162,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, count, items: [{ id, author_name, author_handle, text, url, publishedTime }] } (verbose:trueで検索診断追加)',
+      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, count, items: [{ id, author_name, author_handle, text, url, publishedTime }] } (verbose:trueで検索診断追加、一部失敗時はpartial:trueとproviderErrorsを付与)',
       {
         query: z
           .string()
@@ -1145,6 +1229,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               query: result.originalQuery,
               effectiveQuery: result.effectiveQuery,
               isFallback: result.isFallback,
+              ...((result as any).partial === true
+                ? { partial: true, providerErrors: (result as any).providerErrors || [] }
+                : {}),
               retrievalQueries: (result as any).retrievalQueries || [],
               contributingQueries: (result as any).contributingQueries || [],
               resultsMerged: (result as any).resultsMerged || false,
@@ -2009,32 +2096,107 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   // 🌍 Category 9: Country & Region Intelligence (モジュール: 'intel')
   // =========================================================================
   if (shouldEnableIntel) {
-    registerTool(
+    registerStructuredTool(
       mcpServer,
       toolCatalog,
-      sessionActivated,
       'research_country_context',
       'intel',
-      '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・カレンダー・世論調査・対日関係を証拠付き構造化レポートとして取得します。感情・敵意・リスク判定なし。返却: CountryContextReport',
+      '【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・旅行・カレンダー・世論調査を分野横断で取得します。初回応答は代表証拠、全件はcontextIdで参照可能。評価・推奨は含めません。限界: 一部証拠は公表日時なし、SNSは対象言語・範囲限定、未観測範囲の明示は呼出元が確認すること。本ツール単独で判断の十分性を保証しない。調査手順はリソース sora-skill://sora-deep-research を読む。返却: CountryContextReport',
       {
         region: z.string().min(1).describe('国・地域名またはコード (例: "South Korea", "KR", "台湾")'),
         query: z.string().optional().describe('追加の調査クエリ'),
         topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
         period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
-        includeSocial: z.boolean().optional().describe('Yahoo realtime 由来の social 観測を含めるか'),
+        includeSocial: z.boolean().optional().describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
         noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
-        verbose: z.boolean().optional().describe('詳細出力を要求するか'),
+        verbose: z.boolean().optional().describe('全件の詳細出力を要求するか (既定は分野別の代表証拠)'),
       },
+      CountryContextReportSchema,
       async (opts) => {
         try {
-          const { researchCountryContext } = await import('./services/country_intel/report.js');
-          const result = await researchCountryContext(opts as never);
-          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+          const research = options?.intelResearch ?? (async (request: unknown) => {
+            const { researchCountryWithDefaults } = await import('./services/country_intel/runtime.js');
+            return researchCountryWithDefaults(request as never);
+          });
+          const result = (await research(opts)) as CountryContextReport;
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: `Country intelligence error: ${err instanceof Error ? err.message : err}` }] };
         }
       },
       { defaultEnabled: deferredDefault, keywords: ['国地域', 'カントリー', 'country', '地域情勢', '海外情勢', 'intel', 'intelligence', 'コンテキスト'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context',
+      'intel',
+      '保存済み国地域レポートをcontextIdで取得します。返却: CountryContextReport',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+      },
+      CountryContextReportSchema,
+      async (opts) => {
+        try {
+          const { getPersistedCountryContext } = await import('./services/country_intel/report.js');
+          const result = getPersistedCountryContext(opts.contextId) as CountryContextReport | undefined;
+          if (!result) return { isError: true, content: [{ type: 'text', text: 'Country context not found: ' + opts.contextId }] };
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', 'コンテキスト', 'context', 'スナップショット'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context_evidence',
+      'intel',
+      'レポートの根拠原文・構造化データをページ取得します。属さないIDは拒否。',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+        evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (省略時はページ走査)'),
+        cursor: z.string().optional().describe('次ページカーソル'),
+        limit: z.number().int().min(1).max(100).optional().describe('取得件数 (最大100)'),
+      },
+      EvidencePageSchema,
+      async (opts) => {
+        try {
+          const { getEvidencePage } = await import('./services/country_intel/db.js');
+          const result = getEvidencePage(opts.contextId, { ids: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', '根拠', 'evidence', '原文', '詳細'] },
+    );
+    registerStructuredTool(
+      mcpServer,
+      toolCatalog,
+      'get_country_context_updates',
+      'intel',
+      '前回以降の追加・訂正・削除・取得障害の差分を取得します。',
+      {
+        contextId: z.string().min(1).describe('コンテキストID'),
+        cursor: z.string().optional().describe('差分カーソル'),
+      },
+      ContextUpdatesSchema,
+      async (opts) => {
+        try {
+          const { getContextUpdates } = await import('./services/country_intel/db.js');
+          const result = getContextUpdates(opts.contextId, opts.cursor);
+          const text = JSON.stringify(result, null, 2);
+          return { content: [{ type: 'text', text }], structuredContent: result as never };
+        } catch (err: unknown) {
+          return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['国地域', '更新', '差分', 'updates'] },
     );
   }
 
@@ -2109,6 +2271,36 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       };
     },
   );
+
+  // 深層調査スキルをMCPリソースとして配布する。接続した呼出元は
+  // sora-skill://sora-deep-research を読むだけで手順を取得できる。
+  try {
+    const skillUrls = [
+      new URL('../plugins/sora-deep-research/skills/sora-deep-research/SKILL.md', import.meta.url),
+      new URL('../docs/skills/sora-research/SKILL.md', import.meta.url),
+    ];
+    let skillText: string | null = null;
+    for (const u of skillUrls) {
+      try {
+        const text = readFileSync(u, 'utf8');
+        if (text.trim()) {
+          skillText = text;
+          break;
+        }
+      } catch {}
+    }
+    if (skillText) {
+      const text = skillText;
+      mcpServer.resource(
+        'sora-deep-research-skill',
+        'sora-skill://sora-deep-research',
+        { mimeType: 'text/markdown' },
+        async (uri) => ({
+          contents: [{ uri: uri.href, mimeType: 'text/markdown', text }],
+        }),
+      );
+    }
+  } catch {}
 
   return mcpServer;
 }
