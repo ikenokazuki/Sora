@@ -11,14 +11,14 @@ test('disabledCountryIntelProviders parses env list', () => {
 });
 test('env denylist removes providers from defaults', () => {
   process.env.SORA_INTEL_DISABLED = 'usgs,eonet';
-  const ids = createDefaultCountryIntelDependencies().providers.map((p) => p.id);
+  const ids = (createDefaultCountryIntelDependencies().providers ?? []).map((p) => p.id);
   expect(ids).not.toContain('usgs');
   expect(ids).not.toContain('eonet');
   expect(ids).toContain('gdacs');
 });
 test('explicit option overrides env', () => {
   process.env.SORA_INTEL_DISABLED = 'usgs';
-  const ids = createDefaultCountryIntelDependencies({}, { disabledProviders: ['gdacs'], scrapeArticle: undefined }).providers.map((p) => p.id);
+  const ids = (createDefaultCountryIntelDependencies({}, { disabledProviders: ['gdacs'], scrapeArticle: undefined }).providers ?? []).map((p) => p.id);
   expect(ids).not.toContain('gdacs');
   expect(ids).toContain('usgs');
 });

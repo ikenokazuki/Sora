@@ -38,7 +38,9 @@ describe('Weather Forecast Service (JMA Weekly Integration)', () => {
 
   it('should support up to 8 days of forecasts', async () => {
     const result = await fetchWeatherForecast({ city: '東京', days: 8, noCache: true });
-    expect(result.forecasts.length).toBe(8);
+    // JMA週間予報の提供日数は発表時刻により7〜8日で変動するため上限のみ検証する
+    expect(result.forecasts.length).toBeLessThanOrEqual(8);
+    expect(result.forecasts.length).toBeGreaterThanOrEqual(7);
   });
 
   it('should clamp days between 1 and 8', async () => {
@@ -46,6 +48,7 @@ describe('Weather Forecast Service (JMA Weekly Integration)', () => {
     expect(minResult.forecasts.length).toBe(1);
 
     const maxResult = await fetchWeatherForecast({ city: '東京', days: 100, noCache: true });
-    expect(maxResult.forecasts.length).toBe(8);
+    expect(maxResult.forecasts.length).toBeLessThanOrEqual(8);
+    expect(maxResult.forecasts.length).toBeGreaterThanOrEqual(7);
   });
 });

@@ -78,8 +78,8 @@ describe('recent context', () => {
   test('recent reports resolve to canonical deduped evidence', () => {
     const evidence = (id: string) => ({
       id, regionId: 'country:CN', url: 'https://example.com/same-article', title: 'same',
-      sourceType: 'news' as const, retrievedAt: '2026-09-23T11:00:00Z',
-      publishedAt: '2026-09-23T10:00:00Z', primarySource: true, latencyClass: 'recent' as const,
+      sourceType: 'local_media' as const, retrievedAt: '2026-09-23T11:00:00Z',
+      publishedAt: '2026-09-23T10:00:00Z', primarySource: true, latencyClass: 'near_realtime' as const,
     });
     const items = [
       { providerId: 'global_feeds', areas: ['general'], item: { evidence: evidence('evd_first') } },

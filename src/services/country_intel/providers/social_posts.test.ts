@@ -17,7 +17,7 @@ const inputFor = (request: ProviderInput['request']): ProviderInput => ({
 describe('social_posts provider', () => {
   test('does nothing without includeSocial', async () => {
     let calls = 0;
-    const provider = createSocialPostsProvider({ service: { search: async () => { calls++; throw new Error('must not run'); }, fetch: async () => { throw new Error('must not run'); }, enrichWeiboTop: async (x) => x } as never });
+    const provider = createSocialPostsProvider({ service: { search: async () => { calls++; throw new Error('must not run'); }, fetch: async () => { throw new Error('must not run'); }, enrichWeiboTop: async (x: SocialPost[]) => x } as never });
     const r = await provider.run(inputFor({ region: 'China' } as never), AbortSignal.timeout(5000));
     expect(r.items).toEqual([]);
     expect(calls).toBe(0);
