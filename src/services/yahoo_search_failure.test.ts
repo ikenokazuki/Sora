@@ -1,5 +1,12 @@
-import { describe, expect, test } from 'bun:test';
-import { searchYahooWeb } from './yahoo.js';
+import { describe, expect, test, beforeEach } from 'bun:test';
+import { searchYahooWeb, resetYahooWebPressure, resetYahooBreaker, resetYahooCallGate } from './yahoo.js';
+
+beforeEach(() => {
+  resetYahooWebPressure();
+  resetYahooBreaker();
+  resetYahooCallGate();
+  process.env.SORA_YAHOO_MIN_INTERVAL_MS = '0';
+});
 
 const err429 = {
   content: [{ text: 'Error: HTTP 429 Too Many Requests for url (https://search.yahoo.co.jp/search?p=x)', type: 'text' }],
@@ -65,33 +72,30 @@ describe('web search distinguishes upstream failure from empty results', () => {
     expect(r.items.length).toBeGreaterThan(0);
     expect(r.providerErrors.map((e: any) => e.message).join('\n')).toContain('direct down');
   });
-  test('rate-limit failure waits once (bounded) before the next candidate', async () => {
+  test('rate-limit stops fan-out instead of waiting then retrying', async () => {
     process.env.SORA_WEB_QUERY_UNION = 'true';
-    process.env.SORA_WEB_RETRY_WAIT_MS = '60';
     let calls = 0;
     try {
-      const t0 = Date.now();
       const r = await searchYahooWeb(
         { query: 'ｘ' },
         {
           callYahooMcp: async () => {
             calls++;
-            if (calls === 1) return err429;
-            return { content: [{ text: JSON.stringify({ items: [{ title: 'ok', url: 'https://e/ok' }] }) }], isError: false };
+            return err429;
           },
           fetchYahooWebDirect: directEmpty,
         } as any,
       );
-      expect(calls).toBe(2);
-      expect(r.items.length).toBeGreaterThan(0);
+      expect(calls).toBe(1);
+      expect(r.items).toEqual([]);
+      expect(r.throttled).toBe(true);
+      expect(r.stopReason).toBe('provider_rate_limited');
       expect(r.providerErrors).toHaveLength(1);
-      expect(Date.now() - t0).toBeGreaterThanOrEqual(40);
     } finally {
       delete process.env.SORA_WEB_QUERY_UNION;
-      delete process.env.SORA_WEB_RETRY_WAIT_MS;
     }
   });
-  test('retry wait can be disabled', async () => {
+  test('deprecated retry-wait env does not re-enable fan-out after 429', async () => {
     process.env.SORA_WEB_QUERY_UNION = 'true';
     process.env.SORA_WEB_RETRY_WAIT_MS = '0';
     let calls = 0;
@@ -101,18 +105,44 @@ describe('web search distinguishes upstream failure from empty results', () => {
         {
           callYahooMcp: async () => {
             calls++;
-            if (calls === 1) return err429;
-            return { content: [{ text: JSON.stringify({ items: [{ title: 'ok', url: 'https://e/ok' }] }) }], isError: false };
+            return err429;
+          },
+          fetchYahooWebDirect: directEmpty,
+        } as any,
+      );
+      expect(calls).toBe(1);
+      expect(r.throttled).toBe(true);
+    } finally {
+      delete process.env.SORA_WEB_QUERY_UNION;
+      delete process.env.SORA_WEB_RETRY_WAIT_MS;
+    }
+  });
+
+  test('Q0 success survives Q1 rate-limit as partial results', async () => {
+    process.env.SORA_WEB_QUERY_UNION = 'true';
+    const rateErr: any = new Error('Yahoo provider rate limited');
+    rateErr.code = 'YAHOO_RATE_LIMITED';
+    const ten = Array.from({ length: 10 }, (_, i) => ({ title: `t${i}`, url: `https://e/${i}` }));
+    let calls = 0;
+    try {
+      const r = await searchYahooWeb(
+        { query: 'ｘ' },
+        {
+          callYahooMcp: async () => {
+            calls++;
+            if (calls === 1) return { content: [{ text: JSON.stringify({ items: ten }) }], isError: false };
+            throw rateErr;
           },
           fetchYahooWebDirect: directEmpty,
         } as any,
       );
       expect(calls).toBe(2);
       expect(r.items.length).toBeGreaterThan(0);
-      expect(r.providerErrors).toHaveLength(1);
+      expect(r.partial).toBe(true);
+      expect(r.throttled).toBe(true);
+      expect(r.stopReason).toBe('provider_rate_limited');
     } finally {
       delete process.env.SORA_WEB_QUERY_UNION;
-      delete process.env.SORA_WEB_RETRY_WAIT_MS;
     }
   });
 });
