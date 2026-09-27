@@ -13,6 +13,7 @@ import {
   type RealtimeIntent,
 } from './x_detail.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
+import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
 import { searchYahooRealtimePage } from './yahoo_realtime_api.js';
 
 // Yahoo MCP バイナリのパス
@@ -101,6 +102,72 @@ export function resetYahooBreaker(): void {
 
 export function isYahooRateLimitedError(err: any): boolean {
   return !!err && (err as any).code === 'YAHOO_RATE_LIMITED';
+}
+
+/** Structured Yahoo provider failure: keeps status + Retry-After (spec section 6). */
+export class YahooProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'YahooProviderError';
+  }
+}
+
+/** Parse Retry-After (delta seconds or HTTP date) into milliseconds. */
+export function parseRetryAfterMs(value: string | null, now: number = Date.now()): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.max(0, date - now);
+}
+
+/** Provider-wide Yahoo Web pressure controller (spec section 11). Never shared with X Realtime. */
+export const yahooWebPressure = new ProviderPressureController(defaultYahooPressureOptions());
+
+/** Test/support escape hatch. */
+export function resetYahooWebPressure(): void {
+  yahooWebPressure.reset();
+}
+
+function pressureBypassed(): boolean {
+  return process.env.SORA_YAHOO_THROTTLE === 'off';
+}
+
+/** Short bounded pacing between queries (spec section 5: never sleep long). */
+async function paceForYahooPressure(): Promise<void> {
+  if (pressureBypassed()) return;
+  const waitMs = Math.min(yahooWebPressure.snapshot().spacingMs, 250);
+  if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+}
+
+/**
+ * Feed one provider outcome into the pressure controller.
+ * Structured 429s win; legacy MCP text is the regex fallback (spec section 9).
+ * Returns true when the outcome was a rate limit.
+ */
+export function recordYahooWebResult(err: unknown): boolean {
+  try { incrementSecurityCounter('yahoo_request_total'); } catch {}
+  if (pressureBypassed()) return false;
+  const limited =
+    (err instanceof YahooProviderError && err.status === 429) ||
+    isYahooRateLimitedError(err) ||
+    (err instanceof Error && /429|too many requests|rate limit/i.test(err.message));
+  if (limited) {
+    yahooWebPressure.onRateLimit(err instanceof YahooProviderError ? err.retryAfterMs : undefined);
+    try { incrementSecurityCounter('yahoo_429_total'); } catch {}
+  }
+  return limited;
+}
+
+export function recordYahooWebSuccess(): void {
+  try { incrementSecurityCounter('yahoo_request_total'); } catch {}
+  if (pressureBypassed()) return;
+  yahooWebPressure.onSuccess();
 }
 
 /** Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動 & タイムアウト保護) */
@@ -387,19 +454,14 @@ export async function searchYahooWeb(options: {
     ...(item.domain ? { domain: item.domain } : {}),
     directFetch: true,
   });
-  // Burst calls trigger upstream 429. Wait once (bounded) after a
-  // rate-limit failure before the next candidate; never retry unboundedly.
-  const retryWaitMs = Math.min(Math.max(Number(process.env.SORA_WEB_RETRY_WAIT_MS ?? 1200), 0), 5000);
-  let waitedOnce = false;
-  const maybeWaitAfterRateLimit = async (message: string): Promise<void> => {
-    if (waitedOnce || retryWaitMs <= 0) return;
-    if (!/429|too many requests|rate limit/i.test(message)) return;
-    waitedOnce = true;
-    await new Promise((r) => setTimeout(r, retryWaitMs));
-  };
   const candidateQueries = options.disableFallback
     ? [options.query]
     : extractRealtimeFallbackQueries(options.query);
+
+  // Pressure-aware query budget (spec sections 15-17): provider health wins over flags.
+  const yahooPressureLevel = pressureBypassed() ? 'low' as const : yahooWebPressure.getLevel();
+  const yahooQueryBudget = getYahooQueryBudget(yahooPressureLevel);
+  const verboseDiag = (options as any)?.verbose === true;
 
   let lastParsedData: any = { items: [], count: 0, source: 'web' };
 
@@ -408,7 +470,7 @@ export async function searchYahooWeb(options: {
     options.disableFallback !== true;
 
   if (queryUnionEnabled) {
-    const boundedQueries = candidateQueries.slice(0, 2);
+    const boundedQueries = candidateQueries.slice(0, Math.min(2, yahooQueryBudget));
     const batches: YahooWebQueryBatch[] = [];
     const retrievalQueries: string[] = [];
     let webUnionThrottled = false;
@@ -420,6 +482,11 @@ export async function searchYahooWeb(options: {
         webUnionThrottled = true;
         break;
       }
+      if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
+        webUnionThrottled = true;
+        break;
+      }
+      if (i > 0) await paceForYahooPressure();
       retrievalQueries.push(q);
 
       let effectiveWebQuery = q;
@@ -448,6 +515,7 @@ export async function searchYahooWeb(options: {
           if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
         } catch (err) {
           providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+          recordYahooWebResult(err);
         }
         if (!batchJson) {
           const mcpRes = await callMcp('yahoo_web_search', {
@@ -461,7 +529,11 @@ export async function searchYahooWeb(options: {
           const content = mcpRes?.content?.[0]?.text || '[]';
           if (mcpRes?.isError) {
             providerErrors.push({ query: q, message: String(content).slice(0, 300) });
-            if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(String(content));
+            if (recordYahooWebResult(new Error(String(content).slice(0, 300)))) {
+              webUnionThrottled = true;
+              break;
+            }
+            if (i < boundedQueries.length - 1) await paceForYahooPressure();
             continue;
           }
           batchJson = JSON.parse(content);
@@ -470,6 +542,7 @@ export async function searchYahooWeb(options: {
         if (batchJson && Array.isArray(batchJson.items)) {
           lastParsedData = batchJson;
           if (batchJson.items.length > 0) {
+            recordYahooWebSuccess();
             batches.push({
               query: q,
               queryIndex: i,
@@ -480,12 +553,13 @@ export async function searchYahooWeb(options: {
       } catch (unionErr) {
         const message = ((unionErr as Error)?.message ?? String(unionErr)).slice(0, 300);
         providerErrors.push({ query: q, message });
-        if (isYahooRateLimitedError(unionErr)) {
+        const unionLimited = recordYahooWebResult(unionErr);
+        if (unionLimited || isYahooRateLimitedError(unionErr)) {
           webUnionThrottled = true;
           break;
         }
         // One failed rescue query must not discard sibling results.
-        if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(message);
+        if (i < boundedQueries.length - 1) await paceForYahooPressure();
       }
     }
 
@@ -512,8 +586,9 @@ export async function searchYahooWeb(options: {
         effectiveQuery: options.query,
         isFallback: contributedFallback,
         queryUnion: true,
-        ...(webUnionThrottled ? { throttled: true } : {}),
+        ...(webUnionThrottled ? { throttled: true, partial: true, stopReason: 'provider_rate_limited' } : {}),
         ...(providerErrors.length > 0 ? { providerErrors } : {}),
+        ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
       };
     }
 
@@ -529,7 +604,9 @@ export async function searchYahooWeb(options: {
       isFallback: false,
       queryUnion: true,
       throttled: webUnionThrottled ? true : undefined,
+      stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined,
       providerErrors,
+      ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
     };
   }
 
@@ -540,6 +617,11 @@ export async function searchYahooWeb(options: {
       webSequentialThrottled = true;
       break;
     }
+    if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
+      webSequentialThrottled = true;
+      break;
+    }
+    if (i > 0) await paceForYahooPressure();
     let effectiveWebQuery = q;
     let webSiteArg: string | undefined = undefined;
 
@@ -562,6 +644,7 @@ export async function searchYahooWeb(options: {
         if (directItems.length > 0) json = { items: directItems.map(normDirectItem) };
       } catch (err) {
         providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
+        recordYahooWebResult(err);
       }
       if (!json) {
         const mcpRes = await callMcp('yahoo_web_search', {
@@ -574,12 +657,17 @@ export async function searchYahooWeb(options: {
         if (mcpRes?.isError) {
           const message = String(content).slice(0, 300);
           providerErrors.push({ query: q, message });
-          if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
+          if (recordYahooWebResult(new Error(message))) {
+            webSequentialThrottled = true;
+            break;
+          }
+          if (i < candidateQueries.length - 1) await paceForYahooPressure();
           continue;
         }
         json = JSON.parse(content);
       }
       if (json && Array.isArray(json.items) && json.items.length > 0) {
+        recordYahooWebSuccess();
         // Provider ranking contains signals that are unavailable
         // to our lightweight lexical scorer. Do not globally
         // rerank a single SERP here. Local scores are used later
@@ -615,7 +703,7 @@ export async function searchYahooWeb(options: {
         }
         // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
         // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
-        if (i === 0 && candidateQueries.length > 1) {
+        if (i === 0 && candidateQueries.length > 1 && yahooQueryBudget >= 2 && (pressureBypassed() || yahooWebPressure.canRequest())) {
           const conf = assessRetrievalConfidence(filtered, options.query);
           if (!conf.good) {
             try {
@@ -661,11 +749,13 @@ export async function searchYahooWeb(options: {
                     queryUnion: false,
                     adaptiveUnion: true,
                     confidenceReasons: conf.reasons,
+                    ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
                   };
                 }
               }
-            } catch {
+            } catch (rescueErr) {
               // 追加検索失敗時は初回結果をそのまま返す
+              recordYahooWebResult(rescueErr);
             }
           }
         }
@@ -676,6 +766,10 @@ export async function searchYahooWeb(options: {
         json.isFallback = i > 0;
         try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
         if (providerErrors.length > 0) json.providerErrors = providerErrors;
+        if (verboseDiag) {
+          json.pressure = yahooWebPressure.getLevel();
+          json.queryBudget = yahooQueryBudget;
+        }
         return json;
       }
       if (json && Array.isArray(json.items)) {
@@ -684,12 +778,13 @@ export async function searchYahooWeb(options: {
     } catch (seqErr) {
       const message = ((seqErr as Error)?.message ?? String(seqErr)).slice(0, 300);
       providerErrors.push({ query: q, message });
-      if (isYahooRateLimitedError(seqErr)) {
+      const seqLimited = recordYahooWebResult(seqErr);
+      if (seqLimited || isYahooRateLimitedError(seqErr)) {
         webSequentialThrottled = true;
         break;
       }
       // 候補クエリの次を試行（失敗は記録する）
-      if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
+      if (i < candidateQueries.length - 1) await paceForYahooPressure();
     }
   }
 
@@ -705,7 +800,9 @@ export async function searchYahooWeb(options: {
       effectiveQuery: options.query,
       isFallback: false,
       throttled: true,
+      stopReason: 'provider_rate_limited',
       ...(providerErrors.length > 0 ? { providerErrors } : {}),
+      ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
     };
   }
   return {
@@ -809,7 +906,13 @@ export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?:
       }),
     ])
     : await pending;
-  if (!res.ok) throw new Error('Yahoo direct fetch failed: ' + res.status);
+  if (!res.ok) {
+    throw new YahooProviderError(
+      `Yahoo direct fetch failed: ${res.status}`,
+      res.status,
+      parseRetryAfterMs(res.headers.get('retry-after')),
+    );
+  }
   return parseYahooWebHtml(await res.text(), maxItems);
 }
 
