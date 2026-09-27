@@ -26,10 +26,12 @@ export const handleBrowserAction = async (c: any) => {
   }
 
   try {
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const result = await executeBrowserActions({
       url: body.url,
       sessionId: body.sessionId,
       ownerToken: extractAuthToken(c),
+      tenantId,
       createSession: body.createSession,
       closeSession: body.closeSession,
       actions: body.actions,

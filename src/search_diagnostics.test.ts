@@ -58,6 +58,47 @@ describe('Phase 1 verbose-only search diagnostics', () => {
     }]);
   });
 
+  test('passes through retrieval provenance fields when present', () => {
+    const diagnostics = buildSearchDiagnostics({
+      originalQuery: 'q',
+      effectiveQuery: 'q',
+      webResultCount: 1,
+      includeRealtime: false,
+      webRequirements: ['spark'],
+      results: [{
+        source: 'web',
+        url: 'https://example.com/a',
+        title: 'SPARK show',
+        snippet: 'live',
+        providerRank: 1,
+        providerSort: 'recent',
+        retrievalQuery: 'q',
+        retrievalQueryIndex: 0,
+        retrievalWave: 2,
+        rrfScore: 0.01,
+        lexicalScore: 3,
+        selectionReason: 'missing_requirement',
+      }],
+    });
+    expect(diagnostics.sourceIdentity[0]).toMatchObject({
+      providerRank: 1,
+      providerSort: 'recent',
+      retrievalQuery: 'q',
+      retrievalQueryIndex: 0,
+      retrievalWave: 2,
+      rrfScore: 0.01,
+      lexicalScore: 3,
+      selectionReason: 'missing_requirement',
+      requirementsCovered: ['spark'],
+    });
+  });
+  test('carries scrapeAttemptIndex when present', () => {
+    const diagnostics = buildSearchDiagnostics({
+      originalQuery: 'q', effectiveQuery: 'q', webResultCount: 1, includeRealtime: false,
+      results: [{ source: 'web', url: 'https://example.com/a', scrapeAttemptIndex: 4 }],
+    });
+    expect(diagnostics.sourceIdentity[0].scrapeAttemptIndex).toBe(4);
+  });
   test('Phase 1 diagnostics are guarded by verbose and added after output ordering', () => {
     const source = readFileSync(new URL('./scraper.ts', import.meta.url), 'utf8');
     const reorder = source.indexOf('reorderLostInTheMiddle(enrichedResults)');

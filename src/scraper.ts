@@ -39,7 +39,10 @@ import {
   validateExtractedLinks,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
+  computeAnswerability,
 } from './enrichment.js';
+import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 import { stripHighlightInternals } from './highlight_surface.js';
@@ -96,7 +99,10 @@ export * from './browser_stealth.js';
 import {
   decodeHtmlBuffer,
   fetchWithSafeRedirects,
+  MAX_RESPONSE_BODY_BYTES,
 } from './http_fetcher.js';
+import { readBodyWithLimit } from './net/safe_transport.js';
+import { extractQueryRequirements } from './retrieval/requirements.js';
 import {
   convertHtmlToMarkdown,
   matchUrlPattern,
@@ -114,6 +120,7 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     url: options.url,
     sessionId: options.sessionId,
     ownerToken: options.ownerToken,
+    tenantId: (options as any).tenantId,
     createSession: options.createSession,
     closeSession: options.closeSession,
     actions: options.actions,
@@ -443,6 +450,7 @@ export async function scrapeUrl(options: {
   retryDelayMs?: number;
   noCache?: boolean;
   timeoutMs?: number;
+  tenantId?: string;
   verbose?: boolean;
   keepDataImages?: boolean;
   contextTitle?: string;
@@ -468,7 +476,15 @@ export async function scrapeUrl(options: {
 
   const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
-  if (!options.noCache) {
+  // Never place credential-scoped content in public cache.
+  // This invariant is required for multi-tenant safety.
+  // Authenticated scrapes bypass shared cache on both read and write.
+  const useSharedCache =
+    !options.noCache &&
+    !hasSensitiveRequestCredentials({ headers: options.headers, cookies: options.cookies });
+  if (!useSharedCache && !options.noCache) incrementSecurityCounter('sora_private_cache_bypass_total');
+
+  if (useSharedCache) {
     const cached = getFromCache<ScrapeResult>(cacheKey);
     if (cached) {
       onProgress?.({ stage: 'done', message: 'Cache hit', data: cached });
@@ -476,7 +492,7 @@ export async function scrapeUrl(options: {
     }
   }
 
-  return runWithSingleFlight(cacheKey, async () => {
+  const scrapeTask = async () => {
     let attempt = 0;
     let lastError: any = null;
 
@@ -535,7 +551,7 @@ export async function scrapeUrl(options: {
               siteName: tweetRes.siteName,
             };
             result = await finalizeScrapeResult(baseResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
         }
@@ -551,19 +567,21 @@ export async function scrapeUrl(options: {
             5,
             options.headers,
             options.cookies,
+            undefined,
+            options.tenantId ?? 'legacy',
           );
 
           const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
 
           if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
-            const buf = await response.arrayBuffer();
+            const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
             const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
             result = await finalizeScrapeResult(pdfResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
 
-          const buf = await response.arrayBuffer();
+          const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
           const html = decodeHtmlBuffer(buf, contentType);
 
           const parsed = convertHtmlToMarkdown(
@@ -636,7 +654,7 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
             result = await finalizeScrapeResult(result, finalizeOpts);
 
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
             return result;
           }
@@ -698,13 +716,14 @@ export async function scrapeUrl(options: {
             'networkidle2',
             needScreenshot,
             fullPage,
+            options.tenantId ?? 'legacy',
           );
         } catch (browserErr: any) {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
             result = await finalizeScrapeResult(initialHttpResult, finalizeOpts);
-            if (!options.noCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result);
             return result;
           }
           throw browserErr;
@@ -735,6 +754,7 @@ export async function scrapeUrl(options: {
             'networkidle0',
             needScreenshot,
             fullPage,
+            options.tenantId ?? 'legacy',
           );
           parsed = convertHtmlToMarkdown(
             browserRes.html,
@@ -793,7 +813,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
         result = await finalizeScrapeResult(result, finalizeOpts);
 
-        if (!options.noCache) setToCache(cacheKey, result);
+        if (useSharedCache) setToCache(cacheKey, result);
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
         return result;
       } catch (err: any) {
@@ -807,7 +827,10 @@ export async function scrapeUrl(options: {
     }
 
     throw lastError || new Error(`スクレイピングに失敗しました: ${url}`);
-  });
+  };
+  // Credential-scoped requests must not share in-flight results either.
+  if (!useSharedCache) return scrapeTask();
+  return runWithSingleFlight(cacheKey, scrapeTask);
 }
 
 // ==========================================
@@ -856,6 +879,7 @@ export async function scrapeBatchUrls(options: {
   retryDelayMs?: number;
   timeoutMs?: number;
   noCache?: boolean;
+  tenantId?: string;
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, ...scrapeOpts } = options;
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
@@ -1086,6 +1110,7 @@ export async function crawlSiteUrl(options: {
   minimizeTables?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
+  tenantId?: string;
   onPageScraped?: (page: ScrapeResult) => void;
   onPageCrawled?: (page: ScrapeResult, count: number) => void;
 }): Promise<{
@@ -1144,6 +1169,7 @@ export async function crawlSiteUrl(options: {
     try {
       const scraped = await scrapeUrl({
         url: item.url,
+        tenantId: (options as any).tenantId ?? 'legacy',
         maxChars,
         formats: Array.from(new Set([...formats, 'links'])),
         query,
@@ -1252,6 +1278,116 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
 // ==========================================
 // 10. Firecrawl / Tavily 互換 統合深層検索 (integratedSearch)
 // ==========================================
+
+/** Selection reason for observability (RFC selection reasons). */
+export type SelectionReason =
+  | 'provider_top_rank'
+  | 'rrf_top_rank'
+  | 'missing_requirement'
+  | 'source_diversity'
+  | 'official_source'
+  | 'scrape_refill';
+
+/** P1-4: Scrape対象選択 (上位3件はRRF/provider順保証 + 残りはcoverage/diversity) */
+export function selectScrapeTargets(pool: any[], limit: number, query: string, rankKind: SelectionReason = 'provider_top_rank'): { targets: any[]; spares: any[] } {
+  if (!pool || pool.length === 0 || limit <= 0) return { targets: [], spares: [] };
+  if (pool.length <= limit || limit < 5) {
+    return { targets: pool.slice(0, limit).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason })), spares: pool.slice(limit) };
+  }
+  const guaranteed = pool.slice(0, 3).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason }));
+  const rest = pool.slice(3);
+  const needed = limit - guaranteed.length;
+  if (needed <= 0) {
+    return { targets: guaranteed.slice(0, limit), spares: pool.slice(limit) };
+  }
+  try {
+    const requirements = extractQueryRequirements(query);
+    const requiredTerms = [...requirements.entityTerms, ...requirements.intentTerms];
+    const guaranteedCorpus = guaranteed
+      .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
+      .join('\n');
+    const missingTerms = requiredTerms.filter((w) => !guaranteedCorpus.includes(w));
+    const guaranteedHosts = new Set<string>();
+    const guaranteedHostCounts = new Map<string, number>();
+    for (const it of guaranteed) {
+      try {
+        const h = new URL((it as any).url || (it as any).link).hostname.toLowerCase();
+        if (!h) continue;
+        guaranteedHosts.add(h);
+        guaranteedHostCounts.set(h, (guaranteedHostCounts.get(h) ?? 0) + 1);
+      } catch {}
+    }
+    const scoredRest = rest.map((it: any, idx: number) => {
+      const text = `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase();
+      let gain = 0;
+      // lexical (diagnostic) をベースにし、順位を大きく崩さない
+      gain += typeof it.lexicalScore === 'number' ? it.lexicalScore * 0.1 : 0;
+      // RRF上位の寄与を残す (元の順位が上の候補を優遇)
+      gain += (rest.length - idx) * 0.01;
+      // 不足要求語の補完
+      for (const t of missingTerms) {
+        if (text.includes(t)) gain += 2.0;
+      }
+      try { const ab = computeAnswerability(it, query); gain += Math.min(1.0, ab.score * 0.25); } catch {}
+      // 多様性: 新規ホスト優遇、同一ホスト飽和には軽い減点
+      try {
+        const h = new URL(it.url || it.link).hostname.toLowerCase();
+        if (!h) {} else if (!guaranteedHosts.has(h)) gain += 1.0;
+        else gain -= 0.5 * (guaranteedHostCounts.get(h) ?? 1);
+      } catch {
+        // ホスト不明時は加算なし
+      }
+      return { it, gain, idx };
+    });
+    scoredRest.sort((a, b) => {
+      if (b.gain !== a.gain) return b.gain - a.gain;
+      return a.idx - b.idx;
+    });
+    const picked = scoredRest.slice(0, needed).map((s) => {
+      const coversMissing = missingTerms.some((t) => `${s.it.title || ''} ${s.it.snippet || s.it.description || ''}`.toLowerCase().includes(t));
+      return { ...s.it, selectionReason: (coversMissing ? 'missing_requirement' : 'source_diversity') as SelectionReason };
+    });
+    const pickedSet = new Set(picked);
+    const unpicked = rest.filter((it) => !pickedSet.has(it));
+    return { targets: [...guaranteed, ...picked], spares: unpicked };
+  } catch {
+    return { targets: pool.slice(0, limit).map((it: any) => ({ ...it, selectionReason: rankKind as SelectionReason })), spares: pool.slice(limit) };
+  }
+}
+
+/** RFC P0-WEB-03: usable scrape = full content, not snippet fallback. */
+export function isUsableScrape(item: any): boolean {
+  if (!item || item.scrapeError) return false;
+  if (item.isSnippetFallback) return false;
+  const md = item.markdown || '';
+  return typeof md === 'string' && md.length >= 50;
+}
+
+/** P1-3: Evidence充足判定 (adaptive scrape用) */
+export function assessEvidenceSufficiency(items: any[], query: string): { sufficient: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!items || items.length === 0) return { sufficient: false, reasons: ['empty'] };
+  const success = items.filter((it: any) => !it?.scrapeError && (it?.markdown || it?.highlights || it?.highlightItems));
+  if (success.length < Math.min(3, items.length)) {
+    reasons.push('few-success');
+  }
+  try {
+    const words = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length >= 2);
+    if (words.length >= 2) {
+      const corpus = success
+        .map((it: any) => {
+          const hl = Array.isArray(it?.highlights) ? it.highlights.join('\n') : '';
+          return `${it.title || ''} \n ${it.markdown || ''} \n ${hl}`.toLowerCase();
+        })
+        .join('\n');
+      const missing = words.filter((w) => !corpus.includes(w));
+      if (missing.length > 0) reasons.push(`missing-evidence:${missing.join(',')}`);
+    }
+  } catch {
+    // 判定失敗時は不足扱いにしない
+  }
+  return { sufficient: reasons.length === 0, reasons };
+}
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1277,6 +1413,9 @@ export async function integratedSearch(options: {
   highlightAlgorithm?: HighlightAlgorithm;
   highlightOverheadTokens?: number;
   highlightMaxCount?: number;
+  adaptiveScrape?: boolean;
+  scrapeBudget?: number;
+  tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
   const limit = Math.min(options.limit ?? 5, 20);
@@ -1303,7 +1442,10 @@ export async function integratedSearch(options: {
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}`;
+  const adaptiveScrape = options.adaptiveScrape ?? false;
+  const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
+  const requestTenantId = options.tenantId ?? 'legacy';
+  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1326,7 +1468,38 @@ export async function integratedSearch(options: {
     searchResults = dedupSearchResults(searchResults, (i: any) => `${i.title || ''} ${i.snippet || ''}`);
   }
 
-  const topItems = searchResults.slice(0, limit);
+  // P2: PRF retrieval (opt-in, retrieval-only, final eval binds to original query)
+  if (enablePrf && searchResults.length > 0) {
+    try {
+      const topDocs = searchResults.slice(0, 3).map((i: any) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const allDocs = searchResults.slice(0, 10).map((i: any) => `${i.title || ""} ${i.snippet || i.description || ""}`);
+      const prfQ = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs);
+      if (prfQ.expansionTerms.length > 0) {
+        const prfQuery = `${query} ${prfQ.expansionTerms.slice(0, 2).join(" ")}`.slice(0, 380);
+        if (prfQuery !== query) {
+          const prfRes = await searchYahooWeb({ query: prfQuery, includeDomains, excludeDomains, updated, disableFallback: true }).catch(() => null);
+          const prfItems = Array.isArray(prfRes?.items) ? prfRes.items : [];
+          if (prfItems.length > 0) {
+            const seen = new Set(searchResults.map((it: any) => it.url || it.link));
+            for (const it of prfItems) {
+              const key = it.url || it.link;
+              if (!key || seen.has(key)) continue;
+              seen.add(key);
+              searchResults.push({ ...it, retrievalQuery: prfQuery, prfRetrieval: true });
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // P0-3 + P1-4: 候補プール確保とScrape対象選択
+  // 上位3件はRRF/provider順保証、残り枠はcoverage/diversityで選択する
+  const candidatePoolSize = adaptiveScrape ? Math.max(scrapeBudget, limit * 2, 10) : Math.max(limit * 2, 10);
+  const candidatePool = searchResults.slice(0, candidatePoolSize);
+  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.queryUnion || webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
+  const topItems = selected.targets;
+  const sparePool = selected.spares;
   const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];
   const xPlanByIndex = new Map<number, (typeof xRetrievalPlan)[number]>();
   for (const plan of xRetrievalPlan) {
@@ -1465,6 +1638,7 @@ export async function integratedSearch(options: {
         try {
           const scrape = await scrapeUrl({
             url: itemUrl,
+            tenantId: requestTenantId,
             contextTitle: item.title,
             snippet: itemSnippet,
             maxChars,
@@ -1533,6 +1707,120 @@ export async function integratedSearch(options: {
       }),
     );
 
+    // P0-3: 失敗分補充 (有効結果数が limit 未満かつ予備がある場合のみ1波補充)
+    try {
+      const isSuccess = (it: any) => isUsableScrape(it);
+      let successCount = enrichedResults.filter(isSuccess).length;
+      if (successCount < limit && sparePool.length > 0) {
+        for (const spare of sparePool) {
+          if (successCount >= limit) break;
+          const spareItem: any = spare;
+          const spareUrl = spareItem?.url || spareItem?.link;
+          if (!spareUrl) continue;
+          const spareSnippet = spareItem?.snippet || spareItem?.description || '';
+          incrementSecurityCounter('sora_scrape_refill_total');
+          try {
+            const scrape = await scrapeUrl({
+              url: spareUrl,
+              tenantId: requestTenantId,
+              contextTitle: spareItem?.title,
+              snippet: spareSnippet,
+              maxChars,
+              timeoutMs: 12000,
+              query: effectiveQuery,
+              extractHighlights,
+              onlyMainContent,
+              formats,
+              reorderUFlat,
+              diversityWeight,
+              annotateTemporal,
+              minimizeTables,
+              highlightAlgorithm,
+              highlightOverheadTokens,
+              highlightMaxCount,
+            });
+            const enrichedSpare: Record<string, any> = {
+              ...spareItem,
+              ogImage: scrape.ogImage,
+              description: scrape.description,
+              publishedTime: scrape.publishedTime,
+              author: scrape.author,
+              siteName: scrape.siteName,
+              twitterHandle: scrape.twitterHandle,
+              socialLinks: scrape.socialLinks,
+              pageType: scrape.pageType,
+              highlights: scrape.highlights,
+              highlightItems: scrape.highlightItems,
+              highlightDiagnostics: scrape.highlightDiagnostics,
+              temporalAnchors: scrape.temporalAnchors,
+              textFragmentUrl: scrape.textFragmentUrl,
+              cached: scrape.cached,
+            };
+            if (scrape.isTruncated) {
+              enrichedSpare.isTruncated = true;
+            }
+            if (options.verbose) {
+              enrichedSpare.quality = scrape.quality;
+              enrichedSpare.completeness = scrape.completeness;
+              enrichedSpare.evidence = scrape.evidence;
+            }
+            Object.assign(
+              enrichedSpare,
+              projectRequestedScrapeFormats(scrape, formats, {
+                minMarkdownChars: 50,
+                markdownFallback: spareSnippet
+                  ? `# ${spareItem?.title || 'Web Search Result'}\n\nURL: ${spareUrl}\n\n${spareSnippet}`
+                  : undefined,
+              }),
+            );
+            enrichedSpare.selectionReason = 'scrape_refill';
+            enrichedResults.push(enrichedSpare);
+            if (isUsableScrape(enrichedSpare)) successCount++;
+          } catch {
+            continue;
+          }
+        }
+      }
+    } catch {
+      // 補充失敗時は初回結果をそのまま返す
+    }
+
+    // P1-3: adaptive evidence 不足時の追加取得 (opt-in, 最大8件)
+    try {
+      if (adaptiveScrape && scrapeContent) {
+        let ev = assessEvidenceSufficiency(enrichedResults, query);
+        if (!ev.sufficient) {
+          incrementSecurityCounter('sora_deep_search_wave_total');
+          const usedSpares = Math.max(0, enrichedResults.length - topItems.length);
+          const remaining = sparePool.slice(usedSpares);
+          for (const spare of remaining) {
+            if (enrichedResults.length >= scrapeBudget) break;
+            const spareItem = spare as any;
+            const spareUrl = spareItem?.url || spareItem?.link;
+            if (!spareUrl) continue;
+            const spareSnippet = spareItem?.snippet || spareItem?.description || '';
+            try {
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+              const enrichedSpare: Record<string, any> = { ...spareItem, ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
+              Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
+              enrichedSpare.selectionReason = 'scrape_refill';
+              enrichedResults.push(enrichedSpare);
+              ev = assessEvidenceSufficiency(enrichedResults, query);
+              if (ev.sufficient) break;
+            } catch { continue; }
+          }
+        }
+      }
+    } catch { }
+
+    // Attempt order index for observability (RFC schema). Main wave keeps
+    // pool order; refill and adaptive pushes append in attempt order.
+    enrichedResults.forEach((it: any, scrapeAttemptIndex: number) => {
+      if (it && typeof it === 'object' && it.scrapeAttemptIndex === undefined) {
+        it.scrapeAttemptIndex = scrapeAttemptIndex;
+      }
+    });
+
     // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
     if (enrichedResults.length > 1) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);
@@ -1595,6 +1883,7 @@ export async function integratedSearch(options: {
         ...(Array.isArray(realtimeMcpRes?.contributingQueries) ? { contributingQueries: realtimeMcpRes.contributingQueries } : {}),
         ...(realtimeMcpRes?.resultsMerged !== undefined ? { resultsMerged: realtimeMcpRes.resultsMerged } : {}),
         ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
+        ...(realtimeMcpRes?.intent ? { intent: realtimeMcpRes.intent } : {}),
         items: realtimeItems,
       };
     }
@@ -1628,6 +1917,7 @@ export async function integratedSearch(options: {
   }
 
   if (options.verbose) {
+    const diagRequirements = extractQueryRequirements(query);
     finalResponse.searchDiagnostics = buildSearchDiagnostics({
       originalQuery: query,
       effectiveQuery,
@@ -1648,6 +1938,7 @@ export async function integratedSearch(options: {
       realtimeRequiredTerms: realtimeMcpRes?.requiredTerms,
       realtimeCoveredTerms: realtimeMcpRes?.coveredTerms,
       realtimeMissingTerms: realtimeMcpRes?.missingTerms,
+      webRequirements: [...diagRequirements.entityTerms, ...diagRequirements.intentTerms],
       realtimeCount: Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items.length : 0,
       officialAccountId: targetOfficialHandle,
       results: enrichedResults,
@@ -1677,4 +1968,3 @@ export async function integratedSearch(options: {
 
 // 荷物追跡サービス (Package Tracking)
 export * from './services/tracking.js';
-

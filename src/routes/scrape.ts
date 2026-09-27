@@ -33,7 +33,8 @@ scrapeRoutes.post('/scrape', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const result = await scrapeUrl(parsed.data);
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const result = await scrapeUrl({ ...parsed.data, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err: any) {
     const msg = err.message || 'Scrape failed';
@@ -65,6 +66,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     try {
       await scrapeUrl({
         ...parsed.data,
+        tenantId: (c as any).get?.('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',
@@ -100,7 +102,8 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const result = await scrapeBatchUrls(parsed.data);
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
     const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
   } catch (err: any) {
@@ -142,8 +145,10 @@ scrapeRoutes.post('/crawl', async (c) => {
       return c.json({ error: 'url is required' }, 400);
     }
 
+    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const result = await crawlSiteUrl({
       url: body.url,
+      tenantId,
       maxPages: body.maxPages,
       maxDepth: body.maxDepth,
       maxChars: body.maxChars,
@@ -187,8 +192,10 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ url: body.url, status: 'crawling' }),
       });
 
+      const streamTenant = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
         url: body.url,
+        tenantId: streamTenant,
         maxPages: body.maxPages,
         maxDepth: body.maxDepth,
         maxChars: body.maxChars,

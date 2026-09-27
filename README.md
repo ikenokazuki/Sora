@@ -1855,6 +1855,17 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます） |
 | `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
 | `ALLOW_LOCAL_FETCH` | `false` | `true` の場合、`localhost` / プライベート IP へのスクレイピングを許可します（SSRF 対策の緩和。**テスト用途のみ**） |
+| `SORA_WEB_NATIVE_RANKING` | `true` | 単一 SERP をプロバイダ順で保持します。`false` で従来の BM25 全体並べ替え（`providerRank` は記録継続） |
+| `SORA_RRF_ENABLED` | `true` | 複数クエリ統合に RRF を使用します。`false` で first-wins dedup |
+| `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
+| `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
+| `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
+| `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
+| `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
+| `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
+| `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
+| `SORA_WEB_RETRY_WAIT_MS` | `1200` | レート制限後の次候補までの待機上限（ms）。0〜5000に丸め、1回のみ待機します |
 
 ---
 
@@ -1944,3 +1955,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 ### Realtime / Web compact default (v2.27.0)
 
 `search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
+
+### Retrieval v2 / Security
+
+単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は加重 RRF（original 1.0、fallback/rescue 0.6）で、scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` / `scrapeBudget` / `enablePrf` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。
