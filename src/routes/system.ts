@@ -11,6 +11,7 @@ import {
   isSharedBrowserConnected,
 } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
+import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
 import { mcpSessionManager } from './mcp_route.js';
 
@@ -139,6 +140,9 @@ systemRoutes.get('/metrics', (c) => {
       '# TYPE sora_bot_retry_total counter',
       `sora_bot_retry_total ${botDetection.retryCount}`,
     ];
+    for (const [name, value] of Object.entries(getSecurityMetrics())) {
+      lines.push(`# TYPE ${name} counter`, `${name} ${value}`);
+    }
     return c.text(lines.join('\n') + '\n', 200, {
       'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
     });
@@ -152,6 +156,7 @@ systemRoutes.get('/metrics', (c) => {
     cache,
     botDetection,
     activeSessions,
+    counters: getSecurityMetrics(),
     chromium: {
       available: !!CHROME_EXECUTABLE_PATH,
       sharedConnected: isSharedBrowserConnected(),
