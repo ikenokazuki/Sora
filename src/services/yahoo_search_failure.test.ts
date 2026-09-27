@@ -1,7 +1,9 @@
 import { describe, expect, test, beforeEach } from 'bun:test';
-import { searchYahooWeb, resetYahooWebPressure, resetYahooBreaker, resetYahooCallGate } from './yahoo.js';
+import { searchYahooWeb, resetYahooWebPressure, resetYahooBreaker, resetYahooCallGate, yahooWebSearchFlightKey } from './yahoo.js';
+import { setYahooSearchCache, clearYahooSearchCache } from '../retrieval/yahoo_cache.js';
 
 beforeEach(() => {
+  clearYahooSearchCache();
   resetYahooWebPressure();
   resetYahooBreaker();
   resetYahooCallGate();
@@ -118,6 +120,47 @@ describe('web search distinguishes upstream failure from empty results', () => {
     }
   });
 
+  test('fresh cache hit skips the provider', async () => {
+    const key = yahooWebSearchFlightKey({ query: 'x', disableFallback: true });
+    setYahooSearchCache(key, { items: [{ title: 'cached', url: 'https://e/cached' }], count: 1 });
+    const r = await searchYahooWeb(
+      { query: 'x', disableFallback: true },
+      {
+        callYahooMcp: async () => { throw new Error('must not be called'); },
+        fetchYahooWebDirect: async () => { throw new Error('must not be called'); },
+      } as any,
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.cached).toBe(true);
+  });
+  test('throttled search falls back to stale cache', async () => {
+    const key = yahooWebSearchFlightKey({ query: 'x', disableFallback: true });
+    setYahooSearchCache(key, { items: [{ title: 'stale', url: 'https://e/stale' }], count: 1 }, 0, 60000, Date.now() - 100);
+    const r = await searchYahooWeb(
+      { query: 'x', disableFallback: true },
+      { callYahooMcp: async () => err429, fetchYahooWebDirect: directDown } as any,
+    );
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].title).toBe('stale');
+    expect(r.stale).toBe(true);
+    expect(r.throttled).toBe(true);
+  });
+  test('10 concurrent identical searches issue one provider request', async () => {
+    let calls = 0;
+    const deps = {
+      callYahooMcp: async () => { throw new Error('must not be called'); },
+      fetchYahooWebDirect: async () => {
+        calls++;
+        await new Promise((r) => setTimeout(r, 10));
+        return [{ url: 'https://e/sf', title: 'SF', snippet: 's' }];
+      },
+    } as any;
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => searchYahooWeb({ query: 'sf probe', disableFallback: true }, deps)),
+    );
+    expect(calls).toBe(1);
+    expect(results.every((r) => r.items.length === 1)).toBe(true);
+  });
   test('Q0 success survives Q1 rate-limit as partial results', async () => {
     process.env.SORA_WEB_QUERY_UNION = 'true';
     const rateErr: any = new Error('Yahoo provider rate limited');
