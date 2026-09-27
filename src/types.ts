@@ -323,6 +323,7 @@ export interface BrowserActionOptions {
   createSession?: boolean;
   closeSession?: boolean;
   ownerToken?: string;
+  tenantId?: string;
   actions?: BrowserActionStep[];
   extract?: {
     markdown?: boolean;

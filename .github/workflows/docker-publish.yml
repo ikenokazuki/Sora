@@ -11,7 +11,35 @@ env:
   IMAGE_NAME: ikenokazuki/sora
 
 jobs:
+  test:
+    name: Hermetic tests (publish gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies (frozen lockfile required)
+        run: bun install --frozen-lockfile
+      - name: Typecheck (strict)
+        run: bun run typecheck
+      - name: Run hermetic test subset
+        run: >
+          bun test src/services/yahoo_query_union.test.ts
+          src/scraper_selector.test.ts src/search_diagnostics.test.ts
+          src/search_compact.test.ts src/extractor/information_retrieval.test.ts
+          src/security/credential_scope.test.ts
+          src/security/scrape_cache_isolation.test.ts src/net/safe_transport.test.ts
+          src/http_fetcher_redirect.test.ts src/auth.test.ts
+          src/security/tenant_context.test.ts src/security/tenant_isolation.test.ts
+          src/security/metrics.test.ts src/browser_session_access.test.ts
+          src/retrieval/rrf.test.ts src/retrieval/requirements.test.ts
+          src/services/yahoo_realtime_retrieval.test.ts src/services/x_detail.test.ts
+          src/llm_contract_sync.test.ts src/rho_select.test.ts --timeout 60000
   build-and-push:
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
