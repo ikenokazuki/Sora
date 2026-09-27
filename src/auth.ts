@@ -92,19 +92,20 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
 
     let tokenHash = 'anonymous';
 
-    // 2. API キーが環境変数等で設定されていない場合の挙動
+    // 2. API キーが環境変数等で設定されていない場合の挙動（Fail-Open）
+    // 注意: bun build は process.env.NODE_ENV をビルド時にインライン化し、
+    // 到達不能分岐を削除するため、認証判断に NODE_ENV を使わないこと。
+    // 2026-09-26 に本番バンドルから Fail-Closed 分岐が消滅し、
+    // 意図せず常時開放になっていた実績がある。
+    // 本サーバーはキー未設定でも利用可能とする方針のため、
+    // キー未設定時は警告ログのみで全リクエストを許可する。
     const apiKey = expectedApiKey ?? process.env.WEB_FETCHER_API_KEY ?? process.env.API_KEY;
     if (!apiKey) {
+      // Fail-open without a configured key (v2.30.2): do not gate on
+      // NODE_ENV here — bun build inlines it and the branch vanishes
+      // from the production bundle. Warn once; silence the notice with
+      // SORA_ALLOW_ANONYMOUS=true.
       if (process.env.SORA_ALLOW_ANONYMOUS !== 'true') warnOnceNoKey();
-      if (process.env.NODE_ENV === 'production') {
-        return c.json(
-          {
-            error: 'Unauthorized: Service is running in production with Fail-Closed mode and no API key configured',
-            message: 'Server administrator must set WEB_FETCHER_API_KEY or API_KEY environment variable.',
-          },
-          401,
-        );
-      }
     } else {
       // 3. API キーの照合 (定数時間比較)
       const providedToken = extractAuthToken(c);

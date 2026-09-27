@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "FR-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:00:00Z",
+    "endedAt": "2026-09-24T09:15:00Z",
+    "requirements": [
+      {"id": "program", "supported": true, "evidenceIds": ["web:fr-g1"], "notes": "PSIA英語のみトラックを確認"},
+      {"id": "eligibility", "supported": true, "evidenceIds": ["web:fr-g1"], "notes": "IELTS7.0/TOEFL100を確認"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "2027年PSIA公式締切は未確認、二重学位の集約情報のみ"},
+      {"id": "unknown", "supported": true, "evidenceIds": ["web:fr-g1"], "notes": "公式締切未確認を明示"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索1-2クエリ。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "FR-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:15:53Z",
+    "endedAt": "2026-09-24T09:16:01Z",
+    "requirements": [
+      {"id": "program", "supported": false, "evidenceIds": [], "notes": "PSIAへの言及なし"},
+      {"id": "eligibility", "supported": false, "evidenceIds": [], "notes": "英語要件への言及なし"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "募集期限への言及なし"},
+      {"id": "unknown", "supported": false, "evidenceIds": [], "notes": "未確認の明示なし"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7933,
+    "notes": "B=researchCountryWithDefaultsライブ41件。recent20件の参照切れ0。干ばつkeyEventは注意のみ。"}
+]

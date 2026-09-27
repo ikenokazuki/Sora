@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "MX-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:00:00Z",
+    "endedAt": "2026-09-24T09:15:00Z",
+    "requirements": [
+      {"id": "program", "supported": true, "evidenceIds": ["web:mx-g1"], "notes": "2027-1募集の修士課程を特定、外国人枠あり"},
+      {"id": "eligibility", "supported": true, "evidenceIds": ["web:mx-g1"], "notes": "外国人手続とDGIRE再認定を確認"},
+      {"id": "deadline", "supported": true, "evidenceIds": ["web:mx-g1"], "notes": "2027-1募集と7/1登録開始を確認"},
+      {"id": "unknown", "supported": true, "evidenceIds": ["web:mx-g1"], "notes": "英語媒体の希薄さを明示"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 3,
+    "primaryEvidenceFitting": 3,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索1-2クエリ。公式募集要項ベース。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "MX-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:16:12Z",
+    "endedAt": "2026-09-24T09:16:21Z",
+    "requirements": [
+      {"id": "program", "supported": false, "evidenceIds": [], "notes": "UNAM課程への言及なし"},
+      {"id": "eligibility", "supported": false, "evidenceIds": [], "notes": "出願資格への言及なし"},
+      {"id": "deadline", "supported": false, "evidenceIds": [], "notes": "募集期限への言及なし"},
+      {"id": "unknown", "supported": false, "evidenceIds": [], "notes": "未確認の明示なし"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 1,
+    "elapsedMs": 8109,
+    "notes": "B=researchCountryWithDefaultsライブ34件。recent20件の参照切れ0。米国ニューメキシコ地震をMX主要イベントに混入したため重大誤り1。"}
+]

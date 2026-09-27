@@ -58,11 +58,11 @@ Adaptive scrape and PRF retrieval are per-request options
 ## Gate proof (2026-09-27, local replay of CI)
 
 - Workflow YAML parses; `bun install --frozen-lockfile` clean.
-- `bun run typecheck` clean; gate command green: 198 pass / 0 fail
+- Gate command green: 205 pass / 0 fail
   across the exact 20 files listed in the workflow.
 
 ## Open decisions
 
 - MCP tenant scoping relies on Authorization/X-API-Key; unauthenticated use shares `legacy` scope.
-- `tsc --noEmit` is CI-gated; no startup auth throw (per-request fail-closed instead).
+- Deliberate fail-open without a key (v2.30.2; no NODE_ENV gating); per-request 401 when a key is configured.
 - Weak-evidence cases (`event-timetable-01/03`) correctly report missing evidence instead of fabricating it.

@@ -1,0 +1,199 @@
+{
+  "kind": "methodology-audit-and-route-probe",
+  "recordedAt": "2026-09-24T09:42:55.782990+00:00",
+  "qualityVerdict": "prior_arm_comparison_not_valid_for_adoption_decision",
+  "caseSchema": {
+    "total": 48,
+    "missingRegion": 24,
+    "referenceReviewRequired": 42
+  },
+  "savedReportChecks": [
+    {
+      "caseId": "KR-marketing-01",
+      "artifact": "runs/B-KR-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": []
+    },
+    {
+      "caseId": "GB-marketing-01",
+      "artifact": "runs/B-GB-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": []
+    },
+    {
+      "caseId": "FR-marketing-01",
+      "artifact": "runs/B-FR-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": []
+    },
+    {
+      "caseId": "DE-marketing-01",
+      "artifact": "runs/B-DE-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": []
+    },
+    {
+      "caseId": "ID-marketing-01",
+      "artifact": "runs/B-ID-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": []
+    },
+    {
+      "caseId": "MX-marketing-01",
+      "artifact": "runs/B-MX-marketing-01-report.json",
+      "socialNotRequested": true,
+      "foreignNewMexicoKeyEvents": [
+        "evt_0018bb1bd3603734f771",
+        "evt_42f5ede2f69dbdda9572",
+        "evt_4b1d36922717bdf279b0",
+        "evt_7893f61d8efc0d63e7c4",
+        "evt_7926f9736ff1b0ac23b8",
+        "evt_8e102891ce4cf65833b8"
+      ]
+    }
+  ],
+  "routeProbes": [
+    {
+      "id": "cn-ad-history",
+      "startedAt": "2026-09-24T09:39:25.635Z",
+      "endedAt": "2026-09-24T09:39:25.822Z",
+      "elapsedMs": 187,
+      "args": {
+        "query": "杜嘉班纳 筷子 广告 争议 2018",
+        "formats": [
+          "markdown"
+        ],
+        "limit": 3,
+        "maxChars": 5000,
+        "noCache": true,
+        "verbose": true
+      },
+      "output": {
+        "items": [],
+        "count": 0,
+        "source": "web"
+      }
+    },
+    {
+      "id": "cn-history-read-alternative",
+      "startedAt": "2026-09-24T09:41:44.965Z",
+      "endedAt": "2026-09-24T09:41:46.808Z",
+      "elapsedMs": 1843,
+      "args": {
+        "url": "https://knowledge.wharton.upenn.edu/podcast/knowledge-at-wharton-podcast/dolce-gabbana-mistakes-in-china/",
+        "mode": "fast",
+        "maxChars": 7000,
+        "timeoutMs": 15000,
+        "formats": [
+          "markdown"
+        ],
+        "onlyMainContent": true,
+        "noCache": true
+      },
+      "output": {
+        "url": "https://knowledge.wharton.upenn.edu/podcast/knowledge-at-wharton-podcast/dolce-gabbana-mistakes-in-china/",
+        "title": "Can Dolce & Gabbana Recover from Its Mistakes in China? - Knowledge at Wharton",
+        "publishedTime": "2018-12-11T13:19:35-05:00",
+        "source": "web",
+        "isTruncated": true,
+        "characterCount": 7000,
+        "contentSha256": "54aca76ca788b019728ae33b3cfdcb050c5c198232ffabd0745059dd296098ef",
+        "checkedTopics": {
+          "advertisementOnWeibo": true,
+          "culturalSensitivity": true,
+          "backlash": true
+        },
+        "shortExcerpt": "The controversy does illuminate the issue of cultural sensitivity in an increasingly global marketplace."
+      },
+      "rawArtifact": "/tmp/sora-method-probe-CZ5uz5/cn-history-read-alternative.json",
+      "evidenceScope": "Historical context only; not current SNS observation or pre-event predictive evaluation."
+    },
+    {
+      "startedAt": "2026-09-24T09:40:51.710Z",
+      "endedAt": "2026-09-24T09:41:06.883Z",
+      "elapsedMs": 15172,
+      "args": {
+        "url": "https://xwcbpl.whu.edu.cn/xljy/2020-11-05/156.html",
+        "mode": "fast",
+        "maxChars": 5000,
+        "timeoutMs": 15000,
+        "formats": [
+          "markdown"
+        ],
+        "onlyMainContent": true,
+        "noCache": true
+      },
+      "error": "AbortError: The operation timed out."
+    },
+    {
+      "id": "kr-culture",
+      "startedAt": "2026-09-24T09:39:25.626Z",
+      "endedAt": "2026-09-24T09:39:25.838Z",
+      "elapsedMs": 211,
+      "args": {
+        "query": "추석 차례 가족 명절 의미",
+        "includeDomains": [
+          "korea.net"
+        ],
+        "formats": [
+          "markdown"
+        ],
+        "limit": 3,
+        "maxChars": 5000,
+        "noCache": true,
+        "verbose": true
+      },
+      "output": {
+        "items": [],
+        "count": 0,
+        "source": "web"
+      }
+    },
+    {
+      "id": "kr-industry-live",
+      "startedAt": "2026-09-24T09:39:25.636Z",
+      "endedAt": "2026-09-24T09:39:25.809Z",
+      "elapsedMs": 173,
+      "args": {
+        "query": "스타벅스 2026 9월 광고 논란",
+        "updated": "week",
+        "formats": [
+          "markdown"
+        ],
+        "limit": 3,
+        "maxChars": 5000,
+        "noCache": true,
+        "verbose": true
+      },
+      "output": {
+        "items": [],
+        "count": 0,
+        "source": "web"
+      }
+    },
+    {
+      "id": "search-upstream-control",
+      "startedAt": "2026-09-24T09:41:44.962Z",
+      "endedAt": "2026-09-24T09:41:45.061Z",
+      "elapsedMs": 99,
+      "args": {
+        "query": "OpenAI"
+      },
+      "output": {
+        "content": [
+          {
+            "text": "Error: HTTP status client error (429 Too Many Requests) for url (https://search.yahoo.co.jp/search?p=OpenAI&ei=UTF-8&b=1)",
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  ],
+  "limits": [
+    "Search probes used existing searchWebWithFormats service; no MCP transport in this probe.",
+    "External web search discovered the successful read URL; discovery was not performed by Sora.",
+    "Raw source snapshot remains temporary; repository stores metadata, hash and short excerpt.",
+    "No claim of 12-country or live social coverage."
+  ]
+}

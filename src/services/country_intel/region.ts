@@ -1,3 +1,4 @@
+import { ISO_COUNTRIES } from './geo_codes.js';
 import type { RegionIdentity } from './types.js';
 
 type RegionRecord = Omit<RegionIdentity, 'confidence' | 'languages' | 'aliases'> & {
@@ -13,32 +14,25 @@ function identity(region: Omit<RegionIdentity, 'confidence'>): RegionRecord {
   });
 }
 
+/** ISO catalogue由来の国レコード。nativeName/aliases は既存の監査済み分のみ保持する。 */
+const CATALOGUE_EXTRA: Readonly<Record<string, { nativeName?: string; aliases?: readonly string[]; languages?: readonly string[]; timezone?: string }>> = Object.freeze({
+  KR: { nativeName: '대한민국', aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'], languages: ['ko'], timezone: 'Asia/Seoul' },
+  GE: { nativeName: 'საქართველო', languages: ['ka'], timezone: 'Asia/Tbilisi' },
+  US: { aliases: ['United States of America', 'USA'], languages: ['en'], timezone: 'America/New_York' },
+});
+
 const REGION_IDENTITIES: readonly RegionRecord[] = Object.freeze([
-  identity({
-    id: 'country:KR',
-    name: 'South Korea',
-    nativeName: '대한민국',
-    countryCode: 'KR',
-    languages: ['ko'],
-    aliases: ['Korea, Republic of', 'Republic of Korea', 'Korea (South)'],
-    timezone: 'Asia/Seoul',
-  }),
-  identity({
-    id: 'country:GE',
-    name: 'Georgia',
-    nativeName: 'საქართველო',
-    countryCode: 'GE',
-    languages: ['ka'],
-    aliases: [],
-    timezone: 'Asia/Tbilisi',
-  }),
-  identity({
-    id: 'country:US',
-    name: 'United States',
-    countryCode: 'US',
-    languages: ['en'],
-    aliases: ['United States of America', 'USA'],
-    timezone: 'America/New_York',
+  ...ISO_COUNTRIES.map(([alpha2, , name]) => {
+    const extra = CATALOGUE_EXTRA[alpha2] ?? {};
+    return identity({
+      id: `country:${alpha2}`,
+      name,
+      ...(extra.nativeName ? { nativeName: extra.nativeName } : {}),
+      countryCode: alpha2,
+      languages: [...(extra.languages ?? [])],
+      aliases: [...(extra.aliases ?? [])],
+      ...(extra.timezone ? { timezone: extra.timezone } : {}),
+    });
   }),
   identity({
     id: 'subdivision:US-GA',
@@ -52,18 +46,24 @@ const REGION_IDENTITIES: readonly RegionRecord[] = Object.freeze([
   }),
 ]);
 
+function matchKeys(region: RegionRecord, alpha3: string | undefined): string[] {
+  return [
+    region.id,
+    region.name,
+    region.nativeName,
+    // Subdivision は親国コード単体で解決しない (US が US-GA にも一致するのを防ぐ)。
+    ...(region.subdivisionCode ? [region.subdivisionCode] : [region.countryCode]),
+    alpha3,
+    ...region.aliases,
+  ].filter((value): value is string => Boolean(value));
+}
+
 export function resolveRegion(input: string): RegionIdentity {
   const normalized = input.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+  const alpha3ByAlpha2 = new Map(ISO_COUNTRIES.map(([alpha2, alpha3]) => [alpha2, alpha3]));
   const matches = REGION_IDENTITIES.filter((region) =>
-    [
-      region.id,
-      region.name,
-      region.nativeName,
-      region.subdivisionCode ?? region.countryCode,
-      ...region.aliases,
-    ]
-      .filter(Boolean)
-      .some((value) => value!.toLocaleLowerCase('en-US') === normalized));
+    matchKeys(region, region.countryCode ? alpha3ByAlpha2.get(region.countryCode) : undefined)
+      .some((value) => value.toLocaleLowerCase('en-US') === normalized));
 
   if (matches.length === 1) {
     return {
