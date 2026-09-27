@@ -147,6 +147,9 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
   - bench: `scripts/bench-evidence-extraction.ts` (2026-09-28)
 - [x] Live spot check post-change
   - evidence: `eval/results/live-sample-20260928.json` (4/4 healthy, 8/9/10/9 items, 0 throttled, adaptive quiet)
+- [x] Live A/B pilot for completion criteria (section 80)
+  - evidence: `eval/results/live-ab-20260928.json` (2 queries, arms A/B/C; native keeps official tops, legacy prefers third-party; adaptive quiet, 0 throttled)
+  - pending: full 100-query golden A/B with human labels before flipping adaptive/PRF defaults
 
 ## Query Scrape (spec sections 40-46)
 
