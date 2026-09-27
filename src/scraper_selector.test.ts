@@ -62,6 +62,18 @@ describe('P1-4 selectScrapeTargets', () => {
   });
 
 
+  test('browser escalation is skipped only on demonstrated answers', async () => {
+    const { shouldEscalateToBrowser } = await import('./scraper.js');
+    expect(shouldEscalateToBrowser({ spaDetected: false, staticMarkdown: 'x'.repeat(100) }).escalate).toBe(false);
+    expect(shouldEscalateToBrowser({ spaDetected: true, staticMarkdown: 'short' }).reason).toBe('no-static-content');
+    expect(shouldEscalateToBrowser({ spaDetected: true, staticMarkdown: 'x'.repeat(100) }).reason).toBe('no-query');
+    const priced = '## Astra Phone X\u4fa1\u683c\n\nAstra Phone X\u306e\u4fa1\u683c\u306f159,800\u5186\u3067\u3059\u3002\n\n' + 'x'.repeat(200);
+    const skip = shouldEscalateToBrowser({ spaDetected: true, staticMarkdown: priced, query: 'Astra Phone X \u4fa1\u683c' });
+    expect(skip.escalate).toBe(false);
+    expect(skip.reason).toContain('recall-answers');
+    const weak = shouldEscalateToBrowser({ spaDetected: true, staticMarkdown: 'Astra Phone X\u306e\u8a71題\u306b\u3064\u3044\u3066\u8a73細\u306a\u5185\u5bb9' + 'x'.repeat(200), query: 'Astra Phone X \u4fa1\u683c' });
+    expect(weak.escalate).toBe(true);
+  });
   test('sufficiency stops answer-seeking queries on answers, not mentions', async () => {
     const { assessEvidenceSufficiency } = await import('./scraper.js');
     const mentionOnly = assessEvidenceSufficiency(

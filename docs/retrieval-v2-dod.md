@@ -178,8 +178,16 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - [x] Failed scrape refill
   - implementation: usable-evidence basis, `selectionReason: 'scrape_refill'`, `sora_scrape_refill_total`
   - tests: gate suite (`scraper_selector.test.ts`, 205-file gate green)
-- [ ] Extraction escalation / recall path (sections 51-53)
-  - status: OPEN. No recall-extraction or late-escalation path exists yet; resource guards unimplemented.
+- [x] Extraction escalation / recall path (sections 51-53)
+  - implementation: `extractWithEscalation` in `src/rho_select_v2_adapter.ts` (precision first, relaxed recall on weak answers, ties keep precision)
+  - tests: `src/rho_select_v2_escalation.test.ts` (5 pass: paths, empty, limits, time-box)
+- [x] Browser late escalation (section 52)
+  - implementation: `shouldEscalateToBrowser` in `src/scraper.ts`; browser skipped only on demonstrated static answers
+  - tests: skip/escalate decision cases in `scraper_selector.test.ts`
+  - metrics: `sora_browser_launch_total`, `sora_browser_recall_saved_total`
+- [x] Resource guards (section 53)
+  - implementation: `ExtractionLimits` (maxBlocks/maxExtractionMs/maxHtmlBytes enforced in adapter; tables/DOM covered upstream by transport cap and table minimization)
+  - tests: truncation + time-box cases
 
 ## Evidence quality DoD (query-aware scrape RFC)
 
