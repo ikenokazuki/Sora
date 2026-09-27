@@ -1,0 +1,69 @@
+{
+  "startedAt": "2026-09-27T21:24:36.929Z",
+  "rows": [
+    {
+      "id": "live-factual-01",
+      "category": "simple factual",
+      "query": "君と見るそら メンバー",
+      "ms": 537,
+      "count": 8,
+      "error": null,
+      "effectiveQuery": "君と見るそら メンバー",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://kimisora.love/",
+      "topLegacy": "https://x.com/kimisora_JPN",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": []
+    },
+    {
+      "id": "live-event-01",
+      "category": "event timetable",
+      "query": "君と見るそら ライブ 出演時間",
+      "ms": 507,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "君と見るそら ライブ 出演時間",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://x.com/kimisora_JPN",
+      "topLegacy": "https://ticketdive.com/event/kimisora_summer2026",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": []
+    },
+    {
+      "id": "live-event-02",
+      "category": "event timetable",
+      "query": "SPARK 山中湖 タイムテーブル",
+      "ms": 503,
+      "count": 10,
+      "error": null,
+      "effectiveQuery": "SPARK 山中湖 タイムテーブル",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://sparkfes.com/2023/timetable/",
+      "topLegacy": "https://playyte.com/news/1101/",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": []
+    },
+    {
+      "id": "live-official-01",
+      "category": "official information",
+      "query": "デジタル庁 Web API",
+      "ms": 556,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "デジタル庁 Web API",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://www.digital.go.jp/assets/contents/node/basic_page/field_ref_resources/fe5f0631-c978-42db-8416-6759cfa7e53a/f6ca1b7b/20241001_policies_development_management_outline_04.pdf",
+      "topLegacy": "https://digital-gov.note.jp/n/n89c067913d7a",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": []
+    }
+  ]
+}
