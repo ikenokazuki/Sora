@@ -1,5 +1,5 @@
 import { normalizeEvidence } from '../evidence.js';
-import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
+import type { ProviderInput, AcquisitionItem, CountryIntelProvider, ProviderResult } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 
 export interface GdeltDocArticle { url: string; title?: string; seendate?: string; domain?: string; language?: string; sourcecountry?: string; }
@@ -78,7 +78,7 @@ export function createGdeltProvider(fetchFn?: GdeltFetch, opts: { firstAttemptMs
     id: 'gdelt', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 3600,
     // 初回＋縮小再試行の合計で収める。全体締め切り（29秒）内に収める。
     timeoutMs: 16_000,
-    async run(input: ProviderInput, signal: AbortSignal): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
+    async run(input: ProviderInput, signal: AbortSignal): Promise<ProviderResult> {
       try {
         const firstCap = AbortSignal.timeout(firstAttemptMs);
         const firstSignal = signal.aborted ? signal : AbortSignal.any([signal, firstCap]);
