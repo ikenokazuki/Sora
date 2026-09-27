@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Regional source</title>
+    <language>ar</language>
+    <item>
+      <title>تحديث رسمي</title>
+      <link>https://example.org/notice</link>
+      <description>تم تحديث مواعيد الزيارة.</description>
+      <pubDate>Mon, 21 Sep 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

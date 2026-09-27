@@ -118,7 +118,7 @@ describe('provider isolation', () => {
     const result = await runProviders(plan, [flaky], { timeoutMs: 50, cache: null });
 
     expect(attempts).toBe(2);
-    expect(result.items).toEqual([{ evidence }]);
+    expect(result.items).toEqual([{ providerId: 'network', areas: ['politics'], item: { evidence } }]);
     expect(result.runs[0].status).toBe('success');
   });
 
@@ -184,7 +184,7 @@ describe('provider cache', () => {
     const result = await runProviders(plan, [fresh], { timeoutMs: 50, noCache: true, cache });
 
     expect(reads).toBe(0);
-    expect(result.items).toEqual([{ evidence }]);
+    expect(result.items).toEqual([{ providerId: 'fresh', areas: ['politics'], item: { evidence } }]);
     expect(writes).toEqual([{ key: providerCacheKey('fresh', plan), ttl: 60 }]);
   });
 });
@@ -220,9 +220,9 @@ describe('bounded planning', () => {
       verifiedSources,
     );
 
-    expect(result.pass1.length).toBeLessThanOrEqual(12);
+    expect(result.pass1.length).toBeLessThanOrEqual(24);
     expect(result.pass2.length).toBeLessThanOrEqual(8);
-    expect(result.limits).toEqual({ maxPass1Queries: 12, maxPass2Queries: 8, maxItemsPerQuery: 100 });
+    expect(result.limits).toEqual({ maxPass1Queries: 24, maxPass2Queries: 8, maxItemsPerQuery: 100 });
     expect(result.pass2.some((query) => query.sourceDomain === 'candidate.example')).toBe(false);
   });
 });

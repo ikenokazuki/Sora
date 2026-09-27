@@ -1,0 +1,121 @@
+{
+ "caseId": "CN-marketing-01",
+ "arm": "B",
+ "plan": "fixed",
+ "startedAt": "2026-09-24T07:23:55.497Z",
+ "endedAt": "2026-09-24T07:24:13.081Z",
+ "elapsedMs": 17584,
+ "providers": [
+  {
+   "provider": "gdelt_export",
+   "status": "success",
+   "itemCount": 51
+  },
+  {
+   "provider": "gdacs",
+   "status": "success",
+   "itemCount": 19
+  },
+  {
+   "provider": "usgs",
+   "status": "success",
+   "itemCount": 266
+  },
+  {
+   "provider": "eonet",
+   "status": "success",
+   "itemCount": 50
+  },
+  {
+   "provider": "global_feeds",
+   "status": "success",
+   "itemCount": 270
+  },
+  {
+   "provider": "google_news",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "bing_news",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "wiki_current",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "baidu_hot",
+   "status": "error",
+   "itemCount": 0
+  },
+  {
+   "provider": "so360_search",
+   "status": "error",
+   "itemCount": 0
+  },
+  {
+   "provider": "weibo_hot",
+   "status": "success",
+   "itemCount": 30
+  },
+  {
+   "provider": "zhihu_hot",
+   "status": "success",
+   "itemCount": 20
+  },
+  {
+   "provider": "toutiao_hot",
+   "status": "success",
+   "itemCount": 50
+  },
+  {
+   "provider": "wallstreet_live",
+   "status": "success",
+   "itemCount": 30
+  },
+  {
+   "provider": "cctv_news",
+   "status": "success",
+   "itemCount": 60
+  },
+  {
+   "provider": "thepaper_hot",
+   "status": "success",
+   "itemCount": 20
+  },
+  {
+   "provider": "official_web",
+   "status": "success",
+   "itemCount": 12
+  },
+  {
+   "provider": "bluesky",
+   "status": "error",
+   "itemCount": 0
+  },
+  {
+   "provider": "worldbank",
+   "status": "success",
+   "itemCount": 6
+  },
+  {
+   "provider": "nager",
+   "status": "success",
+   "itemCount": 6
+  },
+  {
+   "provider": "wikidata",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "yahoo_realtime",
+   "status": "unavailable",
+   "itemCount": 0
+  }
+ ],
+ "evidenceCount": 95
+}

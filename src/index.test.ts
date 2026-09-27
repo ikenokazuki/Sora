@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
+// 外部サイトへのライブ依存テストは既定でスキップし、
+// SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
+const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
 import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
@@ -114,6 +117,8 @@ import {
   detectSpaOrBotPage,
   pickProxyUrl,
   pickBrowserProfile,
+  MAX_SUPPORTED_CHROME_PROFILE_VERSION,
+  getAlignedChromeMajorVersion,
   getChromiumMajorVersion,
   fetchWithSafeRedirects,
   fetchWithStealthBrowser,
@@ -599,6 +604,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const data = (await res.json()) as any;
     expect(data.service).toBe('sora');
     expect(data.status).toBe('ok');
+    expect(data.version).toBe('2.30.4');
   });
 
   it('GET /metrics should return 200 OK with operational metrics', async () => {
@@ -822,7 +828,7 @@ describe('Sora REST & MCP Endpoints', () => {
     ]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 12 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 14 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -867,7 +873,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_disaster_warnings');
     expect(toolNames).toContain('search_earthquake');
     expect(toolNames).toContain('search_laws');
-    expect(toolNames.length).toBe(12);
+    expect(toolNames).toContain('search_social_posts');
+    expect(toolNames).toContain('fetch_social_post');
+    expect(toolNames.length).toBe(14);
   });
 
   it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
@@ -931,7 +939,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes1 = await manager.handleRequest(listReq1);
     const listBody1: any = await parseRes(listRes1);
     const names1 = listBody1.result.tools.map((t: any) => t.name);
-    expect(names1.length).toBe(12);
+    expect(names1).toContain('search_social_posts');
+    expect(names1).toContain('fetch_social_post');
+    expect(names1.length).toBe(14);
     expect(names1).toContain('scrape');
     expect(names1).toContain('search_deep');
     expect(names1).toContain('search_web');
@@ -1435,7 +1445,8 @@ describe('Sora REST & MCP Endpoints', () => {
   it('buildUserAgentFromDefault should extract the real Chromium version and mask it as Windows Chrome (not Headless)', () => {
     const headlessUa = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/148.0.0.0 Safari/537.36';
     const result = buildUserAgentFromDefault(headlessUa);
-    expect(result).toContain('Chrome/148.0.0.0');
+    // 静的fetch経路と同一identityにするため、メジャーはwreqプロファイルに揃える
+    expect(result).toContain('Chrome/' + getAlignedChromeMajorVersion() + '.0.0.0');
     expect(result).not.toContain('Headless');
     expect(result).toContain('Windows NT 10.0; Win64; x64');
   });
@@ -1451,12 +1462,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(fallback).toContain('Windows NT 10.0');
     expect(fallback).not.toContain('Headless');
 
-    const actual = getChromiumMajorVersion();
-    if (actual !== undefined) {
-      // 静的fetch(wreq)は実バージョンを名乗るため、フォールバックが古い固定値だと
-      // 同一Cookieでバージョンが食い違う（この矛盾は本セッションで一度潰している）
-      expect(fallback).toContain(`Chrome/${actual}.`);
-    }
+    // 静的fetch(wreq)はwreqプロファイル上限を名乗るため、フォールバックも同じ値に揃える
+    expect(fallback).toContain('Chrome/' + getAlignedChromeMajorVersion() + '.');
   });
 
   it('buildUserAgentMetadata should build Windows Client Hints metadata matching the given Chrome version (fixes CreepJS-detected UA/platform/userAgentData mismatch)', () => {
@@ -1464,8 +1471,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const meta = buildUserAgentMetadata(headlessUa);
     expect(meta.platform).toBe('Windows');
     expect(meta.mobile).toBe(false);
-    expect(meta.brands?.some((b) => b.brand === 'Google Chrome' && b.version === '148')).toBe(true);
-    expect(meta.fullVersionList?.some((b) => b.brand === 'Google Chrome' && b.version === '148.0.7778.167')).toBe(true);
+    const aligned = getAlignedChromeMajorVersion();
+    expect(meta.brands?.some((b) => b.brand === 'Google Chrome' && b.version === aligned)).toBe(true);
+    expect(meta.fullVersionList?.some((b) => b.brand === 'Google Chrome' && b.version === aligned + '.0.7778.167')).toBe(true);
   });
 
   it('WebRTC ICE candidate gathering should not leak the real local/public IP via host candidates (CreepJS-detected leak)', async () => {
@@ -1518,16 +1526,14 @@ describe('Sora REST & MCP Endpoints', () => {
     }
 
     const { browser } = await getBrowser();
-    const realDefaultUa = await browser.userAgent();
-    const realVersionMatch = realDefaultUa.match(/Chrome\/(\d+)\./);
-    expect(realVersionMatch).not.toBeNull();
 
     const page = await browser.newPage();
     try {
       await applyStealthEvasions(page);
       const uaAfter = await page.evaluate(() => navigator.userAgent);
       expect(uaAfter).not.toContain('Headless');
-      expect(uaAfter).toContain(`Chrome/${realVersionMatch![1]}`);
+      // wreq profile version for shared identity
+      expect(uaAfter).toContain('Chrome/' + getAlignedChromeMajorVersion());
     } finally {
       await page.close();
     }
@@ -2772,7 +2778,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.markdown).not.toContain('\u200D');
   });
 
-  it('createAuthMiddleware should enforce Fail-Closed in production when no API key is set', async () => {
+  it('createAuthMiddleware should allow requests when no API key is set (fail-open)', async () => {
     const testApp = new Hono();
     const prevNodeEnv = process.env.NODE_ENV;
     const prevKey = process.env.WEB_FETCHER_API_KEY;
@@ -2787,9 +2793,9 @@ describe('Sora REST & MCP Endpoints', () => {
       testApp.get('/test', (c) => c.json({ ok: true }));
 
       const res = await testApp.request('/test');
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(200);
       const json = (await res.json()) as any;
-      expect(json.error).toContain('Fail-Closed');
+      expect(json.ok).toBe(true);
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
       if (prevKey) process.env.WEB_FETCHER_API_KEY = prevKey;
@@ -2852,6 +2858,10 @@ describe('Sora REST & MCP Endpoints', () => {
     const cached = dbGetCache<{ foo: string }>('test:sqlite:key');
     expect(cached).toBeDefined();
     expect(cached?.value.foo).toBe('bar');
+    // L2 行の作成時刻が保持され、TTL 既定値からの逆算に依存しないこと
+    expect(typeof cached?.createdAt).toBe('number');
+    expect(Math.abs(Date.now() - (cached?.createdAt ?? 0))).toBeLessThan(60 * 1000);
+    expect((cached?.createdAt ?? 0)).toBeLessThanOrEqual(cached?.expiresAt ?? 0);
 
     // L1 メモリと L2 SQLite の透過的連携
     setToCache('test:hybrid:key', { data: 12345 }, 60000);
@@ -3544,8 +3554,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(40);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(28);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(45);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3622,7 +3632,12 @@ describe('Sora REST & MCP Endpoints', () => {
     // 実行環境のChromiumが検出できるなら、そのメジャーバージョンに一致していること
     const actual = getChromiumMajorVersion();
     if (actual !== undefined) {
-      expect(profile as string).toBe(`chrome_${actual}`);
+      if (actual <= MAX_SUPPORTED_CHROME_PROFILE_VERSION) {
+        expect(profile as string).toBe('chrome_' + String(actual));
+      } else {
+        // wreq-js が未対応の新しさの場合は到達可能な最新に張り付く（最善努力）
+        expect(profile as string).toBe('chrome_' + String(MAX_SUPPORTED_CHROME_PROFILE_VERSION));
+      }
     }
   });
 
@@ -3915,7 +3930,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
   });
 
-  it('searchDietMinutes should fetch speech records from kokkai.ndl.go.jp API', async () => {
+  itLive('searchDietMinutes should fetch speech records from kokkai.ndl.go.jp API', async () => {
     const result = await searchDietMinutes({ keyword: '人工知能', limit: 3 });
     expect(result.source).toBe('kokkai-ndl');
     expect(result.count).toBeGreaterThanOrEqual(1);
@@ -3928,7 +3943,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(speech.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('fetchElevationAndCoordinates should geocode address and fetch elevation from GSI API', async () => {
+  itLive('fetchElevationAndCoordinates should geocode address and fetch elevation from GSI API', async () => {
     const resAddress = await fetchElevationAndCoordinates({ address: '東京都千代田区永田町1-7-1' });
     expect(resAddress.source).toBe('gsi');
     expect(resAddress.lat).toBeCloseTo(35.67, 1);
@@ -3941,7 +3956,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resCoords.elevationMeters).toBeGreaterThan(3000);
   });
 
-  it('fetchFlightStatus and resolveAirport should parse flight info for major airports', async () => {
+  itLive('fetchFlightStatus and resolveAirport should parse flight info for major airports', async () => {
     expect(resolveAirport('羽田').code).toBe('HND');
     expect(resolveAirport('成田').code).toBe('NRT');
     expect(resolveAirport('kix').code).toBe('KIX');
@@ -3953,17 +3968,20 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(result.airportCode).toBe('HND');
     expect(result.type).toBe('departure');
     expect(result.category).toBe('domestic');
-    expect(result.count).toBeGreaterThanOrEqual(1);
-    expect(result.flights.length).toBeGreaterThanOrEqual(1);
-
-    const flight = result.flights[0];
-    expect(flight.scheduledTime).toBeDefined();
-    expect(flight.flightNumber).toBeDefined();
-    expect(flight.destinationOrOrigin).toBeDefined();
-    expect(flight.status).toBeDefined();
+    // Yahoo 路線情報は欠航・遅延便のみ掲載のため、件数は 0 の場合もある。配管と形式を検証する。
+    expect(Array.isArray(result.flights)).toBe(true);
+    expect(result.count).toBe(result.flights.length);
+    expect(typeof result.updatedAt).toBe('string');
+    expect(result.updatedAt.length).toBeGreaterThan(0);
+    for (const flight of result.flights) {
+      expect(flight.scheduledTime).toBeDefined();
+      expect(flight.flightNumber).toBeDefined();
+      expect(flight.destinationOrOrigin).toBeDefined();
+      expect(flight.status).toBeDefined();
+    }
   });
 
-  it('REST endpoints for Diet minutes, Elevation, and Flight status should work correctly', async () => {
+  itLive('REST endpoints for Diet minutes, Elevation, and Flight status should work correctly', async () => {
     // 1. Diet minutes (POST & GET)
     const resDietPost = await app.request('/gov/diet-minutes', {
       method: 'POST',
@@ -3998,13 +4016,14 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resFlightPost.status).toBe(200);
     const jsonFlight = (await resFlightPost.json()) as any;
-    expect(jsonFlight.flights.length).toBeGreaterThanOrEqual(1);
+    // 欠航・遅延が無ければ空配列になるため件数は断定しない
+    expect(Array.isArray(jsonFlight.flights)).toBe(true);
 
     const resFlightGet = await app.request('/traffic/flight/成田?type=departure');
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 40 tools and enable 12 core hybrid tools by default', () => {
+  it('MCP server should register all 45 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4022,7 +4041,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledTools).toContain('search_disaster_warnings');
     expect(enabledTools).toContain('search_earthquake');
     expect(enabledTools).toContain('search_laws');
-    expect(enabledTools.length).toBe(12);
+    expect(enabledTools).toContain('search_social_posts');
+    expect(enabledTools).toContain('fetch_social_post');
+    expect(enabledTools.length).toBe(14);
 
     const serverAll = createMcpServer({ deferTools: false });
     const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
@@ -4040,7 +4061,9 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('watch_delete');
     expect(enabledToolsAll).toContain('track_package');
     expect(enabledToolsAll).toContain('research_country_context');
-    expect(enabledToolsAll.length).toBe(40);
+    expect(enabledToolsAll).toContain('search_social_posts');
+    expect(enabledToolsAll).toContain('fetch_social_post');
+    expect(enabledToolsAll.length).toBe(45);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -5501,7 +5524,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.results.length).toBeGreaterThan(0);
       expect(res.realtime).toBeDefined();
       expect(res.realtime.count).toBeGreaterThan(0);
-      expect(res.realtime.isFallback).toBe(true);
+      // 直接取得が成功する場合はフォールバックではない。wreq統一で直接経路が復旧したため false を期待する。
+      expect(res.realtime.isFallback).toBe(false);
       // タイムテーブルまたはKAWAII PARTY CIRCUITまたは9/6が含まれていること
       const allText = JSON.stringify(res);
       expect(allText).toMatch(/KAWAII PARTY CIRCUIT|9\/6|9月6日/);
@@ -5558,7 +5582,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(buildYahooRealtimeQuery({ orWords: ['君と見るそら', 'キミソラ'] })).toBe('(君と見るそら キミソラ)');
 
       // 7. url
-      expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 x.com');
+      expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 URL:x.com');
     });
 
     it('searchYahooRealtime should support accountId and query filtering (user confirmed pattern)', async () => {
@@ -5604,7 +5628,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 59 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 67 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5636,8 +5660,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(59);
-      expect(withContentCount).toBe(59);
+      expect(operationCount).toBe(67);
+      expect(withContentCount).toBe(67);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

@@ -1,0 +1,87 @@
+[
+  {
+    "caseId": "JP-general-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:21:44Z",
+    "endedAt": "2026-09-24T07:21:58Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": true,
+        "evidenceIds": [
+          "web:jpg-a1"
+        ]
+      },
+      {
+        "id": "eligibility",
+        "supported": true,
+        "evidenceIds": [
+          "web:jpg-a1"
+        ],
+        "notes": "IELTS/TOEFL via secondary JDS page"
+      },
+      {
+        "id": "deadline",
+        "supported": false,
+        "notes": "Dec 5 without year; 2027 date unconfirmed"
+      },
+      {
+        "id": "unknown",
+        "supported": true,
+        "notes": "intake confirmed vs exact date unconfirmed distinguished"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 3,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 14000,
+    "notes": "A=1 search. Scorer=runner."
+  },
+  {
+    "caseId": "JP-general-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:41:16.355Z",
+    "endedAt": "2026-09-24T06:41:25.620Z",
+    "requirements": [
+      {
+        "id": "program",
+        "supported": true,
+        "evidenceIds": [
+          "evd:f46ae8c9a533f9fcfb27"
+        ]
+      },
+      {
+        "id": "eligibility",
+        "supported": true,
+        "evidenceIds": [
+          "evd:7e2704faff291849b79d",
+          "evd:f46ae8c9a533f9fcfb27"
+        ],
+        "notes": "no-Japanese + intl incl Japanese"
+      },
+      {
+        "id": "deadline",
+        "supported": false,
+        "notes": "intake open but no dated deadline"
+      },
+      {
+        "id": "unknown",
+        "supported": false,
+        "notes": "no explicit unknown statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 9265,
+    "notes": "B live (73 ev, 1 dangling). Scorer=runner."
+  }
+]

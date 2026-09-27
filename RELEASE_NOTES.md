@@ -1,4 +1,33 @@
+# 監査対応パッチ (unreleased)
+
+- Yahoo 路線情報フライト一覧の Next.js 化（__NEXT_DATA__）に対応。旧 table 解析はフォールバックとして維持。
+- 詳細ヘルスが SORA_VERSION を返すよう修正。L2 キャッシュの作成時刻を永続化値から復元。古い API 使用量・監視履歴の定期 purge を追加。
+- 外部依存のライブテストを SORA_LIVE_TESTS=1 背後に分離し、CI に bun test ワークフローを追加。
+- README のツール数・モジュール・環境変数表を実態に更新。GET / 一覧に tracking/social を追加。未使用の Dockerfile・ベンチ・ゴミファイルを削除。
+
+# 公開SNS取得（Weibo/Threads/Instagram/Facebook）(unreleased)
+
+- MCPに `search_social_posts`（Weibo新着検索・Meta公開投稿の発見＋本文取得）と `fetch_social_post`（既知投稿の本文・日時・反応）を追加。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使う。
+- RESTに POST /social/search・POST /social/fetch を追加し、OpenAPIへ登録。
+- 国地域インテリジェンスに `social_posts` プロバイダーを追加。`includeSocial: true`＋`social` 指定で実行し、締め切りは55秒。単独SNS結果はDB保存しない。
+
+# Global Intelligence v2 — live evidence without Yahoo realtime (unreleased)
+
+Country Intelligence restores event content instead of counts: GDACS real-shape parsing (url objects, affected countries, severity), GDELT Events export ingestion with region filtering and honest period gaps, USGS/EONET/global feeds, 6 World Bank indicators with full series, holiday scope details, and article-body extraction.
+
+- Report v2 (schemaVersion 2, additive): domainContext facts per domain, provider limitations, refreshState, actualWindows with gaps, persisted evidence details with cursor paging and change diffs.
+- MCP intel: research_country_context now returns text JSON plus validated structuredContent; new get_country_context, get_country_context_evidence, get_country_context_updates. REST adds the matching evidence and updates endpoints. Yahoo realtime is never used on this path.
+- Collection durability: evidence details, source cursors, and change history persist (migration v3); single-owner collector lease; stale/unknown/clock-anomaly freshness instead of silent success.
+
 # 🧭 Sora Release v2.27.0
+
+## Xリアルタイム検索の直接JSON移行 (unreleased)
+- `search_realtime` / `POST /search/realtime` / `POST /realtime` / `search_deep` 内のX取得・X投稿URL解決が、Yahoo MCPバイナリ経由からYahooのJSON取得の直接呼び出しに切り替わりました。Yahoo HTMLのトップ枠 (`bestTweet`) にだけ存在した投稿の取りこぼしを解消します。
+- Yahoo公式の検索演算子 (`id:` / `@` / `#` / `-` / `(A B)` / `URL:` / URL直接入力) と複数語・アカウント指定の併用に対応し、OR・URL条件を含む式の意味を変える自動relaxは行いません。
+- 構造化 `url` は `URL:` 演算子として送信するよう修正しました (従来は通常語として追加)。
+- `page` は公開1始まり・Yahoo側40件固定幅、`limit` は1〜40・デフォルト20。provider障害はHTTP 502 / MCPエラーとして返し、一部失敗時は `partial` 付きで成功分を返します。
+- Web・画像・動画・ニュース・知恵袋の取得は従来どおりMCPバイナリを使用し、バイナリ配置も維持します。
+- Country Intelligence 側は geo 正規化・provenance・検証済み two-pass・metric/signal 基盤・domain view・default runtime を追加しました (詳細は intel 実装メモ)。
 
 ### Realtime compact default + Country Intelligence v1
 

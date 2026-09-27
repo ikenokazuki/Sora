@@ -1,0 +1,89 @@
+[
+ {
+  "caseId": "ID-marketing-01",
+  "arm": "A",
+  "plan": "fixed",
+  "model": "muse-spark-1.3-contributor",
+  "startedAt": "2026-09-24T09:20:30Z",
+  "endedAt": "2026-09-24T09:21:30Z",
+  "requirements": [
+   {
+    "id": "current-context",
+    "supported": true,
+    "evidenceIds": [
+     "web:id-m1",
+     "web:id-m2"
+    ],
+    "notes": "Antara 9/6 Krakatau ash flight refunds/cancels + USGS 9/23-24 M4.5/4.6 quakes. Dated hazards relevant to Sep 25 post."
+   },
+   {
+    "id": "language-context",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No translation/culture source."
+   },
+   {
+    "id": "industry-reaction",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No ID cafe boycott; only McD-Lebanon/KR-Starbucks noise."
+   },
+   {
+    "id": "scope",
+    "supported": true,
+    "evidenceIds": [],
+    "notes": "Web-only; Instagram originals unobserved. Limits stated."
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 2,
+  "primaryEvidence": 2,
+  "primaryEvidenceFitting": 2,
+  "criticalErrors": 0,
+  "elapsedMs": 5000,
+  "notes": "A=2 Tavily queries. Scorer=runner, no blinding."
+ },
+ {
+  "caseId": "ID-marketing-01",
+  "arm": "B",
+  "plan": "fixed",
+  "model": "muse-spark-1.3-contributor",
+  "startedAt": "2026-09-24T09:20:15Z",
+  "endedAt": "2026-09-24T09:20:23Z",
+  "requirements": [
+   {
+    "id": "current-context",
+    "supported": true,
+    "evidenceIds": [
+     "evd_ad807ebc5bc8972208ee"
+    ],
+    "notes": "GDACS Krakatau eruption Sep 4 + USGS Sep 23-24 quakes present. Eruption is 20d before post but ongoing aviation relevance."
+   },
+   {
+    "id": "language-context",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No translation/culture evidence."
+   },
+   {
+    "id": "industry-reaction",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "No cafe boycott evidence."
+   },
+   {
+    "id": "scope",
+    "supported": false,
+    "evidenceIds": [],
+    "notes": "42ev, no gap notice."
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 1,
+  "primaryEvidence": 2,
+  "primaryEvidenceFitting": 1,
+  "criticalErrors": 0,
+  "elapsedMs": null,
+  "notes": "B=researchCountryWithDefaults live noCache 42ev (batch; elapsed unrecorded, file 09:20Z). recent20 refs 0 dangling."
+ }
+]

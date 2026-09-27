@@ -1,0 +1,43 @@
+[
+  {
+    "caseId": "FR-travel-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:06:00Z",
+    "endedAt": "2026-09-24T09:11:00Z",
+    "requirements": [
+      {"id": "entry", "supported": true, "evidenceIds": ["web:fr-t1"], "notes": "ETIAS移行期で10月は義務なし、EES稼働中を確認"},
+      {"id": "transport", "supported": true, "evidenceIds": ["web:fr-t2"], "notes": "RER B時刻表で運行確認、9/29ストは期間前と分離"},
+      {"id": "hazards", "supported": true, "evidenceIds": ["web:fr-t2"], "notes": "9/20デモは期間前と分離、10/2-5向け確定警報なし"},
+      {"id": "dates", "supported": true, "evidenceIds": ["web:fr-t1", "web:fr-t2"], "notes": "期間前後の出来事を分離"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 2,
+    "primaryEvidenceFitting": 2,
+    "criticalErrors": 0,
+    "elapsedMs": 25000,
+    "notes": "A=汎用検索2クエリ。採点者=実行者で盲検化なし。"}
+  ,
+  {
+    "caseId": "FR-travel-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3-contributor",
+    "startedAt": "2026-09-24T09:03:00Z",
+    "endedAt": "2026-09-24T09:06:00Z",
+    "requirements": [
+      {"id": "entry", "supported": false, "evidenceIds": [], "notes": "ETIASやEESへの言及なし"},
+      {"id": "transport", "supported": false, "evidenceIds": [], "notes": "RER Bや空港アクセスへの言及なし"},
+      {"id": "hazards", "supported": false, "evidenceIds": [], "notes": "Tigray空港記事は対象国外で不採用"},
+      {"id": "dates", "supported": true, "evidenceIds": [], "notes": "証拠にpublishedAtあり"}
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 1,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": null,
+    "notes": "Bは前任取得のライブ報告38件を採点。recent20件の参照切れ0。干ばつkeyEventは汎欧州で対象曖昧のため重大誤りとせず注意のみ。"}
+]

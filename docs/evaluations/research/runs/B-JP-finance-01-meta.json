@@ -1,0 +1,223 @@
+{
+ "caseId": "JP-finance-01",
+ "arm": "B",
+ "plan": "fixed",
+ "startedAt": "2026-09-24T06:28:00.278Z",
+ "endedAt": "2026-09-24T06:28:14.789Z",
+ "elapsedMs": 14511,
+ "providers": [
+  {
+   "provider": "gdelt_export",
+   "status": "success",
+   "itemCount": 25
+  },
+  {
+   "provider": "gdacs",
+   "status": "success",
+   "itemCount": 6
+  },
+  {
+   "provider": "usgs",
+   "status": "success",
+   "itemCount": 262
+  },
+  {
+   "provider": "eonet",
+   "status": "success",
+   "itemCount": 50
+  },
+  {
+   "provider": "global_feeds",
+   "status": "success",
+   "itemCount": 220
+  },
+  {
+   "provider": "google_news",
+   "status": "success",
+   "itemCount": 18
+  },
+  {
+   "provider": "bing_news",
+   "status": "success",
+   "itemCount": 7
+  },
+  {
+   "provider": "wiki_current",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "wallstreet_live",
+   "status": "success",
+   "itemCount": 30
+  },
+  {
+   "provider": "official_web",
+   "status": "success",
+   "itemCount": 28
+  },
+  {
+   "provider": "bluesky",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "yahoo_realtime",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "worldbank",
+   "status": "success",
+   "itemCount": 6
+  },
+  {
+   "provider": "nager",
+   "status": "success",
+   "itemCount": 16
+  },
+  {
+   "provider": "wikidata",
+   "status": "success",
+   "itemCount": 0
+  },
+  {
+   "provider": "baidu_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "so360_search",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "weibo_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "zhihu_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "toutiao_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "cctv_news",
+   "status": "unavailable",
+   "itemCount": 0
+  },
+  {
+   "provider": "thepaper_hot",
+   "status": "unavailable",
+   "itemCount": 0
+  }
+ ],
+ "evidenceCount": 88,
+ "recentReports": [
+  {
+   "evidenceId": "evd_2bc891837b5af36c04bd",
+   "title": "Residents eating garden weeds in Russian-occupied city cut off from food and water",
+   "url": "https://www.bbc.co.uk/news/articles/c60qxywdx4vvo?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_640a9bc10e3be186edda",
+   "title": "Lee pledges to double chip production in 5 yrs, build AI supply chains free of disruption",
+   "url": "https://en.yna.co.kr/view/AEN20260923012100315"
+  },
+  {
+   "evidenceId": "evd_539cf679e4b5ffab29ab",
+   "title": "'Make women feel seen': Why the Dutch have a new word for labia",
+   "url": "https://www.bbc.co.uk/news/articles/cn4klprmr0go?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_6f04c5b15753d7011386",
+   "title": "Indians are discovering the thrill of shopping without paying",
+   "url": "https://www.bbc.co.uk/news/articles/cwn741v5rdpxo?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_0f002d23d56ae8c6ab06",
+   "title": "A red carpet and military flyover - How Trump welcomed Xi",
+   "url": "https://www.bbc.co.uk/news/videos/c6804ne8knklo?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_82f4afd0ef4f28c1e697",
+   "title": "U.S. announces implementation plan with S. Korea, Japan for SMR deployments",
+   "url": "https://en.yna.co.kr/view/AEN20260923012000315"
+  },
+  {
+   "evidenceId": "evd_3a9c2310d15aaa0aaacc",
+   "title": "前週末18日に「買われた株！」総ザライ (1) ―本日につながる期待株 ...",
+   "url": "https://minkabu.jp/news/4621495"
+  },
+  {
+   "evidenceId": "evd_c2a603881e21080c61a4",
+   "title": "AI superpower ambitions take centre stage as Trump and Xi meet",
+   "url": "https://www.bbc.co.uk/news/articles/c6gqdgg8w59xo?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_6f1a041073f91a43b7d2",
+   "title": "(Asiad) S. Korea adds gold medals in fencing, shooting, while defending champs fall short",
+   "url": "https://en.yna.co.kr/view/AEN20260923011700315"
+  },
+  {
+   "evidenceId": "evd_45ef1727919a1611427d",
+   "title": "(Asiad) medal standings",
+   "url": "https://en.yna.co.kr/view/AEN20230924003989315"
+  },
+  {
+   "evidenceId": "evd_97c7ea9c193affd55387",
+   "title": "(Asiad) S. Korea takes bronze medals in men's, women's table tennis team events",
+   "url": "https://en.yna.co.kr/view/AEN20260923011600315"
+  },
+  {
+   "evidenceId": "evd_714d67ddaf2ece504b7a",
+   "title": "Watch: The arms race in space and how the UK is defending itself",
+   "url": "https://www.bbc.co.uk/news/videos/c34gdygn5lqpo?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_f5f0b34861bbf321049e",
+   "title": "Trump's Board of Peace unveils $2.45bn plan to begin Gaza's reconstruction",
+   "url": "https://www.bbc.co.uk/news/articles/cwlyke0mm0x3o?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_0cd245b31deefb6e8493",
+   "title": "UK survivor of Canadian poison seller says he exploited her despair",
+   "url": "https://www.bbc.co.uk/news/articles/cmvgy4237gq9o?at_campaign=rss&at_medium=RSS"
+  },
+  {
+   "evidenceId": "evd_064e2ae6f2e9fd5d7fd0",
+   "title": "(LEAD) (Asiad) N. Korea scoops 2 golds in weightlifting at Asian Games",
+   "url": "https://en.yna.co.kr/view/AEN20260923008651320"
+  },
+  {
+   "evidenceId": "evd_dbd69f0cc29d74ffbe15",
+   "title": "(Asiad) Sabre fencer Oh Sang-uk feels Asia's fencing getting stronger",
+   "url": "https://en.yna.co.kr/view/AEN20260923011500320"
+  },
+  {
+   "evidenceId": "evd_73b54844101626ce9771",
+   "title": "PM, top U.S. envoy discuss ways to strengthen S. Korea-U.S. alliance",
+   "url": "https://en.yna.co.kr/view/AEN20260923011400315"
+  },
+  {
+   "evidenceId": "evd_2d862e054767a80b3bf6",
+   "title": "(LEAD) (Asiad) S. Korea wins bronze in mixed medley relay with new nat'l record",
+   "url": "https://en.yna.co.kr/view/AEN20260923011251315"
+  },
+  {
+   "evidenceId": "evd_dab8bc36475b3a79dc59",
+   "title": "(LEAD) (Asiad) Park Ji-hee wins silver in women's individual foil fencing at Asian Games",
+   "url": "https://en.yna.co.kr/view/AEN20260923010651320"
+  },
+  {
+   "evidenceId": "evd_b3c06d8aa3f55a3d9a7a",
+   "title": "(Asiad) S. Korea adds 3 swimming medals as competition winds down",
+   "url": "https://en.yna.co.kr/view/AEN20260923011300315"
+  }
+ ]
+}

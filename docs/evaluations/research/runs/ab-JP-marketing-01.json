@@ -1,0 +1,76 @@
+[
+  {
+    "caseId": "JP-marketing-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:25:54Z",
+    "endedAt": "2026-09-24T07:26:06Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": false,
+        "notes": "ended typhoon only, no dated current item"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical hits undated (publishedAt None)"
+      },
+      {
+        "id": "scope",
+        "supported": true,
+        "notes": "web-only; yahoo realtime JP-only stated"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 12000,
+    "notes": "A=2 searches. Scorer=runner."
+  },
+  {
+    "caseId": "JP-marketing-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:23:22.433Z",
+    "endedAt": "2026-09-24T07:23:32.783Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": false,
+        "notes": "ended typhoon only"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence in fetch"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical collab-cafe hits all publishedAt None; 7d unestablished"
+      },
+      {
+        "id": "scope",
+        "supported": false,
+        "notes": "yahoo 0件 yet no gap notice (CN-social-empty live repro)"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 0,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 10350,
+    "notes": "B live (68 ev). Scorer=runner. Dangling evd_640a9bc10e3be186edda (same ID cycles all uses). bluesky 4xx."
+  }
+]

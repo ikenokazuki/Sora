@@ -1,0 +1,79 @@
+[
+  {
+    "caseId": "SA-marketing-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:27:55Z",
+    "endedAt": "2026-09-24T07:28:02Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "evidenceIds": [
+          "web:sa-m1"
+        ],
+        "notes": "Houthi strike attempt on Riyadh + air-raid alerts; L3 advisory upd Sep 24"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "boycott hits undated (PIF dump, Alshaya layoffs)"
+      },
+      {
+        "id": "scope",
+        "supported": true,
+        "notes": "web-only; X direct observation not done"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 2,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=2 searches. Scorer=runner."
+  },
+  {
+    "caseId": "SA-marketing-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T07:24:17.506Z",
+    "endedAt": "2026-09-24T07:24:27.088Z",
+    "requirements": [
+      {
+        "id": "current-context",
+        "supported": true,
+        "notes": "Houthi 9/21"
+      },
+      {
+        "id": "language-context",
+        "supported": false,
+        "notes": "no translation/culture evidence in fetch"
+      },
+      {
+        "id": "industry-reaction",
+        "supported": false,
+        "notes": "topical Starbucks-SA hits all publishedAt None; 7d unestablished"
+      },
+      {
+        "id": "scope",
+        "supported": false,
+        "notes": "no unobserved-range statement"
+      }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 1,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 9582,
+    "notes": "B live (35 ev). Scorer=runner. bluesky 4xx."
+  }
+]

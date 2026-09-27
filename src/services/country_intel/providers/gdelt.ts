@@ -5,8 +5,9 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 export interface GdeltDocArticle { url: string; title?: string; seendate?: string; domain?: string; language?: string; sourcecountry?: string; }
 export interface GdeltDocFixture { articles?: GdeltDocArticle[]; }
 
-export function buildGdeltDocUrl(query: string, maxRecords = 25): string {
+export function buildGdeltDocUrl(query: string, maxRecords = 25, period?: string): string {
   const params = new URLSearchParams({ query, mode: 'ArtList', format: 'json', maxrecords: String(maxRecords), sort: 'DateDesc' });
+  if (period === '7d' || period === '30d' || period === '90d') params.set('timespan', period);
   return `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
 }
 
@@ -15,6 +16,34 @@ export function parseGdeltSeendate(value?: string): string | undefined {
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
   if (!m) return undefined;
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
+}
+
+export interface GdeltTimelinePoint { date: string; value: number; }
+export interface GdeltTimelineFixture { timeline?: { series?: string; data?: { date?: string; value?: number }[] }[]; }
+
+export interface HistoricalMediaObservation {
+  date: string;
+  value: number;
+  origin: 'provider_historical';
+}
+
+/** GDELT DOC timeline (TimelineVol) URL。履歴ベースライン用の観測系列を取得する。 */
+export function buildGdeltTimelineUrl(query: string, maxRecords = 25): string {
+  const params = new URLSearchParams({ query, mode: 'TimelineVol', format: 'json' });
+  void maxRecords;
+  return `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
+}
+
+/** 保存した timeline JSON を比較可能な日次バケットへ変換する。実通信しない。 */
+export function parseGdeltTimeline(fixture: GdeltTimelineFixture): HistoricalMediaObservation[] {
+  const series = (fixture.timeline ?? []).find((entry) => entry.series === 'Volume')
+    ?? fixture.timeline?.[0];
+  if (!series || !Array.isArray(series.data)) return [];
+  return series.data.flatMap((point) => {
+    const day = typeof point.date === 'string' ? /^(\d{4})(\d{2})(\d{2})/.exec(point.date) : null;
+    if (!day || typeof point.value !== 'number' || !Number.isFinite(point.value)) return [];
+    return [{ date: `${day[1]}-${day[2]}-${day[3]}`, value: point.value, origin: 'provider_historical' as const }];
+  });
 }
 
 export function parseGdeltDocResponse(fixture: GdeltDocFixture, input: ProviderInput, now = new Date()): AcquisitionItem[] {
@@ -32,22 +61,66 @@ export function parseGdeltDocResponse(fixture: GdeltDocFixture, input: ProviderI
 
 export type GdeltFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-export function createGdeltProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
+/** GDELT DOC 失敗の発生段階。接続・ヘッダー・本文・解析を区別する。 */
+export type GdeltDocStage = 'connect' | 'headers' | 'body' | 'parse';
+
+export class GdeltDocError extends ProviderHttpError {
+  constructor(readonly stage: GdeltDocStage, status = 502, message?: string) {
+    super(status, undefined, message ?? ('GDELT DOC failed at ' + stage));
+    this.name = 'GdeltDocError';
+  }
+}
+
+export function createGdeltProvider(fetchFn?: GdeltFetch, opts: { firstAttemptMs?: number } = {}): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
+  const firstAttemptMs = Math.max(500, opts.firstAttemptMs ?? 8000);
   return {
     id: 'gdelt', areas: ['media_activity', 'current_events'], latencyClass: 'near_realtime', defaultTtlSeconds: 3600,
+    // 初回＋縮小再試行の合計で収める。全体締め切り（29秒）内に収める。
+    timeoutMs: 16_000,
     async run(input: ProviderInput, signal: AbortSignal): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
-      const query = input.queries.find((q) => q.providerId === 'gdelt')?.query ?? input.region.name;
-      const url = buildGdeltDocUrl(query);
-      let res: Response;
-      try { res = await runFetch(url, { signal }); }
-      catch (e) { if (signal.aborted) throw e; throw new ProviderNetworkError(String(e)); }
-      if (!res.ok) throw new ProviderHttpError(res.status);
-      const contentType = res.headers.get('content-type') ?? '';
-      if (!contentType.includes('json')) throw new ProviderHttpError(502, undefined, 'GDELT unexpected content type');
-      const data = (await res.json()) as GdeltDocFixture;
-      if (!Array.isArray((data as GdeltDocFixture).articles)) throw new ProviderHttpError(502, undefined, 'GDELT envelope missing articles');
-      return { items: parseGdeltDocResponse(data, input, new Date()), coverage: ['media_activity'] };
+      try {
+        const firstCap = AbortSignal.timeout(firstAttemptMs);
+        const firstSignal = signal.aborted ? signal : AbortSignal.any([signal, firstCap]);
+        return await fetchGdeltDoc(runFetch, input, firstSignal, input.request.period);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        if (error instanceof ProviderHttpError && error.status >= 400 && error.status < 500 && error.status !== 429) throw error;
+        // 1回だけ期間を縮めて再試行する（残り時間内）。失敗時は最初のエラーを投げる。
+        try {
+          const fallback = await fetchGdeltDoc(runFetch, input, signal, '7d');
+          return { ...fallback, status: 'partial' as const, errorCode: 'GDELT_DOC_FALLBACK_7D' };
+        } catch {
+          throw error;
+        }
+      }
     },
   };
+}
+
+async function fetchGdeltDoc(
+  runFetch: GdeltFetch,
+  input: ProviderInput,
+  signal: AbortSignal,
+  period: string | undefined,
+): Promise<{ items: AcquisitionItem[]; coverage?: string[] }> {
+  const query = input.queries.find((q) => q.providerId === 'gdelt')?.query ?? input.region.name;
+  const url = buildGdeltDocUrl(query, 25, period);
+  let res: Response;
+  try { res = await runFetch(url, { signal }); }
+  catch (e) {
+    if (signal.aborted) throw e;
+    throw new ProviderNetworkError('GDELT DOC connect failed: ' + String(e));
+  }
+  if (!res.ok) throw new GdeltDocError('headers', res.status, 'GDELT DOC HTTP ' + String(res.status));
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('json')) throw new GdeltDocError('headers', 502, 'GDELT unexpected content type');
+  let data: GdeltDocFixture;
+  try {
+    data = (await res.json()) as GdeltDocFixture;
+  } catch {
+    throw new GdeltDocError('body', 502, 'GDELT DOC body read failed');
+  }
+  if (!Array.isArray(data.articles)) throw new GdeltDocError('parse', 502, 'GDELT envelope missing articles');
+  return { items: parseGdeltDocResponse(data, input, new Date()), coverage: ['media_activity'] };
 }

@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）のみを露出し、残りの 28 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 40 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 45 ツール）。
 
 ```json
 {
@@ -109,7 +109,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
 >    - 国内交通乗換・運賃: search_route
->    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime, search_chiebukuro, search_trend, search_song, search_artist
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 
@@ -267,10 +267,11 @@ GitHub Container Registry (GHCR) から 1 コマンドで即座に起動でき�
 docker run -d \
   --name sora \
   -p 3016:8000 \
-  -e API_KEY="your-secret-api-key" \
   -e ENABLED_MODULES="all" \
   ghcr.io/ikenokazuki/sora:latest
 ```
+
+APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
 
 ### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
 
@@ -307,12 +308,12 @@ docker run -d \
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 40 ツール / 11 のモジュール & ハイブリッド 12 コア構成)
+## 2. 提供 MCP ツール一覧 (全 45 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **11 個の論理モジュール（全 40 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 45 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (28ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 28 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 31 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 12 ツール)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -381,7 +382,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 遅延ツールは `search_tools` で有効化すると、正式名（例: `search_trend`）と LibreChat 互換名（`default.search_trend`）が公開されます。初期公開は12ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
-有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全40ツールを公開します。
+有効化状態は同一 Sora プロセス内の新規接続にも引き継がれます。他クライアントの新規接続にも反映されますが、無効モジュールは公開されません。プロセス再起動や別レプリカへの接続では再度有効化してください。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全45ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -453,7 +454,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。アイテム間動的コーパスIDF付きBM25+リランキングによりクエリへの適合度が高いQ&Aを最上位表示。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 50) |
 | `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 30) |
-| `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。 | 各アイテムに `source: "x"` | - `query` (string, 必須): 検索キーワード<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 40)<br>- `page` (number, 任意): ページ番号 (デフォルト: 1) |
+| `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。X取得はYahooのJSON直取得 (MCPバイナリ不使用)。一部失敗時は `partial: true` と `providerErrors` を付与。 | 各アイテムに `source: "x"` | - `query` (string, 任意): 検索キーワード (他条件の指定時は省略可)<br>- `accountId` / `fromUser` (string, 任意): 特定アカウント (`id:xxx` に変換)<br>- `toAccount` (string, 任意): 宛先 (`@xxx` に変換)<br>- `hashtags` (string, 任意): ハッシュタグ (`#` 付与)<br>- `excludeWords` (string, 任意): 除外語 (`-` 付与)<br>- `orWords` (string[], 任意): OR検索 (`(A B)` に変換)<br>- `url` (string, 任意): URL/ドメイン (`URL:` 演算子として送信)<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 40)<br>- `page` (number, 任意): ページ番号 (デフォルト: 1。Yahoo側は40件固定幅) |
 | `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20) |
 
 > 💡 **X (旧 Twitter) ポスト詳細・長文投稿（Note Tweet）の適応的補完**:  
@@ -536,6 +537,23 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 ## 3. REST API 仕様
 
+### 🖼️ Module 10: Media Inspection (`ENABLED_MODULES=media`)
+画像の取得・解析（チラシ・時刻表・告知・ポスター等の視覚情報抽出）。`web` モジュール有効時も利用可能です。
+
+| ツール名 | 説明 |
+|---|---|
+| `inspect_image` ・ DEFERRED | 画像URLから視覚情報を抽出します。`search_tools` で有効化してください。REST: `POST /media/inspect-image` |
+
+### 🌍 Module 11: Country & Region Intelligence (`ENABLED_MODULES=intel`)
+証拠基盤の国・地域コンテキスト調査。評価・推奨は含みません。詳細は「🌍 Country Intelligence」章を参照ください。
+
+| ツール名 | 説明 |
+|---|---|
+| `research_country_context` ・ DEFERRED | 指定国・地域の政治・経済・安全・災害・保健・旅行等の分野横断調査。初回は代表証拠、全件はcontextId参照 |
+| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得 |
+| `get_country_context_evidence` ・ DEFERRED | 証拠明細の取得 |
+| `get_country_context_updates` ・ DEFERRED | 更新差分の取得 |
+
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
 > **📖 対話型 API ドキュメント & OpenAPI 仕様書**:
@@ -558,7 +576,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 ```
 
 #### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
-SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。異常検知時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へ自動アラート通知を行います。
+SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
 ```json
 {
   "status": "ok",
@@ -1129,6 +1147,12 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - `sort`: `"recent"` (新着順, デフォルト) または `"popular"` (話題順 / エンゲージメント順)
   - 各ポストに `publishedTime` (ISO 8601 文字列), `author` (ユーザー名 + @アカウント名), `siteName: "X (Twitter)"` が統一フォーマットで自動付与されます。
   - **X 長文投稿 (Note Tweet) 全文補完**: クエリ要求やスニペット省略記号（`…`）を検知し、上位候補を FxTwitter v2 API（最大 2 件、1,500ms fail-soft）で自動補完。完全な本文とメディアを取得可能です。
+  - Xリアルタイム検索はYahooのJSON取得を直接呼びます (MCPバイナリ不使用)。Web・画像・動画・ニュース・知恵袋は従来どおりMCPバイナリを使用します。
+  - 検索演算子はYahoo公式仕様どおりに送信します: `id:xxx` (投稿者) / `@xxx` (宛先) / `#tag` / `-除外` / `(A B)` (OR) / `URL:value` / URL直接入力。複数語と組み合わせ可能です (例: `君と見るそら ライブ 出演 id:kimisora_JPN`)。
+  - 構造化 `url` オプションは `URL:` 演算子として送信します。
+  - OR・URL条件・引用符を含む複雑な式は、意味を変える自動relaxを行わず原式の単発取得になります。
+  - `page` は1始まりでYahoo側は40件固定幅 (`page=2` はoffset 40)。`limit` は1〜40 (デフォルト20)。
+  - provider障害時は成功扱いの0件ではなくエラー (HTTP 502 / MCP `isError`) を返します。一部失敗時は `partial: true` と `providerErrors` を付けて成功分を返します。
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
 
 ---
@@ -1746,6 +1770,30 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
 
 ## 4. セキュリティ & アーキテクチャ
 
+### 3.25 公開SNS投稿検索・取得 (`POST /social/search` / `POST /social/fetch`)
+Weibo新着検索とThreads/Instagram/Facebook公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使うこと。検索は最大55秒、取得は最大30秒の締め切り付き。
+
+- **リクエスト (`POST /social/search`)**:
+  ```json
+  {
+    "platform": "weibo",
+    "query": "桜",
+    "limit": 10,
+    "lookbackHours": 24
+  }
+  ```
+  `platform` は `weibo` / `threads` / `instagram` / `facebook`。`limit` は1〜30、`lookbackHours` は1〜2160。
+
+- **リクエスト (`POST /social/fetch`)**:
+  ```json
+  {
+    "url": "https://www.threads.com/@user/post/abc123",
+    "commentLimit": 10
+  }
+  ```
+
+- **レスポンス**: `status`（`ok` / `partial` / `empty` / `unavailable`）、`items`（投稿配列）、`matchedInWindow`、`unknownTime`、`failures`、`warnings` を返す。取得系は `post` 単体と `failures` / `warnings` を返す。
+
 ### 4.1 ディストロレス (Distroless) コンテナ設計
 - **ベースイメージ**: `gcr.io/distroless/cc-debian12`
 - **シェルなし・パッケージマネージャなし**: コンテナ内に `/bin/sh` や `apt`、`curl` は一切存在せず、攻撃者がシェルを奪取する余地がありません。
@@ -1768,7 +1816,7 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
-  - いずれかの依存関係で障害検知時、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ自動で障害通知 Webhook を発火。
+  - SQLite 障害で degraded 判定時に、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
 - **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
   - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
 - **📐 共通 Zod スキーマ & OpenAPI 3.0 完全自動生成**:
@@ -1789,10 +1837,10 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート |
 | `WEB_FETCHER_API_KEY` | *(未設定)* | **サーバー側の API 認証キー（最優先）**。設定時は `Authorization: Bearer <key>` または `X-API-Key` ヘッダーによる認証が必須化されます |
 | `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
-| `NODE_ENV` | *(未設定)* | `production` を指定すると **Fail-Closed** 動作になり、認証キーが未設定のまま起動した場合に全リクエストを `401` で拒否します（未指定時は Fail-Open） |
+| `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 40 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 45 ツール静的一括ロード |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
@@ -1802,7 +1850,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `MAX_CONCURRENT_BROWSERS` | `5` | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数 |
 | `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
 | `ALLOW_BROWSER_EVALUATE` | `true` | `false` 指定時に `/browser/action` での `evaluate`（任意JS実行）を完全遮断・ロックダウン |
-| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `/health?detailed=true` での外部依存障害検知時に送信する管理者アラート Webhook URL |
+| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
 | `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます） |
 | `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
@@ -1811,12 +1859,13 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_RRF_ENABLED` | `true` | 複数クエリ統合に RRF を使用します。`false` で first-wins dedup |
 | `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
 | `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` で API キー無しの匿名アクセスを許可します。キー付きデプロイでは未設定時に拒否されます |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
 | `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
 | `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
 | `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
+| `SORA_WEB_RETRY_WAIT_MS` | `1200` | レート制限後の次候補までの待機上限（ms）。0〜5000に丸め、1回のみ待機します |
 
 ---
 
@@ -1892,10 +1941,15 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 
 - Request: `{ region, query?, topics?, period?: "7d"|"30d"|"90d", includeSocial?, noCache?, verbose? }`. Omitting `topics` queries every enabled provider within bounded two-pass caps (12 + 8).
 - Report separates article/evidence count, event cluster count, and independent source counts. Publisher geography never becomes event geography. Ambiguous regions (e.g. `Georgia`) stay low-confidence.
+- Region links: every evidence carries `regionLink` (`direct`/`related`/`candidate`/`unrelated`/`unknown`) with reasons plus `acquisition` (provider, record id, query, collection scope). `keyEvents` and all counts use only `direct`/`related`. Only region-query prose lands in `domainContext.general.candidateFactors`; unattributed global-feed records stay evidence-only. Empty domains return `factors_missing` instead of falling back to everything.
+- Events keep per-record identity: same provider with different stable event ids never merges on title alone; records more than 72h apart never merge without a shared stable id. Occurrence/publication/update timestamps are stored separately (`timeBasis: structured|published`). Out-of-window finished events drop out; disasters continuing into the window stay.
 - Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
-- Providers: GDELT DOC/events, GDACS, World Bank (temporal observations only), Nager holidays (calendars only), Wikidata (source discovery only), official/media web, Yahoo realtime JP (optional social observations, never polls or representative opinion).
+- Providers: GDELT DOC (staged diagnostics; 8s first attempt, one 7d retry, 16s cap; `GDELT_DOC_FALLBACK_7D`) + Events export files (in-memory yauzl unzip, no external `unzip`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), global news feeds, official web search (Yahoo web search with region-dropping fallback disabled; Yahoo realtime never used, including Japan), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only) Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
+- Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries).ts` become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
+- Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
+- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`. All four return text JSON plus validated `structuredContent`. REST mirrors them: `GET /intelligence/context/:contextId/evidence|updates`.
 - No sentiment, hostility, anti-Japan, safety, or risk scores by design.
-- Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts 180 days. Retrieval: `GET /intelligence/context/:contextId`.
+- Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts and details 180 days. Retrieval: `GET /intelligence/context/:contextId`.
 - Opt-in live smoke: `bun run test:intel:live`
 
 ### Realtime / Web compact default (v2.27.0)

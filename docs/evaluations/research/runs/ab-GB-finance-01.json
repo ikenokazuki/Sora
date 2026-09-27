@@ -1,0 +1,89 @@
+[
+ {
+  "caseId": "GB-finance-01",
+  "arm": "A",
+  "plan": "fixed",
+  "model": "muse-spark-1.3",
+  "startedAt": "2026-09-24T17:55:00Z",
+  "endedAt": "2026-09-24T18:10:00Z",
+  "requirements": [
+   {
+    "id": "value",
+    "supported": true,
+    "evidenceIds": [
+     "web:boe-3.75"
+    ]
+   },
+   {
+    "id": "change",
+    "supported": true,
+    "evidenceIds": [
+     "web:boe-3.75"
+    ]
+   },
+   {
+    "id": "time",
+    "supported": true,
+    "evidenceIds": [
+     "web:boe-sep17"
+    ]
+   },
+   {
+    "id": "meaning",
+    "supported": true,
+    "evidenceIds": [
+     "web:boe-mpc"
+    ]
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 4,
+  "primaryEvidence": 1,
+  "primaryEvidenceFitting": 1,
+  "criticalErrors": 0,
+  "elapsedMs": 25000,
+  "notes": "A generic web search 1 query within 30s. Scorer is runner, no blinding. BoE 3.75 hold 6-3 Sep17; Nov cut to 3.5 flagged as forecast"
+ },
+ {
+  "caseId": "GB-finance-01",
+  "arm": "B",
+  "plan": "fixed",
+  "model": "muse-spark-1.3",
+  "startedAt": "2026-09-24T17:55:00Z",
+  "endedAt": "2026-09-24T18:10:00Z",
+  "requirements": [
+   {
+    "id": "value",
+    "supported": false,
+    "evidenceIds": [
+     "ev:boe-page-undated"
+    ],
+    "notes": "official page, pub None, no number"
+   },
+   {
+    "id": "change",
+    "supported": false,
+    "evidenceIds": []
+   },
+   {
+    "id": "time",
+    "supported": false,
+    "evidenceIds": []
+   },
+   {
+    "id": "meaning",
+    "supported": true,
+    "evidenceIds": [
+     "ev:boe-page"
+    ]
+   }
+  ],
+  "claimsChecked": 4,
+  "claimsSupported": 1,
+  "primaryEvidence": 2,
+  "primaryEvidenceFitting": 1,
+  "criticalErrors": 0,
+  "elapsedMs": null,
+  "notes": "B researchCountryWithDefaults live noCache. BoE official page gives body+indicator only"
+ }
+]

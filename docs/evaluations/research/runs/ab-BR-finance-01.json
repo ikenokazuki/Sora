@@ -1,0 +1,44 @@
+[
+  {
+    "caseId": "BR-finance-01",
+    "arm": "A",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:34:27Z",
+    "endedAt": "2026-09-24T06:34:34Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["web:br-search1"] },
+      { "id": "change", "supported": true, "evidenceIds": ["web:br-search1"] },
+      { "id": "time", "supported": true, "evidenceIds": ["web:br-search1"] },
+      { "id": "meaning", "supported": true, "evidenceIds": ["web:br-search1"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 0,
+    "primaryEvidenceFitting": 0,
+    "criticalErrors": 0,
+    "elapsedMs": 7000,
+    "notes": "A=1 generic web search (English). Unanimous vote, fifth straight cut, Sep 16 date all in snippets. Scorer=runner."
+  },
+  {
+    "caseId": "BR-finance-01",
+    "arm": "B",
+    "plan": "fixed",
+    "model": "muse-spark-1.3",
+    "startedAt": "2026-09-24T06:34:05Z",
+    "endedAt": "2026-09-24T06:34:15Z",
+    "requirements": [
+      { "id": "value", "supported": true, "evidenceIds": ["evd_6f31d45a8dabd638a808", "evd_76391028e64e0dae7a26"] },
+      { "id": "change", "supported": true, "evidenceIds": ["evd_7bcd58e0e044106da370", "evd_6552d9c2f24f09b4e5a1"], "notes": "prev 14.00 derived from older-meeting evidence chain" },
+      { "id": "time", "supported": true, "evidenceIds": ["evd_76391028e64e0dae7a26"] },
+      { "id": "meaning", "supported": true, "evidenceIds": ["evd_a5a89bb51c6a526be5d6"] }
+    ],
+    "claimsChecked": 4,
+    "claimsSupported": 4,
+    "primaryEvidence": 7,
+    "primaryEvidenceFitting": 5,
+    "criticalErrors": 0,
+    "elapsedMs": 9767,
+    "notes": "B=researchCountryWithDefaults live (38 evidence, 20 recent, 0 dangling). BCB primary pages retrieved incl. Copom statement. Stale 15%/14% vintages mixed in."
+  }
+]
