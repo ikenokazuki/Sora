@@ -90,6 +90,64 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 - `registerStructuredTool` unified with per-session activation (J2 extended:
   structured `get_country_context` isolation incl. reconnect and late-joiner).
 
+## Yahoo Provider Pressure (spec sections 3-17)
+
+- [x] Provider controller
+  - implementation: `src/retrieval/provider_pressure.ts`, wired in `src/services/yahoo.ts` (`yahooWebPressure`, web-only)
+  - tests: `src/retrieval/provider_pressure.test.ts` (8 pass: AIMD, circuit, half-open, sliding window, levels, budget)
+  - commit: `3b12141`
+- [x] AIMD
+  - implementation: success `-50ms` to floor 150, 429 `x2` to ceiling 5000, initial 400
+  - tests: spacing floor/ceiling cases in `provider_pressure.test.ts`
+- [x] Retry-After
+  - implementation: `YahooProviderError(status, retryAfterMs)`, `parseRetryAfterMs` (seconds + HTTP date)
+  - tests: parser cases + structured-429 cooldown in `yahoo_throttle.test.ts`
+- [x] Circuit breaker
+  - implementation: sliding 30s window, threshold 3, 15s cooldown, half-open single probe
+  - tests: open/half-open/close transitions in `provider_pressure.test.ts`
+- [x] Pressure-aware budget
+  - implementation: `getYahooQueryBudget` (low 3 / medium 2 / high 1), union capped at 2, rescue gated at budget >= 2
+  - tests: budget mapping + union bound assertion in `yahoo_query_union.test.ts`
+- [x] Partial success
+  - implementation: throttled web results carry `partial: true` + `stopReason: 'provider_rate_limited'`; Q0 results kept
+  - tests: Q0-success/Q1-429 partial case in `yahoo_search_failure.test.ts`
+- [x] No long sleeps
+  - implementation: `paceForYahooPressure` capped at 250ms; `canRequest` gates follow-up queries
+  - tests: fan-out-stop cases in `yahoo_search_failure.test.ts`
+
+## Ranking (spec sections 22-28, pre-existing implementation)
+
+- [x] Provider rank preservation
+  - implementation: `src/services/yahoo.ts` (native ranking default, `SORA_WEB_NATIVE_RANKING` rollback)
+  - tests: union/providerRank cases in `src/services/yahoo_query_union.test.ts`
+- [x] RRF only for multi-query
+  - implementation: `src/retrieval/rrf.ts`, weighted original 1.0 / fallback 0.6
+  - tests: `src/services/yahoo_weighted_rrf.test.ts`, `reciprocalRankFusion prefers multi-hit docs`
+- [x] Duplicate provenance
+  - implementation: `mergeYahooWebQueryBatches` appends `providerRanks` per occurrence
+  - tests: `duplicate URL keeps richest snippet` asserts two occurrences
+
+## Fresh / Stale / SingleFlight (spec sections 30-32, 58-60)
+
+- [x] Execution order fresh cache, singleflight, controller, provider, stale fallback
+  - implementation: `searchYahooWeb` wrapper + `src/retrieval/yahoo_cache.ts` (fresh 5m / stale 30m)
+  - tests: fresh-hit, stale-fallback, 10-concurrent-coalescing in `yahoo_search_failure.test.ts`
+  - commit: `8a32a8a`
+- [x] Stale served only on cooldown, open circuit, 429, or upstream errors
+  - implementation: stale lookup gated on throttled branches and error-bearing empty results
+  - tests: throttled-plus-stale case; genuine-empty stays empty
+- [x] Rejected singleflight evicted, retryable
+  - tests: `src/cache_singleflight.test.ts` (3 pass)
+- [x] Metrics
+  - implementation: `yahoo_request_total`, `yahoo_429_total`, `yahoo_circuit_open_total`,
+    `yahoo_cache_hit_total`, `yahoo_stale_hit_total`, `yahoo_singleflight_join_total`
+  - deferred: level/spacing gauges (cumulative counters only; level visible in verbose diagnostics)
+- [x] Performance gates hold after pressure work
+  - benchmark: 200 blocks adaptive p95 8.34ms (< 15ms); 800 blocks adaptive p95 11.94ms (< 40ms)
+  - bench: `scripts/bench-evidence-extraction.ts` (2026-09-28)
+- [x] Live spot check post-change
+  - evidence: `eval/results/live-sample-20260928.json` (4/4 healthy, 8/9/10/9 items, 0 throttled, adaptive quiet)
+
 ## Evidence quality DoD (query-aware scrape RFC)
 
 - [x] Single SERP preserves Yahoo rank; providerRank and retrieval provenance survive the pipeline.
