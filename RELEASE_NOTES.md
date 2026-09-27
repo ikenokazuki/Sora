@@ -1,3 +1,9 @@
+# Sora v2.31.0
+
+- 検索 v2: Yahoo プロバイダー圧力制御（AIMD・サーキット・予算）、構造化 429 と Retry-After 対応、stale キャッシュ、検索 singleflight、回答カバレッジ停止、抽出エスカレーション＋遅延ブラウザスキップ。
+- API: `GET /metrics` にセキュリティ・検索カウンタを JSON と Prometheus の両形式で公開。OpenAPI の表記を日本語化。`search_deep` の適応パラメータを README に文書化し、検索・スクレイプの仕組みを `docs/search-scrape-mechanics.md` に整理。
+- 品質: strict typecheck 修復、JMA 週間予報テストの提供日数変動への対応。フルスイート 1073 pass / 4 skip / 0 fail、Hermetic gate 207 pass。
+
 # 監査対応パッチ (unreleased)
 
 - Yahoo 路線情報フライト一覧の Next.js 化（__NEXT_DATA__）に対応。旧 table 解析はフォールバックとして維持。
