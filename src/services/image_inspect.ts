@@ -1,3 +1,4 @@
+import { readBodyWithLimit } from '../net/safe_transport.js';
 import { getFromCache, setToCache } from '../cache.js';
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -70,7 +71,7 @@ export async function fetchImageBuffer(
     throw new Error(`画像サイズが上限（${Math.round(maxBytes / 1024 / 1024)}MB）を超過しています: ${contentLength} bytes`);
   }
 
-  const arrayBuf = await res.arrayBuffer();
+  const arrayBuf = await readBodyWithLimit(res, maxBytes);
   if (arrayBuf.byteLength > maxBytes) {
     throw new Error(`画像サイズが上限を超過しています: ${arrayBuf.byteLength} bytes`);
   }

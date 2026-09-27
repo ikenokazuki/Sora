@@ -10,7 +10,7 @@ export function createProdWeiboHttp(): WeiboHttp {
   return {
     async getJson(url, headers, cookies, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
-      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, cookies.length ? cookies.map((c) => ({ name: c.name, value: c.value })) : undefined, undefined, signal);
+      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, cookies.length ? cookies.map((c) => ({ name: c.name, value: c.value })) : undefined, undefined, 'legacy', signal);
       const text = await response.text();
       try {
         return { status: response.status, data: JSON.parse(text) };
@@ -26,13 +26,13 @@ export function createProdMetaHttp(): MetaHttp {
     async getPage(url, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
       const headers = { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.8' };
-      const { response, finalUrl } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, undefined, undefined, signal);
+      const { response, finalUrl } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, undefined, undefined, 'legacy', signal);
       if (signal.aborted) throw signal.reason;
       return { status: response.status, finalUrl, html: await response.text() };
     },
     async getJson(url, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
-      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 3, { Accept: 'application/json' }, undefined, undefined, signal);
+      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 3, { Accept: 'application/json' }, undefined, undefined, 'legacy', signal);
       if (signal.aborted) throw signal.reason;
       return { status: response.status, data: await response.json() };
     },

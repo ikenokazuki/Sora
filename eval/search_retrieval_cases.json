@@ -1,0 +1,1302 @@
+{
+  "version": 1,
+  "notes": "Minimal retrieval eval set (offline synthetic). Expand to 100-300 for full A/B.",
+  "cases": [
+    {
+      "id": "event-timetable-01",
+      "category": "event timetable",
+      "query": "君と見るそら SPARK 出演辞退",
+      "requirements": [
+        "君と見るそら",
+        "SPARK",
+        "出演辞退"
+      ],
+      "officialHosts": [
+        "kimisora.example",
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "君と見るそら SPARK 出演辞退",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "君と見るそら 公式",
+              "snippet": "君と見るそら official",
+              "url": "https://kimisora.example/official"
+            },
+            {
+              "title": "SPARK 公式 出演者",
+              "snippet": "SPARK lineup",
+              "url": "https://spark.example/lineup"
+            },
+            {
+              "title": "fan post",
+              "snippet": "birthday live report",
+              "url": "https://fan.example/1"
+            }
+          ]
+        },
+        {
+          "query": "君と見るそら",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK 出演時間 14:10",
+              "snippet": "君と見るそら SPARK 14:10",
+              "url": "https://spark.example/timetable"
+            },
+            {
+              "title": "fan post",
+              "snippet": "birthday live report",
+              "url": "https://fan.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event-timetable-02",
+      "category": "event timetable",
+      "query": "君と見るそら 山中湖 spark 出演時間",
+      "requirements": [
+        "君と見るそら",
+        "SPARK",
+        "出演時間"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "君と見るそら 山中湖 spark 出演時間",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "event overview",
+              "snippet": "event overview",
+              "url": "https://example.com/event"
+            },
+            {
+              "title": "timetable",
+              "snippet": "18:20",
+              "url": "https://spark.example/time"
+            }
+          ]
+        },
+        {
+          "query": "君と見るそら spark",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "君と見るそら SPARK 出演時間",
+              "snippet": "18:20",
+              "url": "https://spark.example/time"
+            },
+            {
+              "title": "event overview",
+              "snippet": "overview",
+              "url": "https://example.com/event"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "official-info-01",
+      "category": "official information",
+      "query": "デジタル庁 Web API",
+      "requirements": [
+        "デジタル庁",
+        "API"
+      ],
+      "officialHosts": [
+        "digital.go.jp"
+      ],
+      "batches": [
+        {
+          "query": "デジタル庁 Web API",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "デジタル庁 Web API",
+              "snippet": "official docs",
+              "url": "https://www.digital.go.jp/docs"
+            },
+            {
+              "title": "blog summary",
+              "snippet": "デジタル庁 APIまとめ",
+              "url": "https://blog.example/a"
+            },
+            {
+              "title": "forum",
+              "snippet": "API question",
+              "url": "https://forum.example/b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "simple-factual-01",
+      "category": "simple factual",
+      "query": "星風まどか",
+      "requirements": [
+        "星風まどか"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "星風まどか",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "星風まどか profile",
+              "snippet": "profile",
+              "url": "https://a.example/1"
+            },
+            {
+              "title": "unrelated",
+              "snippet": "other",
+              "url": "https://b.example/2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multifacet-01",
+      "category": "multi-facet",
+      "query": "製品X 発売日 価格 仕様 第三者評価",
+      "requirements": [
+        "製品X",
+        "発売日",
+        "価格",
+        "仕様"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "製品X 発売日 価格",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "製品X 公式",
+              "snippet": "発売日 価格",
+              "url": "https://maker.example/product"
+            },
+            {
+              "title": "製品X 公式 仕様",
+              "snippet": "仕様",
+              "url": "https://maker.example/spec"
+            },
+            {
+              "title": "製品X 公式 サポート",
+              "snippet": "サポート",
+              "url": "https://maker.example/support"
+            }
+          ]
+        },
+        {
+          "query": "製品X 第三者評価 レビュー",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "製品X レビュー",
+              "snippet": "第三者評価 価格",
+              "url": "https://review.example/x"
+            },
+            {
+              "title": "製品X 公式",
+              "snippet": "発売日 価格",
+              "url": "https://maker.example/product"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "japanese-local-01",
+      "category": "Japanese local information",
+      "query": "横浜 1000CLUB アクセス",
+      "requirements": [
+        "1000CLUB",
+        "アクセス"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "横浜 1000CLUB アクセス",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "1000CLUB 公式 アクセス",
+              "snippet": "横浜 住所",
+              "url": "https://club.example/access"
+            },
+            {
+              "title": "live report",
+              "snippet": "live",
+              "url": "https://fan.example/live"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-01",
+      "category": "comparison",
+      "query": "A vs B battery life",
+      "requirements": [
+        "A",
+        "B",
+        "battery"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "A vs B battery life",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "A vs B comparison",
+              "snippet": "battery life test",
+              "url": "https://review.example/cmp"
+            },
+            {
+              "title": "A specs",
+              "snippet": "battery",
+              "url": "https://maker.example/a"
+            },
+            {
+              "title": "B specs",
+              "snippet": "battery",
+              "url": "https://maker.example/b"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "current-event-01",
+      "category": "current event",
+      "query": "SPARK lineup announcement",
+      "requirements": [
+        "SPARK",
+        "lineup"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK lineup announcement",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK official lineup",
+              "snippet": "lineup announcement",
+              "url": "https://spark.example/news"
+            },
+            {
+              "title": "fanまとめ",
+              "snippet": "SPARK 出演者",
+              "url": "https://fan.example/m"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product-spec-01",
+      "category": "product specification",
+      "query": "X100 weight wifi spec",
+      "requirements": [
+        "X100",
+        "weight",
+        "wifi"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 weight wifi spec",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 specs weight wifi",
+              "snippet": "weight 180g wifi 6E",
+              "url": "https://maker.example/x100"
+            },
+            {
+              "title": "X100 review",
+              "snippet": "weight impression",
+              "url": "https://review.example/x100"
+            }
+          ]
+        },
+        {
+          "query": "X100 specifications",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 spec sheet",
+              "snippet": "wifi weight dimensions",
+              "url": "https://maker.example/x100-spec"
+            },
+            {
+              "title": "X100 specs weight wifi",
+              "snippet": "weight 180g wifi 6E",
+              "url": "https://maker.example/x100"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-01",
+      "category": "research-style query",
+      "query": "idol festival stage safety guidelines",
+      "requirements": [
+        "festival",
+        "safety",
+        "guidelines"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "idol festival stage safety guidelines",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "festival safety guidelines",
+              "snippet": "stage safety",
+              "url": "https://org.example/safety"
+            },
+            {
+              "title": "event report",
+              "snippet": "festival stage",
+              "url": "https://news.example/e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-01",
+      "category": "ambiguous query",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK festival",
+              "snippet": "idol spark",
+              "url": "https://spark.example/"
+            },
+            {
+              "title": "spark plug",
+              "snippet": "car parts",
+              "url": "https://car.example/p"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event-timetable-03",
+      "category": "event timetable",
+      "query": "1000CLUB Yokohama show time",
+      "requirements": [
+        "1000CLUB",
+        "time"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "1000CLUB Yokohama show time",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "1000CLUB show 14:10-14:30",
+              "snippet": "open 18:20 start 18:45",
+              "url": "https://club.example/show"
+            },
+            {
+              "title": "access",
+              "snippet": "Yokohama",
+              "url": "https://club.example/access"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concentration-01",
+      "category": "Japanese local information",
+      "query": "君と見るそら SPARK チケット",
+      "requirements": [
+        "君と見るそら",
+        "SPARK",
+        "チケット"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "君と見るそら SPARK チケット",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "fan blog 1",
+              "snippet": "live report",
+              "url": "https://fan.example/a"
+            },
+            {
+              "title": "fan blog 2",
+              "snippet": "live report",
+              "url": "https://fan.example/b"
+            },
+            {
+              "title": "fan blog 3",
+              "snippet": "live report",
+              "url": "https://fan.example/c"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cancel-01",
+      "category": "current event",
+      "query": "SPARK 出演辞退 お知らせ",
+      "requirements": [
+        "SPARK",
+        "出演辞退"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK 出演辞退 お知らせ",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK 出演辞退のお知らせ",
+              "snippet": "出演キャンセル ご了承ください",
+              "url": "https://spark.example/news"
+            },
+            {
+              "title": "fan post",
+              "snippet": "live was fun",
+              "url": "https://fan.example/x"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rerank-degrade-01",
+      "category": "official information",
+      "query": "X100 official store",
+      "requirements": [
+        "X100",
+        "official",
+        "store"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official store",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100",
+              "snippet": "buy",
+              "url": "https://maker.example/official"
+            },
+            {
+              "title": "X100 official store review",
+              "snippet": "X100 official store price stock",
+              "url": "https://blog.example/1"
+            },
+            {
+              "title": "X100 official store guide",
+              "snippet": "X100 official store manual",
+              "url": "https://blog.example/2"
+            },
+            {
+              "title": "X100 official store news",
+              "snippet": "X100 official store launch",
+              "url": "https://news.example/3"
+            },
+            {
+              "title": "X100 official store forum",
+              "snippet": "X100 official store thread",
+              "url": "https://forum.example/4"
+            },
+            {
+              "title": "X100 official store wiki",
+              "snippet": "X100 official store entry",
+              "url": "https://wiki.example/5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "official-02",
+      "category": "official information",
+      "query": "X100 official manual",
+      "requirements": [
+        "X100",
+        "official",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official manual",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 official manual",
+              "snippet": "X100 official manual download",
+              "url": "https://maker.example/manual"
+            },
+            {
+              "title": "unrelated blog",
+              "snippet": "daily life",
+              "url": "https://blog.example/z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multifacet-02",
+      "category": "multi-facet",
+      "query": "SPARK lineup ticket access",
+      "requirements": [
+        "SPARK",
+        "lineup",
+        "ticket",
+        "access"
+      ],
+      "officialHosts": [
+        "spark.example"
+      ],
+      "batches": [
+        {
+          "query": "SPARK lineup ticket",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK lineup",
+              "snippet": "lineup ticket",
+              "url": "https://spark.example/lineup"
+            },
+            {
+              "title": "SPARK ticket",
+              "snippet": "ticket price",
+              "url": "https://ticket.example/spark"
+            }
+          ]
+        },
+        {
+          "query": "SPARK venue access",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "SPARK venue access",
+              "snippet": "access map",
+              "url": "https://spark.example/access"
+            },
+            {
+              "title": "SPARK lineup",
+              "snippet": "lineup ticket",
+              "url": "https://spark.example/lineup"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-02",
+      "category": "comparison",
+      "query": "A battery versus B battery",
+      "requirements": [
+        "A",
+        "battery",
+        "B"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "A battery versus B battery",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "A vs B battery test",
+              "snippet": "A battery versus B battery results",
+              "url": "https://review.example/cmp2"
+            },
+            {
+              "title": "cooking blog",
+              "snippet": "recipes",
+              "url": "https://blog.example/c"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edge-empty-01",
+      "category": "ambiguous query",
+      "query": "zzzqqq novalue",
+      "requirements": [
+        "zzzqqq"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "zzzqqq novalue",
+          "queryIndex": 0,
+          "items": []
+        }
+      ]
+    },
+    {
+      "id": "edge-single-01",
+      "category": "simple factual",
+      "query": "lonely query",
+      "requirements": [
+        "lonely"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "lonely query",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "lonely result",
+              "snippet": "lonely query here",
+              "url": "https://a.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edge-slice-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "item 0 spark",
+              "snippet": "spark",
+              "url": "https://h0.example/0"
+            },
+            {
+              "title": "item 1 spark",
+              "snippet": "spark",
+              "url": "https://h1.example/1"
+            },
+            {
+              "title": "item 2 spark",
+              "snippet": "spark",
+              "url": "https://h2.example/2"
+            },
+            {
+              "title": "item 3 spark",
+              "snippet": "spark",
+              "url": "https://h3.example/3"
+            },
+            {
+              "title": "item 4 spark",
+              "snippet": "spark",
+              "url": "https://h4.example/4"
+            },
+            {
+              "title": "item 5 spark",
+              "snippet": "spark",
+              "url": "https://h5.example/5"
+            },
+            {
+              "title": "item 6 spark",
+              "snippet": "spark",
+              "url": "https://h6.example/6"
+            },
+            {
+              "title": "item 7 spark",
+              "snippet": "spark",
+              "url": "https://h7.example/7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multiquery-3way-01",
+      "category": "multi-facet",
+      "query": "X100 price review manual",
+      "requirements": [
+        "X100",
+        "price",
+        "review",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 price",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            },
+            {
+              "title": "other",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        },
+        {
+          "query": "X100 review",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 review",
+              "snippet": "review",
+              "url": "https://review.example/r"
+            },
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            }
+          ]
+        },
+        {
+          "query": "X100 manual",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/manual"
+            },
+            {
+              "title": "X100 price",
+              "snippet": "price",
+              "url": "https://maker.example/price"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-hard-01",
+      "category": "difficult research",
+      "query": "X100 thermal throttling sustained load remedy",
+      "requirements": [
+        "X100",
+        "thermal",
+        "sustained",
+        "remedy"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 thermal sustained",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 thermal note",
+              "snippet": "thermal sustained behavior",
+              "url": "https://maker.example/thermal"
+            },
+            {
+              "title": "unrelated",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        },
+        {
+          "query": "X100 load remedy",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 load remedy guide",
+              "snippet": "remedy steps",
+              "url": "https://review.example/remedy"
+            },
+            {
+              "title": "X100 thermal note",
+              "snippet": "thermal sustained behavior",
+              "url": "https://maker.example/thermal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "research-hard-02",
+      "category": "difficult research",
+      "query": "festival crowd crush prevention guidelines",
+      "requirements": [
+        "festival",
+        "crowd",
+        "prevention"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "festival crowd crush prevention guidelines",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "festival safety guidelines",
+              "snippet": "crowd prevention measures",
+              "url": "https://org.example/safety"
+            },
+            {
+              "title": "event report",
+              "snippet": "festival stage",
+              "url": "https://news.example/e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "limit6-01",
+      "category": "simple factual",
+      "query": "spark guide",
+      "requirements": [
+        "spark",
+        "guide"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark guide",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark guide 0",
+              "snippet": "spark",
+              "url": "https://h0.example/0"
+            },
+            {
+              "title": "spark guide 1",
+              "snippet": "spark",
+              "url": "https://h1.example/1"
+            },
+            {
+              "title": "spark guide 2",
+              "snippet": "spark",
+              "url": "https://h2.example/2"
+            },
+            {
+              "title": "spark guide 3",
+              "snippet": "spark",
+              "url": "https://h3.example/3"
+            },
+            {
+              "title": "spark guide 4",
+              "snippet": "spark",
+              "url": "https://h4.example/4"
+            },
+            {
+              "title": "spark guide 5",
+              "snippet": "spark",
+              "url": "https://h5.example/5"
+            },
+            {
+              "title": "spark guide 6",
+              "snippet": "spark",
+              "url": "https://h6.example/6"
+            },
+            {
+              "title": "spark guide 7",
+              "snippet": "spark",
+              "url": "https://h7.example/7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlap-01",
+      "category": "official information",
+      "query": "X100 manual",
+      "requirements": [
+        "X100",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 manual",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        },
+        {
+          "query": "X100 handbook",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 handbook manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        },
+        {
+          "query": "X100 docs",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 docs manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "disjoint-01",
+      "category": "multi-facet",
+      "query": "alpha beta gamma",
+      "requirements": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "alpha",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "alpha one",
+              "snippet": "alpha",
+              "url": "https://a.example/1"
+            }
+          ]
+        },
+        {
+          "query": "beta",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "beta one",
+              "snippet": "beta",
+              "url": "https://b.example/1"
+            }
+          ]
+        },
+        {
+          "query": "gamma",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "gamma one",
+              "snippet": "gamma",
+              "url": "https://c.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exact-01",
+      "category": "simple factual",
+      "query": "X100 official store",
+      "requirements": [
+        "X100",
+        "official",
+        "store"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 official store",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 official store",
+              "snippet": "X100 official store",
+              "url": "https://maker.example/s"
+            },
+            {
+              "title": "other",
+              "snippet": "other",
+              "url": "https://o.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unicode-01",
+      "category": "ambiguous query",
+      "query": "SPARK party night",
+      "requirements": [
+        "spark",
+        "party"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "SPARK party",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "SPARK party",
+              "snippet": "live",
+              "url": "https://e.example/1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "longq-01",
+      "category": "multi-facet",
+      "query": "X100 price weight wifi review manual",
+      "requirements": [
+        "X100",
+        "price",
+        "weight",
+        "wifi",
+        "review",
+        "manual"
+      ],
+      "officialHosts": [
+        "maker.example"
+      ],
+      "batches": [
+        {
+          "query": "X100 price weight",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "X100 price weight",
+              "snippet": "price weight",
+              "url": "https://maker.example/pw"
+            }
+          ]
+        },
+        {
+          "query": "X100 wifi review",
+          "queryIndex": 1,
+          "items": [
+            {
+              "title": "X100 wifi review",
+              "snippet": "wifi review",
+              "url": "https://review.example/w"
+            }
+          ]
+        },
+        {
+          "query": "X100 manual",
+          "queryIndex": 2,
+          "items": [
+            {
+              "title": "X100 manual",
+              "snippet": "manual",
+              "url": "https://maker.example/m"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rerank-degrade-02",
+      "category": "official information",
+      "query": "city hall hours",
+      "requirements": [
+        "city",
+        "hall",
+        "hours"
+      ],
+      "officialHosts": [
+        "city.example"
+      ],
+      "batches": [
+        {
+          "query": "city hall hours",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "city hall",
+              "snippet": "info",
+              "url": "https://city.example/hall"
+            },
+            {
+              "title": "city hall hours blog 0",
+              "snippet": "city hall hours open close",
+              "url": "https://b0.example/0"
+            },
+            {
+              "title": "city hall hours blog 1",
+              "snippet": "city hall hours open close",
+              "url": "https://b1.example/1"
+            },
+            {
+              "title": "city hall hours blog 2",
+              "snippet": "city hall hours open close",
+              "url": "https://b2.example/2"
+            },
+            {
+              "title": "city hall hours blog 3",
+              "snippet": "city hall hours open close",
+              "url": "https://b3.example/3"
+            },
+            {
+              "title": "city hall hours blog 4",
+              "snippet": "city hall hours open close",
+              "url": "https://b4.example/4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "concentration-02",
+      "category": "Japanese local information",
+      "query": "ramen price downtown",
+      "requirements": [
+        "ramen",
+        "price",
+        "downtown"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "ramen price downtown",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "ramen post 0",
+              "snippet": "noodles",
+              "url": "https://food.example/0"
+            },
+            {
+              "title": "ramen post 1",
+              "snippet": "noodles",
+              "url": "https://food.example/1"
+            },
+            {
+              "title": "ramen post 2",
+              "snippet": "noodles",
+              "url": "https://food.example/2"
+            },
+            {
+              "title": "ramen post 3",
+              "snippet": "noodles",
+              "url": "https://food.example/3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "emptybatch-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark one",
+              "snippet": "spark",
+              "url": "https://a.example/1"
+            }
+          ]
+        },
+        {
+          "query": "spark empty",
+          "queryIndex": 1,
+          "items": []
+        }
+      ]
+    },
+    {
+      "id": "nourl-01",
+      "category": "simple factual",
+      "query": "spark",
+      "requirements": [
+        "spark"
+      ],
+      "officialHosts": [],
+      "batches": [
+        {
+          "query": "spark",
+          "queryIndex": 0,
+          "items": [
+            {
+              "title": "spark text only",
+              "snippet": "spark"
+            },
+            {
+              "title": "spark linked",
+              "snippet": "spark",
+              "url": "https://a.example/1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

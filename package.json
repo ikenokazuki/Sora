@@ -11,7 +11,8 @@
     "test": "bun test",
     "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js",
-    "test:intel:live": "bun run src/services/country_intel/live_smoke.ts"
+    "test:intel:live": "bun run src/services/country_intel/live_smoke.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "mcp",
@@ -42,6 +43,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/turndown": "^5.0.6"
+    "@types/turndown": "^5.0.6",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.6"
   }
 }

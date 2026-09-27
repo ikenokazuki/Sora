@@ -2,14 +2,17 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import * as cheerio from 'cheerio';
-import { filterByDomains, rerankSearchResults } from '../enrichment.js';
+import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalRankFusion } from '../enrichment.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
-  rerankRealtimeItems,
+  rankRealtimeItems,
+  classifyRealtimeIntent,
   cleanRealtimeItem,
+  type RealtimeIntent,
 } from './x_detail.js';
+import { incrementSecurityCounter } from '../security/metrics.js';
 import { searchYahooRealtimePage } from './yahoo_realtime_api.js';
 
 // Yahoo MCP バイナリのパス
@@ -21,8 +24,94 @@ export const YAHOO_MCP_PATH =
      ? '/home/ikeno/app/oshiframe/backend/bin/Yahoo-Japan-Search-MCP-v0.1.0-linux-x64/yahoo-search-mcp'
      : 'yahoo-search-mcp');
 
+/** Upstream rate discipline for Yahoo MCP calls.
+ * Sequential eval and multi-query union can burst against provider
+ * limits (observed HTTP 429). A shared gate enforces a minimum
+ * interval; rate-limit responses trip a breaker instead of fanning
+ * out into fallback and rescue queries.
+ */
+export function yahooMinIntervalMs(): number {
+  const v = parseInt(process.env.SORA_YAHOO_MIN_INTERVAL_MS || '', 10);
+  if (Number.isFinite(v) && v >= 0) return v;
+  return 500;
+}
+
+let yahooCallGate: Promise<void> = Promise.resolve();
+
+export function resetYahooCallGate(): void {
+  yahooCallGate = Promise.resolve();
+}
+
+async function gateYahooCall(): Promise<void> {
+  if (process.env.SORA_YAHOO_THROTTLE === 'off') return;
+  const minInterval = yahooMinIntervalMs();
+  if (!(minInterval > 0)) return;
+  let release!: () => void;
+  const prev = yahooCallGate;
+  yahooCallGate = new Promise<void>((r) => { release = r; });
+  try {
+    await prev;
+    const last = (gateYahooCall as any)._lastStart || 0;
+    const elapsed = Date.now() - last;
+    if (elapsed < minInterval) {
+      await new Promise((r) => setTimeout(r, minInterval - elapsed));
+    }
+    (gateYahooCall as any)._lastStart = Date.now();
+  } finally {
+    release();
+  }
+}
+
+export function isYahooRateLimitText(text: string): boolean {
+  const t = text || '';
+  if (/too many requests|rate[\s_-]*limit|request throttl/i.test(t)) return true;
+  return /(http|status|error|code)[^0-9a-z]{0,20}429/i.test(t) || /429[^0-9]{0,30}(too many|rate limit|error)/i.test(t);
+}
+
+export function yahooResultHasData(rawText: string): boolean {
+  try {
+    const parsed = JSON.parse(rawText || '');
+    if (Array.isArray(parsed)) return parsed.length > 0;
+    if (parsed && Array.isArray(parsed.items)) return parsed.items.length > 0;
+  } catch {}
+  return false;
+}
+
+export function yahooBreakerCooldownMs(): number {
+  const v = parseInt(process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS || '', 10);
+  if (Number.isFinite(v) && v >= 0) return v;
+  return 120000;
+}
+
+let yahooBreakerTrippedAt: number | null = null;
+
+export function isYahooBreakerOpen(): boolean {
+  if (yahooBreakerTrippedAt == null) return false;
+  if (process.env.SORA_YAHOO_THROTTLE === 'off') return false;
+  return yahooBreakerCooldownMs() > (Date.now() - yahooBreakerTrippedAt);
+}
+
+export function tripYahooBreaker(): void {
+  yahooBreakerTrippedAt = Date.now();
+}
+
+export function resetYahooBreaker(): void {
+  yahooBreakerTrippedAt = null;
+}
+
+export function isYahooRateLimitedError(err: any): boolean {
+  return !!err && (err as any).code === 'YAHOO_RATE_LIMITED';
+}
+
 /** Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動 & タイムアウト保護) */
 export async function callYahooMcp(toolName: string, args: Record<string, any>, timeoutMs = 15000): Promise<any> {
+  await gateYahooCall();
+  if (isYahooBreakerOpen()) {
+    const err: any = new Error('Yahoo provider throttled by breaker');
+    err.code = 'YAHOO_RATE_LIMITED';
+    try { incrementSecurityCounter('sora_throttled_total'); } catch {}
+    throw err;
+  }
   return new Promise((resolve, reject) => {
     let timer: any = null;
     let isSettled = false;
@@ -74,6 +163,14 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
         try {
           const json = JSON.parse(lines[i]);
           if (json.id === 1 && json.result) {
+            const rawText = json.result?.content?.[0]?.text || '';
+            if (!yahooResultHasData(rawText) && (isYahooRateLimitText(rawText) || isYahooRateLimitText(stderr))) {
+              const err: any = new Error(`Yahoo provider rate limited (tool "${toolName}")`);
+              err.code = 'YAHOO_RATE_LIMITED';
+              try { tripYahooBreaker(); } catch {}
+              try { incrementSecurityCounter('sora_throttled_total'); } catch {}
+              return reject(err);
+            }
             return resolve(json.result);
           }
         } catch {}
@@ -103,6 +200,11 @@ export interface YahooWebQueryBatch {
   items: any[];
 }
 
+export function webQueryUnionWeight(queryIndex: number): number {
+  if (queryIndex <= 0) return 1.0;
+  return 0.6;
+}
+
 export function mergeYahooWebQueryBatches(
   batches: YahooWebQueryBatch[],
   bindingQuery: string,
@@ -110,13 +212,16 @@ export function mergeYahooWebQueryBatches(
   excludeDomains?: string[],
 ): any[] {
   const merged: any[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, any>();
+  let insertionOrder = 0;
 
   for (const batch of batches) {
-    const normalized = batch.items.map((item: any) => ({
+    // providerRank は当該SERP内の元の順位 (フィルタ前のindex) を保持する
+    const normalized = batch.items.map((item: any, providerRank: number) => ({
       source: 'web' as const,
       snippet: item.description || item.snippet,
       ...item,
+      providerRank,
       retrievalQuery: batch.query,
       retrievalQueryIndex: batch.queryIndex,
     }));
@@ -135,13 +240,126 @@ export function mergeYahooWebQueryBatches(
       const textKey =
         `text:${item.title || ''}\n${item.snippet || item.description || ''}`;
       const key = urlKey || textKey;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const existing = seen.get(key);
+      if (existing) {
+        // P2:同一URLで後発SERPのsnippetが豊富な場合は保持 (first-winsによる証拠欠落防止)
+        try {
+          const curLen = `${existing.title || ""} ${existing.snippet || existing.description || ""}`.length;
+          const newLen = `${item.title || ""} ${item.snippet || item.description || ""}`.length;
+          if (newLen > curLen) {
+            if (item.title) existing.title = item.title;
+            if (item.snippet || item.description) { existing.snippet = item.snippet || item.description; if (item.description) existing.description = item.description; }
+          }
+        } catch {}
+
+        // 重複URLは初出を保持し、providerRanks のみ追記する (RRF入力用)
+        existing.providerRanks.push({ queryIndex: batch.queryIndex, rank: item.providerRank });
+        continue;
+      }
+      item.providerRanks = [{ queryIndex: batch.queryIndex, rank: item.providerRank }];
+      (item as any).__insertionOrder = insertionOrder++;
+      seen.set(key, item);
       merged.push(item);
     }
   }
 
-  return rerankSearchResults(merged, bindingQuery);
+  // RRF で複数SERP統合 (検索プロバイダ順位を壊さず統合する)
+  // 単一バッチ時は RRF 順 = providerRank 順と等価になる
+  for (const item of merged) {
+    item.rrfScore = reciprocalRankFusion(
+      item.providerRanks.map((p: any) => ({ key: String(p.queryIndex), rank: p.rank })),
+      60,
+      (key) => webQueryUnionWeight(parseInt(key, 10)),
+    );
+  }
+
+  // 診断用 lexical スコア (ランキング確定には使わない)
+  try {
+    const scored = scoreSearchCandidate(merged, bindingQuery);
+    for (const s of scored) {
+      (s.item as any).lexicalScore = s.lexicalScore;
+    }
+  } catch {
+    // 診断失敗時は無視
+  }
+
+  if (!isRrfEnabled()) {
+    for (const item of merged) {
+      delete (item as any).__insertionOrder;
+    }
+    return merged;
+  }
+  merged.sort((a: any, b: any) => {
+    if (b.rrfScore !== a.rrfScore) return b.rrfScore - a.rrfScore;
+    const aMin = Math.min(...a.providerRanks.map((p: any) => p.rank));
+    const bMin = Math.min(...b.providerRanks.map((p: any) => p.rank));
+    if (aMin !== bMin) return aMin - bMin;
+    return (a.__insertionOrder ?? 0) - (b.__insertionOrder ?? 0);
+  });
+  for (const item of merged) {
+    delete (item as any).__insertionOrder;
+  }
+  return merged;
+}
+
+/** Rollback flags (RFC rollback strategy). Default true = Retrieval v2 behavior. */
+export function isWebNativeRankingEnabled(): boolean {
+  return process.env.SORA_WEB_NATIVE_RANKING !== 'false';
+}
+export function isRrfEnabled(): boolean {
+  return process.env.SORA_RRF_ENABLED !== 'false';
+}
+
+/** Retrieval confidence 判定 (追加検索が必要な弱い取得か) */
+export function assessRetrievalConfidence(
+  items: any[],
+  originalQuery: string,
+): { good: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!items || items.length === 0) {
+    return { good: false, reasons: ['empty'] };
+  }
+  if (items.length < 3) {
+    reasons.push('few-results');
+  }
+  // クエリ語のカバレッジ (2語以上クエリで要求語がsnippet不在なら弱い)
+  try {
+    const words = originalQuery
+      .toLowerCase()
+      .trim()
+      .split(/[\s　]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 2);
+    if (words.length >= 2) {
+      const corpus = items
+        .slice(0, 5)
+        .map((it: any) => `${it.title || ''} \n ${it.snippet || it.description || ''}`.toLowerCase())
+        .join('\n');
+      const missing = words.filter((w) => !corpus.includes(w));
+      if (missing.length > 0) {
+        reasons.push(`missing-terms:${missing.join(',')}`);
+      }
+    }
+  } catch {
+    // カバレッジ判定失敗時は無視
+  }
+  // 同一ドメイン偏り (上位5件が単一ホストなら弱い)
+  try {
+    const hosts = items.slice(0, 5).map((it: any) => {
+      try {
+        return new URL(it.url || it.link).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    }).filter(Boolean);
+    const uniq = new Set(hosts);
+    if (hosts.length >= 3 && uniq.size === 1) {
+      reasons.push('single-domain');
+    }
+  } catch {
+    // ドメイン判定失敗時は無視
+  }
+  return { good: reasons.length === 0, reasons };
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
@@ -193,10 +411,15 @@ export async function searchYahooWeb(options: {
     const boundedQueries = candidateQueries.slice(0, 2);
     const batches: YahooWebQueryBatch[] = [];
     const retrievalQueries: string[] = [];
+    let webUnionThrottled = false;
 
     for (let i = 0; i < boundedQueries.length; i++) {
       const q = boundedQueries[i];
       if (!q) continue;
+      if (isYahooBreakerOpen()) {
+        webUnionThrottled = true;
+        break;
+      }
       retrievalQueries.push(q);
 
       let effectiveWebQuery = q;
@@ -254,10 +477,14 @@ export async function searchYahooWeb(options: {
             });
           }
         }
-      } catch (err) {
-        // One failed rescue query must not discard sibling results; record it.
-        const message = ((err as Error)?.message ?? String(err)).slice(0, 300);
+      } catch (unionErr) {
+        const message = ((unionErr as Error)?.message ?? String(unionErr)).slice(0, 300);
         providerErrors.push({ query: q, message });
+        if (isYahooRateLimitedError(unionErr)) {
+          webUnionThrottled = true;
+          break;
+        }
+        // One failed rescue query must not discard sibling results.
         if (i < boundedQueries.length - 1) await maybeWaitAfterRateLimit(message);
       }
     }
@@ -274,6 +501,7 @@ export async function searchYahooWeb(options: {
         (item: any) => (item.retrievalQueryIndex ?? 0) > 0,
       );
 
+      try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
       return {
         items: ranked,
         count: ranked.length,
@@ -284,6 +512,7 @@ export async function searchYahooWeb(options: {
         effectiveQuery: options.query,
         isFallback: contributedFallback,
         queryUnion: true,
+        ...(webUnionThrottled ? { throttled: true } : {}),
         ...(providerErrors.length > 0 ? { providerErrors } : {}),
       };
     }
@@ -299,12 +528,18 @@ export async function searchYahooWeb(options: {
       effectiveQuery: options.query,
       isFallback: false,
       queryUnion: true,
+      throttled: webUnionThrottled ? true : undefined,
       providerErrors,
     };
   }
 
+  let webSequentialThrottled = false;
   for (let i = 0; i < candidateQueries.length; i++) {
     const q = candidateQueries[i];
+    if (isYahooBreakerOpen()) {
+      webSequentialThrottled = true;
+      break;
+    }
     let effectiveWebQuery = q;
     let webSiteArg: string | undefined = undefined;
 
@@ -345,32 +580,134 @@ export async function searchYahooWeb(options: {
         json = JSON.parse(content);
       }
       if (json && Array.isArray(json.items) && json.items.length > 0) {
-        const normalizedItems = json.items.map((item: any) => ({
+        // Provider ranking contains signals that are unavailable
+        // to our lightweight lexical scorer. Do not globally
+        // rerank a single SERP here. Local scores are used later
+        // for diagnostics and deep-retrieval selection only.
+        const normalizedItems = json.items.map((item: any, providerRank: number) => ({
           source: 'web' as const,
           snippet: item.description || item.snippet,
           ...item,
+          providerRank,
+          providerRanks: [{ queryIndex: i, rank: providerRank }],
+          retrievalQuery: q,
+          retrievalQueryIndex: i,
         }));
         const filtered = filterByDomains(normalizedItems, options.includeDomains, options.excludeDomains);
-        const ranked = rerankSearchResults(filtered, options.query);
-        json.items = ranked;
+        // 診断用 lexical スコアのみ付与し、順序は provider順のまま返す
+        try {
+          const scored = scoreSearchCandidate(filtered, options.query);
+          for (const s of scored) {
+            (s.item as any).lexicalScore = s.lexicalScore;
+          }
+        } catch {
+          // 診断失敗時は無視
+        }
+        // Rollback: legacy mode restores BM25 global reorder (providerRank kept for shadow compare).
+        if (!isWebNativeRankingEnabled()) {
+          json.items = rerankSearchResults(filtered, options.query);
+          json.count = json.items.length;
+          json.source = 'web';
+          json.effectiveQuery = q;
+          json.isFallback = i > 0;
+          json.nativeRanking = false;
+          return json;
+        }
+        // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
+        // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
+        if (i === 0 && candidateQueries.length > 1) {
+          const conf = assessRetrievalConfidence(filtered, options.query);
+          if (!conf.good) {
+            try {
+              const rescueQ = candidateQueries[1];
+              let rescueEffective = rescueQ;
+              let rescueSiteArg: string | undefined = undefined;
+              if (options.includeDomains && options.includeDomains.length === 1) {
+                rescueSiteArg = options.includeDomains[0];
+              } else if (options.includeDomains && options.includeDomains.length > 1) {
+                rescueEffective += ` (${options.includeDomains.map((d) => `site:${d}`).join(' OR ')})`;
+              }
+              if (options.excludeDomains && options.excludeDomains.length > 0) {
+                rescueEffective += ` ${options.excludeDomains.map((d) => `-site:${d}`).join(' ')}`;
+              }
+              const rescueRes = await callYahooMcp('yahoo_web_search', {
+                query: rescueEffective,
+                ...(rescueSiteArg ? { site: rescueSiteArg } : {}),
+                ...(options.updated && options.updated !== 'all' ? { updated: options.updated } : {}),
+              });
+              const rescueContent = rescueRes?.content?.[0]?.text || '[]';
+              const rescueJson = JSON.parse(rescueContent);
+              if (rescueJson && Array.isArray(rescueJson.items) && rescueJson.items.length > 0) {
+                const merged = mergeYahooWebQueryBatches(
+                  [
+                    { query: q, queryIndex: 0, items: json.items },
+                    { query: rescueQ, queryIndex: 1, items: rescueJson.items },
+                  ],
+                  options.query,
+                  options.includeDomains,
+                  options.excludeDomains,
+                );
+                if (merged.length > 0) {
+                  try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
+                  return {
+                    items: merged,
+                    count: merged.length,
+                    source: 'web',
+                    originalQuery: options.query,
+                    bindingQuery: options.query,
+                    retrievalQueries: [q, rescueQ],
+                    effectiveQuery: options.query,
+                    isFallback: true,
+                    queryUnion: false,
+                    adaptiveUnion: true,
+                    confidenceReasons: conf.reasons,
+                  };
+                }
+              }
+            } catch {
+              // 追加検索失敗時は初回結果をそのまま返す
+            }
+          }
+        }
+        json.items = filtered;
         json.count = json.items.length;
         json.source = 'web';
         json.effectiveQuery = q;
         json.isFallback = i > 0;
+        try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
         if (providerErrors.length > 0) json.providerErrors = providerErrors;
         return json;
       }
       if (json && Array.isArray(json.items)) {
         lastParsedData = json;
       }
-    } catch (err) {
-      // 候補クエリの次を試行（失敗は記録する）
-      const message = ((err as Error)?.message ?? String(err)).slice(0, 300);
+    } catch (seqErr) {
+      const message = ((seqErr as Error)?.message ?? String(seqErr)).slice(0, 300);
       providerErrors.push({ query: q, message });
+      if (isYahooRateLimitedError(seqErr)) {
+        webSequentialThrottled = true;
+        break;
+      }
+      // 候補クエリの次を試行（失敗は記録する）
       if (i < candidateQueries.length - 1) await maybeWaitAfterRateLimit(message);
     }
   }
 
+  if (webSequentialThrottled) {
+    return {
+      ...lastParsedData,
+      items: [],
+      count: 0,
+      source: 'web',
+      originalQuery: options.query,
+      bindingQuery: options.query,
+      retrievalQueries: [options.query],
+      effectiveQuery: options.query,
+      isFallback: false,
+      throttled: true,
+      ...(providerErrors.length > 0 ? { providerErrors } : {}),
+    };
+  }
   return {
     ...lastParsedData,
     items: [],
@@ -524,6 +861,14 @@ export function normalizeRealtimeItem(item: any): Record<string, any> {
     ...(item.detailEnriched !== undefined ? { detailEnriched: item.detailEnriched } : {}),
     ...(item.detailProvider !== undefined ? { detailProvider: item.detailProvider } : {}),
     ...(item.isNoteTweet !== undefined ? { isNoteTweet: item.isNoteTweet } : {}),
+    // Preserve upstream retrieval provenance when re-normalizing final items.
+    ...(item.providerRank !== undefined ? { providerRank: item.providerRank } : {}),
+    ...(item.providerSort ? { providerSort: item.providerSort } : {}),
+    ...(item.retrievalQuery ? { retrievalQuery: item.retrievalQuery } : {}),
+    ...(item.retrievalQueryIndex !== undefined ? { retrievalQueryIndex: item.retrievalQueryIndex } : {}),
+    ...(item.retrievalWave !== undefined ? { retrievalWave: item.retrievalWave } : {}),
+    ...(item.providerRanks !== undefined ? { providerRanks: item.providerRanks } : {}),
+    ...(item.rrfScore !== undefined ? { rrfScore: item.rrfScore } : {}),
   };
 }
 
@@ -996,6 +1341,9 @@ export interface YahooRealtimeQueryBatch {
   query: string;
   queryIndex: number;
   items: any[];
+  throttled?: boolean;
+  wave?: number;
+  sort?: 'recent' | 'popular';
 }
 
 /**
@@ -1005,18 +1353,42 @@ export interface YahooRealtimeQueryBatch {
 export function mergeRealtimeQueryBatches(
   batches: YahooRealtimeQueryBatch[],
 ): { items: any[]; contributingQueries: string[] } {
-  const seen = new Set<string>();
+  // X retrieval provenance (P0-X-04): providerRank / providerSort /
+  // retrievalQuery / retrievalWave are preserved; repeats across
+  // waves accumulate providerRanks and an RRF confidence score (P1-X-01).
+  const seen = new Map<string, any>();
   const merged: any[] = [];
   const contributed = new Set<string>();
   for (const batch of batches) {
     if (!batch || !Array.isArray(batch.items)) continue;
-    for (const item of batch.items) {
-      const key = getRealtimeCanonicalIdentity(item);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
+    batch.items.forEach((raw: any, batchIndex: number) => {
+      const key = getRealtimeCanonicalIdentity(raw);
+      if (!key) return;
+      const existing = seen.get(key);
+      if (existing) {
+        existing.providerRanks.push({ queryIndex: batch.queryIndex, rank: batchIndex + 1 });
+        return;
+      }
+      const item = {
+        ...raw,
+        providerRank: batchIndex + 1,
+        providerSort: batch.sort,
+        retrievalQuery: batch.query,
+        retrievalQueryIndex: batch.queryIndex,
+        retrievalWave: batch.wave ?? 1,
+        providerRanks: [{ queryIndex: batch.queryIndex, rank: batchIndex + 1 }],
+      };
+      seen.set(key, item);
       contributed.add(batch.query);
       merged.push(item);
-    }
+    });
+  }
+  for (const item of merged) {
+    try {
+      item.rrfScore = reciprocalRankFusion(
+        item.providerRanks.map((pr: any) => ({ key: String(pr.queryIndex), rank: pr.rank })),
+      );
+    } catch {}
   }
   const order = new Map<string, number>();
   batches.forEach((b, i) => {
@@ -1057,6 +1429,7 @@ async function fetchRealtimeBatch(
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  wave = 1,
   errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch> {
   try {
@@ -1067,31 +1440,36 @@ async function fetchRealtimeBatch(
       ...(page ? { page } : {}),
     });
     const rawList = readRealtimeProviderList(mcpRes);
-    return { query, queryIndex, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
-  } catch (err: any) {
-    errors?.push({ query, message: err?.message || String(err) });
-    return { query, queryIndex, items: [] };
+    return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
+  } catch (batchErr: any) {
+    errors?.push({ query, message: batchErr?.message || String(batchErr) });
+    if (isYahooRateLimitedError(batchErr)) {
+      return { query, queryIndex, wave, sort, items: [], throttled: true };
+    }
+    try { incrementSecurityCounter('sora_x_provider_error_total'); } catch {}
+    return { query, queryIndex, wave, sort, items: [] };
   }
 }
 
-function runRealtimeWave(
+async function runRealtimeWave(
   queries: string[],
   startIndex: number,
   sort: 'recent' | 'popular',
   limit: number | undefined,
   page: number | undefined,
   callMcp: typeof callYahooMcp,
+  wave = 1,
   errors?: Array<{ query: string; message: string }>,
 ): Promise<YahooRealtimeQueryBatch[]> {
-  return Promise.allSettled(
-    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, errors)),
-  ).then((settled) =>
-    settled.map((r, i) => {
-      if (r.status === 'fulfilled') return r.value;
-      errors?.push({ query: queries[i], message: 'wave settled without a response' });
-      return { query: queries[i], queryIndex: startIndex + i, items: [] };
-    }),
+  const settled = await Promise.allSettled(
+    queries.map((q, i) => fetchRealtimeBatch(q, startIndex + i, sort, limit, page, callMcp, wave, errors)),
   );
+
+  return settled.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    errors?.push({ query: queries[i], message: 'wave settled without a response' });
+    return { query: queries[i], queryIndex: startIndex + i, wave, sort, items: [] };
+  });
 }
 
 /** Yahoo リアルタイム検索 (Retrieval v1: bounded query union + parallel waves + adaptive stop) */
@@ -1110,6 +1488,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   originalQuery: string;
   isFallback: boolean;
   source: 'x';
+  intent: RealtimeIntent;
   retrievalQueries: string[];
   contributingQueries: string[];
   resultsMerged: boolean;
@@ -1118,6 +1497,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   requiredTerms: string[];
   coveredTerms: string[];
   missingTerms: string[];
+  throttled?: boolean;
   partial?: boolean;
   providerErrors?: Array<{ query: string; message: string }>;
 }> {
@@ -1156,8 +1536,15 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     exactVariants: string[],
   ) => {
     // 全取得がprovider障害で空の場合は0件成功に見せかけず例外にする。
-    throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
+    // throttled終端は正常な停止状態（throttledマーカー付きで返却）のため除外する。
+    if (stopReason !== 'throttled') throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
+    try {
+      incrementSecurityCounter('sora_x_stop_total');
+      if (stopReason === 'query_budget') incrementSecurityCounter('sora_x_query_budget_stop_total');
+      if (stopReason === 'full_coverage') incrementSecurityCounter('sora_x_full_coverage_stop_total');
+    } catch {}
+    try { incrementSecurityCounter('sora_x_wave_total', Math.max(1, executedWaves)); } catch {}
     const retrievalQueries = batches.map((b) => b.query);
     const resultsMerged = contributingQueries.length >= 2;
     const exactSet = new Set(exactVariants);
@@ -1165,7 +1552,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     const effectiveQuery = contributingQueries.length === 1
       ? contributingQueries[0]
       : originalQuery;
-    let finalItems = merged.length > 0 && originalQuery ? rerankRealtimeItems(merged, originalQuery) : merged;
+    // X-native policy: recent/popular preserve provider order (no generic BM25 rerank).
+    let finalItems = merged.length > 0 && originalQuery ? rankRealtimeItems(merged, { query: originalQuery, mode: sort }) : merged;
     const requestedLimit = limit;
     if (typeof requestedLimit === 'number' && requestedLimit >= 0) {
       finalItems = finalItems.slice(0, requestedLimit);
@@ -1181,11 +1569,13 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     } else if (finalItems.length > 0) {
       finalItems = finalItems.map((it) => cleanRealtimeItem(it, (options as any)?.verbose === true));
     }
+    const intent = classifyRealtimeIntent(originalQuery);
     return {
       source: 'x' as const,
       originalQuery,
       effectiveQuery,
       isFallback,
+      intent,
       count: finalItems.length,
       items: finalItems,
       retrievalQueries,
@@ -1202,7 +1592,13 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
 
   if ((options as any)?.disableFallback === true) {
     const q = builtQuery;
-    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, providerErrors) : [];
+    const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, 1, providerErrors) : [];
+    if (batches.some((b) => b.throttled)) {
+      const dfReq = extractRealtimeIntentRequirements(originalQuery);
+      const dfCov = evaluateRealtimeRetrievalCoverage([], dfReq);
+      const dfDone = await finish([], 0, 'throttled', dfCov, q ? [q] : []);
+      return { ...dfDone, throttled: true };
+    }
     const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
     throwIfTotalFailure(merged.items);
@@ -1213,7 +1609,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // 複雑な式・2ページ目以降は原式の単発取得に固定し、意味を変えるrelaxを行わない。
   if (requiresExactRealtimeQuery(builtQuery) || (page !== undefined && page > 1)) {
     const batches = builtQuery
-      ? await runRealtimeWave([builtQuery], 0, sort, limit, page, callMcp, providerErrors)
+      ? await runRealtimeWave([builtQuery], 0, sort, limit, page, callMcp, 1, providerErrors)
       : [];
     const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
@@ -1233,6 +1629,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const batches: YahooRealtimeQueryBatch[] = [];
   const executed = new Set<string>();
   let executedWaves = 0;
+  let sawThrottle = false;
 
   const takeBudget = (candidates: string[]): string[] => {
     const out: string[] = [];
@@ -1248,12 +1645,18 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // Wave 1: exact intent (original + canonical syntax variant)
   const wave1Queries = takeBudget(exactVariants);
   if (wave1Queries.length > 0) {
-    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp, providerErrors);
+    const res = await runRealtimeWave(wave1Queries, batches.length, sort, limit, page, callMcp, 1, providerErrors);
     for (const b of res) {
       batches.push(b);
       executed.add(b.query);
+      if (b.throttled) sawThrottle = true;
     }
     executedWaves = 1;
+    if (sawThrottle) {
+      const w1Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+      const w1Done = await finish(batches, executedWaves, 'throttled', w1Cov, exactVariants);
+      return { ...w1Done, throttled: true };
+    }
   }
   let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   if (coverage.hasFullCoverage) {
@@ -1272,12 +1675,18 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   );
   const wave2Queries = takeBudget(wave2Candidates);
   if (wave2Queries.length > 0) {
-    const res = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, providerErrors);
-    for (const b of res) {
+    const res2 = await runRealtimeWave(wave2Queries, batches.length, sort, limit, page, callMcp, 2, providerErrors);
+    for (const b of res2) {
       batches.push(b);
       executed.add(b.query);
+      if (b.throttled) sawThrottle = true;
     }
     executedWaves = 2;
+    if (sawThrottle) {
+      const w2Cov = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+      const w2Done = await finish(batches, executedWaves, 'throttled', w2Cov, exactVariants);
+      return { ...w2Done, throttled: true };
+    }
   }
   coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   if (coverage.hasFullCoverage) {
@@ -1307,13 +1716,17 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   if (wave3Queries.length === 0) {
     return finish(batches, executedWaves, 'no_candidates', coverage, exactVariants);
   }
-  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, providerErrors);
+  const res3 = await runRealtimeWave(wave3Queries, batches.length, sort, limit, page, callMcp, 3, providerErrors);
   for (const b of res3) {
     batches.push(b);
     executed.add(b.query);
   }
   executedWaves = 3;
   coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
+  if (sawThrottle) {
+    const done = await finish(batches, executedWaves, 'throttled', coverage, exactVariants);
+    return { ...done, throttled: true };
+  }
   throwIfTotalFailure(mergeRealtimeQueryBatches(batches).items);
   if (coverage.hasFullCoverage) {
     return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
