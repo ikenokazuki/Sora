@@ -14,7 +14,7 @@
  * - 結果の整形と Text Fragment 生成
  */
 
-import { estimateTokens } from './enrichment.js';
+import { estimateTokens } from './text_tokens.js';
 import { analyzeFacetEvidence, associationMultiplier, computeEvidenceCoverage, dateYearMultiplier, detectCurrentIntent, entityTermsForQuery, extractDateRequirements, splitSentences, structuralMultiplier, temporalMultiplier } from './retrieval/answerability.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms, type ParsedSection } from './rho_select.js';
 import {
