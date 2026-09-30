@@ -288,3 +288,84 @@ export function computeEvidenceCoverage(
   empty.answerCoverage = answered / requirements.length;
   return empty;
 }
+export interface DateRequirement {
+  month: number;
+  day: number;
+  year: number | null;
+}
+function validMonthDay(month: number, day: number): boolean {
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+export function extractDateRequirements(query: string): DateRequirement[] {
+  const out: DateRequirement[] = [];
+  if (!query || typeof query !== 'string') return out;
+  const seen = new Set<string>();
+  const push = (month: number, day: number, year: number | null) => {
+    if (!validMonthDay(month, day)) return;
+    const key = month + '-' + day + '-' + (year === null ? 'x' : String(year));
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ month, day, year });
+  };
+  let m: RegExpExecArray | null;
+  const reJp = /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日|(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;
+  try {
+    while ((m = reJp.exec(query)) !== null) {
+      if (m[1] !== undefined && m[1] !== '') push(parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[1], 10));
+      else push(parseInt(m[4], 10), parseInt(m[5], 10), null);
+    }
+  } catch {}
+  const reSlash = /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})|(\d{1,2})\s*[\/]\s*(\d{1,2})/g;
+  try {
+    while ((m = reSlash.exec(query)) !== null) {
+      if (m[1] !== undefined && m[1] !== '') push(parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[1], 10));
+      else push(parseInt(m[4], 10), parseInt(m[5], 10), null);
+    }
+  } catch {}
+  return out;
+}
+export function impliedYear(req: DateRequirement, ref?: Date): number {
+  if (req.year !== null && Number.isFinite(req.year)) return req.year;
+  const base = ref instanceof Date ? ref : new Date();
+  const thisYear = base.getFullYear();
+  const thisMonth = base.getMonth() + 1;
+  const thisDay = base.getDate();
+  if (req.month > thisMonth || (req.month === thisMonth && req.day >= thisDay)) return thisYear;
+  return thisYear + 1;
+}
+function sentenceHasMonthDay(sentence: string, month: number, day: number): boolean {
+  const jp = new RegExp(month + '[\\s]*月[\\s]*' + day + '[\\s]*日');
+  const slash = new RegExp(month + '[\\s]*\\/[\\s]*' + day + '(?![\\d\/])');
+  try {
+    if (jp.test(sentence)) return true;
+  } catch {}
+  try {
+    if (slash.test(sentence)) return true;
+  } catch {}
+  return false;
+}
+export function dateYearMultiplier(sentences: string[], dateReqs: DateRequirement[], ref?: Date): number {
+  if (!dateReqs || dateReqs.length === 0) return 1.0;
+  const base = ref instanceof Date ? ref : new Date();
+  let bestBoost = 1.0;
+  let worstPenalty = 1.0;
+  let seen = false;
+  for (const raw of sentences || []) {
+    const s = raw || '';
+    for (const req of dateReqs) {
+      if (!sentenceHasMonthDay(s, req.month, req.day)) continue;
+      seen = true;
+      const target = impliedYear(req, base);
+      const years = sentenceYears(s);
+      if (years.length === 0) continue;
+      let m = 1.0;
+      if (years.indexOf(target) >= 0) m = 1.1;
+      else m = 0.8;
+      if (m > bestBoost) bestBoost = m;
+      if (m < worstPenalty) worstPenalty = m;
+    }
+  }
+  if (!seen) return 1.0;
+  if (bestBoost > 1.0) return bestBoost;
+  return worstPenalty;
+}

@@ -4,7 +4,10 @@ import {
   associationMultiplier,
   detectValueKinds,
   computeEvidenceCoverage,
+  dateYearMultiplier,
   detectCurrentIntent,
+  extractDateRequirements,
+  impliedYear,
   entityTermsForQuery,
   splitSentences,
   structuralMultiplier,
@@ -224,5 +227,55 @@ describe('adaptive candidate expansion (hermetic)', () => {
     const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
     expect(exp.stages).toBe(1);
     expect(exp.final).toBe(22);
+  });
+});
+describe('date requirement matching (hermetic)', () => {
+  test('extracts month-day with optional year', () => {
+    expect(extractDateRequirements('10月11日ライブ')).toEqual([{ month: 10, day: 11, year: null }]);
+    expect(extractDateRequirements('2026年10月11日')).toEqual([{ month: 10, day: 11, year: 2026 }]);
+    expect(extractDateRequirements('10/11')).toEqual([{ month: 10, day: 11, year: null }]);
+    expect(extractDateRequirements('13月40日')).toEqual([]);
+    expect(extractDateRequirements('価格')).toEqual([]);
+  });
+  test('implies the next upcoming occurrence', () => {
+    const ref = new Date(2026, 8, 30);
+    expect(impliedYear({ month: 10, day: 11, year: null }, ref)).toBe(2026);
+    expect(impliedYear({ month: 1, day: 5, year: null }, ref)).toBe(2027);
+    expect(impliedYear({ month: 10, day: 11, year: 2025 }, ref)).toBe(2025);
+  });
+  test('matches and mismatches evidence years', () => {
+    const ref = new Date(2026, 8, 30);
+    const req = [{ month: 10, day: 11, year: null }];
+    expect(dateYearMultiplier(['2026年10月11日のライブ'], req, ref)).toBe(1.1);
+    expect(dateYearMultiplier(['2025年10月11日のライブ'], req, ref)).toBe(0.8);
+    expect(dateYearMultiplier(['10月11日のライブ'], req, ref)).toBe(1.0);
+    expect(dateYearMultiplier(['2026年10月11日のライブ'], [], ref)).toBe(1.0);
+  });
+  test('adapter prefers the implied-year evidence', () => {
+    const ref = new Date();
+    const future = new Date(ref.getTime() + 20 * 24 * 60 * 60 * 1000);
+    const m = future.getMonth() + 1;
+    const d = future.getDate();
+    const y = impliedYear({ month: m, day: d, year: null }, ref);
+    const markdown = [
+      '# 旧年',
+      '',
+      y - 1 + '年' + m + '月' + d + '日 ライブ 重量199g',
+      '',
+      '# 該当年',
+      '',
+      y + '年' + m + '月' + d + '日 ライブ',
+      '',
+    ].join(chrN());
+    const res = extractQueryHighlightsRhoV2(markdown, '君と見るそら ' + m + '月' + d + '日 ライブ', { requirements: ['ライブ', '重量'] });
+    const scores = new Map<string, number>();
+    for (const h of res.highlightItems) {
+      const ev = h.evidenceScores[0] || 0;
+      if (h.text.includes(y + '年')) scores.set('current', ev);
+      if (h.text.includes((y - 1) + '年')) scores.set('old', ev);
+    }
+    expect(scores.has('current')).toBe(true);
+    expect(scores.has('old')).toBe(true);
+    expect(scores.get('current') as number).toBeGreaterThan(scores.get('old') as number);
   });
 });
