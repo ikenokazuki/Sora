@@ -8,6 +8,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { searchYahooWeb, assessRetrievalConfidence } from '../src/services/yahoo.js';
 import { rerankSearchResults } from '../src/enrichment.js';
+import { computeEvidenceCoverage } from '../src/retrieval/answerability.js';
+import { extractQueryRequirements } from '../src/retrieval/requirements.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const list = JSON.parse(readFileSync(join(here, '../eval/live_queries.json'), 'utf8')).queries as Array<{ id: string; category: string; query: string }>;
@@ -40,6 +42,15 @@ for (const q of list.slice(0, limit)) {
     top1AgreementNativeVsLegacy: topNative === topLegacy,
     topNative, topLegacy,
     adaptiveWouldFire: !conf.good, adaptiveReasons: conf.reasons,
+    ...(() => {
+      try {
+        const req = extractQueryRequirements(q.query);
+        const facets = [...req.entityTerms, ...req.intentTerms].slice(0, 6);
+        const blocks = items.slice(0, 10).map((it: any) => String((it as any).title || '') + ' ' + String((it as any).snippet || (it as any).description || ''));
+        const cov = computeEvidenceCoverage(blocks, [], facets);
+        return { snippetFacets: facets, snippetAnswerCoverage: cov.answerCoverage, snippetAnswered: cov.answeredRequirements, snippetMissing: cov.missingRequirements };
+      } catch { return {}; }
+    })(),
   });
   console.log(JSON.stringify({ id: q.id, ms, count: items.length, agree: topNative === topLegacy, adapt: !conf.good }));
 }

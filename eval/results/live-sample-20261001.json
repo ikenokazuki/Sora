@@ -1,0 +1,292 @@
+{
+  "startedAt": "2026-09-30T16:41:01.445Z",
+  "rows": [
+    {
+      "id": "live-factual-01",
+      "category": "simple factual",
+      "query": "君と見るそら メンバー",
+      "ms": 1168,
+      "count": 10,
+      "error": null,
+      "effectiveQuery": "君と見るそら メンバー",
+      "isFallback": true,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://kimisora.love/",
+      "topLegacy": "https://www.youtube.com/channel/UCLjq2FnlAMscyTLhkoJP8iw/about",
+      "adaptiveWouldFire": true,
+      "adaptiveReasons": [
+        "missing-terms:メンバー"
+      ],
+      "snippetFacets": [
+        "君と見るそら",
+        "メンバー"
+      ],
+      "snippetAnswerCoverage": 0.5,
+      "snippetAnswered": [
+        "君と見るそら"
+      ],
+      "snippetMissing": [
+        "メンバー"
+      ]
+    },
+    {
+      "id": "live-event-01",
+      "category": "event timetable",
+      "query": "君と見るそら ライブ 出演時間",
+      "ms": 467,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "君と見るそら ライブ 出演時間",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://x.com/kimisora_JPN/all",
+      "topLegacy": "https://ticketdive.com/event/kimisora_summer2026",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "君と見るそら",
+        "ライブ",
+        "出演時間",
+        "出演時間"
+      ],
+      "snippetAnswerCoverage": 1,
+      "snippetAnswered": [
+        "君と見るそら",
+        "ライブ",
+        "出演時間",
+        "出演時間"
+      ],
+      "snippetMissing": []
+    },
+    {
+      "id": "live-event-02",
+      "category": "event timetable",
+      "query": "SPARK 山中湖 タイムテーブル",
+      "ms": 458,
+      "count": 10,
+      "error": null,
+      "effectiveQuery": "SPARK 山中湖 タイムテーブル",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://sparkfes.com/2026/timetable/",
+      "topLegacy": "https://playyte.com/news/1101/",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "spark",
+        "山中湖",
+        "タイムテーブル"
+      ],
+      "snippetAnswerCoverage": 1,
+      "snippetAnswered": [
+        "spark",
+        "山中湖",
+        "タイムテーブル"
+      ],
+      "snippetMissing": []
+    },
+    {
+      "id": "live-official-01",
+      "category": "official information",
+      "query": "デジタル庁 Web API",
+      "ms": 453,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "デジタル庁 Web API",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://www.digital.go.jp/assets/contents/node/basic_page/field_ref_resources/fe5f0631-c978-42db-8416-6759cfa7e53a/f6ca1b7b/20241001_policies_development_management_outline_04.pdf",
+      "topLegacy": "https://digital-gov.note.jp/n/n89c067913d7a",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "デジタル庁",
+        "web",
+        "api"
+      ],
+      "snippetAnswerCoverage": 0,
+      "snippetAnswered": [],
+      "snippetMissing": [
+        "デジタル庁",
+        "web",
+        "api"
+      ]
+    },
+    {
+      "id": "live-local-01",
+      "category": "Japanese local information",
+      "query": "横浜 1000CLUB アクセス",
+      "ms": 543,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "横浜 1000CLUB アクセス",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://sogotokyo.com/live_place/detail/456",
+      "topLegacy": "https://x.com/charapera_/status/1386152512877592580",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "横浜",
+        "1000club",
+        "アクセス",
+        "アクセス"
+      ],
+      "snippetAnswerCoverage": 0,
+      "snippetAnswered": [],
+      "snippetMissing": [
+        "横浜",
+        "1000club",
+        "アクセス",
+        "アクセス"
+      ]
+    },
+    {
+      "id": "live-current-01",
+      "category": "current event",
+      "query": "SPARK 出演者 発表",
+      "ms": 405,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "SPARK 出演者 発表",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://sparkfes.com/2026/",
+      "topLegacy": "https://x.com/SPARK_Fes/status/2097958273299214505",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "spark",
+        "出演者",
+        "発表",
+        "出演者"
+      ],
+      "snippetAnswerCoverage": 0,
+      "snippetAnswered": [],
+      "snippetMissing": [
+        "spark",
+        "出演者",
+        "発表",
+        "出演者"
+      ]
+    },
+    {
+      "id": "live-product-01",
+      "category": "product specification",
+      "query": "iPhone 重量 Wi-Fi 規格",
+      "ms": 518,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "iPhone 重量 Wi-Fi 規格",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://support.apple.com/ja-jp/guide/deployment/dep268652e6c/web",
+      "topLegacy": "https://sumaholife-plus.jp/smartphone/14690/",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "iphone",
+        "重量",
+        "wi-fi"
+      ],
+      "snippetAnswerCoverage": 1,
+      "snippetAnswered": [
+        "iphone",
+        "重量",
+        "wi-fi"
+      ],
+      "snippetMissing": []
+    },
+    {
+      "id": "live-multi-01",
+      "category": "multi-facet",
+      "query": "君と見るそら チケット 料金 出演時間",
+      "ms": 451,
+      "count": 10,
+      "error": null,
+      "effectiveQuery": "君と見るそら チケット 料金 出演時間",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": true,
+      "topNative": "https://x.com/kimisora_JPN",
+      "topLegacy": "https://x.com/kimisora_JPN",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "君と見るそら",
+        "チケット",
+        "料金",
+        "料金",
+        "出演時間"
+      ],
+      "snippetAnswerCoverage": 1,
+      "snippetAnswered": [
+        "君と見るそら",
+        "チケット",
+        "料金",
+        "料金",
+        "出演時間"
+      ],
+      "snippetMissing": []
+    },
+    {
+      "id": "live-compare-01",
+      "category": "comparison",
+      "query": "1000CLUB キャパ 比較",
+      "ms": 1172,
+      "count": 13,
+      "error": null,
+      "effectiveQuery": "1000CLUB キャパ 比較",
+      "isFallback": true,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": false,
+      "topNative": "https://1000club.jp/",
+      "topLegacy": "https://natalie.mu/music/news/683429",
+      "adaptiveWouldFire": true,
+      "adaptiveReasons": [
+        "missing-terms:比較"
+      ],
+      "snippetFacets": [
+        "1000club",
+        "キャパ"
+      ],
+      "snippetAnswerCoverage": 0,
+      "snippetAnswered": [],
+      "snippetMissing": [
+        "1000club",
+        "キャパ"
+      ]
+    },
+    {
+      "id": "live-ambig-01",
+      "category": "ambiguous query",
+      "query": "spark",
+      "ms": 492,
+      "count": 9,
+      "error": null,
+      "effectiveQuery": "spark",
+      "isFallback": false,
+      "providerRankPresent": true,
+      "top1AgreementNativeVsLegacy": true,
+      "topNative": "https://sparkmailapp.com/ja",
+      "topLegacy": "https://sparkmailapp.com/ja",
+      "adaptiveWouldFire": false,
+      "adaptiveReasons": [],
+      "snippetFacets": [
+        "spark"
+      ],
+      "snippetAnswerCoverage": 1,
+      "snippetAnswered": [
+        "spark"
+      ],
+      "snippetMissing": []
+    }
+  ]
+}
