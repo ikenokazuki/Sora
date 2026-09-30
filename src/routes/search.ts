@@ -23,6 +23,7 @@ import {
   SongSearchRequestSchema,
   ArtistSearchRequestSchema,
   MusicSearchRequestSchema,
+  IntegratedSearchRequestSchema,
 } from '../types.js';
 import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { formatError } from './utils.js';
@@ -161,6 +162,7 @@ searchRoutes.post('/search/web', async (c) => {
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
+const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true });
 const handleIntegratedSearch = async (c: any) => {
   try {
     const body = await c.req.json();
@@ -190,12 +192,18 @@ const handleIntegratedSearch = async (c: any) => {
       return c.json({ error: 'query is required' }, 400);
     }
 
+    const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
+    if (!adaptiveOptions.success) {
+      return c.json({ error: 'invalid adaptive search options', details: adaptiveOptions.error.format() }, 400);
+    }
+
     const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const finalResponse = await integratedSearch({
       query,
       tenantId,
       limit,
       scrapeContent,
+      ...adaptiveOptions.data,
       includeRealtime,
       realtimeSort,
       officialAccountId,
