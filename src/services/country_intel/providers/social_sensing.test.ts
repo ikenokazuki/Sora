@@ -115,7 +115,7 @@ describe('social sensing provider runs', () => {
       visited.push(url);
       const q = new URL(url).searchParams.get('q') ?? '';
       const title = q.includes('経済') ? '日本経済ニュース' : q.includes('観光') ? '日本観光ニュース' : '日本のニュース';
-      const rss = `<rss version="2.0"><channel><item><title>${title}</title><link>https://example.org/${encodeURIComponent(title)}</link><pubDate>Wed, 23 Sep 2026 00:00:00 GMT</pubDate></item></channel></rss>`;
+      const rss = `<rss version="2.0"><channel><item><title>${title}</title><link>https://example.org/${encodeURIComponent(title)}</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`;
       return new Response(rss, { headers: { 'content-type': 'application/rss+xml' } });
     }) as unknown as never;
     const result = await createGoogleNewsProvider(fetchFn).run(JP, signal);
