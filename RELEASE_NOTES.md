@@ -1,3 +1,9 @@
+# Unreleased (evidence scoring batch)
+
+- 証拠スコアリング: 回答値検出・entity関連・表/定義構造・時間関連・明示日付の年照合・相対日解決。言及/回答カバレッジ診断と 12-24-48 段階候補投入。
+- 辞書分離: intent語・stopwords・時間語を retrieval lexicons に集約し、スコア倍率を EVIDENCE_WEIGHTS 一表化。dead RRF削除、enrichment循環import解消。
+- 評価: live 10件収集＋機械的事前ラベル、5件にAI一次ラベル（要人手確認）。
+- CI: google-news fixtureの日付時限爆弾を修正。
 # Sora v2.31.0
 
 - 検索 v2: Yahoo プロバイダー圧力制御（AIMD・サーキット・予算）、構造化 429 と Retry-After 対応、stale キャッシュ、検索 singleflight、回答カバレッジ停止、抽出エスカレーション＋遅延ブラウザスキップ。
