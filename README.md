@@ -315,10 +315,12 @@ Sora は、目的に応じて **11 個の論理モジュール（全 45 ツー�
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
 Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 31 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
-- **初期有効 (★ CORE 12 ツール)**:
+- **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
   - `search_web`: 最速 1-hop Web 検索（候補 URL・スニペット即応、formats 指定で上位本文インライン取得対応）
   - `search_deep`: 深層統合検索・本文一括スクレイピング & リアルタイム速報（responseMode: full / evidence）
+  - `search_social_posts`: 公開 SNS 投稿検索（Weibo 新着 / Threads・Instagram・Facebook 公開投稿）
+  - `fetch_social_post`: 公開 SNS 投稿の本文・日時・反応取得
   - `search_tools`: 現在 tools/list に表示されていない追加/deferred ツールの検索・動的有効化（Tool Search Tool）
   - `check_product_compliance`: 商品統合コンプライアンス一括診断（HTSコード/FDA/CPSC/eFiling）
   - `get_weather`: 気象庁 1,805 市区町村天気予報
@@ -328,7 +330,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 27 ツール)**:
+- **動的有効化 (・ DEFERRED 31 ツール)**:
   - `track_package`: 日本の主要5社（ヤマト・佐川・郵便・西濃・福山）＆UPS 荷物追跡・自動キャリア判別
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
@@ -339,7 +341,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `check_fda_regulated`: 米国 FDA 規制判定
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`
+  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -361,7 +363,8 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
 │                 │                   │                  │                 │             │               │              │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 12ツール) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 27ツール)
+★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 31ツール)
+図は 8 列の簡略表示です。Media（`inspect_image`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 ```
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -957,11 +960,11 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ---
 
-### 3.4 万能深層Web検索 (`POST /search`) & Web 検索 (`POST /search/web`)
+### 3.4 万能深層Web検索 (`POST /search` / `/search/deep` / `/search/integrated` / `/deep-search`) & Web 検索 (`POST /search/web`)
 
-`POST /search` は、Web 検索・上位サイトの本文自動スクレイピング（Clean Markdown 抽出・重複排除）・X/Twitter リアルタイム速報をワンストップで一括実行する万能深層検索エンドポイントです（Firecrawl / Tavily 互換）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、時事ニュースなどの調査に最適です。
+`POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-search`）は、Web 検索・上位サイトの本文自動スクレイピング（Clean Markdown 抽出・重複排除）・X/Twitter リアルタイム速報をワンストップで一括実行する万能深層検索エンドポイントです（Firecrawl / Tavily 互換）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、時事ニュースなどの調査に最適です。
 
-- **深層検索リクエスト (`POST /search` または `POST /search/deep`)**:
+- **深層検索リクエスト (`POST /search` / `/search/deep` / `/search/integrated` / `/deep-search`)**:
 ```json
 {
   "query": "君と見るそら 好きって コール",
@@ -1859,7 +1862,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
 | `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade` または `all`） |
+| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel` または `all`） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 45 ツール静的一括ロード |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
@@ -1982,7 +1985,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 
 ### Deep Search v2.32.0: 日付と追加取得
 
-REST `POST /search`（別名 `/search/integrated`）と MCP `search_deep` は、同じ検索オプションを受け付けます。API仕様は `GET /openapi.json`、対話型ドキュメントは `GET /docs` と `GET /swagger` で確認できます。
+REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-search`）と MCP `search_deep` は、同じ検索オプションを受け付けます。API仕様は `GET /openapi.json`、対話型ドキュメントは `GET /docs` と `GET /swagger` で確認できます。
 
 ```json
 {
