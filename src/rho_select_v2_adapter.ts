@@ -15,7 +15,7 @@
  */
 
 import { estimateTokens } from './enrichment.js';
-import { analyzeFacetEvidence, associationMultiplier, computeEvidenceCoverage, detectCurrentIntent, entityTermsForQuery, splitSentences, structuralMultiplier, temporalMultiplier } from './retrieval/answerability.js';
+import { analyzeFacetEvidence, associationMultiplier, computeEvidenceCoverage, dateYearMultiplier, detectCurrentIntent, entityTermsForQuery, extractDateRequirements, splitSentences, structuralMultiplier, temporalMultiplier } from './retrieval/answerability.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms, type ParsedSection } from './rho_select.js';
 import {
   selectEvidenceSetRhoV2,
@@ -337,6 +337,7 @@ export function extractQueryHighlightsRhoV2(
   const cheapOrder = rankCandidatesCheap(candidates, requirements);
   const assocEntities = entityTermsForQuery(query);
   const currentIntent = detectCurrentIntent(query);
+  const dateReqs = extractDateRequirements(query);
   const solveSubset = (sub: number[]): { scores: number[][]; weights: number[]; selection: any } => {
     const pool = sub.map((ci) => candidates[ci]);
     const pn = pool.length;
@@ -398,7 +399,7 @@ export function extractQueryHighlightsRhoV2(
         const facetEv = analyzeFacetEvidence(blockSentences, assocEntities, req);
         const structMult = structuralMultiplier(c.heading + chr10() + c.body, req);
         const mult = Math.max(associationMultiplier(facetEv), structMult);
-        evidence = baseEvidence * mult * temporalMultiplier(blockSentences, req, currentIntent);
+        evidence = baseEvidence * mult * temporalMultiplier(blockSentences, req, currentIntent) * dateYearMultiplier(blockSentences, dateReqs);
       } catch {}
       row[t] = evidence;
       if (evidence > maxRawPerRequirement[t]) {
