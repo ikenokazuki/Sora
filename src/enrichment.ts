@@ -48,13 +48,8 @@ import type {
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
 
-/** テキストの推定トークン数を算出（日本語は1.3文字/トークン、英語は4文字/トークン） */
-export function estimateTokens(text: string): number {
-  if (!text) return 0;
-  const cjkChars = (text.match(/[\u3000-\u9fff\uff00-\uffef]/g) || []).length;
-  const nonCjkChars = text.length - cjkChars;
-  return Math.ceil(cjkChars * 0.77 + nonCjkChars * 0.25);
-}
+import { estimateTokens } from './text_tokens.js';
+export { estimateTokens };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
 export function safeTruncateMarkdown(markdown: string, maxChars: number): string {
