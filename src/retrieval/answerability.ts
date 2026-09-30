@@ -3,7 +3,7 @@
 // sentence), plus entity association (entity terms in the same sentence).
 // CPU-only: substring search and regex, no models.
 import { INTENT_ATTRIBUTE_TERMS } from './requirements.js';
-import { CURRENT_INTENT_TERMS, CURRENT_MARKERS, FACET_KIND_TERMS, OLD_MARKERS } from './lexicons/temporal.js';
+import { CURRENT_INTENT_TERMS, CURRENT_MARKERS, FACET_KIND_TERMS, OLD_MARKERS, RELATIVE_DAY_OFFSETS } from './lexicons/temporal.js';
 import { EVIDENCE_WEIGHTS } from './evidence_weights.js';
 export type ValueKind = 'price' | 'weight' | 'date' | 'time' | 'version' | 'wifi';
 const PRICE_PATTERN = /[¥￥$＄]|\d[\d,]*\s*円/;
@@ -292,9 +292,17 @@ export interface DateRequirement {
 function validMonthDay(month: number, day: number): boolean {
   return month >= 1 && month <= 12 && day >= 1 && day <= 31;
 }
-export function extractDateRequirements(query: string): DateRequirement[] {
+export function extractDateRequirements(query: string, ref?: Date): DateRequirement[] {
   const out: DateRequirement[] = [];
   if (!query || typeof query !== 'string') return out;
+  const base = ref instanceof Date ? new Date(ref.getTime()) : new Date();
+  for (const entry of RELATIVE_DAY_OFFSETS) {
+    if (query.indexOf(entry.term) < 0) continue;
+    const d = new Date(base.getTime());
+    d.setDate(d.getDate() + entry.offset);
+    out.push({ month: d.getMonth() + 1, day: d.getDate(), year: d.getFullYear() });
+    break;
+  }
   const seen = new Set<string>();
   const push = (month: number, day: number, year: number | null) => {
     if (!validMonthDay(month, day)) return;
