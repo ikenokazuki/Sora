@@ -4,6 +4,7 @@
 // CPU-only: substring search and regex, no models.
 import { INTENT_ATTRIBUTE_TERMS } from './requirements.js';
 import { CURRENT_INTENT_TERMS, CURRENT_MARKERS, FACET_KIND_TERMS, OLD_MARKERS } from './lexicons/temporal.js';
+import { EVIDENCE_WEIGHTS } from './evidence_weights.js';
 export type ValueKind = 'price' | 'weight' | 'date' | 'time' | 'version' | 'wifi';
 const PRICE_PATTERN = /[¥￥$＄]|\d[\d,]*\s*円/;
 const WEIGHT_PATTERN = /\d[\d,.]*\s*(kg|g|グラム|キロ)/i;
@@ -125,9 +126,9 @@ export function analyzeFacetEvidence(
   return res;
 }
 export function associationMultiplier(ev: FacetEvidence): number {
-  if (ev.answeredWithEntity) return 1.6;
-  if (ev.answered) return 1.3;
-  if (ev.entityAssociated) return 1.15;
+  if (ev.answeredWithEntity) return EVIDENCE_WEIGHTS.answeredWithEntity;
+  if (ev.answered) return EVIDENCE_WEIGHTS.answered;
+  if (ev.entityAssociated) return EVIDENCE_WEIGHTS.entityMention;
   return 1.0;
 }
 export function structuralMultiplier(blockText: string, facetTerm: string): number {
@@ -160,7 +161,7 @@ export function structuralMultiplier(blockText: string, facetTerm: string): numb
     if (keyIdx < 0) continue;
     for (let i = 0; i < cells.length; i++) {
       if (i !== keyIdx && valueHit(cells[i])) {
-        best = Math.max(best, 1.8);
+        best = Math.max(best, EVIDENCE_WEIGHTS.tableRowAnswer);
         break;
       }
     }
@@ -169,7 +170,7 @@ export function structuralMultiplier(blockText: string, facetTerm: string): numb
   for (let i = 0; i + 1 < prose.length; i++) {
     if (!prose[i].toLowerCase().includes(facet)) continue;
     if (prose[i + 1].toLowerCase().includes(facet)) continue;
-    if (valueHit(prose[i + 1])) best = Math.max(best, 1.4);
+    if (valueHit(prose[i + 1])) best = Math.max(best, EVIDENCE_WEIGHTS.definitionPair);
   }
   return best;
 }
@@ -210,7 +211,7 @@ export function temporalMultiplier(sentences: string[], facetTerm: string, curre
       if (s.indexOf(marker) >= 0) { hasOld = true; break; }
     }
     if (hasOld) {
-      m = 0.7;
+      m = EVIDENCE_WEIGHTS.oldMarker;
     } else {
       const years = sentenceYears(raw);
       let hasOldYear = false;
@@ -220,13 +221,13 @@ export function temporalMultiplier(sentences: string[], facetTerm: string, curre
         if (y >= thisYear) hasCurrentYear = true;
       }
       if (hasOldYear && !hasCurrentYear) {
-        m = 0.75;
+        m = EVIDENCE_WEIGHTS.oldYear;
       } else {
         let hasCurrent = false;
         for (const marker of CURRENT_MARKERS) {
           if (s.indexOf(marker) >= 0) { hasCurrent = true; break; }
         }
-        if (hasCurrent || hasCurrentYear) m = 1.2;
+        if (hasCurrent || hasCurrentYear) m = EVIDENCE_WEIGHTS.currentEvidence;
       }
     }
     if (m > bestBoost) bestBoost = m;
@@ -354,8 +355,8 @@ export function dateYearMultiplier(sentences: string[], dateReqs: DateRequiremen
       const years = sentenceYears(s);
       if (years.length === 0) continue;
       let m = 1.0;
-      if (years.indexOf(target) >= 0) m = 1.1;
-      else m = 0.8;
+      if (years.indexOf(target) >= 0) m = EVIDENCE_WEIGHTS.impliedYearMatch;
+      else m = EVIDENCE_WEIGHTS.yearMismatch;
       if (m > bestBoost) bestBoost = m;
       if (m < worstPenalty) worstPenalty = m;
     }
