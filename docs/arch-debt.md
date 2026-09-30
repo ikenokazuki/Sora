@@ -23,10 +23,14 @@ The canonical one is enrichment.ts reciprocalRankFusion (weighted). Delete rrf.t
 enrichment.ts imports extractQueryHighlightsRhoV2 from rho_select_v2_adapter.ts, which imports estimateTokens and scoring helpers from enrichment.ts.
 Works under ESM but fragile. Break by moving shared scoring primitives one layer down (extractor or retrieval).
 
-## 5. BM25 spread (LOW, needs scoping)
+## 5. BM25 spread (LOW, scoped 2026-10-01)
 
-BM25-adjacent code in extractor/information_retrieval.ts, extractor/hierarchical_bm25.ts, enrichment.ts, rho_select_v2_adapter.ts.
-Unclear whether layered reuse or competing implementations. Scope before touching.
+Mostly layered reuse: hierarchical_bm25.ts holds canonical primitives,
+information_retrieval.ts holds complementary MMR/PRF/Jaccard.
+The inline BM25 variants in enrichment.ts (title/snippet) and
+rho_select_v2_adapter.ts (heading/body matrix) serve different inputs
+and stay separate by design. Fixed the one real dupe:
+answerability.ts splitSentences now re-exports the canonical one.
 
 ## 6. Scattered score multipliers (LOW)
 
