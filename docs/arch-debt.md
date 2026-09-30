@@ -32,10 +32,10 @@ rho_select_v2_adapter.ts (heading/body matrix) serve different inputs
 and stay separate by design. Fixed the one real dupe:
 answerability.ts splitSentences now re-exports the canonical one.
 
-## 6. Scattered score multipliers (LOW)
+## 6. Scattered score multipliers (DONE 2026-10-01)
 
-associationMultiplier, structuralMultiplier, temporalMultiplier each hardcode their ladders (1.6, 1.8, 1.4, 1.3, 1.2, 1.15, 0.75, 0.7).
-Centralize into one weights table once the ladder stabilizes via eval.
+Centralized in src/retrieval/evidence_weights.ts (EVIDENCE_WEIGHTS).
+All multipliers reference the table; ordering pinned by evidence_weights.test.ts.
 
 ## 7. Temporal intent split (LOW)
 
