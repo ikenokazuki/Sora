@@ -5,6 +5,7 @@ const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
 import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
+import { mcpSessionManager } from './routes/mcp_route.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse, clearSharedActivatedTools } from './mcp.js';
 import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
@@ -596,6 +597,7 @@ describe('web-fetcher Auth Middleware', () => {
 describe('Sora REST & MCP Endpoints', () => {
   beforeEach(() => {
     clearSharedActivatedTools();
+    try { mcpSessionManager.stateForTenant('legacy').activatedTools.clear(); } catch {}
   });
 
   it('GET /health should return 200 OK with service details', async () => {
