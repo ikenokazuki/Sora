@@ -6,17 +6,17 @@ describe('retrieval/requirements (P1-DEEP-02)', () => {
     const r = extractQueryRequirements('君と見るそら SPARK 出演時間');
     expect(r.entityTerms[0]).toBe('君と見るそら');
     expect(r.intentTerms).toContain('出演時間');
-    expect(r.temporalIntent).toBe(false);
+    expect(r.hasDateReference).toBe(false);
   });
   test('digit-anchored query sets temporal intent', () => {
     const r = extractQueryRequirements('9/19 14:10 live');
-    expect(r.temporalIntent).toBe(true);
+    expect(r.hasDateReference).toBe(true);
   });
   test('辞退 query keeps intent term', () => {
     const r = extractQueryRequirements('君と見るそら SPARK 出演辞退');
     expect(r.intentTerms).toContain('出演辞退');
   });
   test('empty input is safe', () => {
-    expect(extractQueryRequirements('')).toEqual({ entityTerms: [], intentTerms: [], supportTerms: [], temporalIntent: false });
+    expect(extractQueryRequirements('')).toEqual({ entityTerms: [], intentTerms: [], supportTerms: [], hasDateReference: false });
   });
 });
