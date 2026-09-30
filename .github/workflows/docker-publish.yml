@@ -35,7 +35,7 @@ jobs:
           src/http_fetcher_redirect.test.ts src/auth.test.ts
           src/security/tenant_context.test.ts src/security/tenant_isolation.test.ts
           src/security/metrics.test.ts src/browser_session_access.test.ts
-          src/retrieval/rrf.test.ts src/retrieval/requirements.test.ts
+          src/retrieval/requirements.test.ts src/retrieval/answerability.test.ts src/retrieval/evidence_weights.test.ts src/retrieval/lexicons/temporal.test.ts src/retrieval/lexicons/stopwords.test.ts src/services/yahoo_throttle.test.ts src/services/yahoo_weighted_rrf.test.ts
           src/services/yahoo_realtime_retrieval.test.ts src/services/x_detail.test.ts
           src/llm_contract_sync.test.ts src/rho_select.test.ts --timeout 60000
   build-and-push:
