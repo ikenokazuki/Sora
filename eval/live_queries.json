@@ -8,8 +8,8 @@
       "query": "君と見るそら メンバー",
       "needs_label": true,
       "preliminaryLabel": "native_preferred",
-      "labelBasis": "official site top-1 vs X profile for member info",
-      "labelScope": "top-1 only, single rater, recorded sample"
+      "labelBasis": "official site kimisora.love top-1 for member query",
+      "labelScope": "top-3 snippets, single AI rater, needs human confirmation"
     },
     {
       "id": "live-event-01",
@@ -32,20 +32,26 @@
       "query": "デジタル庁 Web API",
       "needs_label": true,
       "preliminaryLabel": "native_preferred",
-      "labelBasis": "go.jp official top-1 vs lookalike blog",
-      "labelScope": "top-1 only, single rater, recorded sample"
+      "labelBasis": "official digital.go.jp API guidebook top-1",
+      "labelScope": "top-3 snippets, single AI rater, needs human confirmation"
     },
     {
       "id": "live-local-01",
       "category": "Japanese local information",
       "query": "横浜 1000CLUB アクセス",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "native_preferred",
+      "labelBasis": "venue page top-1 answers address plus walk time",
+      "labelScope": "top-3 snippets, single AI rater, needs human confirmation"
     },
     {
       "id": "live-current-01",
       "category": "current event",
       "query": "SPARK 出演者 発表",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "native_preferred",
+      "labelBasis": "official sparkfes.com 2026 top-1 with artist section",
+      "labelScope": "top-3 snippets, single AI rater, needs human confirmation"
     },
     {
       "id": "live-product-01",
@@ -63,7 +69,10 @@
       "id": "live-compare-01",
       "category": "comparison",
       "query": "1000CLUB キャパ 比較",
-      "needs_label": true
+      "needs_label": true,
+      "preliminaryLabel": "needs_scrape",
+      "labelBasis": "top-1 official relocation news lacks capacity figure; rank-2 note has 1000-person figure",
+      "labelScope": "top-3 snippets, single AI rater, needs human confirmation"
     },
     {
       "id": "live-ambig-01",
