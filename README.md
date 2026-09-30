@@ -150,8 +150,8 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - **数学的オプティマイザ証明書 (`certificate`)**: 各クエリごとに下界 $LB$・上界 $UB$・相対ギャップを厳密に保証（実測 `gap: 0.00%`、独立監査器内蔵）。
    - **補完証拠動的統合 & メタデータ排除**: 検索スニペット・ディスクリプションの自動合流、YAML Frontmatter やパンくずメタデータの自動サニタイズを完備。
    - 📖 **詳細な数理理論ドキュメント**: [docs/rho_select.md](docs/rho_select.md) / **LLMハンドオーバー仕様書**: [docs/rho_select_v2_llm_handover.md](docs/rho_select_v2_llm_handover.md)
-8. **📊 動的コーパスIDF付きアイテム間 BM25+ リランキングエンジン**:
-   - Web検索・ディープ検索・Yahoo!知恵袋等の検索結果アイテム群からインメモリで動的ドキュメント頻度 $df(t)$ と IDF を算出し、クエリ固有キーワードを自動浮上。タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化により、AI エージェントが最も求める重要情報を最上位に自動ソート。
+8. **📊 検索順位の保持と取得後の証拠評価**:
+   - Web検索の単一結果集合はプロバイダーの順位を保持します。複数クエリ統合は加重 RRF、Deep Search の本文・ハイライト選択は BM25 と回答値・対象との関連・日付整合性を用いて評価します。新しいページを一律に優先する設計ではありません。
 9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
    - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを 100% 決定論的に特定可能。
    - **Contextual Highlights (文脈保持パッセージ)**: Dinkelbach法で選ばれた最適抽出文単体ではなく、親見出し階層（H1/H2/H3）やテーブルヘッダーを含む文脈セット（`HighlightItem`）を返し、文脈欠落ハルシネーションを防止。
@@ -166,9 +166,9 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - 記事の `publishedTime` を基準日（Reference Date）とし、「明日」「来週金曜」「3日前」等の相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆構造化返却。過去記事の未来誤認ハルシネーションを根絶（`annotateTemporal: true`）。
 12. **🗜️ Smart Table Minimizer (表・スペック表のトークン圧縮)**:
    - Web 上のスペック表・料金表・比較表から、全行空欄の列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ のインメモリ走査で自動検知・パージ。テーブルのトークン消費を 30〜70% 削減（`minimizeTables: true`）。
-13. **📦 日本主要5社＋UPS 荷物追跡 API & MCP ツール (v2.18.0+)**:
-   - ヤマト運輸、佐川急便、日本郵便（ゆうパック）、西濃運輸、福山通運、および国際大手 UPS の配達状況・追跡イベント履歴を統一スキーマで取得。
-   - 伝票番号フォーマットの静的判定＋候補キャリアへの並行投機照会（Speculative Lookup）により、運送会社が不明な場合でも自動判別（`carrier: "auto"`、応答約 200〜400ms）。公式追跡Webリンクも自動生成。
+13. **📦 日本主要5社＋UPS・FedEx・DHL Express 荷物追跡 API & MCP ツール**:
+   - 8社の追跡結果を統一スキーマで返します。認証情報が必要なキャリアで未設定の場合は `unknown` と公式追跡URLを返します。
+   - 伝票番号の形式で候補を絞り、最大2社ずつ・合計4社まで照会します。配送イベントなどの根拠を確認して採用し、通信失敗は `error` として未登録の `not_found` と区別します。
 
 ---
 
@@ -1978,4 +1978,45 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 
 ### Retrieval v2 / Security
 
-単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は加重 RRF（original 1.0、fallback/rescue 0.6）で、scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` / `scrapeBudget` / `enablePrf` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・scapeの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
+単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は `SORA_WEB_QUERY_UNION=true` で有効化し、加重 RRF（original 1.0、fallback/rescue 0.6）で統合します。scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` / `enablePrf` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・スクレイプの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
+
+### Deep Search v2.32.0: 日付と追加取得
+
+REST `POST /search`（別名 `/search/integrated`）と MCP `search_deep` は、同じ検索オプションを受け付けます。API仕様は `GET /openapi.json`、対話型ドキュメントは `GET /docs` と `GET /swagger` で確認できます。
+
+```json
+{
+  "query": "君と見るそら 2026年10月11日 ライブ",
+  "adaptiveScrape": true,
+  "scrapeBudget": 8,
+  "includeRealtime": true,
+  "responseMode": "evidence",
+  "verbose": false
+}
+```
+
+- `adaptiveScrape`: 根拠不足時の追加取得を許可します。既定は `false`、`scrapeContent: true` の場合に有効です。
+- `scrapeBudget`: 適応取得の上限。1〜20の整数、既定8、`limit` 未満の指定は `limit` まで引き上げます。
+- 日付: 年付きの日付は指定年と照合します。年なしの月日はサーバー日時から次に到来する年を仮定します。過去の出来事は年を明示してください。`updated` はページの更新期間指定で、イベント開催日の指定ではありません。
+- 時間表現: クエリの「明日」などはサーバー日時、本文への `annotateTemporal` 注記は記事の公開日時が基準です。すべての検索を新着順にはしません。
+- 診断: `verbose: true` で取得・証拠評価の診断を表示します。`verbose` は `responseMode: "evidence"` より優先し、全文も返します。
+
+回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・PRF・複数クエリ統合の既定値は有効化していません。
+
+### 開発時の検証
+
+```bash
+bun install --frozen-lockfile
+bun run typecheck
+NODE_ENV=test SORA_DB_PATH=:memory: bun test --timeout 60000
+```
+
+ブラウザを使うテストには Chromium/Chrome が必要です。検出できない場合は `CHROME_PATH` に実行ファイルを指定してください。通常スイートにも外部通信を行うテストが残っており、完全オフラインではありません。
+
+配送会社の実サイト応答に依存するテストは明示的に有効化します。
+
+```bash
+SORA_LIVE_TESTS=1 NODE_ENV=test SORA_DB_PATH=:memory: bun test src/services/tracking.test.ts --timeout 60000
+```
+
+通常CIでは佐川の未登録応答・HTTP 403/429/503・通信失敗を固定応答で検証します。GitHub Actions の Test ワークフローは失敗時のログ全文と失敗一覧を表示し、JUnitと実行ログを7日間保存します。

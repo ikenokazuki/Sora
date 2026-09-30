@@ -21,10 +21,23 @@ jobs:
           set +e
           bun test --timeout 60000 --reporter=junit --reporter-outfile=junit.xml > test-console.log 2>&1
           code=$?
-          tail -n 8 test-console.log
-          python3 scripts/junit_parse.py junit.xml | tee -a $GITHUB_STEP_SUMMARY
+          if [ "$code" -eq 0 ]; then
+            tail -n 8 test-console.log
+          else
+            cat test-console.log
+          fi
+          python3 scripts/junit_parse.py junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
           exit $code
         env:
           NODE_ENV: test
           SORA_DB_PATH: ":memory:"
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Preserve test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            junit.xml
+            test-console.log
+          retention-days: 7

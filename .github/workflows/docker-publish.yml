@@ -37,7 +37,9 @@ jobs:
           src/security/metrics.test.ts src/browser_session_access.test.ts
           src/retrieval/requirements.test.ts src/retrieval/answerability.test.ts src/retrieval/evidence_weights.test.ts src/retrieval/lexicons/temporal.test.ts src/retrieval/lexicons/stopwords.test.ts src/services/yahoo_throttle.test.ts src/services/yahoo_weighted_rrf.test.ts
           src/services/yahoo_realtime_retrieval.test.ts src/services/x_detail.test.ts
-          src/llm_contract_sync.test.ts src/rho_select.test.ts --timeout 60000
+          src/llm_contract_sync.test.ts src/rho_select.test.ts
+          src/services/tracking/carriers/sagawa.test.ts src/search_adaptive_contract.test.ts
+          --timeout 60000
   build-and-push:
     needs: [test]
     runs-on: ubuntu-latest
@@ -89,4 +91,3 @@ jobs:
           generate_release_notes: true
           name: "Sora Release ${{ github.ref_name }}"
           body_path: RELEASE_NOTES.md
-
