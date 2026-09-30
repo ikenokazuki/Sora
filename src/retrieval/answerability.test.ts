@@ -17,7 +17,8 @@ import { extractQueryHighlightsRhoV2 } from '../rho_select_v2_adapter.js';
 function chrN(): string { return String.fromCharCode(10); }
 describe('answerability signals (hermetic)', () => {
   test('splits sentences on Japanese periods', () => {
-    expect(splitSentences('A。B。C')).toEqual(['A', 'B', 'C']);
+    expect(splitSentences('A。B。C')).toEqual(['A。', 'B。', 'C']);
+    expect(splitSentences('')).toEqual([]);
   });
   test('detects price, weight, date, and wifi values', () => {
     expect(detectValueKinds('価格は159,800円です')).toContain('price');
