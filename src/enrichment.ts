@@ -46,6 +46,7 @@ import type {
   DerivationTrace,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
+import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
 
 /** テキストの推定トークン数を算出（日本語は1.3文字/トークン、英語は4文字/トークン） */
 export function estimateTokens(text: string): number {
@@ -935,12 +936,7 @@ export interface DeepEvidenceRerankOptions {
 /**
  * 一般的な検索ストップワード（日本語・英語）
  */
-const COMMON_STOPWORDS = new Set([
-  'について', 'とは', '一覧', 'まとめ', '情報', '詳細', '公式', 'サイト', 'ページ',
-  '最新', 'おすすめ', '比較', 'ランキング', '紹介', '方法', 'やり方', '使い方',
-  'の', 'に', 'は', 'を', 'と', 'が', 'で', 'から', 'まで', 'より',
-  'how', 'what', 'who', 'where', 'when', 'why', 'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for',
-]);
+const COMMON_STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
 
 /**
  * 意図・属性を表すキーフレーズ（Intent Attribute Terms）
