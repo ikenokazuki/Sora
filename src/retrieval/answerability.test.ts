@@ -280,3 +280,11 @@ describe('date requirement matching (hermetic)', () => {
     expect(scores.get('current') as number).toBeGreaterThan(scores.get('old') as number);
   });
 });
+describe('relative day resolution (hermetic)', () => {
+  test('resolves relative days against the reference date', () => {
+    const ref = new Date(2026, 8, 30);
+    expect(extractDateRequirements('明日のライブ', ref)).toEqual([{ month: 10, day: 1, year: 2026 }]);
+    expect(extractDateRequirements('明後日', ref)).toEqual([{ month: 10, day: 2, year: 2026 }]);
+    expect(extractDateRequirements('価格', ref)).toEqual([]);
+  });
+});
