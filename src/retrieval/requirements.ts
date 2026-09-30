@@ -2,6 +2,7 @@
 // LLM-free: whitespace terms + INTENT_ATTRIBUTE_TERMS +
 // extractTermsWithBigrams + temporal intent detection.
 import { extractTermsWithBigrams } from '../extractor/hierarchical_bm25.js';
+import { INTENT_ATTRIBUTE_TERMS_LIST } from './lexicons/temporal.js';
 
 export interface QueryRequirements {
   entityTerms: string[];
@@ -17,13 +18,7 @@ const STOPWORDS = new Set([
   'how', 'what', 'who', 'where', 'when', 'why', 'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for',
 ]);
 
-export const INTENT_ATTRIBUTE_TERMS = new Set([
-  '作詞', '作詞者', '作曲', '作曲者', '編曲', '編曲者', '作編曲', 'アーティスト', '歌手', 'ボーカル',
-  '発売日', '公開日', '配信日', 'リリース', '誕生日', '生年月日', '出身', '出身地', '本名', '年齢',
-  '営業時間', '定休日', '料金', '価格', '値段', '所在地', '住所', '電話番号', 'アクセス', '最寄り駅',
-  'キャスト', '声優', '出演者', '出演時間', '出演辞退', '監督', '脚本', '原作', '著者', '作者',
-  '資本金', '代表者', '代表取締役', '設立', '創業', '従業員数',
-]);
+export const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST);
 
 const TEMPORAL_PATTERN = /\d.*[月日时時\/\-:\uff1a]|\d{1,2}:\d{2}|明日|今日|昨日|明後日|発売日|公開日|配信日|日程|開催/i;
 
