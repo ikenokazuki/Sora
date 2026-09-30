@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   isYahooRateLimitText,
   yahooResultHasData,
@@ -14,6 +14,21 @@ import {
   searchYahooWeb,
   searchYahooRealtime,
 } from './yahoo.js';
+const SAVED_ENV: Record<string, string | undefined> = {
+  YAHOO_MCP_PATH: process.env.YAHOO_MCP_PATH,
+  SORA_YAHOO_THROTTLE: process.env.SORA_YAHOO_THROTTLE,
+  SORA_YAHOO_MIN_INTERVAL_MS: process.env.SORA_YAHOO_MIN_INTERVAL_MS,
+  SORA_YAHOO_BREAKER_COOLDOWN_MS: process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS,
+};
+afterEach(() => {
+  for (const k of Object.keys(SAVED_ENV)) {
+    const v = SAVED_ENV[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  resetYahooBreaker();
+  resetYahooCallGate();
+});
 beforeEach(() => {
   resetYahooBreaker();
   resetYahooCallGate();
