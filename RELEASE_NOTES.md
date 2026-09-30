@@ -3,7 +3,9 @@
 - 証拠スコアリング: 回答値検出・entity関連・表/定義構造・時間関連・明示日付の年照合・相対日解決。言及/回答カバレッジ診断と 12-24-48 段階候補投入。
 - 辞書分離: intent語・stopwords・時間語を retrieval lexicons に集約し、スコア倍率を EVIDENCE_WEIGHTS 一表化。dead RRF削除、enrichment循環import解消。
 - 評価: live 10件収集＋機械的事前ラベル、5件にAI一次ラベル（要人手確認）。
-- CI: google-news fixtureの日付時限爆弾を修正。
+- API: `adaptiveScrape` と `scrapeBudget` を REST・MCP・OpenAPI 共通スキーマに接続。型・範囲を検証し、指定値を内部検索へ渡します。既定は引き続き追加取得なしです。
+- ドキュメント: README・API説明・検索処理の説明を更新。日付の基準と年省略時の仮定、`updated` と開催日の違い、検索精度評価の未完了範囲を明記。OpenAPI は整数制約を `integer` として出力します。
+- CI: Google News fixtureの経時失敗、MCP有効化状態・環境変数のテスト間漏れ、バージョン不整合を修正。配送会社の実応答テストを `SORA_LIVE_TESTS=1` に分離し、佐川の未登録・HTTPエラー・通信失敗は固定応答で検証。失敗ログとJUnitを保存します。
 # Sora v2.31.0
 
 - 検索 v2: Yahoo プロバイダー圧力制御（AIMD・サーキット・予算）、構造化 429 と Retry-After 対応、stale キャッシュ、検索 singleflight、回答カバレッジ停止、抽出エスカレーション＋遅延ブラウザスキップ。

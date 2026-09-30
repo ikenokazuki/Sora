@@ -16,6 +16,9 @@ import {
 } from './tracking.js';
 import { app } from '../index.js';
 
+// Real carrier availability is checked explicitly, outside the default CI suite.
+const itLive = it.skipIf(process.env.SORA_LIVE_TESTS !== '1');
+
 describe('Tracking Service Unit Tests', () => {
   describe('cleanTrackingNumber', () => {
     it('全角数字・ハイフン・空白を除去して半角英数字に正規化する', () => {
@@ -162,7 +165,7 @@ describe('Tracking Service Unit Tests', () => {
       expect(elapsed).toBeLessThan(500); // 2000msを待たずに30msで即時返却
     });
 
-    it('T-B2: 全候補が not_found / error の場合、制御された not_found を返す', async () => {
+    itLive('T-B2: 全候補が not_found / error の場合、制御された not_found を返す', async () => {
       // 存在しないダミー番号で全候補がnot_foundとなり、制御されたnot_foundが返ることを確認
       const res = await trackPackage({
         trackingNumber: '0000000000',
@@ -195,35 +198,35 @@ describe('Tracking Service Unit Tests', () => {
   });
 
   describe('Live Carrier Query with Test Number', () => {
-    it('ヤマト運輸: 未登録/ダミー番号で not_found を安全に返す', async () => {
+    itLive('ヤマト運輸: 未登録/ダミー番号で not_found を安全に返す', async () => {
       const res = await trackYamato('123456789012');
       expect(res.carrier).toBe('yamato');
       expect(res.status).toBe('not_found');
       expect(res.trackingUrl).toContain('123456789012');
     }, 15000);
 
-    it('佐川急便: 未登録/ダミー番号で not_found を安全に返す', async () => {
+    itLive('佐川急便: 未登録/ダミー番号で not_found を安全に返す', async () => {
       const res = await trackSagawa('123456789012');
       expect(res.carrier).toBe('sagawa');
       expect(res.status).toBe('not_found');
       expect(res.trackingUrl).toContain('123456789012');
     }, 15000);
 
-    it('日本郵便: 未登録/ダミー番号で not_found を安全に返す', async () => {
+    itLive('日本郵便: 未登録/ダミー番号で not_found を安全に返す', async () => {
       const res = await trackJapanPost('123456789012');
       expect(res.carrier).toBe('japanpost');
       expect(res.status).toBe('not_found');
       expect(res.trackingUrl).toContain('123456789012');
     }, 15000);
 
-    it('西濃運輸: 未登録/ダミー番号で not_found を安全に返す', async () => {
+    itLive('西濃運輸: 未登録/ダミー番号で not_found を安全に返す', async () => {
       const res = await trackSeino('1234567890');
       expect(res.carrier).toBe('seino');
       expect(res.status).toBe('not_found');
       expect(res.trackingUrl).toContain('1234567890');
     }, 15000);
 
-    it('福山通運: 未登録/ダミー番号で not_found を安全に返す', async () => {
+    itLive('福山通運: 未登録/ダミー番号で not_found を安全に返す', async () => {
       const res = await trackFukutsu('123456789012');
       expect(res.carrier).toBe('fukutsu');
       expect(res.status).toBe('not_found');
