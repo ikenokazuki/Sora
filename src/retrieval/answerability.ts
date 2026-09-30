@@ -3,6 +3,7 @@
 // sentence), plus entity association (entity terms in the same sentence).
 // CPU-only: substring search and regex, no models.
 import { INTENT_ATTRIBUTE_TERMS } from './requirements.js';
+import { CURRENT_INTENT_TERMS, CURRENT_MARKERS, FACET_KIND_TERMS, OLD_MARKERS } from './lexicons/temporal.js';
 export type ValueKind = 'price' | 'weight' | 'date' | 'time' | 'version' | 'wifi';
 const PRICE_PATTERN = /[¥￥$＄]|\d[\d,]*\s*円/;
 const WEIGHT_PATTERN = /\d[\d,.]*\s*(kg|g|グラム|キロ)/i;
@@ -18,14 +19,7 @@ const KIND_PATTERNS: Array<{ kind: ValueKind; re: RegExp }> = [
   { kind: 'version', re: VERSION_PATTERN },
   { kind: 'wifi', re: WIFI_PATTERN },
 ];
-const FACET_KINDS: Array<{ terms: string[]; kinds: ValueKind[] }> = [
-  { terms: ['価格', '料金', '値段', '販売価格', '希望小売価格'], kinds: ['price'] },
-  { terms: ['重量', '質量', '重さ'], kinds: ['weight'] },
-  { terms: ['発売日', '公開日', '配信日', 'リリース', '日付', '日程', '販売開始日'], kinds: ['date'] },
-  { terms: ['時刻', '時間', '営業時間', '開演', '開場', '上映'], kinds: ['time'] },
-  { terms: ['バージョン', 'version'], kinds: ['version'] },
-  { terms: ['wi-fi', 'wifi', '無線lan', '802.11'], kinds: ['wifi'] },
-];
+const FACET_KINDS: Array<{ terms: string[]; kinds: ValueKind[] }> = FACET_KIND_TERMS;
 export function kindsForFacet(facetTerm: string): ValueKind[] | null {
   const f = (facetTerm || '').toLowerCase();
   if (!f) return null;
@@ -186,10 +180,11 @@ export function structuralMultiplier(blockText: string, facetTerm: string): numb
 }
 export function detectCurrentIntent(query: string): boolean {
   if (!query || typeof query !== 'string') return false;
-  return /最新|現在|現行|今年|直近|今現在/.test(query);
+  for (const term of CURRENT_INTENT_TERMS) {
+    if (query.indexOf(term) >= 0) return true;
+  }
+  return false;
 }
-const OLD_MARKERS = ['旧', '以前', '過去'];
-const CURRENT_MARKERS = ['現行', '現在', '最新', '今年', '直近'];
 function sentenceYears(sentence: string): number[] {
   const out: number[] = [];
   const re = /(\d{4})\s*年|((?:19|20)\d{2})-(\d{1,2})-(\d{1,2})/g;
