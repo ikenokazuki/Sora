@@ -45,6 +45,7 @@ import type {
   CandidateDiscrepancy,
   DerivationTrace,
 } from './types.js';
+import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 
 /** テキストの推定トークン数を算出（日本語は1.3文字/トークン、英語は4文字/トークン） */
 export function estimateTokens(text: string): number {
@@ -945,13 +946,7 @@ const COMMON_STOPWORDS = new Set([
  * 意図・属性を表すキーフレーズ（Intent Attribute Terms）
  * ユーザーが具体的な事実やメタデータを求めていることを示す属性語群
  */
-const INTENT_ATTRIBUTE_TERMS = new Set([
-  '作詞', '作詞者', '作曲', '作曲者', '編曲', '編曲者', '作編曲', 'アーティスト', '歌手', 'ボーカル',
-  '発売日', '公開日', '配信日', 'リリース', '誕生日', '生年月日', '出身', '出身地', '本名', '年齢',
-  '営業時間', '定休日', '料金', '価格', '値段', '所在地', '住所', '電話番号', 'アクセス', '最寄り駅',
-  'キャスト', '声優', '出演者', '監督', '脚本', '原作', '著者', '作者', '執筆者', '監修',
-  '資本金', '代表者', '代表取締役', '設立', '創業', '従業員数',
-]);
+const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST);
 
 /**
  * 深層スクレイピング後のエビデンス駆動リランキング (Evidence-Aware Deep Reranking)
