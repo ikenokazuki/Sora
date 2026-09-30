@@ -9,7 +9,7 @@ export interface QueryRequirements {
   entityTerms: string[];
   intentTerms: string[];
   supportTerms: string[];
-  temporalIntent: boolean;
+  hasDateReference: boolean;
 }
 
 const STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
@@ -19,11 +19,11 @@ export const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERM
 const TEMPORAL_PATTERN = /\d.*[月日时時\/\-:\uff1a]|\d{1,2}:\d{2}|明日|今日|昨日|明後日|発売日|公開日|配信日|日程|開催/i;
 
 export function extractQueryRequirements(query: string): QueryRequirements {
-  const empty: QueryRequirements = { entityTerms: [], intentTerms: [], supportTerms: [], temporalIntent: false };
+  const empty: QueryRequirements = { entityTerms: [], intentTerms: [], supportTerms: [], hasDateReference: false };
   if (!query || typeof query !== 'string') return empty;
   const normalized = query.toLowerCase().trim();
   if (!normalized) return empty;
-  const temporalIntent = TEMPORAL_PATTERN.test(query);
+  const hasDateReference = TEMPORAL_PATTERN.test(query);
   const whitespaceWords = normalized.split(/[\s\u3000]+/).map((w) => w.trim()).filter((w) => w.length >= 2 && !STOPWORDS.has(w));
   const extracted = extractTermsWithBigrams(query)
     .map((t) => t.toLowerCase())
@@ -38,5 +38,5 @@ export function extractQueryRequirements(query: string): QueryRequirements {
     }
   }
   const supportTerms = extracted.filter((t) => !entitySet.has(t) && !intentTerms.includes(t));
-  return { entityTerms, intentTerms, supportTerms, temporalIntent };
+  return { entityTerms, intentTerms, supportTerms, hasDateReference };
 }
