@@ -40,13 +40,8 @@ export function detectValueKinds(sentence: string): ValueKind[] {
   }
   return out;
 }
-export function splitSentences(text: string): string[] {
-  if (!text) return [];
-  return text
-    .split(/[。！？\n]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
+import { splitSentences } from '../extractor/hierarchical_bm25.js';
+export { splitSentences };
 const ENTITY_STOPWORDS = new Set([
   'の', 'に', 'は', 'を', 'と', 'が', 'で', 'から', 'まで', 'より', 'な', 'や', 'か',
   'について', 'とは', 'とは？',
