@@ -645,6 +645,8 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
   limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)'),
   scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
+  adaptiveScrape: z.boolean().optional().describe('回答根拠が不足する場合に候補ページを追加取得するか (デフォルト: false、scrapeContent: true の場合のみ有効)'),
+  scrapeBudget: z.number().int().min(1).max(20).optional().describe('adaptiveScrape 有効時の取得上限 (デフォルト: 8、最大: 20)。limit 未満を指定した場合は limit まで引き上げます'),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)'),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
@@ -1872,7 +1874,7 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
   if (schema instanceof z.ZodString) {
     res = { type: 'string' };
   } else if (schema instanceof z.ZodNumber) {
-    res = { type: 'number' };
+    res = { type: schema.isInt ? 'integer' : 'number' };
     const min = (schema as any).minValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'min' || c.check === 'min')?.value;
     const max = (schema as any).maxValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'max' || c.check === 'max')?.value;
     if (min !== undefined) res.minimum = min;
@@ -2187,6 +2189,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。',
           requestBody: {
             content: {
               'application/json': {
