@@ -3,6 +3,7 @@
 // extractTermsWithBigrams + temporal intent detection.
 import { extractTermsWithBigrams } from '../extractor/hierarchical_bm25.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './lexicons/temporal.js';
+import { STOPWORDS_LIST } from './lexicons/stopwords.js';
 
 export interface QueryRequirements {
   entityTerms: string[];
@@ -11,12 +12,7 @@ export interface QueryRequirements {
   temporalIntent: boolean;
 }
 
-const STOPWORDS = new Set([
-  'について', 'とは', '一覧', 'まとめ', '情報', '詳細', '公式', 'サイト', 'ページ',
-  '最新', 'おすすめ', '比較', 'ランキング', '紹介', '方法', 'やり方', '使い方',
-  'の', 'に', 'は', 'を', 'と', 'が', 'で', 'から', 'まで', 'より',
-  'how', 'what', 'who', 'where', 'when', 'why', 'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for',
-]);
+const STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
 
 export const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST);
 
