@@ -40,3 +40,10 @@ export const INTENT_ATTRIBUTE_TERMS_LIST: string[] = [
   'キャスト', '声優', '出演者', '出演時間', '出演辞退', '監督', '脚本', '原作', '著者', '作者', '執筆者', '監修',
   '資本金', '代表者', '代表取締役', '設立', '創業', '従業員数',
 ];
+export const RELATIVE_DAY_OFFSETS: Array<{ term: string; offset: number }> = [
+  { term: '明後日', offset: 2 },
+  { term: '明日', offset: 1 },
+  { term: '今日', offset: 0 },
+  { term: '昨日', offset: -1 },
+  { term: '一昨日', offset: -2 },
+];

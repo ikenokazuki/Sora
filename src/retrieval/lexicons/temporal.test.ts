@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CURRENT_INTENT_TERMS, INTENT_ATTRIBUTE_TERMS_LIST } from './temporal.js';
+import { CURRENT_INTENT_TERMS, INTENT_ATTRIBUTE_TERMS_LIST, RELATIVE_DAY_OFFSETS } from './temporal.js';
 import { INTENT_ATTRIBUTE_TERMS as REQ_INTENT } from '../requirements.js';
 import { detectCurrentIntent } from '../answerability.js';
 describe('temporal lexicon (hermetic)', () => {
@@ -17,5 +17,12 @@ describe('temporal lexicon (hermetic)', () => {
       expect(detectCurrentIntent('X' + t + 'Y')).toBe(true);
     }
     expect(detectCurrentIntent('価格')).toBe(false);
+  });
+});
+
+describe('relative day lexicon (hermetic)', () => {
+  test('longer terms precede their prefixes', () => {
+    const terms = RELATIVE_DAY_OFFSETS.map((e) => e.term);
+    expect(terms.indexOf('明後日')).toBeLessThan(terms.indexOf('明日'));
   });
 });
