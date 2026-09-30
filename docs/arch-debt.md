@@ -37,7 +37,9 @@ answerability.ts splitSentences now re-exports the canonical one.
 Centralized in src/retrieval/evidence_weights.ts (EVIDENCE_WEIGHTS).
 All multipliers reference the table; ordering pinned by evidence_weights.test.ts.
 
-## 7. Temporal intent split (LOW)
+## 7. Temporal intent split (DONE 2026-10-01)
 
-requirements.ts TEMPORAL_PATTERN (date-ish) vs lexicons/temporal.ts CURRENT_INTENT_TERMS (present-ish).
-Document the boundary: pattern detects date references, lexicon detects present intent. Merge only if a case needs both.
+Renamed requirements temporalIntent to hasDateReference: the pattern detects
+date references (digits plus month-day, relative days, event words), while
+lexicons CURRENT_INTENT_TERMS detects present intent. Boundary documented;
+relative-day resolution (明日 etc.) stays future work.
