@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
+import { HotelSearchInputSchema, HotelSearchResultSchema } from './services/hotels/types.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
@@ -3271,6 +3272,39 @@ export function generateOpenApiDocument() {
     },
   };
   const paths = doc.paths as Record<string, any>;
+  // Experimental hotel search. Documented only while the flag exposes it.
+  if (process.env.SORA_RAKUTEN_TRAVEL_ENABLED === 'true') {
+    const hotelInputSchema = zodToOpenApiSchema(HotelSearchInputSchema);
+    hotelInputSchema.additionalProperties = false;
+    paths['/hotels/availability'] = {
+      post: {
+        summary: '楽天トラベル宿泊空室検索（実験的: 東京駅・京都駅・草津温泉のみ）',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: hotelInputSchema,
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '検索結果（status が ok / partial / empty / unavailable のいずれか）',
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(HotelSearchResultSchema),
+              },
+            },
+          },
+          '400': {
+            description: '不正なJSONまたは入力値（未知パラメーターを含む）',
+          },
+          '404': {
+            description: '実験フラグが無効で非公開',
+          },
+        },
+      },
+    };
+  }
   // 同一ハンドラの別名パス。実体と同一定義を参照させる（重複メンテ防止）。
   paths['/realtime'] = paths['/search/realtime'];
   paths['/search/deep'] = paths['/search'];

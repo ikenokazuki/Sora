@@ -169,6 +169,7 @@ G2の運用目標は、結果キャッシュなしで異なる条件5回の検�
 **Files:** `src/services/hotels/types.ts`、`rakuten.ts`、`rakuten.test.ts`、`fixtures/`。
 
 **Interfaces:** `HotelSearchInputSchema` / `HotelSearchResultSchema` と推論型 `HotelSearchInput` / `HotelSearchResult` を公開する。`rakuten.ts` は `encodeRakutenSearch(input: HotelSearchInput, resolvedLocation: unknown)` と `parseRakutenResponse(raw: unknown, input: HotelSearchInput, retrievedAt: string): HotelSearchResult` を公開する。場所識別子の実型とエンコードの返却型は、タスク2の観測仕様をもとにこの節へ追記し、`unknown` のまま製品実装へ持ち込まない。
+**Interfaces:** `HotelSearchInputSchema` / `HotelSearchResultSchema` と推論型 `HotelSearchInput` / `HotelSearchResult` を公開する。`rakuten.ts` は `encodeRakutenSearch(input: HotelSearchInput, resolved: ResolvedRakutenLocation): URL` と `parseRakutenResponse(raw: unknown, input: HotelSearchInput, retrievedAt: string): HotelSearchResult` を公開する。`ResolvedRakutenLocation = { id: 'tokyo' | 'kyoto' | 'kusatsu'; label: string; templateUrl: string }` とし、観測済み3地点の完全一致のみ解決する。施設名・住所は構造化経路が未確立のため `name: string | null` / `address: string | null` で `null` を返す。料金は税込優先・税区分不明保持・連泊 `basis: unknown` とする。
 
 - [ ] 実応答を必要な施設・プランだけに縮小し、資格情報を含まないfixtureを作る。正常・該当なし・条件不一致・形式変更・一部欠落を用意する。
 - [ ] 先に失敗するテストを書く。必須確認は、架空日付の拒否、年またぎと日本時間の日付境界、未知入力の拒否、異なる条件のエンコード、同施設別プランの保持、料金単位・税不明の保持、200のHTML・不正JSONを `empty` にしないこと。
@@ -232,6 +233,12 @@ G2の運用目標は、結果キャッシュなしで異なる条件5回の検�
 - タスク1：指定日の構造化料金をHTML内の `ds` JSONで発見。G1通過。独立した空室JSON APIの採用とは区別する。
 - タスク2：東京駅・京都駅・草津温泉の匿名HTTP取得と新しい匿名ブラウザ内JSONの一致、日付変更・人数変更・連泊の有効条件を確認。施設メタデータの取得契約、汎用のHTTP場所解決、全ケースの画面照合が未達のためG2未通過。
 - タスク3〜6：採用条件未達により実施しない。ホテル検索機能の完成・本番導入として報告しない。
+## 2026-10-01 実装結果（ユーザー指示による条件付き実施）
+
+- タスク3：条件・料金の解析を実装。観測済み3地点の完全一致解決、条件不一致・形式変更の失敗分離、税込優先・税不明保持・連泊単位不明を実装（`src/services/hotels/`、テスト23件）。
+- タスク4：取得制御を実装。同時1件・開始間隔3秒・20秒予算・上流最大6件・429抑制・同条件集約・中断分離を実装。セッション管理は不要と確認したため作らない。
+- タスク5：REST `POST /hotels/availability`・MCP `search_hotel_availability`（`life`遅延）・OpenAPIを同一契約で接続。すべて `SORA_RAKUTEN_TRAVEL_ENABLED=true` でのみ公開。既定の45ツール/14コアは不変。
+- タスク6：固定応答・契約テスト、型検査、ビルド、実サイト少量試験（3地域 ok・条件一致・各20秒以内）が通過。全テストは1118成功・10スキップ・4失敗で、失敗は基準コミットと同一の既存e-Gov 4件。G3通過と判定するが、本番導入は別途指示があるまで行わない。
 - 詳細・実測・未確認事項：[調査結果](../../evaluations/rakuten-travel/feasibility.md)、[観測プロトコル](../../evaluations/rakuten-travel/protocol.md)。
 
 調査時の裁定：受動観測でサイト自身の通信順序・並行性を変更すると、観測した経路が通常の公開画面と異なるため、3秒間隔・同時1件は明示的HTTP再送に適用する。ブラウザ側には要求上限と403/429時の停止を適用する。Soraの製品サービスを採用する場合の同時1件・3秒間隔は、タスク4のまま維持する。

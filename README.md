@@ -475,6 +475,9 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
 | `get_flight_status` | 主要空港（羽田・成田・伊丹・関空・中部・新千歳・福岡・那覇等）の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 行先・航空会社名絞り込み |
 | `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および UPS の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）および公式追跡Webリンク生成に対応。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukuyama"`, `"ups"`) |
+| `search_hotel_availability`（実験的） | 楽天トラベルの公開検索から、東京駅・京都駅・草津温泉の指定日・人数の空室プランと税込料金を取得。施設名・住所は未対応（`null`）。対応外の場所は取得せず理由を返す。`SORA_RAKUTEN_TRAVEL_ENABLED=true` でのみ有効（遅延ツール、REST `POST /hotels/availability` 共通）。料金は税込合計（1泊）または単位不明（連泊は `basis: "unknown"`）。空室なし（`empty`）と取得失敗（`unavailable`）を区別する。 | `source: "rakuten_travel"` | - `location` (string, 必須): 宿泊地（「東京駅」「京都駅」「草津温泉」）<br>- `checkIn` / `checkOut` (string, 必須): `YYYY-MM-DD`（`checkOut` は後日）<br>- `adults` (number, 必須): 大人人数<br>- `rooms` (number, 任意): 1のみ<br>- `limit` (number, 任意): 最大施設件数 (1〜10, デフォルト: 5) |
+
+> 🧪 **実験フラグとツール数**: 既定（フラグoff）では本ツール・REST・OpenAPI項目は公開されず、ツール数は 45（コア14）のままです。`SORA_RAKUTEN_TRAVEL_ENABLED=true` で +1（計46、コアは14のまま）になります。
 
 ---
 
