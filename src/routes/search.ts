@@ -26,6 +26,7 @@ import {
   IntegratedSearchRequestSchema,
 } from '../types.js';
 import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery } from '../services/yahoo.js';
+import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
@@ -132,6 +133,23 @@ const handleRealtimeSearch = async (c: any) => {
 
 searchRoutes.post('/search/realtime', handleRealtimeSearch);
 searchRoutes.post('/realtime', handleRealtimeSearch);
+
+// X個別投稿の全文取得 (FxTwitter経由・ID突合検証済みのみ返却)
+searchRoutes.post('/realtime/post', async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => ({}))) || {};
+    const result = await fetchXPostDetail({ statusId: body?.statusId, url: body?.url });
+    if (!result.found) {
+      if (result.reason === 'invalid_input') {
+        return c.json({ error: 'statusId または有効なX投稿URLを指定してください' }, 400);
+      }
+      return c.json({ error: '投稿が見つかりませんでした' }, 404);
+    }
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message || 'X投稿の取得に失敗しました' }, 500);
+  }
+});
 
 // Yahoo リアルタイム急上昇トレンド
 searchRoutes.post('/search/trend', async (c) => {
