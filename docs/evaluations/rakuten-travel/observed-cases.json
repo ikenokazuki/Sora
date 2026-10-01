@@ -1,0 +1,23 @@
+{
+  "observedAt": "2026-10-01",
+  "cases": [
+    {
+      "id": "tokyo",
+      "label": "東京駅",
+      "url": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=1&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "provenance": "日付指定後の東京都地域選択画面の東京駅リンク"
+    },
+    {
+      "id": "kyoto",
+      "label": "京都駅",
+      "url": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Kyoto-Kyoto-Kyoto_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "provenance": "楽天の地域選択画面で生成されたリンク"
+    },
+    {
+      "id": "kusatsu",
+      "label": "草津温泉",
+      "url": "https://search.travel.rakuten.co.jp/ds/vacant/searchOnsen?f_nen1=2026&f_tuki1=10&f_hi1=20&f_nen2=2026&f_tuki2=10&f_hi2=21&f_otona_su=2&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_chu=gunma&f_shou=kusatsu&f_heya_su=1&f_page_style=&f_teikei=&f_cok=OK00259&lid=jparea_dated_onsen",
+      "provenance": "楽天の地域選択画面で生成されたリンク"
+    }
+  ]
+}
