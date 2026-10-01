@@ -3155,7 +3155,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(reranked[0].url).toContain('digital.go.jp');
   });
 
-  it('searchLaws and getLawData should interact with e-Gov Law API v2', async () => {
+  itLive('searchLaws and getLawData should interact with e-Gov Law API v2', async () => {
     const searchRes = await searchLaws({ keyword: '著作権法', limit: 5 });
     expect(searchRes.source).toBe('e-gov');
     expect(searchRes.items.length).toBeGreaterThanOrEqual(1);
@@ -3172,14 +3172,16 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(lawData.markdown).toContain('#');
   });
 
-  it('POST /gov/laws and POST /gov/law-text should handle REST requests', async () => {
+  it('POST /gov/laws should reject an empty keyword before calling e-Gov', async () => {
     const resEmpty = await app.request('/gov/laws', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
     expect(resEmpty.status).toBe(400);
+  });
 
+  itLive('POST /gov/laws and POST /gov/law-text should handle REST requests', async () => {
     const resSearch = await app.request('/gov/laws', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3208,7 +3210,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(normalizeLawKeyword('民法 第1044条')).toBe('民法 第千四十四条');
   });
 
-  it('searchLaws should handle article numbers like "政党助成法 第14条" without 404 error and fallback to law title', async () => {
+  itLive('searchLaws should handle article numbers like "政党助成法 第14条" without 404 error and fallback to law title', async () => {
     const res = await searchLaws({ keyword: '政党助成法 第14条', limit: 5 });
     expect(res).toBeDefined();
     expect(res.source).toBe('e-gov');
@@ -3227,7 +3229,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(body.items.some((item: any) => item.title === '政党助成法')).toBe(true);
   });
 
-  it('searchLaws should return count: 0 for non-existent laws instead of throwing 404 GOV_ERROR', async () => {
+  itLive('searchLaws should return count: 0 for non-existent laws instead of throwing 404 GOV_ERROR', async () => {
     const res = await searchLaws({ keyword: '絶対に存在しない架空の法律999999999', noCache: true });
     expect(res).toBeDefined();
     expect(res.source).toBe('e-gov');
