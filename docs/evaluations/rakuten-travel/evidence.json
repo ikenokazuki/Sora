@@ -1,0 +1,1401 @@
+{
+  "note": "調査時の最小標本。現在の空室・料金を保証しない。施設名・所在地はこの標本に含まれない。",
+  "cases": [
+    {
+      "caseId": "tokyo-baseline",
+      "retrievedAt": "2026-10-01T05:27:50.760Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-21",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 430,
+        "chars": 757515
+      },
+      "browser": {
+        "status": 200,
+        "elapsedMs": 5611,
+        "device": "pc",
+        "responseCount": 14
+      },
+      "httpBrowserStateEqual": true,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "tokyo"
+          ],
+          "f_shou": [
+            "tokyo"
+          ],
+          "f_sai": [
+            "A"
+          ],
+          "f_latitude": [
+            "35.68206842"
+          ],
+          "f_longitude": [
+            "139.764649"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "21"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          22
+        ],
+        "displayedHotels": [
+          141356,
+          184685,
+          178610
+        ],
+        "hotels": {
+          "141356": {
+            "plans": {
+              "5109708": {
+                "rooms": {
+                  "sma": {
+                    "sumTotalChargeTaxExclusive": 34546,
+                    "sumTotalChargeTaxInclusive": 38000,
+                    "taxType": "inclusive"
+                  },
+                  "ssd": {
+                    "sumTotalChargeTaxExclusive": 35000,
+                    "sumTotalChargeTaxInclusive": 38500,
+                    "taxType": "inclusive"
+                  },
+                  "slr": {
+                    "sumTotalChargeTaxExclusive": 35000,
+                    "sumTotalChargeTaxInclusive": 38500,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "184685": {
+            "plans": {
+              "5724662": {
+                "rooms": {
+                  "tbn1": {
+                    "sumTotalChargeTaxExclusive": 266859,
+                    "sumTotalChargeTaxInclusive": 293544,
+                    "taxType": "inclusive"
+                  },
+                  "gtn1": {
+                    "sumTotalChargeTaxExclusive": 267835,
+                    "sumTotalChargeTaxInclusive": 294618,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6184802": {
+                "rooms": {
+                  "ctbn1": {
+                    "sumTotalChargeTaxExclusive": 303024,
+                    "sumTotalChargeTaxInclusive": 333326,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "178610": {
+            "plans": {
+              "4625093": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 57273,
+                    "sumTotalChargeTaxInclusive": 63000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6162116": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 58182,
+                    "sumTotalChargeTaxInclusive": 64000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6460872": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 55546,
+                    "sumTotalChargeTaxInclusive": 61100,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": [
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/bpbp/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 79
+        },
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/datedAd/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 79
+        },
+        {
+          "url": "https://travel.rakuten.co.jp/share/travel_guide/undated_search_tags.json",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "tag_or",
+            "tag_and"
+          ],
+          "chars": 38
+        },
+        {
+          "url": "https://cs.api.travel.rakuten.co.jp/couponapi/hotel",
+          "status": 200,
+          "contentType": "application/json;charset=UTF-8",
+          "topKeys": [
+            "status",
+            "results",
+            "campaignInfos"
+          ],
+          "chars": 65
+        },
+        {
+          "url": "https://search.travel.rakuten.co.jp/ds/getJson",
+          "status": 200,
+          "contentType": "application/vnd.api+json;charset=UTF-8",
+          "topKeys": [
+            "jsonapi",
+            "data",
+            "included",
+            "links"
+          ],
+          "chars": 1871064
+        },
+        {
+          "url": "https://api.cms.rakuten.co.jp/platform/movie/playback",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "responseStatus",
+            "responseData"
+          ],
+          "chars": 626
+        },
+        {
+          "url": "https://api.cms.rakuten.co.jp/platform/movie/playback",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "responseStatus",
+            "responseData"
+          ],
+          "chars": 626
+        },
+        {
+          "url": "https://api.cms.rakuten.co.jp/platform/movie/playback",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "responseStatus",
+            "responseData"
+          ],
+          "chars": 604
+        }
+      ]
+    },
+    {
+      "caseId": "kyoto-baseline",
+      "retrievedAt": "2026-10-01T05:27:58.278Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Kyoto-Kyoto-Kyoto_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-21",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 663,
+        "chars": 969623
+      },
+      "browser": {
+        "status": 200,
+        "elapsedMs": 6213,
+        "device": "pc",
+        "responseCount": 11
+      },
+      "httpBrowserStateEqual": true,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "kyoto"
+          ],
+          "f_shou": [
+            "shi"
+          ],
+          "f_sai": [
+            "D"
+          ],
+          "f_latitude": [
+            "34.98691448"
+          ],
+          "f_longitude": [
+            "135.758"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "21"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          110
+        ],
+        "displayedHotels": [
+          166081,
+          171941,
+          1487
+        ],
+        "hotels": {
+          "166081": {
+            "plans": {
+              "4254219": {
+                "rooms": {
+                  "tan": {
+                    "sumTotalChargeTaxExclusive": 30091,
+                    "sumTotalChargeTaxInclusive": 33100,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "4515961": {
+                "rooms": {
+                  "tan": {
+                    "sumTotalChargeTaxExclusive": 30091,
+                    "sumTotalChargeTaxInclusive": 33100,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "5803787": {
+                "rooms": {
+                  "tan": {
+                    "sumTotalChargeTaxExclusive": 28637,
+                    "sumTotalChargeTaxInclusive": 31500,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "171941": {
+            "plans": {
+              "6209028": {
+                "rooms": {
+                  "stt2": {
+                    "sumTotalChargeTaxExclusive": 52364,
+                    "sumTotalChargeTaxInclusive": 57600,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6351424": {
+                "rooms": {
+                  "stt2": {
+                    "sumTotalChargeTaxExclusive": 54182,
+                    "sumTotalChargeTaxInclusive": 59600,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6604257": {
+                "rooms": {
+                  "stt2": {
+                    "sumTotalChargeTaxExclusive": 52364,
+                    "sumTotalChargeTaxInclusive": 57600,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "1487": {
+            "plans": {
+              "1292923": {
+                "rooms": {
+                  "tn2": {
+                    "sumTotalChargeTaxExclusive": 45582,
+                    "sumTotalChargeTaxInclusive": 50140,
+                    "taxType": "inclusive"
+                  },
+                  "t2best": {
+                    "sumTotalChargeTaxExclusive": 45582,
+                    "sumTotalChargeTaxInclusive": 50140,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6455911": {
+                "rooms": {
+                  "t2best": {
+                    "sumTotalChargeTaxExclusive": 46962,
+                    "sumTotalChargeTaxInclusive": 51658,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": [
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/datedAd/hotellist/Japan-Kyoto-Kyoto-Kyoto_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 79
+        },
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/bpbp/hotellist/Japan-Kyoto-Kyoto-Kyoto_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 21303
+        },
+        {
+          "url": "https://travel.rakuten.co.jp/share/travel_guide/undated_search_tags.json",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "tag_or",
+            "tag_and"
+          ],
+          "chars": 38
+        },
+        {
+          "url": "https://cs.api.travel.rakuten.co.jp/couponapi/hotel",
+          "status": 200,
+          "contentType": "application/json;charset=UTF-8",
+          "topKeys": [
+            "status",
+            "results",
+            "campaignInfos"
+          ],
+          "chars": 65
+        },
+        {
+          "url": "https://search.travel.rakuten.co.jp/ds/getJson",
+          "status": 200,
+          "contentType": "application/vnd.api+json;charset=UTF-8",
+          "topKeys": [
+            "jsonapi",
+            "data",
+            "included",
+            "links"
+          ],
+          "chars": 2058413
+        }
+      ]
+    },
+    {
+      "caseId": "kusatsu-baseline",
+      "retrievedAt": "2026-10-01T05:28:06.459Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/vacant/searchOnsen?f_nen1=2026&f_tuki1=10&f_hi1=20&f_nen2=2026&f_tuki2=10&f_hi2=21&f_otona_su=2&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_chu=gunma&f_shou=kusatsu&f_heya_su=1&f_page_style=&f_teikei=&f_cok=OK00259",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-21",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 722,
+        "chars": 942842
+      },
+      "browser": {
+        "status": 200,
+        "elapsedMs": 6836,
+        "device": "pc",
+        "responseCount": 11
+      },
+      "httpBrowserStateEqual": true,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "gunma"
+          ],
+          "f_shou": [
+            "kusatsu"
+          ],
+          "f_sai": [
+            ""
+          ],
+          "f_latitude": [
+            "0.0"
+          ],
+          "f_longitude": [
+            "0.0"
+          ],
+          "f_km": [
+            ""
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "21"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          67
+        ],
+        "displayedHotels": [
+          56137,
+          5270,
+          9598
+        ],
+        "hotels": {
+          "56137": {
+            "plans": {
+              "4028907": {
+                "rooms": {
+                  "hon2-6": {
+                    "sumTotalChargeTaxExclusive": 40000,
+                    "sumTotalChargeTaxInclusive": 44000,
+                    "taxType": "inclusive"
+                  },
+                  "sinkin2-6": {
+                    "sumTotalChargeTaxExclusive": 48000,
+                    "sumTotalChargeTaxInclusive": 52800,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "5556669": {
+                "rooms": {
+                  "hon2-6": {
+                    "sumTotalChargeTaxExclusive": 50000,
+                    "sumTotalChargeTaxInclusive": 55000,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "5270": {
+            "plans": {
+              "4673762": {
+                "rooms": {
+                  "youshitsu": {
+                    "sumTotalChargeTaxExclusive": 25000,
+                    "sumTotalChargeTaxInclusive": 27500,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "4673797": {
+                "rooms": {
+                  "yoshitsurc": {
+                    "sumTotalChargeTaxExclusive": 23000,
+                    "sumTotalChargeTaxInclusive": 25300,
+                    "taxType": "inclusive"
+                  },
+                  "uingrc": {
+                    "sumTotalChargeTaxExclusive": 26000,
+                    "sumTotalChargeTaxInclusive": 28600,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "9598": {
+            "plans": {
+              "5265682": {
+                "rooms": {
+                  "twr": {
+                    "sumTotalChargeTaxExclusive": 46910,
+                    "sumTotalChargeTaxInclusive": 51600,
+                    "taxType": "inclusive"
+                  },
+                  "jt-00": {
+                    "sumTotalChargeTaxExclusive": 46910,
+                    "sumTotalChargeTaxInclusive": 51600,
+                    "taxType": "inclusive"
+                  },
+                  "bunk": {
+                    "sumTotalChargeTaxExclusive": 51455,
+                    "sumTotalChargeTaxInclusive": 56600,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": [
+        {
+          "url": "https://travel.rakuten.co.jp/share/travel_guide/undated_search_tags.json",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "tag_or",
+            "tag_and"
+          ],
+          "chars": 38
+        },
+        {
+          "url": "https://cs.api.travel.rakuten.co.jp/couponapi/hotel",
+          "status": 200,
+          "contentType": "application/json;charset=UTF-8",
+          "topKeys": [
+            "status",
+            "results",
+            "campaignInfos"
+          ],
+          "chars": 65
+        },
+        {
+          "url": "https://search.travel.rakuten.co.jp/ds/getJson",
+          "status": 200,
+          "contentType": "application/vnd.api+json;charset=UTF-8",
+          "topKeys": [
+            "jsonapi",
+            "data",
+            "included",
+            "links"
+          ],
+          "chars": 1899730
+        },
+        {
+          "url": "https://api.cms.rakuten.co.jp/platform/movie/playback",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "responseStatus",
+            "responseData"
+          ],
+          "chars": 604
+        },
+        {
+          "url": "https://api.cms.rakuten.co.jp/platform/movie/playback",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "responseStatus",
+            "responseData"
+          ],
+          "chars": 604
+        }
+      ]
+    },
+    {
+      "caseId": "tokyo-date-change",
+      "retrievedAt": "2026-10-01T05:29:23.972Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area?f_hi1=27&f_tuki1=10&f_nen1=2026&f_hi2=28&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-27",
+        "checkOut": "2026-10-28",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 465,
+        "chars": 756287
+      },
+      "browser": null,
+      "httpBrowserStateEqual": null,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "tokyo"
+          ],
+          "f_shou": [
+            "tokyo"
+          ],
+          "f_sai": [
+            "A"
+          ],
+          "f_latitude": [
+            "35.68206842"
+          ],
+          "f_longitude": [
+            "139.764649"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "27"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "28"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          22
+        ],
+        "displayedHotels": [
+          141356,
+          184685,
+          178610
+        ],
+        "hotels": {
+          "141356": {
+            "plans": {
+              "5109680": {
+                "rooms": {
+                  "sma": {
+                    "sumTotalChargeTaxExclusive": 34546,
+                    "sumTotalChargeTaxInclusive": 38000,
+                    "taxType": "inclusive"
+                  },
+                  "slr": {
+                    "sumTotalChargeTaxExclusive": 35000,
+                    "sumTotalChargeTaxInclusive": 38500,
+                    "taxType": "inclusive"
+                  },
+                  "sdx": {
+                    "sumTotalChargeTaxExclusive": 35910,
+                    "sumTotalChargeTaxInclusive": 39500,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "184685": {
+            "plans": {
+              "5724662": {
+                "rooms": {
+                  "gtn1": {
+                    "sumTotalChargeTaxExclusive": 242420,
+                    "sumTotalChargeTaxInclusive": 266662,
+                    "taxType": "inclusive"
+                  },
+                  "tbn1": {
+                    "sumTotalChargeTaxExclusive": 266859,
+                    "sumTotalChargeTaxInclusive": 293544,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6184802": {
+                "rooms": {
+                  "ckln1": {
+                    "sumTotalChargeTaxExclusive": 242420,
+                    "sumTotalChargeTaxInclusive": 266662,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "178610": {
+            "plans": {
+              "4625093": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 52728,
+                    "sumTotalChargeTaxInclusive": 58000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6162116": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 53637,
+                    "sumTotalChargeTaxInclusive": 59000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6460872": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 51146,
+                    "sumTotalChargeTaxInclusive": 56260,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": []
+    },
+    {
+      "caseId": "tokyo-adult-change",
+      "retrievedAt": "2026-10-01T05:29:28.051Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=1&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-21",
+        "adults": 1,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 442,
+        "chars": 754321
+      },
+      "browser": null,
+      "httpBrowserStateEqual": null,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "tokyo"
+          ],
+          "f_shou": [
+            "tokyo"
+          ],
+          "f_sai": [
+            "A"
+          ],
+          "f_latitude": [
+            "35.68206842"
+          ],
+          "f_longitude": [
+            "139.764649"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "21"
+          ],
+          "f_otona_su": [
+            "1"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          22
+        ],
+        "displayedHotels": [
+          141356,
+          165175,
+          8961
+        ],
+        "hotels": {
+          "141356": {
+            "plans": {
+              "5109708": {
+                "rooms": {
+                  "sma": {
+                    "sumTotalChargeTaxExclusive": 30910,
+                    "sumTotalChargeTaxInclusive": 34000,
+                    "taxType": "inclusive"
+                  },
+                  "ssd": {
+                    "sumTotalChargeTaxExclusive": 31364,
+                    "sumTotalChargeTaxInclusive": 34500,
+                    "taxType": "inclusive"
+                  },
+                  "slr": {
+                    "sumTotalChargeTaxExclusive": 31364,
+                    "sumTotalChargeTaxInclusive": 34500,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "165175": {
+            "plans": {
+              "4093133": {
+                "rooms": {
+                  "ssan": {
+                    "sumTotalChargeTaxExclusive": 30910,
+                    "sumTotalChargeTaxInclusive": 34000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "4160477": {
+                "rooms": {
+                  "ssan": {
+                    "sumTotalChargeTaxExclusive": 30910,
+                    "sumTotalChargeTaxInclusive": 34000,
+                    "taxType": "inclusive"
+                  },
+                  "ssas": {
+                    "sumTotalChargeTaxExclusive": 30910,
+                    "sumTotalChargeTaxInclusive": 34000,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "8961": {
+            "plans": {
+              "5499254": {
+                "rooms": {
+                  "dunew": {
+                    "sumTotalChargeTaxExclusive": 24364,
+                    "sumTotalChargeTaxInclusive": 26800,
+                    "taxType": "inclusive"
+                  },
+                  "tanew": {
+                    "sumTotalChargeTaxExclusive": 31637,
+                    "sumTotalChargeTaxInclusive": 34800,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "6520536": {
+                "rooms": {
+                  "dunew": {
+                    "sumTotalChargeTaxExclusive": 26000,
+                    "sumTotalChargeTaxInclusive": 28600,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": []
+    },
+    {
+      "caseId": "kyoto-two-nights",
+      "retrievedAt": "2026-10-01T05:29:32.046Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Kyoto-Kyoto-Kyoto_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=22&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-22",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": {
+        "status": 200,
+        "elapsedMs": 641,
+        "chars": 947817
+      },
+      "browser": null,
+      "httpBrowserStateEqual": null,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "kyoto"
+          ],
+          "f_shou": [
+            "shi"
+          ],
+          "f_sai": [
+            "D"
+          ],
+          "f_latitude": [
+            "34.98691448"
+          ],
+          "f_longitude": [
+            "135.758"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "22"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          54
+        ],
+        "displayedHotels": [
+          166081,
+          1487,
+          130693
+        ],
+        "hotels": {
+          "166081": {
+            "plans": {
+              "4254229": {
+                "rooms": {
+                  "ama2": {
+                    "sumTotalChargeTaxExclusive": 61182,
+                    "sumTotalChargeTaxInclusive": 67300,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "5940717": {
+                "rooms": {
+                  "ama2": {
+                    "sumTotalChargeTaxExclusive": 64819,
+                    "sumTotalChargeTaxInclusive": 71300,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "1487": {
+            "plans": {
+              "1292923": {
+                "rooms": {
+                  "tn2": {
+                    "sumTotalChargeTaxExclusive": 106946,
+                    "sumTotalChargeTaxInclusive": 117640,
+                    "taxType": "inclusive"
+                  },
+                  "dn6": {
+                    "sumTotalChargeTaxExclusive": 150288,
+                    "sumTotalChargeTaxInclusive": 165316,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "1292983": {
+                "rooms": {
+                  "tn2": {
+                    "sumTotalChargeTaxExclusive": 125973,
+                    "sumTotalChargeTaxInclusive": 138570,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "130693": {
+            "plans": {
+              "2380769": {
+                "rooms": {
+                  "lt1n": {
+                    "sumTotalChargeTaxExclusive": 170910,
+                    "sumTotalChargeTaxInclusive": 188000,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "2403616": {
+                "rooms": {
+                  "lt1n": {
+                    "sumTotalChargeTaxExclusive": 153819,
+                    "sumTotalChargeTaxInclusive": 169200,
+                    "taxType": "inclusive"
+                  }
+                }
+              },
+              "4602253": {
+                "rooms": {
+                  "lt1n": {
+                    "sumTotalChargeTaxExclusive": 160364,
+                    "sumTotalChargeTaxInclusive": 176400,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": []
+    },
+    {
+      "caseId": "tokyo-mobile",
+      "retrievedAt": "2026-10-01T05:29:36.372Z",
+      "requestedUrl": "https://search.travel.rakuten.co.jp/ds/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0",
+      "query": {
+        "checkIn": "2026-10-20",
+        "checkOut": "2026-10-21",
+        "adults": 2,
+        "rooms": 1
+      },
+      "http": null,
+      "browser": {
+        "status": 200,
+        "elapsedMs": 5740,
+        "device": "mobile",
+        "responseCount": 18
+      },
+      "httpBrowserStateEqual": null,
+      "state": {
+        "isDated": true,
+        "conditions": {
+          "f_dai": [
+            "japan"
+          ],
+          "f_chu": [
+            "tokyo"
+          ],
+          "f_shou": [
+            "tokyo"
+          ],
+          "f_sai": [
+            "A"
+          ],
+          "f_latitude": [
+            "35.68206842"
+          ],
+          "f_longitude": [
+            "139.764649"
+          ],
+          "f_km": [
+            "0.8"
+          ],
+          "f_nen1": [
+            "2026"
+          ],
+          "f_tuki1": [
+            "10"
+          ],
+          "f_hi1": [
+            "20"
+          ],
+          "f_nen2": [
+            "2026"
+          ],
+          "f_tuki2": [
+            "10"
+          ],
+          "f_hi2": [
+            "21"
+          ],
+          "f_otona_su": [
+            "2"
+          ],
+          "f_heya_su": [
+            "1"
+          ]
+        },
+        "totalResults": [
+          22
+        ],
+        "displayedHotels": [
+          141356,
+          184685,
+          178610
+        ],
+        "hotels": {
+          "141356": {
+            "plans": {
+              "5109708": {
+                "rooms": {
+                  "sma": {
+                    "sumTotalChargeTaxExclusive": 34546,
+                    "sumTotalChargeTaxInclusive": 38000,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "184685": {
+            "plans": {
+              "5724662": {
+                "rooms": {
+                  "tbn1": {
+                    "sumTotalChargeTaxExclusive": 266859,
+                    "sumTotalChargeTaxInclusive": 293544,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          },
+          "178610": {
+            "plans": {
+              "6460872": {
+                "rooms": {
+                  "sdn2": {
+                    "sumTotalChargeTaxExclusive": 55546,
+                    "sumTotalChargeTaxInclusive": 61100,
+                    "taxType": "inclusive"
+                  }
+                }
+              }
+            },
+            "rooms": {}
+          }
+        }
+      },
+      "responseShapes": [
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/datedAd/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 79
+        },
+        {
+          "url": "https://api.travel.rakuten.com/travel/api/domestic-hotel-ad-search/bpbp/hotellist/Japan-Tokyo-Tokyo-Tokyo_Station_Area/searchVacant?f_hi1=20&f_tuki1=10&f_nen1=2026&f_hi2=21&f_tuki2=10&f_nen2=2026&f_otona_su=2&f_heya_su=1&f_s1=0&f_s2=0&f_y1=0&f_y2=0&f_y3=0&f_y4=0&f_kin2=0&f_page=1&f_hyoji=10",
+          "status": 200,
+          "contentType": "application/json",
+          "topKeys": [
+            "limit",
+            "offset",
+            "total",
+            "seed",
+            "bplRangeOld",
+            "providers"
+          ],
+          "chars": 79
+        },
+        {
+          "url": "https://cs.api.travel.rakuten.co.jp/couponapi/hotel",
+          "status": 200,
+          "contentType": "application/json;charset=UTF-8",
+          "topKeys": [
+            "status",
+            "results",
+            "campaignInfos"
+          ],
+          "chars": 65
+        },
+        {
+          "url": "https://api.travel.rakuten.com/travel/GetArea",
+          "status": 200,
+          "contentType": "application/json;charset=utf-8",
+          "topKeys": [
+            "header",
+            "body"
+          ],
+          "chars": 63017
+        },
+        {
+          "url": "https://api.travel.rakuten.com/travel/GetArea",
+          "status": 200,
+          "contentType": "application/json;charset=utf-8",
+          "topKeys": [
+            "header",
+            "body"
+          ],
+          "chars": 1396
+        },
+        {
+          "url": "https://user-attributes.api.rakuten.co.jp/capi/v1/travel/user.json",
+          "status": 401,
+          "contentType": "application/json",
+          "topKeys": null,
+          "chars": null
+        },
+        {
+          "url": "https://user-attributes.api.rakuten.co.jp/capi/v1/travel/user.json",
+          "status": 401,
+          "contentType": "application/json",
+          "topKeys": null,
+          "chars": null
+        }
+      ]
+    }
+  ]
+}
