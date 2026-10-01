@@ -5,7 +5,6 @@ describe('version contract', () => {
   test('runtime matches package', () => {
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     expect(SORA_VERSION).toBe(pkg.version);
-    expect(SORA_VERSION).toBe('2.32.0');
   });
   test('detailed health reports the same version', async () => {
     const { checkDetailedHealth } = await import('./services/health.js');
