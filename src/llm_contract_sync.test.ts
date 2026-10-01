@@ -741,8 +741,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
     });
   });
 
-  describe('J. Dynamic tool preservation across client re-initialization (LibreChat Re-init resilience)', () => {
-    it('preserves an activated tool and its compatibility alias across HTTP re-initialization', async () => {
+  describe('J. Dynamic tool activation after client re-initialization', () => {
+    it('starts a new HTTP session with core tools and requires rediscovery of deferred tools', async () => {
       const manager = new McpSessionManager();
       let id = 0;
       const rpc = async (method: string, params: object = {}, sessionId?: string) => {
@@ -786,9 +786,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(second.sessionId).not.toBe(first.sessionId);
         const list = await rpc('tools/list', {}, second.sessionId);
         const names = list.result.tools.map((tool: any) => tool.name);
-        expect(names).toContain('track_package');
-        expect(names).toContain('default.track_package');
-        expect(names).toHaveLength(16);
+        expect(names).not.toContain('track_package');
+        expect(names).not.toContain('default.track_package');
+        expect(names).toHaveLength(14);
+
+        await rpc('tools/call', {
+          name: 'search_tools', arguments: { query: 'track_package' },
+        }, second.sessionId);
+        const rediscovered = await rpc('tools/list', {}, second.sessionId);
+        expect(rediscovered.result.tools.map((tool: any) => tool.name)).toContain('default.track_package');
+        expect(rediscovered.result.tools).toHaveLength(16);
 
         // This tracking number has no carrier candidate, so the real handler performs no external I/O.
         const call = await rpc('tools/call', {
@@ -806,7 +813,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('J2. Tenant activation isolation (P1-SEC-06)', () => {
-    it('shares activation within a tenant, isolates across tenants', async () => {
+    it('isolates activation across sessions even when they belong to the same tenant', async () => {
       const { McpSessionManager } = await import('./mcp.js');
       const manager = new McpSessionManager();
       let id = 0;
@@ -840,13 +847,14 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         const b1 = await init('tenant-B-key');
         expect(await listNames(b1.sessionId, 'tenant-B-key')).not.toContain('track_package');
         const a2 = await init('tenant-A-key');
-        expect(await listNames(a2.sessionId, 'tenant-A-key')).toContain('track_package');
-        // Structured tools (registerStructuredTool) obey the same per-tenant isolation.
+        expect(await listNames(a2.sessionId, 'tenant-A-key')).not.toContain('track_package');
+        // Structured tools obey the same per-session isolation.
         await rpc('tools/call', { name: 'search_tools', arguments: { query: 'intel' } }, a1.sessionId, 'tenant-A-key');
         expect(await listNames(a1.sessionId, 'tenant-A-key')).toContain('get_country_context');
+        expect(await listNames(a2.sessionId, 'tenant-A-key')).not.toContain('get_country_context');
         expect(await listNames(b1.sessionId, 'tenant-B-key')).not.toContain('get_country_context');
         const a3 = await init('tenant-A-key');
-        expect(await listNames(a3.sessionId, 'tenant-A-key')).toContain('get_country_context');
+        expect(await listNames(a3.sessionId, 'tenant-A-key')).not.toContain('get_country_context');
         // Late-joining tenant-B session stays isolated from A's structured activation.
         const b2 = await init('tenant-B-key');
         expect(await listNames(b2.sessionId, 'tenant-B-key')).not.toContain('get_country_context');
