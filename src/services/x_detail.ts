@@ -11,6 +11,7 @@
 import { getFromCache, setToCache, runWithSingleFlight } from '../cache.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { tokenizeAndSelectTerms, type ParsedSection } from '../rho_select.js';
+import { parseXDiscoverySeed } from '../x_source_isolation.js';
 
 export interface XPostDetail {
   statusId: string;
@@ -33,7 +34,7 @@ const DEFAULT_FXTWITTER_BASE = 'https://api.fxtwitter.com';
 const DEFAULT_TIMEOUT_MS = 1500;
 const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-export const X_DETAIL_INSPECT_LIMIT = 5;
+export const X_DETAIL_INSPECT_LIMIT = 10;
 export const X_DETAIL_MAX_CALLS = 2;
 /**
  * 経験的な保守的閾値 (conservative threshold)。
@@ -152,6 +153,41 @@ export class FxTwitterDetailProvider implements XPostDetailProvider {
 }
 
 export const defaultXDetailProvider: XPostDetailProvider = new FxTwitterDetailProvider();
+
+export interface XPostFetchInput {
+  statusId?: string;
+  url?: string;
+}
+
+export interface XPostFetchResult {
+  found: boolean;
+  statusId?: string;
+  detail?: XPostDetail;
+  reason?: 'invalid_input' | 'not_found';
+}
+
+/**
+ * Direct per-tweet fetch for callers that already know the target
+ * (LLM drill-down, quoted replies). Accepts a numeric status ID or an
+ * x.com status URL. Identity is verified by the provider (ID match);
+ * a null return only ever means "no verified detail", never a guess.
+ */
+export async function fetchXPostDetail(
+  input: XPostFetchInput,
+  provider: XPostDetailProvider = defaultXDetailProvider,
+): Promise<XPostFetchResult> {
+  let statusId = (input.statusId ?? '').trim();
+  if (!statusId && input.url) {
+    const seed = parseXDiscoverySeed(input.url.trim());
+    if (seed?.kind === 'status' && seed.statusId) statusId = seed.statusId;
+  }
+  if (!/^\d+$/.test(statusId)) {
+    return { found: false, reason: 'invalid_input' };
+  }
+  const detail = await provider.fetchStatus(statusId);
+  if (!detail) return { found: false, statusId, reason: 'not_found' };
+  return { found: true, statusId, detail };
+}
 
 // -----------------------------------------------------------------------------
 // Adaptive Enrichment Trigger & Requirement Observation
@@ -443,7 +479,9 @@ export function cleanRealtimeItem(
  * Applies bounded adaptive detail enrichment to Realtime/X search items.
  *
  * Architecture (v2.24.1):
- * - Inspect up to top 5 candidates locally (X_DETAIL_INSPECT_LIMIT = 5).
+ * Architecture (v2.24.1, widened inspection):
+ * - Inspect up to top 10 candidates locally (X_DETAIL_INSPECT_LIMIT = 10).
+ *   External fetch stays capped at 2, so widening only costs local string work.
  * - Gate: text.length >= 240 (isLikelyYahooRealtimeTruncated).
  * - Selector: query relevance (observed.length > 0 against author_name + author_handle + text).
  * - Provider-order suspect selection (no generic lexical rerank in X).
