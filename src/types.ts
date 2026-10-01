@@ -2408,6 +2408,58 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      '/realtime/post': {
+        post: {
+          // Manual fragment mirroring fetchXPostDetail (no dedicated Zod schema).
+          summary: 'X個別投稿の全文取得 (FxTwitter経由)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    statusId: { type: 'string', description: 'X投稿の数値ステータスID' },
+                    url: { type: 'string', description: 'X投稿URL（statusIdの代わりに指定可）' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'ID突合検証済みの投稿詳細',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      found: { type: 'boolean' },
+                      statusId: { type: 'string' },
+                      reason: { type: 'string' },
+                      detail: {
+                        type: 'object',
+                        properties: {
+                          statusId: { type: 'string' },
+                          text: { type: 'string' },
+                          isNoteTweet: { type: 'boolean' },
+                          createdAt: { type: 'string' },
+                        },
+                      },
+                    },
+                    required: ['found'],
+                  },
+                },
+              },
+            },
+            '400': {
+              description: 'statusIdまたは有効なX投稿URLの指定が必要',
+            },
+            '404': {
+              description: '投稿が見つからない（未検証の推測は返さない）',
+            },
+          },
+        },
+      },
       '/search/suggest': {
         post: {
           summary: 'Yahoo! サジェスト（キーワード自動補完）',

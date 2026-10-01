@@ -87,7 +87,7 @@ describe('hotels REST/MCP contract', () => {
     expect(doc.paths['/hotels/availability']).toBeUndefined();
     const tools = Object.entries((createMcpServer({ deferTools: false }) as any)._registeredTools).map(([name]) => name);
     expect(tools).not.toContain('search_hotel_availability');
-    expect(tools.filter((name: string) => !name.startsWith('default.')).length).toBe(45);
+    expect(tools.filter((name: string) => !name.startsWith('default.')).length).toBe(46);
   });
 
   test('flag on registers one deferred MCP tool and documents the endpoint', () => {
@@ -101,7 +101,7 @@ describe('hotels REST/MCP contract', () => {
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
     expect(names).toContain('search_hotel_availability');
-    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(46);
+    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(47);
     const doc: any = generateOpenApiDocument();
     const path = doc.paths['/hotels/availability'];
     expect(path.post.requestBody.content['application/json']).toBeDefined();

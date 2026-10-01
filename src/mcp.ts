@@ -50,6 +50,7 @@ import {
 import { formatCompactScrapeResult } from './response_cleaner.js';
 import { formatCompactRealtimeResponse } from './search_compact.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
+import { defaultXDetailProvider, fetchXPostDetail, type XPostDetailProvider } from './services/x_detail.js';
 import { hotelService, type HotelService } from './services/hotels/index.js';
 import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
@@ -69,6 +70,8 @@ export interface McpServerOptions {
   intelResearch?: (request: unknown) => Promise<unknown>;
   /** Test seam for the experimental hotel search. Production uses the shared singleton. */
   hotelService?: HotelService;
+  /** Test seam for the X post fetcher. Production uses the shared singleton. */
+  xDetailProvider?: XPostDetailProvider;
 }
 
 export interface ToolCatalogEntry {
@@ -1287,6 +1290,43 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       { defaultEnabled: deferredDefault, keywords: ['急上昇トレンド', '話題', 'ランキング', 'リアルタイム'] },
     );
+
+    // Tool 12b: fetch_x_post (X個別投稿の全文取得) - DEFERRED
+    {
+      const xDetail = options?.xDetailProvider ?? defaultXDetailProvider;
+      registerTool(
+        mcpServer,
+        toolCatalog,
+        sessionActivated,
+        'fetch_x_post',
+        'yahoo',
+        '【X個別投稿の全文取得】search_realtimeで見つけたX投稿のうち詳しく知りたい1件の全文・投稿日時・メディアをFxTwitter経由で取得します（ID突合検証済みのみ返却、未検証の推測は返しません）。返却: { found, statusId, detail: { text, isNoteTweet, author, createdAt, media } }',
+        {
+          statusId: z.string().optional().describe('X投稿の数値ステータスID (例: "2100871827090501852")'),
+          url: z.string().optional().describe('X投稿URL (例: "https://x.com/xxx/status/123…")。statusIdの代わりに指定可'),
+        },
+        async (opts) => {
+          try {
+            const result = await fetchXPostDetail(opts, xDetail);
+            if (!result.found) {
+              return {
+                isError: true,
+                content: [{ type: 'text', text: `X post not found: ${result.reason}` }],
+              };
+            }
+            return {
+              content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            };
+          } catch (err: any) {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: `X post fetch error: ${err?.message || err}` }],
+            };
+          }
+        },
+        { defaultEnabled: deferredDefault, keywords: ['X', 'ツイート', 'ポスト', '全文', 'ステータス', 'status'] },
+      );
+    }
   }
 
   // =========================================================================

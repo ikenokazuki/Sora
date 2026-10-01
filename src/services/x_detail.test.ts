@@ -18,6 +18,7 @@ import {
   X_DETAIL_MAX_CALLS,
   YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS,
 } from './x_detail.js';
+import { fetchXPostDetail } from './x_detail.js';
 import {
   parseXDiscoverySeed,
   buildXIsolatedEvidenceFromDirectStatus,
@@ -784,5 +785,108 @@ describe('X realtime intent (P1-X-03)', () => {
     ];
     const ranked = rankRealtimeItems(posts as any, { query: 'SPARK 反応', mode: 'evidence', requirements: ['spark', '感想', '反応'], officialHandles: ['official'] });
     expect(ranked.map((r: any) => r.author_handle)).toEqual(['fanA', 'fanB', 'official']);
+  });
+});
+
+describe('inspect window widening (top 10)', () => {
+  it('evaluates a relevant truncation suspect at index 7', async () => {
+    let callCount = 0;
+    const provider: XPostDetailProvider = {
+      async fetchStatus(id) {
+        callCount++;
+        return {
+          statusId: id,
+          text: '第8候補の全文: 線香花火大会は18時スタートです！',
+          isNoteTweet: true,
+          provider: 'fxtwitter',
+        };
+      },
+    };
+
+    const items = [
+      { id: '5001', text: '線香花火楽しみですね！' },
+      { id: '5002', text: '会場に向かってます。' },
+      { id: '5003', text: '花火綺麗でした！' },
+      { id: '5004', text: '来年も行きたいです。' },
+      { id: '5005', text: '屋台の食べ物が美味しかった。' },
+      { id: '5006', text: '混雑していました。' },
+      { id: '5007', text: '電車が遅れていました。' },
+      {
+        id: '5008',
+        text: '【重要】線香花火大会の開催時間および詳細タイムスケジュールのお知らせです。ご来場の皆さまは必ずご確認をお願い申し上げます。安全運行のためご協力をお願いいたします。'.padEnd(250, '。'),
+      },
+    ];
+
+    const { items: enriched, fxCalls } = await enrichRealtimeItemsWithXDetail(
+      items,
+      '線香花火 時間',
+      provider,
+    );
+
+    expect(fxCalls).toBe(1);
+    expect(callCount).toBe(1);
+    expect(enriched[7].detailEnriched).toBe(true);
+    expect(enriched[7].text).toContain('18時スタート');
+  });
+});
+
+describe('fetchXPostDetail (per-tweet direct fetch)', () => {
+  const stubDetail = {
+    statusId: '2100871827090501852',
+    text: '線香花火大会の公式タイムテーブル公開。18:00スタート！',
+    provider: 'fxtwitter' as const,
+  };
+  const stubProvider: XPostDetailProvider = {
+    async fetchStatus(id: string) {
+      calls.push(id);
+      return { ...stubDetail, statusId: id };
+    },
+  };
+  let calls: string[] = [];
+
+  it('fetches by numeric status id', async () => {
+    calls = [];
+    const result = await fetchXPostDetail({ statusId: '2100871827090501852' }, stubProvider);
+    expect(result.found).toBe(true);
+    expect(result.detail?.text).toContain('18:00スタート');
+    expect(calls).toEqual(['2100871827090501852']);
+  });
+
+  it('accepts x.com status URLs and forwards the id', async () => {
+    calls = [];
+    const result = await fetchXPostDetail(
+      { url: 'https://x.com/kimisora_JPN/status/2100871827090501852' },
+      stubProvider,
+    );
+    expect(result.found).toBe(true);
+    expect(result.statusId).toBe('2100871827090501852');
+    expect(calls).toEqual(['2100871827090501852']);
+  });
+
+  it('rejects non-numeric ids and non-status URLs without fetching', async () => {
+    calls = [];
+    for (const bad of [
+      { statusId: 'abc' },
+      { statusId: '' },
+      { url: 'https://example.com/not-a-tweet' },
+      { url: 'https://x.com/kimisora_JPN' },
+      {},
+    ]) {
+      const result = await fetchXPostDetail(bad, stubProvider);
+      expect(result.found).toBe(false);
+      expect(result.reason).toBe('invalid_input');
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('reports not_found when the provider has nothing', async () => {
+    const nullProvider: XPostDetailProvider = {
+      async fetchStatus() {
+        return null;
+      },
+    };
+    const result = await fetchXPostDetail({ statusId: '999' }, nullProvider);
+    expect(result.found).toBe(false);
+    expect(result.reason).toBe('not_found');
   });
 });
