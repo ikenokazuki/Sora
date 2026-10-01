@@ -2429,9 +2429,7 @@ export interface McpSessionEntry {
  * セッションIDに基づくルーティング、放置セッションの自動回収（TTL）、
  * 並行リクエストの安全なディスパッチを行います。
  */
-/** Tenant for MCP tool-activation scoping (RFC P1-SEC-06).
- * Keyed deployments isolate activation per API key; unauthenticated
- * single-user use shares the legacy scope (previous behavior). */
+/** Tenant identity for MCP session ownership and tenant-scoped tool handlers. */
 export function mcpTenantFromRequest(req: Request): string {
   try {
     const auth = req.headers.get('authorization') || '';
@@ -2447,7 +2445,6 @@ export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
   private cleanupInterval: any;
   private readonly sessionTtlMs: number;
-  private readonly tenantStates = new Map<string, McpSessionState>();
 
   constructor(options?: { sessionTtlMs?: number }) {
     this.sessionTtlMs = options?.sessionTtlMs ?? 60 * 60 * 1000; // 1時間 TTL
@@ -2457,48 +2454,30 @@ export class McpSessionManager {
     }
   }
 
-  /**
-   * HTTP リクエスト（POST / GET / DELETE）を適切なセッションのトランスポートにルーティング
-   */
-  public stateForTenant(tenantId: string): McpSessionState {
-    let state = this.tenantStates.get(tenantId);
-    if (!state) {
-      state = { activatedTools: new Set<string>(), tenantId };
-      this.tenantStates.set(tenantId, state);
-    }
-    return state;
-  }
-
+  /** Route HTTP requests to their session without sharing activation state. */
   public async handleRequest(req: Request, options?: { parsedBody?: any }): Promise<Response> {
     const sessionId = req.headers.get('mcp-session-id');
+    const tenantId = mcpTenantFromRequest(req);
 
-    // 1. 既存セッションが存在する場合
-    if (sessionId && this.sessions.has(sessionId)) {
-      const entry = this.sessions.get(sessionId)!;
+    // 1. 既存セッションは作成時と同じテナントからのみ利用できる。
+    if (sessionId) {
+      const entry = this.sessions.get(sessionId);
+      if (!entry || entry.state.tenantId !== tenantId) {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32001, message: 'Session not found' },
+            id: null,
+          }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
       entry.lastActive = Date.now();
       const res = await entry.transport.handleRequest(req, options);
       return sanitizeMcpResponse(res);
     }
 
-    // 2. セッションIDが指定されているが存在しない場合 (セッション切れ / 不正ID)
-    if (sessionId && !this.sessions.has(sessionId)) {
-      return new Response(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: {
-            code: -32001,
-            message: 'Session not found',
-          },
-          id: null,
-        }),
-        {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
-    }
-
-    // 3. セッション新規作成 (initialize リクエスト時)
+    // 2. セッション新規作成 (initialize リクエスト時)
     let parsedBody = options?.parsedBody;
     if (parsedBody === undefined && req.method === 'POST') {
       try {
@@ -2512,8 +2491,7 @@ export class McpSessionManager {
     const isInit = messages.some((m) => m && m.method === 'initialize');
 
     if (isInit) {
-      // ステートフルセッション作成 (activation shared per tenant, isolated across tenants)
-      const state = this.stateForTenant(mcpTenantFromRequest(req));
+      const state: McpSessionState = { activatedTools: new Set<string>(), tenantId };
       const server = createMcpServer({ sessionState: state });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
@@ -2536,8 +2514,15 @@ export class McpSessionManager {
       return sanitizeMcpResponse(res);
     }
 
-    // 4. initialize 以外の単発・ステートレスリクエスト (例: 単発 tools/list, tools/call)
-    const statelessServer = createMcpServer({ sessionState: this.stateForTenant(mcpTenantFromRequest(req)) });
+    // 3. 単発リクエストでは明示的に呼ばれたツールだけをその要求内で有効化する。
+    // tools/list と search_tools の結果は別の要求や接続へ持ち越さない。
+    const activatedTools = new Set<string>();
+    for (const message of messages) {
+      if (message?.method === 'tools/call' && typeof message.params?.name === 'string') {
+        activatedTools.add(message.params.name.replace(/^default\./, ''));
+      }
+    }
+    const statelessServer = createMcpServer({ sessionState: { activatedTools, tenantId } });
     const statelessTransport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
