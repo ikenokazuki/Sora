@@ -18,11 +18,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Typecheck (strict, src + tool-health scripts)
         run: bun run typecheck
-      # 実ブラウザテストは共有ランナーで低速なため上限を60秒に緩和する
+      # 実ブラウザテストは共有ランナーで低速なため上限を120秒に緩和する（ブラウザ実取得テストのため）
       - name: Run tests with failure summary
         run: |
           set +e
-          bun test --timeout 60000 --reporter=junit --reporter-outfile=junit.xml > test-console.log 2>&1
+          bun test --timeout 120000 --reporter=junit --reporter-outfile=junit.xml > test-console.log 2>&1
           code=$?
           if [ "$code" -eq 0 ]; then
             tail -n 8 test-console.log

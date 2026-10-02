@@ -15,6 +15,7 @@ import {
   trackPackage,
 } from './tracking.js';
 import { app } from '../index.js';
+import { resolveChromiumPath } from '../browser_engine.js';
 
 // Real carrier availability is checked explicitly, outside the default CI suite.
 const itLive = it.skipIf(process.env.SORA_LIVE_TESTS !== '1');
@@ -126,11 +127,16 @@ describe('Tracking Service Unit Tests', () => {
       expect(res.carrierName).toBe('UPS');
       expect(res.trackingNumber).toBe('1Z9999999999999999');
       expect(res.trackingUrl).toContain('https://www.ups.com/track?loc=ja_JP&tracknum=1Z9999999999999999');
-      // T-B3: credentials未設定時は status: 'unknown' かつ events: []
-      expect(res.status).toBe('unknown');
-      expect(res.statusText).toContain('UPS API credentials are not configured');
       expect(res.events.length).toBe(0);
-    });
+      if (resolveChromiumPath()) {
+        // Chromiumあり: ブラウザ取得がbogus番号をnot_foundに分類する
+        expect(['not_found', 'unknown']).toContain(res.status);
+      } else {
+        // T-B3: credentials未設定時は status: 'unknown' かつ events: []
+        expect(res.status).toBe('unknown');
+        expect(res.statusText).toContain('UPS API credentials are not configured');
+      }
+    }, 110000);
   });
 
   describe('Track B Verification Tests (T-B1 to T-B7)', () => {
@@ -192,9 +198,9 @@ describe('Tracking Service Unit Tests', () => {
         carrier: 'ups',
       });
       expect(res.carrier).toBe('ups');
-      expect(res.status).toBe('unknown');
       expect(res.trackingUrl).toContain('ups.com');
-    });
+      expect(['not_found', 'unknown']).toContain(res.status);
+    }, 110000);
   });
 
   describe('Live Carrier Query with Test Number', () => {

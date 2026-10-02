@@ -275,7 +275,7 @@ export function parseFedexTrackPage(html: string, finalUrl: string, title: strin
 
 /** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
 export async function scrapeFedexByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
-  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 30000, readyMarkers: FEDEX_READY });
+  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 40000, readyMarkers: FEDEX_READY });
   if (!page) return undefined;
   const parsed = parseFedexTrackPage(page.html, page.finalUrl, page.title);
   if (!parsed) return undefined;
