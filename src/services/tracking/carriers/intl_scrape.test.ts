@@ -78,20 +78,26 @@ describe('intl tracking page parsing (fixtures)', () => {
 });
 
 describe('intl tracking live (bogus numbers, keyless)', () => {
-  test('ups/fedex bogus numbers are not_found via browser', async () => {
+  test('ups bogus number is not_found via browser', async () => {
     if (!resolveChromiumPath()) {
       console.log('Skipping intl tracking live test (Chromium not found on host)');
       return;
     }
     const { upsAdapter } = await import('./ups.js');
-    const { fedexAdapter } = await import('./fedex.js');
     const u = await upsAdapter.track('1Z9999999999999999');
     expect(u.trackingNumber).toBe('1Z9999999999999999');
     expect(['not_found', 'unknown']).toContain(u.status);
+  }, 55000);
+  test('fedex bogus number is not_found via browser', async () => {
+    if (!resolveChromiumPath()) {
+      console.log('Skipping intl tracking live test (Chromium not found on host)');
+      return;
+    }
+    const { fedexAdapter } = await import('./fedex.js');
     const f = await fedexAdapter.track('999999999999');
     expect(f.trackingNumber).toBe('999999999999');
     expect(['not_found', 'unknown']).toContain(f.status);
-  }, 120000);
+  }, 55000);
   test('dhl bogus number returns a parsed result via browser', async () => {
     if (!resolveChromiumPath()) {
       console.log('Skipping intl tracking live test (Chromium not found on host)');
@@ -101,5 +107,5 @@ describe('intl tracking live (bogus numbers, keyless)', () => {
     const d = await dhlAdapter.track('1234567890');
     expect(d.trackingNumber).toBe('1234567890');
     expect(['delivered', 'in_transit', 'registered', 'returned', 'not_found', 'unknown']).toContain(d.status);
-  }, 120000);
+  }, 55000);
 });
