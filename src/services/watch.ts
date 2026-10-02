@@ -13,6 +13,14 @@ import {
   type WatchHistoryRecord,
 } from '../db.js';
 
+export class WatchSelectorNotFoundError extends Error {
+  readonly code = 'WATCH_SELECTOR_NOT_FOUND';
+  constructor(selector: string, url: string) {
+    super(`Watch selector not found: ${selector} (${url})`);
+    this.name = 'WatchSelectorNotFoundError';
+  }
+}
+
 export interface WatchCheckResult {
   targetId: string;
   url: string;
@@ -23,6 +31,7 @@ export interface WatchCheckResult {
   snapshotSnippet?: string;
   checkedAt: string;
   webhookSent?: boolean;
+  errorCode?: string;
 }
 
 /** 文字列の SHA-256 ハッシュを算出 */
@@ -39,7 +48,8 @@ export async function registerWatchTarget(options: {
   webhookUrl?: string;
   intervalSeconds?: number;
   initialFetch?: boolean;
-}): Promise<{ target: WatchTargetRecord; initialResult?: WatchCheckResult }> {
+}, scrapeImpl: typeof scrapeUrl = scrapeUrl
+): Promise<{ target: WatchTargetRecord; initialResult?: WatchCheckResult; initialError?: { code: string; message: string } }> {
   let target = dbSaveWatchTarget({
     id: options.id,
     url: options.url,
@@ -54,10 +64,12 @@ export async function registerWatchTarget(options: {
   // 初期フェッチによるハッシュベースライン作成
   if (options.initialFetch !== false) {
     try {
-      initialResult = await checkWatchTarget(target.id);
+      initialResult = await checkWatchTarget(target.id, scrapeImpl);
       target = dbGetWatchTarget(target.id) || target;
     } catch (err: any) {
       console.warn(`[Sora/Watch] Initial fetch for watch target ${target.id} failed:`, err?.message);
+      const code = typeof err?.code === 'string' ? err.code : 'WATCH_INITIAL_FETCH_FAILED';
+      return { target, initialError: { code, message: String(err?.message ?? err).slice(0, 300) } };
     }
   }
 
@@ -65,22 +77,25 @@ export async function registerWatchTarget(options: {
 }
 
 /** 単一ターゲットの差分スキャン & Webhook 通知 */
-export async function checkWatchTarget(targetId: string): Promise<WatchCheckResult> {
+export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult> {
   const target = dbGetWatchTarget(targetId);
   if (!target) {
     throw new Error(`Watch target not found: ${targetId}`);
   }
 
   // スクレイピング実行
-  const scraped = await scrapeUrl({
+  const scraped = await scrapeImpl({
     url: target.url,
     selectors: target.selector ? { content: target.selector } : undefined,
     onlyMainContent: true,
     noCache: true,
   });
 
-  const rawText = target.selector && scraped.extracted?.content
-    ? scraped.extracted.content
+  if (target.selector && typeof scraped.extracted?.content !== 'string') {
+    throw new WatchSelectorNotFoundError(target.selector, target.url);
+  }
+  const rawText = target.selector
+    ? (scraped.extracted?.content as string)
     : (scraped.content || '');
 
   const cleanText = rawText.replace(/\s+/g, ' ').trim();
@@ -142,13 +157,13 @@ export async function checkWatchTarget(targetId: string): Promise<WatchCheckResu
 }
 
 /** 全登録ターゲットの一括差分チェック */
-export async function checkAllWatchTargets(): Promise<WatchCheckResult[]> {
+export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult[]> {
   const targets = dbListWatchTargets();
   const results: WatchCheckResult[] = [];
 
   for (const t of targets) {
     try {
-      const res = await checkWatchTarget(t.id);
+      const res = await checkWatchTarget(t.id, scrapeImpl);
       results.push(res);
     } catch (err: any) {
       results.push({
@@ -158,6 +173,7 @@ export async function checkAllWatchTargets(): Promise<WatchCheckResult[]> {
         currentHash: t.last_hash || '',
         diffSummary: `Check failed: ${err?.message || err}`,
         checkedAt: new Date().toISOString(),
+        ...(typeof err?.code === 'string' ? { errorCode: err.code } : {}),
       });
     }
   }

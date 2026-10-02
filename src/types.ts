@@ -1667,11 +1667,13 @@ export const WatchCheckResultSchema = z.object({
   snapshotSnippet: z.string().optional().describe('最新コンテンツの冒頭スニペット'),
   checkedAt: z.string().describe('チェック実行日時 (ISO 8601)'),
   webhookSent: z.boolean().optional().describe('Webhook 通知が送信されたか'),
+  errorCode: z.string().optional().describe('失敗コード (WATCH_SELECTOR_NOT_FOUND 等)'),
 });
 
 export const WatchRegisterResponseSchema = z.object({
   target: WatchTargetRecordSchema.describe('登録・保存された監視ターゲットレコード'),
   initialResult: WatchCheckResultSchema.optional().describe('初回ベースライン作成スキャンの結果'),
+  initialError: z.object({ code: z.string(), message: z.string() }).optional().describe('初回取得失敗時の機械可読エラー'),
 });
 
 export const WatchTargetListSchema = z.object({
