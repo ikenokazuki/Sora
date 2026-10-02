@@ -331,7 +331,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
 - **動的有効化 (・ DEFERRED 33 ツール)**:
-  - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。国内5社はスクレイピング、米3社は公式API（資格情報なし時は公式URL案内へフォールバック）
+  - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得

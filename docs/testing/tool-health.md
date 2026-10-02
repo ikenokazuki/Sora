@@ -58,5 +58,13 @@ bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health
 
 ## 配送test data（資格情報なし運用）
 
-- 国内5社（yamato/sagawa/japanpost/seino/fukutsu）はスクレイピングのため資格情報不要。実追跡番号さえあれば正の取得を検証できる。
-- 米3社（ups/fedex/dhl）は公式API専用のため、正の取得には資格情報が必要。資格情報なし時は仕様通りのfail-soft契約（`status: unknown`＋公式追跡URL＋番号一致）を検証してpassとする。
+## 配送test data（資格情報なし運用）
+
+- 8社とも資格情報なしで検証できる。国内5社はスクレイピング、米3社（ups/fedex/dhl）はステルスブラウザ取得（資格情報があれば公式API優先）。
+- 正の取得には実番号が必要。bogus番号のnegative case（ups/fedexは`not_found`、dhlは有効status）がbrowser取得経路を通すことを毎回確認する。
+- いずれの社も取得不可時は公式URL案内へフォールバックする（`unknown`）。
+
+## 追跡liveの注意
+
+- 国際3社のbrowser取得は先方のWAF都合で変動する。同一IPから短時間に大量取得した後はchallengeで `unknown`/`blocked` になることがある。CI（fresh IP）での結果を優先し、再実行で復旧するか見ること。
+- `track.*.negative`（bogus番号）は `unknown` を失敗にせず `unverified` とする。`blocked`（bot check検出）は別分類で記録する。
