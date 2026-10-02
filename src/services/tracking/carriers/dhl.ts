@@ -27,7 +27,7 @@ export const dhlAdapter: TrackingCarrierAdapter = {
 
   trackingUrl(trackingNumber: string): string {
     const num = cleanTrackingNumber(trackingNumber);
-    return `https://www.dhl.com/en/express/tracking.html?AWB=${encodeURIComponent(num)}`;
+    return `https://www.dhl.com/us-en/home/tracking.html?submit=1&tracking-id=${encodeURIComponent(num)}`;
   },
 
   detect(trackingNumber: string, hints?: TrackingDetectionHints): CarrierDetectionSignal {
@@ -111,6 +111,26 @@ export const dhlAdapter: TrackingCarrierAdapter = {
     }
 
     // API未設定またはフォールバック: 公式Web追跡URLとガイダンスを返却
+    try {
+      const scraped = await scrapeDhlByBrowser(num, trackingUrl, context?.signal);
+      if (scraped === 'blocked') {
+        return {
+          carrier,
+          carrierName: dhlAdapter.name,
+          trackingNumber: num,
+          status: 'unknown',
+          statusText: 'DHL tracking blocked by carrier bot check.',
+          events: [],
+          trackingUrl,
+          details: {
+            serviceType: 'DHL Express',
+          },
+        };
+      }
+      if (scraped) return scraped;
+    } catch (err: any) {
+      console.warn('DHL browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    }
     return {
       carrier,
       carrierName: dhlAdapter.name,
@@ -129,3 +149,60 @@ export const dhlAdapter: TrackingCarrierAdapter = {
     return evaluateTrackingVerification(result, requestedTrackingNumber);
   },
 };
+import {
+  extractDatedEvents,
+  findStatusHeadline,
+  looksLikeChallenge,
+  renderTrackingPage,
+  scopedBodyText,
+  statusFromText,
+} from './browser_track.js';
+
+const DHL_POSITIVE = /delivered|in transit|trouble|held|exception|配達完了|配達中/i;
+const DHL_NO_RESULT = /no results?|shipment .* not found|not found/i;
+const DHL_READY = [
+  /DELIVERED/i, /IN TRANSIT/i, /TROUBLE/i, /no result/i, /Track & Trace/i,
+];
+
+export type DhlPageParse =
+  | { notFound: true }
+  | { challenge: true }
+  | { status: TrackingResult['status']; statusText: string; events: TrackingEvent[] }
+  | undefined;
+
+/** DHL追跡ページの描画結果を分類する（純粋関数）。未観測の否定形は unknown に留める。 */
+export function parseDhlTrackPage(html: string, title: string): DhlPageParse {
+  const text = scopedBodyText(html);
+  if (looksLikeChallenge(title, text)) return { challenge: true };
+  const status = statusFromText(text);
+  if (status !== 'unknown') {
+    return {
+      status,
+      statusText: findStatusHeadline(text) ?? 'DHL tracking (browser)',
+      events: extractDatedEvents(text),
+    };
+  }
+  if (DHL_NO_RESULT.test(text) && !DHL_POSITIVE.test(text)) return { notFound: true };
+  return undefined;
+}
+
+/** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
+export async function scrapeDhlByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 25000, readyMarkers: DHL_READY });
+  if (!page) return undefined;
+  const parsed = parseDhlTrackPage(page.html, page.title);
+  if (!parsed) return undefined;
+  if ('challenge' in parsed) return 'blocked';
+  if ('notFound' in parsed) {
+    return {
+      carrier: 'dhl', carrierName: dhlAdapter.name, trackingNumber: num,
+      status: 'not_found', statusText: 'DHL: tracking number not found', events: [],
+      trackingUrl, details: { serviceType: 'DHL Express', retrieval: 'scrape' },
+    };
+  }
+  return {
+    carrier: 'dhl', carrierName: dhlAdapter.name, trackingNumber: num,
+    status: parsed.status, statusText: parsed.statusText, events: parsed.events,
+    trackingUrl, details: { serviceType: 'DHL Express', retrieval: 'scrape' },
+  };
+}

@@ -132,7 +132,27 @@ export const upsAdapter: TrackingCarrierAdapter = {
       }
     }
 
-    // API未設定またはフォールバック: 公式Web追跡URLとガイダンスを返却
+    // API未設定または失敗時: ブラウザ取得を試み、不可なら案内へフォールバック
+    try {
+      const scraped = await scrapeUpsByBrowser(num, trackingUrl, context?.signal);
+      if (scraped === 'blocked') {
+        return {
+          carrier,
+          carrierName: upsAdapter.name,
+          trackingNumber: num,
+          status: 'unknown',
+          statusText: 'UPS tracking blocked by carrier bot check.',
+          events: [],
+          trackingUrl,
+          details: {
+            serviceType: 'UPS International',
+          },
+        };
+      }
+      if (scraped) return scraped;
+    } catch (err: any) {
+      console.warn('UPS browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    }
     return {
       carrier,
       carrierName: upsAdapter.name,
@@ -151,3 +171,64 @@ export const upsAdapter: TrackingCarrierAdapter = {
     return evaluateTrackingVerification(result, requestedTrackingNumber);
   },
 };
+
+import {
+  extractDatedEvents,
+  findStatusHeadline,
+  looksLikeChallenge,
+  renderTrackingPage,
+  scopedBodyText,
+  statusFromText,
+} from './browser_track.js';
+
+const UPS_INVALID_PHRASES = ['トラッキングナンバーが無効', 'tracking number is invalid', 'not yet valid', '見当たりません'];
+const UPS_READY = [
+  /トラッキングナンバーが無効/i, /tracking number is invalid/i, /Delivered/i,
+  /配達完了/i, /お届け完了/i, /配達中/i, /In Transit/i, /Out for Delivery/i, /Exception/i,
+];
+
+function upsContainsAny(text: string, phrases: string[]): boolean {
+  const lower = text.toLowerCase();
+  return phrases.some((p) => lower.includes(p.toLowerCase()));
+}
+
+export type UpsPageParse =
+  | { notFound: true }
+  | { challenge: true }
+  | { status: TrackingResult['status']; statusText: string; events: TrackingEvent[] }
+  | undefined;
+
+/** UPS追跡ページの描画結果を分類する（純粋関数）。 */
+export function parseUpsTrackPage(html: string, title: string): UpsPageParse {
+  const text = scopedBodyText(html);
+  if (looksLikeChallenge(title, text)) return { challenge: true };
+  if (upsContainsAny(text, UPS_INVALID_PHRASES)) return { notFound: true };
+  const status = statusFromText(text);
+  if (status === 'unknown') return undefined;
+  return {
+    status,
+    statusText: findStatusHeadline(text) ?? 'UPS tracking (browser)',
+    events: extractDatedEvents(text),
+  };
+}
+
+/** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
+export async function scrapeUpsByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 45000, readyMarkers: UPS_READY });
+  if (!page) return undefined;
+  const parsed = parseUpsTrackPage(page.html, page.title);
+  if (!parsed) return undefined;
+  if ('challenge' in parsed) return 'blocked';
+  if ('notFound' in parsed) {
+    return {
+      carrier: 'ups', carrierName: upsAdapter.name, trackingNumber: num,
+      status: 'not_found', statusText: 'UPS: tracking number not found', events: [],
+      trackingUrl, details: { serviceType: 'UPS International', retrieval: 'scrape' },
+    };
+  }
+  return {
+    carrier: 'ups', carrierName: upsAdapter.name, trackingNumber: num,
+    status: parsed.status, statusText: parsed.statusText, events: parsed.events,
+    trackingUrl, details: { serviceType: 'UPS International', retrieval: 'scrape' },
+  };
+}
