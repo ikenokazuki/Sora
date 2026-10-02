@@ -78,3 +78,42 @@ test('cache key separates includeSocial and social conditions', async () => {
   ]);
   expect(keys.size).toBe(3);
 });
+
+describe('F6 explicit failure status', () => {
+  const failing = (failures: string[]) => ({
+    search: async () => ({ status: 'unavailable', platform: 'weibo', query: 'q', searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures, warnings: [] }),
+    fetch: async () => { throw new Error('unused'); },
+    enrichWeiboTop: async (x: SocialPost[]) => x,
+  });
+  test('all rate-limited queries report rate_limited, never success', async () => {
+    const provider = createSocialPostsProvider({ service: failing(['rate limited (429)']) as never });
+    const r = await provider.run(inputFor({ region: 'China', includeSocial: true, social: { platforms: ['weibo'] } } as never), AbortSignal.timeout(10000));
+    expect(r.items).toEqual([]);
+    expect(r.status).toBe('rate_limited');
+  });
+  test('all failed queries report unavailable and refetch on retry', async () => {
+    let calls = 0;
+    const service = { search: async () => { calls++; return { status: 'unavailable', platform: 'weibo', query: 'q', searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: ['weibo fetch: HTTP 503'], warnings: [] }; }, fetch: async () => { throw new Error('unused'); }, enrichWeiboTop: async (x: SocialPost[]) => x };
+    const provider = createSocialPostsProvider({ service: service as never });
+    const req = inputFor({ region: 'China', includeSocial: true, social: { platforms: ['weibo'] } } as never);
+    const first = await provider.run(req, AbortSignal.timeout(10000));
+    const second = await provider.run(req, AbortSignal.timeout(10000));
+    expect(first.status).toBe('unavailable');
+    expect(second.status).toBe('unavailable');
+    expect(calls).toBe(2);
+  });
+  test('mixed success and failure reports partial with items kept', async () => {
+    const service = {
+      search: async (q: any) => q.platform === 'weibo'
+        ? { status: 'ok', platform: 'weibo', query: q.query, searchMode: 'test', items: [post('weibo', '1')], matchedInWindow: 1, unknownTime: 0, excluded: 0, failures: [], warnings: [] }
+        : { status: 'unavailable', platform: q.platform, query: q.query, searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: ['discovery: HTTP 503'], warnings: [] },
+      fetch: async () => { throw new Error('unused'); },
+      enrichWeiboTop: async (x: SocialPost[]) => x,
+    };
+    const provider = createSocialPostsProvider({ service: service as never });
+    const r = await provider.run(inputFor({ region: 'China', includeSocial: true, social: { platforms: ['weibo', 'threads'] } } as never), AbortSignal.timeout(10000));
+    expect(r.items.length).toBeGreaterThan(0);
+    expect(r.status).toBe('partial');
+    expect((r.gaps ?? []).length).toBeGreaterThan(0);
+  });
+});
