@@ -195,6 +195,26 @@ export const fedexAdapter: TrackingCarrierAdapter = {
     }
 
     // API未設定またはフォールバック: 公式Web追跡URLとガイダンスを返却
+    try {
+      const scraped = await scrapeFedexByBrowser(num, trackingUrl, context?.signal);
+      if (scraped === 'blocked') {
+        return {
+          carrier,
+          carrierName: fedexAdapter.name,
+          trackingNumber: num,
+          status: 'unknown',
+          statusText: 'FedEx tracking blocked by carrier bot check.',
+          events: [],
+          trackingUrl,
+          details: {
+            serviceType: 'FedEx Express/Ground',
+          },
+        };
+      }
+      if (scraped) return scraped;
+    } catch (err: any) {
+      console.warn('FedEx browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    }
     return {
       carrier,
       carrierName: fedexAdapter.name,
@@ -213,3 +233,63 @@ export const fedexAdapter: TrackingCarrierAdapter = {
     return evaluateTrackingVerification(result, requestedTrackingNumber);
   },
 };
+import {
+  extractDatedEvents,
+  findStatusHeadline,
+  looksLikeChallenge,
+  renderTrackingPage,
+  scopedBodyText,
+  statusFromText,
+} from './browser_track.js';
+
+const FEDEX_NOT_FOUND = ["your tracking number can't be found", 'not be in our system yet', 'no results found'];
+const FEDEX_READY = [
+  /can't be found/i, /no-results/i, /Delivered/i, /Proof of Delivery/i,
+  /On FedEx vehicle/i, /Shipment information sent/i, /In transit/i, /Exception/i,
+];
+
+function fedexContainsAny(text: string, phrases: string[]): boolean {
+  const lower = text.toLowerCase();
+  return phrases.some((p) => lower.includes(p.toLowerCase()));
+}
+
+export type FedexPageParse =
+  | { notFound: true }
+  | { challenge: true }
+  | { status: TrackingResult['status']; statusText: string; events: TrackingEvent[] }
+  | undefined;
+
+/** FedEx追跡ページの描画結果を分類する（純粋関数）。 */
+export function parseFedexTrackPage(html: string, finalUrl: string, title: string): FedexPageParse {
+  const text = scopedBodyText(html);
+  if (looksLikeChallenge(title, text)) return { challenge: true };
+  if (finalUrl.includes('no-results-found') || fedexContainsAny(text, FEDEX_NOT_FOUND)) return { notFound: true };
+  const status = statusFromText(text);
+  if (status === 'unknown') return undefined;
+  return {
+    status,
+    statusText: findStatusHeadline(text) ?? 'FedEx tracking (browser)',
+    events: extractDatedEvents(text),
+  };
+}
+
+/** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
+export async function scrapeFedexByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 45000, readyMarkers: FEDEX_READY });
+  if (!page) return undefined;
+  const parsed = parseFedexTrackPage(page.html, page.finalUrl, page.title);
+  if (!parsed) return undefined;
+  if ('challenge' in parsed) return 'blocked';
+  if ('notFound' in parsed) {
+    return {
+      carrier: 'fedex', carrierName: fedexAdapter.name, trackingNumber: num,
+      status: 'not_found', statusText: 'FedEx: tracking number not found', events: [],
+      trackingUrl, details: { serviceType: 'FedEx Express/Ground', retrieval: 'scrape' },
+    };
+  }
+  return {
+    carrier: 'fedex', carrierName: fedexAdapter.name, trackingNumber: num,
+    status: parsed.status, statusText: parsed.statusText, events: parsed.events,
+    trackingUrl, details: { serviceType: 'FedEx Express/Ground', retrieval: 'scrape' },
+  };
+}
