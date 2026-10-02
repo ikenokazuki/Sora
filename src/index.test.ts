@@ -5240,10 +5240,12 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(tables.length).toBe(1);
       const t = tables[0];
       expect(t.headers.length).toBe(3);
-      expect(t.headers).toEqual(['区分', '料金プラン', '料金プラン']);
+      expect(t.headers).toEqual(['区分', '料金プラン', '料金プラン_2']);
       // 2行目以降のデータ整合性
       expect(t.rows.length).toBe(2);
       expect(t.rows[1]['区分']).toBe('A席');
+      expect(t.rows[1]['料金プラン']).toBe('5000円');
+      expect(t.rows[1]['料金プラン_2']).toBe('3000円');
     });
 
     it('convertHtmlToMarkdown should classify flyer and timetable images as isImportant', () => {
