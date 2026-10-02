@@ -1,0 +1,73 @@
+name: Live tool health
+
+on:
+  workflow_call:
+    inputs:
+      image-artifact:
+        description: 'Artifact name holding the candidate image tar (from docker save). Empty builds locally.'
+        required: false
+        type: string
+        default: ''
+      image-tag:
+        description: 'Candidate image tag to test'
+        required: false
+        type: string
+        default: 'sora-tool-health:candidate'
+  schedule:
+    - cron: '23 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [standard, hotel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Load candidate image from artifact
+        if: inputs.image-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.image-artifact }}
+          path: /tmp/tool-health-image
+      - name: Docker load and verify image id
+        if: inputs.image-artifact != ''
+        run: |
+          docker load -i /tmp/tool-health-image/candidate.tar
+          docker inspect --format '{{.Id}}' '${{ inputs.image-tag }}'
+      - name: Build candidate image
+        if: inputs.image-artifact == ''
+        run: docker build -f Containerfile -t sora-tool-health:candidate .
+      - name: Run live tool-health lane (${{ matrix.lane }})
+        run: |
+          if [ "${{ matrix.lane }}" = "hotel" ]; then
+            bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out --enable-hotel
+          else
+            bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out
+          fi
+        env:
+          SORA_TOOL_HEALTH_CASES_JSON: ${{ secrets.SORA_TOOL_HEALTH_CASES_JSON }}
+          UPS_CLIENT_ID: ${{ secrets.UPS_CLIENT_ID }}
+          UPS_CLIENT_SECRET: ${{ secrets.UPS_CLIENT_SECRET }}
+          FEDEX_API_KEY: ${{ secrets.FEDEX_API_KEY }}
+          FEDEX_API_SECRET: ${{ secrets.FEDEX_API_SECRET }}
+          DHL_EXPRESS_API_KEY: ${{ secrets.DHL_EXPRESS_API_KEY }}
+      - name: Preserve live diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-health-${{ matrix.lane }}
+          path: tool-health-out/
+          retention-days: 7

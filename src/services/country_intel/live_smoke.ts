@@ -1,6 +1,7 @@
-// Opt-in live smoke for Country Intelligence v1. Offline parser checks are
-// fatal; live provider reachability is reported best-effort and never alters
-// fixture test status.
+// ADVISORY legacy live smoke (limited provider subset, informational only).
+// Offline parser checks are fatal. With --live, provider reachability
+// failures exit nonzero. Gate decisions use scripts/tool-health/run.ts
+// (bun run test:tools:live), not this file.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseGdeltDocResponse } from './providers/gdelt.js';
@@ -68,15 +69,25 @@ if (!process.argv.includes('--live')) {
 }
 
 const providers = [createGdeltProvider(), createGdeltEventsProvider(), createGdacsProvider(), createWorldBankProvider(), createNagerProvider()];
+let liveFailures = 0;
 for (const name of ['South Korea', 'Taiwan', 'United States', 'France', 'Indonesia']) {
   try {
     const report = await researchCountryContext({ region: name }, { providers, timeoutMs: 15_000, cache: null });
     const statuses = report.providerCoverage.map((run) => `${run.provider}:${run.status}`).join(' ');
     console.log(`${name}: events=${report.keyEvents.length} evidence=${report.evidence.length} coverage=${report.coverage.overall} ${statuses}`);
+    if (report.evidence.length === 0) {
+      liveFailures++;
+      console.error(`${name}: live smoke got zero evidence`);
+    }
   } catch (error) {
+    liveFailures++;
     console.error(`${name}: smoke error: ${error instanceof Error ? error.message : error}`);
   }
 }
 
 closeDb();
+if (liveFailures > 0) {
+  console.error(`${liveFailures} region(s) failed live reachability`);
+  process.exit(1);
+}
 process.exit(0);
