@@ -1,3 +1,11 @@
+# Sora v2.34.0
+
+- 新規MCPツール `search_poi`（OpenPOI直結・全国施設POI検索、座標付き）と REST `POST/GET /geo/poi` を追加。OpenAPIに登録し、README・件数表記を全47ツール（hotel有効時48）へ同期。
+- 国際3社（UPS・FedEx・DHL）の追跡をキーなし動作化。資格情報があれば公式API優先、なし時はステルスブラウザ取得、それも不可なら公式URL案内へフォールバック。DHL追跡URLを現行化。
+- MCPのHost/Origin検証（不正は403）、本文抽出の情報欠落修正（aside置換・表列重複・lazy画像）、国地域SNS入力の保持、SNS失敗の誤キャッシュ防止、監視selector不在のbaseline保護。
+- 全ツール live CI harness（`scripts/tool-health`）：本体検査＋候補コンテナ実取得＋provider別確認＋JSON/Markdown/JUnit報告。公開は同一image検査通過が条件。
+- 検証: 全test 1204 pass / 0 fail、typecheck成功。live通常lane 82 pass・0 fail（資格情報・test data不足分はunverified/blockedとして記録）。
+
 # Sora v2.33.1
 
 - MCPの遅延ツール有効化状態をセッションごとに分離。同じAPIキーや匿名接続でも、別セッションと再接続は初期公開14ツールから開始します。
