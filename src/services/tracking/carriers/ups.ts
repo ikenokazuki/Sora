@@ -214,7 +214,7 @@ export function parseUpsTrackPage(html: string, title: string): UpsPageParse {
 
 /** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
 export async function scrapeUpsByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
-  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 30000, readyMarkers: UPS_READY });
+  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 40000, readyMarkers: UPS_READY });
   if (!page) return undefined;
   const parsed = parseUpsTrackPage(page.html, page.title);
   if (!parsed) return undefined;
