@@ -894,6 +894,7 @@ export interface TrackingResult {
     destination?: string;
     deliveryDate?: string;
     serviceType?: string;
+    retrieval?: string;
   };
   postal?: {
     network?: 'upu';

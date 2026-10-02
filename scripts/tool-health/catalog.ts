@@ -237,18 +237,6 @@ function toolCase(
 }
 
 
-const CARRIER_CRED_ENV: Record<string, string[]> = {
-  ups: ['UPS_CLIENT_ID', 'UPS_CLIENT_SECRET'],
-  fedex: ['FEDEX_API_KEY|FEDEX_CLIENT_ID', 'FEDEX_API_SECRET|FEDEX_CLIENT_SECRET'],
-  dhl: ['DHL_EXPRESS_API_KEY|DHL_API_KEY'],
-};
-
-function carrierCredsPresent(carrier: string): boolean {
-  const groups = CARRIER_CRED_ENV[carrier];
-  if (!groups) return true;
-  return groups.every((g) => g.split('|').some((name) => (process.env[name] ?? '').length > 0));
-}
-
 export function checkTrackingNoCreds(raw: unknown, trackingNumber: string, carrier: string): CaseObservation {
   const text = textOf(raw);
   if (!text.includes(trackingNumber)) throw new LiveFail(`track_package (${carrier}) response missing tracking number`);
@@ -290,15 +278,49 @@ function trackingCases(): HealthCase[] {
     const secret = secretOrUnverified(ctx, `tracking.${carrier}.positive`, ['trackingNumber']);
     const { text: rawJsonText } = await mcpJson(ctx, 'track_package', { carrier, trackingNumber: secret.trackingNumber, noCache: true }, 80000);
     const raw = toolPayload(rawJsonText, 'track_package');
-    if (!carrierCredsPresent(carrier) && CARRIER_CRED_ENV[carrier]) {
-      // API-only carriers without credentials: verify the documented fail-soft
-      // contract (structured unknown + official tracking URL) instead.
-      return checkTrackingNoCreds(raw, secret.trackingNumber, carrier);
-    }
     return checkTrackingResult(raw, secret.trackingNumber, carrier);
   }));
 }
 
+const NEGATIVE_NUMBERS: Record<string, { number: string; expectNotFound: boolean }> = {
+  ups: { number: '1Z9999999999999999', expectNotFound: true },
+  fedex: { number: '999999999999', expectNotFound: true },
+  dhl: { number: '1234567890', expectNotFound: false },
+};
+
+export function checkTrackingNegative(raw: unknown, trackingNumber: string, carrier: string, expectNotFound: boolean): CaseObservation {
+  const text = textOf(raw);
+  if (!text.includes(trackingNumber)) throw new LiveFail(`track_package (${carrier}) response missing tracking number`);
+  let parsed: { status?: string };
+  try {
+    parsed = JSON.parse(text) as { status?: string };
+  } catch {
+    throw new LiveFail(`track_package (${carrier}) returned non-JSON payload`);
+  }
+  if (expectNotFound) {
+    if (parsed.status === 'not_found') {
+      return { detail: 'bogus number correctly classified', sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
+    }
+    if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
+    throw new LiveUnverified(`track_package (${carrier}) bogus number was ${parsed.status ?? 'unparsed'} (blocked or page changed)`);
+  }
+  const known = ['delivered', 'in_transit', 'registered', 'returned', 'not_found'];
+  if (parsed.status && known.includes(parsed.status)) {
+    return { detail: `bogus number parsed as ${parsed.status}`, sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
+  }
+  if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
+  throw new LiveUnverified(`track_package (${carrier}) bogus number was ${parsed.status ?? 'unparsed'} (blocked or page changed)`);
+}
+
+function trackingNegativeCases(): HealthCase[] {
+  return Object.entries(NEGATIVE_NUMBERS).map(([carrier, spec]) =>
+    toolCase(`track.${carrier}.negative`, ['track_package'], [`tracking:${carrier}`], true, 120000, false, async (ctx) => {
+      await ensureEnabled(ctx, '荷物追跡', 30000);
+      const { text: rawJsonText } = await mcpJson(ctx, 'track_package', { carrier, trackingNumber: spec.number, noCache: true }, 100000);
+      const raw = toolPayload(rawJsonText, 'track_package');
+      return checkTrackingNegative(raw, spec.number, carrier, spec.expectNotFound);
+    }));
+}
 export const TOOL_CASES: HealthCase[] = [
   toolCase('scrape.page', ['scrape'], ['web:example'], true, 90000, false, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'scrape', { url: 'https://example.com/', noCache: true }, 60000);
@@ -446,6 +468,7 @@ export const TOOL_CASES: HealthCase[] = [
     return { sources: [{ source: 'yahoo-airport', count: parsed.flights.length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
   ...trackingCases(),
+  ...trackingNegativeCases(),
   toolCase('hotel.availability', ['search_hotel_availability'], ['rakuten-travel'], true, 90000, true, async (ctx) => {
     const inDate = new Date(Date.now() + 21 * 86400000);
     const outDate = new Date(Date.now() + 22 * 86400000);
@@ -860,3 +883,5 @@ export const PROVIDER_CASES: ProviderCase[] = [
     return { sources: [{ source: `worldbank:${indicator.id}`, count: metrics.length, format: 'json', upstreamStatus: 'unknown' }] };
   })),
 ];
+
+

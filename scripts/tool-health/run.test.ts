@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  checkTrackingNegative,
   checkTrackingNoCreds,
   checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
@@ -36,6 +37,12 @@ describe('classification', () => {
     expect(() => checkTrackingResult({ trackingNumber: 'N1', status: 'not_found', events: [] }, 'N1', 'yamato')).toThrow(LiveUnverified);
     expect(() => checkTrackingResult({ trackingNumber: 'N1', status: 'unknown', events: [] }, 'N1', 'ups')).toThrow(LiveUnverified);
     expect(() => checkTrackingResult({ other: 1 }, 'N1', 'yamato')).toThrow(LiveFail);
+    const neg = checkTrackingNegative({ trackingNumber: 'B1', status: 'not_found' }, 'B1', 'ups', true);
+    expect(neg.detail).toContain('bogus');
+    expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown' }, 'B1', 'ups', true)).toThrow(LiveUnverified);
+    expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown', statusText: 'blocked by carrier bot check' }, 'B1', 'ups', true)).toThrow(LiveBlocked);
+    const any = checkTrackingNegative({ trackingNumber: 'B1', status: 'delivered' }, 'B1', 'dhl', false);
+    expect(any.detail).toContain('delivered');
     const soft = checkTrackingNoCreds({ trackingNumber: 'N1', status: 'unknown', trackingUrl: 'https://www.ups.com/track?x=N1' }, 'N1', 'ups');
     expect(soft.sources[0].source).toBe('ups');
     expect(() => checkTrackingNoCreds({ trackingNumber: 'N1', status: 'in_transit', events: [{}] }, 'N1', 'ups')).toThrow(LiveFail);
