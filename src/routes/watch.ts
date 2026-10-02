@@ -1,18 +1,34 @@
 import { Hono } from 'hono';
 import {
-  registerWatchTarget,
-  checkWatchTarget,
-  checkAllWatchTargets,
-  listWatchTargets,
-  deleteWatchTarget,
+  registerWatchTarget as defaultRegisterWatchTarget,
+  checkWatchTarget as defaultCheckWatchTarget,
+  checkAllWatchTargets as defaultCheckAllWatchTargets,
+  listWatchTargets as defaultListWatchTargets,
+  deleteWatchTarget as defaultDeleteWatchTarget,
 } from '../scraper.js';
+
+export interface WatchRouteDeps {
+  registerWatchTarget?: typeof defaultRegisterWatchTarget;
+  checkWatchTarget?: typeof defaultCheckWatchTarget;
+  checkAllWatchTargets?: typeof defaultCheckAllWatchTargets;
+  listWatchTargets?: typeof defaultListWatchTargets;
+  deleteWatchTarget?: typeof defaultDeleteWatchTarget;
+}
 import {
   WatchRegisterRequestSchema,
   WatchCheckRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
 
-export const watchRoutes = new Hono();
+export function createWatchRoutes(deps: WatchRouteDeps = {}) {
+  const {
+    registerWatchTarget = defaultRegisterWatchTarget,
+    checkWatchTarget = defaultCheckWatchTarget,
+    checkAllWatchTargets = defaultCheckAllWatchTargets,
+    listWatchTargets = defaultListWatchTargets,
+    deleteWatchTarget = defaultDeleteWatchTarget,
+  } = deps;
+  const watchRoutes = new Hono();
 
 // 監視ターゲット登録 (POST /watch/register)
 watchRoutes.post('/watch/register', async (c) => {
@@ -56,6 +72,9 @@ watchRoutes.post('/watch/check', async (c) => {
       : await checkAllWatchTargets();
     return c.json(result);
   } catch (err: any) {
+    if (err?.code === 'WATCH_SELECTOR_NOT_FOUND') {
+      return formatError(c, err.message || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);
+    }
     return formatError(c, err.message || 'Watch check failed', 'WATCH_ERROR', 500);
   }
 });
@@ -79,3 +98,8 @@ watchRoutes.delete('/watch/:id', (c) => {
   const deleted = deleteWatchTarget(id);
   return c.json({ success: deleted, id });
 });
+
+  return watchRoutes;
+}
+
+export const watchRoutes = createWatchRoutes();
