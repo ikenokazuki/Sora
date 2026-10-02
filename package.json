@@ -12,7 +12,8 @@
     "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js",
     "test:intel:live": "bun run src/services/country_intel/live_smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:tools:live": "bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health:candidate --out ./tool-health-out"
   },
   "keywords": [
     "mcp",

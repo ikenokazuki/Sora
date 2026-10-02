@@ -9,55 +9,76 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ikenokazuki/sora
+  CANDIDATE_TAG: sora-tool-health:candidate
 
 jobs:
   test:
-    name: Hermetic tests (publish gate)
+    name: Full body checks (publish gate)
+    uses: ./.github/workflows/test.yml
+
+  build-candidate:
+    name: Build candidate image
+    needs: [test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Build candidate image (no push yet)
+        run: docker build -f Containerfile -t "$CANDIDATE_TAG" .
+      - name: Record candidate image id
+        run: |
+          docker inspect --format '{{.Id}}' "$CANDIDATE_TAG" | tee candidate-image-id.txt
+          docker save "$CANDIDATE_TAG" -o candidate.tar
+      - name: Upload candidate image archive
+        uses: actions/upload-artifact@v4
         with:
-          bun-version: latest
-      - name: Install dependencies (frozen lockfile required)
-        run: bun install --frozen-lockfile
-      - name: Typecheck (strict)
-        run: bun run typecheck
-      - name: Run hermetic test subset
-        run: >
-          bun test src/services/yahoo_query_union.test.ts
-          src/scraper_selector.test.ts src/search_diagnostics.test.ts
-          src/search_compact.test.ts src/extractor/information_retrieval.test.ts
-          src/security/credential_scope.test.ts
-          src/security/scrape_cache_isolation.test.ts src/net/safe_transport.test.ts
-          src/http_fetcher_redirect.test.ts src/auth.test.ts
-          src/security/tenant_context.test.ts src/security/tenant_isolation.test.ts
-          src/security/metrics.test.ts src/browser_session_access.test.ts
-          src/retrieval/requirements.test.ts src/retrieval/answerability.test.ts src/retrieval/evidence_weights.test.ts src/retrieval/lexicons/temporal.test.ts src/retrieval/lexicons/stopwords.test.ts src/services/yahoo_throttle.test.ts src/services/yahoo_weighted_rrf.test.ts
-          src/services/yahoo_realtime_retrieval.test.ts src/services/x_detail.test.ts
-          src/llm_contract_sync.test.ts src/mcp_session_isolation.test.ts src/rho_select.test.ts
-          src/services/tracking/carriers/sagawa.test.ts src/search_adaptive_contract.test.ts
-          --timeout 60000
+          name: tool-health-candidate
+          path: |
+            candidate.tar
+            candidate-image-id.txt
+          retention-days: 7
+
+  live:
+    name: Live tool health on candidate
+    needs: [build-candidate]
+    uses: ./.github/workflows/live-tools.yml
+    secrets: inherit
+    with:
+      image-artifact: tool-health-candidate
+      image-tag: sora-tool-health:candidate
+
   build-and-push:
-    needs: [test]
+    name: Push the tested candidate image
+    needs: [live]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      - name: Download candidate image archive
+        uses: actions/download-artifact@v4
+        with:
+          name: tool-health-candidate
+          path: /tmp/tool-health-image
+      - name: Load the exact tested image
+        run: |
+          docker load -i /tmp/tool-health-image/candidate.tar
+          LOADED="$(docker inspect --format '{{.Id}}' "$CANDIDATE_TAG")"
+          EXPECTED="$(cat /tmp/tool-health-image/candidate-image-id.txt)"
+          if [ "$LOADED" != "$EXPECTED" ]; then
+            echo "candidate image id mismatch: $LOADED != $EXPECTED"
+            exit 1
+          fi
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -68,22 +89,13 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Containerfile
-          push: true
-          provenance: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+      - name: Retag tested candidate and push
+        run: |
+          echo "${{ steps.meta.outputs.tags }}" | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$CANDIDATE_TAG" "$tag"
+            docker push "$tag"
+          done
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

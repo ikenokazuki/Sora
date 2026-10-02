@@ -103,7 +103,7 @@ async function postJson(fetchFn: GdeltFetch, url: string, body: unknown, signal:
   return res.json();
 }
 
-export function createFediverseProvider(fetchFn?: GdeltFetch): CountryIntelProvider {
+export function createFediverseProvider(fetchFn?: GdeltFetch, sources: readonly { kind: 'misskey' | 'mastodon'; host: string }[] = FEDIVERSE_TAG_SOURCES): CountryIntelProvider {
   const runFetch: GdeltFetch = fetchFn ?? ((async (url: string, init?: RequestInit) => fetch(url, init)) as GdeltFetch);
   return {
     id: 'fediverse', areas: ['social_observations'], latencyClass: 'near_realtime', defaultTtlSeconds: 300,
@@ -115,7 +115,7 @@ export function createFediverseProvider(fetchFn?: GdeltFetch): CountryIntelProvi
       const now = new Date();
       const items: AcquisitionItem[] = [];
       const gaps: { area: string; reason: string }[] = [];
-      for (const source of FEDIVERSE_TAG_SOURCES) {
+      for (const source of sources) {
         if (signal.aborted) break;
         for (const tag of tags) {
           if (signal.aborted) break;
