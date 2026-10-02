@@ -62,3 +62,50 @@ describe('social mcp tools', () => {
     }
   });
 });
+
+describe('F5 country intel social input', () => {
+  test('research_country_context forwards nested social conditions to the service', async () => {
+    const seen: unknown[] = [];
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      modules: ['intel'],
+      deferTools: false,
+      intelResearch: async (request: unknown) => { seen.push(request); return { contextId: 'ctx-test' }; },
+    });
+    const client = new Client({ name: 'intel-social-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const social = { platforms: ['weibo'], queries: [{ platform: 'weibo', query: 'test query' }], urls: ['https://m.weibo.cn/detail/1'], lookbackHours: 24 };
+      await client.callTool({ name: 'research_country_context', arguments: { region: 'China', includeSocial: true, social } });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ region: 'China', includeSocial: true, social });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+  test('invalid social platform is rejected before the service runs', async () => {
+    let calls = 0;
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      modules: ['intel'],
+      deferTools: false,
+      intelResearch: async () => { calls++; return { contextId: 'ctx-test' }; },
+    });
+    const client = new Client({ name: 'intel-social-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = (await client.callTool({
+        name: 'research_country_context',
+        arguments: { region: 'China', social: { platforms: ['myspace'] } },
+      })) as any;
+      expect(calls).toBe(0);
+      expect((result as any).isError).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
