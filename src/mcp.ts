@@ -56,7 +56,7 @@ import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotel
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
-import { CountryContextReportSchema, type CountryContextReport } from './services/country_intel/types.js';
+import { CountryContextReportSchema, IntelSocialInputSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
@@ -2216,6 +2216,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
         period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
         includeSocial: z.boolean().optional().describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
+        social: IntelSocialInputSchema.optional().describe('SNS観測条件 (platforms/queries/urls/lookbackHours)'),
         noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
         verbose: z.boolean().optional().describe('全件の詳細出力を要求するか (既定は分野別の代表証拠)'),
       },
