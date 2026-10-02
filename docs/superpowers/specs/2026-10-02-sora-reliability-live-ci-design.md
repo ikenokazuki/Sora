@@ -226,9 +226,9 @@ fallbackが成功しても元の取得先は成功扱いにしません。元API
 | `japanpost` | 同上。国内番号と国際S10を別ケース |
 | `seino` | 同上 |
 | `fukutsu` | 同上 |
-| `ups` | 実番号、`UPS_CLIENT_ID`、`UPS_CLIENT_SECRET` |
-| `fedex` | 実番号、`FEDEX_API_KEY`/`FEDEX_CLIENT_ID`、`FEDEX_API_SECRET`/`FEDEX_CLIENT_SECRET` |
-| `dhl` | 実番号、`DHL_EXPRESS_API_KEY`/`DHL_API_KEY` |
+| `ups` | 実番号、`UPS_CLIENT_ID`、`UPS_CLIENT_SECRET`（なし時はfail-soft契約を確認） |
+| `fedex` | 実番号、API資格情報（なし時はfail-soft契約を確認） |
+| `dhl` | 実番号、API資格情報（なし時はfail-soft契約を確認） |
 
 新規テスト設定`SORA_TOOL_HEALTH_CASES_JSON`をGitHub Secretに置き、case IDごとの番号・公開投稿URL・検索語・期待する公開本文特徴を渡します。値のschemaは実装指示書Task 9で定義します。配送の宛名・住所は期待値にもログにも使いません。番号に配送履歴がなくなった場合はテストデータを更新し、それまで`unverified`です。ダミー番号の`not_found`は本体の負例として残します。
 

@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (32ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 32 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 46 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 33 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 47 ツール）。
 
 ```json
 {
@@ -107,7 +107,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
 >    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
->    - 気象・防災・地震・道路交通・標高・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, get_flight_status
+>    - 気象・防災・地震・道路交通・標高・施設・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status
 >    - 国内交通乗換・運賃: search_route
 >    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
@@ -308,12 +308,12 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 46 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 47 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **11 個の論理モジュール（全 46 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 47 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (32ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 32 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (32ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 33 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -330,18 +330,19 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 32 ツール)**:
-  - `track_package`: 日本の主要5社（ヤマト・佐川・郵便・西濃・福山）＆UPS 荷物追跡・自動キャリア判別
+- **動的有効化 (・ DEFERRED 33 ツール)**:
+  - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。国内5社はスクレイピング、米3社は公式API（資格情報なし時は公式URL案内へフォールバック）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得
+  - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件）
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
   - `predict_hts_code`: 米国 USITC 公式 HTS/HS コード自動推測・ヒアリング誘導
   - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
   - `check_fda_regulated`: 米国 FDA 規制判定
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
+  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`, `fetch_x_post`, `search_poi`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -363,7 +364,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
 │                 │                   │                  │                 │             │               │              │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 32ツール)
+★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 33ツール)
 図は 8 列の簡略表示です。Media（`inspect_image`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 ```
 
@@ -387,7 +388,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全46ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全47ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -480,7 +481,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および UPS の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）および公式追跡Webリンク生成に対応。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukuyama"`, `"ups"`) |
 | `search_hotel_availability`（実験的） | 楽天トラベルの公開検索から、東京駅・京都駅・草津温泉の指定日・人数の空室プランと税込料金を取得。施設名・住所は未対応（`null`）。対応外の場所は取得せず理由を返す。`SORA_RAKUTEN_TRAVEL_ENABLED=true` でのみ有効（遅延ツール、REST `POST /hotels/availability` 共通）。料金は税込合計（1泊）または単位不明（連泊は `basis: "unknown"`）。空室なし（`empty`）と取得失敗（`unavailable`）を区別する。 | `source: "rakuten_travel"` | - `location` (string, 必須): 宿泊地（「東京駅」「京都駅」「草津温泉」）<br>- `checkIn` / `checkOut` (string, 必須): `YYYY-MM-DD`（`checkOut` は後日）<br>- `adults` (number, 必須): 大人人数<br>- `rooms` (number, 任意): 1のみ<br>- `limit` (number, 任意): 最大施設件数 (1〜10, デフォルト: 5) |
 
-> 🧪 **実験フラグとツール数**: 既定（フラグoff）では本ツール・REST・OpenAPI項目は公開されず、ツール数は 46（コア14）のままです。`SORA_RAKUTEN_TRAVEL_ENABLED=true` で +1（計47、コアは14のまま）になります。
+> 🧪 **実験フラグとツール数**: 既定（フラグoff）では本ツール・REST・OpenAPI項目は公開されず、ツール数は 47（コア14）のままです。`SORA_RAKUTEN_TRAVEL_ENABLED=true` で +1（計48、コアは14のまま）になります。
 
 ---
 
@@ -492,6 +493,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
 | `get_elevation` | 国土地理院公式オープンデータに基づき、日本全国の住所・地名から緯度経度を自動特定し、海抜標高（m）をミリ精度で取得。津波・水害ハザードリスク判定に活用可能。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度 |
+| `search_poi` | OpenPOI直結の全国施設POI検索。施設名・住所キーワードと位置範囲から緯度経度付き施設（338万件、営業許可・Overture統合）を返却。`get_elevation` / `search_route` と組合せ可能。保存時は `licenses` / `attributions` を保持すること。 | `source: "openpoi"` | - `query` (string, 任意): 施設・住所キーワード (例: "ラーメン")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50) |
 
 ---
 
@@ -1869,7 +1871,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel` または `all`） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 46 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 47 ツール静的一括ロード |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
