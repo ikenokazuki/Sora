@@ -1,3 +1,7 @@
+# Sora v2.34.3
+
+- live改善: 公開SNS投稿の既定test data（4 platform＋X、秘密上書き可）、運航の国際fallback、外部tool caseのunverified再試行。機能変更なし。
+
 # Sora v2.34.2
 
 - CI安定化: 追跡テストのChromium有無・WAF変動・60秒上限に対応（旧unknown固定期待の更新、browser取得の時間上限）。機能変更なし。
