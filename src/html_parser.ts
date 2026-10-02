@@ -422,6 +422,31 @@ export function extractBreadcrumbs($: cheerio.CheerioAPI, jsonLdItems: any[]): s
   return [];
 }
 
+/** 同名ヘッダーを左から一意化。既存の文字通り名 (Revenue_2 等) は予約し、二列目以降に _2, _3 を付与。 */
+export function uniqueTableHeaders(rawHeaders: string[]): string[] {
+  const used = new Set<string>(rawHeaders);
+  const counts = new Map<string, number>();
+  const out: string[] = [];
+  for (const name of rawHeaders) {
+    const n = (counts.get(name) ?? 0) + 1;
+    counts.set(name, n);
+    if (n === 1) {
+      out.push(name);
+      continue;
+    }
+    let k = n;
+    let candidate = `${name}_${k}`;
+    while (used.has(candidate)) {
+      k++;
+      candidate = `${name}_${k}`;
+    }
+    used.add(candidate);
+    counts.set(name, k);
+    out.push(candidate);
+  }
+  return out;
+}
+
 /** HTML から <table> データを抽出して構造化 JSON に変換 (colspan/rowspan グリッド正規化) */
 export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
   const tables: TableData[] = [];
@@ -459,7 +484,8 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
     const minimizedGrid = minimizeTableMatrix(grid);
     if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return;
 
-    const headers = minimizedGrid[0].map((h, i) => h || `col_${i + 1}`);
+    const rawHeaders = minimizedGrid[0].map((h, i) => h || `col_${i + 1}`);
+    const headers = uniqueTableHeaders(rawHeaders);
     const rows: Record<string, string>[] = [];
     for (let r = 1; r < minimizedGrid.length; r++) {
       const rowObj: Record<string, string> = {};
@@ -635,6 +661,66 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
 // ==========================================
 // 3. HTML -> Markdown 変換 (Readability & Token 最適化)
 // ==========================================
+/** lazy画像の実URL解決。優先順位: 実http(s) src > data-src > srcset/data-srcset(同種最大) 。
+ * placeholder basename (placeholder/spacer/blank/transparent/1x1) ・data URI・未設定の src は実URLとみなさない。
+ * 画像一覧と Markdown DOM 正規化の両方で使う。 */
+const PLACEHOLDER_IMAGE_BASENAMES = new Set(['placeholder', 'spacer', 'blank', 'transparent', '1x1']);
+
+export function resolveImageUrl(
+  attrs: { src?: string; dataSrc?: string; srcset?: string; dataSrcset?: string },
+  baseUrl: string,
+): string | undefined {
+  const resolveHttp = (value: string): string | undefined => {
+    const v = value.trim();
+    if (!v || v.startsWith('data:')) return undefined;
+    try {
+      const abs = new URL(v, baseUrl).href;
+      if (abs.startsWith('http://') || abs.startsWith('https://')) return abs;
+    } catch {}
+    return undefined;
+  };
+  const isPlaceholderName = (absUrl: string): boolean => {
+    const path = absUrl.split('?')[0].split('#')[0];
+    const base = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+    const dot = base.lastIndexOf('.');
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    return PLACEHOLDER_IMAGE_BASENAMES.has(stem);
+  };
+  const pickSrcset = (value: string): string | undefined => {
+    const w: Array<{ url: string; n: number }> = [];
+    const x: Array<{ url: string; n: number }> = [];
+    const plain: string[] = [];
+    for (const part of value.split(',')) {
+      const tokens = part.trim().split(/\s+/);
+      if (!tokens[0]) continue;
+      const abs = resolveHttp(tokens[0]);
+      if (!abs) continue;
+      const d = tokens[1] ?? '';
+      if (/^[0-9]+w$/.test(d)) w.push({ url: abs, n: parseInt(d, 10) });
+      else if (/^[0-9]+(\.[0-9]+)?x$/.test(d)) x.push({ url: abs, n: parseFloat(d) });
+      else plain.push(abs);
+    }
+    if (w.length > 0) return w.sort((a, b) => b.n - a.n)[0].url;
+    if (x.length > 0) return x.sort((a, b) => b.n - a.n)[0].url;
+    return plain[0];
+  };
+  const src = (attrs.src ?? '').trim();
+  const srcAbs = src ? resolveHttp(src) : undefined;
+  if (srcAbs && !isPlaceholderName(srcAbs)) return srcAbs;
+  const dataSrc = (attrs.dataSrc ?? '').trim();
+  if (dataSrc) {
+    const abs = resolveHttp(dataSrc);
+    if (abs) return abs;
+  }
+  const srcset = (attrs.srcset ?? '').trim() || (attrs.dataSrcset ?? '').trim();
+  if (srcset) {
+    const picked = pickSrcset(srcset);
+    if (picked) return picked;
+  }
+  if (srcAbs) return srcAbs;
+  return undefined;
+}
+
 const STRUCTURED_CONTENT_SELECTOR =
   'table, [role="grid"], [role="gridcell"], [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]';
 
@@ -646,25 +732,37 @@ const STRUCTURED_CONTENT_SELECTOR =
  */
 function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): string {
   const readability$ = cheerio.load(readabilityHtml);
-  const readabilityLen = readability$.text().replace(/\s+/g, ' ').trim().length;
   if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
   if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
+  const hasSemanticContainer = $('main, [role="main"], article, #content, #main').length > 0;
+  // Readability 側の実質ブロック (80文字以上の p/li/blockquote) 。なければ全文保持を条件にする。
+  const readBlocks: string[] = [];
+  readability$('p, li, blockquote').each((_, el) => {
+    const t = readability$(el).text().replace(/\s+/g, ' ').trim();
+    if (t.length >= 80) readBlocks.push(t);
+  });
+  const fullRead = readability$.text().replace(/\s+/g, ' ').trim();
   let bestHtml = '';
   let bestLen = -1;
   $('main, [role="main"], article, #content, #main').each((_, el) => {
     const $el = $(el);
+    // aside/nav/補助ランドマーク内の候補は本文救済に使わない。
+    if ($el.closest('aside, nav, [role="navigation"], [role="complementary"]').length > 0) return;
     if ($el.find(STRUCTURED_CONTENT_SELECTOR).length === 0 && !$el.is(STRUCTURED_CONTENT_SELECTOR)) return;
-    const len = $el.text().replace(/\s+/g, ' ').trim().length;
+    const candText = $el.text().replace(/\s+/g, ' ').trim();
+    const preserved = readBlocks.length > 0
+      ? readBlocks.every((b) => candText.includes(b))
+      : (fullRead.length === 0 || candText.includes(fullRead));
+    if (!preserved) return;
+    const len = candText.length;
     if (len > bestLen) {
       bestLen = len;
       bestHtml = $.html(el) ?? '';
     }
   });
-  // 構造を持つ最長コンテナが Readability の半分にも満たない短さなら
-  // ウィジェット置換とみなして Readability を維持する。
-  if (bestHtml && bestLen >= readabilityLen * 0.5) return bestHtml;
-  // 意味的コンテナ自体がないページ（カレンダー div 等）は従来どおり body を使う。
-  if (!bestHtml) return $('body').html() || readabilityHtml;
+  if (bestHtml) return bestHtml;
+  // 意味的主領域があるのに表が aside だけの場合、body へ戻さず Readability を維持する。
+  if (!hasSemanticContainer) return $('body').html() || readabilityHtml;
   return readabilityHtml;
 }
 
@@ -713,6 +811,12 @@ export function convertHtmlToMarkdown(
   evidence?: Record<string, FieldEvidence>;
 } {
   const $ = cheerio.load(rawHtml);
+  // F4: Markdown/Readability へ渡す前に img src を実URLへ正規化 (画像一覧と同一解決)。
+  $('img').each((_, el) => {
+    const $img = $(el);
+    const resolved = resolveImageUrl({ src: $img.attr('src'), dataSrc: $img.attr('data-src'), srcset: $img.attr('srcset'), dataSrcset: $img.attr('data-srcset') }, targetUrl);
+    if (resolved) $img.attr('src', resolved);
+  });
 
   // 1. JSON-LD の先行抽出 (script タグ削除前)
   const jsonLd: any[] = [];
@@ -804,12 +908,12 @@ export function convertHtmlToMarkdown(
   // 4. 画像一覧 & キャプション・メタデータの抽出
   const images: ImageItem[] = [];
   $('img').each((_, el) => {
-    const src = $(el).attr('src') || $(el).attr('data-src');
+    const $img = $(el);
+    const src = resolveImageUrl({ src: $img.attr('src'), dataSrc: $img.attr('data-src'), srcset: $img.attr('srcset'), dataSrcset: $img.attr('data-srcset') }, targetUrl);
     if (src) {
       try {
         const absUrl = new URL(src, targetUrl).href;
         if (absUrl.startsWith('http') && !images.some((img) => img.url === absUrl)) {
-          const $img = $(el);
           const alt = $img.attr('alt')?.trim() || undefined;
           const imgTitle = $img.attr('title')?.trim() || undefined;
           const widthStr = $img.attr('width');

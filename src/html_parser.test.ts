@@ -95,3 +95,48 @@ describe('content containers', () => {
     expect(result.markdown).toContain('3000');
   });
 });
+
+describe('F2 body preservation over aside tables', () => {
+  it('keeps main prose when the only table lives in an aside article', () => {
+    const prose = 'MainProseAnchorAlpha ' + 'the quick brown fox jumps over the lazy dog near the riverbank garden. '.repeat(14);
+    const asideCells = Array.from({ length: 24 }, (_, i) => `<tr><td>AsideWidgetRow${i}</td><td>value${i}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><title>Prose Page</title></head><body><main><article><h1>Riverbank Guide</h1><p>${prose}</p><p>SecondMainProseAnchorBeta confirms the body text survives structural rescue attempts.</p></article></main><aside><article><h2>Widget Index</h2><table>${asideCells}</table></article></aside></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/guide', 40000, false, true);
+    expect(result.markdown).toContain('MainProseAnchorAlpha');
+    expect(result.markdown).toContain('SecondMainProseAnchorBeta');
+  });
+});
+
+describe('F3 duplicate table headers', () => {
+  it('keeps both colspan values under unique keys', async () => {
+    const mod = await import('./html_parser.js');
+    expect(mod.uniqueTableHeaders(['Revenue', 'Revenue', 'Revenue_2'])).toEqual(['Revenue', 'Revenue_3', 'Revenue_2']);
+    const html = `<!DOCTYPE html><html><head><title>Sales</title></head><body><main><h1>Quarterly Sales Report</h1><p>Intro paragraph with enough substance to look like a real article body for readers.</p><table><tr><th colspan="2">Revenue</th></tr><tr><td>100</td><td>200</td></tr></table></main></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/sales', 40000, false, true);
+    const tables = (result as { tables?: Array<{ headers: string[]; rows: Array<Record<string, string>> }> }).tables ?? [];
+    expect(tables.length).toBeGreaterThan(0);
+    const row = tables[0].rows[0];
+    const values = Object.values(row);
+    expect(values).toContain('100');
+    expect(values).toContain('200');
+    expect(result.markdown).toContain('100');
+    expect(result.markdown).toContain('200');
+  });
+});
+
+describe('F4 lazy image resolution', () => {
+  it('resolves data-src and srcset to real urls in images and markdown', async () => {
+    const mod = await import('./html_parser.js');
+    expect(mod.resolveImageUrl({ src: 'https://cdn.example.com/placeholder.png', dataSrc: 'https://cdn.example.com/real.jpg' }, 'https://example.com/')).toBe('https://cdn.example.com/real.jpg');
+    expect(mod.resolveImageUrl({ src: 'https://cdn.example.com/real.jpg', dataSrc: 'https://cdn.example.com/other.jpg' }, 'https://example.com/')).toBe('https://cdn.example.com/real.jpg');
+    expect(mod.resolveImageUrl({ srcset: 'https://cdn.example.com/s.jpg 400w, https://cdn.example.com/l.jpg 800w' }, 'https://example.com/')).toBe('https://cdn.example.com/l.jpg');
+    expect(mod.resolveImageUrl({ src: '/img/real-two.jpg' }, 'https://example.com/a/b')).toBe('https://example.com/img/real-two.jpg');
+    const html = `<!DOCTYPE html><html><head><title>Photos</title></head><body><main><article><h1>Gallery</h1><p>${'Gallery intro sentence with descriptive words for the photo collection. '.repeat(6)}</p><img src="https://cdn.example.com/placeholder.png" data-src="https://cdn.example.com/real-one.jpg" alt="exhibit hall photograph"><img srcset="https://cdn.example.com/small-two.jpg 400w, https://cdn.example.com/real-two.jpg 1200w" alt="second exhibit photograph"></article></main></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/gallery', 40000, false, true);
+    const urls = (result.images ?? []).map((i) => i.url);
+    expect(urls).toContain('https://cdn.example.com/real-one.jpg');
+    expect(urls).toContain('https://cdn.example.com/real-two.jpg');
+    expect(result.markdown).toContain('https://cdn.example.com/real-one.jpg');
+    expect(result.markdown).toContain('https://cdn.example.com/real-two.jpg');
+  });
+});
