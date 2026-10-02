@@ -127,8 +127,10 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
       const queries = planQueries(input);
       const items: AcquisitionItem[] = [];
       const gaps: { area: string; reason: string }[] = [];
+      let executedQueries = 0;
       for (const q of queries) {
         if (signal.aborted || Date.now() >= deadlineAt - 1000 || items.length >= SOCIAL_MAX_PER_SERVICE * SOCIAL_PLATFORMS.length) break;
+        executedQueries++;
         try {
           const r = await service.search({ platform: q.platform, query: q.query, limit: SOCIAL_MAX_PER_SERVICE, lookbackHours }, ctx);
           let posts = r.items;
@@ -147,9 +149,15 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
           gaps.push({ area: 'social_observations', reason: q.platform + ' ' + q.query + ': ' + String((e as Error)?.message ?? e).slice(0, 140) });
         }
       }
+      const capped = items.length >= SOCIAL_MAX_PER_SERVICE * SOCIAL_PLATFORMS.length;
+      if (executedQueries < queries.length && !signal.aborted && !capped) {
+        gaps.push({ area: 'social_observations', reason: 'deadline: ' + (queries.length - executedQueries) + ' planned queries unexecuted' });
+      }
       const urls = (input.request.social?.urls ?? []).slice(0, SOCIAL_MAX_URLS);
+      let executedUrls = 0;
       for (const url of urls) {
         if (signal.aborted || Date.now() >= deadlineAt - 1000) break;
+        executedUrls++;
         try {
           const r = await service.fetch({ url, commentLimit: SOCIAL_WEIBO_COMMENT_LIMIT }, ctx);
           if (r.post) items.push(socialPostToAcquisition(r.post, input, now));
@@ -159,7 +167,23 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
           gaps.push({ area: 'social_observations', reason: url + ': ' + String((e as Error)?.message ?? e).slice(0, 140) });
         }
       }
-      return { items, coverage: ['social_observations'], ...(gaps.length ? { gaps } : {}) };
+      if (executedUrls < urls.length && !signal.aborted) {
+        gaps.push({ area: 'social_observations', reason: 'deadline: ' + (urls.length - executedUrls) + ' planned urls unfetched' });
+      }
+      if (signal.aborted) throw signal.reason;
+      if (items.length > 0) {
+        return gaps.length > 0
+          ? { items, coverage: ['social_observations'], gaps, status: 'partial' as const }
+          : { items, coverage: ['social_observations'], status: 'success' as const };
+      }
+      if (gaps.length === 0) return { items, coverage: ['social_observations'], status: 'success' as const };
+      const allRateLimited = gaps.every((g) => /429|rate.?limited/i.test(g.reason));
+      return {
+        items,
+        coverage: ['social_observations'],
+        gaps,
+        status: allRateLimited ? ('rate_limited' as const) : ('unavailable' as const),
+      };
     },
   };
 }

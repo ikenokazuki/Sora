@@ -276,8 +276,9 @@ export function createSocialService(deps: SocialDeps) {
   async function searchMetaPlatform(input: SocialSearchInput, ctx: SocialContext): Promise<SocialSearchResult> {
     const failures: string[] = [];
     const warnings: string[] = ['meta discovery depends on the web index; not a realtime in-app search'];
-    const { urls, failures: discoFailures } = await discoverMetaPosts(deps.webSearch, input.platform, input.query, input.limit, input.lookbackHours, ctx.signal);
-    failures.push(...discoFailures);
+    const disco = await discoverMetaPosts(deps.webSearch, input.platform, input.query, input.limit, input.lookbackHours, ctx.signal);
+    const urls = disco.urls;
+    failures.push(...disco.failures);
     const items: SocialPost[] = [];
     let matchedInWindow = 0;
     let unknownTime = 0;
@@ -293,9 +294,14 @@ export function createSocialService(deps: SocialDeps) {
       else matchedInWindow++;
       items.push(post);
     }
-    const status = items.length ? (failures.length || unknownTime ? 'partial' : 'ok') : (failures.length && urls.length === 0 && failures.some((f) => f.startsWith('discovery:')) && items.length === 0 && discoFailures.length && urls.length === 0 ? 'empty' : (failures.length ? 'partial' : 'empty'));
-    const finalStatus = items.length ? status : (failures.some((f) => /rate limited|static fetch|browser/.test(f)) ? 'unavailable' : 'empty');
-    return { status: finalStatus, platform: input.platform, query: input.query, searchMode: 'web_index', items, matchedInWindow, unknownTime, excluded, failures, warnings };
+    if (items.length > 0) {
+      const status = failures.length || unknownTime ? 'partial' as const : 'ok' as const;
+      return { status, platform: input.platform, query: input.query, searchMode: 'web_index', items, matchedInWindow, unknownTime, excluded, failures, warnings };
+    }
+    // 件数保証なし: discovery 失敗は unavailable、保存可能な取得失敗も unavailable、正常 0 件のみ empty。
+    const transportFailed = failures.some((f) => /rate limited|static fetch|browser/.test(f));
+    const status = disco.status === 'unavailable' || transportFailed ? 'unavailable' as const : 'empty' as const;
+    return { status, platform: input.platform, query: input.query, searchMode: 'web_index', items, matchedInWindow, unknownTime, excluded, failures, warnings };
   }
 
   return {
