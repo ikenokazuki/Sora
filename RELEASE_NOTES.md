@@ -1,3 +1,7 @@
+# Sora v2.34.1
+
+- CI修正: 国際追跡のブラウザ取得をCIの60秒上限内に収める（ups/fedex分割・描画上限30秒・遷移待ち上限20秒）。機能変更なし。
+
 # Sora v2.34.0
 
 - 新規MCPツール `search_poi`（OpenPOI直結・全国施設POI検索、座標付き）と REST `POST/GET /geo/poi` を追加。OpenAPIに登録し、README・件数表記を全47ツール（hotel有効時48）へ同期。
