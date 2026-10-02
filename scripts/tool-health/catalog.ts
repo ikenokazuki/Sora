@@ -221,6 +221,27 @@ export function mustHaveItems(result: unknown, source: string, field?: string, m
   return { items, observation: { sources: [{ source, count: items.length, format: 'json', upstreamStatus: 'unknown' }] } };
 }
 
+export const DEFAULT_SOCIAL_POSTS: Record<string, { url: string; text: string }> = {
+  weibo: { url: 'https://m.weibo.cn/detail/5349719867136347', text: '东京怨气也太大了' },
+  threads: { url: 'https://www.threads.com/@vieejt.anh/post/Dd9FZ8eEzB6', text: 'Starbucks' },
+  instagram: { url: 'https://www.instagram.com/p/Dd3lVUtk2JO/', text: '東京の日常の風景' },
+  facebook: { url: 'https://www.facebook.com/tochokoho/posts/1438401608473199/', text: 'TOKYO UPDATES' },
+};
+
+export const DEFAULT_X_POST = { url: 'https://x.com/hm1d6/status/2106048299363164583', statusId: '2106048299363164583', text: 'クロレララーメン' };
+
+/** Secrets override baked-in public defaults. Defaults are live-verified public posts; refresh them when they rot. */
+export function secretOrDefault(ctx: CaseContext, caseId: string, fields: string[], defaults: Record<string, string>): Record<string, string> {
+  const s = ctx.secrets.getCase(caseId) ?? {};
+  const out: Record<string, string> = {};
+  for (const f of fields) {
+    const v = s[f] ?? defaults[f];
+    if (!v) throw new LiveUnverified(`case ${caseId} missing field: ${f} (no secret and no default)`);
+    out[f] = v;
+  }
+  return out;
+}
+
 export function secretOrUnverified(ctx: CaseContext, caseId: string, fields: string[]): Record<string, string> {
   const s = ctx.secrets.getCase(caseId);
   const missing = fields.filter((f) => !s?.[f]);
@@ -363,16 +384,19 @@ export const TOOL_CASES: HealthCase[] = [
     if (!text.includes('東京') && !text.includes('tokyo')) throw new LiveFail('social-search missing query anchor');
     return { sources: [{ source: 'weibo', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('social.fetch', ['fetch_social_post'], ['social:posts'], true, 120000, false, async (ctx) => {
-    await ensureEnabled(ctx, 'SNS Weibo', 30000);
-    const secret = secretOrUnverified(ctx, 'social.weibo.post', ['url']);
-    const { text: rawJsonText } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url, commentLimit: 2 }, 100000);
-    const raw = toolPayload(rawJsonText, 'fetch_social_post');
-    mustContain(raw, ['weibo'], 'weibo-fetch');
-    const text = textOf(raw);
-    if (secret.text && !text.includes(secret.text)) throw new LiveFail('social-fetch missing expected text anchor');
-    return { sources: [{ source: 'weibo', format: 'json', upstreamStatus: 'unknown' }] };
-  }),
+  ...(['weibo', 'threads', 'instagram', 'facebook'] as const).map((platform) =>
+    toolCase(`social.fetch.${platform}`, ['fetch_social_post'], [`social:${platform}`], true, 120000, false, async (ctx) => {
+      await ensureEnabled(ctx, 'SNS', 30000);
+      const def = DEFAULT_SOCIAL_POSTS[platform];
+      const secret = secretOrDefault(ctx, `social.${platform}.post`, ['url', 'text'], def);
+      const { raw } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url, commentLimit: 0 }, 100000);
+      mustContain(raw, [platform === 'weibo' ? 'weibo' : platform], `social-fetch-${platform}`);
+      const text = textOf(raw);
+      if (!text.includes(secret.text)) {
+        throw new LiveFail(`social-fetch-${platform} missing expected text anchor (test post may have rotted; refresh DEFAULT_SOCIAL_POSTS)`);
+      }
+      return { sources: [{ source: platform, format: 'json', upstreamStatus: 'unknown' }] };
+    })),
   toolCase('browser.action', ['browser_action'], ['chromium'], true, 90000, false, async (ctx) => {
     // evaluate scripts are disabled by server policy; a real click proves DOM operation.
     const { text: rawJsonText } = await mcpJson(ctx, 'browser_action', {
@@ -435,7 +459,7 @@ export const TOOL_CASES: HealthCase[] = [
     return { sources: [{ source: 'yahoo-trend', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('fetch.xpost', ['fetch_x_post'], ['fxtwitter'], true, 90000, false, async (ctx) => {
-    const secret = secretOrUnverified(ctx, 'x.post', ['url']);
+    const secret = secretOrDefault(ctx, 'x.post', ['url'], { url: DEFAULT_X_POST.url });
     const { text: rawJsonText } = await mcpJson(ctx, 'fetch_x_post', { url: secret.url }, 60000);
     const raw = toolPayload(rawJsonText, 'fetch_x_post');
     const text = textOf(raw);
@@ -456,16 +480,21 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'get_weather');
     return mustContain(raw, ['東京'], 'jma');
   }),
-  toolCase('flight.status', ['get_flight_status'], ['yahoo:airport'], true, 90000, false, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_flight_status', { airport: 'HND' }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_flight_status');
-    const text = textOf(raw);
-    if (!text.includes('flights') && !text.includes('便')) throw new LiveFail('flight status missing flights evidence');
-    const parsed = parseFirstJson(text, 'get_flight_status') as { flights?: unknown[] };
-    if (!Array.isArray(parsed.flights) || parsed.flights.length === 0) {
-      throw new LiveUnverified('no flights observed at check time (cannot prove positive retrieval)');
+  toolCase('flight.status', ['get_flight_status'], ['yahoo:airport'], true, 120000, false, async (ctx) => {
+    // Deep night has few domestic departures; fall back to international before giving up.
+    const variants: Array<Record<string, unknown>> = [
+      { airport: 'HND' },
+      { airport: 'HND', category: 'international' },
+      { airport: 'NRT', category: 'international' },
+    ];
+    for (const args of variants) {
+      const { text: rawJsonText } = await mcpJson(ctx, 'get_flight_status', args, 60000);
+      const parsed = toolPayload(rawJsonText, 'get_flight_status') as { flights?: unknown[] };
+      if (Array.isArray(parsed.flights) && parsed.flights.length > 0) {
+        return { sources: [{ source: 'yahoo-airport', count: parsed.flights.length, format: 'json', upstreamStatus: 'unknown' }] };
+      }
     }
-    return { sources: [{ source: 'yahoo-airport', count: parsed.flights.length, format: 'json', upstreamStatus: 'unknown' }] };
+    throw new LiveUnverified('no flights observed in any variant (cannot prove positive retrieval)');
   }),
   ...trackingCases(),
   ...trackingNegativeCases(),

@@ -250,7 +250,7 @@ async function runToolCase(
         : e instanceof LiveBlocked ? 'blocked'
         : e instanceof LiveUnverified ? 'unverified'
         : 'fail';
-      if (status === 'unavailable' && attempts === 1) {
+      if ((status === 'unavailable' || status === 'unverified') && attempts === 1 && c.externalRequired) {
         recovered = true;
         await new Promise((r) => setTimeout(r, 2000));
         continue;
