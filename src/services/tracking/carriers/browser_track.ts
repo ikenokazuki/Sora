@@ -33,7 +33,7 @@ export async function renderTrackingPage(url: string, options: RenderOptions = {
     const page = await context.newPage();
     await stealth.applyStealthEvasions(page);
     if (typeof engine.setupPageSecurity === 'function') await engine.setupPageSecurity(page, true);
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Math.min(20000, timeoutMs) });
     const deadline = Date.now() + timeoutMs;
     let bodyText = '';
     for (;;) {
