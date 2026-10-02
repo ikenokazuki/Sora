@@ -130,7 +130,7 @@ export function collectKnownCaseIds(toolCaseIds: string[]): Set<string> {
   for (const id of toolCaseIds) {
     if (id.startsWith('track.')) ids.add(`tracking.${id.slice('track.'.length)}.positive`);
   }
-  ids.add('social.weibo.post');
+  for (const platform of ['weibo', 'threads', 'instagram', 'facebook']) ids.add(`social.${platform}.post`);
   ids.add('x.post');
   ids.add('hotel.positive');
   return ids;
