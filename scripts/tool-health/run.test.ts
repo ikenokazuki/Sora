@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  checkTrackingNoCreds,
   checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
 import {
@@ -35,6 +36,9 @@ describe('classification', () => {
     expect(() => checkTrackingResult({ trackingNumber: 'N1', status: 'not_found', events: [] }, 'N1', 'yamato')).toThrow(LiveUnverified);
     expect(() => checkTrackingResult({ trackingNumber: 'N1', status: 'unknown', events: [] }, 'N1', 'ups')).toThrow(LiveUnverified);
     expect(() => checkTrackingResult({ other: 1 }, 'N1', 'yamato')).toThrow(LiveFail);
+    const soft = checkTrackingNoCreds({ trackingNumber: 'N1', status: 'unknown', trackingUrl: 'https://www.ups.com/track?x=N1' }, 'N1', 'ups');
+    expect(soft.sources[0].source).toBe('ups');
+    expect(() => checkTrackingNoCreds({ trackingNumber: 'N1', status: 'in_transit', events: [{}] }, 'N1', 'ups')).toThrow(LiveFail);
   });
   test('provider HTTP statuses classify without guessing 200', () => {
     expect(() => classifyProviderError(new ProviderHttpError(429), 's')).toThrow(LiveUnavailable);
