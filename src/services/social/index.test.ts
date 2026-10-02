@@ -127,3 +127,18 @@ describe('social fetch', () => {
     await expect(svc.search({ platform: 'weibo', query: '  ', limit: 10, lookbackHours: 24 }, ctx())).rejects.toThrow();
   });
 });
+
+describe('F6 discovery failure is unavailable, not empty', () => {
+  test('web search throwing yields unavailable', async () => {
+    const svc = createSocialService(baseDeps({ webSearch: { search: async () => { throw new Error('HTTP 503'); } } }));
+    const r = await svc.search({ platform: 'threads', query: 'starbucks', limit: 5, lookbackHours: 24 }, ctx());
+    expect(r.status).toBe('unavailable');
+    expect(r.items).toHaveLength(0);
+  });
+  test('clean search with no urls yields empty', async () => {
+    const svc = createSocialService(baseDeps({ webSearch: { search: async () => [] } }));
+    const r = await svc.search({ platform: 'threads', query: 'nosuchpostxyz', limit: 5, lookbackHours: 24 }, ctx());
+    expect(r.status).toBe('empty');
+    expect(r.items).toHaveLength(0);
+  });
+});
