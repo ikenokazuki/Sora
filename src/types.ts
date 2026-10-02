@@ -3129,6 +3129,49 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      '/geo/poi': {
+        post: {
+          summary: 'OpenPOI直結 全国施設POI検索 API',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(PoiSearchRequestSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '緯度経度付き施設一覧（保存時は licenses/attributions を保持）',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(PoiSearchResultSchema),
+                },
+              },
+            },
+          },
+        },
+        get: {
+          summary: 'OpenPOI直結 全国施設POI検索 API (GET クエリ指定)',
+          parameters: [
+            { name: 'query', in: 'query', schema: { type: 'string' }, description: '施設・住所キーワード (例: "ラーメン")' },
+            { name: 'lat', in: 'query', schema: { type: 'number' }, description: '中心緯度 (lon とペア指定)' },
+            { name: 'lon', in: 'query', schema: { type: 'number' }, description: '中心経度 (lat とペア指定)' },
+            { name: 'radiusMeters', in: 'query', schema: { type: 'number' }, description: '中心からの半径m (bbox 指定時は無視)' },
+            { name: 'bbox', in: 'query', schema: { type: 'string' }, description: '矩形範囲 "minLng,minLat,maxLng,maxLat"' },
+            { name: 'limit', in: 'query', schema: { type: 'number' }, description: '最大件数 (1-50)' },
+          ],
+          responses: {
+            '200': {
+              description: '緯度経度付き施設一覧（保存時は licenses/attributions を保持）',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(PoiSearchResultSchema),
+                },
+              },
+            },
+          },
+        },
+      },
       '/traffic/flight': {
         post: {
           summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API',

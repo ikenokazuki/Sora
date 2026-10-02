@@ -55,3 +55,8 @@ bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health
 - `baidu_hot`・`bluesky` は実行ホストから 403 を受けることがある（当日は自宅回線で 403）。GitHub Actions 等の別通信環境で比較し、`blocked` と取得不能を区別して記録すること。
 - `inspect_image` の live 参照画像は `https://www.w3.org/Icons/valid-xhtml10`（Google ロゴ直リンクは 404 化のため不使用）。
 - `browser_action` の `evaluate` は server policy で無効。live は click の実行証拠（actionOutputs/result + renderedWithBrowser）で確認する。
+
+## 配送test data（資格情報なし運用）
+
+- 国内5社（yamato/sagawa/japanpost/seino/fukutsu）はスクレイピングのため資格情報不要。実追跡番号さえあれば正の取得を検証できる。
+- 米3社（ups/fedex/dhl）は公式API専用のため、正の取得には資格情報が必要。資格情報なし時は仕様通りのfail-soft契約（`status: unknown`＋公式追跡URL＋番号一致）を検証してpassとする。

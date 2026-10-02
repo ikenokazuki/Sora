@@ -249,6 +249,21 @@ function carrierCredsPresent(carrier: string): boolean {
   return groups.every((g) => g.split('|').some((name) => (process.env[name] ?? '').length > 0));
 }
 
+export function checkTrackingNoCreds(raw: unknown, trackingNumber: string, carrier: string): CaseObservation {
+  const text = textOf(raw);
+  if (!text.includes(trackingNumber)) throw new LiveFail(`track_package (${carrier}) response missing tracking number`);
+  let parsed: { status?: string; trackingUrl?: string };
+  try {
+    parsed = JSON.parse(text) as { status?: string; trackingUrl?: string };
+  } catch {
+    throw new LiveFail(`track_package (${carrier}) returned non-JSON payload`);
+  }
+  if (parsed.status !== 'unknown' || typeof parsed.trackingUrl !== 'string' || !parsed.trackingUrl.startsWith('https://')) {
+    throw new LiveFail(`track_package (${carrier}) broke the no-credential fail-soft contract`);
+  }
+  return { detail: 'API-only carrier without credentials: fail-soft contract verified', sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
+}
+
 export function checkTrackingResult(raw: unknown, trackingNumber: string, carrier: string): CaseObservation {
   const text = textOf(raw);
   if (!text.includes(trackingNumber)) throw new LiveFail(`track_package (${carrier}) response missing tracking number`);
@@ -272,15 +287,14 @@ function trackingCases(): HealthCase[] {
   const carriers = ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'];
   return carriers.map((carrier) => toolCase(`track.${carrier}`, ['track_package'], [`tracking:${carrier}`], true, 90000, false, async (ctx) => {
     await ensureEnabled(ctx, '荷物追跡', 30000);
-    if (!carrierCredsPresent(carrier)) {
-      throw new LiveUnverified(`track_package (${carrier}) credentials not configured in runner env`);
-    }
     const secret = secretOrUnverified(ctx, `tracking.${carrier}.positive`, ['trackingNumber']);
-    const args: Record<string, unknown> = carrier === 'auto'
-      ? { trackingNumber: secret.trackingNumber, noCache: true }
-      : { carrier, trackingNumber: secret.trackingNumber, noCache: true };
-    const { text: rawJsonText } = await mcpJson(ctx, 'track_package', args, 80000);
+    const { text: rawJsonText } = await mcpJson(ctx, 'track_package', { carrier, trackingNumber: secret.trackingNumber, noCache: true }, 80000);
     const raw = toolPayload(rawJsonText, 'track_package');
+    if (!carrierCredsPresent(carrier) && CARRIER_CRED_ENV[carrier]) {
+      // API-only carriers without credentials: verify the documented fail-soft
+      // contract (structured unknown + official tracking URL) instead.
+      return checkTrackingNoCreds(raw, secret.trackingNumber, carrier);
+    }
     return checkTrackingResult(raw, secret.trackingNumber, carrier);
   }));
 }
