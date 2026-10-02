@@ -308,7 +308,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasDisaster) {
     tier1Directives.push(
-      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation).",
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi).",
     );
   }
   if (hasYahoo) {
@@ -1689,6 +1689,39 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         }
       },
       { defaultEnabled: deferredDefault, keywords: ['標高', '海抜', 'ジオコーディング', '国土地理院', '住所検索', '座標', '津波リスク', '水害'] },
+    );
+
+    // Tool: search_poi (OpenPOI 全国施設POI検索) - DEFERRED
+    registerTool(
+      mcpServer,
+      toolCatalog,
+      sessionActivated,
+      'search_poi',
+      'disaster',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から営業許可・届出施設を検索し、緯度経度付きで返します。避難所候補・病院・駅周辺施設の座標取得に。get_elevation / search_route と組み合わせ可能。返収: { count, pois: [{ name, address, prefecture, city, category, lat, lng, source, licenses }] }',
+      {
+        query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
+        lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
+        lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
+        radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)'),
+        bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
+        limit: z.number().int().min(1).max(50).optional().describe('最大件数 (1-50, デフォルト: 10)'),
+      },
+      async (opts) => {
+        try {
+          const { searchOpenPoi } = await import('./services/poi.js');
+          const result = await searchOpenPoi(opts);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        } catch (err: any) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `POI search error: ${err?.message || err}` }],
+          };
+        }
+      },
+      { defaultEnabled: deferredDefault, keywords: ['POI', '施設検索', '施設', '住所検索', '避難所', '病院', '地図', '座標', '周辺施設', 'poi', 'places', '営業許可'] },
     );
   }
 

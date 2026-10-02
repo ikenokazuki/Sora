@@ -10,6 +10,7 @@ import {
   fetchElevationAndCoordinates,
   fetchFlightStatus,
 } from '../scraper.js';
+import { searchOpenPoi } from '../services/poi.js';
 import {
   DisasterWarningsRequestSchema,
   EarthquakeRequestSchema,
@@ -19,6 +20,7 @@ import {
   DietMinutesSearchRequestSchema,
   ElevationRequestSchema,
   FlightStatusRequestSchema,
+  PoiSearchRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
 
@@ -297,6 +299,55 @@ publicDataRoutes.get('/geo/elevation', async (c) => {
     return c.json(result);
   } catch (err: any) {
     return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  }
+});
+
+// OpenPOI 全国施設POI検索 (POST /geo/poi, GET /geo/poi)
+publicDataRoutes.post('/geo/poi', async (c) => {
+  let rawBody: any;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const parsed = PoiSearchRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid POI search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchOpenPoi(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
+  }
+});
+
+publicDataRoutes.get('/geo/poi', async (c) => {
+  const num = (key: string): number | undefined => {
+    const v = c.req.query(key);
+    if (v === undefined || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const parsed = PoiSearchRequestSchema.safeParse({
+    query: c.req.query('query') ?? c.req.query('q'),
+    lat: num('lat'),
+    lon: num('lon'),
+    radiusMeters: num('radiusMeters') ?? num('radius'),
+    bbox: c.req.query('bbox'),
+    limit: num('limit'),
+  });
+  if (!parsed.success) {
+    return formatError(c, 'Invalid POI search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await searchOpenPoi(parsed.data);
+    return c.json(result);
+  } catch (err: any) {
+    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 

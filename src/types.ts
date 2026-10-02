@@ -809,6 +809,41 @@ export const ElevationRequestSchema = z.object({
 });
 export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
 
+export const PoiSearchRequestSchema = z.object({
+  query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
+  lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
+  lon: z.number().min(-180).max(180).optional().describe('中心経度、経度が先 (lat とペア指定)'),
+  radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)'),
+  bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
+  limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
+}).refine((v) => v.query !== undefined || v.bbox !== undefined || (v.lat !== undefined && v.lon !== undefined), {
+  message: 'query, bbox, または lat+lon のいずれかを指定してください',
+}).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
+  message: 'lat と lon はペアで指定してください',
+});
+export type PoiSearchOptions = z.infer<typeof PoiSearchRequestSchema>;
+
+export const PoiItemSchema = z.object({
+  name: z.string().describe('施設名'),
+  nameKana: z.string().optional().describe('施設名カナ'),
+  prefecture: z.string().optional().describe('都道府県'),
+  city: z.string().optional().describe('市区町村'),
+  address: z.string().optional().describe('所在地'),
+  category: z.string().optional().describe('正規化カテゴリ'),
+  lat: z.number().optional().describe('緯度 (WGS84)'),
+  lng: z.number().optional().describe('経度 (WGS84)'),
+  level: z.number().int().optional().describe('ジオコーディング精度'),
+  source: z.string().optional().describe('代表出所 (jff/overture 等)'),
+  licenses: z.array(z.string()).describe('保存時に保持する出所ライセンス一覧'),
+  attributions: z.array(z.string()).describe('保存時に保持する帰属表示'),
+});
+export const PoiSearchResultSchema = z.object({
+  query: z.string().optional().describe('検索クエリ'),
+  count: z.number().describe('返却件数'),
+  pois: z.array(PoiItemSchema).describe('施設一覧'),
+  source: z.literal('openpoi').describe('データソース'),
+});
+
 export const FlightStatusRequestSchema = z.object({
   airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")'),
   type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")'),
