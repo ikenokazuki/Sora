@@ -27,9 +27,17 @@ import { trackingRoutes } from './routes/tracking.js';
 import { hotelRoutes } from './routes/hotels.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { socialRoutes } from './routes/social.js';
+import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 export { formatError, mcpSessionManager };
 
 export const app = new Hono();
+
+// MCP trust boundary (F1): validate Host + Origin before global CORS answers.
+// Non-browser clients omit Origin; Host is always required. Violations get 403.
+const mcpOriginGuard = createMcpOriginMiddleware();
+app.use('/mcp', mcpOriginGuard);
+app.use('/sse', mcpOriginGuard);
+app.use('/message', mcpOriginGuard);
 
 // ==========================================
 // 1. CORS, セキュリティヘッダー & DoS 防御 (Body Limit)
