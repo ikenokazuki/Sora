@@ -112,6 +112,75 @@ const INTEGRATED_REALTIME_VERBOSE_KEYS = [
   'resultsMerged',
 ] as const;
 
+function searchItemIdentity(item: Record<string, any>): string | undefined {
+  const rawUrl = item.url || item.link;
+  try {
+    const url = new URL(rawUrl);
+    if (/^(?:www\.)?(?:x|twitter)\.com$/i.test(url.hostname)) {
+      const id = url.pathname.match(/\/(?:i\/web\/)?status\/(\d+)(?:\/|$)/)?.[1];
+      if (id) return `x:${id}`;
+    }
+    url.hash = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^utm_/i.test(key) || /^(?:fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    return `url:${url.toString()}`;
+  } catch {
+    if (item.source === 'x' && /^\d+$/.test(String(item.id))) return `x:${item.id}`;
+    return undefined;
+  }
+}
+
+function mergeSearchItems(first: Record<string, any>, next: Record<string, any>, sources: string[]): Record<string, any> {
+  const out = { ...next, ...first };
+  for (const key of ['markdown', 'content', 'text', 'snippet', 'description']) {
+    if (typeof next[key] === 'string' && (!first[key] || next[key].length > first[key].length)) out[key] = next[key];
+  }
+  if (first.isOfficial === true || next.isOfficial === true) out.isOfficial = true;
+  out.retrievalSources = [...new Set([...(first.retrievalSources || []), ...(next.retrievalSources || []), ...sources])];
+  return out;
+}
+
+/** Exact identity merging always runs, including full/verbose output. */
+function mergeIntegratedSearchDuplicates<T extends Record<string, any>>(result: T): T {
+  if (!Array.isArray(result.results)) return result;
+  let changed = false;
+  const mergeBranch = (items: Record<string, any>[], source: string) => {
+    const unique: Record<string, any>[] = [];
+    const positions = new Map<string, number>();
+    for (const item of items) {
+      const key = searchItemIdentity(item);
+      const position = key ? positions.get(key) : undefined;
+      if (position !== undefined) {
+        unique[position] = mergeSearchItems(unique[position], item, [source]);
+        changed = true;
+      } else {
+        if (key) positions.set(key, unique.length);
+        unique.push(item);
+      }
+    }
+    return unique;
+  };
+  let results = mergeBranch(result.results, 'web');
+  let realtime = result.realtime;
+  if (Array.isArray(realtime?.items)) {
+    const webByIdentity = new Map(results.map((item) => [searchItemIdentity(item), item]).filter(([key]) => key !== undefined) as [string, Record<string, any>][]);
+    const mergedWeb = new Set<Record<string, any>>();
+    const items = mergeBranch(realtime.items, 'realtime').map((item) => {
+      const key = searchItemIdentity(item);
+      const web = key?.startsWith('x:') ? webByIdentity.get(key) : undefined;
+      if (!web) return item;
+      changed = true;
+      mergedWeb.add(web);
+      return mergeSearchItems(item, web, ['web', 'realtime']);
+    });
+    results = results.filter((item) => !mergedWeb.has(item));
+    realtime = { ...realtime, items, ...('count' in realtime ? { count: items.length } : {}) };
+  }
+  return changed ? { ...result, results, ...('count' in result ? { count: results.length } : {}), ...(realtime ? { realtime } : {}) } : result;
+}
+
 /**
  * Compact integrated search response.
  * Item order and evidence fields pass through untouched; per-item
@@ -121,8 +190,10 @@ const INTEGRATED_REALTIME_VERBOSE_KEYS = [
 export function formatCompactIntegratedSearchResponse<
   T extends Record<string, any> | null | undefined,
 >(result: T, options: CompactResponseOptions = {}): T {
-  if (!result || typeof result !== 'object' || options?.verbose === true) return result;
-  const out: Record<string, any> = { ...result };
+  if (!result || typeof result !== 'object') return result;
+  const merged = mergeIntegratedSearchDuplicates(result);
+  if (options?.verbose === true) return merged;
+  const out: Record<string, any> = { ...merged };
   if (Array.isArray(out.results)) {
     out.results = out.results.map(stripInternalItemKeys);
   }

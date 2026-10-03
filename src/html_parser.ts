@@ -7,6 +7,7 @@ import type {
   FieldEvidence,
   ImageItem,
   MediaInfo,
+  ScrapeContentStatus,
   TableData,
 } from './types.js';
 import {
@@ -19,6 +20,7 @@ import {
   safeTruncateMarkdown,
 } from './enrichment.js';
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
+import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 
 // ==========================================
 // 1. TurndownService インスタンス & GFM 拡張
@@ -780,6 +782,7 @@ export function convertHtmlToMarkdown(
 ): {
   title: string;
   markdown: string;
+  contentStatus: ScrapeContentStatus;
   ogImage?: string;
   description?: string;
   publishedTime?: string;
@@ -857,8 +860,8 @@ export function convertHtmlToMarkdown(
     $('meta[property="article:published_time"]').attr('content') ||
     $('meta[name="pubdate"]').attr('content') ||
     $('meta[name="publish-date"]').attr('content') ||
-    $('time[datetime]').first().attr('datetime') ||
     jsonLdMeta.publishedTime ||
+    $('time[itemprop~="datePublished"][datetime], time[pubdate][datetime], time.published[datetime]').first().attr('datetime') ||
     undefined;
 
   const author =
@@ -1056,6 +1059,10 @@ export function convertHtmlToMarkdown(
   const header = frontmatterLines.length > 0 ? `---\n${frontmatterLines.join('\n')}\n---\n\n` : '';
 
   // パンくず階層コンテキスト & イベント概要ブロック
+  let bodyMarkdown = cleanMarkdownTokens(turndown.turndown(contentHtml), keepDataImages);
+  const hasBody = hasMeaningfulPageContent(bodyMarkdown);
+  if (!hasBody) bodyMarkdown = '';
+  let hasStructuredDescription = false;
   const contextPrefixLines: string[] = [];
   if (breadcrumb.length > 0) {
     contextPrefixLines.push(`> 📍 **階層**: ${breadcrumb.join(' > ')}`);
@@ -1064,17 +1071,29 @@ export function convertHtmlToMarkdown(
     const ev = events[0];
     const details = [
       ev.startDate ? `日時: ${ev.startDate}` : '',
+      ev.endDate ? `終了: ${ev.endDate}` : '',
       ev.location ? `会場: ${ev.location}` : '',
       ev.performer ? `出演: ${ev.performer}` : '',
     ]
       .filter(Boolean)
       .join(' | ');
     contextPrefixLines.push(`> 📅 **イベント情報**: ${ev.name}${details ? ' (' + details + ')' : ''}`);
+    if (ev.description?.trim()) {
+      const descriptionMarkdown = cleanMarkdownTokens(turndown.turndown(ev.description), keepDataImages);
+      const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, '');
+      if (descriptionMarkdown && !normalize(bodyMarkdown).includes(normalize(descriptionMarkdown))) {
+        contextPrefixLines.push('', descriptionMarkdown);
+      }
+      hasStructuredDescription = hasMeaningfulPageContent(descriptionMarkdown);
+    }
   }
   const contextPrefix = contextPrefixLines.length > 0 ? `${contextPrefixLines.join('\n')}\n\n` : '';
 
   // 11. HTML -> Markdown 変換 & クレンジング
-  let markdown = header + contextPrefix + turndown.turndown(contentHtml);
+  const contentStatus: ScrapeContentStatus = hasBody ? 'body'
+    : hasStructuredDescription ? 'structured_data'
+    : description || events.length > 0 ? 'metadata_only' : 'unavailable';
+  let markdown = header + contextPrefix + bodyMarkdown;
   markdown = cleanMarkdownTokens(markdown, keepDataImages);
 
   if (stripLinks) {
@@ -1105,6 +1124,10 @@ export function convertHtmlToMarkdown(
     jsonLd,
     html: rawHtml,
   });
+  if (contentStatus === 'metadata_only' || contentStatus === 'unavailable') {
+    qualityRes.score = Math.min(qualityRes.score, 20);
+    qualityRes.reasons.push('no_usable_page_content');
+  }
 
   const pageType = detectPageType({
     jsonLd,
@@ -1153,6 +1176,7 @@ export function convertHtmlToMarkdown(
   return {
     title,
     markdown: truncatedMarkdown,
+    contentStatus,
     ogImage,
     description,
     publishedTime,

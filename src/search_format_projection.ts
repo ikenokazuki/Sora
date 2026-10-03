@@ -13,6 +13,8 @@ export function projectRequestedScrapeFormats(
 ): Record<string, any> {
   const requested: readonly ScrapeFormat[] = formats && formats.length > 0 ? formats : ['markdown'];
   const out: Record<string, any> = {};
+  if (scrape.contentStatus) out.contentStatus = scrape.contentStatus;
+  if (Array.isArray(scrape.events) && scrape.events.length > 0) out.events = scrape.events;
   if (requested.includes('markdown')) {
     const content = typeof scrape?.content === 'string' ? scrape.content : typeof scrape?.markdown === 'string' ? scrape.markdown : '';
     const minChars = Math.max(0, options.minMarkdownChars ?? 0);
