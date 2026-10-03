@@ -271,7 +271,7 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
   };
   mustHaveItems(raw, 'search_poi', 'name');
   const center = result.centerResolved;
-  if (center?.source !== 'geocoding.jp') throw new LiveFail('search_poi missing geocoding.jp resolution');
+  if (center?.source !== 'nominatim') throw new LiveFail('search_poi missing Nominatim resolution');
   requireHarajuku(center.lat, center.lon, 'search_poi center');
   for (const poi of result.pois ?? []) {
     if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number' || !Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) {
@@ -284,7 +284,7 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
     if (distance > 1010) throw new LiveFail('search_poi facility is outside the requested 1000m radius');
   }
   return { sources: [
-    { source: 'geocoding.jp', format: 'xml', upstreamStatus: 'unknown', cached: false },
+    { source: 'nominatim', format: 'json', upstreamStatus: 'unknown', cached: false },
     { source: 'openpoi', format: 'json', upstreamStatus: 'unknown', count: result.pois?.length },
   ] };
 }
@@ -561,20 +561,20 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_earthquake');
     return mustContain(raw, ['20'], 'p2p-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['geocoding.jp', 'gsi'], true, 90000, false, async (ctx) => {
+  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address: '原宿', noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'get_elevation');
     const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as { elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string };
-    if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters) || parsed.geocodingSource !== 'geocoding.jp') {
+    if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters) || parsed.geocodingSource !== 'nominatim') {
       throw new LiveFail('get_elevation missing numeric elevation/coordinates');
     }
     requireHarajuku(parsed.lat, parsed.lon, 'get_elevation');
     return { sources: [
-      { source: 'geocoding.jp', format: 'xml', upstreamStatus: 'unknown', cached: false },
+      { source: 'nominatim', format: 'json', upstreamStatus: 'unknown', cached: false },
       { source: 'gsi', format: 'json', upstreamStatus: 'unknown', cached: false },
     ] };
   }),
-  toolCase('geo.poi', ['search_poi'], ['geocoding.jp', 'openpoi'], true, 90000, false, async (ctx) => {
+  toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, false, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');
     const observation = checkHarajukuPoi(raw);

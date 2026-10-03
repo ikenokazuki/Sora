@@ -276,7 +276,7 @@ export interface ElevationResult {
   query?: string;
   address?: string;
   matchedTitle?: string;
-  geocodingSource?: 'geocoding.jp';
+  geocodingSource?: GeocodingResult['source'];
   needsVerification?: boolean;
   lat: number;
   lon: number;
@@ -286,7 +286,7 @@ export interface ElevationResult {
   source: 'gsi';
 }
 
-/** geocoding.jpによる住所・地名解決と国土地理院の標高（海抜）取得。 */
+/** Nominatimによる住所・地名解決と国土地理院の標高（海抜）取得。 */
 export async function fetchElevationAndCoordinates(options: {
   address?: string;
   lat?: number;

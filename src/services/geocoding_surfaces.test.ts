@@ -12,11 +12,14 @@ describe('shared geocoding across MCP and REST', () => {
     let geocodingRequests = 0;
     const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
-      if (url.hostname === 'www.geocoding.jp') {
+      if (url.hostname === 'nominatim.openstreetmap.org') {
         geocodingRequests++;
         expect(url.searchParams.get('q')).toBe('原宿');
         await Bun.sleep(5);
-        return new Response('<result><address>原宿</address><coordinate><lat>35.669968</lat><lng>139.709008</lng></coordinate><needs_to_verify>yes</needs_to_verify><google_maps>東京都渋谷区神宮前 原宿</google_maps></result>');
+        return Response.json([
+          { display_name: '東京都渋谷区神宮前 原宿', lat: '35.669968', lon: '139.709008', address: { 'ISO3166-2-lvl4': 'JP-13' } },
+          { display_name: '原宿, 群馬県', lat: '36.3', lon: '139.0', address: { 'ISO3166-2-lvl4': 'JP-10' } },
+        ]);
       }
       if (url.hostname === 'api.openpoiapi.com') {
         expect(url.searchParams.get('center')).toBe('139.709008,35.669968');
@@ -44,15 +47,15 @@ describe('shared geocoding across MCP and REST', () => {
       for (const res of [get, post]) {
         expect(res.status).toBe(200);
         expect((await res.json() as any).centerResolved).toMatchObject({
-          source: 'geocoding.jp', lat: 35.669968, lon: 139.709008, needsVerification: true,
+          source: 'nominatim', lat: 35.669968, lon: 139.709008, needsVerification: true,
         });
       }
       expect(mcp.isError).not.toBe(true);
       const block = (mcp.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text');
-      expect(JSON.parse(block!.text!).centerResolved).toMatchObject({ source: 'geocoding.jp', needsVerification: true });
+      expect(JSON.parse(block!.text!).centerResolved).toMatchObject({ source: 'nominatim', needsVerification: true });
       expect(elevation.status).toBe(200);
       expect(await elevation.json()).toMatchObject({
-        source: 'gsi', geocodingSource: 'geocoding.jp', matchedTitle: '東京都渋谷区神宮前 原宿',
+        source: 'gsi', geocodingSource: 'nominatim', matchedTitle: '東京都渋谷区神宮前 原宿',
         lat: 35.669968, lon: 139.709008, elevationMeters: 34, needsVerification: true,
       });
       expect(geocodingRequests).toBe(1);

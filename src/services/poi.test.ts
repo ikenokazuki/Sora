@@ -100,10 +100,10 @@ describe('openpoi center geocoding', () => {
     };
     const r = await searchOpenPoi({ query: 'ラーメン', center: '原宿' }, fetchFn, 5000, async () => ({
       lat: 35.669968, lon: 139.709008, address: '東京都渋谷区神宮前 原宿',
-      source: 'geocoding.jp', needsVerification: true,
+      source: 'nominatim', needsVerification: true,
     }));
     expect(r.centerResolved).toMatchObject({
-      source: 'geocoding.jp', needsVerification: true, address: '東京都渋谷区神宮前 原宿',
+      source: 'nominatim', needsVerification: true, address: '東京都渋谷区神宮前 原宿',
     });
     expect(urls).toHaveLength(1);
     expect(new URL(urls[0]).searchParams.get('center')).toBe('139.709008,35.669968');
