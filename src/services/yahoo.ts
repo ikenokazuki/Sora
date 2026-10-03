@@ -2047,6 +2047,19 @@ export async function fetchTweetsForUrlOrUser(
   };
 }
 
+/** 上流の item.source（例: "YouTube"）は platform に移し、Sora の source を固定する。 */
+export function normalizeYahooMediaItems(json: any, source: 'image' | 'video'): any {
+  json.source = source;
+  if (Array.isArray(json.items)) {
+    json.items = json.items.map((item: any) => ({
+      ...item,
+      ...(item.source && item.source !== source ? { platform: item.source } : {}),
+      source,
+    }));
+  }
+  return json;
+}
+
 /** Yahoo 画像検索 */
 export async function searchYahooImage(options: {
   query: string;
@@ -2061,12 +2074,7 @@ export async function searchYahooImage(options: {
 
   const content = mcpRes?.content?.[0]?.text || '{}';
   try {
-    const json = JSON.parse(content);
-    json.source = 'image';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'image' as const, ...item }));
-    }
-    return json;
+    return normalizeYahooMediaItems(JSON.parse(content), 'image');
   } catch {
     return { source: 'image', raw: content };
   }
@@ -2086,12 +2094,7 @@ export async function searchYahooVideo(options: {
 
   const content = mcpRes?.content?.[0]?.text || '{}';
   try {
-    const json = JSON.parse(content);
-    json.source = 'video';
-    if (Array.isArray(json.items)) {
-      json.items = json.items.map((item: any) => ({ source: 'video' as const, ...item }));
-    }
-    return json;
+    return normalizeYahooMediaItems(JSON.parse(content), 'video');
   } catch {
     return { source: 'video', raw: content };
   }
