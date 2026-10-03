@@ -395,6 +395,8 @@ searchRoutes.post('/transit/route', async (c) => {
       day: body.day,
       hour: body.hour,
       minute: body.minute,
+      date: body.date,
+      time: body.time,
       timeType: body.timeType,
       ticket: body.ticket,
       seatPreference: body.seatPreference,

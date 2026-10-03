@@ -20,7 +20,7 @@ export function buildSearchWebCacheKey(o: SearchWebRequest): string {
   return ['search:web',o.query,(o.includeDomains||[]).join(','),(o.excludeDomains||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
 }
 export async function searchWebWithFormats(o: SearchWebRequest,deps: SearchWebFormatDependencies=DEFAULT_DEPS): Promise<any> {
-  const base=await deps.searchYahooWeb({query:o.query,includeDomains:o.includeDomains,excludeDomains:o.excludeDomains,updated:o.updated});
+  const base=await deps.searchYahooWeb({query:o.query,includeDomains:o.includeDomains,excludeDomains:o.excludeDomains,updated:o.updated,noCache:o.noCache});
   const formats=o.formats as ScrapeFormat[]|undefined; const has=Array.isArray(formats)&&formats.length>0;
   const compactOpt={verbose:(o as any).verbose};
   if(!has && o.limit===undefined) return formatCompactWebSearchResponse(base,compactOpt);
