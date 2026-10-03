@@ -52,10 +52,10 @@ describe('shared geocoding across MCP and REST', () => {
       }
       expect(mcp.isError).not.toBe(true);
       const block = (mcp.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text');
-      expect(JSON.parse(block!.text!).centerResolved).toMatchObject({ source: 'nominatim', needsVerification: true });
+      expect(JSON.parse(block!.text!).centerResolved).toMatchObject({ source: 'nominatim', attribution: expect.stringContaining('OpenStreetMap'), needsVerification: true });
       expect(elevation.status).toBe(200);
       expect(await elevation.json()).toMatchObject({
-        source: 'gsi', geocodingSource: 'nominatim', matchedTitle: '東京都渋谷区神宮前 原宿',
+        source: 'gsi', geocodingSource: 'nominatim', geocodingAttribution: expect.stringContaining('OpenStreetMap'), matchedTitle: '東京都渋谷区神宮前 原宿',
         lat: 35.669968, lon: 139.709008, elevationMeters: 34, needsVerification: true,
       });
       expect(geocodingRequests).toBe(1);

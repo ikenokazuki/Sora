@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
-import { geocodeAddress, type GeocodingResult } from './geocoding.js';
+import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
 
 export interface PoiItem {
   name: string;
@@ -79,6 +79,7 @@ export interface PoiCenterResolved {
   lat: number;
   lon: number;
   source?: GeocodingResult['source'];
+  attribution?: string;
   needsVerification: boolean;
   ambiguous: boolean;
   candidates: PoiCenterCandidate[];
@@ -112,6 +113,7 @@ export async function searchOpenPoi(
     centerResolved = {
       input: input.center, ...(coords.address ? { address: coords.address } : {}),
       lat: coords.lat, lon: coords.lon, source: coords.source,
+      ...(coords.source ? { attribution: GEOCODING_ATTRIBUTIONS[coords.source] } : {}),
       needsVerification: coords.needsVerification ?? false,
       ambiguous: coords.needsVerification ?? false, candidates: [],
     };

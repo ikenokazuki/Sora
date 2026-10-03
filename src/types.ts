@@ -942,6 +942,7 @@ export const PoiSearchResultSchema = z.object({
   centerResolved: z.object({
     input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number(),
     source: z.enum(['nominatim', 'gsi']).optional(),
+    attribution: z.string().optional().describe('座標解決の出典表示。結果を表示・公開する際に併記する'),
     needsVerification: z.boolean().describe('取得元の要確認フラグ。解決先が意図した地域か確認する'),
     ambiguous: z.boolean().describe('互換フィールド。needsVerificationと同値で、複数候補の存在を示すものではない'),
     candidates: z.array(z.object({ address: z.string(), lat: z.number(), lon: z.number() })).describe('互換フィールド。Nominatimは候補一覧を返さないため空配列'),
@@ -1786,6 +1787,7 @@ export const ElevationResultSchema = z.object({
   address: z.string().optional().describe('住所文字列'),
   matchedTitle: z.string().optional().describe('座標解決サービスが返した地名ラベル'),
   geocodingSource: z.enum(['nominatim', 'gsi']).optional().describe('住所・地名からの座標解決の取得元'),
+  geocodingAttribution: z.string().optional().describe('座標解決の出典表示。結果を表示・公開する際に併記する'),
   needsVerification: z.boolean().optional().describe('座標解決の取得元の要確認フラグ'),
   lat: z.number().describe('緯度 (10進数)'),
   lon: z.number().describe('経度 (10進数)'),

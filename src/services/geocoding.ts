@@ -12,6 +12,12 @@ export interface GeocodingResult {
   needsVerification: boolean;
 }
 
+// 座標解決結果を表示・公開する際に必要な出典表示（OSM は ODbL）。
+export const GEOCODING_ATTRIBUTIONS: Record<GeocodingResult['source'], string> = {
+  nominatim: '出典: © OpenStreetMap contributors (ODbL) https://www.openstreetmap.org/copyright',
+  gsi: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)',
+};
+
 interface GeocoderOptions {
   fetchFn?: (url: string, init?: RequestInit) => Promise<Response>;
   now?: () => number;
