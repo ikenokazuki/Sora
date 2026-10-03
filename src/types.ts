@@ -589,10 +589,15 @@ export const NewsSearchRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
+export const ChiebukuroStatusSchema = z.enum(['all', 'open', 'vote', 'solved']);
+
 export const ChiebukuroSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
   page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
+  status: ChiebukuroStatusSchema.optional()
+    .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
+    .meta({ default: 'all' }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -696,9 +701,15 @@ export const DisasterWarningsRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
+/** P2P地震情報の震度コード。10=震度1 … 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7 */
+export const EARTHQUAKE_SCALE_CODES = [10, 20, 30, 40, 45, 50, 55, 60, 70] as const;
+export const EarthquakeScaleSchema = z.literal(EARTHQUAKE_SCALE_CODES);
+
 export const EarthquakeRequestSchema = z.object({
   limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
-  minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 60=震度6強, 70=震度7)'),
+  minIntensity: EarthquakeScaleSchema.optional()
+    .describe('最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10)')
+    .meta({ default: 10 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -3284,7 +3295,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '主要運送会社・UPS 荷物追跡 API (運送会社 & 伝票番号指定)',
           parameters: [
-            { name: 'carrier', in: 'path', required: true, schema: { type: 'string', enum: ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups'] }, description: '運送会社コード' },
+            { name: 'carrier', in: 'path', required: true, schema: { type: 'string', enum: ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'] }, description: '運送会社コード' },
             { name: 'number', in: 'path', required: true, schema: { type: 'string' }, description: '追跡番号・送り状番号' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
