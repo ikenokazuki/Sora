@@ -257,22 +257,60 @@ function toolCase(
   return { id, toolNames: tools, dependencyIds: deps, externalRequired, timeoutMs, hotelLaneOnly, run };
 }
 
-function requireHarajuku(lat: number | undefined, lon: number | undefined, label: string): void {
-  if (typeof lat !== 'number' || typeof lon !== 'number' ||
-      !Number.isFinite(lat) || !Number.isFinite(lon) || lat < 35.66 || lat > 35.68 || lon < 139.70 || lon > 139.72) {
-    throw new LiveFail(label + ' coordinates are outside Harajuku, Tokyo');
+interface GeoBox { name: string; minLat: number; maxLat: number; minLon: number; maxLon: number }
+const HARAJUKU: GeoBox = { name: 'Harajuku, Tokyo', minLat: 35.66, maxLat: 35.68, minLon: 139.70, maxLon: 139.72 };
+const SHIBUYA_STATION: GeoBox = { name: 'Shibuya Station, Tokyo', minLat: 35.652, maxLat: 35.664, minLon: 139.695, maxLon: 139.708 };
+const NAGATACHO_1_7: GeoBox = { name: 'Nagatacho 1-7, Chiyoda', minLat: 35.67, maxLat: 35.69, minLon: 139.73, maxLon: 139.76 };
+
+function requireWithin(lat: number | undefined, lon: number | undefined, box: GeoBox, label: string): void {
+  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon) ||
+      lat < box.minLat || lat > box.maxLat || lon < box.minLon || lon > box.maxLon) {
+    throw new LiveFail(`${label} coordinates are outside ${box.name}`);
   }
+}
+
+function requireHarajuku(lat: number | undefined, lon: number | undefined, label: string): void {
+  requireWithin(lat, lon, HARAJUKU, label);
+}
+
+// 座標解決の取得元に応じた出典表示が付いているか確認する。
+const GEOCODING_ATTRIBUTION_MARKERS: Record<string, string> = { nominatim: 'OpenStreetMap', gsi: '国土地理院' };
+function requireGeocodingAttribution(source: string | undefined, attribution: string | undefined, label: string): void {
+  const marker = source ? GEOCODING_ATTRIBUTION_MARKERS[source] : undefined;
+  if (!marker || typeof attribution !== 'string' || !attribution.includes(marker)) {
+    throw new LiveFail(`${label} missing geocoding attribution for source ${source}`);
+  }
+}
+
+// 地名・住所を get_elevation で解決し、期待地域と出典を検査する。
+async function checkGeocodedElevation(ctx: CaseContext, address: string, box: GeoBox, sources: string[]): Promise<CaseObservation> {
+  const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address, noCache: true }, 60000);
+  const raw = toolPayload(rawJsonText, 'get_elevation');
+  const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as {
+    elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string; geocodingAttribution?: string;
+  };
+  if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters)) {
+    throw new LiveFail(`get_elevation (${address}) missing numeric elevation`);
+  }
+  if (!parsed.geocodingSource || !sources.includes(parsed.geocodingSource)) {
+    throw new LiveFail(`get_elevation (${address}) resolved by unexpected source ${parsed.geocodingSource}`);
+  }
+  requireWithin(parsed.lat, parsed.lon, box, `get_elevation (${address})`);
+  requireGeocodingAttribution(parsed.geocodingSource, parsed.geocodingAttribution, `get_elevation (${address})`);
+  return { sources: [...new Set([parsed.geocodingSource, 'gsi'])].map((source) =>
+    ({ source, format: 'json', upstreamStatus: 'unknown', cached: false })) };
 }
 
 function checkHarajukuPoi(raw: unknown): CaseObservation {
   const result = raw as {
-    centerResolved?: { source?: string; lat?: number; lon?: number };
+    centerResolved?: { source?: string; attribution?: string; lat?: number; lon?: number };
     pois?: Array<{ lat?: number; lng?: number }>;
   };
   mustHaveItems(raw, 'search_poi', 'name');
   const center = result.centerResolved;
   if (center?.source !== 'nominatim') throw new LiveFail('search_poi missing Nominatim resolution');
   requireHarajuku(center.lat, center.lon, 'search_poi center');
+  requireGeocodingAttribution(center.source, center.attribution, 'search_poi center');
   for (const poi of result.pois ?? []) {
     if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number' || !Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) {
       throw new LiveFail('search_poi facility missing finite coordinates');
@@ -561,19 +599,14 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_earthquake');
     return mustContain(raw, ['20'], 'p2p-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address: '原宿', noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_elevation');
-    const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as { elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string };
-    if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters) || parsed.geocodingSource !== 'nominatim') {
-      throw new LiveFail('get_elevation missing numeric elevation/coordinates');
-    }
-    requireHarajuku(parsed.lat, parsed.lon, 'get_elevation');
-    return { sources: [
-      { source: 'nominatim', format: 'json', upstreamStatus: 'unknown', cached: false },
-      { source: 'gsi', format: 'json', upstreamStatus: 'unknown', cached: false },
-    ] };
-  }),
+  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+    (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),
+  // geocoding.jp では駅名がヒットしなかったため、駅名の解決を個別に検査する。
+  toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+    (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
+  // 番地住所は OSM に無いことが多く国土地理院へフォールバックする。OSM 側で解決されても正しい地点なら合格。
+  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+    (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim'])),
   toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, false, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');
