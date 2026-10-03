@@ -128,6 +128,8 @@ scrapeRoutes.post('/map', async (c) => {
       includeSubdomains: body.includeSubdomains,
       timeoutMs: body.timeoutMs,
       since: body.since,
+      until: body.until,
+      noCache: body.noCache,
     });
 
     return c.json(result);

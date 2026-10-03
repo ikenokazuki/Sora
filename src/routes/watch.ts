@@ -67,10 +67,10 @@ watchRoutes.post('/watch/check', async (c) => {
   }
 
   try {
-    const result = parsed.data.id
-      ? await checkWatchTarget(parsed.data.id)
-      : await checkAllWatchTargets();
-    return c.json(result);
+    if (parsed.data.id) {
+      return c.json({ result: await checkWatchTarget(parsed.data.id) });
+    }
+    return c.json({ results: await checkAllWatchTargets() });
   } catch (err: any) {
     if (err?.code === 'WATCH_SELECTOR_NOT_FOUND') {
       return formatError(c, err.message || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);

@@ -8,8 +8,41 @@ const USER_AGENT =
 
 export { MUNICIPALITY_CITY_MAP };
 
+function tokyoNow(now: Date) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  return { year: Number(parts.year), month: Number(parts.month), day: Number(parts.day), hour: Number(parts.hour), minute: Number(parts.minute) };
+}
+
+/** date(YYYYMMDD)/time(HHMM) と year..minute を統合し、省略分は東京の現在時刻で埋める。 */
+export function resolveTransitDateTime(opts: TransitSearchOptions, now = new Date()) {
+  const base = tokyoNow(now);
+  const date = opts.date?.match(/^(\d{4})(\d{2})(\d{2})$/);
+  const time = opts.time?.match(/^(\d{2})(\d{2})$/);
+  return {
+    year: opts.year ?? (date ? Number(date[1]) : base.year),
+    month: opts.month ?? (date ? Number(date[2]) : base.month),
+    day: opts.day ?? (date ? Number(date[3]) : base.day),
+    hour: opts.hour ?? (time ? Number(time[1]) : base.hour),
+    minute: opts.minute ?? (time ? Number(time[2]) : base.minute),
+  };
+}
+
+export function transitCacheKey(opts: TransitSearchOptions): string {
+  const dt = resolveTransitDateTime(opts);
+  return `transit:${JSON.stringify([
+    opts.from, opts.to, opts.via ?? [], dt.year, dt.month, dt.day, dt.hour, dt.minute,
+    opts.timeType ?? 'departure', opts.ticket ?? 'ic', opts.seatPreference ?? '', opts.walkSpeed ?? '', opts.sortBy ?? 'time',
+    opts.useAirline !== false, opts.useShinkansen !== false, opts.useExpress !== false,
+    opts.useHighwayBus !== false, opts.useLocalBus !== false, opts.useFerry !== false,
+  ])}`;
+}
+
 /** 乗換案内の URL パラメータを組み立てる */
-function buildTransitUrl(opts: TransitSearchOptions): string {
+export function buildTransitUrl(opts: TransitSearchOptions): string {
   const base = 'https://transit.yahoo.co.jp/search/result';
   const params = new URLSearchParams();
 
@@ -26,13 +59,13 @@ function buildTransitUrl(opts: TransitSearchOptions): string {
   }
 
   // 日時
-  const now = new Date();
-  params.set('y', String(opts.year || now.getFullYear()));
-  params.set('m', String(opts.month || now.getMonth() + 1).padStart(2, '0'));
-  params.set('d', String(opts.day || now.getDate()).padStart(2, '0'));
-  params.set('hh', String(opts.hour ?? now.getHours()).padStart(2, '0'));
-  params.set('m1', String(Math.floor((opts.minute ?? now.getMinutes()) / 10)));
-  params.set('m2', String((opts.minute ?? now.getMinutes()) % 10));
+  const dt = resolveTransitDateTime(opts);
+  params.set('y', String(dt.year));
+  params.set('m', String(dt.month).padStart(2, '0'));
+  params.set('d', String(dt.day).padStart(2, '0'));
+  params.set('hh', String(dt.hour).padStart(2, '0'));
+  params.set('m1', String(Math.floor(dt.minute / 10)));
+  params.set('m2', String(dt.minute % 10));
 
   // 時刻タイプ
   const timeTypeMap: Record<string, string> = {
@@ -165,8 +198,9 @@ function parseTransitHtml(html: string, opts: TransitSearchOptions): any {
 }
 
 /** 乗換案内のメイン関数 */
-export async function searchTransitRoute(opts: TransitSearchOptions): Promise<any> {
-  const cacheKey = `transit:${opts.from}:${opts.to}:${(opts.via || []).join(',')}:${opts.year || ''}:${opts.month || ''}:${opts.day || ''}:${opts.hour ?? ''}:${opts.minute ?? ''}:${opts.timeType || 'departure'}`;
+export async function searchTransitRoute(input: TransitSearchOptions): Promise<any> {
+  const opts = { ...input, ...resolveTransitDateTime(input) };
+  const cacheKey = transitCacheKey(opts);
   const cached = getFromCache<any>(cacheKey);
   if (cached) return cached;
 

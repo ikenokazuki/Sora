@@ -74,3 +74,30 @@ B1〜B3は上流のYahoo MCP応答をそのまま返している。スキーマ�
 
 - MCP「返却」注記31件のうち、精査したのは上記3件だけ。
 - 外部取得を伴う実応答の確認は、画像・動画・サジェストの3件だけ（2026-10-03実施）。
+
+## 対応状況（2026-10-03〜04、ブランチ fix/api-schema-notation）
+
+判断事項はすべて既定案で実施（2026-10-03 ユーザー承認）。
+
+| 監査項目 | 対応コミット | 備考 |
+| --- | --- | --- |
+| A1 乗換 `date`/`time` 無視 | `fd2ff37` | `date`/`time` を `year..minute` に解決。省略分は Asia/Tokyo の現在時刻。既存の `year..minute` 直接指定は互換のため維持 |
+| A2 乗換キャッシュキー不足 | `fd2ff37` | 全条件をキー化。`TRANSIT_ROUTE_INPUT_SHAPE` を MCP・REST で共有 |
+| A3 REST乗換の入力不足 | `fd2ff37` | 同上 |
+| A4 MCP `scrape` の `fullPage` 未転送 | `765043d` | ハンドラーの分割代入と `scrapeUrl` 呼び出しに追加 |
+| A5 REST batch の13項目欠落 | `765043d` | `SCRAPE_BATCH_INPUT_SHAPE` を MCP・REST で共有（REST は `verbose`・`noCache` を追加） |
+| A6 batch の `urls` 上限・`concurrency` 上限不一致 | `765043d`・`37c2fd7` | `urls.max(20)`・`concurrency.max(5)`。判断事項4の URL 形式チェックも適用（`z.string().url()`） |
+| A7 `/map` の `until`・`noCache` 未実装 | `11d43a3` | `filterSitemapEntriesByDate` を切り出し。MCP `map_site` にも `until` を追加 |
+| A8 Web検索の `noCache` が下層キャッシュを迂回しない | `11d43a3` | `searchYahooWeb` に `noCache` を追加し、fresh キャッシュを迂回（single-flight の合流は維持） |
+| B1 画像・B2 動画・B3 サジェスト | `5e6043a` | 上流の実際の形にスキーマを合わせた。動画 `source` は `"video"` に固定し、上流値は `platform` へ |
+| B4 天気（週間予報に `detail` なし） | `5e6043a` | `detail` を任意化、`reliability`・`chanceOfRain.allDay` を追加 |
+| B5 地震（`items`→`earthquakes`） | `5e6043a` | 実装の `{ count, earthquakes }` に合わせた |
+| B6 監視check（単一/配列の混在） | `5e6043a` | `{ result }`・`{ results }` の包み形式に変更し、OpenAPI の top-level object を維持 |
+| B7 監視ターゲットの `null` | `5e6043a` | 未設定項目を `.nullable().optional()` に変更 |
+| C1 「返却」注記 | `7a4c4a8` | 13件の不一致を修正。検出器 `scanReturnNotes` と契約テストで固定。realtime・天気は説明文の文字数予算のため内側キーを省略形に |
+| C2 既定値の未宣言（338件） | `97d66bc` | `.meta({ default })` で宣言。説明と実装が違った6件は実装に合わせた（REST scrape の `maxChars` 30000・`timeoutMs` 15000、batch の `maxChars` 30000、browser の `screenshotFullPage` true、ニュース `limit` 20、知恵袋 `limit` 10）。`includeDiagnostics`・`includeDiscrepancies` は動作上の既定がないため「省略時: …」表記に変更 |
+| C3 suggest 上限・C4 `maxChars` 上限・C5 根拠ID表記・範囲6件 | `37c2fd7`・`f110050` | 上限・enum を宣言。`minIntensity` は数値enum化（震度6弱55を追加） |
+| C6 README 荷物追跡6社 | `7a4c4a8` | 8社に更新 |
+| MCP/REST の同名パラメータ不一致11件 | `5a2e7ad` | suggest 上限20、ホテル既定値、scrape/batch/crawl の既定値を両面に宣言。`search_road_traffic.pref` のみ許可リスト（MCPは名称限定が意図的） |
+
+検証: `bun run typecheck` 成功。`bun run schema:notation` は `TOTAL 0`。全テストは6件の失敗が残るが、いずれも clean HEAD で再現する既存の失敗（プロキシ環境変数・UA・auth-strip・テナント分離2件・`/scrape` formats 1件）で、本変更によるものではない。
