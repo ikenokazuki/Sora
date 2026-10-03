@@ -1138,7 +1138,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }',
       {
         query: z.string().min(1).describe('検索語句プレフィックス (例: "東京 観光")'),
-        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10)').meta({ default: 10 }),
+        limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 10, 上限: 20)').meta({ default: 10 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1521,7 +1521,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックイン日 (YYYY-MM-DD)'),
           checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックアウト日 (YYYY-MM-DD, チェックインより後)'),
           adults: z.number().int().min(1).max(10).describe('大人人数（1室あたり, 上限: 10）'),
-          rooms: z.number().int().min(1).max(1).optional().describe('部屋数（1のみ）'),
+          rooms: z.number().int().min(1).max(1).optional().describe('部屋数（1のみ, デフォルト: 1）').meta({ default: 1 }),
           limit: z.number().int().min(1).max(10).optional().describe('最大施設件数（1〜10, デフォルト: 5）').meta({ default: 5 }),
         },
         async (opts) => {
