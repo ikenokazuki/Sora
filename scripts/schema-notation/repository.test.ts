@@ -17,4 +17,8 @@ describe('API input notation (MCP + OpenAPI)', () => {
   test('listed values are declared as enum', async () => {
     await expectNoFindings(['enum_missing']);
   }, 30_000);
+
+  test('integer bounds and documented ranges are declared', async () => {
+    await expectNoFindings(['unbounded_integer', 'range_mismatch']);
+  }, 30_000);
 });
