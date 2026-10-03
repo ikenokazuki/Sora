@@ -91,6 +91,22 @@ describe('openpoi center geocoding', () => {
     expect(r.centerResolved).toMatchObject({ input: '渋谷', address: '東京都渋谷区', lat: 35.69 });
     expect(r.pois[0].name).toBe('X');
   });
+  test('center preserves the geocoding provider and its verification requirement without another lookup', async () => {
+    const urls: string[] = [];
+    const fetchFn = async (url: string) => {
+      urls.push(url);
+      return okResponse({ count: 1, results: [{ name: '原宿の店舗', lat: 35.67, lng: 139.709 }] });
+    };
+    const r = await searchOpenPoi({ query: 'ラーメン', center: '原宿' }, fetchFn, 5000, async () => ({
+      lat: 35.669968, lon: 139.709008, address: '東京都渋谷区神宮前 原宿',
+      source: 'geocoding.jp', needsVerification: true,
+    }));
+    expect(r.centerResolved).toMatchObject({
+      source: 'geocoding.jp', needsVerification: true, address: '東京都渋谷区神宮前 原宿',
+    });
+    expect(urls).toHaveLength(1);
+    expect(new URL(urls[0]).searchParams.get('center')).toBe('139.709008,35.669968');
+  });
   test('unresolvable center fails loudly, never silent nationwide', async () => {
     const { searchOpenPoi } = await import('./poi.js');
     await expect(searchOpenPoi({ query: 'ramen', center: 'no-such-place-xyz' }, stubFetch as never, 5000, async () => ({}))).rejects.toThrow(/could not be resolved/);
@@ -101,34 +117,23 @@ describe('openpoi center geocoding', () => {
   });
 });
 
-describe('openpoi center candidates', () => {
-  const gsi = (titles: Array<[string, number, number]>) => async () => ({
-    ok: true, status: 200,
-    json: async () => titles.map(([title, lon, lat]) => ({ properties: { title }, geometry: { coordinates: [lon, lat] } })),
-  }) as Response;
-  const openpoiEmpty = async () => ({ ok: true, status: 200, json: async () => ({ count: 0, results: [] }) }) as Response;
-  test('multi-prefecture candidates flag ambiguous', async () => {
-    const { fetchCenterCandidates } = await import('./poi.js');
-    const c = await fetchCenterCandidates('原宿', gsi([['茨城県常総市原宿', 139.9, 36.1], ['東京都渋谷区神宮前', 139.7, 35.66]]) as never, 5000);
-    expect(c).toHaveLength(2);
+describe('openpoi geocoding boundaries', () => {
+  test('bbox priority avoids unnecessary geocoding and queueing', async () => {
+    const r = await searchOpenPoi({ bbox: '139.6,35.5,139.9,35.8', center: '原宿' }, async (url) => {
+      expect(new URL(url).searchParams.has('center')).toBe(false);
+      return okResponse({ count: 0, results: [] });
+    }, 5000, async () => { throw new Error('geocoding must not run'); });
+    expect(r.centerResolved).toBeUndefined();
   });
-  test('ambiguous center still searches with first match plus flags', async () => {
-    const { searchOpenPoi } = await import('./poi.js');
-    const both = async (url: string) => url.includes('msearch.gsi.go.jp')
-      ? gsi([['茨城県常総市原宿', 139.9, 36.1], ['東京都渋谷区神宮前', 139.7, 35.66]])()
-      : openpoiEmpty();
-    const r = await searchOpenPoi({ query: 'x', center: '原宿', limit: 1 }, both as never, 5000, async () => ({ lat: 36.1, lon: 139.9 }));
-    expect(r.centerResolved?.ambiguous).toBe(true);
-    expect(r.centerResolved?.candidates).toHaveLength(2);
+  test('cache bypass reaches the shared geocoder', async () => {
+    await searchOpenPoi({ center: '原宿', noCache: true }, async () => okResponse({ count: 0, results: [] }), 5000, async (_center, options) => {
+      expect(options?.noCache).toBe(true);
+      return { lat: 35.669968, lon: 139.709008 };
+    });
   });
-  test('candidate fetch failure never blocks search', async () => {
-    const { searchOpenPoi } = await import('./poi.js');
-    const flaky = async (url: string) => {
-      if (url.includes('msearch.gsi.go.jp')) throw new Error('down');
-      return openpoiEmpty();
-    };
-    const r = await searchOpenPoi({ query: 'x', center: '渋谷区', limit: 1 }, flaky as never, 5000, async () => ({ lat: 35.66, lon: 139.69 }));
-    expect(r.count).toBe(0);
-    expect(r.centerResolved?.candidates).toEqual([]);
+  test('invalid geocoding coordinates never reach OpenPOI', async () => {
+    await expect(searchOpenPoi({ center: '原宿' }, async () => {
+      throw new Error('OpenPOI must not run');
+    }, 5000, async () => ({ lat: NaN, lon: 139 }))).rejects.toThrow('could not be resolved');
   });
 });

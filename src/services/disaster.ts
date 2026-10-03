@@ -1,6 +1,7 @@
 import { resolveCityId } from './life.js';
 import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
 import { getFromCache, setToCache } from '../cache.js';
+import { geocodeAddress, type GeocodingResult } from './geocoding.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
 export const CACHE_TTL_EARTHQUAKE = 60 * 1000;     // 1分
@@ -275,6 +276,8 @@ export interface ElevationResult {
   query?: string;
   address?: string;
   matchedTitle?: string;
+  geocodingSource?: 'geocoding.jp';
+  needsVerification?: boolean;
   lat: number;
   lon: number;
   elevationMeters: number | null;
@@ -283,7 +286,7 @@ export interface ElevationResult {
   source: 'gsi';
 }
 
-/** 国土地理院 ジオコーディング & 標高（海抜）取得 API */
+/** geocoding.jpによる住所・地名解決と国土地理院の標高（海抜）取得。 */
 export async function fetchElevationAndCoordinates(options: {
   address?: string;
   lat?: number;
@@ -294,40 +297,24 @@ export async function fetchElevationAndCoordinates(options: {
   let lat = options.lat;
   let lon = options.lon;
   let matchedTitle: string | undefined;
+  let geocoding: GeocodingResult | undefined;
 
   if (!rawAddress && (lat === undefined || lon === undefined)) {
     throw new Error('address または (lat, lon) のいずれかを指定してください');
   }
 
-  const cacheKey = `geo:elevation:${rawAddress || ''}:${lat ?? ''}:${lon ?? ''}`;
+  const cacheKey = `geo:elevation:v2:${rawAddress || ''}:${lat ?? ''}:${lon ?? ''}`;
   if (!options.noCache) {
     const cached = getFromCache<ElevationResult>(cacheKey);
     if (cached) return cached;
   }
 
-  // 1. 住所が指定されている場合は国土地理院住所検索 API でジオコーディング
+  // 1. 住所・地名の解決はPOI検索と同じレート制御・キャッシュを共有する。
   if (rawAddress) {
-    const geocodeUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(rawAddress)}`;
-    const geoRes = await fetch(geocodeUrl, {
-      headers: {
-        'User-Agent': 'Sora-Gsi-Fetcher/1.0',
-        'Accept': 'application/json, text/plain, */*',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (geoRes.ok) {
-      const geoJson = (await geoRes.json()) as any[];
-      if (Array.isArray(geoJson) && geoJson.length > 0) {
-        const first = geoJson[0];
-        const coords = first.geometry?.coordinates;
-        if (Array.isArray(coords) && coords.length >= 2) {
-          lon = coords[0];
-          lat = coords[1];
-          matchedTitle = first.properties?.title || rawAddress;
-        }
-      }
-    }
+    geocoding = await geocodeAddress(rawAddress, { noCache: options.noCache });
+    lat = geocoding.lat;
+    lon = geocoding.lon;
+    matchedTitle = geocoding.address;
   }
 
   if (lat === undefined || lon === undefined) {
@@ -367,6 +354,7 @@ export async function fetchElevationAndCoordinates(options: {
     query: rawAddress,
     address: rawAddress,
     matchedTitle,
+    ...(geocoding ? { geocodingSource: geocoding.source, needsVerification: geocoding.needsVerification } : {}),
     lat,
     lon,
     elevationMeters,
@@ -381,4 +369,3 @@ export async function fetchElevationAndCoordinates(options: {
 
   return result;
 }
-

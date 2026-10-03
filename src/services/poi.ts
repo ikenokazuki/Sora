@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
+import { geocodeAddress, type GeocodingResult } from './geocoding.js';
 
 export interface PoiItem {
   name: string;
@@ -69,72 +70,48 @@ export function normalizePoiItem(raw: Record<string, unknown>): PoiItem | undefi
 }
 
 export interface PoiCenterCandidate { address: string; lat: number; lon: number }
-export interface PoiCenterResolved { input: string; address?: string; lat: number; lon: number; ambiguous: boolean; candidates: PoiCenterCandidate[] }
-export type PoiGeocode = (center: string) => Promise<{ lat?: number; lon?: number; address?: string }>;
-
-async function defaultGeocode(center: string): Promise<{ lat?: number; lon?: number; address?: string; matchedTitle?: string }> {
-  const { fetchElevationAndCoordinates } = await import('./disaster.js');
-  const r = await fetchElevationAndCoordinates({ address: center }) as { lat?: number; lon?: number; address?: string; matchedTitle?: string }; return { lat: r.lat, lon: r.lon, address: r.matchedTitle ?? r.address };
+export interface PoiCenterResolved {
+  input: string;
+  address?: string;
+  lat: number;
+  lon: number;
+  source?: 'geocoding.jp';
+  needsVerification: boolean;
+  ambiguous: boolean;
+  candidates: PoiCenterCandidate[];
 }
-
-/** GSI候補を取得する。情報提供のみで失敗しても検索は止めない。 */
-export async function fetchCenterCandidates(center: string, fetchFn: PoiFetch, timeoutMs: number): Promise<PoiCenterCandidate[] | undefined> {
-  try {
-    const res = await fetchFn('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(center), { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as Array<{ geometry?: { coordinates?: unknown }; properties?: { title?: unknown } }>;
-    if (!Array.isArray(data)) return undefined;
-    const seen = new Set<string>();
-    const out: PoiCenterCandidate[] = [];
-    for (const item of data) {
-      if (out.length >= 5) break;
-      const title = item?.properties?.title;
-      const xy = item?.geometry?.coordinates;
-      if (typeof title !== 'string' || !Array.isArray(xy) || typeof xy[0] !== 'number' || typeof xy[1] !== 'number') continue;
-      if (seen.has(title)) continue;
-      seen.add(title);
-      out.push({ address: title, lat: xy[1] as number, lon: xy[0] as number });
-    }
-    return out;
-  } catch {
-    return undefined;
-  }
-}
-
-function prefectureOf(title: string): string {
-  const m = /^(北海道|[^都府]+[都府]|[^県]+県)/.exec(title);
-  return m ? m[1] : 'unknown';
-}
+export type PoiGeocode = (center: string, options?: { noCache?: boolean }) => Promise<Partial<GeocodingResult>>;
 
 export async function searchOpenPoi(
   rawInput: z.input<typeof PoiSearchRequestSchema>,
   fetchFn: PoiFetch = fetch,
   timeoutMs = 10000,
-  geocode: PoiGeocode = defaultGeocode,
+  geocode: PoiGeocode = geocodeAddress,
 ): Promise<PoiSearchResult> {
   const input = PoiSearchRequestSchema.parse(rawInput);
   let lat = input.lat;
   let lon = input.lon;
   let centerResolved: PoiCenterResolved | undefined;
-  // 地名centerは国土地理院で座標化する。特定不能は黙って広域検索に落とさない。
-  if (input.center !== undefined) {
-    let coords: { lat?: number; lon?: number; address?: string };
+  // bboxを優先し、地名centerを使う場合は共有ジオコーダーで座標化する。
+  if (input.center !== undefined && !input.bbox) {
+    let coords: Partial<GeocodingResult>;
     try {
-      coords = await geocode(input.center);
+      coords = await geocode(input.center, { noCache: input.noCache });
     } catch (e) {
       throw new Error('POI center geocoding failed: ' + String((e as Error)?.message ?? e).slice(0, 160));
     }
-    if (typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+    if (typeof coords.lat !== 'number' || typeof coords.lon !== 'number' ||
+        !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon) || Math.abs(coords.lat) > 90 || Math.abs(coords.lon) > 180) {
       throw new Error('POI center could not be resolved: ' + input.center);
     }
     lat = coords.lat;
     lon = coords.lon;
-    centerResolved = { input: input.center, ...(coords.address ? { address: coords.address } : {}), lat: coords.lat, lon: coords.lon, ambiguous: false, candidates: [] };
-    const candidates = await fetchCenterCandidates(input.center, fetchFn, timeoutMs);
-    if (candidates && candidates.length > 0) {
-      centerResolved.candidates = candidates;
-      centerResolved.ambiguous = new Set(candidates.map((c) => prefectureOf(c.address))).size > 1;
-    }
+    centerResolved = {
+      input: input.center, ...(coords.address ? { address: coords.address } : {}),
+      lat: coords.lat, lon: coords.lon, source: coords.source,
+      needsVerification: coords.needsVerification ?? false,
+      ambiguous: coords.needsVerification ?? false, candidates: [],
+    };
   }
   const params = new URLSearchParams();
   if (input.query) params.set('q', input.query);
