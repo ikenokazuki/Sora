@@ -18,6 +18,7 @@ export interface PoiItem {
 
 export interface PoiSearchResult {
   query?: string;
+  centerResolved?: PoiCenterResolved;
   count: number;
   pois: PoiItem[];
   source: 'openpoi';
@@ -67,17 +68,44 @@ export function normalizePoiItem(raw: Record<string, unknown>): PoiItem | undefi
   };
 }
 
+export interface PoiCenterResolved { input: string; address?: string; lat: number; lon: number }
+export type PoiGeocode = (center: string) => Promise<{ lat?: number; lon?: number; address?: string }>;
+
+async function defaultGeocode(center: string): Promise<{ lat?: number; lon?: number; address?: string; matchedTitle?: string }> {
+  const { fetchElevationAndCoordinates } = await import('./disaster.js');
+  const r = await fetchElevationAndCoordinates({ address: center }) as { lat?: number; lon?: number; address?: string; matchedTitle?: string }; return { lat: r.lat, lon: r.lon, address: r.matchedTitle ?? r.address };
+}
+
 export async function searchOpenPoi(
   rawInput: z.input<typeof PoiSearchRequestSchema>,
   fetchFn: PoiFetch = fetch,
   timeoutMs = 10000,
+  geocode: PoiGeocode = defaultGeocode,
 ): Promise<PoiSearchResult> {
   const input = PoiSearchRequestSchema.parse(rawInput);
+  let lat = input.lat;
+  let lon = input.lon;
+  let centerResolved: PoiCenterResolved | undefined;
+  // 地名centerは国土地理院で座標化する。特定不能は黙って広域検索に落とさない。
+  if (input.center !== undefined) {
+    let coords: { lat?: number; lon?: number; address?: string };
+    try {
+      coords = await geocode(input.center);
+    } catch (e) {
+      throw new Error('POI center geocoding failed: ' + String((e as Error)?.message ?? e).slice(0, 160));
+    }
+    if (typeof coords.lat !== 'number' || typeof coords.lon !== 'number') {
+      throw new Error('POI center could not be resolved: ' + input.center);
+    }
+    lat = coords.lat;
+    lon = coords.lon;
+    centerResolved = { input: input.center, ...(coords.address ? { address: coords.address } : {}), lat: coords.lat, lon: coords.lon };
+  }
   const params = new URLSearchParams();
   if (input.query) params.set('q', input.query);
   if (input.bbox) params.set('bbox', input.bbox);
-  else if (input.lat !== undefined && input.lon !== undefined) {
-    params.set('center', `${input.lon},${input.lat}`);
+  else if (lat !== undefined && lon !== undefined) {
+    params.set('center', `${lon},${lat}`);
     params.set('radius', String(input.radiusMeters ?? 5000));
   }
   params.set('limit', String(input.limit ?? 10));
@@ -105,5 +133,5 @@ export async function searchOpenPoi(
       const item = normalizePoiItem(r);
       return item ? [item] : [];
     });
-  return { ...(input.query ? { query: input.query } : {}), count: record.count, pois, source: 'openpoi' };
+  return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi' };
 }

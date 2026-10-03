@@ -814,12 +814,15 @@ export const PoiSearchRequestSchema = z.object({
   lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
   lon: z.number().min(-180).max(180).optional().describe('中心経度、経度が先 (lat とペア指定)'),
   radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)'),
+  center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "東京スカイツリー")。国土地理院で座標化してcenter化する。lat/lonとは排他'),
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
-}).refine((v) => v.query !== undefined || v.bbox !== undefined || (v.lat !== undefined && v.lon !== undefined), {
-  message: 'query, bbox, または lat+lon のいずれかを指定してください',
+}).refine((v) => v.query !== undefined || v.bbox !== undefined || v.center !== undefined || (v.lat !== undefined && v.lon !== undefined), {
+  message: 'query, bbox, center, または lat+lon のいずれかを指定してください',
 }).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
   message: 'lat と lon はペアで指定してください',
+}).refine((v) => v.center === undefined || (v.lat === undefined && v.lon === undefined), {
+  message: 'center と lat/lon は同時に指定できません',
 });
 export type PoiSearchOptions = z.infer<typeof PoiSearchRequestSchema>;
 
@@ -839,6 +842,7 @@ export const PoiItemSchema = z.object({
 });
 export const PoiSearchResultSchema = z.object({
   query: z.string().optional().describe('検索クエリ'),
+  centerResolved: z.object({ input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number() }).optional().describe('center地名の解決結果（住所・座標を確認すること）'),
   count: z.number().describe('返却件数'),
   pois: z.array(PoiItemSchema).describe('施設一覧'),
   source: z.literal('openpoi').describe('データソース'),
