@@ -100,3 +100,35 @@ describe('openpoi center geocoding', () => {
     expect(PoiSearchRequestSchema.safeParse({ query: 'x', center: '渋谷' }).success).toBe(true);
   });
 });
+
+describe('openpoi center candidates', () => {
+  const gsi = (titles: Array<[string, number, number]>) => async () => ({
+    ok: true, status: 200,
+    json: async () => titles.map(([title, lon, lat]) => ({ properties: { title }, geometry: { coordinates: [lon, lat] } })),
+  }) as Response;
+  const openpoiEmpty = async () => ({ ok: true, status: 200, json: async () => ({ count: 0, results: [] }) }) as Response;
+  test('multi-prefecture candidates flag ambiguous', async () => {
+    const { fetchCenterCandidates } = await import('./poi.js');
+    const c = await fetchCenterCandidates('原宿', gsi([['茨城県常総市原宿', 139.9, 36.1], ['東京都渋谷区神宮前', 139.7, 35.66]]) as never, 5000);
+    expect(c).toHaveLength(2);
+  });
+  test('ambiguous center still searches with first match plus flags', async () => {
+    const { searchOpenPoi } = await import('./poi.js');
+    const both = async (url: string) => url.includes('msearch.gsi.go.jp')
+      ? gsi([['茨城県常総市原宿', 139.9, 36.1], ['東京都渋谷区神宮前', 139.7, 35.66]])()
+      : openpoiEmpty();
+    const r = await searchOpenPoi({ query: 'x', center: '原宿', limit: 1 }, both as never, 5000, async () => ({ lat: 36.1, lon: 139.9 }));
+    expect(r.centerResolved?.ambiguous).toBe(true);
+    expect(r.centerResolved?.candidates).toHaveLength(2);
+  });
+  test('candidate fetch failure never blocks search', async () => {
+    const { searchOpenPoi } = await import('./poi.js');
+    const flaky = async (url: string) => {
+      if (url.includes('msearch.gsi.go.jp')) throw new Error('down');
+      return openpoiEmpty();
+    };
+    const r = await searchOpenPoi({ query: 'x', center: '渋谷区', limit: 1 }, flaky as never, 5000, async () => ({ lat: 35.66, lon: 139.69 }));
+    expect(r.count).toBe(0);
+    expect(r.centerResolved?.candidates).toEqual([]);
+  });
+});
