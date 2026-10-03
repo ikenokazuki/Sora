@@ -1,3 +1,7 @@
+# Sora v2.34.4
+
+- 公開gateをsoft hold化。`fail`/`unavailable`（破損シグナル）は公開停止を維持し、`unverified`/`blocked`のみ残存時は記録付きで公開進行（runner exit 3）。資格情報・test dataなし運用に対応。
+
 # Sora v2.34.3
 
 - live改善: 公開SNS投稿の既定test data（4 platform＋X、秘密上書き可）、運航の国際fallback、外部tool caseのunverified再試行。機能変更なし。
