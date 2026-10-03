@@ -28,6 +28,8 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
+      # 各レーンは別Soraプロセスのため、外部APIへの問い合わせが重ならないよう順番に実行する。
+      max-parallel: 1
       matrix:
         lane: [standard, hotel]
     steps:

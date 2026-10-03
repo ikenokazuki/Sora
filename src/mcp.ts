@@ -1662,18 +1662,19 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       { defaultEnabled: true, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
     );
 
-    // Tool: get_elevation (国土地理院 住所ジオコーディング & 標高・海抜判定) - DEFERRED
+    // Tool: get_elevation (geocoding.jp 座標解決 & 国土地理院 標高取得) - DEFERRED
     registerTool(
       mcpServer,
       toolCatalog,
       sessionActivated,
       'get_elevation',
       'disaster',
-      '【国土地理院直結】住所地名からの海抜標高（m）および正確な緯度経度は、推測せず必ず国土地理院公式オープンデータ直結の本ツールでミリ精度取得してください。水害・津波リスク判定に必須です。返却: { elevationMeters, dataAccuracy, lat, lon }',
+      '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をgeocoding.jpで座標化し、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で10秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, needsVerification }',
       {
         address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
         lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
         lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+        noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。10秒間隔は維持'),
       },
       async (opts) => {
         try {
@@ -1698,15 +1699,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_poi',
       'disaster',
-      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から営業許可・届出施設を検索し、緯度経度付きで返します。複数語はORで広がるため場所を含む場合は場所を query に混ぜず center へ分離すること。centerResolved.ambiguous が true の場合は candidates から選び直して再呼び出しすること。座標既知なら lat/lon。避難所候補・病院・駅周辺施設の座標取得に。get_elevation / search_route と組み合わせ可能。返収: { count, pois: [{ name, address, prefecture, city, category, lat, lng, source, licenses }] }',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはgeocoding.jpで座標化します。未キャッシュの解決は全ツール共有で10秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }] }',
       {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
         lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
         radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)'),
-        center: z.string().trim().min(1).max(200).optional().describe('中心地名。国土地理院で座標化する。lat/lonとは排他'),
+        center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。geocoding.jpで座標化する。lat/lonとは排他'),
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
         limit: z.number().int().min(1).max(50).optional().describe('最大件数 (1-50, デフォルト: 10)'),
+        noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。10秒間隔は維持'),
       },
       async (opts) => {
         try {

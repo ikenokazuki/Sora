@@ -259,7 +259,7 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
   }
 });
 
-// 国土地理院 住所ジオコーディング & 標高取得 (POST /geo/elevation & GET /geo/elevation)
+// geocoding.jp 座標解決 & 国土地理院 標高取得 (POST /geo/elevation & GET /geo/elevation)
 publicDataRoutes.post('/geo/elevation', async (c) => {
   let rawBody: any;
   try {
@@ -339,6 +339,7 @@ publicDataRoutes.get('/geo/poi', async (c) => {
     center: c.req.query('center'),
     bbox: c.req.query('bbox'),
     limit: num('limit'),
+    noCache: c.req.query('noCache') === 'true',
   });
   if (!parsed.success) {
     return formatError(c, 'Invalid POI search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());

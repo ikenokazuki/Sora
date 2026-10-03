@@ -334,7 +334,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
-  - `get_elevation`: 国土地理院 住所ジオコーディング & 標高（海抜）取得
+  - `get_elevation`: geocoding.jp 住所・地名の座標解決 & 国土地理院の標高（海抜）取得
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件）
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
   - `predict_hts_code`: 米国 USITC 公式 HTS/HS コード自動推測・ヒアリング誘導
@@ -492,8 +492,8 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 |---|---|---|---|
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
-| `get_elevation` | 国土地理院公式オープンデータに基づき、日本全国の住所・地名から緯度経度を自動特定し、海抜標高（m）をミリ精度で取得。津波・水害ハザードリスク判定に活用可能。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度 |
-| `search_poi` | OpenPOI直結の全国施設POI検索。施設名・住所キーワードと位置範囲から緯度経度付き施設（338万件、営業許可・Overture統合）を返却。`get_elevation` / `search_route` と組合せ可能。保存時は `licenses` / `attributions` を保持すること。 | `source: "openpoi"` | - `query` (string, 任意): 施設・住所キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名。曖昧名は解決結果を確認<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50) |
+| `get_elevation` | 住所・地名をgeocoding.jpで緯度経度へ解決し、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
+| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をgeocoding.jpで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
 
 ---
 
@@ -1443,30 +1443,47 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ---
 
-### 3.16 国土地理院 標高・ジオコーディング (`POST /geo/elevation` / `GET /geo/elevation`)
-国土地理院公式オープンデータと連携し、住所・地名から緯度経度を自動解決し、その地点の海抜標高（m）をミリ精度で返します。
+### 3.16 座標解決・国土地理院の標高取得 (`POST /geo/elevation` / `GET /geo/elevation`)
+
+住所・地名を[geocoding.jp](https://www.geocoding.jp/api/)で緯度経度へ解決し、国土地理院からその地点の海抜標高（m）を取得します。座標解決の取得元は`geocodingSource`、標高の取得元は`source: "gsi"`です。取得元が確認を求める場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
+
+地名解決は`search_poi`と共有します。同一Soraプロセス内のMCP・REST全要求で、geocoding.jpへの実際の問い合わせ開始を10秒以上空けます。同じ地名の同時要求は1回にまとめ、成功結果は24時間キャッシュします。異なる未キャッシュ地名の要求は順番に待機します。`noCache: true`でも10秒間隔の制限は維持します。直接`lat` / `lon`を指定した場合は地名解決を行いません。
 
 - **リクエスト (POST)**:
   ```json
   {
-    "address": "東京都千代田区永田町1-7-1"
+    "address": "原宿"
   }
   ```
-- **リクエスト (GET)**: `GET /geo/elevation?address=富士山頂` または `GET /geo/elevation?lat=35.6812&lon=139.7671`
+- **リクエスト (GET)**: `GET /geo/elevation?address=原宿` または `GET /geo/elevation?lat=35.6812&lon=139.7671`
 - **レスポンス例**:
   ```json
   {
-    "query": "東京都千代田区永田町1-7-1",
-    "address": "東京都千代田区永田町1-7-1",
-    "matchedTitle": "東京都千代田区永田町一丁目",
-    "lat": 35.6797,
-    "lon": 139.7448,
-    "elevationMeters": 24.4,
-    "dataAccuracy": "5m（レーザ）",
-    "formatted": "東京都千代田区永田町一丁目 の標高 (海抜): 24.4m (精度: 5m（レーザ）)",
+    "query": "原宿",
+    "address": "原宿",
+    "matchedTitle": "東京都渋谷区神宮前 原宿",
+    "geocodingSource": "geocoding.jp",
+    "needsVerification": true,
+    "lat": 35.669968,
+    "lon": 139.709008,
+    "elevationMeters": 22.1,
+    "dataAccuracy": "1m（レーザ）",
+    "formatted": "東京都渋谷区神宮前 原宿 の標高 (海抜): 22.1m (精度: 1m（レーザ）)",
     "source": "gsi"
   }
   ```
+
+#### 周辺施設検索の中心地名 (`POST /geo/poi` / `GET /geo/poi`)
+
+施設キーワードと場所を分けて指定すると、Soraが中心地名を座標化し、[OpenPOI API](https://docs.openpoiapi.com/)へ経度・緯度と検索半径を渡します。MCPの`search_poi`も同じ処理を使います。
+
+```json
+{"query":"ラーメン","center":"原宿","radiusMeters":1000,"limit":5}
+```
+
+GETでは`/geo/poi?query=ラーメン&center=原宿&radiusMeters=1000&limit=5`と指定できます。応答の`centerResolved`には`input`、`address`、`lat`、`lon`、`source: "geocoding.jp"`、`needsVerification`を含めます。互換フィールドの`ambiguous`は`needsVerification`と同値、`candidates`は空配列です。候補一覧や一意性の保証を示すものではありません。
+
+OpenPOIの複数語検索はORのため、場所を`query`へ混ぜず`center`へ指定してください。地名解決失敗時はエラーを返し、広域検索へ切り替えません。HTTP 200でもgeocoding.jpのXMLに`error`がある場合や座標が不正な場合は失敗として扱います。
 
 ---
 
@@ -1908,6 +1925,11 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 `Sora` は、以下の優れたオープンソースプロジェクト、公開サービス、公的オープンデータ、およびライブラリ作者の皆様の素晴らしい貢献に支えられています。心より感謝申し上げます。
 
 ### 🗾 データソース & 着想元 (Data Sources & Inspirations)
+
+- **geocoding.jp API（Aoba様）**: [geocoding.jp/api](https://www.geocoding.jp/api/)
+  - 住所・地名・ランドマーク名から緯度経度を解決できる公開APIの提供と運用に感謝いたします。Soraは問い合わせを10秒以上の間隔に制限し、成功結果を24時間キャッシュして利用しています。利用にあたっては、検索頻度やサービスを利用して料金を取る行為に関する注意を含め、提供元の利用条件をご確認ください。
+- **OpenPOI API**: [API仕様・ドキュメント](https://docs.openpoiapi.com/)
+  - 日本全国の施設POIを検索できる公開APIの提供に感謝いたします。Soraの施設検索では、施設名・所在地・座標とともに提供元の`licenses`および`attributions`を保持して返します。取得データの保存・再利用時もこれらの情報を保持してください。
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
   - 日本全国の高精度な気象予報・防災気象警報データおよび全国 1,800 以上のエリア定義データのオープン公開に深く感謝いたします。
 - **P2P地震情報 (P2PQuake)**: [p2pquake.net](https://www.p2pquake.net/)

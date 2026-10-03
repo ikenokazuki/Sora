@@ -257,6 +257,38 @@ function toolCase(
   return { id, toolNames: tools, dependencyIds: deps, externalRequired, timeoutMs, hotelLaneOnly, run };
 }
 
+function requireHarajuku(lat: number | undefined, lon: number | undefined, label: string): void {
+  if (typeof lat !== 'number' || typeof lon !== 'number' ||
+      !Number.isFinite(lat) || !Number.isFinite(lon) || lat < 35.66 || lat > 35.68 || lon < 139.70 || lon > 139.72) {
+    throw new LiveFail(label + ' coordinates are outside Harajuku, Tokyo');
+  }
+}
+
+function checkHarajukuPoi(raw: unknown): CaseObservation {
+  const result = raw as {
+    centerResolved?: { source?: string; lat?: number; lon?: number };
+    pois?: Array<{ lat?: number; lng?: number }>;
+  };
+  mustHaveItems(raw, 'search_poi', 'name');
+  const center = result.centerResolved;
+  if (center?.source !== 'geocoding.jp') throw new LiveFail('search_poi missing geocoding.jp resolution');
+  requireHarajuku(center.lat, center.lon, 'search_poi center');
+  for (const poi of result.pois ?? []) {
+    if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number' || !Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) {
+      throw new LiveFail('search_poi facility missing finite coordinates');
+    }
+    const radians = Math.PI / 180;
+    const a = Math.sin((poi.lat - center.lat!) * radians / 2) ** 2 +
+      Math.cos(center.lat! * radians) * Math.cos(poi.lat * radians) * Math.sin((poi.lng - center.lon!) * radians / 2) ** 2;
+    const distance = 2 * 6371000 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (distance > 1010) throw new LiveFail('search_poi facility is outside the requested 1000m radius');
+  }
+  return { sources: [
+    { source: 'geocoding.jp', format: 'xml', upstreamStatus: 'unknown', cached: false },
+    { source: 'openpoi', format: 'json', upstreamStatus: 'unknown', count: result.pois?.length },
+  ] };
+}
+
 
 export function checkTrackingNoCreds(raw: unknown, trackingNumber: string, carrier: string): CaseObservation {
   const text = textOf(raw);
@@ -529,20 +561,25 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_earthquake');
     return mustContain(raw, ['20'], 'p2p-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['gsi'], true, 90000, false, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address: '東京駅', noCache: true }, 60000);
+  toolCase('geo.elevation', ['get_elevation'], ['geocoding.jp', 'gsi'], true, 90000, false, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address: '原宿', noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'get_elevation');
-    const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as { elevationMeters?: number; lat?: number; lon?: number };
-    if (typeof parsed.elevationMeters !== 'number' || typeof parsed.lat !== 'number') {
+    const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as { elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string };
+    if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters) || parsed.geocodingSource !== 'geocoding.jp') {
       throw new LiveFail('get_elevation missing numeric elevation/coordinates');
     }
-    return { sources: [{ source: 'gsi', format: 'json', upstreamStatus: 'unknown' }] };
+    requireHarajuku(parsed.lat, parsed.lon, 'get_elevation');
+    return { sources: [
+      { source: 'geocoding.jp', format: 'xml', upstreamStatus: 'unknown', cached: false },
+      { source: 'gsi', format: 'json', upstreamStatus: 'unknown', cached: false },
+    ] };
   }),
-  toolCase('geo.poi', ['search_poi'], ['openpoi'], true, 90000, false, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', lat: 35.69, lon: 139.7, radiusMeters: 2000, limit: 2 }, 60000);
+  toolCase('geo.poi', ['search_poi'], ['geocoding.jp', 'openpoi'], true, 90000, false, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');
-    const { observation } = mustHaveItems(raw, 'search_poi', 'name');
-    mustContain(raw, ['新宿'], 'openpoi');
+    const observation = checkHarajukuPoi(raw);
+    const rest = await ctx.rest.call('GET', '/geo/poi?query=' + encodeURIComponent('ラーメン') + '&center=' + encodeURIComponent('原宿') + '&radiusMeters=1000&limit=2&noCache=true', undefined, 60000);
+    checkHarajukuPoi(rest.json);
     return observation;
   }),
   toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, false, async (ctx) => {
@@ -912,5 +949,4 @@ export const PROVIDER_CASES: ProviderCase[] = [
     return { sources: [{ source: `worldbank:${indicator.id}`, count: metrics.length, format: 'json', upstreamStatus: 'unknown' }] };
   })),
 ];
-
 
