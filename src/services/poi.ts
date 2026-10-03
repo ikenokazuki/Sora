@@ -68,12 +68,42 @@ export function normalizePoiItem(raw: Record<string, unknown>): PoiItem | undefi
   };
 }
 
-export interface PoiCenterResolved { input: string; address?: string; lat: number; lon: number }
+export interface PoiCenterCandidate { address: string; lat: number; lon: number }
+export interface PoiCenterResolved { input: string; address?: string; lat: number; lon: number; ambiguous: boolean; candidates: PoiCenterCandidate[] }
 export type PoiGeocode = (center: string) => Promise<{ lat?: number; lon?: number; address?: string }>;
 
 async function defaultGeocode(center: string): Promise<{ lat?: number; lon?: number; address?: string; matchedTitle?: string }> {
   const { fetchElevationAndCoordinates } = await import('./disaster.js');
   const r = await fetchElevationAndCoordinates({ address: center }) as { lat?: number; lon?: number; address?: string; matchedTitle?: string }; return { lat: r.lat, lon: r.lon, address: r.matchedTitle ?? r.address };
+}
+
+/** GSI候補を取得する。情報提供のみで失敗しても検索は止めない。 */
+export async function fetchCenterCandidates(center: string, fetchFn: PoiFetch, timeoutMs: number): Promise<PoiCenterCandidate[] | undefined> {
+  try {
+    const res = await fetchFn('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(center), { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as Array<{ geometry?: { coordinates?: unknown }; properties?: { title?: unknown } }>;
+    if (!Array.isArray(data)) return undefined;
+    const seen = new Set<string>();
+    const out: PoiCenterCandidate[] = [];
+    for (const item of data) {
+      if (out.length >= 5) break;
+      const title = item?.properties?.title;
+      const xy = item?.geometry?.coordinates;
+      if (typeof title !== 'string' || !Array.isArray(xy) || typeof xy[0] !== 'number' || typeof xy[1] !== 'number') continue;
+      if (seen.has(title)) continue;
+      seen.add(title);
+      out.push({ address: title, lat: xy[1] as number, lon: xy[0] as number });
+    }
+    return out;
+  } catch {
+    return undefined;
+  }
+}
+
+function prefectureOf(title: string): string {
+  const m = /^(北海道|[^都府]+[都府]|[^県]+県)/.exec(title);
+  return m ? m[1] : 'unknown';
 }
 
 export async function searchOpenPoi(
@@ -99,7 +129,12 @@ export async function searchOpenPoi(
     }
     lat = coords.lat;
     lon = coords.lon;
-    centerResolved = { input: input.center, ...(coords.address ? { address: coords.address } : {}), lat: coords.lat, lon: coords.lon };
+    centerResolved = { input: input.center, ...(coords.address ? { address: coords.address } : {}), lat: coords.lat, lon: coords.lon, ambiguous: false, candidates: [] };
+    const candidates = await fetchCenterCandidates(input.center, fetchFn, timeoutMs);
+    if (candidates && candidates.length > 0) {
+      centerResolved.candidates = candidates;
+      centerResolved.ambiguous = new Set(candidates.map((c) => prefectureOf(c.address))).size > 1;
+    }
   }
   const params = new URLSearchParams();
   if (input.query) params.set('q', input.query);

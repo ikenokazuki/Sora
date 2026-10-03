@@ -842,7 +842,7 @@ export const PoiItemSchema = z.object({
 });
 export const PoiSearchResultSchema = z.object({
   query: z.string().optional().describe('検索クエリ'),
-  centerResolved: z.object({ input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number() }).optional().describe('center地名の解決結果（住所・座標を確認すること）'),
+  centerResolved: z.object({ input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number(), ambiguous: z.boolean(), candidates: z.array(z.object({ address: z.string(), lat: z.number(), lon: z.number() })) }).optional().describe('center地名の解決結果（住所・座標を確認すること）'),
   count: z.number().describe('返却件数'),
   pois: z.array(PoiItemSchema).describe('施設一覧'),
   source: z.literal('openpoi').describe('データソース'),

@@ -1698,7 +1698,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_poi',
       'disaster',
-      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から営業許可・届出施設を検索し、緯度経度付きで返します。複数語はORで広がるため場所を含む場合は場所を query に混ぜず center へ分離すること。座標既知なら lat/lon。避難所候補・病院・駅周辺施設の座標取得に。get_elevation / search_route と組み合わせ可能。返収: { count, pois: [{ name, address, prefecture, city, category, lat, lng, source, licenses }] }',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から営業許可・届出施設を検索し、緯度経度付きで返します。複数語はORで広がるため場所を含む場合は場所を query に混ぜず center へ分離すること。centerResolved.ambiguous が true の場合は candidates から選び直して再呼び出しすること。座標既知なら lat/lon。避難所候補・病院・駅周辺施設の座標取得に。get_elevation / search_route と組み合わせ可能。返収: { count, pois: [{ name, address, prefecture, city, category, lat, lng, source, licenses }] }',
       {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
