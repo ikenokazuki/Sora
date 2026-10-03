@@ -14,7 +14,7 @@ export const HotelSearchInputSchema = z
     location: z.string().trim().min(1).max(200),
     checkIn: z.string().regex(DATE_RE, 'checkIn must be YYYY-MM-DD'),
     checkOut: z.string().regex(DATE_RE, 'checkOut must be YYYY-MM-DD'),
-    adults: z.number().int().min(1),
+    adults: z.number().int().min(1).max(10),
     rooms: z.number().int().min(1).max(1).default(1),
     limit: z.number().int().min(1).max(10).default(5),
   })

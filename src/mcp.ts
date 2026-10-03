@@ -466,8 +466,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .number()
           .int()
           .min(1)
+          .max(100_000)
           .optional()
-          .describe('チャンキング時の最大文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
+          .describe('チャンキング時の最大文字数目安 (デフォルト: 1000, 上限: 100000)').meta({ default: 1000 }),
         validateLinks: z
           .boolean()
           .optional()
@@ -634,7 +635,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
         extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
         chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
-        chunkSize: z.number().int().min(1).optional().describe('チャンク文字数目安'),
+        chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンク文字数目安 (上限: 100000)'),
         validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
         formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
         stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
@@ -1199,8 +1200,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .number()
           .int()
           .min(1)
+          .max(100)
           .optional()
-          .describe('ページ番号 (1-based, デフォルト: 1)').meta({ default: 1 }),
+          .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100)').meta({ default: 1 }),
         verbose: z
           .boolean()
           .optional()
@@ -1518,7 +1520,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           location: z.string().min(1).describe('宿泊地（観測済み: "東京駅", "京都駅", "草津温泉"）'),
           checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックイン日 (YYYY-MM-DD)'),
           checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックアウト日 (YYYY-MM-DD, チェックインより後)'),
-          adults: z.number().int().min(1).describe('大人人数（1室あたり）'),
+          adults: z.number().int().min(1).max(10).describe('大人人数（1室あたり, 上限: 10）'),
           rooms: z.number().int().min(1).max(1).optional().describe('部屋数（1のみ）'),
           limit: z.number().int().min(1).max(10).optional().describe('最大施設件数（1〜10, デフォルト: 5）').meta({ default: 5 }),
         },
@@ -1738,7 +1740,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
         selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ (例: "#status")'),
         webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
-        intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)').meta({ default: 3600 }),
+        intervalSeconds: z.number().int().min(1).max(604_800).optional().describe('監視インターバル目安 (秒, デフォルト: 3600, 上限: 604800)').meta({ default: 3600 }),
       },
       async (opts) => {
         try {
@@ -2300,7 +2302,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         contextId: z.string().min(1).describe('コンテキストID'),
         evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (省略時はページ走査)'),
         cursor: z.string().optional().describe('次ページカーソル'),
-        limit: z.number().int().min(1).max(100).optional().describe('取得件数 (最大100)'),
+        limit: z.number().int().min(1).max(100).optional().describe('取得件数 (1〜100, デフォルト: 40)').meta({ default: 40 }),
       },
       EvidencePageSchema,
       async (opts) => {
