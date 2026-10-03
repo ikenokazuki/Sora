@@ -158,7 +158,7 @@ fallbackが成功しても元の取得先は成功扱いにしません。元API
 
 上流statusを観測できない場合はunknownです。MCP/REST側の200を上流の200として記録しません。ログやartifactには認証、Cookie、追跡番号、個人情報を出さず、失敗応答も伏字済みの短い抜粋またはhashに限定します。画像Base64や配送全文は保存しません。
 
-最終exit codeは、activeな対象にfail/unavailable/blocked/unverifiedまたは未登録が1件でもあれば1です。機能していない検査器・workerの途中終了も失敗です。各case終了時に途中reportを更新し、job中断前までの結果も残します。再試行で復旧したものは`pass`でも試行履歴と`recovered=true`を表示します。
+最終exit codeは、fail/unavailableまたは未登録が1件でもあれば1（hard fail、公開停止）、それらがなくblocked/unverifiedのみ残れば3（soft hold、記録付きで公開進行）です。全greenは0です。機能していない検査器・workerの途中終了も失敗です。各case終了時に途中reportを更新し、job中断前までの結果も残します。再試行で復旧したものは`pass`でも試行履歴と`recovered=true`を表示します。
 
 ## 5. 全ツールの検査台帳
 
