@@ -21,6 +21,7 @@ describe('openpoi service', () => {
     expect(r.pois[1]).toMatchObject({ lat: 35.1, lng: 139.1 });
     expect(r.pois[2].lat).toBeUndefined();
     expect(r.source).toBe('openpoi');
+    expect(r.attribution).toContain('openpoiapi.com/attribution.html');
   });
   test('bbox takes priority over center and radius', async () => {
     const fetchFn = async (url: string) => {
