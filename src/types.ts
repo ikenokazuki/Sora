@@ -470,32 +470,91 @@ export const ScrapeRequestSchema = z.object({
   keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
 });
 
+export const SCRAPE_BATCH_INPUT_SHAPE = {
+    urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
+    concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
+    maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+    mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
+    formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
+    selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
+    clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
+    headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
+    removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
+    query: z.string().optional().describe('ハイライト抽出用キーワード'),
+    extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
+    onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+    extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
+    extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
+    chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
+    chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンク文字数目安 (上限: 100000)'),
+    validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
+    formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+    stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
+    filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
+    highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
+    maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
+    webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
+    retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
+    evidenceMode: z
+      .enum(['full', 'highlights', 'contextual_highlights'])
+      .optional()
+      .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
+    includeDiagnostics: z
+      .boolean()
+      .optional()
+      .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
+    includeDiscrepancies: z
+      .boolean()
+      .optional()
+      .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
+    safeNormalize: z
+      .boolean()
+      .optional()
+      .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
+    reorderUFlat: z
+      .boolean()
+      .optional()
+      .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
+    diversityWeight: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
+    annotateTemporal: z
+      .boolean()
+      .optional()
+      .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
+    minimizeTables: z
+      .boolean()
+      .optional()
+      .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+    onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
+    highlightAlgorithm: HighlightAlgorithmSchema
+      .optional()
+      .default(DEFAULT_HIGHLIGHT_ALGORITHM)
+      .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+    highlightOverheadTokens: z
+      .number()
+      .int()
+      .min(1)
+      .max(4096)
+      .optional()
+      .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
+    highlightMaxCount: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .optional()
+      .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+    verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+};
+
 export const BatchScrapeRequestSchema = z.object({
-  urls: z.array(z.string().url()).min(1, 'urls は 1 件以上指定してください').max(20).describe('一括スクレイピング対象の URL 配列 (最大20件)'),
-  concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
-  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-  mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト), "fast", "browser"').meta({ default: 'auto' }),
-  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力形式配列'),
-  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
-  selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列'),
-  stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
-  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
-  query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
-  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
-  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
-  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-  includeDiagnostics: z.boolean().optional().describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
-  includeDiscrepancies: z.boolean().optional().describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
-  safeNormalize: z.boolean().optional().describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  ...SCRAPE_BATCH_INPUT_SHAPE,
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
 });
 
 export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate', 'screenshot']);
