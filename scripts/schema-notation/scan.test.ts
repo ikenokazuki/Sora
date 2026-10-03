@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findNotationIssues, parseDocumentedDefault, type Param } from './scan.js';
+import { findNotationIssues, parseDocumentedDefault, topLevelKeys, type Param } from './scan.js';
 
 const SAFE = Number.MAX_SAFE_INTEGER;
 const kinds = (params: Param[], pairs: Record<string, { method: string; path: string } | null> = {}, allow: Record<string, string> = {}) =>
@@ -59,5 +59,13 @@ describe('findNotationIssues', () => {
     const pairs = { tool: { method: 'POST', path: '/tool' } };
     expect(kinds([mcp, rest], pairs)).toEqual(['pair_mismatch']);
     expect(kinds([mcp, rest], pairs, { 'pair_mismatch tool limit': 'intentional' })).toEqual([]);
+  });
+});
+
+describe('topLevelKeys', () => {
+  test('reads only the outermost keys of a 返却 note', () => {
+    expect(topLevelKeys('{ query, suggestions: [...] }')).toEqual(['query', 'suggestions']);
+    expect(topLevelKeys('{ routes: [{ index, totalTime }], note }')).toEqual(['routes', 'note']);
+    expect(topLevelKeys('{ status, hotels: [{ id, plans: [{ planId }] }], failures }')).toEqual(['status', 'hotels', 'failures']);
   });
 });

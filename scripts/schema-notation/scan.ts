@@ -11,7 +11,8 @@ export type Surface = 'mcp' | 'rest';
 export interface Param { surface: Surface; owner: string; path: string; schema: any }
 export type FindingKind =
   | 'default_undeclared' | 'default_mismatch' | 'default_unparseable'
-  | 'enum_missing' | 'range_mismatch' | 'unbounded_integer' | 'pair_mismatch';
+  | 'enum_missing' | 'range_mismatch' | 'unbounded_integer' | 'pair_mismatch'
+  | 'return_note_mismatch';
 export interface Finding { kind: FindingKind; key: string; detail: string }
 export type DocumentedDefault = { found: false } | { found: true; parseable: false } | { found: true; parseable: true; value: unknown };
 
@@ -150,8 +151,62 @@ export async function scanRepository(): Promise<Finding[]> {
   return findNotationIssues(await collectParams({ hotel: true }), REST_MAP, NOTATION_ALLOWLIST);
 }
 
+export function topLevelKeys(note: string): string[] {
+  const start = note.indexOf('{');
+  if (start < 0) return [];
+  const keys: string[] = [];
+  let depth = 0;
+  let token = '';
+  const flush = () => {
+    const k = token.replace(/[:?].*$/s, '').trim();
+    if (/^\w+$/.test(k)) keys.push(k);
+    token = '';
+  };
+  for (const ch of note.slice(start)) {
+    if (ch === '{' || ch === '[') { if (depth === 1) flush(); depth++; continue; }
+    if (ch === '}' || ch === ']') { if (depth === 1) flush(); depth--; if (depth === 0) break; continue; }
+    if (depth === 1 && ch === ',') { flush(); continue; }
+    if (depth === 1) token += ch;
+  }
+  return keys;
+}
+
+/** MCP description の「返却: { … }」の最上位キーが、対応RESTの200応答スキーマに存在するか。 */
+export async function scanReturnNotes(): Promise<Finding[]> {
+  const previousHotelFlag = process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
+  process.env.SORA_RAKUTEN_TRAVEL_ENABLED = 'true';
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const server = createMcpServer({ deferTools: false });
+  const client = new Client({ name: 'schema-notation-notes', version: '1.0.0' });
+  const out: Finding[] = [];
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    const doc: any = generateOpenApiDocument();
+    for (const tool of (await client.listTools()).tools) {
+      const note = (tool.description ?? '').match(/返却[:：]\s*(\{.*)$/s)?.[1];
+      const route = REST_MAP[tool.name];
+      if (!note || !route) continue;
+      const op = doc.paths[route.path.replace(/:(\w+)/g, '{$1}')]?.[route.method.toLowerCase()];
+      const props = Object.keys(op?.responses?.['200']?.content?.['application/json']?.schema?.properties ?? {});
+      if (!props.length) continue;
+      const missing = topLevelKeys(note).filter((k) => !props.includes(k));
+      const key = `${tool.name} 返却`;
+      if (missing.length && !NOTATION_ALLOWLIST[`return_note_mismatch ${key}`]) {
+        out.push({ kind: 'return_note_mismatch', key, detail: `missing ${JSON.stringify(missing)} in ${JSON.stringify(props)}` });
+      }
+    }
+  } finally {
+    await client.close();
+    await server.close();
+    if (previousHotelFlag === undefined) delete process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
+    else process.env.SORA_RAKUTEN_TRAVEL_ENABLED = previousHotelFlag;
+  }
+  return out;
+}
+
 if (import.meta.main) {
-  const findings = await scanRepository();
+  const findings = [...(await scanRepository()), ...(await scanReturnNotes())];
   const byKind = new Map<string, Finding[]>();
   for (const f of findings) byKind.set(f.kind, [...(byKind.get(f.kind) ?? []), f]);
   for (const [kind, list] of byKind) {
