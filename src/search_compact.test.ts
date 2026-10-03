@@ -355,6 +355,48 @@ describe('formatCompactWebSearchResponse', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatCompactIntegratedSearchResponse', () => {
+  test.each([false, true])('same X status is returned once across web and realtime (verbose=%s)', (verbose) => {
+    const response = {
+      query: 'Festival', source: 'integrated', count: 2,
+      results: [
+        { source: 'web', url: 'https://twitter.com/artist/status/123?s=20', title: 'Official post', markdown: '# Official post\n\nLive starts at 15:20.', highlights: ['Live starts at 15:20.'] },
+        { source: 'web', url: 'https://example.com/festival', markdown: '# Independent source\n\nLive starts at 15:20.' },
+      ],
+      realtime: { source: 'x', count: 1, items: [{ source: 'x', id: '123', url: 'https://x.com/artist/status/123', text: 'Live starts at 15:20.', isOfficial: true }] },
+    };
+    const before = structuredClone(response);
+    const output: any = formatCompactIntegratedSearchResponse(response, { verbose });
+    expect(output.results).toHaveLength(1);
+    expect(output.count).toBe(1);
+    expect(output.realtime.items).toHaveLength(1);
+    expect(output.realtime.items[0]).toMatchObject({ id: '123', isOfficial: true, retrievalSources: ['web', 'realtime'] });
+    expect(output.realtime.items[0].markdown).toContain('15:20');
+    expect(output.results[0].url).toBe('https://example.com/festival');
+    expect(response).toEqual(before);
+  });
+
+  test('same URL merges tracking variants but preserves case-sensitive paths and meaningful query parameters', () => {
+    const response = { count: 4, results: [
+      { url: 'https://example.com/Event?utm_source=yahoo', snippet: 'short' },
+      { url: 'https://example.com/Event', markdown: '# Event\n\nComplete official event description.', isOfficial: true },
+      { url: 'https://example.com/event', snippet: 'different path' },
+      { url: 'https://example.com/Event?date=2026-04-20', snippet: 'different event date' },
+    ] };
+    const output: any = formatCompactIntegratedSearchResponse(response);
+    expect(output.count).toBe(3);
+    expect(output.results).toHaveLength(3);
+    expect(output.results[0].markdown).toContain('Complete official');
+    expect(output.results[0].isOfficial).toBe(true);
+  });
+
+  test('similar posts with different IDs survive unconditional identity merging', () => {
+    const response = { count: 0, results: [], realtime: { count: 2, items: [
+      { source: 'x', id: '123', url: 'https://x.com/a/status/123', text: 'Same event announcement' },
+      { source: 'x', id: '456', url: 'https://x.com/b/status/456', text: 'Same event announcement' },
+    ] } };
+    const output: any = formatCompactIntegratedSearchResponse(response);
+    expect(output.realtime.items).toHaveLength(2);
+  });
   test('compact strips realtime provenance, keeps realtime items and web results', async () => {
     const { full } = await runFullCoverageRetrieval();
     const response = integratedFixture(full);

@@ -49,6 +49,7 @@ import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
+import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import {
   buildXIsolatedEvidence,
   buildXIsolatedEvidenceFromDirectStatus,
@@ -431,7 +432,7 @@ export function isRenderStillBlockedOrBlank(options: {
     html.includes('cf-browser-verification') ||
     html.includes('cf-challenge');
 
-  return (hasLittleContent && isJsDisabledMessage) || isChallenge;
+  return hasLittleContent || isJsDisabledMessage || isChallenge || !hasMeaningfulPageContent(bodyOnlyMarkdown);
 }
 
 export async function scrapeUrl(options: {
@@ -660,6 +661,7 @@ export async function scrapeUrl(options: {
               url: finalUrl,
               title: parsed.title,
               content: parsed.markdown,
+              contentStatus: parsed.contentStatus,
               isTruncated: parsed.isTruncated,
               contentType: 'text/html',
               source: 'web',
@@ -709,6 +711,7 @@ export async function scrapeUrl(options: {
               url: finalUrl,
               title: parsed.title,
               content: parsed.markdown,
+              contentStatus: parsed.contentStatus,
               isTruncated: parsed.isTruncated,
               contentType: 'text/html',
               source: 'web',
@@ -819,6 +822,7 @@ export async function scrapeUrl(options: {
           url: browserRes.finalUrl,
           title: browserRes.title || parsed.title,
           content: parsed.markdown,
+          contentStatus: parsed.contentStatus,
           isTruncated: parsed.isTruncated,
           contentType: 'text/html',
           source: 'web',
@@ -1404,8 +1408,9 @@ export function selectScrapeTargets(pool: any[], limit: number, query: string, r
 export function isUsableScrape(item: any): boolean {
   if (!item || item.scrapeError) return false;
   if (item.isSnippetFallback) return false;
+  if (item.contentStatus === 'metadata_only' || item.contentStatus === 'unavailable') return false;
   const md = item.markdown || '';
-  return typeof md === 'string' && md.length >= 50;
+  return typeof md === 'string' && md.length >= 50 && hasMeaningfulPageContent(md);
 }
 
 /** P1-3: Evidence充足判定 (adaptive scrape用) */

@@ -34,6 +34,7 @@ export function formatCompactScrapeResult(
   };
 
   if (result.description) clean.description = result.description;
+  if (result.contentStatus) clean.contentStatus = result.contentStatus;
   if (result.publishedTime) clean.publishedTime = result.publishedTime;
   if (result.author) clean.author = result.author;
   if (result.siteName) clean.siteName = result.siteName;

@@ -1,6 +1,40 @@
 import { describe, expect, it } from 'bun:test';
 import { convertHtmlToMarkdown } from './html_parser.js';
 
+describe('event details and publication dates', () => {
+  const event = {
+    '@context': 'https://schema.org', '@type': 'Event',
+    name: 'Festival Spring 2026', startDate: '2026-04-19T06:20:00Z',
+    endDate: '2026-04-19T08:10:00Z', location: { name: 'RED SUN' },
+    description: 'ライブ 15:20〜15:40。特典会 16:10〜17:10。出演者変更の注意事項を確認してください。',
+  };
+  const calendar = '<time datetime="2026-10">October 2026</time><div role="grid">Mon Tue Wed Thu Fri Sat Sun 28 29 30 1 2 3 4 5 6 7</div>';
+
+  it('recovers event description and end time from JSON-LD when the DOM only contains a calendar', () => {
+    const html = `<html><head><title>Festival</title><script type="application/ld+json">${JSON.stringify(event)}</script></head><body>${calendar}</body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/event', 30000);
+    expect(result.markdown).toContain(event.description);
+    expect(result.markdown).toContain('2026-04-19T08:10:00Z');
+    expect(result.markdown).not.toContain('Mon Tue Wed');
+    expect(result.contentStatus).toBe('structured_data');
+    expect(result.publishedTime).toBeUndefined();
+  });
+
+  it('does not claim calendar navigation is page content', () => {
+    const html = `<html><head><title>Calendar</title><meta name="description" content="Upcoming events"></head><body>${calendar}</body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/calendar', 30000);
+    expect(result.contentStatus).toBe('metadata_only');
+    expect(result.markdown).not.toContain('Mon Tue Wed');
+    expect(result.quality).toBeLessThan(45);
+  });
+
+  it('uses the explicit publication date instead of an unrelated calendar time', () => {
+    const html = `<html><head><title>News</title><script type="application/ld+json">${JSON.stringify({ '@type': 'Article', datePublished: '2026-04-01T09:00:00Z' })}</script></head><body>${calendar}<article><p>Festival details and ticket sales announcement with all relevant information.</p></article></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/news', 30000);
+    expect(result.publishedTime).toBe('2026-04-01T09:00:00Z');
+  });
+});
+
 // Sidebar <article> (calendar widget) comes before the real product <article>.
 // A nav block pushes body text over the 200-char fallback trigger.
 const SIDEBAR_CALENDAR_PRODUCT_HTML = `<!DOCTYPE html>
