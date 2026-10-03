@@ -55,8 +55,8 @@ import { hotelService, type HotelService } from './services/hotels/index.js';
 import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
-import { CountryContextReportSchema, IntelSocialInputSchema, type CountryContextReport } from './services/country_intel/types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, BrowserActionStepSchema } from './types.js';
+import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
@@ -432,6 +432,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         fullPage: z
           .boolean()
           .optional()
+          .default(true)
           .describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
         fastOnly: z
           .boolean()
@@ -900,10 +901,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'web',
       '【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。',
       {
-        platform: z.enum(['weibo', 'threads', 'instagram', 'facebook']).describe('対象SNS'),
+        platform: SocialPlatformSchema.describe('対象SNS'),
         query: z.string().min(1).max(500).describe('検索語（現地語推奨）'),
-        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10, 最大: 30)'),
-        lookbackHours: z.number().int().min(1).max(2160).optional().describe('遡及時間 (デフォルト: 24, 最大: 2160)。Weiboは期間外を除外、Metaは索引期間の目安＋本文日時で再判定'),
+        limit: z.number().int().min(1).max(30).optional().default(10).describe('取得件数 (デフォルト: 10, 最大: 30)'),
+        lookbackHours: z.number().int().min(1).max(2160).optional().default(24).describe('遡及時間 (デフォルト: 24, 最大: 2160)。Weiboは期間外を除外、Metaは索引期間の目安＋本文日時で再判定'),
       },
       async ({ platform, query, limit, lookbackHours }) => {
         try {
@@ -935,7 +936,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応。Metaのコメント取得は対象外です。Xの投稿は対象外のため search_realtime を使ってください。',
       {
         url: z.string().min(1).describe('公開投稿URL'),
-        commentLimit: z.number().int().min(0).max(20).optional().describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
+        commentLimit: z.number().int().min(0).max(20).optional().default(10).describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
       },
       async ({ url, commentLimit }) => {
         try {
@@ -973,33 +974,17 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       {
         url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
         sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
+        ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
         createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)'),
         closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)'),
-        actions: z
-          .array(
-            z.object({
-              type: z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate']).describe('アクション種別: "click", "fill", "type", "press", "select", "scroll", "wait", "evaluate", "navigate"'),
-              url: z.string().url().optional().describe('navigate 時に遷移する URL'),
-              selector: z.string().optional().describe('操作対象の CSS セレクタ (例: "#search-input", "button.submit")'),
-              text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト (例: "検索", "ログイン")'),
-              value: z.string().optional().describe('select タグで選択する値'),
-              key: z.string().optional().describe('press で押下するキー名 (例: "Enter", "Tab", "Escape")'),
-              direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")'),
-              distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)'),
-              ms: z.number().optional().describe('待機時間 (ミリ秒)'),
-              script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
-              clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)'),
-              delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
-            }),
-          )
-          .optional()
-          .describe('順次実行するブラウザアクションの配列'),
+        actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
         extract: z
           .object({
             markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
             html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
             screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)'),
             screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)'),
+            clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
             maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
           })
           .optional()
@@ -1710,7 +1695,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)'),
         center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。geocoding.jpで座標化する。lat/lonとは排他'),
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
-        limit: z.number().int().min(1).max(50).optional().describe('最大件数 (1-50, デフォルト: 10)'),
+        limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
         noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。10秒間隔は維持'),
       },
       async (opts) => {
@@ -1921,7 +1906,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名の自由入力)'),
         country: z.string().optional().describe('国コード (デフォルト: "jp")'),
         entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
-        attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
+        attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
       },
       async (opts) => {
@@ -2252,12 +2237,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       {
         region: z.string().min(1).describe('国・地域名またはコード (例: "South Korea", "KR", "台湾")'),
         query: z.string().optional().describe('追加の調査クエリ'),
-        topics: z.array(z.string()).optional().describe('対象トピック (politics, economy, disasters 等)'),
-        period: z.enum(['7d', '30d', '90d']).optional().describe('調査期間 (デフォルト: 30d)'),
-        includeSocial: z.boolean().optional().describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
+        topics: z.array(z.enum(COUNTRY_INTEL_TOPICS)).optional().describe('対象トピック (politics, economy, disasters 等)'),
+        period: z.enum(['7d', '30d', '90d']).optional().default('30d').describe('調査期間 (デフォルト: 30d)'),
+        includeSocial: z.boolean().optional().default(false).describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
         social: IntelSocialInputSchema.optional().describe('SNS観測条件 (platforms/queries/urls/lookbackHours)'),
-        noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
-        verbose: z.boolean().optional().describe('全件の詳細出力を要求するか (既定は分野別の代表証拠)'),
+        noCache: z.boolean().optional().default(false).describe('キャッシュをバイパスするか'),
+        verbose: z.boolean().optional().default(false).describe('全件の詳細出力を要求するか (既定は分野別の代表証拠)'),
       },
       CountryContextReportSchema,
       async (opts) => {
