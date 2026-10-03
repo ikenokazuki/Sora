@@ -43,6 +43,17 @@ export function summarize(results: CaseResult[]): Record<HealthStatus, number> {
   return counts;
 }
 
+/** Publish-gate exit mapping. 0 = all green, 3 = soft hold (only unverified/
+ * blocked/not_applicable remain: no evidence of breakage, test data or upstream
+ * access missing), 1 = hard fail (fail/unavailable present or coverage missing).
+ * Secrets-free operation must never ship broken code (1) but may ship
+ * unverified areas (3) with the hold recorded in the report. */
+export function gateExit(counts: Record<HealthStatus, number>, missing: string[]): 0 | 1 | 3 {
+  if (isGatePass(counts, missing)) return 0;
+  if (counts.fail === 0 && counts.unavailable === 0 && missing.length === 0) return 3;
+  return 1;
+}
+
 export function isGatePass(counts: Record<HealthStatus, number>, missing: string[]): boolean {
   return counts.fail === 0 && counts.unavailable === 0 && counts.blocked === 0 && counts.unverified === 0 && missing.length === 0;
 }

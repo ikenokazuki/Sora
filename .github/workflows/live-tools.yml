@@ -51,11 +51,26 @@ jobs:
         if: inputs.image-artifact == ''
         run: docker build -f Containerfile -t sora-tool-health:candidate .
       - name: Run live tool-health lane (${{ matrix.lane }})
+        id: live
         run: |
+          set +e
           if [ "${{ matrix.lane }}" = "hotel" ]; then
             bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out --enable-hotel
           else
             bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out
+          fi
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 0 ]; then
+            echo "### tool-health ${{ matrix.lane }}: PASS" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          elif [ "$code" -eq 3 ]; then
+            echo "### tool-health ${{ matrix.lane }}: SOFT HOLD (unverified/blocked only, no breakage signal)" >> "$GITHUB_STEP_SUMMARY"
+            cat tool-health-out/tool-health-${{ matrix.lane }}.md >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          else
+            echo "### tool-health ${{ matrix.lane }}: HARD FAIL (exit $code)" >> "$GITHUB_STEP_SUMMARY"
+            exit "$code"
           fi
         env:
           SORA_TOOL_HEALTH_CASES_JSON: ${{ secrets.SORA_TOOL_HEALTH_CASES_JSON }}

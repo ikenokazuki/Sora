@@ -5,7 +5,7 @@ import {
   checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
 import {
-  collectKnownCaseIds, isGatePass, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
+  collectKnownCaseIds, gateExit, isGatePass, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
 } from './report.js';
 import { ProviderHttpError, ProviderNetworkError } from '../../src/services/country_intel/provider_registry.js';
 import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified } from './types.js';
@@ -90,6 +90,11 @@ describe('report writers', () => {
     expect(isGatePass(counts, [])).toBe(false);
     expect(isGatePass(summarize([results[0]]), [])).toBe(true);
     expect(isGatePass(summarize([results[0]]), ['missing-tool'])).toBe(false);
+    expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(0);
+    expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 1, unverified: 2, not_applicable: 0 } as never, [])).toBe(3);
+    expect(gateExit({ pass: 1, pass_empty: 0, fail: 1, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(1);
+    expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 1, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(1);
+    expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, ['missing-tool'])).toBe(1);
   });
   test('junit and markdown render', () => {
     const report = { meta: { startedAt: 't', commit: 'c', image: 'i', imageId: 'id', lane: 'standard', runner: 'r', overall: 'fail' }, results, counts: summarize(results), missing: [] } as never;
