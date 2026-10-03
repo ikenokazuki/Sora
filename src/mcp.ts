@@ -55,7 +55,7 @@ import { hotelService, type HotelService } from './services/hotels/index.js';
 import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, BrowserActionStepSchema } from './types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
 import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
@@ -1107,10 +1107,13 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       {
         query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10)').meta({ default: 10 }),
+        status: ChiebukuroStatusSchema.optional()
+          .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
+          .meta({ default: 'all' }),
       },
-      async ({ query, limit }) => {
+      async ({ query, limit, status }) => {
         try {
-          const result = await searchYahooChiebukuro({ query, limit });
+          const result = await searchYahooChiebukuro({ query, limit, status });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -1632,7 +1635,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, epicenter, maxIntensity, magnitude }] }',
       {
         limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
-        minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)'),
+        minIntensity: EarthquakeScaleSchema.optional()
+          .describe('最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10)')
+          .meta({ default: 10 }),
       },
       async (opts) => {
         try {

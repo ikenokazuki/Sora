@@ -13,4 +13,8 @@ describe('API input notation (MCP + OpenAPI)', () => {
   test('documented defaults are declared and match', async () => {
     await expectNoFindings(['default_undeclared', 'default_mismatch', 'default_unparseable']);
   }, 30_000);
+
+  test('listed values are declared as enum', async () => {
+    await expectNoFindings(['enum_missing']);
+  }, 30_000);
 });
