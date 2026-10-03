@@ -23,7 +23,10 @@ export interface PoiSearchResult {
   count: number;
   pois: PoiItem[];
   source: 'openpoi';
+  attribution: string;
 }
+
+export const OPENPOI_ATTRIBUTION = '出典: OpenPOI API (https://openpoiapi.com/attribution.html)';
 
 export type PoiFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -145,5 +148,5 @@ export async function searchOpenPoi(
       const item = normalizePoiItem(r);
       return item ? [item] : [];
     });
-  return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi' };
+  return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi', attribution: OPENPOI_ATTRIBUTION };
 }

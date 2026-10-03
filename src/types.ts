@@ -949,6 +949,7 @@ export const PoiSearchResultSchema = z.object({
   count: z.number().describe('返却件数'),
   pois: z.array(PoiItemSchema).describe('施設一覧'),
   source: z.literal('openpoi').describe('データソース'),
+  attribution: z.string().describe('OpenPOI API の出典表示。公開時は pois[].attributions と併せて表示すること'),
 });
 
 export const FlightStatusRequestSchema = z.object({

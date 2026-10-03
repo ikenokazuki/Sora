@@ -1595,7 +1595,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_poi',
       'disaster',
-      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはgeocoding.jpで座標化します。未キャッシュの解決は全ツール共有で10秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }] }',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはgeocoding.jpで座標化します。未キャッシュの解決は全ツール共有で10秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution と各 pois[].attributions を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
       {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
