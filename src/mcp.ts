@@ -715,10 +715,11 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
         limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
         since: z.string().optional().describe('指定した日付・日時以降に更新されたページのみを抽出するフィルタ (例: "2026-08-01", "2026-01-01T00:00:00Z")'),
+        until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
       },
-      async ({ url, limit, since }) => {
+      async ({ url, limit, since, until }) => {
         try {
-          const result = await mapSiteUrl({ url, limit, since });
+          const result = await mapSiteUrl({ url, limit, since, until });
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };

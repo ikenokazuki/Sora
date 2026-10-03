@@ -1036,11 +1036,24 @@ export async function fetchSitemapEntries(
 // ==========================================
 // 7. サイトマップ探索 (mapSiteUrl)
 // ==========================================
+export function filterSitemapEntriesByDate<T extends { lastmod?: string }>(entries: T[], since?: string, until?: string): T[] {
+  const sinceTime = since ? new Date(since).getTime() : NaN;
+  const untilTime = until ? new Date(until).getTime() : NaN;
+  return entries.filter((e) => {
+    if (!e.lastmod) return true;
+    const t = new Date(e.lastmod).getTime();
+    if (!Number.isNaN(sinceTime) && t < sinceTime) return false;
+    if (!Number.isNaN(untilTime) && t > untilTime) return false;
+    return true;
+  });
+}
+
 export async function mapSiteUrl(options: {
   url: string;
   limit?: number;
   includeSubdomains?: boolean;
   since?: string;
+  until?: string;
   timeoutMs?: number;
   noCache?: boolean;
 }): Promise<{
@@ -1052,7 +1065,7 @@ export async function mapSiteUrl(options: {
 }> {
   const url = options.url;
   const limit = Math.min(options.limit ?? 200, 1000);
-  const cacheKey = `map:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}`;
+  const cacheKey = `map:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
 
   if (!options.noCache) {
     const cached = getFromCache<any>(cacheKey);
@@ -1087,13 +1100,7 @@ export async function mapSiteUrl(options: {
   for (const sitemapUrl of candidateSitemaps) {
     const entries = await fetchSitemapEntries(sitemapUrl, limit);
     if (entries.length > 0) {
-      let filteredEntries = entries;
-      if (options.since) {
-        const sinceTime = new Date(options.since).getTime();
-        if (!isNaN(sinceTime)) {
-          filteredEntries = entries.filter((e) => !e.lastmod || new Date(e.lastmod).getTime() >= sinceTime);
-        }
-      }
+      const filteredEntries = filterSitemapEntriesByDate(entries, options.since, options.until);
       const links = filteredEntries.map((e) => e.url);
       const result = {
         url,
@@ -1517,7 +1524,7 @@ export async function integratedSearch(options: {
   }
 
   const [webParsedRes, realtimeMcpRes] = await Promise.all([
-    searchYahooWeb({ query, includeDomains, excludeDomains, updated }),
+    searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache }),
     includeRealtime
       ? searchYahooRealtime({ query, sort: realtimeSort, detailEnrichment: false }).catch(() => null)
       : Promise.resolve(null),
@@ -1542,7 +1549,7 @@ export async function integratedSearch(options: {
       if (prfQ.expansionTerms.length > 0) {
         const prfQuery = `${query} ${prfQ.expansionTerms.slice(0, 2).join(" ")}`.slice(0, 380);
         if (prfQuery !== query) {
-          const prfRes = await searchYahooWeb({ query: prfQuery, includeDomains, excludeDomains, updated, disableFallback: true }).catch(() => null);
+          const prfRes = await searchYahooWeb({ query: prfQuery, includeDomains, excludeDomains, updated, disableFallback: true, noCache }).catch(() => null);
           const prfItems = Array.isArray(prfRes?.items) ? prfRes.items : [];
           if (prfItems.length > 0) {
             const seen = new Set(searchResults.map((it: any) => it.url || it.link));
