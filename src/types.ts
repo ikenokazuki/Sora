@@ -495,24 +495,31 @@ export const BatchScrapeRequestSchema = z.object({
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
 });
 
+export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate', 'screenshot']);
+
+/** 実装 (browser_session.ts runActionsOnPage) が解釈するアクション項目のみ。 */
+export const BrowserActionStepSchema = z.object({
+  type: BrowserActionTypeSchema.describe('アクション種別'),
+  selector: z.string().optional().describe('操作対象の CSS セレクタ'),
+  text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト'),
+  value: z.string().optional().describe('select タグで選択する値'),
+  key: z.string().optional().describe('press で押下するキー名'),
+  ms: z.number().optional().describe('wait 時の待機時間 (ミリ秒)'),
+  script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
+  url: z.string().optional().describe('navigate 時に遷移する URL'),
+  delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
+  clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)'),
+  distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)'),
+  direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")'),
+});
+
 export const BrowserActionRequestSchema = z.object({
   url: z.string().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
   sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
   ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
   createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)'),
   closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)'),
-  actions: z.array(z.object({
-    type: z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate', 'screenshot']).describe('アクション種別: "click", "fill", "type", "press", "select", "scroll", "wait", "evaluate", "navigate", "screenshot"'),
-    selector: z.string().optional().describe('操作対象の CSS セレクタ (例: "#search-input", "button.submit")'),
-    text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト (例: "検索", "ログイン")'),
-    value: z.string().optional().describe('select タグで選択する値'),
-    key: z.string().optional().describe('press で押下するキー名 (例: "Enter", "Tab", "Escape")'),
-    x: z.number().optional().describe('クリック座標 X'),
-    y: z.number().optional().describe('クリック座標 Y'),
-    ms: z.number().optional().describe('wait 時の待機時間 (ミリ秒)'),
-    script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
-    fullPage: z.boolean().optional().describe('screenshot 時にフルページ撮影するか'),
-  })).optional().describe('順次実行するブラウザアクションの配列'),
+  actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
   extract: z.object({
     markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
     html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
@@ -610,8 +617,8 @@ export const TransitRouteRequestSchema = z.object({
   to: z.string().min(1, 'to は必須です').describe('到着駅・バス停・施設名 (例: "横浜", "京都")'),
   via: z.array(z.string()).optional().describe('経由駅リスト (最大3駅, 例: ["品川"])'),
   sortBy: z.enum(['time', 'transfer', 'fare']).optional().describe('並び順: "time"(早い順), "transfer"(乗換少ない順), "fare"(安い順)'),
-  seatPreference: z.enum(['any', 'reserved', 'non_reserved', 'green']).optional().describe('座席種別: "any", "reserved"(指定席), "non_reserved"(自由席), "green"(グリーン車)'),
-  walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow', 'normal']).optional().describe('徒歩速度設定'),
+  seatPreference: z.enum(['non_reserved', 'reserved', 'green']).optional().describe('座席種別: "non_reserved"(自由席), "reserved"(指定席), "green"(グリーン車)'),
+  walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow']).optional().describe('徒歩速度設定'),
 });
 
 export const WeatherRequestSchema = z.object({
@@ -1929,8 +1936,9 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
     res = { type: schema.isInt ? 'integer' : 'number' };
     const min = (schema as any).minValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'min' || c.check === 'min')?.value;
     const max = (schema as any).maxValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'max' || c.check === 'max')?.value;
-    if (min !== undefined) res.minimum = min;
-    if (max !== undefined) res.maximum = max;
+    // zod v4: 制限なしの数値は minValue=-Infinity / maxValue=Infinity を持つ。記載しない。
+    if (typeof min === 'number' && Number.isFinite(min)) res.minimum = min;
+    if (typeof max === 'number' && Number.isFinite(max)) res.maximum = max;
   } else if (schema instanceof z.ZodBoolean) {
     res = { type: 'boolean' };
   } else if (schema instanceof z.ZodEnum) {
