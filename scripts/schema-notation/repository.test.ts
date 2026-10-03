@@ -21,4 +21,12 @@ describe('API input notation (MCP + OpenAPI)', () => {
   test('integer bounds and documented ranges are declared', async () => {
     await expectNoFindings(['unbounded_integer', 'range_mismatch']);
   }, 30_000);
+
+  test('MCP tools and REST twins agree', async () => {
+    await expectNoFindings(['pair_mismatch']);
+  }, 30_000);
+
+  test('no notation findings remain', async () => {
+    expect((await findings()).map((f) => `${f.kind} ${f.key}`)).toEqual([]);
+  }, 30_000);
 });
