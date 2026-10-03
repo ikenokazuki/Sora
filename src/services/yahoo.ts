@@ -460,9 +460,10 @@ export async function searchYahooWeb(options: {
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
   disableFallback?: boolean;
+  noCache?: boolean;
 }, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
   const flightKey = yahooWebSearchFlightKey(options);
-  const fresh = getYahooFreshCache<any>(flightKey);
+  const fresh = options.noCache ? null : getYahooFreshCache<any>(flightKey);
   if (fresh) {
     try { incrementSecurityCounter('yahoo_cache_hit_total'); } catch {}
     return { ...fresh, cached: true };
