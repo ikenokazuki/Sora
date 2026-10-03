@@ -1480,38 +1480,53 @@ export const IntegratedSearchResponseSchema = z.object({
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
 });
 
-export const ImageSearchItemSchema = z.object({
-  title: z.string().describe('画像タイトル・周辺テキスト'),
-  url: z.string().describe('画像掲載元の Web ページ URL'),
-  imageUrl: z.string().describe('画像ファイルの直接 URL'),
-  thumbnailUrl: z.string().optional().describe('サムネイル画像 URL'),
-  width: z.number().optional().describe('画像幅 (px)'),
-  height: z.number().optional().describe('画像高さ (px)'),
-  source: z.literal('image').optional().describe('ソース ("image")'),
-});
-
-export const ImageSearchResponseSchema = z.object({
-  source: z.literal('image').describe('ソース ("image")'),
+const YahooEnvelopeShape = {
+  ok: z.boolean().optional().describe('上流の成功フラグ'),
+  provider: z.string().optional().describe('上流プロバイダ名'),
+  vertical: z.string().optional().describe('検索種別'),
   query: z.string().optional().describe('検索クエリ'),
+  page: z.number().optional().describe('ページ番号'),
   count: z.number().optional().describe('取得件数'),
+};
+// related_queries の要素型と next_page の型は 2026-10-03 の実測では確定できなかったため緩く定義する。
+// 実応答で型が分かったら狭めてよい。
+const YahooImageRefSchema = z.object({ url: z.string(), width: z.number().optional(), height: z.number().optional() });
+
+export const ImageSearchItemSchema = z.object({
+  id: z.string().optional().describe('画像ID'),
+  title: z.string().describe('画像タイトル・周辺テキスト'),
+  source_url: z.string().optional().describe('画像掲載元ページのURL'),
+  source_site: z.string().optional().describe('掲載元ドメイン'),
+  file_format: z.string().optional().describe('画像形式 (例: "jpeg")'),
+  original: YahooImageRefSchema.optional().describe('元画像'),
+  thumbnail: YahooImageRefSchema.optional().describe('サムネイル'),
+  cached: YahooImageRefSchema.optional().describe('Yahoo キャッシュ画像'),
+  platform: z.string().optional().describe('上流が返した配信元'),
+  source: z.literal('image').describe('ソース ("image")'),
+});
+export const ImageSearchResponseSchema = z.object({
+  ...YahooEnvelopeShape,
+  next_page: z.number().nullable().optional().describe('次ページ番号'),
+  related_queries: z.array(z.unknown()).optional().describe('関連検索語'),
+  source: z.literal('image').describe('ソース ("image")'),
   items: z.array(ImageSearchItemSchema).describe('画像検索結果一覧'),
 });
 
 export const VideoSearchItemSchema = z.object({
+  id: z.string().optional().describe('動画ID'),
   title: z.string().describe('動画タイトル'),
   url: z.string().describe('動画ページ URL'),
-  videoUrl: z.string().optional().describe('動画ストリーム URL または埋め込み URL'),
-  thumbnailUrl: z.string().optional().describe('サムネイル画像 URL'),
   duration: z.string().optional().describe('動画の長さ (例: "10:30")'),
-  publisher: z.string().optional().describe('投稿元・配信者 (例: "YouTube")'),
-  publishedAt: z.string().optional().describe('公開日時'),
-  source: z.literal('video').optional().describe('ソース ("video")'),
-});
-
-export const VideoSearchResponseSchema = z.object({
+  summary: z.string().optional().describe('概要'),
+  thumbnail: z.string().optional().describe('サムネイル画像 URL'),
+  upload_date: z.string().optional().describe('投稿日 (上流表記。例: "6日前")'),
+  uploader: z.string().optional().describe('投稿者'),
+  platform: z.string().optional().describe('配信プラットフォーム (例: "YouTube")'),
   source: z.literal('video').describe('ソース ("video")'),
-  query: z.string().optional().describe('検索クエリ'),
-  count: z.number().optional().describe('取得件数'),
+});
+export const VideoSearchResponseSchema = z.object({
+  ...YahooEnvelopeShape,
+  source: z.literal('video').describe('ソース ("video")'),
   items: z.array(VideoSearchItemSchema).describe('動画検索結果一覧'),
 });
 
@@ -1553,10 +1568,12 @@ export const ChiebukuroSearchResponseSchema = z.object({
 });
 
 export const SuggestResponseSchema = z.object({
+  ...YahooEnvelopeShape,
   source: z.literal('suggest').describe('ソース ("suggest")'),
-  query: z.string().optional().describe('入力キーワード'),
-  suggestions: z.array(z.string()).optional().describe('キーワード補完サジェスト候補リスト'),
-  items: z.array(z.string()).optional().describe('サジェスト候補一覧'),
+  suggestions: z.array(z.object({
+    keyword: z.string().describe('候補キーワード'),
+    search_url: z.string().optional().describe('Yahoo検索URL'),
+  })).describe('キーワード補完候補'),
 });
 
 // --- 5. 交通・気象・防災系 レスポンススキーマ ---
@@ -1596,12 +1613,14 @@ export const WeatherDayForecastSchema = z.object({
     weather: z.string().describe('天候詳細説明'),
     wind: z.string().nullable().optional().describe('風の状況 (例: "北の風 やや強く")'),
     wave: z.string().nullable().optional().describe('波の高さ (例: "1.5メートル")'),
-  }).describe('天候詳細情報'),
+  }).optional().describe('天候詳細情報（3日目以降の週間予報では省略）'),
+  reliability: z.string().optional().describe('週間予報の信頼度 (A/B/C)'),
   temperature: z.object({
     min: z.string().nullable().describe('最低気温 (例: "18℃")'),
     max: z.string().nullable().describe('最高気温 (例: "28℃")'),
   }).describe('予想気温'),
   chanceOfRain: z.object({
+    allDay: z.string().optional().describe('全日の降水確率 (週間予報)'),
     T00_06: z.string().describe('00-06時の降水確率 (例: "10%")'),
     T06_12: z.string().describe('06-12時の降水確率'),
     T12_18: z.string().describe('12-18時の降水確率'),
@@ -1662,8 +1681,7 @@ export const EarthquakeItemSchema = z.object({
 
 export const EarthquakeSearchResultSchema = z.object({
   count: z.number().describe('取得件数'),
-  items: z.array(EarthquakeItemSchema).describe('地震情報履歴配列 (新着順)'),
-  source: z.enum(['p2pquake', 'jma']).describe('データソース'),
+  earthquakes: z.array(EarthquakeItemSchema).describe('地震情報履歴配列 (新着順)'),
 });
 
 export const TrafficItemSchema = z.object({
@@ -1824,13 +1842,13 @@ export const InspectImageResultSchema = z.object({
 export const WatchTargetRecordSchema = z.object({
   id: z.string().describe('監視ターゲット一意 ID (UUID)'),
   url: z.string().describe('監視対象 Web ページ URL'),
-  title: z.string().optional().describe('ターゲット識別用タイトル'),
-  selector: z.string().optional().describe('監視対象 CSS セレクタ'),
-  last_hash: z.string().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
-  last_content: z.string().optional().describe('直前チェック時の本文スニペット'),
-  webhook_url: z.string().optional().describe('差分検知通知先 Webhook URL'),
+  title: z.string().nullable().optional().describe('ターゲット識別用タイトル'),
+  selector: z.string().nullable().optional().describe('監視対象 CSS セレクタ'),
+  last_hash: z.string().nullable().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
+  last_content: z.string().nullable().optional().describe('直前チェック時の本文スニペット'),
+  webhook_url: z.string().nullable().optional().describe('差分検知通知先 Webhook URL'),
   interval_seconds: z.number().describe('監視間隔 (秒)'),
-  last_checked_at: z.number().optional().describe('最終チェック日時 (Unixミリ秒)'),
+  last_checked_at: z.number().nullable().optional().describe('最終チェック日時 (Unixミリ秒)'),
   created_at: z.number().describe('ターゲット登録日時 (Unixミリ秒)'),
 });
 
@@ -1846,6 +1864,11 @@ export const WatchCheckResultSchema = z.object({
   webhookSent: z.boolean().optional().describe('Webhook 通知が送信されたか'),
   errorCode: z.string().optional().describe('失敗コード (WATCH_SELECTOR_NOT_FOUND 等)'),
 });
+
+export const WatchCheckResponseSchema = z.object({
+  result: WatchCheckResultSchema.optional().describe('id 指定時の単一の結果'),
+  results: z.array(WatchCheckResultSchema).optional().describe('id 省略時の全ターゲットの結果配列'),
+}).describe('id 指定時は result、省略時は results を返す');
 
 export const WatchRegisterResponseSchema = z.object({
   target: WatchTargetRecordSchema.describe('登録・保存された監視ターゲットレコード'),
@@ -2824,7 +2847,7 @@ export function generateOpenApiDocument() {
               description: '差分スキャン実行結果・変更検知ステータス・ハッシュ比較',
               content: {
                 'application/json': {
-                  schema: zodToOpenApiSchema(WatchCheckResultSchema),
+                  schema: zodToOpenApiSchema(WatchCheckResponseSchema),
                 },
               },
             },
