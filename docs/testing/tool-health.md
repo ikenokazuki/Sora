@@ -68,3 +68,9 @@ bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health
 
 - 国際3社のbrowser取得は先方のWAF都合で変動する。同一IPから短時間に大量取得した後はchallengeで `unknown`/`blocked` になることがある。CI（fresh IP）での結果を優先し、再実行で復旧するか見ること。
 - `track.*.negative`（bogus番号）は `unknown` を失敗にせず `unverified` とする。`blocked`（bot check検出）は別分類で記録する。
+
+## 公開gate（soft hold）
+
+- runner exit 0＝全green、exit 3＝soft hold（`fail`/`unavailable`/未登録なし。`unverified`/`blocked` のみ残存）、exit 1＝hard fail、exit 2＝設定異常。
+- CI公開は 0 と 3 で進行する。3 の場合は summary と report に hold 範囲を記録し、輸送不能・契約違反（1）は必ず止める。
+- hold は「壊れていない証拠がない」状態であり「壊れていない証拠」ではない。未検証の輸送業者・provider は test data が揃い次第 green 化すること。
