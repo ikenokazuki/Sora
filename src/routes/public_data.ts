@@ -259,7 +259,7 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
   }
 });
 
-// geocoding.jp 座標解決 & 国土地理院 標高取得 (POST /geo/elevation & GET /geo/elevation)
+// Nominatim 座標解決 & 国土地理院 標高取得 (POST /geo/elevation & GET /geo/elevation)
 publicDataRoutes.post('/geo/elevation', async (c) => {
   let rawBody: any;
   try {
