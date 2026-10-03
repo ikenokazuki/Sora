@@ -1445,7 +1445,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ### 3.16 座標解決・国土地理院の標高取得 (`POST /geo/elevation` / `GET /geo/elevation`)
 
-住所・地名を[Nominatim (OpenStreetMap)](https://nominatim.org/)で緯度経度へ解決し（該当なしの番地住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)で補完）、国土地理院からその地点の海抜標高（m）を取得します。座標解決の取得元は`geocodingSource`、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
+住所・地名を[Nominatim (OpenStreetMap)](https://nominatim.org/)で緯度経度へ解決し（該当なしの番地住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)で補完）、国土地理院からその地点の海抜標高（m）を取得します。座標解決の取得元は`geocodingSource`、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
 
 地名解決は`search_poi`と共有します。同一Soraプロセス内のMCP・REST全要求で、Nominatimへの実際の問い合わせ開始を1.1秒以上空けます。同じ地名の同時要求は1回にまとめ、成功結果は24時間キャッシュします。異なる未キャッシュ地名の要求は順番に待機します。`noCache: true`でも1.1秒間隔の制限は維持します。直接`lat` / `lon`を指定した場合は地名解決を行いません。
 
@@ -1463,6 +1463,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
     "address": "原宿",
     "matchedTitle": "東京都渋谷区神宮前 原宿",
     "geocodingSource": "nominatim",
+    "geocodingAttribution": "出典: © OpenStreetMap contributors (ODbL) https://www.openstreetmap.org/copyright",
     "needsVerification": true,
     "lat": 35.669968,
     "lon": 139.709008,
@@ -1481,7 +1482,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 {"query":"ラーメン","center":"原宿","radiusMeters":1000,"limit":5}
 ```
 
-GETでは`/geo/poi?query=ラーメン&center=原宿&radiusMeters=1000&limit=5`と指定できます。応答の`centerResolved`には`input`、`address`、`lat`、`lon`、`source: "nominatim"`、`needsVerification`を含めます。互換フィールドの`ambiguous`は`needsVerification`と同値、`candidates`は空配列です。候補一覧や一意性の保証を示すものではありません。
+GETでは`/geo/poi?query=ラーメン&center=原宿&radiusMeters=1000&limit=5`と指定できます。応答の`centerResolved`には`input`、`address`、`lat`、`lon`、`source: "nominatim"`、出典表示の`attribution`、`needsVerification`を含めます。結果を表示・公開する際は`centerResolved.attribution`も出典として併記してください。互換フィールドの`ambiguous`は`needsVerification`と同値、`candidates`は空配列です。候補一覧や一意性の保証を示すものではありません。
 
 OpenPOIの複数語検索はORのため、場所を`query`へ混ぜず`center`へ指定してください。地名解決失敗時はエラーを返し、広域検索へ切り替えません。該当なしの場合や座標が不正な場合は失敗として扱います。
 

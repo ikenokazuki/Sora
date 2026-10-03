@@ -1565,7 +1565,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'get_elevation',
       'disaster',
-      '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, needsVerification }',
+      '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }',
       {
         address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
         lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
@@ -1595,7 +1595,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_poi',
       'disaster',
-      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution と各 pois[].attributions を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
       {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
