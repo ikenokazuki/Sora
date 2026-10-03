@@ -620,14 +620,30 @@ export const RealtimeSearchRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
-export const TransitRouteRequestSchema = z.object({
-  from: z.string().min(1, 'from は必須です').describe('出発駅・バス停・施設名 (例: "新宿", "東京駅")'),
-  to: z.string().min(1, 'to は必須です').describe('到着駅・バス停・施設名 (例: "横浜", "京都")'),
+export const TRANSIT_ROUTE_INPUT_SHAPE = {
+  from: z.string().min(1, 'from は必須です').describe('出発駅・バス停・施設名 (例: "東京", "新大阪")'),
+  to: z.string().min(1, 'to は必須です').describe('到着駅・バス停・施設名 (例: "新宿", "京都")'),
   via: z.array(z.string()).max(3).optional().describe('経由駅リスト (最大3駅, 例: ["品川"])'),
-  sortBy: z.enum(['time', 'transfer', 'fare']).optional().describe('並び順: "time"(早い順), "transfer"(乗換少ない順), "fare"(安い順)'),
-  seatPreference: z.enum(['non_reserved', 'reserved', 'green']).optional().describe('座席種別: "non_reserved"(自由席), "reserved"(指定席), "green"(グリーン車)'),
-  walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow']).optional().describe('徒歩速度設定'),
-});
+  date: z.string().regex(/^\d{8}$/).optional().describe('検索日 (YYYYMMDD形式, 例: "20260825")'),
+  time: z.string().regex(/^\d{4}$/).optional().describe('検索時刻 (HHMM形式, 例: "0930")'),
+  timeType: z.enum(['departure', 'arrival', 'first_train', 'last_train']).optional()
+    .describe('時刻指定タイプ: "departure"(出発時刻), "arrival"(到着時刻), "first_train"(始発), "last_train"(終電)'),
+  ticket: z.enum(['ic', 'cash']).optional().describe('運賃タイプ: "ic"(IC運賃), "cash"(きっぷ運賃)'),
+  seatPreference: z.enum(['non_reserved', 'reserved', 'green']).optional()
+    .describe('座席指定: "non_reserved"(自由席), "reserved"(指定席), "green"(グリーン車)'),
+  walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow']).optional()
+    .describe('歩く速度: "fast", "slightly_fast", "slightly_slow", "slow"'),
+  sortBy: z.enum(['time', 'transfer', 'fare']).optional()
+    .describe('並び順: "time"(早い順), "transfer"(乗り換え少ない順), "fare"(安い順)'),
+  useAirline: z.boolean().optional().describe('空路を使う (デフォルト: true)').meta({ default: true }),
+  useShinkansen: z.boolean().optional().describe('新幹線を使う (デフォルト: true)').meta({ default: true }),
+  useExpress: z.boolean().optional().describe('有料特急を使う (デフォルト: true)').meta({ default: true }),
+  useHighwayBus: z.boolean().optional().describe('高速バスを使う (デフォルト: true)').meta({ default: true }),
+  useLocalBus: z.boolean().optional().describe('路線バスを使う (デフォルト: true)').meta({ default: true }),
+  useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)').meta({ default: true }),
+};
+
+export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
 
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),

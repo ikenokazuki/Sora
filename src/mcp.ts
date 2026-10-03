@@ -55,7 +55,7 @@ import { hotelService, type HotelService } from './services/hotels/index.js';
 import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, TRANSIT_ROUTE_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
 import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
@@ -1334,28 +1334,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'search_route',
       'life',
       '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ departure, arrival, duration, transferCount, fare, steps }] }',
-      {
-        from: z.string().min(1).describe('出発駅名 (例: "東京", "新大阪", "博多")'),
-        to: z.string().min(1).describe('到着駅名 (例: "新宿", "京都", "天神")'),
-        via: z.array(z.string()).max(3).optional().describe('経由駅名リスト (最大3駅, 例: ["品川", "横浜"])'),
-        date: z.string().regex(/^\d{8}$/).optional().describe('検索日 (YYYYMMDD形式, 例: "20260825")'),
-        time: z.string().regex(/^\d{4}$/).optional().describe('検索時刻 (HHMM形式, 例: "0930")'),
-        timeType: z.enum(['departure', 'arrival', 'first_train', 'last_train']).optional()
-          .describe('時刻指定タイプ: "departure"(出発時刻), "arrival"(到着時刻), "first_train"(始発), "last_train"(終電)'),
-        ticket: z.enum(['ic', 'cash']).optional().describe('運賃タイプ: "ic"(IC運賃), "cash"(きっぷ運賃)'),
-        seatPreference: z.enum(['non_reserved', 'reserved', 'green']).optional()
-          .describe('座席指定: "non_reserved"(自由席), "reserved"(指定席), "green"(グリーン車)'),
-        walkSpeed: z.enum(['fast', 'slightly_fast', 'slightly_slow', 'slow']).optional()
-          .describe('歩く速度'),
-        sortBy: z.enum(['time', 'transfer', 'fare']).optional()
-          .describe('並び順: "time"(早い順), "transfer"(乗り換え少ない順), "fare"(安い順)'),
-        useAirline: z.boolean().optional().describe('空路を使う (デフォルト: true)').meta({ default: true }),
-        useShinkansen: z.boolean().optional().describe('新幹線を使う (デフォルト: true)').meta({ default: true }),
-        useExpress: z.boolean().optional().describe('有料特急を使う (デフォルト: true)').meta({ default: true }),
-        useHighwayBus: z.boolean().optional().describe('高速バスを使う (デフォルト: true)').meta({ default: true }),
-        useLocalBus: z.boolean().optional().describe('路線バスを使う (デフォルト: true)').meta({ default: true }),
-        useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)').meta({ default: true }),
-      },
+      TRANSIT_ROUTE_INPUT_SHAPE,
       async (opts) => {
         try {
           const result = await searchTransitRoute(opts);
