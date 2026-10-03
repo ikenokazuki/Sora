@@ -437,7 +437,7 @@ export const ScrapeRequestSchema = z.object({
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
-  highlightAlgorithm: z.enum(['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy']).optional().default('rho-select-v2').describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
@@ -480,7 +480,7 @@ export const BatchScrapeRequestSchema = z.object({
   query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
-  highlightAlgorithm: z.enum(['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy']).optional().default('rho-select-v2').describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
@@ -535,7 +535,7 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-  highlightAlgorithm: z.enum(['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy']).optional().default('rho-select-v2').describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
@@ -1939,7 +1939,8 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
   } else if (schema instanceof z.ZodLiteral) {
     res = { type: typeof (schema as any)._def.value, enum: [(schema as any)._def.value] };
   } else if (schema instanceof z.ZodArray) {
-    res = { type: 'array', items: zodToOpenApiSchema((schema as any)._def.type) };
+    // zod v4: 要素スキーマは _def.element（v3 の _def.type ではない）。
+    res = { type: 'array', items: zodToOpenApiSchema((schema as any)._def.element ?? (schema as any)._def.type) };
   } else if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
     const inner = zodToOpenApiSchema((schema as any)._def.innerType);
     if (!description) description = inner.description;

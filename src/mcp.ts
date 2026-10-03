@@ -55,7 +55,7 @@ import { hotelService, type HotelService } from './services/hotels/index.js';
 import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
+import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE } from './types.js';
 import { CountryContextReportSchema, IntelSocialInputSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
@@ -570,6 +570,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
+          .default(DEFAULT_HIGHLIGHT_ALGORITHM)
           .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
@@ -678,6 +679,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
+          .default(DEFAULT_HIGHLIGHT_ALGORITHM)
           .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
@@ -821,7 +823,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         maxChars: z.number().int().min(1).max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)'),
         includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
         excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
-        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot', 'jsonLd', 'images'])).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
+        formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
         query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
         extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
         onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
@@ -837,6 +839,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
+          .default(DEFAULT_HIGHLIGHT_ALGORITHM)
           .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
         highlightOverheadTokens: z
           .number()
