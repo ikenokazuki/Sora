@@ -21,8 +21,8 @@ const stripExamples = (text: string) => text.replace(/例\s*[:：][^)）]*/g, ''
 export function parseDocumentedDefault(description: string): DocumentedDefault {
   const text = stripExamples(description ?? '');
   if (!text.includes('デフォルト')) return { found: false };
-  const strictInline = text.match(/"([^"]+)"\s*[（(]\s*デフォルト/);
-  if (strictInline) return { found: true, parseable: true, value: strictInline[1] };
+  const strictInline = [...text.matchAll(/"([^"]+)"\s*[（(][^"（）()]*デフォルト[^"（）()]*[）)]/g)];
+  if (strictInline.length === 1) return { found: true, parseable: true, value: strictInline[0][1] };
   const explicit = text.match(/デフォルト\s*[:：]\s*(.*)$/s);
   if (explicit) {
     const rest = explicit[1];

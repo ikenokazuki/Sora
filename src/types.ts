@@ -417,7 +417,7 @@ export const CookieParamSchema = z.object({
   name: z.string().describe('Cookie 名'),
   value: z.string().describe('Cookie 値'),
   domain: z.string().optional().describe('対象ドメイン (例: ".example.com")'),
-  path: z.string().optional().describe('対象パス (デフォルト: "/")'),
+  path: z.string().optional().describe('対象パス (デフォルト: "/")').meta({ default: '/' }),
   httpOnly: z.boolean().optional().describe('HttpOnly 属性'),
   secure: z.boolean().optional().describe('Secure 属性 (HTTPS のみ送信)'),
   sameSite: z.enum(['Strict', 'Lax', 'None']).optional().describe('SameSite ポリシー'),
@@ -425,77 +425,77 @@ export const CookieParamSchema = z.object({
 
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
-  maxChars: z.number().int().min(1).optional().describe('抽出する最大文字数 (デフォルト: 10000)'),
-  mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)'),
+  maxChars: z.number().int().min(1).optional().describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+  mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)').meta({ default: 'auto' }),
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
-  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])'),
-  fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
-  onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)'),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
+  fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)').meta({ default: true }),
+  onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
   clipSelector: z.string().optional().describe('特定要素のみを切り抜いてスクリーンショット撮影する CSS セレクタ (例: "#chart")'),
   headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
   cookies: z.array(CookieParamSchema).optional().describe('リクエスト時に送信するカスタム Cookie 配列'),
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
-  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
+  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
+  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
   highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
-  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
-  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
   includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
   includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
   safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除'),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除').meta({ default: 0.7 }),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか'),
   extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか'),
   chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き)'),
-  chunkSize: z.number().int().min(1).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)'),
+  chunkSize: z.number().int().min(1).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
   validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか'),
   formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
-  stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)'),
-  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)'),
+  stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
+  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
   highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか'),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか'),
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-  retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
+  retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
   retryDelayMs: z.number().int().min(1).optional().describe('リトライ待機ディレイ (ミリ秒)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか'),
-  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
-  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
-  keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)'),
+  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
+  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+  keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
 });
 
 export const BatchScrapeRequestSchema = z.object({
   urls: z.array(z.string()).min(1, 'urls は 1 件以上指定してください').describe('一括スクレイピング対象の URL 配列 (最大20件)'),
-  concurrency: z.number().int().min(1).max(20).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
-  maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
+  concurrency: z.number().int().min(1).max(20).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto", "fast", "browser"'),
   formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力形式配列'),
-  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列'),
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
   filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
   query: z.string().optional().describe('各ページからハイライトを抽出するキーワード'),
-  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
+  extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか'),
   highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
-  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
-  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
-  includeDiagnostics: z.boolean().optional().describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
-  includeDiscrepancies: z.boolean().optional().describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
-  safeNormalize: z.boolean().optional().describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
+  includeDiagnostics: z.boolean().optional().describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
+  includeDiscrepancies: z.boolean().optional().describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
+  safeNormalize: z.boolean().optional().describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
-  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
+  verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
 });
 
 export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press', 'select', 'scroll', 'wait', 'evaluate', 'navigate', 'screenshot']);
@@ -511,58 +511,58 @@ export const BrowserActionStepSchema = z.object({
   script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
   url: z.string().optional().describe('navigate 時に遷移する URL'),
   delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
-  clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)'),
-  distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)'),
-  direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")'),
+  clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)').meta({ default: true }),
+  distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)').meta({ default: 800 }),
+  direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")').meta({ default: 'down' }),
 });
 
 export const BrowserActionRequestSchema = z.object({
   url: z.string().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
   sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
   ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
-  createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)'),
-  closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)'),
+  createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)').meta({ default: false }),
+  closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)').meta({ default: false }),
   actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
   extract: z.object({
-    markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
-    html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
-    screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)'),
-    screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: false)'),
+    markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)').meta({ default: true }),
+    html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)').meta({ default: false }),
+    screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)').meta({ default: false }),
+    screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)').meta({ default: true }),
     clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
-    maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
+    maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   }).optional().describe('操作完了後に抽出するデータ指定'),
-  timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+  timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
 });
 
 export const CrawlRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('クロール開始のベース URL (例: "https://example.com/docs")'),
-  maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
-  maxDepth: z.number().int().min(1).optional().describe('リンク探索の最大深度 (デフォルト: 2)'),
+  maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
+  maxDepth: z.number().int().min(1).optional().describe('リンク探索の最大深度 (デフォルト: 2)').meta({ default: 2 }),
   includePatterns: z.array(z.string()).optional().describe('対象を絞り込むワイルドカードパターン (例: ["/docs/**", "/guide/*"])'),
   excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン (例: ["/tag/**", "*.pdf"])'),
   formats: z.array(ScrapeFormatSchema).optional().describe('取得する形式配列'),
-  onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)'),
+  onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)').meta({ default: true }),
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
   highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
-  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)'),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
-  maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 15000)'),
-  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 30000)'),
-  concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3)'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  maxChars: z.number().int().min(1).optional().describe('各ページの最大文字数 (デフォルト: 15000)').meta({ default: 15000 }),
+  timeoutMs: z.number().int().min(1).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
+  concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3)').meta({ default: 3 }),
   webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const MapRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('サイトマップ探索対象のベース URL (例: "https://example.com")'),
-  limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
-  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)'),
+  limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
+  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)').meta({ default: false }),
   since: z.string().optional().describe('指定日時以降に更新された URL のみ抽出するフィルタ (例: "2026-08-01")'),
   until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
@@ -570,34 +570,34 @@ export const MapRequestSchema = z.object({
 
 export const ImageSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const NewsSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }).meta({ default: 20 }),
   page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const ChiebukuroSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
   page: z.number().int().min(1).optional().describe('ページ番号 (1-based)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const TrendSearchRequestSchema = z.object({
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
 });
 
 export const RealtimeSearchRequestSchema = z.object({
@@ -609,9 +609,9 @@ export const RealtimeSearchRequestSchema = z.object({
   excludeWords: z.union([z.string(), z.array(z.string())]).optional().describe('【除外キーワード】除外したい単語（-単語 に変換）'),
   orWords: z.array(z.string()).optional().describe('【OR検索】いずれかを含む単語の配列 (単語A 単語B) に変換'),
   url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
-  sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)'),
-  limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)'),
-  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1。Yahoo側は40件固定幅で取得)'),
+  sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)').meta({ default: 'recent' }),
+  limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)').meta({ default: 20 }),
+  page: z.number().int().min(1).optional().describe('ページ番号 (1-based, デフォルト: 1。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -626,7 +626,7 @@ export const TransitRouteRequestSchema = z.object({
 
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
-  days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)'),
+  days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -643,10 +643,10 @@ export const SEARCH_WEB_INPUT_SHAPE = {
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定時のみ上位検索結果をスクレイプし、要求形式を付与する'),
   limit: z.number().int().min(1).max(20).optional().describe('取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)'),
-  maxChars: z.number().int().min(1).max(50_000).optional().describe('formats指定時の各ページ最大文字数 (デフォルト: 30000)'),
-  onlyMainContent: z.boolean().optional().describe('formats指定時に本文領域のみ抽出するか (デフォルト: true)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
-  verbose: z.boolean().optional().describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)'),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('formats指定時の各ページ最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+  onlyMainContent: z.boolean().optional().describe('formats指定時に本文領域のみ抽出するか (デフォルト: true)').meta({ default: true }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
+  verbose: z.boolean().optional().describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)').meta({ default: false }),
 };
 export const SearchWebQuerySchema = z.object(SEARCH_WEB_INPUT_SHAPE);
 export const SearchWebRequestSchema = SearchWebQuerySchema;
@@ -654,39 +654,39 @@ export type SearchWebRequest = z.infer<typeof SearchWebRequestSchema>;
 
 export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
-  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)'),
-  scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)'),
-  adaptiveScrape: z.boolean().optional().describe('回答根拠が不足する場合に候補ページを追加取得するか (デフォルト: false、scrapeContent: true の場合のみ有効)'),
-  scrapeBudget: z.number().int().min(1).max(20).optional().describe('adaptiveScrape 有効時の取得上限 (デフォルト: 8、最大: 20)。limit 未満を指定した場合は limit まで引き上げます'),
-  includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)'),
-  realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)'),
+  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)').meta({ default: 5 }),
+  scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)').meta({ default: true }),
+  adaptiveScrape: z.boolean().optional().describe('回答根拠が不足する場合に候補ページを追加取得するか (デフォルト: false、scrapeContent: true の場合のみ有効)').meta({ default: false }),
+  scrapeBudget: z.number().int().min(1).max(20).optional().describe('adaptiveScrape 有効時の取得上限 (デフォルト: 8、最大: 20)。limit 未満を指定した場合は limit まで引き上げます').meta({ default: 8 }),
+  includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)').meta({ default: true }),
+  realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
-  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)'),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
-  extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)'),
-  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+  extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)').meta({ default: true }),
+  onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
-  dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)'),
-  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)'),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)'),
+  dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)').meta({ default: false }),
+  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
+  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)').meta({ default: false }),
+  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
+  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
-  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)'),
-  verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)'),
-  responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード: "full" はデフォルト・従来互換で全文および周辺文脈を保持。"evidence" は query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
+  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
+  highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+  verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+  responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
 export type IntegratedSearchRequest = z.infer<typeof IntegratedSearchRequestSchema>;
 
 export const SuggestRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索語句プレフィックス'),
-  limit: z.number().int().min(1).max(20).optional().describe('取得するサジェスト候補件数 (デフォルト: 10)'),
+  limit: z.number().int().min(1).max(20).optional().describe('取得するサジェスト候補件数 (デフォルト: 10)').meta({ default: 10 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -697,7 +697,7 @@ export const DisasterWarningsRequestSchema = z.object({
 });
 
 export const EarthquakeRequestSchema = z.object({
-  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
+  limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
   minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 60=震度6強, 70=震度7)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
@@ -713,7 +713,7 @@ export const WatchRegisterRequestSchema = z.object({
   title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
   selector: z.string().optional().describe('ピンポイントで差分監視する CSS セレクタ (例: "#status", ".news-list")'),
   webhookUrl: z.string().url().optional().describe('差分検知時に通知を送信する Webhook URL'),
-  intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+  intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)').meta({ default: 3600 }),
 });
 
 export const WatchCheckRequestSchema = z.object({
@@ -722,31 +722,31 @@ export const WatchCheckRequestSchema = z.object({
 
 export const SongSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索曲名・楽曲タイトル'),
-  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const ArtistSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('アーティスト名'),
-  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")').meta({ default: 'song' }),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const MusicSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
-  country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+  country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+  entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")').meta({ default: 'song' }),
   attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
 export const LawSearchRequestSchema = z.object({
   keyword: z.string().min(1, 'keyword は必須です').describe('法令検索キーワード (法令名、単語)'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 
@@ -762,7 +762,7 @@ export const DietMinutesSearchRequestSchema = z.object({
   nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
   from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
   until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
-  limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)'),
+  limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
 });
 export type DietMinutesSearchOptions = z.infer<typeof DietMinutesSearchRequestSchema>;
@@ -823,7 +823,7 @@ export const PoiSearchRequestSchema = z.object({
   query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
   lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
   lon: z.number().min(-180).max(180).optional().describe('中心経度、経度が先 (lat とペア指定)'),
-  radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)'),
+  radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
   center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。geocoding.jpで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで10秒間隔を守って取得'),
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
@@ -866,9 +866,9 @@ export const PoiSearchResultSchema = z.object({
 });
 
 export const FlightStatusRequestSchema = z.object({
-  airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")'),
-  type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")'),
-  category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")'),
+  airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")').meta({ default: '羽田' }),
+  type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")').meta({ default: 'departure' }),
+  category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
   flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
   keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
@@ -2562,7 +2562,7 @@ export function generateOpenApiDocument() {
           summary: '気象庁公式オープンデータ 天気予報・概況文 (GET クエリ指定)',
           parameters: [
             { name: 'city', in: 'query', schema: { type: 'string' }, description: '市区町村名または都道府県名 (例: "東京", "大阪", "天童市")' },
-            { name: 'days', in: 'query', schema: { type: 'integer' }, description: '取得日数 (デフォルト: 3)' },
+            { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 8, default: 7 }, description: '取得日数 (1〜8日, デフォルト: 7)' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -2582,7 +2582,7 @@ export function generateOpenApiDocument() {
           summary: '気象庁公式オープンデータ 天気予報・概況文 (パス指定)',
           parameters: [
             { name: 'city', in: 'path', required: true, schema: { type: 'string' }, description: '市区町村名または都道府県名 (例: "天童市", "箱根")' },
-            { name: 'days', in: 'query', schema: { type: 'integer' }, description: '取得日数 (デフォルト: 3)' },
+            { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 8, default: 7 }, description: '取得日数 (1〜8日, デフォルト: 7)' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3069,7 +3069,7 @@ export function generateOpenApiDocument() {
             { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: '会議・委員会名' },
             { name: 'from', in: 'query', schema: { type: 'string' }, description: '期間開始日 (YYYY-MM-DD)' },
             { name: 'until', in: 'query', schema: { type: 'string' }, description: '期間終了日 (YYYY-MM-DD)' },
-            { name: 'limit', in: 'query', schema: { type: 'integer' }, description: '取得件数 (1〜30, デフォルト: 10)' },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 30, default: 10 }, description: '取得件数 (1〜30, デフォルト: 10)' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3155,7 +3155,7 @@ export function generateOpenApiDocument() {
             { name: 'lon', in: 'query', schema: { type: 'number' }, description: '中心経度 (lat とペア指定)' },
             { name: 'radiusMeters', in: 'query', schema: { type: 'number' }, description: '中心からの半径m (bbox 指定時は無視)' },
             { name: 'bbox', in: 'query', schema: { type: 'string' }, description: '矩形範囲 "minLng,minLat,maxLng,maxLat"' },
-            { name: 'limit', in: 'query', schema: { type: 'number' }, description: '最大件数 (1-50)' },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 }, description: '最大件数 (1-50, デフォルト: 10)' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '地名解決の24時間キャッシュを使わず再取得する。10秒間隔は維持' },
           ],
           responses: {
