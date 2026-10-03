@@ -493,7 +493,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
 | `get_elevation` | 国土地理院公式オープンデータに基づき、日本全国の住所・地名から緯度経度を自動特定し、海抜標高（m）をミリ精度で取得。津波・水害ハザードリスク判定に活用可能。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度 |
-| `search_poi` | OpenPOI直結の全国施設POI検索。施設名・住所キーワードと位置範囲から緯度経度付き施設（338万件、営業許可・Overture統合）を返却。`get_elevation` / `search_route` と組合せ可能。保存時は `licenses` / `attributions` を保持すること。 | `source: "openpoi"` | - `query` (string, 任意): 施設・住所キーワード (例: "ラーメン")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50) |
+| `search_poi` | OpenPOI直結の全国施設POI検索。施設名・住所キーワードと位置範囲から緯度経度付き施設（338万件、営業許可・Overture統合）を返却。`get_elevation` / `search_route` と組合せ可能。保存時は `licenses` / `attributions` を保持すること。 | `source: "openpoi"` | - `query` (string, 任意): 施設・住所キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名。曖昧名は解決結果を確認<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50) |
 
 ---
 

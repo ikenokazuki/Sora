@@ -336,6 +336,7 @@ publicDataRoutes.get('/geo/poi', async (c) => {
     lat: num('lat'),
     lon: num('lon'),
     radiusMeters: num('radiusMeters') ?? num('radius'),
+    center: c.req.query('center'),
     bbox: c.req.query('bbox'),
     limit: num('limit'),
   });
