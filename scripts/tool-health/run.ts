@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { CANONICAL_TOOLS, HOTEL_TOOL, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
-  collectKnownCaseIds, isGatePass, redact, registerSecrets, summarize, validateCasesJson, writeReports,
+  collectKnownCaseIds, gateExit, redact, registerSecrets, summarize, validateCasesJson, writeReports,
   type HealthReport,
 } from './report.js';
 import {
@@ -216,10 +216,11 @@ export async function main(): Promise<number> {
     const laneTools = args.enableHotel ? [...CANONICAL_TOOLS] : [...CANONICAL_TOOLS].filter((t) => t !== HOTEL_TOOL);
     const missing = laneTools.filter((t) => !coveredTools.has(t));
     const counts = summarize(results);
-    const overall = isGatePass(counts, missing) ? 'pass' : 'fail';
+    const exitCode = gateExit(counts, missing);
+    const overall = exitCode === 0 ? 'pass' : 'fail';
     writeReports(args.out, { ...report(overall), counts, missing });
-    console.log(`tool-health ${lane}: ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') + (missing.length ? ` missing=${missing.join(',')}` : ''));
-    return overall === 'pass' ? 0 : 1;
+    console.log(`tool-health ${lane}: exit=${exitCode} ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') + (missing.length ? ` missing=${missing.join(',')}` : '') + (exitCode === 3 ? ' (SOFT HOLD: unverified/blocked only, no breakage signal)' : ''));
+    return exitCode;
   } catch (e) {
     console.error('runner failed: ' + redact(String((e as Error)?.message ?? e)));
     return 1;
