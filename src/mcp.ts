@@ -421,14 +421,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(1)
           .max(100_000)
           .optional()
-          .describe('抽出する最大文字数 (デフォルト: 30000)'),
+          .describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
         mode: z
           .enum(['auto', 'fast', 'browser'])
           .optional()
-          .describe('スクレイプ動作モード: "auto" (スマート自動判定, デフォルト), "fast" (静的フェッチ最速限定), "browser" (Stealth Chromium JS完全実行)'),
+          .describe('スクレイプ動作モード: "auto" (スマート自動判定, デフォルト), "fast" (静的フェッチ最速限定), "browser" (Stealth Chromium JS完全実行)').meta({ default: 'auto' }),
         formats: z.array(ScrapeFormatSchema)
           .optional()
-          .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])'),
+          .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
         fullPage: z
           .boolean()
           .optional()
@@ -445,53 +445,53 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         extractHighlights: z
           .boolean()
           .optional()
-          .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
+          .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (省略時: query指定時はtrue、未指定時はfalse)'),
         onlyHighlights: z
           .boolean()
           .optional()
-          .describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)'),
+          .describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
         extractSummary: z
           .boolean()
           .optional()
-          .describe('超高速な抽出型自動要約（TL;DR 上位重要文リスト）を生成して付与するか (デフォルト: false)'),
+          .describe('超高速な抽出型自動要約（TL;DR 上位重要文リスト）を生成して付与するか (デフォルト: false)').meta({ default: false }),
         extractCitations: z
           .boolean()
           .optional()
-          .describe('本文内の出典・引用リンク一覧をコンテキスト付きで抽出するか (デフォルト: false)'),
+          .describe('本文内の出典・引用リンク一覧をコンテキスト付きで抽出するか (デフォルト: false)').meta({ default: false }),
         chunkMarkdown: z
           .boolean()
           .optional()
-          .describe('RAG 用に見出しや段落単位でセマンティック・チャンキングした chunks を生成するか (デフォルト: false)'),
+          .describe('RAG 用に見出しや段落単位でセマンティック・チャンキングした chunks を生成するか (デフォルト: false)').meta({ default: false }),
         chunkSize: z
           .number()
           .int()
           .min(1)
           .optional()
-          .describe('チャンキング時の最大文字数目安 (デフォルト: 1000)'),
+          .describe('チャンキング時の最大文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
         validateLinks: z
           .boolean()
           .optional()
-          .describe('抽出されたリンクの到達性・HTTPステータスを並行検証するか (デフォルト: false)'),
+          .describe('抽出されたリンクの到達性・HTTPステータスを並行検証するか (デフォルト: false)').meta({ default: false }),
         formatAsPrompt: z
           .boolean()
           .optional()
-          .describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)'),
+          .describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)').meta({ default: false }),
         stripLinks: z
           .boolean()
           .optional()
-          .describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)'),
+          .describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
         filterLinkDensity: z
           .boolean()
           .optional()
-          .describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)'),
+          .describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
         highlightMatches: z
           .boolean()
           .optional()
-          .describe('本文中の検索一致語句をハイライトするか (デフォルト: false)'),
+          .describe('本文中の検索一致語句をハイライトするか (デフォルト: false)').meta({ default: false }),
         maskPii: z
           .boolean()
           .optional()
-          .describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)'),
+          .describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
         webhookUrl: z
           .string()
           .optional()
@@ -503,7 +503,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         onlyMainContent: z
           .boolean()
           .optional()
-          .describe('記事本文のみを抽出するか (デフォルト: true)。false にするとナビゲーションやヘッダー/フッターも含めて抽出'),
+          .describe('記事本文のみを抽出するか (デフォルト: true)。false にするとナビゲーションやヘッダー/フッターも含めて抽出').meta({ default: true }),
         selectors: z
           .record(z.string(), z.string())
           .optional()
@@ -526,49 +526,49 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(0)
           .max(3)
           .optional()
-          .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)'),
+          .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
         verbose: z
           .boolean()
           .optional()
-          .describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
+          .describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
         keepDataImages: z
           .boolean()
           .optional()
-          .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)'),
+          .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
         evidenceMode: z
           .enum(['full', 'highlights', 'contextual_highlights'])
           .optional()
-          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
         includeDiagnostics: z
           .boolean()
           .optional()
-          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
+          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
         includeDiscrepancies: z
           .boolean()
           .optional()
-          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
+          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
         safeNormalize: z
           .boolean()
           .optional()
-          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
+          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
         reorderUFlat: z
           .boolean()
           .optional()
-          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
+          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
         diversityWeight: z
           .number()
           .min(0)
           .max(1)
           .optional()
-          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
+          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
         annotateTemporal: z
           .boolean()
           .optional()
-          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
         minimizeTables: z
           .boolean()
           .optional()
-          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
           .default(DEFAULT_HIGHLIGHT_ALGORITHM)
@@ -579,14 +579,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(1)
           .max(4096)
           .optional()
-          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
         highlightMaxCount: z
           .number()
           .int()
           .min(1)
           .max(10)
           .optional()
-          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
+          .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
       },
       async ({ url, maxChars, mode, formats, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
@@ -620,16 +620,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【複数 URL 一括並行スクレイプ】複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。',
       {
         urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
-        concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)'),
-        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 10000)'),
-        mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)'),
+        concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+        mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
         formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
         selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
         clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
         headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
         removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
         query: z.string().optional().describe('ハイライト抽出用キーワード'),
-        extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (デフォルト: query指定時はtrue, query未指定時はfalse)'),
+        extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
         onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
         extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
         extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
@@ -646,38 +646,38 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         evidenceMode: z
           .enum(['full', 'highlights', 'contextual_highlights'])
           .optional()
-          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)'),
+          .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
         includeDiagnostics: z
           .boolean()
           .optional()
-          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (デフォルト: false)'),
+          .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
         includeDiscrepancies: z
           .boolean()
           .optional()
-          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (デフォルト: false)'),
+          .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
         safeNormalize: z
           .boolean()
           .optional()
-          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)'),
+          .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
         reorderUFlat: z
           .boolean()
           .optional()
-          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)'),
+          .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
         diversityWeight: z
           .number()
           .min(0)
           .max(1)
           .optional()
-          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)'),
+          .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
         annotateTemporal: z
           .boolean()
           .optional()
-          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
         minimizeTables: z
           .boolean()
           .optional()
-          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
-        onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)'),
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+        onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
           .default(DEFAULT_HIGHLIGHT_ALGORITHM)
@@ -688,15 +688,15 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(1)
           .max(4096)
           .optional()
-          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
         highlightMaxCount: z
           .number()
           .int()
           .min(1)
           .max(10)
           .optional()
-          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
-        verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)'),
+          .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+        verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
       },
       async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
@@ -791,7 +791,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の全 URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。',
       {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
-        limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)'),
+        limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
         since: z.string().optional().describe('指定した日付・日時以降に更新されたページのみを抽出するフィルタ (例: "2026-08-01", "2026-01-01T00:00:00Z")'),
       },
       async ({ url, limit, since }) => {
@@ -820,24 +820,24 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
-        maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)'),
-        maxChars: z.number().int().min(1).max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)'),
+        maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
+        maxChars: z.number().int().min(1).max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)').meta({ default: 15000 }),
         includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
         excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
-        formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])'),
+        formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
         query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
         extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
         onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-        reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージおよびクロール結果全体を U字型で並べ替えるか (デフォルト: false)'),
-        diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)'),
+        reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージおよびクロール結果全体を U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
+        diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
         annotateTemporal: z
           .boolean()
           .optional()
-          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)'),
+          .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
         minimizeTables: z
           .boolean()
           .optional()
-          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)'),
+          .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
           .default(DEFAULT_HIGHLIGHT_ALGORITHM)
@@ -848,14 +848,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .min(1)
           .max(4096)
           .optional()
-          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)'),
+          .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
         highlightMaxCount: z
           .number()
           .int()
           .min(1)
           .max(10)
           .optional()
-          .describe('ハイライト最大選択件数 (デフォルト: 3)'),
+          .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
       },
       async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
@@ -975,21 +975,21 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
         sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
         ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
-        createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)'),
-        closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)'),
+        createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)').meta({ default: false }),
+        closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)').meta({ default: false }),
         actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
         extract: z
           .object({
-            markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)'),
-            html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)'),
-            screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)'),
-            screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)'),
+            markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)').meta({ default: true }),
+            html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)').meta({ default: false }),
+            screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)').meta({ default: false }),
+            screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)').meta({ default: true }),
             clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
-            maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)'),
+            maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)').meta({ default: 30000 }),
           })
           .optional()
           .describe('操作完了後に抽出するデータ指定'),
-        timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)'),
+        timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
       },
       async (opts) => {
         try {
@@ -1022,7 +1022,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【Yahoo 画像検索】画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
       {
         query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1050,7 +1050,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【Yahoo 動画検索】YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
       {
         query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1078,7 +1078,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【ニュース速報直結】大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）をYahoo!ニュースから取得します。時事問題・公式発表の調査に最適です。返却: { results: [{ title, snippet, media, publishedAt, url }] }',
       {
         query: z.string().min(1).describe('ニュース検索キーワード (例: "選挙", "経済動向", "ノーベル賞")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1106,7 +1106,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { results: [{ questionTitle, questionBody, answerSnippet, bestAnswer }] }',
       {
         query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10)').meta({ default: 10 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1134,7 +1134,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }',
       {
         query: z.string().min(1).describe('検索語句プレフィックス (例: "東京 観光")'),
-        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10)'),
+        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (デフォルト: 10)').meta({ default: 10 }),
       },
       async ({ query, limit }) => {
         try {
@@ -1184,24 +1184,24 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         sort: z
           .enum(['recent', 'popular'])
           .optional()
-          .describe('並び順: "recent" (新着順, デフォルト) または "popular" (話題・エンゲージメント順)'),
+          .describe('並び順: "recent" (新着順, デフォルト) または "popular" (話題・エンゲージメント順)').meta({ default: 'recent' }),
         limit: z
           .number()
           .int()
           .min(1)
           .max(40)
           .optional()
-          .describe('取得件数 (デフォルト: 20, 最大: 40)'),
+          .describe('取得件数 (デフォルト: 20, 最大: 40)').meta({ default: 20 }),
         page: z
           .number()
           .int()
           .min(1)
           .optional()
-          .describe('ページ番号 (1-based, デフォルト: 1)'),
+          .describe('ページ番号 (1-based, デフォルト: 1)').meta({ default: 1 }),
         verbose: z
           .boolean()
           .optional()
-          .describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)'),
+          .describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)').meta({ default: false }),
       },
       async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, verbose }) => {
         try {
@@ -1261,7 +1261,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'yahoo',
       '【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { trends: [{ rank, keyword, score }] }',
       {
-        limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)').meta({ default: 20 }),
       },
       async ({ limit }) => {
         try {
@@ -1344,12 +1344,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .describe('歩く速度'),
         sortBy: z.enum(['time', 'transfer', 'fare']).optional()
           .describe('並び順: "time"(早い順), "transfer"(乗り換え少ない順), "fare"(安い順)'),
-        useAirline: z.boolean().optional().describe('空路を使う (デフォルト: true)'),
-        useShinkansen: z.boolean().optional().describe('新幹線を使う (デフォルト: true)'),
-        useExpress: z.boolean().optional().describe('有料特急を使う (デフォルト: true)'),
-        useHighwayBus: z.boolean().optional().describe('高速バスを使う (デフォルト: true)'),
-        useLocalBus: z.boolean().optional().describe('路線バスを使う (デフォルト: true)'),
-        useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)'),
+        useAirline: z.boolean().optional().describe('空路を使う (デフォルト: true)').meta({ default: true }),
+        useShinkansen: z.boolean().optional().describe('新幹線を使う (デフォルト: true)').meta({ default: true }),
+        useExpress: z.boolean().optional().describe('有料特急を使う (デフォルト: true)').meta({ default: true }),
+        useHighwayBus: z.boolean().optional().describe('高速バスを使う (デフォルト: true)').meta({ default: true }),
+        useLocalBus: z.boolean().optional().describe('路線バスを使う (デフォルト: true)').meta({ default: true }),
+        useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)').meta({ default: true }),
       },
       async (opts) => {
         try {
@@ -1377,7 +1377,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { areaName, forecasts: [{ date, weather, pop, tempMin, tempMax }] }',
       {
         city: z.string().min(1).describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
-        days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)'),
+        days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
       },
       async ({ city, days }) => {
         try {
@@ -1404,9 +1404,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'life',
       '【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }',
       {
-        airport: z.string().optional().describe('対象空港名またはコード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", デフォルト: "羽田")'),
-        type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure"(出発) または "arrival"(到着) (デフォルト: "departure")'),
-        category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic"(国内線) または "international"(国際線) (デフォルト: "domestic")'),
+        airport: z.string().optional().describe('対象空港名またはコード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", デフォルト: "羽田")').meta({ default: '羽田' }),
+        type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure"(出発) または "arrival"(到着) (デフォルト: "departure")').meta({ default: 'departure' }),
+        category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic"(国内線) または "international"(国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
         flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
         keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
       },
@@ -1517,7 +1517,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックアウト日 (YYYY-MM-DD, チェックインより後)'),
           adults: z.number().int().min(1).describe('大人人数（1室あたり）'),
           rooms: z.number().int().min(1).max(1).optional().describe('部屋数（1のみ）'),
-          limit: z.number().int().min(1).max(10).optional().describe('最大施設件数（1〜10, デフォルト: 5）'),
+          limit: z.number().int().min(1).max(10).optional().describe('最大施設件数（1〜10, デフォルト: 5）').meta({ default: 5 }),
         },
         async (opts) => {
           const parsed = HotelSearchInputSchema.safeParse(opts);
@@ -1631,7 +1631,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'disaster',
       '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, epicenter, maxIntensity, magnitude }] }',
       {
-        limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)'),
+        limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
         minIntensity: z.number().int().optional().describe('最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)'),
       },
       async (opts) => {
@@ -1692,7 +1692,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
         lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
-        radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)'),
+        radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)').meta({ default: 5000 }),
         center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。geocoding.jpで座標化する。lat/lonとは排他'),
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
         limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
@@ -1733,7 +1733,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
         selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ (例: "#status")'),
         webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
-        intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)'),
+        intervalSeconds: z.number().int().min(1).optional().describe('監視インターバル目安 (秒, デフォルト: 3600)').meta({ default: 3600 }),
       },
       async (opts) => {
         try {
@@ -1845,8 +1845,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { results: [{ trackName, artistName, previewUrl, artworkUrl }] }',
       {
         query: z.string().min(1).describe('検索曲名・楽曲タイトル (例: "アイドル", "夜に駆ける", "Subtitle")'),
-        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
       },
       async (opts) => {
         try {
@@ -1874,9 +1874,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { results: [...] }',
       {
         query: z.string().min(1).describe('アーティスト名 (例: "YOASOBI", "Official髭男dism", "Ado")'),
-        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")').meta({ default: 'song' }),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
       },
       async (opts) => {
         try {
@@ -1904,10 +1904,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { results: [...] }',
       {
         query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名の自由入力)'),
-        country: z.string().optional().describe('国コード (デフォルト: "jp")'),
-        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")'),
+        country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+        entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")').meta({ default: 'song' }),
         attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
       },
       async (opts) => {
         try {
@@ -1940,7 +1940,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { totalCount, laws: [{ lawId, lawNum, lawTitle }] }',
       {
         keyword: z.string().min(1).describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")'),
-        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)'),
+        limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
       },
       async (opts) => {
         try {
@@ -2000,7 +2000,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
         from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
         until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
-        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)'),
+        limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
       },
       async (opts) => {
         try {
@@ -2238,7 +2238,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         region: z.string().min(1).describe('国・地域名またはコード (例: "South Korea", "KR", "台湾")'),
         query: z.string().optional().describe('追加の調査クエリ'),
         topics: z.array(z.enum(COUNTRY_INTEL_TOPICS)).optional().describe('対象トピック (politics, economy, disasters 等)'),
-        period: z.enum(['7d', '30d', '90d']).optional().default('30d').describe('調査期間 (デフォルト: 30d)'),
+        period: z.enum(['7d', '30d', '90d']).optional().default('30d').describe('調査期間 (デフォルト: "30d")'),
         includeSocial: z.boolean().optional().default(false).describe('SNS投稿観測を含めるか (日本はYahooリアルタイムの日本語投稿も取得。地域・言語の不足は明示)'),
         social: IntelSocialInputSchema.optional().describe('SNS観測条件 (platforms/queries/urls/lookbackHours)'),
         noCache: z.boolean().optional().default(false).describe('キャッシュをバイパスするか'),
