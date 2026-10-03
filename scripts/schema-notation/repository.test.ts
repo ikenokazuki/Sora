@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { scanRepository, type Finding, type FindingKind } from './scan.js';
+import { scanRepository, scanReturnNotes, type Finding, type FindingKind } from './scan.js';
 
 let cached: Promise<Finding[]> | undefined;
 const findings = () => (cached ??= scanRepository());
@@ -28,5 +28,9 @@ describe('API input notation (MCP + OpenAPI)', () => {
 
   test('no notation findings remain', async () => {
     expect((await findings()).map((f) => `${f.kind} ${f.key}`)).toEqual([]);
+  }, 30_000);
+
+  test('MCP 返却 notes name keys that the documented response has', async () => {
+    expect((await scanReturnNotes()).map((f) => `${f.key} :: ${f.detail}`)).toEqual([]);
   }, 30_000);
 });
