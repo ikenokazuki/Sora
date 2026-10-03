@@ -24,6 +24,8 @@ export const SCRAPE_FORMATS = [
 
 export type ScrapeFormat = (typeof SCRAPE_FORMATS)[number];
 export const ScrapeFormatSchema = z.enum(SCRAPE_FORMATS);
+export const ScrapeContentStatusSchema = z.enum(['body', 'structured_data', 'metadata_only', 'unavailable']);
+export type ScrapeContentStatus = z.infer<typeof ScrapeContentStatusSchema>;
 
 export interface TableData {
   id?: string;
@@ -244,6 +246,7 @@ export interface ScrapeResult {
   url: string;
   title: string;
   content: string;
+  contentStatus?: ScrapeContentStatus;
   isTruncated: boolean;
   contentType: string;
   source: 'web';
@@ -1178,9 +1181,10 @@ export const ScrapeResponseSchema = z.object({
   url: z.string().describe('取得した完全な URL'),
   title: z.string().describe('Web ページのタイトル'),
   content: z.string().describe('抽出・整形された本文 (Markdown またはプレーンテキスト)'),
-  isTruncated: z.boolean().describe('文字数上限 (maxChars) により切り詰められたか'),
-  contentType: z.string().describe('コンテンツの MIME タイプ (例: "text/html", "application/pdf")'),
-  source: z.literal('web').describe('取得ソース種別'),
+  contentStatus: ScrapeContentStatusSchema.optional().describe('取得状態: body=DOM本文、structured_data=構造化イベント情報、metadata_only=メタデータのみ、unavailable=本文取得不可'),
+  isTruncated: z.boolean().optional().describe('文字数上限による切り詰め。通常応答は true の場合だけ返す'),
+  contentType: z.string().optional().describe('verbose 時の MIME タイプ (例: "text/html", "application/pdf")'),
+  source: z.literal('web').optional().describe('verbose 時の取得ソース種別'),
   renderedWithBrowser: z.boolean().optional().describe('Stealth Chromium ブラウザで JS 描画されたか'),
   cached: z.boolean().optional().describe('メモリキャッシュから返却されたか'),
   ogImage: z.string().optional().describe('OGP アイキャッチ画像 URL'),
@@ -1305,6 +1309,7 @@ export const SearchWebResponseSchema = z.object({
 });
 
 export const RealtimeItemSchema = z.object({
+  id: z.string().optional().describe('X投稿ID'),
   text: z.string().describe('ツイート・投稿本文'),
   url: z.string().describe('ポスト URL'),
   created_at: z.union([z.number(), z.string()]).optional().describe('投稿タイムスタンプ (Unix秒または文字列)'),
@@ -1316,6 +1321,11 @@ export const RealtimeItemSchema = z.object({
   source: z.literal('x').optional().describe('ソース ("x")'),
   isOfficial: z.boolean().optional().describe('公式アカウントの発言・一次告知であるか'),
   images: z.array(z.string()).optional().describe('投稿に添付された画像 URL 配列'),
+  media: z.array(z.string()).optional().describe('投稿に添付されたメディア URL 配列'),
+  like_count: z.number().optional().describe('いいね数'),
+  reply_count: z.number().optional().describe('返信数'),
+  repost_count: z.number().optional().describe('リポスト数'),
+  retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一投稿を取得した経路。同一投稿IDはモードに関係なく統合する'),
 });
 
 export const RealtimeSearchResponseSchema = z.object({
@@ -1349,13 +1359,38 @@ export const TrendSearchResponseSchema = z.object({
   timestamp: z.string().describe('取得日時 (ISO 8601)'),
 });
 
+export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: true }).extend({
+  source: z.enum(['web', 'x']).optional().describe('本文の取得元'),
+  markdown: z.string().optional().describe('取得本文。evidence モードで省略する場合がある'),
+  snippet: z.string().optional().describe('検索エンジン由来の抜粋'),
+  domain: z.string().optional().describe('検索先ドメイン'),
+  directFetch: z.boolean().optional().describe('Yahoo検索を直接HTTP取得したか。対象ページの本文取得成功は示さない'),
+  scrapeError: z.string().optional().describe('本文取得エラー'),
+  isSnippetFallback: z.boolean().optional().describe('本文の代わりに検索抜粋を返したか'),
+  isOfficial: z.boolean().optional().describe('公式アカウントの投稿であるか'),
+  retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一の取得物を取得した経路'),
+  scrapeAttemptIndex: z.number().int().optional().describe('本文取得を試行した順序 (0-based)'),
+});
+
+export const IntegratedRealtimeItemSchema = IntegratedSearchItemSchema.partial().extend(RealtimeItemSchema.shape);
+
 export const IntegratedSearchResponseSchema = z.object({
   query: z.string().describe('検索キーワード'),
-  source: z.string().describe('ソース ("integrated")'),
-  count: z.number().describe('上位取得件数'),
-  results: z.array(ScrapeResponseSchema).describe('本文スクレイピング・整形済みの深層検索結果配列'),
-  realtime: z.array(RealtimeItemSchema).optional().describe('併せて取得された X リアルタイム最新速報'),
-  expandedQueries: z.array(z.string()).optional().describe('擬似適合フィードバック (PRF) による自動拡張キーワード一覧'),
+  source: z.literal('integrated').describe('ソース ("integrated")'),
+  count: z.number().describe('重複統合後の results 件数。同一X投稿は realtime.items 側に集約する'),
+  results: z.array(IntegratedSearchItemSchema).describe('本文取得・整形済みの深層検索結果'),
+  realtime: z.object({
+    source: z.literal('x'),
+    sort: z.enum(['recent', 'popular']),
+    count: z.number(),
+    effectiveQuery: z.string(),
+    isFallback: z.boolean(),
+    officialAccountId: z.string().optional(),
+    intent: z.string().optional(),
+    items: z.array(IntegratedRealtimeItemSchema),
+  }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
+  prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
+  responseMode: z.literal('evidence').optional().describe('evidence 指定時に返す。full および verbose 時は省略'),
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
 });
 
@@ -1927,73 +1962,11 @@ export const TrackingResultSchema = z.object({
 // Zod -> OpenAPI 3.0 自動スキーマジェネレーター
 // ==========================================
 export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
-  let description = schema.description || (schema as any)._def?.description;
-  let res: any = {};
-
-  if (schema instanceof z.ZodString) {
-    res = { type: 'string' };
-  } else if (schema instanceof z.ZodNumber) {
-    res = { type: schema.isInt ? 'integer' : 'number' };
-    const min = (schema as any).minValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'min' || c.check === 'min')?.value;
-    const max = (schema as any).maxValue ?? (schema as any)._def?.checks?.find((c: any) => c.kind === 'max' || c.check === 'max')?.value;
-    // zod v4: 制限なしの数値は minValue=-Infinity / maxValue=Infinity を持つ。記載しない。
-    if (typeof min === 'number' && Number.isFinite(min)) res.minimum = min;
-    if (typeof max === 'number' && Number.isFinite(max)) res.maximum = max;
-  } else if (schema instanceof z.ZodBoolean) {
-    res = { type: 'boolean' };
-  } else if (schema instanceof z.ZodEnum) {
-    const enumValues = (schema as any).options ?? (schema as any)._def.values ?? Object.keys((schema as any)._def.entries ?? {});
-    res = { type: 'string', enum: enumValues };
-  } else if (schema instanceof z.ZodLiteral) {
-    res = { type: typeof (schema as any)._def.value, enum: [(schema as any)._def.value] };
-  } else if (schema instanceof z.ZodArray) {
-    // zod v4: 要素スキーマは _def.element（v3 の _def.type ではない）。
-    res = { type: 'array', items: zodToOpenApiSchema((schema as any)._def.element ?? (schema as any)._def.type) };
-  } else if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
-    const inner = zodToOpenApiSchema((schema as any)._def.innerType);
-    if (!description) description = inner.description;
-    res = { ...inner };
-  } else if (schema instanceof z.ZodDefault) {
-    const inner = zodToOpenApiSchema((schema as any)._def.innerType);
-    if (!description) description = inner.description;
-    const defVal = typeof (schema as any)._def.defaultValue === 'function'
-      ? (schema as any)._def.defaultValue()
-      : (schema as any)._def.defaultValue;
-    res = { ...inner, default: defVal };
-  } else if (schema instanceof z.ZodUnion) {
-    const options = (schema as any)._def.options.map((opt: any) => zodToOpenApiSchema(opt));
-    res = { anyOf: options };
-  } else if (schema instanceof z.ZodRecord) {
-    res = { type: 'object', additionalProperties: true };
-  } else if (schema instanceof z.ZodObject) {
-    const shape = (schema as any).shape;
-    const properties: Record<string, any> = {};
-    const required: string[] = [];
-    for (const key of Object.keys(shape)) {
-      const field = shape[key];
-      properties[key] = zodToOpenApiSchema(field);
-      if (
-        !(field instanceof z.ZodOptional) &&
-        !(field instanceof z.ZodNullable) &&
-        !(field._def?.typeName === 'ZodOptional') &&
-        !(field instanceof z.ZodDefault)
-      ) {
-        required.push(key);
-      }
-    }
-    res = {
-      type: 'object',
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-    };
-  } else {
-    res = { type: 'string' };
-  }
-
-  if (description) {
-    res.description = description;
-  }
-  return res;
+  return z.toJSONSchema(schema, {
+    target: 'openapi-3.0',
+    io: 'input',
+    unrepresentable: 'any',
+  });
 }
 
 export function generateOpenApiDocument() {
