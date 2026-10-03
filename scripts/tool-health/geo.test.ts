@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { TOOL_CASES } from './catalog.js';
 import type { CaseContext } from './types.js';
 
-const elevation = { lat: 35.669968, lon: 139.709008, elevationMeters: 34, geocodingSource: 'geocoding.jp' };
+const elevation = { lat: 35.669968, lon: 139.709008, elevationMeters: 34, geocodingSource: 'nominatim' };
 const poi = {
-  centerResolved: { input: '原宿', address: '東京都渋谷区神宮前 原宿', lat: 35.669968, lon: 139.709008, source: 'geocoding.jp' },
+  centerResolved: { input: '原宿', address: '東京都渋谷区神宮前 原宿', lat: 35.669968, lon: 139.709008, source: 'nominatim' },
   count: 1, pois: [{ name: '原宿のラーメン店', lat: 35.67, lng: 139.709 }],
 };
 

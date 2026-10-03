@@ -898,10 +898,10 @@ export const PredictHtsCodeRequestSchema = z.object({
 export type PredictHtsCodeRequestOptions = z.infer<typeof PredictHtsCodeRequestSchema>;
 
 export const ElevationRequestSchema = z.object({
-  address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。geocoding.jpで座標化し、未キャッシュ時は共有キューで10秒間隔を維持'),
+  address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
   lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
   lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
-  noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。10秒間隔は維持'),
+  noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持'),
 });
 export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
 
@@ -910,10 +910,10 @@ export const PoiSearchRequestSchema = z.object({
   lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
   lon: z.number().min(-180).max(180).optional().describe('中心経度、経度が先 (lat とペア指定)'),
   radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
-  center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。geocoding.jpで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで10秒間隔を守って取得'),
+  center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで1.1秒間隔を守って取得'),
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
-  noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。10秒間隔の制限は維持'),
+  noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持'),
 }).refine((v) => v.query !== undefined || v.bbox !== undefined || v.center !== undefined || (v.lat !== undefined && v.lon !== undefined), {
   message: 'query, bbox, center, または lat+lon のいずれかを指定してください',
 }).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
@@ -941,10 +941,10 @@ export const PoiSearchResultSchema = z.object({
   query: z.string().optional().describe('検索クエリ'),
   centerResolved: z.object({
     input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number(),
-    source: z.literal('geocoding.jp').optional(),
+    source: z.enum(['nominatim', 'gsi']).optional(),
     needsVerification: z.boolean().describe('取得元の要確認フラグ。解決先が意図した地域か確認する'),
     ambiguous: z.boolean().describe('互換フィールド。needsVerificationと同値で、複数候補の存在を示すものではない'),
-    candidates: z.array(z.object({ address: z.string(), lat: z.number(), lon: z.number() })).describe('互換フィールド。geocoding.jpは候補一覧を返さないため空配列'),
+    candidates: z.array(z.object({ address: z.string(), lat: z.number(), lon: z.number() })).describe('互換フィールド。Nominatimは候補一覧を返さないため空配列'),
   }).optional().describe('center地名の解決結果（取得元・住所・座標・要確認フラグ）'),
   count: z.number().describe('返却件数'),
   pois: z.array(PoiItemSchema).describe('施設一覧'),
@@ -1785,7 +1785,7 @@ export const ElevationResultSchema = z.object({
   query: z.string().optional().describe('指定された検索クエリ文字列'),
   address: z.string().optional().describe('住所文字列'),
   matchedTitle: z.string().optional().describe('座標解決サービスが返した地名ラベル'),
-  geocodingSource: z.literal('geocoding.jp').optional().describe('住所・地名からの座標解決の取得元'),
+  geocodingSource: z.enum(['nominatim', 'gsi']).optional().describe('住所・地名からの座標解決の取得元'),
   needsVerification: z.boolean().optional().describe('座標解決の取得元の要確認フラグ'),
   lat: z.number().describe('緯度 (10進数)'),
   lon: z.number().describe('経度 (10進数)'),
@@ -3196,7 +3196,7 @@ export function generateOpenApiDocument() {
       },
       '/geo/elevation': {
         post: {
-          summary: 'geocoding.jp 座標解決 & 国土地理院 標高（海抜）取得 API',
+          summary: 'Nominatim 座標解決 & 国土地理院 標高（海抜）取得 API',
           requestBody: {
             content: {
               'application/json': {
@@ -3206,7 +3206,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: 'geocoding.jpで解決した座標・地名ラベルと国土地理院の海抜標高',
+              description: 'Nominatimで解決した座標・地名ラベルと国土地理院の海抜標高',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(ElevationResultSchema),
@@ -3216,16 +3216,16 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: 'geocoding.jp 座標解決 & 国土地理院 標高（海抜）取得 API (GET クエリ指定)',
+          summary: 'Nominatim 座標解決 & 国土地理院 標高（海抜）取得 API (GET クエリ指定)',
           parameters: [
-            { name: 'address', in: 'query', schema: { type: 'string' }, description: '住所・地名 (例: "原宿")。geocoding.jpで座標化し、未キャッシュ時は共有キューで10秒間隔を維持' },
+            { name: 'address', in: 'query', schema: { type: 'string' }, description: '住所・地名 (例: "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持' },
             { name: 'lat', in: 'query', schema: { type: 'number' }, description: '緯度 (address 省略時の直接指定)' },
             { name: 'lon', in: 'query', schema: { type: 'number' }, description: '経度 (address 省略時の直接指定)' },
-            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '座標解決・標高のキャッシュを使わず再取得する。10秒間隔は維持' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持' },
           ],
           responses: {
             '200': {
-              description: 'geocoding.jpで解決した座標・地名ラベルと国土地理院の海抜標高',
+              description: 'Nominatimで解決した座標・地名ラベルと国土地理院の海抜標高',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(ElevationResultSchema),
@@ -3260,13 +3260,13 @@ export function generateOpenApiDocument() {
           summary: 'OpenPOI直結 全国施設POI検索 API (GET クエリ指定)',
           parameters: [
             { name: 'query', in: 'query', schema: { type: 'string' }, description: '施設・住所キーワード (例: "ラーメン")' },
-            { name: 'center', in: 'query', schema: { type: 'string' }, description: '中心地名 (例: "原宿")。geocoding.jpで座標化。lat/lonとは排他。共有キューで10秒間隔を維持' },
+            { name: 'center', in: 'query', schema: { type: 'string' }, description: '中心地名 (例: "原宿")。Nominatimで座標化。lat/lonとは排他。共有キューで1.1秒間隔を維持' },
             { name: 'lat', in: 'query', schema: { type: 'number' }, description: '中心緯度 (lon とペア指定)' },
             { name: 'lon', in: 'query', schema: { type: 'number' }, description: '中心経度 (lat とペア指定)' },
             { name: 'radiusMeters', in: 'query', schema: { type: 'number' }, description: '中心からの半径m (bbox 指定時は無視)' },
             { name: 'bbox', in: 'query', schema: { type: 'string' }, description: '矩形範囲 "minLng,minLat,maxLng,maxLat"' },
             { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 }, description: '最大件数 (1-50, デフォルト: 10)' },
-            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '地名解決の24時間キャッシュを使わず再取得する。10秒間隔は維持' },
+            { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔は維持' },
           ],
           responses: {
             '200': {

@@ -78,7 +78,7 @@ export interface PoiCenterResolved {
   address?: string;
   lat: number;
   lon: number;
-  source?: 'geocoding.jp';
+  source?: GeocodingResult['source'];
   needsVerification: boolean;
   ambiguous: boolean;
   candidates: PoiCenterCandidate[];
