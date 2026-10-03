@@ -78,3 +78,25 @@ describe('openpoi MCP wiring', () => {
     }
   });
 });
+
+describe('openpoi center geocoding', () => {
+  const stubFetch = async (url: string) => {
+    expect(url).toContain('center=139.7');
+    return { ok: true, status: 200, json: async () => ({ count: 1, results: [{ name: 'X', lat: 35.69, lng: 139.7, licenses: [], attributions: [] }] }) } as Response;
+  };
+  test('center place name is geocoded to coordinates', async () => {
+    const { searchOpenPoi } = await import('./poi.js');
+    const r = await searchOpenPoi({ query: 'ramen', center: '渋谷', limit: 2 }, stubFetch as never, 5000, async () => ({ lat: 35.69, lon: 139.7, address: '東京都渋谷区' }));
+    expect(r.count).toBe(1);
+    expect(r.centerResolved).toMatchObject({ input: '渋谷', address: '東京都渋谷区', lat: 35.69 });
+    expect(r.pois[0].name).toBe('X');
+  });
+  test('unresolvable center fails loudly, never silent nationwide', async () => {
+    const { searchOpenPoi } = await import('./poi.js');
+    await expect(searchOpenPoi({ query: 'ramen', center: 'no-such-place-xyz' }, stubFetch as never, 5000, async () => ({}))).rejects.toThrow(/could not be resolved/);
+  });
+  test('center with lat/lon is rejected', () => {
+    expect(PoiSearchRequestSchema.safeParse({ query: 'x', center: '渋谷', lat: 35 }).success).toBe(false);
+    expect(PoiSearchRequestSchema.safeParse({ query: 'x', center: '渋谷' }).success).toBe(true);
+  });
+});
