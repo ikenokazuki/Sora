@@ -1,7 +1,7 @@
 import { resolveCityId } from './life.js';
 import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
 import { getFromCache, setToCache } from '../cache.js';
-import { geocodeAddress, type GeocodingResult } from './geocoding.js';
+import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
 export const CACHE_TTL_EARTHQUAKE = 60 * 1000;     // 1分
@@ -276,7 +276,8 @@ export interface ElevationResult {
   query?: string;
   address?: string;
   matchedTitle?: string;
-  geocodingSource?: 'geocoding.jp';
+  geocodingSource?: GeocodingResult['source'];
+  geocodingAttribution?: string;
   needsVerification?: boolean;
   lat: number;
   lon: number;
@@ -286,7 +287,7 @@ export interface ElevationResult {
   source: 'gsi';
 }
 
-/** geocoding.jpによる住所・地名解決と国土地理院の標高（海抜）取得。 */
+/** Nominatimによる住所・地名解決と国土地理院の標高（海抜）取得。 */
 export async function fetchElevationAndCoordinates(options: {
   address?: string;
   lat?: number;
@@ -354,7 +355,7 @@ export async function fetchElevationAndCoordinates(options: {
     query: rawAddress,
     address: rawAddress,
     matchedTitle,
-    ...(geocoding ? { geocodingSource: geocoding.source, needsVerification: geocoding.needsVerification } : {}),
+    ...(geocoding ? { geocodingSource: geocoding.source, geocodingAttribution: GEOCODING_ATTRIBUTIONS[geocoding.source], needsVerification: geocoding.needsVerification } : {}),
     lat,
     lon,
     elevationMeters,
