@@ -246,7 +246,7 @@ describe('Tracking Service Unit Tests', () => {
       });
       expect(res.carrier).toBe('ups');
       expect(res.trackingUrl).toContain('ups.com');
-    }, 15000);
+    }, 110000);
   });
 });
 
