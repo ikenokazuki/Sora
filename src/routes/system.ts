@@ -177,24 +177,63 @@ systemRoutes.post('/cache/clear', (c) => {
 
 // OpenAPI 仕様書エンドポイント (Zod スキーマから完全自動生成)
 systemRoutes.get('/openapi.json', (c) => {
+  c.header('Cache-Control', 'no-cache');
   return c.json(generateOpenApiDocument());
 });
 
 // モダンな API リファレンス (Scalar UI: パラメータの意味・型・制約を初期表示で美しく一覧化)
 systemRoutes.get('/docs', (c) => {
+  c.header('Cache-Control', 'no-cache');
   const html = `<!doctype html>
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sora API Reference</title>
+    <style>
+      /* enumは件数によらず、Values枠内の折り返し可能なチップに統一する。 */
+      .property-enum {
+        border: 1px solid var(--scalar-border-color);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .property .property-enum .property-enum-property-names {
+        padding: 8px 12px;
+        text-transform: capitalize;
+        margin: 0;
+        display: block;
+      }
+      .property .property-enum .property-enum-values {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 8px 12px;
+        margin: 0;
+        border-top: 1px solid var(--scalar-border-color);
+      }
+      .property .property-enum .property-enum-value {
+        border: 1px solid var(--scalar-border-color);
+        border-radius: 4px;
+        padding: 0 4px;
+        margin: 0;
+      }
+      .property .property-enum .property-enum-value::before,
+      .property .property-enum .property-enum-value::after,
+      .property .property-enum .property-enum-value-label::after {
+        display: none;
+      }
+      .property .property-enum .property-enum-value-content {
+        padding: 0;
+      }
+    </style>
   </head>
   <body>
     <script
       id="api-reference"
       data-url="/openapi.json"
       data-configuration='{"theme":"purple","darkMode":true,"layout":"modern","showSidebar":true}'
-      src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"
+      src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.68.0/dist/browser/standalone.js"
     ></script>
   </body>
 </html>`;
