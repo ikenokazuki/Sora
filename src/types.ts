@@ -464,7 +464,7 @@ export const ScrapeRequestSchema = z.object({
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
   retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
   retryDelayMs: z.number().int().min(1).max(30_000).optional().describe('リトライ待機ディレイ (ミリ秒, 上限: 30000)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか').meta({ default: false }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
@@ -615,7 +615,7 @@ export const CrawlRequestSchema = z.object({
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3, 上限: 10)').meta({ default: 3 }),
   webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const MapRequestSchema = z.object({
@@ -624,28 +624,28 @@ export const MapRequestSchema = z.object({
   includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)').meta({ default: false }),
   since: z.string().optional().describe('指定日時以降に更新された URL のみ抽出するフィルタ (例: "2026-08-01")'),
   until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const ImageSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const NewsSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }).meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const ChiebukuroStatusSchema = z.enum(['all', 'open', 'vote', 'solved']);
@@ -657,7 +657,7 @@ export const ChiebukuroSearchRequestSchema = z.object({
   status: ChiebukuroStatusSchema.optional()
     .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
     .meta({ default: 'all' }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const TrendSearchRequestSchema = z.object({
@@ -676,7 +676,7 @@ export const RealtimeSearchRequestSchema = z.object({
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)').meta({ default: 'recent' }),
   limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const TRANSIT_ROUTE_INPUT_SHAPE = {
@@ -707,7 +707,7 @@ export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
   days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
@@ -767,13 +767,13 @@ export type IntegratedSearchRequest = z.infer<typeof IntegratedSearchRequestSche
 export const SuggestRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索語句プレフィックス'),
   limit: z.number().int().min(1).max(20).optional().describe('取得するサジェスト候補件数 (デフォルト: 10)').meta({ default: 10 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const DisasterWarningsRequestSchema = z.object({
   city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
   areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 /** P2P地震情報の震度コード。10=震度1 … 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7 */
@@ -785,13 +785,13 @@ export const EarthquakeRequestSchema = z.object({
   minIntensity: EarthquakeScaleSchema.optional()
     .describe('最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10)')
     .meta({ default: 10 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const RoadTrafficRequestSchema = z.object({
   pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)'),
   road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速")'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const WatchRegisterRequestSchema = z.object({
@@ -810,7 +810,7 @@ export const SongSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索曲名・楽曲タイトル'),
   country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const ArtistSearchRequestSchema = z.object({
@@ -818,7 +818,7 @@ export const ArtistSearchRequestSchema = z.object({
   country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
   entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")').meta({ default: 'song' }),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const MusicSearchRequestSchema = z.object({
@@ -827,18 +827,18 @@ export const MusicSearchRequestSchema = z.object({
   entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")').meta({ default: 'song' }),
   attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const LawSearchRequestSchema = z.object({
   keyword: z.string().min(1, 'keyword は必須です').describe('法令検索キーワード (法令名、単語)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const LawDataRequestSchema = z.object({
   lawId: z.string().min(1, 'lawId は必須です').describe('e-Gov 法令 ID (例: "129AC0000000089")'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const DietMinutesSearchRequestSchema = z.object({
@@ -849,7 +849,7 @@ export const DietMinutesSearchRequestSchema = z.object({
   from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
   until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
   limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 export type DietMinutesSearchOptions = z.infer<typeof DietMinutesSearchRequestSchema>;
 
@@ -901,7 +901,7 @@ export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
   lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
   lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
-  noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持'),
+  noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
 });
 export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
 
@@ -913,7 +913,7 @@ export const PoiSearchRequestSchema = z.object({
   center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで1.1秒間隔を守って取得'),
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
-  noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持'),
+  noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持').meta({ default: false }),
 }).refine((v) => v.query !== undefined || v.bbox !== undefined || v.center !== undefined || (v.lat !== undefined && v.lon !== undefined), {
   message: 'query, bbox, center, または lat+lon のいずれかを指定してください',
 }).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
@@ -959,7 +959,7 @@ export const FlightStatusRequestSchema = z.object({
   category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
   flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
   keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスするか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 export const InspectImageRequestSchema = z.object({
   url: z.string().url('有効な画像URLを指定してください').describe('読み取り対象の画像URL (https://...)'),
@@ -1046,7 +1046,7 @@ export const TrackingRequestSchema = z.object({
   preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列'),
   originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
   destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
-  noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか').meta({ default: false }),
   verbose: z.boolean().optional().describe('詳細な detection 判定情報をレスポンスに含めるか'),
 });
 export interface TrackingRequest {
@@ -3244,6 +3244,10 @@ export function generateOpenApiDocument() {
             content: {
               'application/json': {
                 schema: zodToOpenApiSchema(PoiSearchRequestSchema),
+                example: {
+                  query: 'カフェ', center: '原宿',
+                  radiusMeters: 5000, limit: 10, noCache: false,
+                },
               },
             },
           },
@@ -3546,6 +3550,33 @@ export function generateOpenApiDocument() {
         },
       },
     };
+  }
+  // GETも共有入力スキーマから型・既定値・enum・説明を取得する。
+  // パスパラメーターのrequiredなど、GET固有の指定は保持する。
+  const trackingGetSchema = z.object({
+    number: TrackingRequestSchema.shape.trackingNumber,
+    carrier: TrackingRequestSchema.shape.carrier,
+    noCache: TrackingRequestSchema.shape.noCache,
+  });
+  const getInputSchemas: Record<string, z.ZodTypeAny> = {
+    '/weather': WeatherRequestSchema,
+    '/weather/{city}': WeatherRequestSchema,
+    '/traffic/road': RoadTrafficRequestSchema,
+    '/traffic/road/{pref}': RoadTrafficRequestSchema,
+    '/gov/diet-minutes': DietMinutesSearchRequestSchema,
+    '/geo/elevation': ElevationRequestSchema,
+    '/geo/poi': PoiSearchRequestSchema,
+    '/traffic/flight': FlightStatusRequestSchema,
+    '/traffic/flight/{airport}': FlightStatusRequestSchema,
+    '/tracking/{carrier}/{number}': trackingGetSchema,
+    '/tracking/{number}': trackingGetSchema,
+  };
+  for (const [path, input] of Object.entries(getInputSchemas)) {
+    const properties = zodToOpenApiSchema(input).properties;
+    for (const parameter of paths[path].get.parameters) {
+      parameter.schema = properties[parameter.name];
+      parameter.description = parameter.schema.description;
+    }
   }
   // 同一ハンドラの別名パス。実体と同一定義を参照させる（重複メンテ防止）。
   paths['/realtime'] = paths['/search/realtime'];

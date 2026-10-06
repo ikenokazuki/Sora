@@ -1348,7 +1348,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .describe('優先的に検証する運送会社候補のヒント配列'),
         originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
         destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
-        noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか'),
+        noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか').meta({ default: false }),
       },
       async ({ trackingNumber, carrier, preferredCarriers, originCountry, destinationCountry, noCache }) => {
         try {
@@ -1570,7 +1570,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
         lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
         lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
-        noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持'),
+        noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
       },
       async (opts) => {
         try {
@@ -1604,7 +1604,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他'),
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
         limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
-        noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持'),
+        noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
       },
       async (opts) => {
         try {

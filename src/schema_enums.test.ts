@@ -15,6 +15,6 @@ describe('enumerated inputs', () => {
   test('GET /tracking/{carrier}/{number} lists every carrier', () => {
     const doc: any = generateOpenApiDocument();
     const carrier = doc.paths['/tracking/{carrier}/{number}'].get.parameters.find((p: any) => p.name === 'carrier');
-    expect([...carrier.schema.enum].sort()).toEqual(['dhl', 'fedex', 'fukutsu', 'japanpost', 'sagawa', 'seino', 'ups', 'yamato']);
+    expect([...carrier.schema.enum].sort()).toEqual(['auto', 'dhl', 'fedex', 'fukutsu', 'japanpost', 'sagawa', 'seino', 'ups', 'yamato']);
   });
 });
