@@ -3,7 +3,7 @@
 Read this first on every update. Also read the server's authoritative runbook:
 [agent-ops.md](/home/ikeno/app/oshiframe/docs/superpowers/ops/agent-ops.md).
 
-## Target (confirmed 2026-10-06)
+## Target (confirmed 2026-10-07)
 
 - Host: fetcher.ikebun.jp (162.43.91.12) IS this machine (/home/ikeno host).
 - Sora runs as the `apps` user (uid 1001), podman container name `web-fetcher`.
@@ -15,8 +15,13 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `ghcr.io/ikenokazuki/sora:2.34.6`
-  (image ID `64bbacfbb7b1`, deployed 2026-10-06). Package/health version: `2.34.6`.
+- Current image: `localhost/sora:2.34.6-calendar-adapter-20261007`
+  (image ID `fc8e545aaee2`, deployed 2026-10-07). Package/health version: `2.34.6`.
+  Local derivative with generic browser content readiness plus an isolated
+  TimeTree public-calendar response adapter in the common MCP / REST scrape path.
+  The existing host-independent discovery instructions are retained.
+- `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
+  is limited to 14 by the saved LibreChat Agent's native deferred loading.
 - Released images: ghcr.io/ikenokazuki/sora, pinned tag per release. Registry rule:
   latest moves on main-branch builds only, never on tag builds.
 - ikeno and apps have SEPARATE podman storage. Pulling as ikeno does NOT
@@ -65,6 +70,29 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - Do not run a whole NixOS rebuild for this update: the infrastructure repository
   may contain other work. Keep the Nix declaration and the targeted drop-in aligned.
 
+## LibreChat接続の修正（2026-10-06）
+
+以下は最初の暫定修正と検証。現在は次節の保存済みAgent構成を使用する。
+
+- Sora 2.34.6のイメージ・DB・設定は変更していない。今回の「MCP server temporarily unavailable」はLibreChatの定義不足による代替応答だった。
+- LibreChatを通知対応のv0.8.8ベースへ更新し、Soraのsearch_tools後に同じ接続の一覧を会話実行へ反映するホスト修正を追加した。初期MCP一覧14個を維持し、POI検索時はMCP一覧16個、モデル側は重複別名を除いて15個になる。
+- LibreChatのSora設定でserverInstructionsを有効化し、初期・追加後・後続会話の実モデル送信本文と、実際の施設検索を隔離環境で検証した。
+- `search_tools`、有効化フェーズ、default.*別名はSora独自。tools/list、tools/call、list_changed、initializeのinstructionsフィールドは標準。接続内の要求で一覧を変える方式は2026-07-28仕様への移行時に見直す。
+- 詳細：[LibreChat運用記録](/home/ikeno/app/docs/operations/librechat.md)、[MCP標準との比較](/home/ikeno/app/docs/operations/sora-librechat-mcp-audit-20261006.md)。
+- 続く汎用化検証では、既存の`SORA_DEFER_TOOLS=false`によりMCP一覧が正式名47個で固定され、別名・検索後の一覧変更がなくなることを確認した。無改修の公式LibreChat v0.8.8の保存済みAgentで13コア＋標準Tool Searchの初期14個、検索後15個、実施設検索、同じ会話の保持、新しい会話の14個へ戻る動作が成功。通常チャットには同じ遅延設定経路がないため、利用形態の選択待ち。本番Soraの設定は未変更。
+- 作業ツリーのinstructionsを、モデルにある定義の直接利用・ホストのツール検索の優先・旧有効化時のスキーマ読込待ちへ修正した。配送・国地域ツールの無条件の有効化指示も削除。関連45テストと型チェックが成功。イメージへの組み込みと本番反映は未実施。
+
+## 標準Agent構成への切り替え（2026-10-06〜07）
+
+- ユーザーが保存済みAgentへの切り替えを承認。10月6日にSora・LibreChatのサービスを切り替え、10月7日にAgent登録と最終照合を完了した。
+- Soraイメージは`localhost/sora:2.34.6-native-mcp-20261006`、ID `d565df77d3e7b34d3d003d4c93a33d36f9d9a98a0822a7ff1b2e732e9cff5dd5`。2.34.6の固定digestをベースに、同じBun 1.4.2で現在のsrcをbundleし、server.jsのみ更新。bundle SHA-256は`4702797e47ebc868209b39b25f82871314164c0d7d9403e699d55a1561726a6f`。説明文修正を本番へ反映した。公開リリースのタグは変更していない。
+- `SORA_DEFER_TOOLS=false`で正式名47個を公開。検索後も一覧が変化せず、`default.*`別名と一覧変更通知は0。LibreChatは無改修の公式v0.8.8へ戻し、専用パッチを撤去した。
+- 保存済み`Sora (Muse)` Agentは13即時＋34遅延。ホストが追加するTool Search込みで初期モデル定義14個。通常チャットのSora選択は公式設定`chatMenu=false`で非表示。Agent一覧・所有者専用のACL・保存済みの遅延設定を照合した。
+- 候補でhealth、47正式名、新instructions、実scrape/Web検索、実施設検索を確認。無改修LibreChatの隔離会話で14→15→同じ会話15→新しい会話14が成功。実Museモデルも3要求で検索から最終回答まで成功。公開MCPの施設検索2件と最終会話試験も成功。
+- SQLiteバックアップは`/data/backups/sora-before-native-mcp-20261006.db`（0600、quick_check=ok）。既存web-fetcher-dataを維持。Nix宣言とappsのQuadlet drop-inを揃え、Pull=never、全公開設定を追加。Sora/LibreChatのみを再起動した。
+- 復旧は保護された`/home/ikeno/.local/state/librechat-deploy/20261006T143749Z-native-agent/sora-release.before`をSora drop-inへ戻し、旧LibreChatの設定・イメージも揃えてdaemon-reload・対象再起動する。Sora復旧先は公式2.34.6（ID `64bbacfbb7b1`）。DBを自動復元しない。
+- [LibreChat運用記録](/home/ikeno/app/docs/operations/librechat.md)と[MCP監査](/home/ikeno/app/docs/operations/sora-librechat-mcp-audit-20261006.md)も参照する。
+
 ## Previous update (2026-10-03)
 
 - Built the current working tree, including the geocoding.jp implementation, AS apps.
@@ -100,3 +128,38 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - Nix宣言と永続Quadlet drop-inをv2.34.6で揃え、Pull=newerを維持した。daemon-reload後のExecStartを確認してからweb-fetcher.serviceだけをrestartした。NixOS全体は再構築していない。
 - 復旧先はghcr.io/ikenokazuki/sora:2.34.5（ID 97f5dafdba1c）。旧イメージは保持。同じdrop-inディレクトリの20-release.conf.before-v2.34.6-20261006T045150Zを20-release.confに戻し、上記apps用コマンドでdaemon-reload、web-fetcherだけをrestartする。Nix宣言も2.34.5に戻す。Pull=newerは維持する。通常のイメージ復旧ではDBを復元しない。
 - 設定控え、CI診断、候補・本番検証結果と画面: /home/ikeno/.local/state/sora-deploy/20261006T045150Z-2.34.6/。
+
+## ブラウザ待機とTimeTree公開予定の修正（2026-10-07）
+
+- コミット `6cc65d7` をmainへ反映した。既存の未コミットMCP instructions・契約テスト・運用記録を保持し、稼働中のMCP構成も含めてbundleした。公開リリースやGitHubへのpushは行っていない。
+- 稼働イメージは `localhost/sora:2.34.6-timetree-20261007`、ID `b227fb7971ea19b7812c56601c12b26a1d6af0fd9c818ea9c6f509cd4e102f30`。旧ローカルイメージをベースに、同じBun 1.4.2でserver.jsだけを更新した。bundle SHA-256は `1a0c25deaa7c69a359e2a6088a17ee5b65d2f61af19a28e8d5dae809f75784f5`。
+- Web本文取得を独立したX検索と並行化した。空本文の再ナビゲーションを、同じページでの期限付き待機へ置き換えた。非表示要素の判定はDOMのコピーで行い、Shadow DOMのコピーは更新する。scrape・統合検索のキャッシュ名前空間をv2へ変更し、旧失敗結果の再利用を防いだ。
+- TimeTree公開ページ自身のpublic_eventsレスポンスを回収し、予定名・日付・説明・会場・URL・画像を本文とEventデータへ保持する。追加API通信やLLM呼び出しはない。公開ページが読み込んだ予定が対象で、全月巡回は行わない。responseModeの既定値はfullのまま。
+- ブラウザを含む関連37テスト、追加バッチ回収修正後の対象10テスト、main統合後のMCP契約など52テスト、型チェックが成功した。コードレビューの重要指摘はすべて解消した。
+- 旧版・候補のキャッシュを揃えたdeep検索3回で、中央値20.031秒→13.685秒（約32%短縮）、最大41.368秒→13.728秒。TimeTree単体は7.733秒→3.611秒（約53%短縮）、予定0件→17件。URL集合の固定比較や競合に対する速度保証ではない。条件・限界は[検証記録](../evaluations/browser-readiness-timetree-20261007.md)を参照する。
+- 最終候補と公開URLでhealth、OpenAPI、TimeTreeの実REST/MCP scrape、既定fullと明示的evidenceのdeep検索、47正式ツールを確認した。本番の単発計測はREST scrape 4.408秒、deep full 14.908秒、MCP scrape 3.319秒。全経路で予定17件、10月7日のライブ15:00〜15:20・特典会15:35〜16:35、検索ではX結果24件を確認した。
+- SQLiteバックアップは `/data/backups/sora-before-timetree-20261007T093624Z.db`（0600、1,683,456バイト、quick_check=ok）。Nix宣言とappsのQuadlet drop-inを揃え、Pull=never・既存Host/Origin・SORA_DEFER_TOOLS=false・web-fetcher-data:/data:Uを維持した。web-fetcher.serviceだけを再起動し、他の本番コンテナIDは変化なし。検証用2コンテナは削除した。
+- 復旧先は `localhost/sora:2.34.6-native-mcp-20261006`（ID `d565df77d3e7`）。drop-inの `20-release.conf.before-timetree-20261007T093624Z` を `20-release.conf` に戻し、上記apps用コマンドでdaemon-reload、web-fetcherだけをrestartする。Nix宣言のSoraイメージも旧タグへ戻す。通常のイメージ復旧でDBを復元しない。
+- 設定控え・bundle・公開ページの取得結果・再実行スクリプト: `/home/ikeno/.local/state/sora-deploy/20261007T093624Z-timetree/`。
+
+## 汎用スクレイピングへの修正（2026-10-07）
+
+- ユーザーの意図は汎用スクレイピングの強化によるTimeTree取得だったため、前節の専用API補完を削除した。ソースのコミットは `49358b7`。WebとXの並列処理、同じページでの描画待機、非表示DOMのコピー上での剪定、Shadow DOM更新、表・grid本文の救済は維持している。
+- 現在のイメージは `localhost/sora:2.34.6-generic-scrape-20261007`、ID `be990c125b6d22781d3151430bf1292791c51514fbc2eb39eb0cd4a1a70e02ff`。前節と同じBun・Chromium・依存パッケージを使用し、server.jsだけを交換した。既存のホスト非依存MCP instructionsも維持した。稼働中bundleのSHA-256は `52a970dd40d5a0aea0d131d45f4c9d48481b80fdb4b96677248ee68755779371`。bundleにもTimeTreeのホスト名・`public_events`処理は存在しない。
+- 全テストは1,297成功、22スキップ、失敗0件。Chromiumを使う隔離コンテナの関連26テスト、main統合後の契約・本文抽出関連62テストと型チェックも成功した。本文保存テストはTimeTreeではなくexample.comのURLで検証している。
+- 候補と公開URLでhealth、OpenAPI、REST scrape、deep検索の既定full／明示的evidence、MCPの47正式ツール、MCP scrapeが成功した。本番のREST scrapeは4.862秒、MCP scrapeは3.471秒、deep検索fullは14.650秒でX結果24件を保持した。単発計測で、前版とは取得範囲が異なるため厳密な速度比較には使わない。
+- TimeTreeの取得範囲は通常画面の予定名17件、Markdown478文字、`contentStatus: body`。予定APIを本文・Event構造化データへ変換していないため、前節の説明全文・会場・出演時刻・17件のevents配列は返さない。詳細を手動で開いた観測ではこれらがDOMに表示されるが、自動展開は追加していない。responseModeの既定値はfullのまま、scrape／deepキャッシュの名前空間はv3に変更した。
+- DBバックアップは `/data/backups/sora-before-generic-20261007T101508Z.db`（0600、quick_check=ok）。`web-fetcher-data:/data:U`を維持し、Nix宣言とQuadlet drop-inのSoraイメージだけを変更してweb-fetcherを再起動した。
+- 復旧先は直前の `localhost/sora:2.34.6-timetree-20261007`（ID `b227fb7971ea`）。`20-release.conf.before-generic-20261007T101508Z`を戻し、Nix宣言も同じイメージへ戻してdaemon-reload・web-fetcherだけを再起動する。この復旧先は専用API補完を含む旧版であり、通常のイメージ復旧ではDBを復元しない。
+- 設定控え・bundle・取得結果・試験ログ・再実行スクリプト: `/home/ikeno/.local/state/sora-deploy/20261007T101508Z-generic-scrape/`。取得範囲の違いは[検証記録](../evaluations/generic-calendar-extraction-20261007.md)を参照する。
+
+## 日本のWebへの接続機能としてTimeTree補完を採用（2026-10-07）
+
+- ユーザーが、専用API実装に意義があるなら採用してよいと指定。日本のWebをAIエージェントから利用するSelf-hosted MCP / REST統合サーバーとして、公開予定情報への接続範囲を増やす意義を評価した。MCP・RESTの共通scrape経路にTimeTree補完を復帰した。公開ツール・引数を増やさず、他サイトの汎用抽出と共通の高速化を維持した。
+- ソースは `617ce2f`。カレンダー予定ボタン保持の汎用テストはexample.comのまま。追加LLM・APIリクエスト・認証・別サービスは不要。対象の公開カレンダーが受信した予定APIレスポンスだけを使用し、データなし・不正形式では描画済みDOMを維持する。ページ内APIの形式変更への追従が必要で、開発者向け公式APIの安定性を保証するものではない。
+- 現在のイメージは `localhost/sora:2.34.6-calendar-adapter-20261007`、ID `fc8e545aaee2e927868b0831681744cd3f910ec83d6faa303650076a60d9a3f0`。同じBun・Chromium・依存パッケージを使い、既存のホスト非依存MCP instructionsを含むserver.jsだけを交換した。稼働中bundleのSHA-256は `d07672cf87568cd158b3772f3d6847b158bfff5734ce0cdc3ae85394f9dace77`。
+- 全テスト1,302成功、22スキップ、失敗0件。隔離Chromiumの関連26テスト、main統合後の契約・抽出関連67テスト、型チェックも成功した。通常記事・商品・表・Cookie・localStorage・Shadow DOM・遅延描画と、API補完なしのフォールバックを検証した。
+- 候補・公開URLのhealth、OpenAPI、REST scrape、deep検索の既定full／明示的evidence、MCP正式47ツール、MCP scrapeが成功した。本番REST scrapeは4.921秒、MCP scrapeは4.236秒、deep検索fullは14.571秒。TimeTreeは本文あり・予定17件と説明、会場、ライブ15:00〜15:20・特典会15:35〜16:35を保持し、deep検索はX結果24件も保持した。単発の外部応答計測であり、他版・競合との速度保証には使わない。
+- responseModeの既定値はfullのまま。scrape・deepキャッシュの名前空間をv4へ変更し、前版の予定名だけの結果を再利用しない。DBバックアップは `/data/backups/sora-before-calendar-adapter-20261007T105234Z.db`（0600、quick_check=ok）。`web-fetcher-data:/data:U`を維持し、Nix宣言・Quadlet drop-inのSoraイメージだけを変更してweb-fetcherを再起動した。
+- 復旧先は直前の `localhost/sora:2.34.6-generic-scrape-20261007`（ID `be990c125b6d`）。`20-release.conf.before-calendar-adapter-20261007T105234Z`を戻し、Nix宣言も同じイメージに戻してdaemon-reload・web-fetcherだけを再起動する。復旧先ではTimeTreeの詳細補完を行わず、通常表示の予定名だけを取得する。通常の復旧ではDBを復元しない。
+- 成果物: `/home/ikeno/.local/state/sora-deploy/20261007T105234Z-calendar-adapter/`。[採用判断](../evaluations/calendar-adapter-decision-20261007.md)に目的・対応範囲・保守負担を記録した。
