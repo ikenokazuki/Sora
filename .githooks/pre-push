@@ -1,0 +1,19 @@
+#!/bin/sh
+# Reject pushes of branches that do not follow the naming rule in CONTRIBUTING.md.
+pattern='^(feat|fix|docs|refactor|perf|test|ci|chore|research)/[a-z0-9]+(-[a-z0-9]+)*$'
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main | refs/tags/*) continue ;;
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  # Deleting a remote branch is always allowed, whatever its name.
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  name=${remote_ref#refs/heads/}
+  if [ ${#name} -gt 50 ] || ! printf '%s\n' "$name" | grep -Eq "$pattern"; then
+    echo "pre-push: branch name '$name' violates <type>/<topic> (see CONTRIBUTING.md)" >&2
+    status=1
+  fi
+done
+exit $status
