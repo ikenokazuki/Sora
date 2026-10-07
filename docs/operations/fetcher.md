@@ -163,3 +163,13 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - responseModeの既定値はfullのまま。scrape・deepキャッシュの名前空間をv4へ変更し、前版の予定名だけの結果を再利用しない。DBバックアップは `/data/backups/sora-before-calendar-adapter-20261007T105234Z.db`（0600、quick_check=ok）。`web-fetcher-data:/data:U`を維持し、Nix宣言・Quadlet drop-inのSoraイメージだけを変更してweb-fetcherを再起動した。
 - 復旧先は直前の `localhost/sora:2.34.6-generic-scrape-20261007`（ID `be990c125b6d`）。`20-release.conf.before-calendar-adapter-20261007T105234Z`を戻し、Nix宣言も同じイメージに戻してdaemon-reload・web-fetcherだけを再起動する。復旧先ではTimeTreeの詳細補完を行わず、通常表示の予定名だけを取得する。通常の復旧ではDBを復元しない。
 - 成果物: `/home/ikeno/.local/state/sora-deploy/20261007T105234Z-calendar-adapter/`。[採用判断](../evaluations/calendar-adapter-decision-20261007.md)に目的・対応範囲・保守負担を記録した。
+
+## v2.34.7の公開とCI確認（2026-10-07）
+
+- 高速化・公開予定補完・本番で使用しているMCP説明文をGitHubのmainへ反映し、コミット`b7563698c53f30b687d31fe6ec95bf30e6ec2514`に`v2.34.7`を付けた。[日本語リリースノート](https://github.com/ikenokazuki/Sora/releases/tag/v2.34.7)を公開した。
+- ローカルの全テストは1,303成功、22スキップ、失敗0件。型チェックも成功した。[タグの公開CI](https://github.com/ikenokazuki/Sora/actions/runs/37612028554)ではChromiumを含む全テストが1,308成功、17スキップ、失敗0件で、候補ビルド・両実APIレーン・公開処理が成功した。
+- タグCIの標準レーンはpass=91、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。ホテルレーンはpass=92、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。未確認項目は既存のsoft-holdルールで記録しており、全項目成功とは扱わない。
+- 公開イメージは`ghcr.io/ikenokazuki/sora:2.34.7`、IDは`e15f8b1ea8e4f10d9c64f8b8ce8883a1b5a68ee9e8df8d6839573666c5e61293`、digestは`sha256:2c3c9214231efaadfb8d2f7d28f8a67591689a29ad90ede3b39e78008e79e988`。appsとしてpullし、タグCIが検証した候補と一致することを確認した。
+- 同時実行された[最初のmain公開CI](https://github.com/ikenokazuki/Sora/actions/runs/37612031688)では、Facebook投稿の期待情報欠落が両レーンで発生し、ホテルレーンではGDELTのHTTP 404も発生した。失敗を許容するゲート変更は行っていない。Facebook専用取得とGDELT HTTP取得は今回のTimeTree補完・汎用DOM抽出変更を呼び出さない。Facebookの同じ公開投稿は旧本番と正式候補で本文を取得できた。
+- GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証する。本番切替は候補のREST・MCP・実ブラウザ確認後に行い、その結果を次節へ追記する。
+- 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
