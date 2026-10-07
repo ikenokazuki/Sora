@@ -15,15 +15,16 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `localhost/sora:2.34.6-calendar-adapter-20261007`
-  (image ID `fc8e545aaee2`, deployed 2026-10-07). Package/health version: `2.34.6`.
-  Local derivative with generic browser content readiness plus an isolated
+- Current image: `ghcr.io/ikenokazuki/sora:2.34.7`
+  (image ID `e15f8b1ea8e4`, deployed 2026-10-07). Package/health version: `2.34.7`.
+  Published release with generic browser content readiness plus an isolated
   TimeTree public-calendar response adapter in the common MCP / REST scrape path.
   The existing host-independent discovery instructions are retained.
 - `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
   is limited to 14 by the saved LibreChat Agent's native deferred loading.
-- Released images: ghcr.io/ikenokazuki/sora, pinned tag per release. Registry rule:
-  latest moves on main-branch builds only, never on tag builds.
+- Released images: ghcr.io/ikenokazuki/sora, pinned tag per release.
+  `latest` can move on main and release-tag builds; use the pinned release tag
+  and verify its image ID against the corresponding release CI.
 - ikeno and apps have SEPARATE podman storage. Pulling as ikeno does NOT
   make the image visible to apps. Always pull AS apps.
 - Persistent DB: `SORA_DB_PATH=/data/sora.db`, named volume `web-fetcher-data:/data:U`.
@@ -171,5 +172,17 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - タグCIの標準レーンはpass=91、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。ホテルレーンはpass=92、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。未確認項目は既存のsoft-holdルールで記録しており、全項目成功とは扱わない。
 - 公開イメージは`ghcr.io/ikenokazuki/sora:2.34.7`、IDは`e15f8b1ea8e4f10d9c64f8b8ce8883a1b5a68ee9e8df8d6839573666c5e61293`、digestは`sha256:2c3c9214231efaadfb8d2f7d28f8a67591689a29ad90ede3b39e78008e79e988`。appsとしてpullし、タグCIが検証した候補と一致することを確認した。
 - 同時実行された[最初のmain公開CI](https://github.com/ikenokazuki/Sora/actions/runs/37612031688)では、Facebook投稿の期待情報欠落が両レーンで発生し、ホテルレーンではGDELTのHTTP 404も発生した。失敗を許容するゲート変更は行っていない。Facebook専用取得とGDELT HTTP取得は今回のTimeTree補完・汎用DOM抽出変更を呼び出さない。Facebookの同じ公開投稿は旧本番と正式候補で本文を取得できた。
-- GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証する。本番切替は候補のREST・MCP・実ブラウザ確認後に行い、その結果を次節へ追記する。
+- GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.34.7の本番反映（2026-10-07）
+
+- 正式公開イメージ`ghcr.io/ikenokazuki/sora:2.34.7`へ切り替えた。本番・pull結果・タグCIの両実APIレーンが検証したイメージIDはすべて`e15f8b1ea8e4f10d9c64f8b8ce8883a1b5a68ee9e8df8d6839573666c5e61293`で一致する。health・OpenAPI・MCPの版数も2.34.7を確認した。
+- 正式イメージを別ポート3017・別DBで検証した。REST/MCP scrape、deep検索の既定fullと明示的evidence、47正式ツール、ホスト側ツール検索を優先するinstructionsが成功した。実ブラウザを使う関連26テストも成功、失敗0件。TimeTreeは予定17件と詳細時刻を保持した。候補確認時はブラウザテストとAPI確認を同時に実行したため、候補の取得時間を性能比較には使用しない。
+- 公開URLでも同じ確認がすべて成功した。TimeTreeはREST scrape 4.541秒、MCP scrape 3.480秒、deep検索の既定fullは14.997秒で、予定17件とライブ・特典会の時刻、X結果25件を保持した。別の明示的evidence計測ではnoCache=true・maxChars=30017を指定し、12.270秒、予定17件・X結果25件を確認した。子ページの本文キャッシュも同じ条件で再利用されない長さを指定した単発計測であり、固定URL集合や競合との速度保証ではない。
+- 初回main CIで失敗したFacebookの同じ投稿は旧本番と正式候補で本文を取得できた。GDELTの同じprovider検証も411件を取得できた。CIの結果を隠したり検査条件を緩和したりせず、運用記録のコミット`4c2a1b5`で[main公開CIを再検証](https://github.com/ikenokazuki/Sora/actions/runs/37615401193)し、全工程が成功した。全テストは1,308成功、17スキップ、失敗0件。標準レーンはpass=91、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。ホテルレーンはpass=92、pass_empty=1、fail=0、unavailable=0、blocked=1、unverified=11。両レーンでFacebook本文取得とGDELT取得344件が成功した。
+- mainの再ビルド候補IDは`b89a5042de0a259b46e1225c26f0e9b2953444f025bbe469e21ded87c5950525`。ソースの変更は運用記録だけで、本番はタグCIで検証した正式2.34.7のID`e15f8b1ea8e4`を使用する。初回Facebook失敗時の上流応答本体はCI診断に残っていないため、詳細な拒否・応答変動の原因までは断定しない。同じ実装と検査条件で再取得・再検証できたことを確認結果として記録する。
+- DBバックアップは`/data/backups/sora-before-2.34.7-20261007T113851Z.db`（0600、1,683,456バイト、quick_check=ok）。Nix宣言とappsのQuadlet drop-inを同じ固定タグで揃え、Pull=newerに戻した。既存のSORA_DEFER_TOOLS=false、Host/Origin、web-fetcher-data:/data:U、127.0.0.1:3016を維持した。
+- 生成されたExecStartを確認してweb-fetcher.serviceだけを再起動した。他の本番コンテナのIDはすべて変化なし。NixOS全体は再構築していない。検証用候補コンテナは削除済み。
+- 復旧先は直前の`localhost/sora:2.34.6-calendar-adapter-20261007`（ID `fc8e545aaee2`）。drop-inの`20-release.conf.before-v2.34.7-20261007T113851Z`を戻し、Nix宣言も同じ旧イメージ・pull = "never"へ戻してdaemon-reload、web-fetcherだけをrestartする。通常のイメージ復旧ではDBを復元しない。
+- 本番・候補の取得結果、ブラウザテスト、イメージID、設定控え、DBバックアップの確認結果は`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存した。
