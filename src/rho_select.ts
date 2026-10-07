@@ -34,8 +34,6 @@ export type RhoSelectOptions = {
   supplementalEvidence?: string[]; // 検索スニペットやメタディスクリプション等の補完証拠テキスト配列
 };
 
-export type RhoBm25Options = RhoSelectOptions;
-
 export type RhoSelectDiagnostics = {
   candidateCount: number;
   compactCandidateCount: number;
@@ -54,14 +52,10 @@ export type RhoSelectDiagnostics = {
   exactAgreement: boolean;
 };
 
-export type RhoBm25Diagnostics = RhoSelectDiagnostics;
-
 export type RhoSelectResult = {
   highlights: string[];
   diagnostics: RhoSelectDiagnostics;
 };
-
-export type RhoBm25Result = RhoSelectResult;
 
 export interface ParsedSection {
   rawHeading: string;
