@@ -82,7 +82,7 @@ describe('main content selection', () => {
         <div><button draggable="true"><span>『GIRLS FANTASIA vol.5』</span></button></div>
       </div></div></main><aside>Calendar details and follow instructions</aside>
     </body></html>`;
-    const result = convertHtmlToMarkdown(html, 'https://timetreeapp.com/public_calendars/kimisora', 30000, true);
+    const result = convertHtmlToMarkdown(html, 'https://example.com/calendar', 30000, true);
     expect(result.contentStatus).toBe('body');
     expect(result.markdown).toContain('超 明星現象 2026');
     expect(result.markdown).toContain('GIRLS FANTASIA vol.5');
