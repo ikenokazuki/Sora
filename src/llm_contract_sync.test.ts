@@ -614,8 +614,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(lifeInstructions).toContain('search_route');
       expect(lifeInstructions).toContain('get_flight_status');
       expect(lifeInstructions).toContain('track_package');
-      expect(lifeInstructions).toContain("'track_package' is a deferred tool");
-      expect(lifeInstructions).toContain("search_tools' with query '荷物追跡'");
+      expect(lifeInstructions).toContain("Discovery keywords: '荷物追跡'");
       // Excluded tools:
       expect(lifeInstructions).not.toContain('search_disaster_warnings');
       expect(lifeInstructions).not.toContain('search_earthquake');
@@ -660,6 +659,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(allInstructions).toContain('search_earthquake');
       expect(allInstructions).toContain('search_road_traffic');
       expect(allInstructions).toContain('get_elevation');
+    });
+
+    it('prefers host discovery and does not require activation before visible domain tools', () => {
+      const instructions = buildSoraMcpInstructions(['all']);
+      expect(instructions).toContain('host-provided tool search');
+      expect(instructions).toContain('current model tool definitions');
+      expect(instructions).toContain('MCP tools/list is the server catalog');
+      expect(instructions).toContain('wait for the host to load its input schema');
+      expect(instructions).not.toContain("You MUST first call 'search_tools'");
+      expect(instructions).not.toContain('then invoke the activated tool');
     });
 
     it('disabled module discovery output reflects only active modules in available categories', async () => {

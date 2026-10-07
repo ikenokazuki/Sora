@@ -262,9 +262,11 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   lines.push(
     '',
     '## 2. Dynamic Tool Discovery Protocol',
-    '- **Visible Tools**: If the required specialized tool is visible in `tools/list`, **call it directly without calling `search_tools`**.',
-    '- **Hidden / Deferred Tools**: If a required specialized tool is not visible in `tools/list`, call `search_tools` with relevant keywords to search and dynamically activate it in the current session, then invoke the activated tool.',
-    '- **Unavailable Modules**: If `search_tools` cannot find the requested tool, the server module may be disabled or unavailable by server configuration. In this case, use an appropriate available safe fallback without inventing data.',
+    '- **Visible Tools**: If the required specialized tool is present in the current model tool definitions, call it directly without discovery or activation.',
+    '- **Catalog vs Model Context**: MCP tools/list is the server catalog; the host may expose only a subset of those definitions to the model.',
+    '- **Host Deferred Loading**: If the host provides tool discovery, use the host-provided tool search to load a missing definition. Sora search_tools is not required when the server catalog is already fully available.',
+    '- **Legacy Sora Activation**: If no host discovery is available and the server uses deferred activation, call the available search_tools with relevant keywords. After activation, wait for the host to load its input schema before calling the tool. A name mentioned in search output alone does not make a tool callable.',
+    '- **Unavailable Modules**: If discovery cannot find the requested tool, the server module may be disabled or unavailable by configuration. Use an appropriate available safe fallback without inventing data.',
   );
 
   if (hasWeb || hasBrowser) {
@@ -303,7 +305,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): 'track_package' is a deferred tool (hidden by default). You MUST first call 'search_tools' with query '荷物追跡' to dynamically activate it, then call 'track_package'.",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): Use 'track_package'. Discovery keywords: '荷物追跡', 'track_package'. Follow section 2 only when its definition is missing.",
     );
   }
   if (hasDisaster) {
@@ -323,7 +325,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasIntel) {
     tier1Directives.push(
-      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): 'research_country_context' is a deferred tool (hidden by default). You MUST first call 'search_tools' with query '国地域' to dynamically activate it, then call 'research_country_context'.",
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
     );
   }
 
