@@ -502,7 +502,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:v2:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
@@ -765,6 +765,19 @@ export async function scrapeUrl(options: {
             needScreenshot,
             fullPage,
             options.tenantId ?? 'legacy',
+            {
+              isContentReady: (html, finalUrl) => {
+                const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
+                  options.selectors, options.removeSelectors, options.stripLinks, options.filterLinkDensity, options.keepDataImages);
+                return !isRenderStillBlockedOrBlank({
+                  html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim(),
+                });
+              },
+              onWait: () => {
+                botRetryCount++;
+                onProgress?.({ stage: 'render', message: 'Waiting for content on the current browser page' });
+              },
+            },
           );
         } catch (browserErr: any) {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
@@ -777,7 +790,7 @@ export async function scrapeUrl(options: {
           throw browserErr;
         }
 
-        let parsed = convertHtmlToMarkdown(
+        const parsed = convertHtmlToMarkdown(
           browserRes.html,
           browserRes.finalUrl,
           maxChars,
@@ -789,34 +802,6 @@ export async function scrapeUrl(options: {
           options.filterLinkDensity,
           options.keepDataImages,
         );
-
-        const renderedBodyOnly = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
-        if (isRenderStillBlockedOrBlank({ html: browserRes.html, bodyOnlyMarkdown: renderedBodyOnly })) {
-          botRetryCount++;
-          onProgress?.({ stage: 'render', message: 'Content still blank after render, retrying with networkidle0' });
-          browserRes = await fetchWithStealthBrowser(
-            url,
-            timeoutMs,
-            options.clipSelector,
-            options.cookies,
-            'networkidle0',
-            needScreenshot,
-            fullPage,
-            options.tenantId ?? 'legacy',
-          );
-          parsed = convertHtmlToMarkdown(
-            browserRes.html,
-            browserRes.finalUrl,
-            maxChars,
-            true,
-            onlyMainContent,
-            options.selectors,
-            options.removeSelectors,
-            options.stripLinks,
-            options.filterLinkDensity,
-            options.keepDataImages,
-          );
-        }
 
         result = {
           url: browserRes.finalUrl,
@@ -1517,18 +1502,17 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
+  const cacheKey = `search:integrated:v2:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
   }
 
-  const [webParsedRes, realtimeMcpRes] = await Promise.all([
-    searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache }),
-    includeRealtime
-      ? searchYahooRealtime({ query, sort: realtimeSort, detailEnrichment: false }).catch(() => null)
-      : Promise.resolve(null),
-  ]);
+  const webSearchPromise = searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
+  const realtimeSearchPromise = includeRealtime
+    ? searchYahooRealtime({ query, sort: realtimeSort, detailEnrichment: false }).catch(() => null)
+    : Promise.resolve(null);
+  const webParsedRes = await webSearchPromise;
 
   let searchResults = Array.isArray(webParsedRes?.items)
     ? webParsedRes.items
@@ -1918,6 +1902,7 @@ export async function integratedSearch(options: {
   }
 
   // リアルタイム検索結果のマージ (公式枠 ＋ 一般枠の重複排除ハイブリッド)
+  const realtimeMcpRes = await realtimeSearchPromise;
   let realtimeItems: any[] = [];
   let realtimeMeta: any = null;
   if (includeRealtime) {

@@ -16,6 +16,7 @@ import {
   dbSaveTenantStorage,
 } from './db.js';
 import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
+import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
 
@@ -300,9 +301,12 @@ export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 50
               }
             }
 
-            const textLength = doc?.body?.innerText?.length ?? 0;
+            const bodyText = (doc?.body?.innerText ?? '').trim();
+            const mainText = (doc?.querySelector('article, main, [role="main"]')?.innerText ?? bodyText).trim();
+            const isLoadingText = (text: string) => /^(?:(?:now\s+)?loading|読み込み中|読込中)[\s.…。]*$/i.test(text);
+            hasVisibleLoading ||= !bodyText || isLoadingText(bodyText) || isLoadingText(mainText);
             const hasMainContent = Boolean(
-              doc?.querySelector('article, main, [role="main"]') || textLength >= 400
+              mainText || bodyText.length >= 400
             );
 
             // メインコンテンツが存在しローディングスピナーが消えている場合は 200ms の静止で即座に完了
@@ -340,9 +344,9 @@ export async function inlineShadowDomContent(page: Page): Promise<void> {
       const walk = (root: Document | ShadowRoot) => {
         for (const el of Array.from(root.querySelectorAll('*'))) {
           const sr = (el as any).shadowRoot as ShadowRoot | null;
-          if (!sr || el.hasAttribute?.(MARKER)) continue;
+          if (!sr) continue;
           walk(sr);
-          const copy = document.createElement('div');
+          const copy = el.querySelector(`:scope > [${MARKER}]`) || document.createElement('div');
           copy.setAttribute(MARKER, '');
           copy.innerHTML = sr.innerHTML;
           el.appendChild(copy);
@@ -367,6 +371,7 @@ export async function fetchWithStealthBrowser(
   needScreenshot = false,
   fullPage = true,
   tenantId = 'legacy',
+  readiness?: { isContentReady: (html: string, finalUrl: string) => boolean; onWait?: () => void },
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
@@ -452,6 +457,21 @@ export async function fetchWithStealthBrowser(
       await page.evaluateOnNewDocument(patchWebRtcIpLeak);
       await page.evaluateOnNewDocument(patchCanvasFingerprint);
 
+      const timeTreeResponses: unknown[] = [];
+      const timeTreePending: Promise<void>[] = [];
+      const target = new URL(url);
+      if (target.hostname === 'timetreeapp.com' && /^\/public_calendars\/[^/]+\/?$/.test(target.pathname)) {
+        const calendarId = target.pathname.split('/')[2];
+        page.on('response', response => {
+          const endpoint = new URL(response.url());
+          if (response.ok() && endpoint.hostname === target.hostname && endpoint.pathname === `/api/v2/public_calendars/${calendarId}/public_events`) {
+            timeTreePending.push(response.json().then(data => { timeTreeResponses.push(data); }).catch(() => {}));
+          }
+        });
+      }
+
+      const deadline = Date.now() + timeoutMs;
+      const remaining = () => Math.max(0, deadline - Date.now());
       try {
         await page.goto(url, { waitUntil, timeout: timeoutMs });
       } catch (gotoErr: any) {
@@ -474,13 +494,28 @@ export async function fetchWithStealthBrowser(
       } catch {}
 
       await autoScrollPage(page);
-      await waitForDomStable(page);
-      await inlineShadowDomContent(page);
-      await pruneInvisibleElements(page);
-
+      await waitForDomStable(page, 800, Math.min(5000, remaining()));
+      const captureHtml = async () => {
+        await waitForTimeTreeResponses(timeTreePending, deadline);
+        await inlineShadowDomContent(page);
+        const visibleHtml = await pruneInvisibleElements(page, true) ?? await page.content();
+        await waitForTimeTreeResponses(timeTreePending, deadline);
+        return enrichTimeTreeHtml(visibleHtml, timeTreeResponses);
+      };
+      let html = await captureHtml();
+      const contentDeadline = Math.min(deadline, Date.now() + 2000);
+      let waiting = false;
+      while (readiness && !readiness.isContentReady(html, page.url()) && Date.now() < contentDeadline) {
+        if (!waiting) {
+          waiting = true;
+          readiness.onWait?.();
+        }
+        await page.waitForNetworkIdle({ idleTime: 200, concurrency: 0, timeout: Math.max(1, Math.min(1000, contentDeadline - Date.now())) }).catch(() => {});
+        await waitForDomStable(page, 200, Math.max(0, Math.min(1000, contentDeadline - Date.now())));
+        html = await captureHtml();
+      }
       const finalUrl = page.url();
       const title = await page.title();
-      const html = await page.content();
 
       try {
         const currentCookies = await page.cookies();
