@@ -171,7 +171,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         : (sharedShape.highlightAlgorithm as any)._def.defaultValue;
       expect(hlDefault).toBe('rho-select-v2');
       expect(openApiProps.highlightAlgorithm.default).toBe('rho-select-v2');
-      const expectedAlgos = ['rho-select', 'rho-select-v2', 'rho-bm25', 'legacy'];
+      const expectedAlgos = ['rho-select', 'rho-select-v2', 'legacy'];
       expect(openApiProps.highlightAlgorithm.enum).toEqual(expectedAlgos);
 
       // 3. responseMode default & enum
@@ -217,7 +217,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(hlSchema).toBeDefined();
         expect(hlSchema.safeParse('rho-select-v2').success).toBe(true);
         expect(hlSchema.safeParse('rho-select').success).toBe(true);
-        expect(hlSchema.safeParse('rho-bm25').success).toBe(true);
+        expect(hlSchema.safeParse('rho-bm25').success).toBe(false);
         expect(hlSchema.safeParse('legacy').success).toBe(true);
       }
     });

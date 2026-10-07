@@ -210,7 +210,7 @@ export async function finalizeScrapeResult(
       supplemental.push(result.description.trim());
     }
 
-    if (options.highlightAlgorithm === 'rho-select' || options.highlightAlgorithm === 'legacy' || options.highlightAlgorithm === 'rho-bm25') {
+    if (options.highlightAlgorithm === 'rho-select' || options.highlightAlgorithm === 'legacy') {
       const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
         maxHighlights: options.highlightMaxCount ?? 3,
         overheadTokens: options.highlightOverheadTokens ?? 96,

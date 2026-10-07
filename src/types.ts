@@ -155,14 +155,10 @@ export interface RhoSelectDiagnostics {
   exactAgreement: boolean;
 }
 
-/** 後方互換用エイリアス */
-export type RhoBm25Diagnostics = RhoSelectDiagnostics;
-
 /** ハイライト選択アルゴリズム種別 */
 export const HIGHLIGHT_ALGORITHMS = [
   'rho-select',
   'rho-select-v2',
-  'rho-bm25',
   'legacy',
 ] as const;
 
@@ -440,7 +436,7 @@ export const ScrapeRequestSchema = z.object({
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
@@ -533,7 +529,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     highlightAlgorithm: HighlightAlgorithmSchema
       .optional()
       .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-      .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+      .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
     highlightOverheadTokens: z
       .number()
       .int()
@@ -604,7 +600,7 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
@@ -755,7 +751,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
   minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
