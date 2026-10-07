@@ -575,7 +575,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
           .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
@@ -766,7 +766,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         highlightAlgorithm: HighlightAlgorithmSchema
           .optional()
           .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "rho-bm25", "legacy"'),
+          .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
         highlightOverheadTokens: z
           .number()
           .int()
