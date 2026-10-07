@@ -728,13 +728,12 @@ const STRUCTURED_CONTENT_SELECTOR =
 
 /**
  * Readability 結果と意味的コンテナを比較し、本文の劣化を防ぐ。
- * Readability が表/grid を保持していれば採用し、落としている場合だけ
+ * Readability が表/grid 内の本文を落としている場合も考慮し、
  * その構造を含む最も長い意味的コンテナで救済する。先頭要素の無条件
  * 採用や本文全体への無差別拡張はしない。
  */
 function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): string {
   const readability$ = cheerio.load(readabilityHtml);
-  if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
   if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
   const hasSemanticContainer = $('main, [role="main"], article, #content, #main').length > 0;
   // Readability 側の実質ブロック (80文字以上の p/li/blockquote) 。なければ全文保持を条件にする。
@@ -763,6 +762,7 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
     }
   });
   if (bestHtml) return bestHtml;
+  if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
   // 意味的主領域があるのに表が aside だけの場合、body へ戻さず Readability を維持する。
   if (!hasSemanticContainer) return $('body').html() || readabilityHtml;
   return readabilityHtml;

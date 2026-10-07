@@ -73,6 +73,21 @@ It ships in two sizes and supports full-color custom printing on the lid.</p>
 </html>`;
 
 describe('main content selection', () => {
+  it('keeps calendar event buttons when Readability retains only the date grid', () => {
+    const days = Array.from({ length: 31 }, (_, i) => `<div role="gridcell"><div>${i + 1}</div></div>`).join('');
+    const html = `<html><head><title>Public calendar</title></head><body>
+      <main><div id="calendarOutline-mainUi"><div data-test-id="monthly-calendar">
+        <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>${days}
+        <div><button draggable="true"><span>『衛星とカラテアPresents「超 明星現象 2026」』</span></button></div>
+        <div><button draggable="true"><span>『GIRLS FANTASIA vol.5』</span></button></div>
+      </div></div></main><aside>Calendar details and follow instructions</aside>
+    </body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://timetreeapp.com/public_calendars/kimisora', 30000, true);
+    expect(result.contentStatus).toBe('body');
+    expect(result.markdown).toContain('超 明星現象 2026');
+    expect(result.markdown).toContain('GIRLS FANTASIA vol.5');
+  });
+
   it('keeps the product article instead of the leading sidebar calendar article', () => {
     const result = convertHtmlToMarkdown(
       SIDEBAR_CALENDAR_PRODUCT_HTML,
@@ -121,6 +136,19 @@ describe('fragment anchors', () => {
 });
 
 describe('content containers', () => {
+  it('keeps Readability table content without pulling navigation and footer into pages without a main landmark', () => {
+    const html = `<html><head><title>Service fees</title></head><body>
+      <nav>NavigationNoise <a href="/account">Account settings and other pages</a></nav>
+      <div><h1>Service fees</h1><p>${'Fee details for each plan and the services included. '.repeat(12)}</p>
+      <table><tr><th>Plan</th><th>Price</th></tr><tr><td>Pro</td><td>3000</td></tr></table></div>
+      <footer>FooterNoise Privacy policy and company information</footer>
+    </body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/fees', 30000);
+    expect(result.markdown).toContain('3000');
+    expect(result.markdown).not.toContain('NavigationNoise');
+    expect(result.markdown).not.toContain('FooterNoise');
+  });
+
   it('keeps tables inside #content without nav noise takeover', () => {
     const nav = Array.from({ length: 12 }, (_, i) => `<li><a href="/n${i}">Navigation entry number ${i} with descriptive words</a></li>`).join('');
     const html = `<!DOCTYPE html><html><head><title>Fee Table</title></head><body><nav><ul>${nav}</ul></nav><div id="content"><h1>Service Fees</h1><p>Our service fees depend on the plan you choose. All prices include tax and support.</p><table><tr><th>Plan</th><th>Monthly</th></tr><tr><td>Basic</td><td>1000</td></tr><tr><td>Pro</td><td>3000</td></tr></table></div></body></html>`;

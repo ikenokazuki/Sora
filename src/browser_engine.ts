@@ -537,14 +537,17 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
  * 画面上に非表示となっている不要ノード（CSS display:none, visibility:hidden, hidden属性, aria-hidden等）を
  * DOMツリーから安全に剪定（Prune）し、LLM誤読・ハルシネーションを防ぐ。
  */
-export async function pruneInvisibleElements(page: Page): Promise<void> {
+export async function pruneInvisibleElements(page: Page, cloneOnly = false): Promise<string | undefined> {
   try {
     if (page.isClosed()) return;
-    await page
-      .evaluate(() => {
+    return await page
+      .evaluate((cloneOnly: boolean) => {
         try {
+          const root = cloneOnly ? document.documentElement.cloneNode(true) as HTMLElement : document.documentElement;
+          const allElements = Array.from(document.body?.querySelectorAll('*') ?? []);
+          const outputElements = cloneOnly ? Array.from(root.querySelector('body')?.querySelectorAll('*') ?? []) : allElements;
           // 1. 標準的な不可視・テンプレート要素の先行除去
-          const staticTags = document.querySelectorAll('noscript, template, [hidden]');
+          const staticTags = root.querySelectorAll('noscript, template, [hidden]');
           staticTags.forEach((el) => {
             try {
               el.remove();
@@ -553,9 +556,9 @@ export async function pruneInvisibleElements(page: Page): Promise<void> {
 
           // 2. DOMツリーの走査とComputed Styleによる不可視要素の剪定
           if (!document.body) return;
-          const allElements = Array.from(document.body.querySelectorAll('*'));
-          for (const el of allElements) {
-            if (!el.isConnected) continue;
+          for (const [index, el] of allElements.entries()) {
+            const output = outputElements[index];
+            if (!output || !root.contains(output)) continue;
 
             const tag = el.tagName.toLowerCase();
             // script, style, link, meta 等はパーサー処理（JSON-LD等）のために維持
@@ -568,19 +571,19 @@ export async function pruneInvisibleElements(page: Page): Promise<void> {
                 style.visibility === 'hidden' ||
                 style.visibility === 'collapse'
               ) {
-                el.remove();
+                output.remove();
                 continue;
               }
 
               if (el.getAttribute('aria-hidden') === 'true' && el.classList.contains('visually-hidden')) {
-                el.remove();
+                output.remove();
                 continue;
               }
             } catch {}
           }
+          if (cloneOnly) return `<!DOCTYPE html>${root.outerHTML}`;
         } catch {}
-      })
-      .catch(() => {});
+      }, cloneOnly)
+      .catch(() => undefined);
   } catch {}
 }
-
