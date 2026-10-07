@@ -16,6 +16,7 @@ import {
   dbSaveTenantStorage,
 } from './db.js';
 import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
+import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
 
@@ -456,6 +457,19 @@ export async function fetchWithStealthBrowser(
       await page.evaluateOnNewDocument(patchWebRtcIpLeak);
       await page.evaluateOnNewDocument(patchCanvasFingerprint);
 
+      const timeTreeResponses: unknown[] = [];
+      const timeTreePending: Promise<void>[] = [];
+      const target = new URL(url);
+      if (target.hostname === 'timetreeapp.com' && /^\/public_calendars\/[^/]+\/?$/.test(target.pathname)) {
+        const calendarId = target.pathname.split('/')[2];
+        page.on('response', response => {
+          const endpoint = new URL(response.url());
+          if (response.ok() && endpoint.hostname === target.hostname && endpoint.pathname === `/api/v2/public_calendars/${calendarId}/public_events`) {
+            timeTreePending.push(response.json().then(data => { timeTreeResponses.push(data); }).catch(() => {}));
+          }
+        });
+      }
+
       const deadline = Date.now() + timeoutMs;
       const remaining = () => Math.max(0, deadline - Date.now());
       try {
@@ -482,8 +496,11 @@ export async function fetchWithStealthBrowser(
       await autoScrollPage(page);
       await waitForDomStable(page, 800, Math.min(5000, remaining()));
       const captureHtml = async () => {
+        await waitForTimeTreeResponses(timeTreePending, deadline);
         await inlineShadowDomContent(page);
-        return await pruneInvisibleElements(page, true) ?? await page.content();
+        const visibleHtml = await pruneInvisibleElements(page, true) ?? await page.content();
+        await waitForTimeTreeResponses(timeTreePending, deadline);
+        return enrichTimeTreeHtml(visibleHtml, timeTreeResponses);
       };
       let html = await captureHtml();
       const contentDeadline = Math.min(deadline, Date.now() + 2000);
