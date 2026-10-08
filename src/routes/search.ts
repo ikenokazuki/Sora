@@ -180,7 +180,7 @@ searchRoutes.post('/search/web', async (c) => {
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
-const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true });
+const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true });
 const handleIntegratedSearch = async (c: any) => {
   try {
     const body = await c.req.json();

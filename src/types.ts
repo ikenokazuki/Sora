@@ -755,6 +755,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+  scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('本文取得の打ち切り上限 (ミリ秒, デフォルト: 0=無効)。有効にすると、半数のページが揃ってから5秒待っても終わらないページ、または上限に達したページを打ち切り、deadlineExceeded:true とスニペットで返す（遅いが本文のあるページも落ちる）。打ち切り時は補充取得を行わない'),
   maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('全結果の本文 Markdown 合計文字数の上限。上位の結果ほど多く配分し、超過分は段落境界で切り詰めて markdownTruncated を付与する。highlights は削らない。未指定なら制限なし'),
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
