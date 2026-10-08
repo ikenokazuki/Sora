@@ -2490,6 +2490,21 @@ export class McpSessionManager {
 }
 
 /**
+ * tools/list の1ツールを整形する。inputSchema は Gemini 互換化、outputSchema は既定で除外。
+ * outputSchema は国別インテリジェンス2ツールだけで約160KBあり、ホストがモデルへ丸ごと渡すと
+ * プロンプト長とレイテンシを押し上げる。tools/call 側の structuredContent 検証は影響を受けない。
+ * 旧挙動が必要なクライアント向けに SORA_TOOL_OUTPUT_SCHEMA=true で復活できる。
+ */
+function slimListedTool(t: any) {
+  const { outputSchema, ...rest } = t;
+  return {
+    ...rest,
+    ...(process.env.SORA_TOOL_OUTPUT_SCHEMA === 'true' && outputSchema ? { outputSchema } : {}),
+    inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
+  };
+}
+
+/**
  * MCP レスポンスに含まれる tools/list の inputSchema を Gemini / Vertex AI 互換に自動サニタイズ
  */
 export async function sanitizeMcpResponse(res: Response): Promise<Response> {
@@ -2502,10 +2517,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
 
       const sanitizeToolList = (result: any) => {
         if (result && Array.isArray(result.tools)) {
-          result.tools = result.tools.map((t: any) => ({
-            ...t,
-            inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
-          }));
+          result.tools = result.tools.map(slimListedTool);
           return true;
         }
         return false;
@@ -2571,10 +2583,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
               const parsed = JSON.parse(dataStr);
               let changed = false;
               if (parsed?.result?.tools && Array.isArray(parsed.result.tools)) {
-                parsed.result.tools = parsed.result.tools.map((t: any) => ({
-                  ...t,
-                  inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
-                }));
+                parsed.result.tools = parsed.result.tools.map(slimListedTool);
                 changed = true;
               }
               if (changed) {
