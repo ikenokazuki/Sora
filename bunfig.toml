@@ -1,0 +1,3 @@
+[test]
+# 各テストファイルの終了時に共有 Chromium を閉じる（src/test_preload.ts）
+preload = ["./src/test_preload.ts"]
