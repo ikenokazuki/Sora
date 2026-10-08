@@ -1,9 +1,6 @@
 import { extractQueryRequirements } from './retrieval/requirements.js';
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 
-/** 見出し文の後ろ何文まで値を探すか（「■料金」の次の行に金額が来るレイアウト向け）。 */
-const VALUE_LOOKAHEAD = 2;
-
 export interface ContextSufficiency {
   level: 'no_gap_detected' | 'partial' | 'insufficient';
   reasons: string[];
@@ -33,7 +30,7 @@ export function summarizeContextSufficiency(webItems: any[], realtimeItems: any[
     const requirements = [...new Set([...entityTerms, ...intentTerms])];
     if (requirements.length > 0) {
       const evidence = [...pages.flatMap((p) => (p.highlights?.length ? p.highlights : [p.markdown])), ...posts];
-      const coverage = computeEvidenceCoverage(evidence, entityTermsForQuery(query), requirements, VALUE_LOOKAHEAD);
+      const coverage = computeEvidenceCoverage(evidence, entityTermsForQuery(query), requirements);
       const unmentioned = requirements.filter((r) => !coverage.coveredRequirements.includes(r));
       // 回答値（時刻・金額・日付など）を求める語だけ、値の有無を判定する
       const valueSeeking = requirements.filter((r) => (kindsForFacet(r) ?? []).length > 0);

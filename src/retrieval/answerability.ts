@@ -93,14 +93,18 @@ export interface FacetEvidence {
   answeredWithEntity: boolean;
 }
 /**
- * lookahead: 見出し（「■チケット料金」）と値（「全席指定 8,800円」）が別文に分かれる日本語ページ向けに、
- * facet を含む文に値が無いとき、続く lookahead 文までの値も回答とみなす。既定 0 は従来どおり同一文のみ。
+ * 見出し（「■チケット料金」）と値（「全席指定 8,800円」）が別文に分かれる日本語ページ向けに、
+ * facet を含む文に値が無いとき、続く lookahead 文までの値も回答とみなす。0 で同一文のみ（従来動作）。
+ * 既定 2 は保存済み100ページ・23クエリの実測で、ハイライト選抜が98/100不変・変化2件は改善、
+ * answerCoverage 上昇31件・低下0件。
  */
+export const DEFAULT_VALUE_LOOKAHEAD = 2;
+
 export function analyzeFacetEvidence(
   sentences: string[],
   entityTerms: string[],
   facetTerm: string,
-  lookahead = 0,
+  lookahead = DEFAULT_VALUE_LOOKAHEAD,
 ): FacetEvidence {
   const res: FacetEvidence = { mentioned: false, answered: false, entityAssociated: false, answeredWithEntity: false };
   const facet = (facetTerm || '').toLowerCase();
@@ -250,7 +254,7 @@ export function computeEvidenceCoverage(
   blockTexts: string[],
   entityTerms: string[],
   requirements: string[],
-  lookahead = 0,
+  lookahead = DEFAULT_VALUE_LOOKAHEAD,
 ): EvidenceCoverage {
   const empty: EvidenceCoverage = {
     mentionCoverage: 0,
