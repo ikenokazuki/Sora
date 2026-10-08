@@ -258,14 +258,14 @@ export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 50
 
         // 「見えている本文」が変わった時刻を追跡する。属性だけを書き換え続けるページ
         // （多言語化ウィジェット・計測タグ等）で静止しないまま上限まで待たないため、DOM 変化そのものは見ない。
-        // ponytail: 画像の差し替え（src 書き換え）は検知しない。個数の増減のみ検知。遅延読み込みは autoScroll 側で処理。
-        const signature = () => {
-          const t: string = doc?.body?.innerText ?? '';
+        // ponytail: 画像の src 書き換えは検知しない（個数の増減のみ）。data-src/srcset の遅延読み込みは HTML 解析側
+        // （resolveImageUrl）で実 URL に解決される。JS で URL を組み立てる遅延読み込みが問題になれば、実 src の数を署名に加える。
+        const signature = (t: string) => {
           const n = t.length;
           const mid = n >> 1;
           return `${n}|${doc?.images?.length ?? 0}|${t.slice(0, 120)}|${t.slice(mid, mid + 120)}|${t.slice(-120)}`;
         };
-        let lastSignature = signature();
+        let lastSignature = signature((doc?.body?.innerText ?? '').trim());
         let lastChange = Date.now();
 
         const loadingSelectors = [
@@ -312,7 +312,7 @@ export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 50
             ? Math.min(quiet, 200)
             : Math.min(quiet, 400);
 
-          const current = signature();
+          const current = signature(bodyText);
           if (current !== lastSignature) {
             lastSignature = current;
             lastChange = Date.now();

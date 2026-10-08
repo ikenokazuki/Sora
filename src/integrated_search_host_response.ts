@@ -127,6 +127,8 @@ function applyMarkdownBudget(
     if (len[i] === 0 || len[i] <= quota[i]) return it;
     const md: string = it.markdown;
     let kept = safeTruncateMarkdown(md, quota[i]);
+    // safeTruncateMarkdown は開いたコードブロックを閉じるため数文字はみ出しうる。その分だけ手前で切り直す
+    if (kept.length > quota[i]) kept = safeTruncateMarkdown(md, Math.max(0, 2 * quota[i] - kept.length));
     const para = kept.lastIndexOf('\n\n');
     if (para > quota[i] * 0.5) kept = kept.slice(0, para).trimEnd();
     return { ...it, markdown: kept, markdownTruncated: { totalChars: md.length, keptChars: kept.length } };

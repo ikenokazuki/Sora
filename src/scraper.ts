@@ -1801,7 +1801,7 @@ export async function integratedSearch(options: {
     try {
       const isSuccess = (it: any) => isUsableScrape(it);
       let successCount = enrichedResults.filter(isSuccess).length;
-      // 締切で打ち切った場合は待ち時間を優先し、補充の逐次取得は行わない
+      // 締切で打ち切った場合は待ち時間を優先し、補充の逐次取得は行わない（adaptiveScrape の追加取得も同様）
       if (successCount < limit && sparePool.length > 0 && !scrapeDeadlineHit) {
         for (const spare of sparePool) {
           if (successCount >= limit) break;
@@ -1878,7 +1878,8 @@ export async function integratedSearch(options: {
 
     // P1-3: adaptive evidence 不足時の追加取得 (opt-in, 最大8件)
     try {
-      if (adaptiveScrape && scrapeContent) {
+      // 締切で打ち切った場合は、待ち時間の上限を守るため追加取得の波も行わない
+      if (adaptiveScrape && scrapeContent && !scrapeDeadlineHit) {
         let ev = assessEvidenceSufficiency(enrichedResults, query);
         if (!ev.sufficient) {
           incrementSecurityCounter('sora_deep_search_wave_total');
@@ -2048,7 +2049,8 @@ export async function integratedSearch(options: {
     };
   }
 
-  if (scrapeContent) {
+  // 判定材料（本文かハイライト）を要求した場合だけ付ける。どちらも無いのに insufficient と出さないため
+  if (scrapeContent && (formats.includes('markdown') || extractHighlights)) {
     finalResponse.contextSufficiency = summarizeContextSufficiency(
       enrichedResults,
       includeRealtime ? finalResponse.realtime?.items ?? [] : [],

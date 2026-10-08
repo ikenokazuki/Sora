@@ -1,7 +1,6 @@
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
-import { readFileSync } from 'fs';
 import { totalmem } from 'os';
 
 /** Chromium 実行バイナリパスの自動検出 */
@@ -209,16 +208,18 @@ export async function closeSharedBrowser(): Promise<void> {
     clearTimeout(idleTimer);
     idleTimer = undefined;
   }
-  if (sharedBrowserInstance) {
+  // 閉じる前に共有インスタンスを外し、閉じかけのブラウザを getBrowser() が渡さないようにする
+  const browser = sharedBrowserInstance;
+  sharedBrowserInstance = null;
+  if (browser) {
     try {
-      await sharedBrowserInstance.close();
+      await browser.close();
     } catch {}
-    sharedBrowserInstance = null;
   }
 }
 
 /**
- * 共有 Chromium の無操作終了。常駐させると約360MB を占有し続けるため、最後に取得されてから
+ * 共有 Chromium の無操作終了。常駐させると約700MB（実測、7プロセス）を占有し続けるため、最後に取得されてから
  * BROWSER_IDLE_TTL_MS（既定 5 分、0 で無効）使われなければ閉じる。次回の getBrowser() で自動再起動する。
  * 開いているコンテキスト/ページ（ブラウザセッション・追跡・SNS 取得）やセマフォ保持中は使用中とみなす。
  */
@@ -252,6 +253,7 @@ async function closeIfIdle(): Promise<void> {
   if (!browser || ttl <= 0) return;
   const remaining = ttl - (Date.now() - lastSharedBrowserUse);
   if (remaining > 0) return armIdleTimer(remaining);
+  const checkedUse = lastSharedBrowserUse;
   let busy = browserSemaphore.activeCount > 0 || browserSemaphore.pendingCount > 0;
   if (!busy) {
     try {
@@ -260,6 +262,8 @@ async function closeIfIdle(): Promise<void> {
       busy = false; // 接続が壊れている場合は閉じてよい
     }
   }
+  // 判定の await 中に getBrowser() で渡されていたら閉じない（その呼び出しがタイマーを張り直している）
+  if (lastSharedBrowserUse !== checkedUse) return;
   if (busy) return armIdleTimer(ttl);
   if (browser === sharedBrowserInstance) await closeSharedBrowser();
 }
@@ -338,10 +342,17 @@ export function detectMemoryLimitBytes(): number | undefined {
   return limit;
 }
 
-export const MAX_CONCURRENT_BROWSERS = process.env.MAX_CONCURRENT_BROWSERS
-  ? parseInt(process.env.MAX_CONCURRENT_BROWSERS, 10)
-  : defaultBrowserConcurrency(detectMemoryLimitBytes());
-export const browserSemaphore = new SimpleSemaphore(Math.max(1, Math.min(MAX_CONCURRENT_BROWSERS, 50)));
+/**
+ * MAX_CONCURRENT_BROWSERS の解釈。正の整数ならそれ（上限 50）、それ以外（未設定・数値でない・0 以下）はメモリからの既定値。
+ * 数値でない値をそのまま使うとセマフォの上限が NaN になり、ブラウザ描画が永久に待つため。
+ */
+export function resolveBrowserConcurrency(raw: string | undefined, memBytes: number | undefined): number {
+  const n = raw && /^\d+$/.test(raw.trim()) ? parseInt(raw.trim(), 10) : NaN;
+  return n > 0 ? Math.min(n, 50) : defaultBrowserConcurrency(memBytes);
+}
+
+export const MAX_CONCURRENT_BROWSERS = resolveBrowserConcurrency(process.env.MAX_CONCURRENT_BROWSERS, detectMemoryLimitBytes());
+export const browserSemaphore = new SimpleSemaphore(MAX_CONCURRENT_BROWSERS);
 
 /**
  * 任意の IPv4 表記（10進ドット、8進数、16進数、短縮表記、32bit整数）を 32bit 符号なし整数に正規化する。
