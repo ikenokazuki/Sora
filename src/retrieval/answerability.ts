@@ -92,16 +92,23 @@ export interface FacetEvidence {
   entityAssociated: boolean;
   answeredWithEntity: boolean;
 }
+/**
+ * lookahead: 見出し（「■チケット料金」）と値（「全席指定 8,800円」）が別文に分かれる日本語ページ向けに、
+ * facet を含む文に値が無いとき、続く lookahead 文までの値も回答とみなす。既定 0 は従来どおり同一文のみ。
+ */
 export function analyzeFacetEvidence(
   sentences: string[],
   entityTerms: string[],
   facetTerm: string,
+  lookahead = 0,
 ): FacetEvidence {
   const res: FacetEvidence = { mentioned: false, answered: false, entityAssociated: false, answeredWithEntity: false };
   const facet = (facetTerm || '').toLowerCase();
   if (!facet || !sentences || sentences.length === 0) return res;
   const kinds = kindsForFacet(facet);
-  for (const raw of sentences) {
+  const hasWantedValue = (found: ValueKind[]) => (kinds === null ? found.length > 0 : kinds.some((k) => found.includes(k)));
+  for (let i = 0; i < sentences.length; i++) {
+    const raw = sentences[i];
     const s = (raw || '').toLowerCase();
     if (!s.includes(facet)) continue;
     res.mentioned = true;
@@ -111,14 +118,9 @@ export function analyzeFacetEvidence(
     }
     if (entityTerms.length === 0) hasEntity = false;
     if (hasEntity) res.entityAssociated = true;
-    const found = detectValueKinds(raw);
-    let hasValue = false;
-    if (kinds === null) {
-      hasValue = found.length > 0;
-    } else {
-      for (const k of kinds) {
-        if (found.includes(k)) { hasValue = true; break; }
-      }
+    let hasValue = hasWantedValue(detectValueKinds(raw));
+    for (let j = i + 1; !hasValue && j <= i + lookahead && j < sentences.length; j++) {
+      hasValue = hasWantedValue(detectValueKinds(sentences[j]));
     }
     if (hasValue) res.answered = true;
     if (hasValue && hasEntity) res.answeredWithEntity = true;
@@ -248,6 +250,7 @@ export function computeEvidenceCoverage(
   blockTexts: string[],
   entityTerms: string[],
   requirements: string[],
+  lookahead = 0,
 ): EvidenceCoverage {
   const empty: EvidenceCoverage = {
     mentionCoverage: 0,
@@ -264,7 +267,7 @@ export function computeEvidenceCoverage(
     let reqMentioned = false;
     let reqAnswered = false;
     for (const sentences of blocks) {
-      const ev = analyzeFacetEvidence(sentences, entityTerms || [], req);
+      const ev = analyzeFacetEvidence(sentences, entityTerms || [], req, lookahead);
       if (ev.mentioned) reqMentioned = true;
       if (ev.answered) reqAnswered = true;
       if (reqMentioned && reqAnswered) break;

@@ -288,3 +288,24 @@ describe('relative day resolution (hermetic)', () => {
     expect(extractDateRequirements('価格', ref)).toEqual([]);
   });
 });
+
+describe('analyzeFacetEvidence lookahead (label followed by value)', () => {
+  const sentences = ['■チケット料金', '全席指定 8,800円(税込)', '■開場時間', '17:30〜予定'];
+  test('default behavior needs the value in the same sentence', () => {
+    expect(analyzeFacetEvidence(sentences, [], '料金').answered).toBe(false);
+  });
+  test('lookahead credits a value that follows the label sentence', () => {
+    expect(analyzeFacetEvidence(sentences, [], '料金', 1).answered).toBe(true);
+    expect(analyzeFacetEvidence(sentences, [], '開場時間', 1).answered).toBe(true);
+  });
+  test('lookahead stays within the window and requires the matching kind', () => {
+    const far = ['■チケット料金', '注意事項があります', '会場の案内です', '全席指定 8,800円(税込)'];
+    expect(analyzeFacetEvidence(far, [], '料金', 2).answered).toBe(false);
+    expect(analyzeFacetEvidence(['■チケット料金', '17:30〜予定'], [], '料金', 1).answered).toBe(false);
+  });
+  test('computeEvidenceCoverage forwards the lookahead', () => {
+    const blocks = ['■チケット料金\n\n全席指定 8,800円(税込)'];
+    expect(computeEvidenceCoverage(blocks, [], ['料金']).answerCoverage).toBe(0);
+    expect(computeEvidenceCoverage(blocks, [], ['料金'], 1).answerCoverage).toBe(1);
+  });
+});
