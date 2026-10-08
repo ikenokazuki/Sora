@@ -1206,6 +1206,10 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - 検索演算子はYahoo公式仕様どおりに送信します: `id:xxx` (投稿者) / `@xxx` (宛先) / `#tag` / `-除外` / `(A B)` (OR) / `URL:value` / URL直接入力。複数語と組み合わせ可能です (例: `君と見るそら ライブ 出演 id:kimisora_JPN`)。
   - 構造化 `url` オプションは `URL:` 演算子として送信します。
   - OR・URL条件・引用符を含む複雑な式は、意味を変える自動relaxを行わず原式の単発取得になります。
+  - **固有名詞を守る緩和 (v2.36.0)**: 原式で全語の揃う投稿が無いとき、語を1つ落として再検索します。このとき、Web 検索上位のタイトルと X の総ヒット数から固有名詞（例: `ライブ 予定 =LOVE` の `=LOVE`）を判定し、固有名詞を落とす再検索はしません（語順は問いません）。最後の再検索は固有名詞だけで行います。
+    - Yahoo が記号を無視して別物を返す固有名詞（`=LOVE` が「LOVE」一般の投稿になる等）は、公式 X アカウントの投稿のハッシュタグから別名（`イコラブ`）を見つけて検索し、固有名詞も別名も含まない投稿を除きます。
+    - 判定に Web 検索を1回使います（原式で揃った場合は行いません）。実測では「=LOVE ライブ 予定」で関連投稿の割合が 4% → 100%、X への検索回数が 5 → 3、所要時間は約 0.6 秒増えました。`SORA_REALTIME_ANCHOR=off` で従来の動作に戻せます。
+  - 応答の `missingTerms` は、1件の投稿に揃って現れなかったクエリ語です（空なら省略）。`aliasTerms` は固有名詞の代わりに検索した別名です（使った時のみ）。
   - `page` は1始まりでYahoo側は40件固定幅 (`page=2` はoffset 40)。`limit` は1〜40 (デフォルト20)。
   - provider障害時は成功扱いの0件ではなくエラー (HTTP 502 / MCP `isError`) を返します。一部失敗時は `partial: true` と `providerErrors` を付けて成功分を返します。
 - **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`
@@ -1883,7 +1887,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 
 ### 3.27 Realtime / Web の compact 既定 (v2.27.0)
 
-`search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
+`search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。X の `missingTerms`（空でない時）と `aliasTerms` は回答の欠落を判断する手がかりとして compact 応答にも含めます（v2.36.0）。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
 
 ### 3.28 Retrieval v2 / Security
 
@@ -1985,6 +1989,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_RRF_ENABLED` | `true` | 複数クエリ統合に RRF を使用します。`false` で first-wins dedup |
 | `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
 | `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
+| `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
 | `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
 | `SORA_ALLOWED_HOSTS` | localhost + PORT | MCP Host allowlist |
