@@ -6,7 +6,7 @@ import {
   SearchWebRequestSchema,
   type SearchWebRequest,
 } from './types.js';
-import { searchYahooWeb } from './services/yahoo.js';
+import { normalizeDomainList, searchYahooWeb } from './services/yahoo.js';
 import { scrapeUrl } from './scraper.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
 import { formatCompactWebSearchResponse } from './search_compact.js';
@@ -17,7 +17,7 @@ const DEFAULT_DEPS: SearchWebFormatDependencies={searchYahooWeb,scrapeUrl};
 export function buildSearchWebCacheKey(o: SearchWebRequest): string {
   const formats=o.formats?.slice().sort().join(',')||'none';
   const limit=o.limit ?? (o.formats&&o.formats.length>0?5:'provider');
-  return ['search:web',o.query,(o.includeDomains||[]).join(','),(o.excludeDomains||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
+  return ['search:web',o.query,(normalizeDomainList(o.includeDomains)||[]).join(','),(normalizeDomainList(o.excludeDomains)||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
 }
 export async function searchWebWithFormats(o: SearchWebRequest,deps: SearchWebFormatDependencies=DEFAULT_DEPS): Promise<any> {
   const base=await deps.searchYahooWeb({query:o.query,includeDomains:o.includeDomains,excludeDomains:o.excludeDomains,updated:o.updated,noCache:o.noCache});

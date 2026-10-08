@@ -67,6 +67,7 @@ import { parsePdfToMarkdown } from './pdf.js';
 import {
   callYahooMcp,
   searchYahooWeb,
+  normalizeDomainList,
   normalizeRealtimeItem,
   searchYahooRealtime,
   fetchTweetsForUrlOrUser,
@@ -1495,8 +1496,8 @@ export async function integratedSearch(options: {
   const officialAccountId = options.officialAccountId?.trim()?.replace(/^@/, '');
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const noCache = options.noCache ?? false;
-  const includeDomains = options.includeDomains;
-  const excludeDomains = options.excludeDomains;
+  const includeDomains = normalizeDomainList(options.includeDomains);
+  const excludeDomains = normalizeDomainList(options.excludeDomains);
   const updated = options.updated;
   const extractHighlights = options.extractHighlights ?? (Boolean(query && query.trim()));
   const onlyMainContent = options.onlyMainContent !== false;
