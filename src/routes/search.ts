@@ -180,7 +180,7 @@ searchRoutes.post('/search/web', async (c) => {
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
-const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true });
+const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true });
 const handleIntegratedSearch = async (c: any) => {
   try {
     const body = await c.req.json();
@@ -208,6 +208,11 @@ const handleIntegratedSearch = async (c: any) => {
 
     if (!query || typeof query !== 'string') {
       return c.json({ error: 'query is required' }, 400);
+    }
+
+    const maxTotalCharsParsed = IntegratedSearchRequestSchema.shape.maxTotalChars.safeParse(body?.maxTotalChars);
+    if (!maxTotalCharsParsed.success) {
+      return c.json({ error: 'maxTotalChars must be an integer between 1000 and 500000' }, 400);
     }
 
     const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
@@ -251,6 +256,7 @@ const handleIntegratedSearch = async (c: any) => {
         explicitFormats: formats,
         extractHighlights,
         verbose: body?.verbose ?? c.req.query('verbose') === 'true',
+        maxTotalChars: maxTotalCharsParsed.data,
       }),
     );
   } catch (err: any) {

@@ -1,6 +1,7 @@
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
+import { totalmem } from 'os';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -157,6 +158,7 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
   if (sharedBrowserInstance && sharedBrowserInstance.connected) {
     try {
       await sharedBrowserInstance.version();
+      markSharedBrowserUsed();
       return { browser: sharedBrowserInstance, isDedicated: false };
     } catch {
       sharedBrowserInstance = null;
@@ -193,6 +195,7 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
   });
 
+  markSharedBrowserUsed();
   return { browser: sharedBrowserInstance, isDedicated: false };
 }
 
@@ -201,12 +204,68 @@ export function isSharedBrowserConnected(): boolean {
 }
 
 export async function closeSharedBrowser(): Promise<void> {
-  if (sharedBrowserInstance) {
-    try {
-      await sharedBrowserInstance.close();
-    } catch {}
-    sharedBrowserInstance = null;
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
   }
+  // 閉じる前に共有インスタンスを外し、閉じかけのブラウザを getBrowser() が渡さないようにする
+  const browser = sharedBrowserInstance;
+  sharedBrowserInstance = null;
+  if (browser) {
+    try {
+      await browser.close();
+    } catch {}
+  }
+}
+
+/**
+ * 共有 Chromium の無操作終了。常駐させると約700MB（実測、7プロセス）を占有し続けるため、最後に取得されてから
+ * BROWSER_IDLE_TTL_MS（既定 5 分、0 で無効）使われなければ閉じる。次回の getBrowser() で自動再起動する。
+ * 開いているコンテキスト/ページ（ブラウザセッション・追跡・SNS 取得）やセマフォ保持中は使用中とみなす。
+ */
+const DEFAULT_BROWSER_IDLE_TTL_MS = 300_000;
+let lastSharedBrowserUse = 0;
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+function browserIdleTtlMs(): number {
+  const raw = process.env.BROWSER_IDLE_TTL_MS;
+  const n = raw === undefined || raw === '' ? DEFAULT_BROWSER_IDLE_TTL_MS : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function markSharedBrowserUsed(): void {
+  lastSharedBrowserUse = Date.now();
+  armIdleTimer(browserIdleTtlMs());
+}
+
+function armIdleTimer(delayMs: number): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = undefined;
+  if (delayMs <= 0) return;
+  idleTimer = setTimeout(() => void closeIfIdle(), delayMs);
+  idleTimer.unref?.();
+}
+
+async function closeIfIdle(): Promise<void> {
+  idleTimer = undefined;
+  const browser = sharedBrowserInstance;
+  const ttl = browserIdleTtlMs();
+  if (!browser || ttl <= 0) return;
+  const remaining = ttl - (Date.now() - lastSharedBrowserUse);
+  if (remaining > 0) return armIdleTimer(remaining);
+  const checkedUse = lastSharedBrowserUse;
+  let busy = browserSemaphore.activeCount > 0 || browserSemaphore.pendingCount > 0;
+  if (!busy) {
+    try {
+      busy = browser.browserContexts().length > 1 || (await browser.pages()).length > 1;
+    } catch {
+      busy = false; // 接続が壊れている場合は閉じてよい
+    }
+  }
+  // 判定の await 中に getBrowser() で渡されていたら閉じない（その呼び出しがタイマーを張り直している）
+  if (lastSharedBrowserUse !== checkedUse) return;
+  if (busy) return armIdleTimer(ttl);
+  if (browser === sharedBrowserInstance) await closeSharedBrowser();
 }
 
 let sharedBrowserUsageCount = 0;
@@ -260,8 +319,40 @@ export class SimpleSemaphore {
   }
 }
 
-export const MAX_CONCURRENT_BROWSERS = parseInt(process.env.MAX_CONCURRENT_BROWSERS || '5', 10);
-export const browserSemaphore = new SimpleSemaphore(Math.max(1, Math.min(MAX_CONCURRENT_BROWSERS, 50)));
+/**
+ * ブラウザ同時実行数の既定値。bun 本体 + Chromium の常駐に約700MB、1ページあたり約300MB を見込み、
+ * 利用可能メモリから導く（1〜5）。メモリ不明なら従来の 5。MAX_CONCURRENT_BROWSERS 明示時はそちらが優先。
+ * ponytail: 1ページ300MBは目安。実測で外れるなら係数を調整する。
+ */
+export function defaultBrowserConcurrency(memBytes: number | undefined): number {
+  if (memBytes === undefined) return 5;
+  const MB = 1024 * 1024;
+  return Math.max(1, Math.min(5, Math.floor((memBytes / MB - 700) / 300)));
+}
+
+/** cgroup (v2/v1) のメモリ上限と搭載メモリの小さい方。取得できなければ undefined。 */
+export function detectMemoryLimitBytes(): number | undefined {
+  let limit = totalmem() || undefined;
+  for (const path of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try {
+      const n = Number(readFileSync(path, 'utf8').trim());
+      if (Number.isFinite(n) && n > 0) limit = limit === undefined ? n : Math.min(limit, n);
+    } catch {}
+  }
+  return limit;
+}
+
+/**
+ * MAX_CONCURRENT_BROWSERS の解釈。正の整数ならそれ（上限 50）、それ以外（未設定・数値でない・0 以下）はメモリからの既定値。
+ * 数値でない値をそのまま使うとセマフォの上限が NaN になり、ブラウザ描画が永久に待つため。
+ */
+export function resolveBrowserConcurrency(raw: string | undefined, memBytes: number | undefined): number {
+  const n = raw && /^\d+$/.test(raw.trim()) ? parseInt(raw.trim(), 10) : NaN;
+  return n > 0 ? Math.min(n, 50) : defaultBrowserConcurrency(memBytes);
+}
+
+export const MAX_CONCURRENT_BROWSERS = resolveBrowserConcurrency(process.env.MAX_CONCURRENT_BROWSERS, detectMemoryLimitBytes());
+export const browserSemaphore = new SimpleSemaphore(MAX_CONCURRENT_BROWSERS);
 
 /**
  * 任意の IPv4 表記（10進ドット、8進数、16進数、短縮表記、32bit整数）を 32bit 符号なし整数に正規化する。

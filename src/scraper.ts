@@ -104,6 +104,8 @@ import {
 } from './http_fetcher.js';
 import { readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
+import { settleWithDeadline } from './scrape_deadline.js';
+import { summarizeContextSufficiency } from './context_sufficiency.js';
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
   convertHtmlToMarkdown,
@@ -502,7 +504,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:v4:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:v5:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
@@ -1445,6 +1447,15 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
   }
   return { sufficient: reasons.length === 0, reasons };
 }
+/**
+ * 本文取得の既定の打ち切り上限。0 = 無効（既定）。
+ * ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。
+ * 有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
+ */
+const DEFAULT_SCRAPE_DEADLINE_MS = 0;
+/** 半数のページが揃ってから残りを待つ猶予。 */
+const SCRAPE_DEADLINE_GRACE_MS = 5_000;
+
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1472,6 +1483,8 @@ export async function integratedSearch(options: {
   highlightMaxCount?: number;
   adaptiveScrape?: boolean;
   scrapeBudget?: number;
+  /** 本文取得の締切 (ms)。半数が終わったら SCRAPE_DEADLINE_GRACE_MS だけ待ち、全体では本値で打ち切る。0 で無効。 */
+  scrapeDeadlineMs?: number;
   tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
@@ -1502,7 +1515,7 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v4:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
+  const cacheKey = `search:integrated:v5:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1593,9 +1606,12 @@ export async function integratedSearch(options: {
     }).catch(() => null);
   }
 
+  const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
+  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? (Number.isFinite(envDeadline) && process.env.SORA_SCRAPE_DEADLINE_MS ? envDeadline : DEFAULT_SCRAPE_DEADLINE_MS);
+  let scrapeDeadlineHit = false;
   let enrichedResults = topItems;
   if (scrapeContent) {
-    enrichedResults = await Promise.all(
+    const settled = await settleWithDeadline(
       topItems.map(async (item: any, itemIndex: number) => {
         const itemUrl = item.url || item.link;
         if (!itemUrl) return item;
@@ -1761,13 +1777,32 @@ export async function integratedSearch(options: {
           };
         }
       }),
+      { graceMs: SCRAPE_DEADLINE_GRACE_MS, capMs: scrapeDeadlineMs },
+      (i) => {
+        const item: any = topItems[i];
+        const snippet = item?.snippet || item?.description || '';
+        return {
+          ...item,
+          scrapeError: 'scrape_deadline_exceeded',
+          deadlineExceeded: true,
+          ...(formats.includes('markdown') && snippet
+            ? { markdown: `# ${item?.title || 'Web Search Result'}\n\nURL: ${item?.url || item?.link}\n\n${snippet}`, isSnippetFallback: true }
+            : {}),
+        };
+      },
     );
+    enrichedResults = settled.values;
+    if (settled.lateCount > 0) {
+      scrapeDeadlineHit = true;
+      incrementSecurityCounter('sora_scrape_deadline_total', settled.lateCount);
+    }
 
     // P0-3: 失敗分補充 (有効結果数が limit 未満かつ予備がある場合のみ1波補充)
     try {
       const isSuccess = (it: any) => isUsableScrape(it);
       let successCount = enrichedResults.filter(isSuccess).length;
-      if (successCount < limit && sparePool.length > 0) {
+      // 締切で打ち切った場合は待ち時間を優先し、補充の逐次取得は行わない（adaptiveScrape の追加取得も同様）
+      if (successCount < limit && sparePool.length > 0 && !scrapeDeadlineHit) {
         for (const spare of sparePool) {
           if (successCount >= limit) break;
           const spareItem: any = spare;
@@ -1843,7 +1878,8 @@ export async function integratedSearch(options: {
 
     // P1-3: adaptive evidence 不足時の追加取得 (opt-in, 最大8件)
     try {
-      if (adaptiveScrape && scrapeContent) {
+      // 締切で打ち切った場合は、待ち時間の上限を守るため追加取得の波も行わない
+      if (adaptiveScrape && scrapeContent && !scrapeDeadlineHit) {
         let ev = assessEvidenceSufficiency(enrichedResults, query);
         if (!ev.sufficient) {
           incrementSecurityCounter('sora_deep_search_wave_total');
@@ -2013,13 +2049,23 @@ export async function integratedSearch(options: {
     };
   }
 
+  // 判定材料（本文かハイライト）を要求した場合だけ付ける。どちらも無いのに insufficient と出さないため
+  if (scrapeContent && (formats.includes('markdown') || extractHighlights)) {
+    finalResponse.contextSufficiency = summarizeContextSufficiency(
+      enrichedResults,
+      includeRealtime ? finalResponse.realtime?.items ?? [] : [],
+      query,
+    );
+  }
+
   // Public boundary: verbose keeps full diagnostics, default returns compact.
   // Retrieval/rerank internals above are untouched. Cache the shaped
   // response (the cache key already separates verbose from compact).
   const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {
     verbose: options.verbose === true,
   });
-  if (!noCache) setToCache(cacheKey, publicResponse);
+  // 締切で欠けた結果は劣化応答なのでキャッシュしない
+  if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse);
   return publicResponse;
 }
 

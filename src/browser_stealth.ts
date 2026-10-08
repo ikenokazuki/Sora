@@ -256,21 +256,17 @@ export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 50
         const win = (globalThis as any).window;
         if (!doc) return;
 
-        let lastMutation = Date.now();
-        let observer: any = null;
-
-        // MutationObserver で DOM の子要素追加・属性変更・テキスト変化をリアルタイム追跡
-        if (win?.MutationObserver) {
-          observer = new win.MutationObserver(() => {
-            lastMutation = Date.now();
-          });
-          observer.observe(doc.documentElement || doc.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            characterData: true,
-          });
-        }
+        // 「見えている本文」が変わった時刻を追跡する。属性だけを書き換え続けるページ
+        // （多言語化ウィジェット・計測タグ等）で静止しないまま上限まで待たないため、DOM 変化そのものは見ない。
+        // ponytail: 画像の src 書き換えは検知しない（個数の増減のみ）。data-src/srcset の遅延読み込みは HTML 解析側
+        // （resolveImageUrl）で実 URL に解決される。JS で URL を組み立てる遅延読み込みが問題になれば、実 src の数を署名に加える。
+        const signature = (t: string) => {
+          const n = t.length;
+          const mid = n >> 1;
+          return `${n}|${doc?.images?.length ?? 0}|${t.slice(0, 120)}|${t.slice(mid, mid + 120)}|${t.slice(-120)}`;
+        };
+        let lastSignature = signature((doc?.body?.innerText ?? '').trim());
+        let lastChange = Date.now();
 
         const loadingSelectors = [
           '.loading',
@@ -283,52 +279,50 @@ export async function waitForDomStable(page: Page, quietMs = 800, timeoutMs = 50
           '.loading__content',
         ];
 
-        try {
-          while (Date.now() - start < limit) {
-            let hasVisibleLoading = false;
-            if (win) {
-              for (const sel of loadingSelectors) {
-                const elements = doc.querySelectorAll(sel);
-                for (let i = 0; i < elements.length; i++) {
-                  const el = elements[i];
-                  const style = win.getComputedStyle(el);
-                  if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
-                    hasVisibleLoading = true;
-                    break;
-                  }
+        while (Date.now() - start < limit) {
+          let hasVisibleLoading = false;
+          if (win) {
+            for (const sel of loadingSelectors) {
+              const elements = doc.querySelectorAll(sel);
+              for (let i = 0; i < elements.length; i++) {
+                const el = elements[i];
+                const style = win.getComputedStyle(el);
+                if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                  hasVisibleLoading = true;
+                  break;
                 }
-                if (hasVisibleLoading) break;
               }
+              if (hasVisibleLoading) break;
             }
-
-            const bodyText = (doc?.body?.innerText ?? '').trim();
-            const mainText = (doc?.querySelector('article, main, [role="main"]')?.innerText ?? bodyText).trim();
-            const isLoadingText = (text: string) => /^(?:(?:now\s+)?loading|読み込み中|読込中)[\s.…。]*$/i.test(text);
-            hasVisibleLoading ||= !bodyText || isLoadingText(bodyText) || isLoadingText(mainText);
-            const hasMainContent = Boolean(
-              mainText || bodyText.length >= 400
-            );
-
-            // メインコンテンツが存在しローディングスピナーが消えている場合は 200ms の静止で即座に完了
-            // それ以外でも 400ms または指定された quietMs の短い方で完了
-            const effectiveQuiet = hasVisibleLoading
-              ? quiet
-              : hasMainContent
-              ? Math.min(quiet, 200)
-              : Math.min(quiet, 400);
-
-            if (!hasVisibleLoading && Date.now() - lastMutation >= effectiveQuiet) {
-              return;
-            }
-
-            await new Promise((r) => setTimeout(r, 50));
           }
-        } finally {
-          if (observer) {
-            try {
-              observer.disconnect();
-            } catch {}
+
+          const bodyText = (doc?.body?.innerText ?? '').trim();
+          const mainText = (doc?.querySelector('article, main, [role="main"]')?.innerText ?? bodyText).trim();
+          const isLoadingText = (text: string) => /^(?:(?:now\s+)?loading|読み込み中|読込中)[\s.…。]*$/i.test(text);
+          hasVisibleLoading ||= !bodyText || isLoadingText(bodyText) || isLoadingText(mainText);
+          const hasMainContent = Boolean(
+            mainText || bodyText.length >= 400
+          );
+
+          // メインコンテンツが存在しローディングスピナーが消えている場合は 200ms の静止で即座に完了
+          // それ以外でも 400ms または指定された quietMs の短い方で完了
+          const effectiveQuiet = hasVisibleLoading
+            ? quiet
+            : hasMainContent
+            ? Math.min(quiet, 200)
+            : Math.min(quiet, 400);
+
+          const current = signature(bodyText);
+          if (current !== lastSignature) {
+            lastSignature = current;
+            lastChange = Date.now();
           }
+
+          if (!hasVisibleLoading && Date.now() - lastChange >= effectiveQuiet) {
+            return;
+          }
+
+          await new Promise((r) => setTimeout(r, 50));
         }
       },
       quietMs,
@@ -358,6 +352,9 @@ export async function inlineShadowDomContent(page: Page): Promise<void> {
 }
 
 
+
+/** 通信静止（networkidle）を待つ上限。超えたら現在の DOM で本文取得へ進む。 */
+const NETWORK_IDLE_CAP_MS = 5000;
 
 /**
  * Stealth Chromium レンダリング
@@ -472,14 +469,26 @@ export async function fetchWithStealthBrowser(
 
       const deadline = Date.now() + timeoutMs;
       const remaining = () => Math.max(0, deadline - Date.now());
+      let idleCap: ReturnType<typeof setTimeout> | undefined;
       try {
-        await page.goto(url, { waitUntil, timeout: timeoutMs });
+        // networkidle は計測・ロングポーリング等で永遠に来ない場合があり、本文が揃っていてもタイムアウトまで待ってしまう。
+        // load 後の静止待ちだけ NETWORK_IDLE_CAP_MS で打ち切り、現在の DOM で本文取得へ進む。
+        const idleCapped = new Promise<void>((resolve) => {
+          page.once('load', () => {
+            idleCap = setTimeout(resolve, Math.max(1, Math.min(NETWORK_IDLE_CAP_MS, remaining())));
+          });
+        });
+        const navigation = page.goto(url, { waitUntil, timeout: timeoutMs });
+        navigation.catch(() => {}); // 上限で先に進んだ後の goto 失敗は無視する
+        await Promise.race([navigation, idleCapped]);
       } catch (gotoErr: any) {
         // networkidle 等のネットワーク待機タイムアウト時でも、DOM（HTML）が読み込まれていれば処理を続行
         const currentHtml = await page.content().catch(() => '');
         if (!currentHtml || currentHtml.length <= 500) {
           throw gotoErr;
         }
+      } finally {
+        if (idleCap) clearTimeout(idleCap);
       }
 
       try {
