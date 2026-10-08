@@ -104,6 +104,7 @@ import {
 } from './http_fetcher.js';
 import { readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
+import { settleWithDeadline } from './scrape_deadline.js';
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
   convertHtmlToMarkdown,
@@ -1445,6 +1446,15 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
   }
   return { sufficient: reasons.length === 0, reasons };
 }
+/**
+ * 本文取得の既定の打ち切り上限。0 = 無効（既定）。
+ * ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。
+ * 有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
+ */
+const DEFAULT_SCRAPE_DEADLINE_MS = 0;
+/** 半数のページが揃ってから残りを待つ猶予。 */
+const SCRAPE_DEADLINE_GRACE_MS = 5_000;
+
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1472,6 +1482,8 @@ export async function integratedSearch(options: {
   highlightMaxCount?: number;
   adaptiveScrape?: boolean;
   scrapeBudget?: number;
+  /** 本文取得の締切 (ms)。半数が終わったら SCRAPE_DEADLINE_GRACE_MS だけ待ち、全体では本値で打ち切る。0 で無効。 */
+  scrapeDeadlineMs?: number;
   tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
@@ -1593,9 +1605,12 @@ export async function integratedSearch(options: {
     }).catch(() => null);
   }
 
+  const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
+  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? (Number.isFinite(envDeadline) && process.env.SORA_SCRAPE_DEADLINE_MS ? envDeadline : DEFAULT_SCRAPE_DEADLINE_MS);
+  let scrapeDeadlineHit = false;
   let enrichedResults = topItems;
   if (scrapeContent) {
-    enrichedResults = await Promise.all(
+    const settled = await settleWithDeadline(
       topItems.map(async (item: any, itemIndex: number) => {
         const itemUrl = item.url || item.link;
         if (!itemUrl) return item;
@@ -1761,13 +1776,32 @@ export async function integratedSearch(options: {
           };
         }
       }),
+      { graceMs: SCRAPE_DEADLINE_GRACE_MS, capMs: scrapeDeadlineMs },
+      (i) => {
+        const item: any = topItems[i];
+        const snippet = item?.snippet || item?.description || '';
+        return {
+          ...item,
+          scrapeError: 'scrape_deadline_exceeded',
+          deadlineExceeded: true,
+          ...(formats.includes('markdown') && snippet
+            ? { markdown: `# ${item?.title || 'Web Search Result'}\n\nURL: ${item?.url || item?.link}\n\n${snippet}`, isSnippetFallback: true }
+            : {}),
+        };
+      },
     );
+    enrichedResults = settled.values;
+    if (settled.lateCount > 0) {
+      scrapeDeadlineHit = true;
+      incrementSecurityCounter('sora_scrape_deadline_total', settled.lateCount);
+    }
 
     // P0-3: 失敗分補充 (有効結果数が limit 未満かつ予備がある場合のみ1波補充)
     try {
       const isSuccess = (it: any) => isUsableScrape(it);
       let successCount = enrichedResults.filter(isSuccess).length;
-      if (successCount < limit && sparePool.length > 0) {
+      // 締切で打ち切った場合は待ち時間を優先し、補充の逐次取得は行わない
+      if (successCount < limit && sparePool.length > 0 && !scrapeDeadlineHit) {
         for (const spare of sparePool) {
           if (successCount >= limit) break;
           const spareItem: any = spare;
@@ -2019,7 +2053,8 @@ export async function integratedSearch(options: {
   const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {
     verbose: options.verbose === true,
   });
-  if (!noCache) setToCache(cacheKey, publicResponse);
+  // 締切で欠けた結果は劣化応答なのでキャッシュしない
+  if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse);
   return publicResponse;
 }
 
