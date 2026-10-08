@@ -1456,6 +1456,11 @@ export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: t
   isOfficial: z.boolean().optional().describe('公式アカウントの投稿であるか'),
   retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一の取得物を取得した経路'),
   scrapeAttemptIndex: z.number().int().optional().describe('本文取得を試行した順序 (0-based)'),
+  markdownTruncated: z.object({
+    totalChars: z.number().int().describe('切り詰め前の本文文字数'),
+    keptChars: z.number().int().describe('返却した本文文字数'),
+  }).optional().describe('maxTotalChars により本文を段落境界で切り詰めた場合に付与。highlights は削らない'),
+  deadlineExceeded: z.boolean().optional().describe('scrapeDeadlineMs の締切までに本文取得が終わらず、スニペット代替で返した場合に true'),
 });
 
 export const IntegratedRealtimeItemSchema = IntegratedSearchItemSchema.partial().extend(RealtimeItemSchema.shape);
@@ -1477,6 +1482,10 @@ export const IntegratedSearchResponseSchema = z.object({
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
   prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
   responseMode: z.literal('evidence').optional().describe('evidence 指定時に返す。full および verbose 時は省略'),
+  contextSufficiency: z.object({
+    level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
+    reasons: z.array(z.string()).describe('few-success（取得成功が3件未満） / unmentioned:語（クエリ語がどの証拠にも無い） / unanswered:語（時刻・金額・日付などの回答値が見つからない） / no-usable-content'),
+  }).optional().describe('根拠が足りているかの語彙ベースの信号。応答内容は変えない。scrapeContent:true のとき付与'),
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
 });
 
@@ -2333,7 +2342,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
-          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。',
           requestBody: {
             content: {
               'application/json': {

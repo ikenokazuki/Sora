@@ -48,6 +48,22 @@ describe('documentation defaults and enum consistency', () => {
     expect(doc.paths['/tracking/{carrier}/{number}'].get.parameters.find((p: any) => p.name === 'carrier').schema.enum).toContain('auto');
   });
 
+  test('/search documents the latency controls and the response signals added for agents', () => {
+    const doc: any = generateOpenApiDocument();
+    const op = doc.paths['/search'].post;
+    const req = op.requestBody.content['application/json'].schema.properties;
+    expect(req.maxTotalChars).toMatchObject({ type: 'integer', minimum: 1000, maximum: 500000 });
+    expect(req.scrapeDeadlineMs).toMatchObject({ type: 'integer', minimum: 0, maximum: 120000 });
+    const res = op.responses['200'].content['application/json'].schema.properties;
+    expect(res.contextSufficiency.properties.level.enum).toEqual(['no_gap_detected', 'partial', 'insufficient']);
+    expect(res.contextSufficiency.properties.reasons.type).toBe('array');
+    const item = res.results.items.properties;
+    expect(item.markdownTruncated.properties.totalChars.type).toBe('integer');
+    expect(item.markdownTruncated.properties.keptChars.type).toBe('integer');
+    expect(item.deadlineExceeded.type).toBe('boolean');
+    expect(op.description).toContain('contextSufficiency');
+  });
+
   test('docs pin the renderer and revalidate documentation after updates', async () => {
     for (const path of ['/docs', '/openapi.json']) {
       const res = await systemRoutes.request(path);
