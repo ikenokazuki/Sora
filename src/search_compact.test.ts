@@ -237,7 +237,20 @@ describe('formatCompactRealtimeResponse', () => {
     expect(compact.count).toBe(0);
     expect(compact.items).toEqual([]);
     expect('retrievalQueries' in compact).toBe(false);
+    // v2.36.0: どの投稿にも揃わなかった語は通常応答でも返す（回答の欠落の手がかり）
+    expect(compact.missingTerms).toEqual(['q']);
+  });
+
+  test('missingTerms is omitted when empty; aliasTerms kept; anchor diagnostics are verbose-only', () => {
+    const base = { source: 'x', originalQuery: '=LOVE ライブ', count: 0, items: [], anchorTerm: '=LOVE', anchorFiltered: 8 };
+    const compact: any = formatCompactRealtimeResponse({ ...base, missingTerms: [], aliasTerms: ['イコラブ'] });
     expect('missingTerms' in compact).toBe(false);
+    expect(compact.aliasTerms).toEqual(['イコラブ']);
+    expect('anchorTerm' in compact).toBe(false);
+    expect('anchorFiltered' in compact).toBe(false);
+    const verbose: any = formatCompactRealtimeResponse({ ...base, missingTerms: [] }, { verbose: true });
+    expect(verbose.anchorTerm).toBe('=LOVE');
+    expect(verbose.anchorFiltered).toBe(8);
   });
 
   test('high item counts pass through unbounded (no magic truncation)', () => {
@@ -387,6 +400,16 @@ describe('formatCompactIntegratedSearchResponse', () => {
     expect(output.results).toHaveLength(3);
     expect(output.results[0].markdown).toContain('Complete official');
     expect(output.results[0].isOfficial).toBe(true);
+  });
+
+  test('realtime gap fields: missingTerms/aliasTerms kept, anchor diagnostics verbose-only', () => {
+    const response = { count: 0, results: [], realtime: { source: 'x', count: 0, missingTerms: ['予定'], aliasTerms: ['イコラブ'], anchorTerm: '=LOVE', anchorFiltered: 3, items: [] } };
+    const compact: any = formatCompactIntegratedSearchResponse(response);
+    expect(compact.realtime.missingTerms).toEqual(['予定']);
+    expect(compact.realtime.aliasTerms).toEqual(['イコラブ']);
+    expect('anchorTerm' in compact.realtime).toBe(false);
+    expect('anchorFiltered' in compact.realtime).toBe(false);
+    expect(formatCompactIntegratedSearchResponse(response, { verbose: true }).realtime).toMatchObject({ anchorTerm: '=LOVE', anchorFiltered: 3 });
   });
 
   test('similar posts with different IDs survive unconditional identity merging', () => {

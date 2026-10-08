@@ -41,13 +41,15 @@ const REALTIME_VERBOSE_KEYS = [
   'stopReason',
   'requiredTerms',
   'coveredTerms',
-  'missingTerms',
+  'anchorTerm',
+  'anchorFiltered',
 ] as const;
 
 /**
  * Compact Yahoo Realtime response.
  * Keeps: source, originalQuery, effectiveQuery, isFallback, count, items
- * (item order, ids, urls, core text, author constraints untouched).
+ * (item order, ids, urls, core text, author constraints untouched),
+ * plus missingTerms (only when non-empty) and aliasTerms as answer-gap signals.
  */
 export function formatCompactRealtimeResponse<T extends Record<string, any> | null | undefined>(
   result: T,
@@ -56,6 +58,7 @@ export function formatCompactRealtimeResponse<T extends Record<string, any> | nu
   if (!result || typeof result !== 'object' || options?.verbose === true) return result;
   const out: Record<string, any> = { ...result };
   for (const key of REALTIME_VERBOSE_KEYS) delete out[key];
+  if (Array.isArray(out.missingTerms) && out.missingTerms.length === 0) delete out.missingTerms;
   if (Array.isArray(out.items)) {
     out.items = out.items.map(stripInternalItemKeys);
   }
@@ -110,6 +113,8 @@ const INTEGRATED_REALTIME_VERBOSE_KEYS = [
   'retrievalQueries',
   'contributingQueries',
   'resultsMerged',
+  'anchorTerm',
+  'anchorFiltered',
 ] as const;
 
 function searchItemIdentity(item: Record<string, any>): string | undefined {

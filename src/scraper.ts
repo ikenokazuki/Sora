@@ -72,6 +72,7 @@ import {
   searchYahooRealtime,
   fetchTweetsForUrlOrUser,
   extractOfficialXHandleFromWebResults,
+  findOfficialXHandle,
   mergeRealtimeItemsWithDedup,
 } from './services/yahoo.js';
 
@@ -1516,15 +1517,42 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v5:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}`;
+  const cacheKey = `search:integrated:v6:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
   }
 
   const webSearchPromise = searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
+  // 公式アカウントの投稿は、公式枠（先頭5件）と X 検索の別名検出（20件）で1回の取得を共有する
+  const officialPostsByHandle = new Map<string, Promise<any[]>>();
+  const fetchOfficialPosts = (handle: string): Promise<any[]> => {
+    let posts = officialPostsByHandle.get(handle);
+    if (!posts) {
+      posts = searchYahooRealtime({ accountId: handle, limit: 20, sort: 'recent', detailEnrichment: false })
+        .then((r) => r.items)
+        .catch(() => []);
+      officialPostsByHandle.set(handle, posts);
+    }
+    return posts;
+  };
+  const webItemsForAnchor = () =>
+    webSearchPromise.then((r: any) => (Array.isArray(r?.items) ? r.items : [])).catch(() => []);
+  let anchorOfficialHandle: string | undefined;
   const realtimeSearchPromise = includeRealtime
-    ? searchYahooRealtime({ query, sort: realtimeSort, detailEnrichment: false }).catch(() => null)
+    ? searchYahooRealtime({
+        query,
+        sort: realtimeSort,
+        detailEnrichment: false,
+        anchorHints: {
+          webTitles: async () => (await webItemsForAnchor()).map((i: any) => String(i?.title || '')),
+          officialPosts: async (anchor) => {
+            const handle = officialAccountId || await findOfficialXHandle(anchor, await webItemsForAnchor());
+            anchorOfficialHandle = handle;
+            return handle ? fetchOfficialPosts(handle) : [];
+          },
+        },
+      }).catch(() => null)
     : Promise.resolve(null);
   const webParsedRes = await webSearchPromise;
 
@@ -1599,12 +1627,7 @@ export async function integratedSearch(options: {
   // 公式枠の並行フェッチ（すでに公式IDが判明している場合）
   let officialRealtimePromise: Promise<any> | null = null;
   if (includeRealtime && targetOfficialHandle) {
-    officialRealtimePromise = searchYahooRealtime({
-      accountId: targetOfficialHandle,
-      limit: 5,
-      sort: 'recent',
-      detailEnrichment: false,
-    }).catch(() => null);
+    officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle).then((items) => ({ items: items.slice(0, 5) }));
   }
 
   const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
@@ -1929,17 +1952,29 @@ export async function integratedSearch(options: {
       }
     }
     if (includeRealtime && targetOfficialHandle && !officialRealtimePromise) {
-      officialRealtimePromise = searchYahooRealtime({
-        accountId: targetOfficialHandle,
-        limit: 5,
-        sort: 'recent',
-        detailEnrichment: false,
-      }).catch(() => null);
+      officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle).then((items) => ({ items: items.slice(0, 5) }));
     }
   }
 
   // リアルタイム検索結果のマージ (公式枠 ＋ 一般枠の重複排除ハイブリッド)
   const realtimeMcpRes = await realtimeSearchPromise;
+  // 固有名詞が分かれば、公式枠も固有名詞の公式にそろえる（「ライブ 予定 =LOVE」で @LoveLive_staff を公式枠にしない）。
+  // 別名の検出で公式を探していればそれを使い（取得済み）、そうでなければ自動抽出した公式だけを確かめる
+  if (includeRealtime && !officialAccountId && realtimeMcpRes?.anchorTerm) {
+    const anchoredHandle = anchorOfficialHandle
+      ?? (targetOfficialHandle ? await findOfficialXHandle(realtimeMcpRes.anchorTerm, searchResults) : undefined);
+    if (anchoredHandle && anchoredHandle !== targetOfficialHandle) {
+      targetOfficialHandle = anchoredHandle;
+      officialRealtimePromise = fetchOfficialPosts(anchoredHandle).then((items) => ({ items: items.slice(0, 5) }));
+    }
+  }
+  // 1件の投稿に揃わなかった語と、検索に使った別名は通常応答にも出す（固有名詞の判定語・除外件数は verbose のみ）
+  const realtimeGap = {
+    ...(realtimeMcpRes?.missingTerms?.length ? { missingTerms: realtimeMcpRes.missingTerms } : {}),
+    ...(realtimeMcpRes?.aliasTerms?.length ? { aliasTerms: realtimeMcpRes.aliasTerms } : {}),
+    ...(realtimeMcpRes?.anchorTerm ? { anchorTerm: realtimeMcpRes.anchorTerm } : {}),
+    ...(realtimeMcpRes?.anchorFiltered !== undefined ? { anchorFiltered: realtimeMcpRes.anchorFiltered } : {}),
+  };
   let realtimeItems: any[] = [];
   let realtimeMeta: any = null;
   if (includeRealtime) {
@@ -1978,6 +2013,7 @@ export async function integratedSearch(options: {
         ...(realtimeMcpRes?.resultsMerged !== undefined ? { resultsMerged: realtimeMcpRes.resultsMerged } : {}),
         ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
         ...(realtimeMcpRes?.intent ? { intent: realtimeMcpRes.intent } : {}),
+        ...realtimeGap,
         items: realtimeItems,
       };
     }
@@ -2046,6 +2082,7 @@ export async function integratedSearch(options: {
       count: 0,
       effectiveQuery: query,
       isFallback: false,
+      ...realtimeGap,
       items: [],
     };
   }
