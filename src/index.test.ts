@@ -5758,6 +5758,27 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('hello');
     });
 
+    it('sanitizeMcpResponse drops outputSchema from tools/list (JSON and SSE) unless SORA_TOOL_OUTPUT_SCHEMA=true', async () => {
+      const payload = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { tools: [{ name: 't', inputSchema: { type: 'object' }, outputSchema: { type: 'object', big: 'x'.repeat(100) } }] },
+      });
+      const json = () => new Response(payload, { headers: { 'content-type': 'application/json' } });
+      const sse = () => new Response(`data: ${payload}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
+
+      expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
+      expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
+
+      process.env.SORA_TOOL_OUTPUT_SCHEMA = 'true';
+      try {
+        expect(await (await sanitizeMcpResponse(json())).text()).toContain('outputSchema');
+        expect(await (await sanitizeMcpResponse(sse())).text()).toContain('outputSchema');
+      } finally {
+        delete process.env.SORA_TOOL_OUTPUT_SCHEMA;
+      }
+    });
+
     describe('Official X Account Detection & Hybrid Realtime Search', () => {
       it('extractTwitterHandleFromHtml should extract official twitter handle from meta tag or links', () => {
         // 1. meta[name="twitter:site"]
