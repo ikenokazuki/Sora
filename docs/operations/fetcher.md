@@ -174,6 +174,19 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - 同時実行された[最初のmain公開CI](https://github.com/ikenokazuki/Sora/actions/runs/37612031688)では、Facebook投稿の期待情報欠落が両レーンで発生し、ホテルレーンではGDELTのHTTP 404も発生した。失敗を許容するゲート変更は行っていない。Facebook専用取得とGDELT HTTP取得は今回のTimeTree補完・汎用DOM抽出変更を呼び出さない。Facebookの同じ公開投稿は旧本番と正式候補で本文を取得できた。
 - GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+- 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.34.8の公開と本番反映（2026-10-08）
+
+- 旧ハイライト選択アルゴリズムrho-bm25の廃止（`highlightAlgorithm`から`rho-bm25`を削除、指定時は400）。ソースの変更は別作業の`54ee78f`とリリース`69f6bf9`で確定済み。本作業ではコード変更なし。
+- タグ`v2.34.8`の初回公開CIはホテルレーンのfrance24フィード404で失敗、再走した2回目はGDELTのHTTP 404で失敗。いずれも今回の変更と無関係の上流一過性（再確認時は両方とも正常応答）。ゲート緩和なし。3回目の再走で全工程成功：全テスト・候補ビルド・両実APIレーン・公開処理。[成功ラン](https://github.com/ikenokazuki/Sora/actions/runs/37727615573)。[日本語リリース](https://github.com/ikenokazuki/Sora/releases/tag/v2.34.8)を公開した。
+- 公開イメージは`ghcr.io/ikenokazuki/sora:2.34.8`、IDは`e4ed20bfb8d6dd41bf531978cd5a63da95b531fc67523ab918c9efee304d7eca`。CIが検証した候補と一致することをapps側のpull結果で確認した。
+- 正式イメージを別ポート3017・別DBで検証：health 2.34.8、実scrape、Web検索、rho-bm25指定の400拒否、OpenAPIのenumからrho-bm25消去と版数2.34.8、MCP 2.34.8を確認。
+- 公開URLでも同じ確認がすべて成功：health 2.34.8 ok、scrape 3.004秒、rho-bm25は400、OpenAPI版数2.34.8。稼働イメージIDはCI候補と一致。
+- DBバックアップは`/data/backups/sora-before-2.34.8-20261008T045621Z.db`（0600、1,683,456バイト、quick_check=ok）。Nix宣言とappsのQuadlet drop-inを同じ固定タグで揃え、Pull=newerを維持。既存のSORA_DEFER_TOOLS=false、Host/Origin、web-fetcher-data:/data:U、127.0.0.1:3016を維持した。
+- 生成されたExecStartを確認してweb-fetcher.serviceだけを再起動した。他の本番コンテナ25個のIDはすべて変化なし。NixOS全体は再構築していない。検証用候補コンテナは削除済み。
+- 復旧先は直前の`ghcr.io/ikenokazuki/sora:2.34.7`（ID `e15f8b1ea8e4`）。drop-inの`20-release.conf.before-v2.34.8-20261008T045621Z`を戻し、Nix宣言も2.34.7へ戻してdaemon-reload、web-fetcherだけをrestartする。通常のイメージ復旧ではDBを復元しない。
+- 本番・候補の取得結果、イメージID、設定控え、DBバックアップの確認結果は`/home/ikeno/.local/state/sora-deploy/20261008T040519Z-2.34.8/`に保存した。
 
 ## v2.34.7の本番反映（2026-10-07）
 
