@@ -5,7 +5,7 @@
 
 `Sora` は、LLM や AI エージェント（Claude Desktop, Cursor, Cline, OpenCodeInterpreter, Dify など）が **日本の Web 空間と日常インフラを自由かつ安全に探索・操作するための All-in-One MCP / REST サーバー** です。
 
-外部 DB（Redis / PostgreSQL）やメッセージキューを一切必要とせず、**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ** だけで月800円の VPS から即座に稼働します。
+外部 DB（Redis / PostgreSQL）やメッセージキューを一切必要とせず、**ヘッドレス Chromium と日本語 CJK フォントを内包した単一コンテナ** だけで動作します。Chromium はブラウザ描画が必要になった時だけ起動し、無操作が続くと自動で閉じるため、静的取得が中心の用途では常駐メモリは 200MB 前後（実測）です。1GB 級の小さな VPS では、ブラウザ描画の同時実行数が利用可能メモリから自動で絞られます（[4.4 低メモリ環境での運用](#44-低メモリ環境での運用)）。
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 59 エンドポイント（54 パス）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 70 オペレーション（64 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -126,10 +126,11 @@ cloud（雲）も空にあり空は世界中繋がってます。
 
 ## 🌟 主な特徴と強み (Why Sora?)
 
-1. **🗾 日本の日常インフラ & Web 探索の完全網羅**:
+1. **🗾 日本の日常インフラ & Web 探索を単一 MCP で提供**:
    - 海外製ツール（Firecrawl / Tavily）では対応できない「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式オープンデータ直結（全国 1,805 市区町村自動選定）」「電車乗換案内」を単一 MCP で提供。
-2. **⚡ 圧倒的なミリ秒応答 & 超低消費メモリ**:
-   - Bun 最適化ランタイムにより、API 応答 **1.5ms**、常駐メモリ **JSヒープ ~32MB / 全体 ~140MB**。AI エージェントの待ち時間を極限まで短縮。
+2. **⚡ ミリ秒級の応答 & 低メモリ（2026-10-08 実測）**:
+   - Bun ランタイムで、`/health` は 1ms 前後、起動から応答可能になるまで約 0.6 秒、起動直後の常駐メモリは約 160MB（静的取得後 約 200MB）。
+   - ブラウザ描画（SPA 昇格・`browser_action` 等）が必要になった時だけ Chromium が起動し（描画中は合計 約 950MB）、無操作 5 分（`BROWSER_IDLE_TTL_MS`）で閉じて約 200MB に戻ります。
 3. **📦 完全オールインワン & ゼロミドルウェア**:
    - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一コンテナだけで即座に完結。
 4. **🛡️ Distroless（シェルなし）& 厳格なセキュリティ**:
@@ -138,8 +139,8 @@ cloud（雲）も空にあり空は世界中繋がってます。
 5. **🕹️ ステートフルなブラウザ操作 DSL**:
    - `open` → `fill` → `click` → `screenshot` → `evaluate` の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
 6. **⚡ 次世代スクレイピング＆構造化抽出エンジン (v2.13.0+)**:
-   - **BrowserContext セッション分離 & アセット高速遮断**: 常駐 Chromium におけるセッションごとの完全隔離と、不要メディア・Webフォント・3Dモデル・広告トラッカーのネットワーク層即時遮断（転送量 99.8% 削減）。CSS/JS は保持しレイアウト計算と不可視要素除外を担保。
-   - **DOM Quiescence（静止検知）SPA待機**: 固定スリープを廃止し、`MutationObserver` により 200ms の DOM 変更静止を捉えて最速完了。描画漏れ根絶。
+   - **BrowserContext セッション分離 & アセット高速遮断**: 常駐 Chromium におけるセッションごとの完全隔離と、不要メディア・Webフォント・3Dモデル・広告トラッカーのネットワーク層即時遮断（転送量を大幅に削減。ページにより異なる）。CSS/JS は保持しレイアウト計算と不可視要素除外を担保。
+   - **本文ベースの静止検知（SPA待機）**: 固定スリープを廃止し、見えている本文（長さ・先頭/中央/末尾・画像数）が 200ms 変化しなくなった時点で完了。多言語化ウィジェット等が属性だけを書き換え続けるページで、上限まで待たない。`networkidle` が来ないページも、`load` 後 5 秒で打ち切って現在の DOM から本文を取得。
    - **イベント・パンくず・表構造化抽出**: Schema.org `Event`/`MusicEvent` の自動構造化、パンくず階層ナビゲーションパス抽出、複雑な表の結合セル（`colspan`/`rowspan`）2Dマトリクス正規化、および重要告知画像（チラシ・タイテ・図表）スコアリングを標準搭載。
    - **Clean Content Sanitizer**: プロンプトインジェクション用制御トークンや不可視ゼロ幅文字を自動無害化。
 7. **🎯 ρSelect v2 (クエリ固有の最適性証明書を備えた証拠選択エンジン v2.18.0+)**:
@@ -153,17 +154,17 @@ cloud（雲）も空にあり空は世界中繋がってます。
 8. **📊 検索順位の保持と取得後の証拠評価**:
    - Web検索の単一結果集合はプロバイダーの順位を保持します。複数クエリ統合は加重 RRF、Deep Search の本文・ハイライト選択は BM25 と回答値・対象との関連・日付整合性を用いて評価します。新しいページを一律に優先する設計ではありません。
 9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
-   - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを 100% 決定論的に特定可能。
+   - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを決定論的に特定可能。
    - **Contextual Highlights (文脈保持パッセージ)**: Dinkelbach法で選ばれた最適抽出文単体ではなく、親見出し階層（H1/H2/H3）やテーブルヘッダーを含む文脈セット（`HighlightItem`）を返し、文脈欠落ハルシネーションを防止。
    - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
    - **Candidate Discrepancies (不一致候補の対比提示)**: 日付・金額・バージョンの複数異なる候補値を検出時、勝手に1つに丸めず（Silent Resolve を完全禁止）、対比構造（`CandidateDiscrepancy`）として提示。
    - **Safe Normalization (決定論的数値正規化 & 導出履歴)**: 全角数字・漢数字「万」「億」や物理単位（km/ms）を固定規則で正規化し、導出履歴（`derivations`）を追跡。為替などの外部推測が必要な変換は行わない。
 10. **🌐 最新 IR (情報検索) & RAG 理論 3大アルゴリズム (v2.16.0+)**:
-   - **Lost in the Middle 対策 (U字型リオーダリング)**: スコア降順ではなく、最重要情報を「先頭」と「末尾」に配置（`1位, 3位, 5位 ... 4位, 2位`）することで、LLM の長文中央部に対する注意減衰（Attention Degradation）を完全克服（`reorderUFlat: true`）。
-   - **MMR (Maximal Marginal Relevance) 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を徹底排除し、異なる観点の重要文を幅広く採択（`diversityWeight: 0.7`）。
-   - **インメモリ PRF (擬似適合フィードバック)**: 上位適合ドキュメント群の共起語から高TF-IDFな重要語彙を抽出し、クエリを自動拡張。語彙ミスマッチをミリ秒未満で自己解決（`enablePrf: true`）。
+   - **Lost in the Middle 対策 (U字型リオーダリング)**: スコア降順ではなく、最重要情報を「先頭」と「末尾」に配置（`1位, 3位, 5位 ... 4位, 2位`）することで、LLM の長文中央部に対する注意減衰（Attention Degradation）を緩和する配置（`reorderUFlat: true`。効果は未計測）。
+   - **MMR (Maximal Marginal Relevance) 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を抑え、異なる観点の重要文を幅広く採択（`diversityWeight: 0.7`）。
+   - **インメモリ PRF (擬似適合フィードバック)**: 上位適合ドキュメント群の共起語から高TF-IDFな重要語彙を抽出し、クエリを自動拡張。語彙ミスマッチをミリ秒未満で補正（`enablePrf: true`）。
 11. **⏳ Temporal Context Anchor (時間的文脈アンカー / 相対日時の絶対解決)**:
-   - 記事の `publishedTime` を基準日（Reference Date）とし、「明日」「来週金曜」「3日前」等の相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆構造化返却。過去記事の未来誤認ハルシネーションを根絶（`annotateTemporal: true`）。
+   - 記事の `publishedTime` を基準日（Reference Date）とし、「明日」「来週金曜」「3日前」等の相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆構造化返却。過去記事を未来の予定と取り違える誤りを防止（`annotateTemporal: true`）。
 12. **🗜️ Smart Table Minimizer (表・スペック表のトークン圧縮)**:
    - Web 上のスペック表・料金表・比較表から、全行空欄の列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ のインメモリ走査で自動検知・パージ。テーブルのトークン消費を 30〜70% 削減（`minimizeTables: true`）。
 13. **📦 日本主要5社＋UPS・FedEx・DHL Express 荷物追跡 API & MCP ツール**:
@@ -172,23 +173,27 @@ cloud（雲）も空にあり空は世界中繋がってます。
 
 ---
 
-### 📊 パフォーマンス & アーキテクチャ比較
+### 📊 パフォーマンスと構成（Sora の実測値）
 
-| 項目 | Sora (本ツール) | Firecrawl (セルフホスト) | 一般的な Node/Python 製 MCP |
-|---|---|---|---|
-| **API / ヘルスチェック応答** | **1.5 ms** (`0.0015s`) | 20〜50 ms | 30〜100 ms |
-| **起動時間 (コールドスタート)** | **< 10 ms** | 10〜30 秒 (複数サービス) | 1〜3 秒 |
-| **常駐メモリ消費 (RSS)** | **約 140 MB** (JSヒープ ~32MB) | 2GB〜4GB+ | 250MB〜800MB |
-| **イメージサイズ (Total)** | **約 1.29 GB** (Bun+Chromium+日本語フォント内包) | 4GB〜6GB+ (複数イメージ合計) | 800MB〜2.5GB |
-| **必要なコンテナ構成** | **単一コンテナ (All-in-One)** | 5〜6 個 (Redis/PG/Workers) | 複数 MCP プロセスが乱立 |
-| **セキュリティ設計** | **Distroless (シェルなし・非root)** | 通常 Debian/Alpine | 通常 Debian/Ubuntu |
-| **日本のローカル情報** | **完全対応 (天気・乗換・知恵袋・X)** | 非対応 (Webのみ) | プラグイン個別導入が必要 |
+| 項目 | 実測値 | 計測条件 |
+|---|---|---|
+| `/health` 応答 | 0.6〜1.3 ms | ローカル、2026-10-08 |
+| 起動 → 応答可能 | 約 0.6 秒 | `bun src/index.ts`、空の SQLite |
+| 常駐メモリ（起動直後） | 約 160 MB | bun プロセスのみ（Chromium 未起動） |
+| 常駐メモリ（静的取得後） | 約 195 MB | `mode: fast` でスクレイプした後 |
+| 常駐メモリ（ブラウザ描画中） | 約 950 MB | bun 約 250MB + Chromium 約 700MB（7 プロセス） |
+| 常駐メモリ（無操作 5 分後） | 約 200 MB | Chromium 解放後（`BROWSER_IDLE_TTL_MS`） |
+| イメージサイズ | 約 1.3 GB | Bun + Chromium + 日本語フォント |
+| 必要なコンテナ構成 | 単一コンテナ | Redis / PostgreSQL / ワーカーキュー不要 |
+| セキュリティ設計 | Distroless（シェルなし・非 root） | `gcr.io/distroless/cc-debian12` |
+
+> 他のスクレイピング製品（Firecrawl のセルフホスト等）とのメモリ・応答時間の数値比較は、同一条件で計測していないため掲載しません。Sora の特徴は、外部ミドルウェア不要の単一コンテナであることと、知恵袋・X・気象庁・乗換・法令など日本向けのデータ源を標準で備えていることです。
 
 ---
 
 ### ⏱️ 各エンドポイントの実測応答速度 (Measured Latency: Cold vs Cached)
 
-実機ローカルサーバーにおける「初回取得（非キャッシュ時）」と「キャッシュヒット時」の実測レイテンシ一覧です。AI エージェントが思考・生成する時間（1〜3秒）と比較して圧倒的に高速に応答します。
+実機ローカルサーバーにおける「初回取得（非キャッシュ時）」と「キャッシュヒット時」の実測レイテンシ一覧です。計測時期が異なる値を含みます（再計測した値は上の表と下の「LLM に渡る量の目安」を参照）。ネットワーク待ちが支配的な項目は、相手先の状況や出口 IP により大きく変わります。
 
 | エンドポイント | 初回取得 (非キャッシュ時) | キャッシュ時 (2回目以降) | 処理内容・技術特徴 |
 |---|:---:|:---:|---|
@@ -313,7 +318,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 Sora は、目的に応じて **11 個の論理モジュール（全 47 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (32ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 33 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 33 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -342,7 +347,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `check_fda_regulated`: 米国 FDA 規制判定
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`, `fetch_x_post`, `search_poi`
+  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`, `fetch_x_post`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -414,10 +419,10 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > 9. **robots.txt サイトマップ自動発見**: `/robots.txt` から変則配置された Sitemap URL を自動検出し、Sitemap Index を最大 1,000 件まで再帰走査。
 > 10. **クロール時のストリーミング**: 多数のページを巡回する際は、`POST /crawl/stream`（SSE）を利用して 1 ページ取得完了ごとに逐次受信・処理することで、全体の完了を待たずに即座にユーザーや LLM へ中間応答を返せます。
 > 11. **最新 IR 理論 3大アルゴリズム (`reorderUFlat`, `diversityWeight`, `enablePrf`)**:
->     - **U字型配置 (`reorderUFlat: true`)**: スコア降順ではなく最重要情報を「先頭」と「末尾」に配置（`1位, 3位 ... 4位, 2位`）することで、LLM の中央部注意減衰 (*Lost in the Middle*) を完全克服。
+>     - **U字型配置 (`reorderUFlat: true`)**: スコア降順ではなく最重要情報を「先頭」と「末尾」に配置（`1位, 3位 ... 4位, 2位`）することで、LLM の中央部注意減衰 (*Lost in the Middle*) を緩和。
 >     - **MMR 多様性選択 (`diversityWeight: 0.7`)**: Jaccard 類似度ペナルティにより、同一事実の言い換え重複を排除し、異なる観点の重要文を幅広く採択。
 >     - **インメモリ PRF (`enablePrf: true`)**: 上位検索結果の共起語からクエリを自動拡張し、語彙ミスマッチをミリ秒未満で自己解決。
-> 12. **時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 構造体を返却。過去記事を未来の予定と誤認する時間的ハルシネーションを根絶。
+> 12. **時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 構造体を返却。過去記事を未来の予定と誤認する時間的な取り違えを防止。
 > 13. **スマート表トークン圧縮 (`minimizeTables: true`, デフォルト有効)**: Web 上のスペック表・料金表・比較表から、全行空欄列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ で自動パージし、表のトークン消費を 30〜70% 削減。
 
 
@@ -438,6 +443,24 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | **統合深層検索** (`/search`) | `limit: 3` (旧デフォルト) | **約 1.4 秒** | - | Web検索 + 上位3件並行スクレイプ |
 | | `limit: 5` (**新デフォルト**) | **約 2.0 〜 3.4 秒** | - | Web検索 + 上位5件並行スクレイプ |
 | | `limit: 20` (**新上限**) | **約 4 〜 8 秒** | - | 幅広いソースのディープ調査用 |
+
+#### 4. `search_deep` のレイテンシとコンテキスト量を調整する（2026-10-08 実測）
+
+LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（プロンプトの長さ）」で決まります。既定設定・`limit: 5` で 18 クエリを計測した値です（ローカル、初回取得）。
+
+- **応答サイズ**: 平均 81KB（24〜240KB）。内訳は本文 Markdown 49%、X 投稿 31%、ハイライト 11%。
+- **待ち時間**: 1.1〜14.4 秒、中央値 3.3 秒。遅いときは、最も遅い 1 ページ（ブラウザ描画に昇格したページなど）が全体を律速します。
+- **`tools/list`**: 全 47 ツールで約 82KB（`outputSchema` を除外した後。除外前は約 245KB）。初期公開の 14 ツールは約 35KB です。
+
+| 目的 | 指定するもの | 内容と注意 |
+|---|---|---|
+| 渡す量を上限で抑える | `maxTotalChars` | 全結果の本文合計の上限。上位ほど多く配分し、超過分は段落境界で切り詰めて `markdownTruncated` を付与（`highlights` は削らない）。実測では 60,000 で値・関連段落の欠落なし、40,000 で値の再現が平均 98%（最小 87%）、24,000 以下は一覧・比較ページの後半の値が落ちます。応答バイトの削減は 40,000 で平均 4%、24,000 で 10% 程度のため、効果が出るのは本文が大きい一部のクエリです |
+| 局所的な事実だけが欲しい | `responseMode: "evidence"` | ハイライトを残し、安全条件を満たす結果だけ本文の重複返却を省略 |
+| 遅いページに引きずられたくない | `scrapeDeadlineMs` | opt-in（既定は無効）。半数のページが揃ってから 5 秒待っても終わらないページ、または上限に達したページを打ち切り、`deadlineExceeded: true` とスニペット代替で返す。遅いが本文のあるページも落ちるため、待ち時間を優先する場合のみ指定 |
+| 不足していれば追加取得したい | `adaptiveScrape` / `scrapeBudget` | 根拠が不足している間だけ候補を追加で取得（opt-in） |
+| 足りているかを知りたい | 応答の `contextSufficiency` | 常に付与（`scrapeContent: true`）。`partial` の `reasons`（`unmentioned:語` / `unanswered:語` / `few-success`）を見て、`responseMode: "full"` での再取得や追加調査を判断できます。`no_gap_detected` は十分の保証ではありません |
+
+まず既定のまま呼び、`contextSufficiency` が `partial` / `insufficient` のときだけ追加の手を打つ使い方を想定しています。
 
 ---
 
@@ -1818,8 +1841,6 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
 
 ---
 
-## 4. セキュリティ & アーキテクチャ
-
 ### 3.25 公開SNS投稿検索・取得 (`POST /social/search` / `POST /social/fetch`)
 Weibo新着検索とThreads/Instagram/Facebook公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使うこと。検索は最大55秒、取得は最大30秒の締め切り付き。
 
@@ -1843,6 +1864,58 @@ Weibo新着検索とThreads/Instagram/Facebook公開投稿の発見＋本文取�
   ```
 
 - **レスポンス**: `status`（`ok` / `partial` / `empty` / `unavailable`）、`items`（投稿配列）、`matchedInWindow`、`unknownTime`、`failures`、`warnings` を返す。取得系は `post` 単体と `failures` / `warnings` を返す。
+
+### 3.26 国・地域インテリジェンス (`POST /intelligence/country`, v2.27.0)
+
+Evidence-backed country context via `POST /intelligence/country` and deferred MCP tool `research_country_context` (module `intel`, activate with `search_tools` query `国地域`).
+
+- Request: `{ region, query?, topics?, period?: "7d"|"30d"|"90d", includeSocial?, noCache?, verbose? }`. Omitting `topics` queries every enabled provider within bounded two-pass caps (12 + 8).
+- Report separates article/evidence count, event cluster count, and independent source counts. Publisher geography never becomes event geography. Ambiguous regions (e.g. `Georgia`) stay low-confidence.
+- Region links: every evidence carries `regionLink` (`direct`/`related`/`candidate`/`unrelated`/`unknown`) with reasons plus `acquisition` (provider, record id, query, collection scope). `keyEvents` and all counts use only `direct`/`related`. Only region-query prose lands in `domainContext.general.candidateFactors`; unattributed global-feed records stay evidence-only. Empty domains return `factors_missing` instead of falling back to everything.
+- Events keep per-record identity: same provider with different stable event ids never merges on title alone; records more than 72h apart never merge without a shared stable id. Occurrence/publication/update timestamps are stored separately (`timeBasis: structured|published`). Out-of-window finished events drop out; disasters continuing into the window stay.
+- Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
+- Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries) become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
+- Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
+- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`. All four return text JSON plus validated `structuredContent`. REST mirrors them: `GET /intelligence/context/:contextId/evidence|updates`.
+- No sentiment, hostility, anti-Japan, safety, or risk scores by design.
+- Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts and details 180 days. Retrieval: `GET /intelligence/context/:contextId`.
+- Opt-in live smoke: `bun run test:intel:live`
+
+### 3.27 Realtime / Web の compact 既定 (v2.27.0)
+
+`search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
+
+### 3.28 Retrieval v2 / Security
+
+単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は `SORA_WEB_QUERY_UNION=true` で有効化し、加重 RRF（original 1.0、fallback/rescue 0.6）で統合します。scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` / `enablePrf` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・スクレイプの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
+
+### 3.29 Deep Search v2.32.0: 日付と追加取得
+
+REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-search`）と MCP `search_deep` は、同じ検索オプションを受け付けます。API仕様は `GET /openapi.json`、対話型ドキュメントは `GET /docs` と `GET /swagger` で確認できます。
+
+```json
+{
+  "query": "君と見るそら 2026年10月11日 ライブ",
+  "adaptiveScrape": true,
+  "scrapeBudget": 8,
+  "includeRealtime": true,
+  "responseMode": "evidence",
+  "verbose": false
+}
+```
+
+- `adaptiveScrape`: 根拠不足時の追加取得を許可します。既定は `false`、`scrapeContent: true` の場合に有効です。
+- `scrapeBudget`: 適応取得の上限。1〜20の整数、既定8、`limit` 未満の指定は `limit` まで引き上げます。
+- 日付: 年付きの日付は指定年と照合します。年なしの月日はサーバー日時から次に到来する年を仮定します。過去の出来事は年を明示してください。`updated` はページの更新期間指定で、イベント開催日の指定ではありません。
+- 時間表現: クエリの「明日」などはサーバー日時、本文への `annotateTemporal` 注記は記事の公開日時が基準です。すべての検索を新着順にはしません。
+- 根拠の充足信号: `scrapeContent: true` の応答に `contextSufficiency: { level, reasons }` を付けます（応答内容は変えません）。`level` は `no_gap_detected`（欠落を検出しなかった）/ `partial`（不足の根拠あり）/ `insufficient`（本文を取得できたページも投稿も無い）。`reasons` は `few-success`（取得成功が3件未満）、`unmentioned:語`（クエリの entity・intent 語がどの証拠にも出てこない）、`unanswered:語`（時刻・金額・日付など回答値を求める語に対して値が見つからない。「■料金」の次の行に金額が来る形は2文先まで探します）。要件語は verbose 診断の `webRequirements` と同じ `extractQueryRequirements`、証拠は各ページの ρSelect 選抜（`highlights`。無ければ本文）とXの投稿本文、判定は ρSelect v2 診断と同じ `computeEvidenceCoverage` です。スニペット代替・取得失敗・締切超過は証拠に数えません。語彙ベースの検出なので、`partial` / `insufficient` は不足の根拠になりますが、`no_gap_detected` は十分の保証ではありません（実測: 18クエリで誤検出0件、存在しない語・年の欠落など対照5件中3件を検出）。不足が示された場合は、`responseMode: "full"` での再取得や追加調査を検討してください。
+- 診断: `verbose: true` で取得・証拠評価の診断を表示します。`verbose` は `responseMode: "evidence"` より優先し、全文も返します。
+
+回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・PRF・複数クエリ統合の既定値は有効化していません。
+
+---
+
+## 4. セキュリティ & アーキテクチャ
 
 ### 4.1 ディストロレス (Distroless) コンテナ設計
 - **ベースイメージ**: `gcr.io/distroless/cc-debian12`
@@ -1869,11 +1942,11 @@ Weibo新着検索とThreads/Instagram/Facebook公開投稿の発見＋本文取�
   - SQLite 障害で degraded 判定時に、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
 - **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
   - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
-- **📐 共通 Zod スキーマ & OpenAPI 3.0 完全自動生成**:
+- **📐 共通 Zod スキーマ & OpenAPI 3.0 自動生成**:
   - REST / MCP 双方で Zod スキーマによる入力検証を統一。
-  - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **100% 動的自動生成** し、ドキュメントの乖離を完全防止。
+  - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **動的に自動生成** し、リクエスト・レスポンスのドキュメントがコードから乖離しないようにしています。
   - エラーレスポンスは `{ "error": "...", "code": "SSRF_BLOCKED", "status": 403, "retryable": false }` のように AI エージェントが自己修復・自律判断しやすい構造を提供。
-- **💾 `bun:sqlite` による完全自己完結 永続化層 (Zero-Dependency SQLite)**:
+- **💾 `bun:sqlite` による自己完結の永続化層 (Zero-Dependency SQLite)**:
   - Bun ネイティブの組み込み SQLite3 C エンジンを活用。
   - `PRAGMA journal_mode = WAL;` により、外部 DB デーモン（Redis / PostgreSQL）不要で高速な永続キャッシュ、API キー使用量カウント、watch/diff 差分履歴をローカルに安全保持。
   - プロセス再起動後も L2 SQLite からキャッシュを即座に復元するハイブリッド L1/L2 アーキテクチャ。
@@ -1922,6 +1995,22 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
 | `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
 | `SORA_WEB_RETRY_WAIT_MS` | *(deprecated)* | 初期spacingのoverrideとしてのみ使用。通常はProvider pressure controllerが制御します |
+
+### 4.4 低メモリ環境での運用
+
+- **ブラウザ描画の同時数は自動で絞られます**。`MAX_CONCURRENT_BROWSERS` を指定しない場合、cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます。
+
+  | 利用可能メモリ | 同時数の既定 |
+  |---|---|
+  | 1GB 以下 | 1 |
+  | 2GB | 4 |
+  | 4GB 以上 | 5 |
+
+  1 ページあたり約 300MB は目安です。明示した値が優先されます。
+- **Chromium は無操作で閉じます**（`BROWSER_IDLE_TTL_MS`、既定 5 分、`0` で無効）。次にブラウザが必要になったとき自動で再起動します（実測: 再起動後の最初のブラウザ描画も、起動済みの場合と同等の約 3.6 秒）。ブラウザセッション（`sessionId`）や追跡・SNS 取得でコンテキストが開いている間は閉じません。
+- **実測の目安**: 起動直後 約 160MB、静的取得後 約 195MB、ブラウザ描画中 約 950MB（bun 約 250MB + Chromium 約 700MB）、解放後 約 200MB。
+- **ブラウザを使わせたくないリクエスト**には `scrape` の `mode: "fast"`（静的取得のみ）を指定します。
+- **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 14 ツールに絞れます。
 
 ---
 
@@ -1996,56 +2085,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 
 Copyright (c) 2026 ikeno
 
-## 🌍 Country Intelligence v1 (v2.27.0)
-
-Evidence-backed country context via `POST /intelligence/country` and deferred MCP tool `research_country_context` (module `intel`, activate with `search_tools` query `国地域`).
-
-- Request: `{ region, query?, topics?, period?: "7d"|"30d"|"90d", includeSocial?, noCache?, verbose? }`. Omitting `topics` queries every enabled provider within bounded two-pass caps (12 + 8).
-- Report separates article/evidence count, event cluster count, and independent source counts. Publisher geography never becomes event geography. Ambiguous regions (e.g. `Georgia`) stay low-confidence.
-- Region links: every evidence carries `regionLink` (`direct`/`related`/`candidate`/`unrelated`/`unknown`) with reasons plus `acquisition` (provider, record id, query, collection scope). `keyEvents` and all counts use only `direct`/`related`. Only region-query prose lands in `domainContext.general.candidateFactors`; unattributed global-feed records stay evidence-only. Empty domains return `factors_missing` instead of falling back to everything.
-- Events keep per-record identity: same provider with different stable event ids never merges on title alone; records more than 72h apart never merge without a shared stable id. Occurrence/publication/update timestamps are stored separately (`timeBasis: structured|published`). Out-of-window finished events drop out; disasters continuing into the window stay.
-- Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
-- Providers: GDELT DOC (staged diagnostics; 8s first attempt, one 7d retry, 16s cap; `GDELT_DOC_FALLBACK_7D`) + Events export files (in-memory yauzl unzip, no external `unzip`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), global news feeds, official web search (Yahoo web search with region-dropping fallback disabled; Yahoo realtime never used, including Japan), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only) Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
-- Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries).ts` become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
-- Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
-- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`. All four return text JSON plus validated `structuredContent`. REST mirrors them: `GET /intelligence/context/:contextId/evidence|updates`.
-- No sentiment, hostility, anti-Japan, safety, or risk scores by design.
-- Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts and details 180 days. Retrieval: `GET /intelligence/context/:contextId`.
-- Opt-in live smoke: `bun run test:intel:live`
-
-### Realtime / Web compact default (v2.27.0)
-
-`search_realtime` / `search_web` / `search_deep` はデフォルトでcompact応答（回答必須項目のみ）。検索診断（`retrievalQueries` / `contributingQueries` / `resultsMerged`等）が必要な場合のみ `verbose: true` 指定。REST `/search/realtime`・`/search/web` も同様。 (offline parser contracts; append `--live` for bounded South Korea/Taiwan/United States/France/Indonesia reachability).
-
-### Retrieval v2 / Security
-
-単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は `SORA_WEB_QUERY_UNION=true` で有効化し、加重 RRF（original 1.0、fallback/rescue 0.6）で統合します。scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` / `enablePrf` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・スクレイプの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
-
-### Deep Search v2.32.0: 日付と追加取得
-
-REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-search`）と MCP `search_deep` は、同じ検索オプションを受け付けます。API仕様は `GET /openapi.json`、対話型ドキュメントは `GET /docs` と `GET /swagger` で確認できます。
-
-```json
-{
-  "query": "君と見るそら 2026年10月11日 ライブ",
-  "adaptiveScrape": true,
-  "scrapeBudget": 8,
-  "includeRealtime": true,
-  "responseMode": "evidence",
-  "verbose": false
-}
-```
-
-- `adaptiveScrape`: 根拠不足時の追加取得を許可します。既定は `false`、`scrapeContent: true` の場合に有効です。
-- `scrapeBudget`: 適応取得の上限。1〜20の整数、既定8、`limit` 未満の指定は `limit` まで引き上げます。
-- 日付: 年付きの日付は指定年と照合します。年なしの月日はサーバー日時から次に到来する年を仮定します。過去の出来事は年を明示してください。`updated` はページの更新期間指定で、イベント開催日の指定ではありません。
-- 時間表現: クエリの「明日」などはサーバー日時、本文への `annotateTemporal` 注記は記事の公開日時が基準です。すべての検索を新着順にはしません。
-- 根拠の充足信号: `scrapeContent: true` の応答に `contextSufficiency: { level, reasons }` を付けます（応答内容は変えません）。`level` は `no_gap_detected`（欠落を検出しなかった）/ `partial`（不足の根拠あり）/ `insufficient`（本文を取得できたページも投稿も無い）。`reasons` は `few-success`（取得成功が3件未満）、`unmentioned:語`（クエリの entity・intent 語がどの証拠にも出てこない）、`unanswered:語`（時刻・金額・日付など回答値を求める語に対して値が見つからない。「■料金」の次の行に金額が来る形は2文先まで探します）。要件語は verbose 診断の `webRequirements` と同じ `extractQueryRequirements`、証拠は各ページの ρSelect 選抜（`highlights`。無ければ本文）とXの投稿本文、判定は ρSelect v2 診断と同じ `computeEvidenceCoverage` です。スニペット代替・取得失敗・締切超過は証拠に数えません。語彙ベースの検出なので、`partial` / `insufficient` は不足の根拠になりますが、`no_gap_detected` は十分の保証ではありません（実測: 18クエリで誤検出0件、存在しない語・年の欠落など対照5件中3件を検出）。不足が示された場合は、`responseMode: "full"` での再取得や追加調査を検討してください。
-- 診断: `verbose: true` で取得・証拠評価の診断を表示します。`verbose` は `responseMode: "evidence"` より優先し、全文も返します。
-
-回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・PRF・複数クエリ統合の既定値は有効化していません。
-
-### 開発時の検証
+## 8. 開発時の検証 (Development & Testing)
 
 ```bash
 bun install --frozen-lockfile
