@@ -15,10 +15,12 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `ghcr.io/ikenokazuki/sora:2.34.7`
-  (image ID `e15f8b1ea8e4`, deployed 2026-10-07). Package/health version: `2.34.7`.
-  Published release with generic browser content readiness plus an isolated
-  TimeTree public-calendar response adapter in the common MCP / REST scrape path.
+- Current image: `ghcr.io/ikenokazuki/sora:2.35.0`
+  (image ID `ec8d5574b7ea`, digest `sha256:8ecf168e1b154fcdc8a035c1166ceb38cbaa7eae72a210690ea4ed3624319e66`,
+  deployed 2026-10-08). Package/health version: `2.35.0`.
+  Search latency and context-size controls (`maxTotalChars`, opt-in `scrapeDeadlineMs`,
+  `contextSufficiency`), `outputSchema` omitted from `tools/list`, bounded browser waits,
+  and idle release of the shared Chromium (`BROWSER_IDLE_TTL_MS`, default 5 minutes).
   The existing host-independent discovery instructions are retained.
 - `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
   is limited to 14 by the saved LibreChat Agent's native deferred loading.
@@ -175,6 +177,19 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.35.0の公開と本番反映（2026-10-08）
+
+- 検索の待ち時間とLLMに渡る量の削減、Chromiumのメモリ解放。主な変更：`tools/list`から`outputSchema`を既定で除外（47ツールで約245KB→約80KB、バイト換算の実測）、`search_deep`に`maxTotalChars`と`scrapeDeadlineMs`（既定は無効）を追加、応答に`contextSufficiency`を追加、ブラウザ描画の静止待ちを本文ベースにして`networkidle`の待ちを5秒で打ち切り、共有Chromiumを無操作5分で解放、`MAX_CONCURRENT_BROWSERS`の既定をメモリから自動算出（本番コンテナはホストの約12GBが見えるため5で変化なし）、回答値判定の先読み2文、キャッシュ名前空間をv5へ更新。詳細は`RELEASE_NOTES.md`。
+- リリースコミットは`038eee5`（`release: v2.35.0`）、タグ`v2.35.0`。`main`とタグを`--atomic`でpushした。公開CI（全テスト・候補ビルド・両実APIレーン）が通り、`2.35.0`・`2.35`・`latest`・`sha-038eee5`が同一digest`sha256:8ecf168e1b15…`で公開された。[日本語リリース](https://github.com/ikenokazuki/Sora/releases/tag/v2.35.0)も作成済み。ゲート緩和なし。公開前に全テストを複数回通した（リリース候補のツリーで1,348成功、17スキップ、失敗0件。mainの基準は1,308成功）。
+- apps側のpull結果のイメージIDは`ec8d5574b7ea70ac02f55f97db2c47dd0f271b9074432700cbad1e997bc23a7f`。レジストリ上の4タグのdigestがすべて一致することを確認した（CIの候補イメージIDそのものは認証なしでは取得できないため、digestの一致で代える）。
+- 正式イメージを別ポート3117・使い捨てDB・本番と同じkrun/`SORA_DEFER_TOOLS=false`で検証（候補のみ`BROWSER_IDLE_TTL_MS=15000`）。21項目すべて成功：health 2.35.0、OpenAPIの新しい要求/応答項目、`maxTotalChars`の上限（3575字→2760字、切り詰め1件）、`contextSufficiency`、不正値の400、MCP 47ツール（`outputSchema`なし・`default.*`なし、応答は約54,000文字≒約80KB）、instructions、実ブラウザ描画、アイドル解放と再起動後の描画。
+- DBバックアップは`/data/backups/sora-before-2.35.0-20261008T103129Z.db`（0600、3,960,832バイト、quick_check=ok）。Nix宣言（作業ツリー、未コミット）とappsのQuadlet drop-inを同じ固定タグで揃え、Pull=newerを維持。既存のSORA_DEFER_TOOLS=false、Host/Origin、web-fetcher-data:/data:U、127.0.0.1:3016、krunを維持した。drop-inの更新は許可済みの`podman unshare`経由で行い、変更前は`20-release.conf.before-v2.35.0-20261008T103129Z`に保存した。
+- 生成されたExecStartを確認し、`web-fetcher.service`だけを再起動した（19:31:59、約4秒でhealth ok）。他の本番コンテナ18個のIDは変化なし。NixOS全体は再構築していない。検証用候補コンテナは削除済み。
+- 公開URLでの確認：候補と同じスモークがすべて成功（アイドル解放の1項目は候補用の短いTTLを前提にした確認のため本番では対象外。本番は既定の5分で別途確認し、最終利用の約5分後に`sharedConnected: false`、bunのRSS 188MB、コンテナ使用量は約143MB）。公式MCP SDKクライアントでも47ツール・`outputSchema`なし・約54,000文字（約80KB）を確認した。再起動時のログにエラーなし。
+- 復旧先は直前の`ghcr.io/ikenokazuki/sora:2.34.8`（ID `e4ed20bfb8d6`）。drop-inの`20-release.conf.before-v2.35.0-20261008T103129Z`を戻し、Nix宣言も2.34.8へ戻してdaemon-reload、web-fetcherだけをrestartする。通常のイメージ復旧ではDBを復元しない。
+- 注意：テストの全体実行が共有Chromiumを残して（親が終了した孤児）ホストのメモリを圧迫した。孤児プロセスは終了済み。残る一時プロファイル`/tmp/puppeteer_dev_chrome_profile-*`は未削除。
+- 本番・候補の取得結果、イメージID、digest、設定控え、DBバックアップの確認結果は`/home/ikeno/.local/state/sora-deploy/20261008T102909Z-2.35.0/`に保存した。
 
 ## v2.34.8の公開と本番反映（2026-10-08）
 
