@@ -210,6 +210,11 @@ const handleIntegratedSearch = async (c: any) => {
       return c.json({ error: 'query is required' }, 400);
     }
 
+    const maxTotalCharsParsed = IntegratedSearchRequestSchema.shape.maxTotalChars.safeParse(body?.maxTotalChars);
+    if (!maxTotalCharsParsed.success) {
+      return c.json({ error: 'maxTotalChars must be an integer between 1000 and 500000' }, 400);
+    }
+
     const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
     if (!adaptiveOptions.success) {
       return c.json({ error: 'invalid adaptive search options', details: adaptiveOptions.error.format() }, 400);
@@ -251,6 +256,7 @@ const handleIntegratedSearch = async (c: any) => {
         explicitFormats: formats,
         extractHighlights,
         verbose: body?.verbose ?? c.req.query('verbose') === 'true',
+        maxTotalChars: maxTotalCharsParsed.data,
       }),
     );
   } catch (err: any) {
