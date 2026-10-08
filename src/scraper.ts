@@ -1447,6 +1447,27 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
   return { sufficient: reasons.length === 0, reasons };
 }
 /**
+ * 応答に付ける「根拠は足りているか」の信号。応答内容は変えず、判断は上位エージェントに任せる。
+ * Web は本文取得に成功したページのみ（スニペット代替・取得失敗・締切超過は含めない）、X は投稿本文も証拠に数える。
+ * 判定は adaptive scrape と同じ assessEvidenceSufficiency（few-success / missing-evidence / missing-answer）。
+ * 語彙ベースの欠落検出なので、partial/insufficient は不足の根拠になるが、no_gap_detected は十分の保証ではない。
+ */
+export function summarizeContextSufficiency(
+  webItems: any[],
+  realtimeItems: any[],
+  query: string,
+): { level: 'no_gap_detected' | 'partial' | 'insufficient'; reasons: string[] } {
+  const web = (webItems || []).map((it) => (it?.isSnippetFallback ? { ...it, markdown: undefined, highlights: undefined } : it));
+  const posts = (realtimeItems || [])
+    .filter((it) => typeof it?.text === 'string' && it.text.trim())
+    .map((it) => ({ title: '', markdown: it.text }));
+  const usable = [...web, ...posts].some((it) => !it?.scrapeError && (it?.markdown || it?.highlights));
+  if (!usable) return { level: 'insufficient', reasons: ['no-usable-content'] };
+  const { sufficient, reasons } = assessEvidenceSufficiency([...web, ...posts], query);
+  return { level: sufficient ? 'no_gap_detected' : 'partial', reasons };
+}
+
+/**
  * 本文取得の既定の打ち切り上限。0 = 無効（既定）。
  * ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。
  * 有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
@@ -2045,6 +2066,14 @@ export async function integratedSearch(options: {
       isFallback: false,
       items: [],
     };
+  }
+
+  if (scrapeContent) {
+    finalResponse.contextSufficiency = summarizeContextSufficiency(
+      enrichedResults,
+      includeRealtime ? finalResponse.realtime?.items ?? [] : [],
+      query,
+    );
   }
 
   // Public boundary: verbose keeps full diagnostics, default returns compact.
