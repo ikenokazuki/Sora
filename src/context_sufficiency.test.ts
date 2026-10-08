@@ -1,44 +1,60 @@
 import { describe, expect, test } from 'bun:test';
-import { summarizeContextSufficiency } from './scraper.js';
+import { summarizeContextSufficiency } from './context_sufficiency.js';
 
-const page = (markdown: string, extra: Record<string, any> = {}) => ({ title: 't', url: 'https://example.com/', markdown, ...extra });
-const body = (s: string) => `# ${s}\n\n${s} の詳細です。`.repeat(8);
+const filler = (s: string) => `# ${s}\n\n${s} の詳細です。`.repeat(6);
+const page = (title: string, highlights: string[] = [], extra: Record<string, any> = {}) => ({
+  title,
+  url: 'https://example.com/',
+  markdown: `${filler(title)}\n\n${highlights.join('\n\n')}`,
+  highlights,
+  ...extra,
+});
+const answered = (t: string) => page(t, [`${t} の出演時間は 14:10 からです。`]);
 
 describe('summarizeContextSufficiency', () => {
   test('no usable content at all is insufficient', () => {
     expect(summarizeContextSufficiency([], [], '君と見るそら 出演時間')).toEqual({ level: 'insufficient', reasons: ['no-usable-content'] });
-    const failed = [page('snippet only', { isSnippetFallback: true }), page('', { scrapeError: 'x' }), page('late', { deadlineExceeded: true, scrapeError: 'scrape_deadline_exceeded' })];
+    const failed = [
+      page('a', [], { isSnippetFallback: true }),
+      page('b', [], { markdown: '', scrapeError: 'x' }),
+      page('c', [], { markdown: '', scrapeError: 'scrape_deadline_exceeded', deadlineExceeded: true }),
+    ];
     expect(summarizeContextSufficiency(failed, [], 'abc def').level).toBe('insufficient');
   });
 
-  test('enough pages covering every query term and the asked value has no detected gap', () => {
-    const answered = (s: string) => page(`${body(s)}\n\n君と見るそら の出演時間は 14:10 からです。`);
-    const pages = [answered('君と見るそら 出演時間'), answered('君と見るそら 出演時間 一覧'), answered('君と見るそら 出演時間 まとめ')];
+  test('requirements mentioned and the asked value stated is no_gap_detected', () => {
+    const pages = [answered('君と見るそら'), answered('君と見るそら ライブ'), answered('君と見るそら 情報')];
     expect(summarizeContextSufficiency(pages, [], '君と見るそら 出演時間')).toEqual({ level: 'no_gap_detected', reasons: [] });
   });
 
-  test('a value-seeking query whose pages mention it but never state a value is partial', () => {
-    const pages = [page(body('君と見るそら 出演時間')), page(body('君と見るそら 出演時間 一覧')), page(body('君と見るそら 出演時間 まとめ'))];
-    const out = summarizeContextSufficiency(pages, [], '君と見るそら 出演時間');
+  test('a value-seeking requirement that is mentioned but never given a value is unanswered', () => {
+    const stated = (t: string) => page(t, [`${t} の出演時間について詳細は後日発表です。`]);
+    const out = summarizeContextSufficiency([stated('君と見るそら'), stated('君と見るそら ライブ'), stated('君と見るそら 情報')], [], '君と見るそら 出演時間');
     expect(out.level).toBe('partial');
-    expect(out.reasons.some((r) => r.startsWith('missing-answer:'))).toBe(true);
+    expect(out.reasons.some((r) => r.startsWith('unanswered:') && r.includes('出演時間'))).toBe(true);
   });
 
-  test('a query term found nowhere makes it partial and names the term', () => {
-    const pages = [page(body('君と見るそら 出演時間')), page(body('君と見るそら 情報')), page(body('君と見るそら 一覧'))];
-    const out = summarizeContextSufficiency(pages, [], '君と見るそら 駐車場');
+  test('a query term that no evidence mentions is reported as unmentioned', () => {
+    const pages = [answered('君と見るそら'), answered('君と見るそら ライブ'), answered('君と見るそら 情報')];
+    const out = summarizeContextSufficiency(pages, [], '君と見るそら 駐車場 出演時間');
     expect(out.level).toBe('partial');
-    expect(out.reasons).toContain('missing-evidence:駐車場');
+    expect(out.reasons.some((r) => r.startsWith('unmentioned:') && r.includes('駐車場'))).toBe(true);
   });
 
-  test('X posts count as evidence for term coverage', () => {
-    const pages = [page(body('君と見るそら 情報')), page(body('君と見るそら 一覧')), page(body('君と見るそら まとめ'))];
-    const posts = [{ text: '君と見るそら 駐車場 は会場裏です' }];
+  test('X posts count as evidence', () => {
+    const pages = [page('君と見るそら', ['君と見るそら のライブ情報です。']), page('君と見るそら ライブ', ['君と見るそら のライブ情報です。']), page('君と見るそら 情報', ['君と見るそら のライブ情報です。'])];
+    const posts = [{ text: '君と見るそら の駐車場は会場裏です。出演時間は 14:10 から。' }];
     expect(summarizeContextSufficiency(pages, posts, '君と見るそら 駐車場').level).toBe('no_gap_detected');
   });
 
-  test('fewer than three usable pages is partial', () => {
-    const pages = [page(body('君と見るそら 出演時間')), page('', { scrapeError: 'x' }), page('', { scrapeError: 'y' })];
+  test('fewer than three usable pages is reported as few-success', () => {
+    const pages = [answered('君と見るそら'), page('b', [], { markdown: '', scrapeError: 'x' }), page('c', [], { markdown: '', scrapeError: 'y' })];
     expect(summarizeContextSufficiency(pages, [], '君と見るそら 出演時間').reasons).toContain('few-success');
+  });
+
+  test('pages without extracted highlights fall back to their markdown as evidence', () => {
+    const plain = (t: string) => ({ title: t, markdown: `${filler(t)}\n\n${t} の出演時間は 14:10 からです。` });
+    const out = summarizeContextSufficiency([plain('君と見るそら'), plain('君と見るそら ライブ'), plain('君と見るそら 情報')], [], '君と見るそら 出演時間');
+    expect(out.level).toBe('no_gap_detected');
   });
 });
