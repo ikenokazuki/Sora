@@ -435,6 +435,17 @@ export function assessRetrievalConfidence(
   return { good: reasons.length === 0, reasons };
 }
 
+/**
+ * ドメイン絞り込み配列の正規化。空文字・空白のみの要素を除き、前後の空白を除去して重複を除く。
+ * API ドキュメントの「試す」フォームは配列項目を [""] で送りがちで、そのまま "site:" を組み立てると
+ * 検索結果が0件になる。有効な要素が残らなければ undefined（絞り込みなし）を返す。
+ */
+export function normalizeDomainList(list: readonly string[] | undefined): string[] | undefined {
+  if (!Array.isArray(list)) return undefined;
+  const cleaned = [...new Set(list.map((d) => (typeof d === 'string' ? d.trim() : '')).filter((d) => d.length > 0))];
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
 /** Stable coalescing key for one Yahoo Web search (flags included). */
 export function yahooWebSearchFlightKey(options: {
@@ -447,7 +458,7 @@ export function yahooWebSearchFlightKey(options: {
   const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
   const native = process.env.SORA_WEB_NATIVE_RANKING !== 'false' ? 'native' : 'legacy';
   const v = (options as any)?.verbose === true ? 'verbose' : 'compact';
-  return 'yahooweb:v1:' + options.query + ':' + (options.includeDomains || []).join(',') + ':' + (options.excludeDomains || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
+  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
 }
 
 /**
@@ -462,6 +473,7 @@ export async function searchYahooWeb(options: {
   disableFallback?: boolean;
   noCache?: boolean;
 }, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
+  options = { ...options, includeDomains: normalizeDomainList(options.includeDomains), excludeDomains: normalizeDomainList(options.excludeDomains) };
   const flightKey = yahooWebSearchFlightKey(options);
   const fresh = options.noCache ? null : getYahooFreshCache<any>(flightKey);
   if (fresh) {
