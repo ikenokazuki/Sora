@@ -1414,6 +1414,9 @@ export const RealtimeItemSchema = z.object({
   retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一投稿を取得した経路。同一投稿IDはモードに関係なく統合する'),
 });
 
+const REALTIME_MISSING_TERMS_DESCRIPTION = 'クエリ語のうち、1件の投稿に揃って現れなかった語（別名で見つかった語は含めない）。空なら省略';
+const REALTIME_ALIAS_TERMS_DESCRIPTION = '固有名詞の代わりに検索した別名（公式アカウントのハッシュタグから検出。例: =LOVE → イコラブ）。使った時のみ';
+
 export const RealtimeSearchResponseSchema = z.object({
   query: z.string().describe('指定された検索キーワード'),
   effectiveQuery: z.string().describe('実際に使用された有効クエリ (フォールバック適用後)'),
@@ -1423,6 +1426,8 @@ export const RealtimeSearchResponseSchema = z.object({
   sort: z.enum(['recent', 'popular']).describe('ソート順 ("recent" または "popular")'),
   source: z.literal('x').describe('ソース ("x")'),
   type: z.literal('realtime').describe('タイプ ("realtime")'),
+  missingTerms: z.array(z.string()).optional().describe(REALTIME_MISSING_TERMS_DESCRIPTION),
+  aliasTerms: z.array(z.string()).optional().describe(REALTIME_ALIAS_TERMS_DESCRIPTION),
   data: z.object({
     count: z.number().describe('取得件数'),
     items: z.array(RealtimeItemSchema).describe('リアルタイムポスト一覧'),
@@ -1478,6 +1483,8 @@ export const IntegratedSearchResponseSchema = z.object({
     isFallback: z.boolean(),
     officialAccountId: z.string().optional(),
     intent: z.string().optional(),
+    missingTerms: z.array(z.string()).optional().describe(REALTIME_MISSING_TERMS_DESCRIPTION),
+    aliasTerms: z.array(z.string()).optional().describe(REALTIME_ALIAS_TERMS_DESCRIPTION),
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
   prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),

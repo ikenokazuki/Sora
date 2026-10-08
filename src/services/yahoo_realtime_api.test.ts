@@ -129,6 +129,14 @@ describe('page fetch', () => {
     expect(result.items[0].id).toBe('2101660418129494169');
   });
 
+  test('returns the overall hit count when the payload has it', async () => {
+    const page = (head?: unknown) => searchYahooRealtimePage({ query: '渋谷VIDENT', limit: 1 }, {
+      fetchImpl: async () => Response.json({ timeline: { ...(head ? { head } : {}), entry: [] } }),
+    });
+    expect((await page({ totalResultsAvailable: 158, totalResultsReturned: 1 })).total).toBe(158);
+    expect('total' in (await page())).toBe(false);
+  });
+
   test('does not report provider failure as successful zero hits', async () => {
     await expect(searchYahooRealtimePage({ query: 'SPARK' }, {
       fetchImpl: async () => new Response('unavailable', { status: 503 }),

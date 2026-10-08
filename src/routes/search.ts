@@ -25,7 +25,7 @@ import {
   MusicSearchRequestSchema,
   IntegratedSearchRequestSchema,
 } from '../types.js';
-import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery } from '../services/yahoo.js';
+import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHints } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
@@ -89,7 +89,7 @@ const handleRealtimeSearch = async (c: any) => {
 
     let realtimeRes: any;
     try {
-      realtimeRes = await searchYahooRealtime(options);
+      realtimeRes = await searchYahooRealtime({ ...options, ...(query ? { anchorHints: createWebAnchorHints(query) } : {}) });
     } catch (err: any) {
       return c.json({ error: err.message || 'Realtime search failed' }, 502);
     }
@@ -104,6 +104,9 @@ const handleRealtimeSearch = async (c: any) => {
       sort,
       source: 'x',
       type: 'realtime',
+      // 1件の投稿に揃わなかった語と、検索に使った別名は通常応答にも出す
+      ...(realtimeRes.missingTerms?.length ? { missingTerms: realtimeRes.missingTerms } : {}),
+      ...(realtimeRes.aliasTerms?.length ? { aliasTerms: realtimeRes.aliasTerms } : {}),
       // Verbose-only provenance: compact by default, full diagnostics on demand.
       ...(body?.verbose === true
         ? {
@@ -115,6 +118,8 @@ const handleRealtimeSearch = async (c: any) => {
             requiredTerms: realtimeRes.requiredTerms,
             coveredTerms: realtimeRes.coveredTerms,
             missingTerms: realtimeRes.missingTerms,
+            ...(realtimeRes.anchorTerm ? { anchorTerm: realtimeRes.anchorTerm } : {}),
+            ...(realtimeRes.anchorFiltered !== undefined ? { anchorFiltered: realtimeRes.anchorFiltered } : {}),
           }
         : {}),
       data: {

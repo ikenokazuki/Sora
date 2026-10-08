@@ -30,6 +30,8 @@ export interface YahooRealtimePage {
   items: YahooRealtimeProviderItem[];
   count: number;
   page: number;
+  /** 検索全体の総ヒット数（timeline.head.totalResultsAvailable）。無ければ省く */
+  total?: number;
 }
 
 export type RealtimeFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -194,5 +196,6 @@ export async function searchYahooRealtimePage(
     throw new Error('Invalid Yahoo realtime payload: body is not JSON');
   }
   const items = parseYahooRealtimePayload(payload);
-  return { items, count: items.length, page: options.page ?? 1 };
+  const total = toFiniteNumber((payload as any)?.timeline?.head?.totalResultsAvailable);
+  return { items, count: items.length, page: options.page ?? 1, ...(total !== undefined ? { total } : {}) };
 }
