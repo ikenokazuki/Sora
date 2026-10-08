@@ -1,3 +1,15 @@
+# Sora v2.35.0 — 検索の待ち時間とコンテキスト量の削減、Chromium のメモリ解放
+
+- MCP の `tools/list` から `outputSchema` を既定で除外しました（全47ツールで約245KB → 約82KB）。stdio も同様です。`tools/call` の構造化出力と検証は変わりません。従来どおり含めたい場合は `SORA_TOOL_OUTPUT_SCHEMA=true` を指定してください。
+- `search_deep`（`POST /search`）に、本文合計の上限 `maxTotalChars` と、遅いページの打ち切り `scrapeDeadlineMs` を追加しました。どちらも明示した場合だけ働きます（`scrapeDeadlineMs` の既定は無効）。切り詰めた結果には `markdownTruncated`、打ち切った結果には `deadlineExceeded` が付き、`highlights` は削りません。
+- 応答に `contextSufficiency`（根拠が足りているかの信号）を追加しました。応答内容は変わりません。`partial` / `insufficient` の `reasons`（`unmentioned:語` / `unanswered:語` / `few-success`）は不足の根拠になりますが、`no_gap_detected` は十分の保証ではありません。MCP の instructions と OpenAPI にも反映しています。
+- ブラウザ描画の待機を改善しました。`networkidle` が来ないページは `load` 後5秒で打ち切り、DOM 静止の判定は DOM の変化ではなく見えている本文の変化で行います。属性だけを書き換え続けるページ（多言語化ウィジェットなど）で上限まで待たなくなり、実サイトの例で約9秒 → 約4秒になりました。取得した本文は変更前と一致しています。
+- 共有 Chromium を、無操作5分（`BROWSER_IDLE_TTL_MS`、`0` で無効）で自動的に閉じるようにしました。実測で、描画中の約950MBが解放後は約200MBに戻ります。ブラウザセッションなどが開いている間は閉じません。
+- `MAX_CONCURRENT_BROWSERS` の既定を、利用可能メモリ（cgroup の上限、無ければ搭載メモリ）から1〜5で自動算出するようにしました。明示した正の整数が優先されます。数値でない値を指定するとブラウザ描画が永久に待つ不具合を修正しました。
+- 回答値の判定で、見出し文（「■チケット料金」）の後ろ2文までの値も回答とみなすようにしました（`DEFAULT_VALUE_LOOKAHEAD`）。保存済みの100ページでハイライトの選抜は98件が不変で、変わった2件は改善でした。
+- 深層検索とスクレイプのキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
+- README を実測値と実装に合わせて整理しました（起動時間・メモリの記載、比較表、ツール数、章立て）。`docs/search-scrape-mechanics.md` と agent 向け SKILL.md も更新しています。
+
 # Sora v2.34.8 — 旧ハイライト選択アルゴリズム rho-bm25 の廃止
 
 - `highlightAlgorithm` の選択肢から `rho-bm25` を削除しました。指定できる値は `rho-select-v2`（既定）、`rho-select`、`legacy` です。`rho-bm25` を指定したリクエストは入力検証エラーになります。
