@@ -195,4 +195,58 @@ describe('integrated search Host response', () => {
       'Non-query detail',
     );
   });
+
+  describe('maxTotalChars budget', () => {
+    const page = (n: number) => ({ ...baseItem(), markdown: ('段落。'.repeat(20) + '\n\n').repeat(n) });
+    const total = (r: Record<string, any>) =>
+      r.results.reduce((a: number, it: any) => a + (it.markdown?.length ?? 0), 0);
+    const mk = () => ({ ...response(), results: [page(100), page(100), page(100)] });
+
+    test('no budget returns the original object by identity', () => {
+      const input = mk();
+      expect(formatIntegratedSearchHostResponse(input, {})).toBe(input);
+    });
+
+    test('keeps total markdown within budget, favors higher-ranked results, marks truncation', () => {
+      const out = formatIntegratedSearchHostResponse(mk(), { maxTotalChars: 6000 });
+      expect(total(out)).toBeLessThanOrEqual(6000);
+      const [a, b, c] = out.results.map((it: any) => it.markdown.length);
+      expect(a).toBeGreaterThan(b);
+      expect(b).toBeGreaterThan(c);
+      expect(out.results[0].markdownTruncated.totalChars).toBeGreaterThan(out.results[0].markdown.length);
+      expect(out.results[0].highlights).toEqual(baseItem().highlights);
+    });
+
+    test('surplus from short pages flows to later pages; untouched items are not marked', () => {
+      const short = { ...baseItem(), markdown: 'short' };
+      const out = formatIntegratedSearchHostResponse(
+        { ...response(), results: [short, page(100)] },
+        { maxTotalChars: 4000 },
+      );
+      expect(out.results[0].markdown).toBe('short');
+      expect(out.results[0].markdownTruncated).toBeUndefined();
+      expect(out.results[1].markdown.length).toBeGreaterThan(3000);
+    });
+
+    test('nothing is truncated when the total already fits, regardless of order', () => {
+      const short = { ...baseItem(), markdown: 'short page' };
+      const input = { ...response(), results: [page(100), short, short] };
+      const len = total(input as any);
+      const out = formatIntegratedSearchHostResponse(input, { maxTotalChars: len });
+      expect(total(out)).toBe(len);
+      expect(out.results.some((it: any) => it.markdownTruncated)).toBe(false);
+    });
+
+    test('stays within the budget even when a code block has to be closed', () => {
+      const code = { ...baseItem(), markdown: '```js\n' + 'const x = 1;\n'.repeat(400) + '```' };
+      const out = formatIntegratedSearchHostResponse({ ...response(), results: [code] }, { maxTotalChars: 1000 });
+      expect(out.results[0].markdown.length).toBeLessThanOrEqual(1000);
+      expect((out.results[0].markdown.match(/```/g) ?? []).length % 2).toBe(0);
+    });
+
+    test('truncates at a paragraph boundary', () => {
+      const out = formatIntegratedSearchHostResponse(mk(), { maxTotalChars: 3000 });
+      for (const it of out.results) expect(it.markdown.endsWith('段落。')).toBe(true);
+    });
+  });
 });

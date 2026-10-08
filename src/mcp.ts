@@ -348,6 +348,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '  - **`responseMode: "evidence"`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.',
       '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
       '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (which preserves full Markdown even in evidence mode).',
+      '  - **`contextSufficiency`** (response field): `partial` / `insufficient` with `reasons` (`unmentioned:<term>` = no evidence mentions the term, `unanswered:<term>` = no time/price/date value found, `few-success` = fewer than 3 pages retrieved) shows what is missing; investigate those items further. `no_gap_detected` only means no gap was found by lexical checks, not that the answer is verified.',
       '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
       '- **`search_web` (Candidate Discovery & Optional 1-Call Enrichment)**:',
       '  - **URL / Snippet Discovery**: Call with `formats` omitted for lightweight candidate search without scraping.',
@@ -651,9 +652,9 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_deep',
       'web',
-      '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
+      '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。根拠が足りているかは応答の contextSufficiency で確認できます。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
       INTEGRATED_SEARCH_INPUT_SHAPE,
-      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode }) => {
+      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -662,6 +663,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             scrapeContent,
             adaptiveScrape,
             scrapeBudget,
+            scrapeDeadlineMs,
             includeRealtime,
             realtimeSort,
             officialAccountId,
@@ -692,6 +694,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
                 explicitFormats: formats,
                 extractHighlights,
                 verbose,
+                maxTotalChars,
               }),
             }],
           };
@@ -2490,6 +2493,28 @@ export class McpSessionManager {
 }
 
 /**
+ * tools/list の1ツールを整形する。inputSchema は Gemini 互換化、outputSchema は既定で除外。
+ * outputSchema は国別インテリジェンス2ツールだけで約160KBあり、ホストがモデルへ丸ごと渡すと
+ * プロンプト長とレイテンシを押し上げる。tools/call 側の structuredContent 検証は影響を受けない。
+ * 旧挙動が必要なクライアント向けに SORA_TOOL_OUTPUT_SCHEMA=true で復活できる。
+ */
+function slimListedTool(t: any) {
+  const { outputSchema, ...rest } = t;
+  return {
+    ...rest,
+    ...(process.env.SORA_TOOL_OUTPUT_SCHEMA === 'true' && outputSchema ? { outputSchema } : {}),
+    inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
+  };
+}
+
+/** JSON-RPC メッセージが tools/list の結果なら、各ツールを slimListedTool で整形して返す（それ以外はそのまま）。 */
+export function slimToolsListMessage<T>(message: T): T {
+  const m: any = message;
+  if (!m || !Array.isArray(m.result?.tools)) return message;
+  return { ...m, result: { ...m.result, tools: m.result.tools.map(slimListedTool) } };
+}
+
+/**
  * MCP レスポンスに含まれる tools/list の inputSchema を Gemini / Vertex AI 互換に自動サニタイズ
  */
 export async function sanitizeMcpResponse(res: Response): Promise<Response> {
@@ -2502,10 +2527,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
 
       const sanitizeToolList = (result: any) => {
         if (result && Array.isArray(result.tools)) {
-          result.tools = result.tools.map((t: any) => ({
-            ...t,
-            inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
-          }));
+          result.tools = result.tools.map(slimListedTool);
           return true;
         }
         return false;
@@ -2571,10 +2593,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
               const parsed = JSON.parse(dataStr);
               let changed = false;
               if (parsed?.result?.tools && Array.isArray(parsed.result.tools)) {
-                parsed.result.tools = parsed.result.tools.map((t: any) => ({
-                  ...t,
-                  inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
-                }));
+                parsed.result.tools = parsed.result.tools.map(slimListedTool);
                 changed = true;
               }
               if (changed) {

@@ -755,6 +755,8 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
+  scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
+  maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す)。未指定なら無制限'),
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
@@ -1454,6 +1456,11 @@ export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: t
   isOfficial: z.boolean().optional().describe('公式アカウントの投稿であるか'),
   retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一の取得物を取得した経路'),
   scrapeAttemptIndex: z.number().int().optional().describe('本文取得を試行した順序 (0-based)'),
+  markdownTruncated: z.object({
+    totalChars: z.number().int().describe('切り詰め前の本文文字数'),
+    keptChars: z.number().int().describe('返却した本文文字数'),
+  }).optional().describe('maxTotalChars により本文を段落境界で切り詰めた場合に付与。highlights は削らない'),
+  deadlineExceeded: z.boolean().optional().describe('scrapeDeadlineMs の締切までに本文取得が終わらず、スニペット代替で返した場合に true'),
 });
 
 export const IntegratedRealtimeItemSchema = IntegratedSearchItemSchema.partial().extend(RealtimeItemSchema.shape);
@@ -1475,6 +1482,10 @@ export const IntegratedSearchResponseSchema = z.object({
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
   prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
   responseMode: z.literal('evidence').optional().describe('evidence 指定時に返す。full および verbose 時は省略'),
+  contextSufficiency: z.object({
+    level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
+    reasons: z.array(z.string()).describe('few-success（取得成功が3件未満） / unmentioned:語（クエリ語がどの証拠にも無い） / unanswered:語（時刻・金額・日付などの回答値が見つからない） / no-usable-content'),
+  }).optional().describe('根拠が足りているかの語彙ベースの信号。応答内容は変えない。scrapeContent:true で、本文（formats に markdown）かハイライトを取得したとき付与'),
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
 });
 
@@ -2331,7 +2342,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
-          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。',
           requestBody: {
             content: {
               'application/json': {

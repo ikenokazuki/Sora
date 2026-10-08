@@ -55,6 +55,44 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     }
   }, 16000);
 
+  test('does not wait for networkidle when the page never goes idle', async () => {
+    const server = Bun.serve({ port: 0, fetch(req) {
+      const { pathname } = new URL(req.url);
+      if (pathname === '/hang') return new Promise<Response>(() => {});
+      return new Response('<html><head><title>Event</title></head><body><main><h1>Live schedule</h1><p>2026-10-17 Doors 15:00. Meet and greet at 15:35.</p></main><script>for (let i = 0; i < 3; i++) fetch("/hang?" + i)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }});
+    const previous = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    try {
+      const started = Date.now();
+      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
+      expect(result.content).toContain('15:35');
+      expect(Date.now() - started).toBeLessThan(9000);
+    } finally {
+      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+      else process.env.ALLOW_LOCAL_FETCH = previous;
+      server.stop(true);
+    }
+  }, 20000);
+
+  test('does not wait for attribute-only DOM churn once the visible text is stable', async () => {
+    const server = Bun.serve({ port: 0, fetch() {
+      return new Response('<html><head><title>Event</title></head><body><main><h1>Live schedule</h1><p>2026-10-17 Doors 15:00. Meet and greet at 15:35.</p><p>' + 'detail '.repeat(80) + '</p></main><img id="i" alt="a" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>let n = 0; setInterval(() => { n++; const i = document.getElementById("i"); i.setAttribute("alt", "a" + n); i.setAttribute("data-x", String(n)); }, 30)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }});
+    const previous = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    try {
+      const started = Date.now();
+      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
+      expect(result.content).toContain('15:35');
+      expect(Date.now() - started).toBeLessThan(3500);
+    } finally {
+      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+      else process.env.ALLOW_LOCAL_FETCH = previous;
+      server.stop(true);
+    }
+  }, 20000);
+
   test('waits for a transient challenge to clear on the same page', async () => {
     let navigations = 0;
     const server = Bun.serve({ port: 0, fetch(req) {

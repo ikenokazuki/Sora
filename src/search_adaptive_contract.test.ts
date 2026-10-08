@@ -58,6 +58,30 @@ describe('adaptive deep search public contract', () => {
     }
   });
 
+  test('scrapeDeadlineMs is validated and forwarded by REST and MCP', async () => {
+    const ok = await searchRoutes.request('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'fixture', scrapeDeadlineMs: 6000 }),
+    });
+    expect(ok.status).toBe(200);
+    expect(searchSpy.mock.calls[0][0]).toMatchObject({ scrapeDeadlineMs: 6000 });
+    for (const scrapeDeadlineMs of [-1, 1.5, '5000', 200_000]) {
+      const bad = await searchRoutes.request('/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'fixture', scrapeDeadlineMs }),
+      });
+      expect(bad.status).toBe(400);
+    }
+    const server = createMcpServer();
+    try {
+      const tool = (server as any)._registeredTools.search_deep;
+      await tool.handler(tool.inputSchema.parse({ query: 'fixture', scrapeDeadlineMs: 0 }));
+      expect(searchSpy.mock.calls.at(-1)![0]).toMatchObject({ scrapeDeadlineMs: 0 });
+    } finally {
+      await server.close();
+    }
+  });
+
   test('omitting options preserves internal defaults', async () => {
     const response = await searchRoutes.request('/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
