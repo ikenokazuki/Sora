@@ -1485,7 +1485,7 @@ export const IntegratedSearchResponseSchema = z.object({
   contextSufficiency: z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
     reasons: z.array(z.string()).describe('few-success（取得成功が3件未満） / unmentioned:語（クエリ語がどの証拠にも無い） / unanswered:語（時刻・金額・日付などの回答値が見つからない） / no-usable-content'),
-  }).optional().describe('根拠が足りているかの語彙ベースの信号。応答内容は変えない。scrapeContent:true のとき付与'),
+  }).optional().describe('根拠が足りているかの語彙ベースの信号。応答内容は変えない。scrapeContent:true で、本文（formats に markdown）かハイライトを取得したとき付与'),
   cached: z.boolean().optional().describe('キャッシュから返却されたか'),
 });
 

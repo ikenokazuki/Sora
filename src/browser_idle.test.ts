@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import {
   closeSharedBrowser,
   defaultBrowserConcurrency,
+  resolveBrowserConcurrency,
   getBrowser,
   isSharedBrowserConnected,
   resolveChromiumPath,
@@ -21,6 +22,11 @@ describe('defaultBrowserConcurrency', () => {
   });
   test('unknown memory falls back to the previous default of 5', () => {
     expect(defaultBrowserConcurrency(undefined)).toBe(5);
+  });
+  test('MAX_CONCURRENT_BROWSERS: a positive integer wins, anything else falls back to the memory-based default', () => {
+    expect(resolveBrowserConcurrency('3', 1 * GB)).toBe(3);
+    expect(resolveBrowserConcurrency('80', 1 * GB)).toBe(50);
+    for (const bad of [undefined, '', 'abc', '0', '-2', '2.5x']) expect(resolveBrowserConcurrency(bad, 2 * GB)).toBe(4);
   });
 });
 
@@ -57,6 +63,19 @@ describe.skipIf(!resolveChromiumPath())('shared browser idle shutdown', () => {
       await context.close();
       await sleep(1200);
       expect(isSharedBrowserConnected()).toBe(false);
+    });
+  }, 30000);
+
+  test('does not close a browser that was handed out while the idle check was running', async () => {
+    await withTtl('400', async () => {
+      await closeSharedBrowser();
+      const { browser } = await getBrowser();
+      const pages = browser.pages.bind(browser);
+      // 空き判定の await 中に、別のリクエストが同じブラウザを受け取る状況を再現する
+      (browser as any).pages = async () => { await getBrowser(); return pages(); };
+      await sleep(1000);
+      expect(isSharedBrowserConnected()).toBe(true);
+      (browser as any).pages = pages;
     });
   }, 30000);
 

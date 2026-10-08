@@ -237,6 +237,13 @@ describe('integrated search Host response', () => {
       expect(out.results.some((it: any) => it.markdownTruncated)).toBe(false);
     });
 
+    test('stays within the budget even when a code block has to be closed', () => {
+      const code = { ...baseItem(), markdown: '```js\n' + 'const x = 1;\n'.repeat(400) + '```' };
+      const out = formatIntegratedSearchHostResponse({ ...response(), results: [code] }, { maxTotalChars: 1000 });
+      expect(out.results[0].markdown.length).toBeLessThanOrEqual(1000);
+      expect((out.results[0].markdown.match(/```/g) ?? []).length % 2).toBe(0);
+    });
+
     test('truncates at a paragraph boundary', () => {
       const out = formatIntegratedSearchHostResponse(mk(), { maxTotalChars: 3000 });
       for (const it of out.results) expect(it.markdown.endsWith('段落。')).toBe(true);
