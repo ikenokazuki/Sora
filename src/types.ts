@@ -670,8 +670,10 @@ export const RealtimeSearchRequestSchema = z.object({
   orWords: z.array(z.string()).optional().describe('【OR検索】いずれかを含む単語の配列 (単語A 単語B) に変換'),
   url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)').meta({ default: 'recent' }),
-  limit: z.number().int().min(1).max(40).optional().describe('取得件数 (デフォルト: 20, 最大: 40)').meta({ default: 20 }),
+  limit: z.number().int().min(1).max(40).optional().describe('返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
+  focus: z.enum(['official', 'public']).optional().describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
+  verbose: z.boolean().optional().describe('検索診断（retrievalQueries など）を含めるか').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -736,7 +738,9 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   scrapeBudget: z.number().int().min(1).max(20).optional().describe('adaptiveScrape 有効時の取得上限 (デフォルト: 8、最大: 20)。limit 未満を指定した場合は limit まで引き上げます').meta({ default: 8 }),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)').meta({ default: true }),
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
-  officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します'),
+  realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
+  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす (デフォルト: 20)').meta({ default: 20 }),
+  officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
@@ -1405,17 +1409,19 @@ export const RealtimeItemSchema = z.object({
   author: z.string().optional().describe('正規化された著者表示名'),
   siteName: z.string().optional().describe('プラットフォーム名 ("X (Twitter)")'),
   source: z.literal('x').optional().describe('ソース ("x")'),
-  isOfficial: z.boolean().optional().describe('公式アカウントの発言・一次告知であるか'),
+  isOfficial: z.boolean().optional().describe('公式アカウントの発言・一次告知なら true。それ以外は省略（verbose では false も返す）'),
   images: z.array(z.string()).optional().describe('投稿に添付された画像 URL 配列'),
   media: z.array(z.string()).optional().describe('投稿に添付されたメディア URL 配列'),
-  like_count: z.number().optional().describe('いいね数'),
-  reply_count: z.number().optional().describe('返信数'),
-  repost_count: z.number().optional().describe('リポスト数'),
+  like_count: z.number().optional().describe('いいね数（0 のときは省略。verbose では 0 も返す）'),
+  reply_count: z.number().optional().describe('返信数（0 のときは省略）'),
+  repost_count: z.number().optional().describe('リポスト数（0 のときは省略）'),
   retrievalSources: z.array(z.enum(['web', 'realtime'])).optional().describe('同一投稿を取得した経路。同一投稿IDはモードに関係なく統合する'),
 });
 
-const REALTIME_MISSING_TERMS_DESCRIPTION = 'クエリ語のうち、1件の投稿に揃って現れなかった語（別名で見つかった語は含めない）。空なら省略';
+const REALTIME_MISSING_TERMS_DESCRIPTION = 'クエリ語のうち、1件の投稿に揃って現れなかった語（別名で見つかった語と、第三者優先での評判・感想などの目印の語は含めない）。空なら省略';
 const REALTIME_ALIAS_TERMS_DESCRIPTION = '固有名詞の代わりに検索した別名（公式アカウントのハッシュタグから検出。例: =LOVE → イコラブ）。使った時のみ';
+const REALTIME_FOCUS_DESCRIPTION = '適用した優先する発信者。official: 本人・公式を先に、public: 本人以外を先に並べる（評判・炎上などの調査）';
+const REALTIME_OMITTED_DESCRIPTION = '上限で省いた投稿の数（省いた時のみ）。上限を上げるか page で追加取得できる';
 
 export const RealtimeSearchResponseSchema = z.object({
   query: z.string().describe('指定された検索キーワード'),
@@ -1426,8 +1432,10 @@ export const RealtimeSearchResponseSchema = z.object({
   sort: z.enum(['recent', 'popular']).describe('ソート順 ("recent" または "popular")'),
   source: z.literal('x').describe('ソース ("x")'),
   type: z.literal('realtime').describe('タイプ ("realtime")'),
+  focus: z.enum(['official', 'public']).optional().describe(REALTIME_FOCUS_DESCRIPTION),
   missingTerms: z.array(z.string()).optional().describe(REALTIME_MISSING_TERMS_DESCRIPTION),
   aliasTerms: z.array(z.string()).optional().describe(REALTIME_ALIAS_TERMS_DESCRIPTION),
+  omittedCount: z.number().int().optional().describe(REALTIME_OMITTED_DESCRIPTION),
   data: z.object({
     count: z.number().describe('取得件数'),
     items: z.array(RealtimeItemSchema).describe('リアルタイムポスト一覧'),
@@ -1466,6 +1474,7 @@ export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: t
     keptChars: z.number().int().describe('返却した本文文字数'),
   }).optional().describe('maxTotalChars により本文を段落境界で切り詰めた場合に付与。highlights は削らない'),
   deadlineExceeded: z.boolean().optional().describe('scrapeDeadlineMs の締切までに本文取得が終わらず、スニペット代替で返した場合に true'),
+  highlightsSameAs: z.string().optional().describe('同じハイライトが先の結果（この URL）にあるため省いた場合に付与（PC版とスマホ版など）'),
 });
 
 export const IntegratedRealtimeItemSchema = IntegratedSearchItemSchema.partial().extend(RealtimeItemSchema.shape);
@@ -1482,9 +1491,10 @@ export const IntegratedSearchResponseSchema = z.object({
     effectiveQuery: z.string(),
     isFallback: z.boolean(),
     officialAccountId: z.string().optional(),
-    intent: z.string().optional(),
+    focus: z.enum(['official', 'public']).optional().describe(REALTIME_FOCUS_DESCRIPTION),
     missingTerms: z.array(z.string()).optional().describe(REALTIME_MISSING_TERMS_DESCRIPTION),
     aliasTerms: z.array(z.string()).optional().describe(REALTIME_ALIAS_TERMS_DESCRIPTION),
+    omittedCount: z.number().int().optional().describe(REALTIME_OMITTED_DESCRIPTION),
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
   prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),

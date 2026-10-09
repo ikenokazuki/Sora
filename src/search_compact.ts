@@ -200,7 +200,20 @@ export function formatCompactIntegratedSearchResponse<
   if (options?.verbose === true) return merged;
   const out: Record<string, any> = { ...merged };
   if (Array.isArray(out.results)) {
-    out.results = out.results.map(stripInternalItemKeys);
+    // 別ページでも同じハイライト（PC版とスマホ版など）は2回目以降を参照先 URL に置き換える
+    const firstUrlByHighlights = new Map<string, string>();
+    out.results = out.results.map((item: Record<string, any>) => {
+      const compact = stripInternalItemKeys(item);
+      if (!Array.isArray(compact.highlights) || compact.highlights.length === 0) return compact;
+      const key = JSON.stringify(compact.highlights);
+      const firstUrl = firstUrlByHighlights.get(key);
+      if (firstUrl === undefined) {
+        firstUrlByHighlights.set(key, compact.url || compact.link || '');
+        return compact;
+      }
+      const { highlights: _h, textFragmentUrl: _t, ...rest } = compact;
+      return { ...rest, highlightsSameAs: firstUrl };
+    });
   }
   if (out.realtime && typeof out.realtime === 'object') {
     const realtime: Record<string, any> = { ...out.realtime };
