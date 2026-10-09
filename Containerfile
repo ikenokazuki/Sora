@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 3: Final Minimal Distroless Image
@@ -49,6 +50,9 @@ COPY --from=browser-harvester /lib/x86_64-linux-gnu /lib/x86_64-linux-gnu
 COPY --from=browser-harvester /usr/share/fonts /usr/share/fonts
 COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
+# PID 1 で孤児プロセスを回収する init。bun が PID 1 だと、共有 Chromium を閉じるたびに
+# 補助プロセス（zygote・crashpad）がゾンビとして残る
+COPY --from=browser-harvester /usr/bin/tini-static /usr/bin/tini
 
 ENV PORT=8000 \
     NODE_ENV=production \
@@ -56,6 +60,6 @@ ENV PORT=8000 \
     YAHOO_MCP_PATH=/app/yahoo-search-mcp
 
 EXPOSE 8000
-ENTRYPOINT ["/usr/local/bin/bun", "/app/server.js"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/bun", "/app/server.js"]
 
 VOLUME ["/data"]
