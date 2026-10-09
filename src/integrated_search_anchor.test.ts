@@ -33,3 +33,63 @@ test('deep search の公式枠は、X 検索で判定した固有名詞の公式
     realtimeSpy.mockRestore();
   }
 });
+
+const xPost = (id: string, handle: string, name: string, text: string) => ({ id, author_handle: handle, author_name: name, text, url: `https://x.com/${handle}/status/${id}` });
+
+test('評判を調べる時は本人以外の投稿を先に並べ、本人の投稿は後ろに最大2件', async () => {
+  const web = [{ title: '内山 優花 【君と見るそら】 (@yuka_kimisora) / X', url: 'https://x.com/yuka_kimisora' }];
+  const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items: web, count: 1 } as any);
+  const seen: any[] = [];
+  const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockImplementation(async (opts: any) => {
+    if (opts.accountId) return { items: [1, 2, 3, 4].map((n) => xPost(`o${n}`, 'yuka_kimisora', '内山 優花 【君と見るそら】', `日常の投稿${n}`)) } as any;
+    seen.push(opts);
+    return { items: [xPost('p1', 'fan1', 'fan1', '内山優花さん可愛い'), xPost('p2', 'fan2', 'fan2', '内山優花さんの歌が好き')], focus: opts.focus } as any;
+  });
+  try {
+    const result: any = await integratedSearch({ query: '内山優花 評判', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 15 });
+    expect(seen[0]).toMatchObject({ focus: 'public', maxItems: 15 });
+    expect(result.realtime.focus).toBe('public');
+    expect(result.realtime.items.map((i: any) => i.id)).toEqual(['p1', 'p2', 'o1', 'o2']);
+  } finally {
+    webSpy.mockRestore();
+    realtimeSpy.mockRestore();
+  }
+});
+
+test('自動で見つけた公式が、クエリと関係の無いアカウントなら公式として扱わない', async () => {
+  const web = [{ title: 'TimeTree (@timetreeapp_jp) / X', url: 'https://x.com/timetreeapp_jp' }];
+  const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items: web, count: 1 } as any);
+  const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockImplementation(async (opts: any) => {
+    if (opts.accountId) return { items: [xPost('t1', 'timetreeapp_jp', 'TimeTree', 'カレンダーの新機能')] } as any;
+    return { items: [xPost('p1', 'fan1', 'fan1', '=LOVE 予定')], focus: 'official' } as any;
+  });
+  try {
+    const result: any = await integratedSearch({ query: '=LOVE 予定', limit: 1, scrapeContent: false, noCache: true });
+    expect(result.realtime.officialAccountId).toBeUndefined();
+    expect(result.realtime.items.map((i: any) => i.id)).toEqual(['p1']);
+  } finally {
+    webSpy.mockRestore();
+    realtimeSpy.mockRestore();
+  }
+});
+
+test('realtimeLimit を既定（20）より大きくした時だけ、X への取得件数も増やす', async () => {
+  const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items: [], count: 0 } as any);
+  const seen: any[] = [];
+  const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockImplementation(async (opts: any) => {
+    if (!opts.accountId) seen.push(opts);
+    return { items: [xPost('p1', 'fan1', 'fan1', '内山優花さん')], focus: 'official' } as any;
+  });
+  try {
+    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true });
+    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 30 });
+    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 100 });
+    expect(seen[0].limit).toBeUndefined();
+    expect(seen[1]).toMatchObject({ limit: 30, maxItems: 30 });
+    // Yahoo の1回の取得は40件まで。上限だけ100にして、複数の検索の結果から選ぶ
+    expect(seen[2]).toMatchObject({ limit: 40, maxItems: 100 });
+  } finally {
+    webSpy.mockRestore();
+    realtimeSpy.mockRestore();
+  }
+});

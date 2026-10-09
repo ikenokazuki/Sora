@@ -349,6 +349,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '  - **`responseMode: "evidence"`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.',
       '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
       '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (which preserves full Markdown even in evidence mode).',
+      '  - **`realtimeFocus`**: `"public"` puts posts by others first (reputation, reactions, backlash, on-site reports); `"official"` (default) puts the account\'s own posts first (schedules, announcements). It is inferred from words like 評判/炎上/口コミ when omitted. `realtime.omittedCount` > 0 means posts were left out by the cap; raise `realtimeLimit` if more are needed.',
       '  - **`contextSufficiency`** (response field): `partial` / `insufficient` with `reasons` (`unmentioned:<term>` = no evidence mentions the term, `unanswered:<term>` = no time/price/date value found, `few-success` = fewer than 3 pages retrieved) shows what is missing; investigate those items further. `no_gap_detected` only means no gap was found by lexical checks, not that the answer is verified.',
       '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
       '- **`search_web` (Candidate Discovery & Optional 1-Call Enrichment)**:',
@@ -655,7 +656,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'web',
       '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。根拠が足りているかは応答の contextSufficiency で確認できます。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
       INTEGRATED_SEARCH_INPUT_SHAPE,
-      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
+      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeLimit, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -667,6 +668,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             scrapeDeadlineMs,
             includeRealtime,
             realtimeSort,
+            realtimeFocus,
+            realtimeLimit,
             officialAccountId,
             maxChars,
             noCache,
@@ -1091,7 +1094,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, count, items, missingTerms?, aliasTerms? } (missingTerms=1件の投稿に揃わなかった語、aliasTerms=固有名詞の代わりに検索した別名。verbose:trueで検索診断追加、一部失敗時はpartial:trueとproviderErrorsを付与)',
+      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)',
       {
         query: z
           .string()
@@ -1131,12 +1134,16 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .max(100)
           .optional()
           .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100)').meta({ default: 1 }),
+        focus: z
+          .enum(['official', 'public'])
+          .optional()
+          .describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
         verbose: z
           .boolean()
           .optional()
           .describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)').meta({ default: false }),
       },
-      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, verbose }) => {
+      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, focus, verbose }) => {
         try {
           const result = await searchYahooRealtime({
             query,
@@ -1151,6 +1158,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             ...(limit ? { limit } : {}),
             ...(page ? { page } : {}),
             ...(verbose === true ? { verbose: true } : {}),
+            ...(focus ? { focus } : {}),
             ...(query ? { anchorHints: createWebAnchorHints(query) } : {}),
           });
 
@@ -1166,8 +1174,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               retrievalQueries: (result as any).retrievalQueries || [],
               contributingQueries: (result as any).contributingQueries || [],
               resultsMerged: (result as any).resultsMerged || false,
+              focus: result.focus,
               missingTerms: result.missingTerms,
               ...(result.aliasTerms ? { aliasTerms: result.aliasTerms } : {}),
+              ...(result.omittedCount ? { omittedCount: result.omittedCount } : {}),
               ...(result.anchorTerm ? { anchorTerm: result.anchorTerm } : {}),
               ...(result.anchorFiltered !== undefined ? { anchorFiltered: result.anchorFiltered } : {}),
               sort: sort || 'recent',
@@ -1178,7 +1188,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           );
 
           return {
-            content: [{ type: 'text', text: JSON.stringify(responsePayload, null, 2) }],
+            // 整形なしの JSON（verbose は人が読む診断用なので整形する）
+            content: [{ type: 'text', text: verbose === true ? JSON.stringify(responsePayload, null, 2) : JSON.stringify(responsePayload) }],
           };
         } catch (err: any) {
           return {

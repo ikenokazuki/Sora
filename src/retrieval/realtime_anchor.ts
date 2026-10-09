@@ -2,6 +2,7 @@
 // ネットワークを使わない純粋関数だけを置く。取得と組み立ては services/yahoo.ts。
 // 評価: eval/realtime_anchor_cases.json と scripts/eval-realtime-anchor.ts
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './lexicons/temporal.js';
+import { PUBLIC_FOCUS_SEARCH_EXCLUDED_TERMS, PUBLIC_FOCUS_TERMS } from './lexicons/realtime_focus.js';
 
 const nk = (s: string): string => (s || '').normalize('NFKC').toLowerCase();
 const SEPARATOR = /[\s・]/;
@@ -69,10 +70,87 @@ function titleSitePart(title: string): string {
   return parts.length > 1 ? parts[parts.length - 1] : '';
 }
 
-/** 判定の候補: 汎用語と数値を除いた語。全部除かれるなら全語。 */
+/** 判定の候補: 汎用語・数値・評判系の目印を除いた語。全部除かれるなら全語。 */
 export function anchorCandidates(terms: string[]): string[] {
-  const candidates = terms.filter((t) => !GENERIC_TERMS.has(nk(t)) && !isNumericTerm(t));
+  const candidates = terms.filter((t) => !GENERIC_TERMS.has(nk(t)) && !isNumericTerm(t) && !isPublicFocusTerm(t));
   return candidates.length > 0 ? candidates : terms;
+}
+
+/** X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上など） */
+export type RealtimeFocus = 'official' | 'public';
+
+const containsAny = (text: string, terms: string[]) => terms.some((t) => termHits(t, text));
+
+/** 語が評判系の目印か（「叩かれてる」は「叩か」を含む）。 */
+export const isPublicFocusTerm = (term: string): boolean => containsAny(term, PUBLIC_FOCUS_TERMS);
+
+/** 投稿にほぼ書かれないため、X の検索語から外す目印か。 */
+export const isSearchExcludedTerm = (term: string): boolean => containsAny(term, PUBLIC_FOCUS_SEARCH_EXCLUDED_TERMS);
+
+/** クエリの語から focus を推定する。評判系の目印が無ければ公式優先（従来の動き）。 */
+export function detectRealtimeFocus(query: string): RealtimeFocus {
+  return containsAny(query || '', PUBLIC_FOCUS_TERMS) ? 'public' : 'official';
+}
+
+/**
+ * 自動で見つけた公式アカウントが、クエリの対象のものか。表示名か、3割以上の投稿にクエリの語があれば真。
+ * 取得したページの X 欄（TimeTree なら TimeTree 自身のアカウント）を公式とみなさないための確認。
+ */
+export function officialAccountMatches(
+  posts: Array<{ text?: string; author_name?: string }>,
+  terms: string[],
+): boolean {
+  if (posts.length === 0 || terms.length === 0) return false;
+  if (postMentions({ author_name: posts[0].author_name }, terms)) return true;
+  return posts.filter((p) => postMentions({ text: p.text }, terms)).length >= posts.length * 0.3;
+}
+
+/** 上限を超えて残す投稿の数の上限（上限内のどの投稿にも無い語を含む投稿）。 */
+const MAX_EVIDENCE_EXTRA = 5;
+
+/**
+ * 返す投稿を上限まで選ぶ。検索（retrievalQueryIndex）ごとに交互に選び、第三者優先では同じ投稿者を後回しにする。
+ * 上限内のどの投稿にも無い語を含む投稿は、上限を超えて残す（最大5件）。選んだ投稿は元の順序で返す。
+ */
+export function selectRealtimeItems<T extends Record<string, any>>(
+  items: T[],
+  options: { cap: number; focus: RealtimeFocus; terms: string[]; aliases?: Record<string, string[]> },
+): { items: T[]; omitted: number } {
+  if (items.length <= options.cap) return { items, omitted: 0 };
+  const groups = new Map<number, number[]>();
+  items.forEach((item, i) => {
+    const key = typeof item.retrievalQueryIndex === 'number' ? item.retrievalQueryIndex : 0;
+    groups.set(key, [...(groups.get(key) ?? []), i]);
+  });
+  let order: number[] = [];
+  for (let round = 0; order.length < items.length; round++) {
+    for (const group of groups.values()) if (round < group.length) order.push(group[round]);
+  }
+  if (options.focus === 'public') {
+    const seen = new Set<string>();
+    const first: number[] = [];
+    const rest: number[] = [];
+    for (const i of order) {
+      const author = String(items[i].author_handle || '').toLowerCase();
+      (author && seen.has(author) ? rest : first).push(i);
+      if (author) seen.add(author);
+    }
+    order = [...first, ...rest];
+  }
+  const selected = new Set(order.slice(0, options.cap));
+  const covers = (i: number, term: string) => postMentions(items[i], [term, ...(options.aliases?.[term] ?? [])]);
+  let extra = 0;
+  for (const term of options.terms) {
+    if (extra >= MAX_EVIDENCE_EXTRA) break;
+    if ([...selected].some((i) => covers(i, term))) continue;
+    const add = order.find((i) => !selected.has(i) && covers(i, term));
+    if (add !== undefined) {
+      selected.add(add);
+      extra++;
+    }
+  }
+  const out = items.filter((_, i) => selected.has(i));
+  return { items: out, omitted: items.length - out.length };
 }
 
 /**

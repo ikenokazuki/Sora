@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import { rerankSearchResults, computeAnswerability } from '../src/enrichment.js';
 import { mergeYahooWebQueryBatches, assessRetrievalConfidence } from '../src/services/yahoo.js';
 import { selectScrapeTargets, assessEvidenceSufficiency } from '../src/scraper.js';
-import { rankRealtimeItems } from '../src/services/x_detail.js';
 
 type EvalItem = { title?: string; snippet?: string; description?: string; url?: string; link?: string };
 type Batch = { query: string; queryIndex: number; items: EvalItem[] };
@@ -89,80 +88,8 @@ if (args.includes('--selftest')) {
   if (c[0] !== b[0] || c[1] !== b[1] || c[2] !== b[2]) throw new Error('C must guarantee top3');
   const weak = assessRetrievalConfidence([{ title: 'a', snippet: 'a', url: 'https://a.example/' }, { title: 'a', snippet: 'a', url: 'https://b.example/' }] as any, 'a b c');
   if (weak.good) throw new Error('confidence should flag missing terms');
-  // X native ranking invariants (section 50).
-  const posts = [
-    { id: '1', author_handle: 'fan', text: 'SPARK legend live best ever', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
-    { id: '2', author_handle: 'official', text: 'SPARK announcement', publishedTime: new Date().toISOString() },
-  ];
-  const recent = rankRealtimeItems(posts as any, { query: 'SPARK', mode: 'recent' });
-  if (recent[0].id !== '1') throw new Error('recent must preserve provider order');
-  const ev = rankRealtimeItems(posts as any, { query: 'SPARK announcement', mode: 'evidence', officialHandles: ['official'] });
-  if (ev[0].id !== '2') throw new Error('evidence must prefer official full-coverage post');
-  console.log('selftest ok: ' + cases.length + ' cases + xrank');
+  console.log('selftest ok: ' + cases.length + ' cases');
   process.exit(0);
-}
-type XEvalCase = { id: string; query: string; requirements: string[]; officialHandles: string[]; posts: any[] };
-const xCases: XEvalCase[] = [
-  { id: 'x-fact-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: ['official'], posts: [
-    { id: '1', author_handle: 'fan', text: 'SPARK legend live best ever', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
-    { id: '2', author_handle: 'official', text: 'SPARK announcement venue changed', publishedTime: new Date().toISOString() },
-    { id: '3', author_handle: 'fan2', text: 'random daily post', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-popular-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'viral', text: 'SPARK lol', publishedTime: new Date(Date.now() - 1 * 3600000).toISOString() },
-    { id: '2', author_handle: 'fan', text: 'SPARK detailed announcement analysis', publishedTime: new Date(Date.now() - 2 * 3600000).toISOString() },
-  ] },
-  { id: 'x-rrf-01', query: 'SPARK ticket', requirements: ['spark'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'a', text: 'SPARK ticket', publishedTime: new Date().toISOString() },
-    { id: '2', author_handle: 'b', text: 'SPARK ticket', publishedTime: new Date().toISOString(), rrfScore: 0.05 },
-  ] },
-  { id: 'x-fresh-01', query: 'SPARK news', requirements: ['spark'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'a', text: 'SPARK news', publishedTime: new Date(Date.now() - 20 * 86400000).toISOString() },
-    { id: '2', author_handle: 'b', text: 'SPARK news', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-reaction-01', query: 'SPARK 反応', requirements: ['spark', '反応'], officialHandles: ['official'], posts: [
-    { id: '1', author_handle: 'official', text: 'SPARK news', publishedTime: new Date().toISOString() },
-    { id: '2', author_handle: 'fanA', text: 'SPARK 反応', publishedTime: new Date().toISOString() },
-    { id: '3', author_handle: 'fanB', text: 'SPARK 反応まとめ', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-reaction5-01', query: 'SPARK 感想', requirements: ['spark', '感想'], officialHandles: ['official'], posts: [
-    { id: '1', author_handle: 'official', text: 'SPARK news', publishedTime: new Date().toISOString() },
-    { id: '2', author_handle: 'fanA', text: 'SPARK 感想', publishedTime: new Date().toISOString() },
-    { id: '3', author_handle: 'fanB', text: 'SPARK 感想あり', publishedTime: new Date().toISOString() },
-    { id: '4', author_handle: 'fanC', text: 'SPARK 感想です', publishedTime: new Date().toISOString() },
-    { id: '5', author_handle: 'fanA', text: 'SPARK 感想2', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-fact-stale-01', query: 'SPARK announcement', requirements: ['spark', 'announcement'], officialHandles: ['official'], posts: [
-    { id: '1', author_handle: 'official', text: 'SPARK announcement', publishedTime: new Date(Date.now() - 30 * 86400000).toISOString() },
-    { id: '2', author_handle: 'fan', text: 'SPARK announcement repost', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-tie-01', query: 'SPARK news', requirements: ['spark'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'a', text: 'SPARK news', publishedTime: new Date().toISOString() },
-    { id: '2', author_handle: 'b', text: 'SPARK news', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-lexical-01', query: 'SPARK', requirements: ['spark'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'a', text: 'ok', publishedTime: new Date().toISOString() },
-    { id: '2', author_handle: 'b', text: 'SPARK SPARK SPARK detailed', publishedTime: new Date().toISOString() },
-  ] },
-  { id: 'x-recency-01', query: 'SPARK live', requirements: ['spark'], officialHandles: [], posts: [
-    { id: '1', author_handle: 'a', text: 'SPARK live report', publishedTime: new Date(Date.now() - 2 * 86400000).toISOString() },
-    { id: '2', author_handle: 'b', text: 'SPARK live photos', publishedTime: new Date(Date.now() - 10 * 86400000).toISOString() },
-  ] },
-];
-function scoreXCase(c: XEvalCase) {
-  const arms: Record<string, any[]> = {
-    recent: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'recent' }),
-    popular: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'popular' }),
-    evidence: rankRealtimeItems(c.posts as any, { query: c.query, mode: 'evidence', requirements: c.requirements, officialHandles: c.officialHandles }),
-  };
-  const out: Record<string, any> = {};
-  for (const [k, items] of Object.entries(arms)) {
-    const top = items[0] || {};
-    const text = ((top as any).text || '').toLowerCase();
-    const covered = c.requirements.filter((t) => text.includes(t)).length;
-    out[k] = { topId: (top as any).id ?? null, coverage: c.requirements.length > 0 ? Number((covered / c.requirements.length).toFixed(3)) : 1 };
-  }
-  return { id: c.id, query: c.query, arms: out };
 }
 const results = cases.map(scoreCase);
 const agg: Record<string, any> = {};
@@ -183,17 +110,10 @@ console.log('| case | would-adapt | reasons |');
 console.log('|---|---|---|');
 for (const r of results) console.log('| ' + r.id + ' | ' + (!r.confidence.good) + ' | ' + (r.confidence.reasons.join(', ') || '-') + ' |');
 console.log('');
-const xResults = xCases.map(scoreXCase);
 console.log('Mean req coverage: ' + JSON.stringify(agg));
-console.log('');
-console.log('## X ranking eval (offline, ' + xCases.length + ' cases)');
-console.log('');
-console.log('| case | recent top | popular top | evidence top | evidence cov |');
-console.log('|---|---|---|---|---|');
-for (const r of xResults) console.log('| ' + r.id + ' | ' + r.arms.recent.topId + ' | ' + r.arms.popular.topId + ' | ' + r.arms.evidence.topId + ' | ' + r.arms.evidence.coverage + ' |');
 const outIdx = args.indexOf('--json-out');
 if (outIdx >= 0 && args[outIdx+1]) {
   mkdirSync(dirname(args[outIdx+1]), { recursive: true });
-  writeFileSync(args[outIdx+1], JSON.stringify({ startedAt: new Date().toISOString(), results, agg, xResults }, null, 2));
+  writeFileSync(args[outIdx+1], JSON.stringify({ startedAt: new Date().toISOString(), results, agg }, null, 2));
   console.log('wrote ' + args[outIdx+1]);
 }

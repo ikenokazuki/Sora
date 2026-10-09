@@ -55,6 +55,10 @@ const handleRealtimeSearch = async (c: any) => {
     if (body?.page !== undefined && (!Number.isInteger(body.page) || body.page < 1)) {
       return c.json({ error: 'page must be an integer >= 1' }, 400);
     }
+    if (body?.focus !== undefined && body.focus !== 'official' && body.focus !== 'public') {
+      return c.json({ error: 'focus must be "official" or "public"' }, 400);
+    }
+    const focus: 'official' | 'public' | undefined = body?.focus;
     const limit = typeof body?.limit === 'number' ? body.limit : undefined;
     const page = typeof body?.page === 'number' ? body.page : undefined;
 
@@ -70,6 +74,7 @@ const handleRealtimeSearch = async (c: any) => {
       sort,
       ...(limit !== undefined ? { limit } : {}),
       ...(page !== undefined ? { page } : {}),
+      ...(focus ? { focus } : {}),
       ...(body?.verbose === true ? { verbose: true } : {}),
     };
 
@@ -104,9 +109,11 @@ const handleRealtimeSearch = async (c: any) => {
       sort,
       source: 'x',
       type: 'realtime',
-      // 1件の投稿に揃わなかった語と、検索に使った別名は通常応答にも出す
+      focus: realtimeRes.focus,
+      // 1件の投稿に揃わなかった語、検索に使った別名、上限で省いた件数は通常応答にも出す
       ...(realtimeRes.missingTerms?.length ? { missingTerms: realtimeRes.missingTerms } : {}),
       ...(realtimeRes.aliasTerms?.length ? { aliasTerms: realtimeRes.aliasTerms } : {}),
+      ...(realtimeRes.omittedCount ? { omittedCount: realtimeRes.omittedCount } : {}),
       // Verbose-only provenance: compact by default, full diagnostics on demand.
       ...(body?.verbose === true
         ? {
@@ -219,6 +226,14 @@ const handleIntegratedSearch = async (c: any) => {
     if (!maxTotalCharsParsed.success) {
       return c.json({ error: 'maxTotalChars must be an integer between 1000 and 500000' }, 400);
     }
+    const realtimeFocusParsed = IntegratedSearchRequestSchema.shape.realtimeFocus.safeParse(body?.realtimeFocus);
+    if (!realtimeFocusParsed.success) {
+      return c.json({ error: 'realtimeFocus must be "official" or "public"' }, 400);
+    }
+    const realtimeLimitParsed = IntegratedSearchRequestSchema.shape.realtimeLimit.safeParse(body?.realtimeLimit);
+    if (!realtimeLimitParsed.success) {
+      return c.json({ error: 'realtimeLimit must be an integer between 1 and 100' }, 400);
+    }
 
     const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
     if (!adaptiveOptions.success) {
@@ -234,6 +249,8 @@ const handleIntegratedSearch = async (c: any) => {
       ...adaptiveOptions.data,
       includeRealtime,
       realtimeSort,
+      realtimeFocus: realtimeFocusParsed.data,
+      realtimeLimit: realtimeLimitParsed.data,
       officialAccountId,
       maxChars,
       noCache,
