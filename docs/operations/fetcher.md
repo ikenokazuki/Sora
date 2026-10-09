@@ -15,13 +15,13 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `ghcr.io/ikenokazuki/sora:2.35.0`
-  (image ID `ec8d5574b7ea`, digest `sha256:8ecf168e1b154fcdc8a035c1166ceb38cbaa7eae72a210690ea4ed3624319e66`,
-  deployed 2026-10-08). Package/health version: `2.35.0`.
-  Search latency and context-size controls (`maxTotalChars`, opt-in `scrapeDeadlineMs`,
-  `contextSufficiency`), `outputSchema` omitted from `tools/list`, bounded browser waits,
-  and idle release of the shared Chromium (`BROWSER_IDLE_TTL_MS`, default 5 minutes).
-  The existing host-independent discovery instructions are retained.
+- Current image: `ghcr.io/ikenokazuki/sora:2.36.0`
+  (image ID `a29c58e96203`, digest `sha256:7a8c0c8aaa4f1c6c7831b5b9e9c758ccfdcba2bb2d275b6c6ca26723e3e9eee7`,
+  deployed 2026-10-09). Package/health version: `2.36.0`.
+  X realtime search keeps the proper noun when relaxing queries, searches official-hashtag aliases
+  for proper nouns that Yahoo cannot match (`=LOVE` → `イコラブ`), and returns `missingTerms` /
+  `aliasTerms` in compact responses (`SORA_REALTIME_ANCHOR=off` restores the previous relaxation).
+  The image now runs `tini` as PID 1 so Chromium helpers left after the idle release are reaped.
 - `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
   is limited to 14 by the saved LibreChat Agent's native deferred loading.
 - Released images: ghcr.io/ikenokazuki/sora, pinned tag per release.
@@ -177,6 +177,20 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.36.0の公開と本番反映（2026-10-09）
+
+- X検索のノイズ削減。主な変更：緩和の再検索で固有名詞を落とさない（Webタイトルと総ヒット数で判定、語順を問わない）、Yahooが記号を無視する固有名詞は公式Xアカウントのハッシュタグから別名を検出して検索し無関係な投稿を除く、`search_deep`の公式枠も固有名詞の公式にそろえる、`missingTerms`・`aliasTerms`を通常応答に追加、網羅判定のNFKC化、空の`includeDomains`/`excludeDomains`で0件になる不具合の修正、テスト後の共有Chromiumの後始末、キャッシュ名前空間をv6へ更新。詳細は`RELEASE_NOTES.md`。
+- v2.35.0のアイドル解放で、共有Chromiumを閉じるたびに補助プロセス（zygote・crashpad）がゾンビとして残る不具合を見つけて修正した（コンテナでbunがPID 1のため回収されない）。反映前の本番は約15時間で24個（chrome_crashpad 12・chromium 12）。2.35.0イメージの使い捨てコンテナで再現し、`--init`付きでは残らないことを確かめたうえで、イメージにtini（Debian bookwormの`tini-static`）を入れてPID 1にした。起動コマンド・ポート・環境変数は変わらない。
+- リリースコミットは`24aa03e`（`release: v2.36.0`）、タグ`v2.36.0`。`main`とタグを`--atomic`でpushした。公開CI（全テスト・候補ビルド・両実APIレーン）が通り、`2.36.0`・`2.36`が同一digest`sha256:7a8c0c8aaa4f…`で公開された。[日本語リリース](https://github.com/ikenokazuki/Sora/releases/tag/v2.36.0)も作成済み。ゲート緩和なし。公開前の全テストはリリース候補のツリーで1,381成功、17スキップ、失敗0件。
+- 注意：`main`へのpushとタグのpushでパイプラインが別々にイメージを作るため、後から終わった`main`側の別ビルドが`latest`と`sha-24aa03e`を`sha256:696b8b022aa0…`で上書きした（同じコミット、どちらも全ゲート通過）。本番は`2.36.0`に固定しているため影響なし。
+- apps側のpull結果のイメージIDは`a29c58e96203b2afb637c0cb005ec19b0c04e2945a7661f51bc895d71faa38db`、ENTRYPOINTは`/usr/bin/tini -- /usr/local/bin/bun /app/server.js`。
+- 正式イメージを別ポート3117・使い捨てDB・本番と同じkrun/`SORA_DEFER_TOOLS=false`で検証（候補のみ`BROWSER_IDLE_TTL_MS=15000`）。16項目すべて成功：health 2.36.0、OpenAPIの`missingTerms`/`aliasTerms`、「ライブ 予定 =LOVE」で別名`イコラブ`・39件すべて固有名詞か別名を含む、verboseの`anchorTerm`/`anchorFiltered`と固有名詞を落とす再検索が無いこと、空のドメイン指定で0件にならない、deep searchの公式枠が`Equal_LOVE_12`、MCP 47ツール（`outputSchema`なし）と`search_realtime`の別名`ノイミー`、実ブラウザ描画。アイドル解放を2回繰り返してもtiniの配下はbunだけ（同条件の2.35.0では4個残った）。
+- DBバックアップは`/data/backups/sora-before-2.36.0-20261009T025150Z.db`（0600、3,960,832バイト、quick_check=ok）。Nix宣言とappsのQuadlet drop-inを同じ固定タグで揃え、Pull=newerを維持。既存のSORA_DEFER_TOOLS=false、Host/Origin、web-fetcher-data:/data:U、127.0.0.1:3016、krunを維持した。drop-inの変更前は`20-release.conf.before-v2.36.0-20261009T025150Z`に保存した。
+- 生成されたExecStartを確認し、`web-fetcher.service`だけを再起動した（11:52:28、約5秒でhealth ok）。他の本番コンテナ18個のIDは変化なし。NixOS全体は再構築していない。検証用の候補コンテナは削除済み。
+- 公開URLでの確認：候補と同じスモーク16項目がすべて成功。本番の既定TTL（5分）で、最終利用の約5分後に`sharedConnected: false`、tiniの配下はbunだけ（ゾンビ0）、bunのRSS 175MB。再起動後のログにエラーなし。
+- 復旧先は直前の`ghcr.io/ikenokazuki/sora:2.35.0`（ID `ec8d5574b7ea`）。drop-inの`20-release.conf.before-v2.36.0-20261009T025150Z`を戻し、Nix宣言も2.35.0へ戻してdaemon-reload、web-fetcherだけをrestartする。通常のイメージ復旧ではDBを復元しない（2.35.0へ戻すとゾンビの蓄積も戻る）。
+- 本番・候補の取得結果、イメージID、digest、設定控え、DBバックアップの確認結果は`/home/ikeno/.local/state/sora-deploy/20261009T022217Z-2.36.0/`に保存した。
 
 ## v2.35.0の公開と本番反映（2026-10-08）
 
