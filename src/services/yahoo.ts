@@ -2081,47 +2081,35 @@ export async function fetchTweetsForUrlOrUser(
     }
   }
 
-  // 検索クエリ候補: 1) contextTitle (日本語名など), 2) @handle
+  // 検索クエリ: ハンドルが分かれば本人の投稿（id:）だけを使う。表示名での検索は別人の投稿を拾うため
+  // （「＝LOVE_official」で「LOVE off vocal」の投稿など）、ハンドルが分からない時だけ使う
   const searchQueries: string[] = [];
-  if (options.contextTitle) {
-    const cleanTitle = options.contextTitle
-      .replace(/\s*\(@?[a-zA-Z0-9_]+\)\s*\/.*$/, '')
-      .replace(/[\/X Twitter].*$/, '')
-      .replace(/^[^\s]+ on X:\s*"?/i, '')
-      .replace(/"?\s*\/ X$/i, '')
-      .trim();
-    if (cleanTitle && cleanTitle.length > 2) searchQueries.push(cleanTitle);
-  }
   if (handle) {
     searchQueries.push(`id:${handle}`);
-    searchQueries.push(`@${handle}`);
+  } else if (options.contextTitle) {
+    const cleanTitle = options.contextTitle
+      .replace(/\s*\(@?[a-zA-Z0-9_]+\)\s*\/.*$/, '')
+      .replace(/\s*\/\s*(?:X|Twitter)\s*$/i, '')
+      .replace(/^[^\s]+ on X:\s*"?/i, '')
+      .trim();
+    if (cleanTitle.length > 2) searchQueries.push(cleanTitle);
   }
 
+  const searchPage: typeof searchYahooRealtimePage = (options as any)._searchPage || searchYahooRealtimePage;
   let matchedItems: any[] = [];
   let authorName = '';
 
   for (const q of searchQueries) {
     try {
-      const page = await searchYahooRealtimePage({ query: q, sort: 'recent', limit: options.limit || 15 });
-      const items = page.items;
+      const page = await searchPage({ query: q, sort: 'recent', limit: options.limit || 15 });
+      const lowerHandle = handle.toLowerCase();
+      const items = handle
+        ? page.items.filter((it: any) => (it.author_handle || '').replace(/^@/, '').toLowerCase() === lowerHandle)
+        : page.items;
       if (items.length > 0) {
-        // handle がある場合は、その本人のポストを優先、なければ関連ポスト
-        if (handle) {
-          const lowerHandle = handle.toLowerCase();
-          const selfTweets = items.filter(
-            (it: any) => (it.author_handle || '').replace(/^@/, '').toLowerCase() === lowerHandle,
-          );
-          if (selfTweets.length > 0) {
-            matchedItems = selfTweets;
-            authorName = selfTweets[0].author_name || (selfTweets[0] as any).author || handle;
-            break;
-          }
-        }
-        if (matchedItems.length === 0) {
-          matchedItems = items;
-          authorName = items[0].author_name || (items[0] as any).author || handle;
-          break;
-        }
+        matchedItems = items;
+        authorName = items[0].author_name || (items[0] as any).author || handle;
+        break;
       }
     } catch {}
   }
