@@ -999,6 +999,16 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 - **返る件数の考え方 (`POST /search`)**:
   - **Web (`results`)**: `limit`（既定5、最大20）の件数だけ本文を取得します。取得に失敗した（本文が取れずスニペット代替になった）ページは、次の候補で補って取得するため、`results` が `limit` を超えることがあります。`adaptiveScrape: true` では、証拠が足りない間 `scrapeBudget`（既定8、最大20）まで追加で取得します。`maxTotalChars` は本文の合計だけを制限し、件数は変えません。
   - **X (`realtime.items`)**: `realtimeLimit`（既定20）が上限で、公式アカウントの投稿は別枠で追加されます（`official` は先頭に最大5件、`public` は後ろに最大2件）。そのため件数は最大で上限＋5件です。上限で省いた件数は `realtime.omittedCount` で分かります。
+- **小さなモデル・低コスト向けの設定 (`POST /search` / MCP `search_deep`)**: 応答の量は引数で絞れます。既定のままだと X 投稿の画像 URL や予定データ（`events`）も含めて大きくなるため、LLM の文脈が小さい場合は次のように指定してください（「=LOVE ライブ 予定」の実測。トークン数は GPT 系の数え方）。
+
+  | 設定 | 指定する引数 | 応答の量 |
+  |---|---|---|
+  | 既定 | （なし） | 約27,700字・13,700トークン |
+  | 軽量 | `limit: 3`, `responseMode: "evidence"`, `realtimeLimit: 8`, `maxTotalChars: 3000` | 約18,100字・8,700トークン |
+  | 最小 | `limit: 3`, `responseMode: "evidence"`, `realtimeLimit: 5`, `maxTotalChars: 1500` | 約13,900字・6,400トークン |
+  | X なし | 軽量に `includeRealtime: false` を加える | 約9,300字・4,100トークン |
+
+  `evidence` は本文を省いてハイライトを残すモードで、`events` と X 投稿の画像 URL は減らしません。待ち時間とメモリだけを減らすなら `scrape` の `mode: "fast"`（静的取得のみ）がありますが、LLM に渡る量は変わりません。根拠が足りないときは `contextSufficiency` を見て `responseMode: "full"` や `adaptiveScrape` で取り直せます。
 - **深層検索リクエスト (`POST /search` / `/search/deep` / `/search/integrated` / `/deep-search`)**:
 ```json
 {
