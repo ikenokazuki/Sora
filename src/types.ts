@@ -732,14 +732,14 @@ export type SearchWebRequest = z.infer<typeof SearchWebRequestSchema>;
 
 export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
-  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)').meta({ default: 5 }),
+  limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)。取得に失敗したページは次の候補で補うため results が limit を超えることがあり、adaptiveScrape:true では証拠不足の間 scrapeBudget まで増える。X 投稿は別枠 (realtimeLimit)').meta({ default: 5 }),
   scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)').meta({ default: true }),
   adaptiveScrape: z.boolean().optional().describe('回答根拠が不足する場合に候補ページを追加取得するか (デフォルト: false、scrapeContent: true の場合のみ有効)').meta({ default: false }),
   scrapeBudget: z.number().int().min(1).max(20).optional().describe('adaptiveScrape 有効時の取得上限 (デフォルト: 8、最大: 20)。limit 未満を指定した場合は limit まで引き上げます').meta({ default: 8 }),
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)').meta({ default: true }),
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
-  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす (デフォルト: 20)').meta({ default: 20 }),
+  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
