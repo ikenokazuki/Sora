@@ -412,6 +412,22 @@ describe('formatCompactIntegratedSearchResponse', () => {
     expect(formatCompactIntegratedSearchResponse(response, { verbose: true }).realtime).toMatchObject({ anchorTerm: '=LOVE', anchorFiltered: 3 });
   });
 
+  test('identical highlights on another page are replaced by a pointer (compact only)', () => {
+    const hl = ['## SCHEDULE 10/15 TOYOTA ARENA TOKYO'];
+    const response = { count: 3, results: [
+      { url: 'https://equal-love.jp/schedule', highlights: hl, textFragmentUrl: 'https://equal-love.jp/schedule#:~:text=a' },
+      { url: 'https://sp.equal-love.jp/schedule/list/12', highlights: [...hl], textFragmentUrl: 'https://equal-love.jp/schedule#:~:text=a', markdown: 'nav' },
+      { url: 'https://oshisuki.com/idols/equal-love', highlights: ['other'] },
+    ] };
+    const compact: any = formatCompactIntegratedSearchResponse(response);
+    expect(compact.results[1].highlights).toBeUndefined();
+    expect(compact.results[1].textFragmentUrl).toBeUndefined();
+    expect(compact.results[1].highlightsSameAs).toBe('https://equal-love.jp/schedule');
+    expect(compact.results[1].markdown).toBe('nav');
+    expect(compact.results[2].highlights).toEqual(['other']);
+    expect(formatCompactIntegratedSearchResponse(response, { verbose: true }).results[1].highlights).toEqual(hl);
+  });
+
   test('similar posts with different IDs survive unconditional identity merging', () => {
     const response = { count: 0, results: [], realtime: { count: 2, items: [
       { source: 'x', id: '123', url: 'https://x.com/a/status/123', text: 'Same event announcement' },

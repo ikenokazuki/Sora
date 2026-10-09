@@ -276,128 +276,6 @@ export function isLikelyYahooRealtimeTruncated(item: Record<string, any>): boole
   return text.length >= YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS;
 }
 
-/**
- * X-native ranking (RFC P0-X-01..03, P1-X-02).
- * Realtime provider ordering is semantic: "recent" and "popular"
- * must preserve their meaning. Generic web lexical reranking
- * must not replace it.
- */
-export type RealtimeRankingMode = 'recent' | 'popular' | 'evidence';
-
-export interface RealtimeRankOptions {
-  query: string;
-  mode: RealtimeRankingMode;
-  requirements?: string[];
-  officialHandles?: string[];
-  /** Overrides auto classification. Defaults to classifyRealtimeIntent(query). */
-  intent?: RealtimeIntent;
-}
-
-/** Query intent for realtime ranking (RFC P1-X-03). */
-export type RealtimeIntent = 'fact' | 'reaction' | 'mixed';
-
-const FACT_HINTS = ['公式', '発表', '声明', 'お知らせ', '決定', '速報', '日時', '場所', '開場', '開演', '値段', '料金', 'official', 'announcement'];
-const REACTION_HINTS = ['反応', '評判', '感想', '意見', 'どう思', 'みんな', '話題', '炎上', 'バズ', 'reaction', 'review'];
-
-/** Keyword-based realtime intent classification. Defaults to mixed. */
-export function classifyRealtimeIntent(query: string): RealtimeIntent {
-  const q = (query || '').toLowerCase();
-  let fact = 0;
-  let reaction = 0;
-  for (const h of FACT_HINTS) if (q.includes(h.toLowerCase())) fact++;
-  for (const h of REACTION_HINTS) if (q.includes(h.toLowerCase())) reaction++;
-  if (fact > 0 && reaction === 0) return 'fact';
-  if (reaction > 0 && fact === 0) return 'reaction';
-  return 'mixed';
-}
-
-export function rankRealtimeItems(
-  items: Array<Record<string, any>>,
-  options: RealtimeRankOptions,
-): Array<Record<string, any>> {
-  if (!Array.isArray(items) || items.length <= 1 || !options) {
-    return items || [];
-  }
-  // P0-X-02/X-03: provider-native order carries the sort semantics.
-  if (options.mode === 'recent' || options.mode === 'popular') {
-    return items;
-  }
-  // P1-X-02 evidence mode: deterministic, engagement-light scoring.
-  const reqs =
-    options.requirements && options.requirements.length > 0
-      ? options.requirements.map((t) => t.toLowerCase())
-      : options.query
-          .toLowerCase()
-          .split(/[\s　]+/)
-          .map((w) => w.trim())
-          .filter((w) => w.length >= 2);
-  const official = new Set(
-    (options.officialHandles || []).map((h) => h.toLowerCase().replace(/^@/, '')),
-  );
-  let maxRrf = 0;
-  for (const it of items) {
-    const r = typeof it.rrfScore === 'number' ? it.rrfScore : 0;
-    if (r > maxRrf) maxRrf = r;
-  }
-  const intent: RealtimeIntent = options.intent ?? classifyRealtimeIntent(options.query);
-  const authorDf = new Map<string, number>();
-  if (intent === 'reaction') {
-    for (const it of items) {
-      const h = String(it.author_handle || it.author_name || '').toLowerCase();
-      authorDf.set(h, (authorDf.get(h) ?? 0) + 1);
-    }
-  }
-  const now = Date.now();
-  const scored = items.map((item, index) => {
-    const text = `${item.text || ''}\n${item.author_name || ''} ${item.author_handle || ''}`.toLowerCase();
-    let s = 0;
-    const handle = String(item.author_handle || '').toLowerCase().replace(/^@/, '');
-    const isOfficial = Boolean(handle) && official.has(handle);
-    // Reaction queries seek public voices: official posts compete on
-    // coverage alone (cap 0) so author diversity decides ties.
-    if (intent === 'fact') {
-      if (isOfficial) s += 10;
-    } else if (intent === 'reaction') {
-      // capped at 0 by design
-    } else if (isOfficial) {
-      s += 6;
-    }
-    let covered = 0;
-    for (const t of reqs) {
-      if (t && text.includes(t)) covered++;
-    }
-    if (reqs.length > 0) s += 6 * (covered / reqs.length);
-    if (reqs.length > 0 && covered === reqs.length) s += 8;
-    if (intent === 'reaction') {
-      const h = String(item.author_handle || item.author_name || '').toLowerCase();
-      const df = authorDf.get(h) ?? items.length;
-      s += 4 * (1 - df / Math.max(1, items.length));
-    }
-    const ts = Date.parse(item.publishedTime || '') || (typeof item.created_at === 'number' ? item.created_at * 1000 : NaN);
-    if (!Number.isNaN(ts)) {
-      const ageH = (now - ts) / 3600000;
-      if (ageH < 24) s += 4;
-      else if (ageH < 72) s += 2;
-      else if (ageH < 24 * 7) s += 1;
-    }
-    if (maxRrf > 0 && typeof item.rrfScore === 'number') s += 2 * (item.rrfScore / maxRrf);
-    return { item, index, s };
-  });
-  scored.sort((a, b) => (b.s !== a.s ? b.s - a.s : a.index - b.index));
-  return scored.map((x) => x.item);
-}
-
-/**
- * @deprecated Use rankRealtimeItems() with an explicit mode.
- * Kept for compatibility; maps to evidence-mode scoring.
- */
-export function rerankRealtimeItems(
-  items: Array<Record<string, any>>,
-  query: string,
-): Array<Record<string, any>> {
-  return rankRealtimeItems(items, { query, mode: 'evidence' });
-}
-
 export interface EnrichRealtimeOptions {
   verbose?: boolean;
 }
@@ -446,11 +324,12 @@ export function cleanRealtimeItem(
     text: typeof item.text === 'string' ? item.text : '',
     ...(url ? { url } : {}),
     ...(item.publishedTime ? { publishedTime: item.publishedTime } : {}),
-    ...(typeof item.like_count === 'number' ? { like_count: item.like_count } : {}),
-    ...(typeof item.reply_count === 'number' ? { reply_count: item.reply_count } : {}),
-    ...(typeof item.repost_count === 'number' ? { repost_count: item.repost_count } : {}),
+    // 0件の反応数と isOfficial: false は通常応答では省く（省略時は 0 / false）
+    ...(typeof item.like_count === 'number' && (verbose || item.like_count > 0) ? { like_count: item.like_count } : {}),
+    ...(typeof item.reply_count === 'number' && (verbose || item.reply_count > 0) ? { reply_count: item.reply_count } : {}),
+    ...(typeof item.repost_count === 'number' && (verbose || item.repost_count > 0) ? { repost_count: item.repost_count } : {}),
     ...(Array.isArray(item.media) && item.media.length > 0 ? { media: item.media } : {}),
-    ...(item.isOfficial !== undefined ? { isOfficial: item.isOfficial } : {}),
+    ...(item.isOfficial === true || (verbose && item.isOfficial !== undefined) ? { isOfficial: item.isOfficial } : {}),
     ...(item.detailEnriched !== undefined ? { detailEnriched: item.detailEnriched } : {}),
     ...(item.detailProvider !== undefined ? { detailProvider: item.detailProvider } : {}),
     ...(item.isNoteTweet !== undefined ? { isNoteTweet: item.isNoteTweet } : {}),

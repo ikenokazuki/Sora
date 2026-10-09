@@ -74,7 +74,16 @@ import {
   extractOfficialXHandleFromWebResults,
   findOfficialXHandle,
   mergeRealtimeItemsWithDedup,
+  extractRealtimeIntentRequirements,
+  DEFAULT_REALTIME_ITEM_CAP,
 } from './services/yahoo.js';
+import {
+  anchorCandidates,
+  detectRealtimeFocus,
+  isPublicFocusTerm,
+  officialAccountMatches,
+  type RealtimeFocus,
+} from './retrieval/realtime_anchor.js';
 
 // ==========================================
 // 1. 各専門サブモジュールの re-export (完全な後方互換性の維持)
@@ -1464,6 +1473,8 @@ export async function integratedSearch(options: {
   scrapeContent?: boolean;
   includeRealtime?: boolean;
   realtimeSort?: 'recent' | 'popular';
+  realtimeFocus?: RealtimeFocus;
+  realtimeLimit?: number;
   officialAccountId?: string;
   maxChars?: number;
   noCache?: boolean;
@@ -1494,6 +1505,8 @@ export async function integratedSearch(options: {
   const scrapeContent = options.scrapeContent !== false;
   const includeRealtime = options.includeRealtime !== false;
   const realtimeSort = options.realtimeSort || 'recent';
+  const realtimeFocus: RealtimeFocus = options.realtimeFocus ?? detectRealtimeFocus(query);
+  const realtimeLimit = options.realtimeLimit ?? DEFAULT_REALTIME_ITEM_CAP;
   const officialAccountId = options.officialAccountId?.trim()?.replace(/^@/, '');
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const noCache = options.noCache ?? false;
@@ -1517,7 +1530,7 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v6:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v7:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1544,6 +1557,10 @@ export async function integratedSearch(options: {
         query,
         sort: realtimeSort,
         detailEnrichment: false,
+        focus: realtimeFocus,
+        maxItems: realtimeLimit,
+        // 上限を既定より上げた時は、取得（Yahoo の1回の最大は40件）も増やす
+        ...(realtimeLimit > DEFAULT_REALTIME_ITEM_CAP ? { limit: Math.min(realtimeLimit, 40) } : {}),
         anchorHints: {
           webTitles: async () => (await webItemsForAnchor()).map((i: any) => String(i?.title || '')),
           officialPosts: async (anchor) => {
@@ -1627,7 +1644,7 @@ export async function integratedSearch(options: {
   // 公式枠の並行フェッチ（すでに公式IDが判明している場合）
   let officialRealtimePromise: Promise<any> | null = null;
   if (includeRealtime && targetOfficialHandle) {
-    officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle).then((items) => ({ items: items.slice(0, 5) }));
+    officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle);
   }
 
   const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
@@ -1952,7 +1969,7 @@ export async function integratedSearch(options: {
       }
     }
     if (includeRealtime && targetOfficialHandle && !officialRealtimePromise) {
-      officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle).then((items) => ({ items: items.slice(0, 5) }));
+      officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle);
     }
   }
 
@@ -1965,13 +1982,15 @@ export async function integratedSearch(options: {
       ?? (targetOfficialHandle ? await findOfficialXHandle(realtimeMcpRes.anchorTerm, searchResults) : undefined);
     if (anchoredHandle && anchoredHandle !== targetOfficialHandle) {
       targetOfficialHandle = anchoredHandle;
-      officialRealtimePromise = fetchOfficialPosts(anchoredHandle).then((items) => ({ items: items.slice(0, 5) }));
+      officialRealtimePromise = fetchOfficialPosts(anchoredHandle);
     }
   }
   // 1件の投稿に揃わなかった語と、検索に使った別名は通常応答にも出す（固有名詞の判定語・除外件数は verbose のみ）
   const realtimeGap = {
+    focus: realtimeMcpRes?.focus ?? realtimeFocus,
     ...(realtimeMcpRes?.missingTerms?.length ? { missingTerms: realtimeMcpRes.missingTerms } : {}),
     ...(realtimeMcpRes?.aliasTerms?.length ? { aliasTerms: realtimeMcpRes.aliasTerms } : {}),
+    ...(realtimeMcpRes?.omittedCount ? { omittedCount: realtimeMcpRes.omittedCount } : {}),
     ...(realtimeMcpRes?.anchorTerm ? { anchorTerm: realtimeMcpRes.anchorTerm } : {}),
     ...(realtimeMcpRes?.anchorFiltered !== undefined ? { anchorFiltered: realtimeMcpRes.anchorFiltered } : {}),
   };
@@ -1983,14 +2002,26 @@ export async function integratedSearch(options: {
 
     let officialItems: any[] = [];
     if (officialRealtimePromise) {
-      const officialRes = await officialRealtimePromise;
-      if (officialRes && Array.isArray(officialRes.items)) {
-        officialItems = officialRes.items.map((item: any) => normalizeRealtimeItem(item));
+      const officialPosts: any[] = await officialRealtimePromise;
+      // 自動で見つけた公式は、表示名か投稿にクエリの語がある時だけ公式として扱う
+      // （TimeTree のページから TimeTree 自身のアカウントを拾う、等を防ぐ）
+      const checkTerms = [
+        ...anchorCandidates(extractRealtimeIntentRequirements(query).semanticRequirements.filter((t) => !isPublicFocusTerm(t))),
+        ...(realtimeMcpRes?.aliasTerms ?? []),
+      ];
+      if (officialAccountId || checkTerms.length === 0 || officialAccountMatches(officialPosts, checkTerms)) {
+        // 公式の投稿は別枠: 公式優先は先頭に最大5件、第三者優先は後ろに最大2件
+        officialItems = officialPosts.slice(0, realtimeFocus === 'public' ? 2 : 5).map((item: any) => normalizeRealtimeItem(item));
+      } else {
+        targetOfficialHandle = undefined;
       }
     }
 
     if (officialItems.length > 0 || publicMapped.length > 0) {
       let merged = mergeRealtimeItemsWithDedup(officialItems, publicMapped);
+      if (realtimeFocus === 'public') {
+        merged = [...merged.filter((i: any) => !i.isOfficial), ...merged.filter((i: any) => i.isOfficial)];
+      }
       if (dedup && merged.length > 0) {
         merged = dedupSearchResults(merged, (i: any) => `${i.text || i.content || ''}`);
       }
@@ -2012,7 +2043,6 @@ export async function integratedSearch(options: {
         ...(Array.isArray(realtimeMcpRes?.contributingQueries) ? { contributingQueries: realtimeMcpRes.contributingQueries } : {}),
         ...(realtimeMcpRes?.resultsMerged !== undefined ? { resultsMerged: realtimeMcpRes.resultsMerged } : {}),
         ...(targetOfficialHandle ? { officialAccountId: targetOfficialHandle } : {}),
-        ...(realtimeMcpRes?.intent ? { intent: realtimeMcpRes.intent } : {}),
         ...realtimeGap,
         items: realtimeItems,
       };
