@@ -5,8 +5,13 @@ import {
   anchorCandidates,
   detectAliasFromOfficialPosts,
   detectRealtimeAnchor,
+  detectRealtimeFocus,
   isAnchorBroken,
+  isPublicFocusTerm,
+  isSearchExcludedTerm,
+  officialAccountMatches,
   postMentions,
+  selectRealtimeItems,
   termHits,
 } from './realtime_anchor.js';
 
@@ -127,5 +132,80 @@ describe('postMentions / isAnchorBroken', () => {
     expect(isAnchorBroken('=LOVE', [...noise, post('=LOVE ライブ'), post('=LOVE 予定')])).toBe(true);
     expect(isAnchorBroken('=LOVE', [post('=LOVE ライブ'), post('LOVE')])).toBe(false);
     expect(isAnchorBroken('=LOVE', [])).toBe(false);
+  });
+});
+
+describe('focus（誰の投稿が一次情報か）', () => {
+  test('評判系の目印があれば第三者優先、無ければ公式優先', () => {
+    expect(detectRealtimeFocus('内山優花 評判')).toBe('public');
+    expect(detectRealtimeFocus('内山優花 炎上')).toBe('public');
+    expect(detectRealtimeFocus('内山優花 口コミ')).toBe('public');
+    expect(detectRealtimeFocus('内山優花 叩かれてる')).toBe('public');
+    expect(detectRealtimeFocus('=LOVE ライブ 予定')).toBe('official');
+    expect(detectRealtimeFocus('みんなのうた 放送予定')).toBe('official');
+    // カタカナの目印は長い語の一部なら数えない
+    expect(detectRealtimeFocus('アンチョビ パスタ 店')).toBe('official');
+  });
+
+  test('投稿に書かれない目印だけを検索語から外す', () => {
+    expect(isPublicFocusTerm('評判')).toBe(true);
+    expect(isPublicFocusTerm('感想')).toBe(true);
+    expect(isSearchExcludedTerm('評判')).toBe(true);
+    expect(isSearchExcludedTerm('どう思われてる')).toBe(true);
+    expect(isSearchExcludedTerm('感想')).toBe(false);
+    expect(isSearchExcludedTerm('炎上')).toBe(false);
+  });
+
+  test('目印の語は固有名詞の候補にしない', () => {
+    expect(anchorCandidates(['内山優花', '評判'])).toEqual(['内山優花']);
+  });
+});
+
+describe('officialAccountMatches', () => {
+  const posts = (name: string, texts: string[]) => texts.map((text) => ({ author_name: name, text }));
+
+  test('表示名か、3割以上の投稿にクエリの語があれば公式として扱う', () => {
+    expect(officialAccountMatches(posts('内山 優花 【君と見るそら】', ['アイコン嬉しい']), ['内山優花'])).toBe(true);
+    expect(officialAccountMatches(posts('Pokémon GO Japan', ['#ポケモンGO イベント開催', '#ポケモンGO 新機能', 'お知らせ']), ['ポケモンGO'])).toBe(true);
+  });
+
+  test('クエリと関係の無いアカウントは公式にしない', () => {
+    expect(officialAccountMatches(posts('TimeTree', ['カレンダーの新機能', '共有の使い方']), ['=LOVE'])).toBe(false);
+    expect(officialAccountMatches([], ['=LOVE'])).toBe(false);
+  });
+});
+
+describe('selectRealtimeItems', () => {
+  const p = (id: string, q: number, author: string, text = '') => ({ id, retrievalQueryIndex: q, author_handle: author, text });
+
+  test('上限以下ならそのまま返す', () => {
+    const items = [p('1', 0, 'a'), p('2', 0, 'b')];
+    expect(selectRealtimeItems(items, { cap: 5, focus: 'official', terms: [] })).toEqual({ items, omitted: 0 });
+  });
+
+  test('検索ごとに交互に選び、元の順序で返す', () => {
+    const items = [p('1', 0, 'a'), p('2', 0, 'b'), p('3', 0, 'c'), p('4', 1, 'd'), p('5', 1, 'e')];
+    const res = selectRealtimeItems(items, { cap: 3, focus: 'official', terms: [] });
+    expect(res.items.map((i) => i.id)).toEqual(['1', '2', '4']);
+    expect(res.omitted).toBe(2);
+  });
+
+  test('第三者優先では同じ投稿者を後回しにする', () => {
+    const items = [p('1', 0, 'a'), p('2', 0, 'a'), p('3', 0, 'a'), p('4', 0, 'b'), p('5', 0, 'c')];
+    const res = selectRealtimeItems(items, { cap: 3, focus: 'public', terms: [] });
+    expect(res.items.map((i) => i.id)).toEqual(['1', '4', '5']);
+  });
+
+  test('上限内のどの投稿にも無い語を含む投稿は、上限を超えて残す', () => {
+    const items = [p('1', 0, 'a', '=LOVE ライブ'), p('2', 0, 'b', '=LOVE ライブ'), p('3', 0, 'c', '=LOVE 開場は17時')];
+    const res = selectRealtimeItems(items, { cap: 2, focus: 'official', terms: ['=LOVE', '開場'] });
+    expect(res.items.map((i) => i.id)).toEqual(['1', '2', '3']);
+    expect(res.omitted).toBe(0);
+  });
+
+  test('別名で含む投稿も、その語を含むとみなす', () => {
+    const items = [p('1', 0, 'a', 'イコラブ ライブ'), p('2', 0, 'b', 'ライブ'), p('3', 0, 'c', 'ライブ')];
+    const res = selectRealtimeItems(items, { cap: 1, focus: 'official', terms: ['=LOVE', 'ライブ'], aliases: { '=LOVE': ['イコラブ'] } });
+    expect(res.items.map((i) => i.id)).toEqual(['1']);
   });
 });

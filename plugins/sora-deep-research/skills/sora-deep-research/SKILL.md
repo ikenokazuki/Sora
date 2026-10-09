@@ -37,6 +37,7 @@ description: >
 6. 不足だけ追加調査: 未確認の確認事項IDごとに検索案と必要な出典種類を添えて補う。取得済みは取り直さない。
    - 不足の手掛かり: `search_deep` の応答の `contextSufficiency` が `partial` のとき、`reasons`（`unmentioned:語` は語がどの証拠にも無い、`unanswered:語` は時刻・金額・日付などの値が見つからない）を未確認事項に対応づける。`no_gap_detected` は確認済みの意味ではなく、欠落を検出しなかっただけなので、重要な確認事項は本文の引用で裏付ける。
    - X の不足: `search_realtime` と `search_deep` の `realtime` の `missingTerms` は、1件の投稿に揃って現れなかったクエリ語（X 上では未確認）。`aliasTerms` は固有名詞の代わりに検索した別名（例: `=LOVE` → `イコラブ`）。
+   - X の優先する発信者: 評判・感想・炎上・現地の様子など本人以外の声を調べるときは `search_realtime` の `focus` / `search_deep` の `realtimeFocus` を `"public"` にする（クエリに「評判」「炎上」などがあれば自動で `public`）。予定・告知・事実確認は `"official"`（既定）。応答の `omittedCount` が 0 でなければ上限で省いた投稿があるので、足りなければ `limit` / `realtimeLimit` を上げる。
    - 文化的背景の調査は現地語の用例・信頼できる文化的説明を狙う検索語を別途用意する。
    - 業界批判は発行日が7日以内と確定できるものだけ数え、日付不明は候補に留める。
    - 速報と文化的背景は検索期間を分ける。前者には短い期間、後者には期間制限なしを使う。

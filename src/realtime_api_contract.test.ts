@@ -21,6 +21,8 @@ test('separates different URL and OR constraints in the realtime cache', () => {
     .not.toBe(key({ query: '告知', limit: 6 }));
   expect(key({ query: '告知', page: 1 }))
     .not.toBe(key({ query: '告知', page: 2 }));
+  expect(key({ query: '告知', focus: 'public' }))
+    .not.toBe(key({ query: '告知', focus: 'official' }));
 });
 
 test('accepts url-only, orWords-only, and account-only inputs', async () => {

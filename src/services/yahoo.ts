@@ -7,10 +7,7 @@ import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {
   enrichRealtimeItemsWithXDetail,
   defaultXDetailProvider,
-  rankRealtimeItems,
-  classifyRealtimeIntent,
   cleanRealtimeItem,
-  type RealtimeIntent,
 } from './x_detail.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
@@ -21,9 +18,14 @@ import {
   anchorCandidates,
   detectAliasFromOfficialPosts,
   detectRealtimeAnchor,
+  detectRealtimeFocus,
   isAnchorBroken,
+  isPublicFocusTerm,
+  isSearchExcludedTerm,
   postMentions,
+  selectRealtimeItems,
   termHits,
+  type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
 
 // Yahoo MCP バイナリのパス
@@ -1080,7 +1082,14 @@ export interface YahooRealtimeOptions {
   verbose?: boolean;
   /** 固有名詞の判定材料。渡した時だけ、wave1 で網羅できない場合に固有名詞を守る緩和をする */
   anchorHints?: RealtimeAnchorHints;
+  /** 優先する発信者。省略時はクエリの語から推定する（評判系の目印が無ければ公式優先） */
+  focus?: RealtimeFocus;
+  /** 返す投稿の上限（既定は limit、それも無ければ20）。deep search の realtimeLimit 用 */
+  maxItems?: number;
 }
+
+/** 返す投稿の既定の上限（search_realtime の limit の既定値と同じ）。 */
+export const DEFAULT_REALTIME_ITEM_CAP = 20;
 
 /** 固有名詞の判定材料。どちらも必要になった時だけ呼ばれる。 */
 export interface RealtimeAnchorHints {
@@ -1229,13 +1238,15 @@ export function requiresExactRealtimeQuery(query: string): boolean {
 /** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
 export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
   return JSON.stringify([
-    'search:realtime:json-v1',
+    'search:realtime:json-v2',
     buildYahooRealtimeQuery(options),
     options.sort ?? 'recent',
     options.limit ?? 20,
     options.page ?? 1,
     options.disableFallback === true,
     (options as any)?.verbose === true,
+    options.focus ?? 'auto',
+    process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on',
   ]);
 }
 
@@ -1447,6 +1458,9 @@ export interface RealtimeCoverageEvaluation {
   missingTerms: string[];
   hasFullCoverage: boolean;
   authorConstraintSatisfied: boolean;
+  /** 全ての語を含む投稿の数（hasFullCoverage は1件でも真になるため、割合の判断用） */
+  itemsWithAllTerms: number;
+  itemCount: number;
 }
 
 /**
@@ -1485,9 +1499,12 @@ export function evaluateRealtimeRetrievalCoverage(
       missingTerms: bestMissing,
       hasFullCoverage: requiredTerms.length === 0 && authorSatisfied && items.length > 0,
       authorConstraintSatisfied: authorSatisfied,
+      itemsWithAllTerms: requiredTerms.length === 0 && Array.isArray(items) ? items.length : 0,
+      itemCount: Array.isArray(items) ? items.length : 0,
     };
   }
   const norm = (s: string) => s.normalize('NFKC').toLowerCase();
+  let itemsWithAllTerms = 0;
   for (const item of items) {
     const haystack = norm([
       item?.author_name || '',
@@ -1496,6 +1513,7 @@ export function evaluateRealtimeRetrievalCoverage(
       item?.text || '',
     ].join(' '));
     const covered = requiredTerms.filter((t) => [t, ...(termAliases[t] || [])].some((v) => haystack.includes(norm(v))));
+    if (covered.length === requiredTerms.length) itemsWithAllTerms++;
     if (covered.length > bestCovered.length) {
       bestCovered = covered;
       const coveredSet = new Set(covered.map((t) => t.toLowerCase()));
@@ -1511,8 +1529,15 @@ export function evaluateRealtimeRetrievalCoverage(
     missingTerms: bestMissing,
     hasFullCoverage: bestMissing.length === 0 && authorSatisfied,
     authorConstraintSatisfied: authorSatisfied,
+    itemsWithAllTerms,
+    itemCount: items.length,
   };
 }
+
+/** 全語を含む投稿がこの割合未満なら、1件だけ全語に一致しても網羅できたとみなさない（Yahoo が記号を無視している等）。 */
+export const WEAK_COVERAGE_RATIO = 0.5;
+/** 割合で判断するのに必要な最小の件数（少ない件数のぶれで追加の検索をしない）。 */
+export const WEAK_COVERAGE_MIN_ITEMS = 6;
 
 /**
  * canonical post identity: status ID > URL内status ID > normalized URL > stable fallback。
@@ -1681,17 +1706,23 @@ async function runRealtimeWave(
 
 const REALTIME_TERM_TOTAL_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** 語ごとの X 総ヒット数（固有名詞の判定で、ありふれた語を下げる）。24時間キャッシュし、取得できなかった語は省く。 */
-export async function fetchRealtimeTermTotals(terms: string[]): Promise<Record<string, number>> {
+/**
+ * 語ごとの X 総ヒット数（固有名詞の判定で、ありふれた語を下げる）。24時間キャッシュし、取得できなかった語は省く。
+ * 取得件数は既定のまま問い合わせる。1件だけ取ると総ヒット数が過少に返る語がある（「内山優花」で 250 → 6）。
+ */
+export async function fetchRealtimeTermTotals(
+  terms: string[],
+  searchPage: typeof searchYahooRealtimePage = searchYahooRealtimePage,
+): Promise<Record<string, number>> {
   const totals: Record<string, number> = {};
   await Promise.all(terms.map(async (term) => {
-    const key = `rt-term-total:v1:${term.normalize('NFKC').toLowerCase()}`;
+    const key = `rt-term-total:v2:${term.normalize('NFKC').toLowerCase()}`;
     const cached = getFromCache<{ total: number }>(key);
     if (cached) {
       totals[term] = cached.total;
       return;
     }
-    const page = await searchYahooRealtimePage({ query: term, limit: 1 }).catch(() => null);
+    const page = await searchPage({ query: term }).catch(() => null);
     if (page?.total === undefined) return;
     totals[term] = page.total;
     setToCache(key, { total: page.total }, REALTIME_TERM_TOTAL_TTL_MS);
@@ -1740,7 +1771,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   originalQuery: string;
   isFallback: boolean;
   source: 'x';
-  intent: RealtimeIntent;
+  focus: RealtimeFocus;
   retrievalQueries: string[];
   contributingQueries: string[];
   resultsMerged: boolean;
@@ -1752,6 +1783,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   anchorTerm?: string;
   aliasTerms?: string[];
   anchorFiltered?: number;
+  omittedCount?: number;
   throttled?: boolean;
   partial?: boolean;
   providerErrors?: Array<{ query: string; message: string }>;
@@ -1769,6 +1801,14 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   // wave1 で網羅できなかった時だけ解決する（それまで undefined = 従来の緩和）
   let anchor: ResolvedRealtimeAnchor | undefined;
   const anchorAliases = (): Record<string, string[]> => (anchor?.alias ? { [anchor.term]: [anchor.alias] } : {});
+  const focus: RealtimeFocus = (options as YahooRealtimeOptions).focus ?? detectRealtimeFocus(originalQuery);
+  // 第三者優先: 評判・感想などの目印は必須語にしない（「内山優花 感想」に揃う投稿は1件しかない）
+  const parsedRequirements = extractRealtimeIntentRequirements(originalQuery);
+  const focusMarkers = focus === 'public' ? parsedRequirements.semanticRequirements.filter(isPublicFocusTerm) : [];
+  const contentTerms = parsedRequirements.semanticRequirements.filter((t) => !focusMarkers.includes(t));
+  const requirements: RealtimeIntentRequirements = focusMarkers.length > 0 && contentTerms.length > 0
+    ? { semanticRequirements: contentTerms, protectedModifiers: parsedRequirements.protectedModifiers }
+    : parsedRequirements;
 
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 40)) {
     throw new Error(`Invalid realtime limit: integer 1-40 expected (got ${String(limit)})`);
@@ -1805,7 +1845,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       batches = batches.map((b) => ({ ...b, items: b.items.filter((i) => postMentions(i, keep)) }));
       const kept = mergeRealtimeQueryBatches(batches).items;
       anchorFiltered = before - kept.length;
-      coverage = evaluateRealtimeRetrievalCoverage(kept, extractRealtimeIntentRequirements(originalQuery), anchorAliases());
+      coverage = evaluateRealtimeRetrievalCoverage(kept, requirements, anchorAliases());
     }
     const { items: merged, contributingQueries } = mergeRealtimeQueryBatches(batches);
     try {
@@ -1822,11 +1862,14 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       ? contributingQueries[0]
       : originalQuery;
     // X-native policy: recent/popular preserve provider order (no generic BM25 rerank).
-    let finalItems = merged.length > 0 && originalQuery ? rankRealtimeItems(merged, { query: originalQuery, mode: sort }) : merged;
-    const requestedLimit = limit;
-    if (typeof requestedLimit === 'number' && requestedLimit >= 0) {
-      finalItems = finalItems.slice(0, requestedLimit);
-    }
+    // 上限は返す件数だけに効く。取得は上の wave で済んでおり、省いた件数は omittedCount で返す
+    const selection = selectRealtimeItems(merged, {
+      cap: (options as YahooRealtimeOptions).maxItems ?? limit ?? DEFAULT_REALTIME_ITEM_CAP,
+      focus,
+      terms: coverage.requiredTerms,
+      aliases: anchorAliases(),
+    });
+    let finalItems = selection.items;
     if (detailEnrichment && finalItems.length > 0 && originalQuery) {
       const { items: enriched } = await enrichRealtimeItemsWithXDetail(
         finalItems,
@@ -1838,13 +1881,12 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     } else if (finalItems.length > 0) {
       finalItems = finalItems.map((it) => cleanRealtimeItem(it, (options as any)?.verbose === true));
     }
-    const intent = classifyRealtimeIntent(originalQuery);
     return {
       source: 'x' as const,
       originalQuery,
       effectiveQuery,
       isFallback,
-      intent,
+      focus,
       count: finalItems.length,
       items: finalItems,
       retrievalQueries,
@@ -1858,6 +1900,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       ...(anchor ? { anchorTerm: anchor.term } : {}),
       ...(anchor?.alias ? { aliasTerms: [anchor.alias] } : {}),
       ...(anchor?.broken ? { anchorFiltered } : {}),
+      ...(selection.omitted > 0 ? { omittedCount: selection.omitted } : {}),
       ...(providerErrors.length > 0 ? { partial: true, providerErrors: [...providerErrors] } : {}),
     };
   };
@@ -1866,12 +1909,10 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     const q = builtQuery;
     const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, 1, providerErrors) : [];
     if (batches.some((b) => b.throttled)) {
-      const dfReq = extractRealtimeIntentRequirements(originalQuery);
-      const dfCov = evaluateRealtimeRetrievalCoverage([], dfReq);
+      const dfCov = evaluateRealtimeRetrievalCoverage([], requirements);
       const dfDone = await finish([], 0, 'throttled', dfCov, q ? [q] : []);
       return { ...dfDone, throttled: true };
     }
-    const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
     throwIfTotalFailure(merged.items);
     const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
@@ -1883,7 +1924,6 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     const batches = builtQuery
       ? await runRealtimeWave([builtQuery], 0, sort, limit, page, callMcp, 1, providerErrors)
       : [];
-    const requirements = extractRealtimeIntentRequirements(originalQuery);
     const merged = mergeRealtimeQueryBatches(batches);
     throwIfTotalFailure(merged.items);
     const coverage = evaluateRealtimeRetrievalCoverage(merged.items, requirements);
@@ -1896,8 +1936,15 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     );
   }
 
-  const requirements = extractRealtimeIntentRequirements(originalQuery);
-  const exactVariants = buildRealtimeExactQueryVariants(builtQuery);
+  const prefix = requirements.protectedModifiers.join(' ').trim();
+  const withPrefix = (body: string) => (prefix ? `${prefix} ${body}` : body).trim();
+  // 第三者優先で目印がある時は、目印つき（投稿に書かれない「評判」などは外す）と目印なしを並行して検索する
+  const exactVariants = requirements === parsedRequirements
+    ? buildRealtimeExactQueryVariants(builtQuery)
+    : [...new Set([
+        withPrefix(parsedRequirements.semanticRequirements.filter((t) => !isSearchExcludedTerm(t)).join(' ')),
+        withPrefix(contentTerms.join(' ')),
+      ])];
   const batches: YahooRealtimeQueryBatch[] = [];
   const executed = new Set<string>();
   let executedWaves = 0;
@@ -1931,7 +1978,13 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     }
   }
   let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
-  if (coverage.hasFullCoverage) {
+  const anchorHints = (options as YahooRealtimeOptions).anchorHints;
+  const anchorEnabled = anchorHints !== undefined && process.env.SORA_REALTIME_ANCHOR !== 'off';
+  // 1件だけ全語に一致しても、大半が全語を含まなければ網羅できたとはみなさない（判定材料がある時だけ）
+  const weakCoverage = anchorEnabled && coverage.hasFullCoverage
+    && coverage.itemCount >= WEAK_COVERAGE_MIN_ITEMS
+    && coverage.itemsWithAllTerms / coverage.itemCount < WEAK_COVERAGE_RATIO;
+  if (coverage.hasFullCoverage && !weakCoverage) {
     return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
   }
   if (requirements.semanticRequirements.length === 0) {
@@ -1939,8 +1992,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   }
 
   // 固有名詞（anchor）: 判定材料を渡された時だけ解決する。解決できなければ従来の緩和。
-  const anchorHints = (options as YahooRealtimeOptions).anchorHints;
-  if (anchorHints && requirements.semanticRequirements.length >= 2 && process.env.SORA_REALTIME_ANCHOR !== 'off') {
+  if (anchorEnabled && anchorHints) {
     anchor = await resolveRealtimeAnchor(
       requirements.semanticRequirements,
       mergeRealtimeQueryBatches(batches).items,
@@ -1948,12 +2000,15 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       termTotals,
     ).catch(() => undefined);
   }
+  // 全語に一致した投稿が少ないだけで、固有名詞は壊れていなければ、従来どおり網羅できたものとして終える
+  if (weakCoverage && !anchor?.broken) {
+    anchor = undefined;
+    return finish(batches, executedWaves, 'full_coverage', coverage, exactVariants);
+  }
   // 固有名詞を落とす緩和はしない。壊れていて別名があれば、別名に置き換えて緩和する（=LOVE → イコラブ）
   const toRelaxed = (t: string) => (anchor?.alias && t === anchor.term ? anchor.alias : t);
   const relaxTerms = requirements.semanticRequirements.map(toRelaxed);
   const relaxAnchor = anchor ? toRelaxed(anchor.term) : undefined;
-  const prefix = requirements.protectedModifiers.join(' ').trim();
-  const withPrefix = (body: string) => (prefix ? `${prefix} ${body}` : body).trim();
   const evaluate = () => evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements, anchorAliases());
 
   // Wave 2: minimal relaxation (missing-term-driven drop-one, max 2)。別名があれば別名での全語検索を先頭に置く

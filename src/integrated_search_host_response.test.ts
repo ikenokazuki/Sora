@@ -117,6 +117,14 @@ describe('integrated search Host response', () => {
     expect(output.markdown).toBe(item.markdown);
   });
 
+  test('a duplicate pointing to the same highlights elsewhere drops markdown like a highlighted item', () => {
+    const { highlights: _h, ...rest } = baseItem();
+    const item = { ...rest, highlightsSameAs: 'https://example.com/original' };
+    const output = projectIntegratedSearchEvidenceItem(item, { responseMode: 'evidence' });
+    expect(output.markdown).toBeUndefined();
+    expect(output.highlightsSameAs).toBe('https://example.com/original');
+  });
+
   test('scrape error and snippet fallback preserve markdown', () => {
     const errorItem = { ...baseItem(), scrapeError: 'blocked' };
     const fallbackItem = { ...baseItem(), isSnippetFallback: true };
@@ -166,7 +174,7 @@ describe('integrated search Host response', () => {
     expect(output.markdown).not.toBe(item.highlights[0]);
   });
 
-  test('MCP full serialization stays pretty; evidence serialization is compact', () => {
+  test('MCP serialization is compact JSON; verbose stays pretty for debugging', () => {
     const input = response();
     const full = serializeIntegratedSearchMcpResponse(input, {
       responseMode: 'full',
@@ -174,9 +182,14 @@ describe('integrated search Host response', () => {
     const evidence = serializeIntegratedSearchMcpResponse(input, {
       responseMode: 'evidence',
     });
+    const verbose = serializeIntegratedSearchMcpResponse(input, {
+      responseMode: 'full',
+      verbose: true,
+    });
 
-    expect(full).toContain('\n  "query"');
+    expect(full).not.toContain('\n');
     expect(evidence).not.toContain('\n  "query"');
+    expect(verbose).toContain('\n  "query"');
     expect(JSON.parse(full).results[0].markdown).toBeDefined();
     expect(JSON.parse(evidence).results[0].markdown).toBeUndefined();
     expect(JSON.parse(evidence).results[0].highlights).toEqual(

@@ -58,7 +58,7 @@ function isXItem(item: Record<string, any>): boolean {
  * considers removing `markdown`.
  *
  * `markdown` is NEVER overwritten with highlights.
- * `highlights` is NEVER removed.
+ * `highlights` is NEVER removed here (compact mode may replace a duplicate with `highlightsSameAs`).
  */
 export function projectIntegratedSearchEvidenceItem(
   sourceItem: Record<string, any>,
@@ -80,7 +80,8 @@ export function projectIntegratedSearchEvidenceItem(
     !highlightExtractionWasExplicitlyDisabled &&
     !hasFallbackRisk &&
     !isXItem(item) &&
-    hasCanonicalHighlights(item);
+    // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる
+    (hasCanonicalHighlights(item) || typeof item?.highlightsSameAs === 'string');
 
   if (mayElideMarkdown) {
     delete item.markdown;
@@ -175,10 +176,9 @@ export function serializeIntegratedSearchMcpResponse(
 ): string {
   const formatted = formatIntegratedSearchHostResponse(result, options);
 
-  // Preserve legacy pretty JSON for the default/full path.
-  // Evidence mode uses compact JSON because the caller explicitly requested
-  // a token-conscious Host surface.
-  return options.responseMode === 'evidence' && options.verbose !== true
-    ? JSON.stringify(formatted)
-    : JSON.stringify(formatted, null, 2);
+  // 整形なしの JSON で返す（中身は同じで、整形ありより約10%少ないトークン）。
+  // verbose は人が読む診断用なので整形する。
+  return options.verbose === true
+    ? JSON.stringify(formatted, null, 2)
+    : JSON.stringify(formatted);
 }
