@@ -15,13 +15,13 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `ghcr.io/ikenokazuki/sora:2.36.0`
-  (image ID `a29c58e96203`, digest `sha256:7a8c0c8aaa4f1c6c7831b5b9e9c758ccfdcba2bb2d275b6c6ca26723e3e9eee7`,
-  deployed 2026-10-09). Package/health version: `2.36.0`.
-  X realtime search keeps the proper noun when relaxing queries, searches official-hashtag aliases
-  for proper nouns that Yahoo cannot match (`=LOVE` → `イコラブ`), and returns `missingTerms` /
-  `aliasTerms` in compact responses (`SORA_REALTIME_ANCHOR=off` restores the previous relaxation).
-  The image now runs `tini` as PID 1 so Chromium helpers left after the idle release are reaped.
+- Current image: `ghcr.io/ikenokazuki/sora:2.36.1`
+  (image ID `be7ac85b5114`, digest `sha256:0332895083bfbe598f05f9a231a58d9bdf6863a19054434afe4b6ee9c8d81a9e`,
+  deployed 2026-10-09). Package/health version: `2.36.1`.
+  X realtime search: `focus` (`official` / `public`, inferred from words such as 評判・炎上・口コミ),
+  a cap on returned posts (`limit` / `realtimeLimit`, default 20, `omittedCount`), a re-check when only one post
+  matches every term, and X profile pages built from the account's own posts. MCP `search_deep` /
+  `search_realtime` return compact JSON (`verbose` keeps indentation). `tini` remains PID 1.
 - `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
   is limited to 14 by the saved LibreChat Agent's native deferred loading.
 - Released images: ghcr.io/ikenokazuki/sora, pinned tag per release.
@@ -177,6 +177,19 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.36.1の公開と本番反映（2026-10-09）
+
+- X検索の誤りの修正と応答の削減。主な変更：Xプロフィールページ（`x.com/アカウント名`）の本文を、そのアカウント本人の投稿から作る（タイトル整形の正規表現が「＝LOVE_official」を「＝LOVE_off」に切り、別人の「LOVE off vocal」の投稿を本文にしていた）、1件だけ全語に一致する投稿があると「網羅できた」として別名検索に進まなかった問題の修正（全語を含む投稿が半数未満で6件以上なら固有名詞を確かめる。語が1つだけのクエリも別名で検索）、優先する発信者`focus`（`search_realtime`の`focus`・`search_deep`の`realtimeFocus`。クエリの評判系の語から自動判定、`public`では評判・口コミを検索語から外し公式枠を後ろに最大2件）、返すX投稿の上限（既定20、`omittedCount`、上限内に無いクエリ語を含む投稿は最大5件超過して残す）、自動で見つけた公式アカウントは表示名か投稿にクエリの語がある場合だけ公式扱い、MCPの`search_deep`・`search_realtime`を整形なしJSONに、0の反応数・`isOfficial:false`を省略、同じハイライトを`highlightsSameAs`へ、キャッシュ名前空間をv7へ更新。`search_deep`の`realtime.intent`は`focus`に置き換えて廃止。詳細は`RELEASE_NOTES.md`。
+- リリースコミットは`0a52c4b`（`release: v2.36.1`）、タグ`v2.36.1`。`main`とタグを`--atomic`でpushした。公開前の全テストはリリース候補のツリーで1,423件が成功（スキップ17、失敗0）。
+- 注意：タグ側パイプラインの実API検査の標準レーンが1回失敗し、公開がスキップされた（ホテルレーンと`main`側パイプラインの両レーンは同じコミットで成功）。ログは認証なしでは取得できないため原因は特定できなかったが、タグと同じソースから手元でイメージを作って標準レーンを実行し、失敗0・利用不可0（pass 91、blocked 2、unverified 10。CIでは通過扱いの終了コード3）だったため一時的な失敗と判断した。ゲートは緩めず、利用者が失敗したジョブだけを再実行して全ジョブが成功し（試行2回目）、`2.36.1`・`2.36`・`latest`・`sha-0a52c4b`が同一digest`sha256:0332895083bf…`で公開され、[日本語リリース](https://github.com/ikenokazuki/Sora/releases/tag/v2.36.1)も作成された。再実行の前には、`main`側パイプラインが別ビルドの`latest`・`sha-0a52c4b`（digest `sha256:323932b4fc90…`）を先に公開していたが、再実行で上書きされた。
+- apps側のpull結果のイメージIDは`be7ac85b5114a1edccf9b5d85279aa61356786aa73f05b8aaa85d3ad13e1da1f`、ENTRYPOINTは`/usr/bin/tini -- /usr/local/bin/bun /app/server.js`。
+- 正式イメージを別ポート3117・使い捨てDB・本番と同じkrun/`SORA_DEFER_TOOLS=false`で検証（候補のみ`BROWSER_IDLE_TTL_MS=15000`）。31項目すべて成功：health 2.36.1、OpenAPIの`focus`・`realtimeFocus`・`realtimeLimit`・`omittedCount`、別名検索（`=LOVE`単独・`ライブ 予定 =LOVE`・`≠ME`）、「内山優花 評判」で`focus: public`・投稿者15人・検索語は「内山優花」だけ、compact応答で0の反応数・`isOfficial:false`を省略、不正な`focus`・`realtimeLimit`の400、Xプロフィールのscrapeが本人の投稿（著者＝LOVE_official）、MCP 47ツール（`outputSchema`なし）・MCPの応答が整形なしJSON、実ブラウザ描画。アイドル解放後もtiniの配下はbunだけ。
+- DBバックアップは`/data/backups/sora-before-2.36.1-20261009T075850Z.db`（0600、3,960,832バイト、quick_check=ok）。Nix宣言とappsのQuadlet drop-inを同じ固定タグで揃え、Pull=newerを維持。既存のSORA_DEFER_TOOLS=false、Host/Origin、web-fetcher-data:/data:U、127.0.0.1:3016、krunを維持した。drop-inの変更前は`20-release.conf.before-v2.36.1-20261009T075850Z`に保存した。
+- 生成されたExecStartを確認し、`web-fetcher.service`だけを再起動した（16:59:16、約4秒でhealth ok）。他の本番コンテナ18個のIDは変化なし。NixOS全体は再構築していない。検証用の候補コンテナは削除済み。
+- 公開URLでの確認：候補と同じスモーク31項目がすべて成功。元の「=LOVE ライブ　予定」の深層検索リクエスト（`maxTotalChars: 1000`）で、X投稿は25件すべて`=LOVE`か別名を含み（公式5件を含む）、5件目のx.comは本人の投稿になり、応答は整形なし換算で54,097字→36,483字。本番の既定TTL（5分）でアイドル解放後にtiniの配下はbunだけ（ゾンビ0）、bunのRSS 208MB。再起動後のログにエラーなし。
+- 復旧先は直前の`ghcr.io/ikenokazuki/sora:2.36.0`（ID `a29c58e96203`）。drop-inの`20-release.conf.before-v2.36.1-20261009T075850Z`を戻し、Nix宣言も2.36.0へ戻してdaemon-reload、web-fetcherだけをrestartする。通常のイメージ復旧ではDBを復元しない。
+- 本番・候補の取得結果、イメージID、digest、設定控え、DBバックアップの確認結果は`/home/ikeno/.local/state/sora-deploy/20261009T065807Z-2.36.1/`に保存した。
 
 ## v2.36.0の公開と本番反映（2026-10-09）
 
