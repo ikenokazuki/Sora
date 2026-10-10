@@ -13,8 +13,12 @@
  * - verbose === true: identity passthrough, full diagnostics preserved.
  */
 
+import { buildSchedule } from './events.js';
+
 export interface CompactResponseOptions {
   verbose?: boolean;
+  /** schedule の並びの基準時刻（ミリ秒）。テスト用で、通常は現在時刻 */
+  now?: number;
 }
 
 export interface SerializedResponseSize {
@@ -190,6 +194,8 @@ function mergeIntegratedSearchDuplicates<T extends Record<string, any>>(result: 
  * Compact integrated search response.
  * Item order and evidence fields pass through untouched; per-item
  * internal routing/scoring keys are verbose-only.
+ * 各ページの events は 1 つの schedule（日付と名称が同じ予定を統合、今後の近い順）にまとめて results の前に置く。
+ * verbose では何も足さず、results[].events のまま返す。
  * searchDiagnostics is already verbose-gated upstream; left as-is.
  */
 export function formatCompactIntegratedSearchResponse<
@@ -199,11 +205,14 @@ export function formatCompactIntegratedSearchResponse<
   const merged = mergeIntegratedSearchDuplicates(result);
   if (options?.verbose === true) return merged;
   const out: Record<string, any> = { ...merged };
+  const schedule = Array.isArray(out.results) ? buildSchedule(out.results, options.now) : [];
   if (Array.isArray(out.results)) {
     // 別ページでも同じハイライト（PC版とスマホ版など）は2回目以降を参照先 URL に置き換える
     const firstUrlByHighlights = new Map<string, string>();
     out.results = out.results.map((item: Record<string, any>) => {
       const compact = stripInternalItemKeys(item);
+      // 予定は schedule に全て入っているため、ページごとの events は重複として外す
+      if (schedule.length > 0) delete compact.events;
       if (!Array.isArray(compact.highlights) || compact.highlights.length === 0) return compact;
       const key = JSON.stringify(compact.highlights);
       const firstUrl = firstUrlByHighlights.get(key);
@@ -222,6 +231,12 @@ export function formatCompactIntegratedSearchResponse<
       realtime.items = realtime.items.map(stripInternalItemKeys);
     }
     out.realtime = realtime;
+  }
+  if (schedule.length > 0) {
+    // 予定の質問で最初に読まれるよう、schedule は results の直前に置く
+    const entries = Object.entries(out);
+    entries.splice(Math.max(0, entries.findIndex(([key]) => key === 'results')), 0, ['schedule', schedule]);
+    return Object.fromEntries(entries) as T;
   }
   return out as T;
 }

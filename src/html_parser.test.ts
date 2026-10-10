@@ -202,3 +202,42 @@ describe('F4 lazy image resolution', () => {
     expect(result.markdown).toContain('https://cdn.example.com/real-two.jpg');
   });
 });
+
+describe('multiple events in the markdown callout', () => {
+  const pageWith = (events: Array<Record<string, unknown>>) => {
+    const ld = events.map((e) => ({ '@context': 'https://schema.org', '@type': 'Event', ...e }));
+    return `<html><head><title>Schedule</title><script type="application/ld+json">${JSON.stringify(ld)}</script></head><body><h1>Schedule</h1><p>公演の一覧です。詳細は各ページをご覧ください。</p></body></html>`;
+  };
+  const calloutLines = (markdown: string) => markdown.split('\n').filter((l) => l.startsWith('> 📅 **イベント情報**:'));
+
+  it('lists every event, nearest upcoming first and past events last', () => {
+    const html = pageWith([
+      { name: '過去公演', startDate: '1999-01-01T18:00:00+09:00' },
+      { name: '遠い公演', startDate: '2999-12-01T18:00:00+09:00' },
+      { name: '近い公演', startDate: '2999-01-01T18:00:00+09:00', location: { name: '会場A' } },
+    ]);
+    const result = convertHtmlToMarkdown(html, 'https://example.com/schedule', 30000);
+    const lines = calloutLines(result.markdown);
+    expect(lines.length).toBe(3);
+    expect(lines[0]).toContain('近い公演');
+    expect(lines[0]).toContain('会場: 会場A');
+    expect(lines[1]).toContain('遠い公演');
+    expect(lines[2]).toContain('過去公演');
+    // events は抽出順のまま全件
+    expect(result.events!.map((e) => e.name)).toEqual(['過去公演', '遠い公演', '近い公演']);
+  });
+
+  it('caps the callout at ten events and counts the rest', () => {
+    const events = Array.from({ length: 12 }, (_, i) => ({ name: `公演${i + 1}`, startDate: `2999-01-${String(i + 1).padStart(2, '0')}T18:00:00+09:00` }));
+    const result = convertHtmlToMarkdown(pageWith(events), 'https://example.com/schedule', 30000);
+    const lines = calloutLines(result.markdown);
+    expect(lines.length).toBe(11);
+    expect(lines[10]).toBe('> 📅 **イベント情報**: ほか 2 件');
+    expect(result.events!.length).toBe(12);
+  });
+
+  it('keeps each callout line on one line even when a name contains line breaks', () => {
+    const result = convertHtmlToMarkdown(pageWith([{ name: '公演\nDAY1', startDate: '2999-01-01T18:00:00+09:00' }]), 'https://example.com/schedule', 30000);
+    expect(calloutLines(result.markdown)[0]).toContain('公演 DAY1');
+  });
+});

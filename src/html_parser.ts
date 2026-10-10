@@ -21,6 +21,10 @@ import {
 } from './enrichment.js';
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
+import { sortEventsByProximity } from './events.js';
+
+/** Markdown 冒頭の「📅 イベント情報」に出す予定の上限。超えた分は件数だけ示す（events には全件が入る） */
+const MAX_EVENT_CALLOUT = 10;
 
 // ==========================================
 // 1. TurndownService インスタンス & GFM 拡張
@@ -602,7 +606,9 @@ export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean
 }
 
 /**
- * HTML から公式 X (Twitter) アカウント情報（@handle / プロフィールURL）を抽出
+ * HTML から公式 X (Twitter) アカウント情報（@handle / プロフィールURL）を抽出。
+ * twitterHandle はメタタグ（twitter:site / twitter:creator）で宣言されたものだけ。
+ * 本文中のリンクは「そのページの公式」とは限らない（まとめサイトのフッターの開発者のアカウントなど）ため、socialLinks にだけ入れる。
  */
 export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
   twitterHandle?: string;
@@ -626,7 +632,7 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
     }
   }
 
-  // 2. ページ内リンク (a[href]) からの公式プロフィールリンク抽出
+  // 2. ページ内リンク (a[href]) のプロフィールリンクは socialLinks にだけ入れる（twitterHandle にはしない）
   const socialLinks: Record<string, string> = {};
   const candidates: string[] = [];
 
@@ -651,10 +657,7 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
   });
 
   if (candidates.length > 0) {
-    return {
-      twitterHandle: candidates[0],
-      socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
-    };
+    return { socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined };
   }
 
   return {};
@@ -1068,16 +1071,26 @@ export function convertHtmlToMarkdown(
     contextPrefixLines.push(`> 📍 **階層**: ${breadcrumb.join(' > ')}`);
   }
   if (events.length > 0) {
-    const ev = events[0];
-    const details = [
-      ev.startDate ? `日時: ${ev.startDate}` : '',
-      ev.endDate ? `終了: ${ev.endDate}` : '',
-      ev.location ? `会場: ${ev.location}` : '',
-      ev.performer ? `出演: ${ev.performer}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ');
-    contextPrefixLines.push(`> 📅 **イベント情報**: ${ev.name}${details ? ' (' + details + ')' : ''}`);
+    // 開催中・今後の予定を近い順、過去を後ろに並べて 1 件 1 行で出す。
+    // 行頭の「> 📅 **…**:」は本文の評価から除外される目印なので、全行に付ける（rho_select / enrichment / scrape_content_quality）
+    const ordered = sortEventsByProximity(events);
+    const flat = (value: string) => value.replace(/\s+/g, ' ').trim();
+    for (const ev of ordered.slice(0, MAX_EVENT_CALLOUT)) {
+      const details = [
+        ev.startDate ? `日時: ${ev.startDate}` : '',
+        ev.endDate ? `終了: ${ev.endDate}` : '',
+        ev.location ? `会場: ${ev.location}` : '',
+        ev.performer ? `出演: ${ev.performer}` : '',
+      ]
+        .filter(Boolean)
+        .map(flat)
+        .join(' | ');
+      contextPrefixLines.push(`> 📅 **イベント情報**: ${flat(ev.name)}${details ? ' (' + details + ')' : ''}`);
+    }
+    if (ordered.length > MAX_EVENT_CALLOUT) {
+      contextPrefixLines.push(`> 📅 **イベント情報**: ほか ${ordered.length - MAX_EVENT_CALLOUT} 件`);
+    }
+    const ev = ordered[0];
     if (ev.description?.trim()) {
       const descriptionMarkdown = cleanMarkdownTokens(turndown.turndown(ev.description), keepDataImages);
       const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, '');

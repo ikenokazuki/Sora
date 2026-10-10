@@ -515,7 +515,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:v5:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = `scrape:v6:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
 
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
@@ -1530,7 +1530,7 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v7:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v8:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1960,7 +1960,7 @@ export async function integratedSearch(options: {
     }
   }
 
-  // スクレイプ結果からのフォールバック公式Xアカウント検出
+  // スクレイプ結果からのフォールバック公式Xアカウント検出（ページのメタタグで宣言されたアカウントだけ）
   if (!targetOfficialHandle && enrichedResults.length > 0) {
     for (const r of enrichedResults) {
       if (r.twitterHandle) {
