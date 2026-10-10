@@ -606,7 +606,9 @@ export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean
 }
 
 /**
- * HTML から公式 X (Twitter) アカウント情報（@handle / プロフィールURL）を抽出
+ * HTML から公式 X (Twitter) アカウント情報（@handle / プロフィールURL）を抽出。
+ * twitterHandle はメタタグ（twitter:site / twitter:creator）で宣言されたものだけ。
+ * 本文中のリンクは「そのページの公式」とは限らない（まとめサイトのフッターの開発者のアカウントなど）ため、socialLinks にだけ入れる。
  */
 export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
   twitterHandle?: string;
@@ -630,7 +632,7 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
     }
   }
 
-  // 2. ページ内リンク (a[href]) からの公式プロフィールリンク抽出
+  // 2. ページ内リンク (a[href]) のプロフィールリンクは socialLinks にだけ入れる（twitterHandle にはしない）
   const socialLinks: Record<string, string> = {};
   const candidates: string[] = [];
 
@@ -655,10 +657,7 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
   });
 
   if (candidates.length > 0) {
-    return {
-      twitterHandle: candidates[0],
-      socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined,
-    };
+    return { socialLinks: Object.keys(socialLinks).length > 0 ? socialLinks : undefined };
   }
 
   return {};

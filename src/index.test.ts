@@ -5792,7 +5792,14 @@ describe('Sora REST & MCP Endpoints', () => {
         const html2 = '<html><body><footer><a href="https://x.com/official_event_pr?lang=ja">Official X</a></footer></body></html>';
         const $2 = cheerio.load(html2);
         const res2 = extractTwitterHandleFromHtml($2);
-        expect(res2.twitterHandle).toBe('official_event_pr');
+        // 本文中のリンクは twitterHandle にはせず、socialLinks にだけ残す
+        expect(res2.twitterHandle).toBeUndefined();
+        expect(res2.socialLinks?.twitter).toBe('https://x.com/official_event_pr');
+
+        // 2b. まとめサイトのフッターの「開発者のX」を、そのページの公式として扱わない
+        const html2b = '<html><body><footer><a href="https://x.com/jordisantamar1a" target="_blank" aria-label="開発者のX">X</a></footer></body></html>';
+        const res2b = extractTwitterHandleFromHtml(cheerio.load(html2b));
+        expect(res2b.twitterHandle).toBeUndefined();
 
         // 3. Share link should be ignored
         const html3 = '<html><body><a href="https://twitter.com/share?url=xxx">Share on Twitter</a></body></html>';

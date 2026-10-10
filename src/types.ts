@@ -1286,7 +1286,7 @@ export const ScrapeResponseSchema = z.object({
   publishedTime: z.string().optional().describe('記事公開日時 (ISO 8601)'),
   author: z.string().optional().describe('著者・発信者名'),
   siteName: z.string().optional().describe('Web サイト名'),
-  twitterHandle: z.string().optional().describe('検出された公式Xアカウント (@handle)'),
+  twitterHandle: z.string().optional().describe('メタタグ (twitter:site / twitter:creator) で宣言された X アカウント (@handle)。本文中のリンクは socialLinks'),
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
