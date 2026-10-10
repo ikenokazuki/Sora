@@ -181,7 +181,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 - `scrapeDeadlineMs`（任意、既定は無効）は遅いページの打ち切りです。半数が
   揃ってから 5 秒、または上限で打ち切り、`deadlineExceeded` とスニペットで
   返します。発動した応答はキャッシュせず、補充・追加取得も行いません。
-- MCP の `search_deep` と `search_realtime` の応答は整形なしの JSON です（`verbose: true` のみ整形）。
+- MCP のツールの応答は整形なし（字下げなし）の JSON です。`verbose` を持つツール（`scrape`・`scrape_batch`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します（v2.38.0。以前は `search_deep` と `search_realtime` だけが整形なしでした）。
   別の結果と同じハイライト（PC版とスマホ版など）は、2つ目以降の `highlights` を省いて
   `highlightsSameAs` に先の結果の URL を入れます（`verbose` では省きません）。
 - `contextSufficiency` は、要件語（`extractQueryRequirements`）の言及と

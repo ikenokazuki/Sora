@@ -1354,9 +1354,9 @@ describe('Sora REST & MCP Endpoints', () => {
 
       expect(result.source).toBe('browser');
       expect(result.renderedWithBrowser).toBe(true);
-      expect(result.actionLogs.length).toBe(3);
-      expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
-      expect(result.content).toContain('Sora Interactive');
+      expect(result.actionOutputs.length).toBe(3);
+      expect(result.actionOutputs.every((o: any) => o.result === 'ok')).toBe(true);
+      expect(result.markdown).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
@@ -1449,8 +1449,8 @@ describe('Sora REST & MCP Endpoints', () => {
         extract: { markdown: true },
       });
 
-      expect(result.actionLogs.every((l: any) => l.success)).toBe(true);
-      const match = result.content.match(/clicked: (\d+)/);
+      expect(result.actionOutputs.every((o: any) => o.result === 'ok')).toBe(true);
+      const match = result.markdown.match(/clicked: (\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(5);
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
@@ -2109,7 +2109,7 @@ describe('Sora REST & MCP Endpoints', () => {
       });
 
       expect(turn2.sessionId).toBe(sessionId);
-      expect(turn2.content).toContain('State: Turn1 Value');
+      expect(turn2.markdown).toContain('State: Turn1 Value');
 
       // Turn 2.5: 異なる所有者トークン（第三者）からのセッションハイジャック試行が 403 で拒絶されること
       await expect(
@@ -2699,9 +2699,9 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const json = (await res.json()) as any;
     expect(res.status).toBe(200);
-    expect(json.actionLogs).toBeDefined();
-    expect(json.actionLogs[0].success).toBe(false);
-    expect(json.actionLogs[0].message).toContain('evaluate is disabled');
+    expect(json.actionOutputs).toBeDefined();
+    expect(json.actionOutputs[0].result).toBeUndefined();
+    expect(json.actionOutputs[0].error).toContain('evaluate is disabled');
     delete process.env.ALLOW_BROWSER_EVALUATE;
   });
 
@@ -3896,7 +3896,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
       await executeBrowserActions({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, actions: [], extract: { markdown: true } });
       const result = await executeBrowserActions({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, actions: [], extract: { markdown: true } });
-      expect(result.content).toContain('leaked:false');
+      expect(result.markdown).toContain('leaked:false');
 
       process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
