@@ -20,7 +20,7 @@ npm run test:tools:live
 
 ## 判定
 
-`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・`unavailable`・`blocked`・`unverified`・未登録が1件でもあれば exit 1。`unavailable` のみ1回再試行し、復旧時は `recovered=true` を記録する。
+`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・`unavailable`・未登録が1件でもあれば exit 1。`blocked`・`unverified` だけなら exit 3（soft hold。下の「公開gate」を参照）。`unavailable` のみ1回再試行し、復旧時は `recovered=true` を記録する。
 
 ## 新tool追加時
 
@@ -46,7 +46,7 @@ npm run test:tools:live
 - PR: `test.yml`（全test＋typecheck）。Secret不要。
 - main push／tag: `docker-publish.yml`（本体検査→候補build→候補のままlive→同一image push）。別buildの差し替えなし。
 - 定期（UTC 23:19）・手動: `live-tools.yml`（standard のみ。ホテルレーンは廃止した）。
-- 公開保留条件: liveの `fail`/`unavailable`/`blocked`/`unverified`/未登録。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
+- 公開保留条件: liveの `fail`/`unavailable`/未登録（exit 1）。`blocked`/`unverified` だけなら soft hold（exit 3）で公開は進む。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
 
 ## 環境依存の既知事項（2026-10-02 実測）
 
