@@ -1960,7 +1960,7 @@ export async function integratedSearch(options: {
     }
   }
 
-  // スクレイプ結果からのフォールバック公式Xアカウント検出
+  // スクレイプ結果からのフォールバック公式Xアカウント検出（ページのメタタグで宣言されたアカウントだけ）
   if (!targetOfficialHandle && enrichedResults.length > 0) {
     for (const r of enrichedResults) {
       if (r.twitterHandle) {
