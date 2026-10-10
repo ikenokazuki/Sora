@@ -26,12 +26,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      # 各レーンは別Soraプロセスのため、外部APIへの問い合わせが重ならないよう順番に実行する。
-      max-parallel: 1
-      matrix:
-        lane: [standard, hotel]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -52,26 +46,22 @@ jobs:
       - name: Build candidate image
         if: inputs.image-artifact == ''
         run: docker build -f Containerfile -t sora-tool-health:candidate .
-      - name: Run live tool-health lane (${{ matrix.lane }})
+      - name: Run live tool-health
         id: live
         run: |
           set +e
-          if [ "${{ matrix.lane }}" = "hotel" ]; then
-            bun --no-env-file run scripts/tool-health/run.ts --live --image "$IMAGE_TAG" --out tool-health-out --enable-hotel
-          else
-            bun --no-env-file run scripts/tool-health/run.ts --live --image "$IMAGE_TAG" --out tool-health-out
-          fi
+          bun --no-env-file run scripts/tool-health/run.ts --live --image "$IMAGE_TAG" --out tool-health-out
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
           if [ "$code" -eq 0 ]; then
-            echo "### tool-health ${{ matrix.lane }}: PASS" >> "$GITHUB_STEP_SUMMARY"
+            echo "### tool-health: PASS" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           elif [ "$code" -eq 3 ]; then
-            echo "### tool-health ${{ matrix.lane }}: SOFT HOLD (unverified/blocked only, no breakage signal)" >> "$GITHUB_STEP_SUMMARY"
-            cat tool-health-out/tool-health-${{ matrix.lane }}.md >> "$GITHUB_STEP_SUMMARY"
+            echo "### tool-health: SOFT HOLD (unverified/blocked only, no breakage signal)" >> "$GITHUB_STEP_SUMMARY"
+            cat tool-health-out/tool-health-standard.md >> "$GITHUB_STEP_SUMMARY"
             exit 0
           else
-            echo "### tool-health ${{ matrix.lane }}: HARD FAIL (exit $code)" >> "$GITHUB_STEP_SUMMARY"
+            echo "### tool-health: HARD FAIL (exit $code)" >> "$GITHUB_STEP_SUMMARY"
             exit "$code"
           fi
         env:
@@ -87,6 +77,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tool-health-${{ matrix.lane }}
+          name: tool-health-standard
           path: tool-health-out/
           retention-days: 7

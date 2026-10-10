@@ -3,12 +3,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../../src/mcp.js';
 import {
-  CANONICAL_TOOLS, HOTEL_TOOL, PROVIDER_CASES, REST_MAP, TOOL_CASES, snapshotDependencies,
+  CANONICAL_TOOLS, PROVIDER_CASES, REST_MAP, TOOL_CASES, snapshotDependencies,
 } from './catalog.js';
 
-async function canonicalNames(hotel: boolean): Promise<string[]> {
-  if (hotel) process.env.SORA_RAKUTEN_TRAVEL_ENABLED = 'true';
-  else delete process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
+async function canonicalNames(): Promise<string[]> {
   const [ct, st] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({ deferTools: false });
   const client = new Client({ name: 'catalog-check', version: '1.0.0' });
@@ -20,31 +18,23 @@ async function canonicalNames(hotel: boolean): Promise<string[]> {
   } finally {
     await client.close();
     await server.close();
-    delete process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
   }
 }
 
 describe('tool-health catalog consistency', () => {
-  test('canonical ledger matches the registered set in both lanes', async () => {
+  test('canonical ledger matches the registered set', async () => {
     const ledger = [...CANONICAL_TOOLS].sort();
     expect(new Set(ledger).size).toBe(ledger.length);
-    const normal = await canonicalNames(false);
-    expect(normal).toEqual(ledger.filter((n) => n !== HOTEL_TOOL));
-    const hotel = await canonicalNames(true);
-    expect(hotel).toEqual(ledger);
+    expect(await canonicalNames()).toEqual(ledger);
   });
   test('every canonical tool has a live case and vice versa', () => {
     const covered = new Set(TOOL_CASES.flatMap((c) => c.toolNames));
     for (const name of CANONICAL_TOOLS) {
-      if (name === HOTEL_TOOL) continue;
       expect(covered.has(name)).toBe(true);
     }
     for (const name of covered) {
       expect(CANONICAL_TOOLS).toContain(name);
     }
-    const hotelCases = TOOL_CASES.filter((c) => c.hotelLaneOnly);
-    expect(hotelCases.length).toBeGreaterThan(0);
-    expect(hotelCases.every((c) => c.toolNames.includes(HOTEL_TOOL))).toBe(true);
   });
   test('dependency ledger matches live registries by name', () => {
     const snap = snapshotDependencies();

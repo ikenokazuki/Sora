@@ -2,7 +2,7 @@
 // container server; provider checks run in-process from the same checkout.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { CANONICAL_TOOLS, HOTEL_TOOL, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
+import { CANONICAL_TOOLS, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
   collectKnownCaseIds, gateExit, redact, registerSecrets, summarize, validateCasesJson, writeReports,
@@ -13,15 +13,16 @@ import {
   type CaseContext, type CaseResult, type HealthCase, type HealthStatus, type ObservedSource,
 } from './types.js';
 
-interface Args { live: boolean; image: string; out: string; enableHotel: boolean; }
+interface Args { live: boolean; image: string; out: string; }
+
+// --enable-hotel は廃止したホテルレーンの名残。未知の引数は無視されるため、CI の呼び出しはそのまま動く。
 
 export function parseArgs(argv: string[]): Args {
-  const args: Args = { live: false, image: '', out: '', enableHotel: false };
+  const args: Args = { live: false, image: '', out: '' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--live') args.live = true;
     else if (argv[i] === '--image') args.image = argv[++i] ?? '';
     else if (argv[i] === '--out') args.out = argv[++i] ?? '';
-    else if (argv[i] === '--enable-hotel') args.enableHotel = true;
   }
   return args;
 }
@@ -79,7 +80,7 @@ export async function main(): Promise<number> {
     console.error('missing --out directory');
     return 2;
   }
-  const lane = args.enableHotel ? 'hotel' : 'standard';
+  const lane = 'standard';
   const startedAt = new Date().toISOString();
   let commit = 'unknown';
   try {
@@ -113,7 +114,6 @@ export async function main(): Promise<number> {
     '-e', 'SORA_DB_PATH=/tmp/tool-health.db',
     '-e', `SORA_ALLOWED_HOSTS=${hostName},localhost:${hostPort}`,
     '-e', `SORA_ALLOWED_ORIGINS=http://${hostName},http://localhost:${hostPort}`,
-    ...(args.enableHotel ? ['-e', 'SORA_RAKUTEN_TRAVEL_ENABLED=true'] : []),
     ...PASS_THROUGH_ENV.filter((k) => process.env[k]).flatMap((k) => ['-e', `${k}=${process.env[k]}`]),
     args.image,
   ];
@@ -201,7 +201,7 @@ export async function main(): Promise<number> {
       writeReports(args.out, { ...report('fail'), counts, missing: [] });
     };
 
-    const toolCases = TOOL_CASES.filter((c) => (args.enableHotel ? true : !c.hotelLaneOnly));
+    const toolCases = TOOL_CASES;
     for (const c of toolCases) {
       await runToolCase(c, { mcp, rest, secrets: liveSecrets, signal: AbortSignal.timeout(c.timeoutMs) }, record);
       await new Promise((r) => setTimeout(r, 1000));
@@ -213,7 +213,7 @@ export async function main(): Promise<number> {
     await mcpClose(session, 5000).catch(() => {});
 
     const coveredTools = new Set(results.flatMap((r) => r.toolNames));
-    const laneTools = args.enableHotel ? [...CANONICAL_TOOLS] : [...CANONICAL_TOOLS].filter((t) => t !== HOTEL_TOOL);
+    const laneTools = [...CANONICAL_TOOLS];
     const missing = laneTools.filter((t) => !coveredTools.has(t));
     const counts = summarize(results);
     const exitCode = gateExit(counts, missing);

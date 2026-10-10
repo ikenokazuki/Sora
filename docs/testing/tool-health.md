@@ -4,7 +4,7 @@
 
 ## 構成
 
-- 台帳: `scripts/tool-health/catalog.ts`（canonical 47＋hotel 1、REST対応表、tool live case、provider live case）
+- 台帳: `scripts/tool-health/catalog.ts`（canonical 47、REST対応表、tool live case、provider live case）
 - 本体検査: `bun test`（`src/tool_contracts.test.ts`＝REST対応、`src/tool_transport_smoke.test.ts`＝実HTTP輸送＋F1、`scripts/tool-health/catalog.test.ts`＝登録集合照合）
 - live runner: `scripts/tool-health/run.ts`（公開toolは候補コンテナの `/app/server.js` へHTTP、providerは同一checkoutの実取得器で確認）
 - 報告: JSON＋Markdown＋JUnitを `tool-health-out/` へ。7日artifact保存。
@@ -14,15 +14,13 @@
 ```bash
 # 候補imageをbuildして通常lane
 npm run test:tools:live
-# hotel lane（SORA_RAKUTEN_TRAVEL_ENABLED=true の別実行）
-bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health:candidate --out ./tool-health-out --enable-hotel
 ```
 
 `--live` なし・`--image` なしでは開始せず exit 2。Secrets は `SORA_TOOL_HEALTH_CASES_JSON`（`{version:1, cases:{...}}`、case ID と key 名のみ検証、値の伏字は report 側で実施）と配送資格情報の環境変数（`UPS_*`、`FEDEX_*`、`DHL_*`）で渡す。CLI引数・ログ・reportに秘密値を出さない。
 
 ## 判定
 
-`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・`unavailable`・`blocked`・`unverified`・未登録が1件でもあれば exit 1。`unavailable` のみ1回再試行し、復旧時は `recovered=true` を記録する。
+`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・`unavailable`・未登録が1件でもあれば exit 1。`blocked`・`unverified` だけなら exit 3（soft hold。下の「公開gate」を参照）。`unavailable` のみ1回再試行し、復旧時は `recovered=true` を記録する。
 
 ## 新tool追加時
 
@@ -47,8 +45,8 @@ bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health
 
 - PR: `test.yml`（全test＋typecheck）。Secret不要。
 - main push／tag: `docker-publish.yml`（本体検査→候補build→候補のままlive→同一image push）。別buildの差し替えなし。
-- 定期（UTC 23:19）・手動: `live-tools.yml`（通常＋hotelの2lane）。
-- 公開保留条件: liveの `fail`/`unavailable`/`blocked`/`unverified`/未登録。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
+- 定期（UTC 23:19）・手動: `live-tools.yml`（standard のみ。ホテルレーンは廃止した）。
+- 公開保留条件: liveの `fail`/`unavailable`/未登録（exit 1）。`blocked`/`unverified` だけなら soft hold（exit 3）で公開は進む。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
 
 ## 環境依存の既知事項（2026-10-02 実測）
 

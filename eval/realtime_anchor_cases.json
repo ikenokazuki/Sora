@@ -1,7 +1,7 @@
 {
  "version": 1,
  "collectedAt": "2026-10-08",
- "note": "X Realtime 固有名詞判定の評価セット。anchors は正解とみなす語、relevant は関連投稿の判定語（NFKC・小文字・空白除去後の部分一致）。webTitles/totals は収集時の Yahoo Web 上位タイトルと X 総ヒット数（オフライン評価用）。dev は設計に使った開発セット、held は設計後に集めた検証セット。held2 は v2.37.0 の判定方式の確認用に、正解の固有名詞（anchors。固有名詞が無いクエリは空）を判定結果を見る前に決めて集めた検証セット。",
+ "note": "X Realtime 固有名詞判定の評価セット。anchors は正解とみなす語、relevant は関連投稿の判定語（NFKC・小文字・空白除去後の部分一致）。webTitles/totals は収集時の Yahoo Web 上位タイトルと X 総ヒット数（オフライン評価用）。dev は設計に使った開発セット、held は設計後に集めた検証セット。held2 は v2.37.1 の判定方式の確認用に、正解の固有名詞（anchors。固有名詞が無いクエリは空）を判定結果を見る前に決めて集めた検証セット。",
  "cases": [
   {
    "split": "dev",
