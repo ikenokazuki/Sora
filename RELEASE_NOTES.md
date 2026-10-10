@@ -5,6 +5,11 @@
   - 汎用語の語彙を X の総ヒット数による判定に置き換える案も評価セットで試しましたが、採りませんでした。語彙を外すと dev の正解が 26 → 22 に下がり、「ほかより飛び抜けて多い語を外す」規則では「iPhone 重量 Wi-Fi 規格」の iPhone（11,421 件）が外れて誤った語を選ぶためです。語彙は推定の予備として残します。
 - MCP の instructions、README、仕組み文書、SKILL.md、`POST /search` の API 説明に使い方を追記しました。
 - X 検索のキャッシュキー（`search_realtime`・`search_deep`）に指定を含めました。指定しない呼び出しの結果は変わりません。
+- MCP のツール定義と instructions を全体で見直しました。
+  - 「返却」の中身が実際の応答と違っていた5ツールを直しました（`search_route` の `routes[]`、`search_earthquake` の震源 `hypocenter` と最大震度 `maxScale`、`search_song` の `title`・`artist`・`artwork`、`search_laws` の `promulgationDate`、`search_diet_minutes` の `meeting`・`speech`・`speechUrl`）。表記の検査（`schema:notation`）が、返却の入れ子のキーまで REST の応答スキーマと照合するようにしました。
+  - 「返却」の無かったツールに返却を書きました（`scrape`、`scrape_batch`、`search_deep`、`search_web`、`map_site`、`crawl_site`、`fetch_social_post`、`browser_action`、`search_image`、`search_video`、`watch_*` の4つ、国地域レポートの取得3つ、`search_tools`）。国地域レポートの取得3つには見出し（【…】）を付け、短すぎた説明（画像・動画検索、監視、一括スクレイプなど）に用途と使い分けを足しました。最初に見える14ツールの説明の合計は 3,500 字の上限内（3,473 字）です。
+  - instructions に名前の無かった13ツール（`map_site`、`search_news`、`search_image`、`search_video`、`fetch_x_post`、`watch_*` の4つ、`inspect_image`、国地域レポートの取得3つ）を載せました。重複した言い回しを削り、8,500 字の上限内（8,465 字）に収めています。
+  - `research_country_context` の `social` の引数（`platforms`、`queries`、`urls`、`lookbackHours`）に説明を足しました（`lookbackHours` の既定は 24 時間）。REST の `/realtime/post` の応答スキーマに `detail.author` と `detail.media` を足しました。
 
 # Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
 
