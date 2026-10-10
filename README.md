@@ -1008,7 +1008,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   | 最小 | `limit: 3`, `responseMode: "evidence"`, `realtimeLimit: 5`, `maxTotalChars: 1500` | 約13,900字・6,400トークン |
   | X なし | 軽量に `includeRealtime: false` を加える | 約9,300字・4,100トークン |
 
-  表の量は v2.36.1 での実測です。さらに、画像・動画の URL は `includeMedia: false` で省けます（既定は従来どおり残します。画像の内容が必要な質問では省かないでください）。予定は `schedule` に統合されて重複が減ります（v2.37.1）。`evidence` は本文を省いてハイライトを残すモードで、予定（`schedule`）と X 投稿の画像 URL は減らしません。待ち時間とメモリだけを減らすなら `scrape` の `mode: "fast"`（静的取得のみ）がありますが、LLM に渡る量は変わりません。根拠が足りないときは `contextSufficiency` を見て `responseMode: "full"` や `adaptiveScrape` で取り直せます。
+  表の量は v2.36.1 での実測です。さらに、画像・動画の URL は `includeMedia: false` で省けます（既定は従来どおり残します。画像の内容が必要な質問では省かないでください）。予定は `schedule` に統合されて重複が減ります（v2.37.2）。`evidence` は本文を省いてハイライトを残すモードで、予定（`schedule`）と X 投稿の画像 URL は減らしません。待ち時間とメモリだけを減らすなら `scrape` の `mode: "fast"`（静的取得のみ）がありますが、LLM に渡る量は変わりません。根拠が足りないときは `contextSufficiency` を見て `responseMode: "full"` や `adaptiveScrape` で取り直せます。
 - **深層検索リクエスト (`POST /search` / `/search/deep` / `/search/integrated` / `/deep-search`)**:
 ```json
 {
