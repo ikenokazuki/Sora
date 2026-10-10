@@ -10,6 +10,7 @@
   - 「返却」の無かったツールに返却を書きました（`scrape`、`scrape_batch`、`search_deep`、`search_web`、`map_site`、`crawl_site`、`fetch_social_post`、`browser_action`、`search_image`、`search_video`、`watch_*` の4つ、国地域レポートの取得3つ、`search_tools`）。国地域レポートの取得3つには見出し（【…】）を付け、短すぎた説明（画像・動画検索、監視、一括スクレイプなど）に用途と使い分けを足しました。最初に見える14ツールの説明の合計は 3,500 字の上限内（3,473 字）です。
   - instructions に名前の無かった13ツール（`map_site`、`search_news`、`search_image`、`search_video`、`fetch_x_post`、`watch_*` の4つ、`inspect_image`、国地域レポートの取得3つ）を載せました。重複した言い回しを削り、8,500 字の上限内（8,465 字）に収めています。
   - `research_country_context` の `social` の引数（`platforms`、`queries`、`urls`、`lookbackHours`）に説明を足しました（`lookbackHours` の既定は 24 時間）。REST の `/realtime/post` の応答スキーマに `detail.author` と `detail.media` を足しました。
+- README の REST の応答例を、実際の応答に合わせて直しました（`/browser/action` は `markdown`・`actionOutputs`、`/transit/route` は `routeCount`・`routes[].index`・`totalTime`・`transfers`、`/tracking` は `events`・`trackingUrl`・`details`）。`/weather` は README の例が正しく、OpenAPI の応答スキーマに `publicTime`・`publishingOffice`・`location`・`description`・`link`・`cached` が抜けていたため足しました。`/browser/action` の `actionOutputs[].step` の説明（0 始まり）は実装どおり 1 始まりに直しました。
 
 # Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
 

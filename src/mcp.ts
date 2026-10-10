@@ -354,7 +354,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
       '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (keeps full Markdown in evidence mode).',
       '  - **`realtimeFocus`**: `"public"` puts posts by others first (reputation, reactions, backlash, on-site reports); `"official"` (default) puts the account\'s own posts first (schedules, announcements). It is inferred from words like 評判/炎上/口コミ when omitted. `realtime.omittedCount` > 0 means posts were left out by the cap; raise `realtimeLimit` if more are needed.',
-      '  - **`realtimeAnchor`**: Pass the query word that is the proper noun (person, group, work or venue name) when you know it; the X search then never drops it when relaxing the query. Same as `anchor` on `search_realtime`.',
+      '  - **`realtimeAnchor`** (`anchor` on `search_realtime`): Pass the query word that is the proper noun (person, group, work or venue name) when known; relaxed X searches then keep it.',
       '  - **`schedule`** (response field): events from the top pages, merged by date and name, upcoming first with past events after them. Read it first for schedule or event-date questions; `sources` lists the pages. `includeMedia: false` omits image/video URLs when they are not needed.',
       '  - **`contextSufficiency`** (response field): `partial` / `insufficient` with `reasons` (`unmentioned:<term>` = no evidence mentions the term, `unanswered:<term>` = no time/price/date value found, `few-success` = fewer than 3 pages retrieved) shows what is missing; investigate those items further. `no_gap_detected` only means no gap was found by lexical checks, not that the answer is verified.',
       '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
@@ -1146,7 +1146,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .enum(['official', 'public'])
           .optional()
           .describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
-        anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない（辞書や推定に頼らない）。クエリの語に無ければ無視して推定する'),
+        anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
         verbose: z
           .boolean()
           .optional()
