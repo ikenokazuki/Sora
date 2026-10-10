@@ -238,6 +238,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const hasGov = hasMod('gov');
   const hasTrade = hasMod('trade');
   const hasIntel = hasMod('intel');
+  const hasWatch = hasMod('watch');
+  // inspect_image は web モジュールでも有効になる（createMcpServer の shouldEnableMedia と同じ条件）
+  const hasMedia = hasMod('media') || hasWeb;
 
   const lines: string[] = [
     '# Sora MCP Server - AI Interaction & Tool Routing Guidelines',
@@ -248,7 +251,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
 
   if (hasWeb) {
     lines.push(
-      '- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST ALWAYS use the Universal Search tools (`search_deep` or `search_web`)** to actively investigate official websites, announcements, schedules, and documents from the web.',
+      '- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST use `search_deep` or `search_web`** to investigate official websites, announcements, and schedules.',
     );
   } else {
     lines.push(
@@ -261,26 +264,32 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     '## 2. Dynamic Tool Discovery Protocol',
     '- **Visible Tools**: If the required specialized tool is present in the current model tool definitions, call it directly without discovery or activation.',
     '- **Catalog vs Model Context**: MCP tools/list is the server catalog; the host may expose only a subset of those definitions to the model.',
-    '- **Host Deferred Loading**: If the host provides tool discovery, use the host-provided tool search to load a missing definition. Sora search_tools is not required when the server catalog is already fully available.',
-    '- **Legacy Sora Activation**: If no host discovery is available and the server uses deferred activation, call the available search_tools with relevant keywords. After activation, wait for the host to load its input schema before calling the tool. A name mentioned in search output alone does not make a tool callable.',
-    '- **Unavailable Modules**: If discovery cannot find the requested tool, the server module may be disabled or unavailable by configuration. Use an appropriate available safe fallback without inventing data.',
+    '- **Host Deferred Loading**: If the host provides tool discovery, use the host-provided tool search to load a missing definition; Sora search_tools is then not needed.',
+    '- **Legacy Sora Activation**: Otherwise, if the server uses deferred activation, call search_tools with relevant keywords, then wait for the host to load its input schema before calling the tool (a name in search output alone is not callable).',
+    '- **Unavailable Modules**: If discovery cannot find the tool, its module may be disabled; use a safe available fallback without inventing data.',
   );
 
-  if (hasWeb || hasBrowser) {
+  if (hasWeb || hasBrowser || hasWatch || hasMedia) {
     lines.push('', '## 3. Web Tool Overlap & Primary Boundaries');
     if (hasWeb) {
       lines.push(
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
         '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
-        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). X posts are out of scope here; use `search_realtime`.' ,
-        '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection.',
+        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). For X posts use `search_realtime` / `fetch_x_post`.',
+        '- **`map_site` / `crawl_site`**: Same-site URL listing / multi-page traversal for documentation or full-site knowledge collection.',
       );
     }
     if (hasBrowser) {
       lines.push(
         '- **`browser_action`**: Interactive browser operation requiring clicks, form fills, JS execution, or complex dynamic rendering.',
       );
+    }
+    if (hasMedia) {
+      lines.push('- **`inspect_image`**: Image input for a flyer, timetable or table only when the answer needs its content.');
+    }
+    if (hasWatch) {
+      lines.push('- **`watch_register` / `watch_check` / `watch_list` / `watch_delete`**: Page change monitoring (ticket results, restocks, notices).');
     }
   }
 
@@ -312,7 +321,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasYahoo) {
     tier1Directives.push(
-      "6. Real-time Social Trends & Q&A (X/Twitter realtime posts, trending ranking, Yahoo! Chiebukuro): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_trend, suggest_keywords).",
+      "6. Real-time Social, News & Q&A (X/Twitter realtime posts, Yahoo! News, trending ranking, Yahoo! Chiebukuro, image/video search): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], fetch_x_post, search_news, search_trend, suggest_keywords, search_image, search_video).",
     );
   }
   if (hasMusic) {
@@ -322,7 +331,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasIntel) {
     tier1Directives.push(
-      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report by its contextId with get_country_context, get_country_context_evidence, get_country_context_updates. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
     );
   }
 
@@ -341,10 +350,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '### Tier 2: Universal Web & Deep Search (ALL OTHER REAL-WORLD QUERIES)',
       'For ANY query requiring up-to-date facts, event dates, or external context outside Tier 1, invoke:',
       '- **`search_deep` (Primary Recommended Tool for Deep Web + X Investigation)**:',
-      '  Combines web search + deep article scraping (Clean Markdown) + X/Twitter realtime pulse with Deep Evidence Rerank.',
       '  - **`responseMode: "evidence"`**: Use for focused or local fact confirmation (e.g. specific dates/times, lyricists, single spec details, localized proof). Returns query-selected highlights and omits redundant full Markdown when safe.',
       '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
-      '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (which preserves full Markdown even in evidence mode).',
+      '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (keeps full Markdown in evidence mode).',
       '  - **`realtimeFocus`**: `"public"` puts posts by others first (reputation, reactions, backlash, on-site reports); `"official"` (default) puts the account\'s own posts first (schedules, announcements). It is inferred from words like 評判/炎上/口コミ when omitted. `realtime.omittedCount` > 0 means posts were left out by the cap; raise `realtimeLimit` if more are needed.',
       '  - **`realtimeAnchor`**: Pass the query word that is the proper noun (person, group, work or venue name) when you know it; the X search then never drops it when relaxing the query. Same as `anchor` on `search_realtime`.',
       '  - **`schedule`** (response field): events from the top pages, merged by date and name, upcoming first with past events after them. Read it first for schedule or event-date questions; `sources` lists the pages. `includeMedia: false` omits image/video URLs when they are not needed.',
@@ -353,7 +361,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '- **`search_web` (Candidate Discovery & Optional 1-Call Enrichment)**:',
       '  - **URL / Snippet Discovery**: Call with `formats` omitted for lightweight candidate search without scraping.',
       '  - **Search + Content in One Call**: Specify `formats: ["markdown"]` (or `formats: ["markdown", "tables"]`) to scrape top results and attach requested formats in a single round-trip.',
-      '  - *Note*: If snippets lack specific details, read the page using `scrape`. However, do NOT force a redundant second `scrape` call if `search_web` with `formats` already retrieved the necessary content.',
+      '  - *Note*: If snippets lack details, read the page with `scrape`, unless `formats` already retrieved it.',
     );
   }
 
@@ -415,7 +423,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'scrape',
       'web',
-      '【単一URL・PDF本文抽出】指定した既知 URL の Web ページまたは PDF をスクレイピングし、記事本文をクリーンな Markdown に変換して返却します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action を使用してください。',
+      '【単一URL・PDF本文抽出】既知 URL の Web ページまたは PDF の本文をクリーンな Markdown で取得します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
       {
         url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
         maxChars: z
@@ -621,7 +629,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'scrape_batch',
       'web',
-      '【複数 URL 一括並行スクレイプ】複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。',
+      '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
       SCRAPE_BATCH_INPUT_SHAPE,
       async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
@@ -652,7 +660,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_deep',
       'web',
-      '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。根拠が足りているかは応答の contextSufficiency で確認できます。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
+      '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（full / evidence）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
       INTEGRATED_SEARCH_INPUT_SHAPE,
       async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
         try {
@@ -719,7 +727,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'map_site',
       'web',
-      '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の全 URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。',
+      '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。本文が必要なら crawl_site / scrape_batch。返却: { url, links, count, source }',
       {
         url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
         limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
@@ -749,7 +757,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'crawl_site',
       'web',
-      '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。',
+      '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }',
       {
         url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
         maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
@@ -812,7 +820,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_web',
       'web',
-      '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLおよび概要スニペットを高速探索します（URL/スニペット探索）。formats を指定した場合は上位検索結果を追加スクレイプし、1回の呼び出しで記事本文や指定形式をインライン返却可能です（同一呼出での本文抽出）。深層Web+リアルタイムX調査や深層リランキングが必要な場合は search_deep、既知URLの精読は scrape を使用してください。',
+      '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索します（URL/スニペット探索）。formats を指定すると上位結果を追加スクレイプし、本文や指定形式を同じ呼び出しで返します（同一呼出での本文抽出）。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }',
       SEARCH_WEB_INPUT_SHAPE,
       async (options) => {
         try {
@@ -865,7 +873,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'fetch_social_post',
       'web',
-      '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応。Metaのコメント取得は対象外です。Xの投稿は対象外のため search_realtime を使ってください。',
+      '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応（Metaのコメントは対象外）。Xの投稿は対象外のため fetch_x_post を使ってください。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }',
       {
         url: z.string().min(1).describe('公開投稿URL'),
         commentLimit: z.number().int().min(0).max(20).optional().default(10).describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
@@ -902,7 +910,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'browser_action',
       'browser',
-      '【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。',
+      '【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。返却: { success, url, sessionId?, markdown?, screenshot?, html?, actionOutputs?: [{ step, type, result?, error? }], error? }',
       {
         url: z.string().url().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
         sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
@@ -951,7 +959,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_image',
       'yahoo',
-      '【Yahoo 画像検索】画像の URL・サムネイル・寸法（幅/高さ）・元ページ URL を取得します。',
+      '【Yahoo 画像検索】キーワードで画像を検索し、元画像の URL と寸法・サムネイル・掲載元ページを取得します。画像の中身を読むときは inspect_image を使ってください。返却: { query, count, items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }] }',
       {
         query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
@@ -979,7 +987,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_video',
       'yahoo',
-      '【Yahoo 動画検索】YouTube 等の動画 URL・タイトル・再生時間・サムネイルを取得します。',
+      '【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader }] }',
       {
         query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
@@ -1094,7 +1102,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_realtime',
       'yahoo',
-      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント(id:xxx)、宛先(@xxx)、ハッシュタグ(#xxx)、除外(-xxx)、OR検索対応。物販タイテ・緊急告知・現地速報把握に最適。新着順(recent)/話題順(popular)対応。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)',
+      '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報把握に最適。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)',
       {
         query: z
           .string()
@@ -1279,7 +1287,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_route',
       'life',
-      '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ departure, arrival, duration, transferCount, fare, steps }] }',
+      '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }',
       TRANSIT_ROUTE_INPUT_SHAPE,
       async (opts) => {
         try {
@@ -1304,7 +1312,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'get_weather',
       'life',
-      '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "箱根", "浦安", "別府", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }',
+      '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }',
       {
         city: z.string().min(1).describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
         days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
@@ -1499,7 +1507,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_earthquake',
       'disaster',
-      '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, epicenter, maxIntensity, magnitude }] }',
+      '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }',
       {
         limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
         minIntensity: EarthquakeScaleSchema.optional()
@@ -1599,7 +1607,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'watch_register',
       'watch',
-      '【Webページ差分監視登録】Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。',
+      '【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector, interval_seconds }, initialResult?, initialError? }',
       {
         url: z.string().url().describe('監視対象の Web ページ URL (例: "https://example.com/status")'),
         title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
@@ -1630,7 +1638,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'watch_check',
       'watch',
-      '【Webページ差分スキャン実行】登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。',
+      '【Webページ差分スキャン実行】登録した監視対象を取得し直し、前回との差分を確認します。id を省略すると全件を確認します。差分があれば登録した Webhook に通知します。返却: id 指定時は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }、省略時はその配列',
       {
         id: z.string().optional().describe('特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン)'),
       },
@@ -1657,7 +1665,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'watch_list',
       'watch',
-      '【Webページ監視ターゲット一覧】現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。',
+      '【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, interval_seconds, last_checked_at?, last_hash? }]',
       {},
       async () => {
         try {
@@ -1682,7 +1690,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'watch_delete',
       'watch',
-      '【Webページ監視ターゲット削除】指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。',
+      '【Webページ監視ターゲット削除】指定 ID の監視対象を削除し、以後の監視を止めます。ID は watch_list で確認できます。返却: { success, id }',
       {
         id: z.string().min(1).describe('削除する監視ターゲットのID'),
       },
@@ -1714,7 +1722,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_song',
       'music',
-      '【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { query, country, count, items: [{ trackName, artistName, previewUrl, artworkUrl }], source }',
+      '【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { query, country, count, items: [{ title, artist, previewUrl, artwork }], source }',
       {
         query: z.string().min(1).describe('検索曲名・楽曲タイトル (例: "アイドル", "夜に駆ける", "Subtitle")'),
         country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
@@ -1809,7 +1817,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_laws',
       'gov',
-      '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, enforcementDate }], source }',
+      '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }',
       {
         keyword: z.string().min(1).describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")'),
         limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
@@ -1864,7 +1872,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_diet_minutes',
       'gov',
-      '【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, title }], source }',
+      '【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }',
       {
         keyword: z.string().optional().describe('検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
         speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
@@ -2023,7 +2031,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'check_product_compliance',
       'trade',
-      '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。LLM独自の推測HTSコードを渡すことは厳禁です。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
+      '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
       {
         url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
         productName: z.string().optional().describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"）'),
@@ -2138,7 +2146,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'get_country_context',
       'intel',
-      '保存済み国地域レポートをcontextIdで取得します。返却: CountryContextReport',
+      '【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。返却: CountryContextReport',
       {
         contextId: z.string().min(1).describe('コンテキストID'),
       },
@@ -2162,7 +2170,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'get_country_context_evidence',
       'intel',
-      'レポートの根拠原文・構造化データをページ取得します。属さないIDは拒否。',
+      '【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに属さない ID は拒否します。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, nextCursor? }',
       {
         contextId: z.string().min(1).describe('コンテキストID'),
         evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (省略時はページ走査)'),
@@ -2188,7 +2196,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'get_country_context_updates',
       'intel',
-      '前回以降の追加・訂正・削除・取得障害の差分を取得します。',
+      '【国地域レポートの差分取得】contextId のレポートについて、前回以降の根拠の追加・訂正・削除・取得障害を取得します。前回の nextCursor を cursor に渡すと続きから取得します。返却: { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }',
       {
         contextId: z.string().min(1).describe('コンテキストID'),
         cursor: z.string().optional().describe('差分カーソル'),
@@ -2215,9 +2223,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     'search_tools',
     '【追加ツール検索・動的有効化】現在 tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
       '一致したツールを現在のセッションで有効化します。すでに tools/list に表示されているツールは直接実行してください。' +
-      '荷物追跡（track_package）やフライト情報（get_flight_status）、音楽詳細、国会会議録など、初期状態で非表示の追加機能を利用する際に使用します。' +
-      '本ツールで検索しても見つからない場合は、該当モジュールが無効化・利用不可となっている可能性があります。' +
-      '現在 tools/list に表示されている利用可能なツールや他の手段を使用してください。',
+      '荷物追跡（track_package）やフライト情報（get_flight_status）、音楽詳細、国会会議録など、初期状態で非表示の追加機能を使う際に使用します。' +
+      '見つからない場合は該当モジュールが無効か利用不可です。返却: 有効化したツールの一覧（テキスト）',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
     },

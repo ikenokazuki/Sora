@@ -2618,7 +2618,12 @@ export function generateOpenApiDocument() {
                           statusId: { type: 'string' },
                           text: { type: 'string' },
                           isNoteTweet: { type: 'boolean' },
+                          author: {
+                            type: 'object',
+                            properties: { name: { type: 'string' }, screenName: { type: 'string' } },
+                          },
                           createdAt: { type: 'string' },
+                          media: { type: 'array', items: { type: 'string' }, description: '画像・動画の URL' },
                         },
                       },
                     },
