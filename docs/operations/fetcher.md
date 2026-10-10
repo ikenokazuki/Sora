@@ -15,13 +15,16 @@ Read this first on every update. Also read the server's authoritative runbook:
   Do not replace it with a manual `podman run`.
 - Port: container 8000 -> host 127.0.0.1:3016. Public path is Caddy https only:
   https://fetcher.ikebun.jp/health (direct :8000 is firewalled, never use it).
-- Current image: `ghcr.io/ikenokazuki/sora:2.36.1`
-  (image ID `be7ac85b5114`, digest `sha256:0332895083bfbe598f05f9a231a58d9bdf6863a19054434afe4b6ee9c8d81a9e`,
-  deployed 2026-10-09). Package/health version: `2.36.1`.
-  X realtime search: `focus` (`official` / `public`, inferred from words such as 評判・炎上・口コミ),
-  a cap on returned posts (`limit` / `realtimeLimit`, default 20, `omittedCount`), a re-check when only one post
-  matches every term, and X profile pages built from the account's own posts. MCP `search_deep` /
-  `search_realtime` return compact JSON (`verbose` keeps indentation). `tini` remains PID 1.
+- Current image: `ghcr.io/ikenokazuki/sora:2.37.4`
+  (image ID `1ea32083497b`, digest `sha256:c6f65cf7f76406283147e6268407f2d83139f74212bb4c22f2cc6ef2bb828dee`,
+  deployed 2026-10-10). Package/health version: `2.37.4`.
+  `search_deep` gains an event `schedule` (merged across top pages, upcoming first, `sources` per event),
+  `includeMedia` (opt-in media-URL omission), a multi-event `📅` callout (up to 10), nav-block-aware
+  `maxTotalChars` truncation, `twitterHandle` restricted to meta tags, a generalized anchor decision
+  (site-slot weight, no pick on ties or rarity mismatch, rarity-based near-tie), and no hotel search.
+  MCP `search_deep` / `search_realtime` return compact JSON (`verbose` keeps indentation and `results[].events`).
+  `SORA_ALLOW_ANONYMOUS=true` silences the no-key warning (open access is the intended policy).
+  `tini` remains PID 1.
 - `SORA_DEFER_TOOLS=false`: MCP exposes 47 canonical definitions. Initial model context
   is limited to 14 by the saved LibreChat Agent's native deferred loading.
 - Released images: ghcr.io/ikenokazuki/sora, pinned tag per release.
@@ -177,6 +180,19 @@ sudo -n -u apps /run/current-system/sw/bin/podman unshare \
 - GitHub連携にはActions再実行権限がなく403で拒否されたため、この運用記録をmainへpushして同じ実装のCIを再検証した。再検証では全テスト・候補ビルド・両実APIレーン・公開処理が成功した。本番は候補のREST・MCP・実ブラウザ確認後に切り替えた。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
 - 検証結果・診断成果物・設定控えは`/home/ikeno/.local/state/sora-deploy/20261007T110654Z-2.34.7/`に保存する。
+
+## v2.37.4の公開と本番反映（2026-10-10）
+
+- 予定の統合一覧、固有名詞判定の見直し、画像 URL を省くオプション、ホテル検索の廃止、本番で見つけた2件の修正。主な変更：`search_deep` の通常応答に `schedule`（開始日と名称が同じ予定を1件にまとめ、開催中・今後は近い順、過去は後ろ。各予定に `sources`。`results[].events` は `schedule` に移る。`verbose` では従来どおり `results[].events`）、Markdown 冒頭の「📅 イベント情報」を最大10件（超えた分は件数表示）、`maxTotalChars` の切り詰めでページ先頭のナビは動かさず先頭切り取りで落とす、画像・動画の URL を省く `includeMedia`（既定は残す）、`twitterHandle` はメタタグ由来のみ、固有名詞の判定はサイト名の枠を重く・同点は決めない・総ヒット数が明らかに少ない語は選ぶ（語彙は追加しない）、実験的ホテル検索の廃止（`search_hotel_availability`・`POST /hotels/availability`・ホテルレーン）、`verbose` では整形をかけず `results[].events` のまま返す、定期実行の失敗（タグが空で即終了）を修正。詳細は`RELEASE_NOTES.md`。
+- v2.37.0（ホテル検索の外部失敗）・v2.37.1（新しい Bun での全件テストの失敗）は検査で止まり未公開。v2.37.2 は公開されたが、本番前の検証で「ライブ 予定 =LOVE」が別名検索に進めない問題を見つけ、本番には入れず v2.37.3 へ。v2.37.3 は候補・公開スモークまで回したが、公開後の検証で「`verbose` で `results[].events` が外れる」「先頭のナビだけ残る」の2件を見つけ、本番には入れず v2.37.4 へ。未公開のタグは残っている。
+- リリースコミットは`3c9dc7a`（`Merge branch \u0027fix/nav-leading-blocks\u0027`、リリースは`309e063`）、タグ`v2.37.4`。`main` とタグを `--atomic` で push した。全テスト・候補ビルド・実 API 検査が通り、`2.37.4`・`2.37`・`latest`・`sha-3c9dc7a` が同一 digest `sha256:c6f65cf7f76406283147e6268407f2d83139f74212bb4c22f2cc6ef2bb828dee` で公開され、[日本語リリース](https://github.com/ikenokazuki/Sora/releases/tag/v2.37.4)も作成された。
+- apps 側の pull 結果のイメージ ID は `1ea32083497b`、ENTRYPOINT は `/usr/bin/tini -- /usr/local/bin/bun /app/server.js`。
+- 正式イメージを別ポート 3117・使い捨て DB・本番と同じ krun / `SORA_DEFER_TOOLS=false` / `SORA_ALLOW_ANONYMOUS=true` で検証（候補のみ `BROWSER_IDLE_TTL_MS=15000`）。31 項目すべて成功（前回スクリプトの 2 件の失敗は、テスト期待値の問題と、v2.37.4 で修正した `verbose` の `results[].events` が原因だった。v2.37.4 の検証では 31/31 成功）。
+- DB バックアップは `/data/backups/sora-before-2.37.4-20261010T081530Z.db`（0600、3,960,832 バイト、quick_check=ok）。Nix 宣言と apps の Quadlet drop-in を同じ固定タグで揃え、Pull=newer を維持。既存の `SORA_DEFER_TOOLS=false`、Host/Origin、`web-fetcher-data:/data:U`、127.0.0.1:3016、krun を維持し、`SORA_ALLOW_ANONYMOUS=true` を追加した（利用者が意図した公開方針のため警告だけ止める）。drop-in の変更前は `20-release.conf.before-v2.37.4-20261010T081530Z` に保存した。
+- 生成された ExecStart を確認し、`web-fetcher.service` だけを再起動した（19:57:29、約5秒で health ok）。他の本番コンテナ18個の ID は変化なし。NixOS 全体は再構築していない。検証用の候補コンテナは削除済み。
+- 公開 URL での確認：health 2.37.4、公開スモーク 30/31（`verbose` の `limit: 3` で上位3件に `events` が無かった1件だけ失敗。`limit: 5` では TimeTree ファンページの `events` 21 件が残ることを確認済み。テスト期待値の問題で製品の問題ではない）。元の「=LOVE ライブ　予定」の深層検索リクエスト（`maxTotalChars: 1000`）で、先頭のナビが先に落ち、`schedule` 22 件が残ることを確認した。再起動後のログに「No API key configured」の警告なし・エラーなし。再起動後に tini の配下は bun だけ（ゾンビ 0）。
+- 復旧先は直前の `ghcr.io/ikenokazuki/sora:2.36.1`（ID `be7ac85b5114`）。drop-in の `20-release.conf.before-v2.37.4-20261010T081530Z` を戻し、Nix 宣言も 2.36.1 へ戻して daemon-reload、`web-fetcher` だけを restart する（`SORA_ALLOW_ANONYMOUS` の行も消えるため、警告が再び出る）。通常のイメージ復旧では DB を復元しない。
+- 本番・候補の取得結果、イメージ ID、digest、設定控え、DB バックアップの確認結果は `/home/ikeno/.local/state/sora-deploy/20261010T081530Z-2.37.2` に保存した。
 
 ## v2.36.1の公開と本番反映（2026-10-09）
 
