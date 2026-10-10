@@ -21,6 +21,10 @@ import {
 } from './enrichment.js';
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
+import { sortEventsByProximity } from './events.js';
+
+/** Markdown 冒頭の「📅 イベント情報」に出す予定の上限。超えた分は件数だけ示す（events には全件が入る） */
+const MAX_EVENT_CALLOUT = 10;
 
 // ==========================================
 // 1. TurndownService インスタンス & GFM 拡張
@@ -1068,16 +1072,26 @@ export function convertHtmlToMarkdown(
     contextPrefixLines.push(`> 📍 **階層**: ${breadcrumb.join(' > ')}`);
   }
   if (events.length > 0) {
-    const ev = events[0];
-    const details = [
-      ev.startDate ? `日時: ${ev.startDate}` : '',
-      ev.endDate ? `終了: ${ev.endDate}` : '',
-      ev.location ? `会場: ${ev.location}` : '',
-      ev.performer ? `出演: ${ev.performer}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ');
-    contextPrefixLines.push(`> 📅 **イベント情報**: ${ev.name}${details ? ' (' + details + ')' : ''}`);
+    // 開催中・今後の予定を近い順、過去を後ろに並べて 1 件 1 行で出す。
+    // 行頭の「> 📅 **…**:」は本文の評価から除外される目印なので、全行に付ける（rho_select / enrichment / scrape_content_quality）
+    const ordered = sortEventsByProximity(events);
+    const flat = (value: string) => value.replace(/\s+/g, ' ').trim();
+    for (const ev of ordered.slice(0, MAX_EVENT_CALLOUT)) {
+      const details = [
+        ev.startDate ? `日時: ${ev.startDate}` : '',
+        ev.endDate ? `終了: ${ev.endDate}` : '',
+        ev.location ? `会場: ${ev.location}` : '',
+        ev.performer ? `出演: ${ev.performer}` : '',
+      ]
+        .filter(Boolean)
+        .map(flat)
+        .join(' | ');
+      contextPrefixLines.push(`> 📅 **イベント情報**: ${flat(ev.name)}${details ? ' (' + details + ')' : ''}`);
+    }
+    if (ordered.length > MAX_EVENT_CALLOUT) {
+      contextPrefixLines.push(`> 📅 **イベント情報**: ほか ${ordered.length - MAX_EVENT_CALLOUT} 件`);
+    }
+    const ev = ordered[0];
     if (ev.description?.trim()) {
       const descriptionMarkdown = cleanMarkdownTokens(turndown.turndown(ev.description), keepDataImages);
       const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, '');
