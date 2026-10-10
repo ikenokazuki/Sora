@@ -275,3 +275,39 @@ describe('schedule and the markdown budget', () => {
     expect(out.results[0].markdownTruncated).toBeDefined();
   });
 });
+
+describe('navigation blocks are cut first', () => {
+  const nav = '-   [HOME](https://equal-love.jp/)\n-   [NEWS](https://equal-love.jp/news)\n-   [SCHEDULE](https://equal-love.jp/schedule)\n-   [PROFILE](https://equal-love.jp/feature/profile)';
+  const front = '---\nsiteName: "＝LOVE（イコールラブ） オフィシャルサイト"\n---';
+  const prose = Array.from({ length: 30 }, (_, i) => `10月${i + 1}日 ライブの予定です。開演は18時で、会場は東京の大きなホールです。`).join('\n\n');
+  const run = (markdown: string, maxTotalChars: number) =>
+    (formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown }] }, { maxTotalChars }) as any).results[0];
+
+  test('取り分が小さいとき、ナビではなく本文を残す', () => {
+    const md = `${front}\n\n${nav}\n\n${prose}`;
+    const r = run(md, 400);
+    expect(r.markdown.startsWith(front)).toBe(true);
+    expect(r.markdown).toContain('ライブの予定です');
+    expect(r.markdown).not.toContain('[HOME]');
+    expect(r.markdownTruncated.totalChars).toBe(md.length);
+  });
+
+  test('全文が収まるときは並びを変えない', () => {
+    const md = `${front}\n\n${nav}\n\nライブの予定です。`;
+    const r = run(md, 5000);
+    expect(r.markdown).toBe(md);
+    expect(r.markdownTruncated).toBeUndefined();
+  });
+
+  test('ラベルが長いリンク一覧（ニュース・予定）は本文として動かさない', () => {
+    const news = '-   [2026.10.15 ＝LOVE 9th ANNIVERSARY PREMIUM CONCERT 開催決定](https://a.example/1)\n-   [2026.10.10 新曲のミュージックビデオ公開のお知らせ](https://a.example/2)';
+    const md = `${news}\n\n${prose}`;
+    expect(run(md, 400).markdown.startsWith('-   [2026.10.15')).toBe(true);
+  });
+
+  test('ナビしかないページ、コードフェンスを含むページは変えない', () => {
+    expect(run(`${front}\n\n${nav}`, 100).markdown.includes('[HOME]')).toBe(true);
+    const fenced = `${nav}\n\n\`\`\`\ncode\n\n${nav}\n\`\`\`\n\n${prose}`;
+    expect(run(fenced, 300).markdown.startsWith('-   [HOME]')).toBe(true);
+  });
+});

@@ -90,6 +90,34 @@ export function projectIntegratedSearchEvidenceItem(
   return item;
 }
 
+const NAV_LABEL_MAX_CHARS = 16;
+const LINK_ONLY_LINE = /^(?:[-*+]|\d+\.)?\s*\[([^\]\n]*)\]\([^)\n]*\)$/;
+
+/** 行がすべて「[短いラベル](URL)」だけの塊（グローバルナビ・パンくず・フッターのリンク列） */
+function isNavBlock(block: string): boolean {
+  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((l) => {
+    const m = l.match(LINK_ONLY_LINE);
+    return m !== null && m[1].trim().length <= NAV_LABEL_MAX_CHARS;
+  });
+}
+
+/**
+ * 切り詰める前に、ナビゲーションのリンクだけの塊を本文より後ろへ回す（削除はしない。切るときに最初に落ちる）。
+ * 先頭のフロントマターは先頭に残す。コードフェンスを含む Markdown は動かさない。
+ * ponytail: ラベルが短いリンクだけの塊＝ナビとみなす。ラベルの短いニュース一覧は誤ってナビ扱いになりうる
+ * （落ちる順が後ろになるだけで消えはしない）。ハイライト位置を優先する窓選択に置き換え可能。
+ */
+function demoteNavBlocks(markdown: string): string {
+  if (markdown.includes('```')) return markdown;
+  const front = markdown.match(/^---\n[\s\S]*?\n---(?:\n{2,}|\n?$)/)?.[0] ?? '';
+  const blocks = markdown.slice(front.length).split(/\n{2,}/);
+  const body = blocks.filter((b) => !isNavBlock(b));
+  const nav = blocks.filter((b) => isNavBlock(b));
+  if (nav.length === 0 || body.length === 0) return markdown;
+  return front + [...body, ...nav].join('\n\n');
+}
+
 /**
  * 結果の markdown 合計を maxTotalChars に収める。順位 i に重み 1/(i+1) で配分し、
  * 取り分より短いページは全文を残して、余りを残りのページへ再配分する（重み付き max-min）。
@@ -127,9 +155,10 @@ function applyMarkdownBudget(
   return results.map((it, i) => {
     if (len[i] === 0 || len[i] <= quota[i]) return it;
     const md: string = it.markdown;
-    let kept = safeTruncateMarkdown(md, quota[i]);
+    const ordered = demoteNavBlocks(md);
+    let kept = safeTruncateMarkdown(ordered, quota[i]);
     // safeTruncateMarkdown は開いたコードブロックを閉じるため数文字はみ出しうる。その分だけ手前で切り直す
-    if (kept.length > quota[i]) kept = safeTruncateMarkdown(md, Math.max(0, 2 * quota[i] - kept.length));
+    if (kept.length > quota[i]) kept = safeTruncateMarkdown(ordered, Math.max(0, 2 * quota[i] - kept.length));
     const para = kept.lastIndexOf('\n\n');
     if (para > quota[i] * 0.5) kept = kept.slice(0, para).trimEnd();
     return { ...it, markdown: kept, markdownTruncated: { totalChars: md.length, keptChars: kept.length } };
