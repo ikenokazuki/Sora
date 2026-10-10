@@ -86,7 +86,7 @@ describe('detectRealtimeAnchor', () => {
       else c.wrong.push(`${q.terms.join(' ')} → ${anchor}`);
     }
     // 誤りは 0。決めないのは、固有名詞が無いクエリ（アイドルフェス 持ち物 注意点 の語順 3 通り）だけ
-    expect(count.dev).toEqual({ ok: 25, none: 3, wrong: [] });
+    expect(count.dev).toEqual({ ok: 26, none: 3, wrong: [] });
     expect(count.held).toEqual({ ok: 24, none: 0, wrong: [] });
   });
 
@@ -99,6 +99,14 @@ describe('detectRealtimeAnchor', () => {
     for (const q of evalQueries().filter((x: any) => [...x.terms].sort().join(' ') === ['アイドルフェス', '持ち物', '注意点'].sort().join(' '))) {
       expect(detectRealtimeAnchor(q.terms, q.webTitles, q.totals)).toBeUndefined();
     }
+  });
+
+  test('得点がほぼ同点なら、総ヒット数が明らかに少ない語を選ぶ（ライブ 予定 =LOVE の実データ）', () => {
+    const q = evalQueries().find((x: any) => x.collectedAt === '2026-10-10');
+    // タイトルの得点はライブがわずかに上（ライブ 0.75・=LOVE 0.74）だが、総ヒット数は =LOVE が約 11 分の 1
+    expect(detectRealtimeAnchor(q.terms, q.webTitles, q.totals)).toBe('=LOVE');
+    // 総ヒット数の差が小さければ選び直さない（同じタイトルで =LOVE を 2 分の 1 程度にする）
+    expect(detectRealtimeAnchor(q.terms, q.webTitles, { 'ライブ': 30000, '=LOVE': 13719 })).not.toBe('=LOVE');
   });
 
   test('同点は語順で決めず、決めない', () => {
