@@ -1530,7 +1530,7 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v8:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v9:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -2129,9 +2129,12 @@ export async function integratedSearch(options: {
   // Public boundary: verbose keeps full diagnostics, default returns compact.
   // Retrieval/rerank internals above are untouched. Cache the shaped
   // response (the cache key already separates verbose from compact).
-  const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {
-    verbose: options.verbose === true,
-  });
+  // verbose が真のときは schedule を足さず、results[].events のまま返す（MCP の入力スキーマと OpenAPI の説明どおり）。
+  if (options.verbose === true) {
+    if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, finalResponse);
+    return finalResponse;
+  }
+  const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {});
   // 締切で欠けた結果は劣化応答なのでキャッシュしない
   if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse);
   return publicResponse;
