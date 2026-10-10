@@ -277,6 +277,17 @@ describe('schedule and the markdown budget', () => {
 });
 
 describe('navigation blocks are cut first', () => {
+  test('本文が空同然しか残らない場合は、従来どおり先頭側を残して切る（空の応答にしない）', () => {
+    const banner = '-   [![バナー](https://a.example/bnr.jpg)](https://example.com/)';
+    const tail = '本文の続きです。' + 'あいうえおかきくけこさしすせそたちつてとなにぬねの。'.repeat(10);
+    const md = `---\nsiteName: "test"\n---\n\n${banner}\n\nあい\n\n${tail}`;
+    const r = (formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown: md }] }, { maxTotalChars: 150 }) as any).results[0];
+    // 本文だけでは「あい」の2字しか残らないため、従来どおり先頭側を残して切る
+    expect(r.markdown.startsWith('---')).toBe(true);
+    expect(r.markdown).toContain('[![バナー]');
+    expect(r.markdownTruncated.totalChars).toBe(md.length);
+  });
+
   const nav = '-   [HOME](https://equal-love.jp/)\n-   [NEWS](https://equal-love.jp/news)\n-   [SCHEDULE](https://equal-love.jp/schedule)\n-   [PROFILE](https://equal-love.jp/feature/profile)';
   const front = '---\nsiteName: "＝LOVE（イコールラブ） オフィシャルサイト"\n---';
   const prose = Array.from({ length: 30 }, (_, i) => `10月${i + 1}日 ライブの予定です。開演は18時で、会場は東京の大きなホールです。`).join('\n\n');
@@ -287,7 +298,7 @@ describe('navigation blocks are cut first', () => {
     const md = `${front}\n\n${nav}\n\n${prose}`;
     const r = run(md, 400);
     expect(r.markdown.startsWith(front)).toBe(true);
-    expect(r.markdown).toContain('ライブの予定です');
+    expect(r.markdown).toContain('10月1日');
     expect(r.markdown).not.toContain('[HOME]');
     expect(r.markdownTruncated.totalChars).toBe(md.length);
   });
@@ -309,6 +320,16 @@ describe('navigation blocks are cut first', () => {
     expect(run(`${front}\n\n${nav}`, 100).markdown.includes('[HOME]')).toBe(true);
     const fenced = `${nav}\n\n\`\`\`\ncode\n\n${nav}\n\`\`\`\n\n${prose}`;
     expect(run(fenced, 300).markdown.startsWith('-   [HOME]')).toBe(true);
+  });
+
+  test('実データ(equal-love.jp 相当): 空ラベルの行と画像リンクが混じったナビが先に落ちる', () => {
+    const imageIcon = '-   [![x](https://equal-love.jp/static/x.svg)](https://twitter.com/equal_love_12)';
+    const md = `${front}\n\n${nav}\n-\n${imageIcon}\n-\n\n${prose}`;
+    const r = run(md, 400);
+    // ナビの塊が切り詰めで先に落ち、本文が残る
+    expect(r.markdown).toContain('ライブの予定です');
+    expect(r.markdown).not.toContain('[HOME]');
+    expect(r.markdownTruncated.totalChars).toBe(md.length);
   });
 });
 
