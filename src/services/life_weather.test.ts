@@ -1,13 +1,21 @@
-import { describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { fetchWeatherForecast, resolveCityId } from './life.js';
+import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 
 describe('Weather Forecast Service (JMA Weekly Integration)', () => {
+  // 気象庁の応答は固定データ（SORA_LIVE_TESTS=1 では本物の API）
+  let restore: (() => void) | undefined;
+  beforeAll(() => {
+    if (!process.env.SORA_LIVE_TESTS) restore = installExternalApiFixtures();
+  });
+  afterAll(() => restore?.());
+
   it('should resolve Yamanakako to 190020', () => {
     expect(resolveCityId('山中湖')).toBe('190020');
     expect(resolveCityId('山中湖村')).toBe('190020');
   });
 
-  it('should fetch 7-day forecast for Yamanakako from JMA official API', async () => {
+  it('should build a 7-day forecast for Yamanakako from the JMA short-term and weekly forecasts', async () => {
     const result = await fetchWeatherForecast({ city: '山中湖', days: 7, noCache: true });
 
     expect(result.source).toBe('weather');
