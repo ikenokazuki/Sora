@@ -30,11 +30,11 @@ const rows = data.cases
 if (!live) {
   // 判定結果は「正解／決めない／誤り」に分ける。誤った固有名詞を選ぶのが最も害が大きいので、誤りは 1 件でも失敗にする。
   // anchors が空のクエリ（固有名詞が無い）は、決めないのが正解。
-  // 下限（正解の数）: dev 25（アイドルフェス 持ち物 注意点 の語順 3 通りは決めない）、held 24、held2 8。
-  // held2 は判定方式を決めた後に、正解を先に決めて集めた検証セット（16クエリ）。結果は 正解 8・決めない 6・誤り 2 で、
+  // 下限（正解の数）: dev 26（アイドルフェス 持ち物 注意点 の語順 3 通りは決めない）、held 24、held2 9。
+  // held2 は判定方式を決めた後に、正解を先に決めて集めた検証セット（16クエリ）。v2.37.3 の結果は 正解 9・決めない 5・誤り 2 で、
   // 誤り 2 は「前方エリア 一般エリア 違い フェス」（固有名詞なしと決めていたが、特徴的な名詞句の「前方エリア」を選んだ）。
-  // 方式は held2 に合わせて調整していない。既知の誤りを超えて増えたら失敗にする。
-  const floor: Record<string, number> = { dev: 25, held: 24, held2: 8 };
+  // v2.37.3 のほぼ同点の扱いは、dev に足した実データ（ライブ 予定 =LOVE、2026-10-10）で決めた。既知の誤りを超えて増えたら失敗にする。
+  const floor: Record<string, number> = { dev: 26, held: 24, held2: 9 };
   const knownWrong: Record<string, number> = { held2: 2 };
   const bySplit: Record<string, { ok: number; none: number; n: number; wrong: string[] }> = {};
   for (const r of rows) {

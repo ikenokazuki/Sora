@@ -157,10 +157,16 @@ export function selectRealtimeItems<T extends Record<string, any>>(
 const SITE_SLOT_WEIGHT = 2;
 /** 総ヒット数が最も少ない語と、この倍率以内ならほぼ同じ希少さとみなす */
 const NEAR_RAREST_RATIO = 1.25;
+/** 最高得点のこの割合以上の語は、得点ではほぼ同点とみなす */
+const NEAR_TIE_SCORE_RATIO = 0.85;
+/** ほぼ同点の語の総ヒット数が、最高得点の語の 1/この値 以下なら、明らかに希少な方を固有名詞とみなす */
+const CLEARLY_RARER_FACTOR = 3;
 
 /**
  * 固有名詞の判定。Web 検索上位のタイトル（とサイト名の枠）に出る語ほど高く、
  * X の総ヒット数が多い（ありふれた）語ほど低く採点する。総ヒット数は全候補分そろった時だけ使う。
+ * 得点がほぼ同点（最高得点の 85% 以上）の語の中に、総ヒット数が明らかに少ない（1/3 以下）語があれば、そちらを選ぶ
+ * （クエリに含まれる一般語はタイトルにも出やすい。「ライブ 予定 =LOVE」でライブと =LOVE がほぼ同点のとき =LOVE）。
  * 確信が持てないときは決めない（undefined なら従来の緩和に任せる。語を誤って守るより害が小さい）:
  *  - 候補が2語以上でどれもタイトルに出ない
  *  - 最高得点が同点（語順で決めない）
@@ -185,6 +191,12 @@ export function detectRealtimeAnchor(
   }).sort((a, b) => b.score - a.score);
   const [best, second] = scored;
   if (!best || best.score <= 0) return undefined;
+  if (useTotals) {
+    const clearlyRarer = scored
+      .filter((x) => x.score >= best.score * NEAR_TIE_SCORE_RATIO && totals[x.term] * CLEARLY_RARER_FACTOR <= totals[best.term])
+      .sort((a, b) => totals[a.term] - totals[b.term]);
+    if (clearlyRarer.length > 0) return clearlyRarer[0].term;
+  }
   if (second && Math.abs(best.score - second.score) < 1e-9) return undefined;
   if (useTotals) {
     const byRarity = [...candidates].sort((a, b) => totals[a] - totals[b]);
