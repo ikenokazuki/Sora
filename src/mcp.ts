@@ -52,8 +52,6 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 import { formatCompactRealtimeResponse } from './search_compact.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { defaultXDetailProvider, fetchXPostDetail, type XPostDetailProvider } from './services/x_detail.js';
-import { hotelService, type HotelService } from './services/hotels/index.js';
-import { HotelSearchInputSchema, type HotelSearchResult } from './services/hotels/types.js';
 import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, TRANSIT_ROUTE_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
@@ -69,8 +67,6 @@ export interface McpServerOptions {
   /** Session-scoped activation state. A fresh set is created when omitted. */
   sessionState?: McpSessionState;
   intelResearch?: (request: unknown) => Promise<unknown>;
-  /** Test seam for the experimental hotel search. Production uses the shared singleton. */
-  hotelService?: HotelService;
   /** Test seam for the X post fetcher. Production uses the shared singleton. */
   xDetailProvider?: XPostDetailProvider;
 }
@@ -1429,66 +1425,6 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
     );
 
-    // Tool: search_hotel_availability (楽天トラベル宿泊検索・実験的) - DEFERRED
-    // Gated by SORA_RAKUTEN_TRAVEL_ENABLED so default tool counts stay unchanged.
-    if (process.env.SORA_RAKUTEN_TRAVEL_ENABLED === 'true') {
-      const resolvedHotelService = options?.hotelService ?? hotelService;
-      registerTool(
-        mcpServer,
-        toolCatalog,
-        sessionActivated,
-        'search_hotel_availability',
-        'life',
-        '【実験的・楽天トラベル直結】東京駅・京都駅・草津温泉の宿泊施設について、指定日・人数の空室プランと税込料金を楽天トラベルの公開検索から取得します（実験フラグ SORA_RAKUTEN_TRAVEL_ENABLED=true が必要）。施設名・住所は未対応のため null を返します。対応外の場所は取得せず理由を返します。返却: { status, hotels: [{ id, plans: [{ planId, rooms: [{ roomId, amount, currency, basis, taxStatus }] }] }], failures }',
-        {
-          location: z.string().min(1).describe('宿泊地（観測済み: "東京駅", "京都駅", "草津温泉"）'),
-          checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックイン日 (YYYY-MM-DD)'),
-          checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('チェックアウト日 (YYYY-MM-DD, チェックインより後)'),
-          adults: z.number().int().min(1).max(10).describe('大人人数（1室あたり, 上限: 10）'),
-          rooms: z.number().int().min(1).max(1).optional().describe('部屋数（1のみ, デフォルト: 1）').meta({ default: 1 }),
-          limit: z.number().int().min(1).max(10).optional().describe('最大施設件数（1〜10, デフォルト: 5）').meta({ default: 5 }),
-        },
-        async (opts) => {
-          const parsed = HotelSearchInputSchema.safeParse(opts);
-          if (!parsed.success) {
-            return {
-              isError: true,
-              content: [{ type: 'text', text: `Hotel search input error: ${parsed.error.issues[0]?.message}` }],
-            };
-          }
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 20000);
-            try {
-              const result: HotelSearchResult = await resolvedHotelService.searchHotelAvailability(parsed.data, {
-                signal: controller.signal,
-                deadlineAt: Date.now() + 20000,
-              });
-              if (result.status === 'unavailable') {
-                return {
-                  isError: true,
-                  content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-                };
-              }
-              return {
-                content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-              };
-            } finally {
-              clearTimeout(timer);
-            }
-          } catch (err: any) {
-            return {
-              isError: true,
-              content: [{ type: 'text', text: `Hotel search error: ${err?.message || err}` }],
-            };
-          }
-        },
-        {
-          defaultEnabled: deferredDefault,
-          keywords: ['ホテル', '宿泊', '旅館', '空室', '楽天トラベル', 'hotel'],
-        },
-      );
-    }
   }
 
   // =========================================================================

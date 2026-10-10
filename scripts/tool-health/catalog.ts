@@ -41,7 +41,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_social_posts', 'fetch_social_post', 'browser_action', 'search_image', 'search_video',
   'search_news', 'search_chiebukuro', 'suggest_keywords', 'search_realtime', 'search_trend',
   'fetch_x_post', 'search_route', 'get_weather', 'get_flight_status', 'track_package',
-  'search_hotel_availability', 'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
+  'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
   'get_elevation', 'search_poi', 'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
@@ -49,7 +49,6 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
 
-export const HOTEL_TOOL = 'search_hotel_availability';
 
 export const REST_MAP: Record<string, RestRoute | null> = {
   scrape: { method: 'POST', path: '/scrape' },
@@ -73,7 +72,6 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   get_weather: { method: 'POST', path: '/weather' },
   get_flight_status: { method: 'POST', path: '/traffic/flight' },
   track_package: { method: 'POST', path: '/tracking' },
-  search_hotel_availability: { method: 'POST', path: '/hotels/availability' },
   search_road_traffic: { method: 'POST', path: '/traffic/road' },
   search_disaster_warnings: { method: 'POST', path: '/disaster/warnings' },
   search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
@@ -205,7 +203,7 @@ export function toolPayload(text: string, tool: string): unknown {
 
 export function mustHaveItems(result: unknown, source: string, field?: string, min = 1): { items: unknown[]; observation: CaseObservation } {
   const record = result as Record<string, unknown>;
-  const candidates = ['items', 'results', 'pois', 'flights', 'routes', 'forecasts', 'suggestions', 'posts', 'laws', 'speeches', 'hotels', 'warnings', 'records', 'earthquakes'];
+  const candidates = ['items', 'results', 'pois', 'flights', 'routes', 'forecasts', 'suggestions', 'posts', 'laws', 'speeches', 'warnings', 'records', 'earthquakes'];
   let items: unknown[] | undefined;
   for (const key of candidates) {
     if (Array.isArray(record?.[key])) { items = record[key] as unknown[]; break; }
@@ -252,9 +250,9 @@ export function secretOrUnverified(ctx: CaseContext, caseId: string, fields: str
 
 function toolCase(
   id: string, tools: string[], deps: string[], externalRequired: boolean, timeoutMs: number,
-  hotelLaneOnly: boolean, run: (ctx: CaseContext) => Promise<CaseObservation>,
+  run: (ctx: CaseContext) => Promise<CaseObservation>,
 ): HealthCase {
-  return { id, toolNames: tools, dependencyIds: deps, externalRequired, timeoutMs, hotelLaneOnly, run };
+  return { id, toolNames: tools, dependencyIds: deps, externalRequired, timeoutMs, run };
 }
 
 interface GeoBox { name: string; minLat: number; maxLat: number; minLon: number; maxLon: number }
@@ -364,7 +362,7 @@ export function checkTrackingResult(raw: unknown, trackingNumber: string, carrie
 
 function trackingCases(): HealthCase[] {
   const carriers = ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'];
-  return carriers.map((carrier) => toolCase(`track.${carrier}`, ['track_package'], [`tracking:${carrier}`], true, 90000, false, async (ctx) => {
+  return carriers.map((carrier) => toolCase(`track.${carrier}`, ['track_package'], [`tracking:${carrier}`], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, '荷物追跡', 30000);
     const secret = secretOrUnverified(ctx, `tracking.${carrier}.positive`, ['trackingNumber']);
     const { text: rawJsonText } = await mcpJson(ctx, 'track_package', { carrier, trackingNumber: secret.trackingNumber, noCache: true }, 80000);
@@ -405,7 +403,7 @@ export function checkTrackingNegative(raw: unknown, trackingNumber: string, carr
 
 function trackingNegativeCases(): HealthCase[] {
   return Object.entries(NEGATIVE_NUMBERS).map(([carrier, spec]) =>
-    toolCase(`track.${carrier}.negative`, ['track_package'], [`tracking:${carrier}`], true, 120000, false, async (ctx) => {
+    toolCase(`track.${carrier}.negative`, ['track_package'], [`tracking:${carrier}`], true, 120000, async (ctx) => {
       await ensureEnabled(ctx, '荷物追跡', 30000);
       const { text: rawJsonText } = await mcpJson(ctx, 'track_package', { carrier, trackingNumber: spec.number, noCache: true }, 100000);
       const raw = toolPayload(rawJsonText, 'track_package');
@@ -413,39 +411,39 @@ function trackingNegativeCases(): HealthCase[] {
     }));
 }
 export const TOOL_CASES: HealthCase[] = [
-  toolCase('scrape.page', ['scrape'], ['web:example'], true, 90000, false, async (ctx) => {
+  toolCase('scrape.page', ['scrape'], ['web:example'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'scrape', { url: 'https://example.com/', noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'scrape');
     return mustContain(raw, ['Example Domain'], 'example.com');
   }),
-  toolCase('scrape.batch', ['scrape_batch'], ['web:example'], true, 90000, false, async (ctx) => {
+  toolCase('scrape.batch', ['scrape_batch'], ['web:example'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'scrape_batch', { urls: ['https://example.com/', 'https://example.org/'], noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'scrape_batch');
     return mustContain(raw, ['Example Domain'], 'example.com+example.org');
   }),
-  toolCase('search.deep', ['search_deep'], ['yahoo:web', 'yahoo:realtime'], true, 90000, false, async (ctx) => {
+  toolCase('search.deep', ['search_deep'], ['yahoo:web', 'yahoo:realtime'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_deep', { query: '東京', limit: 2, scrapeContent: false, includeRealtime: true }, 80000);
     const raw = toolPayload(rawJsonText, 'search_deep');
     mustHaveItems(raw, 'search_deep');
     return mustContain(raw, ['東京'], 'yahoo-deep');
   }),
-  toolCase('map.site', ['map_site'], ['web:sitemap'], true, 90000, false, async (ctx) => {
+  toolCase('map.site', ['map_site'], ['web:sitemap'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'map_site', { url: 'https://example.com/', limit: 5 }, 60000);
     const raw = toolPayload(rawJsonText, 'map_site');
     return mustContain(raw, ['https://example.com'], 'example.com-map');
   }),
-  toolCase('crawl.site', ['crawl_site'], ['web:example'], true, 90000, false, async (ctx) => {
+  toolCase('crawl.site', ['crawl_site'], ['web:example'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'crawl_site', { url: 'https://example.com/', maxPages: 2, noCache: true }, 80000);
     const raw = toolPayload(rawJsonText, 'crawl_site');
     return mustContain(raw, ['Example Domain'], 'example.com-crawl');
   }),
-  toolCase('search.web', ['search_web'], ['yahoo:web'], true, 90000, false, async (ctx) => {
+  toolCase('search.web', ['search_web'], ['yahoo:web'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_web', { query: '東京', limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_web');
     mustHaveItems(raw, 'search_web');
     return mustContain(raw, ['東京'], 'yahoo-web');
   }),
-  toolCase('social.search', ['search_social_posts'], ['social:weibo', 'social:threads', 'social:instagram', 'social:facebook'], true, 120000, false, async (ctx) => {
+  toolCase('social.search', ['search_social_posts'], ['social:weibo', 'social:threads', 'social:instagram', 'social:facebook'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, 'SNS Weibo', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'search_social_posts', { platform: 'weibo', query: '東京', limit: 2, lookbackHours: 24 }, 100000);
     const raw = toolPayload(rawJsonText, 'search_social_posts');
@@ -455,7 +453,7 @@ export const TOOL_CASES: HealthCase[] = [
     return { sources: [{ source: 'weibo', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   ...(['weibo', 'threads', 'instagram', 'facebook'] as const).map((platform) =>
-    toolCase(`social.fetch.${platform}`, ['fetch_social_post'], [`social:${platform}`], true, 120000, false, async (ctx) => {
+    toolCase(`social.fetch.${platform}`, ['fetch_social_post'], [`social:${platform}`], true, 120000, async (ctx) => {
       await ensureEnabled(ctx, 'SNS', 30000);
       const def = DEFAULT_SOCIAL_POSTS[platform];
       const secret = secretOrDefault(ctx, `social.${platform}.post`, ['url', 'text'], def);
@@ -467,7 +465,7 @@ export const TOOL_CASES: HealthCase[] = [
       }
       return { sources: [{ source: platform, format: 'json', upstreamStatus: 'unknown' }] };
     })),
-  toolCase('browser.action', ['browser_action'], ['chromium'], true, 90000, false, async (ctx) => {
+  toolCase('browser.action', ['browser_action'], ['chromium'], true, 90000, async (ctx) => {
     // evaluate scripts are disabled by server policy; a real click proves DOM operation.
     const { text: rawJsonText } = await mcpJson(ctx, 'browser_action', {
       url: 'https://example.com/', actions: [{ type: 'click', selector: 'a' }],
@@ -484,7 +482,7 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return { sources: [{ source: 'chromium', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.image', ['search_image'], ['yahoo:image'], true, 90000, false, async (ctx) => {
+  toolCase('search.image', ['search_image'], ['yahoo:image'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_image', { query: '富士山', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_image') as { items?: Array<Record<string, unknown>> };
     const first = mustHaveItems(raw, 'search_image').items[0] as Record<string, unknown>;
@@ -492,43 +490,43 @@ export const TOOL_CASES: HealthCase[] = [
     if (!imageUrl) throw new LiveFail('search_image first item lacks image URL (original/source_url/thumbnail)');
     return { sources: [{ source: 'yahoo-image', count: (raw.items ?? []).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.video', ['search_video'], ['yahoo:video'], true, 90000, false, async (ctx) => {
+  toolCase('search.video', ['search_video'], ['yahoo:video'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_video', { query: '料理', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_video');
     mustHaveItems(raw, 'search_video', 'url');
     return { sources: [{ source: 'yahoo-video', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.news', ['search_news'], ['yahoo:news'], true, 90000, false, async (ctx) => {
+  toolCase('search.news', ['search_news'], ['yahoo:news'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_news', { query: '経済', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_news');
     mustHaveItems(raw, 'search_news', 'url');
     return { sources: [{ source: 'yahoo-news', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.chiebukuro', ['search_chiebukuro'], ['yahoo:chiebukuro'], true, 90000, false, async (ctx) => {
+  toolCase('search.chiebukuro', ['search_chiebukuro'], ['yahoo:chiebukuro'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_chiebukuro', { query: '引越し', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_chiebukuro');
     mustHaveItems(raw, 'search_chiebukuro');
     return { sources: [{ source: 'yahoo-chiebukuro', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('suggest.keywords', ['suggest_keywords'], ['yahoo:suggest'], true, 90000, false, async (ctx) => {
+  toolCase('suggest.keywords', ['suggest_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'suggest_keywords', { query: '東京', limit: 3 }, 60000);
     const raw = toolPayload(rawJsonText, 'suggest_keywords');
     mustHaveItems(raw, 'suggest_keywords');
     return { sources: [{ source: 'yahoo-suggest', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.realtime', ['search_realtime'], ['yahoo:realtime'], true, 90000, false, async (ctx) => {
+  toolCase('search.realtime', ['search_realtime'], ['yahoo:realtime'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_realtime', { query: '東京', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_realtime');
     mustHaveItems(raw, 'search_realtime', 'url');
     return { sources: [{ source: 'yahoo-realtime', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.trend', ['search_trend'], ['yahoo:realtime'], true, 90000, false, async (ctx) => {
+  toolCase('search.trend', ['search_trend'], ['yahoo:realtime'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_trend', { limit: 3 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_trend');
     mustHaveItems(raw, 'search_trend', 'keyword');
     return { sources: [{ source: 'yahoo-trend', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('fetch.xpost', ['fetch_x_post'], ['fxtwitter'], true, 90000, false, async (ctx) => {
+  toolCase('fetch.xpost', ['fetch_x_post'], ['fxtwitter'], true, 90000, async (ctx) => {
     const secret = secretOrDefault(ctx, 'x.post', ['url'], { url: DEFAULT_X_POST.url });
     const { text: rawJsonText } = await mcpJson(ctx, 'fetch_x_post', { url: secret.url }, 60000);
     const raw = toolPayload(rawJsonText, 'fetch_x_post');
@@ -538,19 +536,19 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return { sources: [{ source: 'fxtwitter', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.route', ['search_route'], ['yahoo:transit'], true, 90000, false, async (ctx) => {
+  toolCase('search.route', ['search_route'], ['yahoo:transit'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_route', { from: '東京', to: '新宿' }, 60000);
     const raw = toolPayload(rawJsonText, 'search_route');
     mustHaveItems(raw, 'search_route');
     return mustContain(raw, ['新宿'], 'yahoo-transit');
   }),
-  toolCase('get.weather', ['get_weather'], ['jma:forecast'], true, 90000, false, async (ctx) => {
+  toolCase('get.weather', ['get_weather'], ['jma:forecast'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'get_weather', { city: '東京', days: 1, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'get_weather');
     mustHaveItems(raw, 'get_weather');
     return mustContain(raw, ['東京'], 'jma');
   }),
-  toolCase('flight.status', ['get_flight_status'], ['yahoo:airport'], true, 120000, false, async (ctx) => {
+  toolCase('flight.status', ['get_flight_status'], ['yahoo:airport'], true, 120000, async (ctx) => {
     // Deep night has few domestic departures; fall back to international before giving up.
     const variants: Array<Record<string, unknown>> = [
       { airport: 'HND' },
@@ -568,46 +566,31 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   ...trackingCases(),
   ...trackingNegativeCases(),
-  toolCase('hotel.availability', ['search_hotel_availability'], ['rakuten-travel'], true, 90000, true, async (ctx) => {
-    const inDate = new Date(Date.now() + 21 * 86400000);
-    const outDate = new Date(Date.now() + 22 * 86400000);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    const secret = ctx.secrets.getCase('hotel.positive') ?? {};
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_hotel_availability', {
-      location: '東京駅', checkIn: secret.checkIn ?? fmt(inDate), checkOut: secret.checkOut ?? fmt(outDate), adults: 2,
-    }, 80000);
-    const raw = toolPayload(rawJsonText, 'search_hotel_availability');
-    const parsed = parseFirstJson(textOf(raw), 'search_hotel_availability') as { hotels?: Array<{ plans?: Array<{ rooms?: Array<{ amount?: number }> }> }> };
-    const rooms = (parsed.hotels ?? []).flatMap((h) => (h.plans ?? []).flatMap((pl) => pl.rooms ?? []));
-    if (rooms.length === 0) throw new LiveUnverified('hotel returned zero rooms (cannot prove positive retrieval)');
-    if (!rooms.some((r) => typeof r.amount === 'number')) throw new LiveFail('hotel rooms missing price');
-    return { sources: [{ source: 'rakuten-travel', count: rooms.length, format: 'json', upstreamStatus: 'unknown' }] };
-  }),
-  toolCase('road.traffic', ['search_road_traffic'], ['yahoo:traffic', 'jartic'], true, 90000, false, async (ctx) => {
+  toolCase('road.traffic', ['search_road_traffic'], ['yahoo:traffic', 'jartic'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_road_traffic', { road: '東名高速' }, 60000);
     const raw = toolPayload(rawJsonText, 'search_road_traffic');
     return mustContain(raw, ['東名'], 'yahoo-traffic');
   }),
-  toolCase('disaster.warnings', ['search_disaster_warnings'], ['jma:warning'], true, 90000, false, async (ctx) => {
+  toolCase('disaster.warnings', ['search_disaster_warnings'], ['jma:warning'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_disaster_warnings', { city: '東京', noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_disaster_warnings');
     return mustContain(raw, ['東京'], 'jma-warning');
   }),
-  toolCase('quake.latest', ['search_earthquake'], ['p2p-quake'], true, 90000, false, async (ctx) => {
+  toolCase('quake.latest', ['search_earthquake'], ['p2p-quake'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_earthquake', { limit: 1, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_earthquake');
     mustHaveItems(raw, 'search_earthquake');
     return mustContain(raw, ['20'], 'p2p-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),
   // geocoding.jp では駅名がヒットしなかったため、駅名の解決を個別に検査する。
-  toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+  toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
   // 番地住所は OSM に無いことが多く国土地理院へフォールバックする。OSM 側で解決されても正しい地点なら合格。
-  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi'], true, 90000, false,
+  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim'])),
-  toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, false, async (ctx) => {
+  toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');
     const observation = checkHarajukuPoi(raw);
@@ -615,13 +598,13 @@ export const TOOL_CASES: HealthCase[] = [
     checkHarajukuPoi(rest.json);
     return observation;
   }),
-  toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, false, async (ctx) => {
+  toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe' }, 80000);
     const raw = toolPayload(rawJsonText, 'watch_register');
     return mustContain(raw, ['example.com'], 'watch-register');
   }),
-  toolCase('watch.check', ['watch_check'], ['watch:db'], true, 90000, false, async (ctx) => {
+  toolCase('watch.check', ['watch_check'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
     const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-check' }, 80000);
     const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
@@ -630,7 +613,7 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'watch_check');
     return mustContain(raw, [id], 'watch-check');
   }),
-  toolCase('watch.list', ['watch_list'], ['watch:db'], false, 60000, false, async (ctx) => {
+  toolCase('watch.list', ['watch_list'], ['watch:db'], false, 60000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'watch_list', {}, 30000);
     const raw = toolPayload(rawJsonText, 'watch_list');
@@ -639,7 +622,7 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return mustContain(raw, ['targets'], 'watch-list');
   }),
-  toolCase('watch.delete', ['watch_delete'], ['watch:db'], true, 90000, false, async (ctx) => {
+  toolCase('watch.delete', ['watch_delete'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
     const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-del' }, 80000);
     const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
@@ -648,31 +631,31 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'watch_delete');
     return mustContain(raw, ['success'], 'watch-delete');
   }),
-  toolCase('music.song', ['search_song'], ['itunes'], true, 90000, false, async (ctx) => {
+  toolCase('music.song', ['search_song'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_song', { query: 'アイドル', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_song');
     mustHaveItems(raw, 'search_song', 'title');
     return mustContain(raw, ['itunes'], 'itunes-song');
   }),
-  toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, false, async (ctx) => {
+  toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_artist', { query: 'YOASOBI', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_artist');
     mustHaveItems(raw, 'search_artist');
     return mustContain(raw, ['YOASOBI'], 'itunes-artist');
   }),
-  toolCase('music.generic', ['search_music'], ['itunes'], true, 90000, false, async (ctx) => {
+  toolCase('music.generic', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'アイドル', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_music');
     mustHaveItems(raw, 'search_music');
     return mustContain(raw, ['itunes'], 'itunes-music');
   }),
-  toolCase('gov.laws', ['search_laws'], ['egov'], true, 90000, false, async (ctx) => {
+  toolCase('gov.laws', ['search_laws'], ['egov'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_laws', { keyword: '民法', limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_laws');
     mustHaveItems(raw, 'search_laws');
     return mustContain(raw, ['民法'], 'egov');
   }),
-  toolCase('gov.lawtext', ['get_law_text'], ['egov'], true, 90000, false, async (ctx) => {
+  toolCase('gov.lawtext', ['get_law_text'], ['egov'], true, 90000, async (ctx) => {
     const { text: foundText } = await mcpJson(ctx, 'search_laws', { keyword: '民法', limit: 1, noCache: true }, 60000);
     const list = toolPayload(foundText, 'search_laws') as { laws?: Array<{ lawId?: string; id?: string }>; items?: Array<{ lawId?: string; id?: string }> };
     const lawId = list.laws?.[0] ?? list.items?.[0];
@@ -686,43 +669,43 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return { sources: [{ source: 'egov-lawtext', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('gov.diet', ['search_diet_minutes'], ['kokkai'], true, 90000, false, async (ctx) => {
+  toolCase('gov.diet', ['search_diet_minutes'], ['kokkai'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_diet_minutes', { keyword: '予算', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_diet_minutes');
     mustHaveItems(raw, 'search_diet_minutes');
     return { sources: [{ source: 'kokkai', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('trade.cpsc', ['check_cpsc_certificate'], [], false, 30000, false, async (ctx) => {
+  toolCase('trade.cpsc', ['check_cpsc_certificate'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'check_cpsc_certificate', { htsCode: '9503.00.0073', targetAge: 'child' }, 20000);
     const raw = toolPayload(rawJsonText, 'check_cpsc_certificate');
     return mustContain(raw, ['9503'], 'cpsc-rules');
   }),
-  toolCase('trade.fda', ['check_fda_regulated'], [], false, 30000, false, async (ctx) => {
+  toolCase('trade.fda', ['check_fda_regulated'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'check_fda_regulated', { htsCode: '6912', foodContact: false }, 20000);
     const raw = toolPayload(rawJsonText, 'check_fda_regulated');
     return mustContain(raw, ['6912'], 'fda-rules');
   }),
-  toolCase('trade.verify', ['verify_hts_code'], ['usitc'], true, 90000, false, async (ctx) => {
+  toolCase('trade.verify', ['verify_hts_code'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'verify_hts_code', { htsCode: '9503.00.0073', productDescription: 'toy' }, 60000);
     const raw = toolPayload(rawJsonText, 'verify_hts_code');
     return mustContain(raw, ['9503'], 'usitc-verify');
   }),
-  toolCase('trade.predict', ['predict_hts_code'], ['usitc'], true, 90000, false, async (ctx) => {
+  toolCase('trade.predict', ['predict_hts_code'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'predict_hts_code', { productName: 'Green Tea' }, 60000);
     const raw = toolPayload(rawJsonText, 'predict_hts_code');
     return mustContain(raw, ['bestMatch'], 'usitc-predict');
   }),
-  toolCase('trade.compliance', ['check_product_compliance'], ['usitc'], true, 90000, false, async (ctx) => {
+  toolCase('trade.compliance', ['check_product_compliance'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'check_product_compliance', { productName: 'toy', htsCode: '9503.00.0073' }, 60000);
     const raw = toolPayload(rawJsonText, 'check_product_compliance');
     return mustContain(raw, ['actionPlan'], 'usitc-compliance');
   }),
-  toolCase('media.inspect', ['inspect_image'], ['web:image'], true, 90000, false, async (ctx) => {
+  toolCase('media.inspect', ['inspect_image'], ['web:image'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, '画像', 30000);
     const envelope = await ctx.mcp.callTool('inspect_image', { url: 'https://www.w3.org/Icons/valid-xhtml10' }, 60000);
     const record = ((envelope as { result?: { content?: Array<{ type?: string; data?: string; mimeType?: string }> } }).result ?? envelope) as { content?: Array<{ type?: string; data?: string; mimeType?: string }> };
@@ -730,7 +713,7 @@ export const TOOL_CASES: HealthCase[] = [
     if (!img?.data || !img.mimeType?.startsWith('image/')) throw new LiveFail('inspect_image returned no image payload');
     return { sources: [{ source: 'image-bytes', format: img.mimeType, upstreamStatus: 'unknown' }] };
   }),
-  toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, false, async (ctx) => {
+  toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'research_country_context', { region: 'Japan', query: 'economy', noCache: true }, 110000);
     const raw = toolPayload(rawJsonText, 'research_country_context');
@@ -745,7 +728,7 @@ export const TOOL_CASES: HealthCase[] = [
     mustContain(toolPayload(uText, 'get_country_context_updates'), [report.contextId], 'intel-updates');
     return { sources: [{ source: 'intel-runtime', count: (report.evidence as unknown[]).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('tools.discovery', ['search_tools'], [], false, 30000, false, async (ctx) => {
+  toolCase('tools.discovery', ['search_tools'], [], false, 30000, async (ctx) => {
     // search_tools answers in prose, not JSON.
     const { text } = await mcpJson(ctx, 'search_tools', { query: 'trade' }, 20000);
     if (!text.includes('check_product_compliance')) throw new LiveFail('search_tools did not activate trade tools');

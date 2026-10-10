@@ -54,7 +54,6 @@ export interface HealthCase {
   dependencyIds: string[];
   externalRequired: boolean;
   timeoutMs: number;
-  hotelLaneOnly?: boolean;
   run(ctx: CaseContext): Promise<CaseObservation>;
 }
 

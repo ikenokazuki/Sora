@@ -66,6 +66,6 @@ describe('topLevelKeys', () => {
   test('reads only the outermost keys of a 返却 note', () => {
     expect(topLevelKeys('{ query, suggestions: [...] }')).toEqual(['query', 'suggestions']);
     expect(topLevelKeys('{ routes: [{ index, totalTime }], note }')).toEqual(['routes', 'note']);
-    expect(topLevelKeys('{ status, hotels: [{ id, plans: [{ planId }] }], failures }')).toEqual(['status', 'hotels', 'failures']);
+    expect(topLevelKeys('{ status, items: [{ id, plans: [{ planId }] }], failures }')).toEqual(['status', 'items', 'failures']);
   });
 });
