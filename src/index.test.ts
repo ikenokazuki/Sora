@@ -3776,8 +3776,9 @@ describe('Sora REST & MCP Endpoints', () => {
   it('pickProxyUrl should return undefined when no proxy env vars are set', () => {
     const originalEnv = { ...process.env };
     try {
-      delete process.env.SORA_PROXY_LIST;
-      delete process.env.SORA_PROXY_URL;
+      for (const key of ['SORA_PROXY_LIST', 'SORA_PROXY_URL', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']) {
+        delete process.env[key];
+      }
       expect(pickProxyUrl()).toBeUndefined();
     } finally {
       restoreEnv(originalEnv);
