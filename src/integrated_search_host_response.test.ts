@@ -385,3 +385,12 @@ describe('includeMedia', () => {
     expect(out.results[0].markdown).toBe('[画像: 写真]\n\n本文');
   });
 });
+
+describe('stripMedia and the markdown budget', () => {
+  test('maxTotalChars と併用すると、画像記法を除いた長さで配分される', () => {
+    const md = `![写真](https://a.example/${'x'.repeat(900)}.jpg)\n\n本文`;
+    const out: any = formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown: md }] }, { includeMedia: false, maxTotalChars: 1000 });
+    expect(out.results[0].markdownTruncated).toBeUndefined();
+    expect(out.results[0].markdown).toBe('[画像: 写真]\n\n本文');
+  });
+});
