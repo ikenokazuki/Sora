@@ -1,4 +1,707 @@
-# Sora v2.37.3 — 予定の統合一覧、固有名詞判定の見直し、画像 URL を省くオプション、ホテル検索の廃止
+# Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
+
+- v2.37.3 は本番に入れて公開スモークまで回しましたが、次の2件を見つけたため本番には入れず、そのまま直した v2.37.4 を出します。
+  - `verbose: true` の `search_deep` は `results[].events` を残す説明でしたが、実装では `schedule` も付かず `results[].events` も外れていました（通常応答の整形が誤って `verbose` にも掛かっていた）。`verbose` では整形をかけず `results[].events` のまま返すよう直しました。
+  - `maxTotalChars` の切り詰めで `equal-love.jp` のように先頭に長いナビがあるページは、本文が全部落ちてナビだけ残っていました。一度は「後ろへ回す」方式にしましたが、逆にナビが残るため、ページ先頭のナビは動かさず先頭切り取りで落とす方式に直しました。
+
+
+
+- v2.37.0 と v2.37.1 は公開前の検査で止まり、イメージもリリースも公開されていません。v2.37.0 は実 API 検査（楽天トラベルのホテル検索）、v2.37.1 は全件テスト（CI が使う新しい Bun で、環境変数を書き換えたテストの後始末が不十分だったため、後続テストの通信が架空のプロキシへ向かった）で止まりました。v2.37.2 は公開されましたが、本番へ入れる前の検証で固有名詞判定の改善点が見つかったため、本番には入れていません。v2.37.3 はこれらの変更をすべて含み、固有名詞判定を直したものです。
+- 実験的なホテル検索（MCP の `search_hotel_availability`、REST の `POST /hotels/availability`、有効化フラグ `SORA_RAKUTEN_TRAVEL_ENABLED`）を廃止しました。楽天トラベルの公開検索に依存し、外部の応答次第で公開前の検査が止まっていたためです。既定では公開されていなかった機能なので、既定のツール数（47）は変わりません。公開前の実 API 検査からホテルのレーンも外しました。
+- `search_deep` の通常応答に `schedule` を追加しました。上位ページの `events`（公式サイト・TimeTree・まとめサイトなど）から、開始日（JST）と名称が同じ予定を 1 件にまとめた一覧で、`results` の前に置きます。各予定に載せていたページの URL を `sources` で示し、開催中・今後の予定は近い順、過去の予定はその後ろに並べます（予定は削除しません）。名称が違えば同日・同会場でも別の予定として残します。**応答の形が変わります**: 通常応答ではページごとの `results[].events` は `schedule` に移ります（重複を避けるため）。`verbose: true` では従来どおり `results[].events` に入り、`schedule` は付きません。`maxTotalChars` の対象外です。
+- Markdown 冒頭の「📅 イベント情報」が、先頭 1 件だけから、開催中・今後の予定を近い順に（過去の予定はその後ろに）最大 10 件を 1 件 1 行で並べる形になりました。超えた分は「ほか N 件」と件数で示します。以前は TimeTree のように過去の予定が先頭にあると、それだけが出ていました。`events` は従来どおり抽出順で全件を返します。
+- `maxTotalChars` で本文を切り詰めるとき、本文の塊を先に残し、短いラベル（16 字以下）のリンクだけの塊（グローバルナビなど）を先に落とすようにしました。ページの先頭にナビがあると、取り分の小さい結果がナビだけになり本文が消えていました（equal-love.jp の例: 4,624 字中 218 字がフロントマターとナビだけ）。本文だけでは空同然にしかならない場合は、従来どおり先頭側を残して切ります。ラベルの長いリンク一覧（ニュース・予定）は本文として扱います。
+- X 検索の固有名詞（anchor）の判定を見直しました。語彙は追加していません。サイト名の枠（タイトル末尾）に出る語を重く数え、得点がほぼ同点（最高得点の 85% 以上）の語の中に X の総ヒット数が 3 分の 1 以下の語があればそちらを選びます（クエリに含まれる一般語はタイトルにも出やすいため。本番前の検証で「ライブ 予定 =LOVE」がライブと =LOVE のほぼ同点になり、旧版も含めて別名検索に進めなかったのを直しました）。それ以外で**確信が持てないときは決めません**（従来の緩和検索に任せます）: 最高得点が同点のとき、および X の総ヒット数が全候補分あり、最高得点の語が他のクエリ語より明らかにありふれている（少ない側の半分にも、最少の語の 1.25 倍以内にも入らない）ときです。「Web API デジタル庁」で API を、「アイドルフェス 持ち物 注意点」で持ち物を固有名詞と取り違えていた誤りがなくなりました。評価セット（dev と held の 53 クエリ。上の実データを dev に追加）は 正解 50・決めない 3・誤り 0 です（旧版は 52 クエリで 正解 48・誤り 4。決めない 3 件は固有名詞のないクエリ）。方式を決めた後に、正解を先に決めて集めた検証セット held2（16 クエリ）は、正解 9・決めない 5・誤り 2 でした。誤りは固有名詞なしと決めていた「前方エリア 一般エリア 違い フェス」で「前方エリア」を選んだものです。固有名詞を含むクエリで誤った語を選んだ例はありません。`SORA_REALTIME_ANCHOR=off` で従来の動作に戻せます。
+- `search_deep`（`POST /search`）に `includeMedia` を追加しました。`false` で、画像・動画の URL（X 投稿の `media`、各ページの `ogImage` と `media`、本文中の画像記法。alt があれば「[画像: alt]」に置き換え）を応答から省きます。既定は `true`（従来どおり含める）です。`formats` で明示した `images` と `highlights` は省きません。
+- `twitterHandle` を、メタタグ（`twitter:site` / `twitter:creator`）で宣言されたアカウントだけにしました。以前は、メタタグが無いと本文中で最初に見つかった x.com のリンクを使っていたため、まとめサイトのフッターにある開発者のアカウントが「公式」の候補になっていました。本文中のリンクは `socialLinks` にだけ残ります。**影響**: メタタグを持たない公式サイトでは、ページ由来の公式 X が決まらなくなります。その場合の `search_deep` の公式枠は、`officialAccountId` の指定か、クエリの固有名詞から Web 検索結果で見つけたアカウントで決まります。
+- GitHub Actions の Live tool health の定期実行（毎日）が、2026-10-02 の追加以降ずっと失敗していた問題を直しました。定期実行・手動実行では候補イメージのタグが空になり、実行が始まる前に終了していました。公開時の検査には影響していませんでした。
+- MCP の instructions と `POST /search` の API 説明に、`schedule` と `includeMedia` の使い方を追記しました。README の `scrape` 応答例を実際の出力形式（「📍 階層」「📅 イベント情報」の行）に合わせました。
+- スクレイプと深層検索のキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
+- 本番の fetcher.ikebun.jp は認証なしで公開する運用です（意図した方針）。キー未設定の警告を止めるため `SORA_ALLOW_ANONYMOUS=true` を指定しました。
+
+# Sora v2.36.1 — X 検索の誤りの修正と、応答の削減
+
+- X のプロフィールページ（`x.com/アカウント名`）の本文が、別人の投稿にすり替わる不具合を修正しました。タイトルの整形が「＝LOVE_official」を「＝LOVE_off」に切り、無関係な投稿（「LOVE off vocal」）を本文に採用していました。アカウント名が分かれば、そのアカウント本人の投稿（`id:`）だけを使います。
+- `search_realtime` と `search_deep` で、1件だけ全語に一致する投稿があると「網羅できた」と判断して検索を終える問題を直しました。全角の「＝LOVE」と書いた1件が全語に一致し、残り19件が記号を無視された別物でも、別名での再検索に進んでいませんでした。全語を含む投稿が半数未満（6件以上のとき）は、固有名詞が壊れていないか確かめます。語が1つだけのクエリ（`=LOVE`）でも別名で検索します。
+- 誰の投稿を優先するかを選べるようにしました（`search_realtime` の `focus`、`search_deep` の `realtimeFocus`。`official`＝本人・公式、`public`＝本人以外）。省略時はクエリの語（評判・口コミ・感想・反応・炎上・批判など）から判定し、無ければ従来どおり公式優先です。`public` では評判系の語を必須にせず、投稿にほぼ書かれない語（評判・口コミ）は検索語から外し（「内山優花 評判」は0件、「内山優花」は250件でした）、`search_deep` の公式枠は後ろに最大2件へ下げます。応答の `focus` に適用した方が入ります。`search_deep` の `realtime.intent`（事実系・評判系・どちらとも言えない。結果の並びには使っていませんでした）は、`focus` に置き換えて応答から外しました（`intent` を読んでいるクライアントは `focus` を参照してください）。使われていなかった古い並べ替えのコードも削除しています。
+- `search_deep` の公式枠で、自動で見つけたアカウントは、表示名か最近の投稿（3割以上）にクエリの語がある場合だけ公式として扱うようにしました（クエリと無関係なページの X 欄、例えば TimeTree のページの TimeTree 自身のアカウントを使わないため）。`officialAccountId` を指定したときは確認しません。
+- 返す X 投稿の上限を `search_realtime` の `limit`（既定20）と `search_deep` の `realtimeLimit`（既定20、公式の枠は別）にそろえました。以前は複数の検索をまとめた結果が上限を超えていました。上限は返す件数にだけ効き、上限内のどの投稿にも無いクエリ語を含む投稿は、上限を超えて最大5件まで残します。省いた件数は `omittedCount` で返します。
+- 応答を小さくしました。MCP の `search_deep` と `search_realtime` を整形なしの JSON にし（`verbose: true` のみ整形。同じ内容で約10%少ないトークン）、X 投稿の 0 の反応数と `isOfficial: false` を省き、別のページと同じハイライト（PC版とスマホ版など）の2つ目以降を `highlightsSameAs`（先の結果の URL）に置き換えます。「=LOVE ライブ 予定」の深層検索の一例では 30,084 → 18,869 トークンでした（Web 結果は検索のたびに変わります）。
+- 固有名詞の判定で使う X の総ヒット数の取得を、既定の件数に直しました（1件だけ取ると「内山優花」が 250 件のところ 6 件と過少に返っていました）。
+- `search_deep` のキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
+
+# Sora v2.36.0 — X 検索のノイズ削減（固有名詞を守る緩和と別名検索）
+
+- `search_realtime` と `search_deep` の X 検索で、原式で全語の揃う投稿が無いときの再検索を見直しました。従来は語を1つずつ落として再検索する際に固有名詞まで落とし、「ライブ 予定」のような無関係な投稿を大量に返していました。Web 検索上位のタイトルと X の総ヒット数から固有名詞を判定し、固有名詞を落とす再検索をしないようにしました（語順は問いません）。最後の再検索は、不足語の単独検索の代わりに固有名詞だけで行います。
+- Yahoo が記号を無視して別物を返す固有名詞（`=LOVE` が「LOVE」一般の投稿になる等）は、公式 X アカウントの投稿のハッシュタグから別名（`イコラブ`）を見つけて検索し、固有名詞も別名も含まない投稿を除きます。`search_deep` の公式枠も固有名詞の公式にそろえます（「ライブ 予定 =LOVE」でラブライブ!の公式アカウントを公式枠にしていた不具合の修正）。
+- 評価セットの12クエリの実測で、固有名詞か別名を含む投稿の割合が 24% → 100%、X への検索回数が 38 → 30 回になりました。判定に Web 検索を1回使うため、緩和が必要なクエリでは所要時間が約 0.4〜1.3 秒増えます（原式で揃うクエリは変わりません）。`SORA_REALTIME_ANCHOR=off` で従来の動作に戻せます。
+- `missingTerms`（1件の投稿に揃わなかったクエリ語。空なら省略）と `aliasTerms`（検索に使った別名）を通常応答にも含めました。OpenAPI と MCP のツール説明にも反映しています。判定した固有名詞（`anchorTerm`）と除外件数（`anchorFiltered`）は `verbose: true` のときだけ返します。
+- X 検索の網羅判定を NFKC で行うようにしました（全角の「＝ＬＯＶＥ」も =LOVE として扱います）。
+- コンテナで共有 Chromium を閉じた後に、補助プロセスがゾンビとして残り続ける不具合を修正しました（v2.35.0 の無操作時の解放で発生）。イメージに tini を入れて PID 1 にし、孤児になったプロセスを回収します。起動コマンドと公開ポートは変わりません。
+- `includeDomains` / `excludeDomains` に空文字列（API ドキュメントの入力フォームが送る `[""]`）があると Web 検索が0件になる不具合を修正しました。
+- テストの各ファイルの終了時に共有 Chromium を閉じるようにしました。テスト実行後に Chromium が残ってメモリを圧迫していたためで、本番の動作は変わりません。
+- 固有名詞判定の評価セット（`eval/realtime_anchor_cases.json`。設計に使った dev 28 クエリと、設計後に集めた held 24 クエリ）と評価スクリプト（`scripts/eval-realtime-anchor.ts`）を追加しました。判定精度は dev 24/28・held 24/24 です。
+- `search_deep` のキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
+
+# Sora v2.35.0 — 検索の待ち時間とコンテキスト量の削減、Chromium のメモリ解放
+
+- MCP の `tools/list` から `outputSchema` を既定で除外しました（全47ツールで約245KB → 約82KB）。stdio も同様です。`tools/call` の構造化出力と検証は変わりません。従来どおり含めたい場合は `SORA_TOOL_OUTPUT_SCHEMA=true` を指定してください。
+- `search_deep`（`POST /search`）に、本文合計の上限 `maxTotalChars` と、遅いページの打ち切り `scrapeDeadlineMs` を追加しました。どちらも明示した場合だけ働きます（`scrapeDeadlineMs` の既定は無効）。切り詰めた結果には `markdownTruncated`、打ち切った結果には `deadlineExceeded` が付き、`highlights` は削りません。
+- 応答に `contextSufficiency`（根拠が足りているかの信号）を追加しました。応答内容は変わりません。`partial` / `insufficient` の `reasons`（`unmentioned:語` / `unanswered:語` / `few-success`）は不足の根拠になりますが、`no_gap_detected` は十分の保証ではありません。MCP の instructions と OpenAPI にも反映しています。
+- ブラウザ描画の待機を改善しました。`networkidle` が来ないページは `load` 後5秒で打ち切り、DOM 静止の判定は DOM の変化ではなく見えている本文の変化で行います。属性だけを書き換え続けるページ（多言語化ウィジェットなど）で上限まで待たなくなり、実サイトの例で約9秒 → 約4秒になりました。取得した本文は変更前と一致しています。
+- 共有 Chromium を、無操作5分（`BROWSER_IDLE_TTL_MS`、`0` で無効）で自動的に閉じるようにしました。実測で、描画中の約950MBが解放後は約200MBに戻ります。ブラウザセッションなどが開いている間は閉じません。
+- `MAX_CONCURRENT_BROWSERS` の既定を、利用可能メモリ（cgroup の上限、無ければ搭載メモリ）から1〜5で自動算出するようにしました。明示した正の整数が優先されます。数値でない値を指定するとブラウザ描画が永久に待つ不具合を修正しました。
+- 回答値の判定で、見出し文（「■チケット料金」）の後ろ2文までの値も回答とみなすようにしました（`DEFAULT_VALUE_LOOKAHEAD`）。保存済みの100ページでハイライトの選抜は98件が不変で、変わった2件は改善でした。
+- 深層検索とスクレイプのキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
+- README を実測値と実装に合わせて整理しました（起動時間・メモリの記載、比較表、ツール数、章立て）。`docs/search-scrape-mechanics.md` と agent 向け SKILL.md も更新しています。
+
+# Sora v2.34.8 — 旧ハイライト選択アルゴリズム rho-bm25 の廃止
+
+- `highlightAlgorithm` の選択肢から `rho-bm25` を削除しました。指定できる値は `rho-select-v2`（既定）、`rho-select`、`legacy` です。`rho-bm25` を指定したリクエストは入力検証エラーになります。
+- 後方互換用の `rho_bm25` モジュールと `RhoBm25*` 型の別名を削除しました。MCP・REST のスキーマ説明（OpenAPI）と README からも記載を削除しています。
+
+# Sora v2.34.7 — 検索・描画待機の高速化と公開カレンダー取得の改善
+
+- deep検索で、Web検索が完了した時点から各ページの本文取得を開始し、独立したXリアルタイム検索と並行して処理します。最終結果には両方の取得結果を統合します。
+- ブラウザ描画後に本文が空の場合、同じページで残りの期限内に描画を待つようにしました。再ナビゲーションを減らし、Loadingや読み込み中の表示だけで取得を完了する判定も改善しています。
+- 非表示要素の除去をDOMのコピー上で行い、元ページのJavaScriptによる更新を維持します。Shadow DOMの再取得ではコピーを更新し、表やgrid内の主要な本文を保持する抽出も改善しました。
+- 日本のWebをAIエージェントから利用するSelf-hosted MCP / REST統合サーバーとして、TimeTree公開カレンダーの接続処理を追加しました。公開ページ自身が受信した予定レスポンスから、予定名・日付・説明・会場・URL・画像を既存のscrapeとsearch_deepで取得できます。追加のAPI通信・APIキー・LLM呼び出しは不要です。
+- TimeTree固有処理は対象の公開カレンダーと同じカレンダーのレスポンスに限定します。予定データがない場合は通常のDOM抽出を使用します。取得範囲はページが読み込んだ公開予定で、全月巡回や非公開予定の取得には対応していません。ページ内APIの形式変更への追従が必要です。
+- MCPの説明文を、モデルが利用できるツールの直接呼び出しとホスト側のツール検索を優先する内容へ修正しました。配送・国地域ツールでも不要なsearch_tools呼び出しを要求しません。
+- 旧キャッシュの再利用を防ぐためscrapeとdeep検索のキャッシュ名前空間を更新しました。responseModeの既定値は引き続きfullです。特定モデルへの依存や新しい公開ツール・引数は追加していません。
+
+# Sora v2.34.6 — APIドキュメントの表示とテスト初期値の統一
+
+- APIドキュメントの列挙値を、型・enum・DefaultとValues枠内のチップで表示する形式に統一しました。表示ライブラリのバージョンを固定し、外部更新による表示の変化を防ぎます。
+- GETとPOSTの入力定義を共通化し、型・範囲・既定値・選択肢・説明を揃えました。荷物追跡GETには、実装が受け付ける自動判別指定のautoも記載します。
+- POI検索のテスト入力に、有効な「カフェ・原宿」のサンプルを設定しました。半径5000メートル、最大10件、キャッシュ利用から試せます。地名と座標を同時に含む無効な自動生成サンプルを避けます。
+- キャッシュ回避の既定値falseを明示し、APIドキュメントとOpenAPI定義を更新時に再検証するようにしました。
+- GET/POSTの定義一致とテスト初期値を確認する回帰テストを追加しました。APIの検索処理や入力省略時の動作は変更していません。
+
+# Sora v2.34.5 — API仕様と位置情報検索の改善
+
+- MCPとREST/OpenAPIの入力・出力仕様を整合させました。整数の範囲、列挙値、既定値を明示し、画像・動画・候補語・週間天気・地震などのレスポンス定義を実際の返却内容に合わせています。
+- Yahoo!路線情報で指定した日付・時刻を検索に反映し、省略時は日本時間を使用します。経路検索のキャッシュキーにもすべての検索条件を含めました。Yahoo! Web検索とサイトマップ取得では、指定したキャッシュ回避・日付条件を反映します。
+- スクレイピングの`fullPage`指定とバッチ入力を処理に渡すよう修正しました。イベントの説明・終了時刻・公開日時の抽出を改善し、カレンダーの操作部分だけを本文として扱う誤判定を防ぎます。統合検索では同じ投稿の重複も除去します。
+- 地名からの座標取得をNominatim（OpenStreetMap）へ切り替え、見つからない住所は国土地理院の住所検索で補完します。駅名・ランドマーク・番地を含む住所の検索に対応し、候補が複数の都道府県にまたがる場合は確認が必要な結果として返します。
+- `search_poi`と`get_elevation`の結果に、使用した位置情報サービスの出典情報を追加しました。OpenPOIの施設情報にも出典を付け、クライアントが結果とともに帰属表示を提示できるようにしています。
+- APIの表記検査と、駅名・住所・位置情報の出典表示を確認する回帰テストを追加しました。
+
+## クライアント側の確認事項
+
+監視チェックのREST応答は、単件を`{ result }`、複数件を`{ results }`で返します。監視結果を直接参照していたクライアントは、ラッパー内の結果を参照してください。
+
+# Sora v2.34.4
+
+- 公開gateをsoft hold化。`fail`/`unavailable`（破損シグナル）は公開停止を維持し、`unverified`/`blocked`のみ残存時は記録付きで公開進行（runner exit 3）。資格情報・test dataなし運用に対応。
+
+# Sora v2.34.3
+
+- live改善: 公開SNS投稿の既定test data（4 platform＋X、秘密上書き可）、運航の国際fallback、外部tool caseのunverified再試行。機能変更なし。
+
+# Sora v2.34.2
+
+- CI安定化: 追跡テストのChromium有無・WAF変動・60秒上限に対応（旧unknown固定期待の更新、browser取得の時間上限）。機能変更なし。
+
+# Sora v2.34.1
+
+- CI修正: 国際追跡のブラウザ取得をCIの60秒上限内に収める（ups/fedex分割・描画上限30秒・遷移待ち上限20秒）。機能変更なし。
+
+# Sora v2.34.0
+
+- 新規MCPツール `search_poi`（OpenPOI直結・全国施設POI検索、座標付き）と REST `POST/GET /geo/poi` を追加。OpenAPIに登録し、README・件数表記を全47ツール（hotel有効時48）へ同期。
+- 国際3社（UPS・FedEx・DHL）の追跡をキーなし動作化。資格情報があれば公式API優先、なし時はステルスブラウザ取得、それも不可なら公式URL案内へフォールバック。DHL追跡URLを現行化。
+- MCPのHost/Origin検証（不正は403）、本文抽出の情報欠落修正（aside置換・表列重複・lazy画像）、国地域SNS入力の保持、SNS失敗の誤キャッシュ防止、監視selector不在のbaseline保護。
+- 全ツール live CI harness（`scripts/tool-health`）：本体検査＋候補コンテナ実取得＋provider別確認＋JSON/Markdown/JUnit報告。公開は同一image検査通過が条件。
+- 検証: 全test 1204 pass / 0 fail、typecheck成功。live通常lane 82 pass・0 fail（資格情報・test data不足分はunverified/blockedとして記録）。
+
+# Sora v2.33.1
+
+- MCPの遅延ツール有効化状態をセッションごとに分離。同じAPIキーや匿名接続でも、別セッションと再接続は初期公開14ツールから開始します。
+- セッションIDを付けない単発呼び出しは、指定ツールをその要求内だけで有効化。正式名・`default.`互換名を利用でき、他の要求や接続へ状態を持ち越しません。
+- MCPセッションは作成時と同じテナントからのみ利用可能。別APIキーや認証を外した要求ではセッションを使用できません。
+- 接続間の分離・再接続・単発呼び出しの回帰テストを公開イメージのCI検証に追加。版数検証の古い固定値を除去し、READMEの接続手順を更新しました。
+- CIでHTTP403になるe-Gov実通信の4テストを、既存の`SORA_LIVE_TESTS=1`ライブ試験へ分離。入力不正の400応答は通常テストで検証します。e-Gov上流の403自体はこの修正の対象外です。
+
+# Sora v2.33.0
+
+- X個別投稿の全文取得: MCP `fetch_x_post`（遅延ツール）と REST `POST /realtime/post` を追加し、OpenAPIに登録。ステータスIDまたは投稿URLからFxTwitter経由の検証済み全文を取得。`search_realtime` で見つけた投稿の深掘り用。
+- X全文補完の検査窓を上位5件から10件に拡大（外部取得は2件のまま）。切詰め疑いの見逃しを減らす。
+- 実験的楽天トラベル宿泊検索を `SORA_RAKUTEN_TRAVEL_ENABLED=true` 背後に追加（東京駅・京都駅・草津温泉のみ、施設名は未対応のため null）。既定の公開範囲・ツール数に影響なし。
+- ツール数は46（コア14不変）。
+
+# Sora v2.32.0
+
+- 証拠スコアリング: 回答値検出・entity関連・表/定義構造・時間関連・明示日付の年照合・相対日解決。言及/回答カバレッジ診断と 12-24-48 段階候補投入。
+- 辞書分離: intent語・stopwords・時間語を retrieval lexicons に集約し、スコア倍率を EVIDENCE_WEIGHTS 一表化。dead RRF削除、enrichment循環import解消。
+- 評価: live 10件収集＋機械的事前ラベル、5件にAI一次ラベル（要人手確認）。
+- API: `adaptiveScrape` と `scrapeBudget` を REST・MCP・OpenAPI 共通スキーマに接続。型・範囲を検証し、指定値を内部検索へ渡します。既定は引き続き追加取得なしです。
+- ドキュメント: README・API説明・検索処理の説明を更新。日付の基準と年省略時の仮定、`updated` と開催日の違い、検索精度評価の未完了範囲を明記。OpenAPI は整数制約を `integer` として出力します。
+- CI: Google News fixtureの経時失敗、MCP有効化状態・環境変数のテスト間漏れ、バージョン不整合を修正。配送会社の実応答テストを `SORA_LIVE_TESTS=1` に分離し、佐川の未登録・HTTPエラー・通信失敗は固定応答で検証。失敗ログとJUnitを保存します。
+# Sora v2.31.0
+
+- 検索 v2: Yahoo プロバイダー圧力制御（AIMD・サーキット・予算）、構造化 429 と Retry-After 対応、stale キャッシュ、検索 singleflight、回答カバレッジ停止、抽出エスカレーション＋遅延ブラウザスキップ。
+- API: `GET /metrics` にセキュリティ・検索カウンタを JSON と Prometheus の両形式で公開。OpenAPI の表記を日本語化。`search_deep` の適応パラメータを README に文書化し、検索・スクレイプの仕組みを `docs/search-scrape-mechanics.md` に整理。
+- 品質: strict typecheck 修復、JMA 週間予報テストの提供日数変動への対応。フルスイート 1073 pass / 4 skip / 0 fail、Hermetic gate 207 pass。
+
+# 監査対応パッチ (unreleased)
+
+- Yahoo 路線情報フライト一覧の Next.js 化（__NEXT_DATA__）に対応。旧 table 解析はフォールバックとして維持。
+- 詳細ヘルスが SORA_VERSION を返すよう修正。L2 キャッシュの作成時刻を永続化値から復元。古い API 使用量・監視履歴の定期 purge を追加。
+- 外部依存のライブテストを SORA_LIVE_TESTS=1 背後に分離し、CI に bun test ワークフローを追加。
+- README のツール数・モジュール・環境変数表を実態に更新。GET / 一覧に tracking/social を追加。未使用の Dockerfile・ベンチ・ゴミファイルを削除。
+
+# 公開SNS取得（Weibo/Threads/Instagram/Facebook）(unreleased)
+
+- MCPに `search_social_posts`（Weibo新着検索・Meta公開投稿の発見＋本文取得）と `fetch_social_post`（既知投稿の本文・日時・反応）を追加。追加費用・ログイン不要。Xは対象外のため `search_realtime` を使う。
+- RESTに POST /social/search・POST /social/fetch を追加し、OpenAPIへ登録。
+- 国地域インテリジェンスに `social_posts` プロバイダーを追加。`includeSocial: true`＋`social` 指定で実行し、締め切りは55秒。単独SNS結果はDB保存しない。
+
+# Global Intelligence v2 — live evidence without Yahoo realtime (unreleased)
+
+Country Intelligence restores event content instead of counts: GDACS real-shape parsing (url objects, affected countries, severity), GDELT Events export ingestion with region filtering and honest period gaps, USGS/EONET/global feeds, 6 World Bank indicators with full series, holiday scope details, and article-body extraction.
+
+- Report v2 (schemaVersion 2, additive): domainContext facts per domain, provider limitations, refreshState, actualWindows with gaps, persisted evidence details with cursor paging and change diffs.
+- MCP intel: research_country_context now returns text JSON plus validated structuredContent; new get_country_context, get_country_context_evidence, get_country_context_updates. REST adds the matching evidence and updates endpoints. Yahoo realtime is never used on this path.
+- Collection durability: evidence details, source cursors, and change history persist (migration v3); single-owner collector lease; stale/unknown/clock-anomaly freshness instead of silent success.
+
+# 🧭 Sora Release v2.27.0
+
+## Xリアルタイム検索の直接JSON移行 (unreleased)
+- `search_realtime` / `POST /search/realtime` / `POST /realtime` / `search_deep` 内のX取得・X投稿URL解決が、Yahoo MCPバイナリ経由からYahooのJSON取得の直接呼び出しに切り替わりました。Yahoo HTMLのトップ枠 (`bestTweet`) にだけ存在した投稿の取りこぼしを解消します。
+- Yahoo公式の検索演算子 (`id:` / `@` / `#` / `-` / `(A B)` / `URL:` / URL直接入力) と複数語・アカウント指定の併用に対応し、OR・URL条件を含む式の意味を変える自動relaxは行いません。
+- 構造化 `url` は `URL:` 演算子として送信するよう修正しました (従来は通常語として追加)。
+- `page` は公開1始まり・Yahoo側40件固定幅、`limit` は1〜40・デフォルト20。provider障害はHTTP 502 / MCPエラーとして返し、一部失敗時は `partial` 付きで成功分を返します。
+- Web・画像・動画・ニュース・知恵袋の取得は従来どおりMCPバイナリを使用し、バイナリ配置も維持します。
+- Country Intelligence 側は geo 正規化・provenance・検証済み two-pass・metric/signal 基盤・domain view・default runtime を追加しました (詳細は intel 実装メモ)。
+
+### Realtime compact default + Country Intelligence v1
+
+- `search_realtime` / `search_web` / `search_deep` return compact responses by default (answer-required fields only); pass `verbose: true` for retrieval diagnostics (`retrievalQueries` / `contributingQueries` / `resultsMerged` etc.). REST `/search/realtime` and `/search/web` behave the same with cache keys separated by verbosity.
+- `search_realtime` description shortened to stay within the 400-char initial tools/list budget (33 contract tests pass).
+
+### Country Intelligence v1 — evidence-backed country context
+
+- New `POST /intelligence/country` + `GET /intelligence/context/:contextId`, and deferred MCP tool `research_country_context` (`intel` module, `search_tools` keyword `国地域`).
+- Deterministic pipeline: conservative region resolution, isolated providers with timeout/retry/cache, normalized evidence, conservative event clustering, factual temporal/relation context, SQLite persistence.
+- Report counts keep articles, event clusters, and independent sources separate; publisher country never leaks into event country; ambiguous regions stay low-confidence.
+- Partial-report semantics: a single provider 429/timeout degrades coverage instead of failing the report.
+- Explicitly no sentiment, hostility, anti-Japan, safety, or risk classifiers or scores.
+- Persistence requires `SORA_DB_PATH=/data/sora.db` on a mounted `/data` volume (`VOLUME ["/data"]` declared in Dockerfile/Containerfile). Opt-in smoke: `bun run test:intel:live`.
+
+# 🌤️ Sora Release v2.25.0
+
+### MCP 遅延ツールの LibreChat 互換修正
+
+- 再接続時の有効化状態保持に加え、有効化した遅延ツールの `default.` 付き互換名を公開。LibreChat が `default.search_trend` 等を完全一致で検索する場合も、再初期化後に定義取得・呼び出しできるよう対応。
+- 初期公開は12ツールを維持。遅延ツール1件の有効化で正式名と互換名の2定義を追加（同じ引数検証・処理を使用）。無効モジュールは公開しない。
+- キーワード検索のランキングを維持しつつ、明示的なカテゴリ検索では3件制限を適用せず、カテゴリ内の全ツールを有効化。
+- 有効化状態の保持は同一プロセス内。プロセス再起動・別レプリカへの接続では再度 `search_tools` が必要。
+
+伝票番号の形式衝突と投機競合（first-response-wins）を排除し、決定論的かつ高信頼な配送追跡を実現する **Tracking v2 アーキテクチャ** を導入したメジャー・マイナー機能リリースです。
+
+> **原則: Detect locally. Verify narrowly. Never guess.**
+> （推測するな。観測せよ。最速応答は勝者ではない。確実な配送エビデンスのみを採用する。）
+
+### 🌟 主な機能と改善 (Highlights)
+
+1. **Carrier Adapter & Registry 刷新 (8キャリア対応)**
+   - 運送会社ごとの追跡・検証責任をアダプタへ完全分離。
+   - 国内 5 大キャリア（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）に加えて、国際配送（UPS、FedEx、DHL Express）の計 8 社へ正式対応。
+
+2. **Ranked Local Detection (非推測・完全ローカル判定)**
+   - ネットワーク通信を一切行わず、全キャリアアダプタの形式ルール・チェックディジット・正規表現に基づきスコアと強度を判定・順位付け。
+   - **UPS 1Z Exclusive**: UPS 固有の `^1Z[0-9A-Z]{16}$` は他社候補を一切呼び出さず単一照会。
+   - **UPU S10 国際郵便**: 公式重みベクトル `[8, 6, 4, 2, 3, 5, 9, 7]` によるチェックディジット検証と `postal` メタデータ付与。外国発行（US 等）の EMS 番号も日本郵便国際追跡へ安全にルーティング。
+
+3. **Bounded Wave Verification (最大 4 回制限・段階的並行照会)**
+   - 候補上位から最大 2 社ずつ並列照会（Wave 1: Top 2、Wave 2: Next 2）。
+   - Wave 1 で確実なエビデンス（`strong`）が確認された時点で後続 Wave を即時中止（Short-circuit）。
+   - ネットワーク照会は最大 4 回に厳格制限し、外部サービスへの不要な高負荷やレイテンシ遅延を防止。
+
+4. **Verified Carrier Adoption (Fastest Is Not Winner)**
+   - 最速で返ってきたこと自体を勝者決定の理由とせず、配送イベント履歴や詳細情報が存在する `verification.level === 'strong'` の結果のみを勝者として採用。
+   - API クレデンシャル未設定時の Web URL 案内（URL-only）が auto winner になることを厳格に防止。
+
+5. **Multiple Strong Conflict 判定**
+   - 同一伝票番号で複数社が有効な配送実績を返した場合、単一キャリアを推測・偽装せず `ambiguous: true` / `status: 'unknown'` として安全に競合をユーザーへ通知。
+
+6. **REST / MCP / OpenAPI 契約同期**
+   - MCP `track_package` および REST `/tracking` において 8 社キャリアコード（`fedex`, `dhl` を含む）と `preferredCarriers`, `originCountry`, `destinationCountry` ヒントパラメータを完全サポート。
+   - 初期 12 コアツール構成（Two-Tier Tool Architecture）とコンテキストトークン効率を維持。
+
+---
+
+# 🌤️ Sora Release v2.24.3
+
+コアツール枠（厳格な初期 12 ツール構成）の復元と、遅延ツール動的有効化（Two-Tier Tool Architecture）の LLM 誘導プロンプトを強化した Hotfix リリースです。
+
+- **初期コアツール枠の復元（12 ツール制限の厳格な遵守）**: `track_package` を初期 CORE ツールから元の遅延読み込み（`defaultEnabled: deferredDefault`）へ戻し、初期 `tools/list` のツール数を 12 ツール（11 コア + `search_tools`）に復元。コンテキストトークン効率を最優先とする設計原則を徹底。
+- **動的有効化誘導プロンプトの強化**: `buildSoraMcpInstructions` 内の Tier 1 指示において、`track_package` が初期非表示の遅延ツール（DEFERRED）であることを明記し、利用前に必ず `search_tools(query: '荷物追跡')` を呼び出して動的有効化してから使用することを LLM に一意に指示・誘導。
+- **コントラクトテストの整合性担保**: 初期 12 ツール構成および `track_package` の動的有効化フローに対するテストアサーションを同期（29 tests 全件 PASS）。
+
+---
+
+# 🌤️ Sora Release v2.24.1
+
+v2.24.0 で導入した X long-form enrichment に対する Hotfix リリースです。
+
+- **post-merge X long-form detail selection**: Yahoo official/public マージ後に全文取得候補を選定
+- **Yahoo truncation gate**: Yahoo 本文が切断疑い（`text.length >= 240`）の投稿のみを Gate 通過
+- **max two Fx detail calls**: 上位 5 件をローカル評価し、FxTwitter HTTP 呼び出しは最大 2 件に制限
+- **query relevance selection**: original semantic query relevance に基づき Fx detail 候補を選択
+- **canonical X text response**: `text` を唯一の canonical 本文に一本化
+- **canonical author_name/author_handle response**: `author_name` + `author_handle` を canonical author 表現とし、`@` を除去
+- **removal of redundant long-form response fields**: 通常レスポンスから `snippet`, `markdown`, `originalText`, `author`, `author_url`, `siteName` を完全に除外し、レスポンスサイズを大幅に削減（`verbose: true` のみ `detailDiagnostics` を付与）
+- **URL normalization**: host-facing X URL から Yahoo トラッキングパラメータ（`utm_source`, `utm_medium`, `utm_campaign`）を自動除去
+- **Yahoo/Fx fail-soft挙動の維持**: 外部 API エラーやタイムアウト時もエラーを発生させず安定フォールバック
+
+---
+
+# 🌤️ Sora Release v2.24.0
+
+荷物追跡の信頼性・レイテンシを飛躍的に高める **Fail-fast Package Tracking** と、X (旧 Twitter) の長文投稿（Note Tweet 等）を正確かつ安全に補完する **Bounded X Long-form Enrichment** を統合したメジャー・マイナー機能リリースです。
+
+各種 MCP ツールと REST API の全レイヤー（`search_deep` / `/search/deep`, `search_realtime` / `/realtime`, `scrape` / `/scrape`, `track_package` / `/tracking`）においてマルチサーフェスな動作整合性を完全担保しました。
+
+---
+
+## 🌟 v2.24.0 主なハイライト (Highlights)
+
+### 1. 📦 荷物追跡の信頼性・レイテンシ改善 (Track B)
+- **並行投機照会の Fail-fast 化**: 複数キャリアの並行探索において、確実な配送結果（`delivered`, `in_transit`, `registered`, `returned`）が確定した瞬間に即座に早期 return。遅延キャリアやタイムアウト待ちによるレイテンシを大幅に削減。
+- **UPS フォールバックの適正化**: API 認証情報（`UPS_CLIENT_ID` / `UPS_CLIENT_SECRET`）が未設定の場合に従来の `status: 'registered'`（虚偽の追跡完了リスク）を廃止し、安全な `status: 'unknown'` と公式追跡 Web リンク案内へ是正。
+- **伝票番号の候補推定適正化**: 汎用的な未知伝票番号から UPS を除外し、UPS 固有の形式（`^1Z[0-9A-Z]{16}$`）のみ候補として自動判定。
+
+### 2. 𝕏 X 長文投稿 (Note Tweet) の適応的全文補完
+- **Yahoo Realtime Discovery の維持**: 広範な即時検索・トレンド把握は Yahoo! リアルタイム検索の高速性を維持し、不要な外部 API コールを排除。
+- **語彙観測に基づく Bounded Enrichment**: クエリ要求とスニペットの語彙照合（`tokenizeAndSelectTerms`）および省略記号（`…` や `...`）による切り捨て検知を行い、情報欠落の兆候がある上位候補のみ FxTwitter v2 API（最大 2 件、通常 0〜1 件）で全文補完。
+- **Direct X Status URL への直結**: X ポスト URL（`/status/:id`）が指定された場合、Yahoo 検索を待たずに直接 FxTwitter detail を試行し、Note Tweet の完全な長文本文・正確な著者名・投稿日時を 1 回で抽出。
+- **100% Fail-soft & プライバシー保護**: 外部 API のタイムアウト（1,500ms）・レート制限・HTTP エラー時もエラー落ちせず Yahoo スニペットを維持。FxTwitter へは numeric statusId のみ送信し、ユーザーの生クエリやセッション情報は一切非送信。5分 TTL キャッシュと single-flight 重複排除を内蔵。
+
+### 3. 🔁 MCP & REST Multi-surface Parity
+- **REST `/realtime` エイリアス**: クライアント互換性のため、`POST /search/realtime` に加えて `POST /realtime` も同一ハンドラでマウント。
+- **Deep 統合検索・単一スクレイプ連携**: `search_deep`（MCP）および `/search/deep`（REST）の速報枠や Web 記事スクレイプ、`scrape`（MCP）および `/scrape`（REST）のすべてで X ポストの全文抽出がシームレスに機能。
+- **包括的統合テストスイート**: REST と MCP の全サーフェスを検証する `src/services/mcp_rest_deep_realtime.test.ts` を追加し、全件グリーンを恒久保証。
+
+---
+
+# 🌤️ Sora Release v2.23.1
+
+v2.23.0 で導入された各種機能と runtime 挙動を、MCP スキーマ・ツール説明・指示文（`SORA_MCP_INSTRUCTIONS`）・REST・OpenAPI・ドキュメント間で 100% 整合させる **LLM-facing Contract Synchronization & Discovery Refinement** リリースです。
+
+検索・retrieval・ranking・ρSelect v2 の精度経路は変更せず、LLM が迷わず正確にツールを選択・発見・活用できるプロトコル契約を強化しました。
+
+---
+
+## 🌟 v2.23.1 主なハイライト (Highlights)
+
+### 1. 🔁 `search_deep` スキーマの Single-Source 化 & 完全パリティ
+- `src/mcp.ts` 内の手動インラインスキーマ定義を撤廃し、共有スキーマ `INTEGRATED_SEARCH_INPUT_SHAPE` に一本化。
+- OpenAPI 生成における Zod 3.24+ の enum 欠落バグを修正し、REST / MCP / OpenAPI 間の全 enum・default・境界値の一致をテストで恒久保証。
+- `search_web` の `limit` 説明文言をランタイム挙動（最大: 20。formats指定時: 5。未指定時: provider 既定件数維持）と完全同期。
+
+### 2. 🧩 Module-Aware な MCP ガイダンス & 厳格な分離
+- `buildSoraMcpInstructions(activeModules)` を導入し、有効なモジュールのみ Tier 1 ディレクティブおよびツールガイダンスを動的生成。
+- `life` モジュールと `disaster` モジュールの instructions 定義を完全に分離し、片方のみ有効な構成でも他方のツール名が漏出しないよう適正化。
+- `search_tools` の候補なしメッセージに表示される「利用可能なカテゴリ」も現在アクティブなモジュールのみ動的反映。
+
+### 3. 🔍 段階的ツール発見 (Progressive Discovery) の品質向上
+- `search_tools` の自然言語判定における逆包含処理を 2 文字以上（`[...kLower].length >= 2`）に限定。「歌手」で「歌」を含む `search_song` が誤活性化される 1 文字誤マッチを排除。
+- `search_tools` の description から固定ツール名（`search_deep 等`）を削除し、モジュール無効構成でも矛盾しない client-neutral な案内に統一。
+- 初期 12 コアツールの定義文字数を 19,963 文字、instructions を 6,102 文字に最適化（初期コンテキスト消費を全登録比約 70% 削減）。
+
+### 4. ⚡ MCP Standard Streamable HTTP 通知の E2E 実証
+- MCP SDK 標準の Streamable HTTP（GET SSE ストリーム）経由で、`search_tools` 実行時に `notifications/tools/list_changed` が確実にクライアントへ届き、同一セッション内で `tools/list` が動的リフレッシュされる E2E 通信を実証。
+
+---
+
+# 🌤️ Sora Release v2.23.0
+
+MCP / REST の検索レスポンス整合性を保ちながら、必要なクライアントだけ返却量を大幅に削減できる **Evidence Response Mode**、`search_web` の共通 format 契約、Host-facing highlights 正規化、および検索診断の安全な拡張を統合したリリースです。
+
+既存互換性を優先し、`search_deep` の `responseMode` は引き続き **`full` がデフォルト**です。`evidence` は明示 opt-in であり、取得・ρSelect v2・Deep Evidence Rerank の精度経路は変更しません。
+
+---
+
+## 🌟 v2.23.0 主なハイライト (Highlights)
+
+### 1. 📦 `search_deep` Evidence Response Mode（明示 opt-in）
+- `responseMode: "full" | "evidence"` を MCP / REST の双方で利用可能。
+- `full` は従来互換のデフォルト。
+- `evidence` は query-selected `highlights` を保持し、安全条件を満たす結果だけ重複する全文 `markdown` を省略。
+- `markdown` を highlights で上書きせず、`highlights` も削除しません。
+- `formats:["markdown"]` の明示指定、`extractHighlights:false`、highlights 不在、scrape fallback/error、X ソースでは全文 Markdown を保持します。
+- 決定論的な real MCP + REST E2E fixture では、対象情報を保持したまま返却文字数を約 91% 削減しました（fixture 実測値であり、一般ワークロードの保証値ではありません）。
+
+### 2. 🔁 MCP / REST の検索契約整合性
+- `search_deep` の full / evidence で stable semantic surface の MCP / REST parity を実 E2E で検証。
+- `search_web` に共通 `formats` 契約を導入し、MCP / REST の双方で `markdown`, `tables`, `links`, `jsonLd` 等を同一方針で取得可能。
+- `formats` 未指定時の `search_web` は従来の軽量検索パスを維持し、追加スクレイプを行いません。
+- requested format 以外の payload を漏らさない Host projection を追加。
+
+### 3. 🎯 Host-facing highlights の正規化
+- 外部向けの標準 surface を `highlights` に統一。
+- 内部用 `highlightItems` は Deep Evidence Rerank まで保持し、通常レスポンスでは露出させません。
+- `verbose` 時のみ診断用内部情報を維持します。
+
+### 4. 🔎 安全な検索診断と実験機能
+- verbose-only の query lineage / evidence diagnostics を追加。通常レスポンス・順位決定には影響しません。
+- Web Query Union と X Source Isolation は引き続き **明示 opt-in / デフォルトOFF**。
+- Study 2B の実験実装は production candidate から除外済みで、本リリースには含めません。
+
+### 5. 🧪 回帰安全性
+- ρSelect v2 canonical tests: 23 tests / 422 assertions。
+- ρSelect v2 1,000-seed stress: 5 tests / 4,588 assertions。
+- ソライロ / 季節外れのリナリア / SPARK の precision fixtures を release gate に固定。
+- real MCP + REST Evidence E2E、real MCP + REST `search_web formats` E2E、build、version contract をリリース前に実行。
+- main と release candidate の full test suite を同一隔離環境で比較し、candidate-only failure がないことを確認してからリリースします。
+
+---
+
+# 🌤️ Sora Release v2.22.0
+
+気象庁公式オープンデータによる週間天気予報（最大7日先＝計8日間）の統合、および不要な個人ボランティアAPI（tsukumijima）フォールバックの完全撤廃アップデート（v2.22.0）です。
+
+---
+
+## 🌟 v2.22.0 主なハイライト (Highlights)
+
+### 1. 🌦️ 気象庁公式 週間天気予報（7日先＝計8日分）の統合
+- **日別マージエンジンの新設**:
+  - 気象庁 API の短期予報（今日・明日・明後日）と週間予報（3日後〜7日後）を自動統合し、指定地域（例: 「山中湖」190020）において最大 8 日分（今日〜7日後）の日別予報（天気コード・日本語テロップ・降水確率・予想最高/最低気温・予報信頼度 A/B/C）をシームレスに取得可能になりました。
+- **`days` パラメータ拡張**:
+  - `days: 1〜8`（デフォルト: 7）へ拡張し、MCP ツール `get_weather` および `/weather` エンドポイントで週間予報をワンショット取得可能にしました。
+
+### 2. 🛡️ OSS開発倫理・健全性の向上（個人APIフォールバックの完全撤廃）
+- **一次ソース（気象庁公式 CDN）への一本化**:
+  - 個人開発者がボランティア運用している外部サーバーへの自動フォールバック処理を完全削除しました。
+  - 共倒れリスクと外部への不要な負荷集中を根絶し、Akamai CDN 等で高可用配信される気象庁公式データのみを直接参照する堅牢で倫理的なアーキテクチャに整理しました（オッカムの剃刀）。
+
+---
+
+# 🌤️ Sora Release v2.19.0
+
+最新の数理最適化研究に基づく証拠選択エンジン **「ρSelect v2 (Canonical Engine)」** の完全導入および深層エビデンス駆動リランキング機能の搭載アップデート（v2.19.0）です。連続スコア $r_{it} \in [0, 1]$ に対する Graded Max-Evidence 則と座標単調効用関数 $\Phi(y)$、Safe Dominance 剪定、および Exact Observed-Rank DP / Adaptive Refinement 二段階ハイブリッドソルバーを実装しました。全クエリに対して数学的オプティマイザ証明書（`certificate`: $LB \le \rho^* \le UB$）を発行し、外部監査レポート（v0.35）の全指摘事項を是正するとともに、実クエリでの偽陽性を根絶する深層エビデンス駆動リランキングおよび Markdown リスト構造保護パースを導入しました。
+
+---
+
+## 🌟 v2.19.0 主なハイライト (Highlights)
+
+### 1. 🎯 ρSelect v2: 数学的オプティマイザ証明書付き証拠選択エンジン
+- **連続スコア評価と Graded Max-Evidence**:
+  - 連続値 $r_{it} \in [0, 1]$ の適合スコアを直接扱う数理モデルへ刷新。
+- **Canonical Unconstrained Mode（自律的疎性最適化）**:
+  - ハード上限 $K$ を前提とせず、State-Witness Sparsity 定理（$|S^*| \le m$）と分数目的関数に基づき、必要最小限かつ情報密度の高い証拠集合を自律選出。
+- **Safe Dominance 剪定による状態空間 22.7倍（95.59%）削減**:
+  - パレート劣位候補を探索前に安全にパージ。実測において状態数を 1,678 → 74 へ劇的削減（レイテンシ約 52 倍 高速化）。
+- **二段階ハイブリッド・ソルバー & 数学的証明書 (`certificate`)**:
+  - Exact DP と Adaptive Refinement により大域的最適性を数学的に証明。各レスポンスに `certificate`（$LB \le \rho^* \le UB$）を添付。
+- **1,000 Seeds ストレス回帰テストスイートの完走**:
+  - 1,000 決定論的シード（4,588 assertions）による厳格な数学的性質（Exact vs Brute-force、AR Bounds、$\epsilon=0$ 収束、Dominance不変性、Ties、Fail-closed）を 100% 検証。
+
+### 2. 🔍 深層エビデンス駆動リランキング (`rerankByDeepEvidence`)
+- **スニペット段階での偽陽性の根絶**:
+  - 検索エンジンの合成スニペットに別文脈の単語が含まれていた場合の誤1位判定を解消。
+- **多層エビデンス順位補正**:
+  - 深層スクレイピング完了後、本文およびハイライトのクエリ単語カバレッジ、意図キーフレーズ（末尾語・特異語）充足、および ρSelect v2 ハイライトスコアを総合評価し、真に回答根拠を含むページを 1 位へ自動浮上。
+
+### 3. 📝 Markdown 空行区切りリスト構造保護パース
+- **クレジット・定義リストの泣き別れ防止**:
+  - `- 作詞者\n\n 内山優花` のような空行区切りインデントリストが空行で別セクションに分断されるのを防ぎ、同一セクションブロックに結合保持。
+
+### 4. 📚 監査・仕様ドキュメントの最新化
+- 理論解説: [`docs/rho_select.md`](docs/rho_select.md)
+- LLM向けハンドオーバー仕様書: [`docs/rho_select_v2_llm_handover.md`](docs/rho_select_v2_llm_handover.md)
+- 監査指摘是正・新機能実装報告書: [`docs/rho_select_v2_audit_response.md`](docs/rho_select_v2_audit_response.md)
+
+---
+
+# 🌤️ Sora Release v2.18.0
+
+日本の主要運送会社および国際便の横断追跡機能（`/tracking`、`track_package` MCP ツール）の新規搭載、およびトークン効率的証拠選択エンジン「ρSelect」におけるボイラープレート・メタデータ自動排除とリスト内見出し階層認識の機能強化を含む大型アップデート（v2.18.0）です。
+
+---
+
+## 🌟 v2.18.0 主なハイライト (Highlights)
+
+### 1. 📦 日本主要5社＋UPS 荷物追跡 API & MCP ツール (`POST /tracking`, `track_package`)
+- **対応キャリア**:
+  - ヤマト運輸（クロネコヤマト）
+  - 佐川急便
+  - 日本郵便（ゆうパック・書留）
+  - 西濃運輸（カンガルー便）
+  - 福山通運
+  - UPS（United Parcel Service / 国際便）
+- **高精度キャリア自動判別**:
+  - 伝票番号の桁数（10/11/12/13/18桁等）やハイフン位置、Modulus 7 および Luhn チェックサムによる自動キャリア識別。
+  - キャリア指定なし（`"carrier": "auto"`、または `GET /tracking/:number`）でも即座に対象キャリアを判定して追跡。
+- **5分間インメモリ LRU キャッシュ**:
+  - 同一伝票番号への重複問い合わせを防止し、外部サーバーへの負荷を抑制（キャッシュヒット時レイテンシ <0.5ms）。
+- **REST & MCP 両対応**:
+  - REST API: `POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`
+  - MCP ツール: `track_package`（Module 4: Japan Daily Life & Transit に統合）
+
+### 2. ⚡ ρSelect: ボイラープレート・メタデータ自動排除 & リスト内見出し認識
+- **Frontmatter & パンくずメタデータの自動排除**:
+  - Markdown 先頭の YAML frontmatter（`--- publishedTime: ... ---`）やサイト共通ナビゲーション（`> 📍 **階層**: ...`）が候補セクションに混入してハイライト選択を歪める問題を根本解決。
+- **リスト内見出し階層認識 (`- ### [記事見出し]`)**:
+  - 朝日新聞トピックスや Yahoo!ニュース等のポータルサイトで頻出する、箇条書きリスト要素内に埋め込まれた Markdown 見出し記号を正確に境界認識。一覧記事の各トピックを独立した候補セクションとして精密に分離・スコアリング。
+- **スニペットの Frontmatter クレンジング**:
+  - 検索結果レスポンスの `snippet` および `description` に混入した YAML frontmatter やパンくず文字列を事前サニタイズ。
+
+---
+
+# 🌤️ Sora Release v2.16.0
+
+日本の Web 空間と日常・行政・防災インフラを AI エージェントから自由かつ安全に利用するための Self-hosted MCP / REST 統合サーバー「Sora (空)」の最新機能アップデート（v2.16.0）です。
+
+本バージョンでは、現代の情報検索（Information Retrieval: IR）理論と最新 RAG 研究に基づく **3大 IR アルゴリズム（Lost in the Middle 対策 U字型リオーダリング、MMR 多様性選択、インメモリ PRF 適合性フィードバック）**、時間軸ハルシネーションを防止する **Temporal Context Anchor（相対日時の絶対タイムスタンプ自動解決）**、および大規模な表構造をインテリジェントに要約・圧縮する **Smart Table Minimizer** を新規実装しました。
+
+すべてのアルゴリズムは **ゼロ・ミドルウェア（外部 LLM・外部ベクトル DB 不要、完全インメモリ <0.05ms）** で動作し、LLM コンテキスト窓の劇的な節約とエージェントの推論精度向上を両立します。
+
+---
+
+## 🌟 v2.16.0 主なハイライト (Highlights)
+
+### 1. 🧠 情報検索 (IR) 理論に基づく 3 大アルゴリズム (Zero-Middleware IR Engine)
+
+外部の重厚なベクトル検索エンジンや Re-ranking LLM を一切導入せず、スクレイピング・検索結果の本文チャンクに対して純粋な数理的インメモリ処理（純粋 TypeScript / Bun）で最高水準の検索精度を実現しました。
+
+- **① Lost in the Middle 対策: U字型リオーダリング (`reorderUshaped: true`)**
+  - **背景**: 大規模言語モデル（LLM）は、プロンプトの先頭（Primacy Bias）と末尾（Recency Bias）にある情報を強くアテンションし、中央部の情報を忘却・見落としやすい特性（Lost in the Middle 現象）を持ちます。
+  - **解決策**: BM25 や検索スコア順に上位から並べる従来の直線的配置を刷新。最重要チャンク（Rank 1, 2）を先頭と末尾に配置し、中央部に向かってスコアが緩やかに低下する **U 字型順序（$R_1, R_3, \dots, R_4, R_2$）** へ自動再配置。LLM による中央部情報の見落としを数理的に防止します。
+- **② Carbonell & Goldstein (1998) 準拠: MMR 多様性選択 (`useMmr: true`)**
+  - **背景**: 単純な類似度・BM25 スコアのみで上位チャンクを抽出すると、ほぼ同一内容の文章（ヘッダー、重複した免責事項、定型句など）が連続して選択され、限られたコンテキスト窓を浪費します。
+  - **解決策**: クエリとの関連性（$\text{Sim}_1$）と、すでに選択されたチャンク群との最大類似度（$\text{Sim}_2$）のトレードオフを数式 $\text{MMR} = \operatorname{argmax} \left[ \lambda \cdot \text{Sim}_1(d_i, q) - (1 - \lambda) \max_{d_j \in S} \text{Sim}_2(d_i, d_j) \right]$ に基づいて動的評価。$\lambda = 0.7$（デフォルト）により、関連性を維持しながら重複情報を強力に排除し、多様な情報源からチャンクを網羅採択します。
+- **③ Rocchio 適合性フィードバック: インメモリ PRF (`usePrf: true`)**
+  - **背景**: ユーザーの検索キーワードと Web ページの記述表現の揺らぎ（Vocabulary Mismatch）により、重要な本文が従来の単語一致検索から漏れる問題があります。
+  - **解決策**: 一次検索で高スコアを獲得した上位チャンク（Top-K）のテキストから、TF-IDF + サブワード境界スコアリングによって特異的キーワードをインメモリで自動抽出。クエリ重みベクトルを $q_{\text{new}} = \alpha \cdot q + \beta \cdot \text{keywords}$ で自動拡張して再スコアリング。重い Embedding モデル不要で検索適合率を大幅に向上させます。
+
+### 2. ⏳ Temporal Context Anchor（相対日時の絶対タイムスタンプ自動解決）
+- **背景**: Web 記事やプレスリリース、ブログ、SNS では「明日」「来週」「3日前」「今週末」といった相対日時表現が多用されます。LLM はスクレイピング日時や記事執筆日時を知らないため、時間軸のハルシネーション（過去のイベントを未来と誤認するなど）を頻発させます。
+- **解決策**:
+  - 記事の公開日時（HTML メタタグ `article:published_time`、Schema.org JSON-LD `datePublished` 等）またはスクレイピング実行日時を「基準アンカー日時（Anchor Time）」として自動設定。
+  - 本文中の相対日時表現を正規表現とカレンダー演算により動的検知し、インラインで絶対日時を付与（例: `来週水曜日 [2026-09-16 (水)] に開催予定`）。LLM が一切の推測なしに確定日時を認識できます。
+
+### 3. 📊 Smart Table Minimizer（表トークンのインテリジェント圧縮）
+- **背景**: 仕様表、比較表、運行スケジュール等の Markdown テーブルは、空セル（`-`, `N/A`, `なし`）や定型ヘッダー、重複列が多く、LLM のコンテキスト窓を極度に浪費します。
+- **解決策**:
+  - 表全体の空セル率が 50% を超えるスパースな表や、低情報密度の列・行を自動検出。
+  - 重要なデータ行を維持しながら、コンパクトなキー・バリュー形式や省略フォーマットへ自動圧縮。表データの可読性と意味的完全性を保ちながら、トークン消費量を **最大 60% 削減** します。
+
+### 4. ♿ Evidence-Preserving Accessibility Hints（根拠データプレーン）
+- 画像リンク、アイコンボタン、装飾的ナビゲーションなど、テキストが少なくアクセシビリティ属性（`aria-label`, `alt`, `title`）にのみ意味情報が含まれる HTML 要素から、根拠テキストを自動抽出し Markdown 出力に統合。視覚情報・補助テキストの欠落を防ぎます。
+
+### 5. ⚡ 圧倒的なパフォーマンス・ベンチマーク (Zero-Middleware)
+- すべての処理を外部サービスや重厚なミドルウェアに依存せず、純粋な TypeScript / Bun インメモリ環境で完結。
+- 実測レイテンシ：
+  - **U-shaped Reordering**: **1.2 µs**
+  - **MMR 多様性選択 (10チャンク)**: **28.4 µs**
+  - **インメモリ PRF 適合性フィードバック**: **42.1 µs**
+  - **Temporal Anchor (相対日時解決)**: **15.6 µs**
+  - **Smart Table Minimizer**: **8.3 µs**
+  - 合計オーバーヘッドは 0.1ms 未満であり、既存のスクレイピング・検索速度に一切影響を与えません。
+
+### 6. 🧪 テスト・検証実績 (Testing & Verification)
+- **自動テストスイート**: **全 292 テスト 100% PASS**（2,843 件の expect アサーション）
+  - 新規 IR アルゴリズム、Temporal Anchor、Table Minimizer の単体・統合テストを完全網羅。
+  - 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換。
+- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.16.0 稼働確認済み（`curl http://127.0.0.1:3016/health` → `200 OK`）。
+
+---
+
+# 🌤️ Sora Release v2.13.0
+
+日本の Web 空間と日常・行政・防災インフラを AI エージェントから自由かつ安全に利用するための Self-hosted MCP / REST 統合サーバー「Sora (空)」の最新機能アップデート（v2.13.0）です。
+
+本バージョンでは、商用 LLM（Claude / ChatGPT 等）やローカル LLM（Llama / Qwen / Ollama 等）における**回答拒絶（Over-Specialization による過剰拒否）の完全根絶（Zero-Refusal Policy）**、**2層構造ツール決定フレームワーク (Two-Tier Tool Decision Framework)**、および Google（Passage Chunking）や Firecrawl のベストプラクティスに基づく**本文精読（Search → Scrape ループ）の義務化** を実装しました。
+
+---
+
+## 🌟 v2.13.0 主なハイライト (Highlights)
+
+### 1. 🛡️ 回答拒絶の完全防止ポリシー (Zero-Refusal Policy)
+- **過剰適合による回答拒絶の根本解決**:
+  - LLM に多数の専門ツールを提供した際、「ライブ日程専用ツール」「営業時間専用ツール」「発売日専用ツール」等が存在しないことを理由に、LLM が「ツールがないためお答えできません」と勝手に決めつけて回答を拒絶する問題（Over-Specialization Bias）を根絶。
+  - MCP 初期化ハンドシェイク（`initialize`）時に配布される `instructions` において、「専用ツールの不在を理由とした回答拒絶・推測放棄」を全面的に禁止。
+
+### 2. 🗺️ 2層構造ツール決定フレームワーク (Two-Tier Tool Decision Framework)
+- **Tier 1 (公式専門データ直結ツール・強制呼び出し)**:
+  - 以下の 6 大ドメインについては、モデル自前の知識推測や一般 Web 検索を禁止し、必ず Sora の専用公式ツールを実行：
+    1. **米国貿易・通関・規制判定**: `predict_hts_code`, `verify_hts_code`, `check_cpsc_certificate`, `check_fda_regulated`, `check_product_compliance`
+    2. **日本法令・国会審議録**: `search_laws`, `get_law_text`, `search_diet_minutes`
+    3. **気象庁防災・地震・道路交通**: `get_weather`, `search_disaster_warnings`, `search_earthquake`, `search_road_traffic`
+    4. **国内路線乗換・フライト・標高**: `search_route`, `get_flight_status`, `get_elevation`
+    5. **SNS速報・知恵袋・トレンド**: `search_realtime`, `search_trend`, `search_chiebukuro`, `suggest_keywords`
+    6. **音楽メタデータ**: `search_song`, `search_artist`, `search_music`
+- **Tier 2 (万能深層Web検索ツール・全実世界データ調査)**:
+  - 上記以外のあらゆる最新事実・スケジュール・実世界データ（ライブ・公演・イベント日程、新製品・発売日、店舗営業時間、人物・企業動向、時事ニュース、技術ドキュメント等）は、**`search_deep`（推奨一次ツール）** を呼び出し、Clean Markdown 本文まで深く読み込んで包括的かつ根拠ある回答を構築。
+
+### 3. 🔍 Google & Firecrawl 式の本文精読（Search → Scrape ループ）ルール
+- **スニペットによる中途半端な推測の防止**:
+  - 検索スニペット（1〜2行の抜粋）はメタ情報に過ぎず、開場時間やチケット発売日、詳細規約は本文（Main Content）にしか存在しません。
+  - `search_web`（URL・概要スニペット探索）を使用した場合でも、スニペットだけで詳細が不確定な場合は推測で終わらせず、必ずヒットした公式 URL を `scrape` ツールで精読して本文を確認することを規約化。
+
+### 4. 🏷️ 万能ツールの検索キーワード & Description 強化
+- **動的ツール発見（`search_tools`）の精度向上**:
+  - `search_deep`: 「【万能深層Web検索・最新事実/スケジュール/イベント調査】」を明記し、`['スケジュール', 'イベント', 'ライブ日程', '発売日', '営業時間', '最新情報']` をキーワードに追加。
+  - `search_web`: 「【万能Web検索・候補探索】」を明記し、`['イベント検索', '告知検索', 'スケジュール']` をキーワードに追加。
+  - `search_artist`: 「ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください」との相互誘導を明記。
+  - `search_realtime`: アイドルのライブ出演・物販タイテ・緊急告知・イベント現地の生の声への最適性を明記。
+
+### 5. ⚡ 次世代スクレイピング＆抽出エンジン（8大機能強化）
+- **BrowserContext 軽量セッション分離**: 常駐 Chromium インスタンスに対し軽量な一時コンテキストをオンデマンド生成・即時破棄。プロセスの起動・終了待機ゼロとセッションごとの完全な Cookie / キャッシュ隔離を両立。
+- **インテリジェント・アセット遮断**: 不要な画像バイナリ、メディア、Webフォント、3Dモデル、広告・解析トラッカーをネットワーク層（Request Interception）で即座に abort。CSS・JS を維持して正確な DOM レイアウトと不可視要素判定を保持しつつ、転送量 99% 削減とロード時間半減を達成。
+- **DOM Quiescence（静止検知）SPA待機**: 固定スリープを廃止し、`MutationObserver` により 200ms の DOM 静止を動的検知して即座に完了。テスト実行時間を 106s から 90s へ大幅短縮。
+- **イベント・スケジュール構造化抽出**: Schema.org `Event` / `MusicEvent` を自動解析し、構造化データ（JSON）および Markdown 冒頭コールアウトとして出力。
+- **パンくずリスト（階層コンテキスト）抽出**: サイトの階層ナビゲーションを抽出し、ページの文脈パス（Breadcrumb）を Markdown に自動付加。
+- **テーブル結合セル正規化**: `colspan` / `rowspan` を 2D マトリクスで自動補完・展開し、複雑な表構造の崩れを防止。
+- **重要画像スコアリング**: フライヤー・タイテ・図表等の画像メタデータを検出し、不要アイコンと区別して優先抽出。
+- **Clean Content Sanitizer & DNS Pinning**: プロンプトインジェクション用制御トークンや不可視ゼロ幅文字のサニタイズ、末尾ドット FQDN 表記による SSRF 回避の厳格な防御。
+
+---
+
+# 🌤️ Sora Release v2.12.0
+
+### 1. 📋 MCP Instructions ＆ 専門ツール強制ディレクティブの導入
+- MCP 初期化ハンドシェイク時に配布されるクライアント向けシステム指示書（`SORA_MCP_INSTRUCTIONS`）を整備。
+- 各ツールの説明文に「【必須・推測回答厳禁】」「【公式直結】」等の強制ディレクティブを付与し、モデル自身の不確実な学習知識によるハルシネーションを防止。
+
+### 2. 🪶 入力・出力の分離と軽量返却キー注記 (Return Annotations)
+- 巨大な JSON 出力スキーマによるトークン爆発やローカル LLM の KV キャッシュ枯渇を防ぎつつ、各ツール説明文末尾に `返却: { status, overallStatus, ... }` の軽量アノテーションを付与してエージェントの戻り値認識性を最適化。
+
+---
+
+# 🌤️ Sora Release v2.11.0
+
+### 1. 🛡️ 米国貿易コンプライアンスにおける多層防御（Dynamic Clarifying Questions）
+- `check_product_compliance` や `predict_hts_code` において、主素材や対象年齢、飲食接触の有無などの重要パラメータが不足している場合、モデルが勝手に推測せず、AI エージェントがユーザーにヒアリングするための動的質問リスト（`clarifyingQuestions`）と `inputCompleteness: "partial"` を返却する多層防御機構を実装。
+
+---
+
+# 🌤️ Sora Release v2.10.0
+
+日本の Web 空間と日常・行政・防災インフラを AI エージェントから自由かつ安全に利用するための Self-hosted MCP / REST 統合サーバー「Sora (空)」の機能拡張アップデート（v2.10.0）です。
+
+本バージョンでは、米国輸出通関・越境 EC 支援において極めて重要な**「商品情報からの HTS/HS コード推測エンジン（`predict_hts_code` / `POST /trade/hts-predict`）」**の新設、**2026 HTS Revision 18 & Chapter 99 特別追加関税リスク対応**、**2026年7月 CPSC 完全義務化 & ACE Disclaimer（免責申告コード）の反映**、および **FDA 実務 PGA フラグ（FD1〜FD4）判定ロジックの刷新** を実施しました。
+
+---
+
+## 🌟 v2.10.0 主なハイライト (Highlights)
+
+### 1. 🎯 商品情報からの HTS/HS コード推測エンジン (`predict_hts_code` / `POST /trade/hts-predict`)
+- **2段階ハイブリッド推測アルゴリズム**:
+  - 米国通関申告に必須となる 10 桁統計細分コードを特定するため、商品名・説明文・素材・用途・対象年齢からセマンティックスコアリングでサブヘディング（6 桁）を高速に特定。
+  - 米国国際貿易委員会（USITC）公式現行関税率表 API（`hts.usitc.gov`）とリアルタイム連携し、該当サブヘディング配下の全 10 桁統計細分コード、品目名、一般関税率を展開してセマンティック照合を実施。
+- **実測精度**:
+  - 玩具、陶磁器食器、化粧品、綿衣料、ヘルメット、食品（緑茶）、電子機器（急速充電器）等の代表品目において、**6 桁 HS コード特定率 100%、10 桁 HTS 完全一致 71%、上位 2 位以内特定率 100%** の高精度を実証。
+- **PGA 規制判定とのシームレス連動**:
+  - 推測された最有力 HTS コードに基づき、連動する CPSC 適合証明書要件（CCC/GCC・eFiling）および FDA 規制要件（FD1〜FD4 フラグ・Prior Notice・MoCRA）を自動で並行評価。
+
+### 2. 📜 2026 HTS Revision 18 & Chapter 99 特別追加関税リスクのガイダンス追加
+- **大統領布告・通商条約への即応**:
+  - 2026年9月公開の 2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法 301 条（中国原産品追加関税等）に基づく **Chapter 99 特別追加関税** の適用リスクと通関士確認手順を判定レポートに追加。
+
+### 3. 🛡️ CPSC 2026年7月8日 eFiling 完全義務化 & ACE Disclaimer（免責コード）対応
+- **完全義務化ステータスの反映**:
+  - 2026年7月8日より施行された米国税関（CBP）ACE システムへの電子申告（eFiling: フル PGA メッセージセット送信、または CPSC Product Registry 事前登録による参照送信）完全義務化（De Minimis 適用除外なし）を明記。
+- **ACE 免責申告（Disclaimer）の案内**:
+  - 規制対象外品目や類似コード品目に対して、通関保留エラー（P00/PU2）を防止するための **ACE Disclaimer コード（A: 非規制品、B: 適用規格免除等）** の申告ガイダンスを追加。
+
+### 4. 🏥 FDA 実務 PGA フラグ（FD1〜FD4）判定ロジックの刷新
+- **通関実務仕様への完全移行**:
+  - 従来の粗い Chapter 2 桁判定から、CBP/FDA 実務で機械的に使用される PGA フラグ体系（FD1〜FD4）へ全面刷新：
+    - **FD4**（食品必須）: 米国到着前の FDA 事前通知（Prior Notice / PNC 確認番号取得）絶対必須。
+    - **FD2**（食品以外必須）: 化粧品（MoCRA / Cosmetics Direct 施設登録・製品リスティング）、医療機器（510(k) / Listing）、医薬品（NDC コード取得）。
+    - **FD1**（用途により該当）: 食器・調理器具等の食品接触物質（FCS）。`foodContact` パラメータと連動し、食品接触用途なら FDA 安全基準適合要件、装飾用等の非接触用途なら ACE 免責（Disclaimer）申告を自動案内。
+
+### 5. 🛠️ 全 38 MCP ツールへの拡張 & Gemini 100% 互換性維持
+- 新規 MCP ツール `predict_hts_code` を含め、全 38 ツールの inputSchema が Gemini の Tool Calling 仕様（`exclusiveMinimum`、`const`、`array` 型禁止）に 100% 適合（1,412 項目検査パス）。
+
+---
+
+# 🌤️ Sora Release v2.9.0
+
+日本の Web 空間と日常・行政・防災インフラを AI エージェントから自由かつ安全に利用するための Self-hosted MCP / REST 統合サーバー「Sora (空)」のメジャーアップデート（v2.9.0）です。
+
+本バージョンでは、LLM エージェント連携における**トークン消費量の大幅削減（Compact Response Mode & Base64 画像パージ）**、**SSRF 難読化 IP の数学的正規化によるセキュリティ完全防御**、**SPA 描画の適応型待機最適化**、**共有ブラウザ自動ローテーション & グレースフルシャットダウン**、および **REST ルーターのドメイン別モジュール分割（コードベース 91% スリム化）** を実施しました。
+
+---
+
+## 🌟 主なハイライト (Highlights)
+
+### 1. 🪶 Compact Response Mode（LLM トークン消費量を 50% 以上削減）
+- **デフォルト出力の軽量化**:
+  - スクレイピング API (`/scrape`, `/scrape/stream`, `/search` 等) において、AI エージェントのコンテキスト窓を圧迫していた内部品質評価データ（`quality`, `completeness`, `qualityReasons`, `missingFields`, `evidence`, `renderedWithBrowser` 等）をデフォルトで自動除外。
+  - レスポンスのペイロードサイズと LLM のトークン消費量を **50% 以上削減** し、高速かつ低コストなエージェント運用を実現。
+- **オンデマンド詳細出力 (`verbose: true`)**:
+  - 品質デバッグやハルシネーション検証で内部評価データが必要な場合は、リクエストに `"verbose": true`（または `/search?verbose=true`）を指定することで、完全な出処根拠（Provenance）やスコアを常時取得可能。
+
+### 2. 🧹 Base64 インライン画像の自動パージ & 置換
+- **コンテキスト窓の浪費防止**:
+  - Web サイト内に埋め込まれた長大なインライン画像（`data:image/png;base64,...`）を自動検知し、Markdown 変換時に `![画像: alt属性]` へ自動置換してパージ。
+- **画像保持オプション (`keepDataImages: true`)**:
+  - Base64 データをそのまま保持したい場合は、`"keepDataImages": true` を指定することで置換をバイパス可能。
+
+### 3. 🔒 SSRF 難読化 IP の 32bit 整数正規化 & IPv6 埋め込み完全遮断
+- **バイパス攻撃の完全無力化**:
+  - 8進数（`0177.0.0.1`）、16進数（`0x7f000001`）、32bit整数（`2130706433`）、省略記法（`127.1`）、および IPv4-mapped IPv6（`::ffff:127.0.0.1`）などの難読化されたプライベート IP 表現をすべて 32bit 符号なし整数へと数学的に正規化。
+  - DNS 解決および HTTP リクエスト送信前に内部プライベート空間（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.0.0/16`, CGNAT `100.64.0.0/10`）へのアクセスを確実に遮断。
+
+### 4. ⚡ SPA 描画待機最適化 & Chromium 自動クリーンローテーション
+- **動的適応待機（最大 850ms 短縮）**:
+  - TimeTree や React/Next.js 等の SPA 描画時、本文要素の出現とローディングスピナーの消失をリアルタイム監視し、描画完了の瞬間に 350ms で即座に切り上げ。不要な固定待機（1,200ms）を排除。
+- **共有 Chromium プロセスの自動ローテーション**:
+  - 累積 200 回のブラウザレンダリング実行後、かつアクティブセッションが 0 のアイドル時に共有ブラウザを自動でクリーン再起動。長時間稼働に伴う Chromium のメモリリークやタブゾンビを根絶。
+
+### 5. 🛑 グレースフルシャットダウン (Graceful Shutdown)
+- **安全なリソース解放**:
+  - `SIGTERM` / `SIGINT` シグナル受信時に、新規リクエストの受付停止、対話型ブラウザセッション（`closeAllBrowserSessions`）、共有 Chromium（`closeSharedBrowser`）、SQLite コネクション（`closeDatabase`）を安全にクローズしてクリーン終了。
+
+### 6. 🏗️ REST ルーターのドメイン別モジュール分割
+- **Fat Router の完全解消**:
+  - `src/index.ts`（1,620 行）に集中していた 50 以上のエンドポイントを、Hono 標準の `app.route()` を用いて **9 つのドメイン別サブルーター**（`src/routes/`）へ分割・再構築：
+    - `system.ts`: ヘルスチェック・メトリクス・OpenAPI・Docs・キャッシュクリア
+    - `mcp_route.ts`: MCP Streamable HTTP / SSE プロトコル
+    - `scrape.ts`: 単一・一括・ストリーミング・サイトマップ・クロール
+    - `search.ts`: Web検索・リアルタイム速報・画像/動画/ニュース/知恵袋・乗換案内・音楽
+    - `browser.ts`: ステルスブラウザ自動操作
+    - `trade.ts`: 米国貿易コンプライアンス（HTS/FDA/CPSC/eFiling）
+    - `public_data.ts`: 気象庁天気・警報・地震・道路交通・フライト・法令・国会会議録・標高
+    - `watch.ts`: Web 差分監視
+    - `media.ts`: マルチモーダル画像視覚入力
+  - `src/index.ts` は 150 行のエントリポイントへと約 91% スリム化。
+
+---
+
+## 🧪 テスト・検証実績 (Testing & Verification)
+
+- **自動テストスイート**: **全 209 テスト 100% PASS**（2,347 件の expect アサーション）
+- **外部 API 互換性**: 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換
+- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.9.0 稼働確認済み
+
+---
+
+## 📦 アップグレード方法
+
+### Docker / Podman
+```bash
+podman pull ghcr.io/ikenokazuki/sora:latest
+# またはバージョン固定
+podman pull ghcr.io/ikenokazuki/sora:2.9.0
+```
+
+### Claude Desktop / Cursor 設定 (`claude_desktop_config.json`)
+```json
+{
+  "mcpServers": {
+    "sora": {
+      "url": "http://localhost:3016/mcp"
+    }
+  }
+}
+```
 
 - v2.37.0 と v2.37.1 は公開前の検査で止まり、イメージもリリースも公開されていません。v2.37.0 は実 API 検査（楽天トラベルのホテル検索）、v2.37.1 は全件テスト（CI が使う新しい Bun で、環境変数を書き換えたテストの後始末が不十分だったため、後続テストの通信が架空のプロキシへ向かった）で止まりました。v2.37.2 は公開されましたが、本番へ入れる前の検証で固有名詞判定の改善点が見つかったため、本番には入れていません。v2.37.3 はこれらの変更をすべて含み、固有名詞判定を直したものです。
 - 実験的なホテル検索（MCP の `search_hotel_availability`、REST の `POST /hotels/availability`、有効化フラグ `SORA_RAKUTEN_TRAVEL_ENABLED`）を廃止しました。楽天トラベルの公開検索に依存し、外部の応答次第で公開前の検査が止まっていたためです。既定では公開されていなかった機能なので、既定のツール数（47）は変わりません。公開前の実 API 検査からホテルのレーンも外しました。

@@ -294,12 +294,15 @@ describe('navigation blocks are cut first', () => {
   const run = (markdown: string, maxTotalChars: number) =>
     (formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown }] }, { maxTotalChars }) as any).results[0];
 
-  test('取り分が小さいとき、ナビではなく本文を残す', () => {
+  test('取り分が小さいとき、本文を残し、先頭のナビは先頭切り取りで先に落とす', () => {
     const md = `${front}\n\n${nav}\n\n${prose}`;
     const r = run(md, 400);
     expect(r.markdown.startsWith(front)).toBe(true);
     expect(r.markdown).toContain('10月1日');
-    expect(r.markdown).not.toContain('[HOME]');
+    // 先頭のナビは動かさず残すが、残せなかった分（本文の続き）は後ろから落とすため、
+    // 取り分の小さい2件目のようなページでナビだけが残ることはない
+    expect(r.markdown).toContain('10月4日');
+    expect(r.markdown).not.toContain('10月30日');
     expect(r.markdownTruncated.totalChars).toBe(md.length);
   });
 
@@ -326,9 +329,9 @@ describe('navigation blocks are cut first', () => {
     const imageIcon = '-   [![x](https://equal-love.jp/static/x.svg)](https://twitter.com/equal_love_12)';
     const md = `${front}\n\n${nav}\n-\n${imageIcon}\n-\n\n${prose}`;
     const r = run(md, 400);
-    // ナビの塊が切り詰めで先に落ち、本文が残る
+    // 本文が残り、先頭のナビは先頭切り取りで落ちる分だけ落ちる
     expect(r.markdown).toContain('ライブの予定です');
-    expect(r.markdown).not.toContain('[HOME]');
+    expect(r.markdown).toContain('10月2日');
     expect(r.markdownTruncated.totalChars).toBe(md.length);
   });
 });
@@ -378,6 +381,15 @@ describe('includeMedia', () => {
     expect(input).toEqual(copy);
   });
 
+  test('maxTotalChars と併用すると、画像記法を除いた長さで配分される', () => {
+    const md = `![写真](https://a.example/${'x'.repeat(900)}.jpg)\n\n本文`;
+    const out: any = formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown: md }] }, { includeMedia: false, maxTotalChars: 1000 });
+    expect(out.results[0].markdownTruncated).toBeUndefined();
+    expect(out.results[0].markdown).toBe('[画像: 写真]\n\n本文');
+  });
+});
+
+describe('stripMedia and the markdown budget', () => {
   test('maxTotalChars と併用すると、画像記法を除いた長さで配分される', () => {
     const md = `![写真](https://a.example/${'x'.repeat(900)}.jpg)\n\n本文`;
     const out: any = formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown: md }] }, { includeMedia: false, maxTotalChars: 1000 });

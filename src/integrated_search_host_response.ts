@@ -162,8 +162,9 @@ function isNavBlock(block: string): boolean {
 /**
  * 切り詰めるとき、本文の塊を先に残してナビの塊を先に落とす。
  * blocks 全体から取り分 quota に収まるよう、先に本文（非ナビ）の塊を先頭から詰め、
- * 残りに余裕があればナビの塊を順に足す。ナビの塊は削除ではなく「後回し」で、
+ * 残りに余裕があればナビの塊を足す。ナビの塊は削除ではなく「後回し」で、
  * 全文が収まる場合や quota が大きい場合は本文の後に付いて残る。
+ * ただしページ先頭のナビの塊は動かさない（先頭切り取りで最初に落ちるため）。
  * 先頭のフロントマターは先頭に固定する。コードフェンスを含む Markdown は動かさない。
  * ponytail: ラベルが短いリンクだけの塊＝ナビとみなす。ラベルの短いニュース一覧は誤ってナビ扱いになりうる
  * （落ちる順が後ろになるだけで消えはしない）。ハイライト位置を優先する窓選択に置き換え可能。
@@ -173,8 +174,11 @@ function dropNavBlocksFirst(markdown: string, quota: number): string {
   const front = markdown.match(/^---\n[\s\S]*?\n---(?:\n{2,}|\n?$)/)?.[0] ?? '';
   const restLen = quota - front.length;
   const blocks = markdown.slice(front.length).split(/\n{2,}/);
-  const body = blocks.filter((b) => !isNavBlock(b));
-  const nav = blocks.filter((b) => isNavBlock(b));
+  let leadNav = 0;
+  while (leadNav < blocks.length && isNavBlock(blocks[leadNav])) leadNav++;
+  const rest = blocks.slice(leadNav);
+  const body = rest.filter((b) => !isNavBlock(b));
+  const nav = rest.filter((b) => isNavBlock(b));
   // ナビしかない結果（本文の塊が無い）は従来どおり先頭側を残して切る
   if (nav.length === 0 || body.length === 0) return markdown;
   // 本文の塊を先頭から詰める。本文が空か、最小のかたまり（見出し1行など）しか残らない場合は、
@@ -190,7 +194,7 @@ function dropNavBlocksFirst(markdown: string, quota: number): string {
     if (!fits(b)) break;
     kept = kept ? `${kept}\n\n${b}` : b;
   }
-  return front + kept;
+  return front + [...blocks.slice(0, leadNav), kept].join('\n\n');
 }
 
 /**
