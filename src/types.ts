@@ -2366,7 +2366,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
-          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。realtimeAnchor で X 検索で守る固有名詞（クエリ中の語）を指定できます（省略時は推定）。',
           requestBody: {
             content: {
               'application/json': {
