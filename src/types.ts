@@ -672,6 +672,7 @@ export const RealtimeSearchRequestSchema = z.object({
   limit: z.number().int().min(1).max(40).optional().describe('返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
   focus: z.enum(['official', 'public']).optional().describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
+  anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   verbose: z.boolean().optional().describe('検索診断（retrievalQueries など）を含めるか').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -738,6 +739,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)').meta({ default: true }),
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
+  realtimeAnchor: z.string().max(100).optional().describe('X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   includeMedia: z.boolean().optional().describe('画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない').meta({ default: true }),
@@ -1370,7 +1372,7 @@ export const BrowserActionResponseSchema = z.object({
   screenshot: z.string().optional().describe('操作後の画面スクリーンショット (Base64 PNG)'),
   html: z.string().optional().describe('操作後の HTML 本文'),
   actionOutputs: z.array(z.object({
-    step: z.number().describe('アクション実行ステップ番号 (0-based)'),
+    step: z.number().describe('アクション実行ステップ番号 (1から)'),
     type: z.string().describe('実行されたアクション種別'),
     result: z.any().optional().describe('評価結果・抽出値 (evaluate 等)'),
     error: z.string().optional().describe('ステップ実行時エラー (発生時)'),
@@ -1665,8 +1667,23 @@ export const WeatherResponseSchema = z.object({
   cityId: z.string().describe('気象庁 6桁地点ID (例: "130010")'),
   title: z.string().describe('予報対象地域タイトル (例: "東京 の天気")'),
   publishedTime: z.string().optional().describe('気象庁発表日時 (ISO 8601)'),
+  publicTime: z.string().optional().describe('publishedTime と同じ（livedoor 天気互換）'),
+  publishingOffice: z.string().optional().describe('発表した気象台 (例: "山形地方気象台")'),
+  location: z.object({
+    area: z.string().optional().describe('予報区名'),
+    prefecture: z.string().optional().describe('予報区名（livedoor 天気互換。都道府県名とは限らない）'),
+    city: z.string().optional().describe('指定した地名'),
+  }).optional().describe('対象地域（livedoor 天気互換）'),
   overview: z.string().optional().describe('気象概況テキスト'),
+  description: z.object({
+    headline: z.string().optional().describe('概況の見出し'),
+    body: z.string().optional().describe('概況の本文'),
+    text: z.string().optional().describe('概況の本文（body と同じ）'),
+    publicTime: z.string().optional().describe('概況の発表日時'),
+  }).optional().describe('気象概況（livedoor 天気互換）'),
   forecasts: z.array(WeatherDayForecastSchema).describe('日別天気予報配列 (1〜8日分)'),
+  link: z.string().optional().describe('気象庁の予報ページ URL'),
+  cached: z.boolean().optional().describe('キャッシュから返したか'),
 });
 
 export const WarningItemSchema = z.object({
@@ -2364,7 +2381,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
-          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。realtimeAnchor で X 検索で守る固有名詞（クエリ中の語）を指定できます（省略時は推定）。',
           requestBody: {
             content: {
               'application/json': {
@@ -2616,7 +2633,12 @@ export function generateOpenApiDocument() {
                           statusId: { type: 'string' },
                           text: { type: 'string' },
                           isNoteTweet: { type: 'boolean' },
+                          author: {
+                            type: 'object',
+                            properties: { name: { type: 'string' }, screenName: { type: 'string' } },
+                          },
                           createdAt: { type: 'string' },
+                          media: { type: 'array', items: { type: 'string' }, description: '画像・動画の URL' },
                         },
                       },
                     },

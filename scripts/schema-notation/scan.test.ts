@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findNotationIssues, parseDocumentedDefault, topLevelKeys, type Param } from './scan.js';
+import { findNotationIssues, noteKeyPaths, parseDocumentedDefault, type Param } from './scan.js';
 
 const SAFE = Number.MAX_SAFE_INTEGER;
 const kinds = (params: Param[], pairs: Record<string, { method: string; path: string } | null> = {}, allow: Record<string, string> = {}) =>
@@ -62,10 +62,12 @@ describe('findNotationIssues', () => {
   });
 });
 
-describe('topLevelKeys', () => {
-  test('reads only the outermost keys of a 返却 note', () => {
-    expect(topLevelKeys('{ query, suggestions: [...] }')).toEqual(['query', 'suggestions']);
-    expect(topLevelKeys('{ routes: [{ index, totalTime }], note }')).toEqual(['routes', 'note']);
-    expect(topLevelKeys('{ status, items: [{ id, plans: [{ planId }] }], failures }')).toEqual(['status', 'items', 'failures']);
+describe('noteKeyPaths', () => {
+  test('reads nested keys of a 返却 note as paths', () => {
+    expect(noteKeyPaths('{ query, suggestions: [...] }')).toEqual(['query', 'suggestions']);
+    expect(noteKeyPaths('{ routes: [{ index, totalTime }], note }')).toEqual(['routes', 'routes[].index', 'routes[].totalTime', 'note']);
+    expect(noteKeyPaths('{ found, detail: { text, author }, items?: [{ id, plans: [{ planId }] }] }')).toEqual([
+      'found', 'detail', 'detail.text', 'detail.author', 'items', 'items[].id', 'items[].plans', 'items[].plans[].planId',
+    ]);
   });
 });

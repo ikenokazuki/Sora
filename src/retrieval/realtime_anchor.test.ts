@@ -9,6 +9,7 @@ import {
   isAnchorBroken,
   isPublicFocusTerm,
   isSearchExcludedTerm,
+  matchPreferredAnchor,
   officialAccountMatches,
   postMentions,
   selectRealtimeItems,
@@ -128,6 +129,21 @@ describe('detectRealtimeAnchor', () => {
     expect(detectRealtimeAnchor(['フェス', '持ち物', '注意点'], t, { 'フェス': 900, '持ち物': 1282, '注意点': 782 })).toBeUndefined();
     // ほぼ同じ希少さなら、タイトルの一致で決める
     expect(detectRealtimeAnchor(['フェス', '持ち物'], t, { 'フェス': 1200, '持ち物': 1282 })).toBe('持ち物');
+  });
+});
+
+describe('matchPreferredAnchor', () => {
+  test('指定した固有名詞をクエリの語に対応づける（空白・中黒・全角は無視）', () => {
+    expect(matchPreferredAnchor(['ライブ', '予定', '=LOVE'], '＝LOVE')).toBe('=LOVE');
+    expect(matchPreferredAnchor(['出演時間', '君と見るそら'], '君と見る そら')).toBe('君と見るそら');
+  });
+  test('複数語の固有名詞は、指定に含まれる最初の語', () => {
+    expect(matchPreferredAnchor(['Snow', 'Man', 'ライブ'], 'Snow Man')).toBe('Snow');
+  });
+  test('クエリの語に無い・空なら推定に戻す（undefined）', () => {
+    expect(matchPreferredAnchor(['ライブ', '予定'], 'イコラブ')).toBeUndefined();
+    expect(matchPreferredAnchor(['ライブ'], '  ')).toBeUndefined();
+    expect(matchPreferredAnchor(['ライブ'], undefined)).toBeUndefined();
   });
 });
 

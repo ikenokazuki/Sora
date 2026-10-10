@@ -76,6 +76,16 @@ export function anchorCandidates(terms: string[]): string[] {
   return candidates.length > 0 ? candidates : terms;
 }
 
+/**
+ * 呼び出し側が指定した固有名詞を、クエリの語に対応づける。辞書にない語でも推定に頼らず守れる。
+ * 空白・中黒を無視して同じ語を優先し、無ければ指定に含まれる語（「Snow Man」→「Snow」）。対応する語が無ければ undefined（推定に戻す）。
+ */
+export function matchPreferredAnchor(terms: string[], anchor: string | undefined): string | undefined {
+  const a = squash(anchor ?? '');
+  if (!a) return undefined;
+  return terms.find((t) => squash(t) === a) ?? terms.find((t) => squash(t).length > 0 && a.includes(squash(t)));
+}
+
 /** X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上など） */
 export type RealtimeFocus = 'official' | 'public';
 
