@@ -619,11 +619,9 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
         const line = mcpRaw.split('\n').find((l) => l.startsWith('data: '));
         if (line) mcpBody = JSON.parse(line.replace(/^data:\s*/, ''));
       }
-      expect(mcpBody.result.content[0].text).toContain('"carrier": "ups"');
-      {
-        const t = mcpBody.result.content[0].text as string;
-        expect(t.includes('"status": "not_found"') || t.includes('"status": "unknown"')).toBe(true);
-      }
+      const mcpTracking = JSON.parse(mcpBody.result.content[0].text);
+      expect(mcpTracking.carrier).toBe('ups');
+      expect(['not_found', 'unknown']).toContain(mcpTracking.status);
     }, 110000);
   });
 });

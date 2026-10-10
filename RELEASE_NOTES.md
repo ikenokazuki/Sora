@@ -11,6 +11,9 @@
   - instructions に名前の無かった13ツール（`map_site`、`search_news`、`search_image`、`search_video`、`fetch_x_post`、`watch_*` の4つ、`inspect_image`、国地域レポートの取得3つ）を載せました。重複した言い回しを削り、8,500 字の上限内（8,465 字）に収めています。
   - `research_country_context` の `social` の引数（`platforms`、`queries`、`urls`、`lookbackHours`）に説明を足しました（`lookbackHours` の既定は 24 時間）。REST の `/realtime/post` の応答スキーマに `detail.author` と `detail.media` を足しました。
 - README の REST の応答例を、実際の応答に合わせて直しました（`/browser/action` は `markdown`・`actionOutputs`、`/transit/route` は `routeCount`・`routes[].index`・`totalTime`・`transfers`、`/tracking` は `events`・`trackingUrl`・`details`）。`/weather` は README の例が正しく、OpenAPI の応答スキーマに `publicTime`・`publishingOffice`・`location`・`description`・`link`・`cached` が抜けていたため足しました。`/browser/action` の `actionOutputs[].step` の説明（0 始まり）は実装どおり 1 始まりに直しました。
+- 応答のトークンを減らしました。**応答の形が変わります**:
+  - MCP のすべてのツールの応答を整形なし（字下げなし）の JSON にしました。以前は `search_deep` と `search_realtime` だけでした。`verbose` を持つツール（`scrape`・`scrape_batch`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します。README の応答例 23 個で測ると文字数は約 2 割減ります（本文の長い応答ほど減る割合は小さく、`search_deep` の実測では約 1 割でした）。応答の文字列を字下げ込みで照合しているクライアントは、JSON として読むようにしてください。
+  - `browser_action`（`POST /browser/action`）の応答から、重複していた `content`（`markdown` と同じ本文）と `actionLogs`（`actionOutputs` と同じ操作の記録）を外しました。本文の長いページでは応答がほぼ半分になります。`content` を読んでいたクライアントは `markdown` を、`actionLogs` を読んでいたクライアントは `actionOutputs`（成功は `result: "ok"`、失敗は `error` に理由）を参照してください。
 
 # Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
 

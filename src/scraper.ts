@@ -149,7 +149,6 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     sessionId: sessionRes.sessionId,
     sessionClosed: sessionRes.sessionClosed,
     markdown: sessionRes.content,
-    content: sessionRes.content,
     screenshot: sessionRes.screenshot,
     html: sessionRes.html,
     actionOutputs: sessionRes.actionLogs?.map((l: any, idx: number) => ({
@@ -158,7 +157,6 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
       result: l.success ? 'ok' : undefined,
       error: !l.success ? l.message : undefined,
     })),
-    actionLogs: sessionRes.actionLogs,
     renderedWithBrowser: true,
     source: 'browser',
   };

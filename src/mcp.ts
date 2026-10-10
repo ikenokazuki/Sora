@@ -92,6 +92,11 @@ export interface McpSessionState {
   tenantId?: string;
 }
 
+/** MCP の応答 JSON。字下げはトークンを約1割増やすので、verbose 指定時だけ付ける（search_deep・search_realtime と同じ）。 */
+function toolJson(value: unknown, verbose?: boolean): string {
+  return verbose === true ? JSON.stringify(value, null, 2) : JSON.stringify(value);
+}
+
 export function clearSharedActivatedTools(): void {
   SHARED_ACTIVATED_TOOLS.clear();
 }
@@ -608,7 +613,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(formatted, null, 2),
+                text: toolJson(formatted, verbose),
               },
             ],
           };
@@ -639,7 +644,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify({ ...result, results: formattedResults }, null, 2),
+                text: toolJson({ ...result, results: formattedResults }, verbose),
               },
             ],
           };
@@ -738,7 +743,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await mapSiteUrl({ url, limit, since, until });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -801,7 +806,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -825,7 +830,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       async (options) => {
         try {
           const result = await searchWebWithFormats(options as any);
-          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+          return { content: [{ type: 'text', text: toolJson(result) }] };
         } catch (err: any) {
           return { isError: true, content: [{ type: 'text', text: `Search error: ${err?.message || err}` }] };
         }
@@ -859,7 +864,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           });
           const signal = AbortSignal.timeout(55000);
           const result = await svc.search({ platform, query, limit: limit ?? 10, lookbackHours: lookbackHours ?? 24 }, { signal, deadlineAt: Date.now() + 55000 });
-          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+          return { content: [{ type: 'text', text: toolJson(result) }] };
         } catch (err: any) {
           return { isError: true, content: [{ type: 'text', text: `Social search error: ${err?.message || err}` }] };
         }
@@ -891,7 +896,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           });
           const signal = AbortSignal.timeout(30000);
           const result = await svc.fetch({ url, commentLimit: commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
-          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+          return { content: [{ type: 'text', text: toolJson(result) }] };
         } catch (err: any) {
           return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${err?.message || err}` }] };
         }
@@ -935,7 +940,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await executeBrowserActions({ ...(opts as any), tenantId: serverTenantId });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -968,7 +973,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchYahooImage({ query, limit });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -996,7 +1001,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchYahooVideo({ query, limit });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1024,7 +1029,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchYahooNews({ query, limit });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1055,7 +1060,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchYahooChiebukuro({ query, limit, status });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1083,7 +1088,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await getSuggestedKeywords({ query, limit });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1199,7 +1204,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
 
           return {
             // 整形なしの JSON（verbose は人が読む診断用なので整形する）
-            content: [{ type: 'text', text: verbose === true ? JSON.stringify(responsePayload, null, 2) : JSON.stringify(responsePayload) }],
+            content: [{ type: 'text', text: toolJson(responsePayload, verbose) }],
           };
         } catch (err: any) {
           return {
@@ -1226,7 +1231,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchRealtimeTrends(limit);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1262,7 +1267,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               };
             }
             return {
-              content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+              content: [{ type: 'text', text: toolJson(result) }],
             };
           } catch (err: any) {
             return {
@@ -1293,7 +1298,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchTransitRoute(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1321,7 +1326,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchWeatherForecast({ city, days });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1352,7 +1357,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchFlightStatus(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1393,7 +1398,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             noCache: noCache ?? false,
           });
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1460,7 +1465,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchRoadTraffic(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1488,7 +1493,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchWeatherWarnings(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1518,7 +1523,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchRecentEarthquakes(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1548,7 +1553,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await fetchElevationAndCoordinates(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1583,7 +1588,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           const { searchOpenPoi } = await import('./services/poi.js');
           const result = await searchOpenPoi(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1619,7 +1624,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await registerWatchTarget(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1646,7 +1651,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = id ? await checkWatchTarget(id) : await checkAllWatchTargets();
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1671,7 +1676,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = listWatchTargets();
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1698,7 +1703,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const deleted = deleteWatchTarget(id);
           return {
-            content: [{ type: 'text', text: JSON.stringify({ success: deleted, id }, null, 2) }],
+            content: [{ type: 'text', text: toolJson({ success: deleted, id }) }],
           };
         } catch (err: any) {
           return {
@@ -1732,7 +1737,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchSong(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1762,7 +1767,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchArtist(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1793,7 +1798,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchMusic(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1826,7 +1831,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchLaws(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1853,7 +1858,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await getLawData(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1886,7 +1891,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await searchDietMinutes(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1922,7 +1927,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await checkCpscCertificate(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1951,7 +1956,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = checkFdaRegulated(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -1979,7 +1984,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await verifyHtsCode(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -2012,7 +2017,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await predictHtsCode(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -2048,7 +2053,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const result = await checkProductCompliance(opts);
           return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+            content: [{ type: 'text', text: toolJson(result) }],
           };
         } catch (err: any) {
           return {
@@ -2132,7 +2137,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             return researchCountryWithDefaults(request as never);
           });
           const result = (await research(opts)) as CountryContextReport;
-          const text = JSON.stringify(result, null, 2);
+          const text = toolJson(result, opts.verbose);
           return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: `Country intelligence error: ${err instanceof Error ? err.message : err}` }] };
@@ -2156,7 +2161,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           const { getPersistedCountryContext } = await import('./services/country_intel/report.js');
           const result = getPersistedCountryContext(opts.contextId) as CountryContextReport | undefined;
           if (!result) return { isError: true, content: [{ type: 'text', text: 'Country context not found: ' + opts.contextId }] };
-          const text = JSON.stringify(result, null, 2);
+          const text = toolJson(result);
           return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
@@ -2182,7 +2187,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const { getEvidencePage } = await import('./services/country_intel/db.js');
           const result = getEvidencePage(opts.contextId, { ids: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
-          const text = JSON.stringify(result, null, 2);
+          const text = toolJson(result);
           return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
@@ -2206,7 +2211,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         try {
           const { getContextUpdates } = await import('./services/country_intel/db.js');
           const result = getContextUpdates(opts.contextId, opts.cursor);
-          const text = JSON.stringify(result, null, 2);
+          const text = toolJson(result);
           return { content: [{ type: 'text', text }], structuredContent: result as never };
         } catch (err: unknown) {
           return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };

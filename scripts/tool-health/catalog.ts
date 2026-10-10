@@ -472,12 +472,10 @@ export const TOOL_CASES: HealthCase[] = [
     }, 80000);
     const raw = toolPayload(rawJsonText, 'browser_action') as {
       actionOutputs?: Array<{ type?: string; result?: string }>;
-      actionLogs?: Array<{ success?: boolean }>;
       renderedWithBrowser?: boolean;
     };
     const clicked = (raw.actionOutputs ?? []).some((o) => o.type === 'click' && o.result === 'ok');
-    const logged = (raw.actionLogs ?? []).some((l) => l.success === true);
-    if (!clicked || !logged || raw.renderedWithBrowser !== true) {
+    if (!clicked || raw.renderedWithBrowser !== true) {
       throw new LiveFail('browser_action missing click execution evidence');
     }
     return { sources: [{ source: 'chromium', format: 'json', upstreamStatus: 'unknown' }] };
