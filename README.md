@@ -939,18 +939,18 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 - **レスポンス例**:
 ```json
 {
-  "source": "browser",
+  "success": true,
   "url": "https://example.com/search?q=Sora",
-  "title": "検索結果 - Sora",
-  "content": "---\ntitle: \"検索結果 - Sora\"\nurl: \"https://example.com/search?q=Sora\"\n---\n\n# 検索結果\n...",
+  "markdown": "---\ntitle: \"検索結果 - Sora\"\nurl: \"https://example.com/search?q=Sora\"\n---\n\n# 検索結果\n...",
   "screenshot": "iVBORw0KGgoAAAANSUhEUgA...",
-  "actionLogs": [
-    { "step": 1, "type": "fill", "target": "input[name='q']", "success": true, "elapsedMs": 42 },
-    { "step": 2, "type": "click", "target": "検索", "success": true, "elapsedMs": 115 },
-    { "step": 3, "type": "wait", "target": ".results-container", "success": true, "elapsedMs": 620 },
-    { "step": 4, "type": "scroll", "target": undefined, "success": true, "elapsedMs": 510 }
+  "actionOutputs": [
+    { "step": 1, "type": "fill", "result": "ok" },
+    { "step": 2, "type": "click", "result": "ok" },
+    { "step": 3, "type": "wait", "result": "ok" },
+    { "step": 4, "type": "scroll", "result": "ok" }
   ],
-  "renderedWithBrowser": true
+  "renderedWithBrowser": true,
+  "source": "browser"
 }
 ```
 
@@ -1108,28 +1108,15 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "source": "transit",
   "from": "東京",
   "to": "新宿",
-  "count": 3,
+  "routeCount": 3,
   "routes": [
     {
-      "rank": 1,
-      "summary": {
-        "departureTime": "09:30",
-        "arrivalTime": "09:44",
-        "durationMinutes": 14,
-        "transferCount": 0,
-        "fare": {
-          "ic": 209,
-          "ticket": 210
-        },
-        "flags": {
-          "isFastest": true,
-          "isCheapest": true,
-          "isEasiest": true
-        }
-      },
+      "index": 1,
+      "totalTime": "14分",
+      "transfers": "乗換：0回",
+      "fare": "IC優先：209円",
       "sections": [
         {
-          "type": "move",
           "line": "ＪＲ中央線快速・高尾行",
           "from": "東京",
           "departureTime": "09:30",
@@ -1835,27 +1822,13 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
     "trackingNumber": "123456789012",
     "status": "delivered",
     "statusText": "配達完了",
-    "deliveredAt": "2026-09-09 14:30",
-    "history": [
-      {
-        "date": "2026/09/08",
-        "time": "18:20",
-        "status": "荷物受付",
-        "location": "東京ベース店"
-      },
-      {
-        "date": "2026/09/09",
-        "time": "08:15",
-        "status": "配達中",
-        "location": "渋谷センター"
-      },
-      {
-        "date": "2026/09/09",
-        "time": "14:30",
-        "status": "配達完了",
-        "location": "渋谷センター"
-      }
+    "events": [
+      { "date": "2026/09/08 18:20", "status": "荷物受付", "location": "東京ベース店" },
+      { "date": "2026/09/09 08:15", "status": "配達中", "location": "渋谷センター" },
+      { "date": "2026/09/09 14:30", "status": "配達完了", "location": "渋谷センター" }
     ],
+    "trackingUrl": "https://toi.kuronekoyamato.co.jp/cgi-bin/tneko",
+    "details": { "deliveryDate": "2026/09/09 14:30", "serviceType": "宅急便" },
     "cached": false
   }
   ```

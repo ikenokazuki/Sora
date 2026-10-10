@@ -672,7 +672,7 @@ export const RealtimeSearchRequestSchema = z.object({
   limit: z.number().int().min(1).max(40).optional().describe('返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
   focus: z.enum(['official', 'public']).optional().describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
-  anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない（辞書や推定に頼らない）。クエリの語に無ければ無視して推定する'),
+  anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   verbose: z.boolean().optional().describe('検索診断（retrievalQueries など）を含めるか').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -739,7 +739,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   includeRealtime: z.boolean().optional().describe('リアルタイム最新速報 (X) も併せて取得するか (デフォルト: true)').meta({ default: true }),
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
-  realtimeAnchor: z.string().max(100).optional().describe('X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない（辞書や推定に頼らない）。クエリの語に無ければ無視して推定する'),
+  realtimeAnchor: z.string().max(100).optional().describe('X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   includeMedia: z.boolean().optional().describe('画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない').meta({ default: true }),
@@ -1372,7 +1372,7 @@ export const BrowserActionResponseSchema = z.object({
   screenshot: z.string().optional().describe('操作後の画面スクリーンショット (Base64 PNG)'),
   html: z.string().optional().describe('操作後の HTML 本文'),
   actionOutputs: z.array(z.object({
-    step: z.number().describe('アクション実行ステップ番号 (0-based)'),
+    step: z.number().describe('アクション実行ステップ番号 (1から)'),
     type: z.string().describe('実行されたアクション種別'),
     result: z.any().optional().describe('評価結果・抽出値 (evaluate 等)'),
     error: z.string().optional().describe('ステップ実行時エラー (発生時)'),
@@ -1667,8 +1667,23 @@ export const WeatherResponseSchema = z.object({
   cityId: z.string().describe('気象庁 6桁地点ID (例: "130010")'),
   title: z.string().describe('予報対象地域タイトル (例: "東京 の天気")'),
   publishedTime: z.string().optional().describe('気象庁発表日時 (ISO 8601)'),
+  publicTime: z.string().optional().describe('publishedTime と同じ（livedoor 天気互換）'),
+  publishingOffice: z.string().optional().describe('発表した気象台 (例: "山形地方気象台")'),
+  location: z.object({
+    area: z.string().optional().describe('予報区名'),
+    prefecture: z.string().optional().describe('予報区名（livedoor 天気互換。都道府県名とは限らない）'),
+    city: z.string().optional().describe('指定した地名'),
+  }).optional().describe('対象地域（livedoor 天気互換）'),
   overview: z.string().optional().describe('気象概況テキスト'),
+  description: z.object({
+    headline: z.string().optional().describe('概況の見出し'),
+    body: z.string().optional().describe('概況の本文'),
+    text: z.string().optional().describe('概況の本文（body と同じ）'),
+    publicTime: z.string().optional().describe('概況の発表日時'),
+  }).optional().describe('気象概況（livedoor 天気互換）'),
   forecasts: z.array(WeatherDayForecastSchema).describe('日別天気予報配列 (1〜8日分)'),
+  link: z.string().optional().describe('気象庁の予報ページ URL'),
+  cached: z.boolean().optional().describe('キャッシュから返したか'),
 });
 
 export const WarningItemSchema = z.object({
