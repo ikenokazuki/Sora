@@ -9,7 +9,7 @@ export interface RunMeta {
   commit: string;
   image: string;
   imageId: string;
-  lane: 'standard' | 'hotel';
+  lane: 'standard';
   runner: string;
   overall: 'pass' | 'fail';
 }
@@ -143,6 +143,5 @@ export function collectKnownCaseIds(toolCaseIds: string[]): Set<string> {
   }
   for (const platform of ['weibo', 'threads', 'instagram', 'facebook']) ids.add(`social.${platform}.post`);
   ids.add('x.post');
-  ids.add('hotel.positive');
   return ids;
 }

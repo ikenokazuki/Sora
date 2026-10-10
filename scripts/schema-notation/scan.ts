@@ -108,16 +108,9 @@ function walk(out: Param[], surface: Surface, owner: string, path: string, schem
   if (schema.items?.properties) walk(out, surface, owner, `${path}[]`, schema.items);
 }
 
-export async function collectParams(options: { hotel?: boolean } = {}): Promise<Param[]> {
+export async function collectParams(): Promise<Param[]> {
   const out: Param[] = [];
-  const previousHotelFlag = process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
-  if (options.hotel) process.env.SORA_RAKUTEN_TRAVEL_ENABLED = 'true';
-  try {
-    await collectInto(out);
-  } finally {
-    if (previousHotelFlag === undefined) delete process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
-    else process.env.SORA_RAKUTEN_TRAVEL_ENABLED = previousHotelFlag;
-  }
+  await collectInto(out);
   return out;
 }
 
@@ -148,7 +141,7 @@ async function collectInto(out: Param[]): Promise<void> {
 }
 
 export async function scanRepository(): Promise<Finding[]> {
-  return findNotationIssues(await collectParams({ hotel: true }), REST_MAP, NOTATION_ALLOWLIST);
+  return findNotationIssues(await collectParams(), REST_MAP, NOTATION_ALLOWLIST);
 }
 
 export function topLevelKeys(note: string): string[] {
@@ -173,8 +166,6 @@ export function topLevelKeys(note: string): string[] {
 
 /** MCP description の「返却: { … }」の最上位キーが、対応RESTの200応答スキーマに存在するか。 */
 export async function scanReturnNotes(): Promise<Finding[]> {
-  const previousHotelFlag = process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
-  process.env.SORA_RAKUTEN_TRAVEL_ENABLED = 'true';
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({ deferTools: false });
   const client = new Client({ name: 'schema-notation-notes', version: '1.0.0' });
@@ -199,8 +190,6 @@ export async function scanReturnNotes(): Promise<Finding[]> {
   } finally {
     await client.close();
     await server.close();
-    if (previousHotelFlag === undefined) delete process.env.SORA_RAKUTEN_TRAVEL_ENABLED;
-    else process.env.SORA_RAKUTEN_TRAVEL_ENABLED = previousHotelFlag;
   }
   return out;
 }

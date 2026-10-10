@@ -24,7 +24,6 @@ import { publicDataRoutes } from './routes/public_data.js';
 import { watchRoutes } from './routes/watch.js';
 import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
-import { hotelRoutes } from './routes/hotels.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { socialRoutes } from './routes/social.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
@@ -126,7 +125,6 @@ app.route('/', publicDataRoutes);
 app.route('/', watchRoutes);
 app.route('/', mediaRoutes);
 app.route('/', trackingRoutes);
-app.route('/', hotelRoutes);
 app.route('/', intelligenceRoutes);
 app.route('/', socialRoutes);
 
