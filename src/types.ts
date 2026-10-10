@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
-import { HotelSearchInputSchema, HotelSearchResultSchema } from './services/hotels/types.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 
@@ -8,7 +7,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.37.0';
+export const SORA_VERSION = '2.37.1';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -761,7 +760,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
-  maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。短いリンクだけのナビゲーションは本文より後ろへ回してから切る)。未指定なら無制限'),
+  maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限'),
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
@@ -2365,7 +2364,7 @@ export function generateOpenApiDocument() {
       '/search': {
         post: {
           summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
-          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。',
+          description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。',
           requestBody: {
             content: {
               'application/json': {
@@ -3548,39 +3547,6 @@ export function generateOpenApiDocument() {
     },
   };
   const paths = doc.paths as Record<string, any>;
-  // Experimental hotel search. Documented only while the flag exposes it.
-  if (process.env.SORA_RAKUTEN_TRAVEL_ENABLED === 'true') {
-    const hotelInputSchema = zodToOpenApiSchema(HotelSearchInputSchema);
-    hotelInputSchema.additionalProperties = false;
-    paths['/hotels/availability'] = {
-      post: {
-        summary: '楽天トラベル宿泊空室検索（実験的: 東京駅・京都駅・草津温泉のみ）',
-        requestBody: {
-          content: {
-            'application/json': {
-              schema: hotelInputSchema,
-            },
-          },
-        },
-        responses: {
-          '200': {
-            description: '検索結果（status が ok / partial / empty / unavailable のいずれか）',
-            content: {
-              'application/json': {
-                schema: zodToOpenApiSchema(HotelSearchResultSchema),
-              },
-            },
-          },
-          '400': {
-            description: '不正なJSONまたは入力値（未知パラメーターを含む）',
-          },
-          '404': {
-            description: '実験フラグが無効で非公開',
-          },
-        },
-      },
-    };
-  }
   // GETも共有入力スキーマから型・既定値・enum・説明を取得する。
   // パスパラメーターのrequiredなど、GET固有の指定は保持する。
   const trackingGetSchema = z.object({

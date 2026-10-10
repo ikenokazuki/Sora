@@ -13,8 +13,9 @@ import { parseArgs } from './run.js';
 
 describe('runner arg contract', () => {
   test('parseArgs reads flags', () => {
-    expect(parseArgs(['--live', '--image', 'img', '--out', 'dir'])).toMatchObject({ live: true, image: 'img', out: 'dir', enableHotel: false });
-    expect(parseArgs(['--live', '--image', 'img', '--out', 'dir', '--enable-hotel']).enableHotel).toBe(true);
+    expect(parseArgs(['--live', '--image', 'img', '--out', 'dir'])).toMatchObject({ live: true, image: 'img', out: 'dir' });
+    // --enable-hotel は廃止したホテルレーンの名残で無視される
+    expect(parseArgs(['--live', '--image', 'img', '--out', 'dir', '--enable-hotel'])).toMatchObject({ live: true, image: 'img', out: 'dir' });
     expect(parseArgs([]).live).toBe(false);
   });
 });
@@ -62,7 +63,7 @@ describe('classification', () => {
 });
 
 describe('cases config', () => {
-  const known = collectKnownCaseIds(['track.yamato', 'social.fetch', 'fetch.xpost', 'hotel.availability']);
+  const known = collectKnownCaseIds(['track.yamato', 'social.fetch', 'fetch.xpost']);
   test('accepts versioned known ids and rejects unknown ids/keys', () => {
     const good = validateCasesJson(JSON.stringify({ version: 1, cases: { 'tracking.yamato.positive': { trackingNumber: 'N1' } } }), known);
     expect(good.cases['tracking.yamato.positive'].trackingNumber).toBe('N1');
