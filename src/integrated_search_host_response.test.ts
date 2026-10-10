@@ -311,3 +311,56 @@ describe('navigation blocks are cut first', () => {
     expect(run(fenced, 300).markdown.startsWith('-   [HOME]')).toBe(true);
   });
 });
+
+describe('includeMedia', () => {
+  const response = () => ({
+    query: 'q',
+    results: [{
+      url: 'https://a.example/',
+      ogImage: 'https://a.example/og.png',
+      media: { type: 'youtube', url: 'https://youtu.be/x' },
+      images: [{ url: 'https://a.example/flyer.png' }],
+      highlights: ['![画像](https://a.example/h.png) は触らない'],
+      markdown: '# 見出し\n\n![ライブの写真](https://a.example/p.jpg)\n\n本文 ![](https://a.example/blank.png) 続き',
+    }],
+    realtime: { items: [{ id: '1', text: '投稿', media: ['https://pbs.example/1.jpg'] }] },
+  });
+
+  test('false のとき ogImage・media・本文の画像記法を省き、alt は残す', () => {
+    const out: any = formatIntegratedSearchHostResponse(response(), { includeMedia: false });
+    const r = out.results[0];
+    expect(r.ogImage).toBeUndefined();
+    expect(r.media).toBeUndefined();
+    expect(r.markdown).toBe('# 見出し\n\n[画像: ライブの写真]\n\n本文  続き');
+    expect(out.realtime.items[0].media).toBeUndefined();
+    expect(out.realtime.items[0].text).toBe('投稿');
+    // 明示要求の images・highlights は触らない
+    expect(r.images).toEqual([{ url: 'https://a.example/flyer.png' }]);
+    expect(r.highlights).toEqual(['![画像](https://a.example/h.png) は触らない']);
+  });
+
+  test('evidence でも verbose でも false なら省く', () => {
+    expect((formatIntegratedSearchHostResponse(response(), { includeMedia: false, responseMode: 'evidence' }) as any).results[0].ogImage).toBeUndefined();
+    expect((formatIntegratedSearchHostResponse(response(), { includeMedia: false, verbose: true }) as any).realtime.items[0].media).toBeUndefined();
+  });
+
+  test('未指定・true は従来どおり（full は同一オブジェクトのまま）', () => {
+    const input = response();
+    expect(formatIntegratedSearchHostResponse(input, {})).toBe(input);
+    expect(formatIntegratedSearchHostResponse(input, { includeMedia: true })).toBe(input);
+  });
+
+  test('入力を書き換えない', () => {
+    const input = response();
+    const copy = JSON.parse(JSON.stringify(input));
+    formatIntegratedSearchHostResponse(input, { includeMedia: false });
+    expect(input).toEqual(copy);
+  });
+
+  test('maxTotalChars と併用すると、画像記法を除いた長さで配分される', () => {
+    const md = `![写真](https://a.example/${'x'.repeat(900)}.jpg)\n\n本文`;
+    const out: any = formatIntegratedSearchHostResponse({ results: [{ url: 'https://a.example/', markdown: md }] }, { includeMedia: false, maxTotalChars: 1000 });
+    expect(out.results[0].markdownTruncated).toBeUndefined();
+    expect(out.results[0].markdown).toBe('[画像: 写真]\n\n本文');
+  });
+});

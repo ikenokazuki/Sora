@@ -14,6 +14,8 @@ export interface IntegratedSearchHostResponseOptions {
   verbose?: boolean;
   /** 全結果の markdown 合計文字数の上限。未指定なら制限しない。 */
   maxTotalChars?: number;
+  /** false のとき、画像・動画の URL（ogImage・media・本文中の画像記法）を省く。未指定は従来どおり含める。 */
+  includeMedia?: boolean;
 }
 
 function hasCanonicalHighlights(item: Record<string, any>): boolean {
@@ -88,6 +90,35 @@ export function projectIntegratedSearchEvidenceItem(
   }
 
   return item;
+}
+
+// ponytail: URL に ')' を含む画像記法は対象外
+const MARKDOWN_IMAGE = /!\[([^\]]*)\]\([^)]*\)/g;
+
+/** 画像・動画の URL を省く。本文中の画像記法は alt があれば「[画像: alt]」に置き換える。images（formats で明示要求）・highlights は触らない。 */
+function stripMedia(result: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...result };
+  if (Array.isArray(out.results)) {
+    out.results = out.results.map((item: Record<string, any>) => {
+      if (!item || typeof item !== 'object') return item;
+      const { ogImage: _og, media: _media, ...rest } = item;
+      if (typeof rest.markdown === 'string') {
+        rest.markdown = rest.markdown.replace(MARKDOWN_IMAGE, (_m: string, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+      }
+      return rest;
+    });
+  }
+  if (out.realtime && Array.isArray(out.realtime.items)) {
+    out.realtime = {
+      ...out.realtime,
+      items: out.realtime.items.map((item: Record<string, any>) => {
+        if (!item || typeof item !== 'object') return item;
+        const { media: _media, ...rest } = item;
+        return rest;
+      }),
+    };
+  }
+  return out;
 }
 
 const NAV_LABEL_MAX_CHARS = 16;
@@ -176,9 +207,10 @@ function applyMarkdownBudget(
  * per-result `markdown` when conservative safety conditions allow it.
  */
 export function formatIntegratedSearchHostResponse(
-  result: Record<string, any>,
+  source: Record<string, any>,
   options: IntegratedSearchHostResponseOptions = {},
 ): Record<string, any> {
+  const result = options.includeMedia === false ? stripMedia(source) : source;
   const mode = options.responseMode ?? 'full';
   const budget = options.maxTotalChars;
   const withBudget = (r: Record<string, any>) =>
