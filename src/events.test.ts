@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { jstDateOf, parseEventTime, sortEventsByProximity } from './events.js';
+import { buildSchedule, jstDateOf, parseEventTime, sortEventsByProximity } from './events.js';
 
 const NOW = Date.parse('2026-10-10T12:00:00+09:00');
 const names = (events: Array<{ name: string }>) => events.map((e) => e.name);
@@ -83,5 +83,61 @@ describe('sortEventsByProximity', () => {
 
   test('空配列', () => {
     expect(sortEventsByProximity([], NOW)).toEqual([]);
+  });
+});
+
+describe('buildSchedule', () => {
+  const ev = (over: Record<string, unknown>) => ({ name: 'X', ...over }) as any;
+
+  test('日付と名称が同じ予定を 1 件にまとめ、sources に載せたページを並べる', () => {
+    const schedule = buildSchedule([
+      { url: 'https://a.example/', events: [ev({ name: '＝LOVE 9th ANNIVERSARY DAY1', startDate: '2026-10-15T18:00:00+09:00', location: 'TOYOTA ARENA TOKYO' })] },
+      { url: 'https://b.example/', events: [ev({ name: '=LOVE 9th ANNIVERSARY DAY1', startDate: '2026-10-15T09:00:00Z', performer: '=LOVE', description: '説明' })] },
+    ], NOW);
+    expect(schedule.length).toBe(1);
+    expect(schedule[0].name).toBe('＝LOVE 9th ANNIVERSARY DAY1');
+    expect(schedule[0].location).toBe('TOYOTA ARENA TOKYO');
+    expect(schedule[0].performer).toBe('=LOVE');
+    expect(schedule[0].description).toBe('説明');
+    expect(schedule[0].sources).toEqual(['https://a.example/', 'https://b.example/']);
+  });
+
+  test('先に出た値を優先し、同じページを二重に数えない', () => {
+    const schedule = buildSchedule([
+      { url: 'https://a.example/', events: [ev({ name: 'A', startDate: '2026-11-01', location: '会場1' }), ev({ name: 'A', startDate: '2026-11-01', location: '会場2' })] },
+    ], NOW);
+    expect(schedule.length).toBe(1);
+    expect(schedule[0].location).toBe('会場1');
+    expect(schedule[0].sources).toEqual(['https://a.example/']);
+  });
+
+  test('名称が違えば同日・同会場でも別の予定のまま残す', () => {
+    const schedule = buildSchedule([
+      { url: 'https://a.example/', events: [ev({ name: 'DAY1 昼', startDate: '2026-11-01T13:00:00+09:00', location: '会場' }), ev({ name: 'DAY1 夜', startDate: '2026-11-01T18:00:00+09:00', location: '会場' })] },
+    ], NOW);
+    expect(schedule.map((e) => e.name)).toEqual(['DAY1 昼', 'DAY1 夜']);
+  });
+
+  test('日付が違えば同じ名称でも別の予定', () => {
+    const schedule = buildSchedule([
+      { url: 'https://a.example/', events: [ev({ name: 'ツアー', startDate: '2026-11-01' }), ev({ name: 'ツアー', startDate: '2026-11-02' })] },
+    ], NOW);
+    expect(schedule.length).toBe(2);
+  });
+
+  test('並びは今後の近い順 → 過去、入力を書き換えない', () => {
+    const items = [
+      { url: 'https://a.example/', events: [ev({ name: '過去', startDate: '2025-02-03' }), ev({ name: '来月', startDate: '2026-11-03' })] },
+      { link: 'https://b.example/', events: [ev({ name: '来週', startDate: '2026-10-17' })] },
+    ];
+    const copy = JSON.parse(JSON.stringify(items));
+    const schedule = buildSchedule(items, NOW);
+    expect(schedule.map((e) => e.name)).toEqual(['来週', '来月', '過去']);
+    expect(schedule[0].sources).toEqual(['https://b.example/']);
+    expect(items).toEqual(copy);
+  });
+
+  test('events が無い・名称が無い項目は無視する', () => {
+    expect(buildSchedule([{ url: 'https://a.example/' }, null, { url: 'https://b.example/', events: [ev({ name: '' }), {} as any] }], NOW)).toEqual([]);
   });
 });

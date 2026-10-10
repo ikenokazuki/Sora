@@ -1124,6 +1124,10 @@ export const EventItemSchema = z.object({
   }).optional().describe('チケット・料金情報'),
 });
 
+export const ScheduleItemSchema = EventItemSchema.extend({
+  sources: z.array(z.string()).describe('この予定を載せていたページの URL'),
+});
+
 export const MarkdownChunkSchema = z.object({
   index: z.number().describe('チャンク番号 (0-based)'),
   heading: z.string().optional().describe('所属する直近の見出し'),
@@ -1483,6 +1487,7 @@ export const IntegratedSearchResponseSchema = z.object({
   query: z.string().describe('検索キーワード'),
   source: z.literal('integrated').describe('ソース ("integrated")'),
   count: z.number().describe('重複統合後の results 件数。同一X投稿は realtime.items 側に集約する'),
+  schedule: z.array(ScheduleItemSchema).optional().describe('上位ページの構造化データ（Event）の予定を、日付と名称が同じものにまとめた一覧。開催中・今後は近い順、過去はその後ろ。通常応答では results[].events の代わりにここに入る（verbose では results[].events のまま）。maxTotalChars の対象外'),
   results: z.array(IntegratedSearchItemSchema).describe('本文取得・整形済みの深層検索結果'),
   realtime: z.object({
     source: z.literal('x'),
