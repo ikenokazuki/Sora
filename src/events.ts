@@ -1,4 +1,6 @@
-// イベント（JSON-LD の Event など）の並び替え。表示用の順序だけを決め、予定は削除しない。
+// イベント（JSON-LD の Event など）の並び替えと、複数ページの予定の統合。表示用の順序と重複の整理だけを行い、予定は削除しない。
+import type { EventItem } from './types.js';
+
 // ponytail: 国内向けのため、日付だけの値とタイムゾーンの無い日時は JST とみなす（海外のイベントが多い用途では要見直し）。
 
 const JST_OFFSET = '+09:00';
@@ -48,4 +50,49 @@ export function sortEventsByProximity<T extends DateLike>(events: readonly T[], 
   upcoming.sort((a, b) => a.key - b.key || a.index - b.index);
   past.sort((a, b) => b.key - a.key || a.index - b.index);
   return [...upcoming.map((x) => x.event), ...unknown, ...past.map((x) => x.event)];
+}
+
+export type ScheduleItem = EventItem & {
+  /** この予定を載せていたページの URL（出現順、重複なし） */
+  sources: string[];
+};
+
+const FILLABLE_KEYS = ['endDate', 'location', 'performer', 'description', 'url', 'eventStatus', 'eventAttendanceMode', 'offers'] as const;
+
+/** 表記ゆれ（全角・半角、大文字小文字、空白・記号）を無視するための名称の正規化。 */
+function normalizeEventName(name: string): string {
+  const folded = name.normalize('NFKC').toLowerCase();
+  return folded.replace(/[\s\p{P}\p{S}]/gu, '') || folded.trim();
+}
+
+/**
+ * 複数ページの予定（events）を 1 つの一覧にまとめる。
+ * 開始日（JST）と正規化した名称が同じ予定は 1 件にし、先に出たものを採って空の項目を後から補う。
+ * ponytail: 名称が違えば同日・同会場でも別の予定のまま残す（重複が残る側に倒す。誤って 1 件にまとめて予定を隠す方が害が大きい）。
+ * 並びは sortEventsByProximity（今後の近い順、日時不明、過去）。入力は書き換えない。
+ */
+export function buildSchedule(
+  items: ReadonlyArray<{ url?: string; link?: string; events?: readonly EventItem[] } | null | undefined>,
+  now: number = Date.now(),
+): ScheduleItem[] {
+  const merged = new Map<string, ScheduleItem>();
+  for (const item of items) {
+    if (!item || !Array.isArray(item.events)) continue;
+    const source = typeof item.url === 'string' && item.url ? item.url : typeof item.link === 'string' ? item.link : '';
+    for (const event of item.events) {
+      if (!event || typeof event.name !== 'string' || !event.name.trim()) continue;
+      const start = parseEventTime(event.startDate, 'start');
+      const key = `${start !== undefined ? jstDateOf(start) : 'nodate'}|${normalizeEventName(event.name)}`;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, { ...event, sources: source ? [source] : [] });
+        continue;
+      }
+      for (const field of FILLABLE_KEYS) {
+        if (existing[field] === undefined && event[field] !== undefined) Object.assign(existing, { [field]: event[field] });
+      }
+      if (source && !existing.sources.includes(source)) existing.sources.push(source);
+    }
+  }
+  return sortEventsByProximity([...merged.values()], now);
 }

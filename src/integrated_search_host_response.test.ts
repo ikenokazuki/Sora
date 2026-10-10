@@ -263,3 +263,15 @@ describe('integrated search Host response', () => {
     });
   });
 });
+
+describe('schedule and the markdown budget', () => {
+  test('maxTotalChars は schedule に影響しない', () => {
+    const schedule = [{ name: '公演', startDate: '2026-10-15', sources: ['https://a.example/'] }];
+    const out: any = formatIntegratedSearchHostResponse(
+      { query: 'q', schedule, results: [{ url: 'https://a.example/', markdown: 'あ'.repeat(5000) }] },
+      { maxTotalChars: 1000 },
+    );
+    expect(out.schedule).toEqual(schedule);
+    expect(out.results[0].markdownTruncated).toBeDefined();
+  });
+});
