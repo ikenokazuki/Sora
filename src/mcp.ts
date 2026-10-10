@@ -346,6 +346,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '  - **`responseMode: "full"` (Default)**: Use for whole-document summaries, exhaustive enumeration, broad comparison, or when page-wide context is needed.',
       '  - **Evidence Escalation**: If evidence is insufficient, ambiguous, or conflicting across sources, re-fetch with `responseMode: "full"` or specify `formats: ["markdown"]` (which preserves full Markdown even in evidence mode).',
       '  - **`realtimeFocus`**: `"public"` puts posts by others first (reputation, reactions, backlash, on-site reports); `"official"` (default) puts the account\'s own posts first (schedules, announcements). It is inferred from words like 評判/炎上/口コミ when omitted. `realtime.omittedCount` > 0 means posts were left out by the cap; raise `realtimeLimit` if more are needed.',
+      '  - **`realtimeAnchor`**: when you know which query word is the proper noun (person, group, work or venue name), pass it so the X search keeps that word when relaxing the query. Same as `anchor` on `search_realtime`.',
       '  - **`schedule`** (response field): events from the top pages, merged by date and name, upcoming first with past events after them. Read it first for schedule or event-date questions; `sources` lists the pages. `includeMedia: false` omits image/video URLs when they are not needed.',
       '  - **`contextSufficiency`** (response field): `partial` / `insufficient` with `reasons` (`unmentioned:<term>` = no evidence mentions the term, `unanswered:<term>` = no time/price/date value found, `few-success` = fewer than 3 pages retrieved) shows what is missing; investigate those items further. `no_gap_detected` only means no gap was found by lexical checks, not that the answer is verified.',
       '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
@@ -653,7 +654,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'web',
       '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。根拠が足りているかは応答の contextSufficiency で確認できます。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
       INTEGRATED_SEARCH_INPUT_SHAPE,
-      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
+      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -666,6 +667,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             includeRealtime,
             realtimeSort,
             realtimeFocus,
+            realtimeAnchor,
             realtimeLimit,
             officialAccountId,
             maxChars,
@@ -1136,12 +1138,13 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           .enum(['official', 'public'])
           .optional()
           .describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
+        anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない（辞書や推定に頼らない）。クエリの語に無ければ無視して推定する'),
         verbose: z
           .boolean()
           .optional()
           .describe('デバッグ用: retrievalQueries 等の検索診断を含めるか (デフォルト: false)').meta({ default: false }),
       },
-      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, focus, verbose }) => {
+      async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, focus, anchor, verbose }) => {
         try {
           const result = await searchYahooRealtime({
             query,
@@ -1157,6 +1160,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             ...(page ? { page } : {}),
             ...(verbose === true ? { verbose: true } : {}),
             ...(focus ? { focus } : {}),
+            ...(anchor ? { anchor } : {}),
             ...(query ? { anchorHints: createWebAnchorHints(query) } : {}),
           });
 

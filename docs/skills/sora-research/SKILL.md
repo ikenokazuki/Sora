@@ -23,6 +23,7 @@
    - 不足の手掛かり: `search_deep` の応答の `contextSufficiency` が `partial` のとき、`reasons`（`unmentioned:語` は語がどの証拠にも無い、`unanswered:語` は時刻・金額・日付などの値が見つからない）を未確認事項に対応づけて追加調査する。`no_gap_detected` は確認済みの意味ではなく、欠落を検出しなかっただけなので、重要な確認事項は本文の引用で裏付ける。
    - X の不足: `search_realtime` と `search_deep` の `realtime` の `missingTerms` は、1件の投稿に揃って現れなかったクエリ語（X 上では未確認）。`aliasTerms` は固有名詞の代わりに検索した別名（例: `=LOVE` → `イコラブ`）。
    - X の優先する発信者: 評判・感想・炎上・現地の様子など本人以外の声を調べるときは `search_realtime` の `focus` / `search_deep` の `realtimeFocus` を `"public"` にする（クエリに「評判」「炎上」などがあれば自動で `public`）。予定・告知・事実確認は `"official"`（既定）。応答の `omittedCount` が 0 でなければ上限で省いた投稿があるので、足りなければ `limit` / `realtimeLimit` を上げる。
+   - X の固有名詞: クエリの中の人名・グループ名・作品名・会場名が分かるときは `search_realtime` の `anchor` / `search_deep` の `realtimeAnchor` に渡す（緩和検索でその語を落とさない。辞書にない新しい名前や記号入りの名前でも守れる）。
    - 予定（ライブ・イベントの日程）: `search_deep` の応答の `schedule` を先に読む。複数ページの予定を日付と名称で統合し、開催中・今後を近い順、過去をその後ろに並べた一覧で、`sources` に載せたページの URL がある。同じ予定が別の表記で重複して残ることがあるので、日付・会場・時刻が合うものは同じ予定として扱う。通常応答ではページごとの `events` は `schedule` に移っている。
    - 応答を小さくしたいが画像の内容は不要なとき: `includeMedia: false`（画像・動画の URL を省く。既定は含める）。画像の内容が必要な質問では使わない。
    - 取得状態の切替: `failed`（providerErrorsあり）は検索できなかった意味で、同じ検索の即時再試行をしない。時間を置いた再開か、語を変えた代替検索にする。`empty`（エラーなしの0件）は一致なしの意味で、語を広げた検索にする。失敗を0件として扱わない。

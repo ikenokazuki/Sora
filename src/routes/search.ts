@@ -59,6 +59,10 @@ const handleRealtimeSearch = async (c: any) => {
       return c.json({ error: 'focus must be "official" or "public"' }, 400);
     }
     const focus: 'official' | 'public' | undefined = body?.focus;
+    if (body?.anchor !== undefined && (typeof body.anchor !== 'string' || body.anchor.length > 100)) {
+      return c.json({ error: 'anchor must be a string of at most 100 characters' }, 400);
+    }
+    const anchor: string | undefined = body?.anchor?.trim() || undefined;
     const limit = typeof body?.limit === 'number' ? body.limit : undefined;
     const page = typeof body?.page === 'number' ? body.page : undefined;
 
@@ -75,6 +79,7 @@ const handleRealtimeSearch = async (c: any) => {
       ...(limit !== undefined ? { limit } : {}),
       ...(page !== undefined ? { page } : {}),
       ...(focus ? { focus } : {}),
+      ...(anchor ? { anchor } : {}),
       ...(body?.verbose === true ? { verbose: true } : {}),
     };
 
@@ -230,6 +235,10 @@ const handleIntegratedSearch = async (c: any) => {
     if (!realtimeFocusParsed.success) {
       return c.json({ error: 'realtimeFocus must be "official" or "public"' }, 400);
     }
+    const realtimeAnchorParsed = IntegratedSearchRequestSchema.shape.realtimeAnchor.safeParse(body?.realtimeAnchor);
+    if (!realtimeAnchorParsed.success) {
+      return c.json({ error: 'realtimeAnchor must be a string of at most 100 characters' }, 400);
+    }
     const realtimeLimitParsed = IntegratedSearchRequestSchema.shape.realtimeLimit.safeParse(body?.realtimeLimit);
     if (!realtimeLimitParsed.success) {
       return c.json({ error: 'realtimeLimit must be an integer between 1 and 100' }, 400);
@@ -254,6 +263,7 @@ const handleIntegratedSearch = async (c: any) => {
       includeRealtime,
       realtimeSort,
       realtimeFocus: realtimeFocusParsed.data,
+      realtimeAnchor: realtimeAnchorParsed.data,
       realtimeLimit: realtimeLimitParsed.data,
       officialAccountId,
       maxChars,
