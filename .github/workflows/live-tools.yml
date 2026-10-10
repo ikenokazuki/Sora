@@ -57,9 +57,9 @@ jobs:
         run: |
           set +e
           if [ "${{ matrix.lane }}" = "hotel" ]; then
-            bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out --enable-hotel
+            bun --no-env-file run scripts/tool-health/run.ts --live --image "$IMAGE_TAG" --out tool-health-out --enable-hotel
           else
-            bun --no-env-file run scripts/tool-health/run.ts --live --image '${{ inputs.image-tag }}' --out tool-health-out
+            bun --no-env-file run scripts/tool-health/run.ts --live --image "$IMAGE_TAG" --out tool-health-out
           fi
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
@@ -75,6 +75,8 @@ jobs:
             exit "$code"
           fi
         env:
+          # 定期実行・手動実行では inputs が空になるため、候補イメージのタグを既定値で補う
+          IMAGE_TAG: ${{ inputs.image-tag || 'sora-tool-health:candidate' }}
           SORA_TOOL_HEALTH_CASES_JSON: ${{ secrets.SORA_TOOL_HEALTH_CASES_JSON }}
           UPS_CLIENT_ID: ${{ secrets.UPS_CLIENT_ID }}
           UPS_CLIENT_SECRET: ${{ secrets.UPS_CLIENT_SECRET }}
