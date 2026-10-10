@@ -2,6 +2,21 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
 const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
+
+/**
+ * 環境変数を書き換えたテストの後始末。`process.env = snapshot` と差し替えると JS 側の参照が変わるだけで、
+ * 実際のプロセス環境に書いた値（HTTPS_PROXY など）は残る。新しい Bun の fetch は実際の環境のプロキシを読むため、
+ * 後続のテストの通信が架空のプロキシへ向かって失敗する。キーごとに戻す。
+ */
+function restoreEnv(snapshot: Record<string, string | undefined>): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in snapshot)) delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) delete process.env[key];
+    else if (process.env[key] !== value) process.env[key] = value;
+  }
+}
 import * as cheerio from 'cheerio';
 import { Hono } from 'hono';
 import { app } from './index.js';
@@ -3632,7 +3647,7 @@ describe('Sora REST & MCP Endpoints', () => {
       process.env.NO_PROXY = 'localhost,127.0.0.1,.local';
       expect(getProxyConfig().proxyBypassList).toBe('localhost,127.0.0.1,.local');
     } finally {
-      process.env = originalEnv;
+      restoreEnv(originalEnv);
     }
   });
 
@@ -3743,7 +3758,7 @@ describe('Sora REST & MCP Endpoints', () => {
         expect(['http://proxy1:8080', 'http://proxy2:8080', 'http://proxy3:8080']).toContain(p as string);
       }
     } finally {
-      process.env = originalEnv;
+      restoreEnv(originalEnv);
     }
   });
 
@@ -3754,7 +3769,7 @@ describe('Sora REST & MCP Endpoints', () => {
       process.env.SORA_PROXY_URL = 'http://single-proxy:9090';
       expect(pickProxyUrl()).toBe('http://single-proxy:9090');
     } finally {
-      process.env = originalEnv;
+      restoreEnv(originalEnv);
     }
   });
 
@@ -3765,7 +3780,7 @@ describe('Sora REST & MCP Endpoints', () => {
       delete process.env.SORA_PROXY_URL;
       expect(pickProxyUrl()).toBeUndefined();
     } finally {
-      process.env = originalEnv;
+      restoreEnv(originalEnv);
     }
   });
 
