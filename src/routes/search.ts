@@ -234,6 +234,10 @@ const handleIntegratedSearch = async (c: any) => {
     if (!realtimeLimitParsed.success) {
       return c.json({ error: 'realtimeLimit must be an integer between 1 and 100' }, 400);
     }
+    const includeMediaParsed = IntegratedSearchRequestSchema.shape.includeMedia.safeParse(body?.includeMedia);
+    if (!includeMediaParsed.success) {
+      return c.json({ error: 'includeMedia must be a boolean' }, 400);
+    }
 
     const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
     if (!adaptiveOptions.success) {
@@ -279,6 +283,7 @@ const handleIntegratedSearch = async (c: any) => {
         extractHighlights,
         verbose: body?.verbose ?? c.req.query('verbose') === 'true',
         maxTotalChars: maxTotalCharsParsed.data,
+        includeMedia: includeMediaParsed.data,
       }),
     );
   } catch (err: any) {

@@ -466,3 +466,52 @@ describe('formatCompactIntegratedSearchResponse', () => {
     expect(after.chars).toBeLessThan(before.chars);
   });
 });
+
+describe('schedule in compact integrated search', () => {
+  const NOW = Date.parse('2026-10-10T12:00:00+09:00');
+  const withEvents = () => ({
+    query: '=LOVE ライブ 予定',
+    source: 'integrated',
+    count: 3,
+    results: [
+      { url: 'https://oshisuki.example/', title: 'a', events: [{ name: '過去公演', startDate: '2025-02-03' }, { name: '近い公演', startDate: '2026-10-15T18:00:00+09:00' }] },
+      { url: 'https://timetree.example/', title: 'b', events: [{ name: '近い公演', startDate: '2026-10-15T18:00:00+09:00', location: '会場' }] },
+      { url: 'https://official.example/', title: 'c', markdown: '本文' },
+    ],
+    realtime: { source: 'x', items: [] },
+    cached: false,
+  });
+
+  test('各ページの events を schedule に統合し、results 側からは外す', () => {
+    const out: any = formatCompactIntegratedSearchResponse(withEvents(), { now: NOW });
+    expect(out.schedule.map((e: any) => e.name)).toEqual(['近い公演', '過去公演']);
+    expect(out.schedule[0].location).toBe('会場');
+    expect(out.schedule[0].sources).toEqual(['https://oshisuki.example/', 'https://timetree.example/']);
+    expect(out.results.every((r: any) => r.events === undefined)).toBe(true);
+    expect(out.results[2].markdown).toBe('本文');
+  });
+
+  test('schedule は results の直前に置く', () => {
+    const out: any = formatCompactIntegratedSearchResponse(withEvents(), { now: NOW });
+    const keys = Object.keys(out);
+    expect(keys.indexOf('schedule')).toBe(keys.indexOf('results') - 1);
+  });
+
+  test('入力を書き換えない', () => {
+    const input = withEvents();
+    const copy = JSON.parse(JSON.stringify(input));
+    formatCompactIntegratedSearchResponse(input, { now: NOW });
+    expect(input).toEqual(copy);
+  });
+
+  test('verbose は何も足さず、results[].events のまま', () => {
+    const out: any = formatCompactIntegratedSearchResponse(withEvents(), { verbose: true, now: NOW });
+    expect(out.schedule).toBeUndefined();
+    expect(out.results[0].events.length).toBe(2);
+  });
+
+  test('予定が無ければ schedule を付けない', () => {
+    const out: any = formatCompactIntegratedSearchResponse({ query: 'q', source: 'integrated', count: 1, results: [{ url: 'https://a.example/', markdown: 'x' }] }, { now: NOW });
+    expect('schedule' in out).toBe(false);
+  });
+});

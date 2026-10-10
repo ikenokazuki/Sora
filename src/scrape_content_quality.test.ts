@@ -30,3 +30,11 @@ describe('usable scrape content', () => {
     expect(formatCompactScrapeResult(scrape as any).contentStatus).toBe('metadata_only');
   });
 });
+
+describe('calendar chrome with several events', () => {
+  test('callout lines for several events do not count as page content', () => {
+    const callouts = ['A', 'B', 'C'].map((n) => `> 📅 **イベント情報**: Festival ${n} (日時: 2026-04-19T06:20:00Z | 会場: RED SUN)`).join('\n');
+    const markdown = `---\nsiteName: "Calendar"\n---\n\n${callouts}\n> 📅 **イベント情報**: ほか 2 件\n\nMon\n\nTue\n\nWed\n\nThu\n\nFri\n\nSat\n\nSun\n\n28\n\n29\n\n30\n\n1\n\n2\n\n3`;
+    expect(isUsableScrape({ markdown })).toBe(false);
+  });
+});

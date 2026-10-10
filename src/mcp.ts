@@ -656,7 +656,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       'web',
       '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング（Clean Markdown）＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキング（Deep Evidence Rerank）で回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量を抑える場合は responseMode（full: 全文重視 / evidence: 局所事実・ハイライト優先）を選択可能。根拠が足りているかは応答の contextSufficiency で確認できます。候補URL探索は search_web、既知URLの精読は scrape を使用してください。',
       INTEGRATED_SEARCH_INPUT_SHAPE,
-      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeLimit, officialAccountId, maxChars, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
+      async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs }) => {
         try {
           const result = await integratedSearch({
             query,
@@ -699,6 +699,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
                 extractHighlights,
                 verbose,
                 maxTotalChars,
+                includeMedia,
               }),
             }],
           };

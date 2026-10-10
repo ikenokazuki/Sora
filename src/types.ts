@@ -8,7 +8,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.36.1';
+export const SORA_VERSION = '2.37.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -741,6 +741,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
   realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
+  includeMedia: z.boolean().optional().describe('画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない').meta({ default: true }),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
@@ -760,7 +761,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
-  maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す)。未指定なら無制限'),
+  maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。短いリンクだけのナビゲーションは本文より後ろへ回してから切る)。未指定なら無制限'),
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
@@ -1124,6 +1125,10 @@ export const EventItemSchema = z.object({
   }).optional().describe('チケット・料金情報'),
 });
 
+export const ScheduleItemSchema = EventItemSchema.extend({
+  sources: z.array(z.string()).describe('この予定を載せていたページの URL'),
+});
+
 export const MarkdownChunkSchema = z.object({
   index: z.number().describe('チャンク番号 (0-based)'),
   heading: z.string().optional().describe('所属する直近の見出し'),
@@ -1282,7 +1287,7 @@ export const ScrapeResponseSchema = z.object({
   publishedTime: z.string().optional().describe('記事公開日時 (ISO 8601)'),
   author: z.string().optional().describe('著者・発信者名'),
   siteName: z.string().optional().describe('Web サイト名'),
-  twitterHandle: z.string().optional().describe('検出された公式Xアカウント (@handle)'),
+  twitterHandle: z.string().optional().describe('メタタグ (twitter:site / twitter:creator) で宣言された X アカウント (@handle)。本文中のリンクは socialLinks'),
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
@@ -1483,6 +1488,7 @@ export const IntegratedSearchResponseSchema = z.object({
   query: z.string().describe('検索キーワード'),
   source: z.literal('integrated').describe('ソース ("integrated")'),
   count: z.number().describe('重複統合後の results 件数。同一X投稿は realtime.items 側に集約する'),
+  schedule: z.array(ScheduleItemSchema).optional().describe('上位ページの構造化データ（Event）の予定を、日付と名称が同じものにまとめた一覧。開催中・今後は近い順、過去はその後ろ。通常応答では results[].events の代わりにここに入る（verbose では results[].events のまま）。maxTotalChars の対象外'),
   results: z.array(IntegratedSearchItemSchema).describe('本文取得・整形済みの深層検索結果'),
   realtime: z.object({
     source: z.literal('x'),
