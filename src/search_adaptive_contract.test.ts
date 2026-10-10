@@ -58,6 +58,35 @@ describe('adaptive deep search public contract', () => {
     }
   });
 
+  test('includeMedia: false is validated and applied to the REST response, and exposed in OpenAPI and MCP', async () => {
+    searchSpy.mockResolvedValue({
+      query: 'fixture', source: 'integrated', count: 1, cached: false,
+      results: [{ url: 'https://a.example/', ogImage: 'https://a.example/og.png', markdown: '本文' }],
+    });
+    const post = (body: unknown) => searchRoutes.request('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const kept: any = await (await post({ query: 'fixture' })).json();
+    expect(kept.results[0].ogImage).toBe('https://a.example/og.png');
+    const stripped: any = await (await post({ query: 'fixture', includeMedia: false })).json();
+    expect(stripped.results[0].ogImage).toBeUndefined();
+    expect(stripped.results[0].markdown).toBe('本文');
+    for (const includeMedia of ['false', 0, null]) {
+      expect((await post({ query: 'fixture', includeMedia })).status).toBe(400);
+    }
+    const properties = generateOpenApiDocument().paths['/search'].post.requestBody.content['application/json'].schema.properties;
+    expect(properties.includeMedia.type).toBe('boolean');
+    expect(properties.includeMedia.default).toBe(true);
+    const server = createMcpServer();
+    try {
+      const tool = (server as any)._registeredTools.search_deep;
+      const result = await tool.handler(tool.inputSchema.parse({ query: 'fixture', includeMedia: false }));
+      expect(JSON.parse(result.content[0].text).results[0].ogImage).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
   test('scrapeDeadlineMs is validated and forwarded by REST and MCP', async () => {
     const ok = await searchRoutes.request('/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
