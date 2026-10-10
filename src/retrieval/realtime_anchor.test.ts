@@ -71,23 +71,55 @@ describe('detectRealtimeAnchor', () => {
     expect(detectRealtimeAnchor(['Web', 'API', 'デジタル庁'], t)).toBe('デジタル庁');
   });
 
-  test('評価セット（保存済みの Web タイトル・総ヒット数）で設計時の判定精度を保つ', () => {
+  const evalQueries = () => {
     const data = JSON.parse(readFileSync(join(import.meta.dir, '../../eval/realtime_anchor_cases.json'), 'utf8'));
-    const ok: Record<string, number> = { dev: 0, held: 0 };
-    for (const c of data.cases) {
-      for (const q of c.queries) {
-        if (c.anchors.includes(detectRealtimeAnchor(q.terms, q.webTitles, q.totals))) ok[c.split]++;
-      }
+    return data.cases.flatMap((c: any) => c.queries.map((q: any) => ({ ...q, split: c.split as string, anchors: c.anchors as string[] })));
+  };
+
+  test('評価セット（保存済みの Web タイトル・総ヒット数）で、誤った固有名詞を選ばない', () => {
+    const count: Record<string, { ok: number; none: number; wrong: string[] }> = {};
+    for (const q of evalQueries()) {
+      const c = (count[q.split] ??= { ok: 0, none: 0, wrong: [] });
+      const anchor = detectRealtimeAnchor(q.terms, q.webTitles, q.totals);
+      if (anchor === undefined) c.none++;
+      else if (q.anchors.includes(anchor)) c.ok++;
+      else c.wrong.push(`${q.terms.join(' ')} → ${anchor}`);
     }
-    expect(ok).toEqual({ dev: 24, held: 24 });
+    // 誤りは 0。決めないのは、固有名詞が無いクエリ（アイドルフェス 持ち物 注意点 の語順 3 通り）だけ
+    expect(count.dev).toEqual({ ok: 25, none: 3, wrong: [] });
+    expect(count.held).toEqual({ ok: 24, none: 0, wrong: [] });
+  });
+
+  test('サイト名の枠に出る語を固有名詞にする（Web API デジタル庁 は API ではなくデジタル庁）', () => {
+    const q = evalQueries().find((x: any) => x.terms.join(' ') === 'Web API デジタル庁');
+    expect(detectRealtimeAnchor(q.terms, q.webTitles, q.totals)).toBe('デジタル庁');
+  });
+
+  test('一般語だけが全タイトルに出るクエリでは決めない（アイドルフェス 持ち物 注意点）', () => {
+    for (const q of evalQueries().filter((x: any) => [...x.terms].sort().join(' ') === ['アイドルフェス', '持ち物', '注意点'].sort().join(' '))) {
+      expect(detectRealtimeAnchor(q.terms, q.webTitles, q.totals)).toBeUndefined();
+    }
+  });
+
+  test('同点は語順で決めず、決めない', () => {
+    const t = ['渋谷VIDENTへの行き方'];
+    expect(detectRealtimeAnchor(['行き方', '渋谷VIDENT'], t)).toBeUndefined();
+    expect(detectRealtimeAnchor(['渋谷VIDENT', '行き方'], t)).toBeUndefined();
   });
 
   test('総ヒット数が分かれば、ありふれた語を下げる（同点の解消）', () => {
     const t = ['渋谷VIDENTへの行き方'];
-    expect(detectRealtimeAnchor(['行き方', '渋谷VIDENT'], t)).toBe('行き方');
     expect(detectRealtimeAnchor(['行き方', '渋谷VIDENT'], t, { '行き方': 346, '渋谷VIDENT': 159 })).toBe('渋谷VIDENT');
-    // 一部の語しか分からないときは総ヒット数を使わない
-    expect(detectRealtimeAnchor(['行き方', '渋谷VIDENT'], t, { '渋谷VIDENT': 159 })).toBe('行き方');
+    // 一部の語しか分からないときは総ヒット数を使わない（同点なので決めない）
+    expect(detectRealtimeAnchor(['行き方', '渋谷VIDENT'], t, { '渋谷VIDENT': 159 })).toBeUndefined();
+  });
+
+  test('最高得点の語が他の語より明らかにありふれているなら決めない', () => {
+    const t = ['フェスの持ち物', '持ち物リスト', '持ち物まとめ'];
+    // 持ち物が全タイトルに出るが、総ヒット数は最少の語の 1.25 倍を超え、少ない側の半分にも入らない
+    expect(detectRealtimeAnchor(['フェス', '持ち物', '注意点'], t, { 'フェス': 900, '持ち物': 1282, '注意点': 782 })).toBeUndefined();
+    // ほぼ同じ希少さなら、タイトルの一致で決める
+    expect(detectRealtimeAnchor(['フェス', '持ち物'], t, { 'フェス': 1200, '持ち物': 1282 })).toBe('持ち物');
   });
 });
 

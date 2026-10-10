@@ -153,10 +153,19 @@ export function selectRealtimeItems<T extends Record<string, any>>(
   return { items: out, omitted: items.length - out.length };
 }
 
+/** サイト名の枠（タイトル末尾）に出た語を、本文側の一致より重く数える。発行元に出る語は固有名詞である可能性が高い */
+const SITE_SLOT_WEIGHT = 2;
+/** 総ヒット数が最も少ない語と、この倍率以内ならほぼ同じ希少さとみなす */
+const NEAR_RAREST_RATIO = 1.25;
+
 /**
- * 固有名詞の判定。Web 検索上位のタイトル（とサイト名部分）に出る語ほど高く、
+ * 固有名詞の判定。Web 検索上位のタイトル（とサイト名の枠）に出る語ほど高く、
  * X の総ヒット数が多い（ありふれた）語ほど低く採点する。総ヒット数は全候補分そろった時だけ使う。
- * 候補が2語以上でどれもタイトルに出なければ undefined（従来の緩和に任せる）。
+ * 確信が持てないときは決めない（undefined なら従来の緩和に任せる。語を誤って守るより害が小さい）:
+ *  - 候補が2語以上でどれもタイトルに出ない
+ *  - 最高得点が同点（語順で決めない）
+ *  - 総ヒット数が全候補分あり、最高得点の語が「少ない側の半分」にも「最少の語とほぼ同じ」にも入らない
+ *    （固有名詞は他のクエリ語よりありふれていないはず。「持ち物」のような一般語を弾く）
  */
 export function detectRealtimeAnchor(
   terms: string[],
@@ -166,21 +175,24 @@ export function detectRealtimeAnchor(
   const candidates = anchorCandidates(terms);
   if (candidates.length === 1) return candidates[0];
   const useTotals = candidates.every((t) => Number.isFinite(totals[t]) && totals[t] >= 0);
-  let best: string | undefined;
-  let bestScore = 0;
-  for (const t of candidates) {
+  const scored = candidates.map((t) => {
     let hits = 0;
     for (const title of webTitles) {
       if (termHits(t, title)) hits++;
-      if (termHits(t, titleSitePart(title))) hits++;
+      if (termHits(t, titleSitePart(title))) hits += SITE_SLOT_WEIGHT;
     }
-    const score = useTotals ? hits / Math.log(totals[t] + Math.E) : hits;
-    if (score > bestScore) {
-      best = t;
-      bestScore = score;
-    }
+    return { term: t, score: useTotals ? hits / Math.log(totals[t] + Math.E) : hits };
+  }).sort((a, b) => b.score - a.score);
+  const [best, second] = scored;
+  if (!best || best.score <= 0) return undefined;
+  if (second && Math.abs(best.score - second.score) < 1e-9) return undefined;
+  if (useTotals) {
+    const byRarity = [...candidates].sort((a, b) => totals[a] - totals[b]);
+    const inRarerHalf = byRarity.indexOf(best.term) <= Math.floor((candidates.length - 1) / 2);
+    const nearRarest = totals[best.term] <= totals[byRarity[0]] * NEAR_RAREST_RATIO;
+    if (!inRarerHalf && !nearRarest) return undefined;
   }
-  return best;
+  return best.term;
 }
 
 /**
