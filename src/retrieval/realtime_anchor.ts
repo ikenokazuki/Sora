@@ -20,7 +20,7 @@ const GENERIC_TERMS: Set<string> = new Set(
 /** wave1 で固有名詞を含む投稿がこの割合未満なら、Yahoo がその語を扱えていない（記号の無視など）とみなす。 */
 export const ANCHOR_BROKEN_RATIO = 0.5;
 
-const isNumericTerm = (t: string): boolean => /^[0-9:/.\-]+$/.test(nk(t));
+const isNumericTerm = (t: string): boolean => /^[0-9:/.-]+$/.test(nk(t));
 
 type Script = 'kata' | 'hira' | 'kanji' | 'latin' | 'other';
 

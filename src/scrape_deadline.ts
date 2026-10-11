@@ -24,7 +24,11 @@ export async function settleWithDeadline<T>(
       settled = true;
       timers.forEach(clearTimeout);
       let lateCount = 0;
-      const out = Array.from({ length: tasks.length }, (_, i) => (done[i] ? (values[i] as T) : (lateCount++, onLate(i))));
+      const out = Array.from({ length: tasks.length }, (_, i) => {
+        if (done[i]) return values[i] as T;
+        lateCount++;
+        return onLate(i);
+      });
       resolve({ values: out, lateCount });
     };
     timers.push(setTimeout(finish, opts.capMs));

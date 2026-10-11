@@ -41,7 +41,7 @@ export const turndown = new TurndownService({
 // GFM Table サポート (HTML table -> Markdown table, colspan/rowspan グリッド正規化 & Smart Column Pruning)
 turndown.addRule('gfmTable', {
   filter: 'table',
-  replacement: function (_content, node: any) {
+  replacement: (_content, node: any) => {
     const rows = Array.from((node as any).querySelectorAll('tr'));
     if (rows.length === 0) return '';
 
@@ -93,16 +93,16 @@ turndown.addRule('gfmTable', {
 
 // GFM Codeblock 言語指定保持 (<pre><code class="language-python">)
 turndown.addRule('fencedCodeBlock', {
-  filter: function (node: any, options: any) {
+  filter: (node: any, options: any) => {
     if (node.nodeName !== 'PRE') return false;
     const hasCode = Boolean(
-      (node.querySelector && node.querySelector('code')) ||
+      node.querySelector?.('code') ||
       (node.firstChild && node.firstChild.nodeName === 'CODE')
     );
     return options.codeBlockStyle === 'fenced' && hasCode;
   },
-  replacement: function (_content, node: any) {
-    const codeEl = (node.querySelector && node.querySelector('code')) || node.firstChild || node;
+  replacement: (_content, node: any) => {
+    const codeEl = node.querySelector?.('code') || node.firstChild || node;
     const lang =
       codeEl?.getAttribute?.('data-language') ||
       node.getAttribute?.('data-language') ||
@@ -151,15 +151,15 @@ export function extractMetadataFromJsonLd(items: any[]): JsonLdMetadata {
   function flatten(obj: any, depth = 0) {
     if (!obj || typeof obj !== 'object' || depth > 10) return;
     if (Array.isArray(obj)) {
-      obj.forEach((item) => flatten(item, depth + 1));
+      obj.forEach((item) => { flatten(item, depth + 1); });
     } else {
       flatObjects.push(obj);
       if (obj['@graph'] && Array.isArray(obj['@graph'])) {
-        obj['@graph'].forEach((item: any) => flatten(item, depth + 1));
+        obj['@graph'].forEach((item: any) => { flatten(item, depth + 1); });
       }
     }
   }
-  items.forEach((item) => flatten(item, 0));
+  items.forEach((item) => { flatten(item, 0); });
 
   for (const item of flatObjects) {
     if (!result.publishedTime) {
@@ -269,7 +269,7 @@ export function extractWithSelectors(
     try {
       if (!selectorExpr || typeof selectorExpr !== 'string') continue;
 
-      const attrMatch = selectorExpr.match(/^(.*?)@([a-zA-Z0-9_\-]+)$/);
+      const attrMatch = selectorExpr.match(/^(.*?)@([a-zA-Z0-9_-]+)$/);
       if (attrMatch) {
         const cssSel = attrMatch[1].trim();
         const attrName = attrMatch[2].trim();
@@ -304,15 +304,15 @@ export function extractEventsFromJsonLd(items: any[]): EventItem[] {
   function flatten(obj: any, depth = 0) {
     if (!obj || typeof obj !== 'object' || depth > 10) return;
     if (Array.isArray(obj)) {
-      obj.forEach((i) => flatten(i, depth + 1));
+      obj.forEach((i) => { flatten(i, depth + 1); });
     } else {
       flat.push(obj);
       if (obj['@graph'] && Array.isArray(obj['@graph'])) {
-        obj['@graph'].forEach((i: any) => flatten(i, depth + 1));
+        obj['@graph'].forEach((i: any) => { flatten(i, depth + 1); });
       }
     }
   }
-  items.forEach((i) => flatten(i, 0));
+  items.forEach((i) => { flatten(i, 0); });
 
   for (const item of flat) {
     const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
@@ -380,15 +380,15 @@ export function extractBreadcrumbs($: cheerio.CheerioAPI, jsonLdItems: any[]): s
   function flatten(obj: any, depth = 0) {
     if (!obj || typeof obj !== 'object' || depth > 10) return;
     if (Array.isArray(obj)) {
-      obj.forEach((i) => flatten(i, depth + 1));
+      obj.forEach((i) => { flatten(i, depth + 1); });
     } else {
       flat.push(obj);
       if (obj['@graph'] && Array.isArray(obj['@graph'])) {
-        obj['@graph'].forEach((i: any) => flatten(i, depth + 1));
+        obj['@graph'].forEach((i: any) => { flatten(i, depth + 1); });
       }
     }
   }
-  jsonLdItems.forEach((i) => flatten(i, 0));
+  jsonLdItems.forEach((i) => { flatten(i, 0); });
 
   for (const item of flat) {
     const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
@@ -536,7 +536,7 @@ export function extractMediaInfo(
         const chapters: Array<{ title: string; time: string; seconds: number }> = [];
         const fullText = (rawHtml || '') + '\n' + $('body').text();
         const timestampRegex = /(?:^|\n)[ \t]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[ \t]+([^\r\n]+)/g;
-        let match;
+        let match: RegExpExecArray | null;
         const seenTimes = new Set<string>();
 
         while ((match = timestampRegex.exec(fullText)) !== null) {
@@ -644,7 +644,7 @@ export function extractTwitterHandleFromHtml($: cheerio.CheerioAPI): {
       return;
     }
     const match = href.match(/(?:https?:\/\/(?:x\.com|twitter\.com)\/)(?:#!\/)?@?([a-zA-Z0-9_]{1,30})(?:\/|\?|$)/i);
-    if (match && match[1]) {
+    if (match?.[1]) {
       const h = match[1];
       // 一般的な予約語やサービス名を除外
       if (!/^(about|help|settings|login|signup|tos|privacy|download|jobs)$/i.test(h)) {
@@ -962,8 +962,8 @@ export function convertHtmlToMarkdown(
             isMainImage: isMainImage ? true : undefined,
             isImportant: isImportant ? true : undefined,
             imageType,
-            width: !isNaN(width as number) ? width : undefined,
-            height: !isNaN(height as number) ? height : undefined,
+            width: !Number.isNaN(width as number) ? width : undefined,
+            height: !Number.isNaN(height as number) ? height : undefined,
           });
         }
       } catch {}
@@ -1039,7 +1039,7 @@ export function convertHtmlToMarkdown(
       const { document } = parseHTML($.html());
       const reader = new Readability(document);
       const article = reader.parse();
-      if (article && article.content) {
+      if (article?.content) {
         contentHtml = selectMainContent($, article.content);
       }
     } catch {}
@@ -1110,7 +1110,7 @@ export function convertHtmlToMarkdown(
   markdown = cleanMarkdownTokens(markdown, keepDataImages);
 
   if (stripLinks) {
-    markdown = markdown.replace(/(?<!\!)\[([^\]]+)\]\([^)]+\)/g, '$1');
+    markdown = markdown.replace(/(?<!!)\[([^\]]+)\]\([^)]+\)/g, '$1');
   }
 
   if (filterLinkDensity) {

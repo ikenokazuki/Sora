@@ -121,6 +121,7 @@ describe('Phase 2 v2 X Source Isolation', () => {
       "process.env.SORA_X_SOURCE_ISOLATION === 'true'",
     );
     expect(source).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
       "${xSourceIsolation ? 'xiso-on' : 'xiso-off'}",
     );
     expect(source).toContain('buildXRetrievalPlan(topItems, 2)');

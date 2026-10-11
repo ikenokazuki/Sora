@@ -412,7 +412,7 @@ export async function enrichRealtimeItemsWithXDetail(
     fxCalls++;
     const detail = await provider.fetchStatus(statusId);
 
-    if (detail && detail.text) {
+    if (detail?.text) {
       const originalText = item.text;
       item.text = detail.text;
       item.detailEnriched = true;

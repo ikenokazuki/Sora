@@ -23,7 +23,7 @@ export function extractAuthToken(c: any): string | undefined {
   const authHeader = c.req.header('authorization');
   const xApiKey = c.req.header('x-api-key');
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
+  if (authHeader?.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();
   }
   if (xApiKey) {

@@ -128,13 +128,13 @@ function metaPageToPost(platform: SocialPlatform, requestedUrl: string, finalUrl
     author = page.ogTitle || undefined;
     if (page.ogImage) media = [{ type: 'image', url: page.ogImage }];
   }
-  if ((!text || !text.trim()) && oembedText && !isOembedPlaceholder(oembedText)) {
+  if ((!text?.trim()) && oembedText && !isOembedPlaceholder(oembedText)) {
     text = oembedText;
     warnings.push('body from tokenless oembed; og description was empty');
   }
-  if (!text || !text.trim()) return null;
+  if (!text?.trim()) return null;
   const { text: sliced, truncated } = truncate(text.trim());
-  let publishedAt = time.publishedAt;
+  const publishedAt = time.publishedAt;
   let timeStatus: SocialPost['timeStatus'] = time.timeStatus;
   let publishedDate: string | undefined;
   if (!publishedAt && platform === 'instagram') {
