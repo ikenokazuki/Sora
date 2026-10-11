@@ -62,6 +62,7 @@ jobs:
             exit 0
           else
             echo "### tool-health: HARD FAIL (exit $code)" >> "$GITHUB_STEP_SUMMARY"
+            cat tool-health-out/tool-health-standard.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
             exit "$code"
           fi
         env:

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { CANONICAL_TOOLS, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
-  collectKnownCaseIds, gateExit, redact, registerSecrets, summarize, validateCasesJson, writeReports,
+  collectKnownCaseIds, gateExit, redact, registerSecrets, nonPassLines, summarize, validateCasesJson, writeReports,
   type HealthReport,
 } from './report.js';
 import {
@@ -220,6 +220,7 @@ export async function main(): Promise<number> {
     const overall = exitCode === 0 ? 'pass' : 'fail';
     writeReports(args.out, { ...report(overall), counts, missing });
     console.log(`tool-health ${lane}: exit=${exitCode} ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') + (missing.length ? ` missing=${missing.join(',')}` : '') + (exitCode === 3 ? ' (SOFT HOLD: unverified/blocked only, no breakage signal)' : ''));
+    for (const line of nonPassLines(results)) console.log(line);
     return exitCode;
   } catch (e) {
     console.error('runner failed: ' + redact(String((e as Error)?.message ?? e)));

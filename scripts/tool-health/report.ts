@@ -35,6 +35,13 @@ export function redact(text: string): string {
   return out;
 }
 
+/** 通らなかったケースを1行ずつ（ケース名・状態・理由）。CI のログだけで原因を読めるようにする。理由は秘密情報を伏せ、200文字まで。 */
+export function nonPassLines(results: CaseResult[]): string[] {
+  return results
+    .filter((r) => r.status !== 'pass' && r.status !== 'pass_empty' && r.status !== 'not_applicable')
+    .map((r) => `  ${r.caseId} ${r.status}: ${redact(r.reason).replace(/\s+/g, ' ').slice(0, 200)}`);
+}
+
 export function summarize(results: CaseResult[]): Record<HealthStatus, number> {
   const counts: Record<HealthStatus, number> = {
     pass: 0, pass_empty: 0, fail: 0, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0,
