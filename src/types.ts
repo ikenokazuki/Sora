@@ -1235,6 +1235,13 @@ const DependencyStatusSchema = z.object({
   message: z.string().optional().describe('失敗・利用不可の理由'),
 });
 
+/** キャッシュから返した応答に付く項目。キャッシュを使うエンドポイントの応答スキーマに共通で足す。 */
+const CACHE_META_SHAPE = {
+  cached: z.boolean().optional().describe('キャッシュから返したか（キャッシュから返した時だけ true）'),
+  cachedAt: z.string().optional().describe('キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ)'),
+  ageSeconds: z.number().optional().describe('キャッシュに保存してからの経過秒数（キャッシュから返した時のみ）'),
+};
+
 export const HealthResponseSchema = z.object({
   status: z.string().describe('稼働ステータス ("ok"。detailed で SQLite 障害時は "degraded")'),
   service: z.string().describe('サービス名 ("sora")'),
@@ -1302,7 +1309,6 @@ export const ScrapeResponseSchema = z.object({
   contentType: z.string().optional().describe('verbose 時の MIME タイプ (例: "text/html", "application/pdf")'),
   source: z.literal('web').optional().describe('verbose 時の取得ソース種別'),
   renderedWithBrowser: z.boolean().optional().describe('Stealth Chromium ブラウザで JS 描画されたか'),
-  cached: z.boolean().optional().describe('メモリキャッシュから返却されたか'),
   ogImage: z.string().optional().describe('OGP アイキャッチ画像 URL'),
   description: z.string().optional().describe('メタディスクリプション'),
   publishedTime: z.string().optional().describe('記事公開日時 (ISO 8601)'),
@@ -1353,6 +1359,7 @@ export const ScrapeResponseSchema = z.object({
   evidence: z.record(z.string(), FieldEvidenceSchema).optional().describe('各フィールドの抽出出所情報'),
   qualityDistribution: z.record(z.string(), z.number()).optional().describe('品質スコア内訳'),
   avgQuality: z.number().optional().describe('平均品質'),
+  ...CACHE_META_SHAPE,
 });
 
 export const BatchScrapeResponseSchema = z.object({
@@ -1371,7 +1378,7 @@ export const MapResponseSchema = z.object({
   links: z.array(z.string()).describe('発見されたサイトマップまたは巡回 URL リスト'),
   count: z.number().describe('取得 URL 総件数'),
   source: z.enum(['sitemap', 'links']).describe('検出ソース (sitemap.xml または HTML リンク解析)'),
-  cached: z.boolean().optional().describe('キャッシュから返却されたか'),
+  ...CACHE_META_SHAPE,
 });
 
 export const CrawlResponseSchema = z.object({
@@ -1422,6 +1429,8 @@ export const SearchWebResponseSchema = z.object({
     items: z.array(SearchWebItemSchema).describe('検索ヒット一覧'),
   }).describe('Web 検索結果データ'),
   cached: z.boolean().describe('キャッシュから返却されたか'),
+  cachedAt: CACHE_META_SHAPE.cachedAt,
+  ageSeconds: CACHE_META_SHAPE.ageSeconds,
 });
 
 export const RealtimeItemSchema = z.object({
@@ -1467,6 +1476,8 @@ export const RealtimeSearchResponseSchema = z.object({
     items: z.array(RealtimeItemSchema).describe('リアルタイムポスト一覧'),
   }).describe('ポストデータ'),
   cached: z.boolean().describe('キャッシュから返却されたか'),
+  cachedAt: CACHE_META_SHAPE.cachedAt,
+  ageSeconds: CACHE_META_SHAPE.ageSeconds,
 });
 
 export const TrendItemSchema = z.object({
@@ -1482,6 +1493,7 @@ export const TrendSearchResponseSchema = z.object({
   count: z.number().describe('トレンド件数'),
   items: z.array(TrendItemSchema).describe('急上昇トレンド一覧'),
   timestamp: z.string().describe('取得日時 (ISO 8601)'),
+  ...CACHE_META_SHAPE,
 });
 
 export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: true }).extend({
@@ -1530,7 +1542,7 @@ export const IntegratedSearchResponseSchema = z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
     reasons: z.array(z.string()).describe('few-success（取得成功が3件未満） / unmentioned:語（クエリ語がどの証拠にも無い） / unanswered:語（時刻・金額・日付などの回答値が見つからない） / no-usable-content'),
   }).optional().describe('根拠が足りているかの語彙ベースの信号。応答内容は変えない。scrapeContent:true で、本文（formats に markdown）かハイライトを取得したとき付与'),
-  cached: z.boolean().optional().describe('キャッシュから返却されたか'),
+  ...CACHE_META_SHAPE,
 });
 
 const YahooEnvelopeShape = {
@@ -1656,6 +1668,7 @@ export const TransitRouteResponseSchema = z.object({
   routes: z.array(TransitRouteDetailSchema).describe('乗換案内ルート候補配列'),
   note: z.string().optional().describe('パース補足メモ'),
   rawText: z.string().optional().describe('フォールバック時の生テキスト'),
+  ...CACHE_META_SHAPE,
 });
 
 export const WeatherDayForecastSchema = z.object({
@@ -1703,7 +1716,7 @@ export const WeatherResponseSchema = z.object({
   }).optional().describe('気象概況（livedoor 天気互換）'),
   forecasts: z.array(WeatherDayForecastSchema).describe('日別天気予報配列 (1〜8日分)'),
   link: z.string().optional().describe('気象庁の予報ページ URL'),
-  cached: z.boolean().optional().describe('キャッシュから返したか'),
+  ...CACHE_META_SHAPE,
 });
 
 export const WarningItemSchema = z.object({
@@ -1722,6 +1735,7 @@ export const AreaWarningsResponseSchema = z.object({
   warnings: z.array(WarningItemSchema).describe('発表中の警報一覧'),
   advisories: z.array(WarningItemSchema).describe('発表中の注意報一覧'),
   hasActiveAlerts: z.boolean().describe('現在発令中の特別警報または警報が存在するか'),
+  ...CACHE_META_SHAPE,
 });
 
 export const EarthquakeHypocenterSchema = z.object({
@@ -1750,6 +1764,7 @@ export const EarthquakeItemSchema = z.object({
 export const EarthquakeSearchResultSchema = z.object({
   count: z.number().describe('取得件数'),
   earthquakes: z.array(EarthquakeItemSchema).describe('地震情報履歴配列 (新着順)'),
+  ...CACHE_META_SHAPE,
 });
 
 export const TrafficItemSchema = z.object({
@@ -1770,6 +1785,7 @@ export const RoadTrafficResponseSchema = z.object({
   summary: z.string().describe('道路交通サマリーテキスト'),
   items: z.array(TrafficItemSchema).describe('路線別交通情報配列'),
   source: z.literal('jartic').describe('情報提供元 ("jartic")'),
+  ...CACHE_META_SHAPE,
 });
 
 export const FlightItemSchema = z.object({
@@ -1794,6 +1810,7 @@ export const FlightStatusResultSchema = z.object({
   summary: z.string().describe('運航状況の日本語要約サマリー'),
   flights: z.array(FlightItemSchema).describe('各フライトの運航明細配列'),
   source: z.enum(['airport_official', 'flight_radar']).describe('運航情報ソース'),
+  ...CACHE_META_SHAPE,
 });
 
 // --- 6. 公共データ・法令系 レスポンススキーマ ---
@@ -1809,6 +1826,7 @@ export const LawSearchResultSchema = z.object({
   count: z.number().describe('検索ヒット法令件数'),
   items: z.array(LawSearchResultItemSchema).describe('ヒットした法令一覧'),
   source: z.literal('e-gov').describe('ソース ("e-gov")'),
+  ...CACHE_META_SHAPE,
 });
 
 export const LawDataResultSchema = z.object({
@@ -1821,6 +1839,7 @@ export const LawDataResultSchema = z.object({
   markdown: z.string().describe('法令条文全文 Markdown (章・条・項・号階層化)'),
   articleCount: z.number().optional().describe('収録条文数'),
   source: z.literal('e-gov').describe('ソース ("e-gov")'),
+  ...CACHE_META_SHAPE,
 });
 
 export const DietSpeechRecordSchema = z.object({
@@ -1846,6 +1865,7 @@ export const DietMinutesSearchResultSchema = z.object({
   totalHits: z.number().describe('検索条件にマッチした全発言総件数'),
   items: z.array(DietSpeechRecordSchema).describe('国会議事録発言レコード配列'),
   source: z.literal('kokkai-ndl').describe('情報提供元 ("kokkai-ndl")'),
+  ...CACHE_META_SHAPE,
 });
 
 export const ElevationResultSchema = z.object({
@@ -1861,6 +1881,7 @@ export const ElevationResultSchema = z.object({
   dataAccuracy: z.string().optional().describe('標高データの計測精度区分'),
   formatted: z.string().describe('読みやすい日本語フォーマット済み文字列 (例: "富士山頂 (緯度: 35.3606, 経度: 138.7274): 標高 3776m")'),
   source: z.literal('gsi').describe('データ提供元 ("gsi": 国土地理院)'),
+  ...CACHE_META_SHAPE,
 });
 
 // --- 7. 音楽・メディア系 レスポンススキーマ ---
@@ -1890,6 +1911,7 @@ export const MusicSearchResultSchema = z.object({
   count: z.number().describe('ヒット件数'),
   items: z.array(MusicItemSchema).describe('音楽メタデータ配列'),
   source: z.literal('itunes').describe('データソース ("itunes")'),
+  ...CACHE_META_SHAPE,
 });
 
 export const InspectImageResultSchema = z.object({
@@ -2131,8 +2153,8 @@ export const TrackingResultSchema = z.object({
     reasons: z.array(z.string()).describe('検証判定理由'),
   }).optional().describe('配送エビデンス検証情報'),
   error: z.string().optional().describe('追跡失敗時のエラーメッセージ'),
-  cached: z.boolean().optional().describe('キャッシュから返却されたか'),
   fetchedAt: z.string().optional().describe('追跡情報取得日時 (ISO 8601)'),
+  ...CACHE_META_SHAPE,
 });
 
 
