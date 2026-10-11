@@ -6,6 +6,7 @@ import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './br
 import { getFallbackUserAgent } from './browser_stealth.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { isProxyBypassed } from './net/no_proxy.js';
+import { errorMessage } from './errors.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -21,8 +22,8 @@ async function getWreqModule(): Promise<WreqModule | null> {
   wreqLoadAttempted = true;
   try {
     wreqModule = await import('wreq-js');
-  } catch (err: any) {
-    console.warn(`[http_fetcher] wreq-js native module unavailable (${err?.message || err}). Gracefully falling back to native fetch.`);
+  } catch (err) {
+    console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
     wreqModule = null;
   }
   return wreqModule;

@@ -4,6 +4,7 @@ import {
   InspectImageRequestSchema,
 } from '../scraper.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const mediaRoutes = new Hono();
 
@@ -28,7 +29,7 @@ mediaRoutes.post('/media/inspect-image', async (c) => {
   try {
     const result = await inspectImage(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Image inspection failed', 'MEDIA_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Image inspection failed', 'MEDIA_ERROR', 500);
   }
 });

@@ -46,6 +46,7 @@ import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
 
 import { estimateTokens } from './text_tokens.js';
+import { errorMessage } from './errors.js';
 export { estimateTokens };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
@@ -395,8 +396,8 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
     if (!res.ok) {
       console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
     }
-  } catch (err: any) {
-    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, err?.message);
+  } catch (err) {
+    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
   }
 }
 

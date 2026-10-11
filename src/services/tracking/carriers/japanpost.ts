@@ -12,6 +12,7 @@ import { cleanTrackingNumber } from '../normalization.js';
 import { evaluateTrackingVerification } from '../verification.js';
 import { parseS10TrackingNumber } from '../postal.js';
 import { determineStatus } from './yamato.js';
+import { errorMessage } from '../../../errors.js';
 
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -218,7 +219,7 @@ export const japanPostAdapter: TrackingCarrierAdapter = {
           serviceType: s10.valid ? `国際郵便 (${s10.serviceIndicator})` : 'ゆうパック/ゆうパケット/レターパック/書留',
         },
       };
-    } catch (err: any) {
+    } catch (err) {
       return {
         carrier,
         carrierName: japanPostAdapter.name,
@@ -228,7 +229,7 @@ export const japanPostAdapter: TrackingCarrierAdapter = {
         events: [],
         trackingUrl,
         postal: postalMeta,
-        error: err?.message || String(err),
+        error: errorMessage(err) || String(err),
       };
     }
   },

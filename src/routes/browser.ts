@@ -3,6 +3,7 @@ import { executeBrowserActions } from '../scraper.js';
 import { BrowserActionRequestSchema } from '../types.js';
 import { extractAuthToken } from '../auth.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const browserRoutes = new Hono();
 
@@ -40,8 +41,8 @@ export const handleBrowserAction = async (c: any) => {
     });
 
     return c.json(result);
-  } catch (err: any) {
-    const msg = err.message || 'Browser action failed';
+  } catch (err) {
+    const msg = errorMessage(err) || 'Browser action failed';
     const isForbidden = msg.includes('Forbidden') || msg.includes('permission');
     const isSecurity = isForbidden || msg.includes('private or blocked') || msg.includes('遮断');
     const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト');
