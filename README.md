@@ -618,11 +618,11 @@ SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎
   "timestamp": "2026-08-24T18:00:00.000Z",
   "dependencies": {
     "sqlite": { "status": "ok", "latencyMs": 0.4 },
-    "chromium": { "status": "ok", "latencyMs": 1.2 },
-    "yahoo": { "status": "ok", "latencyMs": 120 },
+    "chromium": { "status": "ok" },
+    "yahooMcp": { "status": "ok" },
     "jma": { "status": "ok", "latencyMs": 85 },
     "p2pquake": { "status": "ok", "latencyMs": 92 },
-    "eGov": { "status": "ok", "latencyMs": 140 }
+    "egov": { "status": "ok", "latencyMs": 140 }
   }
 }
 ```
