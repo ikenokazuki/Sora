@@ -315,14 +315,14 @@ export function calculateContentStats(text: string): {
 export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string): Citation[] {
   if (!markdown) return [];
   const citations: Citation[] = [];
-  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
   const seenUrls = new Set<string>();
 
   // 段落単位で走査し、コンテキスト文を取得
   const paragraphs = markdown.split(/\n\s*\n/);
 
   for (const para of paragraphs) {
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = linkRegex.exec(para)) !== null) {
       const text = match[1].trim();
       const url = match[2].trim();
@@ -982,7 +982,7 @@ export function rerankByDeepEvidence<T extends {
     const extracted = extractTermsWithBigrams(query);
     const whitespaceWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length > 0);
     const termSet = new Set<string>();
-    const isDateLike = (t: string) => /\d.*[月日時\/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
+    const isDateLike = (t: string) => /\d.*[月日時/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
     const isAttrTerm = (t: string) => {
       for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) return true; }
       return false;
@@ -1245,7 +1245,7 @@ export function chooseBestDescription(
   if (!metaDesc && !dynamicSnippet) return undefined;
   if (!dynamicSnippet) return metaDesc;
   // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
-  let cleanSnippet = dynamicSnippet
+  const cleanSnippet = dynamicSnippet
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
     .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
     .replace(/^#{1,6}\s+/gm, '')

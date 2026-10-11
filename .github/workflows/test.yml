@@ -21,6 +21,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Typecheck (strict, src + tool-health scripts)
         run: bun run typecheck
+      # 型では見つからない誤り（Promise の握りつぶし、重複キー、到達しないコードなど）を止める。書式は検査しない
+      - name: Lint
+        run: bun run lint
       # 実ブラウザテストは共有ランナーで低速なため上限を120秒に緩和する（ブラウザ実取得テストのため）
       - name: Run tests with failure summary
         run: |

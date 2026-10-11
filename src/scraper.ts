@@ -212,10 +212,10 @@ export async function finalizeScrapeResult(
 
   if (options.shouldExtractHighlights && options.query) {
     const supplemental: string[] = [];
-    if (options.snippet && options.snippet.trim()) {
+    if (options.snippet?.trim()) {
       supplemental.push(options.snippet.trim());
     }
-    if (result.description && result.description.trim() && result.description !== options.snippet) {
+    if (result.description?.trim() && result.description !== options.snippet) {
       supplemental.push(result.description.trim());
     }
 
@@ -503,7 +503,7 @@ export async function scrapeUrl(options: {
   const retryDelayMs = options.retryDelayMs ?? 1000;
   const onProgress = options.onProgress;
   const shouldExtractHighlights =
-    options.extractHighlights ?? (Boolean(options.query && options.query.trim()));
+    options.extractHighlights ?? (Boolean(options.query?.trim()));
 
   onProgress?.({ stage: 'start', message: `Starting scrape for ${url}` });
 
@@ -535,7 +535,7 @@ export async function scrapeUrl(options: {
 
     const finalizeOpts = {
       query: options.query,
-      shouldExtractHighlights: shouldExtractHighlights ?? (options.onlyHighlights ? true : false),
+      shouldExtractHighlights: shouldExtractHighlights ?? (!!options.onlyHighlights),
       shouldOnlyHighlights: options.onlyHighlights ?? false,
       highlightAlgorithm: options.highlightAlgorithm,
       highlightOverheadTokens: options.highlightOverheadTokens,
@@ -989,7 +989,7 @@ export async function fetchSitemapEntries(
 
     const entries: SitemapEntry[] = [];
 
-    if (parsed.urlset && parsed.urlset.url) {
+    if (parsed.urlset?.url) {
       const urlList = Array.isArray(parsed.urlset.url) ? parsed.urlset.url : [parsed.urlset.url];
       for (const item of urlList) {
         if (item.loc) {
@@ -1002,7 +1002,7 @@ export async function fetchSitemapEntries(
       }
     }
 
-    if (parsed.sitemapindex && parsed.sitemapindex.sitemap && currentDepth < maxDepth) {
+    if (parsed.sitemapindex?.sitemap && currentDepth < maxDepth) {
       const sitemaps = Array.isArray(parsed.sitemapindex.sitemap)
         ? parsed.sitemapindex.sitemap
         : [parsed.sitemapindex.sitemap];
@@ -1286,7 +1286,7 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
   if (cached) return cached;
 
   const res = await fetchWithSafeRedirects('https://search.yahoo.co.jp/realtime', 10000);
-  if (!res || !res.response.ok) {
+  if (!res?.response.ok) {
     throw new Error('Yahoo リアルタイムトレンドの取得に失敗しました');
   }
 
@@ -1512,7 +1512,7 @@ export async function integratedSearch(options: {
   const includeDomains = normalizeDomainList(options.includeDomains);
   const excludeDomains = normalizeDomainList(options.excludeDomains);
   const updated = options.updated;
-  const extractHighlights = options.extractHighlights ?? (Boolean(query && query.trim()));
+  const extractHighlights = options.extractHighlights ?? (Boolean(query?.trim()));
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const dedup = options.dedup ?? false;
@@ -1668,7 +1668,7 @@ export async function integratedSearch(options: {
             if (plan.seed.kind === 'status' && plan.seed.statusId) {
               try {
                 const detail = await defaultXDetailProvider.fetchStatus(plan.seed.statusId);
-                if (detail && detail.text) {
+                if (detail?.text) {
                   directEvidence = buildXIsolatedEvidenceFromDirectStatus(plan.seed, detail);
                 }
               } catch {}
@@ -1909,7 +1909,6 @@ export async function integratedSearch(options: {
             enrichedResults.push(enrichedSpare);
             if (isUsableScrape(enrichedSpare)) successCount++;
           } catch {
-            continue;
           }
         }
       }
@@ -1940,7 +1939,7 @@ export async function integratedSearch(options: {
               enrichedResults.push(enrichedSpare);
               ev = assessEvidenceSufficiency(enrichedResults, query);
               if (ev.sufficient) break;
-            } catch { continue; }
+            } catch { }
           }
         }
       }
@@ -1998,7 +1997,7 @@ export async function integratedSearch(options: {
   let realtimeMeta: any = null;
   if (includeRealtime) {
     const rawPublicList = Array.isArray(realtimeMcpRes?.items) ? realtimeMcpRes.items : [];
-    let publicMapped = rawPublicList.map((item: any) => normalizeRealtimeItem(item));
+    const publicMapped = rawPublicList.map((item: any) => normalizeRealtimeItem(item));
 
     let officialItems: any[] = [];
     if (officialRealtimePromise) {

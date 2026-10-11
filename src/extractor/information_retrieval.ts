@@ -75,7 +75,7 @@ export function extractSimilarityTokens(text: string): Set<string> {
     }
   } catch {
     // Intl.Segmenter がない環境のフォールバック
-    const raw = text.toLowerCase().split(/[\s,._!?。、！？\(\)\[\]「」『』]+/);
+    const raw = text.toLowerCase().split(/[\s,._!?。、！？()[\]「」『』]+/);
     for (const w of raw) {
       if (w.length >= 2) words.add(w);
     }

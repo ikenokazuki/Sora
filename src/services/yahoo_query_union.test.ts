@@ -196,6 +196,7 @@ describe('Phase 3 bounded Web query union', () => {
 
   test('integrated cache separates union OFF and ON', () => {
     const source = readFileSync(new URL('../scraper.ts', import.meta.url), 'utf8');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
     expect(source).toContain("${webQueryUnion ? 'wqu-on' : 'wqu-off'}");
   });
 

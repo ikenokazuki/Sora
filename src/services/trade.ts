@@ -1618,7 +1618,7 @@ export async function checkProductCompliance(
   let description = options.description?.trim();
   let targetAge = options.targetAge;
   let material = options.material?.trim();
-  let productCategory = options.productCategory?.trim();
+  const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
 
   // 1. URL が指定されている場合はスクレイピングして商品情報を取得

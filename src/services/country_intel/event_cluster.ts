@@ -103,7 +103,7 @@ export function stableProviderKey(
   details?: ReadonlyMap<string, EvidenceDetail>,
 ): string | undefined {
   const detail = details?.get(draft.evidenceId);
-  if (!detail || detail.contentKind !== 'structured_record' || !detail.providerItemId) return undefined;
+  if (detail?.contentKind !== 'structured_record' || !detail.providerItemId) return undefined;
   return detail.providerId + ':' + detail.providerItemId;
 }
 

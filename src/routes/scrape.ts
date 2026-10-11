@@ -119,7 +119,7 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 scrapeRoutes.post('/map', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 
@@ -144,7 +144,7 @@ scrapeRoutes.post('/map', async (c) => {
 scrapeRoutes.post('/crawl', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 
@@ -185,7 +185,7 @@ scrapeRoutes.post('/crawl', async (c) => {
 scrapeRoutes.post('/crawl/stream', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 

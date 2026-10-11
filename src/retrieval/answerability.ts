@@ -326,7 +326,7 @@ export function extractDateRequirements(query: string, ref?: Date): DateRequirem
       else push(parseInt(m[4], 10), parseInt(m[5], 10), null);
     }
   } catch {}
-  const reSlash = /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})|(\d{1,2})\s*[\/]\s*(\d{1,2})/g;
+  const reSlash = /(\d{4})[/-](\d{1,2})[/-](\d{1,2})|(\d{1,2})\s*[/]\s*(\d{1,2})/g;
   try {
     while ((m = reSlash.exec(query)) !== null) {
       if (m[1] !== undefined && m[1] !== '') push(parseInt(m[2], 10), parseInt(m[3], 10), parseInt(m[1], 10));
@@ -346,7 +346,7 @@ export function impliedYear(req: DateRequirement, ref?: Date): number {
 }
 function sentenceHasMonthDay(sentence: string, month: number, day: number): boolean {
   const jp = new RegExp(month + '[\\s]*月[\\s]*' + day + '[\\s]*日');
-  const slash = new RegExp(month + '[\\s]*\\/[\\s]*' + day + '(?![\\d\/])');
+  const slash = new RegExp(month + '[\\s]*\\/[\\s]*' + day + '(?![\\d/])');
   try {
     if (jp.test(sentence)) return true;
   } catch {}

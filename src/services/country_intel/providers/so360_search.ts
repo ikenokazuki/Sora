@@ -44,7 +44,7 @@ export function createSo360SearchProvider(fetchFn?: GdeltFetch): CountryIntelPro
     timeoutMs: 10000,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
-      const planned = input.queries.map((q) => q.query).find((q) => q && q.trim());
+      const planned = input.queries.map((q) => q.query).find((q) => q?.trim());
       const query = planned?.trim() ? planned.trim() : input.region.name?.trim();
       if (!query) return { items: [] as AcquisitionItem[], coverage: [] };
       const fetchOnce = async (url: string, cookie?: string): Promise<Response> => {
