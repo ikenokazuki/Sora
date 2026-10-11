@@ -440,7 +440,7 @@ export function solveExactObservedStateDP(
     picks: number[]; // original indices
   }
 
-  let stateMap = new Map<string, DPState>();
+  const stateMap = new Map<string, DPState>();
   const initialRanks = new Array(m).fill(0);
   stateMap.set(initialRanks.join(','), {
     ranks: initialRanks,
@@ -687,7 +687,7 @@ export function solveAdaptiveRefinement(
   // 2. 初期パーティションの作成:
   // rank 0 は singleton cell [0, 0]、positive ranks は 1 つの cell [1, maxRank]
   // partition[t] はセル定義の配列: 各セルは rank の昇順配列 [r_start, ..., r_end]
-  let partitions: number[][][] = [];
+  const partitions: number[][][] = [];
   for (let t = 0; t < m; t++) {
     const numRanks = observedValues[t].length;
     const cells: number[][] = [[0]];

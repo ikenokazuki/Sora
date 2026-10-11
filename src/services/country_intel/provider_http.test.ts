@@ -51,9 +51,9 @@ describe('provider http', () => {
     const pending = [run('https://a.example/1'), run('https://b.example/2'), run('https://c.example/3')];
     await Bun.sleep(20);
     expect(peak).toBe(2);
-    resolvers.splice(0).forEach((resolve) => resolve());
+    resolvers.splice(0).forEach((resolve) => { resolve(); });
     await Bun.sleep(20);
-    resolvers.splice(0).forEach((resolve) => resolve());
+    resolvers.splice(0).forEach((resolve) => { resolve(); });
     await Promise.all(pending);
     expect(peak).toBe(2);
   });

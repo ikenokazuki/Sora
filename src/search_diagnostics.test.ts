@@ -113,6 +113,7 @@ describe('Phase 1 verbose-only search diagnostics', () => {
 
   test('integratedSearch cache key distinguishes verbose from default output shape', () => {
     const source = readFileSync(new URL('./scraper.ts', import.meta.url), 'utf8');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
     expect(source).toContain("${options.verbose === true ? 'verbose' : 'compact'}");
   });
 });

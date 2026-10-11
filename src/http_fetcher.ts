@@ -414,16 +414,16 @@ export async function fetchWithSafeRedirects(
 export function decodeHtmlBuffer(buffer: ArrayBuffer | Uint8Array, contentTypeHeader = ''): string {
   const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
 
-  const headerMatch = contentTypeHeader.match(/charset=([a-zA-Z0-9_\-]+)/i);
+  const headerMatch = contentTypeHeader.match(/charset=([a-zA-Z0-9_-]+)/i);
   let charset = headerMatch ? headerMatch[1].toLowerCase().trim() : '';
 
   if (!charset) {
     const headChunk = new (TextDecoder as any)('latin1').decode(uint8.slice(0, 2048));
-    const metaCharsetMatch = headChunk.match(/<meta[^>]+charset=["']?\s*([a-zA-Z0-9_\-]+)/i);
+    const metaCharsetMatch = headChunk.match(/<meta[^>]+charset=["']?\s*([a-zA-Z0-9_-]+)/i);
     if (metaCharsetMatch) {
       charset = metaCharsetMatch[1].toLowerCase().trim();
     } else {
-      const metaHttpEquivMatch = headChunk.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["'][^"']*charset=([a-zA-Z0-9_\-]+)/i);
+      const metaHttpEquivMatch = headChunk.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["'][^"']*charset=([a-zA-Z0-9_-]+)/i);
       if (metaHttpEquivMatch) {
         charset = metaHttpEquivMatch[1].toLowerCase().trim();
       }

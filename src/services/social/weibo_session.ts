@@ -27,7 +27,7 @@ export function createWeiboSessionStore(opener: WeiboSessionOpener, now: () => n
         const cookies = await opener.openWeiboSession(signal);
         if (!cookies.some((c) => c.name === 'SUB')) throw new Error('Weibo session open failed: no SUB');
         const issuedAt = now();
-        let expiresAt = issuedAt + SESSION_TTL_MS;
+        const expiresAt = issuedAt + SESSION_TTL_MS;
         return { cookies, issuedAt, expiresAt };
       })();
       inflight.then(

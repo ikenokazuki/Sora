@@ -38,7 +38,7 @@ export function detectImageMimeType(buffer: Uint8Array, headerContentType?: stri
     return 'image/webp';
   }
 
-  if (headerContentType && headerContentType.startsWith('image/')) {
+  if (headerContentType?.startsWith('image/')) {
     return headerContentType.split(';')[0].trim().toLowerCase();
   }
 
