@@ -12,12 +12,13 @@ import {
   BatchScrapeRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
 
 // 単一 URL / PDF スクレイプ (マルチフォーマット対応)
 scrapeRoutes.post('/scrape', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -33,11 +34,11 @@ scrapeRoutes.post('/scrape', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await scrapeUrl({ ...parsed.data, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
-  } catch (err: any) {
-    const msg = err.message || 'Scrape failed';
+  } catch (err) {
+    const msg = errorMessage(err) || 'Scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト') || msg.includes('timed out');
     const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : 'SCRAPE_ERROR';
@@ -48,7 +49,7 @@ scrapeRoutes.post('/scrape', async (c) => {
 
 // 単一 URL スクレイプ SSE ストリーミング (POST /scrape/stream)
 scrapeRoutes.post('/scrape/stream', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -66,7 +67,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     try {
       await scrapeUrl({
         ...parsed.data,
-        tenantId: (c as any).get?.('tenant')?.tenantId ?? 'legacy',
+        tenantId: c.get('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',
@@ -74,11 +75,11 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
           });
         },
       });
-    } catch (err: any) {
+    } catch (err) {
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({
-          error: err.message || 'Scrape failed',
+          error: errorMessage(err) || 'Scrape failed',
           code: 'SCRAPE_ERROR',
         }),
       });
@@ -88,7 +89,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
 
 // 複数 URL 一括並行スクレイプ (POST /scrape/batch)
 scrapeRoutes.post('/scrape/batch', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -102,12 +103,12 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
-    const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
+    const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
-  } catch (err: any) {
-    const msg = err.message || 'Batch scrape failed';
+  } catch (err) {
+    const msg = errorMessage(err) || 'Batch scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const code = isSecurity ? 'SSRF_BLOCKED' : 'BATCH_SCRAPE_ERROR';
     return formatError(c, msg, code, isSecurity ? 403 : 500, !isSecurity);
@@ -118,7 +119,7 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 scrapeRoutes.post('/map', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 
@@ -133,9 +134,9 @@ scrapeRoutes.post('/map', async (c) => {
     });
 
     return c.json(result);
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Map failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Map failed' }, isSecurity ? 403 : 500);
   }
 });
 
@@ -143,11 +144,11 @@ scrapeRoutes.post('/map', async (c) => {
 scrapeRoutes.post('/crawl', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await crawlSiteUrl({
       url: body.url,
       tenantId,
@@ -174,9 +175,9 @@ scrapeRoutes.post('/crawl', async (c) => {
     });
 
     return c.json(result);
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Crawl failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Crawl failed' }, isSecurity ? 403 : 500);
   }
 });
 
@@ -184,7 +185,7 @@ scrapeRoutes.post('/crawl', async (c) => {
 scrapeRoutes.post('/crawl/stream', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body || !body.url || typeof body.url !== 'string') {
+    if (!body?.url || typeof body.url !== 'string') {
       return c.json({ error: 'url is required' }, 400);
     }
 
@@ -194,7 +195,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ url: body.url, status: 'crawling' }),
       });
 
-      const streamTenant = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+      const streamTenant = c.get('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
         url: body.url,
         tenantId: streamTenant,
@@ -217,7 +218,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         highlightOverheadTokens: body.highlightOverheadTokens,
         highlightMaxCount: body.highlightMaxCount,
         noCache: body.noCache,
-        onPageCrawled: (page: any, count: number) => {
+        onPageCrawled: (page, count) => {
           stream.writeSSE({
             event: 'page',
             data: JSON.stringify({ count, page }),
@@ -230,8 +231,8 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ count: result.count, url: result.url }),
       });
     });
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Crawl stream failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Crawl stream failed' }, isSecurity ? 403 : 500);
   }
 });

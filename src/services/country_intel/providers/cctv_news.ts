@@ -33,7 +33,7 @@ function parseFocusDate(value: string): string | undefined {
 }
 
 function entryId(url: string, title: string): string {
-  const m = /\/([A-Z]+[^\/]*)\.shtml$/.exec(url);
+  const m = /\/([A-Z]+[^/]*)\.shtml$/.exec(url);
   if (m?.[1]) return m[1];
   return title.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }

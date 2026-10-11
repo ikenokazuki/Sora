@@ -2,6 +2,7 @@ import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
+import { errorMessage } from './errors.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -155,7 +156,7 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     return { browser: dedicated, isDedicated: true };
   }
 
-  if (sharedBrowserInstance && sharedBrowserInstance.connected) {
+  if (sharedBrowserInstance?.connected) {
     try {
       await sharedBrowserInstance.version();
       markSharedBrowserUsed();
@@ -200,7 +201,7 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
 }
 
 export function isSharedBrowserConnected(): boolean {
-  return sharedBrowserInstance !== null && sharedBrowserInstance.connected;
+  return sharedBrowserInstance?.connected === true;
 }
 
 export async function closeSharedBrowser(): Promise<void> {
@@ -376,7 +377,7 @@ export function parseIpv4ToUint32(host: string): number | null {
     } else {
       return null;
     }
-    if (isNaN(val) || val < 0) return null;
+    if (Number.isNaN(val) || val < 0) return null;
     values.push(val);
   }
 
@@ -446,7 +447,7 @@ export function isPrivateIp(ip: string): boolean {
       if (hexParts.length === 2) {
         const hi = parseInt(hexParts[0], 16);
         const lo = parseInt(hexParts[1], 16);
-        if (!isNaN(hi) && !isNaN(lo)) {
+        if (!Number.isNaN(hi) && !Number.isNaN(lo)) {
           const num = (((hi & 0xffff) << 16) | (lo & 0xffff)) >>> 0;
           return isPrivateIpUint32(num);
         }
@@ -543,8 +544,9 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
     const result = addresses.map((a) => a.address);
     dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
     return result;
-  } catch (err: any) {
-    if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
+  } catch (err) {
+    const message = errorMessage(err);
+    if (message && (message.includes('DNS Rebinding') || message.includes('プライベートネットワーク'))) {
       throw err;
     }
     return [];
@@ -668,7 +670,6 @@ export async function pruneInvisibleElements(page: Page, cloneOnly = false): Pro
 
               if (el.getAttribute('aria-hidden') === 'true' && el.classList.contains('visually-hidden')) {
                 output.remove();
-                continue;
               }
             } catch {}
           }

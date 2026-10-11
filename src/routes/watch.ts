@@ -19,6 +19,7 @@ import {
   WatchCheckRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorCode, errorMessage } from '../errors.js';
 
 export function createWatchRoutes(deps: WatchRouteDeps = {}) {
   const {
@@ -32,7 +33,7 @@ export function createWatchRoutes(deps: WatchRouteDeps = {}) {
 
 // 監視ターゲット登録 (POST /watch/register)
 watchRoutes.post('/watch/register', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -47,14 +48,14 @@ watchRoutes.post('/watch/register', async (c) => {
   try {
     const result = await registerWatchTarget(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Watch target registration failed', 'WATCH_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Watch target registration failed', 'WATCH_ERROR', 500);
   }
 });
 
 // 差分スキャン実行 (POST /watch/check)
 watchRoutes.post('/watch/check', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -71,11 +72,11 @@ watchRoutes.post('/watch/check', async (c) => {
       return c.json({ result: await checkWatchTarget(parsed.data.id) });
     }
     return c.json({ results: await checkAllWatchTargets() });
-  } catch (err: any) {
-    if (err?.code === 'WATCH_SELECTOR_NOT_FOUND') {
-      return formatError(c, err.message || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);
+  } catch (err) {
+    if (errorCode(err) === 'WATCH_SELECTOR_NOT_FOUND') {
+      return formatError(c, errorMessage(err) || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);
     }
-    return formatError(c, err.message || 'Watch check failed', 'WATCH_ERROR', 500);
+    return formatError(c, errorMessage(err) || 'Watch check failed', 'WATCH_ERROR', 500);
   }
 });
 
@@ -84,8 +85,8 @@ watchRoutes.get('/watch/list', (c) => {
   try {
     const targets = listWatchTargets();
     return c.json({ count: targets.length, targets });
-  } catch (err: any) {
-    return formatError(c, err.message || 'Watch list failed', 'WATCH_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Watch list failed', 'WATCH_ERROR', 500);
   }
 });
 

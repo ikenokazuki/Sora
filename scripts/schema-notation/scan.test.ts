@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { findNotationIssues, noteKeyPaths, parseDocumentedDefault, type Param } from './scan.js';
+import { checkReadmeExamples, missingExampleKeys } from './readme_examples.js';
 
 const SAFE = Number.MAX_SAFE_INTEGER;
 const kinds = (params: Param[], pairs: Record<string, { method: string; path: string } | null> = {}, allow: Record<string, string> = {}) =>
@@ -68,6 +69,57 @@ describe('noteKeyPaths', () => {
     expect(noteKeyPaths('{ routes: [{ index, totalTime }], note }')).toEqual(['routes', 'routes[].index', 'routes[].totalTime', 'note']);
     expect(noteKeyPaths('{ found, detail: { text, author }, items?: [{ id, plans: [{ planId }] }] }')).toEqual([
       'found', 'detail', 'detail.text', 'detail.author', 'items', 'items[].id', 'items[].plans', 'items[].plans[].planId',
+    ]);
+  });
+});
+
+describe('README examples', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      count: { type: 'number' },
+      items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, meta: { type: 'object' } } } },
+    },
+  };
+  const doc = {
+    paths: {
+      '/things/{id}': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { q: { type: 'string' } } } } } },
+          responses: { '200': { content: { 'application/json': { schema } } } },
+        },
+      },
+    },
+  };
+
+  test('reports example keys the schema does not declare, including nested ones', () => {
+    expect(missingExampleKeys({ count: 1, items: [{ id: 'a', meta: { free: 1 }, extra: 2 }], total: 3 }, schema))
+      .toEqual(['.items[].extra', '.total']);
+  });
+
+  test('checks request and response examples under the endpoint of their section', () => {
+    const md = [
+      '### Things (`POST /things/1`)',
+      '- **リクエスト**:',
+      '```json',
+      '{ "q": "x", "limit": 2 }',
+      '```',
+      '- **レスポンス例**:',
+      '```json',
+      '{ "count": 1, "items": [ ... ], "rank": 1 }',
+      '```',
+    ].join('\n');
+    expect(checkReadmeExamples(md, doc).map((f) => `${f.kind} ${f.detail}`)).toEqual([
+      'request POST /things/1: limit',
+      'response POST /things/1: .rank',
+    ]);
+  });
+
+  test('a response example that cannot be parsed or matched is a finding', () => {
+    const md = ['### Other (`GET /missing`)', '- **レスポンス例**:', '```json', '{ "a": 1 }', '```', '- **レスポンス例**:', '```json', '{ broken', '```'].join('\n');
+    expect(checkReadmeExamples(md, doc).map((f) => f.detail)).toEqual([
+      'no OpenAPI operation for GET /missing',
+      'unparseable JSON (GET /missing)',
     ]);
   });
 });

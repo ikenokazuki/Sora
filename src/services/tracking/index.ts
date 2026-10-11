@@ -5,14 +5,10 @@ import type {
   TrackingVerification,
 } from './types.js';
 import { cleanTrackingNumber } from './normalization.js';
-import {
-  ALL_CARRIER_ADAPTERS,
-  getCarrierAdapter,
-  getCarrierName,
-  getCarrierTrackingUrl,
-} from './registry.js';
+import { getCarrierAdapter } from './registry.js';
 import { detectCandidates, type RankedCandidate } from './detector.js';
 import { getFromCache, setToCache } from '../../cache.js';
+import { errorMessage } from '../../errors.js';
 
 export const TRACKING_CACHE_TTL = 300; // 5分
 export const TRACKING_DELIVERED_CACHE_TTL = 86400; // 配達完了は24時間
@@ -129,16 +125,16 @@ export async function trackPackageAuto(
           result: { ...res, verification },
           verification,
         };
-      } catch (err: any) {
+      } catch (err) {
         const errorResult: TrackingResult = {
           carrier: cand.carrier,
           carrierName: cand.adapter.name,
           trackingNumber: num,
           status: 'error',
-          statusText: err?.message || '照会エラー',
+          statusText: errorMessage(err) || '照会エラー',
           events: [],
           trackingUrl: cand.adapter.trackingUrl(num),
-          error: err?.message || String(err),
+          error: errorMessage(err) || String(err),
         };
         const verification = cand.adapter.verify(errorResult, num);
         return {

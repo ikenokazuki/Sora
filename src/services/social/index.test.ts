@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { createSocialService, type SocialDeps } from './index.js';
-import { WeiboAuthError } from './weibo.js';
 
 const mblog = (id: string, created_at = 'Fri Sep 25 22:29:20 +0800 2026') => ({
   id, bid: 'B' + id, text: 'post ' + id, created_at, user: { screen_name: 'a' }, comments_count: Number(id),

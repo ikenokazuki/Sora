@@ -2,7 +2,7 @@
 // Live cases use real service paths through the public MCP/REST server.
 import {
   LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
-  type CaseContext, type CaseObservation, type HealthCase, type ObservedSource,
+  type CaseContext, type CaseObservation, type HealthCase,
 } from './types.js';
 import { getAllCarrierAdapters } from '../../src/services/tracking/registry.js';
 import { SocialPlatformSchema } from '../../src/services/social/types.js';
@@ -18,7 +18,6 @@ import { createEonetProvider } from '../../src/services/country_intel/providers/
 import { createGlobalFeedsProvider } from '../../src/services/country_intel/providers/feeds.js';
 import { createGoogleNewsProvider } from '../../src/services/country_intel/providers/google_news.js';
 import { createBingNewsProvider } from '../../src/services/country_intel/providers/bing_news.js';
-import { createWikiCurrentProvider } from '../../src/services/country_intel/providers/wiki_current.js';
 import { createBaiduHotProvider } from '../../src/services/country_intel/providers/baidu_hot.js';
 import { createSo360SearchProvider } from '../../src/services/country_intel/providers/so360_search.js';
 import { createWeiboHotProvider } from '../../src/services/country_intel/providers/weibo_hot.js';
@@ -32,7 +31,6 @@ import { createFediverseProvider } from '../../src/services/country_intel/provid
 import { createSocialPostsProvider } from '../../src/services/country_intel/providers/social_posts.js';
 import { createWorldBankProvider } from '../../src/services/country_intel/providers/worldbank.js';
 import { createNagerProvider } from '../../src/services/country_intel/providers/nager.js';
-import { createWikidataProvider } from '../../src/services/country_intel/providers/wikidata.js';
 
 export interface RestRoute { method: string; path: string; }
 
@@ -801,7 +799,7 @@ export function checkProviderItems(items: AcquisitionItem[], source: string, reg
 }
 
 async function runProvider(source: string, provider: CountryIntelProvider, input: ProviderInput, timeoutMs: number): Promise<CaseObservation> {
-  let result;
+  let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
   try {
     result = await provider.run(input, AbortSignal.timeout(timeoutMs));
   } catch (e) {
@@ -849,7 +847,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     }
     if (!wikitext) throw new LiveUnverified('wiki_current portal page had no wikitext');
     const provider = createWikiCurrentProvider();
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'wiki_current', 'news'), AbortSignal.timeout(60000));
     } catch (e) {
@@ -907,7 +905,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
       providerInput(REGION_JP, 'social_posts', '東京', true, { platforms: ['weibo'], queries: [{ platform: 'weibo', query: '東京' }], lookbackHours: 24 }), 110000)),
   providerCase('provider.worldbank', ['worldbank'], 120000, async () => {
     const provider = createWorldBankProvider();
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'worldbank', 'gdp'), AbortSignal.timeout(110000));
     } catch (e) {
@@ -952,7 +950,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     runProvider(`fediverse:${source.host}`, createFediverseProvider(undefined, [source]), providerInput(REGION_JP, 'fediverse', '音楽', true), 80000))),
   ...WORLD_BANK_INDICATORS.map((indicator) => providerCase(`provider.worldbank.${indicator.id}`, [`worldbank:${indicator.id}`], 90000, async () => {
     const provider = createWorldBankProvider(undefined, [indicator]);
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'worldbank', 'economy'), AbortSignal.timeout(80000));
     } catch (e) {

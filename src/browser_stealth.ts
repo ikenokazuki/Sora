@@ -1,6 +1,4 @@
 import type { Page, CookieParam, Protocol } from 'puppeteer-core';
-import type { PersistedCookie } from './db.js';
-import { DEFAULT_MAX_CHARS } from './types.js';
 import {
   browserSemaphore,
   getBrowser,
@@ -481,7 +479,7 @@ export async function fetchWithStealthBrowser(
         const navigation = page.goto(url, { waitUntil, timeout: timeoutMs });
         navigation.catch(() => {}); // 上限で先に進んだ後の goto 失敗は無視する
         await Promise.race([navigation, idleCapped]);
-      } catch (gotoErr: any) {
+      } catch (gotoErr) {
         // networkidle 等のネットワーク待機タイムアウト時でも、DOM（HTML）が読み込まれていれば処理を続行
         const currentHtml = await page.content().catch(() => '');
         if (!currentHtml || currentHtml.length <= 500) {

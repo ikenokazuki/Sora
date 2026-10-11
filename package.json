@@ -13,6 +13,7 @@
     "build": "bun build ./src/index.ts --target=bun --outfile server.js",
     "test:intel:live": "bun run src/services/country_intel/live_smoke.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint src scripts",
     "test:tools:live": "bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health:candidate --out ./tool-health-out",
     "schema:notation": "NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file scripts/schema-notation/scan.ts"
   },
@@ -29,7 +30,6 @@
     "traffic"
   ],
   "dependencies": {
-    "@hono/mcp": "^0.3.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "cheerio": "^1.2.0",
@@ -44,6 +44,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/bun": "latest",
     "@types/turndown": "^5.0.6",
     "typescript": "5.9.3"

@@ -1,7 +1,6 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalRankFusion } from '../enrichment.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {
@@ -28,6 +27,7 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
+import { errorMessage } from '../errors.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -1011,7 +1011,7 @@ export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?:
 export function normalizeRealtimeItem(item: any): Record<string, any> {
   const createdAtSec = typeof item.created_at === 'number' ? item.created_at : parseInt(item.created_at, 10);
   const publishedTime =
-    !isNaN(createdAtSec) && createdAtSec > 0
+    !Number.isNaN(createdAtSec) && createdAtSec > 0
       ? new Date(createdAtSec * 1000).toISOString()
       : undefined;
 
@@ -1554,7 +1554,7 @@ export function getRealtimeCanonicalIdentity(item: Record<string, any>): string 
   const url = typeof item.url === 'string' ? item.url : typeof item.link === 'string' ? item.link : '';
   if (url) {
     const m = url.match(/(?:\/status\/|\/i\/web\/status\/)(\d+)/i);
-    if (m && m[1]) return `status:${m[1]}`;
+    if (m?.[1]) return `status:${m[1]}`;
     try {
       const u = new URL(url);
       u.searchParams.delete('utm_source');
@@ -1677,8 +1677,8 @@ async function fetchRealtimeBatch(
     });
     const rawList = readRealtimeProviderList(mcpRes);
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
-  } catch (batchErr: any) {
-    errors?.push({ query, message: batchErr?.message || String(batchErr) });
+  } catch (batchErr) {
+    errors?.push({ query, message: errorMessage(batchErr) || String(batchErr) });
     if (isYahooRateLimitedError(batchErr)) {
       return { query, queryIndex, wave, sort, items: [], throttled: true };
     }
@@ -2129,7 +2129,7 @@ export async function fetchTweetsForUrlOrUser(
   if (statusId) {
     try {
       const detail = await defaultXDetailProvider.fetchStatus(statusId);
-      if (detail && detail.text) {
+      if (detail?.text) {
         const author = detail.author
           ? `${detail.author.name} (@${detail.author.screenName})`
           : handle ? `@${handle}` : 'X User';
@@ -2375,7 +2375,7 @@ export function extractOfficialXHandleFromWebResults(items: any[]): string | und
     }
     // x.com または twitter.com のアカウントトップURLを検出
     const match = url.match(/^https?:\/\/(?:x\.com|twitter\.com)\/(?:#!\/)?@?([a-zA-Z0-9_]{1,30})(?:\/?|\?[^/]*)$/i);
-    if (match && match[1]) {
+    if (match?.[1]) {
       const handle = match[1];
       // 予約語や機能パスを除外
       if (!/^(about|help|settings|login|signup|tos|privacy|download|jobs|home|explore)$/i.test(handle)) {

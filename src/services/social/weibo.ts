@@ -1,5 +1,5 @@
 import type { SimpleCookie } from './weibo_session.js';
-import type { SocialComment, SocialPost } from './types.js';
+import type { SocialComment } from './types.js';
 
 export const WEIBO_PWA_HEADERS: Record<string, string> = {
   'MWeibo-Pwa': '1',

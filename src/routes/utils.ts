@@ -1,13 +1,15 @@
+import type { Context } from 'hono';
+
 /**
  * 構造化エラーレスポンス ヘルパー
  */
 export function formatError(
-  c: any,
+  c: Context,
   message: string,
   code = 'INTERNAL_ERROR',
   status: 400 | 401 | 403 | 404 | 408 | 422 | 429 | 500 | 502 = 500,
   retryable = false,
-  details?: any,
+  details?: unknown,
 ) {
   return c.json(
     {

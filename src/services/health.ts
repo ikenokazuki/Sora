@@ -5,6 +5,7 @@ import { sendWebhookNotification } from '../enrichment.js';
 import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
+import { errorMessage } from '../errors.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -46,8 +47,8 @@ async function probeEndpoint(url: string, timeoutMs = 3000): Promise<DependencyS
       return { status: 'ok', latencyMs };
     }
     return { status: 'error', latencyMs, message: `HTTP ${res.status}` };
-  } catch (err: any) {
-    return { status: 'error', latencyMs: Date.now() - start, message: err?.message || 'probe failed' };
+  } catch (err) {
+    return { status: 'error', latencyMs: Date.now() - start, message: errorMessage(err) || 'probe failed' };
   }
 }
 
@@ -63,8 +64,8 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
     const db = getDb();
     db.query('SELECT 1').get();
     sqliteStatus = { status: 'ok', latencyMs: Date.now() - dbStart };
-  } catch (err: any) {
-    sqliteStatus = { status: 'error', latencyMs: Date.now() - dbStart, message: err?.message };
+  } catch (err) {
+    sqliteStatus = { status: 'error', latencyMs: Date.now() - dbStart, message: errorMessage(err) };
   }
 
   // Chromium チェック
@@ -129,6 +130,6 @@ export function sendAdminAlert(event: string, details: Record<string, any>): voi
   };
 
   sendWebhookNotification(alertWebhookUrl, payload).catch((err) => {
-    console.warn('[Sora/Alert] Failed to send admin alert:', err?.message || err);
+    console.warn('[Sora/Alert] Failed to send admin alert:', errorMessage(err) || err);
   });
 }

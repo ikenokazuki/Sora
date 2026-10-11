@@ -46,5 +46,5 @@ export const OFFICIAL_DOMAIN_SEEDS: readonly OfficialDomainSeed[] = [
 
 export function seedDomainsForCountry(countryCode: string | undefined): string[] {
   if (!countryCode) return [];
-  return OFFICIAL_DOMAIN_SEEDS.filter(function (seed) { return seed.countryCode === countryCode; }).map(function (seed) { return seed.domain; });
+  return OFFICIAL_DOMAIN_SEEDS.filter((seed) => seed.countryCode === countryCode).map((seed) => seed.domain);
 }
