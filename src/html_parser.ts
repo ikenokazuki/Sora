@@ -775,7 +775,8 @@ export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,
   maxChars: number,
-  isRendered = false,
+  // 現在は未使用。後ろの真偽値の位置引数がずれないよう、呼び出し元との互換のために残している
+  _isRendered = false,
   onlyMainContent = true,
   selectors?: Record<string, string>,
   removeSelectors?: string[],

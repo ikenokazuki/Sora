@@ -311,11 +311,27 @@ export function calculateContentStats(text: string): {
   };
 }
 
+/**
+ * 出典リンクの URL を返す。絶対 URL はそのまま、相対 URL は baseUrl で解決する。
+ * ページ内アンカー（#...）、解決できないもの、http(s) 以外（mailto: など）は undefined。
+ */
+function resolveCitationUrl(raw: string, baseUrl?: string): string | undefined {
+  if (!raw || raw.startsWith('#')) return undefined;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (!baseUrl) return undefined;
+  try {
+    const resolved = new URL(raw, baseUrl);
+    return resolved.protocol === 'http:' || resolved.protocol === 'https:' ? resolved.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 本文内 出典・引用リンク (Citations) の構造化抽出 */
 export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string): Citation[] {
   if (!markdown) return [];
   const citations: Citation[] = [];
-  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  const linkRegex = /\[([^\]]+)\]\(([^\s)]+)\)/g;
   const seenUrls = new Set<string>();
 
   // 段落単位で走査し、コンテキスト文を取得
@@ -325,10 +341,10 @@ export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string)
     let match: RegExpExecArray | null;
     while ((match = linkRegex.exec(para)) !== null) {
       const text = match[1].trim();
-      const url = match[2].trim();
+      const url = resolveCitationUrl(match[2].trim(), baseUrl);
 
-      // 画像リンクや同ドメイン内アンカーを除外
-      if (text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
+      // 画像リンク・ページ内アンカー・http(s) 以外のリンクを除外
+      if (!url || text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
 
       seenUrls.add(url);
       const context = para.replace(/\s+/g, ' ').trim().slice(0, 150);
