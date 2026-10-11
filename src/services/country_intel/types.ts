@@ -17,10 +17,13 @@ export const SocialPlatformSchema = z.enum(['weibo', 'threads', 'instagram', 'fa
 export type IntelSocialPlatform = z.infer<typeof SocialPlatformSchema>;
 
 export const IntelSocialInputSchema = z.object({
-  platforms: z.array(SocialPlatformSchema).optional(),
-  queries: z.array(z.object({ platform: SocialPlatformSchema, query: z.string().trim().min(1).max(500) })).optional(),
-  urls: z.array(z.string().min(1)).optional(),
-  lookbackHours: z.number().int().min(1).max(2160).optional(),
+  platforms: z.array(SocialPlatformSchema).optional().describe('検索する SNS (省略時は weibo, threads, instagram, facebook のすべて)。queries で語を指定しない SNS は query か地域名で検索する'),
+  queries: z.array(z.object({
+    platform: SocialPlatformSchema.describe('検索する SNS'),
+    query: z.string().trim().min(1).max(500).describe('検索語 (現地語推奨)'),
+  })).optional().describe('SNS ごとの検索語 (1つの SNS につき2語まで、全体で8件まで)'),
+  urls: z.array(z.string().min(1)).optional().describe('本文を取得する公開投稿の URL (10件まで)'),
+  lookbackHours: z.number().int().min(1).max(2160).optional().describe('検索する期間 (時間, 1〜2160, デフォルト: 24)').meta({ default: 24 }),
 });
 export type IntelSocialInput = z.infer<typeof IntelSocialInputSchema>;
 

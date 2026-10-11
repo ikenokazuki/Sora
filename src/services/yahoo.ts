@@ -18,6 +18,7 @@ import {
   anchorCandidates,
   detectAliasFromOfficialPosts,
   detectRealtimeAnchor,
+  matchPreferredAnchor,
   detectRealtimeFocus,
   isAnchorBroken,
   isPublicFocusTerm,
@@ -1084,6 +1085,8 @@ export interface YahooRealtimeOptions {
   anchorHints?: RealtimeAnchorHints;
   /** 優先する発信者。省略時はクエリの語から推定する（評判系の目印が無ければ公式優先） */
   focus?: RealtimeFocus;
+  /** 守る固有名詞（呼び出し側が分かる場合）。クエリの語に対応すれば推定より優先する。anchorHints がある時だけ効く */
+  anchor?: string;
   /** 返す投稿の上限（既定は limit、それも無ければ20）。deep search の realtimeLimit 用 */
   maxItems?: number;
 }
@@ -1246,6 +1249,7 @@ export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): stri
     options.disableFallback === true,
     (options as any)?.verbose === true,
     options.focus ?? 'auto',
+    options.anchor?.trim() || 'auto',
     process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on',
   ]);
 }
@@ -1737,18 +1741,25 @@ interface ResolvedRealtimeAnchor {
   broken: boolean;
 }
 
-/** 固有名詞の解決。判定材料（Web タイトル・総ヒット数）は候補が2語以上の時だけ、別名は壊れている時だけ取りに行く。 */
+/**
+ * 固有名詞の解決。呼び出し側の指定がクエリの語に対応すればそれを使う。
+ * 推定の判定材料（Web タイトル・総ヒット数）は候補が2語以上の時だけ、別名は壊れている時だけ取りに行く。
+ */
 async function resolveRealtimeAnchor(
   terms: string[],
   wave1Items: any[],
   hints: RealtimeAnchorHints,
   termTotals: (terms: string[]) => Promise<Record<string, number>>,
+  preferred?: string,
 ): Promise<ResolvedRealtimeAnchor | undefined> {
-  const candidates = anchorCandidates(terms);
-  const [titles, totals] = candidates.length > 1
-    ? await Promise.all([hints.webTitles().catch(() => []), termTotals(candidates).catch(() => ({}))])
-    : [[], {}];
-  const term = detectRealtimeAnchor(terms, titles, totals);
+  const detect = async () => {
+    const candidates = anchorCandidates(terms);
+    const [titles, totals] = candidates.length > 1
+      ? await Promise.all([hints.webTitles().catch(() => []), termTotals(candidates).catch(() => ({}))])
+      : [[], {}];
+    return detectRealtimeAnchor(terms, titles, totals);
+  };
+  const term = matchPreferredAnchor(terms, preferred) ?? await detect();
   if (!term) return undefined;
   const broken = isAnchorBroken(term, wave1Items);
   const alias = broken ? detectAliasFromOfficialPosts(await hints.officialPosts(term).catch(() => []), terms) : undefined;
@@ -1998,6 +2009,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
       mergeRealtimeQueryBatches(batches).items,
       anchorHints,
       termTotals,
+      (options as YahooRealtimeOptions).anchor,
     ).catch(() => undefined);
   }
   // 全語に一致した投稿が少ないだけで、固有名詞は壊れていなければ、従来どおり網羅できたものとして終える
