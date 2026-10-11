@@ -3,6 +3,9 @@ import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
 const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
+// 偽装（applyStealthEvasions）を確かめるページ。新しいページは最初から about:blank なので、about:blank へ移動しても
+// 新しい文書として読み込まれないことがあり、evaluateOnNewDocument の仕込みが効かない回が出る。必ず新しい文書になる data: URL を開く
+const STEALTH_TEST_PAGE = 'data:text/html,<!doctype html><title>stealth</title>';
 
 // USITC・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報は固定応答で確かめる（SORA_LIVE_TESTS=1 では本物を使う）
 let restoreExternalFetch: (() => void) | undefined;
@@ -1511,7 +1514,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const page = await browser.newPage();
     try {
       await applyStealthEvasions(page);
-      await page.goto('about:blank');
+      await page.goto(STEALTH_TEST_PAGE);
       const candidates = await page.evaluate(() => {
         return new Promise<string[]>((resolve) => {
           // STUNサーバーを指定しないと srflx candidate（実IP露出の本体）が生成されずテストにならない
@@ -1587,7 +1590,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const pageA = await browser.newPage();
     let unpatched: number[];
     try {
-      await pageA.goto('about:blank');
+      await pageA.goto(STEALTH_TEST_PAGE);
       unpatched = await pageA.evaluate(drawScript);
     } finally {
       await pageA.close();
@@ -1597,7 +1600,7 @@ describe('Sora REST & MCP Endpoints', () => {
     let patched: number[];
     try {
       await applyStealthEvasions(pageB);
-      await pageB.goto('about:blank');
+      await pageB.goto(STEALTH_TEST_PAGE);
       patched = await pageB.evaluate(drawScript);
     } finally {
       await pageB.close();
@@ -1618,7 +1621,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const page = await browser.newPage();
     try {
       await applyStealthEvasions(page);
-      await page.goto('about:blank');
+      await page.goto(STEALTH_TEST_PAGE);
       const info = await page.evaluate(() => ({
         screenWidth: screen.width,
         screenHeight: screen.height,
@@ -1643,7 +1646,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const page = await browser.newPage();
     try {
       await applyStealthEvasions(page);
-      await page.goto('about:blank');
+      await page.goto(STEALTH_TEST_PAGE);
       const info = await page.evaluate(() => ({
         firstLanguage: navigator.languages[0],
         dateTimeLocale: Intl.DateTimeFormat().resolvedOptions().locale,
