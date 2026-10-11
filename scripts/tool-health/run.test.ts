@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   checkTrackingNegative,
   checkTrackingNoCreds,
-  checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
+  checkProviderItems, checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
 import {
   collectKnownCaseIds, gateExit, isGatePass, nonPassLines, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
@@ -29,6 +29,11 @@ describe('classification', () => {
     expect(() => mustHaveItems({ items: [] }, 's')).toThrow(LiveFail);
     expect(() => mustHaveItems({ nope: 1 }, 's')).toThrow(LiveFail);
     expect(() => mustHaveItems({ items: [{}] }, 's', 'url')).toThrow(LiveFail);
+    // 一部の要素だけ項目が欠けても拾う（全体の8割未満なら fail）
+    expect(() => mustHaveItems({ items: [{ url: 'a', title: 't' }, { url: 'b', title: '' }, { url: 'c' }] }, 's', ['url', 'title'])).toThrow(LiveFail);
+    expect(mustHaveItems({ items: [1, 2, 3, 4, 5].map((i) => ({ url: `u${i}`, title: i === 5 ? '' : 't' })) }, 's', ['url', 'title']).items).toHaveLength(5);
+    expect(() => mustHaveItems({ suggestions: ['東京', '', ''] }, 's')).toThrow(LiveFail);
+    expect(mustHaveItems({ suggestions: ['東京駅', '東京都'] }, 's').items).toHaveLength(2);
     const { items } = mustHaveItems({ items: [{ url: 'https://e/1' }] }, 's', 'url');
     expect(items).toHaveLength(1);
   });
@@ -40,7 +45,9 @@ describe('classification', () => {
     expect(() => checkTrackingResult({ other: 1 }, 'N1', 'yamato')).toThrow(LiveFail);
     const neg = checkTrackingNegative({ trackingNumber: 'B1', status: 'not_found' }, 'B1', 'ups', true);
     expect(neg.detail).toContain('bogus');
-    expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown' }, 'B1', 'ups', true)).toThrow(LiveUnverified);
+    // 存在しない番号を判定できないのは、スクレイパーを直すまで unverified。理由に応答の要約を入れる
+    expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown', statusText: 'page layout changed' }, 'B1', 'ups', true)).toThrow(LiveUnverified);
+    expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown', statusText: 'page layout changed' }, 'B1', 'ups', true)).toThrow(/unknown \| page layout changed/);
     expect(() => checkTrackingNegative({ trackingNumber: 'B1', status: 'unknown', statusText: 'blocked by carrier bot check' }, 'B1', 'ups', true)).toThrow(LiveBlocked);
     const any = checkTrackingNegative({ trackingNumber: 'B1', status: 'delivered' }, 'B1', 'dhl', false);
     expect(any.detail).toContain('delivered');
@@ -102,7 +109,9 @@ describe('report writers', () => {
     expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(0);
     expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 1, unverified: 2, not_applicable: 0 } as never, [])).toBe(3);
     expect(gateExit({ pass: 1, pass_empty: 0, fail: 1, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(1);
-    expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 1, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(1);
+    // 外部の一時的な不調だけなら公開は止めない。ただし unavailable が 25% を超えたらこちら側の故障とみなす
+    expect(gateExit({ pass: 9, pass_empty: 0, fail: 0, unavailable: 1, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(3);
+    expect(gateExit({ pass: 2, pass_empty: 0, fail: 0, unavailable: 1, blocked: 0, unverified: 0, not_applicable: 0 } as never, [])).toBe(1);
     expect(gateExit({ pass: 1, pass_empty: 0, fail: 0, unavailable: 0, blocked: 0, unverified: 0, not_applicable: 0 } as never, ['missing-tool'])).toBe(1);
   });
   test('junit and markdown render', () => {
@@ -112,5 +121,14 @@ describe('report writers', () => {
     expect(junit).toContain('failure');
     const md = toMarkdown(report);
     expect(md).toContain('| b |');
+  });
+});
+
+describe('always-populated providers', () => {
+  const item = { evidence: { url: 'https://example.com/a' } } as never;
+  test('zero items fail for an always-populated source, stay unverified otherwise', () => {
+    expect(() => checkProviderItems([], 'weibo_hot', undefined, { alwaysPopulated: true })).toThrow(LiveFail);
+    expect(() => checkProviderItems([], 'gdacs')).toThrow(LiveUnverified);
+    expect(checkProviderItems([item], 'weibo_hot', undefined, { alwaysPopulated: true }).sources[0].count).toBe(1);
   });
 });

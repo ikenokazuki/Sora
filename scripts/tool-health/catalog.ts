@@ -139,8 +139,9 @@ export async function mcpJson(ctx: CaseContext, tool: string, args: Record<strin
   try {
     raw = await ctx.mcp.callTool(tool, args, timeoutMs);
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') throw new LiveUnavailable(tool + ' timed out');
-    throw new LiveUnavailable(tool + ' transport failed: ' + String((e as Error)?.message ?? e).slice(0, 160));
+    // タイムアウトは上流の遅さもありうるので unavailable。候補のサーバーに繋がらない・HTTP エラーは、こちら側の故障として fail
+    if (e instanceof DOMException && (e.name === 'AbortError' || e.name === 'TimeoutError')) throw new LiveUnavailable(tool + ' timed out');
+    throw new LiveFail(tool + ' transport failed: ' + String((e as Error)?.message ?? e).slice(0, 160));
   }
   const envelope = raw as {
     isError?: boolean;
@@ -199,7 +200,12 @@ export function toolPayload(text: string, tool: string): unknown {
 
 // ---------- more live helpers ----------
 
-export function mustHaveItems(result: unknown, source: string, field?: string, min = 1): { items: unknown[]; observation: CaseObservation } {
+/** 項目の中身を確かめる要素の割合。一部の要素だけ取れなくなる構造変化も拾うため、先頭の1件ではなく全体で見る。 */
+export const MIN_FIELD_COVERAGE = 0.8;
+
+const isFilled = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
+
+export function mustHaveItems(result: unknown, source: string, fields?: string | string[], min = 1): { items: unknown[]; observation: CaseObservation } {
   const record = result as Record<string, unknown>;
   const candidates = ['items', 'results', 'pois', 'flights', 'routes', 'forecasts', 'suggestions', 'posts', 'laws', 'speeches', 'warnings', 'records', 'earthquakes'];
   let items: unknown[] | undefined;
@@ -208,11 +214,16 @@ export function mustHaveItems(result: unknown, source: string, field?: string, m
   }
   if (!items) throw new LiveFail(source + ' returned no item array');
   if (items.length < min) throw new LiveFail(source + ` returned only ${items.length} items`);
-  if (field) {
-    const first = items[0] as Record<string, unknown>;
-    if (first == null || first[field] === undefined || first[field] === '' || first[field] === null) {
-      throw new LiveFail(source + ` first item lacks field: ${field}`);
-    }
+  const required = fields === undefined ? [] : Array.isArray(fields) ? fields : [fields];
+  const need = Math.ceil(items.length * MIN_FIELD_COVERAGE);
+  if (required.length === 0 && items.every((item) => typeof item !== 'object' || item === null)) {
+    // 文字列の配列（サジェストなど）は、空でない要素の割合を見る
+    const filled = items.filter(isFilled).length;
+    if (filled < need) throw new LiveFail(source + ` only ${filled}/${items.length} items are non-empty`);
+  }
+  for (const field of required) {
+    const filled = items.filter((item) => isFilled((item as Record<string, unknown> | null)?.[field])).length;
+    if (filled < need) throw new LiveFail(source + ` only ${filled}/${items.length} items have field: ${field}`);
   }
   return { items, observation: { sources: [{ source, count: items.length, format: 'json', upstreamStatus: 'unknown' }] } };
 }
@@ -375,12 +386,20 @@ const NEGATIVE_NUMBERS: Record<string, { number: string; expectNotFound: boolean
   dhl: { number: '1234567890', expectNotFound: false },
 };
 
+// 海外配送（fedex・dhl）は直近の実行で毎回判定できていない。スクレイパーを直すまでは unverified（公開は止めない）に留め、
+// 理由に応答の要約を出してページ変更かブロックかを切り分けられるようにする。直したら fail に上げる。
+/** 判定できなかったときの理由に入れる応答の要約（状態・状態の文言・最初の事象）。構造変化かブロックかを切り分けるため。 */
+function trackingSummary(parsed: { status?: string; statusText?: string; events?: Array<{ description?: string; status?: string }> }): string {
+  const first = parsed.events?.[0];
+  return [parsed.status, parsed.statusText, first?.description ?? first?.status].filter(Boolean).join(' | ').replace(/\s+/g, ' ').slice(0, 120);
+}
+
 export function checkTrackingNegative(raw: unknown, trackingNumber: string, carrier: string, expectNotFound: boolean): CaseObservation {
   const text = textOf(raw);
   if (!text.includes(trackingNumber)) throw new LiveFail(`track_package (${carrier}) response missing tracking number`);
-  let parsed: { status?: string };
+  let parsed: { status?: string; statusText?: string; events?: Array<{ description?: string; status?: string }> };
   try {
-    parsed = JSON.parse(text) as { status?: string };
+    parsed = JSON.parse(text);
   } catch {
     throw new LiveFail(`track_package (${carrier}) returned non-JSON payload`);
   }
@@ -389,14 +408,14 @@ export function checkTrackingNegative(raw: unknown, trackingNumber: string, carr
       return { detail: 'bogus number correctly classified', sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
     }
     if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
-    throw new LiveUnverified(`track_package (${carrier}) bogus number was ${parsed.status ?? 'unparsed'} (blocked or page changed)`);
+    throw new LiveUnverified(`track_package (${carrier}) could not classify a bogus number (blocked or page changed): ${trackingSummary(parsed)}`);
   }
   const known = ['delivered', 'in_transit', 'registered', 'returned', 'not_found'];
   if (parsed.status && known.includes(parsed.status)) {
     return { detail: `bogus number parsed as ${parsed.status}`, sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
   }
   if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
-  throw new LiveUnverified(`track_package (${carrier}) bogus number was ${parsed.status ?? 'unparsed'} (blocked or page changed)`);
+  throw new LiveUnverified(`track_package (${carrier}) could not classify a bogus number (blocked or page changed): ${trackingSummary(parsed)}`);
 }
 
 function trackingNegativeCases(): HealthCase[] {
@@ -422,7 +441,7 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('search.deep', ['search_deep'], ['yahoo:web', 'yahoo:realtime'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_deep', { query: '東京', limit: 2, scrapeContent: false, includeRealtime: true }, 80000);
     const raw = toolPayload(rawJsonText, 'search_deep');
-    mustHaveItems(raw, 'search_deep');
+    mustHaveItems(raw, 'search_deep', ['url', 'title']);
     return mustContain(raw, ['東京'], 'yahoo-deep');
   }),
   toolCase('map.site', ['map_site'], ['web:sitemap'], true, 90000, async (ctx) => {
@@ -438,7 +457,7 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('search.web', ['search_web'], ['yahoo:web'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_web', { query: '東京', limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_web');
-    mustHaveItems(raw, 'search_web');
+    mustHaveItems(raw, 'search_web', ['url', 'title']);
     return mustContain(raw, ['東京'], 'yahoo-web');
   }),
   toolCase('social.search', ['search_social_posts'], ['social:weibo', 'social:threads', 'social:instagram', 'social:facebook'], true, 120000, async (ctx) => {
@@ -501,7 +520,7 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('search.chiebukuro', ['search_chiebukuro'], ['yahoo:chiebukuro'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_chiebukuro', { query: '引越し', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_chiebukuro');
-    mustHaveItems(raw, 'search_chiebukuro');
+    mustHaveItems(raw, 'search_chiebukuro', ['url', 'title']);
     return { sources: [{ source: 'yahoo-chiebukuro', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('suggest.keywords', ['suggest_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
@@ -535,13 +554,13 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('search.route', ['search_route'], ['yahoo:transit'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_route', { from: '東京', to: '新宿' }, 60000);
     const raw = toolPayload(rawJsonText, 'search_route');
-    mustHaveItems(raw, 'search_route');
+    mustHaveItems(raw, 'search_route', ['totalTime', 'fare']);
     return mustContain(raw, ['新宿'], 'yahoo-transit');
   }),
   toolCase('get.weather', ['get_weather'], ['jma:forecast'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'get_weather', { city: '東京', days: 1, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'get_weather');
-    mustHaveItems(raw, 'get_weather');
+    mustHaveItems(raw, 'get_weather', ['date', 'telop']);
     return mustContain(raw, ['東京'], 'jma');
   }),
   toolCase('flight.status', ['get_flight_status'], ['yahoo:airport'], true, 120000, async (ctx) => {
@@ -636,19 +655,19 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_artist', { query: 'YOASOBI', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_artist');
-    mustHaveItems(raw, 'search_artist');
+    mustHaveItems(raw, 'search_artist', ['title']);
     return mustContain(raw, ['YOASOBI'], 'itunes-artist');
   }),
   toolCase('music.generic', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'アイドル', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_music');
-    mustHaveItems(raw, 'search_music');
+    mustHaveItems(raw, 'search_music', ['title', 'artist']);
     return mustContain(raw, ['itunes'], 'itunes-music');
   }),
   toolCase('gov.laws', ['search_laws'], ['egov'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_laws', { keyword: '民法', limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_laws');
-    mustHaveItems(raw, 'search_laws');
+    mustHaveItems(raw, 'search_laws', ['id', 'title']);
     return mustContain(raw, ['民法'], 'egov');
   }),
   toolCase('gov.lawtext', ['get_law_text'], ['egov'], true, 90000, async (ctx) => {
@@ -668,7 +687,7 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('gov.diet', ['search_diet_minutes'], ['kokkai'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_diet_minutes', { keyword: '予算', limit: 2 }, 60000);
     const raw = toolPayload(rawJsonText, 'search_diet_minutes');
-    mustHaveItems(raw, 'search_diet_minutes');
+    mustHaveItems(raw, 'search_diet_minutes', ['speaker', 'speech']);
     return { sources: [{ source: 'kokkai', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('trade.cpsc', ['check_cpsc_certificate'], [], false, 30000, async (ctx) => {
@@ -791,21 +810,23 @@ export function classifyProviderError(e: unknown, source: string): never {
   throw new LiveFail(source + ' threw: ' + String((e as Error)?.message ?? e).slice(0, 200));
 }
 
-export function checkProviderItems(items: AcquisitionItem[], source: string, regions?: string): CaseObservation {
+/** alwaysPopulated: 急上昇一覧・大手のニュースや RSS・数値データなど、普段は必ず中身がある取得元。0件は構造変化として fail にする。 */
+export function checkProviderItems(items: AcquisitionItem[], source: string, regions?: string, opts: { alwaysPopulated?: boolean } = {}): CaseObservation {
+  if (items.length === 0 && opts.alwaysPopulated) throw new LiveFail(source + ' returned zero items from an always-populated source (likely structure or endpoint change)');
   if (items.length === 0) throw new LiveUnverified(source + ' returned zero items (needs triage: quiet upstream or broken parse)');
   const withUrl = items.filter((i) => (typeof i.evidence?.url === 'string' && i.evidence.url.startsWith('http')) || i.calendar !== undefined || typeof i.metric?.current === 'number');
   if (withUrl.length === 0) throw new LiveFail(source + ' items carry no evidence URLs');
   return { sources: [{ source, count: withUrl.length, format: 'mixed', upstreamStatus: 'unknown', note: regions }] };
 }
 
-async function runProvider(source: string, provider: CountryIntelProvider, input: ProviderInput, timeoutMs: number): Promise<CaseObservation> {
+async function runProvider(source: string, provider: CountryIntelProvider, input: ProviderInput, timeoutMs: number, opts: { alwaysPopulated?: boolean } = {}): Promise<CaseObservation> {
   let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
   try {
     result = await provider.run(input, AbortSignal.timeout(timeoutMs));
   } catch (e) {
     classifyProviderError(e, source);
   }
-  return checkProviderItems(result!.items, source);
+  return checkProviderItems(result!.items, source, undefined, opts);
 }
 
 function providerCase(id: string, deps: string[], timeoutMs: number, run: (signal: AbortSignal) => Promise<CaseObservation>): ProviderCase {
@@ -819,7 +840,7 @@ import { searchYahooRealtimePage } from '../../src/services/yahoo_realtime_api.j
 
 export const PROVIDER_CASES: ProviderCase[] = [
   providerCase('provider.gdelt_export', ['gdelt_export'], 120000, async () =>
-    runProvider('gdelt_export', createGdeltExportProvider(), providerInput(REGION_US, 'gdelt_export', 'economy'), 110000)),
+    runProvider('gdelt_export', createGdeltExportProvider(), providerInput(REGION_US, 'gdelt_export', 'economy'), 110000, { alwaysPopulated: true })),
   providerCase('provider.gdacs', ['gdacs'], 120000, async () =>
     runProvider('gdacs', createGdacsProvider(), providerInput(REGION_JP, 'gdacs', 'earthquake'), 110000)),
   providerCase('provider.usgs', ['usgs'], 120000, async () =>
@@ -827,9 +848,9 @@ export const PROVIDER_CASES: ProviderCase[] = [
   providerCase('provider.eonet', ['eonet'], 120000, async () =>
     runProvider('eonet', createEonetProvider(), providerInput(REGION_US, 'eonet', 'wildfire'), 110000)),
   providerCase('provider.google_news', ['google_news'], 120000, async () =>
-    runProvider('google_news', createGoogleNewsProvider(), providerInput(REGION_US, 'google_news', 'economy'), 110000)),
+    runProvider('google_news', createGoogleNewsProvider(), providerInput(REGION_US, 'google_news', 'economy'), 110000, { alwaysPopulated: true })),
   providerCase('provider.bing_news', ['bing_news'], 120000, async () =>
-    runProvider('bing_news', createBingNewsProvider(), providerInput(REGION_US, 'bing_news', 'economy'), 110000)),
+    runProvider('bing_news', createBingNewsProvider(), providerInput(REGION_US, 'bing_news', 'economy'), 110000, { alwaysPopulated: true })),
   providerCase('provider.wiki_current', ['wiki_current'], 120000, async () => {
     // Quiet days yield zero region bullets. pass_empty needs proof the upstream
     // document was parsed by the real path: fetch the same portal wikitext.
@@ -859,21 +880,21 @@ export const PROVIDER_CASES: ProviderCase[] = [
     return obs;
   }),
   providerCase('provider.baidu_hot', ['baidu_hot'], 120000, async () =>
-    runProvider('baidu_hot', createBaiduHotProvider(), providerInput(REGION_CN, 'baidu_hot', '热点'), 110000)),
+    runProvider('baidu_hot', createBaiduHotProvider(), providerInput(REGION_CN, 'baidu_hot', '热点'), 110000, { alwaysPopulated: true })),
   providerCase('provider.so360_search', ['so360_search'], 120000, async () =>
-    runProvider('so360_search', createSo360SearchProvider(), providerInput(REGION_CN, 'so360_search', '经济'), 110000)),
+    runProvider('so360_search', createSo360SearchProvider(), providerInput(REGION_CN, 'so360_search', '经济'), 110000, { alwaysPopulated: true })),
   providerCase('provider.weibo_hot', ['weibo_hot'], 120000, async () =>
-    runProvider('weibo_hot', createWeiboHotProvider(), providerInput(REGION_CN, 'weibo_hot', '热搜'), 110000)),
+    runProvider('weibo_hot', createWeiboHotProvider(), providerInput(REGION_CN, 'weibo_hot', '热搜'), 110000, { alwaysPopulated: true })),
   providerCase('provider.zhihu_hot', ['zhihu_hot'], 120000, async () =>
-    runProvider('zhihu_hot', createZhihuHotProvider(), providerInput(REGION_CN, 'zhihu_hot', '热榜'), 110000)),
+    runProvider('zhihu_hot', createZhihuHotProvider(), providerInput(REGION_CN, 'zhihu_hot', '热榜'), 110000, { alwaysPopulated: true })),
   providerCase('provider.toutiao_hot', ['toutiao_hot'], 120000, async () =>
-    runProvider('toutiao_hot', createToutiaoHotProvider(), providerInput(REGION_CN, 'toutiao_hot', '新闻'), 110000)),
+    runProvider('toutiao_hot', createToutiaoHotProvider(), providerInput(REGION_CN, 'toutiao_hot', '新闻'), 110000, { alwaysPopulated: true })),
   providerCase('provider.wallstreet_live', ['wallstreet_live'], 120000, async () =>
-    runProvider('wallstreet_live', createWallstreetLiveProvider(), providerInput(REGION_CN, 'wallstreet_live', '市场'), 110000)),
+    runProvider('wallstreet_live', createWallstreetLiveProvider(), providerInput(REGION_CN, 'wallstreet_live', '市场'), 110000, { alwaysPopulated: true })),
   providerCase('provider.cctv_news', ['cctv_news'], 120000, async () =>
-    runProvider('cctv_news', createCctvNewsProvider(), providerInput(REGION_CN, 'cctv_news', '新闻'), 110000)),
+    runProvider('cctv_news', createCctvNewsProvider(), providerInput(REGION_CN, 'cctv_news', '新闻'), 110000, { alwaysPopulated: true })),
   providerCase('provider.thepaper_hot', ['thepaper_hot'], 120000, async () =>
-    runProvider('thepaper_hot', createThepaperHotProvider(), providerInput(REGION_CN, 'thepaper_hot', '新闻'), 110000)),
+    runProvider('thepaper_hot', createThepaperHotProvider(), providerInput(REGION_CN, 'thepaper_hot', '新闻'), 110000, { alwaysPopulated: true })),
   providerCase('provider.official_web', ['official_web'], 120000, async () => {
     const provider = createOfficialWebProvider({
       searchWeb: createYahooWebSearchAdapter(),
@@ -912,11 +933,11 @@ export const PROVIDER_CASES: ProviderCase[] = [
       classifyProviderError(e, 'worldbank');
     }
     const metrics = (result!.items ?? []).filter((i) => typeof i.metric?.current === 'number');
-    if (metrics.length === 0) throw new LiveUnverified('worldbank returned no numeric metrics');
+    if (metrics.length === 0) throw new LiveFail('worldbank returned no numeric metrics (always-populated source)');
     return { sources: [{ source: 'worldbank', count: metrics.length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
   providerCase('provider.nager', ['nager'], 120000, async () =>
-    runProvider('nager', createNagerProvider(), providerInput(REGION_JP, 'nager', 'holiday'), 110000)),
+    runProvider('nager', createNagerProvider(), providerInput(REGION_JP, 'nager', 'holiday'), 110000, { alwaysPopulated: true })),
   providerCase('provider.wikidata', ['wikidata'], 120000, async () => {
     // Discovery-only by design: verify the live search response and the real
     // parser separately instead of demanding evidence items.
@@ -931,7 +952,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     }
     const candidates = (data as { search?: unknown[] })?.search;
     if (!Array.isArray(candidates) || candidates.length === 0) {
-      throw new LiveUnverified('wikidata search returned no candidates');
+      throw new LiveFail('wikidata search returned no candidates (always-populated source)');
     }
     const input = providerInput(REGION_JP, 'wikidata', '日本');
     const parsed = parseWikidataResponse(data as never, input, new Date());
@@ -944,7 +965,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     const region = cc
       ? { id: `country:${cc}`, name: cc, nativeName: cc, countryCode: cc, languages: [], aliases: [], confidence: 'low' as const }
       : REGION_US;
-    return runProvider(`feed:${entry.id}`, createGlobalFeedsProvider(undefined, [entry]), providerInput(region, 'global_feeds', 'news'), 80000);
+    return runProvider(`feed:${entry.id}`, createGlobalFeedsProvider(undefined, [entry]), providerInput(region, 'global_feeds', 'news'), 80000, { alwaysPopulated: true });
   })),
   ...FEDIVERSE_TAG_SOURCES.map((source, index) => providerCase(`provider.fediverse.${index}`, [`fediverse:${source.host}`], 90000, async () =>
     runProvider(`fediverse:${source.host}`, createFediverseProvider(undefined, [source]), providerInput(REGION_JP, 'fediverse', '音楽', true), 80000))),
@@ -957,7 +978,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
       classifyProviderError(e, `worldbank:${indicator.id}`);
     }
     const metrics = (result!.items ?? []).filter((i) => typeof i.metric?.current === 'number');
-    if (metrics.length === 0) throw new LiveUnverified(`worldbank:${indicator.id} returned no numeric metric`);
+    if (metrics.length === 0) throw new LiveFail(`worldbank:${indicator.id} returned no numeric metric (always-populated source)`);
     return { sources: [{ source: `worldbank:${indicator.id}`, count: metrics.length, format: 'json', upstreamStatus: 'unknown' }] };
   })),
 ];
