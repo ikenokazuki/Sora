@@ -57,7 +57,7 @@ jobs:
             echo "### tool-health: PASS" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           elif [ "$code" -eq 3 ]; then
-            echo "### tool-health: SOFT HOLD (unverified/blocked only, no breakage signal)" >> "$GITHUB_STEP_SUMMARY"
+            echo "### tool-health: SOFT HOLD (unavailable/unverified/blocked only, no breakage signal)" >> "$GITHUB_STEP_SUMMARY"
             cat tool-health-out/tool-health-standard.md >> "$GITHUB_STEP_SUMMARY"
             exit 0
           else
