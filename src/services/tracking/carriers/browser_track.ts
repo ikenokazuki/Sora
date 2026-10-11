@@ -91,7 +91,6 @@ export function scopedBodyText(html: string): string {
 export function statusFromText(text: string): TrackingStatus {
   const t = text.replace(/\s+/g, ' ');
   if (!t) return 'unknown';
-  const lower = t.toLowerCase();
   if (/delivered|配達完了|お届け完了|お届け済み|配達済み|配達済|受取完了|受取済/i.test(t)) return 'delivered';
   if (/out for delivery|with delivery courier|配達中|持出中/i.test(t)) return 'in_transit';
   if (/return to sender|returned|返送|返品/i.test(t)) return 'returned';

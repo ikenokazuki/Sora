@@ -4,7 +4,6 @@ import {
   getCarrierTrackingUrl,
   getCarrierName,
   determineStatus,
-  detectCandidates,
   detectCandidateCarrierCodes,
   trackYamato,
   trackSagawa,
@@ -142,7 +141,6 @@ describe('Tracking Service Unit Tests', () => {
   describe('Track B Verification Tests (T-B1 to T-B7)', () => {
     it('T-B1: 候補A (高速 in_transit) と 候補B (遅延/hang) で、Bを待たずに早期返却される', async () => {
       // 候補Aが高速に完了し、候補Bが遅延する場合のfail-fastアルゴリズムをシミュレート
-      const strongStatuses = new Set(['delivered', 'in_transit', 'registered', 'returned']);
       const simulatedParallel = async () => {
         return new Promise((resolve) => {
           let isResolved = false;

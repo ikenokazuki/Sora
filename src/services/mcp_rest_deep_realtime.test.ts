@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { app } from '../index.js';
 import * as yahooService from './yahoo.js';
-import { defaultXDetailProvider, type XPostDetail } from './x_detail.js';
+import { defaultXDetailProvider } from './x_detail.js';
 
 describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integration Tests', () => {
   let originalFetch: typeof globalThis.fetch;

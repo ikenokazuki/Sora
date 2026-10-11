@@ -23,8 +23,6 @@ import {
   dedupSearchResults,
   estimateTokens,
   extractCitationsFromMarkdown,
-  extractQueryHighlights,
-  extractQueryHighlightDetails,
   normalizeSafeNumeric,
   rerankByDeepEvidence,
   reorderLostInTheMiddle,
@@ -65,7 +63,6 @@ import {
 import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import {
-  callYahooMcp,
   searchYahooWeb,
   normalizeDomainList,
   normalizeRealtimeItem,

@@ -1,6 +1,6 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
-import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage, type HeadingBlock } from './extractor/hierarchical_bm25.js';
+import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage } from './extractor/hierarchical_bm25.js';
 import {
   assignBlockProvenance,
   formatBlockAnchor,
@@ -37,13 +37,10 @@ import type {
   MarkdownChunk,
   LinkStatus,
   ScrapeResult,
-  TableData,
-  MediaInfo,
   FieldEvidence,
   HighlightItem,
   EvidenceDiagnostics,
   CandidateDiscrepancy,
-  DerivationTrace,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';

@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import {
   extractQueryHighlightsRhoSelect,
-  extractQueryHighlightsRho,
   parseMarkdownSections,
-  tokenizeAndSelectTerms,
-  type RhoSelectOptions,
 } from './rho_select.js';
 
 describe('ρSelect (rho-select) Core Algorithm', () => {

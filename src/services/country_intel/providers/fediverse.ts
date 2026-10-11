@@ -1,7 +1,7 @@
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import type { EvidenceDetail } from '../detail.js';
 import { normalizeEvidence } from '../evidence.js';
-import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
+import { ProviderHttpError } from '../provider_registry.js';
 import { fetchProviderResponse } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 

@@ -124,7 +124,6 @@ function stripMedia(result: Record<string, any>): Record<string, any> {
 const NAV_LABEL_MAX_CHARS = 16;
 /** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
 const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
-const LINK_ONLY_LINE = /^(?:[-*+]|\d+\.)?\s*\[([^\]\n]*)\]\([^)\n]*\)$/;
 
 /**
  * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。

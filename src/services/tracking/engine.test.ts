@@ -1,7 +1,6 @@
 import { describe, it, expect, spyOn } from 'bun:test';
 import type {
   TrackingCarrierAdapter,
-  TrackingResult,
 } from './types.js';
 import { trackByCarrier, trackPackageAuto } from './index.js';
 import type { RankedCandidate } from './detector.js';

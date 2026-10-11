@@ -5,12 +5,7 @@ import type {
   TrackingVerification,
 } from './types.js';
 import { cleanTrackingNumber } from './normalization.js';
-import {
-  ALL_CARRIER_ADAPTERS,
-  getCarrierAdapter,
-  getCarrierName,
-  getCarrierTrackingUrl,
-} from './registry.js';
+import { getCarrierAdapter } from './registry.js';
 import { detectCandidates, type RankedCandidate } from './detector.js';
 import { getFromCache, setToCache } from '../../cache.js';
 

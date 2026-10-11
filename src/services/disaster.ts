@@ -1,5 +1,4 @@
 import { resolveCityId } from './life.js';
-import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
 
