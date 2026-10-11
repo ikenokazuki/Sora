@@ -1,6 +1,4 @@
-import { z } from 'zod';
 import {
-  ScrapeFormatSchema,
   type ScrapeFormat,
   SEARCH_WEB_INPUT_SHAPE,
   SearchWebRequestSchema,

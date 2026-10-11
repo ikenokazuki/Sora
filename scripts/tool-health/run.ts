@@ -6,7 +6,6 @@ import { CANONICAL_TOOLS, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from '
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
   collectKnownCaseIds, gateExit, redact, registerSecrets, summarize, validateCasesJson, writeReports,
-  type HealthReport,
 } from './report.js';
 import {
   LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,

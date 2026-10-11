@@ -7,15 +7,12 @@ import { z } from 'zod';
 import {
   scrapeUrl,
   scrapeBatchUrls,
-  callYahooMcp,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
   fetchRealtimeTrends,
-  normalizeRealtimeItem,
   searchYahooRealtime,
   createWebAnchorHints,
-  filterByDomains,
   searchYahooImage,
   searchYahooVideo,
   searchYahooNews,
@@ -52,7 +49,7 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 import { formatCompactRealtimeResponse } from './search_compact.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { defaultXDetailProvider, fetchXPostDetail, type XPostDetailProvider } from './services/x_detail.js';
-import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
+import { serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, TRANSIT_ROUTE_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
 import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
@@ -2594,8 +2591,4 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
     });
   }
   return res;
-}
-
-export function createMcpTransport(options?: any) {
-  return new WebStandardStreamableHTTPServerTransport(options);
 }

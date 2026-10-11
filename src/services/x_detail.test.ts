@@ -8,12 +8,8 @@ import {
   type XPostDetail,
   type XPostDetailProvider,
   extractSemanticQuery,
-  observeRequirements,
   isLikelyYahooRealtimeTruncated,
   enrichRealtimeItemsWithXDetail,
-  X_DETAIL_INSPECT_LIMIT,
-  X_DETAIL_MAX_CALLS,
-  YAHOO_REALTIME_TRUNCATION_SUSPECT_MIN_CHARS,
 } from './x_detail.js';
 import { fetchXPostDetail } from './x_detail.js';
 import {

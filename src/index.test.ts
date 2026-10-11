@@ -48,7 +48,7 @@ import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse, clearSharedActivatedTools } from './mcp.js';
-import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
+import { SORA_VERSION, generateOpenApiDocument } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
 import { extractTwitterHandleFromHtml } from './html_parser.js';
@@ -58,11 +58,8 @@ import {
   parseIpv4ToUint32,
   matchUrlPattern,
   decodeHtmlBuffer,
-  extractWithSelectors,
-  parsePdfToMarkdown,
   safeTruncateMarkdown,
   estimateTokens,
-  scrapeBatchUrls,
   convertHtmlToMarkdown,
   cleanMarkdownTokens,
   normalizeRealtimeItem,
@@ -82,7 +79,6 @@ import {
   validateExtractedLinks,
   sendWebhookNotification,
   scrapeUrl,
-  crawlSiteUrl,
   integratedSearch,
   filterByDomains,
   extractRealtimeFallbackQueries,
@@ -112,10 +108,7 @@ import {
   dbGetCache,
   dbSetCache,
   dbDeleteCache,
-  dbClearExpiredCache,
-  dbClearAllCache,
   dbIncrementApiUsage,
-  dbSaveWatchTarget,
   dbGetWatchTarget,
   dbSaveDomainCookies,
   dbGetDomainCookies,
@@ -124,10 +117,6 @@ import {
   isRenderStillBlockedOrBlank,
   getOrCreateHttpSession,
   closeHttpSession,
-  dbListWatchTargets,
-  dbDeleteWatchTarget,
-  dbInsertWatchHistory,
-  dbListWatchHistory,
   fetchWeatherWarnings,
   fetchRecentEarthquakes,
   fetchRoadTraffic,
@@ -135,8 +124,6 @@ import {
   resolveRoadCode,
   formatScale,
   registerWatchTarget,
-  checkWatchTarget,
-  checkAllWatchTargets,
   listWatchTargets,
   deleteWatchTarget,
   computeContentHash,
@@ -166,7 +153,6 @@ import {
   resolveAirport,
   rerankSearchResults,
   rerankByDeepEvidence,
-  checkDetailedHealth,
   buildUserAgentFromDefault,
   buildUserAgentMetadata,
   getFallbackUserAgent,
@@ -378,6 +364,9 @@ describe('web-fetcher Core Functions', () => {
 
       東京ドームでのチケット発売日は2026年8月1日です。全席指定となります。
     `;
+    const highlightsDense = extractQueryHighlights(docWithTwoParagraphs, '東京ドーム チケット 発売');
+    expect(highlightsDense[0]).toContain('2026年8月1日');
+
     // 4. 見出し文脈の継承テスト (Heading Context Inheritance)
     const docWithHeadings = `
       # ライブ情報
@@ -5685,7 +5674,7 @@ describe('Sora REST & MCP Endpoints', () => {
       let operationCount = 0;
       let withContentCount = 0;
 
-      for (const [pathKey, pathItem] of Object.entries(doc.paths)) {
+      for (const pathItem of Object.values(doc.paths)) {
         for (const [method, op] of Object.entries(pathItem as any)) {
           if (['get', 'post', 'put', 'delete', 'patch'].includes(method)) {
             operationCount++;

@@ -16,7 +16,6 @@ let directory: string;
 let previousPath: string | undefined;
 const NOW = new Date('2026-09-23T12:00:00Z');
 const china: RegionIdentity = { id: 'country:CN', name: 'China', countryCode: 'CN', languages: [], aliases: [], confidence: 'high' };
-const inputFor = (id: string) => ({ request: { region: 'China' } as never, region: china, queries: [{ pass: 1 as const, providerId: id, query: 'China', topics: [], maxItems: 10 }] });
 beforeEach(() => {
   closeDb();
   previousPath = process.env.SORA_DB_PATH;

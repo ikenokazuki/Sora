@@ -2,7 +2,7 @@
 // Live cases use real service paths through the public MCP/REST server.
 import {
   LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
-  type CaseContext, type CaseObservation, type HealthCase, type ObservedSource,
+  type CaseContext, type CaseObservation, type HealthCase,
 } from './types.js';
 import { getAllCarrierAdapters } from '../../src/services/tracking/registry.js';
 import { SocialPlatformSchema } from '../../src/services/social/types.js';
@@ -18,7 +18,6 @@ import { createEonetProvider } from '../../src/services/country_intel/providers/
 import { createGlobalFeedsProvider } from '../../src/services/country_intel/providers/feeds.js';
 import { createGoogleNewsProvider } from '../../src/services/country_intel/providers/google_news.js';
 import { createBingNewsProvider } from '../../src/services/country_intel/providers/bing_news.js';
-import { createWikiCurrentProvider } from '../../src/services/country_intel/providers/wiki_current.js';
 import { createBaiduHotProvider } from '../../src/services/country_intel/providers/baidu_hot.js';
 import { createSo360SearchProvider } from '../../src/services/country_intel/providers/so360_search.js';
 import { createWeiboHotProvider } from '../../src/services/country_intel/providers/weibo_hot.js';
@@ -32,7 +31,6 @@ import { createFediverseProvider } from '../../src/services/country_intel/provid
 import { createSocialPostsProvider } from '../../src/services/country_intel/providers/social_posts.js';
 import { createWorldBankProvider } from '../../src/services/country_intel/providers/worldbank.js';
 import { createNagerProvider } from '../../src/services/country_intel/providers/nager.js';
-import { createWikidataProvider } from '../../src/services/country_intel/providers/wikidata.js';
 
 export interface RestRoute { method: string; path: string; }
 

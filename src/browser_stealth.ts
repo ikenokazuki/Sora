@@ -1,6 +1,4 @@
 import type { Page, CookieParam, Protocol } from 'puppeteer-core';
-import type { PersistedCookie } from './db.js';
-import { DEFAULT_MAX_CHARS } from './types.js';
 import {
   browserSemaphore,
   getBrowser,

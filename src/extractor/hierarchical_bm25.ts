@@ -220,49 +220,6 @@ export function extractBestPassage(
 }
 
 /**
- * 上位複数ブロックをスコア順に抽出し、パンくず付きテキスト配列として返却する (Sora ハイライト用)
- */
-export function extractRankedPassages(
-  markdown: string,
-  terms: string[],
-  maxPassages = 3,
-  opts?: { k1?: number; gamma?: number }
-): { block: HeadingBlock; score: number; formattedText: string }[] {
-  const blocks = parseBlocks(markdown);
-  if (blocks.length === 0 || terms.length === 0) return [];
-
-  const scored = blocks.map((block) => ({
-    block,
-    score: scorePassage(block, terms, blocks, opts),
-  }));
-
-  scored.sort((a, b) => b.score - a.score);
-
-  const results: { block: HeadingBlock; score: number; formattedText: string }[] = [];
-  const topScore = scored[0].score;
-
-  for (const item of scored) {
-    if (results.length >= maxPassages) break;
-    // 1位に対してスコアが著しく低い無関係ブロックはスキップ (トップスコアの30%未満)
-    if (results.length > 0 && topScore > 0 && item.score < topScore * 0.3) {
-      break;
-    }
-
-    const headingPrefix = item.block.headingPath.length > 0
-      ? `## ${item.block.headingPath.join(' > ')}\n\n`
-      : '';
-
-    results.push({
-      block: item.block,
-      score: item.score,
-      formattedText: `${headingPrefix}${item.block.body}`.trim(),
-    });
-  }
-
-  return results;
-}
-
-/**
  * クエリ文字列から単語分割＋形態素バイグラム (Bigram) を自動合成して抽出語リストを生成
  */
 export function extractTermsWithBigrams(query: string): string[] {

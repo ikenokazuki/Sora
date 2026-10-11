@@ -1,7 +1,6 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import * as cheerio from 'cheerio';
 import { filterByDomains, rerankSearchResults, scoreSearchCandidate, reciprocalRankFusion } from '../enrichment.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import {

@@ -5,7 +5,6 @@ import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 
 export const WEIBO_HOT_URL = 'https://weibo.com/ajax/side/hotSearch';
-export const WEIBO_HOT_PAGE_URL = 'https://weibo.com/hot';
 export const NEWSNOW_WEIBO_URL = 'https://newsnow.busiyi.world/api/s?id=weibo&latest';
 export const WEIBO_HOT_MAX_ITEMS = 30;
 const WEIBO_HOT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
@@ -129,7 +128,6 @@ export function createWeiboHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
     timeoutMs: 8000,
     async run(input: ProviderInput, signal: AbortSignal) {
       if (input.region.countryCode !== 'CN') return { items: [] as AcquisitionItem[], coverage: [] };
-      let res: Response;
       const fetchJson = async (url: string, referer: string): Promise<string> => {
         let response: Response;
         try {

@@ -3,11 +3,6 @@ import {
   selectEvidenceSetRhoV2,
   evaluateUtility,
   validateEvidenceProblem,
-  computeWitnessSubsetBound,
-  applySafeDominance,
-  solveExactObservedStateDP,
-  computeGreedyIncumbent,
-  solveAdaptiveRefinement,
   RhoResourceLimitError,
   type RhoEvidenceProblem,
   type RhoUtilitySpec,
@@ -444,7 +439,6 @@ describe('ρSelect v2 Canonical Tests (Gemini Implementation Spec v1.0)', () => 
   describe('T9: >32 Candidates without Bitwise Overflow', () => {
     it('handles 40 candidates correctly without 32-bit bitwise shift overflow', () => {
       const n = 40;
-      const m = 2;
       const scores: number[][] = [];
       const costs: number[] = [];
 

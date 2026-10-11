@@ -28,7 +28,3 @@ export function getMetricDefinition(key: string): MetricDefinition {
   if (!definition) throw new Error(`Unknown intelligence metric: ${key}`);
   return definition;
 }
-
-export function listMetricDefinitions(): MetricDefinition[] {
-  return [...DEFINITIONS];
-}
