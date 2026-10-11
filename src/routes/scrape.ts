@@ -18,7 +18,7 @@ export const scrapeRoutes = new Hono();
 
 // 単一 URL / PDF スクレイプ (マルチフォーマット対応)
 scrapeRoutes.post('/scrape', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -34,7 +34,7 @@ scrapeRoutes.post('/scrape', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await scrapeUrl({ ...parsed.data, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
@@ -49,7 +49,7 @@ scrapeRoutes.post('/scrape', async (c) => {
 
 // 単一 URL スクレイプ SSE ストリーミング (POST /scrape/stream)
 scrapeRoutes.post('/scrape/stream', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -67,7 +67,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     try {
       await scrapeUrl({
         ...parsed.data,
-        tenantId: (c as any).get?.('tenant')?.tenantId ?? 'legacy',
+        tenantId: c.get('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',
@@ -89,7 +89,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
 
 // 複数 URL 一括並行スクレイプ (POST /scrape/batch)
 scrapeRoutes.post('/scrape/batch', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -103,9 +103,9 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
-    const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
+    const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
   } catch (err) {
     const msg = errorMessage(err) || 'Batch scrape failed';
@@ -148,7 +148,7 @@ scrapeRoutes.post('/crawl', async (c) => {
       return c.json({ error: 'url is required' }, 400);
     }
 
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await crawlSiteUrl({
       url: body.url,
       tenantId,
@@ -195,7 +195,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ url: body.url, status: 'crawling' }),
       });
 
-      const streamTenant = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+      const streamTenant = c.get('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
         url: body.url,
         tenantId: streamTenant,
@@ -218,7 +218,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         highlightOverheadTokens: body.highlightOverheadTokens,
         highlightMaxCount: body.highlightMaxCount,
         noCache: body.noCache,
-        onPageCrawled: (page: any, count: number) => {
+        onPageCrawled: (page, count) => {
           stream.writeSSE({
             event: 'page',
             data: JSON.stringify({ count, page }),

@@ -41,7 +41,8 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
     const noCache = c.req.query('noCache') === 'true';
 
     const validCarriers: string[] = [...CARRIER_CODES, 'auto'];
-    if (!validCarriers.includes(carrierParam)) {
+    const carrier = TrackingRequestSchema.shape.carrier.unwrap().safeParse(carrierParam);
+    if (!carrier.success) {
       return c.json(
         {
           error: `不正な運送会社コードです: ${carrierParam}。有効な値: ${validCarriers.join(', ')}`,
@@ -57,7 +58,7 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
 
     const result = await trackPackage({
       trackingNumber: num,
-      carrier: carrierParam as any,
+      carrier: carrier.data,
       noCache,
     });
 

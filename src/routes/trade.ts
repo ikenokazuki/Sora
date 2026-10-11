@@ -20,7 +20,7 @@ export const tradeRoutes = new Hono();
 
 // 米国CPSC適合証明書 eFiling義務化判定 (POST /trade/cpsc-check)
 tradeRoutes.post('/trade/cpsc-check', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -42,7 +42,7 @@ tradeRoutes.post('/trade/cpsc-check', async (c) => {
 
 // 米国FDA規制対象 簡易判定 (POST /trade/fda-check)
 tradeRoutes.post('/trade/fda-check', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -64,7 +64,7 @@ tradeRoutes.post('/trade/fda-check', async (c) => {
 
 // HTS/HSコード実在確認・検証 (POST /trade/hts-verify)
 tradeRoutes.post('/trade/hts-verify', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -86,7 +86,7 @@ tradeRoutes.post('/trade/hts-verify', async (c) => {
 
 // HTS/HSコード商品情報からの推測 (POST /trade/hts-predict)
 tradeRoutes.post('/trade/hts-predict', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -108,7 +108,7 @@ tradeRoutes.post('/trade/hts-predict', async (c) => {
 
 // 商品統合コンプライアンス一括判定 (POST /trade/compliance)
 tradeRoutes.post('/trade/compliance', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
