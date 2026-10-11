@@ -177,7 +177,8 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
       expect(hasTicket).toBe(true);
     });
 
-    it('integratedSearch で enablePrf と reorderUFlat が正しく伝播・機能すること', async () => {
+    // 実際の Web 検索結果が無いと PRF を確かめられないため、実 API のテスト（SORA_LIVE_TESTS=1）でだけ実行する
+    it.skipIf(!process.env.SORA_LIVE_TESTS)('integratedSearch で enablePrf と reorderUFlat が正しく伝播・機能すること', async () => {
       const { integratedSearch } = await import('../scraper.js');
 
       const result = await integratedSearch({

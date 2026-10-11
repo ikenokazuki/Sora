@@ -11,8 +11,9 @@ import {
 const fixtureDir = join(import.meta.dir, 'fixtures');
 const load = (name: string) => JSON.parse(readFileSync(join(fixtureDir, name), 'utf8'));
 
-// 既定 runtime の実スクレイパを止め、fixture のみで完結させる。
+// 既定 runtime の実スクレイパと公式サイトの実 Web 検索を止め、fixture のみで完結させる。
 process.env.SORA_INTEL_SCRAPE = 'off';
+process.env.SORA_INTEL_WEB_SEARCH = 'off';
 
 const realFetch = globalThis.fetch;
 
