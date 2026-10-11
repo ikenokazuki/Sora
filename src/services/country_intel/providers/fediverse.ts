@@ -66,7 +66,7 @@ export function parseMastodonStatuses(data: unknown): FediversePost[] {
 }
 
 function toItems(posts: FediversePost[], providerId: string, input: ProviderInput, now: Date): AcquisitionItem[] {
-  return posts.map((post, index) => {
+  return posts.flatMap((post, index) => {
     const evidence = normalizeEvidence({
       url: post.url, title: post.title, excerpt: post.text, publisher: post.author,
       sourceType: 'social', ...(post.language ? { language: post.language } : {}), publishedAt: post.publishedAt,
@@ -89,7 +89,7 @@ function toItems(posts: FediversePost[], providerId: string, input: ProviderInpu
       contentTruncated: post.text.length >= 1000,
     };
     return [{ evidence, detail }];
-  }).flat();
+  });
 }
 
 async function postJson(fetchFn: GdeltFetch, url: string, body: unknown, signal: AbortSignal): Promise<unknown> {

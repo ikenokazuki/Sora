@@ -44,7 +44,7 @@ export function parseDocumentedDefault(description: string): DocumentedDefault {
 const keyOf = (p: Param) => `${p.surface} ${p.owner} ${p.path}`;
 const enumOf = (s: any): unknown[] | undefined => s.enum ?? s.items?.enum ?? (s.anyOf ? s.anyOf.flatMap((v: any) => v.enum ?? []) : undefined);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const sortedEnum = (s: any) => { const e = enumOf(s); return e && e.length ? [...e].map(String).sort() : undefined; };
+const sortedEnum = (s: any) => { const e = enumOf(s); return e?.length ? [...e].map(String).sort() : undefined; };
 
 export function findNotationIssues(
   params: Param[],

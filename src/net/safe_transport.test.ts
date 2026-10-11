@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createServer, type Server } from 'node:http';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { readBodyWithLimit, safeFetch } from './safe_transport.js';
 import { resetSecurityMetrics, getSecurityMetrics } from '../security/metrics.js';
 

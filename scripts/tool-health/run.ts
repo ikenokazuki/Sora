@@ -165,7 +165,7 @@ export async function main(): Promise<number> {
             body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
             signal: AbortSignal.timeout(timeoutMs),
           });
-        } catch (e) {
+        } catch {
           throw new LiveUnavailable(`REST ${method} ${path} transport failed`);
         }
         const text = await res.text();

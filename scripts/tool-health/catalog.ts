@@ -799,7 +799,7 @@ export function checkProviderItems(items: AcquisitionItem[], source: string, reg
 }
 
 async function runProvider(source: string, provider: CountryIntelProvider, input: ProviderInput, timeoutMs: number): Promise<CaseObservation> {
-  let result;
+  let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
   try {
     result = await provider.run(input, AbortSignal.timeout(timeoutMs));
   } catch (e) {
@@ -847,7 +847,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     }
     if (!wikitext) throw new LiveUnverified('wiki_current portal page had no wikitext');
     const provider = createWikiCurrentProvider();
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'wiki_current', 'news'), AbortSignal.timeout(60000));
     } catch (e) {
@@ -905,7 +905,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
       providerInput(REGION_JP, 'social_posts', '東京', true, { platforms: ['weibo'], queries: [{ platform: 'weibo', query: '東京' }], lookbackHours: 24 }), 110000)),
   providerCase('provider.worldbank', ['worldbank'], 120000, async () => {
     const provider = createWorldBankProvider();
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'worldbank', 'gdp'), AbortSignal.timeout(110000));
     } catch (e) {
@@ -950,7 +950,7 @@ export const PROVIDER_CASES: ProviderCase[] = [
     runProvider(`fediverse:${source.host}`, createFediverseProvider(undefined, [source]), providerInput(REGION_JP, 'fediverse', '音楽', true), 80000))),
   ...WORLD_BANK_INDICATORS.map((indicator) => providerCase(`provider.worldbank.${indicator.id}`, [`worldbank:${indicator.id}`], 90000, async () => {
     const provider = createWorldBankProvider(undefined, [indicator]);
-    let result;
+    let result: Awaited<ReturnType<CountryIntelProvider['run']>>;
     try {
       result = await provider.run(providerInput(REGION_US, 'worldbank', 'economy'), AbortSignal.timeout(80000));
     } catch (e) {

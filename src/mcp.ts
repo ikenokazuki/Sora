@@ -2341,9 +2341,9 @@ export function mcpTenantFromRequest(req: Request): string {
   try {
     const auth = req.headers.get('authorization') || '';
     const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (m && m[1]) return tenantIdForApiKey(m[1].trim());
+    if (m?.[1]) return tenantIdForApiKey(m[1].trim());
     const key = req.headers.get('x-api-key');
-    if (key && key.trim()) return tenantIdForApiKey(key.trim());
+    if (key?.trim()) return tenantIdForApiKey(key.trim());
   } catch {}
   return 'legacy';
 }

@@ -172,7 +172,7 @@ export function detectDiscrepancies(
   const dateMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
 
   for (const item of items) {
-    let match;
+    let match: RegExpExecArray | null;
     dateRegex.lastIndex = 0;
     while ((match = dateRegex.exec(item.text)) !== null) {
       const year = match[1];
@@ -209,12 +209,12 @@ export function detectDiscrepancies(
   const moneyMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
 
   for (const item of items) {
-    let match;
+    let match: RegExpExecArray | null;
     moneyRegex.lastIndex = 0;
     while ((match = moneyRegex.exec(item.text)) !== null) {
       const numStr = (match[1] || match[2]).replace(/,/g, '');
       const num = parseInt(numStr, 10);
-      if (isNaN(num) || num <= 0) continue;
+      if (Number.isNaN(num) || num <= 0) continue;
       const normalized = `${num}円`;
       if (!moneyMap.has(normalized)) {
         const start = Math.max(0, match.index - 20);
@@ -245,7 +245,7 @@ export function detectDiscrepancies(
   const versionMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
 
   for (const item of items) {
-    let match;
+    let match: RegExpExecArray | null;
     versionRegex.lastIndex = 0;
     while ((match = versionRegex.exec(item.text)) !== null) {
       const normalized = match[1];
@@ -306,7 +306,7 @@ export function normalizeSafeNumeric(text: string): {
 
   // 2. 漢数字「万」の展開 (例: 1万2000 -> 12000, 120万 -> 1200000)
   const manRegex = /(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g;
-  let manMatch;
+  let manMatch: RegExpExecArray | null;
   while ((manMatch = manRegex.exec(current)) !== null) {
     const okuMan = parseInt(manMatch[1], 10);
     const remainder = manMatch[2] ? parseInt(manMatch[2], 10) : 0;
@@ -326,7 +326,7 @@ export function normalizeSafeNumeric(text: string): {
   // 3. 物理単位変換 (km -> m, ms -> s)
   // km -> m (例: 2.4 km -> 2400 m)
   const kmRegex = /\b(\d+(?:\.\d+)?)\s*km\b/gi;
-  let kmMatch;
+  let kmMatch: RegExpExecArray | null;
   while ((kmMatch = kmRegex.exec(current)) !== null) {
     const val = parseFloat(kmMatch[1]);
     const inMeters = Math.round(val * 1000);
@@ -342,7 +342,7 @@ export function normalizeSafeNumeric(text: string): {
 
   // ms -> s (例: 500 ms -> 0.5 s, 1000 ms -> 1 s)
   const msRegex = /\b(\d+(?:\.\d+)?)\s*ms\b/gi;
-  let msMatch;
+  let msMatch: RegExpExecArray | null;
   while ((msMatch = msRegex.exec(current)) !== null) {
     const val = parseFloat(msMatch[1]);
     const inSec = Number((val / 1000).toFixed(4));

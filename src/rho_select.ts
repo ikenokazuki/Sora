@@ -115,7 +115,7 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
       // H1見出しが存在しないドキュメントの場合、パンくずルートタイトルを親文脈として注入
       let finalHeading = currentHeading;
       const hasH1 = headingStack.some((h) => h.level === 1);
-      if (rootContext && !hasH1 && (!finalHeading || !finalHeading.includes(rootContext))) {
+      if (rootContext && !hasH1 && (!finalHeading?.includes(rootContext))) {
         finalHeading = finalHeading ? `${rootContext} > ${finalHeading}` : rootContext;
       }
 
@@ -245,7 +245,7 @@ export function tokenizeAndSelectTerms(
   for (const phrase of rawPhrases) {
     if (
       phrase.length >= 2 &&
-      !/^[、。・！？!?\s\-_=+\/\\|:;'"()[\]{}]+$/.test(phrase) &&
+      !/^[、。・！？!?\s\-_=+/\\|:;'"()[\]{}]+$/.test(phrase) &&
       !/^(の|は|が|を|に|へ|と|で|て|た|も|から|まで|より|など)$/.test(phrase)
     ) {
       rawTerms.add(phrase);
@@ -267,7 +267,7 @@ export function tokenizeAndSelectTerms(
         // 2文字以上の実質語（助詞・記号ノイズ除外）
         if (
           word.length >= 2 &&
-          !/^[、。・！？!?\s\-_=+\/\\|:;'"()[\]{}]+$/.test(word) &&
+          !/^[、。・！？!?\s\-_=+/\\|:;'"()[\]{}]+$/.test(word) &&
           !/^(の|は|が|を|に|へ|と|で|て|た|も|から|まで|より|など)$/.test(word)
         ) {
           rawTerms.add(word);
@@ -367,16 +367,16 @@ export function extractQueryHighlightsRhoSelect(
     exactAgreement: true,
   };
 
-  const hasSupplemental = Boolean(options?.supplementalEvidence && options.supplementalEvidence.some((s) => s && s.trim().length >= 5));
-  if ((!content || !content.trim()) && !hasSupplemental) {
+  const hasSupplemental = Boolean(options?.supplementalEvidence?.some((s) => s && s.trim().length >= 5));
+  if ((!content?.trim()) && !hasSupplemental) {
     return { highlights: [], diagnostics: emptyDiagnostics };
   }
-  if (!query || !query.trim()) {
+  if (!query?.trim()) {
     return { highlights: [], diagnostics: emptyDiagnostics };
   }
 
   // 1. セクション分割
-  const sections = content && content.trim() ? parseMarkdownSections(content) : [];
+  const sections = content?.trim() ? parseMarkdownSections(content) : [];
 
   // 補完証拠（検索スニペット、メタディスクリプション等）を候補セクションとして統合
   if (options?.supplementalEvidence && options.supplementalEvidence.length > 0) {

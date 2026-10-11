@@ -16,7 +16,7 @@ const STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
 
 export const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST);
 
-const TEMPORAL_PATTERN = /\d.*[月日时時\/\-:\uff1a]|\d{1,2}:\d{2}|明日|今日|昨日|明後日|発売日|公開日|配信日|日程|開催/i;
+const TEMPORAL_PATTERN = /\d.*[月日时時/\-:\uff1a]|\d{1,2}:\d{2}|明日|今日|昨日|明後日|発売日|公開日|配信日|日程|開催/i;
 
 export function extractQueryRequirements(query: string): QueryRequirements {
   const empty: QueryRequirements = { entityTerms: [], intentTerms: [], supportTerms: [], hasDateReference: false };

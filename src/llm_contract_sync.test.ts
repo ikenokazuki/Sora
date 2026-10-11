@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { z } from 'zod';
+import type { z } from 'zod';
 import {
   createMcpServer,
   buildSoraMcpInstructions,

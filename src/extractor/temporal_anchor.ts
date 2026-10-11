@@ -21,7 +21,7 @@ const DAY_MAP: Record<string, number> = {
 function parseReferenceDate(dateStr?: string): Date {
   if (dateStr) {
     const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
+    if (!Number.isNaN(parsed.getTime())) {
       return parsed;
     }
   }
@@ -96,7 +96,7 @@ export function extractTemporalAnchors(
   while ((match = nDayRegex.exec(text)) !== null) {
     const rawNum = match[1].replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));
     const num = parseInt(rawNum, 10);
-    if (!isNaN(num) && num > 0 && num <= 365) {
+    if (!Number.isNaN(num) && num > 0 && num <= 365) {
       const isPast = match[0].includes('前') || match[0].includes('まえ');
       const d = new Date(refDate);
       d.setDate(d.getDate() + (isPast ? -num : num));

@@ -1,6 +1,6 @@
 import { describe, expect, test, afterEach } from 'bun:test';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { fetchWithSafeRedirects } from './http_fetcher.js';
 
 let prevAllow: string | undefined;
