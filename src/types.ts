@@ -1229,9 +1229,26 @@ export const SystemInfoResponseSchema = z.object({
   endpoints: z.record(z.string(), z.string()).describe('公開エンドポイント一覧マッピング'),
 });
 
+const DependencyStatusSchema = z.object({
+  status: z.enum(['ok', 'error', 'unavailable']).describe('疎通状態'),
+  latencyMs: z.number().optional().describe('応答時間 (ms)'),
+  message: z.string().optional().describe('失敗・利用不可の理由'),
+});
+
 export const HealthResponseSchema = z.object({
-  status: z.string().describe('稼働ステータス ("ok")'),
+  status: z.string().describe('稼働ステータス ("ok"。detailed で SQLite 障害時は "degraded")'),
   service: z.string().describe('サービス名 ("sora")'),
+  version: z.string().optional().describe('API バージョン'),
+  uptimeSeconds: z.number().optional().describe('プロセス稼働時間 (秒、detailed のみ)'),
+  activeBrowserSessions: z.number().optional().describe('対話型ブラウザセッション数 (detailed のみ)'),
+  dependencies: z.object({
+    sqlite: DependencyStatusSchema,
+    chromium: DependencyStatusSchema,
+    yahooMcp: DependencyStatusSchema,
+    jma: DependencyStatusSchema,
+    p2pquake: DependencyStatusSchema,
+    egov: DependencyStatusSchema,
+  }).optional().describe('依存先ごとの疎通状態 (detailed のみ)'),
   cachedEntries: z.number().optional().describe('キャッシュエントリ数'),
   chromiumAvailable: z.boolean().optional().describe('Chromium ブラウザの利用可否'),
   yahooMcpAvailable: z.boolean().optional().describe('Yahoo MCP バイナリの利用可否'),
@@ -1243,9 +1260,11 @@ export const HealthResponseSchema = z.object({
 export const MetricsResponseSchema = z.object({
   status: z.string().describe('ステータス ("ok")'),
   service: z.string().describe('サービス名 ("sora")'),
+  version: z.string().describe('API バージョン'),
   uptimeSeconds: z.number().describe('プロセス稼働時間 (秒)'),
   cache: z.object({
     size: z.number().describe('現在のキャッシュ件数'),
+    maxSize: z.number().describe('キャッシュ件数の上限'),
     hits: z.number().describe('キャッシュヒット累計回数'),
     misses: z.number().describe('キャッシュミス累計回数'),
     hitRatio: z.number().describe('キャッシュヒット率 (0.0〜1.0)'),
@@ -1255,6 +1274,7 @@ export const MetricsResponseSchema = z.object({
     retryCount: z.number().describe('ブラウザ描画後の再試行回数'),
   }).describe('Bot検知・ブラウザ昇格統計'),
   activeSessions: z.number().describe('アクティブな対話型ブラウザセッション数'),
+  counters: z.record(z.string(), z.number()).describe('セキュリティ・取得系のカウンタ (名前 → 累計)'),
   chromium: z.object({
     available: z.boolean().describe('Chromium 実行ファイルの有無'),
     sharedConnected: z.boolean().describe('常駐共有ブラウザインスタンスの接続状態'),
@@ -2154,6 +2174,9 @@ export function generateOpenApiDocument() {
       '/health': {
         get: {
           summary: 'ヘルスチェック & コンポーネント稼働状態',
+          parameters: [
+            { name: 'detailed', in: 'query', schema: { type: 'string', enum: ['true', '1'] }, description: '外部依存先（SQLite・Chromium・Yahoo・気象庁・P2P地震情報・e-Gov）の疎通も確かめる。SQLite 障害時は 503 と status: "degraded"' },
+          ],
           responses: {
             '200': {
               description: 'ヘルスチェック結果および各コンポーネント稼働状態',

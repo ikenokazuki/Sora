@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { scanRepository, scanReturnNotes, type Finding, type FindingKind } from './scan.js';
+import { checkRepositoryReadme } from './readme_examples.js';
 
 let cached: Promise<Finding[]> | undefined;
 const findings = () => (cached ??= scanRepository());
@@ -32,5 +33,9 @@ describe('API input notation (MCP + OpenAPI)', () => {
 
   test('MCP 返却 notes name keys that the documented response has', async () => {
     expect((await scanReturnNotes()).map((f) => `${f.key} :: ${f.detail}`)).toEqual([]);
+  }, 30_000);
+
+  test('README の REST の例（リクエスト・レスポンス）が OpenAPI のスキーマと一致する', () => {
+    expect(checkRepositoryReadme().map((f) => `README.md:${f.line} [${f.kind}] ${f.detail}`)).toEqual([]);
   }, 30_000);
 });
