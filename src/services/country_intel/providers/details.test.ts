@@ -40,7 +40,7 @@ describe('provider details', () => {
     expect(parsed?.metric.current).toBe(19498039388042.6);
     expect(parsed?.metric.direction).toBe('rising');
     expect(parsed?.detail.structuredData).toMatchObject({ unit: 'USD', sourceUrl: 'https://api.worldbank.org/v2/u' });
-    expect((parsed?.detail.structuredData?.observations as unknown[]).length).toBe(2);
+    expect(parsed?.detail.structuredData?.observations).toHaveLength(2);
   });
 
   test('nager preserves scope fields in the detail', () => {

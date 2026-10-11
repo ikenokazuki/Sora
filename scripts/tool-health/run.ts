@@ -5,8 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { CANONICAL_TOOLS, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
-  collectKnownCaseIds, gateExit, redact, registerSecrets, nonPassLines, summarize, validateCasesJson, writeReports,
-  type HealthReport,
+  collectKnownCaseIds, gateExit, nonPassLines, redact, registerSecrets, summarize, validateCasesJson, writeReports,
 } from './report.js';
 import {
   LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
@@ -166,7 +165,7 @@ export async function main(): Promise<number> {
             body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
             signal: AbortSignal.timeout(timeoutMs),
           });
-        } catch (e) {
+        } catch {
           throw new LiveUnavailable(`REST ${method} ${path} transport failed`);
         }
         const text = await res.text();

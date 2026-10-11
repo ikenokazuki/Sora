@@ -77,7 +77,8 @@ describe('intl tracking page parsing (fixtures)', () => {
   });
 });
 
-describe('intl tracking live (bogus numbers, keyless)', () => {
+// 実サイトに問い合わせるため SORA_LIVE_TESTS=1 のときだけ実行する（通常は外部に出られず、失敗時の代替に頼って通るだけになる）
+describe.skipIf(!process.env.SORA_LIVE_TESTS)('intl tracking live (bogus numbers, keyless)', () => {
   test('ups bogus number is not_found via browser', async () => {
     if (!resolveChromiumPath()) {
       console.log('Skipping intl tracking live test (Chromium not found on host)');

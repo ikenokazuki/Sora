@@ -10,14 +10,20 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # Bun と Chrome は版を固定する（新しい版が出るたびに CI の結果が変わらないように）。上げるときは手元で全件テストを通してから
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
       - id: chrome
-        uses: browser-actions/setup-chrome@latest
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: 141
       - run: bun install --frozen-lockfile
       - name: Typecheck (strict, src + tool-health scripts)
         run: bun run typecheck
+      # 型では見つからない誤り（Promise の握りつぶし、重複キー、到達しないコードなど）を止める。書式は検査しない
+      - name: Lint
+        run: bun run lint
       # 実ブラウザテストは共有ランナーで低速なため上限を120秒に緩和する（ブラウザ実取得テストのため）
       - name: Run tests with failure summary
         run: |

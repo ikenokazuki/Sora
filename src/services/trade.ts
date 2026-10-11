@@ -1,5 +1,6 @@
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
 import { getFromCache, setToCache } from '../cache.js';
+import { errorMessage } from '../errors.js';
 
 export const CACHE_TTL_USITC = 24 * 60 * 60 * 1000; // USITC HTSデータは24時間キャッシュ
 
@@ -1617,7 +1618,7 @@ export async function checkProductCompliance(
   let description = options.description?.trim();
   let targetAge = options.targetAge;
   let material = options.material?.trim();
-  let productCategory = options.productCategory?.trim();
+  const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
 
   // 1. URL が指定されている場合はスクレイピングして商品情報を取得
@@ -1636,8 +1637,8 @@ export async function checkProductCompliance(
       if (!description) {
         description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
       }
-    } catch (err: any) {
-      console.warn('[TradeCompliance] Scrape failed for url:', options.url, err?.message);
+    } catch (err) {
+      console.warn('[TradeCompliance] Scrape failed for url:', options.url, errorMessage(err));
     }
   }
 
@@ -1715,8 +1716,8 @@ export async function checkProductCompliance(
       foodContact: options.foodContact,
       hasBattery: options.hasBattery,
     });
-  } catch (e: any) {
-    console.warn('[TradeCompliance] predictHtsCode failed:', e?.message);
+  } catch (e) {
+    console.warn('[TradeCompliance] predictHtsCode failed:', errorMessage(e));
   }
 
   if (!htsCode) {

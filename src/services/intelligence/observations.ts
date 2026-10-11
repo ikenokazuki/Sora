@@ -20,10 +20,3 @@ export function toMetricObservation(input: {
 }): MetricObservation {
   return { ...input, baselineEligible: isBaselineEligible(input.origin) };
 }
-
-/** baseline 用の系列を作る。ad-hoc 観測は値として混ぜない。 */
-export function toBaselineSamples(observations: readonly MetricObservation[]): number[] {
-  return observations
-    .filter((observation) => observation.baselineEligible && Number.isFinite(observation.currentValue))
-    .map((observation) => observation.currentValue);
-}

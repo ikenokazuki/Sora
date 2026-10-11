@@ -96,7 +96,7 @@ export function resolvePrefecture(prefInput?: string | number): { code: number; 
   if (!prefInput) return null;
   const str = String(prefInput).trim().toLowerCase();
   const num = parseInt(str, 10);
-  if (!isNaN(num) && num >= 1 && num <= 47) {
+  if (!Number.isNaN(num) && num >= 1 && num <= 47) {
     const entry = Object.values(PREF_MAP).find(p => p.code === num);
     return entry || { code: num, name: `都道府県コード ${num}` };
   }
@@ -469,7 +469,7 @@ export async function fetchFlightStatus(options: {
     filtered = filtered.filter(f =>
       f.airline.toLowerCase().includes(keywordFilter) ||
       f.destinationOrOrigin.toLowerCase().includes(keywordFilter) ||
-      (f.detail && f.detail.toLowerCase().includes(keywordFilter)) ||
+      (f.detail?.toLowerCase().includes(keywordFilter)) ||
       f.status.toLowerCase().includes(keywordFilter)
     );
   }

@@ -39,7 +39,10 @@ export const defaultCountryIntelProviderIds = [
 
 export interface DefaultRuntimeOptions {
   fetchFn?: GdeltFetch;
-  /** official_web の検索器。未指定時は実在の Yahoo Web 検索を使う（地域条件を落とす再検索は無効）。 */
+  /**
+   * official_web の検索器。未指定時は実在の Yahoo Web 検索を使う（地域条件を落とす再検索は無効）。
+   * `SORA_INTEL_WEB_SEARCH=off` で検索を止める（provider は残り、結果が空になる）。テストは明示的に上書きすること。
+   */
   officialWebSearch?: (query: string, maxItems: number, signal: AbortSignal) => Promise<WebSearchItem[]>;
   /** 無効化する provider ID（カンマ区切り）の上書き。未指定時は `SORA_INTEL_DISABLED` を読む。 */
   disabledProviders?: readonly string[];
@@ -132,7 +135,8 @@ export function createDefaultCountryIntelDependencies(
       createCctvNewsProvider(fetchFn),
       createThepaperHotProvider(fetchFn),
       createOfficialWebProvider({
-        searchWeb: options.officialWebSearch ?? createYahooWebSearchAdapter(),
+        searchWeb: options.officialWebSearch
+          ?? (process.env.SORA_INTEL_WEB_SEARCH === 'off' ? async () => [] : createYahooWebSearchAdapter()),
         verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
       }),
       createBlueskyProvider(),

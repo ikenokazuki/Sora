@@ -1,7 +1,32 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
+import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
 const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
+
+// USITC・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報は固定応答で確かめる（SORA_LIVE_TESTS=1 では本物を使う）
+let restoreExternalFetch: (() => void) | undefined;
+beforeAll(() => {
+  if (!process.env.SORA_LIVE_TESTS) restoreExternalFetch = installExternalApiFixtures();
+});
+afterAll(() => restoreExternalFetch?.());
+
+/** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
+async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
+  const html = '<!doctype html><html><head><title>Example Domain</title></head><body><div><h1>Example Domain</h1>'
+    + '<p>This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.</p>'
+    + '<p><a href="https://www.iana.org/domains/example">More information...</a></p></div></body></html>';
+  const server = Bun.serve({ port: 0, fetch: () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
+  const prev = process.env.ALLOW_LOCAL_FETCH;
+  process.env.ALLOW_LOCAL_FETCH = 'true';
+  try {
+    return await fn(`http://127.0.0.1:${server.port}/`);
+  } finally {
+    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prev;
+    server.stop(true);
+  }
+}
 
 /**
  * 環境変数を書き換えたテストの後始末。`process.env = snapshot` と差し替えると JS 側の参照が変わるだけで、
@@ -23,7 +48,7 @@ import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
 import { createAuthMiddleware, isSecureEqual } from './auth.js';
 import { createMcpServer, isModuleActive, McpSessionManager, searchCatalog, SORA_MCP_INSTRUCTIONS, sanitizeMcpResponse, clearSharedActivatedTools } from './mcp.js';
-import { SORA_VERSION, generateOpenApiDocument, FlightStatusResultSchema, TrackingResultSchema } from './types.js';
+import { SORA_VERSION, generateOpenApiDocument } from './types.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { getProxyConfig } from './browser_engine.js';
 import { extractTwitterHandleFromHtml } from './html_parser.js';
@@ -33,11 +58,8 @@ import {
   parseIpv4ToUint32,
   matchUrlPattern,
   decodeHtmlBuffer,
-  extractWithSelectors,
-  parsePdfToMarkdown,
   safeTruncateMarkdown,
   estimateTokens,
-  scrapeBatchUrls,
   convertHtmlToMarkdown,
   cleanMarkdownTokens,
   normalizeRealtimeItem,
@@ -57,7 +79,6 @@ import {
   validateExtractedLinks,
   sendWebhookNotification,
   scrapeUrl,
-  crawlSiteUrl,
   integratedSearch,
   filterByDomains,
   extractRealtimeFallbackQueries,
@@ -87,10 +108,7 @@ import {
   dbGetCache,
   dbSetCache,
   dbDeleteCache,
-  dbClearExpiredCache,
-  dbClearAllCache,
   dbIncrementApiUsage,
-  dbSaveWatchTarget,
   dbGetWatchTarget,
   dbSaveDomainCookies,
   dbGetDomainCookies,
@@ -99,10 +117,6 @@ import {
   isRenderStillBlockedOrBlank,
   getOrCreateHttpSession,
   closeHttpSession,
-  dbListWatchTargets,
-  dbDeleteWatchTarget,
-  dbInsertWatchHistory,
-  dbListWatchHistory,
   fetchWeatherWarnings,
   fetchRecentEarthquakes,
   fetchRoadTraffic,
@@ -110,8 +124,6 @@ import {
   resolveRoadCode,
   formatScale,
   registerWatchTarget,
-  checkWatchTarget,
-  checkAllWatchTargets,
   listWatchTargets,
   deleteWatchTarget,
   computeContentHash,
@@ -141,7 +153,6 @@ import {
   resolveAirport,
   rerankSearchResults,
   rerankByDeepEvidence,
-  checkDetailedHealth,
   buildUserAgentFromDefault,
   buildUserAgentMetadata,
   getFallbackUserAgent,
@@ -353,6 +364,9 @@ describe('web-fetcher Core Functions', () => {
 
       東京ドームでのチケット発売日は2026年8月1日です。全席指定となります。
     `;
+    const highlightsDense = extractQueryHighlights(docWithTwoParagraphs, '東京ドーム チケット 発売');
+    expect(highlightsDense[0]).toContain('2026年8月1日');
+
     // 4. 見出し文脈の継承テスト (Heading Context Inheritance)
     const docWithHeadings = `
       # ライブ情報
@@ -478,27 +492,20 @@ describe('web-fetcher Core Functions', () => {
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
-    try {
-      const result = await scrapeUrl({
-        url: 'https://example.com',
-        mode: 'fast',
-      });
-      expect(result.source).toBe('web');
-    } catch {}
+    const result = await withExamplePage((url) => scrapeUrl({ url, mode: 'fast', noCache: true }));
+    expect(result.source).toBe('web');
   });
 
   it('scrapeUrl with onlyHighlights: true should replace full content with only matched highlights', async () => {
-    try {
-      const result = await scrapeUrl({
-        url: 'https://example.com',
-        query: 'Domain',
-        onlyHighlights: true,
-        fastOnly: true,
-      });
-      if (result.highlights && result.highlights.length > 0) {
-        expect(result.content).toBe(result.highlights.join('\n\n---\n\n'));
-      }
-    } catch {}
+    const result = await withExamplePage((url) => scrapeUrl({
+      url,
+      query: 'Domain',
+      onlyHighlights: true,
+      fastOnly: true,
+      noCache: true,
+    }));
+    expect(result.highlights?.length).toBeGreaterThan(0);
+    expect(result.content).toBe(result.highlights!.join('\n\n---\n\n'));
   });
 
   it('scrapeUrl should reject when both fastOnly: true and renderJs: true are specified', async () => {
@@ -2302,18 +2309,18 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resEmpty.status).toBe(400);
 
-    const res = await app.request('/scrape/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        urls: ['https://example.com/1', 'https://example.com/2'],
-        fastOnly: true,
-      }),
+    const { res, body } = await withExamplePage(async (url) => {
+      const res = await app.request('/scrape/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: [`${url}1`, `${url}2`], fastOnly: true, noCache: true }),
+      });
+      return { res, body: (await res.json()) as any };
     });
     expect(res.status).toBe(200);
-    const body: any = await res.json();
     expect(body.total).toBe(2);
-    expect(Array.isArray(body.results)).toBe(true);
+    expect(body.successful).toBe(2);
+    expect(body.results.map((r: any) => r.title)).toEqual(['Example Domain', 'Example Domain']);
   });
 
   it('convertHtmlToMarkdown with removeSelectors should purge custom unwanted elements', () => {
@@ -2506,6 +2513,15 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(citations[0].context).toContain('総務省統計局レポート');
     expect(citations[1].text).toBe('Gartner Market Report');
     expect(citations[1].url).toBe('https://www.gartner.com/en/reports/123');
+  });
+
+  it('extractCitationsFromMarkdown resolves relative links against baseUrl and skips anchors and non-http links', () => {
+    const markdown = '出典は[こちらの記事](/news/1)、[同じ記事](https://site.example/news/1)、[外部記事](https://other.example/x)、'
+      + '[節](#sec)、[メール](mailto:a@example.com)、[スクリプト](javascript:void(0))、[相対](../about) です。';
+    const urls = extractCitationsFromMarkdown(markdown, 'https://site.example/blog/page').map((c) => c.url);
+    expect(urls).toEqual(['https://site.example/news/1', 'https://other.example/x', 'https://site.example/about']);
+    // baseUrl が無い場合、相対リンクは解決できないので入らない
+    expect(extractCitationsFromMarkdown(markdown).map((c) => c.url)).toEqual(['https://site.example/news/1', 'https://other.example/x']);
   });
 
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
@@ -2706,19 +2722,17 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('POST /scrape/stream should return SSE stream with progress and done events', async () => {
-    const res = await app.request('/scrape/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://example.com',
-        mode: 'fast',
-        maxChars: 200,
-      }),
+    const { res, text } = await withExamplePage(async (url) => {
+      const res = await app.request('/scrape/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, mode: 'fast', maxChars: 200 }),
+      });
+      return { res, text: await res.text() };
     });
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
-    const text = await res.text();
     expect(text).toContain('event: progress');
     expect(text).toContain('event: done');
   });
@@ -2979,17 +2993,17 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('POST /watch/register, GET /watch/list, and DELETE /watch/:id should operate smoothly', async () => {
-    const regRes = await app.request('/watch/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://example.com',
-        title: 'REST Register Test',
-      }),
+    const { regRes, regJson } = await withExamplePage(async (url) => {
+      const regRes = await app.request('/watch/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title: 'REST Register Test' }),
+      });
+      return { regRes, regJson: (await regRes.json()) as any };
     });
     expect(regRes.status).toBe(200);
-    const regJson = (await regRes.json()) as any;
     expect(regJson.target.id).toBeDefined();
+    expect(regJson.initialError).toBeUndefined();
 
     const listRes = await app.request('/watch/list');
     expect(listRes.status).toBe(200);
@@ -3776,8 +3790,9 @@ describe('Sora REST & MCP Endpoints', () => {
   it('pickProxyUrl should return undefined when no proxy env vars are set', () => {
     const originalEnv = { ...process.env };
     try {
-      delete process.env.SORA_PROXY_LIST;
-      delete process.env.SORA_PROXY_URL;
+      for (const key of ['SORA_PROXY_LIST', 'SORA_PROXY_URL', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']) {
+        delete process.env[key];
+      }
       expect(pickProxyUrl()).toBeUndefined();
     } finally {
       restoreEnv(originalEnv);
@@ -4971,12 +4986,12 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should extract highlights when extractHighlights: true is passed alongside query', async () => {
-      const result = await scrapeUrl({
-        url: 'https://example.com',
+      const result = await withExamplePage((url) => scrapeUrl({
+        url,
         query: 'domain',
         extractHighlights: true,
         noCache: true,
-      });
+      }));
 
       expect(result.highlights).toBeDefined();
       expect(result.highlights!.length).toBeGreaterThan(0);
@@ -4985,11 +5000,11 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should automatically extract highlights when query is passed even if extractHighlights is omitted', async () => {
-      const result = await scrapeUrl({
-        url: 'https://example.com',
+      const result = await withExamplePage((url) => scrapeUrl({
+        url,
         query: 'illustrative examples',
         noCache: true,
-      });
+      }));
 
       expect(result.highlights).toBeDefined();
       expect(result.highlights!.length).toBeGreaterThan(0);
@@ -4997,12 +5012,12 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should NOT extract highlights when extractHighlights: false is explicitly passed even if query is present', async () => {
-      const result = await scrapeUrl({
-        url: 'https://example.com',
+      const result = await withExamplePage((url) => scrapeUrl({
+        url,
         query: 'illustrative examples',
         extractHighlights: false,
         noCache: true,
-      });
+      }));
 
       expect(result.highlights).toBeUndefined();
     });
@@ -5513,7 +5528,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(reranked[0].rank).toBe(1);
     });
 
-    it('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {
+    itLive('fetchTweetsForUrlOrUser should extract handle from X URL and fetch tweets', async () => {
       const res = await fetchTweetsForUrlOrUser('https://x.com/kimisora_JPN', {
         contextTitle: '君と見るそら (@kimisora_JPN) / X',
         limit: 3,
@@ -5525,7 +5540,7 @@ describe('Sora REST & MCP Endpoints', () => {
       }
     });
 
-    it('searchYahooRealtime should return structured response with effectiveQuery and isFallback', async () => {
+    itLive('searchYahooRealtime should return structured response with effectiveQuery and isFallback', async () => {
       const res = await searchYahooRealtime({
         query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定',
         sort: 'recent',
@@ -5542,7 +5557,7 @@ describe('Sora REST & MCP Endpoints', () => {
       }
     });
 
-    it('integratedSearch should return 9/6 live information in realtime and results for user exact problem query', async () => {
+    itLive('integratedSearch should return 9/6 live information in realtime and results for user exact problem query', async () => {
       const res = await integratedSearch({
         query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定',
         limit: 5,
@@ -5583,7 +5598,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(statusRes?.siteName).toBe('X (Twitter)');
     });
 
-    it('searchYahooWeb should support query fallback when initial query has redundant noise', async () => {
+    itLive('searchYahooWeb should support query fallback when initial query has redundant noise', async () => {
       const res = await searchYahooWeb({
         query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定 何時 どこで',
       });
@@ -5617,7 +5632,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(buildYahooRealtimeQuery({ query: '告知', url: 'x.com' })).toBe('告知 URL:x.com');
     });
 
-    it('searchYahooRealtime should support accountId and query filtering (user confirmed pattern)', async () => {
+    itLive('searchYahooRealtime should support accountId and query filtering (user confirmed pattern)', async () => {
       const res = await searchYahooRealtime({
         accountId: 'kimisora_JPN',
         query: '強化月間ライブ',
@@ -5631,7 +5646,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.items[0].author_handle).toBe('kimisora_JPN');
     });
 
-    it('POST /search/realtime should accept accountId, hashtags, and normalize from: in query', async () => {
+    itLive('POST /search/realtime should accept accountId, hashtags, and normalize from: in query', async () => {
       // accountId + query
       const req1 = new Request('http://localhost/search/realtime', {
         method: 'POST',
@@ -5668,7 +5683,7 @@ describe('Sora REST & MCP Endpoints', () => {
       let operationCount = 0;
       let withContentCount = 0;
 
-      for (const [pathKey, pathItem] of Object.entries(doc.paths)) {
+      for (const pathItem of Object.values(doc.paths)) {
         for (const [method, op] of Object.entries(pathItem as any)) {
           if (['get', 'post', 'put', 'delete', 'patch'].includes(method)) {
             operationCount++;
@@ -5744,7 +5759,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(data.paths['/traffic/flight'].post.responses['200'].content['application/json'].schema.properties.airportName).toBeDefined();
     });
 
-    it('scrapeUrl should extract full content from note.com SSR articles without browser timeout', async () => {
+    itLive('scrapeUrl should extract full content from note.com SSR articles without browser timeout', async () => {
       const res = await scrapeUrl({
         url: 'https://note.com/kimisora_mix/n/nd94f3a06fe8f',
         timeoutMs: 12000,
@@ -5881,7 +5896,7 @@ describe('Sora REST & MCP Endpoints', () => {
         expect(merged[2].isOfficial).toBe(false);
       });
 
-      it('integratedSearch should support officialAccountId and hybrid merge', async () => {
+      itLive('integratedSearch should support officialAccountId and hybrid merge', async () => {
         const res = await integratedSearch({
           query: '君と見るそら 強化月間ライブ',
           officialAccountId: 'kimisora_JPN',
@@ -5904,7 +5919,7 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       });
 
-      it('POST /search/integrated should accept officialAccountId', async () => {
+      itLive('POST /search/integrated should accept officialAccountId', async () => {
         const req = new Request('http://localhost/search/integrated', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

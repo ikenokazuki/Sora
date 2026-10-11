@@ -1,6 +1,6 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
-import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage, type HeadingBlock } from './extractor/hierarchical_bm25.js';
+import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage } from './extractor/hierarchical_bm25.js';
 import {
   assignBlockProvenance,
   formatBlockAnchor,
@@ -37,18 +37,16 @@ import type {
   MarkdownChunk,
   LinkStatus,
   ScrapeResult,
-  TableData,
-  MediaInfo,
   FieldEvidence,
   HighlightItem,
   EvidenceDiagnostics,
   CandidateDiscrepancy,
-  DerivationTrace,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
 
 import { estimateTokens } from './text_tokens.js';
+import { errorMessage } from './errors.js';
 export { estimateTokens };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
@@ -313,24 +311,40 @@ export function calculateContentStats(text: string): {
   };
 }
 
+/**
+ * 出典リンクの URL を返す。絶対 URL はそのまま、相対 URL は baseUrl で解決する。
+ * ページ内アンカー（#...）、解決できないもの、http(s) 以外（mailto: など）は undefined。
+ */
+function resolveCitationUrl(raw: string, baseUrl?: string): string | undefined {
+  if (!raw || raw.startsWith('#')) return undefined;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (!baseUrl) return undefined;
+  try {
+    const resolved = new URL(raw, baseUrl);
+    return resolved.protocol === 'http:' || resolved.protocol === 'https:' ? resolved.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 本文内 出典・引用リンク (Citations) の構造化抽出 */
 export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string): Citation[] {
   if (!markdown) return [];
   const citations: Citation[] = [];
-  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+  const linkRegex = /\[([^\]]+)\]\(([^\s)]+)\)/g;
   const seenUrls = new Set<string>();
 
   // 段落単位で走査し、コンテキスト文を取得
   const paragraphs = markdown.split(/\n\s*\n/);
 
   for (const para of paragraphs) {
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = linkRegex.exec(para)) !== null) {
       const text = match[1].trim();
-      const url = match[2].trim();
+      const url = resolveCitationUrl(match[2].trim(), baseUrl);
 
-      // 画像リンクや同ドメイン内アンカーを除外
-      if (text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
+      // 画像リンク・ページ内アンカー・http(s) 以外のリンクを除外
+      if (!url || text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
 
       seenUrls.add(url);
       const context = para.replace(/\s+/g, ' ').trim().slice(0, 150);
@@ -398,8 +412,8 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
     if (!res.ok) {
       console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
     }
-  } catch (err: any) {
-    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, err?.message);
+  } catch (err) {
+    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
   }
 }
 
@@ -984,7 +998,7 @@ export function rerankByDeepEvidence<T extends {
     const extracted = extractTermsWithBigrams(query);
     const whitespaceWords = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length > 0);
     const termSet = new Set<string>();
-    const isDateLike = (t: string) => /\d.*[月日時\/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
+    const isDateLike = (t: string) => /\d.*[月日時/\-:：]/.test(t) || /\d{1,2}:\d{2}/.test(t);
     const isAttrTerm = (t: string) => {
       for (const attr of INTENT_ATTRIBUTE_TERMS) { if (t.includes(attr.toLowerCase())) return true; }
       return false;
@@ -1247,7 +1261,7 @@ export function chooseBestDescription(
   if (!metaDesc && !dynamicSnippet) return undefined;
   if (!dynamicSnippet) return metaDesc;
   // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
-  let cleanSnippet = dynamicSnippet
+  const cleanSnippet = dynamicSnippet
     .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
     .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
     .replace(/^#{1,6}\s+/gm, '')

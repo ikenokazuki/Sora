@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
 import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
 

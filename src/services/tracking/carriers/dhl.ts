@@ -105,8 +105,8 @@ export const dhlAdapter: TrackingCarrierAdapter = {
             };
           }
         }
-      } catch (err: any) {
-        console.warn('DHL Express API call failed, falling back to direct URL guidance:', err?.message || String(err));
+      } catch (err) {
+        console.warn('DHL Express API call failed, falling back to direct URL guidance:', errorMessage(err) || String(err));
       }
     }
 
@@ -128,8 +128,8 @@ export const dhlAdapter: TrackingCarrierAdapter = {
         };
       }
       if (scraped) return scraped;
-    } catch (err: any) {
-      console.warn('DHL browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    } catch (err) {
+      console.warn('DHL browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
       carrier,
@@ -157,6 +157,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
+import { errorMessage } from '../../../errors.js';
 
 const DHL_POSITIVE = /delivered|in transit|trouble|held|exception|配達完了|配達中/i;
 const DHL_NO_RESULT = /no results?|shipment .* not found|not found/i;

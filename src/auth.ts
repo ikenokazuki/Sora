@@ -3,6 +3,13 @@ import { timingSafeEqual, createHash } from 'crypto';
 import { dbIncrementApiUsage } from './db.js';
 import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
 
+declare module 'hono' {
+  interface ContextVariableMap {
+    /** 認証ミドルウェアが要求ごとに設定するテナント */
+    tenant: TenantContext;
+  }
+}
+
 /** タイミング攻撃（Timing Attack）を防ぐ定数時間文字列比較 */
 export function isSecureEqual(a?: string, b?: string): boolean {
   if (!a || !b) return false;
@@ -16,7 +23,7 @@ export function extractAuthToken(c: any): string | undefined {
   const authHeader = c.req.header('authorization');
   const xApiKey = c.req.header('x-api-key');
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
+  if (authHeader?.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();
   }
   if (xApiKey) {
@@ -115,16 +122,16 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
       if (providedToken && isSecureEqual(providedToken, apiKey)) {
         tokenHash = hashApiKey(providedToken);
         try {
-          (c as any).set('tenant', resolveTenantContext({ apiKey: providedToken }));
+          c.set('tenant', resolveTenantContext({ apiKey: providedToken }));
         } catch {}
       } else if (isDirectLocal) {
         tokenHash = 'local_direct';
         try {
-          (c as any).set('tenant', resolveTenantContext({ internal: true }));
+          c.set('tenant', resolveTenantContext({ internal: true }));
         } catch {}
       } else if (allowAnonymous) {
         try {
-          (c as any).set('tenant', resolveTenantContext({}));
+          c.set('tenant', resolveTenantContext({}));
         } catch {}
       } else {
         return c.json(
@@ -138,8 +145,8 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
     }
 
     try {
-      const existing = (c as any).get?.('tenant') as TenantContext | undefined;
-      if (!existing) (c as any).set('tenant', resolveTenantContext({}));
+      const existing: TenantContext | undefined = c.get('tenant');
+      if (!existing) c.set('tenant', resolveTenantContext({}));
     } catch {}
 
     // 4. API キーごとの日次レート制限 & クォータ制御 (SQLite 永続化)
