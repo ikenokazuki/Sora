@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { CANONICAL_TOOLS, PROVIDER_CASES, TOOL_CASES, type ProviderCase } from './catalog.js';
 import { mcpCall, mcpClose, mcpInitialize, mcpPost, type McpHttpSession } from './mcp_http.js';
 import {
-  collectKnownCaseIds, gateExit, nonPassLines, redact, registerSecrets, summarize, validateCasesJson, writeReports,
+  collectKnownCaseIds, gateExit, MAX_UNAVAILABLE_RATIO, nonPassLines, tooManyUnavailable, redact, registerSecrets, summarize, validateCasesJson, writeReports,
 } from './report.js';
 import {
   LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
@@ -165,8 +165,10 @@ export async function main(): Promise<number> {
             body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(body ?? {}),
             signal: AbortSignal.timeout(timeoutMs),
           });
-        } catch {
-          throw new LiveUnavailable(`REST ${method} ${path} transport failed`);
+        } catch (e) {
+          // 候補のコンテナに繋がらないのは外部の不調ではなく、こちら側の故障。タイムアウトだけは外部の遅さもありうる
+          if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) throw new LiveUnavailable(`REST ${method} ${path} timed out`);
+          throw new LiveFail(`REST ${method} ${path} transport failed`);
         }
         const text = await res.text();
         if (res.status < 200 || res.status >= 300) classifyRestStatus(res.status, text, `REST ${method} ${path}`);
@@ -218,7 +220,7 @@ export async function main(): Promise<number> {
     const exitCode = gateExit(counts, missing);
     const overall = exitCode === 0 ? 'pass' : 'fail';
     writeReports(args.out, { ...report(overall), counts, missing });
-    console.log(`tool-health ${lane}: exit=${exitCode} ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') + (missing.length ? ` missing=${missing.join(',')}` : '') + (exitCode === 3 ? ' (SOFT HOLD: unverified/blocked only, no breakage signal)' : ''));
+    console.log(`tool-health ${lane}: exit=${exitCode} ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') + (missing.length ? ` missing=${missing.join(',')}` : '') + (tooManyUnavailable(counts) ? ` (HARD FAIL: over ${MAX_UNAVAILABLE_RATIO * 100}% unavailable, candidate likely broken)` : '') + (exitCode === 3 ? ' (SOFT HOLD: unavailable/unverified/blocked only, no breakage signal)' : ''));
     for (const line of nonPassLines(results)) console.log(line);
     return exitCode;
   } catch (e) {
