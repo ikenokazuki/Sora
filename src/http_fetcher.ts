@@ -5,6 +5,7 @@ import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { isProxyBypassed } from './net/no_proxy.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -324,7 +325,9 @@ export async function fetchWithSafeRedirects(
     : undefined;
 
   const initialDomain = new URL(initialUrl).hostname;
-  const effectiveProxyUrl = proxyUrl ?? pickProxyUrl();
+  // 環境変数由来のプロキシは NO_PROXY の除外先には使わない（ブラウザ側と同じ扱い）。明示指定の proxyUrl はそのまま使う
+  const effectiveProxyUrl = proxyUrl
+    ?? (isProxyBypassed(initialDomain, getProxyConfig().proxyBypassList) ? undefined : pickProxyUrl());
   const browser = pickBrowserProfile();
   const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId);
 

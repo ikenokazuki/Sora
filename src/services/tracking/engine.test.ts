@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, spyOn } from 'bun:test';
 import type {
   TrackingCarrierAdapter,
   TrackingResult,
 } from './types.js';
 import { trackByCarrier, trackPackageAuto } from './index.js';
 import type { RankedCandidate } from './detector.js';
+import { getCarrierAdapter } from './registry.js';
 
 describe('Tracking v2 Auto Engine & Verification Rules', () => {
   it('Fastest Is Not Winner: 最速の weak 応答ではなく、80ms 後に返った strong 応答が勝者となる', async () => {
@@ -177,30 +178,29 @@ describe('Tracking v2 Auto Engine & Verification Rules', () => {
   });
 
   it('Explicit Carrier: 指定キャリア照会時は他社へのネットワーク投機を一切行わない', async () => {
-    let otherCarrierCalled = false;
-    const fakeSagawa: TrackingCarrierAdapter = {
-      code: 'sagawa',
-      name: '佐川急便',
-      trackingUrl: () => 'https://sagawa.com',
-      detect: () => ({ candidate: true, score: 80, strength: 'strong', reasons: [] }),
-      track: async () => {
-        otherCarrierCalled = true;
-        return {
-          carrier: 'sagawa',
-          carrierName: '佐川急便',
-          trackingNumber: '123456789012',
-          status: 'delivered',
-          statusText: '配達完了',
-          events: [],
-          trackingUrl: 'https://sagawa.com',
-        };
-      },
-      verify: () => ({ level: 'strong', reasons: [] }),
-    };
-
-    const result = await trackByCarrier('yamato', '123456789012', { noCache: true });
-    expect(result.carrier).toBe('yamato');
-    expect(result.resolvedCarrier?.method).toBe('explicit');
-    expect(otherCarrierCalled).toBe(false);
+    // 登録済みアダプタの照会を差し替え、ヤマトは固定応答、他社は呼ばれたら記録する（実ネットワークに出ない）
+    const yamatoTrack = spyOn(getCarrierAdapter('yamato')!, 'track').mockImplementation(async (num: string) => ({
+      carrier: 'yamato',
+      carrierName: 'ヤマト運輸',
+      trackingNumber: num,
+      status: 'delivered',
+      statusText: '配達完了',
+      events: [{ date: '2026/09/09 14:30', status: '配達完了', location: '渋谷センター' }],
+      trackingUrl: 'https://toi.kuronekoyamato.co.jp/cgi-bin/tneko',
+    }));
+    const otherTracks = (['sagawa', 'japanpost', 'seino', 'fukutsu'] as const).map((code) =>
+      spyOn(getCarrierAdapter(code)!, 'track').mockImplementation(async () => {
+        throw new Error(`${code} must not be called`);
+      }));
+    try {
+      const result = await trackByCarrier('yamato', '123456789012', { noCache: true });
+      expect(result.carrier).toBe('yamato');
+      expect(result.resolvedCarrier?.method).toBe('explicit');
+      expect(yamatoTrack).toHaveBeenCalledTimes(1);
+      for (const spy of otherTracks) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      yamatoTrack.mockRestore();
+      for (const spy of otherTracks) spy.mockRestore();
+    }
   });
 });
