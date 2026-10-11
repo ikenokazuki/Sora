@@ -1,11 +1,11 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { McpSessionManager } from '../mcp.js';
 
 export const mcpSessionManager = new McpSessionManager();
 
-export async function handleMcpRequest(c: any) {
+export async function handleMcpRequest(c: Context) {
   const rawReq = c.req.raw;
-  let parsedBody: any;
+  let parsedBody: unknown;
   if (rawReq.method === 'POST') {
     try {
       parsedBody = await c.req.json();

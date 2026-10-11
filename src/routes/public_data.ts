@@ -75,7 +75,7 @@ publicDataRoutes.get('/weather', async (c) => {
 
 // 気象警報・注意報 (POST /disaster/warnings)
 publicDataRoutes.post('/disaster/warnings', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -97,7 +97,7 @@ publicDataRoutes.post('/disaster/warnings', async (c) => {
 
 // 地震速報・履歴 (POST /disaster/earthquake)
 publicDataRoutes.post('/disaster/earthquake', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -119,7 +119,7 @@ publicDataRoutes.post('/disaster/earthquake', async (c) => {
 
 // 道路交通情報 (POST /traffic/road)
 publicDataRoutes.post('/traffic/road', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -168,7 +168,7 @@ publicDataRoutes.get('/traffic/road/:pref', async (c) => {
 
 // e-Gov キーワード法令検索 (POST /gov/laws)
 publicDataRoutes.post('/gov/laws', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -190,7 +190,7 @@ publicDataRoutes.post('/gov/laws', async (c) => {
 
 // e-Gov 法令条文・本文詳細取得 (POST /gov/law-text)
 publicDataRoutes.post('/gov/law-text', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -212,7 +212,7 @@ publicDataRoutes.post('/gov/law-text', async (c) => {
 
 // 国会会議録検索 (POST /gov/diet-minutes & GET /gov/diet-minutes)
 publicDataRoutes.post('/gov/diet-minutes', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -262,7 +262,7 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
 
 // Nominatim 座標解決 & 国土地理院 標高取得 (POST /geo/elevation & GET /geo/elevation)
 publicDataRoutes.post('/geo/elevation', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -305,7 +305,7 @@ publicDataRoutes.get('/geo/elevation', async (c) => {
 
 // OpenPOI 全国施設POI検索 (POST /geo/poi, GET /geo/poi)
 publicDataRoutes.post('/geo/poi', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -356,7 +356,7 @@ publicDataRoutes.get('/geo/poi', async (c) => {
 
 // 主要空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
 publicDataRoutes.post('/traffic/flight', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {

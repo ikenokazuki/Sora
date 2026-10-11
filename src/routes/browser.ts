@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { executeBrowserActions } from '../scraper.js';
 import { BrowserActionRequestSchema } from '../types.js';
 import { extractAuthToken } from '../auth.js';
@@ -8,8 +8,8 @@ import { errorMessage } from '../errors.js';
 export const browserRoutes = new Hono();
 
 // 対話型ブラウザ自動操作 (POST /browser/action & POST /action)
-export const handleBrowserAction = async (c: any) => {
-  let rawBody: any;
+export const handleBrowserAction = async (c: Context) => {
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -27,7 +27,7 @@ export const handleBrowserAction = async (c: any) => {
   }
 
   try {
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await executeBrowserActions({
       url: body.url,
       sessionId: body.sessionId,

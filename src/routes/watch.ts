@@ -33,7 +33,7 @@ export function createWatchRoutes(deps: WatchRouteDeps = {}) {
 
 // 監視ターゲット登録 (POST /watch/register)
 watchRoutes.post('/watch/register', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -55,7 +55,7 @@ watchRoutes.post('/watch/register', async (c) => {
 
 // 差分スキャン実行 (POST /watch/check)
 watchRoutes.post('/watch/check', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {

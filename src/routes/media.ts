@@ -12,7 +12,7 @@ export const mediaRoutes = new Hono();
 // 3.4 Media & Vision OCR APIs
 // ==========================================
 mediaRoutes.post('/media/inspect-image', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
