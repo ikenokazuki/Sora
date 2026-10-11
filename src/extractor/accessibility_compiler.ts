@@ -12,7 +12,6 @@
 
 import type {
   EvidenceBlockRef,
-  HighlightItem,
   EvidenceDiagnostics,
   CandidateDiscrepancy,
   DerivationTrace,

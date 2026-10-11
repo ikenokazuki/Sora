@@ -323,18 +323,6 @@ export const CountrySourceVerificationBasisSchema = z.enum([
 
 export type CountrySourceVerificationBasis = z.infer<typeof CountrySourceVerificationBasisSchema>;
 
-export const CountrySourceSchema = z.object({
-  id: z.string(),
-  regionId: z.string(),
-  domain: z.string(),
-  sourceType: z.string(),
-  discoveredAt: z.string(),
-  verifiedAt: z.string().optional(),
-  verificationStatus: z.enum(['verified', 'candidate', 'rejected', 'stale']),
-  discoveryMethod: z.enum(['manual_seed', 'search', 'rss', 'sitemap', 'official_link', 'wikidata', 'other']),
-  verificationBasis: CountrySourceVerificationBasisSchema.optional(),
-});
-
 export type ProviderRunStatus = 'success' | 'partial' | 'unavailable' | 'rate_limited' | 'error';
 
 export interface ProviderRun {

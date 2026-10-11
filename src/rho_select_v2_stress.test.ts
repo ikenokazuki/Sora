@@ -3,11 +3,6 @@ import {
   selectEvidenceSetRhoV2,
   evaluateUtility,
   validateEvidenceProblem,
-  applySafeDominance,
-  solveExactObservedStateDP,
-  computeGreedyIncumbent,
-  solveAdaptiveRefinement,
-  RhoResourceLimitError,
   type RhoEvidenceProblem,
   type RhoUtilitySpec,
 } from './rho_select_v2.js';
@@ -198,7 +193,6 @@ describe('ρSelect v2 Comprehensive Stress Test Suite (1,000 Deterministic Seeds
     for (let seed = 601; seed <= 750; seed++) {
       const rng = createMulberry32(seed * 6271);
       const n = Math.floor(rng() * 4) + 4; // n in [4, 7]
-      const m = 2;
 
       const scores: number[][] = [];
       for (let i = 0; i < n; i++) {
@@ -234,8 +228,6 @@ describe('ρSelect v2 Comprehensive Stress Test Suite (1,000 Deterministic Seeds
   it('Stress 4: Robustness under duplicate candidates, extreme tau, and ties across 150 seeds', () => {
     for (let seed = 751; seed <= 900; seed++) {
       const rng = createMulberry32(seed * 1999);
-      const n = 6;
-      const m = 2;
 
       // Duplicate or identical candidate rows
       const baseRow = [Number(rng().toFixed(2)), Number(rng().toFixed(2))];

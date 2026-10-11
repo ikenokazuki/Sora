@@ -7,15 +7,12 @@ import { z } from 'zod';
 import {
   scrapeUrl,
   scrapeBatchUrls,
-  callYahooMcp,
   integratedSearch,
   mapSiteUrl,
   crawlSiteUrl,
   fetchRealtimeTrends,
-  normalizeRealtimeItem,
   searchYahooRealtime,
   createWebAnchorHints,
-  filterByDomains,
   searchYahooImage,
   searchYahooVideo,
   searchYahooNews,
@@ -52,11 +49,12 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 import { formatCompactRealtimeResponse } from './search_compact.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from './search_web_formats.js';
 import { defaultXDetailProvider, fetchXPostDetail, type XPostDetailProvider } from './services/x_detail.js';
-import { IntegratedSearchResponseModeSchema, serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
+import { serializeIntegratedSearchMcpResponse } from './integrated_search_host_response.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIGHLIGHT_ALGORITHM, INTEGRATED_SEARCH_INPUT_SHAPE, TRANSIT_ROUTE_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, BrowserActionStepSchema, EarthquakeScaleSchema, ChiebukuroStatusSchema } from './types.js';
 import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
+import { errorMessage } from './errors.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -617,10 +615,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               },
             ],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Scrape error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Scrape error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -639,7 +637,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
           const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
-          const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
+          const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return {
             content: [
               {
@@ -648,10 +646,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               },
             ],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Batch scrape error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Batch scrape error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -715,10 +713,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               }),
             }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -745,10 +743,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Map site error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Map site error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -808,10 +806,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Crawl site error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Crawl site error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -829,10 +827,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       SEARCH_WEB_INPUT_SHAPE,
       async (options) => {
         try {
-          const result = await searchWebWithFormats(options as any);
+          const result = await searchWebWithFormats(options);
           return { content: [{ type: 'text', text: toolJson(result) }] };
-        } catch (err: any) {
-          return { isError: true, content: [{ type: 'text', text: `Search error: ${err?.message || err}` }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Search error: ${errorMessage(err) || err}` }] };
         }
       },
       { defaultEnabled: true, keywords: ['Web検索','検索','URL一覧','Google検索','Yahoo検索','イベント検索','告知検索','スケジュール','Markdown'] },
@@ -865,8 +863,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           const signal = AbortSignal.timeout(55000);
           const result = await svc.search({ platform, query, limit: limit ?? 10, lookbackHours: lookbackHours ?? 24 }, { signal, deadlineAt: Date.now() + 55000 });
           return { content: [{ type: 'text', text: toolJson(result) }] };
-        } catch (err: any) {
-          return { isError: true, content: [{ type: 'text', text: `Social search error: ${err?.message || err}` }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Social search error: ${errorMessage(err) || err}` }] };
         }
       },
       { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿検索', 'ソーシャル'] },
@@ -897,8 +895,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           const signal = AbortSignal.timeout(30000);
           const result = await svc.fetch({ url, commentLimit: commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
           return { content: [{ type: 'text', text: toolJson(result) }] };
-        } catch (err: any) {
-          return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${err?.message || err}` }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${errorMessage(err) || err}` }] };
         }
       },
       { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿取得', 'コメント'] },
@@ -938,14 +936,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async (opts) => {
         try {
-          const result = await executeBrowserActions({ ...(opts as any), tenantId: serverTenantId });
+          const result = await executeBrowserActions({ ...opts, tenantId: serverTenantId });
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Browser action error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Browser action error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -975,10 +973,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Image search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Image search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1003,10 +1001,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Video search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Video search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1031,10 +1029,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `News search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `News search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1062,10 +1060,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Chiebukuro search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Chiebukuro search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1090,10 +1088,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Suggest error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Suggest error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1183,12 +1181,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               query: result.originalQuery,
               effectiveQuery: result.effectiveQuery,
               isFallback: result.isFallback,
-              ...((result as any).partial === true
-                ? { partial: true, providerErrors: (result as any).providerErrors || [] }
+              ...(result.partial === true
+                ? { partial: true, providerErrors: result.providerErrors || [] }
                 : {}),
-              retrievalQueries: (result as any).retrievalQueries || [],
-              contributingQueries: (result as any).contributingQueries || [],
-              resultsMerged: (result as any).resultsMerged || false,
+              retrievalQueries: result.retrievalQueries || [],
+              contributingQueries: result.contributingQueries || [],
+              resultsMerged: result.resultsMerged || false,
               focus: result.focus,
               missingTerms: result.missingTerms,
               ...(result.aliasTerms ? { aliasTerms: result.aliasTerms } : {}),
@@ -1206,10 +1204,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             // 整形なしの JSON（verbose は人が読む診断用なので整形する）
             content: [{ type: 'text', text: toolJson(responsePayload, verbose) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Realtime search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Realtime search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1233,10 +1231,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Trend search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Trend search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1269,10 +1267,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
             return {
               content: [{ type: 'text', text: toolJson(result) }],
             };
-          } catch (err: any) {
+          } catch (err) {
             return {
               isError: true,
-              content: [{ type: 'text', text: `X post fetch error: ${err?.message || err}` }],
+              content: [{ type: 'text', text: `X post fetch error: ${errorMessage(err) || err}` }],
             };
           }
         },
@@ -1300,10 +1298,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Transit route error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Transit route error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1328,10 +1326,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Weather forecast error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Weather forecast error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1359,10 +1357,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Flight status error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Flight status error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1400,10 +1398,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Package tracking error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Package tracking error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1467,10 +1465,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Road traffic error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Road traffic error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1495,10 +1493,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Disaster warnings error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Disaster warnings error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1525,10 +1523,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Earthquake search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Earthquake search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1555,10 +1553,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Elevation error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Elevation error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1590,10 +1588,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `POI search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `POI search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1626,10 +1624,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Watch register error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Watch register error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1653,10 +1651,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Watch check error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Watch check error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1678,10 +1676,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Watch list error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Watch list error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1705,10 +1703,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson({ success: deleted, id }) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Watch delete error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Watch delete error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1739,10 +1737,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Artist search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Artist search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1769,10 +1767,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Artist search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Artist search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1800,10 +1798,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Music search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Music search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1833,10 +1831,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Law search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Law search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1860,10 +1858,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Law data error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Law data error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1893,10 +1891,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Diet minutes search error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Diet minutes search error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1929,10 +1927,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `CPSC certificate check error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `CPSC certificate check error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1958,10 +1956,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `FDA regulation check error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `FDA regulation check error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -1986,10 +1984,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `HTS code verification error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `HTS code verification error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -2019,10 +2017,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `HTS code prediction error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `HTS code prediction error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -2055,10 +2053,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Product compliance check error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Product compliance check error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -2097,10 +2095,10 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               },
             ],
           };
-        } catch (err: any) {
+        } catch (err) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Image inspection error: ${err?.message || err}` }],
+            content: [{ type: 'text', text: `Image inspection error: ${errorMessage(err) || err}` }],
           };
         }
       },
@@ -2352,7 +2350,7 @@ export function mcpTenantFromRequest(req: Request): string {
 
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
-  private cleanupInterval: any;
+  private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly sessionTtlMs: number;
 
   constructor(options?: { sessionTtlMs?: number }) {
@@ -2364,7 +2362,7 @@ export class McpSessionManager {
   }
 
   /** Route HTTP requests to their session without sharing activation state. */
-  public async handleRequest(req: Request, options?: { parsedBody?: any }): Promise<Response> {
+  public async handleRequest(req: Request, options?: { parsedBody?: unknown }): Promise<Response> {
     const sessionId = req.headers.get('mcp-session-id');
     const tenantId = mcpTenantFromRequest(req);
 
@@ -2536,7 +2534,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
     const encoder = new TextEncoder();
     let buffer = '';
 
-    let pingTimer: any = null;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
 
     const transformStream = new TransformStream({
       start(controller) {
@@ -2594,8 +2592,4 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
     });
   }
   return res;
-}
-
-export function createMcpTransport(options?: any) {
-  return new WebStandardStreamableHTTPServerTransport(options);
 }

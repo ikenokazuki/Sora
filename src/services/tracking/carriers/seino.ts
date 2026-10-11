@@ -11,6 +11,7 @@ import type {
 import { cleanTrackingNumber } from '../normalization.js';
 import { evaluateTrackingVerification } from '../verification.js';
 import { determineStatus } from './yamato.js';
+import { errorMessage } from '../../../errors.js';
 
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -128,7 +129,7 @@ export const seinoAdapter: TrackingCarrierAdapter = {
           serviceType: 'カンガルー便',
         },
       };
-    } catch (err: any) {
+    } catch (err) {
       return {
         carrier,
         carrierName: seinoAdapter.name,
@@ -137,7 +138,7 @@ export const seinoAdapter: TrackingCarrierAdapter = {
         statusText: '西濃運輸への照会に失敗しました',
         events: [],
         trackingUrl,
-        error: err?.message || String(err),
+        error: errorMessage(err) || String(err),
       };
     }
   },

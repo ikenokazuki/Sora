@@ -7,17 +7,8 @@
  * 本ファイルは後方互換性のための薄い再エクスポート層を提供します。
  */
 
-import type { CarrierCode, TrackingResult } from '../types.js';
-import {
-  cleanTrackingNumber,
-  getCarrierTrackingUrl,
-  getCarrierName,
-  trackByCarrier,
-  trackPackageAuto,
-  trackPackage,
-  TRACKING_CACHE_TTL,
-  TRACKING_DELIVERED_CACHE_TTL,
-} from './tracking/index.js';
+import type { TrackingResult } from '../types.js';
+import { trackByCarrier } from './tracking/index.js';
 import { determineStatus as yamatoDetermineStatus } from './tracking/carriers/yamato.js';
 
 export * from './tracking/index.js';

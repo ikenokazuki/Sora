@@ -18,6 +18,7 @@ import {
   pruneInvisibleElements,
   type BrowserActionStep,
 } from './scraper.js';
+import { errorMessage } from './errors.js';
 
 function hashToken(token?: string): string | undefined {
   if (!token) return undefined;
@@ -336,13 +337,13 @@ async function runActionsOnPage(
         success: true,
         elapsedMs: Math.round(performance.now() - stepStart),
       });
-    } catch (actErr: any) {
+    } catch (actErr) {
       actionLogs.push({
         step: stepIndex++,
         type: action.type,
         target: action.selector || action.text || action.key || action.url,
         success: false,
-        message: actErr?.message || String(actErr),
+        message: errorMessage(actErr) || String(actErr),
         elapsedMs: Math.round(performance.now() - stepStart),
       });
     }

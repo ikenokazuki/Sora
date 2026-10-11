@@ -70,18 +70,6 @@ export interface SourceState {
   cursor?: string;
 }
 
-export const SourceStateSchema = z.object({
-  sourceId: z.string(),
-  lastCheckedAt: z.string().optional(),
-  lastSuccessfulFetchAt: z.string().optional(),
-  providerUpdatedAt: z.string().optional(),
-  lastErrorCode: z.string().optional(),
-  etag: z.string().optional(),
-  lastModified: z.string().optional(),
-  retryAt: z.string().optional(),
-  cursor: z.string().optional(),
-});
-
 export interface CollectionWindow {
   from: string;
   to: string;
