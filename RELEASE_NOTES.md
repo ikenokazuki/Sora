@@ -14,6 +14,18 @@
 - 応答のトークンを減らしました。**応答の形が変わります**:
   - MCP のすべてのツールの応答を整形なし（字下げなし）の JSON にしました。以前は `search_deep` と `search_realtime` だけでした。`verbose` を持つツール（`scrape`・`scrape_batch`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します。README の応答例 23 個で測ると文字数は約 2 割減ります（本文の長い応答ほど減る割合は小さく、`search_deep` の実測では約 1 割でした）。応答の文字列を字下げ込みで照合しているクライアントは、JSON として読むようにしてください。
   - `browser_action`（`POST /browser/action`）の応答から、重複していた `content`（`markdown` と同じ本文）と `actionLogs`（`actionOutputs` と同じ操作の記録）を外しました。本文の長いページでは応答がほぼ半分になります。`content` を読んでいたクライアントは `markdown` を、`actionLogs` を読んでいたクライアントは `actionOutputs`（成功は `result: "ok"`、失敗は `error` に理由）を参照してください。
+- 検索系の REST の入力を、既存のリクエストスキーマ（OpenAPI と同じもの）で検証するようにしました（`/search/realtime`・`/realtime`、`/search/image`、`/search/video`、`/search/news`、`/search/chiebukuro`、`/search/suggest`）。**スキーマ外の値は 400 になります**: 文字列の `limit`、文字列でない `query`（`/search/realtime` はこれまで黙って無視していました）、100 を超える `page` などです。エラーの文言と状態コードは従来どおりで、`/search/realtime` の `page` の文言だけ `page must be an integer 1-100` に変えました。
+- `scrape`・`scrape_batch` の `extractCitations` で、同じサイト内の相対リンク（`/news/1` など）が出典から落ちていた不具合を直しました。ページの URL で絶対 URL に直して含めます。ページ内アンカー（`#...`）と `mailto:`・`javascript:` のリンクは含めません。
+- 静的取得（wreq）が `NO_PROXY` を無視し、`HTTPS_PROXY` を設定した環境で localhost や社内ホストへの通信もプロキシへ送っていた不具合を直しました（ホスト名・サブドメイン・`*`・IP・IPv4 CIDR に対応。明示指定の `proxyUrl` はそのまま使います）。
+- 品質の改善（動きは変わりません）:
+  - テストを外部ネットワークに依存させないようにしました。外部 API は固定応答で確かめ、特定の日付の実データを見るテストは `SORA_LIVE_TESTS` のときだけ走らせます。CI の Bun（1.4.2）と Chrome（141）の版を固定しました。
+  - ドキュメントと実装の食い違いを CI で検出するようにしました。README の REST の例を OpenAPI と照合し、実際の応答の全キーが OpenAPI の 200 応答スキーマにあるかを確かめます。これで見つけた抜け（`/health?detailed=true`・`/metrics` の項目、キャッシュ応答の `cached`・`cachedAt`・`ageSeconds`）を OpenAPI に足しました。
+  - 使われていないコードと依存（`@hono/mcp`）を削除し、`noUnusedLocals` を有効にしました。MCP のツール処理と REST の入口の `any` を減らしました（src 全体で 577 → 382）。
+  - Biome の lint を入れ、CI で実行するようにしました（書式は対象外）。
+- 公開前の実 API 検査（tool-health）を見直しました:
+  - 公開を止めるのは、取得できたのに中身が壊れているとき（構造変化・解析失敗）、確認できないツールがあるとき、検査の 25% を超えて外部に繋がらないとき（こちら側の故障とみなす）です。外部の一時的な不調（タイムアウト・5xx・429）だけでは止めず、レポートに残します。
+  - 普段は必ず中身がある取得元（急上昇一覧、大手のニュース・RSS、World Bank など）が 0 件のときは、構造変化として失敗にします。項目の確認は先頭の1件ではなく全体の 8 割で見ます。
+  - 通らなかった項目と理由を、CI のログと Summary に出すようにしました。
 
 # Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
 
