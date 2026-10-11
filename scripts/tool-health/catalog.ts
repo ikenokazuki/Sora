@@ -386,6 +386,8 @@ const NEGATIVE_NUMBERS: Record<string, { number: string; expectNotFound: boolean
   dhl: { number: '1234567890', expectNotFound: false },
 };
 
+// 海外配送（fedex・dhl）は直近の実行で毎回判定できていない。スクレイパーを直すまでは unverified（公開は止めない）に留め、
+// 理由に応答の要約を出してページ変更かブロックかを切り分けられるようにする。直したら fail に上げる。
 /** 判定できなかったときの理由に入れる応答の要約（状態・状態の文言・最初の事象）。構造変化かブロックかを切り分けるため。 */
 function trackingSummary(parsed: { status?: string; statusText?: string; events?: Array<{ description?: string; status?: string }> }): string {
   const first = parsed.events?.[0];
@@ -406,14 +408,14 @@ export function checkTrackingNegative(raw: unknown, trackingNumber: string, carr
       return { detail: 'bogus number correctly classified', sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
     }
     if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
-    throw new LiveFail(`track_package (${carrier}) could not classify a bogus number (likely page change): ${trackingSummary(parsed)}`);
+    throw new LiveUnverified(`track_package (${carrier}) could not classify a bogus number (blocked or page changed): ${trackingSummary(parsed)}`);
   }
   const known = ['delivered', 'in_transit', 'registered', 'returned', 'not_found'];
   if (parsed.status && known.includes(parsed.status)) {
     return { detail: `bogus number parsed as ${parsed.status}`, sources: [{ source: carrier, format: 'json', upstreamStatus: 'unknown' }] };
   }
   if (parsed.status === 'unknown' && /bot check|challenge/i.test(textOf(raw))) throw new LiveBlocked(`track_package (${carrier}) hit a carrier bot check`);
-  throw new LiveFail(`track_package (${carrier}) could not classify a bogus number (likely page change): ${trackingSummary(parsed)}`);
+  throw new LiveUnverified(`track_package (${carrier}) could not classify a bogus number (blocked or page changed): ${trackingSummary(parsed)}`);
 }
 
 function trackingNegativeCases(): HealthCase[] {
