@@ -5,7 +5,7 @@ import {
   checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
 import {
-  collectKnownCaseIds, gateExit, isGatePass, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
+  collectKnownCaseIds, gateExit, isGatePass, nonPassLines, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
 } from './report.js';
 import { ProviderHttpError, ProviderNetworkError } from '../../src/services/country_intel/provider_registry.js';
 import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified } from './types.js';
@@ -84,6 +84,14 @@ describe('report writers', () => {
     { caseId: 'a', toolNames: ['scrape'], dependencyIds: [], status: 'pass', reason: 'ok', startedAt: 't', durationMs: 1, attempts: 1, recovered: false, observedSources: [] },
     { caseId: 'b', toolNames: [], dependencyIds: ['gdacs'], status: 'unverified', reason: 'zero items', startedAt: 't', durationMs: 1, attempts: 1, recovered: false, observedSources: [] },
   ] as never;
+  test('non-pass lines list only failing cases, with secrets redacted', () => {
+    registerSecrets(['TOPSECRET-999']);
+    const lines = nonPassLines([
+      ...(results as unknown as never[]),
+      { caseId: 'c', toolNames: [], dependencyIds: [], status: 'unavailable', reason: 'HTTP 503 key=TOPSECRET-999\nretry', startedAt: 't', durationMs: 1, attempts: 2, recovered: false, observedSources: [] },
+    ] as never);
+    expect(lines).toEqual(['  b unverified: zero items', '  c unavailable: HTTP 503 key=[redacted] retry']);
+  });
   test('counts and gate', () => {
     const counts = summarize(results);
     expect(counts.pass).toBe(1);
