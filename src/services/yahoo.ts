@@ -27,6 +27,7 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
+import { errorMessage } from '../errors.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -1676,8 +1677,8 @@ async function fetchRealtimeBatch(
     });
     const rawList = readRealtimeProviderList(mcpRes);
     return { query, queryIndex, wave, sort, items: rawList.map((item: any) => normalizeRealtimeItem(item)) };
-  } catch (batchErr: any) {
-    errors?.push({ query, message: batchErr?.message || String(batchErr) });
+  } catch (batchErr) {
+    errors?.push({ query, message: errorMessage(batchErr) || String(batchErr) });
     if (isYahooRateLimitedError(batchErr)) {
       return { query, queryIndex, wave, sort, items: [], throttled: true };
     }

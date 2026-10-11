@@ -122,6 +122,7 @@ import {
 import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
+import { errorMessage } from './errors.js';
 
 // ==========================================
 // 2. ブラウザ自動操作 (browser_action)
@@ -787,7 +788,7 @@ export async function scrapeUrl(options: {
               },
             },
           );
-        } catch (browserErr: any) {
+        } catch (browserErr) {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
@@ -858,7 +859,7 @@ export async function scrapeUrl(options: {
         if (useSharedCache) setToCache(cacheKey, result);
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
         return result;
-      } catch (err: any) {
+      } catch (err) {
         lastError = err;
         attempt++;
         if (attempt <= retries) {
@@ -940,8 +941,8 @@ export async function scrapeBatchUrls(options: {
           ...scrapeOpts,
         });
         results.push(res);
-      } catch (e: any) {
-        errors.push({ url: targetUrl, error: e?.message || 'Unknown error' });
+      } catch (e) {
+        errors.push({ url: targetUrl, error: errorMessage(e) || 'Unknown error' });
       }
     }
   }
@@ -1806,13 +1807,13 @@ export async function integratedSearch(options: {
           );
 
           return enrichedItem;
-        } catch (e: any) {
+        } catch (e) {
           const fallbackMd = itemSnippet
             ? `# ${item.title || 'Web Search Result'}\n\nURL: ${itemUrl}\n\n${itemSnippet}`
             : undefined;
           return {
             ...item,
-            scrapeError: e?.message,
+            scrapeError: errorMessage(e),
             ...(formats.includes('markdown') && fallbackMd ? { markdown: fallbackMd, isSnippetFallback: true } : {}),
           };
         }

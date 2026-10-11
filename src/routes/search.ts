@@ -28,6 +28,7 @@ import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
+import { errorMessage } from '../errors.js';
 
 export const searchRoutes = new Hono();
 
@@ -87,8 +88,8 @@ const handleRealtimeSearch = async (c: any) => {
         return c.json({ error: 'query, accountId, hashtags, or other search constraints are required' }, 400);
       }
       cacheKey = `${buildRealtimeSearchCacheKey(options)}:${body?.verbose === true ? 'verbose' : 'compact'}`;
-    } catch (err: any) {
-      return c.json({ error: err.message || 'Invalid realtime request' }, 400);
+    } catch (err) {
+      return c.json({ error: errorMessage(err) || 'Invalid realtime request' }, 400);
     }
     if (!body.noCache) {
       const cached = getFromCache<any>(cacheKey);
@@ -98,8 +99,8 @@ const handleRealtimeSearch = async (c: any) => {
     let realtimeRes: any;
     try {
       realtimeRes = await searchYahooRealtime({ ...options, ...(query ? { anchorHints: createWebAnchorHints(query) } : {}) });
-    } catch (err: any) {
-      return c.json({ error: err.message || 'Realtime search failed' }, 502);
+    } catch (err) {
+      return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 502);
     }
 
     const responseData = {
@@ -141,8 +142,8 @@ const handleRealtimeSearch = async (c: any) => {
 
     if (!body.noCache && realtimeRes.partial !== true) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
     return c.json(responseData);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Realtime search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 500);
   }
 };
 
@@ -161,8 +162,8 @@ searchRoutes.post('/realtime/post', async (c) => {
       return c.json({ error: '投稿が見つかりませんでした' }, 404);
     }
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'X投稿の取得に失敗しました' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'X投稿の取得に失敗しました' }, 500);
   }
 });
 
@@ -173,8 +174,8 @@ searchRoutes.post('/search/trend', async (c) => {
     const limit = Math.min(body?.limit || 20, 50);
     const result = await fetchRealtimeTrends(limit);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Search trend failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Search trend failed' }, 500);
   }
 });
 
@@ -191,7 +192,7 @@ searchRoutes.post('/search/web', async (c) => {
     const responseData = { query: body.query, source: 'web', type: 'web', data: parsedData, cached: false };
     if (!body.noCache) setToCache(cacheKey, responseData);
     return c.json(responseData);
-  } catch (err: any) { return c.json({ error: err.message || 'Web search failed' }, 500); }
+  } catch (err) { return c.json({ error: errorMessage(err) || 'Web search failed' }, 500); }
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
@@ -294,8 +295,8 @@ const handleIntegratedSearch = async (c: any) => {
         includeMedia: includeMediaParsed.data,
       }),
     );
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Integrated search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Integrated search failed' }, 500);
   }
 };
 
@@ -322,8 +323,8 @@ searchRoutes.post('/search/image', async (c) => {
     const result = await searchYahooImage({ query, limit: body.limit, page: body.page });
     if (!body.noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Image search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Image search failed' }, 500);
   }
 });
 
@@ -345,8 +346,8 @@ searchRoutes.post('/search/video', async (c) => {
     const result = await searchYahooVideo({ query, limit: body.limit, page: body.page });
     if (!body.noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Video search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Video search failed' }, 500);
   }
 });
 
@@ -368,8 +369,8 @@ searchRoutes.post('/search/news', async (c) => {
     const result = await searchYahooNews({ query, limit: body.limit });
     if (!body.noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'News search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'News search failed' }, 500);
   }
 });
 
@@ -391,8 +392,8 @@ searchRoutes.post('/search/chiebukuro', async (c) => {
     const result = await searchYahooChiebukuro({ query, limit: body.limit, page: body.page, status: body.status });
     if (!body.noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Chiebukuro search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Chiebukuro search failed' }, 500);
   }
 });
 
@@ -414,8 +415,8 @@ searchRoutes.post('/search/suggest', async (c) => {
     const result = await getSuggestedKeywords({ query, limit: body.limit });
     if (!body.noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Suggest keywords failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Suggest keywords failed' }, 500);
   }
 });
 
@@ -451,8 +452,8 @@ searchRoutes.post('/transit/route', async (c) => {
       useFerry: body.useFerry,
     });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Transit route search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Transit route search failed' }, 500);
   }
 });
 
@@ -473,8 +474,8 @@ export const handleSongSearch = async (c: any) => {
   try {
     const result = await searchSong(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Song search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Song search failed', 'MUSIC_ERROR', 500);
   }
 };
 searchRoutes.post('/search/song', handleSongSearch);
@@ -497,8 +498,8 @@ export const handleArtistSearch = async (c: any) => {
   try {
     const result = await searchArtist(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Artist search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Artist search failed', 'MUSIC_ERROR', 500);
   }
 };
 searchRoutes.post('/search/artist', handleArtistSearch);
@@ -521,7 +522,7 @@ searchRoutes.post('/search/music', async (c) => {
   try {
     const result = await searchMusic(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Music search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Music search failed', 'MUSIC_ERROR', 500);
   }
 });

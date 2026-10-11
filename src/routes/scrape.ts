@@ -12,6 +12,7 @@ import {
   BatchScrapeRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
 
@@ -36,8 +37,8 @@ scrapeRoutes.post('/scrape', async (c) => {
     const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
     const result = await scrapeUrl({ ...parsed.data, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
-  } catch (err: any) {
-    const msg = err.message || 'Scrape failed';
+  } catch (err) {
+    const msg = errorMessage(err) || 'Scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト') || msg.includes('timed out');
     const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : 'SCRAPE_ERROR';
@@ -74,11 +75,11 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
           });
         },
       });
-    } catch (err: any) {
+    } catch (err) {
       await stream.writeSSE({
         event: 'error',
         data: JSON.stringify({
-          error: err.message || 'Scrape failed',
+          error: errorMessage(err) || 'Scrape failed',
           code: 'SCRAPE_ERROR',
         }),
       });
@@ -106,8 +107,8 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
     const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
     const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
-  } catch (err: any) {
-    const msg = err.message || 'Batch scrape failed';
+  } catch (err) {
+    const msg = errorMessage(err) || 'Batch scrape failed';
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const code = isSecurity ? 'SSRF_BLOCKED' : 'BATCH_SCRAPE_ERROR';
     return formatError(c, msg, code, isSecurity ? 403 : 500, !isSecurity);
@@ -133,9 +134,9 @@ scrapeRoutes.post('/map', async (c) => {
     });
 
     return c.json(result);
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Map failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Map failed' }, isSecurity ? 403 : 500);
   }
 });
 
@@ -174,9 +175,9 @@ scrapeRoutes.post('/crawl', async (c) => {
     });
 
     return c.json(result);
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Crawl failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Crawl failed' }, isSecurity ? 403 : 500);
   }
 });
 
@@ -230,8 +231,8 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         data: JSON.stringify({ count: result.count, url: result.url }),
       });
     });
-  } catch (err: any) {
-    const isSecurity = err.message?.includes('セキュリティ上の理由');
-    return c.json({ error: err.message || 'Crawl stream failed' }, isSecurity ? 403 : 500);
+  } catch (err) {
+    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
+    return c.json({ error: errorMessage(err) || 'Crawl stream failed' }, isSecurity ? 403 : 500);
   }
 });

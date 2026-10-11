@@ -62,8 +62,8 @@ async function getFedExAccessToken(clientId: string, clientSecret: string, signa
         return cachedToken;
       }
       return null;
-    } catch (err: any) {
-      console.warn('FedEx OAuth token exception:', err?.message || String(err));
+    } catch (err) {
+      console.warn('FedEx OAuth token exception:', errorMessage(err) || String(err));
       return null;
     } finally {
       tokenFlightPromise = null;
@@ -189,8 +189,8 @@ export const fedexAdapter: TrackingCarrierAdapter = {
             }
           }
         }
-      } catch (err: any) {
-        console.warn('FedEx API call failed, falling back to direct URL guidance:', err?.message || String(err));
+      } catch (err) {
+        console.warn('FedEx API call failed, falling back to direct URL guidance:', errorMessage(err) || String(err));
       }
     }
 
@@ -212,8 +212,8 @@ export const fedexAdapter: TrackingCarrierAdapter = {
         };
       }
       if (scraped) return scraped;
-    } catch (err: any) {
-      console.warn('FedEx browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    } catch (err) {
+      console.warn('FedEx browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
       carrier,
@@ -241,6 +241,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
+import { errorMessage } from '../../../errors.js';
 
 const FEDEX_NOT_FOUND = ["your tracking number can't be found", 'not be in our system yet', 'no results found'];
 const FEDEX_READY = [

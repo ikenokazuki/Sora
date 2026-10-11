@@ -127,8 +127,8 @@ export const upsAdapter: TrackingCarrierAdapter = {
             };
           }
         }
-      } catch (err: any) {
-        console.warn('UPS API call failed, falling back to direct URL guidance:', err?.message || String(err));
+      } catch (err) {
+        console.warn('UPS API call failed, falling back to direct URL guidance:', errorMessage(err) || String(err));
       }
     }
 
@@ -150,8 +150,8 @@ export const upsAdapter: TrackingCarrierAdapter = {
         };
       }
       if (scraped) return scraped;
-    } catch (err: any) {
-      console.warn('UPS browser tracking failed, falling back to URL guidance:', err?.message || String(err));
+    } catch (err) {
+      console.warn('UPS browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
       carrier,
@@ -180,6 +180,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
+import { errorMessage } from '../../../errors.js';
 
 const UPS_INVALID_PHRASES = ['トラッキングナンバーが無効', 'tracking number is invalid', 'not yet valid', '見当たりません'];
 const UPS_READY = [

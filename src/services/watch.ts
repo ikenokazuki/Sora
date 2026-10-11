@@ -12,6 +12,7 @@ import {
   type WatchTargetRecord,
   type WatchHistoryRecord,
 } from '../db.js';
+import { errorCode, errorMessage } from '../errors.js';
 
 export class WatchSelectorNotFoundError extends Error {
   readonly code = 'WATCH_SELECTOR_NOT_FOUND';
@@ -66,10 +67,10 @@ export async function registerWatchTarget(options: {
     try {
       initialResult = await checkWatchTarget(target.id, scrapeImpl);
       target = dbGetWatchTarget(target.id) || target;
-    } catch (err: any) {
-      console.warn(`[Sora/Watch] Initial fetch for watch target ${target.id} failed:`, err?.message);
-      const code = typeof err?.code === 'string' ? err.code : 'WATCH_INITIAL_FETCH_FAILED';
-      return { target, initialError: { code, message: String(err?.message ?? err).slice(0, 300) } };
+    } catch (err) {
+      console.warn(`[Sora/Watch] Initial fetch for watch target ${target.id} failed:`, errorMessage(err));
+      const code = errorCode(err) ?? 'WATCH_INITIAL_FETCH_FAILED';
+      return { target, initialError: { code, message: String(errorMessage(err) ?? err).slice(0, 300) } };
     }
   }
 
@@ -165,15 +166,15 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
     try {
       const res = await checkWatchTarget(t.id, scrapeImpl);
       results.push(res);
-    } catch (err: any) {
+    } catch (err) {
       results.push({
         targetId: t.id,
         url: t.url,
         changed: false,
         currentHash: t.last_hash || '',
-        diffSummary: `Check failed: ${err?.message || err}`,
+        diffSummary: `Check failed: ${errorMessage(err) || err}`,
         checkedAt: new Date().toISOString(),
-        ...(typeof err?.code === 'string' ? { errorCode: err.code } : {}),
+        ...(errorCode(err) ? { errorCode: errorCode(err) } : {}),
       });
     }
   }

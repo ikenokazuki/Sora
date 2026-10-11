@@ -14,6 +14,7 @@ import {
   ProductComplianceRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const tradeRoutes = new Hono();
 
@@ -34,8 +35,8 @@ tradeRoutes.post('/trade/cpsc-check', async (c) => {
   try {
     const result = await checkCpscCertificate(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'CPSC certificate check failed', 'TRADE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'CPSC certificate check failed', 'TRADE_ERROR', 500);
   }
 });
 
@@ -56,8 +57,8 @@ tradeRoutes.post('/trade/fda-check', async (c) => {
   try {
     const result = checkFdaRegulated(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'FDA regulation check failed', 'TRADE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'FDA regulation check failed', 'TRADE_ERROR', 500);
   }
 });
 
@@ -78,8 +79,8 @@ tradeRoutes.post('/trade/hts-verify', async (c) => {
   try {
     const result = await verifyHtsCode(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'HTS code verification failed', 'TRADE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'HTS code verification failed', 'TRADE_ERROR', 500);
   }
 });
 
@@ -100,8 +101,8 @@ tradeRoutes.post('/trade/hts-predict', async (c) => {
   try {
     const result = await predictHtsCode(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'HTS code prediction failed', 'TRADE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'HTS code prediction failed', 'TRADE_ERROR', 500);
   }
 });
 
@@ -122,7 +123,7 @@ tradeRoutes.post('/trade/compliance', async (c) => {
   try {
     const result = await checkProductCompliance(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Product compliance check failed', 'TRADE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Product compliance check failed', 'TRADE_ERROR', 500);
   }
 });

@@ -23,6 +23,7 @@ import {
   PoiSearchRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
 
@@ -38,8 +39,8 @@ publicDataRoutes.post('/weather', async (c) => {
     const days = body?.days ? parseInt(body.days, 10) : undefined;
     const result = await fetchWeatherForecast({ city, days, noCache: body?.noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
@@ -53,8 +54,8 @@ publicDataRoutes.get('/weather/:city', async (c) => {
 
     const result = await fetchWeatherForecast({ city, days, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
@@ -67,8 +68,8 @@ publicDataRoutes.get('/weather', async (c) => {
 
     const result = await fetchWeatherForecast({ city, days, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
@@ -89,8 +90,8 @@ publicDataRoutes.post('/disaster/warnings', async (c) => {
   try {
     const result = await fetchWeatherWarnings(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
   }
 });
 
@@ -111,8 +112,8 @@ publicDataRoutes.post('/disaster/earthquake', async (c) => {
   try {
     const result = await fetchRecentEarthquakes(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Earthquake search failed', 'EARTHQUAKE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Earthquake search failed', 'EARTHQUAKE_ERROR', 500);
   }
 });
 
@@ -133,8 +134,8 @@ publicDataRoutes.post('/traffic/road', async (c) => {
   try {
     const result = await fetchRoadTraffic(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -147,8 +148,8 @@ publicDataRoutes.get('/traffic/road', async (c) => {
   try {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -160,8 +161,8 @@ publicDataRoutes.get('/traffic/road/:pref', async (c) => {
   try {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -182,8 +183,8 @@ publicDataRoutes.post('/gov/laws', async (c) => {
   try {
     const result = await searchLaws(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Law search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Law search failed', 'GOV_ERROR', 500);
   }
 });
 
@@ -204,8 +205,8 @@ publicDataRoutes.post('/gov/law-text', async (c) => {
   try {
     const result = await getLawData(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Law text retrieval failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Law text retrieval failed', 'GOV_ERROR', 500);
   }
 });
 
@@ -226,8 +227,8 @@ publicDataRoutes.post('/gov/diet-minutes', async (c) => {
   try {
     const result = await searchDietMinutes(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
 
@@ -254,8 +255,8 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
 
@@ -276,8 +277,8 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
   try {
     const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -297,8 +298,8 @@ publicDataRoutes.get('/geo/elevation', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -319,8 +320,8 @@ publicDataRoutes.post('/geo/poi', async (c) => {
   try {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -348,8 +349,8 @@ publicDataRoutes.get('/geo/poi', async (c) => {
   try {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -370,8 +371,8 @@ publicDataRoutes.post('/traffic/flight', async (c) => {
   try {
     const result = await fetchFlightStatus(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -393,8 +394,8 @@ publicDataRoutes.get('/traffic/flight', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -416,7 +417,7 @@ publicDataRoutes.get('/traffic/flight/:airport', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
