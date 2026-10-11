@@ -2515,6 +2515,15 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(citations[1].url).toBe('https://www.gartner.com/en/reports/123');
   });
 
+  it('extractCitationsFromMarkdown resolves relative links against baseUrl and skips anchors and non-http links', () => {
+    const markdown = '出典は[こちらの記事](/news/1)、[同じ記事](https://site.example/news/1)、[外部記事](https://other.example/x)、'
+      + '[節](#sec)、[メール](mailto:a@example.com)、[スクリプト](javascript:void(0))、[相対](../about) です。';
+    const urls = extractCitationsFromMarkdown(markdown, 'https://site.example/blog/page').map((c) => c.url);
+    expect(urls).toEqual(['https://site.example/news/1', 'https://other.example/x', 'https://site.example/about']);
+    // baseUrl が無い場合、相対リンクは解決できないので入らない
+    expect(extractCitationsFromMarkdown(markdown).map((c) => c.url)).toEqual(['https://site.example/news/1', 'https://other.example/x']);
+  });
+
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
     await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
   });
