@@ -637,7 +637,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
         try {
           const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
-          const formattedResults = result.results?.map((r: any) => formatCompactScrapeResult(r, { verbose })) ?? [];
+          const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return {
             content: [
               {
@@ -827,7 +827,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       SEARCH_WEB_INPUT_SHAPE,
       async (options) => {
         try {
-          const result = await searchWebWithFormats(options as any);
+          const result = await searchWebWithFormats(options);
           return { content: [{ type: 'text', text: toolJson(result) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: `Search error: ${errorMessage(err) || err}` }] };
@@ -936,7 +936,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       async (opts) => {
         try {
-          const result = await executeBrowserActions({ ...(opts as any), tenantId: serverTenantId });
+          const result = await executeBrowserActions({ ...opts, tenantId: serverTenantId });
           return {
             content: [{ type: 'text', text: toolJson(result) }],
           };
@@ -1181,12 +1181,12 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
               query: result.originalQuery,
               effectiveQuery: result.effectiveQuery,
               isFallback: result.isFallback,
-              ...((result as any).partial === true
-                ? { partial: true, providerErrors: (result as any).providerErrors || [] }
+              ...(result.partial === true
+                ? { partial: true, providerErrors: result.providerErrors || [] }
                 : {}),
-              retrievalQueries: (result as any).retrievalQueries || [],
-              contributingQueries: (result as any).contributingQueries || [],
-              resultsMerged: (result as any).resultsMerged || false,
+              retrievalQueries: result.retrievalQueries || [],
+              contributingQueries: result.contributingQueries || [],
+              resultsMerged: result.resultsMerged || false,
               focus: result.focus,
               missingTerms: result.missingTerms,
               ...(result.aliasTerms ? { aliasTerms: result.aliasTerms } : {}),
@@ -2350,7 +2350,7 @@ export function mcpTenantFromRequest(req: Request): string {
 
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
-  private cleanupInterval: any;
+  private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly sessionTtlMs: number;
 
   constructor(options?: { sessionTtlMs?: number }) {
@@ -2362,7 +2362,7 @@ export class McpSessionManager {
   }
 
   /** Route HTTP requests to their session without sharing activation state. */
-  public async handleRequest(req: Request, options?: { parsedBody?: any }): Promise<Response> {
+  public async handleRequest(req: Request, options?: { parsedBody?: unknown }): Promise<Response> {
     const sessionId = req.headers.get('mcp-session-id');
     const tenantId = mcpTenantFromRequest(req);
 
@@ -2534,7 +2534,7 @@ export async function sanitizeMcpResponse(res: Response): Promise<Response> {
     const encoder = new TextEncoder();
     let buffer = '';
 
-    let pingTimer: any = null;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
 
     const transformStream = new TransformStream({
       start(controller) {
