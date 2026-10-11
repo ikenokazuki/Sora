@@ -455,7 +455,7 @@ export function solveExactObservedStateDP(
 
     const nextEntries: DPState[] = [];
 
-    for (const [key, state] of stateMap.entries()) {
+    for (const state of stateMap.values()) {
       // 遷移後の rank を計算
       const nextRanks: number[] = new Array(m);
       let changed = false;
@@ -805,10 +805,9 @@ export function solveAdaptiveRefinement(
 
     // 5. Coarse State ごとに Upper Bound と Feasible Lower Bound を評価
     let currentIterUB = 0;
-    let dominatingCoarseKey = '';
     let dominatingCoarseState: CoarseState | null = null;
 
-    for (const [key, state] of coarseMap.entries()) {
+    for (const state of coarseMap.values()) {
       if (state.picks.length === 0) continue;
 
       // 5.1 Feasible LB の更新: 代表 set を true score で再評価
@@ -852,7 +851,6 @@ export function solveAdaptiveRefinement(
 
       if (ubZ > currentIterUB) {
         currentIterUB = ubZ;
-        dominatingCoarseKey = key;
         dominatingCoarseState = state;
       }
     }
@@ -1037,9 +1035,6 @@ export function selectEvidenceSetRhoV2(
   const exactThreshold = options.exactSubsetThreshold ?? 50_000;
   const dominancePreprocess = options.dominancePreprocess ?? true;
   const epsilon = options.epsilon ?? 0.05;
-
-  // 2. Raw witness bound 計算
-  const rawWitnessBound = computeWitnessSubsetBound(rawN, rawM);
 
   // 3. Safe Dominance 剪定
   let workingProblem = problem;

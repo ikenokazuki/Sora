@@ -23,6 +23,7 @@ import {
   PoiSearchRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
+import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
 
@@ -38,8 +39,8 @@ publicDataRoutes.post('/weather', async (c) => {
     const days = body?.days ? parseInt(body.days, 10) : undefined;
     const result = await fetchWeatherForecast({ city, days, noCache: body?.noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
@@ -53,8 +54,8 @@ publicDataRoutes.get('/weather/:city', async (c) => {
 
     const result = await fetchWeatherForecast({ city, days, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
@@ -67,14 +68,14 @@ publicDataRoutes.get('/weather', async (c) => {
 
     const result = await fetchWeatherForecast({ city, days, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Weather forecast failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
 });
 
 // 気象警報・注意報 (POST /disaster/warnings)
 publicDataRoutes.post('/disaster/warnings', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -89,14 +90,14 @@ publicDataRoutes.post('/disaster/warnings', async (c) => {
   try {
     const result = await fetchWeatherWarnings(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
   }
 });
 
 // 地震速報・履歴 (POST /disaster/earthquake)
 publicDataRoutes.post('/disaster/earthquake', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -111,14 +112,14 @@ publicDataRoutes.post('/disaster/earthquake', async (c) => {
   try {
     const result = await fetchRecentEarthquakes(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Earthquake search failed', 'EARTHQUAKE_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Earthquake search failed', 'EARTHQUAKE_ERROR', 500);
   }
 });
 
 // 道路交通情報 (POST /traffic/road)
 publicDataRoutes.post('/traffic/road', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -133,8 +134,8 @@ publicDataRoutes.post('/traffic/road', async (c) => {
   try {
     const result = await fetchRoadTraffic(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -147,8 +148,8 @@ publicDataRoutes.get('/traffic/road', async (c) => {
   try {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -160,14 +161,14 @@ publicDataRoutes.get('/traffic/road/:pref', async (c) => {
   try {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
 // e-Gov キーワード法令検索 (POST /gov/laws)
 publicDataRoutes.post('/gov/laws', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -182,14 +183,14 @@ publicDataRoutes.post('/gov/laws', async (c) => {
   try {
     const result = await searchLaws(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Law search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Law search failed', 'GOV_ERROR', 500);
   }
 });
 
 // e-Gov 法令条文・本文詳細取得 (POST /gov/law-text)
 publicDataRoutes.post('/gov/law-text', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -204,14 +205,14 @@ publicDataRoutes.post('/gov/law-text', async (c) => {
   try {
     const result = await getLawData(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Law text retrieval failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Law text retrieval failed', 'GOV_ERROR', 500);
   }
 });
 
 // 国会会議録検索 (POST /gov/diet-minutes & GET /gov/diet-minutes)
 publicDataRoutes.post('/gov/diet-minutes', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -226,8 +227,8 @@ publicDataRoutes.post('/gov/diet-minutes', async (c) => {
   try {
     const result = await searchDietMinutes(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
 
@@ -254,14 +255,14 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Diet minutes search failed', 'GOV_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
 
 // Nominatim 座標解決 & 国土地理院 標高取得 (POST /geo/elevation & GET /geo/elevation)
 publicDataRoutes.post('/geo/elevation', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -276,8 +277,8 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
   try {
     const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -297,14 +298,14 @@ publicDataRoutes.get('/geo/elevation', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Elevation fetch failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
 // OpenPOI 全国施設POI検索 (POST /geo/poi, GET /geo/poi)
 publicDataRoutes.post('/geo/poi', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -319,8 +320,8 @@ publicDataRoutes.post('/geo/poi', async (c) => {
   try {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -348,14 +349,14 @@ publicDataRoutes.get('/geo/poi', async (c) => {
   try {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'POI search failed', 'GEO_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 
 // 主要空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
 publicDataRoutes.post('/traffic/flight', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -370,8 +371,8 @@ publicDataRoutes.post('/traffic/flight', async (c) => {
   try {
     const result = await fetchFlightStatus(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -393,8 +394,8 @@ publicDataRoutes.get('/traffic/flight', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
 
@@ -416,7 +417,7 @@ publicDataRoutes.get('/traffic/flight/:airport', async (c) => {
       noCache,
     });
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });

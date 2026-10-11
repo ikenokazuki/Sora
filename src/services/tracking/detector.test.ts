@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { detectCandidates, detectCandidateCarrierCodes } from './detector.js';
+import { detectCandidates } from './detector.js';
 import { parseS10TrackingNumber } from './postal.js';
 
 describe('Tracking v2 Detection Unit Tests', () => {

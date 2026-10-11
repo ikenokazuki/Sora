@@ -1,7 +1,7 @@
 import { resolveCityId } from './life.js';
-import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
+import { errorMessage } from '../errors.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
 export const CACHE_TTL_EARTHQUAKE = 60 * 1000;     // 1分
@@ -261,8 +261,8 @@ export async function fetchRecentEarthquakes(options?: {
     }
 
     return result;
-  } catch (err: any) {
-    console.warn('[Sora/Disaster] P2PQuake fetch failed, returning fallback empty set:', err?.message);
+  } catch (err) {
+    console.warn('[Sora/Disaster] P2PQuake fetch failed, returning fallback empty set:', errorMessage(err));
     return {
       count: 0,
       earthquakes: [],

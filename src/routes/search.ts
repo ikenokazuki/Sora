@@ -1,13 +1,12 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import type { z } from 'zod';
 import {
   DEFAULT_MAX_CHARS,
   CACHE_TTL_TREND,
   getFromCache,
   setToCache,
-  callYahooMcp,
   integratedSearch,
   fetchRealtimeTrends,
-  normalizeRealtimeItem,
   searchYahooRealtime,
   searchYahooImage,
   searchYahooVideo,
@@ -24,47 +23,44 @@ import {
   ArtistSearchRequestSchema,
   MusicSearchRequestSchema,
   IntegratedSearchRequestSchema,
+  RealtimeSearchRequestSchema,
+  ImageSearchRequestSchema,
+  VideoSearchRequestSchema,
+  NewsSearchRequestSchema,
+  ChiebukuroSearchRequestSchema,
+  SuggestRequestSchema,
 } from '../types.js';
 import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHints } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
+import { errorMessage } from '../errors.js';
 
 export const searchRoutes = new Hono();
 
 // Yahoo リアルタイム検索 (X 生ツイート & フライヤー画像)
-const handleRealtimeSearch = async (c: any) => {
+// 項目ごとの入力エラーの文言（REST の応答で返す）
+const REALTIME_FIELD_ERRORS: Record<string, string> = {
+  sort: 'sort must be "recent" or "popular"',
+  limit: 'limit must be an integer 1-40',
+  page: 'page must be an integer 1-100',
+  focus: 'focus must be "official" or "public"',
+  anchor: 'anchor must be a string of at most 100 characters',
+};
+
+const handleRealtimeSearch = async (c: Context) => {
   try {
-    const body = await c.req.json();
-    const query = typeof body?.query === 'string' ? body.query : undefined;
-    const accountId = typeof body?.accountId === 'string' ? body.accountId : undefined;
-    const fromUser = typeof body?.fromUser === 'string' ? body.fromUser : undefined;
-    const toAccount = typeof body?.toAccount === 'string' ? body.toAccount : undefined;
-    const hashtags = body?.hashtags;
-    const excludeWords = body?.excludeWords;
-    const orWords = Array.isArray(body?.orWords) ? body.orWords : undefined;
-    const url = typeof body?.url === 'string' ? body.url : undefined;
-    const sort: 'recent' | 'popular' = body?.sort === 'popular' ? 'popular' : 'recent';
-    if (body?.sort !== undefined && body.sort !== 'recent' && body.sort !== 'popular') {
-      return c.json({ error: 'sort must be "recent" or "popular"' }, 400);
+    const parsed = RealtimeSearchRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const field = String(issue?.path[0] ?? '');
+      return c.json({ error: REALTIME_FIELD_ERRORS[field] ?? `${field || 'body'}: ${issue?.message ?? 'invalid value'}` }, 400);
     }
-    if (body?.limit !== undefined && (!Number.isInteger(body.limit) || body.limit < 1 || body.limit > 40)) {
-      return c.json({ error: 'limit must be an integer 1-40' }, 400);
-    }
-    if (body?.page !== undefined && (!Number.isInteger(body.page) || body.page < 1)) {
-      return c.json({ error: 'page must be an integer >= 1' }, 400);
-    }
-    if (body?.focus !== undefined && body.focus !== 'official' && body.focus !== 'public') {
-      return c.json({ error: 'focus must be "official" or "public"' }, 400);
-    }
-    const focus: 'official' | 'public' | undefined = body?.focus;
-    if (body?.anchor !== undefined && (typeof body.anchor !== 'string' || body.anchor.length > 100)) {
-      return c.json({ error: 'anchor must be a string of at most 100 characters' }, 400);
-    }
-    const anchor: string | undefined = body?.anchor?.trim() || undefined;
-    const limit = typeof body?.limit === 'number' ? body.limit : undefined;
-    const page = typeof body?.page === 'number' ? body.page : undefined;
+    const body = parsed.data;
+    const { query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, limit, page, focus } = body;
+    const sort = body.sort ?? 'recent';
+    const anchor = body.anchor?.trim() || undefined;
 
     const options = {
       query,
@@ -80,7 +76,7 @@ const handleRealtimeSearch = async (c: any) => {
       ...(page !== undefined ? { page } : {}),
       ...(focus ? { focus } : {}),
       ...(anchor ? { anchor } : {}),
-      ...(body?.verbose === true ? { verbose: true } : {}),
+      ...(body.verbose === true ? { verbose: true } : {}),
     };
 
     let cacheKey: string;
@@ -88,20 +84,20 @@ const handleRealtimeSearch = async (c: any) => {
       if (!buildYahooRealtimeQuery(options)) {
         return c.json({ error: 'query, accountId, hashtags, or other search constraints are required' }, 400);
       }
-      cacheKey = `${buildRealtimeSearchCacheKey(options)}:${body?.verbose === true ? 'verbose' : 'compact'}`;
-    } catch (err: any) {
-      return c.json({ error: err.message || 'Invalid realtime request' }, 400);
+      cacheKey = `${buildRealtimeSearchCacheKey(options)}:${body.verbose === true ? 'verbose' : 'compact'}`;
+    } catch (err) {
+      return c.json({ error: errorMessage(err) || 'Invalid realtime request' }, 400);
     }
     if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    let realtimeRes: any;
+    let realtimeRes: Awaited<ReturnType<typeof searchYahooRealtime>>;
     try {
       realtimeRes = await searchYahooRealtime({ ...options, ...(query ? { anchorHints: createWebAnchorHints(query) } : {}) });
-    } catch (err: any) {
-      return c.json({ error: err.message || 'Realtime search failed' }, 502);
+    } catch (err) {
+      return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 502);
     }
 
     const responseData = {
@@ -120,7 +116,7 @@ const handleRealtimeSearch = async (c: any) => {
       ...(realtimeRes.aliasTerms?.length ? { aliasTerms: realtimeRes.aliasTerms } : {}),
       ...(realtimeRes.omittedCount ? { omittedCount: realtimeRes.omittedCount } : {}),
       // Verbose-only provenance: compact by default, full diagnostics on demand.
-      ...(body?.verbose === true
+      ...(body.verbose === true
         ? {
             retrievalQueries: realtimeRes.retrievalQueries,
             contributingQueries: realtimeRes.contributingQueries,
@@ -143,8 +139,8 @@ const handleRealtimeSearch = async (c: any) => {
 
     if (!body.noCache && realtimeRes.partial !== true) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
     return c.json(responseData);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Realtime search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 500);
   }
 };
 
@@ -163,8 +159,8 @@ searchRoutes.post('/realtime/post', async (c) => {
       return c.json({ error: '投稿が見つかりませんでした' }, 404);
     }
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'X投稿の取得に失敗しました' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'X投稿の取得に失敗しました' }, 500);
   }
 });
 
@@ -175,8 +171,8 @@ searchRoutes.post('/search/trend', async (c) => {
     const limit = Math.min(body?.limit || 20, 50);
     const result = await fetchRealtimeTrends(limit);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Search trend failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Search trend failed' }, 500);
   }
 });
 
@@ -188,17 +184,17 @@ searchRoutes.post('/search/web', async (c) => {
     if (!parsed.success) return c.json({ error: 'invalid search_web request', details: parsed.error.format() }, 400);
     const body = parsed.data;
     const cacheKey = `${buildSearchWebCacheKey(body)}:${body.verbose === true ? 'verbose' : 'compact'}`;
-    if (!body.noCache) { const cached = getFromCache<any>(cacheKey); if (cached) return c.json(cached); }
+    if (!body.noCache) { const cached = getFromCache<unknown>(cacheKey); if (cached) return c.json(cached); }
     const parsedData = await searchWebWithFormats(body);
     const responseData = { query: body.query, source: 'web', type: 'web', data: parsedData, cached: false };
     if (!body.noCache) setToCache(cacheKey, responseData);
     return c.json(responseData);
-  } catch (err: any) { return c.json({ error: err.message || 'Web search failed' }, 500); }
+  } catch (err) { return c.json({ error: errorMessage(err) || 'Web search failed' }, 500); }
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
 const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true });
-const handleIntegratedSearch = async (c: any) => {
+const handleIntegratedSearch = async (c: Context) => {
   try {
     const body = await c.req.json();
     const query = body?.query;
@@ -253,7 +249,7 @@ const handleIntegratedSearch = async (c: any) => {
       return c.json({ error: 'invalid adaptive search options', details: adaptiveOptions.error.format() }, 400);
     }
 
-    const tenantId = (c as any).get?.('tenant')?.tenantId ?? 'legacy';
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const finalResponse = await integratedSearch({
       query,
       tenantId,
@@ -296,8 +292,8 @@ const handleIntegratedSearch = async (c: any) => {
         includeMedia: includeMediaParsed.data,
       }),
     );
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Integrated search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Integrated search failed' }, 500);
   }
 };
 
@@ -306,118 +302,116 @@ searchRoutes.post('/search/deep', handleIntegratedSearch);
 searchRoutes.post('/search/integrated', handleIntegratedSearch);
 searchRoutes.post('/deep-search', handleIntegratedSearch);
 
+/** 入力エラーの最初の1件を文言にする。query の誤りは従来どおり "query is required"。 */
+function inputErrorMessage(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = String(issue?.path[0] ?? '');
+  if (field === 'query') return 'query is required';
+  return `${field || 'body'}: ${issue?.message ?? 'invalid value'}`;
+}
+
 // Yahoo 画像検索
 searchRoutes.post('/search/image', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
+    const parsed = ImageSearchRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    const { query, limit, page, noCache } = parsed.data;
 
-    const cacheKey = `search:image:${query}:${body?.limit || ''}:${body?.page || ''}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+    const cacheKey = `search:image:${query}:${limit || ''}:${page || ''}`;
+    if (!noCache) {
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await searchYahooImage({ query, limit: body.limit, page: body.page });
-    if (!body.noCache) setToCache(cacheKey, result);
+    const result = await searchYahooImage({ query, limit, page });
+    if (!noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Image search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Image search failed' }, 500);
   }
 });
 
 // Yahoo 動画検索
 searchRoutes.post('/search/video', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
+    const parsed = VideoSearchRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    const { query, limit, page, noCache } = parsed.data;
 
-    const cacheKey = `search:video:${query}:${body?.limit || ''}:${body?.page || ''}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}`;
+    if (!noCache) {
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await searchYahooVideo({ query, limit: body.limit, page: body.page });
-    if (!body.noCache) setToCache(cacheKey, result);
+    const result = await searchYahooVideo({ query, limit, page });
+    if (!noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Video search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Video search failed' }, 500);
   }
 });
 
 // Yahoo ニュース検索
 searchRoutes.post('/search/news', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
+    const parsed = NewsSearchRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    const { query, limit, noCache } = parsed.data;
 
-    const cacheKey = `search:news:${query}:${body?.limit || ''}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+    const cacheKey = `search:news:${query}:${limit || ''}`;
+    if (!noCache) {
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await searchYahooNews({ query, limit: body.limit });
-    if (!body.noCache) setToCache(cacheKey, result);
+    const result = await searchYahooNews({ query, limit });
+    if (!noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'News search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'News search failed' }, 500);
   }
 });
 
 // Yahoo 知恵袋検索
 searchRoutes.post('/search/chiebukuro', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
+    const parsed = ChiebukuroSearchRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    const { query, limit, page, status, noCache } = parsed.data;
 
-    const cacheKey = `search:chiebukuro:${query}:${body?.limit || ''}:${body?.page || ''}:${body?.status || 'all'}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+    const cacheKey = `search:chiebukuro:${query}:${limit || ''}:${page || ''}:${status || 'all'}`;
+    if (!noCache) {
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await searchYahooChiebukuro({ query, limit: body.limit, page: body.page, status: body.status });
-    if (!body.noCache) setToCache(cacheKey, result);
+    const result = await searchYahooChiebukuro({ query, limit, page, status });
+    if (!noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Chiebukuro search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Chiebukuro search failed' }, 500);
   }
 });
 
 // Yahoo サジェスト（キーワード補完）
 searchRoutes.post('/search/suggest', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body?.query;
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
+    const parsed = SuggestRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    const { query, limit, noCache } = parsed.data;
 
-    const cacheKey = `search:suggest:${query}:${body?.limit || ''}`;
-    if (!body.noCache) {
-      const cached = getFromCache<any>(cacheKey);
+    const cacheKey = `search:suggest:${query}:${limit || ''}`;
+    if (!noCache) {
+      const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await getSuggestedKeywords({ query, limit: body.limit });
-    if (!body.noCache) setToCache(cacheKey, result);
+    const result = await getSuggestedKeywords({ query, limit });
+    if (!noCache) setToCache(cacheKey, result);
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Suggest keywords failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Suggest keywords failed' }, 500);
   }
 });
 
@@ -453,14 +447,14 @@ searchRoutes.post('/transit/route', async (c) => {
       useFerry: body.useFerry,
     });
     return c.json(result);
-  } catch (err: any) {
-    return c.json({ error: err.message || 'Transit route search failed' }, 500);
+  } catch (err) {
+    return c.json({ error: errorMessage(err) || 'Transit route search failed' }, 500);
   }
 });
 
 // 曲名指定 楽曲メタデータ検索 (POST /search/song & POST /search/music/song)
-export const handleSongSearch = async (c: any) => {
-  let rawBody: any;
+export const handleSongSearch = async (c: Context) => {
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -475,16 +469,16 @@ export const handleSongSearch = async (c: any) => {
   try {
     const result = await searchSong(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Song search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Song search failed', 'MUSIC_ERROR', 500);
   }
 };
 searchRoutes.post('/search/song', handleSongSearch);
 searchRoutes.post('/search/music/song', handleSongSearch);
 
 // アーティスト名指定 音楽メタデータ検索 (POST /search/artist & POST /search/music/artist)
-export const handleArtistSearch = async (c: any) => {
-  let rawBody: any;
+export const handleArtistSearch = async (c: Context) => {
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -499,8 +493,8 @@ export const handleArtistSearch = async (c: any) => {
   try {
     const result = await searchArtist(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Artist search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Artist search failed', 'MUSIC_ERROR', 500);
   }
 };
 searchRoutes.post('/search/artist', handleArtistSearch);
@@ -508,7 +502,7 @@ searchRoutes.post('/search/music/artist', handleArtistSearch);
 
 // 音楽メタデータ検索 (汎用・後方互換: POST /search/music)
 searchRoutes.post('/search/music', async (c) => {
-  let rawBody: any;
+  let rawBody: unknown;
   try {
     rawBody = await c.req.json();
   } catch {
@@ -523,7 +517,7 @@ searchRoutes.post('/search/music', async (c) => {
   try {
     const result = await searchMusic(parsed.data);
     return c.json(result);
-  } catch (err: any) {
-    return formatError(c, err.message || 'Music search failed', 'MUSIC_ERROR', 500);
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Music search failed', 'MUSIC_ERROR', 500);
   }
 });

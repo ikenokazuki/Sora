@@ -3,6 +3,7 @@
  * ranking・クエリ生成・response圧縮は行わない。yahoo.ts / scraper.ts をimportしない。
  */
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
+import { errorMessage } from '../errors.js';
 
 export interface YahooRealtimePageOptions {
   query: string;
@@ -183,8 +184,8 @@ export async function searchYahooRealtimePage(
       headers: { ...DEFAULT_HEADERS },
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch (err: any) {
-    throw new Error(`Yahoo realtime fetch failed: ${err?.message || err}`);
+  } catch (err) {
+    throw new Error(`Yahoo realtime fetch failed: ${errorMessage(err) || err}`);
   }
   if (!response.ok) {
     throw new Error(`Yahoo realtime HTTP ${response.status}`);

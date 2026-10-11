@@ -7,7 +7,6 @@ const inputFor = (includeSocial: boolean, query = 'スタバ') => ({
   queries: [{ pass: 1 as const, providerId: 'fediverse', query, topics: [], maxItems: 25 }],
 });
 const fetchOk = (body: unknown) => (async () => Response.json(body)) as (url: string, init?: RequestInit) => Promise<Response>;
-const fetchFail = (status: number) => (async () => new Response('blocked', { status })) as (url: string, init?: RequestInit) => Promise<Response>;
 
 describe('fediverse', () => {
   test('misskey notes become social evidence with post URLs', () => {

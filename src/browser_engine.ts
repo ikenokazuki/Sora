@@ -2,6 +2,7 @@ import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
+import { errorMessage } from './errors.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -543,8 +544,9 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
     const result = addresses.map((a) => a.address);
     dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
     return result;
-  } catch (err: any) {
-    if (err.message && (err.message.includes('DNS Rebinding') || err.message.includes('プライベートネットワーク'))) {
+  } catch (err) {
+    const message = errorMessage(err);
+    if (message && (message.includes('DNS Rebinding') || message.includes('プライベートネットワーク'))) {
       throw err;
     }
     return [];

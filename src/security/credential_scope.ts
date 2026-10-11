@@ -22,7 +22,3 @@ export function hasSensitiveRequestCredentials(options: {
   }
   return false;
 }
-
-export function isSensitiveHeaderName(name: string): boolean {
-  return SENSITIVE_HEADER_NAMES.has(name.toLowerCase());
-}

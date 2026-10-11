@@ -32,8 +32,6 @@ import {
   type IntelEvent,
   type CountrySource,
   type Limitation,
-  type RegionIdentity,
-  type SituationSection,
 } from './types.js';
 
 export interface ResearchDependencies {

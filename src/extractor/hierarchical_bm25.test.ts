@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import {
   ancestorBonus,
-  bm25BodyScore,
   extractBestPassage,
   extractTermsWithBigrams,
-  HeadingBlock,
   idf,
   parseBlocks,
-  scorePassage,
   splitSentences,
   dinkelbachOptimalPassage,
 } from './hierarchical_bm25';

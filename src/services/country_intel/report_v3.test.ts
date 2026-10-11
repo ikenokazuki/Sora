@@ -191,7 +191,6 @@ describe('v3 region links', () => {
     expect(candidateTexts).not.toContain('Pahala');
     expect(candidateTexts).not.toContain('Ridgecrest');
     expect(report.evidence.map((item) => item.title).join('\n')).toContain('Pahala');
-    const metrics = new Map(report.temporalMetrics.map((metric) => [metric.key, metric.current]));
     const signals = new Map(report.signals.map((signal) => [signal.key, signal]));
     expect(signals.get('disaster_event_count')?.value).toBe(report.keyEvents.filter((event) => event.type === 'disaster_response').length);
     expect(signals.get('media_article_count')?.value).toBe(1);
