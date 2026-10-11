@@ -50,14 +50,21 @@ export function summarize(results: CaseResult[]): Record<HealthStatus, number> {
   return counts;
 }
 
-/** Publish-gate exit mapping. 0 = all green, 3 = soft hold (only unverified/
- * blocked/not_applicable remain: no evidence of breakage, test data or upstream
- * access missing), 1 = hard fail (fail/unavailable present or coverage missing).
- * Secrets-free operation must never ship broken code (1) but may ship
- * unverified areas (3) with the hold recorded in the report. */
+/** これを超える割合のケースが unavailable なら、外部の偶然ではなくこちら側（候補イメージ）の問題とみなす。 */
+export const MAX_UNAVAILABLE_RATIO = 0.25;
+
+export function tooManyUnavailable(counts: Record<HealthStatus, number>): boolean {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return total > 0 && counts.unavailable / total > MAX_UNAVAILABLE_RATIO;
+}
+
+/** Publish-gate exit mapping. 0 = all green, 1 = hard fail, 3 = soft hold.
+ * 公開を止める（1）のは、取得できたのに中身が壊れている（fail: 構造変化・解析失敗）か、確認できないツールがある
+ * （missing）か、unavailable が多すぎる（こちら側の問題）ときだけ。外部の一時的な不調（unavailable）・ブロック
+ * （blocked）・テストデータ未設定や静かな取得元（unverified）だけなら公開は進め（3）、レポートに残す。 */
 export function gateExit(counts: Record<HealthStatus, number>, missing: string[]): 0 | 1 | 3 {
   if (isGatePass(counts, missing)) return 0;
-  if (counts.fail === 0 && counts.unavailable === 0 && missing.length === 0) return 3;
+  if (counts.fail === 0 && missing.length === 0 && !tooManyUnavailable(counts)) return 3;
   return 1;
 }
 
