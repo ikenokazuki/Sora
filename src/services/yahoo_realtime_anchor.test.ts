@@ -101,6 +101,39 @@ describe('Realtime anchor (v2.36.0)', () => {
     expect(used).toEqual(['webTitles']);
   });
 
+  test('呼び出し側が固有名詞を指定すれば、推定の材料を取りに行かずにその語を守る', async () => {
+    const calls: string[] = [];
+    const used: string[] = [];
+    let totalsCalled = false;
+    const res: any = await searchYahooRealtime({
+      query: '架空アイドルほげぴよ 出演時間 楽屋',
+      ...OPT,
+      anchor: '架空アイドルほげぴよ',
+      anchorHints: hints([], [], used),
+      _termTotals: async () => { totalsCalled = true; return {}; },
+      _callMcp: mockMcp(() => [], calls),
+    } as any);
+    expect(res.anchorTerm).toBe('架空アイドルほげぴよ');
+    expect(totalsCalled).toBe(false);
+    expect(used).toEqual([]);
+    expect(calls).not.toContain('出演時間 楽屋');
+    expect(calls).toContain('架空アイドルほげぴよ');
+  });
+
+  test('指定した固有名詞がクエリの語に無ければ、従来どおり推定する', async () => {
+    const used: string[] = [];
+    const res: any = await searchYahooRealtime({
+      query: 'チケット 料金 君と見るそら',
+      ...OPT,
+      anchor: '別のグループ',
+      anchorHints: hints(['君と見るそら チケット情報 | 君と見るそら公式サイト'], [], used),
+      _termTotals: totals({ 'チケット': 2000000, '君と見るそら': 3000 }),
+      _callMcp: mockMcp(() => [], []),
+    } as any);
+    expect(used).toEqual(['webTitles']);
+    expect(res.anchorTerm).toBe('君と見るそら');
+  });
+
   test('判定材料が無ければ従来どおり（固有名詞を落とす候補も実行）', async () => {
     const calls: string[] = [];
     const res: any = await searchYahooRealtime({

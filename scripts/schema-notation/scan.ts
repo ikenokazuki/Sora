@@ -144,27 +144,61 @@ export async function scanRepository(): Promise<Finding[]> {
   return findNotationIssues(await collectParams(), REST_MAP, NOTATION_ALLOWLIST);
 }
 
-export function topLevelKeys(note: string): string[] {
+/**
+ * 返却注記のキーを、入れ子も含めてパスで返す（配列の中は `[]`）。
+ * 例: '{ count, items: [{ id, author: { name } }] }' → ['count', 'items', 'items[].id', 'items[].author', 'items[].author.name']
+ */
+export function noteKeyPaths(note: string): string[] {
   const start = note.indexOf('{');
   if (start < 0) return [];
-  const keys: string[] = [];
-  let depth = 0;
-  let token = '';
-  const flush = () => {
-    const k = token.replace(/[:?].*$/s, '').trim();
-    if (/^\w+$/.test(k)) keys.push(k);
-    token = '';
+  const out: string[] = [];
+  let i = start;
+  const object = (prefix: string): void => {
+    i++; // '{'
+    let token = '';
+    const flush = () => {
+      const k = token.replace(/[:?].*$/s, '').trim();
+      if (/^\w+$/.test(k)) out.push(prefix + k);
+      token = '';
+      return k;
+    };
+    while (i < note.length) {
+      const ch = note[i];
+      if (ch === '}') { flush(); i++; return; }
+      if (ch === ',') { flush(); i++; continue; }
+      if (ch === '{') { const k = flush(); object(`${prefix}${k}.`); continue; }
+      if (ch === '[') {
+        const k = flush();
+        i++;
+        while (note[i] === ' ') i++;
+        if (note[i] === '{') object(`${prefix}${k}[].`);
+        let depth = 1;
+        while (i < note.length && depth > 0) { if (note[i] === '[') depth++; if (note[i] === ']') depth--; i++; }
+        continue;
+      }
+      token += ch;
+      i++;
+    }
   };
-  for (const ch of note.slice(start)) {
-    if (ch === '{' || ch === '[') { if (depth === 1) flush(); depth++; continue; }
-    if (ch === '}' || ch === ']') { if (depth === 1) flush(); depth--; if (depth === 0) break; continue; }
-    if (depth === 1 && ch === ',') { flush(); continue; }
-    if (depth === 1) token += ch;
-  }
-  return keys;
+  object('');
+  return out;
 }
 
-/** MCP description の「返却: { … }」の最上位キーが、対応RESTの200応答スキーマに存在するか。 */
+/** パスがスキーマにあるか。プロパティを宣言していない（自由形式の）位置より先は確かめられないので、あるものとみなす。 */
+function schemaHasPath(schema: any, path: string): boolean {
+  let node = schema;
+  for (const raw of path.split('.')) {
+    const isArray = raw.endsWith('[]');
+    const key = isArray ? raw.slice(0, -2) : raw;
+    if (!node?.properties) return true;
+    if (!(key in node.properties)) return false;
+    node = node.properties[key];
+    if (isArray) node = node?.items;
+  }
+  return true;
+}
+
+/** MCP description の「返却: { … }」のキー（入れ子も含む）が、対応RESTの200応答スキーマに存在するか。 */
 export async function scanReturnNotes(): Promise<Finding[]> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({ deferTools: false });
@@ -179,9 +213,10 @@ export async function scanReturnNotes(): Promise<Finding[]> {
       const route = REST_MAP[tool.name];
       if (!note || !route) continue;
       const op = doc.paths[route.path.replace(/:(\w+)/g, '{$1}')]?.[route.method.toLowerCase()];
-      const props = Object.keys(op?.responses?.['200']?.content?.['application/json']?.schema?.properties ?? {});
+      const schema = op?.responses?.['200']?.content?.['application/json']?.schema;
+      const props = Object.keys(schema?.properties ?? {});
       if (!props.length) continue;
-      const missing = topLevelKeys(note).filter((k) => !props.includes(k));
+      const missing = noteKeyPaths(note).filter((path) => !schemaHasPath(schema, path));
       const key = `${tool.name} 返却`;
       if (missing.length && !NOTATION_ALLOWLIST[`return_note_mismatch ${key}`]) {
         out.push({ kind: 'return_note_mismatch', key, detail: `missing ${JSON.stringify(missing)} in ${JSON.stringify(props)}` });

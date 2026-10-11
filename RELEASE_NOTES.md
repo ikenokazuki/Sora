@@ -1,3 +1,20 @@
+# Sora v2.38.0 — X 検索で守る固有名詞を指定できるように
+
+- X 検索で守る固有名詞を、呼び出し側から指定できるようにしました（`search_realtime` と `POST /search/realtime` の `anchor`、`search_deep` と `POST /search` の `realtimeAnchor`。100 字まで）。指定がクエリの語に対応すれば推定より優先し、緩和検索でその語を落としません。判定のための Web 検索と X の総ヒット数の取得も省きます。照合では空白・中黒・全角を無視し、複数語の名前（「Snow Man」）はそれに含まれる語に対応づけます。クエリの語に無い指定は無視して、従来どおり推定します。
+  - 固有名詞の推定は、意図語・汎用語の語彙と X の総ヒット数に頼っています。語彙は手入れが要り、総ヒット数では見分けられない語もあります（「出演時間」386 件と「君と見るそら」401 件）。クエリの意味が分かる呼び出し側の LLM に任せれば、語彙を足さずに辞書にない新しい名前や記号入りの名前も守れます。
+  - 汎用語の語彙を X の総ヒット数による判定に置き換える案も評価セットで試しましたが、採りませんでした。語彙を外すと dev の正解が 26 → 22 に下がり、「ほかより飛び抜けて多い語を外す」規則では「iPhone 重量 Wi-Fi 規格」の iPhone（11,421 件）が外れて誤った語を選ぶためです。語彙は推定の予備として残します。
+- MCP の instructions、README、仕組み文書、SKILL.md、`POST /search` の API 説明に使い方を追記しました。
+- X 検索のキャッシュキー（`search_realtime`・`search_deep`）に指定を含めました。指定しない呼び出しの結果は変わりません。
+- MCP のツール定義と instructions を全体で見直しました。
+  - 「返却」の中身が実際の応答と違っていた5ツールを直しました（`search_route` の `routes[]`、`search_earthquake` の震源 `hypocenter` と最大震度 `maxScale`、`search_song` の `title`・`artist`・`artwork`、`search_laws` の `promulgationDate`、`search_diet_minutes` の `meeting`・`speech`・`speechUrl`）。表記の検査（`schema:notation`）が、返却の入れ子のキーまで REST の応答スキーマと照合するようにしました。
+  - 「返却」の無かったツールに返却を書きました（`scrape`、`scrape_batch`、`search_deep`、`search_web`、`map_site`、`crawl_site`、`fetch_social_post`、`browser_action`、`search_image`、`search_video`、`watch_*` の4つ、国地域レポートの取得3つ、`search_tools`）。国地域レポートの取得3つには見出し（【…】）を付け、短すぎた説明（画像・動画検索、監視、一括スクレイプなど）に用途と使い分けを足しました。最初に見える14ツールの説明の合計は 3,500 字の上限内（3,473 字）です。
+  - instructions に名前の無かった13ツール（`map_site`、`search_news`、`search_image`、`search_video`、`fetch_x_post`、`watch_*` の4つ、`inspect_image`、国地域レポートの取得3つ）を載せました。重複した言い回しを削り、8,500 字の上限内（8,465 字）に収めています。
+  - `research_country_context` の `social` の引数（`platforms`、`queries`、`urls`、`lookbackHours`）に説明を足しました（`lookbackHours` の既定は 24 時間）。REST の `/realtime/post` の応答スキーマに `detail.author` と `detail.media` を足しました。
+- README の REST の応答例を、実際の応答に合わせて直しました（`/browser/action` は `markdown`・`actionOutputs`、`/transit/route` は `routeCount`・`routes[].index`・`totalTime`・`transfers`、`/tracking` は `events`・`trackingUrl`・`details`）。`/weather` は README の例が正しく、OpenAPI の応答スキーマに `publicTime`・`publishingOffice`・`location`・`description`・`link`・`cached` が抜けていたため足しました。`/browser/action` の `actionOutputs[].step` の説明（0 始まり）は実装どおり 1 始まりに直しました。
+- 応答のトークンを減らしました。**応答の形が変わります**:
+  - MCP のすべてのツールの応答を整形なし（字下げなし）の JSON にしました。以前は `search_deep` と `search_realtime` だけでした。`verbose` を持つツール（`scrape`・`scrape_batch`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します。README の応答例 23 個で測ると文字数は約 2 割減ります（本文の長い応答ほど減る割合は小さく、`search_deep` の実測では約 1 割でした）。応答の文字列を字下げ込みで照合しているクライアントは、JSON として読むようにしてください。
+  - `browser_action`（`POST /browser/action`）の応答から、重複していた `content`（`markdown` と同じ本文）と `actionLogs`（`actionOutputs` と同じ操作の記録）を外しました。本文の長いページでは応答がほぼ半分になります。`content` を読んでいたクライアントは `markdown` を、`actionLogs` を読んでいたクライアントは `actionOutputs`（成功は `result: "ok"`、失敗は `error` に理由）を参照してください。
+
 # Sora v2.37.4 — 本番で見つけた2件の修正（verbose の予定表示、先頭ナビの扱い）
 
 - v2.37.3 は本番に入れて公開スモークまで回しましたが、次の2件を見つけたため本番には入れず、そのまま直した v2.37.4 を出します。

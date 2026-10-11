@@ -149,7 +149,6 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     sessionId: sessionRes.sessionId,
     sessionClosed: sessionRes.sessionClosed,
     markdown: sessionRes.content,
-    content: sessionRes.content,
     screenshot: sessionRes.screenshot,
     html: sessionRes.html,
     actionOutputs: sessionRes.actionLogs?.map((l: any, idx: number) => ({
@@ -158,7 +157,6 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
       result: l.success ? 'ok' : undefined,
       error: !l.success ? l.message : undefined,
     })),
-    actionLogs: sessionRes.actionLogs,
     renderedWithBrowser: true,
     source: 'browser',
   };
@@ -1474,6 +1472,8 @@ export async function integratedSearch(options: {
   includeRealtime?: boolean;
   realtimeSort?: 'recent' | 'popular';
   realtimeFocus?: RealtimeFocus;
+  /** X 検索で守る固有名詞（呼び出し側が分かる場合） */
+  realtimeAnchor?: string;
   realtimeLimit?: number;
   officialAccountId?: string;
   maxChars?: number;
@@ -1506,6 +1506,7 @@ export async function integratedSearch(options: {
   const includeRealtime = options.includeRealtime !== false;
   const realtimeSort = options.realtimeSort || 'recent';
   const realtimeFocus: RealtimeFocus = options.realtimeFocus ?? detectRealtimeFocus(query);
+  const realtimeAnchor = options.realtimeAnchor?.trim() || undefined;
   const realtimeLimit = options.realtimeLimit ?? DEFAULT_REALTIME_ITEM_CAP;
   const officialAccountId = options.officialAccountId?.trim()?.replace(/^@/, '');
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
@@ -1530,7 +1531,7 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v9:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v9:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeAnchor ?? 'auto'}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1558,6 +1559,7 @@ export async function integratedSearch(options: {
         sort: realtimeSort,
         detailEnrichment: false,
         focus: realtimeFocus,
+        ...(realtimeAnchor ? { anchor: realtimeAnchor } : {}),
         maxItems: realtimeLimit,
         // 上限を既定より上げた時は、取得（Yahoo の1回の最大は40件）も増やす
         ...(realtimeLimit > DEFAULT_REALTIME_ITEM_CAP ? { limit: Math.min(realtimeLimit, 40) } : {}),
