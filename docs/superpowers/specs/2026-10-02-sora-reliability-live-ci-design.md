@@ -67,6 +67,7 @@ MCP transportはOrigin検証を要求し、不正OriginにはHTTP 403を返す�
 
 - 対象は`/mcp`、`/sse`、`/message`の全メソッドです。OPTIONSも、グローバルCORSが応答する**前**に検証します。
 - 新規設定`SORA_ALLOWED_HOSTS`はカンマ区切りのauthorityです。hostnameを小文字化してport込みで照合し、ワイルドカードを認めません。既定は`localhost`、`127.0.0.1`、`[::1]`のportなしと、実際の`PORT`付きです。
+  - 更新: `SORA_ALLOWED_HOSTS`を設定していない既定の構成では、loopbackのhostname（`localhost`、`127.0.0.1`、`[::1]`）をHostのportを問わず許可します。`docker run -p 3016:8000`のようにhost側のportがコンテナ内の`PORT`と違っても、READMEのQuickstartのまま接続できるようにするためです。DNS rebindingの防御はHostのhostnameで成り立ちます。`SORA_ALLOWED_HOSTS`を設定した場合は、従来どおり書いたHostだけをport込みで照合します。Originは既定でも厳密です。
 - 新規設定`SORA_ALLOWED_ORIGINS`はカンマ区切りの完全なHTTP(S) originです。scheme・host・portを含むURLのoriginとして照合します。既定はlocalhost系のHTTP origin、portなしと`PORT`付きです。
 - Origin省略は非ブラウザクライアントとして許可しますが、Host検証は省略しません。`Origin: null`、複数origin、不正形式、許可外originは拒否します。
 - 攻撃者指定のHostとOriginが一致しても許可しません。`X-Forwarded-Host`は信頼判断に使いません。Hostの欠落・不正形式も拒否します。
