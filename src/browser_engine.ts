@@ -89,6 +89,12 @@ export function getChromiumMajorVersion(): number | undefined {
 }
 
 let sharedBrowserInstance: Browser | null = null;
+/**
+ * 共有ブラウザを起動している最中の Promise。無操作終了の直後などに getBrowser() が同時に呼ばれても、
+ * 起動は 1 回だけにして全員が同じブラウザを受け取る。共有しないと、呼び出しの数だけ Chromium が起動し、
+ * 最後に代入された 1 つ以外は参照を失って閉じられないまま残る（1 つあたり数百 MB）。
+ */
+let sharedBrowserLaunch: Promise<Browser> | null = null;
 
 /**
  * 環境変数からプロキシ設定を取得します。
@@ -156,20 +162,38 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     return { browser: dedicated, isDedicated: true };
   }
 
-  if (sharedBrowserInstance?.connected) {
-    try {
-      await sharedBrowserInstance.version();
-      markSharedBrowserUsed();
-      return { browser: sharedBrowserInstance, isDedicated: false };
-    } catch {
-      sharedBrowserInstance = null;
+  // 共有ブラウザ: 起動済みならそれを、起動中ならその完了を待って受け取る（同時に複数起動しない）。
+  // 待っている間に閉じられた場合に備え、起動の完了後は状態を見直す。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = sharedBrowserInstance;
+    if (existing?.connected) {
+      try {
+        await existing.version();
+        // 疎通確認の await 中に閉じられた・差し替えられた場合は渡さず、次の周回で取り直す
+        if (sharedBrowserInstance === existing) {
+          markSharedBrowserUsed();
+          return { browser: existing, isDedicated: false };
+        }
+      } catch {
+        if (sharedBrowserInstance === existing) sharedBrowserInstance = null;
+      }
     }
-  }
 
-  if (!CHROME_EXECUTABLE_PATH) {
-    throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
-  }
+    if (!CHROME_EXECUTABLE_PATH) {
+      throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
+    }
 
+    if (!sharedBrowserLaunch) {
+      sharedBrowserLaunch = launchSharedBrowser(effectiveProxy, effectiveBypass);
+    }
+    // 失敗したときは待っている全員に同じエラーが伝わり、次の呼び出しで起動をやり直せる
+    await sharedBrowserLaunch;
+  }
+  throw new Error('共有ブラウザを起動できませんでした');
+}
+
+/** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */
+function launchSharedBrowser(effectiveProxy: string | undefined, effectiveBypass: string | undefined): Promise<Browser> {
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -188,16 +212,23 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     }
   }
 
-  sharedBrowserInstance = await puppeteer.launch({
-    executablePath: CHROME_EXECUTABLE_PATH,
-    headless: true,
-    args,
-    // 理由は上記 dedicated ブラウザ側のコメント参照
-    ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+  const launched = puppeteer
+    .launch({
+      executablePath: CHROME_EXECUTABLE_PATH,
+      headless: true,
+      args,
+      // 理由は上記 dedicated ブラウザ側のコメント参照
+      ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+    })
+    .then((browser) => {
+      sharedBrowserInstance = browser;
+      markSharedBrowserUsed();
+      return browser;
+    });
+  const tracked: Promise<Browser> = launched.finally(() => {
+    if (sharedBrowserLaunch === tracked) sharedBrowserLaunch = null;
   });
-
-  markSharedBrowserUsed();
-  return { browser: sharedBrowserInstance, isDedicated: false };
+  return tracked;
 }
 
 export function isSharedBrowserConnected(): boolean {
@@ -208,6 +239,13 @@ export async function closeSharedBrowser(): Promise<void> {
   if (idleTimer) {
     clearTimeout(idleTimer);
     idleTimer = undefined;
+  }
+  // 起動の最中なら、完了を待ってから閉じる（起動途中のまま放置すると、管理されない Chromium が残る）
+  const launching = sharedBrowserLaunch;
+  if (launching) {
+    try {
+      await launching;
+    } catch {}
   }
   // 閉じる前に共有インスタンスを外し、閉じかけのブラウザを getBrowser() が渡さないようにする
   const browser = sharedBrowserInstance;
@@ -432,30 +470,6 @@ export function isPrivateIpUint32(num: number): boolean {
   return false;
 }
 
-export function isPrivateIp(ip: string): boolean {
-  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
-
-  // 1. IPv6 リテラルは必ず ':' を含み、ホスト名には現れない。':' の有無で IPv6 判定に入るかを決める。
-  //    （以前は先頭が 'fc'/'fd'/'ff' の文字列を無条件に IPv6 扱いにして、fda.gov や ffmpeg.org まで遮断していた）
-  if (trimmed.includes(':')) return isPrivateIpv6(trimmed);
-
-  // 2. 任意の進数・短縮表記を含む IPv4 の 32bit 整数への正規化
-  const num = parseIpv4ToUint32(trimmed);
-  if (num !== null) {
-    return isPrivateIpUint32(num);
-  }
-
-  // 3. 先頭が IPv4 の名前（127.0.0.1.nip.io のようなワイルドカード DNS）は、解決を待たずに止める。
-  //    先頭の 4 ラベルが IPv4 として読める場合だけ見る（10.example.com のような通常の名前は対象外）。
-  const lead = trimmed.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\./);
-  if (lead) {
-    const leadNum = parseIpv4ToUint32(lead[1]);
-    if (leadNum !== null) return isPrivateIpUint32(leadNum);
-  }
-
-  return false;
-}
-
 /**
  * IPv6 アドレス文字列を 8 個の 16bit 値へ展開する。`::` の省略、末尾の IPv4 表記（::ffff:1.2.3.4）、
  * ゾーン ID（fe80::1%eth0）に対応。解釈できなければ null。
@@ -523,6 +537,30 @@ function isPrivateIpv6(text: string): boolean {
   if ((a & 0xffc0) === 0xfe80) return true; // リンクローカル fe80::/10
   if ((a & 0xffc0) === 0xfec0) return true; // サイトローカル fec0::/10（非推奨）
   if ((a & 0xff00) === 0xff00) return true; // マルチキャスト ff00::/8
+  return false;
+}
+
+export function isPrivateIp(ip: string): boolean {
+  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
+
+  // 1. IPv6 リテラルは必ず ':' を含み、ホスト名には現れない。':' の有無で IPv6 判定に入るかを決める。
+  //    （以前は先頭が 'fc'/'fd'/'ff' の文字列を無条件に IPv6 扱いにして、fda.gov や ffmpeg.org まで遮断していた）
+  if (trimmed.includes(':')) return isPrivateIpv6(trimmed);
+
+  // 2. 任意の進数・短縮表記を含む IPv4 の 32bit 整数への正規化
+  const num = parseIpv4ToUint32(trimmed);
+  if (num !== null) {
+    return isPrivateIpUint32(num);
+  }
+
+  // 3. 先頭が IPv4 の名前（127.0.0.1.nip.io のようなワイルドカード DNS）は、解決を待たずに止める。
+  //    先頭の 4 ラベルが IPv4 として読める場合だけ見る（10.example.com のような通常の名前は対象外）。
+  const lead = trimmed.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\./);
+  if (lead) {
+    const leadNum = parseIpv4ToUint32(lead[1]);
+    if (leadNum !== null) return isPrivateIpUint32(leadNum);
+  }
+
   return false;
 }
 
