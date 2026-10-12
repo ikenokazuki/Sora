@@ -10,7 +10,7 @@ import {
 import {
   dbGetTenantCookies,
   dbGetTenantStorage,
-  dbSaveDomainCookies,
+  dbSaveTenantCookies,
   dbSaveTenantStorage,
 } from './db.js';
 import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
@@ -396,6 +396,9 @@ export async function fetchWithStealthBrowser(
       await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
 
       const domain = new URL(url).hostname;
+      // 呼び出し側が Cookie（ログイン状態）を渡した取得では、そこで得た Cookie・localStorage を保存しない。
+      // 保存すると、後続の「資格情報なし」リクエストへ引き継がれ、ログイン済みの内容が共有キャッシュに入る。
+      const carriesCredentials = Boolean(customCookies && customCookies.length > 0);
       const persistedCookies = dbGetTenantCookies(tenantId, domain);
       if (persistedCookies && persistedCookies.length > 0) {
         const restoredCookies = persistedCookies.map((c) => ({
@@ -524,28 +527,31 @@ export async function fetchWithStealthBrowser(
       const finalUrl = page.url();
       const title = await page.title();
 
-      try {
-        const currentCookies = await page.cookies();
-        if (currentCookies.length > 0) {
-          const cookiesByDomain = groupCookiesByDomain(currentCookies as any, domain);
-          for (const [key, list] of cookiesByDomain) {
-            dbSaveDomainCookies(key, list);
+      if (!carriesCredentials) {
+        try {
+          const currentCookies = await page.cookies();
+          if (currentCookies.length > 0) {
+            const cookiesByDomain = groupCookiesByDomain(currentCookies as any, domain);
+            for (const [key, list] of cookiesByDomain) {
+              // 読み出し（dbGetTenantCookies）と同じテナントへ保存する。'legacy' 固定にすると他テナントへ漏れる
+              dbSaveTenantCookies(tenantId, key, list);
+            }
           }
-        }
-      } catch {}
+        } catch {}
 
-      try {
-        const currentStorage = await page.evaluate(() => {
-          try {
-            return { ...localStorage };
-          } catch {
-            return null;
+        try {
+          const currentStorage = await page.evaluate(() => {
+            try {
+              return { ...localStorage };
+            } catch {
+              return null;
+            }
+          });
+          if (currentStorage && Object.keys(currentStorage).length > 0) {
+            dbSaveTenantStorage(tenantId, domain, currentStorage);
           }
-        });
-        if (currentStorage && Object.keys(currentStorage).length > 0) {
-          dbSaveTenantStorage(tenantId, domain, currentStorage);
-        }
-      } catch {}
+        } catch {}
+      }
 
       let screenshot: string | undefined = undefined;
       if (needScreenshot || clipSelector) {

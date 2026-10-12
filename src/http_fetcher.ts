@@ -1,10 +1,12 @@
 import { URL } from 'url';
+import { createHash } from 'crypto';
 import type { CookieParam } from 'puppeteer-core';
 import type { PersistedCookie } from './db.js';
 import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { isProxyBypassed } from './net/no_proxy.js';
 import { errorMessage } from './errors.js';
 
@@ -114,13 +116,42 @@ interface PooledHttpSession {
   session: UniversalHttpSession;
   domain: string;
   tenantId: string;
+  /** プール内のキー。タイマーや退避から自分自身を特定するために持つ */
+  key: string;
+  /**
+   * 資格情報付きリクエスト専用セッションの分離キー。通常（資格情報なし）のセッションは undefined。
+   * 資格情報で得た Set-Cookie が、資格情報なしのリクエストへ流れないようにジャーを分ける。
+   */
+  scope?: string;
   lastUsed: number;
   timer: ReturnType<typeof setTimeout>;
 }
 
-/** Tenant-scoped session key (RFC P1-SEC-02). Default tenant preserves single-user behavior. */
-export function sessionKey(tenantId: string, hostname: string): string {
-  return `${tenantId || 'legacy'}:${hostname.toLowerCase()}`;
+/**
+ * Tenant-scoped session key (RFC P1-SEC-02). Default tenant preserves single-user behavior.
+ * scope は資格情報付きリクエスト用の分離キー。指定時は通常セッションと別のキーになる。
+ */
+export function sessionKey(tenantId: string, hostname: string, scope?: string): string {
+  const base = `${tenantId || 'legacy'}:${hostname.toLowerCase()}`;
+  return scope ? `${base}#${scope}` : base;
+}
+
+/**
+ * 資格情報（Cookie・認証系ヘッダー）の組から、セッション分離キーを作る。
+ * 資格情報そのものはキーに残さずハッシュにする。資格情報が無ければ undefined（通常セッションを使う）。
+ */
+export function credentialScopeFor(
+  headers?: Record<string, string>,
+  cookies?: Array<{ name: string; value: string }>,
+): string | undefined {
+  if (!hasSensitiveRequestCredentials({ headers, cookies })) return undefined;
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(headers ?? {})) {
+    if (isSensitiveHeaderName(k)) parts.push(`h:${k.toLowerCase()}=${v}`);
+  }
+  for (const c of cookies ?? []) parts.push(`c:${c.name}=${c.value}`);
+  parts.sort();
+  return 'cred-' + createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 16);
 }
 
 export class NativeFetchSession implements UniversalHttpSession {
@@ -196,7 +227,7 @@ function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
   clearTimeout(pooled.timer);
   pooled.lastUsed = Date.now();
   pooled.timer = setTimeout(() => {
-    void closeHttpSession(pooled.domain, pooled.tenantId);
+    void closePooledHttpSession(pooled);
   }, HTTP_SESSION_TTL_MS);
   if (pooled.timer.unref) pooled.timer.unref();
 }
@@ -207,40 +238,55 @@ async function evictOldestHttpSessionIfNeeded(): Promise<void> {
   for (const p of httpSessionPool.values()) {
     if (!oldest || p.lastUsed < oldest.lastUsed) oldest = p;
   }
-  if (oldest) await closeHttpSession(oldest.domain, oldest.tenantId);
+  if (oldest) await closePooledHttpSession(oldest);
 }
 
-/** セッションをクローズし、Cookieを永続化してからプールから除去する */
-export async function closeHttpSession(domain: string, tenantId = 'legacy'): Promise<void> {
-  const pooled = httpSessionPool.get(sessionKey(tenantId, domain));
-  if (!pooled) return;
+/**
+ * プール内のセッションを閉じて除去する。通常セッションは Cookie を永続化する（bot 対策の通過状態の再利用）。
+ * 資格情報付きリクエスト専用セッション（scope あり）は、ログイン状態を含み得るので永続化しない。
+ */
+async function closePooledHttpSession(pooled: PooledHttpSession): Promise<void> {
   clearTimeout(pooled.timer);
-  httpSessionPool.delete(sessionKey(tenantId, domain));
-  try {
-    const allCookies = pooled.session.getAllCookies();
-    const byDomain = new Map<string, PersistedCookie[]>();
-    for (const c of allCookies) {
-      const d = (c.domain || domain).toLowerCase();
-      if (!byDomain.has(d)) byDomain.set(d, []);
-      byDomain.get(d)!.push(c as PersistedCookie);
-    }
-    for (const [d, list] of byDomain) {
-      if (list.length > 0) dbSaveTenantCookies(pooled.tenantId, d, list);
-    }
-  } catch {}
+  // 同じキーに別のセッションが入り直していたら、そちらは触らない
+  if (httpSessionPool.get(pooled.key) === pooled) httpSessionPool.delete(pooled.key);
+  if (!pooled.scope) {
+    try {
+      const allCookies = pooled.session.getAllCookies();
+      const byDomain = new Map<string, PersistedCookie[]>();
+      for (const c of allCookies) {
+        const d = (c.domain || pooled.domain).toLowerCase();
+        if (!byDomain.has(d)) byDomain.set(d, []);
+        byDomain.get(d)!.push(c as PersistedCookie);
+      }
+      for (const [d, list] of byDomain) {
+        if (list.length > 0) dbSaveTenantCookies(pooled.tenantId, d, list);
+      }
+    } catch {}
+  }
   try {
     await pooled.session.close();
   } catch {}
 }
 
-/** ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元） */
+/** セッションをクローズし、Cookieを永続化してからプールから除去する（scope は資格情報付き専用セッション用） */
+export async function closeHttpSession(domain: string, tenantId = 'legacy', scope?: string): Promise<void> {
+  const pooled = httpSessionPool.get(sessionKey(tenantId, domain, scope));
+  if (!pooled) return;
+  await closePooledHttpSession(pooled);
+}
+
+/**
+ * ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元）。
+ * scope を渡すと資格情報付きリクエスト専用の分離セッションになり、保存済み Cookie は復元せず、終了時も永続化しない。
+ */
 export async function getOrCreateHttpSession(
   domain: string,
   browser: BrowserProfile,
   proxyUrl?: string,
   tenantId = 'legacy',
+  scope?: string,
 ): Promise<UniversalHttpSession> {
-  const key = sessionKey(tenantId, domain);
+  const key = sessionKey(tenantId, domain, scope);
   const existing = httpSessionPool.get(key);
   if (existing) {
     refreshHttpSessionTimer(existing);
@@ -262,7 +308,8 @@ export async function getOrCreateHttpSession(
     session = new NativeFetchSession();
   }
 
-  const savedCookies = dbGetTenantCookies(tenantId, domain);
+  // 資格情報付きの分離セッションは、保存済み Cookie を引き継がず空のジャーで始める
+  const savedCookies = scope ? undefined : dbGetTenantCookies(tenantId, domain);
   if (savedCookies && savedCookies.length > 0) {
     for (const c of savedCookies) {
       try {
@@ -271,7 +318,7 @@ export async function getOrCreateHttpSession(
     }
   }
 
-  const pooled: PooledHttpSession = { session, domain, tenantId, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
+  const pooled: PooledHttpSession = { session, domain, tenantId, key, scope, lastUsed: Date.now(), timer: setTimeout(() => {}, 0) };
   clearTimeout(pooled.timer);
   httpSessionPool.set(key, pooled);
   refreshHttpSessionTimer(pooled);
@@ -330,7 +377,10 @@ export async function fetchWithSafeRedirects(
   const effectiveProxyUrl = proxyUrl
     ?? (isProxyBypassed(initialDomain, getProxyConfig().proxyBypassList) ? undefined : pickProxyUrl());
   const browser = pickBrowserProfile();
-  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId);
+  // 資格情報付きリクエストは専用のジャーで動かす。通常セッションと共有すると、認証で得た Set-Cookie が
+  // 後続の「資格情報なし」リクエストに流れ、ログイン済みの内容が共有キャッシュに入ってしまう。
+  const credentialScope = credentialScopeFor(customHeaders, customCookies);
+  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId, credentialScope);
 
   while (redirects <= maxRedirects) {
     let parsed: URL;
