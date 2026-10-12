@@ -110,10 +110,5 @@ describe('Phase 1 verbose-only search diagnostics', () => {
     expect(guarded).toBeGreaterThan(-1);
     expect(diagnostics).toBeGreaterThan(guarded);
   });
-
-  test('integratedSearch cache key distinguishes verbose from default output shape', () => {
-    const source = readFileSync(new URL('./scraper.ts', import.meta.url), 'utf8');
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
-    expect(source).toContain("${options.verbose === true ? 'verbose' : 'compact'}");
-  });
+  // integratedSearch のキャッシュキーが verbose と通常出力を分けることは、integrated_search_cache.test.ts で動作として確かめる
 });

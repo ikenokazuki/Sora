@@ -1600,6 +1600,18 @@ const DEFAULT_SCRAPE_DEADLINE_MS = 0;
 /** 半数のページが揃ってから残りを待つ猶予。 */
 const SCRAPE_DEADLINE_GRACE_MS = 5_000;
 
+type IntegratedSearchOptions = Parameters<typeof integratedSearch>[0];
+
+/**
+ * integratedSearch の結果の中身を変えない項目。ここに無い項目はすべてキャッシュキーに入れる。
+ * IntegratedSearchOptions に項目を足すと、キーに入れるかここに挙げるかを決めるまで型エラーになる。
+ */
+type IntegratedSearchKeyIgnored =
+  | 'query' // キーの先頭に別に置く
+  | 'noCache'
+  | 'tenantId' // 公開情報の検索なので、テナントをまたいで共有する
+  | 'scrapeDeadlineMs'; // 締切で欠けた結果は保存しないので、保存される結果は締切の値に依らない
+
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1666,7 +1678,36 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v9:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeAnchor ?? 'auto'}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const digest = cacheKeyDigest<IntegratedSearchOptions, IntegratedSearchKeyIgnored>({
+    limit,
+    scrapeContent,
+    includeRealtime,
+    realtimeSort,
+    realtimeFocus,
+    realtimeAnchor: realtimeAnchor ?? 'auto',
+    realtimeLimit,
+    officialAccountId: officialAccountId || 'none',
+    maxChars,
+    includeDomains: includeDomains ?? [],
+    excludeDomains: excludeDomains ?? [],
+    updated: updated ?? 'all',
+    extractHighlights,
+    onlyMainContent,
+    formats: formats.slice().sort(),
+    dedup,
+    verbose: options.verbose === true,
+    reorderUFlat,
+    enablePrf,
+    diversityWeight: diversityWeight ?? 'default',
+    annotateTemporal: annotateTemporal === true,
+    minimizeTables: minimizeTables !== false,
+    highlightAlgorithm,
+    highlightOverheadTokens,
+    highlightMaxCount: highlightMaxCount ?? 'auto',
+    adaptiveScrape,
+    scrapeBudget,
+  });
+  const cacheKey = `search:integrated:v10:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
