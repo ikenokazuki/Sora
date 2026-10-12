@@ -10,8 +10,8 @@ import { detectCandidates, type RankedCandidate } from './detector.js';
 import { getFromCache, setToCache } from '../../cache.js';
 import { errorMessage } from '../../errors.js';
 
-export const TRACKING_CACHE_TTL = 300; // 5分
-export const TRACKING_DELIVERED_CACHE_TTL = 86400; // 配達完了は24時間
+export const TRACKING_CACHE_TTL = 5 * 60 * 1000; // 5分
+export const TRACKING_DELIVERED_CACHE_TTL = 24 * 60 * 60 * 1000; // 配達完了は24時間
 const MAX_CONCURRENT_PER_WAVE = 2;
 const MAX_TOTAL_VERIFICATION_ATTEMPTS = 4;
 
