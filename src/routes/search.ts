@@ -168,8 +168,7 @@ searchRoutes.post('/realtime/post', async (c) => {
 searchRoutes.post('/search/trend', async (c) => {
   try {
     const body = (await c.req.json().catch(() => ({}))) || {};
-    const limit = Math.min(body?.limit || 20, 50);
-    const result = await fetchRealtimeTrends(limit);
+    const result = await fetchRealtimeTrends(body?.limit);
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Search trend failed' }, 500);
