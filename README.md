@@ -278,6 +278,9 @@ docker run -d \
 
 APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
 
+> [!NOTE]
+> `localhost` / `127.0.0.1` / `[::1]` からの接続は、ホスト側のポート（上の例では 3016）が何であってもそのまま使えます。LAN の IP アドレス・公開ホスト名・リバースプロキシ経由で MCP（`/mcp`・`/sse`・`/message`）へ接続する場合は、`-e SORA_ALLOWED_HOSTS="sora.example.com"` を追加してください（ブラウザ上のクライアントから接続するなら `-e SORA_ALLOWED_ORIGINS="https://sora.example.com"` も）。許可されていない Host や Origin からの接続は 403 になり、応答の `hint` に設定すべき環境変数が示されます。
+
 ### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
 
 #### Streamable HTTP 接続（推奨・標準）
@@ -1982,8 +1985,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
 | `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、本番の sora.example.com は `true` を指定して警告を止めています）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
-| `SORA_ALLOWED_HOSTS` | localhost + PORT | MCP Host allowlist |
-| `SORA_ALLOWED_ORIGINS` | localhost + PORT | MCP Origin allowlist |
+| `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください |
+| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）には影響しません。ブラウザ上のクライアントから接続するときに設定します |
 | `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
 | `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
