@@ -11,6 +11,11 @@ const SENSITIVE_HEADER_NAMES = new Set([
   'x-access-token',
 ]);
 
+/** 資格情報を運ぶヘッダー名か（大文字小文字は区別しない） */
+export function isSensitiveHeaderName(name: string): boolean {
+  return SENSITIVE_HEADER_NAMES.has(name.toLowerCase());
+}
+
 export function hasSensitiveRequestCredentials(options: {
   headers?: Record<string, string>;
   cookies?: Array<unknown>;
