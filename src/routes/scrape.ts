@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import {
   scrapeUrl,
@@ -15,6 +15,40 @@ import { formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
+
+/** 取得系の失敗を HTTP ステータスとエラーコードに分類する（/scrape・/map・/crawl で同じ規則を使う） */
+function classifyFetchError(msg: string, fallbackCode: string) {
+  const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
+  const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト') || msg.includes('timed out');
+  const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : fallbackCode;
+  const status = isSecurity ? 403 : isTimeout ? 408 : 500;
+  return { code, status: status as 403 | 408 | 500, retryable: !isSecurity };
+}
+
+/** url を必須とする JSON ボディを読む。JSON が不正、または url が http(s) の URL として読めなければ 400 を返す。 */
+async function readUrlRequestBody(
+  c: Context,
+): Promise<{ body: Record<string, any> } | { error: Response }> {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return { error: formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false) };
+  }
+  if (!body || typeof body.url !== 'string' || !body.url) {
+    return { error: formatError(c, 'url is required', 'INVALID_INPUT', 400, false) };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(body.url);
+  } catch {
+    return { error: formatError(c, 'url must be a valid http(s) URL', 'INVALID_INPUT', 400, false) };
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { error: formatError(c, 'url must be a valid http(s) URL', 'INVALID_INPUT', 400, false) };
+  }
+  return { body };
+}
 
 // 単一 URL / PDF スクレイプ (マルチフォーマット対応)
 scrapeRoutes.post('/scrape', async (c) => {
@@ -39,11 +73,8 @@ scrapeRoutes.post('/scrape', async (c) => {
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
     const msg = errorMessage(err) || 'Scrape failed';
-    const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
-    const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト') || msg.includes('timed out');
-    const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : 'SCRAPE_ERROR';
-    const status = isSecurity ? 403 : isTimeout ? 408 : 500;
-    return formatError(c, msg, code, status, !isSecurity);
+    const { code, status, retryable } = classifyFetchError(msg, 'SCRAPE_ERROR');
+    return formatError(c, msg, code, status, retryable);
   }
 });
 
@@ -117,12 +148,11 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
 // サイトマップ URL マッピング (/map)
 scrapeRoutes.post('/map', async (c) => {
-  try {
-    const body = await c.req.json();
-    if (!body?.url || typeof body.url !== 'string') {
-      return c.json({ error: 'url is required' }, 400);
-    }
+  const input = await readUrlRequestBody(c);
+  if ('error' in input) return input.error;
+  const { body } = input;
 
+  try {
     const result = await mapSiteUrl({
       url: body.url,
       limit: body.limit,
@@ -135,19 +165,19 @@ scrapeRoutes.post('/map', async (c) => {
 
     return c.json(result);
   } catch (err) {
-    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
-    return c.json({ error: errorMessage(err) || 'Map failed' }, isSecurity ? 403 : 500);
+    const msg = errorMessage(err) || 'Map failed';
+    const { code, status, retryable } = classifyFetchError(msg, 'MAP_ERROR');
+    return formatError(c, msg, code, status, retryable);
   }
 });
 
 // サブページ再帰的クロール (/crawl)
 scrapeRoutes.post('/crawl', async (c) => {
-  try {
-    const body = await c.req.json();
-    if (!body?.url || typeof body.url !== 'string') {
-      return c.json({ error: 'url is required' }, 400);
-    }
+  const input = await readUrlRequestBody(c);
+  if ('error' in input) return input.error;
+  const { body } = input;
 
+  try {
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     const result = await crawlSiteUrl({
       url: body.url,
@@ -157,6 +187,7 @@ scrapeRoutes.post('/crawl', async (c) => {
       maxChars: body.maxChars,
       timeoutMs: body.timeoutMs,
       concurrency: body.concurrency,
+      onlyMainContent: body.onlyMainContent,
       includePatterns: body.includePatterns,
       excludePatterns: body.excludePatterns,
       formats: body.formats,
@@ -176,25 +207,26 @@ scrapeRoutes.post('/crawl', async (c) => {
 
     return c.json(result);
   } catch (err) {
-    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
-    return c.json({ error: errorMessage(err) || 'Crawl failed' }, isSecurity ? 403 : 500);
+    const msg = errorMessage(err) || 'Crawl failed';
+    const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
+    return formatError(c, msg, code, status, retryable);
   }
 });
 
 // サブページ再帰的クロール SSE ストリーミング (/crawl/stream)
 scrapeRoutes.post('/crawl/stream', async (c) => {
-  try {
-    const body = await c.req.json();
-    if (!body?.url || typeof body.url !== 'string') {
-      return c.json({ error: 'url is required' }, 400);
-    }
+  // 入力の誤りは、ストリームを開く前に 400 で返す
+  const input = await readUrlRequestBody(c);
+  if ('error' in input) return input.error;
+  const { body } = input;
 
-    return streamSSE(c, async (stream) => {
-      await stream.writeSSE({
-        event: 'start',
-        data: JSON.stringify({ url: body.url, status: 'crawling' }),
-      });
+  return streamSSE(c, async (stream) => {
+    await stream.writeSSE({
+      event: 'start',
+      data: JSON.stringify({ url: body.url, status: 'crawling' }),
+    });
 
+    try {
       const streamTenant = c.get('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
         url: body.url,
@@ -204,6 +236,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         maxChars: body.maxChars,
         timeoutMs: body.timeoutMs,
         concurrency: body.concurrency,
+        onlyMainContent: body.onlyMainContent,
         includePatterns: body.includePatterns,
         excludePatterns: body.excludePatterns,
         formats: body.formats,
@@ -230,9 +263,14 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         event: 'done',
         data: JSON.stringify({ count: result.count, url: result.url }),
       });
-    });
-  } catch (err) {
-    const isSecurity = errorMessage(err)?.includes('セキュリティ上の理由');
-    return c.json({ error: errorMessage(err) || 'Crawl stream failed' }, isSecurity ? 403 : 500);
-  }
+    } catch (err) {
+      // 失敗してもストリームを黙って閉じない。/scrape/stream と同じく error イベントで知らせる
+      const msg = errorMessage(err) || 'Crawl failed';
+      const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
+      await stream.writeSSE({
+        event: 'error',
+        data: JSON.stringify({ error: msg, code, status, retryable }),
+      });
+    }
+  });
 });
