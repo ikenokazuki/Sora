@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { getFromCache, setToCache } from '../cache.js';
 
-export const CACHE_TTL_TRAFFIC = 180; // 3分 (リアルタイム更新)
+export const CACHE_TTL_TRAFFIC = 3 * 60 * 1000; // 3分 (リアルタイム更新)
 
 export interface TrafficItem {
   roadName: string;
@@ -275,7 +275,7 @@ export async function fetchRoadTraffic(options: {
   return result;
 }
 
-export const CACHE_TTL_FLIGHT = 180; // 3分 (リアルタイム運航情報)
+export const CACHE_TTL_FLIGHT = 3 * 60 * 1000; // 3分 (リアルタイム運航情報)
 
 export interface FlightItem {
   scheduledTime: string;

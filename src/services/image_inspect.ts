@@ -2,7 +2,7 @@ import { readBodyWithLimit } from '../net/safe_transport.js';
 import { getFromCache, setToCache } from '../cache.js';
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
-export const CACHE_TTL_IMAGE = 3600; // 1時間 (画像Base64キャッシュ)
+export const CACHE_TTL_IMAGE = 60 * 60 * 1000; // 1時間 (画像Base64キャッシュ)
 
 export interface InspectImageResult {
   success: boolean;
