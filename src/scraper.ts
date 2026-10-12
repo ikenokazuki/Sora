@@ -1411,16 +1411,30 @@ export async function crawlSiteUrl(options: {
 // ==========================================
 // 9. リアルタイムトレンド取得 (fetchRealtimeTrends)
 // ==========================================
-export async function fetchRealtimeTrends(limit = 20): Promise<{
+const DEFAULT_TREND_LIMIT = 20;
+const MAX_TREND_LIMIT = 50;
+
+interface RealtimeTrends {
   source: 'x';
   type: 'trend';
   count: number;
   items: { rank: number; keyword: string; tweetCount?: string; url: string }[];
   timestamp: string;
-}> {
-  const cacheKey = `trends:realtime`;
-  const cached = getFromCache<any>(cacheKey);
-  if (cached) return cached;
+}
+
+/** 件数の指定を 1〜50 に収める。数として読めない・1 未満（0 や負数）は既定の 20 件。 */
+export function resolveTrendLimit(raw: unknown): number {
+  const n = Math.trunc(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_TREND_LIMIT;
+  return Math.min(n, MAX_TREND_LIMIT);
+}
+
+export async function fetchRealtimeTrends(limit: number = DEFAULT_TREND_LIMIT): Promise<RealtimeTrends> {
+  const take = resolveTrendLimit(limit);
+  // キャッシュには件数で切る前の全件を入れ、返すときに切る。切った後を入れると、少ない件数で呼ばれた直後は多い件数を返せない
+  const cacheKey = 'trends:realtime:v2';
+  const cached = getFromCache<RealtimeTrends>(cacheKey);
+  if (cached) return { ...cached, count: Math.min(cached.items.length, take), items: cached.items.slice(0, take) };
 
   const res = await fetchWithSafeRedirects('https://search.yahoo.co.jp/realtime', 10000);
   if (!res?.response.ok) {
@@ -1449,17 +1463,16 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
     });
   });
 
-  const finalItems = items.slice(0, limit);
-  const result = {
-    source: 'x' as const,
-    type: 'trend' as const,
-    count: finalItems.length,
-    items: finalItems,
+  const result: RealtimeTrends = {
+    source: 'x',
+    type: 'trend',
+    count: items.length,
+    items,
     timestamp: new Date().toISOString(),
   };
 
   setToCache(cacheKey, result, CACHE_TTL_TREND);
-  return result;
+  return { ...result, count: Math.min(items.length, take), items: items.slice(0, take) };
 }
 
 // ==========================================
