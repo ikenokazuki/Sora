@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { cacheKeyDigest } from './cache.js';
+import { cacheKeyDigest, clearCache } from './cache.js';
 import { buildScrapeCacheKey, scrapeUrl } from './scraper.js';
+import { trackingCacheKey } from './services/tracking/index.js';
+import { fetchRoadTraffic } from './services/traffic.js';
 import { DEFAULT_MAX_CHARS, type ScrapeFormat } from './types.js';
 
 // キャッシュキーが、結果に影響する入力をすべて含むこと。
@@ -211,5 +213,60 @@ describe('scrapeUrl のキャッシュ（手元のサーバーで確認）', () 
     expect(en.content).not.toContain('こんにちは');
     expect(cached(jaAgain)).toBe(true);
     expect(hits - before).toBe(2);
+  });
+});
+
+describe('trackingCacheKey', () => {
+  const num = '123456789012';
+
+  test('キャリアを明示した照会は、ヒントを渡してもキーが変わらない（ヒントを使わないため）', () => {
+    const plain = trackingCacheKey({ carrier: 'yamato' }, num);
+    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' }, num)).toBe(plain);
+    expect(trackingCacheKey({ carrier: 'sagawa' }, num)).not.toBe(plain);
+  });
+
+  test('自動判別は、判別に渡すヒントが違えば別のキーになる', () => {
+    const plain = trackingCacheKey({}, num);
+    expect(trackingCacheKey({ carrier: 'auto' }, num)).toBe(plain);
+
+    const variants = [
+      trackingCacheKey({ preferredCarriers: ['sagawa'] }, num),
+      trackingCacheKey({ preferredCarriers: ['yamato'] }, num),
+      trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa'] }, num),
+      trackingCacheKey({ originCountry: 'JP' }, num),
+      trackingCacheKey({ destinationCountry: 'US' }, num),
+    ];
+    expect(new Set([plain, ...variants]).size).toBe(variants.length + 1);
+  });
+
+  test('優先キャリアの並び順・重複と、空のヒントは区別しない', () => {
+    expect(trackingCacheKey({ preferredCarriers: ['sagawa', 'yamato'] }, num)).toBe(trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa', 'yamato'] }, num));
+    expect(trackingCacheKey({ preferredCarriers: [], originCountry: ' ', destinationCountry: '' }, num)).toBe(trackingCacheKey({}, num));
+  });
+});
+
+describe('道路交通のキャッシュキー', () => {
+  test('同じ道路コードになる呼び方でも、指定した道路名は別の結果として返す', async () => {
+    clearCache();
+    let calls = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response('<html><head><title>東名高速道路の交通情報</title></head><body></body></html>');
+    }) as unknown as typeof fetch;
+    try {
+      const short = await fetchRoadTraffic({ road: '東名' });
+      const long = await fetchRoadTraffic({ road: '東名高速道路' });
+      const shortAgain = await fetchRoadTraffic({ road: '東名' });
+
+      expect(short.road).toBe('東名');
+      expect(long.road).toBe('東名高速道路');
+      expect(shortAgain.road).toBe('東名');
+      expect((shortAgain as { cached?: boolean }).cached).toBe(true);
+      expect(calls).toBe(2);
+    } finally {
+      globalThis.fetch = realFetch;
+      clearCache();
+    }
   });
 });
