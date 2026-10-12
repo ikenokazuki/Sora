@@ -11,6 +11,7 @@ import {
   DEFAULT_MAX_CHARS,
 } from './types.js';
 import {
+  cacheKeyDigest,
   getFromCache,
   runWithSingleFlight,
   setToCache,
@@ -39,7 +40,7 @@ import {
   annotateTextWithTemporalAnchors,
   computeAnswerability,
 } from './enrichment.js';
-import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
+import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2, extractWithEscalation } from './rho_select_v2_adapter.js';
@@ -444,6 +445,76 @@ export function isRenderStillBlockedOrBlank(options: {
   return hasLittleContent || isJsDisabledMessage || isChallenge || !hasMeaningfulPageContent(bodyOnlyMarkdown);
 }
 
+type ScrapeUrlOptions = Parameters<typeof scrapeUrl>[0];
+
+/**
+ * scrapeUrl の結果の中身を変えない項目と、キャッシュキーとは別に扱う項目。ここに無い項目はすべてキーに入れる。
+ * ScrapeUrlOptions に項目を足すと、キーに入れるかここに挙げるかを決めるまで型エラーになる。
+ */
+type ScrapeKeyIgnored =
+  | 'url' // キーの先頭に別に置く
+  | 'cookies' // 資格情報付きの要求は共有キャッシュを使わない
+  | 'tenantId' // 公開ページの取得結果はテナントをまたいで共有する
+  | 'noCache' | 'onProgress' | 'retries' | 'retryDelayMs' | 'timeoutMs' // 取得の進め方で、結果の中身は変えない
+  | 'webhookUrl'; // 通知先で、結果の中身は変えない
+
+/** キーに入れるヘッダー。資格情報を運ぶヘッダーを持つ要求は共有キャッシュを使わないので除く。名前は大文字小文字を区別しない。 */
+function headersForCacheKey(headers: Record<string, string> | undefined): Array<[string, string]> {
+  return Object.entries(headers ?? {})
+    .filter(([name]) => !isSensitiveHeaderName(name))
+    .map(([name, value]): [string, string] => [name.toLowerCase(), String(value)])
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** scrapeUrl の共有キャッシュのキー。結果の中身を変える入力はすべて含める。 */
+export function buildScrapeCacheKey(
+  options: ScrapeUrlOptions,
+  resolved: { maxChars: number; formats: ScrapeFormat[]; onlyMainContent: boolean; shouldExtractHighlights: boolean },
+): string {
+  const digest = cacheKeyDigest<ScrapeUrlOptions, ScrapeKeyIgnored>({
+    maxChars: resolved.maxChars,
+    mode: options.mode ?? 'auto',
+    renderJs: options.renderJs === true,
+    fastOnly: options.fastOnly === true,
+    formats: resolved.formats.slice().sort(),
+    fullPage: options.fullPage ?? true,
+    onlyMainContent: resolved.onlyMainContent,
+    selectors: options.selectors ?? null,
+    clipSelector: options.clipSelector ?? '',
+    headers: headersForCacheKey(options.headers),
+    removeSelectors: options.removeSelectors ?? [],
+    stripLinks: options.stripLinks === true,
+    filterLinkDensity: options.filterLinkDensity === true,
+    query: options.query ?? '',
+    extractHighlights: resolved.shouldExtractHighlights,
+    onlyHighlights: options.onlyHighlights === true,
+    highlightAlgorithm: options.highlightAlgorithm ?? 'rho-select-v2',
+    highlightOverheadTokens: options.highlightOverheadTokens ?? 96,
+    highlightMaxCount: options.highlightMaxCount ?? 'auto',
+    evidenceMode: options.evidenceMode ?? 'full',
+    includeDiagnostics: options.includeDiagnostics !== false,
+    includeDiscrepancies: options.includeDiscrepancies === true,
+    safeNormalize: options.safeNormalize === true,
+    reorderUFlat: options.reorderUFlat === true,
+    diversityWeight: options.diversityWeight ?? 0.7,
+    annotateTemporal: options.annotateTemporal === true,
+    minimizeTables: options.minimizeTables !== false,
+    extractSummary: options.extractSummary === true,
+    extractCitations: options.extractCitations === true,
+    chunkMarkdown: options.chunkMarkdown === true,
+    chunkSize: options.chunkSize || 1000,
+    validateLinks: options.validateLinks === true,
+    formatAsPrompt: options.formatAsPrompt === true,
+    highlightMatches: options.highlightMatches === true,
+    maskPii: options.maskPii === true,
+    verbose: options.verbose === true,
+    keepDataImages: options.keepDataImages === true,
+    contextTitle: options.contextTitle ?? '',
+    snippet: options.snippet ?? '',
+  });
+  return `scrape:v7:${options.url}:${digest}`;
+}
+
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
@@ -511,7 +582,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:v6:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = buildScrapeCacheKey(options, { maxChars, formats, onlyMainContent, shouldExtractHighlights });
 
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
