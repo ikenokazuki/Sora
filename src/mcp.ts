@@ -55,6 +55,7 @@ import { SORA_VERSION, ScrapeFormatSchema, HighlightAlgorithmSchema, DEFAULT_HIG
 import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPICS, SocialPlatformSchema, type CountryContextReport } from './services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 import { errorMessage } from './errors.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -2348,17 +2349,60 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
+/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（47 ツールの定義を持つため） */
+export const DEFAULT_MAX_MCP_SESSIONS = 100;
+/** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
+export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
+
+/** SORA_MCP_MAX_SESSIONS の解釈。正の整数ならそれ、未設定や不正な値は既定値。 */
+export function resolveMaxMcpSessions(raw: string | undefined): number {
+  const n = raw && /^\d+$/.test(raw.trim()) ? parseInt(raw.trim(), 10) : NaN;
+  return n > 0 ? n : DEFAULT_MAX_MCP_SESSIONS;
+}
+
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
   private cleanupInterval: ReturnType<typeof setInterval>;
   private readonly sessionTtlMs: number;
+  private readonly maxSessions: number;
+  private readonly minIdleBeforeEvictMs: number;
+  /** initialize の処理中でまだ sessions に載っていない数。並行する initialize が上限を超えないよう予約として数える */
+  private pendingInitializations = 0;
 
-  constructor(options?: { sessionTtlMs?: number }) {
+  constructor(options?: { sessionTtlMs?: number; maxSessions?: number; minIdleBeforeEvictMs?: number }) {
     this.sessionTtlMs = options?.sessionTtlMs ?? 60 * 60 * 1000; // 1時間 TTL
+    this.maxSessions =
+      options?.maxSessions !== undefined && Number.isInteger(options.maxSessions) && options.maxSessions > 0
+        ? options.maxSessions
+        : resolveMaxMcpSessions(process.env.SORA_MCP_MAX_SESSIONS);
+    this.minIdleBeforeEvictMs = options?.minIdleBeforeEvictMs ?? DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS;
     this.cleanupInterval = setInterval(() => this.cleanupStaleSessions(), 5 * 60 * 1000);
     if (typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
       this.cleanupInterval.unref();
     }
+  }
+
+  /**
+   * 新しいセッションを 1 つ受け入れる余地を作る。登録済み＋作成中が上限に達していたら、
+   * 最も長く使われていないセッションを閉じて空ける。ただし直近まで使われていたものは守る。
+   * 空けられなければ false（呼び出し側が 503 を返す）。
+   */
+  private makeRoomForSession(): boolean {
+    while (this.sessions.size + this.pendingInitializations >= this.maxSessions) {
+      let oldestId: string | undefined;
+      let oldestActive = Infinity;
+      for (const [id, session] of this.sessions) {
+        if (session.lastActive < oldestActive) {
+          oldestActive = session.lastActive;
+          oldestId = id;
+        }
+      }
+      if (oldestId === undefined || Date.now() - oldestActive < this.minIdleBeforeEvictMs) return false;
+      this.sessions.get(oldestId)?.transport.close().catch(() => {});
+      this.sessions.delete(oldestId);
+      incrementSecurityCounter('sora_mcp_session_evicted_total');
+    }
+    return true;
   }
 
   /** Route HTTP requests to their session without sharing activation state. */
@@ -2398,27 +2442,44 @@ export class McpSessionManager {
     const isInit = messages.some((m) => m && m.method === 'initialize');
 
     if (isInit) {
-      const state: McpSessionState = { activatedTools: new Set<string>(), tenantId };
-      const server = createMcpServer({ sessionState: state });
-      const transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: () => crypto.randomUUID(),
-        enableJsonResponse: true,
-        onsessioninitialized: (newSessionId) => {
-          this.sessions.set(newSessionId, {
-            server,
-            transport,
-            lastActive: Date.now(),
-            state,
-          });
-        },
-        onsessionclosed: (closedSessionId) => {
-          this.sessions.delete(closedSessionId);
-        },
-      });
+      // セッションは数 MB を保持するので、無制限に作らせない（未認証の連続 initialize によるメモリ枯渇の防止）
+      if (!this.makeRoomForSession()) {
+        incrementSecurityCounter('sora_mcp_session_rejected_total');
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Too many active MCP sessions. Retry later.' },
+            id: null,
+          }),
+          { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5' } },
+        );
+      }
+      this.pendingInitializations++;
+      try {
+        const state: McpSessionState = { activatedTools: new Set<string>(), tenantId };
+        const server = createMcpServer({ sessionState: state });
+        const transport = new WebStandardStreamableHTTPServerTransport({
+          sessionIdGenerator: () => crypto.randomUUID(),
+          enableJsonResponse: true,
+          onsessioninitialized: (newSessionId) => {
+            this.sessions.set(newSessionId, {
+              server,
+              transport,
+              lastActive: Date.now(),
+              state,
+            });
+          },
+          onsessionclosed: (closedSessionId) => {
+            this.sessions.delete(closedSessionId);
+          },
+        });
 
-      await server.connect(transport);
-      const res = await transport.handleRequest(req, { parsedBody });
-      return sanitizeMcpResponse(res);
+        await server.connect(transport);
+        const res = await transport.handleRequest(req, { parsedBody });
+        return sanitizeMcpResponse(res);
+      } finally {
+        this.pendingInitializations--;
+      }
     }
 
     // 3. 単発リクエストでは明示的に呼ばれたツールだけをその要求内で有効化する。
