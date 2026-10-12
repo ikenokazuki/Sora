@@ -120,8 +120,8 @@ export async function fetchRoadTraffic(options: {
   const roadCode = resolveRoadCode(options.road);
   const targetRoadName = options.road?.trim();
 
-  // キャッシュキーの構築
-  const cacheKey = `traffic:${prefInfo?.code || 'all'}:${roadCode || targetRoadName || 'all'}`;
+  // キャッシュキーの構築。結果には指定された道路名がそのまま入る（「東名」と「東名高速道路」は同じ道路コードになる）ので、名前も入れる
+  const cacheKey = `traffic:v2:${prefInfo?.code || 'all'}:${roadCode || ''}:${targetRoadName || ''}`;
   if (!options.noCache) {
     const cached = getFromCache<RoadTrafficResult>(cacheKey);
     if (cached) return cached;
