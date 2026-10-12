@@ -89,6 +89,12 @@ export function getChromiumMajorVersion(): number | undefined {
 }
 
 let sharedBrowserInstance: Browser | null = null;
+/**
+ * 共有ブラウザを起動している最中の Promise。無操作終了の直後などに getBrowser() が同時に呼ばれても、
+ * 起動は 1 回だけにして全員が同じブラウザを受け取る。共有しないと、呼び出しの数だけ Chromium が起動し、
+ * 最後に代入された 1 つ以外は参照を失って閉じられないまま残る（1 つあたり数百 MB）。
+ */
+let sharedBrowserLaunch: Promise<Browser> | null = null;
 
 /**
  * 環境変数からプロキシ設定を取得します。
@@ -156,20 +162,38 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     return { browser: dedicated, isDedicated: true };
   }
 
-  if (sharedBrowserInstance?.connected) {
-    try {
-      await sharedBrowserInstance.version();
-      markSharedBrowserUsed();
-      return { browser: sharedBrowserInstance, isDedicated: false };
-    } catch {
-      sharedBrowserInstance = null;
+  // 共有ブラウザ: 起動済みならそれを、起動中ならその完了を待って受け取る（同時に複数起動しない）。
+  // 待っている間に閉じられた場合に備え、起動の完了後は状態を見直す。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = sharedBrowserInstance;
+    if (existing?.connected) {
+      try {
+        await existing.version();
+        // 疎通確認の await 中に閉じられた・差し替えられた場合は渡さず、次の周回で取り直す
+        if (sharedBrowserInstance === existing) {
+          markSharedBrowserUsed();
+          return { browser: existing, isDedicated: false };
+        }
+      } catch {
+        if (sharedBrowserInstance === existing) sharedBrowserInstance = null;
+      }
     }
-  }
 
-  if (!CHROME_EXECUTABLE_PATH) {
-    throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
-  }
+    if (!CHROME_EXECUTABLE_PATH) {
+      throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
+    }
 
+    if (!sharedBrowserLaunch) {
+      sharedBrowserLaunch = launchSharedBrowser(effectiveProxy, effectiveBypass);
+    }
+    // 失敗したときは待っている全員に同じエラーが伝わり、次の呼び出しで起動をやり直せる
+    await sharedBrowserLaunch;
+  }
+  throw new Error('共有ブラウザを起動できませんでした');
+}
+
+/** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */
+function launchSharedBrowser(effectiveProxy: string | undefined, effectiveBypass: string | undefined): Promise<Browser> {
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -188,16 +212,23 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     }
   }
 
-  sharedBrowserInstance = await puppeteer.launch({
-    executablePath: CHROME_EXECUTABLE_PATH,
-    headless: true,
-    args,
-    // 理由は上記 dedicated ブラウザ側のコメント参照
-    ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+  const launched = puppeteer
+    .launch({
+      executablePath: CHROME_EXECUTABLE_PATH,
+      headless: true,
+      args,
+      // 理由は上記 dedicated ブラウザ側のコメント参照
+      ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+    })
+    .then((browser) => {
+      sharedBrowserInstance = browser;
+      markSharedBrowserUsed();
+      return browser;
+    });
+  const tracked: Promise<Browser> = launched.finally(() => {
+    if (sharedBrowserLaunch === tracked) sharedBrowserLaunch = null;
   });
-
-  markSharedBrowserUsed();
-  return { browser: sharedBrowserInstance, isDedicated: false };
+  return tracked;
 }
 
 export function isSharedBrowserConnected(): boolean {
@@ -208,6 +239,13 @@ export async function closeSharedBrowser(): Promise<void> {
   if (idleTimer) {
     clearTimeout(idleTimer);
     idleTimer = undefined;
+  }
+  // 起動の最中なら、完了を待ってから閉じる（起動途中のまま放置すると、管理されない Chromium が残る）
+  const launching = sharedBrowserLaunch;
+  if (launching) {
+    try {
+      await launching;
+    } catch {}
   }
   // 閉じる前に共有インスタンスを外し、閉じかけのブラウザを getBrowser() が渡さないようにする
   const browser = sharedBrowserInstance;
@@ -432,29 +470,82 @@ export function isPrivateIpUint32(num: number): boolean {
   return false;
 }
 
+/**
+ * IPv6 アドレス文字列を 8 個の 16bit 値へ展開する。`::` の省略、末尾の IPv4 表記（::ffff:1.2.3.4）、
+ * ゾーン ID（fe80::1%eth0）に対応。解釈できなければ null。
+ */
+function parseIpv6(text: string): number[] | null {
+  let s = text;
+  const zone = s.indexOf('%');
+  if (zone >= 0) s = s.slice(0, zone);
+  if (!s.includes(':')) return null;
+
+  // 末尾が IPv4 表記なら 2 個の 16bit 値に直す
+  const lastColon = s.lastIndexOf(':');
+  const tail = s.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(tail)) return null;
+    const v4 = parseIpv4ToUint32(tail);
+    if (v4 === null) return null;
+    s = s.slice(0, lastColon + 1) + ((v4 >>> 16) & 0xffff).toString(16) + ':' + (v4 & 0xffff).toString(16);
+  }
+
+  let groups: string[];
+  const dc = s.indexOf('::');
+  if (dc >= 0) {
+    if (s.indexOf('::', dc + 1) >= 0) return null; // `::` は 1 回だけ
+    const [left, right] = s.split('::');
+    const head = left ? left.split(':') : [];
+    const rest = right ? right.split(':') : [];
+    if (head.length + rest.length > 7) return null;
+    groups = [...head, ...new Array<string>(8 - head.length - rest.length).fill('0'), ...rest];
+  } else {
+    groups = s.split(':');
+    if (groups.length !== 8) return null;
+  }
+
+  const out: number[] = [];
+  for (const g of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    out.push(parseInt(g, 16));
+  }
+  return out;
+}
+
+/** IPv6 リテラルが、ループバック・プライベート・リンクローカル・マルチキャスト等の宛先か（埋め込み IPv4 も見る） */
+function isPrivateIpv6(text: string): boolean {
+  const g = parseIpv6(text);
+  // ':' を含むのに IPv6 として読めない文字列は、通すより止める方が安全
+  if (!g) return true;
+  const [a, b, c, d, e, f, x, y] = g;
+  const embeddedV4 = (((x << 16) | y) >>> 0);
+  const upperFiveZero = a === 0 && b === 0 && c === 0 && d === 0 && e === 0;
+
+  // ::/96 は、未指定（::）・ループバック（::1）・IPv4 互換の旧形式（::a.b.c.d）で、どれも公開された宛先にならない
+  if (upperFiveZero && f === 0) return true;
+  if (upperFiveZero && f === 0xffff) return isPrivateIpUint32(embeddedV4); // IPv4-mapped  ::ffff:a.b.c.d
+  if (a === 0 && b === 0 && c === 0 && d === 0 && e === 0xffff && f === 0) return isPrivateIpUint32(embeddedV4); // IPv4-translated
+  if (a === 0x64 && b === 0xff9b) {
+    if (c === 0 && d === 0 && e === 0 && f === 0) return isPrivateIpUint32(embeddedV4); // NAT64 64:ff9b::/96
+    if (c === 1) return true; // 64:ff9b:1::/48 ローカル用 NAT64
+  }
+  if (a === 0x2002) return isPrivateIpUint32((((b << 16) | c) >>> 0)); // 6to4 2002::/16（IPv4 は 16〜47bit）
+  if (a === 0x2001 && b === 0) return true; // Teredo 2001::/32
+  if (a === 0x2001 && b === 0x0db8) return true; // ドキュメント用 2001:db8::/32
+  if (a === 0x0100 && b === 0 && c === 0 && d === 0) return true; // 100::/64 破棄用
+  if ((a & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
+  if ((a & 0xffc0) === 0xfe80) return true; // リンクローカル fe80::/10
+  if ((a & 0xffc0) === 0xfec0) return true; // サイトローカル fec0::/10（非推奨）
+  if ((a & 0xff00) === 0xff00) return true; // マルチキャスト ff00::/8
+  return false;
+}
+
 export function isPrivateIp(ip: string): boolean {
   const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
 
-  // 1. IPv6 の直接判定
-  if (trimmed === '::1' || trimmed === '::') return true;
-  if (trimmed.startsWith('fc') || trimmed.startsWith('fd') || trimmed.startsWith('fe80:') || trimmed.startsWith('ff')) return true;
-
-  // IPv6 埋め込み IPv4 (例: ::ffff:127.0.0.1, ::ffff:7f00:1, ::ffff:7f00:0001)
-  if (trimmed.startsWith('::ffff:')) {
-    const mapped = trimmed.replace(/^::ffff:/, '');
-    if (mapped.includes(':')) {
-      const hexParts = mapped.split(':');
-      if (hexParts.length === 2) {
-        const hi = parseInt(hexParts[0], 16);
-        const lo = parseInt(hexParts[1], 16);
-        if (!Number.isNaN(hi) && !Number.isNaN(lo)) {
-          const num = (((hi & 0xffff) << 16) | (lo & 0xffff)) >>> 0;
-          return isPrivateIpUint32(num);
-        }
-      }
-    }
-    return isPrivateIp(mapped);
-  }
+  // 1. IPv6 リテラルは必ず ':' を含み、ホスト名には現れない。':' の有無で IPv6 判定に入るかを決める。
+  //    （以前は先頭が 'fc'/'fd'/'ff' の文字列を無条件に IPv6 扱いにして、fda.gov や ffmpeg.org まで遮断していた）
+  if (trimmed.includes(':')) return isPrivateIpv6(trimmed);
 
   // 2. 任意の進数・短縮表記を含む IPv4 の 32bit 整数への正規化
   const num = parseIpv4ToUint32(trimmed);
@@ -462,10 +553,13 @@ export function isPrivateIp(ip: string): boolean {
     return isPrivateIpUint32(num);
   }
 
-  // 3. 一般的なプレフィックスフォールバック
-  if (trimmed.startsWith('10.') || trimmed.startsWith('192.168.') || trimmed.startsWith('0.')) return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(trimmed)) return true;
-  if (trimmed.startsWith('169.254.')) return true;
+  // 3. 先頭が IPv4 の名前（127.0.0.1.nip.io のようなワイルドカード DNS）は、解決を待たずに止める。
+  //    先頭の 4 ラベルが IPv4 として読める場合だけ見る（10.example.com のような通常の名前は対象外）。
+  const lead = trimmed.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\./);
+  if (lead) {
+    const leadNum = parseIpv4ToUint32(lead[1]);
+    if (leadNum !== null) return isPrivateIpUint32(leadNum);
+  }
 
   return false;
 }
@@ -484,10 +578,6 @@ export function isBlockedHostname(hostname: string): boolean {
     h.endsWith('.internal')
   ) {
     return true;
-  }
-  if (h.startsWith('::ffff:')) {
-    const mapped = h.replace(/^::ffff:/, '');
-    return isPrivateIp(mapped);
   }
   if (
     h === '169.254.169.254' ||

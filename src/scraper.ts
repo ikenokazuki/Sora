@@ -1042,6 +1042,27 @@ export function filterSitemapEntriesByDate<T extends { lastmod?: string }>(entri
   });
 }
 
+/** 同一サイト判定用のホストキー。`www.` の有無だけが違うホストは同じサイトとして扱う。 */
+function siteKey(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, '');
+}
+
+/**
+ * リンクのホストが、基準サイト群（siteKey 済み）のどれかに属するか。
+ * includeSubdomains 時はサブドメインも含める。'evilexample.com' を 'example.com' の一部とみなさないよう、ドット区切りで比較する。
+ */
+export function isHostInSites(linkHost: string, sites: Iterable<string>, includeSubdomains = false): boolean {
+  const host = linkHost.toLowerCase();
+  for (const site of sites) {
+    if (includeSubdomains) {
+      if (host === site || host.endsWith('.' + site)) return true;
+    } else if (siteKey(host) === site) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function mapSiteUrl(options: {
   url: string;
   limit?: number;
@@ -1112,13 +1133,17 @@ export async function mapSiteUrl(options: {
     maxChars: 5000,
     formats: ['links'],
     noCache: options.noCache,
+    ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   });
 
-  const baseHost = parsedUrl.hostname.toLowerCase();
+  // 指定 URL のホストに加え、リダイレクト後のホスト（example.com → www.example.com など）も同じサイトとして扱う
+  const baseSites = new Set<string>([siteKey(parsedUrl.hostname)]);
+  try {
+    baseSites.add(siteKey(new URL(scraped.url).hostname));
+  } catch {}
   const internalLinks = (scraped.links || []).filter((link) => {
     try {
-      const linkHost = new URL(link).hostname.toLowerCase();
-      return options.includeSubdomains ? linkHost.endsWith(baseHost) : linkHost === baseHost;
+      return isHostInSites(new URL(link).hostname, baseSites, options.includeSubdomains);
     } catch {
       return false;
     }
@@ -1145,6 +1170,7 @@ export async function crawlSiteUrl(options: {
   maxChars?: number;
   timeoutMs?: number;
   concurrency?: number;
+  onlyMainContent?: boolean;
   formats?: ScrapeFormat[];
   includePatterns?: string[];
   excludePatterns?: string[];
@@ -1194,63 +1220,103 @@ export async function crawlSiteUrl(options: {
     onPageCrawled,
   } = options;
 
-  const targetLimit = Math.min(maxPages, 50);
-  const baseHost = new URL(initialUrl).hostname.toLowerCase();
+  const targetLimit = Number.isFinite(maxPages) ? Math.max(0, Math.min(Math.floor(maxPages), 50)) : 10;
+  // 並行度は OpenAPI（CrawlRequestSchema）の記載どおり 1〜10、既定 3。
+  const workers = Number.isFinite(options.concurrency) ? Math.max(1, Math.min(Math.floor(options.concurrency as number), 10)) : 3;
+
+  // 同一サイトの判定に使うホスト。起点のホストに加え、起点がリダイレクトされた先のホスト
+  // （example.com → www.example.com など）も同じサイトとして扱う。後者は起点の取得後に足す。
+  const sites = new Set<string>([siteKey(new URL(initialUrl).hostname)]);
 
   const visited = new Set<string>();
   const queue: Array<{ url: string; depth: number }> = [{ url: initialUrl, depth: 0 }];
   let pages: ScrapeResult[] = [];
+  let seedError: unknown;
+
+  const visitKey = (u: string) => u.split('#')[0].replace(/\/+$/, '');
+  /** include/exclude は、リンクをたどって見つけた URL にだけ適用する。起点 URL は常に取得する。 */
+  const passesPatterns = (item: { url: string; depth: number }): boolean => {
+    if (item.depth === 0) return true;
+    if (excludePatterns && excludePatterns.length > 0 && matchUrlPattern(item.url, excludePatterns)) return false;
+    if (includePatterns && includePatterns.length > 0 && !matchUrlPattern(item.url, includePatterns)) return false;
+    return true;
+  };
 
   while (queue.length > 0 && pages.length < targetLimit) {
-    const item = queue.shift();
-    if (!item) break;
-
-    const normalizedUrl = item.url.split('#')[0].replace(/\/+$/, '');
-    if (visited.has(normalizedUrl)) continue;
-    visited.add(normalizedUrl);
-
-    if (excludePatterns && !matchUrlPattern(item.url, excludePatterns)) {
-      continue;
+    // 幅優先の順序を保ったまま、残りページ枠を超えない範囲で最大 workers 件ずつ並行取得する
+    const batch: Array<{ url: string; depth: number }> = [];
+    const room = Math.min(workers, targetLimit - pages.length);
+    while (batch.length < room && queue.length > 0) {
+      const item = queue.shift()!;
+      const key = visitKey(item.url);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      if (!passesPatterns(item)) continue;
+      batch.push(item);
     }
-    if (includePatterns && !matchUrlPattern(item.url, includePatterns)) {
-      continue;
-    }
+    if (batch.length === 0) break;
 
-    try {
-      const scraped = await scrapeUrl({
-        url: item.url,
-        tenantId: (options as any).tenantId ?? 'legacy',
-        maxChars,
-        formats: Array.from(new Set([...formats, 'links'])),
-        query,
-        extractHighlights,
-        onlyHighlights,
-        highlightAlgorithm,
-        highlightOverheadTokens,
-        highlightMaxCount,
-        reorderUFlat,
-        diversityWeight,
-        annotateTemporal,
-        minimizeTables,
-        noCache,
-      });
+    const settled = await Promise.all(
+      batch.map(async (item) => {
+        try {
+          const scraped = await scrapeUrl({
+            url: item.url,
+            tenantId: (options as any).tenantId ?? 'legacy',
+            maxChars,
+            formats: Array.from(new Set([...formats, 'links'])),
+            query,
+            extractHighlights,
+            onlyHighlights,
+            highlightAlgorithm,
+            highlightOverheadTokens,
+            highlightMaxCount,
+            reorderUFlat,
+            diversityWeight,
+            annotateTemporal,
+            minimizeTables,
+            noCache,
+            ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+            ...(options.onlyMainContent !== undefined ? { onlyMainContent: options.onlyMainContent } : {}),
+          });
+          return { item, scraped };
+        } catch (error) {
+          return { item, error };
+        }
+      }),
+    );
 
+    for (const r of settled) {
+      if (pages.length >= targetLimit) break;
+      if ('error' in r) {
+        if (r.item.depth === 0) seedError = r.error;
+        continue;
+      }
+      const { item, scraped } = r;
       pages.push(scraped);
-      if (onPageCrawled) onPageCrawled(scraped, pages.length);
-      if (onPageScraped) onPageScraped(scraped);
+      try {
+        if (onPageCrawled) onPageCrawled(scraped, pages.length);
+        if (onPageScraped) onPageScraped(scraped);
+      } catch {}
 
+      if (item.depth === 0) {
+        try {
+          sites.add(siteKey(new URL(scraped.url).hostname));
+        } catch {}
+      }
       if (item.depth < maxDepth && scraped.links) {
         for (const link of scraped.links) {
           try {
-            const linkHost = new URL(link).hostname.toLowerCase();
-            if (linkHost === baseHost && !visited.has(link.split('#')[0].replace(/\/+$/, ''))) {
+            if (isHostInSites(new URL(link).hostname, sites) && !visited.has(visitKey(link))) {
               queue.push({ url: link, depth: item.depth + 1 });
             }
           } catch {}
         }
       }
-    } catch {}
+    }
   }
+
+  // 起点そのものが取得できなかった（SSRF 遮断・接続失敗など）場合は、0 件の成功として返さずエラーを伝える
+  if (pages.length === 0 && seedError !== undefined) throw seedError;
 
   if (reorderUFlat && pages.length > 2) {
     pages = reorderLostInTheMiddle(pages);

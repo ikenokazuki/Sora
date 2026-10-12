@@ -68,6 +68,45 @@ export interface ResolvedMcpOriginConfig {
   allowedHosts: Set<string>;
   allowedOrigins: Set<string>;
   primaryOrigin: string;
+  /**
+   * true のとき、loopback のホスト名（localhost / 127.0.0.1 / [::1]）は Host のポートを問わず許可する。
+   * SORA_ALLOWED_HOSTS を設定していない既定の構成だけ true。`docker run -p 3016:8000` のように
+   * ホスト側ポートがコンテナ内の PORT と違っても、既定のまま localhost から接続できるようにする。
+   */
+  allowLoopbackAnyPort: boolean;
+}
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * `localhost:3016` のような Host が loopback のホスト名か。ポートは問わない（付ける場合は 1〜65535）。
+ * DNS rebinding の防御は Host の「ホスト名」で成り立つ（攻撃者のドメインは loopback 名にならない）。
+ */
+export function isLoopbackAuthority(authority: string): boolean {
+  const v = authority.trim().toLowerCase();
+  let hostname = v;
+  let port = '';
+  if (v.startsWith('[')) {
+    const close = v.indexOf(']');
+    if (close < 0) return false;
+    hostname = v.slice(0, close + 1);
+    const rest = v.slice(close + 1);
+    if (rest !== '') {
+      if (!rest.startsWith(':')) return false;
+      port = rest.slice(1);
+    }
+  } else {
+    const colon = v.lastIndexOf(':');
+    if (colon >= 0) {
+      hostname = v.slice(0, colon);
+      port = v.slice(colon + 1);
+    }
+  }
+  if (!LOOPBACK_HOSTNAMES.has(hostname)) return false;
+  if (port === '') return true;
+  if (!/^[0-9]{1,5}$/.test(port)) return false;
+  const n = Number(port);
+  return n >= 1 && n <= 65535;
 }
 
 export function resolveMcpOriginConfig(options: McpOriginOptions = {}): ResolvedMcpOriginConfig {
@@ -90,11 +129,16 @@ export function resolveMcpOriginConfig(options: McpOriginOptions = {}): Resolved
   }
   if (allowedHosts.size === 0 || allowedOrigins.size === 0) throw new Error('MCP origin allowlist is empty');
   const first = originList.map((o) => normalizeOrigin(o) as string)[0];
-  return { allowedHosts, allowedOrigins, primaryOrigin: first };
+  return { allowedHosts, allowedOrigins, primaryOrigin: first, allowLoopbackAnyPort: hostRaw.length === 0 };
 }
 
-function deny(c: any) {
-  return c.json({ error: 'Forbidden: untrusted host or origin for MCP endpoint' }, 403);
+function deny(c: any, reason: 'host' | 'origin', host?: string) {
+  // 設定で直せる拒否は、何を設定すればよいかを返す（Docker のポート割り当て・公開ホスト名で最初につまずくため）
+  const hint = reason === 'host'
+    ? `Host '${host ?? ''}' is not allowed. Add it to SORA_ALLOWED_HOSTS (comma-separated, e.g. localhost:3016). `
+      + 'Browser clients also need SORA_ALLOWED_ORIGINS (e.g. http://localhost:3016).'
+    : 'Origin is not allowed. Add it to SORA_ALLOWED_ORIGINS (comma-separated, e.g. http://localhost:3016).';
+  return c.json({ error: 'Forbidden: untrusted host or origin for MCP endpoint', hint }, 403);
 }
 
 export function createMcpOriginMiddleware(options: McpOriginOptions = {}): MiddlewareHandler {
@@ -111,13 +155,15 @@ export function createMcpOriginMiddleware(options: McpOriginOptions = {}): Middl
       }
     }
     const normalizedHost = headerHost;
-    if (!normalizedHost || !config.allowedHosts.has(normalizedHost)) return deny(c);
+    const hostAllowed = normalizedHost !== undefined
+      && (config.allowedHosts.has(normalizedHost) || (config.allowLoopbackAnyPort && isLoopbackAuthority(normalizedHost)));
+    if (!normalizedHost || !hostAllowed) return deny(c, 'host', normalizedHost);
     const originHeader = c.req.header('origin');
     let echoOrigin: string | undefined;
     if (originHeader !== undefined && originHeader !== '') {
-      if (originHeader.indexOf(',') >= 0) return deny(c);
+      if (originHeader.indexOf(',') >= 0) return deny(c, 'origin');
       const normalized = normalizeOrigin(originHeader);
-      if (!normalized || !config.allowedOrigins.has(normalized)) return deny(c);
+      if (!normalized || !config.allowedOrigins.has(normalized)) return deny(c, 'origin');
       echoOrigin = normalized;
     }
     if (c.req.method === 'OPTIONS') {
