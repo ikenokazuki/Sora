@@ -2,14 +2,15 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTestAddressData } from '../test_fixtures/address/builders.js';
+import { createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { createAddressContext, getAddressContext, setAddressContextForTest } from './address_context.js';
 
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-ctx-'));
 });
-afterEach(() => {
+afterEach(async () => {
+  await settleAddressData();
   setAddressContextForTest(null);
   rmSync(dir, { recursive: true, force: true });
 });

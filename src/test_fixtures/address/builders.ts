@@ -25,6 +25,20 @@ export class InProcessBuilder implements AddressBuilder {
   }
 }
 
+const liveData: AddressData[] = [];
+const liveGates: GatedBuilder[] = [];
+
+/**
+ * テストの後始末。止めたままの構築を放し、裏で走っている構築がすべて終わるまで待つ。
+ * テスト用のディレクトリを消す前に呼ばないと、終わりかけの構築がディレクトリを作り直してしまう。
+ */
+export async function settleAddressData(): Promise<void> {
+  const gates = liveGates.splice(0);
+  const datas = liveData.splice(0);
+  for (const gate of gates) gate.release();
+  await Promise.all(datas.map((data) => data.idle()));
+}
+
 /** release() するまで、中身の構築役を呼ばずに待たせる。同時に走っている数を数える。gates で待たせるジョブを絞れる。 */
 export class GatedBuilder implements AddressBuilder {
   active = 0;
@@ -40,6 +54,7 @@ export class GatedBuilder implements AddressBuilder {
     this.gate = new Promise<void>((resolve) => {
       this.open = resolve;
     });
+    liveGates.push(this);
   }
 
   release(): void {
@@ -87,6 +102,7 @@ export function createTestAddressData(dir: string, options: TestAddressDataOptio
     preload: null,
   };
   const data = new AddressData({ config, builder, store, now, cooldownMs: options.cooldownMs, log: () => undefined });
+  liveData.push(data);
   return { data, store, up, inner, builder };
 }
 

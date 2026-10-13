@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, abrUrl } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
@@ -13,7 +13,10 @@ let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-tools-'));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  await settleAddressData();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const setup = (options: Parameters<typeof createTestAddressData>[1] = {}) => {
   const built = createTestAddressData(dir, options);
@@ -131,6 +134,13 @@ describe('normalizeAddressTool', () => {
     const { ctx } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300, concurrency: 2 });
     const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);
     expect(result).toMatchObject({ level: 2, incomplete: true, pending: [`city:${CHIYODA_LG}`], postalCodes: [{ zipcode: '1000000', fallback: true }] });
+  });
+
+  test('市区町村のデータも郵便番号も使わなかった答えは、全国マスターの更新日を示す', async () => {
+    const { ctx, up } = setup();
+    up.set(JAPANPOST_FALLBACK.kenAll, { body: '', status: 403 });
+    const result = await normalizeAddressTool({ address: '東京都千代田区' }, ctx);
+    expect(result).toMatchObject({ level: 2, dataset: { updatedAt: '2026-10-02' } });
   });
 
   test('全国マスターを取得できなければ AddressUnavailableError', async () => {

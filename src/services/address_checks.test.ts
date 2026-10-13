@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTestAddressData } from '../test_fixtures/address/builders.js';
+import { createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { createAddressContext } from './address_context.js';
 import { checkZip, compareAddresses } from './address_checks.js';
 import { AddressInputError } from './address_errors.js';
@@ -62,7 +62,10 @@ describe('checkZip', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'addr-checks-'));
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(async () => {
+    await settleAddressData();
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   const setup = () => {
     const ctx = createAddressContext(createTestAddressData(dir).data);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, KEN_ALL_FIXTURE, POSTAL_LAST_MODIFIED, SAPPORO_LG, addTown } from '../test_fixtures/address/harness.js';
 import { createAddressContext, type AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
@@ -13,7 +13,10 @@ let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-postal-'));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  await settleAddressData();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const newContext = (options: Parameters<typeof createTestAddressData>[1] = {}) => {
   const built = createTestAddressData(dir, options);

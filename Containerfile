@@ -5,6 +5,8 @@ COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun build ./src/index.ts --target=bun --outfile=server.js
+# 住所データの構築専用の入口。アプリ本体を読み込まないので、子プロセスとして軽く起動できる
+RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js
 
 # Stage 2: Harvest Chromium and required dependencies (Debian Bookworm)
 FROM docker.io/library/debian:bookworm-slim AS browser-harvester
@@ -38,6 +40,7 @@ WORKDIR /app
 # Copy Bun runtime, bundled server, and native dependencies
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /app/server.js /app/server.js
+COPY --from=builder /app/address-build.js /app/address-build.js
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/bin/yahoo-search-mcp /app/yahoo-search-mcp

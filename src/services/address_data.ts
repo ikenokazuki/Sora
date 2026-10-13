@@ -224,6 +224,14 @@ export class AddressData {
     return this.postalCache;
   }
 
+  /** 待機中・実行中のジョブがすべて終わるまで待つ（テストの後始末と、終了処理用）。 */
+  async idle(): Promise<void> {
+    while (this.running > 0 || this.queue.length > 0 || this.inflight.size > 0) {
+      await Promise.allSettled([...this.inflight.values()]);
+      await new Promise<void>((resolve) => setTimeout(resolve, 1));
+    }
+  }
+
   datasetInfo(ids: readonly string[]): DatasetInfo {
     const artifacts = this.status().artifacts;
     let updatedAt: string | null = null;
