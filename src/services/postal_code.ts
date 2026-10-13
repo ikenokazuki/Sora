@@ -143,10 +143,17 @@ export function foldName(input: string): string {
   return text;
 }
 
+/** 「１〜１９丁目」や「８丁目」のような、丁目だけを指す注記。 */
 export function parseChomeRange(annotation: string): { lo: number; hi: number } | null {
-  const match = annotation.normalize('NFKC').match(/^(\d+)[〜~\-－−ー]\s*(\d+)丁目$/);
-  return match ? { lo: Number(match[1]), hi: Number(match[2]) } : null;
+  const text = annotation.normalize('NFKC');
+  const range = text.match(/^(\d+)[〜~\-－−ー]\s*(\d+)丁目$/);
+  if (range) return { lo: Number(range[1]), hi: Number(range[2]) };
+  const single = text.match(/^(\d+)丁目$/);
+  return single ? { lo: Number(single[1]), hi: Number(single[1]) } : null;
 }
+
+/** 町全体に当たる番号の注記。「次のビルを除く」は、除かれるビルが専用の番号を持つだけで、町の番号はそのまま当たる。 */
+const WHOLE_TOWN_ANNOTATIONS = new Set(['', '次のビルを除く']);
 
 /**
  * 番地の範囲（「１〜１０番地」）や番地の列挙（「３６４９、３６６１」）の注記に、住所の番地が入るか。
@@ -235,7 +242,7 @@ export function linkPostalRows(rows: readonly PostalRow[], towns: readonly TownR
     if (links.has(row.id)) continue;
     const candidates = index.get(key) ?? [];
     if (candidates.length === 0) continue;
-    if (row.annotation === '') {
+    if (WHOLE_TOWN_ANNOTATIONS.has(row.annotation)) {
       links.set(row.id, { machiazaIds: candidates.map((town) => town.machiaza_id), exact: true });
     } else if (row.annotation === 'その他') {
       const used = taken.get(key);

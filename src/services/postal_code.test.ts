@@ -90,9 +90,10 @@ describe('foldName', () => {
 });
 
 describe('注記の解釈', () => {
-  test('丁目の範囲', () => {
+  test('丁目の範囲（1 つの丁目だけの注記を含む）', () => {
     expect(parseChomeRange('１〜１９丁目')).toEqual({ lo: 1, hi: 19 });
     expect(parseChomeRange('２０～２８丁目')).toEqual({ lo: 20, hi: 28 });
+    expect(parseChomeRange('８丁目')).toEqual({ lo: 8, hi: 8 });
     expect(parseChomeRange('その他')).toBeNull();
     expect(parseChomeRange('１〜１０番地')).toBeNull();
   });
@@ -148,6 +149,13 @@ describe('linkPostalRows', () => {
     expect(links.get(2)).toEqual({ machiazaIds: ['j'], exact: true });
     expect(links.get(3)).toEqual({ machiazaIds: ['m'], exact: false });
     expect(links.has(4)).toBe(false);
+  });
+
+  test('「次のビルを除く」は町全体の番号として扱い、1 つの丁目だけの注記はその丁目に絞る', () => {
+    const towns = [1, 2, 3].map((n) => t(`d${n}`, '永田町', { chome_n: n }));
+    const links = linkPostalRows([postalRow(1, '13101', '永田町（次のビルを除く）'), postalRow(2, '13101', '霞が関（２丁目）')], [...towns, t('k2', '霞が関', { chome_n: 2 }), t('k3', '霞が関', { chome_n: 3 })]);
+    expect(links.get(1)).toEqual({ machiazaIds: ['d1', 'd2', 'd3'], exact: true });
+    expect(links.get(2)).toEqual({ machiazaIds: ['k2'], exact: true });
   });
 
   test('結びつかない行と、市区町村の既定行は結果に含めない', () => {
