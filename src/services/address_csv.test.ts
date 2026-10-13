@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeZip } from '../test_fixtures/address/zip.js';
-import { parseCsvMatrix, parseCsvRows, readZipEntry, readZipText } from './address_csv.js';
+import { CsvByteStream, CsvRowParser, parseCsvMatrix, parseCsvRows, readZipEntry, readZipText, streamZipCsv } from './address_csv.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'addr-csv-')); });
@@ -45,5 +45,107 @@ describe('CSV 解析', () => {
 
   test('ヘッダー無しで行列にする', () => {
     expect(parseCsvMatrix('13101,"100  ","1000001"\r\n')).toEqual([['13101', '100  ', '1000001']]);
+  });
+});
+
+function collect(chunks: string[]): string[][] {
+  const rows: string[][] = [];
+  const parser = new CsvRowParser((row) => {
+    rows.push(row);
+  });
+  for (const chunk of chunks) if (!parser.push(chunk)) break;
+  parser.end();
+  return rows;
+}
+
+describe('CsvRowParser', () => {
+  const sample = 'a,"b,c","d\ne",f\r\n1,,3\n\n"he said ""hi""",x';
+  const expected = [['a', 'b,c', 'd\ne', 'f'], ['1', '', '3'], ['he said "hi"', 'x']];
+
+  test('引用符・カンマ・改行・"" のエスケープ・空の列・空行・末尾の改行なしを扱う', () => {
+    expect(collect([sample])).toEqual(expected);
+  });
+
+  test('どこでチャンクを切っても同じ行になる（1 文字ずつ、引用符の途中を含む）', () => {
+    expect(collect([...sample])).toEqual(expected);
+    expect(collect(['"a"', '"b",c\n'])).toEqual([['a"b', 'c']]);
+    expect(collect(['x\r', '\ny,"z"', '\r\n'])).toEqual([['x'], ['y', 'z']]);
+  });
+
+  test('引用符で終わらない行は、そこまでの内容を最後の行にする', () => {
+    expect(collect(['a,"b,c'])).toEqual([['a', 'b,c']]);
+  });
+
+  test('行の途中の引用符は文字として扱う', () => {
+    expect(collect(['5" nail,x\n'])).toEqual([['5" nail', 'x']]);
+  });
+
+  test('onRow が false を返したら、それ以降は渡さない', () => {
+    const rows: string[][] = [];
+    const parser = new CsvRowParser((row) => {
+      rows.push(row);
+      return rows.length < 2;
+    });
+    expect(parser.push('a\nb\nc\nd\n')).toBe(false);
+    parser.end();
+    expect(rows).toEqual([['a'], ['b']]);
+  });
+});
+
+describe('streamZipCsv', () => {
+  const text = '﻿lg_code,name,note\r\n131016,"千代田区",""\r\n131024,"港区, 東京","a\r\nb"\r\n';
+
+  test('zip の最初のファイルを 1 行ずつ渡す（BOM を除く。parseCsvMatrix と同じ結果）', async () => {
+    const path = zipFile('s.zip', { 'a.csv': text });
+    const rows: string[][] = [];
+    await streamZipCsv(path, (row) => {
+      rows.push(row);
+    });
+    expect(rows).toEqual(parseCsvMatrix(text.replace(/^﻿/, '')));
+    expect(rows[0]).toEqual(['lg_code', 'name', 'note']);
+    expect(rows[2]).toEqual(['131024', '港区, 東京', 'a\r\nb']);
+  });
+
+  test('バイト列を 1 バイトずつ流しても、3 バイトの日本語の途中で切れても壊れない', () => {
+    const rows: string[][] = [];
+    const stream = new CsvByteStream((row) => {
+      rows.push(row);
+    });
+    for (const byte of Buffer.from(text, 'utf8')) stream.write(Buffer.from([byte]));
+    stream.end();
+    expect(rows.map((row) => row[1])).toEqual(['name', '千代田区', '港区, 東京']);
+  });
+
+  test('onRow が false を返したら、そこで読み終える', async () => {
+    const path = zipFile('s.zip', { 'a.csv': 'a\nb\nc\n' });
+    const rows: string[][] = [];
+    await streamZipCsv(path, (row) => {
+      rows.push(row);
+      return row[0] !== 'b';
+    });
+    expect(rows).toEqual([['a'], ['b']]);
+  });
+
+  test('数十万行の zip を、行を保持せずに読める', async () => {
+    const lines = ['id,name,value'];
+    for (let i = 0; i < 300_000; i++) lines.push(`${i},"町${i % 997}",${i * 3}`);
+    const path = zipFile('big.zip', { 'big.csv': `${lines.join('\n')}\n` });
+    let count = 0;
+    let last: string[] = [];
+    const started = performance.now();
+    await streamZipCsv(path, (row) => {
+      count += 1;
+      last = row;
+    });
+    expect(count).toBe(300_001);
+    expect(last).toEqual(['299999', `町${299_999 % 997}`, String(299_999 * 3)]);
+    expect(performance.now() - started).toBeLessThan(10_000);
+  });
+
+  test('エントリの無い zip と zip でないファイルは失敗する', async () => {
+    await expect(streamZipCsv(zipFile('empty.zip', {}), () => undefined)).rejects.toThrow();
+    const path = join(dir, 'bad.zip');
+    writeFileSync(path, 'not a zip');
+    await expect(streamZipCsv(path, () => undefined)).rejects.toThrow();
   });
 });
