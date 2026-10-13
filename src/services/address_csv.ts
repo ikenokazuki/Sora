@@ -71,19 +71,42 @@ const LF = 10;
 const CR = 13;
 const QUOTE = 34;
 
+/** onRow に渡す制御。 */
+export interface CsvControl {
+  /**
+   * これ以降の行で、指定した列（0 始まり）だけを文字列にし、他の列は空文字にする。列の位置は変わらない。
+   * 見出し行を受け取った onRow の中で呼ぶ。使わない列の文字列を作らないので、大きい CSV のメモリと時間が減る。
+   */
+  keepColumns(columns: readonly number[]): void;
+}
+
 /**
  * 増分の CSV 解析（RFC 4180）。文字列のチャンクを push すると、行（列の配列）ができるたびに onRow を呼ぶ。
  * チャンクはどこで切れてもよい。onRow が false を返したら以降は渡さず、push も false を返す。空行は渡さない。
  */
-export class CsvRowParser {
+export class CsvRowParser implements CsvControl {
   private field = '';
   private row: string[] = [];
   private inQuotes = false;
   /** 引用符の中で " を見た直後。次が " なら引用符そのもの、そうでなければ引用符が閉じる。 */
   private pendingQuote = false;
   private stopped = false;
+  /** 現在の列に文字を入れたか。引用符の始まりになれるのは、列の先頭の引用符だけ。 */
+  private touched = false;
+  /** 現在の行に文字があるか。無ければ空行。 */
+  private rowHasContent = false;
+  private wanted: Uint8Array | null = null;
+  /** 現在の列の文字列を作るか。 */
+  private keep = true;
 
-  constructor(private readonly onRow: (row: string[]) => unknown) {}
+  constructor(private readonly onRow: (row: string[], control: CsvControl) => unknown) {}
+
+  keepColumns(columns: readonly number[]): void {
+    const wanted = new Uint8Array(Math.max(0, ...columns) + 1);
+    for (const column of columns) wanted[column] = 1;
+    // 次の行の先頭の列から有効になる（endRow が onRow のあとで決め直す）。
+    this.wanted = wanted;
+  }
 
   push(text: string): boolean {
     let i = 0;
@@ -92,7 +115,7 @@ export class CsvRowParser {
       if (this.inQuotes) {
         if (this.pendingQuote) {
           if (text.charCodeAt(i) === QUOTE) {
-            this.field += '"';
+            if (this.keep) this.field += '"';
             this.pendingQuote = false;
             i += 1;
             continue;
@@ -104,10 +127,10 @@ export class CsvRowParser {
         }
         const quote = text.indexOf('"', i);
         if (quote === -1) {
-          this.field += text.slice(i);
+          if (this.keep) this.field += text.slice(i);
           i = n;
         } else {
-          this.field += text.slice(i, quote);
+          if (this.keep) this.field += text.slice(i, quote);
           this.pendingQuote = true;
           i = quote + 1;
         }
@@ -119,21 +142,25 @@ export class CsvRowParser {
         if (code === COMMA || code === LF || code === CR || code === QUOTE) break;
       }
       if (j > i) {
-        this.field += text.slice(i, j);
+        if (this.keep) this.field += text.slice(i, j);
+        this.touched = true;
+        this.rowHasContent = true;
         i = j;
         if (i >= n) break;
       }
       const code = text.charCodeAt(i);
       i += 1;
       if (code === COMMA) {
-        this.row.push(this.field);
-        this.field = '';
+        this.rowHasContent = true;
+        this.endField();
       } else if (code === LF) {
         this.endRow();
       } else if (code === QUOTE) {
-        // 列の先頭の引用符だけが、引用符の始まり。行の途中の引用符は文字として扱う。
-        if (this.field === '') this.inQuotes = true;
-        else this.field += '"';
+        this.rowHasContent = true;
+        // 列の先頭の引用符だけが、引用符の始まり。列の途中の引用符は文字として扱う。
+        if (!this.touched) this.inQuotes = true;
+        else if (this.keep) this.field += '"';
+        this.touched = true;
       }
       // CR は読み捨てる（CRLF の改行は LF で行を終える）。
     }
@@ -143,18 +170,29 @@ export class CsvRowParser {
   /** 末尾の改行が無い最後の行を渡す。 */
   end(): void {
     if (this.stopped) return;
-    if (this.field !== '' || this.row.length > 0) this.endRow();
+    if (this.rowHasContent) this.endRow();
+  }
+
+  private endField(): void {
+    this.row.push(this.keep ? this.field : '');
+    this.field = '';
+    this.touched = false;
+    this.keep = this.wanted === null || this.wanted[this.row.length] === 1;
   }
 
   private endRow(): void {
-    this.row.push(this.field);
+    this.row.push(this.keep ? this.field : '');
     const row = this.row;
+    const hasContent = this.rowHasContent;
     this.field = '';
     this.row = [];
     this.inQuotes = false;
     this.pendingQuote = false;
-    if (row.length === 1 && row[0] === '') return;
-    if (this.onRow(row) === false) this.stopped = true;
+    this.touched = false;
+    this.rowHasContent = false;
+    if (hasContent && this.onRow(row, this) === false) this.stopped = true;
+    // keepColumns は onRow の中で呼ばれるので、次の行の先頭の列はここで決める。
+    this.keep = this.wanted === null || this.wanted[0] === 1;
   }
 }
 
@@ -164,7 +202,7 @@ export class CsvByteStream {
   private readonly parser: CsvRowParser;
   private first = true;
 
-  constructor(onRow: (row: string[]) => unknown) {
+  constructor(onRow: (row: string[], control: CsvControl) => unknown) {
     this.parser = new CsvRowParser(onRow);
   }
 
@@ -186,9 +224,9 @@ export class CsvByteStream {
 
 /**
  * zip の最初のファイルを展開しながら、CSV を 1 行（列の配列）ずつ onRow に渡す。ヘッダー行も通常の行として渡す。
- * メモリに載せるのは 1 チャンクと 1 行だけ。onRow が false を返したら読み終える。
+ * メモリに載せるのは 1 チャンクと 1 行だけ。onRow が false を返したら読み終える。使わない列は control.keepColumns で省ける。
  */
-export function streamZipCsv(zipPath: string, onRow: (row: string[]) => unknown): Promise<void> {
+export function streamZipCsv(zipPath: string, onRow: (row: string[], control: CsvControl) => unknown): Promise<void> {
   return openFirstEntry(zipPath, (stream, done) => {
     const reader = new CsvByteStream(onRow);
     let finished = false;

@@ -79,9 +79,14 @@ function columnIndexes(header: readonly string[], names: readonly string[], labe
 /** CSV を 1 行ずつ読み、見出し行で決めた列の位置とともに onRow に渡す。 */
 async function scan(zipPath: string, label: string, names: readonly string[], onRow: (cols: number[], row: string[]) => void): Promise<void> {
   let cols: number[] | null = null;
-  await streamZipCsv(zipPath, (row) => {
-    if (cols === null) cols = columnIndexes(row, names, label);
-    else onRow(cols, row);
+  await streamZipCsv(zipPath, (row, control) => {
+    if (cols === null) {
+      cols = columnIndexes(row, names, label);
+      // 使う列以外は文字列を作らない（地番の位置参照は 20 列のうち 5 列しか使わない）。
+      control.keepColumns(cols);
+    } else {
+      onRow(cols, row);
+    }
   });
   if (cols === null) throw new Error(`ABR の${label}が空です`);
 }
@@ -96,7 +101,7 @@ async function loadPositions(zipPath: string, spec: KindSpec): Promise<Map<strin
     const lat = Number.parseFloat(row[cols[keys + 1] as number] ?? '');
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
     const key = cols.slice(0, keys).map((col) => row[col] ?? '').join('|');
-    if (!positions.has(key)) positions.set(key, `${lon.toFixed(6)},${lat.toFixed(6)}`);
+    if (!positions.has(key)) positions.set(key, [lon.toFixed(6), lat.toFixed(6)].join(','));
   });
   return positions;
 }
@@ -107,22 +112,26 @@ interface Collected {
   skipped: number;
 }
 
-async function collect(spec: KindSpec, towns: ReadonlySet<string>, mainZip: string, posZip: string | undefined): Promise<Collected> {
+/**
+ * 町字ごとの節に行を集める。行は join で作った平らな文字列にする（テンプレートリテラルは連結の木になり、
+ * 元の CSV のチャンクを抱えたままメモリに残る）。節のキーは、CSV から切り出した文字列ではなく町字の ID を使う。
+ */
+async function collect(spec: KindSpec, towns: ReadonlyMap<string, string>, mainZip: string, posZip: string | undefined): Promise<Collected> {
   const positions = posZip ? await loadPositions(posZip, spec) : new Map<string, string>();
   const sections = new Map<string, string[]>();
   const keys = spec.keyColumns.length;
   let rows = 0;
   let skipped = 0;
   await scan(mainZip, spec.kind, [...spec.keyColumns, ...spec.numberColumns], (cols, row) => {
-    const machiaza = row[cols[0] as number] ?? '';
-    if (!towns.has(machiaza)) return;
+    const machiaza = towns.get(row[cols[0] as number] ?? '');
+    if (machiaza === undefined) return;
     const numbers = [0, 1, 2].map((index) => row[cols[keys + index] as number] ?? '');
     if (numbers[spec.requiredNumber] === '' || numbers.some((value) => UNSAFE.test(value))) {
       skipped += 1;
       return;
     }
     const key = cols.slice(0, keys).map((col) => row[col] ?? '').join('|');
-    const line = `${numbers.join(',')},${positions.get(key) ?? ','}`;
+    const line = [numbers[0], numbers[1], numbers[2], positions.get(key) ?? ','].join(',');
     const lines = sections.get(machiaza);
     if (lines) lines.push(line);
     else sections.set(machiaza, [line]);
@@ -153,8 +162,10 @@ function writeSections(outDir: string, spec: KindSpec, sections: ReadonlyMap<str
  */
 export async function buildNumbers(options: BuildNumbersOptions): Promise<BuildNumbersResult> {
   const { outDir, towns, files } = options;
-  const rsdtTowns = new Set(towns.filter((town) => town.rsdt).map((town) => town.machiaza_id));
-  const chibanTowns = new Set(towns.filter((town) => !town.rsdt).map((town) => town.machiaza_id));
+  const idsOf = (rsdt: boolean): Map<string, string> =>
+    new Map(towns.filter((town) => Boolean(town.rsdt) === rsdt).map((town) => [town.machiaza_id, town.machiaza_id] as const));
+  const rsdtTowns = idsOf(true);
+  const chibanTowns = idsOf(false);
   const ranges: NumberRanges = {};
   let rsdtRows = 0;
   let chibanRows = 0;
