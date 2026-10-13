@@ -64,7 +64,7 @@ export const SMALL_MINIMUM = { prefs: 2, cities: 2, towns: 1, general: 3, office
 const POS_HEADER = ['lg_code', 'rep_lon', 'rep_lat', 'rep_srid', 'rep_scale'];
 const CITY_HEADER = ['lg_code', 'pref', 'pref_kana', 'pref_roma', 'county', 'county_kana', 'county_roma', 'city', 'city_kana', 'city_roma', 'ward', 'ward_kana', 'ward_roma'];
 export const TOWN_HEADER = ['lg_code', 'machiaza_id', 'oaza_cho', 'oaza_cho_kana', 'oaza_cho_roma', 'chome', 'chome_number', 'koaza', 'koaza_kana', 'koaza_roma', 'rsdt_addr_flg'];
-const TOWN_POS_HEADER = ['lg_code', 'machiaza_id', 'rep_lon', 'rep_lat', 'rep_srid'];
+export const TOWN_POS_HEADER = ['lg_code', 'machiaza_id', 'rep_lon', 'rep_lat', 'rep_srid'];
 
 const cityRow = (lg: string, pref: string, name: string, ward = ''): string[] =>
   [lg, pref, `${pref}カナ`, `${pref}-roma`, '', '', '', name, `${name}カナ`, `${name}-roma`, ward, ward ? `${ward}カナ` : '', ward ? `${ward}-roma` : ''];
@@ -83,25 +83,42 @@ export const CHIYODA_TOWNS = [
   townRow(CHIYODA_LG, '0005001', '永田町', '一丁目', '1', '1'),
   townRow(CHIYODA_LG, '0005002', '永田町', '二丁目', '2', '1'),
 ];
-const CHIYODA_POS = [
+export const CHIYODA_POS = [
   [CHIYODA_LG, '0006000', '139.752145', '35.684052', 'EPSG:6668'],
   [CHIYODA_LG, '0005001', '139.746306', '35.675895', 'EPSG:6668'],
   [CHIYODA_LG, '0005002', '139.74317', '35.67412', 'EPSG:6668'],
 ];
-const SAPPORO_TOWNS = [
+export const SAPPORO_TOWNS = [
   townRow(SAPPORO_LG, '0013001', '北１条西', '１丁目', '1', '0'),
   townRow(SAPPORO_LG, '0013002', '北１条西', '２丁目', '2', '0'),
   townRow(SAPPORO_LG, '0013020', '北１条西', '２０丁目', '20', '0'),
   townRow(SAPPORO_LG, '0014001', '大通西', '１丁目', '1', '0'),
   townRow(SAPPORO_LG, '0014020', '大通西', '２０丁目', '20', '0'),
 ];
-const SAPPORO_POS = [
+export const SAPPORO_POS = [
   [SAPPORO_LG, '0013001', '141.3544', '43.0630', 'EPSG:6668'],
   [SAPPORO_LG, '0013002', '141.3541', '43.0640', 'EPSG:6668'],
   [SAPPORO_LG, '0013020', '141.3010', '43.0650', 'EPSG:6668'],
   [SAPPORO_LG, '0014001', '141.3548', '43.0610', 'EPSG:6668'],
   [SAPPORO_LG, '0014020', '141.3020', '43.0620', 'EPSG:6668'],
 ];
+
+/** 千代田区または札幌市中央区に町字（と代表点）を 1 つ足す。取得元の更新として署名が変わるよう etag を渡す。 */
+export function addTown(
+  up: FakeUpstream,
+  lg: string,
+  town: { id: string; oaza: string; chome: string; n: string; rsdt: string; lon: number; lat: number },
+  etag: string,
+): void {
+  const towns = lg === CHIYODA_LG ? CHIYODA_TOWNS : SAPPORO_TOWNS;
+  const positions = lg === CHIYODA_LG ? CHIYODA_POS : SAPPORO_POS;
+  replaceTowns(up, lg, [...towns, townRow(lg, town.id, town.oaza, town.chome, town.n, town.rsdt)], etag);
+  up.setZip(
+    abrUrl(`mt_town_pos/city/mt_town_pos_city${lg}`),
+    { [`mt_town_pos_city${lg}.csv`]: csv(TOWN_POS_HEADER, [...positions, [lg, town.id, String(town.lon), String(town.lat), 'EPSG:6668']]) },
+    { etag, lastModified: ABR_LAST_MODIFIED },
+  );
+}
 
 const kenAllLine = (lg5: string, zip: string, pref: string, city: string, town: string): string =>
   `${lg5},"${zip.slice(0, 3)}  ","${zip}","カナ","カナ","カナ","${pref}","${city}","${town}",0,0,0,0,0,0`;
