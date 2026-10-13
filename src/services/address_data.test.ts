@@ -95,6 +95,22 @@ describe('queue', () => {
   });
 });
 
+describe('priority', () => {
+  test('待機中のジョブは、全国マスター → 郵便番号 → 市区町村の順で始める（同じ種類は頼んだ順）', async () => {
+    let gated!: GatedBuilder;
+    const { data } = createTestAddressData(dir, { wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'city' && job.lgCode === CHIYODA_LG)) });
+    void data.request(chiyoda).catch(() => undefined);
+    await tick();
+    void data.request({ kind: 'city', lgCode: '011002' }).catch(() => undefined);
+    void data.request(sapporo).catch(() => undefined);
+    void data.request({ kind: 'postal' }).catch(() => undefined);
+    void data.request({ kind: 'master' }).catch(() => undefined);
+    gated.release();
+    await waitFor(() => gated.started.length === 5);
+    expect(gated.started.map((job) => (job.kind === 'city' ? job.lgCode : job.kind))).toEqual([CHIYODA_LG, 'master', 'postal', '011002', SAPPORO_LG]);
+  });
+});
+
 describe('revalidate', () => {
   test('期限を過ぎた成果物は即座に返し、裏で再確認して確認日時だけを進める', async () => {
     let t = Date.parse('2026-10-13T00:00:00Z');
@@ -138,15 +154,16 @@ describe('evict', () => {
 });
 
 describe('datasetInfo', () => {
-  test('取得元の最終更新日の最大と、期限の 2 倍を超えたかを返す', async () => {
+  test('使ったデータのうち最も古い更新日と、期限の 2 倍を超えたかを返す', async () => {
     let t = Date.parse('2026-10-13T00:00:00Z');
     const { data } = createTestAddressData(dir, { now: () => t });
     expect(data.datasetInfo(['master', 'postal'])).toEqual({ updatedAt: null, stale: false });
     await data.ensure({ kind: 'master' });
-    await data.ensure({ kind: 'postal' });
     expect(data.datasetInfo(['master', 'postal'])).toEqual({ updatedAt: '2026-10-02', stale: false });
+    await data.ensure({ kind: 'postal' });
+    expect(data.datasetInfo(['master', 'postal'])).toEqual({ updatedAt: '2026-09-30', stale: false });
     t += 100 * DAY;
-    expect(data.datasetInfo(['master', 'postal'])).toEqual({ updatedAt: '2026-10-02', stale: true });
+    expect(data.datasetInfo(['master', 'postal'])).toEqual({ updatedAt: '2026-09-30', stale: true });
   });
 });
 

@@ -1,0 +1,141 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { GatedBuilder, createTestAddressData } from '../test_fixtures/address/builders.js';
+import { CHIYODA_LG, abrUrl } from '../test_fixtures/address/harness.js';
+import { createAddressContext } from './address_context.js';
+import { AddressInputError } from './address_errors.js';
+import { JAPANPOST_FALLBACK } from './address_http.js';
+import { ADDRESS_ATTRIBUTION, normalizeAddressTool, searchPostalCode, type SearchPostalCodeByAddress, type SearchPostalCodeByZip } from './address_tools.js';
+
+let dir: string;
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'addr-tools-'));
+});
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+const setup = (options: Parameters<typeof createTestAddressData>[1] = {}) => {
+  const built = createTestAddressData(dir, options);
+  return { ...built, ctx: createAddressContext(built.data) };
+};
+
+describe('searchPostalCode', () => {
+  test('郵便番号から住所の候補を引く', async () => {
+    const { ctx } = setup();
+    const result = (await searchPostalCode({ zipcode: '〒100-0014' }, ctx)) as SearchPostalCodeByZip;
+    expect(result).toMatchObject({ zipcode: '1000014', count: 1 });
+    expect(result.candidates[0]).toMatchObject({ kind: 'general', prefecture: '東京都', city: '千代田区', town: '永田町', lgCode: CHIYODA_LG, locationLevel: 3 });
+    expect(result.dataset).toEqual({ source: expect.stringContaining('アドレス・ベース・レジストリ'), updatedAt: '2026-09-30', stale: false });
+    expect(result.attribution).toBe(ADDRESS_ATTRIBUTION);
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('存在しない郵便番号は count: 0（エラーにしない）', async () => {
+    const { ctx } = setup();
+    expect(await searchPostalCode({ zipcode: '999-9999' }, ctx)).toMatchObject({ zipcode: '9999999', count: 0, candidates: [] });
+  });
+
+  test('住所から郵便番号を逆引きする', async () => {
+    const { ctx } = setup();
+    const result = (await searchPostalCode({ address: '東京都千代田区永田町1-7-1' }, ctx)) as SearchPostalCodeByAddress;
+    expect(result).toMatchObject({
+      address: '東京都千代田区永田町1-7-1', normalized: '東京都千代田区永田町一丁目', level: 3,
+      postalCodes: [{ zipcode: '1000014', town: '永田町', townRaw: '永田町', exact: true, fallback: false }],
+    });
+    expect(result.attribution).toBe(ADDRESS_ATTRIBUTION);
+  });
+
+  test('市区町村までの住所は、既定の番号を fallback で返す', async () => {
+    const { ctx } = setup();
+    const result = (await searchPostalCode({ address: '東京都千代田区' }, ctx)) as SearchPostalCodeByAddress;
+    expect(result).toMatchObject({ level: 2, postalCodes: [{ zipcode: '1000000', fallback: true, exact: false }] });
+  });
+
+  test('zipcode と address は、どちらか一方だけを受ける', async () => {
+    const { ctx } = setup();
+    await expect(searchPostalCode({}, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(searchPostalCode({ zipcode: '1000014', address: '東京都千代田区' }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(searchPostalCode({ zipcode: '  ' }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(searchPostalCode({ zipcode: '12' }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+  });
+
+  test('市区町村のデータが間に合わなければ incomplete と pending を付ける', async () => {
+    const { ctx } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300 });
+    const result = (await searchPostalCode({ zipcode: '1000014' }, ctx)) as SearchPostalCodeByZip;
+    expect(result).toMatchObject({ incomplete: true, pending: [`city:${CHIYODA_LG}`] });
+    expect(result.candidates[0]?.locationLevel).toBe(2);
+  });
+});
+
+describe('normalizeAddressTool', () => {
+  test('正規化した住所と、キー・代表点・郵便番号を返す', async () => {
+    const { ctx } = setup();
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);
+    expect(result).toMatchObject({
+      normalized: '東京都千代田区永田町一丁目', level: 3, numberSource: null, other: '7-1',
+      keys: { prefCode: '13', lgCode: CHIYODA_LG, machiazaId: '0005001' },
+      point: { lat: 35.675895, lon: 139.746306, level: 3 },
+      postalCodes: [{ zipcode: '1000014', exact: true, fallback: false }],
+      dataset: { updatedAt: '2026-09-30', stale: false },
+      attribution: ADDRESS_ATTRIBUTION,
+    });
+    expect(result.checks).toBeUndefined();
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('zipcode を渡すと、住所との突き合わせ（checks.zipcode）を返す', async () => {
+    const { ctx } = setup();
+    expect((await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' }, ctx)).checks?.zipcode).toMatchObject({ status: 'match' });
+    expect((await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', zipcode: '060-0042' }, ctx)).checks?.zipcode).toMatchObject({ status: 'mismatch' });
+  });
+
+  test('住所の先頭の郵便番号は postalCode に分け、zipcode が無ければ突き合わせに使う', async () => {
+    const { ctx } = setup();
+    const result = await normalizeAddressTool({ address: '〒100-0001 東京都千代田区永田町1-7-1' }, ctx);
+    expect(result.postalCode).toBe('1000001');
+    expect(result.normalized).toBe('東京都千代田区永田町一丁目');
+    expect(result.checks?.zipcode).toMatchObject({ status: 'partial', zipcode: '1000001' });
+  });
+
+  test('compareAddress を渡すと、2 つの住所の名寄せ（checks.compare）を返す', async () => {
+    const { ctx } = setup();
+    const same = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', compareAddress: '千代田区永田町一丁目7番1号' }, ctx);
+    expect(same.checks?.compare).toMatchObject({
+      relation: 'identical', sameLevel: 3, differences: [], other: { normalized: '東京都千代田区永田町一丁目', level: 3 },
+    });
+    const other = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', compareAddress: '東京都千代田区千代田1-1' }, ctx);
+    expect(other.checks?.compare).toMatchObject({ relation: 'same-city', differences: ['町字'] });
+  });
+
+  test('level を渡すと、その階層までで止める', async () => {
+    const { ctx } = setup();
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', level: 2 }, ctx);
+    expect(result).toMatchObject({ level: 2, normalized: '東京都千代田区', postalCodes: [{ zipcode: '1000000', fallback: true }] });
+  });
+
+  test.each([[0], [9], [1.5]])('level が 1〜8 の整数でなければ AddressInputError: %p', async (level) => {
+    const { ctx } = setup();
+    await expect(normalizeAddressTool({ address: '東京都千代田区', level }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+  });
+
+  test('郵便番号データを取得できなくても、正規化の結果は返し、unavailable を付ける', async () => {
+    const { ctx, up } = setup();
+    up.set(JAPANPOST_FALLBACK.kenAll, { body: '', status: 403 });
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);
+    expect(result).toMatchObject({ level: 3, postalCodes: [], incomplete: true });
+    expect(result.unavailable).toEqual([{ artifact: 'postal', message: expect.stringContaining('HTTP 403') }]);
+  });
+
+  test('市区町村のデータが間に合わなければ incomplete と pending を付ける', async () => {
+    const { ctx } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300, concurrency: 2 });
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);
+    expect(result).toMatchObject({ level: 2, incomplete: true, pending: [`city:${CHIYODA_LG}`], postalCodes: [{ zipcode: '1000000', fallback: true }] });
+  });
+
+  test('全国マスターを取得できなければ AddressUnavailableError', async () => {
+    const { ctx, up } = setup();
+    up.set(abrUrl('mt_city/mt_city_all'), { body: '', status: 403 });
+    await expect(normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx)).rejects.toMatchObject({ name: 'AddressUnavailableError', blocked: true });
+  });
+});

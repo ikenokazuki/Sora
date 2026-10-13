@@ -24,7 +24,7 @@ export interface ReadyArtifact {
 }
 
 export interface DatasetInfo {
-  /** 取得元の最終更新日（YYYY-MM-DD）の最大。 */
+  /** 使ったデータのうち最も古い取得元の最終更新日（YYYY-MM-DD）。答えの新しさはこれで決まる。 */
   updatedAt: string | null;
   /** 確認日時が期限の 2 倍を超えた成果物がある。 */
   stale: boolean;
@@ -95,6 +95,7 @@ interface FailureRecord {
 }
 
 const HOUR = 3_600_000;
+const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, city: 2 };
 const TOWN_CACHE_MAX = 50;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
 const READER_GRACE_MS = 30_000;
@@ -231,7 +232,7 @@ export class AddressData {
     for (const id of ids) {
       const meta = artifacts[id];
       if (!meta) continue;
-      if (meta.sourceDate && (updatedAt === null || meta.sourceDate > updatedAt)) updatedAt = meta.sourceDate;
+      if (meta.sourceDate && (updatedAt === null || meta.sourceDate < updatedAt)) updatedAt = meta.sourceDate;
       if (this.now() - meta.checkedAt > 2 * ttlFor(id)) stale = true;
       error ??= meta.error;
     }
@@ -265,9 +266,14 @@ export class AddressData {
     return promise;
   }
 
+  /** 空きがあれば待機中のジョブを始める。小さくて他の前提になる全国マスター・郵便番号を、市区町村より先にする。 */
   private pump(): void {
     while (this.running < this.config.concurrency && this.queue.length > 0) {
-      const item = this.queue.shift() as QueueItem;
+      let next = 0;
+      for (let index = 1; index < this.queue.length; index++) {
+        if (PRIORITY[(this.queue[index] as QueueItem).job.kind] < PRIORITY[(this.queue[next] as QueueItem).job.kind]) next = index;
+      }
+      const [item] = this.queue.splice(next, 1) as [QueueItem];
       this.running += 1;
       void this.execute(item);
     }
