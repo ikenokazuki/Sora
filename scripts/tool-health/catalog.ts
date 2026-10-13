@@ -40,7 +40,8 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_news', 'search_chiebukuro', 'suggest_keywords', 'search_realtime', 'search_trend',
   'fetch_x_post', 'search_route', 'get_weather', 'get_flight_status', 'track_package',
   'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
-  'get_elevation', 'search_poi', 'watch_register', 'watch_check', 'watch_list', 'watch_delete',
+  'get_elevation', 'search_poi', 'search_postal_code', 'normalize_address', 'reverse_geocode',
+  'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
   'check_product_compliance', 'inspect_image', 'research_country_context', 'get_country_context',
@@ -75,6 +76,9 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
   get_elevation: { method: 'POST', path: '/geo/elevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
+  search_postal_code: { method: 'POST', path: '/geo/postal-code' },
+  normalize_address: { method: 'POST', path: '/geo/address/normalize' },
+  reverse_geocode: { method: 'POST', path: '/geo/reverse' },
   watch_register: { method: 'POST', path: '/watch/register' },
   watch_check: { method: 'POST', path: '/watch/check' },
   watch_list: { method: 'GET', path: '/watch/list' },
@@ -332,6 +336,13 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
     { source: 'nominatim', format: 'json', upstreamStatus: 'unknown', cached: false },
     { source: 'openpoi', format: 'json', upstreamStatus: 'unknown', count: result.pois?.length },
   ] };
+}
+
+function checkAddressPayload(raw: unknown, label: string): CaseObservation {
+  if (typeof raw !== 'object' || raw === null) throw new LiveFail(`${label} returned invalid payload`);
+  const record = raw as Record<string, unknown>;
+  if (typeof record.attribution !== 'string') throw new LiveFail(`${label} missing attribution`);
+  return { sources: [{ source: 'abr', format: 'json', upstreamStatus: 'unknown', cached: false }] };
 }
 
 
@@ -611,6 +622,30 @@ export const TOOL_CASES: HealthCase[] = [
     const observation = checkHarajukuPoi(raw);
     const rest = await ctx.rest.call('GET', '/geo/poi?query=' + encodeURIComponent('ラーメン') + '&center=' + encodeURIComponent('原宿') + '&radiusMeters=1000&limit=2&noCache=true', undefined, 60000);
     checkHarajukuPoi(rest.json);
+    return observation;
+  }),
+  toolCase('geo.postal_code', ['search_postal_code'], ['abr'], false, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_postal_code', { zipcode: '100-0014' }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_postal_code');
+    const observation = checkAddressPayload(raw, 'search_postal_code');
+    const rest = await ctx.rest.call('GET', '/geo/postal-code?zipcode=100-0014', undefined, 60000);
+    checkAddressPayload(rest.json, 'GET /geo/postal-code');
+    return observation;
+  }),
+  toolCase('geo.normalize_address', ['normalize_address'], ['abr'], false, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'normalize_address', { address: '東京都千代田区永田町1-7-1' }, 60000);
+    const raw = toolPayload(rawJsonText, 'normalize_address');
+    const observation = checkAddressPayload(raw, 'normalize_address');
+    const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent('東京都千代田区永田町1-7-1'), undefined, 60000);
+    checkAddressPayload(rest.json, 'GET /geo/address/normalize');
+    return observation;
+  }),
+  toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], false, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'reverse_geocode', { lat: 35.675895, lon: 139.746306 }, 60000);
+    const raw = toolPayload(rawJsonText, 'reverse_geocode');
+    const observation = checkAddressPayload(raw, 'reverse_geocode');
+    const rest = await ctx.rest.call('GET', '/geo/reverse?lat=35.675895&lon=139.746306', undefined, 60000);
+    checkAddressPayload(rest.json, 'GET /geo/reverse');
     return observation;
   }),
   toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, async (ctx) => {

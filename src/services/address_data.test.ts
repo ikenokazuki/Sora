@@ -147,7 +147,8 @@ describe('revalidate', () => {
     t += 8 * DAY;
     const ready = await data.ensure(chiyoda);
     expect(ready.meta.checkedAt).toBe(builtAt);
-    await waitFor(() => (data.peek(`city:${CHIYODA_LG}`)?.meta.checkedAt ?? 0) >= t);
+    await data.idle();
+    expect(data.peek(`city:${CHIYODA_LG}`)?.meta.checkedAt ?? 0).toBeGreaterThanOrEqual(t);
     expect(up.count('GET')).toBe(downloads);
     expect(up.count('HEAD')).toBeGreaterThan(heads);
     expect(inner.runs).toHaveLength(2);

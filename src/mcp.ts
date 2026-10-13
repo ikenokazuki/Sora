@@ -56,6 +56,7 @@ import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPIC
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 import { errorMessage } from './errors.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { addressEnabled } from './services/address_config.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -320,7 +321,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasDisaster) {
     tier1Directives.push(
-      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi).",
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation, address & postal codes): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
     );
   }
   if (hasYahoo) {
@@ -1581,6 +1582,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
         limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
         noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
+        withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す').meta({ default: false }),
       },
       async (opts) => {
         try {
@@ -1598,6 +1600,100 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       },
       { defaultEnabled: deferredDefault, keywords: ['POI', '施設検索', '施設', '住所検索', '避難所', '病院', '地図', '座標', '周辺施設', 'poi', 'places', '営業許可'] },
     );
+
+    if (addressEnabled()) {
+      // Tool: search_postal_code (郵便番号 ⇄ 住所候補) - DEFERRED
+      registerTool(
+        mcpServer,
+        toolCatalog,
+        sessionActivated,
+        'search_postal_code',
+        'disaster',
+        '【郵便番号 ⇄ 住所候補】郵便番号から住所候補を特定、または住所から郵便番号を逆引きします（一次データ: 日本郵便・デジタル庁ABR）。zipcode または address のどちらか一方を指定。大口事業所の個別郵便番号対応。使われた市区町村のみオンデマンド取得。返却: { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }] } または { address, normalized, level, postalCodes: [{ zipcode, town, exact, fallback }] }, dataset, attribution }',
+        {
+          zipcode: z.string().trim().optional().describe('郵便番号 (例: "100-0014", "〒100-0014")。住所候補を引く。address とは排他'),
+          address: z.string().trim().max(300).optional().describe('住所 (例: "東京都千代田区永田町1-7-1")。郵便番号を引く。zipcode とは排他'),
+        },
+        async (opts) => {
+          try {
+            const { searchPostalCode } = await import('./services/address_tools.js');
+            const result = await searchPostalCode(opts);
+            return {
+              content: [{ type: 'text', text: toolJson(result) }],
+            };
+          } catch (err) {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: `Postal code error: ${errorMessage(err) || err}` }],
+            };
+          }
+        },
+        { defaultEnabled: deferredDefault, keywords: ['郵便番号', 'zipcode', '郵便', '住所候補', '事業所郵便番号', '郵便番号検索', 'postal'] },
+      );
+
+      // Tool: normalize_address (住所正規化・番地号照合・突き合わせ) - DEFERRED
+      registerTool(
+        mcpServer,
+        toolCatalog,
+        sessionActivated,
+        'normalize_address',
+        'disaster',
+        '【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。返却: { normalized, level, numberSource, keys, point: { lat, lon, level }, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }',
+        {
+          address: z.string().trim().min(1).max(300).describe('正規化する住所。先頭の〒郵便番号は postalCode として分離'),
+          level: z.number().int().min(1).max(8).optional().describe('正規化する最大の階層 (1〜8、既定 8)。8は番地・号まで').meta({ default: 8 }),
+          zipcode: z.string().trim().optional().describe('住所と突き合わせる郵便番号。checks.zipcode に match/partial/mismatch を返す'),
+          lat: z.number().min(-90).max(90).optional().describe('突き合わせる緯度 (lon とペア)。checks.coordinates を返す'),
+          lon: z.number().min(-180).max(180).optional().describe('突き合わせる経度 (lat とペア)'),
+          compareAddress: z.string().trim().max(300).optional().describe('名寄せの相手の住所。checks.compare に一致階層と違いを返す'),
+        },
+        async (opts) => {
+          try {
+            const { normalizeAddressTool } = await import('./services/address_tools.js');
+            const result = await normalizeAddressTool(opts);
+            return {
+              content: [{ type: 'text', text: toolJson(result) }],
+            };
+          } catch (err) {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: `Address normalize error: ${errorMessage(err) || err}` }],
+            };
+          }
+        },
+        { defaultEnabled: deferredDefault, keywords: ['住所正規化', '住所検索', '番地', '号', '地番', '名寄せ', '突き合わせ', '住居表示', 'ABR', 'normalize'] },
+      );
+
+      // Tool: reverse_geocode (緯度経度 → 住所逆引き) - DEFERRED
+      registerTool(
+        mcpServer,
+        toolCatalog,
+        sessionActivated,
+        'reverse_geocode',
+        'disaster',
+        '【緯度経度 → 住所逆引き】緯度経度から最寄りの番地・号または町字の住所を特定します（全国町字点索引・ABR住居表示/地番データ）。代表点による最寄り判定。返却: { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }',
+        {
+          lat: z.number().min(-90).max(90).describe('緯度'),
+          lon: z.number().min(-180).max(180).describe('経度'),
+          maxDistanceMeters: z.number().int().min(1).max(2000).optional().describe('番地・号の点を探す範囲m (既定 300、最大 2000)').meta({ default: 300 }),
+        },
+        async (opts) => {
+          try {
+            const { reverseGeocodeTool } = await import('./services/address_tools.js');
+            const result = await reverseGeocodeTool(opts);
+            return {
+              content: [{ type: 'text', text: toolJson(result) }],
+            };
+          } catch (err) {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: `Reverse geocode error: ${errorMessage(err) || err}` }],
+            };
+          }
+        },
+        { defaultEnabled: deferredDefault, keywords: ['逆ジオコーディング', '座標から住所', '緯度経度から住所', '逆引き', 'reverse_geocode', '現在地住所'] },
+      );
+    }
   }
 
   // =========================================================================
