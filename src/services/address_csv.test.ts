@@ -90,6 +90,34 @@ describe('CsvRowParser', () => {
     parser.end();
     expect(rows).toEqual([['a'], ['b']]);
   });
+
+  describe('keepColumns', () => {
+    const input = 'h0,h1,h2,h3\n"a,x",b,"c\n""d",e\n1,2,3,4\n5,6,7';
+    const expected = [['h0', 'h1', 'h2', 'h3'], ['', 'b', '', 'e'], ['', '2', '', '4'], ['', '6', '']];
+
+    const run = (chunks: string[]): string[][] => {
+      const rows: string[][] = [];
+      const parser = new CsvRowParser((row, control) => {
+        rows.push(row);
+        if (rows.length === 1) control.keepColumns([1, 3]);
+      });
+      for (const chunk of chunks) parser.push(chunk);
+      parser.end();
+      return rows;
+    };
+
+    test('見出し行のあと、指定した列だけを文字列にして、他の列は空文字にする（位置は変わらない）', () => {
+      expect(run([input])).toEqual(expected);
+    });
+
+    test('捨てる列に引用符・カンマ・改行があっても、1 文字ずつ流しても同じ', () => {
+      expect(run([...input])).toEqual(expected);
+    });
+
+    test('列数が足りない行は、足りない分を含めず、指定した列の位置はそのまま', () => {
+      expect(run(['h0,h1,h2,h3\nx,y\n'])).toEqual([['h0', 'h1', 'h2', 'h3'], ['', 'y']]);
+    });
+  });
 });
 
 describe('streamZipCsv', () => {
@@ -104,6 +132,16 @@ describe('streamZipCsv', () => {
     expect(rows).toEqual(parseCsvMatrix(text.replace(/^﻿/, '')));
     expect(rows[0]).toEqual(['lg_code', 'name', 'note']);
     expect(rows[2]).toEqual(['131024', '港区, 東京', 'a\r\nb']);
+  });
+
+  test('keepColumns を zip の読み込みでも使える', async () => {
+    const path = zipFile('k.zip', { 'k.csv': 'id,name,note\n1,"千代田区","a,b"\n2,港区,c\n' });
+    const rows: string[][] = [];
+    await streamZipCsv(path, (row, control) => {
+      rows.push(row);
+      if (rows.length === 1) control.keepColumns([1]);
+    });
+    expect(rows).toEqual([['id', 'name', 'note'], ['', '千代田区', ''], ['', '港区', '']]);
   });
 
   test('バイト列を 1 バイトずつ流しても、3 バイトの日本語の途中で切れても壊れない', () => {
