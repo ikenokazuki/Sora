@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressData } from './address_data.js';
 import { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
-import { lgCode6 } from './address_names.js';
+import { lgCode6, type TownJson } from './address_names.js';
+import type { NumberRanges } from './address_numbers.js';
 
 /** 住所の各階層のキー。町字・郵便番号・逆引きの結合に使う。 */
 export interface AddressKeys {
@@ -120,7 +121,7 @@ export function shapeResult(input: string, postalCode: string | undefined, resul
     city: result.city,
     town: result.town,
     addr: result.addr,
-    other: result.other,
+    other: result.other.trim(),
     normalized: [result.pref, result.city, result.town, result.addr].filter(Boolean).join(''),
     level: result.level,
     numberSource,
@@ -152,13 +153,16 @@ interface Library {
 
 interface Generation {
   lib: Library;
-  /** この世代に配ったデータの版（成果物 ID → 版）。 */
+  /** この世代に配ったデータの版（成果物 ID → 版）。番地・号のデータを渡せなかったものは空文字。 */
   served: Map<string, string>;
+  /** 番地・号（段B）が間に合わず、段A だけを配った市区町村。この世代の答えは level 3 までになる。 */
+  missing: Map<string, { pending: boolean; message: string }>;
   startedAt: number;
 }
 
 const VIRTUAL_ROOT = '/sora-address';
 const CITY_FILE = new RegExp(`^${VIRTUAL_ROOT}/ja/([^/]+)/([^/]+)\\.json$`);
+const NUMBER_FILE = new RegExp(`^${VIRTUAL_ROOT}/ja/([^/]+)/([^/]+)-(住居表示|地番)\\.txt$`);
 const DEFAULT_MAX_AGE_MS = 24 * 3_600_000;
 /** 呼び出しごとの締め切り。仮想ファイルの中でデータの取得を待てる残り時間になる。 */
 const callState = new AsyncLocalStorage<{ deadline: number }>();
@@ -242,7 +246,15 @@ export class AddressNormalizer {
       }
     }
     this.data.store.touch('master');
-    if (result.metadata.city) this.data.store.touch(`city:${lgCode6(result.metadata.city.code)}`);
+    if (result.metadata.city) {
+      const lgCode = lgCode6(result.metadata.city.code);
+      this.data.store.touch(`city:${lgCode}`);
+      this.data.store.touch(`num:${lgCode}`);
+      // 番地・号のデータが無いまま配った市区町村の答えは、番地・号まで照合できていない。
+      const gap = level >= 4 && result.level >= 3 ? generation.missing.get(`num:${lgCode}`) : undefined;
+      if (gap?.pending) notes.pending = [...(notes.pending ?? []), `num:${lgCode}`];
+      else if (gap) notes.unavailable = [...(notes.unavailable ?? []), { artifact: `num:${lgCode}`, message: gap.message }];
+    }
     return shapeResult(input, postalCode, result, notes);
   }
 
@@ -270,22 +282,22 @@ export class AddressNormalizer {
     if (this.now() - generation.startedAt > this.maxAgeMs) return true;
     const artifacts = this.data.status().artifacts;
     for (const [id, ver] of generation.served) {
-      if (artifacts[id]?.ver !== ver) return true;
+      if ((artifacts[id]?.ver ?? '') !== ver) return true;
     }
     return false;
   }
 
   private async load(): Promise<Generation> {
     const lib = await importFreshLibrary();
-    const generation: Generation = { lib, served: new Map(), startedAt: this.now() };
+    const generation: Generation = { lib, served: new Map(), missing: new Map(), startedAt: this.now() };
     lib.config.japaneseAddressesApi = `file://${VIRTUAL_ROOT}/ja`;
-    lib.requestHandlers.file = (url) => this.serve(generation, url);
+    lib.requestHandlers.file = (url, options) => this.serve(generation, url, options);
     this.loaded += 1;
     return generation;
   }
 
   /** ライブラリが読もうとするファイルを、ローカルのデータに対応づける。 */
-  private async serve(generation: Generation, url: URL): Promise<FileResponse> {
+  private async serve(generation: Generation, url: URL, options?: { offset?: number; length?: number }): Promise<FileResponse> {
     const deadline = callState.getStore()?.deadline ?? this.now() + this.data.config.waitMs;
     const remaining = (): number => Math.max(0, deadline - this.now());
     const path = decodeURI(url.pathname);
@@ -294,12 +306,51 @@ export class AddressNormalizer {
       generation.served.set(ready.id, ready.ver);
       return textResponse(await Bun.file(join(ready.path, 'ja.json')).text());
     }
-    const match = path.match(CITY_FILE);
-    if (!match) return NOT_FOUND;
-    const city = (await this.data.master(remaining())).byName.get(`${match[1]}/${match[2]}`);
+    const cityMatch = path.match(CITY_FILE);
+    if (cityMatch) return this.serveCity(generation, `${cityMatch[1]}/${cityMatch[2]}`, remaining);
+    const numberMatch = path.match(NUMBER_FILE);
+    if (numberMatch) return this.serveNumbers(generation, `${numberMatch[1]}/${numberMatch[2]}`, numberMatch[3] as '住居表示' | '地番', options);
+    return NOT_FOUND;
+  }
+
+  /** 市区町村の町字（段A）に、番地・号（段B）の節の範囲を入れて返す。段B が間に合わなければ、範囲なしで返して記録する。 */
+  private async serveCity(generation: Generation, name: string, remaining: () => number): Promise<FileResponse> {
+    const city = (await this.data.master(remaining())).byName.get(name);
     if (!city) return NOT_FOUND;
     const ready = await this.data.ensure({ kind: 'city', lgCode: city.lgCode }, remaining());
     generation.served.set(ready.id, ready.ver);
-    return textResponse(await Bun.file(join(ready.path, 'town.json')).text());
+    const towns = JSON.parse(await Bun.file(join(ready.path, 'town.json')).text()) as TownJson;
+
+    const numId = `num:${city.lgCode}`;
+    try {
+      const numbers = await this.data.ensure({ kind: 'num', lgCode: city.lgCode }, remaining());
+      generation.served.set(numId, numbers.ver);
+      generation.missing.delete(numId);
+      const ranges = JSON.parse(await Bun.file(join(numbers.path, 'ranges.json')).text()) as NumberRanges;
+      for (const town of towns.data) {
+        const range = ranges[town.machiaza_id];
+        if (range) town.csv_ranges = range;
+      }
+    } catch (error) {
+      if (error instanceof AddressPendingError) generation.missing.set(numId, { pending: true, message: error.message });
+      else if (error instanceof AddressUnavailableError) generation.missing.set(numId, { pending: false, message: error.message });
+      else throw error;
+      // 段B が揃ったとき（版が空文字でなくなったとき）に、この世代を読み直す。
+      generation.served.set(numId, '');
+    }
+    return textResponse(JSON.stringify(towns));
+  }
+
+  /** 配った版の rsdt.txt / chiban.txt から、ライブラリが指定したバイト範囲の節を返す。 */
+  private async serveNumbers(
+    generation: Generation, name: string, kind: '住居表示' | '地番', options?: { offset?: number; length?: number },
+  ): Promise<FileResponse> {
+    const city = (await this.data.master()).byName.get(name);
+    const ver = city ? generation.served.get(`num:${city.lgCode}`) : undefined;
+    if (!city || !ver) return NOT_FOUND;
+    const file = Bun.file(join(this.data.store.artifactPath(`num:${city.lgCode}`, ver), kind === '住居表示' ? 'rsdt.txt' : 'chiban.txt'));
+    if (!(await file.exists())) return NOT_FOUND;
+    const blob = options?.offset !== undefined && options.length !== undefined ? file.slice(options.offset, options.offset + options.length) : file;
+    return textResponse(await blob.text());
   }
 }

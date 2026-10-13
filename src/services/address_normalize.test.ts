@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
-import { CHIYODA_LG, CHIYODA_TOWNS, abrUrl, replaceTowns, townRow } from '../test_fixtures/address/harness.js';
+import {
+  ABR_LAST_MODIFIED, CHIYODA_LG, CHIYODA_TOWNS, RSDT_POS_HEADER, abrUrl, csv, replaceTowns, rsdtPosRow, sampleUpstream, townRow,
+} from '../test_fixtures/address/harness.js';
 import { AddressInputError, AddressUnavailableError } from './address_errors.js';
 import { AddressNormalizer, shapeResult, splitPostalCode } from './address_normalize.js';
 
@@ -202,6 +204,109 @@ describe('世代の作り直し', () => {
       await settleAddressData();
       rmSync(dirB, { recursive: true, force: true });
     }
+  });
+});
+
+describe('番地・号（段B）', () => {
+  const setup = (options: Parameters<typeof createTestAddressData>[1] = {}) => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }), ...options });
+    return { ...built, normalizer: new AddressNormalizer(built.data) };
+  };
+
+  test('住居表示の番地・号まで照合して、level 8・numberSource: rsdt・番地の座標を返す', async () => {
+    const { normalizer } = setup();
+    const result = await normalizer.normalize('東京都千代田区永田町1-7-1');
+    expect(result).toMatchObject({
+      level: 8, addr: '7-1', other: '', numberSource: 'rsdt',
+      normalized: '東京都千代田区永田町一丁目7-1',
+      keys: { prefCode: '13', lgCode: CHIYODA_LG, machiazaId: '0005001', blk: '7', rsdt: '1' },
+      point: { lat: 35.675912, lon: 139.745512, level: 8 },
+    });
+    expect(result.keys.rsdt2).toBeUndefined();
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('番地の後ろの建物名は other に残る。住居番号2もキーになる', async () => {
+    const { normalizer } = setup();
+    expect(await normalizer.normalize('東京都千代田区永田町1-7-2 ABCビル3F')).toMatchObject({ level: 8, addr: '7-2', other: 'ABCビル3F' });
+    expect(await normalizer.normalize('東京都千代田区永田町2-1-1-1')).toMatchObject({
+      level: 8, addr: '1-1-1', numberSource: 'rsdt', keys: { machiazaId: '0005002', blk: '1', rsdt: '1', rsdt2: '1' },
+    });
+  });
+
+  test('位置参照の無い番地は level 8 のまま、座標は町字の点（level 3）のままにする', async () => {
+    const { normalizer } = setup();
+    expect(await normalizer.normalize('東京都千代田区永田町1-6-5')).toMatchObject({
+      level: 8, addr: '6-5', numberSource: 'rsdt', point: { lat: 35.675895, lon: 139.746306, level: 3 },
+    });
+  });
+
+  test('データに無い番地は level 3 のまま、番地は other に残る', async () => {
+    const { normalizer } = setup();
+    expect(await normalizer.normalize('東京都千代田区永田町1-9-9')).toMatchObject({ level: 3, other: '9-9', numberSource: null });
+  });
+
+  test('住居表示でない町は地番で照合する（numberSource: chiban）', async () => {
+    const { normalizer } = setup();
+    expect(await normalizer.normalize('札幌市中央区北1条西2丁目12-3')).toMatchObject({
+      level: 8, addr: '12-3', numberSource: 'chiban', keys: { machiazaId: '0013002', prc: ['12', '3'] },
+      point: { lat: 43.064, lon: 141.3541, level: 8 },
+    });
+    expect(await normalizer.normalize('札幌市中央区北1条西2丁目13')).toMatchObject({ level: 8, addr: '13', keys: { prc: ['13'] } });
+    expect(await normalizer.normalize('札幌市中央区北1条西2丁目12-4')).toMatchObject({ level: 8, addr: '12-4', point: { level: 3 } });
+    expect(await normalizer.normalize('札幌市中央区北1条西2丁目99')).toMatchObject({ level: 3, other: '99', numberSource: null });
+  });
+
+  test('番地・号のデータが無い市区町村は、段B が空でも level 3 で答え、incomplete にしない', async () => {
+    const { normalizer, up } = setup();
+    up.routes.delete(abrUrl(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`));
+    up.routes.delete(abrUrl(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`));
+    const result = await normalizer.normalize('東京都千代田区永田町1-7-1');
+    expect(result).toMatchObject({ level: 3, other: '7-1', numberSource: null });
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('市区町村までの入力は、段B を取りに行かない', async () => {
+    const { normalizer, inner } = setup();
+    await normalizer.normalize('東京都千代田区');
+    expect(inner.runs.filter((job) => job.kind === 'num')).toHaveLength(0);
+  });
+
+  test('段B の構築が間に合わなければ level 3 で incomplete と pending。構築が終わると次の呼び出しで読み直して level 8 になる', async () => {
+    let gated!: GatedBuilder;
+    const { normalizer, data } = setup({ wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'num')) });
+    const partial = await normalizer.normalize('東京都千代田区永田町1-7-1', { waitMs: 400 });
+    expect(partial).toMatchObject({ level: 3, other: '7-1', incomplete: true, pending: [`num:${CHIYODA_LG}`] });
+    expect(normalizer.generation).toBe(1);
+    // 同じ世代では、段B が無いまま配った市区町村の答えに印を付け続ける
+    expect(await normalizer.normalize('東京都千代田区永田町1-7-2')).toMatchObject({ level: 3, incomplete: true, pending: [`num:${CHIYODA_LG}`] });
+
+    gated.release();
+    await waitFor(() => data.peek(`num:${CHIYODA_LG}`) !== null);
+    const full = await normalizer.normalize('東京都千代田区永田町1-7-1');
+    expect(full).toMatchObject({ level: 8, addr: '7-1', numberSource: 'rsdt' });
+    expect(full.incomplete).toBeUndefined();
+    expect(normalizer.generation).toBe(2);
+  });
+
+  test('段B を取得できなければ level 3 で unavailable', async () => {
+    const { normalizer, up } = setup();
+    up.set(abrUrl(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`), { body: '', status: 403 });
+    const result = await normalizer.normalize('東京都千代田区永田町1-7-1');
+    expect(result).toMatchObject({ level: 3, incomplete: true });
+    expect(result.unavailable).toEqual([{ artifact: `num:${CHIYODA_LG}`, message: expect.stringContaining('HTTP 403') }]);
+  });
+
+  test('段B が更新されたら、次の呼び出しで読み直して新しい座標を使う', async () => {
+    const { normalizer, up, data } = setup();
+    expect(await normalizer.normalize('東京都千代田区永田町1-7-1')).toMatchObject({ point: { lon: 139.745512 } });
+    const url = abrUrl(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`);
+    up.setZip(url, {
+      'pos.csv': csv(RSDT_POS_HEADER, [rsdtPosRow(CHIYODA_LG, '0005001', '007', '001', '', '139.9', '35.9')]),
+    }, { etag: '"moved"', lastModified: ABR_LAST_MODIFIED });
+    await data.request({ kind: 'num', lgCode: CHIYODA_LG });
+    expect(await normalizer.normalize('東京都千代田区永田町1-7-1')).toMatchObject({ level: 8, point: { lat: 35.9, lon: 139.9, level: 8 } });
+    expect(normalizer.generation).toBe(2);
   });
 });
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
-import { CHIYODA_LG, abrUrl } from '../test_fixtures/address/harness.js';
+import { CHIYODA_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
@@ -68,6 +68,37 @@ describe('searchPostalCode', () => {
     const result = (await searchPostalCode({ zipcode: '1000014' }, ctx)) as SearchPostalCodeByZip;
     expect(result).toMatchObject({ incomplete: true, pending: [`city:${CHIYODA_LG}`] });
     expect(result.candidates[0]?.locationLevel).toBe(2);
+  });
+});
+
+describe('番地・号まで照合した住所', () => {
+  const setup8 = () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    return createAddressContext(built.data);
+  };
+
+  test('normalize_address は level 8・numberSource・番地の座標・郵便番号を返す', async () => {
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' }, setup8());
+    expect(result).toMatchObject({
+      level: 8, normalized: '東京都千代田区永田町一丁目7-1', numberSource: 'rsdt', keys: { blk: '7', rsdt: '1' },
+      point: { lat: 35.675912, lon: 139.745512, level: 8 },
+      postalCodes: [{ zipcode: '1000014', exact: true }], checks: { zipcode: { status: 'match' } },
+    });
+  });
+
+  test('search_postal_code の逆引きも、番地まで照合した住所で働く', async () => {
+    const result = (await searchPostalCode({ address: '札幌市中央区北1条西2丁目12-3' }, setup8())) as SearchPostalCodeByAddress;
+    expect(result).toMatchObject({ level: 8, normalized: '北海道札幌市中央区北１条西二丁目12-3', postalCodes: [{ zipcode: '0600001', exact: true }] });
+  });
+
+  test('名寄せ: 住居番号だけが違えば same-block、同じ番地は identical、建物名だけが違えば same-block', async () => {
+    const ctx = setup8();
+    const compare = async (compareAddress: string) =>
+      (await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', compareAddress }, ctx)).checks?.compare;
+    expect(await compare('東京都千代田区永田町1-7-2')).toMatchObject({ relation: 'same-block', sameLevel: 3, differences: ['住居番号'] });
+    expect(await compare('千代田区永田町一丁目7番1号')).toMatchObject({ relation: 'identical', sameLevel: 8, differences: [] });
+    expect(await compare('東京都千代田区永田町1-7-1 ABCビル')).toMatchObject({ relation: 'same-block', sameLevel: 8, differences: ['建物名・部屋番号'] });
+    expect(await compare('東京都千代田区永田町1-6-5')).toMatchObject({ relation: 'same-town', differences: ['番地・号'] });
   });
 });
 
