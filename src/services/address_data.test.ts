@@ -116,18 +116,21 @@ describe('idle', () => {
 });
 
 describe('priority', () => {
-  test('待機中のジョブは、全国マスター → 郵便番号 → 市区町村の順で始める（同じ種類は頼んだ順）', async () => {
+  test('待機中のジョブは、全国マスター → 郵便番号 → 市区町村（段A）→ 番地・号（段B）の順で始める（同じ種類は頼んだ順）', async () => {
     let gated!: GatedBuilder;
     const { data } = createTestAddressData(dir, { wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'city' && job.lgCode === CHIYODA_LG)) });
     void data.request(chiyoda).catch(() => undefined);
     await tick();
+    void data.request({ kind: 'num', lgCode: SAPPORO_LG }).catch(() => undefined);
     void data.request({ kind: 'city', lgCode: '011002' }).catch(() => undefined);
     void data.request(sapporo).catch(() => undefined);
     void data.request({ kind: 'postal' }).catch(() => undefined);
     void data.request({ kind: 'master' }).catch(() => undefined);
     gated.release();
     await data.idle();
-    expect(gated.started.map((job) => (job.kind === 'city' ? job.lgCode : job.kind))).toEqual([CHIYODA_LG, 'master', 'postal', '011002', SAPPORO_LG]);
+    expect(gated.started.map((job) => (job.kind === 'city' || job.kind === 'num' ? `${job.kind}:${job.lgCode}` : job.kind))).toEqual([
+      `city:${CHIYODA_LG}`, 'master', 'postal', 'city:011002', `city:${SAPPORO_LG}`, `num:${SAPPORO_LG}`,
+    ]);
   });
 });
 

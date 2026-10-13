@@ -26,18 +26,24 @@ describe('ids and ttl', () => {
     expect(jobArtifactId({ kind: 'master' })).toBe('master');
     expect(jobArtifactId({ kind: 'postal' })).toBe('postal');
     expect(jobArtifactId({ kind: 'city', lgCode: '131016' })).toBe('city:131016');
+    expect(jobArtifactId({ kind: 'num', lgCode: '131016' })).toBe('num:131016');
   });
 
   test('成果物のディレクトリ名', () => {
     expect(artifactRelDir('master')).toBe('master');
     expect(artifactRelDir('city:131016')).toBe(join('city', '131016'));
+    expect(artifactRelDir('num:131016')).toBe(join('num', '131016'));
+    expect(artifactRelDir('index')).toBe('index');
     expect(() => artifactRelDir('bogus')).toThrow();
+    expect(() => artifactRelDir('num:abc')).toThrow();
   });
 
   test('TTL は種類ごと', () => {
     expect(ttlFor('postal')).toBe(7 * 86_400_000);
     expect(ttlFor('master')).toBe(30 * 86_400_000);
     expect(ttlFor('city:131016')).toBe(7 * 86_400_000);
+    expect(ttlFor('num:131016')).toBe(30 * 86_400_000);
+    expect(ttlFor('index')).toBe(30 * 86_400_000);
   });
 });
 
@@ -151,6 +157,15 @@ describe('use tracking and eviction', () => {
     expect(removed).toEqual(['city:011011']);
     expect(existsSync(join(dir, 'city', '011011'))).toBe(false);
     expect(Object.keys(store.read().artifacts).sort()).toEqual(['city:131016', 'city:131121']);
+  });
+
+  test('段B（num:）も市区町村と同じく破棄の対象。全国マスター・郵便番号・索引は対象外', async () => {
+    for (const id of ['master', 'postal', 'index', 'city:131016', 'num:131016']) {
+      await store.publish(id, build({ 'f.txt': 'x'.repeat(100) }), { sig: id });
+    }
+    const removed = await store.evict(1, new Set());
+    expect(removed.sort()).toEqual(['city:131016', 'num:131016']);
+    expect(Object.keys(store.read().artifacts).sort()).toEqual(['index', 'master', 'postal']);
   });
 
   test('pinned と protect の市区町村、および市区町村以外は破棄しない', async () => {

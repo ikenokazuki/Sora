@@ -95,7 +95,7 @@ interface FailureRecord {
 }
 
 const HOUR = 3_600_000;
-const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, city: 2 };
+const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, city: 2, num: 3 };
 const TOWN_CACHE_MAX = 50;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
 const READER_GRACE_MS = 30_000;

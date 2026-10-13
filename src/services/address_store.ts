@@ -3,16 +3,19 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-/** 構築ジョブ。親プロセスと子プロセスで共有する。 */
-export type BuildJob = { kind: 'master' } | { kind: 'postal' } | { kind: 'city'; lgCode: string };
+/**
+ * 構築ジョブ。親プロセスと子プロセスで共有する。
+ * city は町字（段A）、num は住居表示・地番の番地・号（段B）。どちらも市区町村（6 桁のコード）単位。
+ */
+export type BuildJob = { kind: 'master' } | { kind: 'postal' } | { kind: 'city'; lgCode: string } | { kind: 'num'; lgCode: string };
 
 export function jobArtifactId(job: BuildJob): string {
-  return job.kind === 'city' ? `city:${job.lgCode}` : job.kind;
+  return job.kind === 'city' || job.kind === 'num' ? `${job.kind}:${job.lgCode}` : job.kind;
 }
 
 const DAY = 86_400_000;
 
-/** 確認日時がこれを過ぎたら、使われたときに裏で再確認する。 */
+/** 確認日時がこれを過ぎたら、使われたときに裏で再確認する。町字と郵便番号は 7 日、番地・号と全国マスターは 30 日。 */
 export function ttlFor(id: string): number {
   if (id.startsWith('city:')) return 7 * DAY;
   if (id === 'postal') return 7 * DAY;
@@ -49,6 +52,7 @@ const emptyStatus = (): AddressStatus => ({ version: 1, seq: 0, artifacts: {}, f
 export function artifactRelDir(id: string): string {
   if (id === 'master' || id === 'postal' || id === 'index') return id;
   if (id.startsWith('city:') && /^\d{6}$/.test(id.slice(5))) return join('city', id.slice(5));
+  if (id.startsWith('num:') && /^\d{6}$/.test(id.slice(4))) return join('num', id.slice(4));
   throw new Error(`unknown address artifact id: ${id}`);
 }
 
@@ -229,7 +233,7 @@ export class AddressStore {
     await this.update((status) => {
       let total = Object.values(status.artifacts).reduce((sum, meta) => sum + meta.bytes, 0);
       const candidates = Object.entries(status.artifacts)
-        .filter(([id, meta]) => id.startsWith('city:') && !meta.pinned && !protect.has(id))
+        .filter(([id, meta]) => (id.startsWith('city:') || id.startsWith('num:')) && !meta.pinned && !protect.has(id))
         .sort((a, b) => a[1].usedAt - b[1].usedAt);
       for (const [id, meta] of candidates) {
         if (total <= maxBytes) break;

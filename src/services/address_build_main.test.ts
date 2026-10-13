@@ -17,6 +17,7 @@ describe('parseChildArgs', () => {
     expect(parseChildArgs(['--dir', '/x', '--job', '{"kind":"master"}'])).toEqual({ dir: '/x', job: { kind: 'master' } });
     expect(parseChildArgs(['--job', '{"kind":"postal"}', '--dir', '/x'])).toEqual({ dir: '/x', job: { kind: 'postal' } });
     expect(parseChildArgs(['--dir', '/x', '--job', `{"kind":"city","lgCode":"${CHIYODA_LG}"}`]).job).toEqual({ kind: 'city', lgCode: CHIYODA_LG });
+    expect(parseChildArgs(['--dir', '/x', '--job', `{"kind":"num","lgCode":"${CHIYODA_LG}"}`]).job).toEqual({ kind: 'num', lgCode: CHIYODA_LG });
   });
 
   test.each([
@@ -26,6 +27,7 @@ describe('parseChildArgs', () => {
     [['--dir', '/x', '--job', '{"kind":"nothing"}']],
     [['--dir', '/x', '--job', '{"kind":"city","lgCode":"13101"}']],
     [['--dir', '/x', '--job', '{"kind":"city"}']],
+    [['--dir', '/x', '--job', '{"kind":"num","lgCode":"abc"}']],
   ])('足りない引数・不正な JSON・不明なジョブ・不正な市区町村コードを拒否する %j', (argv) => {
     expect(() => parseChildArgs(argv)).toThrow();
   });
