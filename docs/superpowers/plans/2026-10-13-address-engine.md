@@ -84,7 +84,7 @@ class AddressData {
 9. `datasetInfo` が `sourceDate` の最大と `stale` を返す。
 10. 別の `AddressStore` が公開した成果物を、`peek` が（スナップショットの更新で）見つける。
 
-- [ ] テストを書く → [ ] `bun test src/services/address_data.test.ts` で失敗（モジュールが無い）を確認 → [ ] 実装 → [ ] 成功を確認 → [ ] `bun run typecheck && bun run lint` → [ ] コミット `feat(address): add the address data manager with queueing and revalidation`
+- [x] テストを書く → [ ] `bun test src/services/address_data.test.ts` で失敗（モジュールが無い）を確認 → [ ] 実装 → [ ] 成功を確認 → [ ] `bun run typecheck && bun run lint` → [ ] コミット `feat(address): add the address data manager with queueing and revalidation`
 
 ---
 
@@ -118,7 +118,7 @@ class AddressData {
 2. `towns('131016')` が `永田町` の町字（`chome_n`、`point`）を返し、同じ版ではキャッシュされる。
 3. `postal()` の読み取り役が `1000014` を引ける。郵便番号を作り直すと新しい版の読み取り役になる。
 
-- [ ] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): load master, town and postal data on demand`
+- [x] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): load master, town and postal data on demand`
 
 ---
 
@@ -155,7 +155,7 @@ export function setAddressDataForTest(data: AddressData | null): void
 3. `resolveBuildEntry` が `address-build.js` を優先し、無ければ TypeScript の入口、どちらも無ければ例外。
 4. `ChildProcessBuilder`（`command` を差し替え）: 終了コード 0 で解決、3 で `blocked: true`、1 で標準エラーのメッセージ、タイムアウトで kill。
 
-- [ ] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): add the build child entry and process builder`
+- [x] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): add the build child entry and process builder`
 
 ---
 
@@ -214,7 +214,7 @@ export class AddressNormalizer {
 10. `maxAgeMs` を過ぎると世代が増える。
 11. `splitPostalCode` の表（`〒100-0014 …`、`１００−００１４ …`、`1000014 …`、`100-0014`（住所なし）、先頭が数字の番地で郵便番号でないもの）。
 
-- [ ] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): normalize addresses with the Geolonia library over local data`
+- [x] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): normalize addresses with the Geolonia library over local data`
 
 ---
 
@@ -258,7 +258,7 @@ export function refineByStreetNames(matches: ZipMatch[], rawInput: string): ZipM
 6. `zipsForAddress`: `永田町1-7-1` → `1000014`（`exact: true`）、`千代田1-1` → `1000001`、`東京都千代田区`（level 2）→ `1000000` の既定行（`fallback: true`）、札幌 `北1条西2丁目` → `0600001`、`北1条西20丁目` → `0640821`。
 7. `refineByStreetNames`: 京都の実データに近い行（`大黒町（釜座通夷川下る、…）` と `大黒町（河原町通三条下る、…）`）を作り、入力に `釜座通夷川下る` が含まれるときだけ前者が `exact: true` で残る。当たる項目が無いときは変えない。
 
-- [ ] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): look up postal codes forward and backward with locations`
+- [x] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): look up postal codes forward and backward with locations`
 
 ---
 
@@ -301,7 +301,7 @@ export async function normalizeAddressTool(input: { address: string; level?: num
 
 **失敗するテスト:** `compareAddresses` の表（同じ町 / 同じ市区町村 / 都道府県違い / level 0）、`checkZip` の全分岐（`match`、`partial` 既定番号、`partial` 同じ市区町村、`mismatch`、存在しない番号、`unknown`）、`searchPostalCode` の両形式と入力検証、`normalizeAddressTool` の `checks` と `incomplete` の伝播、出力に `dataset` と `attribution` があること。
 
-- [ ] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): add postal search and normalize tools with cross-checks`
+- [x] テスト → [ ] 失敗確認 → [ ] 実装 → [ ] 成功確認 → [ ] typecheck/lint → [ ] コミット `feat(address): add postal search and normalize tools with cross-checks`
 
 ---
 
@@ -309,12 +309,12 @@ export async function normalizeAddressTool(input: { address: string; level?: num
 
 **ファイル:** `Containerfile`（変更）、`docs/superpowers/specs/2026-10-13-address-data-design.md`（変更: 503 → 502、ツール登録の時期）、この計画書（実行結果を追記）
 
-- [ ] `Containerfile` のビルド段に `RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js` を足し、最終段に `COPY --from=builder /app/address-build.js /app/address-build.js` を足す。
-- [ ] バンドル確認: `bun build` で `address_normalize` を入口にしたバンドルを作り、`node_modules` を見える場所に置いて、動的 import と `require.cache` による作り直し、`import.meta.resolve` が動くことを確認する。`address_build_main.ts` のバンドルを子として起動し、マスターの構築が通ることを実通信で確認する（日本のホスト）。
-- [ ] 実データでの確認（`ChildProcessBuilder` を使い、実際の子プロセスと通信で）: 初回の `normalize_address`（マスター + 市区町村）の所要時間、2 回目以降の p50/p95、`search_postal_code` の `1000014`・`0600042`・事業所番号、`〒150-0001` の逆引き、京都市中京区の通り名つき住所の絞り込み、構築中のプロセスの優先度（nice 10）の確認。
-- [ ] 設計書を直す（`ADDRESS_DATA_UNAVAILABLE` は 502、ツールの登録は 3 ツールがそろってから）。
-- [ ] 全件テスト（切り離して実行）、typecheck、lint。
-- [ ] この計画書に実行結果を追記してコミット `docs(address): record the address engine results`
+- [x] `Containerfile` のビルド段に `RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js` を足し、最終段に `COPY --from=builder /app/address-build.js /app/address-build.js` を足す。
+- [x] バンドル確認: `bun build` で `address_normalize` を入口にしたバンドルを作り、`node_modules` を見える場所に置いて、動的 import と `require.cache` による作り直し、`import.meta.resolve` が動くことを確認する。`address_build_main.ts` のバンドルを子として起動し、マスターの構築が通ることを実通信で確認する（日本のホスト）。
+- [x] 実データでの確認（`ChildProcessBuilder` を使い、実際の子プロセスと通信で）: 初回の `normalize_address`（マスター + 市区町村）の所要時間、2 回目以降の p50/p95、`search_postal_code` の `1000014`・`0600042`・事業所番号、`〒150-0001` の逆引き、京都市中京区の通り名つき住所の絞り込み、構築中のプロセスの優先度（nice 10）の確認。
+- [x] 設計書を直す（`ADDRESS_DATA_UNAVAILABLE` は 502、ツールの登録は 3 ツールがそろってから）。
+- [x] 全件テスト（切り離して実行）、typecheck、lint。
+- [x] この計画書に実行結果を追記してコミット `docs(address): record the address engine results`
 
 ---
 
@@ -323,3 +323,34 @@ export async function normalizeAddressTool(input: { address: string; level?: num
 - 段B（住居表示・地番の構築、`csv_ranges`、`numberSource`）、町字の点の索引、`reverse_geocode`、`checks.coordinates`。
 - ジオコーダーのローカル優先化、`search_poi` の連携、事前取得（`SORA_ADDRESS_PRELOAD`）、`eager`。
 - MCP / REST / OpenAPI / ツール台帳 / README / instructions への登録と、運用文書。
+
+---
+
+## 実行結果（2026-10-13）
+
+全タスクを TDD で実装し、すべてコミット済み。型検査・lint はクリーン。
+
+### 計画からの変更
+
+- **ライブラリの作り直しは `require.cache` から消して import し直す。** 設計書の `?gen=` つきの import は、Bun 1.3.3 では `bun test` でも通常実行でも同じインスタンスのままだった（`a.requestHandlers === b.requestHandlers`）。`delete require.cache[path]` のあとの import は別のインスタンスになり、古いインスタンスは回収される（20,000 町を読んだ世代を 30 回作り直してヒープは 9.4MB で一定、RSS は約 160MB で頭打ち）。消して読むまでをモジュール全体で 1 件ずつ行う。設計書も直した。
+- **構築役とシングルトンの置き場所。** `ChildProcessBuilder` / `resolveBuildEntry` は `address_builder.ts`、シングルトン（`getAddressContext` / `setAddressContextForTest`）は `address_context.ts`。テストで `getAddressContext()` を差し替えなしに呼ぶと例外にして、実通信を防ぐ。
+- **正規化は 2 段で呼ぶ。** ライブラリは level 8 で呼ぶと、市区町村の後ろが空でも町の一覧を読もうとする。まず `level: 2` で読み、市区町村の後ろに文字が残るときだけ本来の level で読み直す（市区町村までの入力で、市区町村のデータを取りに行かない）。待ち時間切れ・取得失敗のときも、最初の結果をそのまま部分的な答えにできる。
+- **ジョブの優先順位。** 待機中のジョブは全国マスター → 郵便番号 → 市区町村の順で始める（同じ種類は頼んだ順）。市区町村の構築が続いていても、小さくて他の前提になるものを後回しにしない。
+- **`dataset.updatedAt` は答えに使ったデータのうち最も古い更新日**（設計書どおり）。ただし全国マスターは名称とコードの対応だけで更新日が古くても答えの古さを表さないので（実データで 2024-03-14）、使ったデータが他に無いときだけ数える。
+- **`AddressStore` は最終利用日時の最初の書き込みを起動の 60 秒後からにした。** 起動直後の最初の利用で `status.json` を書かない（テスト終了後に非同期で書いてディレクトリを作り直す問題の原因でもあった）。あわせて `AddressData.idle()` と、テストの後始末 `settleAddressData()`（止めた構築を放し、裏の構築が終わるまで待つ）を足した。
+- 突き合わせの結果に `same-prefecture` を足した。`compareAddresses` は、番地・号を照合できていないとき（段A だけの間）は正規化した番地の文字列で比べ、`sameLevel` を 3 までにする。
+
+### 実データでの確認（日本のホスト、実通信、実際の子プロセス）
+
+- バンドルした子の入口（`address-build.js`、127KB。全体の `server.js` は 11MB）を起動して、全国マスターは 0.52 秒、郵便番号は 1.96 秒で構築できた。優先度は nice 10。`resolveBuildEntry` はバンドルの隣の `address-build.js` を選ぶ。
+- `normalize_address`: 初回（マスター + 千代田区 + 郵便番号）2.6 秒。2 回目 2ms。初めての市区町村は世田谷区 335ms、京都市中京区 556ms、札幌市中央区 558ms、渋谷区は郵便番号の逆引きと合わせて 1 秒未満。揃ったあと 300 回で p50 0.50ms、p95 3.09ms、最大 32ms。`search_postal_code`（郵便番号）は p50 0.10ms、p95 0.19ms。
+- 保存先の大きさ: 全国マスター 0.3MB、郵便番号 18MB（SQLite、索引つき）、市区町村 13KB〜510KB（中京区が最大）。マスター + 郵便番号 + 5 市区町村で 19MB。
+- 正しさ: `東京都千代田区永田町1-7-1` → 永田町一丁目、100-0014（exact）。`世田谷区三軒茶屋2-24-1` → 154-0024。`札幌市中央区北1条西2丁目` → 060-0001（`checks.zipcode` が match）。京都市中京区の `釜座通夷川下る大黒町` は 604-0014 に絞れ（exact）、通り名が無いと 3 件（604-0014 / 604-8031 / 604-8073、いずれも exact でない）。`永田町1-7-1` と `千代田区永田町一丁目7番1号 国会議事堂` は `same-block`（建物名だけが違う）。郵便番号 100-0001 との突き合わせは `partial`。
+- 事業所番号 060-8621 の座標は市区町村の代表点（`locationLevel: 2`）に退避した。事業所の町名が漢数字（北一条西）で、ABR は全角数字（北１条西）のため、ライブラリが町字に結びつけられない。
+
+### 次の計画に持ち越すこと
+
+- 段B（住居表示・地番）、`numberSource`、`reverse_geocode`、`checks.coordinates`。
+- 事業所・私書箱の座標: 町名を `foldName` で ABR の町字に結びつけて、町字の代表点（`locationLevel: 3`）を使う。
+- MCP / REST / OpenAPI / ツール台帳 / README / instructions への登録（3 ツールがそろってから 1 回で行い、ツール数を 47 → 50 に更新する）、ジオコーダーのローカル優先化、`search_poi` の連携、事前取得と `eager`、運用文書。
+- 子プロセスが失敗した理由（標準エラーの最後の 1 行）は `AddressUnavailableError.message` に入る。REST の `details` にどこまで出すかは登録時に決める。
