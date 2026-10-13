@@ -280,6 +280,8 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 > [!NOTE]
 > `localhost` / `127.0.0.1` / `[::1]` からの接続は、ホスト側のポート（上の例では 3016）が何であってもそのまま使えます。LAN の IP アドレス・公開ホスト名・リバースプロキシ経由で MCP（`/mcp`・`/sse`・`/message`）へ接続する場合は、`-e SORA_ALLOWED_HOSTS="sora.example.com"` を追加してください（ブラウザ上のクライアントから接続するなら `-e SORA_ALLOWED_ORIGINS="https://sora.example.com"` も）。許可されていない Host や Origin からの接続は 403 になり、応答の `hint` に設定すべき環境変数が示されます。
+>
+> REST API も、**ブラウザ上のページから**呼ぶ要求に限り、同じ許可リストで Host と Origin を検査します（別サイトのページからの呼び出しと、DNS rebinding で手元のサーバーが操作されるのを防ぐため）。curl・スクリプト・サーバー間通信のように、ブラウザを介さない要求は検査されず、Host が何でも従来どおり使えます。同じサーバーの `/docs`・`/swagger` からの「試す」も、そのまま動きます。自作の Web アプリなど別の Origin のページから呼ぶ場合は、`-e SORA_ALLOWED_ORIGINS="http://localhost:5173"` のようにそのページの Origin を追加してください。
 
 ### 1.2 MCP クライアント設定（Claude Desktop / Cursor / Cline / Windsurf 等）
 
@@ -694,6 +696,7 @@ sora_cache_hits_total 156
 | `sora_browser_recall_saved_total` | recall抽出でブラウザを省略した回数 |
 | `sora_credential_strip_total` | クロスオリジン除去回数 |
 | `sora_redirect_block_total` | redirect保護による拒否回数 |
+| `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
 # HELP sora_cache_hit_rate Cache hit rate
 # TYPE sora_cache_hit_rate gauge
 sora_cache_hit_rate 0.7647
@@ -1985,8 +1988,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
 | `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、本番の fetcher.ikebun.jp は `true` を指定して警告を止めています）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
-| `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください |
-| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）には影響しません。ブラウザ上のクライアントから接続するときに設定します |
+| `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
+| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` は従来どおりどの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
 | `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
 | `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |

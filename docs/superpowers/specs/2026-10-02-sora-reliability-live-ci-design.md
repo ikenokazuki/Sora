@@ -73,6 +73,11 @@ MCP transportはOrigin検証を要求し、不正OriginにはHTTP 403を返す�
 - 攻撃者指定のHostとOriginが一致しても許可しません。`X-Forwarded-Host`は信頼判断に使いません。Hostの欠落・不正形式も拒否します。
 - MCPのCORSは許可済みoriginだけを返します。認証、接続元判定、テナント分離、セッション単位のツール有効化は維持します。
 - 公開URL、TLS終端、コンテナのhost側portが異なる構成では、外部Host・Originを明示設定します。不正な設定は起動時に失敗させます。既存の配備設定を確認してから適用します。
+- 更新（REST）: REST全体も、**ブラウザ由来の要求**にだけ同じ許可リスト（`SORA_ALLOWED_HOSTS`・`SORA_ALLOWED_ORIGINS`）をかけます（`src/security/rest_origin.ts`）。手元で動かすサーバーは、ブラウザで開いた別サイトのページ（cross-siteのfetch）と、DNS rebindingで操作されうるためです。認証のない既定の構成では、`CORS: *`のまま、監視設定の読み取りや、利用者の回線を使った取得ができました。
+  - ブラウザ由来とは、`Origin`があるか、`Sec-Fetch-Site`が`none`以外の要求です。どちらもページ上のスクリプトから書き換えられません。`Sec-Fetch-Site: none`（利用者がアドレスバーから直接開いた）と、どちらも無い要求（curl・サーバー間通信・MCPクライアント）は検査しません。従来どおり、Hostが何でも通ります。
+  - ブラウザ由来の要求は、Hostが許可リスト（既定はloopbackをport不問）に入っていることを要求します。Originは許可リストに入っているか、Hostと同じオリジンであることを要求します（`/docs`・`/swagger`の「試す」が、port割り当てのある構成でも動くため）。`Origin`が無い`Sec-Fetch-Site: cross-site`（他サイトの`<img>`やリンク遷移）は拒否します。違反は403（`code: HOST_NOT_ALLOWED` / `ORIGIN_NOT_ALLOWED`）で、プリフライトも同様に先に検査します。
+  - 公開経路（`/`、`/health`、`/metrics`、`/openapi.json`、`/docs`、`/swagger`。認証を要さない経路と同じ一覧）と、MCPの経路（`mcp_origin.ts`が別に検査）は対象外です。公開経路のCORSは従来どおり`*`です。
+  - CORSは許可済みoriginだけを返し、ブラウザを介さない要求にはCORSヘッダーを付けません。`Sec-Fetch-*`に対応しない古いブラウザが、`Origin`を付けずに同一オリジンのGETをする場合は検査できません（POSTなどは必ず`Origin`が付くので検査できます）。
 
 ### F2–F4: 抽出時の情報欠落
 
