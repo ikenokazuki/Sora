@@ -6,8 +6,14 @@ import { join } from 'node:path';
 /**
  * 構築ジョブ。親プロセスと子プロセスで共有する。
  * city は町字（段A）、num は住居表示・地番の番地・号（段B）。どちらも市区町村（6 桁のコード）単位。
+ * index は逆ジオコーディング用の、町字の点の全国索引。
  */
-export type BuildJob = { kind: 'master' } | { kind: 'postal' } | { kind: 'city'; lgCode: string } | { kind: 'num'; lgCode: string };
+export type BuildJob =
+  | { kind: 'master' }
+  | { kind: 'postal' }
+  | { kind: 'index' }
+  | { kind: 'city'; lgCode: string }
+  | { kind: 'num'; lgCode: string };
 
 export function jobArtifactId(job: BuildJob): string {
   return job.kind === 'city' || job.kind === 'num' ? `${job.kind}:${job.lgCode}` : job.kind;

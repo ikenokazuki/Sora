@@ -7,6 +7,7 @@ import { cityNameOf, lgCode6, type JaCity, type JaJson, type TownJson } from './
 import {
   AddressStore, jobArtifactId, ttlFor, type AddressStatus, type ArtifactMeta, type BuildJob,
 } from './address_store.js';
+import { GeoIndexReader } from './address_geo_index.js';
 import { PostalReader } from './postal_code.js';
 
 export type { BuildJob } from './address_store.js';
@@ -95,7 +96,7 @@ interface FailureRecord {
 }
 
 const HOUR = 3_600_000;
-const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, city: 2, num: 3 };
+const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4 };
 const TOWN_CACHE_MAX = 50;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
 const READER_GRACE_MS = 30_000;
@@ -126,6 +127,7 @@ export class AddressData {
   private masterCache: MasterIndex | null = null;
   private readonly townCache = new Map<string, { ver: string; json: TownJson }>();
   private postalCache: { ver: string; reader: PostalReader } | null = null;
+  private geoCache: { ver: string; reader: GeoIndexReader } | null = null;
 
   constructor(private readonly options: AddressDataOptions) {
     this.now = options.now ?? Date.now;
@@ -222,6 +224,16 @@ export class AddressData {
     this.postalCache = { ver: ready.ver, reader: new PostalReader(join(ready.path, 'postal.sqlite')) };
     if (previous) setTimeout(() => previous.reader.close(), READER_GRACE_MS).unref();
     return this.postalCache;
+  }
+
+  /** 町字の点の全国索引の読み取り役（逆ジオコーディング用）。版が変わったら新しいものに替え、古いものは猶予のあとで閉じる。 */
+  async geoIndex(waitMs?: number): Promise<{ ver: string; reader: GeoIndexReader }> {
+    const ready = await this.ensure({ kind: 'index' }, waitMs);
+    if (this.geoCache?.ver === ready.ver) return this.geoCache;
+    const previous = this.geoCache;
+    this.geoCache = { ver: ready.ver, reader: new GeoIndexReader(join(ready.path, 'geo.sqlite')) };
+    if (previous) setTimeout(() => previous.reader.close(), READER_GRACE_MS).unref();
+    return this.geoCache;
   }
 
   /** 待機中・実行中のジョブがすべて終わるまで待つ（テストの後始末と、終了処理用）。 */

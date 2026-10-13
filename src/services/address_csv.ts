@@ -258,3 +258,32 @@ export function streamZipCsv(zipPath: string, onRow: (row: string[], control: Cs
     });
   });
 }
+
+/** 見出し行から、必要な列の位置を引く。無い列があれば、列名を示して失敗する。 */
+export function columnIndexes(header: readonly string[], names: readonly string[], label: string): number[] {
+  const missing = names.filter((name) => !header.includes(name));
+  if (missing.length > 0) throw new Error(`${label}に列 ${missing.join(', ')} がありません`);
+  return names.map((name) => header.indexOf(name));
+}
+
+/**
+ * zip の CSV を 1 行ずつ読み、見出し行で決めた列の位置（names の順）とともに onRow に渡す。
+ * names 以外の列は文字列を作らない。見出し行が無い（空の）ファイルは失敗する。
+ */
+export async function scanZipCsv(
+  zipPath: string,
+  label: string,
+  names: readonly string[],
+  onRow: (cols: number[], row: string[]) => void,
+): Promise<void> {
+  let cols: number[] | null = null;
+  await streamZipCsv(zipPath, (row, control) => {
+    if (cols === null) {
+      cols = columnIndexes(row, names, label);
+      control.keepColumns(cols);
+    } else {
+      onRow(cols, row);
+    }
+  });
+  if (cols === null) throw new Error(`${label}が空です`);
+}

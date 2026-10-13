@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   ABR_LAST_MODIFIED, CHIYODA_LG, SAPPORO_LG, SMALL_MINIMUM, abrUrl, sampleUpstream, type FakeUpstream,
 } from '../test_fixtures/address/harness.js';
+import { GeoIndexReader } from './address_geo_index.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
 import { runBuildJob, type JobDeps } from './address_jobs.js';
 import { AddressStore } from './address_store.js';
@@ -116,6 +117,46 @@ describe('postal', () => {
     );
     await expect(runBuildJob({ kind: 'postal' }, deps())).rejects.toThrow('1000001');
     expect(store.current('postal')).toBeNull();
+  });
+});
+
+describe('index', () => {
+  const readerOf = () => new GeoIndexReader(join(store.current('index')!.path, 'geo.sqlite'));
+
+  test('全国マスターの都道府県ごとに町字の位置参照を取得して、近傍検索の索引を公開する', async () => {
+    await runBuildJob({ kind: 'index' }, deps());
+    expect(store.current('master')).not.toBeNull();
+    expect(up.count('GET', 'mt_town_pos/pref')).toBe(2);
+    const reader = readerOf();
+    try {
+      const near = reader.nearest(35.6759, 139.7463, 5, 1000);
+      expect(near.map((town) => [town.lgCode, town.machiazaId, town.rsdt])).toEqual([[CHIYODA_LG, '0005001', true], [CHIYODA_LG, '0005002', true]]);
+      expect(reader.nearest(43.063, 141.3544, 1, 500)[0]).toMatchObject({ lgCode: SAPPORO_LG, machiazaId: '0013001', rsdt: false });
+    } finally {
+      reader.close();
+    }
+    expect(store.current('index')?.meta.sourceDate).toBe('2026-10-02');
+  });
+
+  test('取得元が変わっていなければダウンロードせず、確認日時だけ進める', async () => {
+    await runBuildJob({ kind: 'index' }, deps());
+    const seq = store.read().seq;
+    await runBuildJob({ kind: 'index' }, deps());
+    expect(store.read().seq).toBe(seq);
+    expect(up.count('GET', 'mt_town_pos/pref')).toBe(2);
+  });
+
+  test('想定より少ない点しか無ければ公開しない', async () => {
+    await expect(runBuildJob({ kind: 'index' }, { ...deps(), minimum: { ...SMALL_MINIMUM, points: 1000 } })).rejects.toThrow('想定より小さい');
+    expect(store.current('index')).toBeNull();
+    expect(store.read().failures.index?.message).toContain('想定より小さい');
+  });
+
+  test('都道府県の位置参照が見つからない・国外 IP の拒否（403）は失敗として記録する', async () => {
+    up.routes.delete(abrUrl('mt_town_pos/pref/mt_town_pos_pref01'));
+    await expect(runBuildJob({ kind: 'index' }, deps())).rejects.toThrow('01');
+    up.set(abrUrl('mt_town_pos/pref/mt_town_pos_pref13'), { body: '', status: 403 });
+    await expect(runBuildJob({ kind: 'index' }, deps())).rejects.toThrow('HTTP 403');
   });
 });
 

@@ -1,11 +1,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildJaJson, buildTownJson, type Row } from './address_abr.js';
-import { parseCsvRows, readZipText } from './address_csv.js';
+import { buildJaJson, buildTownJson, isSupportedSrid, type Row } from './address_abr.js';
+import { parseCsvRows, readZipText, scanZipCsv } from './address_csv.js';
 import {
   ABR_BASE, combineSignatures, downloadToFile, headSignature, latestSourceDate, resolveJapanPostLinks, type HttpDeps, type Signature,
 } from './address_http.js';
-import type { TownJson } from './address_names.js';
+import { buildGeoIndex, type GeoPoint } from './address_geo_index.js';
+import { lgCode6, type JaJson, type TownJson } from './address_names.js';
 import { buildNumbers, type NumberFiles } from './address_numbers.js';
 import { jobArtifactId, type AddressStore, type BuildJob } from './address_store.js';
 import { buildPostalDb, parseJigyosyo, parseKenAll } from './postal_code.js';
@@ -19,8 +20,10 @@ export interface JobMinimum {
   towns: number;
   general: number;
   office: number;
+  /** 町字の点の全国索引の点の数。 */
+  points: number;
 }
-export const DEFAULT_MINIMUM: JobMinimum = { prefs: 47, cities: 1500, towns: 1, general: 100_000, office: 15_000 };
+export const DEFAULT_MINIMUM: JobMinimum = { prefs: 47, cities: 1500, towns: 1, general: 100_000, office: 15_000, points: 150_000 };
 
 export interface JobDeps {
   store: AddressStore;
@@ -29,6 +32,7 @@ export interface JobDeps {
   nowSeconds?: () => number;
 }
 
+const INDEX_CONCURRENCY = 8;
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 const seconds = (deps: JobDeps): number => (deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000)))();
 const limits = (deps: JobDeps): JobMinimum => ({ ...DEFAULT_MINIMUM, ...deps.minimum });
@@ -38,6 +42,7 @@ export async function runBuildJob(job: BuildJob, deps: JobDeps): Promise<void> {
   try {
     if (job.kind === 'master') await buildMaster(deps);
     else if (job.kind === 'postal') await buildPostal(deps);
+    else if (job.kind === 'index') await buildIndex(deps);
     else if (job.kind === 'num') await buildNum(job.lgCode, deps);
     else await buildCity(job.lgCode, deps);
   } catch (error) {
@@ -117,6 +122,74 @@ async function buildCity(lgCode: string, deps: JobDeps): Promise<void> {
     mkdirSync(out);
     writeFileSync(join(out, 'town.json'), JSON.stringify(town));
     await store.publish(id, out, { sig, sourceDate });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** 同時に走らせる数を絞って、items を順に処理する。1 件でも失敗したら、それ以降は始めない。 */
+async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async (): Promise<void> => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await fn(items[index] as T);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * 町字の点の全国索引。全国マスターの都道府県ごとに、町字の位置参照（都道府県単位の zip）を取得して、
+ * 近傍検索用の SQLite にまとめる。全国マスターが無ければ先に作る。
+ */
+async function buildIndex(deps: JobDeps): Promise<void> {
+  const { store, http } = deps;
+  if (!store.current('master')) await buildMaster(deps);
+  const master = store.current('master');
+  if (!master) throw new Error('全国マスターを用意できませんでした');
+  const ja = JSON.parse(readFileSync(join(master.path, 'ja.json'), 'utf8')) as JaJson;
+  const prefCodes = ja.data.map((pref) => lgCode6(pref.code).slice(0, 2));
+  const urls = prefCodes.map((code) => `${ABR_BASE}/mt_town_pos/pref/mt_town_pos_pref${code}.csv.zip`);
+  const signatures = await mapLimit(urls, INDEX_CONCURRENCY, (url) => headSignature(url, http));
+  const missing = prefCodes.filter((_, index) => signatures[index] === null);
+  if (missing.length > 0) throw new Error(`ABR の町字位置参照（都道府県 ${missing.join(', ')}）が見つかりません`);
+  const sig = combineSignatures(signatures);
+  const sourceDate = latestSourceDate(signatures);
+  if (store.current('index')?.meta.sig === sig) {
+    await store.markChecked('index', sourceDate);
+    return;
+  }
+  const work = store.makeWorkDir();
+  try {
+    const zips = await mapLimit(urls, INDEX_CONCURRENCY, async (url) => {
+      const zip = join(work, `${url.slice(url.lastIndexOf('/') + 1)}`);
+      if (!(await downloadToFile(url, zip, http))) throw new Error(`ABR の町字位置参照が見つかりません: ${url}`);
+      return zip;
+    });
+    const points: GeoPoint[] = [];
+    for (const zip of zips) {
+      await scanZipCsv(zip, 'ABR の町字位置参照', ['lg_code', 'machiaza_id', 'rsdt_addr_flg', 'rep_lon', 'rep_lat', 'rep_srid'], (cols, row) => {
+        if (!isSupportedSrid(row[cols[5] as number])) return;
+        points.push({
+          lgCode: row[cols[0] as number] ?? '', machiazaId: row[cols[1] as number] ?? '', rsdt: row[cols[2] as number] === '1',
+          lon: Number.parseFloat(row[cols[3] as number] ?? ''), lat: Number.parseFloat(row[cols[4] as number] ?? ''),
+        });
+      });
+    }
+    const out = join(work, 'out');
+    mkdirSync(out);
+    const count = buildGeoIndex(join(out, 'geo.sqlite'), points);
+    if (count < limits(deps).points) throw new Error(`ABR の町字の点が想定より小さい（${count} 点）`);
+    await store.publish('index', out, { sig, sourceDate });
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
