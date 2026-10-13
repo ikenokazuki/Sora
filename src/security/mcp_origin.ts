@@ -141,20 +141,21 @@ function deny(c: any, reason: 'host' | 'origin', host?: string) {
   return c.json({ error: 'Forbidden: untrusted host or origin for MCP endpoint', hint }, 403);
 }
 
+/** 要求の Host（小文字化済み）。Host ヘッダーが無いときだけ URL のホストで代える。解釈できなければ undefined。 */
+export function resolveRequestHost(c: any): string | undefined {
+  const hostHeader = c.req.header('host');
+  if (hostHeader) return normalizeHost(hostHeader);
+  try {
+    return normalizeHost(new URL(c.req.url).host);
+  } catch {
+    return undefined;
+  }
+}
+
 export function createMcpOriginMiddleware(options: McpOriginOptions = {}): MiddlewareHandler {
   const config = resolveMcpOriginConfig(options);
   const handler = (async (c: any, next: () => Promise<void>) => {
-    const hostHeader = c.req.header('host');
-    let headerHost = hostHeader ? normalizeHost(hostHeader) : undefined;
-    if (headerHost === undefined && !hostHeader) {
-      try {
-        const u = new URL(c.req.url);
-        headerHost = normalizeHost(u.host);
-      } catch {
-        headerHost = undefined;
-      }
-    }
-    const normalizedHost = headerHost;
+    const normalizedHost = resolveRequestHost(c);
     const hostAllowed = normalizedHost !== undefined
       && (config.allowedHosts.has(normalizedHost) || (config.allowLoopbackAnyPort && isLoopbackAuthority(normalizedHost)));
     if (!normalizedHost || !hostAllowed) return deny(c, 'host', normalizedHost);
