@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import {
   dbGetCache,
   dbSetCache,
@@ -18,6 +19,20 @@ export const CACHE_TTL_DEFAULT = 30 * 60 * 1000; // 30分
 export const CACHE_TTL_WEATHER = 60 * 60 * 1000; // 1時間
 export const CACHE_TTL_TREND = 2 * 60 * 1000;   // 2分
 export const CACHE_TTL_REALTIME = 3 * 60 * 1000; // 3分
+
+/**
+ * キャッシュキーの本体を、結果に影響する入力から作る。
+ *
+ * `Options` の項目は、`parts` に入れるか `Ignored` に挙げるかのどちらかを必ず選ぶ（どちらでもないと型エラー）。
+ * 項目を足したときにキーへの追加を忘れ、別のリクエストの結果を返してしまうのを防ぐ。
+ * 既定値の解決は呼び出し側で済ませてから渡す（未指定と既定値が同じキーになる）。
+ */
+export function cacheKeyDigest<Options, Ignored extends keyof Options = never>(
+  parts: Record<Exclude<keyof Options, Ignored>, unknown>,
+): string {
+  const json = JSON.stringify(parts, (_key, value) => (value === undefined ? null : value));
+  return createHash('sha256').update(json).digest('hex').slice(0, 32);
+}
 
 const MAX_CACHE_SIZE = 3000;
 const MAX_CACHE_ENTRY_BYTES = 2 * 1024 * 1024; // 1エントリ最大2MB
