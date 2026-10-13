@@ -16,7 +16,7 @@ let up: FakeUpstream;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-jobs-'));
   store = new AddressStore(dir);
-  up = sampleUpstream();
+  up = sampleUpstream({ numbers: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

@@ -181,8 +181,11 @@ export const KEN_ALL_FIXTURE = `${[
 
 const JP_BASE = 'https://www.post.japanpost.jp/service/search/zipcode/download';
 
-/** 全国マスター、千代田区と札幌市中央区の町字、日本郵便の郵便番号データを持つ偽の取得元。 */
-export function sampleUpstream(): FakeUpstream {
+/**
+ * 全国マスター、千代田区と札幌市中央区の町字、日本郵便の郵便番号データを持つ偽の取得元。
+ * numbers: true で、千代田区の住居表示と札幌市中央区の地番も持つ（無いときは 404、つまり番地・号のデータが無い市区町村）。
+ */
+export function sampleUpstream(options: { numbers?: boolean } = {}): FakeUpstream {
   const up = new FakeUpstream();
   const abr = (path: string, header: readonly string[], rows: readonly (readonly string[])[]): void => {
     const name = path.slice(path.lastIndexOf('/') + 1);
@@ -204,10 +207,12 @@ export function sampleUpstream(): FakeUpstream {
   abr(`mt_town_pos/city/mt_town_pos_city${CHIYODA_LG}`, TOWN_POS_HEADER, CHIYODA_POS);
   abr(`mt_town/city/mt_town_city${SAPPORO_LG}`, TOWN_HEADER, SAPPORO_TOWNS);
   abr(`mt_town_pos/city/mt_town_pos_city${SAPPORO_LG}`, TOWN_POS_HEADER, SAPPORO_POS);
-  abr(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`, RSDT_HEADER, CHIYODA_RSDT);
-  abr(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`, RSDT_POS_HEADER, CHIYODA_RSDT_POS);
-  abr(`mt_parcel/city/mt_parcel_city${SAPPORO_LG}`, PARCEL_HEADER, SAPPORO_PARCELS);
-  abr(`mt_parcel_pos/city/mt_parcel_pos_city${SAPPORO_LG}`, PARCEL_POS_HEADER, SAPPORO_PARCEL_POS);
+  if (options.numbers) {
+    abr(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`, RSDT_HEADER, CHIYODA_RSDT);
+    abr(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`, RSDT_POS_HEADER, CHIYODA_RSDT_POS);
+    abr(`mt_parcel/city/mt_parcel_city${SAPPORO_LG}`, PARCEL_HEADER, SAPPORO_PARCELS);
+    abr(`mt_parcel_pos/city/mt_parcel_pos_city${SAPPORO_LG}`, PARCEL_POS_HEADER, SAPPORO_PARCEL_POS);
+  }
 
   up.set(JAPANPOST_KEN_ALL_PAGE, { body: '<a href="utf/zip/utf_add_2609.zip">差分</a><a href="utf/zip/utf_ken_all.zip">全国</a>', finalUrl: `${JP_BASE}/utf-zip.html` });
   up.set(JAPANPOST_JIGYOSYO_PAGE, { body: '<a href="zip/jigyosyo.zip">全国</a>', finalUrl: `${JP_BASE}/office/index-zip.html` });
