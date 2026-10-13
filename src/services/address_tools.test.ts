@@ -4,23 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
-import { createAddressContext } from './address_context.js';
+import { createAddressContext, setAddressContextForTest } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
 import { ADDRESS_ATTRIBUTION, normalizeAddressTool, reverseGeocodeTool, searchPostalCode, type SearchPostalCodeByAddress, type SearchPostalCodeByZip } from './address_tools.js';
+import { publicDataRoutes } from '../routes/public_data.js';
 
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-tools-'));
 });
 afterEach(async () => {
+  setAddressContextForTest(null);
   await settleAddressData();
   rmSync(dir, { recursive: true, force: true });
 });
 
 const setup = (options: Parameters<typeof createTestAddressData>[1] = {}) => {
   const built = createTestAddressData(dir, options);
-  return { ...built, ctx: createAddressContext(built.data) };
+  const ctx = createAddressContext(built.data);
+  setAddressContextForTest(ctx);
+  return { ...built, ctx };
 };
 
 describe('searchPostalCode', () => {
@@ -254,3 +258,93 @@ describe('reverseGeocodeTool', () => {
     });
   });
 });
+
+describe('REST routes (/geo/*)', () => {
+  const setup8 = () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const ctx = createAddressContext(built.data);
+    setAddressContextForTest(ctx);
+    return ctx;
+  };
+
+  test('POST /geo/postal-code で郵便番号から候補を引く', async () => {
+    setup();
+    const res = await publicDataRoutes.request('/geo/postal-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zipcode: '100-0014' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as SearchPostalCodeByZip;
+    expect(body).toMatchObject({ zipcode: '1000014', count: 1 });
+  });
+
+  test('GET /geo/postal-code で住所から郵便番号を逆引きする', async () => {
+    setup();
+    const res = await publicDataRoutes.request(
+      `/geo/postal-code?address=${encodeURIComponent('東京都千代田区永田町1-7-1')}`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as SearchPostalCodeByAddress;
+    expect(body.postalCodes?.[0]?.zipcode).toBe('1000014');
+  });
+
+  test('POST /geo/postal-code に不正な引数を渡すと 400', async () => {
+    setup();
+    const res = await publicDataRoutes.request('/geo/postal-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /geo/address/normalize で住所正規化・突き合わせを行う', async () => {
+    setup8();
+    const res = await publicDataRoutes.request('/geo/address/normalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { level: number; normalized: string; checks?: { zipcode?: { status: string } } };
+    expect(body).toMatchObject({ level: 8, normalized: '東京都千代田区永田町一丁目7-1', checks: { zipcode: { status: 'match' } } });
+  });
+
+  test('GET /geo/address/normalize でクエリパラメータ経由の正規化を行う', async () => {
+    setup();
+    const res = await publicDataRoutes.request(
+      `/geo/address/normalize?address=${encodeURIComponent('東京都千代田区永田町1-7-1')}&level=2`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { level: number; normalized: string };
+    expect(body).toMatchObject({ level: 2, normalized: '東京都千代田区' });
+  });
+
+  test('POST /geo/reverse で座標から住所を逆ジオコーディングする', async () => {
+    setup8();
+    const res = await publicDataRoutes.request('/geo/reverse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: 35.675915, lon: 139.745515 }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { found: boolean; level: number; normalized: string };
+    expect(body).toMatchObject({ found: true, level: 8, normalized: '東京都千代田区永田町一丁目7-1' });
+  });
+
+  test('GET /geo/reverse でクエリパラメータ経由の逆ジオコーディングを行う', async () => {
+    setup8();
+    const res = await publicDataRoutes.request('/geo/reverse?lat=35.675915&lon=139.745515');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { found: boolean; level: number };
+    expect(body).toMatchObject({ found: true, level: 8 });
+  });
+
+  test('GET /geo/reverse に不正な座標を渡すと 400', async () => {
+    setup();
+    const res = await publicDataRoutes.request('/geo/reverse?lat=invalid&lon=139.7');
+    expect(res.status).toBe(400);
+  });
+});
+

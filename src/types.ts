@@ -909,6 +909,77 @@ export const ElevationRequestSchema = z.object({
 });
 export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
 
+// 住所データ（ABR）: 郵便番号・正規化・逆ジオコーディング。結果は内部の型をそのまま返すので、主要項目だけを定義する。
+const AddressDatasetSchema = z.object({
+  source: z.string(),
+  updatedAt: z.string().nullable().describe('使ったデータのうち最も古い取得元の最終更新日 (YYYY-MM-DD)'),
+  stale: z.boolean().describe('確認日時が期限の2倍を超えたデータを使った'),
+}).describe('答えに使ったデータの新しさ');
+const addressResultBase = {
+  incomplete: z.boolean().optional().describe('待ち時間までにデータが揃わず、取れている範囲で答えた。数秒後の再呼び出しで完全になる'),
+  pending: z.array(z.string()).optional().describe('取得中のデータ'),
+  dataset: AddressDatasetSchema,
+  attribution: z.string().describe('出典・加工の明記。結果を表示・公開する際に必ず併記する'),
+};
+
+export const PostalCodeRequestSchema = z.object({
+  zipcode: z.string().trim().optional().describe('郵便番号 (例: "100-0014", "〒100-0014")。住所候補を引く。address とは排他'),
+  address: z.string().trim().max(300).optional().describe('住所 (例: "東京都千代田区永田町1-7-1")。郵便番号を引く。zipcode とは排他'),
+});
+export const PostalCodeResultSchema = z.looseObject({
+  zipcode: z.string().optional().describe('順引き時の 7 桁の郵便番号'),
+  count: z.number().int().optional().describe('順引き時の候補数。該当なしは 0'),
+  candidates: z.array(z.looseObject({
+    kind: z.enum(['general', 'office', 'po_box']), prefecture: z.string(), city: z.string(), town: z.string(),
+    lgCode: z.string().optional(), lat: z.number().optional(), lon: z.number().optional(),
+    locationLevel: z.number().int().optional().describe('座標の細かさ。2 市区町村 / 3 町字 / 8 番地'),
+  })).optional(),
+  address: z.string().optional(), normalized: z.string().optional(), level: z.number().int().optional(),
+  postalCodes: z.array(z.looseObject({ zipcode: z.string(), exact: z.boolean(), fallback: z.boolean() })).optional().describe('逆引き時の郵便番号。fallback は市区町村の既定番号'),
+  ...addressResultBase,
+});
+
+export const NormalizeAddressRequestSchema = z.object({
+  address: z.string().trim().min(1).max(300).describe('正規化する住所。先頭の〒郵便番号は postalCode として分離する'),
+  level: z.number().int().min(1).max(8).optional().describe('正規化する最大の階層 (1〜8、既定 8)。8 は番地・号まで').meta({ default: 8 }),
+  zipcode: z.string().trim().optional().describe('住所と突き合わせる郵便番号。checks.zipcode に match / partial / mismatch / unknown を返す'),
+  lat: z.number().min(-90).max(90).optional().describe('突き合わせる緯度 (lon とペア)。checks.coordinates を返す'),
+  lon: z.number().min(-180).max(180).optional().describe('突き合わせる経度 (lat とペア)'),
+  compareAddress: z.string().trim().max(300).optional().describe('名寄せの相手の住所。checks.compare に一致する最も深い階層と違いを返す'),
+});
+export const NormalizeAddressResultSchema = z.looseObject({
+  input: z.string(), postalCode: z.string().optional(),
+  pref: z.string().optional(), city: z.string().optional(), town: z.string().optional(), addr: z.string().optional(),
+  other: z.string().describe('正規化できなかった残り (建物名など)'),
+  normalized: z.string().describe('pref + city + town + addr'),
+  level: z.number().int().describe('0 不明 / 1 都道府県 / 2 市区町村 / 3 町字 / 8 番地・号'),
+  numberSource: z.enum(['rsdt', 'chiban']).nullable().describe('番地・号を何で照合したか。存在確認は証拠であって証明ではない。null は整形のみで未照合'),
+  keys: z.record(z.string(), z.unknown()).describe('結合キー (prefCode, lgCode, machiazaId, blk, rsdt, prc)'),
+  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional(),
+  postalCodes: z.array(z.looseObject({ zipcode: z.string() })),
+  checks: z.looseObject({}).optional().describe('指定した突き合わせ (zipcode / coordinates / compare)'),
+  ...addressResultBase,
+});
+
+export const ReverseGeocodeRequestSchema = z.object({
+  lat: z.number().min(-90).max(90).describe('緯度'),
+  lon: z.number().min(-180).max(180).describe('経度'),
+  maxDistanceMeters: z.number().int().min(1).max(2000).optional().describe('番地・号の点を探す範囲m (既定 300、最大 2000)').meta({ default: 300 }),
+});
+export const ReverseGeocodeResultSchema = z.looseObject({
+  lat: z.number(), lon: z.number(),
+  found: z.boolean(),
+  normalized: z.string().optional(),
+  level: z.number().int(),
+  numberSource: z.enum(['rsdt', 'chiban']).nullable(),
+  distanceMeters: z.number().optional().describe('最寄りの点までの距離。ポリゴンの包含判定ではなく代表点による最寄り判定'),
+  approximate: z.boolean().optional(),
+  keys: z.record(z.string(), z.unknown()),
+  postalCodes: z.array(z.looseObject({ zipcode: z.string() })).optional(),
+  alternatives: z.array(z.looseObject({})).optional(),
+  ...addressResultBase,
+});
+
 export const PoiSearchRequestSchema = z.object({
   query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
   lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
@@ -2181,6 +2252,43 @@ export function zodToOpenApiSchema(schema: z.ZodTypeAny): any {
   });
 }
 
+// 住所データ（ABR）の3機能。POST は JSON、GET は同じ項目をクエリで受ける。
+function addressOpenApiPaths() {
+  const operation = (
+    summary: string, request: z.ZodTypeAny, result: z.ZodTypeAny, example: unknown,
+    query: Array<{ name: string; required?: boolean }>,
+  ) => ({
+    post: {
+      summary,
+      requestBody: { content: { 'application/json': { schema: zodToOpenApiSchema(request), example } } },
+      responses: { '200': { description: summary, content: { 'application/json': { schema: zodToOpenApiSchema(result) } } } },
+    },
+    get: {
+      summary: `${summary} (GET クエリ指定)`,
+      parameters: query.map(({ name, required }) => ({ name, in: 'query', required: required === true, schema: { type: 'string' } })),
+      responses: { '200': { description: summary, content: { 'application/json': { schema: zodToOpenApiSchema(result) } } } },
+    },
+  });
+  return {
+    '/geo/postal-code': operation(
+      '郵便番号 ⇄ 住所候補 API (ABR・日本郵便データを必要な範囲だけ取得して使う)',
+      PostalCodeRequestSchema, PostalCodeResultSchema, { zipcode: '100-0014' },
+      [{ name: 'zipcode' }, { name: 'address' }],
+    ),
+    '/geo/address/normalize': operation(
+      '住所の正規化と、郵便番号・座標・住所同士の突き合わせ API (番地・号まで照合)',
+      NormalizeAddressRequestSchema, NormalizeAddressResultSchema,
+      { address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' },
+      [{ name: 'address', required: true }, { name: 'level' }, { name: 'zipcode' }, { name: 'lat' }, { name: 'lon' }, { name: 'compareAddress' }],
+    ),
+    '/geo/reverse': operation(
+      '緯度経度 → 住所 (逆ジオコーディング) API。代表点による最寄り判定',
+      ReverseGeocodeRequestSchema, ReverseGeocodeResultSchema, { lat: 35.675895, lon: 139.746306 },
+      [{ name: 'lat', required: true }, { name: 'lon', required: true }, { name: 'maxDistanceMeters' }],
+    ),
+  };
+}
+
 export function generateOpenApiDocument() {
   const doc = {
     openapi: '3.0.0',
@@ -3394,6 +3502,7 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      ...addressOpenApiPaths(),
       '/traffic/flight': {
         post: {
           summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API',
@@ -3641,6 +3750,9 @@ export function generateOpenApiDocument() {
     '/gov/diet-minutes': DietMinutesSearchRequestSchema,
     '/geo/elevation': ElevationRequestSchema,
     '/geo/poi': PoiSearchRequestSchema,
+    '/geo/postal-code': PostalCodeRequestSchema,
+    '/geo/address/normalize': NormalizeAddressRequestSchema,
+    '/geo/reverse': ReverseGeocodeRequestSchema,
     '/traffic/flight': FlightStatusRequestSchema,
     '/traffic/flight/{airport}': FlightStatusRequestSchema,
     '/tracking/{carrier}/{number}': trackingGetSchema,

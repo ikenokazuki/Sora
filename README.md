@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 33 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 47 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (36ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 36 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 50 ツール）。
 
 ```json
 {
@@ -76,7 +76,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 70 オペレーション（64 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 76 オペレーション（67 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -107,7 +107,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
 >    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
->    - 気象・防災・地震・道路交通・標高・施設・航空運航: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status
+>    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status, search_postal_code, normalize_address, reverse_geocode
 >    - 国内交通乗換・運賃: search_route
 >    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
@@ -318,12 +318,12 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 47 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 50 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **11 個の論理モジュール（全 47 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 50 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 33 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (36ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 36 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -340,12 +340,15 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 33 ツール)**:
+- **動的有効化 (・ DEFERRED 36 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: Nominatim 住所・地名の座標解決 & 国土地理院の標高（海抜）取得
-  - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件）
+  - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
+  - `search_postal_code`: デジタル庁 ABR / 日本郵便 郵便番号から住所候補検索・住所から郵便番号逆引き
+  - `normalize_address`: デジタル庁 ABR 住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合
+  - `reverse_geocode`: デジタル庁 ABR 緯度経度座標からの最寄り住所逆引き（住居表示・地番）
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
   - `predict_hts_code`: 米国 USITC 公式 HTS/HS コード自動推測・ヒアリング誘導
   - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
@@ -455,7 +458,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 - **応答サイズ**: 平均 81KB（24〜240KB）。内訳は本文 Markdown 49%、X 投稿 31%、ハイライト 11%。
 - **待ち時間**: 1.1〜14.4 秒、中央値 3.3 秒。遅いときは、最も遅い 1 ページ（ブラウザ描画に昇格したページなど）が全体を律速します。
-- **`tools/list`**: 全 47 ツールで約 82KB（`outputSchema` を除外した後。除外前は約 245KB）。初期公開の 14 ツールは約 35KB です。
+- **`tools/list`**: 全 50 ツールで約 88KB（`outputSchema` を除外した後。除外前は約 260KB）。初期公開の 14 ツールは約 35KB です。
 
 | 目的 | 指定するもの | 内容と注意 |
 |---|---|---|
@@ -511,15 +514,18 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 🚨 Module 5: Disaster & Emergency (`ENABLED_MODULES=disaster`)
-気象庁公式特別警報・気象警報・注意報および P2P地震情報 / 気象庁リアルタイム地震速報。
+### 🚨 Module 5: Disaster, Geo & Address (`ENABLED_MODULES=disaster`)
+気象庁公式特別警報・気象警報・注意報および P2P地震情報 / 気象庁リアルタイム地震速報、デジタル庁アドレス・ベース・レジストリ（ABR）/ 日本郵便の一次データを用いた住所正規化・郵便番号・逆ジオコーディング。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
-| `get_elevation` | 住所・地名をNominatimで緯度経度へ解決し、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
-| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をNominatimで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
+| `get_elevation` | 住所・地名をNominatimで緯度経度へ解決し、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
+| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をNominatimで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 取得済みローカル住所データで各POIに addressInfo を付与<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
+| `search_postal_code` | 日本郵便およびデジタル庁 ABR による郵便番号検索・逆引き。郵便番号から住所候補（町字・事業所）を引く、または住所から郵便番号を逆引きします。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)<br>- `address` (string, 任意): 住所文字列 (zipcode と排他) |
+| `normalize_address` | デジタル庁 ABR による住所正規化・代表点座標解決・名寄せ突き合わせ。住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 必須): 正規化対象住所 (例: "東京都千代田区永田町1-7-1")<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8)<br>- `zipcode` (string, 任意): 突き合わせ用郵便番号<br>- `lat` / `lon` (number, 任意): 突き合わせ用座標<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 |
+| `reverse_geocode` | デジタル庁 ABR による緯度経度からの最寄り住所逆引き。住居表示または地番レベル（level 8）の住所文字列、全国地方公共団体コード、街区・番地号キー、郵便番号を即座に特定します。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `lat` (number, 必須): 緯度 (-90〜90)<br>- `lon` (number, 必須): 経度 (-180〜180)<br>- `maxDistanceMeters` (number, 任意): 探索半径 (メートル, デフォルト: 1000, 上限: 3000) |
 
 ---
 
@@ -1524,6 +1530,27 @@ GETでは`/geo/poi?query=ラーメン&center=原宿&radiusMeters=1000&limit=5`�
 
 OpenPOIの複数語検索はORのため、場所を`query`へ混ぜず`center`へ指定してください。地名解決失敗時はエラーを返し、広域検索へ切り替えません。該当なしの場合や座標が不正な場合は失敗として扱います。
 
+#### 郵便番号検索・逆引き (`POST /geo/postal-code` / `GET /geo/postal-code`)
+
+日本郵便およびデジタル庁アドレス・ベース・レジストリ（ABR）を活用し、郵便番号から住所候補（町字・事業所）を取得、または住所文字列から該当する郵便番号を逆引きします。
+
+- **リクエスト例 (POST - 郵便番号から検索)**: `{"zipcode": "100-0014"}`
+- **リクエスト例 (GET - 住所から逆引き)**: `GET /geo/postal-code?address=東京都千代田区永田町1-7-1`
+
+#### 住所正規化・代表点座標・名寄せ (`POST /geo/address/normalize` / `GET /geo/address/normalize`)
+
+デジタル庁 ABR 一次データに基づき、住所文字列を街区・住居番号・地番（level 8）まで正規化し、代表点緯度経度座標および郵便番号を付与します。郵便番号（`zipcode`）や座標（`lat` / `lon`）との突き合わせ、比較用住所（`compareAddress`）との名寄せ判定（同一・同一街区・同一町字等の関係判別）も可能です。
+
+- **リクエスト例 (POST)**: `{"address": "東京都千代田区永田町1-7-1", "zipcode": "100-0014"}`
+- **リクエスト例 (GET)**: `GET /geo/address/normalize?address=東京都千代田区永田町1-7-1&level=8`
+
+#### 座標逆ジオコーディング (`POST /geo/reverse` / `GET /geo/reverse`)
+
+緯度経度座標から最も近い住所（住居表示または地番、level 8）を逆引きします。全国地方公共団体コード、町字ID、街区・番地号、郵便番号を特定します。
+
+- **リクエスト例 (POST)**: `{"lat": 35.675915, "lon": 139.745515}`
+- **リクエスト例 (GET)**: `GET /geo/reverse?lat=35.675915&lon=139.745515`
+
 ---
 
 ### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
@@ -1965,7 +1992,13 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel` または `all`） |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 47 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 50 ツール静的一括ロード |
+| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード（`lazy`: オンデマンド遅延ロード、`eager`: 共有ジオコーダーでもローカル住所優先、`off`: 完全無効化） |
+| `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
+| `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
+| `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
+| `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
+| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する都道府県コード（カンマ区切り、例: `13` や `13,14`、全国は `all`） |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |

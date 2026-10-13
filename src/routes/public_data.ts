@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   fetchWeatherForecast,
   fetchWeatherWarnings,
@@ -21,6 +21,9 @@ import {
   ElevationRequestSchema,
   FlightStatusRequestSchema,
   PoiSearchRequestSchema,
+  PostalCodeRequestSchema,
+  NormalizeAddressRequestSchema,
+  ReverseGeocodeRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
@@ -341,6 +344,7 @@ publicDataRoutes.get('/geo/poi', async (c) => {
     bbox: c.req.query('bbox'),
     limit: num('limit'),
     noCache: c.req.query('noCache') === 'true',
+    withAddress: c.req.query('withAddress') === 'true' ? true : undefined,
   });
   if (!parsed.success) {
     return formatError(c, 'Invalid POI search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
@@ -351,6 +355,106 @@ publicDataRoutes.get('/geo/poi', async (c) => {
     return c.json(result);
   } catch (err) {
     return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
+  }
+});
+
+// ABR 住所データ: 郵便番号・正規化・逆ジオコーディング。住所モジュールは呼ばれたときだけ読み込む。
+async function addressErrorResponse(c: Context, err: unknown) {
+  const { AddressDisabledError, AddressInputError, AddressUnavailableError } = await import('../services/address_errors.js');
+  const message = errorMessage(err) || 'Address lookup failed';
+  if (err instanceof AddressInputError) return formatError(c, message, 'INVALID_INPUT', 400);
+  if (err instanceof AddressDisabledError) return formatError(c, message, 'ADDRESS_DISABLED', 404);
+  if (err instanceof AddressUnavailableError) return formatError(c, message, 'ADDRESS_DATA_UNAVAILABLE', 502, !err.blocked);
+  return formatError(c, message, 'GEO_ERROR', 500);
+}
+
+const queryNumber = (c: Context, key: string): number | undefined => {
+  const v = c.req.query(key);
+  if (v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+async function readJsonBody(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    return {};
+  }
+}
+
+publicDataRoutes.post('/geo/postal-code', async (c) => {
+  const parsed = PostalCodeRequestSchema.safeParse(await readJsonBody(c));
+  if (!parsed.success) return formatError(c, 'Invalid postal code parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { searchPostalCode } = await import('../services/address_tools.js');
+    return c.json(await searchPostalCode(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
+  }
+});
+
+publicDataRoutes.get('/geo/postal-code', async (c) => {
+  const parsed = PostalCodeRequestSchema.safeParse({ zipcode: c.req.query('zipcode'), address: c.req.query('address') });
+  if (!parsed.success) return formatError(c, 'Invalid postal code parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { searchPostalCode } = await import('../services/address_tools.js');
+    return c.json(await searchPostalCode(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
+  }
+});
+
+publicDataRoutes.post('/geo/address/normalize', async (c) => {
+  const parsed = NormalizeAddressRequestSchema.safeParse(await readJsonBody(c));
+  if (!parsed.success) return formatError(c, 'Invalid address parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { normalizeAddressTool } = await import('../services/address_tools.js');
+    return c.json(await normalizeAddressTool(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
+  }
+});
+
+publicDataRoutes.get('/geo/address/normalize', async (c) => {
+  const parsed = NormalizeAddressRequestSchema.safeParse({
+    address: c.req.query('address'),
+    level: queryNumber(c, 'level'),
+    zipcode: c.req.query('zipcode'),
+    lat: queryNumber(c, 'lat'),
+    lon: queryNumber(c, 'lon'),
+    compareAddress: c.req.query('compareAddress'),
+  });
+  if (!parsed.success) return formatError(c, 'Invalid address parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { normalizeAddressTool } = await import('../services/address_tools.js');
+    return c.json(await normalizeAddressTool(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
+  }
+});
+
+publicDataRoutes.post('/geo/reverse', async (c) => {
+  const parsed = ReverseGeocodeRequestSchema.safeParse(await readJsonBody(c));
+  if (!parsed.success) return formatError(c, 'Invalid reverse geocode parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { reverseGeocodeTool } = await import('../services/address_tools.js');
+    return c.json(await reverseGeocodeTool(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
+  }
+});
+
+publicDataRoutes.get('/geo/reverse', async (c) => {
+  const parsed = ReverseGeocodeRequestSchema.safeParse({
+    lat: queryNumber(c, 'lat'), lon: queryNumber(c, 'lon'), maxDistanceMeters: queryNumber(c, 'maxDistanceMeters'),
+  });
+  if (!parsed.success) return formatError(c, 'Invalid reverse geocode parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  try {
+    const { reverseGeocodeTool } = await import('../services/address_tools.js');
+    return c.json(await reverseGeocodeTool(parsed.data));
+  } catch (err) {
+    return addressErrorResponse(c, err);
   }
 });
 

@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { generateOpenApiDocument, PoiSearchRequestSchema, zodToOpenApiSchema } from './types.js';
 import { systemRoutes } from './routes/system.js';
 
-const sharedPaths = ['/weather', '/weather/{city}', '/traffic/road', '/traffic/road/{pref}', '/gov/diet-minutes', '/geo/elevation', '/geo/poi', '/traffic/flight', '/traffic/flight/{airport}'];
+const sharedPaths = [
+  '/weather', '/weather/{city}', '/traffic/road', '/traffic/road/{pref}',
+  '/gov/diet-minutes', '/geo/elevation', '/geo/poi',
+  '/geo/postal-code', '/geo/address/normalize', '/geo/reverse',
+  '/traffic/flight', '/traffic/flight/{airport}',
+];
 const basePath = (path: string) => path.replace(/\/\{[^}]+\}$/, '');
 
 describe('documentation defaults and enum consistency', () => {
