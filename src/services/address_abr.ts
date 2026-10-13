@@ -6,6 +6,9 @@ export type Row = Record<string, string>;
 /** ABR の代表点の座標参照系。JGD2011 / JGD2000 / WGS84 は実質同じ値なので変換しない。 */
 const SUPPORTED_SRID = new Set(['EPSG:6668', 'EPSG:4612', 'EPSG:4326']);
 
+/** 経度・緯度をそのまま使える座標参照系か。 */
+export const isSupportedSrid = (srid: string | undefined): boolean => srid !== undefined && SUPPORTED_SRID.has(srid);
+
 const opt = (value: string | undefined): string | undefined => (value === undefined || value === '' ? undefined : value);
 
 export function toPoint(row: Row): LngLat | null {
