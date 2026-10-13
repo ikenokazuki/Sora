@@ -3,9 +3,11 @@ import { join } from 'node:path';
 import type { AddressConfig } from './address_config.js';
 import { AddressDisabledError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 import { AddressHttpError } from './address_http.js';
+import { cityNameOf, lgCode6, type JaCity, type JaJson, type TownJson } from './address_names.js';
 import {
   AddressStore, jobArtifactId, ttlFor, type AddressStatus, type ArtifactMeta, type BuildJob,
 } from './address_store.js';
+import { PostalReader } from './postal_code.js';
 
 export type { BuildJob } from './address_store.js';
 
@@ -43,6 +45,41 @@ export interface AddressDataOptions {
   log?: (message: string) => void;
 }
 
+/** 全国マスターの 1 市区町村。 */
+export interface MasterCity {
+  /** 6 桁の全国地方公共団体コード。 */
+  lgCode: string;
+  lg5: string;
+  prefCode: string;
+  pref: string;
+  /** 郡 + 市 + 区。 */
+  name: string;
+  city: JaCity;
+}
+
+export interface MasterIndex {
+  ver: string;
+  /** `${都道府県名}/${市区町村名}`。 */
+  byName: Map<string, MasterCity>;
+  byLgCode: Map<string, MasterCity>;
+  byLg5: Map<string, MasterCity>;
+}
+
+function buildMasterIndex(ver: string, ja: JaJson): MasterIndex {
+  const index: MasterIndex = { ver, byName: new Map(), byLgCode: new Map(), byLg5: new Map() };
+  for (const pref of ja.data) {
+    const prefCode = lgCode6(pref.code).slice(0, 2);
+    for (const city of pref.cities) {
+      const lgCode = lgCode6(city.code);
+      const entry: MasterCity = { lgCode, lg5: lgCode.slice(0, 5), prefCode, pref: pref.pref, name: cityNameOf(city), city };
+      index.byName.set(`${pref.pref}/${entry.name}`, entry);
+      index.byLgCode.set(lgCode, entry);
+      index.byLg5.set(entry.lg5, entry);
+    }
+  }
+  return index;
+}
+
 interface QueueItem {
   job: BuildJob;
   id: string;
@@ -58,6 +95,9 @@ interface FailureRecord {
 }
 
 const HOUR = 3_600_000;
+const TOWN_CACHE_MAX = 50;
+/** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
+const READER_GRACE_MS = 30_000;
 
 function toUnavailable(error: unknown, id: string): AddressUnavailableError {
   if (error instanceof AddressUnavailableError) {
@@ -82,6 +122,9 @@ export class AddressData {
   private readonly failures = new Map<string, FailureRecord>();
   private running = 0;
   private snapshot: { key: string; status: AddressStatus } | null = null;
+  private masterCache: MasterIndex | null = null;
+  private readonly townCache = new Map<string, { ver: string; json: TownJson }>();
+  private postalCache: { ver: string; reader: PostalReader } | null = null;
 
   constructor(private readonly options: AddressDataOptions) {
     this.now = options.now ?? Date.now;
@@ -141,6 +184,43 @@ export class AddressData {
     const built = this.peek(id);
     if (!built) throw new AddressUnavailableError(`${id} を取得できませんでした`, false, id);
     return built;
+  }
+
+  /** 全国マスター（都道府県・市区町村）の索引。版ごとにメモリへ置く。 */
+  async master(waitMs?: number): Promise<MasterIndex> {
+    const ready = await this.ensure({ kind: 'master' }, waitMs);
+    if (this.masterCache?.ver === ready.ver) return this.masterCache;
+    const ja = JSON.parse(await Bun.file(join(ready.path, 'ja.json')).text()) as JaJson;
+    this.masterCache = buildMasterIndex(ready.ver, ja);
+    return this.masterCache;
+  }
+
+  /** 市区町村の町字（段A の town.json）。lgCode は 6 桁。最大 50 市区町村を版ごとにメモリへ置く。 */
+  async towns(lgCode: string, waitMs?: number): Promise<{ ver: string; json: TownJson }> {
+    if (!/^\d{6}$/.test(lgCode)) throw new Error(`市区町村コードは 6 桁で指定してください: ${lgCode}`);
+    const ready = await this.ensure({ kind: 'city', lgCode }, waitMs);
+    const cached = this.townCache.get(lgCode);
+    if (cached?.ver === ready.ver) {
+      this.townCache.delete(lgCode);
+      this.townCache.set(lgCode, cached);
+      return cached;
+    }
+    const json = JSON.parse(await Bun.file(join(ready.path, 'town.json')).text()) as TownJson;
+    const entry = { ver: ready.ver, json };
+    this.townCache.delete(lgCode);
+    this.townCache.set(lgCode, entry);
+    while (this.townCache.size > TOWN_CACHE_MAX) this.townCache.delete(this.townCache.keys().next().value as string);
+    return entry;
+  }
+
+  /** 郵便番号の読み取り役。版が変わったら新しいものに替え、古いものは猶予のあとで閉じる。 */
+  async postal(waitMs?: number): Promise<{ ver: string; reader: PostalReader }> {
+    const ready = await this.ensure({ kind: 'postal' }, waitMs);
+    if (this.postalCache?.ver === ready.ver) return this.postalCache;
+    const previous = this.postalCache;
+    this.postalCache = { ver: ready.ver, reader: new PostalReader(join(ready.path, 'postal.sqlite')) };
+    if (previous) setTimeout(() => previous.reader.close(), READER_GRACE_MS).unref();
+    return this.postalCache;
   }
 
   datasetInfo(ids: readonly string[]): DatasetInfo {

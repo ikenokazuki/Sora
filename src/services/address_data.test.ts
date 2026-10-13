@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, tick, waitFor } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { AddressDisabledError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { JAPANPOST_FALLBACK } from './address_http.js';
 import { runBuildJob } from './address_jobs.js';
 import { AddressStore, type BuildJob } from './address_store.js';
 import { SMALL_MINIMUM } from '../test_fixtures/address/harness.js';
@@ -158,5 +159,54 @@ describe('status', () => {
       store: other, http: { fetchFn: sampleUpstream().fetchFn, sleep: async () => undefined }, minimum: SMALL_MINIMUM,
     });
     expect(data.peek('master')?.meta.bytes).toBeGreaterThan(0);
+  });
+});
+
+describe('loaders', () => {
+  test('master() が市区町村名から 6 桁のコードを引ける。同じ版ならキャッシュを返す', async () => {
+    const { data } = createTestAddressData(dir);
+    const index = await data.master();
+    expect(index.byName.get('東京都/千代田区')).toMatchObject({ lgCode: CHIYODA_LG, lg5: '13101', prefCode: '13', pref: '東京都', name: '千代田区' });
+    expect(index.byName.get('北海道/札幌市中央区')).toMatchObject({ lgCode: SAPPORO_LG, lg5: '01101', prefCode: '01' });
+    expect(index.byLgCode.get(CHIYODA_LG)?.name).toBe('千代田区');
+    expect(index.byLg5.get('13101')?.lgCode).toBe(CHIYODA_LG);
+    expect(await data.master()).toBe(index);
+  });
+
+  test('取得元が変わって作り直されたら、master() は新しい索引を返す', async () => {
+    const { data, up } = createTestAddressData(dir);
+    const first = await data.master();
+    const url = abrUrl('mt_pref/mt_pref_all');
+    up.set(url, { ...up.routes.get(url)!, etag: '"changed"' });
+    await data.request({ kind: 'master' });
+    const second = await data.master();
+    expect(second.ver).not.toBe(first.ver);
+    expect(second).not.toBe(first);
+  });
+
+  test('towns() が町字を返し、同じ版ではキャッシュする', async () => {
+    const { data } = createTestAddressData(dir);
+    const first = await data.towns(CHIYODA_LG);
+    expect(first.json.data.find((town) => town.machiaza_id === '0005001')).toMatchObject({
+      oaza_cho: '永田町', chome: '一丁目', chome_n: 1, point: [139.746306, 35.675895],
+    });
+    expect(await data.towns(CHIYODA_LG)).toBe(first);
+  });
+
+  test('towns() は 6 桁でないコードを拒否する', async () => {
+    const { data } = createTestAddressData(dir);
+    await expect(data.towns('13101')).rejects.toThrow('6 桁');
+  });
+
+  test('postal() の読み取り役が郵便番号を引ける。作り直されると新しい版になり、古い読み取り役もすぐには壊れない', async () => {
+    const { data, up } = createTestAddressData(dir);
+    const first = await data.postal();
+    expect(first.reader.byZip('1000014')[0]).toMatchObject({ kind: 'general', town: '永田町' });
+    up.set(JAPANPOST_FALLBACK.kenAll, { ...up.routes.get(JAPANPOST_FALLBACK.kenAll)!, etag: '"changed"' });
+    await data.request({ kind: 'postal' });
+    const second = await data.postal();
+    expect(second.ver).not.toBe(first.ver);
+    expect(second.reader).not.toBe(first.reader);
+    expect(first.reader.byZip('1000014')).toHaveLength(1);
   });
 });
