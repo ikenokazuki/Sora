@@ -1,9 +1,10 @@
-import { compareAddresses, checkZip, type AddressComparison, type ZipCheck } from './address_checks.js';
+import { checkCoordinates, compareAddresses, checkZip, type AddressComparison, type CoordinatesCheck, type ZipCheck } from './address_checks.js';
 import { getAddressContext, type AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
 import { Gaps, type Incomplete } from './address_gaps.js';
 import type { NormalizedAddress } from './address_normalize.js';
 import { lookupZip, normalizeZip, toPostalEntry, zipsForAddress, type PostalCandidate, type PostalCodeEntry } from './address_postal.js';
+import { reverseGeocode, type ReverseInput, type ReverseResult } from './address_reverse.js';
 
 /** ABR（公共データ利用規約 第1.0版）の出典と加工の明記。 */
 export const ADDRESS_ATTRIBUTION =
@@ -99,12 +100,17 @@ export interface NormalizeAddressInput {
   zipcode?: string;
   /** 名寄せの相手の住所。 */
   compareAddress?: string;
+  /** 突き合わせの相手の緯度。lon と組で指定する。 */
+  lat?: number;
+  /** 突き合わせの相手の経度。lat と組で指定する。 */
+  lon?: number;
 }
 
 export interface NormalizeAddressResult extends NormalizedAddress {
   postalCodes: PostalCodeEntry[];
   checks?: {
     zipcode?: ZipCheck;
+    coordinates?: CoordinatesCheck;
     compare?: AddressComparison & { other: { input: string; normalized: string; level: number } };
   };
   dataset: DatasetField;
@@ -137,6 +143,15 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
       gaps.absorb(error);
     }
   }
+  const { lat, lon } = input;
+  if (lat !== undefined || lon !== undefined) {
+    if (lat === undefined || lon === undefined) throw new AddressInputError('lat と lon は組で指定してください');
+    try {
+      checks.coordinates = await checkCoordinates(ctx, lat, lon, normalized);
+    } catch (error) {
+      gaps.absorb(error);
+    }
+  }
   const cities = new Set<string>(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : []);
   if (input.compareAddress?.trim()) {
     const other = await ctx.normalizer.normalize(input.compareAddress, { level });
@@ -155,4 +170,26 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
   };
   if (Object.keys(checks).length > 0) result.checks = checks;
   return result;
+}
+
+// ---------- reverse_geocode ----------
+
+export type ReverseGeocodeInput = Omit<ReverseInput, 'waitMs'>;
+export type ReverseGeocodeResult = ReverseResult & { dataset: DatasetField; attribution: string };
+
+/** 座標から番地・号または町字の住所を引く。 */
+export async function reverseGeocodeTool(input: ReverseGeocodeInput, ctx: AddressContext = getAddressContext()): Promise<ReverseGeocodeResult> {
+  const reversed = await reverseGeocode(ctx, input);
+  const used = new Set<string>(['index', 'postal']);
+  if (reversed.keys.lgCode) {
+    used.add(`city:${reversed.keys.lgCode}`);
+    used.add(`num:${reversed.keys.lgCode}`);
+  }
+  for (const id of reversed.pending ?? []) used.add(id);
+  for (const item of reversed.unavailable ?? []) used.add(item.artifact);
+  return {
+    ...reversed,
+    dataset: datasetField(ctx, used),
+    attribution: ADDRESS_ATTRIBUTION,
+  };
 }

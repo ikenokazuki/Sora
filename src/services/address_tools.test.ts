@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
-import { CHIYODA_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
+import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
-import { ADDRESS_ATTRIBUTION, normalizeAddressTool, searchPostalCode, type SearchPostalCodeByAddress, type SearchPostalCodeByZip } from './address_tools.js';
+import { ADDRESS_ATTRIBUTION, normalizeAddressTool, reverseGeocodeTool, searchPostalCode, type SearchPostalCodeByAddress, type SearchPostalCodeByZip } from './address_tools.js';
 
 let dir: string;
 beforeEach(() => {
@@ -178,5 +178,79 @@ describe('normalizeAddressTool', () => {
     const { ctx, up } = setup();
     up.set(abrUrl('mt_city/mt_city_all'), { body: '', status: 403 });
     await expect(normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx)).rejects.toMatchObject({ name: 'AddressUnavailableError', blocked: true });
+  });
+
+  test('lat / lon を渡すと、座標との突き合わせ（checks.coordinates）を返す', async () => {
+    const built8 = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const ctx8 = createAddressContext(built8.data);
+    const near = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', lat: 35.675915, lon: 139.745515 }, ctx8);
+    expect(near.checks?.coordinates).toMatchObject({ status: 'match', distanceMeters: expect.any(Number) });
+    const far = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', lat: 43.063, lon: 141.3544 }, ctx8);
+    expect(far.checks?.coordinates).toMatchObject({ status: 'mismatch' });
+  });
+
+  test('lat だけ・lon だけ・不正な座標は AddressInputError', async () => {
+    const { ctx } = setup();
+    await expect(normalizeAddressTool({ address: '東京都千代田区', lat: 35.6 }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(normalizeAddressTool({ address: '東京都千代田区', lon: 139.7 }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(normalizeAddressTool({ address: '東京都千代田区', lat: 91, lon: 139.7 }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+  });
+});
+
+describe('reverseGeocodeTool', () => {
+  const setup8 = () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    return { ...built, ctx: createAddressContext(built.data) };
+  };
+
+  test('座標から番地・号の住所を引く（dataset と attribution つき）', async () => {
+    const { ctx } = setup8();
+    const result = await reverseGeocodeTool({ lat: 35.675915, lon: 139.745515 }, ctx);
+    expect(result).toMatchObject({
+      found: true, level: 8, numberSource: 'rsdt', normalized: '東京都千代田区永田町一丁目7-1',
+      keys: { prefCode: '13', lgCode: CHIYODA_LG, machiazaId: '0005001', blk: '7', rsdt: '1' },
+      postalCodes: [{ zipcode: '1000014', exact: true }], attribution: ADDRESS_ATTRIBUTION,
+    });
+    expect(result.dataset).toEqual({ source: expect.stringContaining('アドレス・ベース・レジストリ'), updatedAt: expect.any(String), stale: false });
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('範囲外の座標は found: false（dataset つき）', async () => {
+    const { ctx } = setup8();
+    const result = await reverseGeocodeTool({ lat: 40, lon: 135 }, ctx);
+    expect(result).toMatchObject({ found: false, level: 0, postalCodes: [] });
+    expect(result.dataset.source).toContain('アドレス・ベース・レジストリ');
+  });
+
+  test('見つからない座標でも、使った索引の新しさを示す', async () => {
+    const { ctx } = setup8();
+    const result = await reverseGeocodeTool({ lat: 51.5, lon: -0.12 }, ctx);
+    expect(result).toMatchObject({ found: false, dataset: { updatedAt: null } });
+  });
+
+  test('座標が不正なら AddressInputError、maxDistanceMeters が範囲外なら AddressInputError', async () => {
+    const { ctx } = setup8();
+    await expect(reverseGeocodeTool({ lat: Number.NaN, lon: 139.7 }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+    await expect(reverseGeocodeTool({ lat: 35.6, lon: 139.7, maxDistanceMeters: 5000 }, ctx)).rejects.toBeInstanceOf(AddressInputError);
+  });
+
+  test('番地・号のデータが間に合わなければ incomplete と pending を付ける', async () => {
+    const built = createTestAddressData(dir, {
+      up: sampleUpstream({ numbers: true }),
+      wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'num'),
+      waitMs: 400, concurrency: 2,
+    });
+    const ctxGated = createAddressContext(built.data);
+    const partial = await reverseGeocodeTool({ lat: 35.675915, lon: 139.745515 }, ctxGated);
+    expect(partial).toMatchObject({ found: true, level: 3, incomplete: true, pending: [`num:${CHIYODA_LG}`] });
+  });
+
+  test('札幌の座標は地番の住所になる', async () => {
+    const { ctx } = setup8();
+    const result = await reverseGeocodeTool({ lat: 43.0640, lon: 141.3541 }, ctx);
+    expect(result).toMatchObject({
+      found: true, level: 8, numberSource: 'chiban', normalized: '北海道札幌市中央区北１条西二丁目12-3',
+      keys: { lgCode: SAPPORO_LG, machiazaId: '0013002', prc: ['12', '3'] },
+    });
   });
 });

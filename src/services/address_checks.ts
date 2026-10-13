@@ -1,6 +1,8 @@
 import type { AddressContext } from './address_context.js';
+import { AddressInputError } from './address_errors.js';
 import type { NormalizedAddress } from './address_normalize.js';
 import { normalizeZip, zipsForAddress, type ZipForAddress } from './address_postal.js';
+import { reverseGeocode, type ReverseResult } from './address_reverse.js';
 
 // ---------- 住所 × 住所（名寄せ） ----------
 
@@ -109,3 +111,84 @@ export async function checkZip(ctx: AddressContext, zipcode: string, address: No
   }
   return { status: 'mismatch', zipcode: zip, expected, reason: `別の市区町村の郵便番号です（${first.pref}${first.city}）` };
 }
+
+// ---------- 座標 × 住所 ----------
+
+export type CoordinatesCheckStatus = 'match' | 'partial' | 'mismatch' | 'unknown';
+
+export interface CoordinatesCheck {
+  status: CoordinatesCheckStatus;
+  /** 座標の最寄りの住所。 */
+  nearest: Pick<ReverseResult, 'normalized' | 'level' | 'keys' | 'point' | 'distanceMeters' | 'incomplete' | 'pending' | 'unavailable'> | null;
+  /** 住所の代表点から、渡された座標までの距離。住所の点を特定できないときは undefined。 */
+  distanceMeters?: number;
+  reason: string;
+}
+
+/** 両方 level 8（番地・号まで照合済み）のときに match とする距離。 */
+const LEVEL8_MATCH_METERS = 150;
+
+/**
+ * 渡された座標が、住所と一致するか。
+ * match: 住所が主張する階層まで一致し、番地・号まで分かる場合は 150m 以内 / partial: 同じ町字だが番地・号が違う・離れている、または同じ市区町村で町が違う / mismatch: 市区町村が違う / unknown: 住所を解釈できない。
+ */
+export async function checkCoordinates(
+  ctx: AddressContext,
+  lat: number,
+  lon: number,
+  address: NormalizedAddress,
+  options: { waitMs?: number; maxDistanceMeters?: number } = {},
+): Promise<CoordinatesCheck> {
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new AddressInputError('lat は -90〜90 の数値で指定してください');
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new AddressInputError('lon は -180〜180 の数値で指定してください');
+  if (address.level < 2 || !address.keys.lgCode) {
+    return { status: 'unknown', nearest: null, reason: '住所を市区町村まで解釈できないため、突き合わせできません' };
+  }
+  const reversed = await reverseGeocode(ctx, { lat, lon, ...options });
+  const nearest: CoordinatesCheck['nearest'] = reversed.found
+    ? {
+      normalized: reversed.normalized as string, level: reversed.level, keys: reversed.keys,
+      point: reversed.point, distanceMeters: reversed.distanceMeters,
+    }
+    : null;
+  if (!nearest) {
+    return { status: 'partial', nearest, reason: nearestAddressReason(reversed, '住所の代表点の近くに座標がありません') };
+  }
+  const comparison = compareAddresses(address, toComparisonAddress(reversed));
+  const distance = nearest.distanceMeters ?? Number.POSITIVE_INFINITY;
+  if (comparison.sameLevel <= 0) {
+    return { status: 'mismatch', nearest, distanceMeters: distance, reason: `別の都道府県の座標です（${reversed.address?.pref ?? ''}${reversed.address?.city ?? ''}）` };
+  }
+  if (comparison.sameLevel === 1) {
+    return { status: 'mismatch', nearest, distanceMeters: distance, reason: `別の市区町村の座標です（${reversed.address?.pref ?? ''}${reversed.address?.city ?? ''}）` };
+  }
+  if (comparison.relation === 'identical' || comparison.relation === 'same-block') {
+    if (address.level >= 8 && reversed.level >= 8 && distance > LEVEL8_MATCH_METERS) {
+      return { status: 'partial', nearest, distanceMeters: distance, reason: nearestAddressReason(reversed, '同じ番地・号ですが、点から離れています') };
+    }
+    return { status: 'match', nearest, distanceMeters: distance, reason: '住所の番地・号の点と一致しました' };
+  }
+  // 住所が主張する階層まで一致していれば match（例: 市区町村までの住所と、その市区町村内の座標）。
+  if (comparison.sameLevel >= address.level) {
+    return { status: 'match', nearest, distanceMeters: distance, reason: '住所の範囲内の座標です' };
+  }
+  if (comparison.sameLevel >= 3) {
+    return { status: 'partial', nearest, distanceMeters: distance, reason: nearestAddressReason(reversed, '同じ町字ですが、番地・号が違います') };
+  }
+  return { status: 'partial', nearest, distanceMeters: distance, reason: '同じ市区町村ですが、町字が違います' };
+}
+
+/** 逆ジオコーディングの結果を、compareAddresses に渡せる住所の形にする。 */
+function toComparisonAddress(reversed: ReverseResult): NormalizedAddress {
+  return {
+    input: reversed.normalized ?? '', other: '', normalized: reversed.normalized ?? '',
+    level: reversed.level,
+    numberSource: reversed.numberSource,
+    keys: reversed.keys,
+    pref: reversed.address?.pref, city: reversed.address?.city, town: reversed.address?.town, addr: reversed.address?.addr,
+    point: reversed.point ? { lat: reversed.point.lat, lon: reversed.point.lon, level: reversed.point.level } : undefined,
+  };
+}
+
+const nearestAddressReason = (reversed: ReverseResult, fallback: string): string =>
+  reversed.normalized ? `最寄りは「${reversed.normalized}」です。${fallback}` : fallback;
