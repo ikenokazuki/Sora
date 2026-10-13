@@ -262,6 +262,31 @@ export interface ZipMatch {
   fallback: boolean;
 }
 
+const compactText = (text: string): string => text.normalize('NFKC').replace(/[\s　]/g, '');
+/** 番地の範囲だけの項目（「１〜１０番地」）。通り名や建物名の絞り込みには使わない。 */
+const NUMERIC_ITEM = /^[\d〜~\-−]+(?:番地?)?$/;
+
+/**
+ * 括弧の注記が通り名・建物名の列（京都の「釜座通夷川下る、夷川通釜座東入、…」など）の行を、
+ * 入力の住所に含まれる項目で絞り込む。当たる行があれば exact にして、当たらない exact でない行を落とす。
+ * 1 つも当たらなければ何も変えない。3 文字未満の項目と、番地の範囲だけの項目は使わない。
+ */
+export function refineByStreetNames(matches: ZipMatch[], rawInput: string): ZipMatch[] {
+  const input = compactText(rawInput);
+  const hits = new Set<number>();
+  for (const match of matches) {
+    const { annotation } = match.row;
+    if (match.exact || match.fallback || annotation === '') continue;
+    const items = annotation.split(/[、,，]/).map(compactText).filter((item) => item.length >= 3 && !NUMERIC_ITEM.test(item));
+    if (items.some((item) => input.includes(item))) hits.add(match.row.id);
+  }
+  if (hits.size === 0) return matches;
+  return matches
+    .filter((match) => match.exact || hits.has(match.row.id))
+    .map((match) => (hits.has(match.row.id) ? { ...match, exact: true } : match))
+    .sort((a, b) => Number(b.exact) - Number(a.exact));
+}
+
 /** 町字（と、分かれば住所の番地）に当たる郵便番号。exact のものを先に、同じ番号は 1 件にまとめる。 */
 export function zipsForTown(
   rows: readonly PostalRow[],

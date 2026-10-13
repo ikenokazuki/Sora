@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { jigyosyoText } from '../test_fixtures/address/jigyosyo.js';
 import {
   PostalReader, annotationMatchesNumber, buildPostalDb, foldName, linkPostalRows, parseChomeRange, parseJigyosyo, parseKenAll,
-  splitTown, zipsForTown, type PostalRow, type TownRef,
+  refineByStreetNames, splitTown, zipsForTown, type PostalRow, type TownRef, type ZipMatch,
 } from './postal_code.js';
 
 const KEN_ALL = [
@@ -189,5 +189,42 @@ describe('zipsForTown', () => {
     const dup = [postalRow(1, '13101', '永田町', '1000014'), postalRow(2, '13101', '永田町（１〜２丁目）', '1000014')];
     const matches = zipsForTown(dup, linkPostalRows(dup, [t('x', '永田町', { chome_n: 1 })]), 'x');
     expect(matches).toHaveLength(1);
+  });
+});
+
+describe('refineByStreetNames', () => {
+  const street = (id: number, zip: string, annotation: string, exact = false): ZipMatch => ({
+    row: postalRow(id, '26104', `大黒町（${annotation}）`, zip), exact, fallback: false,
+  });
+  const kyoto = [
+    street(1, '6040014', '釜座通夷川下る、釜座通二条上る、夷川通釜座東入、夷川通釜座西入'),
+    street(2, '6048031', '河原町通三条下る、三条通河原町東入、三条通河原町西入'),
+    street(3, '6048073', '麩屋町通六角上る、麩屋町通六角下る、六角通麩屋町西入'),
+  ];
+
+  test('入力に含まれる通り名の行だけを exact にして、含まれない行を落とす', () => {
+    const refined = refineByStreetNames(kyoto, '京都市中京区釜座通夷川下る大黒町123');
+    expect(refined.map((m) => [m.row.zip, m.exact])).toEqual([['6040014', true]]);
+    expect(refineByStreetNames(kyoto, '京都府京都市中京区 三条通河原町西入 大黒町 1').map((m) => m.row.zip)).toEqual(['6048031']);
+  });
+
+  test('通り名が入力に無ければ、何も変えない', () => {
+    expect(refineByStreetNames(kyoto, '京都市中京区大黒町123')).toEqual(kyoto);
+  });
+
+  test('exact の行は残し、順序は exact を先にする', () => {
+    const whole: ZipMatch = { row: postalRow(9, '26104', '大黒町', '6048000'), exact: true, fallback: false };
+    const refined = refineByStreetNames([street(3, '6048073', '麩屋町通六角上る、六角通麩屋町西入'), whole], '麩屋町通六角上る大黒町1');
+    expect(refined.map((m) => [m.row.zip, m.exact])).toEqual([['6048073', true], ['6048000', true]]);
+  });
+
+  test('短すぎる項目（3 文字未満）では絞り込まない', () => {
+    const matches = [street(1, '6040001', '東、西'), street(2, '6040002', '南、北')];
+    expect(refineByStreetNames(matches, '京都市東大黒町')).toEqual(matches);
+  });
+
+  test('番地の範囲などの注記では、絞り込みに使わない', () => {
+    const matches = [street(1, '4801103', '１〜１０番地'), street(2, '4801104', '１１〜２０番地')];
+    expect(refineByStreetNames(matches, '岩作１〜１０番地')).toEqual(matches);
   });
 });
