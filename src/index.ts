@@ -27,6 +27,7 @@ import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { socialRoutes } from './routes/social.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
+import { createRestOriginPolicy } from './security/rest_origin.js';
 export { formatError, mcpSessionManager };
 
 export const app = new Hono();
@@ -38,13 +39,19 @@ app.use('/mcp', mcpOriginGuard);
 app.use('/sse', mcpOriginGuard);
 app.use('/message', mcpOriginGuard);
 
+// REST trust boundary: 手元で動かすサーバーを、ブラウザで開いた別サイトのページ（cross-site の fetch・DNS rebinding）から守る。
+// ブラウザ由来の要求にだけ Host と Origin の許可リストをかけ、curl・サーバー間通信は従来どおり通す。
+// プリフライトも先に検査するため、CORS より前に置く。
+const restOrigin = createRestOriginPolicy();
+app.use('*', restOrigin.guard);
+
 // ==========================================
 // 1. CORS, セキュリティヘッダー & DoS 防御 (Body Limit)
 // ==========================================
 app.use(
   '*',
   cors({
-    origin: '*',
+    origin: restOrigin.corsOrigin,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: [
       'Content-Type',
