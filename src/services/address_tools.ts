@@ -1,3 +1,4 @@
+import { ADDRESS_ATTRIBUTION } from './address_attribution.js';
 import { checkCoordinates, compareAddresses, checkZip, type AddressComparison, type CoordinatesCheck, type ZipCheck } from './address_checks.js';
 import { getAddressContext, type AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
@@ -6,9 +7,7 @@ import type { NormalizedAddress } from './address_normalize.js';
 import { lookupZip, normalizeZip, toPostalEntry, zipsForAddress, type PostalCandidate, type PostalCodeEntry } from './address_postal.js';
 import { reverseGeocode, type ReverseInput, type ReverseResult } from './address_reverse.js';
 
-/** ABR（公共データ利用規約 第1.0版）の出典と加工の明記。 */
-export const ADDRESS_ATTRIBUTION =
-  '出典: デジタル庁「アドレス・ベース・レジストリ」（公共データ利用規約 第1.0版）を加工して作成（加工: Sora）。郵便番号: 日本郵便株式会社「郵便番号データ」を加工して作成。';
+export { ADDRESS_ATTRIBUTION };
 const DATASET_SOURCE = 'デジタル庁 アドレス・ベース・レジストリ / 日本郵便 郵便番号データ';
 
 export interface DatasetField {

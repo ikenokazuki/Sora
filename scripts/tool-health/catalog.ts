@@ -281,7 +281,7 @@ function requireHarajuku(lat: number | undefined, lon: number | undefined, label
 }
 
 // 座標解決の取得元に応じた出典表示が付いているか確認する。
-const GEOCODING_ATTRIBUTION_MARKERS: Record<string, string> = { nominatim: 'OpenStreetMap', gsi: '国土地理院' };
+const GEOCODING_ATTRIBUTION_MARKERS: Record<string, string> = { nominatim: 'OpenStreetMap', gsi: '国土地理院', abr: 'アドレス・ベース・レジストリ' };
 function requireGeocodingAttribution(source: string | undefined, attribution: string | undefined, label: string): void {
   const marker = source ? GEOCODING_ATTRIBUTION_MARKERS[source] : undefined;
   if (!marker || typeof attribution !== 'string' || !attribution.includes(marker)) {
@@ -603,8 +603,8 @@ export const TOOL_CASES: HealthCase[] = [
   toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
   // 番地住所は OSM に無いことが多く国土地理院へフォールバックする。OSM 側で解決されても正しい地点なら合格。
-  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
-    (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim'])),
+  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi', 'abr'], true, 90000,
+    (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim', 'abr'])),
   toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');

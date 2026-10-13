@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
+import type { PoiAddressInfo } from './address_poi.js';
 import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
 
 export interface PoiItem {
@@ -15,6 +16,7 @@ export interface PoiItem {
   source?: string;
   licenses: string[];
   attributions: string[];
+  addressInfo?: PoiAddressInfo;
 }
 
 export interface PoiSearchResult {
@@ -85,12 +87,21 @@ export interface PoiCenterResolved {
   candidates: PoiCenterCandidate[];
 }
 export type PoiGeocode = (center: string, options?: { noCache?: boolean }) => Promise<Partial<GeocodingResult>>;
+export type PoiAddressAnnotator = (pois: readonly PoiItem[]) => Promise<Array<PoiAddressInfo | null>>;
+
+// 住所モジュールは withAddress を指定されたときだけ読み込む。
+const defaultAnnotator: PoiAddressAnnotator = async (pois) => {
+  const { getAddressContext } = await import('./address_context.js');
+  const { annotatePoiAddresses } = await import('./address_poi.js');
+  return annotatePoiAddresses(getAddressContext(), pois);
+};
 
 export async function searchOpenPoi(
   rawInput: z.input<typeof PoiSearchRequestSchema>,
   fetchFn: PoiFetch = fetch,
   timeoutMs = 10000,
   geocode: PoiGeocode = geocodeAddress,
+  annotate: PoiAddressAnnotator = defaultAnnotator,
 ): Promise<PoiSearchResult> {
   const input = PoiSearchRequestSchema.parse(rawInput);
   let lat = input.lat;
@@ -150,5 +161,12 @@ export async function searchOpenPoi(
       const item = normalizePoiItem(r);
       return item ? [item] : [];
     });
+  if (input.withAddress && pois.length > 0) {
+    const infos = await annotate(pois).catch(() => [] as Array<PoiAddressInfo | null>);
+    pois.forEach((poi, index) => {
+      const info = infos[index];
+      if (info) poi.addressInfo = info;
+    });
+  }
   return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi', attribution: OPENPOI_ATTRIBUTION };
 }

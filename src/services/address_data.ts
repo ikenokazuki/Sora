@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AddressConfig } from './address_config.js';
@@ -97,6 +98,13 @@ interface FailureRecord {
 }
 
 const HOUR = 3_600_000;
+
+/**
+ * 成果物が無いときの扱い。'never' は構築を頼まず、'background' は頼むが待たない。
+ * どちらも待たずに AddressPendingError を返す。指定が無ければ、頼んで待つ（既定）。
+ */
+export type BuildPolicy = 'never' | 'background';
+const buildPolicy = new AsyncLocalStorage<BuildPolicy>();
 const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4 };
 const TOWN_CACHE_MAX = 50;
 const NUMBERS_CACHE_MAX = 30;
@@ -174,6 +182,11 @@ export class AddressData {
     return this.enqueue(job);
   }
 
+  /** fn の中の ensure を、成果物が無いとき待たずに諦める。policy で構築を頼むか決める。 */
+  withoutWaiting<T>(policy: BuildPolicy, fn: () => Promise<T>): Promise<T> {
+    return buildPolicy.run(policy, fn);
+  }
+
   /** 成果物を使える状態にする。無ければ構築を頼み、waitMs まで待つ。 */
   async ensure(job: BuildJob, waitMs: number = this.config.waitMs): Promise<ReadyArtifact> {
     if (!this.enabled) throw new AddressDisabledError();
@@ -183,6 +196,11 @@ export class AddressData {
       this.store.touch(id);
       if (this.now() - ready.meta.checkedAt > ttlFor(id)) this.revalidate(job);
       return ready;
+    }
+    const policy = buildPolicy.getStore();
+    if (policy) {
+      if (policy === 'background' && !this.cooling(id)) void this.enqueue(job);
+      throw new AddressPendingError(id);
     }
     const failure = this.failures.get(id);
     if (failure && this.cooling(id)) throw new AddressUnavailableError(failure.message, failure.blocked, id);
