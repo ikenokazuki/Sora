@@ -168,11 +168,23 @@ export async function reverseGeocode(ctx: AddressContext, input: { lat: number; 
 
 ## タスク 6: 実データでの確認と記録
 
-- [ ] 世田谷区（住居表示、約 7,900 行の節）、福知山市（地番）、京都市中京区（通り名 + 地番）、長崎市（最大規模）で、実通信の `buildNumbers` の所要時間・子プロセスのピークメモリ（`/proc` または `ps`）・出力サイズを測る。目標: 長崎市でも 15 秒以内、子のピークメモリ 300MB 以下。
-- [ ] 全国索引の構築時間（目標 15 秒以内）とサイズ。
-- [ ] `normalize_address` が `東京都世田谷区三軒茶屋2-24-1`、`京都府福知山市…`、`京都市中京区…` で level 8 になること、`reverse_geocode`（35.675895, 139.746306 付近が永田町一丁目）、座標の突き合わせ。
-- [ ] 揃ったあとの `normalize_address` / `reverse_geocode` の p50 / p95（目標 p95 50ms 以下）。
+- [x] 世田谷区（住居表示、約 7,900 行の節）、福知山市（地番）、京都市中京区（通り名 + 地番）、長崎市（最大規模）で、実通信の `buildNumbers` の所要時間・子プロセスのピークメモリ（`/proc` または `ps`）・出力サイズを測る。目標: 長崎市でも 15 秒以内、子のピークメモリ 300MB 以下。
+- [x] 全国索引の構築時間（目標 15 秒以内）とサイズ。
+- [x] `normalize_address` が `東京都世田谷区三軒茶屋2-24-1`、`京都府福知山市…`、`京都市中京区…` で level 8 になること、`reverse_geocode`（35.675895, 139.746306 付近が永田町一丁目）、座標の突き合わせ。
+- [x] 揃ったあとの `normalize_address` / `reverse_geocode` の p50 / p95（目標 p95 50ms 以下）。
 - [ ] 実行結果をこの計画書に追記してコミット。
+
+### 実行結果（2026-10-13）
+
+実測は日本のホスト、ツール関数（`normalizeAddressTool` / `reverseGeocodeTool`）経由。
+
+- 段B の構築: 千代田区 0.7 秒、札幌市中央区 1.7 秒、世田谷区 2.3 秒（rsdt 2.9MB）、福知山市（地番）3.3 秒（chiban 6.3MB）、長崎市 8.2 秒（住居表示 5.5MB.swtchiban 7.4MB）。子のピークメモリは長崎市 296MB。いずれも目標内。
+- 全国索引: 3.5 秒、geo.sqlite 20MB（約 197,361 点）、子のピーク 252MB。格子の近傍検索は単発 0.3〜2ms。
+- `normalize_address`: 世田谷区 `三軒茶屋2-24-1` → level 8（rsdt、点 level 8）。福知山 `字内記23-2` → level 8（chiban）。中京区は町字まで（level 3）の例あり: 番地の無い通り名住所（`大黒町123` など）は level 3 のまま、郵便番号は通り名で絞れる（`6040014` exact）。`checks.coordinates` は世田谷区の番地の点で match（距離 0m）、福知山の町違いで partial。
+- `reverse_geocode`: 町字の代表点（35.675895, 139.746306）付近 → level 8（`永田町一丁目5-1`、距離 236.8m。代表点ベースのため最寄りの番地の点になる）。海上・国外は `found: false`。
+- 揃ったあと: `normalize_address` p50 0.56ms / p95 0.82ms、`reverse_geocode` p50 2.56ms / p95 6.87ms。目標（p95 50ms 以下）を満たす。
+- この計画で追加した `checkCoordinates` と `reverseGeocodeTool` は、固定データのテストで全分岐を確認（match / partial 町違い・番地違い / mismatch / unknown、incomplete・pending の伝播、座標の検証）。
+- 仕様との差: 中京区の大黒町のような「通り名つきの番地なし住所」は、地番があっても level 3 のまま（番地が無ければ照合できない）。番地のある地番の町（福知山）は level 8 になる。
 
 ---
 
