@@ -153,6 +153,10 @@ export async function lookupZip(ctx: AddressContext, input: string, options: { w
 
 // ---------- 逆引き（住所 → 郵便番号） ----------
 
+/** 出力に使う郵便番号の項目（種別を除く）。 */
+export type PostalCodeEntry = Omit<ZipForAddress, 'kind'>;
+export const toPostalEntry = ({ zipcode, town, townRaw, exact, fallback }: ZipForAddress): PostalCodeEntry => ({ zipcode, town, townRaw, exact, fallback });
+
 export interface ZipForAddress {
   zipcode: string;
   kind: PostalKind;
