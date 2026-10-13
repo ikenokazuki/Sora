@@ -25,7 +25,7 @@ export class InProcessBuilder implements AddressBuilder {
   }
 }
 
-/** release() するまで、中身の構築役を呼ばずに待たせる。同時に走っている数を数える。 */
+/** release() するまで、中身の構築役を呼ばずに待たせる。同時に走っている数を数える。gates で待たせるジョブを絞れる。 */
 export class GatedBuilder implements AddressBuilder {
   active = 0;
   maxActive = 0;
@@ -33,7 +33,10 @@ export class GatedBuilder implements AddressBuilder {
   private open!: () => void;
   private readonly gate: Promise<void>;
 
-  constructor(private readonly inner: AddressBuilder) {
+  constructor(
+    private readonly inner: AddressBuilder,
+    private readonly gates: (job: BuildJob) => boolean = () => true,
+  ) {
     this.gate = new Promise<void>((resolve) => {
       this.open = resolve;
     });
@@ -48,7 +51,7 @@ export class GatedBuilder implements AddressBuilder {
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
     try {
-      await this.gate;
+      if (this.gates(job)) await this.gate;
       await this.inner.run(job);
     } finally {
       this.active -= 1;

@@ -63,13 +63,19 @@ export const SMALL_MINIMUM = { prefs: 2, cities: 2, towns: 1, general: 3, office
 
 const POS_HEADER = ['lg_code', 'rep_lon', 'rep_lat', 'rep_srid', 'rep_scale'];
 const CITY_HEADER = ['lg_code', 'pref', 'pref_kana', 'pref_roma', 'county', 'county_kana', 'county_roma', 'city', 'city_kana', 'city_roma', 'ward', 'ward_kana', 'ward_roma'];
-const TOWN_HEADER = ['lg_code', 'machiaza_id', 'oaza_cho', 'oaza_cho_kana', 'oaza_cho_roma', 'chome', 'chome_number', 'koaza', 'koaza_kana', 'koaza_roma', 'rsdt_addr_flg'];
+export const TOWN_HEADER = ['lg_code', 'machiaza_id', 'oaza_cho', 'oaza_cho_kana', 'oaza_cho_roma', 'chome', 'chome_number', 'koaza', 'koaza_kana', 'koaza_roma', 'rsdt_addr_flg'];
 const TOWN_POS_HEADER = ['lg_code', 'machiaza_id', 'rep_lon', 'rep_lat', 'rep_srid'];
 
 const cityRow = (lg: string, pref: string, name: string, ward = ''): string[] =>
   [lg, pref, `${pref}カナ`, `${pref}-roma`, '', '', '', name, `${name}カナ`, `${name}-roma`, ward, ward ? `${ward}カナ` : '', ward ? `${ward}-roma` : ''];
-const townRow = (lg: string, id: string, oaza: string, chome: string, n: string, rsdt: string): string[] =>
+export const townRow = (lg: string, id: string, oaza: string, chome: string, n: string, rsdt: string): string[] =>
   [lg, id, oaza, `${oaza}カナ`, `${oaza}-roma`, chome, n, '', '', '', rsdt];
+
+/** 市区町村の町字の本体を差し替える（取得元の更新を再現する。署名が変わるよう etag を渡す）。 */
+export function replaceTowns(up: FakeUpstream, lg: string, rows: readonly (readonly string[])[], etag: string): void {
+  const path = `mt_town/city/mt_town_city${lg}`;
+  up.setZip(abrUrl(path), { [`mt_town_city${lg}.csv`]: csv(TOWN_HEADER, rows) }, { etag, lastModified: ABR_LAST_MODIFIED });
+}
 
 /** 千代田区と札幌市中央区の町字。札幌は ABR と同じ全角数字の大字名（北１条西）にしてある。 */
 export const CHIYODA_TOWNS = [
