@@ -10,8 +10,8 @@ import { detectCandidates, type RankedCandidate } from './detector.js';
 import { getFromCache, setToCache } from '../../cache.js';
 import { errorMessage } from '../../errors.js';
 
-export const TRACKING_CACHE_TTL = 300; // 5分
-export const TRACKING_DELIVERED_CACHE_TTL = 86400; // 配達完了は24時間
+export const TRACKING_CACHE_TTL = 5 * 60 * 1000; // 5分
+export const TRACKING_DELIVERED_CACHE_TTL = 24 * 60 * 60 * 1000; // 配達完了は24時間
 const MAX_CONCURRENT_PER_WAVE = 2;
 const MAX_TOTAL_VERIFICATION_ATTEMPTS = 4;
 
@@ -226,6 +226,22 @@ export async function trackPackageAuto(
 }
 
 /**
+ * 追跡結果のキャッシュキー。自動判別の結果は、判別に渡すヒント（優先キャリア・差出元／お届け先の国）で変わる。
+ * キャリアを明示した照会はヒントを使わないので、キーに入れない。
+ */
+export function trackingCacheKey(
+  req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers' | 'originCountry' | 'destinationCountry'>,
+  num: string,
+): string {
+  if (req.carrier && req.carrier !== 'auto') return `tracking:v3:${req.carrier}:${num}`;
+  const preferred = [...new Set(req.preferredCarriers ?? [])].sort();
+  const origin = req.originCountry?.trim() ?? '';
+  const destination = req.destinationCountry?.trim() ?? '';
+  if (preferred.length === 0 && !origin && !destination) return `tracking:v3:auto:${num}`;
+  return `tracking:v3:auto:${num}:${JSON.stringify({ preferred, origin, destination })}`;
+}
+
+/**
  * 統合エントリーポイント（キャッシュ付き）
  */
 export async function trackPackage(req: TrackingRequest): Promise<TrackingResult> {
@@ -235,8 +251,7 @@ export async function trackPackage(req: TrackingRequest): Promise<TrackingResult
   }
 
   const isAuto = !req.carrier || req.carrier === 'auto';
-  const carrierKey = isAuto ? 'auto' : req.carrier;
-  const cacheKey = `tracking:v2:${carrierKey}:${num}`;
+  const cacheKey = trackingCacheKey(req, num);
 
   if (!req.noCache) {
     const cached = getFromCache<TrackingResult>(cacheKey);

@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { getFromCache, setToCache } from '../cache.js';
 
-export const CACHE_TTL_TRAFFIC = 180; // 3分 (リアルタイム更新)
+export const CACHE_TTL_TRAFFIC = 3 * 60 * 1000; // 3分 (リアルタイム更新)
 
 export interface TrafficItem {
   roadName: string;
@@ -120,8 +120,8 @@ export async function fetchRoadTraffic(options: {
   const roadCode = resolveRoadCode(options.road);
   const targetRoadName = options.road?.trim();
 
-  // キャッシュキーの構築
-  const cacheKey = `traffic:${prefInfo?.code || 'all'}:${roadCode || targetRoadName || 'all'}`;
+  // キャッシュキーの構築。結果には指定された道路名がそのまま入る（「東名」と「東名高速道路」は同じ道路コードになる）ので、名前も入れる
+  const cacheKey = `traffic:v2:${prefInfo?.code || 'all'}:${roadCode || ''}:${targetRoadName || ''}`;
   if (!options.noCache) {
     const cached = getFromCache<RoadTrafficResult>(cacheKey);
     if (cached) return cached;
@@ -275,7 +275,7 @@ export async function fetchRoadTraffic(options: {
   return result;
 }
 
-export const CACHE_TTL_FLIGHT = 180; // 3分 (リアルタイム運航情報)
+export const CACHE_TTL_FLIGHT = 3 * 60 * 1000; // 3分 (リアルタイム運航情報)
 
 export interface FlightItem {
   scheduledTime: string;

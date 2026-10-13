@@ -11,6 +11,7 @@ import {
   DEFAULT_MAX_CHARS,
 } from './types.js';
 import {
+  cacheKeyDigest,
   getFromCache,
   runWithSingleFlight,
   setToCache,
@@ -39,7 +40,7 @@ import {
   annotateTextWithTemporalAnchors,
   computeAnswerability,
 } from './enrichment.js';
-import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
+import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { extractQueryHighlightsRhoSelect } from './rho_select.js';
 import { extractQueryHighlightsRhoV2, extractWithEscalation } from './rho_select_v2_adapter.js';
@@ -444,6 +445,76 @@ export function isRenderStillBlockedOrBlank(options: {
   return hasLittleContent || isJsDisabledMessage || isChallenge || !hasMeaningfulPageContent(bodyOnlyMarkdown);
 }
 
+type ScrapeUrlOptions = Parameters<typeof scrapeUrl>[0];
+
+/**
+ * scrapeUrl の結果の中身を変えない項目と、キャッシュキーとは別に扱う項目。ここに無い項目はすべてキーに入れる。
+ * ScrapeUrlOptions に項目を足すと、キーに入れるかここに挙げるかを決めるまで型エラーになる。
+ */
+type ScrapeKeyIgnored =
+  | 'url' // キーの先頭に別に置く
+  | 'cookies' // 資格情報付きの要求は共有キャッシュを使わない
+  | 'tenantId' // 公開ページの取得結果はテナントをまたいで共有する
+  | 'noCache' | 'onProgress' | 'retries' | 'retryDelayMs' | 'timeoutMs' // 取得の進め方で、結果の中身は変えない
+  | 'webhookUrl'; // 通知先で、結果の中身は変えない
+
+/** キーに入れるヘッダー。資格情報を運ぶヘッダーを持つ要求は共有キャッシュを使わないので除く。名前は大文字小文字を区別しない。 */
+function headersForCacheKey(headers: Record<string, string> | undefined): Array<[string, string]> {
+  return Object.entries(headers ?? {})
+    .filter(([name]) => !isSensitiveHeaderName(name))
+    .map(([name, value]): [string, string] => [name.toLowerCase(), String(value)])
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** scrapeUrl の共有キャッシュのキー。結果の中身を変える入力はすべて含める。 */
+export function buildScrapeCacheKey(
+  options: ScrapeUrlOptions,
+  resolved: { maxChars: number; formats: ScrapeFormat[]; onlyMainContent: boolean; shouldExtractHighlights: boolean },
+): string {
+  const digest = cacheKeyDigest<ScrapeUrlOptions, ScrapeKeyIgnored>({
+    maxChars: resolved.maxChars,
+    mode: options.mode ?? 'auto',
+    renderJs: options.renderJs === true,
+    fastOnly: options.fastOnly === true,
+    formats: resolved.formats.slice().sort(),
+    fullPage: options.fullPage ?? true,
+    onlyMainContent: resolved.onlyMainContent,
+    selectors: options.selectors ?? null,
+    clipSelector: options.clipSelector ?? '',
+    headers: headersForCacheKey(options.headers),
+    removeSelectors: options.removeSelectors ?? [],
+    stripLinks: options.stripLinks === true,
+    filterLinkDensity: options.filterLinkDensity === true,
+    query: options.query ?? '',
+    extractHighlights: resolved.shouldExtractHighlights,
+    onlyHighlights: options.onlyHighlights === true,
+    highlightAlgorithm: options.highlightAlgorithm ?? 'rho-select-v2',
+    highlightOverheadTokens: options.highlightOverheadTokens ?? 96,
+    highlightMaxCount: options.highlightMaxCount ?? 'auto',
+    evidenceMode: options.evidenceMode ?? 'full',
+    includeDiagnostics: options.includeDiagnostics !== false,
+    includeDiscrepancies: options.includeDiscrepancies === true,
+    safeNormalize: options.safeNormalize === true,
+    reorderUFlat: options.reorderUFlat === true,
+    diversityWeight: options.diversityWeight ?? 0.7,
+    annotateTemporal: options.annotateTemporal === true,
+    minimizeTables: options.minimizeTables !== false,
+    extractSummary: options.extractSummary === true,
+    extractCitations: options.extractCitations === true,
+    chunkMarkdown: options.chunkMarkdown === true,
+    chunkSize: options.chunkSize || 1000,
+    validateLinks: options.validateLinks === true,
+    formatAsPrompt: options.formatAsPrompt === true,
+    highlightMatches: options.highlightMatches === true,
+    maskPii: options.maskPii === true,
+    verbose: options.verbose === true,
+    keepDataImages: options.keepDataImages === true,
+    contextTitle: options.contextTitle ?? '',
+    snippet: options.snippet ?? '',
+  });
+  return `scrape:v7:${options.url}:${digest}`;
+}
+
 export async function scrapeUrl(options: {
   url: string;
   maxChars?: number;
@@ -511,7 +582,7 @@ export async function scrapeUrl(options: {
     throw new Error('fastOnly と renderJs は同時に指定できません');
   }
 
-  const cacheKey = `scrape:v6:${url}:${maxChars}:${options.mode || 'auto'}:${onlyMainContent}:${formats.slice().sort().join(',')}:${(options.removeSelectors || []).join(',')}:${options.stripLinks || false}:${options.filterLinkDensity || false}:${options.query || ''}:${shouldExtractHighlights}:${options.onlyHighlights || false}:${options.highlightAlgorithm || 'rho-select-v2'}:${options.highlightOverheadTokens ?? 96}:${options.highlightMaxCount ?? 'auto'}:${options.evidenceMode || 'full'}:${options.includeDiagnostics !== false}:${options.includeDiscrepancies || false}:${options.safeNormalize || false}:${options.reorderUFlat || false}:${options.diversityWeight ?? 0.7}:${options.annotateTemporal || false}:${options.minimizeTables !== false}:${options.extractSummary || false}:${options.extractCitations || false}:${options.chunkMarkdown || false}:${options.chunkSize || 1000}:${options.validateLinks || false}:${options.maskPii || false}:${options.formatAsPrompt || false}:${options.highlightMatches || false}`;
+  const cacheKey = buildScrapeCacheKey(options, { maxChars, formats, onlyMainContent, shouldExtractHighlights });
 
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
@@ -1340,16 +1411,30 @@ export async function crawlSiteUrl(options: {
 // ==========================================
 // 9. リアルタイムトレンド取得 (fetchRealtimeTrends)
 // ==========================================
-export async function fetchRealtimeTrends(limit = 20): Promise<{
+const DEFAULT_TREND_LIMIT = 20;
+const MAX_TREND_LIMIT = 50;
+
+interface RealtimeTrends {
   source: 'x';
   type: 'trend';
   count: number;
   items: { rank: number; keyword: string; tweetCount?: string; url: string }[];
   timestamp: string;
-}> {
-  const cacheKey = `trends:realtime`;
-  const cached = getFromCache<any>(cacheKey);
-  if (cached) return cached;
+}
+
+/** 件数の指定を 1〜50 に収める。数として読めない・1 未満（0 や負数）は既定の 20 件。 */
+export function resolveTrendLimit(raw: unknown): number {
+  const n = Math.trunc(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_TREND_LIMIT;
+  return Math.min(n, MAX_TREND_LIMIT);
+}
+
+export async function fetchRealtimeTrends(limit: number = DEFAULT_TREND_LIMIT): Promise<RealtimeTrends> {
+  const take = resolveTrendLimit(limit);
+  // キャッシュには件数で切る前の全件を入れ、返すときに切る。切った後を入れると、少ない件数で呼ばれた直後は多い件数を返せない
+  const cacheKey = 'trends:realtime:v2';
+  const cached = getFromCache<RealtimeTrends>(cacheKey);
+  if (cached) return { ...cached, count: Math.min(cached.items.length, take), items: cached.items.slice(0, take) };
 
   const res = await fetchWithSafeRedirects('https://search.yahoo.co.jp/realtime', 10000);
   if (!res?.response.ok) {
@@ -1378,17 +1463,16 @@ export async function fetchRealtimeTrends(limit = 20): Promise<{
     });
   });
 
-  const finalItems = items.slice(0, limit);
-  const result = {
-    source: 'x' as const,
-    type: 'trend' as const,
-    count: finalItems.length,
-    items: finalItems,
+  const result: RealtimeTrends = {
+    source: 'x',
+    type: 'trend',
+    count: items.length,
+    items,
     timestamp: new Date().toISOString(),
   };
 
   setToCache(cacheKey, result, CACHE_TTL_TREND);
-  return result;
+  return { ...result, count: Math.min(items.length, take), items: items.slice(0, take) };
 }
 
 // ==========================================
@@ -1529,6 +1613,18 @@ const DEFAULT_SCRAPE_DEADLINE_MS = 0;
 /** 半数のページが揃ってから残りを待つ猶予。 */
 const SCRAPE_DEADLINE_GRACE_MS = 5_000;
 
+type IntegratedSearchOptions = Parameters<typeof integratedSearch>[0];
+
+/**
+ * integratedSearch の結果の中身を変えない項目。ここに無い項目はすべてキャッシュキーに入れる。
+ * IntegratedSearchOptions に項目を足すと、キーに入れるかここに挙げるかを決めるまで型エラーになる。
+ */
+type IntegratedSearchKeyIgnored =
+  | 'query' // キーの先頭に別に置く
+  | 'noCache'
+  | 'tenantId' // 公開情報の検索なので、テナントをまたいで共有する
+  | 'scrapeDeadlineMs'; // 締切で欠けた結果は保存しないので、保存される結果は締切の値に依らない
+
 export async function integratedSearch(options: {
   query: string;
   limit?: number;
@@ -1595,7 +1691,36 @@ export async function integratedSearch(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const requestTenantId = options.tenantId ?? 'legacy';
-  const cacheKey = `search:integrated:v9:${query}:${limit}:${scrapeContent}:${includeRealtime}:${realtimeSort}:${realtimeFocus}:${realtimeAnchor ?? 'auto'}:${realtimeLimit}:${officialAccountId || 'none'}:${(includeDomains || []).join(',')}:${(excludeDomains || []).join(',')}:${updated || 'all'}:${extractHighlights}:${onlyMainContent}:${formats.slice().sort().join(',')}:${dedup}:${reorderUFlat}:${enablePrf}:${diversityWeight ?? 'default'}:${annotateTemporal || false}:${minimizeTables !== false}:${highlightAlgorithm}:${highlightOverheadTokens}:${highlightMaxCount ?? 'auto'}:${options.verbose === true ? 'verbose' : 'compact'}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${adaptiveScrape ? 'adapt-on' : 'adapt-off'}:${scrapeBudget}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const digest = cacheKeyDigest<IntegratedSearchOptions, IntegratedSearchKeyIgnored>({
+    limit,
+    scrapeContent,
+    includeRealtime,
+    realtimeSort,
+    realtimeFocus,
+    realtimeAnchor: realtimeAnchor ?? 'auto',
+    realtimeLimit,
+    officialAccountId: officialAccountId || 'none',
+    maxChars,
+    includeDomains: includeDomains ?? [],
+    excludeDomains: excludeDomains ?? [],
+    updated: updated ?? 'all',
+    extractHighlights,
+    onlyMainContent,
+    formats: formats.slice().sort(),
+    dedup,
+    verbose: options.verbose === true,
+    reorderUFlat,
+    enablePrf,
+    diversityWeight: diversityWeight ?? 'default',
+    annotateTemporal: annotateTemporal === true,
+    minimizeTables: minimizeTables !== false,
+    highlightAlgorithm,
+    highlightOverheadTokens,
+    highlightMaxCount: highlightMaxCount ?? 'auto',
+    adaptiveScrape,
+    scrapeBudget,
+  });
+  const cacheKey = `search:integrated:v10:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
