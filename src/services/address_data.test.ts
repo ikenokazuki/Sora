@@ -116,7 +116,7 @@ describe('idle', () => {
 });
 
 describe('priority', () => {
-  test('待機中のジョブは、全国マスター → 郵便番号 → 市区町村（段A）→ 番地・号（段B）の順で始める（同じ種類は頼んだ順）', async () => {
+  test('待機中のジョブは、全国マスター → 郵便番号 → 索引 → 市区町村（段A）→ 番地・号（段B）の順で始める（同じ種類は頼んだ順）', async () => {
     let gated!: GatedBuilder;
     const { data } = createTestAddressData(dir, { wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'city' && job.lgCode === CHIYODA_LG)) });
     void data.request(chiyoda).catch(() => undefined);
@@ -124,12 +124,13 @@ describe('priority', () => {
     void data.request({ kind: 'num', lgCode: SAPPORO_LG }).catch(() => undefined);
     void data.request({ kind: 'city', lgCode: '011002' }).catch(() => undefined);
     void data.request(sapporo).catch(() => undefined);
+    void data.request({ kind: 'index' }).catch(() => undefined);
     void data.request({ kind: 'postal' }).catch(() => undefined);
     void data.request({ kind: 'master' }).catch(() => undefined);
     gated.release();
     await data.idle();
     expect(gated.started.map((job) => (job.kind === 'city' || job.kind === 'num' ? `${job.kind}:${job.lgCode}` : job.kind))).toEqual([
-      `city:${CHIYODA_LG}`, 'master', 'postal', 'city:011002', `city:${SAPPORO_LG}`, `num:${SAPPORO_LG}`,
+      `city:${CHIYODA_LG}`, 'master', 'postal', 'index', 'city:011002', `city:${SAPPORO_LG}`, `num:${SAPPORO_LG}`,
     ]);
   });
 });
@@ -236,6 +237,13 @@ describe('loaders', () => {
   test('towns() は 6 桁でないコードを拒否する', async () => {
     const { data } = createTestAddressData(dir);
     await expect(data.towns('13101')).rejects.toThrow('6 桁');
+  });
+
+  test('geoIndex() の読み取り役が近傍の町字を引ける。同じ版では使い回す', async () => {
+    const { data } = createTestAddressData(dir);
+    const first = await data.geoIndex();
+    expect(first.reader.nearest(35.6759, 139.7463, 1, 1000)[0]).toMatchObject({ lgCode: CHIYODA_LG, machiazaId: '0005001' });
+    expect(await data.geoIndex()).toBe(first);
   });
 
   test('postal() の読み取り役が郵便番号を引ける。作り直されると新しい版になり、古い読み取り役もすぐには壊れない', async () => {

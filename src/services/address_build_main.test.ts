@@ -18,6 +18,7 @@ describe('parseChildArgs', () => {
     expect(parseChildArgs(['--job', '{"kind":"postal"}', '--dir', '/x'])).toEqual({ dir: '/x', job: { kind: 'postal' } });
     expect(parseChildArgs(['--dir', '/x', '--job', `{"kind":"city","lgCode":"${CHIYODA_LG}"}`]).job).toEqual({ kind: 'city', lgCode: CHIYODA_LG });
     expect(parseChildArgs(['--dir', '/x', '--job', `{"kind":"num","lgCode":"${CHIYODA_LG}"}`]).job).toEqual({ kind: 'num', lgCode: CHIYODA_LG });
+    expect(parseChildArgs(['--dir', '/x', '--job', '{"kind":"index"}']).job).toEqual({ kind: 'index' });
   });
 
   test.each([

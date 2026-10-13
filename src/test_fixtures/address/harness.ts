@@ -59,7 +59,7 @@ export const SAPPORO_LG = '011011';
 export const ABR_LAST_MODIFIED = 'Fri, 02 Oct 2026 15:40:53 GMT';
 export const POSTAL_LAST_MODIFIED = 'Wed, 30 Sep 2026 07:46:52 GMT';
 /** 固定データの大きさに合わせた、構築結果の最小値。 */
-export const SMALL_MINIMUM = { prefs: 2, cities: 2, towns: 1, general: 3, office: 2 } as const;
+export const SMALL_MINIMUM = { prefs: 2, cities: 2, towns: 1, general: 3, office: 2, points: 3 } as const;
 
 const POS_HEADER = ['lg_code', 'rep_lon', 'rep_lat', 'rep_srid', 'rep_scale'];
 const CITY_HEADER = ['lg_code', 'pref', 'pref_kana', 'pref_roma', 'county', 'county_kana', 'county_roma', 'city', 'city_kana', 'city_roma', 'ward', 'ward_kana', 'ward_roma'];
@@ -102,6 +102,11 @@ export const SAPPORO_POS = [
   [SAPPORO_LG, '0014001', '141.3548', '43.0610', 'EPSG:6668'],
   [SAPPORO_LG, '0014020', '141.3020', '43.0620', 'EPSG:6668'],
 ];
+
+/** 都道府県単位の町字位置参照（全国の点の索引の元）。市区町村単位の位置参照に、住居表示の印の列を足したもの。 */
+export const TOWN_PREF_POS_HEADER = ['lg_code', 'machiaza_id', 'rsdt_addr_flg', 'rep_lon', 'rep_lat', 'rep_srid'];
+const prefPositions = (towns: readonly (readonly string[])[], positions: readonly (readonly string[])[]): string[][] =>
+  positions.map(([lg, id, lon, lat, srid]) => [lg as string, id as string, towns.find((town) => town[1] === id)?.[10] ?? '0', lon as string, lat as string, srid as string]);
 
 // ---------- 段B（住居表示・地番）----------
 
@@ -207,6 +212,8 @@ export function sampleUpstream(options: { numbers?: boolean } = {}): FakeUpstrea
   abr(`mt_town_pos/city/mt_town_pos_city${CHIYODA_LG}`, TOWN_POS_HEADER, CHIYODA_POS);
   abr(`mt_town/city/mt_town_city${SAPPORO_LG}`, TOWN_HEADER, SAPPORO_TOWNS);
   abr(`mt_town_pos/city/mt_town_pos_city${SAPPORO_LG}`, TOWN_POS_HEADER, SAPPORO_POS);
+  abr('mt_town_pos/pref/mt_town_pos_pref13', TOWN_PREF_POS_HEADER, prefPositions(CHIYODA_TOWNS, CHIYODA_POS));
+  abr('mt_town_pos/pref/mt_town_pos_pref01', TOWN_PREF_POS_HEADER, prefPositions(SAPPORO_TOWNS, SAPPORO_POS));
   if (options.numbers) {
     abr(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`, RSDT_HEADER, CHIYODA_RSDT);
     abr(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`, RSDT_POS_HEADER, CHIYODA_RSDT_POS);

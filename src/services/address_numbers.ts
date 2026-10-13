@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isSupportedSrid } from './address_abr.js';
-import { streamZipCsv } from './address_csv.js';
+import { scanZipCsv } from './address_csv.js';
 
 /** txt の中の 1 つの節の位置（先頭からのバイト数と長さ）。Geolonia のライブラリが `csv_ranges` として読む。 */
 export interface NumberRange {
@@ -69,33 +69,11 @@ const CHIBAN_SPEC: KindSpec = {
 /** txt の行を壊す値（カンマ・引用符・改行）。 */
 const UNSAFE = /[,"\r\n]/;
 
-/** 見出し行から、必要な列の位置を引く。無い列があれば失敗する。 */
-function columnIndexes(header: readonly string[], names: readonly string[], label: string): number[] {
-  const missing = names.filter((name) => !header.includes(name));
-  if (missing.length > 0) throw new Error(`ABR の${label}に列 ${missing.join(', ')} がありません`);
-  return names.map((name) => header.indexOf(name));
-}
-
-/** CSV を 1 行ずつ読み、見出し行で決めた列の位置とともに onRow に渡す。 */
-async function scan(zipPath: string, label: string, names: readonly string[], onRow: (cols: number[], row: string[]) => void): Promise<void> {
-  let cols: number[] | null = null;
-  await streamZipCsv(zipPath, (row, control) => {
-    if (cols === null) {
-      cols = columnIndexes(row, names, label);
-      // 使う列以外は文字列を作らない（地番の位置参照は 20 列のうち 5 列しか使わない）。
-      control.keepColumns(cols);
-    } else {
-      onRow(cols, row);
-    }
-  });
-  if (cols === null) throw new Error(`ABR の${label}が空です`);
-}
-
 /** 位置参照を、結合キー → "経度,緯度"（小数 6 桁）にする。対応しない座標参照系は使わない。重複するキーは最初の行。 */
 async function loadPositions(zipPath: string, spec: KindSpec): Promise<Map<string, string>> {
   const positions = new Map<string, string>();
   const keys = spec.keyColumns.length;
-  await scan(zipPath, `${spec.kind}の位置参照`, [...spec.keyColumns, 'rep_lon', 'rep_lat', 'rep_srid'], (cols, row) => {
+  await scanZipCsv(zipPath, `ABR の${spec.kind}の位置参照`, [...spec.keyColumns, 'rep_lon', 'rep_lat', 'rep_srid'], (cols, row) => {
     if (!isSupportedSrid(row[cols[keys + 2] as number])) return;
     const lon = Number.parseFloat(row[cols[keys] as number] ?? '');
     const lat = Number.parseFloat(row[cols[keys + 1] as number] ?? '');
@@ -122,7 +100,7 @@ async function collect(spec: KindSpec, towns: ReadonlyMap<string, string>, mainZ
   const keys = spec.keyColumns.length;
   let rows = 0;
   let skipped = 0;
-  await scan(mainZip, spec.kind, [...spec.keyColumns, ...spec.numberColumns], (cols, row) => {
+  await scanZipCsv(mainZip, `ABR の${spec.kind}`, [...spec.keyColumns, ...spec.numberColumns], (cols, row) => {
     const machiaza = towns.get(row[cols[0] as number] ?? '');
     if (machiaza === undefined) return;
     const numbers = [0, 1, 2].map((index) => row[cols[keys + index] as number] ?? '');

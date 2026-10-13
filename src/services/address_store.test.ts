@@ -27,6 +27,7 @@ describe('ids and ttl', () => {
     expect(jobArtifactId({ kind: 'postal' })).toBe('postal');
     expect(jobArtifactId({ kind: 'city', lgCode: '131016' })).toBe('city:131016');
     expect(jobArtifactId({ kind: 'num', lgCode: '131016' })).toBe('num:131016');
+    expect(jobArtifactId({ kind: 'index' })).toBe('index');
   });
 
   test('成果物のディレクトリ名', () => {
