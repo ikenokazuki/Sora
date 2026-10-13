@@ -1,0 +1,305 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { AddressData } from './address_data.js';
+import { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { lgCode6 } from './address_names.js';
+
+/** 住所の各階層のキー。町字・郵便番号・逆引きの結合に使う。 */
+export interface AddressKeys {
+  prefCode?: string;
+  /** 6 桁の全国地方公共団体コード。 */
+  lgCode?: string;
+  /** ABR の町字 ID。 */
+  machiazaId?: string;
+  /** 住居表示の街区符号・住居番号・住居番号2。 */
+  blk?: string;
+  rsdt?: string;
+  rsdt2?: string;
+  /** 地番（本番・枝番・孫番のうち値のあるもの）。 */
+  prc?: string[];
+}
+
+export interface NormalizedAddress {
+  input: string;
+  /** 先頭の〒nnn-nnnn / nnn-nnnn を外した 7 桁。 */
+  postalCode?: string;
+  pref?: string;
+  city?: string;
+  town?: string;
+  addr?: string;
+  other: string;
+  /** pref + city + town + addr。 */
+  normalized: string;
+  /** 0 都道府県も不明 / 1 都道府県 / 2 市区町村 / 3 町字 / 8 番地・号。 */
+  level: number;
+  /** 番地・号を何で照合したか。null は整形だけで未照合。 */
+  numberSource: 'rsdt' | 'chiban' | null;
+  keys: AddressKeys;
+  point?: { lat: number; lon: number; level: number };
+  /** 待ち時間までにデータが揃わず、取れている範囲で答えた。 */
+  incomplete?: true;
+  pending?: string[];
+  unavailable?: Array<{ artifact: string; message: string }>;
+}
+
+export interface NormalizeOptions {
+  /** ライブラリに渡す最大の正規化レベル（既定 8）。 */
+  level?: number;
+  /** データの取得を待つ上限。省略時は設定の waitMs。 */
+  waitMs?: number;
+}
+
+export interface AddressNormalizerOptions {
+  /** ライブラリを読み直すまでの時間。メモリの上限を兼ねる（既定 24 時間）。 */
+  maxAgeMs?: number;
+  now?: () => number;
+}
+
+// ---------- 郵便番号の分離 ----------
+
+const FULL_WIDTH_DIGITS = /[０-９]/g;
+const POSTAL_PREFIX = /^[\s　]*(?:〒[\s　]*)?([0-9０-９]{3})[-‐‑–—―−－ー]?([0-9０-９]{4})(?![0-9０-９])[\s　,、]*/;
+const MAX_INPUT_LENGTH = 300;
+
+/** 先頭の郵便番号（〒の有無、ハイフンの有無、全角を許す）を外す。ライブラリは〒付きだと住所を読めないため。 */
+export function splitPostalCode(input: string): { postalCode?: string; address: string } {
+  const match = input.match(POSTAL_PREFIX);
+  if (!match) return { address: input.trim() };
+  const postalCode = `${match[1]}${match[2]}`.replace(FULL_WIDTH_DIGITS, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xfee0));
+  return { postalCode, address: input.slice(match[0].length).trim() };
+}
+
+// ---------- ライブラリの結果の整形 ----------
+
+/** Geolonia ライブラリの結果のうち、このモジュールが読む部分。 */
+export interface LibraryResult {
+  pref?: string;
+  city?: string;
+  town?: string;
+  addr?: string;
+  other: string;
+  level: number;
+  point?: { lat: number; lng: number; level: number };
+  metadata: {
+    prefecture?: { code: number | string };
+    city?: { code: number | string };
+    machiAza?: { machiaza_id: string };
+    rsdt?: { blk_num: string; rsdt_num: string; rsdt_num2: string };
+    chiban?: { prc_num1: string; prc_num2: string; prc_num3: string };
+  };
+}
+
+interface Notes {
+  pending?: string[];
+  unavailable?: Array<{ artifact: string; message: string }>;
+}
+
+export function shapeResult(input: string, postalCode: string | undefined, result: LibraryResult, notes: Notes): NormalizedAddress {
+  const { metadata } = result;
+  const keys: AddressKeys = {};
+  const cityCode = metadata.city ? lgCode6(metadata.city.code) : undefined;
+  const prefCode = cityCode?.slice(0, 2) ?? (metadata.prefecture ? lgCode6(metadata.prefecture.code).slice(0, 2) : undefined);
+  if (prefCode) keys.prefCode = prefCode;
+  if (cityCode) keys.lgCode = cityCode;
+  if (metadata.machiAza) keys.machiazaId = metadata.machiAza.machiaza_id;
+  let numberSource: NormalizedAddress['numberSource'] = null;
+  if (metadata.rsdt) {
+    numberSource = 'rsdt';
+    keys.blk = metadata.rsdt.blk_num;
+    keys.rsdt = metadata.rsdt.rsdt_num;
+    if (metadata.rsdt.rsdt_num2) keys.rsdt2 = metadata.rsdt.rsdt_num2;
+  } else if (metadata.chiban) {
+    numberSource = 'chiban';
+    keys.prc = [metadata.chiban.prc_num1, metadata.chiban.prc_num2, metadata.chiban.prc_num3].filter((part) => part !== '');
+  }
+  const shaped: NormalizedAddress = {
+    input,
+    pref: result.pref,
+    city: result.city,
+    town: result.town,
+    addr: result.addr,
+    other: result.other,
+    normalized: [result.pref, result.city, result.town, result.addr].filter(Boolean).join(''),
+    level: result.level,
+    numberSource,
+    keys,
+  };
+  if (postalCode) shaped.postalCode = postalCode;
+  if (result.point) shaped.point = { lat: result.point.lat, lon: result.point.lng, level: result.point.level };
+  if (notes.pending || notes.unavailable) {
+    shaped.incomplete = true;
+    if (notes.pending) shaped.pending = notes.pending;
+    if (notes.unavailable) shaped.unavailable = notes.unavailable;
+  }
+  return shaped;
+}
+
+// ---------- ライブラリの読み込みと仮想ファイル ----------
+
+interface FileResponse {
+  ok: boolean;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+}
+
+interface Library {
+  normalize(input: string, option?: { level?: number }): Promise<LibraryResult>;
+  config: { japaneseAddressesApi: string };
+  requestHandlers: { file: (url: URL, options?: { offset?: number; length?: number }) => Promise<FileResponse> };
+}
+
+interface Generation {
+  lib: Library;
+  /** この世代に配ったデータの版（成果物 ID → 版）。 */
+  served: Map<string, string>;
+  startedAt: number;
+}
+
+const VIRTUAL_ROOT = '/sora-address';
+const CITY_FILE = new RegExp(`^${VIRTUAL_ROOT}/ja/([^/]+)/([^/]+)\\.json$`);
+const DEFAULT_MAX_AGE_MS = 24 * 3_600_000;
+/** 呼び出しごとの締め切り。仮想ファイルの中でデータの取得を待てる残り時間になる。 */
+const callState = new AsyncLocalStorage<{ deadline: number }>();
+
+const requireCache = createRequire(import.meta.url).cache;
+let libraryChain: Promise<unknown> = Promise.resolve();
+
+/**
+ * ライブラリの新しいインスタンスを読む。ライブラリは町の一覧などをモジュールの中に残し続けて消せないため、
+ * 配るデータが変わったときはモジュールごと読み直す。Bun は require.cache から消すと次の import で ESM も評価し直し、
+ * 古いインスタンスは参照が無くなれば回収される（`?query` を付けた import は同じインスタンスのままなので使えない）。
+ * 消して読むまでを 1 件ずつ行い、並行する読み込み同士でインスタンスを共有しないようにする。
+ */
+function importFreshLibrary(): Promise<Library> {
+  const url = import.meta.resolve('@geolonia/normalize-japanese-addresses');
+  const run = libraryChain.then(async () => {
+    delete requireCache[fileURLToPath(url)];
+    return (await import(url)) as Library;
+  });
+  libraryChain = run.catch(() => undefined);
+  return run;
+}
+
+const textResponse = (text: string): FileResponse => ({ ok: true, text: async () => text, json: async () => JSON.parse(text) });
+const NOT_FOUND: FileResponse = {
+  ok: false,
+  text: async () => '',
+  json: async () => {
+    throw new Error('not found');
+  },
+};
+
+/**
+ * 住所の正規化。アルゴリズムは Geolonia のライブラリに任せ、データの読み取りだけを差し替えて、
+ * ローカルに取得した ABR のデータ（必要な市区町村だけ）を読ませる。
+ */
+export class AddressNormalizer {
+  private current: Promise<Generation> | null = null;
+  private loaded = 0;
+  private readonly now: () => number;
+  private readonly maxAgeMs: number;
+
+  constructor(private readonly data: AddressData, options: AddressNormalizerOptions = {}) {
+    this.now = options.now ?? Date.now;
+    this.maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+  }
+
+  /** ライブラリを何回読み込んだか（テスト用）。 */
+  get generation(): number {
+    return this.loaded;
+  }
+
+  async normalize(input: string, options: NormalizeOptions = {}): Promise<NormalizedAddress> {
+    if (!this.data.enabled) throw new AddressDisabledError();
+    const { postalCode, address } = splitPostalCode(input);
+    if (address === '' && postalCode === undefined) throw new AddressInputError('住所が空です');
+    if (address.length > MAX_INPUT_LENGTH) throw new AddressInputError(`住所は ${MAX_INPUT_LENGTH} 文字以内で指定してください`);
+    if (address === '') return shapeResult(input, postalCode, { other: '', level: 0, metadata: {} }, {});
+
+    const level = options.level ?? 8;
+    const deadline = this.now() + (options.waitMs ?? this.data.config.waitMs);
+    const generation = await this.acquire();
+    const run = (maxLevel: number): Promise<LibraryResult> =>
+      callState.run({ deadline }, () => generation.lib.normalize(address, { level: maxLevel }));
+
+    // まず市区町村までで読む。ここでは市区町村のデータを使わない。市区町村までの入力は、これで答えが出る。
+    const notes: Notes = {};
+    let result = await run(Math.min(level, 2));
+    if (level >= 3 && result.level >= 2 && result.other.trim() !== '') {
+      try {
+        result = await run(level);
+      } catch (error) {
+        // 市区町村のデータが揃わなくても、市区町村までの答えは返せる。
+        if (error instanceof AddressPendingError && error.pending.startsWith('city:')) {
+          notes.pending = [error.pending];
+        } else if (error instanceof AddressUnavailableError && error.artifact?.startsWith('city:')) {
+          notes.unavailable = [{ artifact: error.artifact, message: error.message }];
+        } else {
+          throw error;
+        }
+      }
+    }
+    this.data.store.touch('master');
+    if (result.metadata.city) this.data.store.touch(`city:${lgCode6(result.metadata.city.code)}`);
+    return shapeResult(input, postalCode, result, notes);
+  }
+
+  /** 使えるライブラリの世代を返す。配ったデータが更新・破棄されたか、古くなっていれば読み直す。 */
+  private async acquire(): Promise<Generation> {
+    const promise = this.current;
+    if (promise) {
+      const generation = await promise;
+      if (!this.outdated(generation)) return generation;
+    }
+    // 待っている間に他の呼び出しが先に読み直していれば、それを使う。
+    if (this.current === promise) {
+      const loading = this.load();
+      this.current = loading;
+      // 読み込みに失敗した世代を残さない（次の呼び出しでやり直す）。
+      loading.catch(() => {
+        if (this.current === loading) this.current = null;
+      });
+      return loading;
+    }
+    return this.current as Promise<Generation>;
+  }
+
+  private outdated(generation: Generation): boolean {
+    if (this.now() - generation.startedAt > this.maxAgeMs) return true;
+    const artifacts = this.data.status().artifacts;
+    for (const [id, ver] of generation.served) {
+      if (artifacts[id]?.ver !== ver) return true;
+    }
+    return false;
+  }
+
+  private async load(): Promise<Generation> {
+    const lib = await importFreshLibrary();
+    const generation: Generation = { lib, served: new Map(), startedAt: this.now() };
+    lib.config.japaneseAddressesApi = `file://${VIRTUAL_ROOT}/ja`;
+    lib.requestHandlers.file = (url) => this.serve(generation, url);
+    this.loaded += 1;
+    return generation;
+  }
+
+  /** ライブラリが読もうとするファイルを、ローカルのデータに対応づける。 */
+  private async serve(generation: Generation, url: URL): Promise<FileResponse> {
+    const deadline = callState.getStore()?.deadline ?? this.now() + this.data.config.waitMs;
+    const remaining = (): number => Math.max(0, deadline - this.now());
+    const path = decodeURI(url.pathname);
+    if (path === `${VIRTUAL_ROOT}/ja.json`) {
+      const ready = await this.data.ensure({ kind: 'master' }, remaining());
+      generation.served.set(ready.id, ready.ver);
+      return textResponse(await Bun.file(join(ready.path, 'ja.json')).text());
+    }
+    const match = path.match(CITY_FILE);
+    if (!match) return NOT_FOUND;
+    const city = (await this.data.master(remaining())).byName.get(`${match[1]}/${match[2]}`);
+    if (!city) return NOT_FOUND;
+    const ready = await this.data.ensure({ kind: 'city', lgCode: city.lgCode }, remaining());
+    generation.served.set(ready.id, ready.ver);
+    return textResponse(await Bun.file(join(ready.path, 'town.json')).text());
+  }
+}
