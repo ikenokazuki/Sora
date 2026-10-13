@@ -8,6 +8,7 @@ import {
   AddressStore, jobArtifactId, ttlFor, type AddressStatus, type ArtifactMeta, type BuildJob,
 } from './address_store.js';
 import { GeoIndexReader } from './address_geo_index.js';
+import type { NumberRanges } from './address_numbers.js';
 import { PostalReader } from './postal_code.js';
 
 export type { BuildJob } from './address_store.js';
@@ -98,6 +99,7 @@ interface FailureRecord {
 const HOUR = 3_600_000;
 const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4 };
 const TOWN_CACHE_MAX = 50;
+const NUMBERS_CACHE_MAX = 30;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
 const READER_GRACE_MS = 30_000;
 
@@ -128,6 +130,7 @@ export class AddressData {
   private readonly townCache = new Map<string, { ver: string; json: TownJson }>();
   private postalCache: { ver: string; reader: PostalReader } | null = null;
   private geoCache: { ver: string; reader: GeoIndexReader } | null = null;
+  private readonly numbersCache = new Map<string, { ver: string; path: string; ranges: NumberRanges }>();
 
   constructor(private readonly options: AddressDataOptions) {
     this.now = options.now ?? Date.now;
@@ -213,6 +216,24 @@ export class AddressData {
     this.townCache.delete(lgCode);
     this.townCache.set(lgCode, entry);
     while (this.townCache.size > TOWN_CACHE_MAX) this.townCache.delete(this.townCache.keys().next().value as string);
+    return entry;
+  }
+
+  /** 市区町村の番地・号（段B）。節の範囲表と、rsdt.txt / chiban.txt のあるディレクトリ。最大 30 市区町村を版ごとにメモリへ置く。 */
+  async numbers(lgCode: string, waitMs?: number): Promise<{ ver: string; path: string; ranges: NumberRanges }> {
+    if (!/^\d{6}$/.test(lgCode)) throw new Error(`市区町村コードは 6 桁で指定してください: ${lgCode}`);
+    const ready = await this.ensure({ kind: 'num', lgCode }, waitMs);
+    const cached = this.numbersCache.get(lgCode);
+    if (cached?.ver === ready.ver) {
+      this.numbersCache.delete(lgCode);
+      this.numbersCache.set(lgCode, cached);
+      return cached;
+    }
+    const ranges = JSON.parse(await Bun.file(join(ready.path, 'ranges.json')).text()) as NumberRanges;
+    const entry = { ver: ready.ver, path: ready.path, ranges };
+    this.numbersCache.delete(lgCode);
+    this.numbersCache.set(lgCode, entry);
+    while (this.numbersCache.size > NUMBERS_CACHE_MAX) this.numbersCache.delete(this.numbersCache.keys().next().value as string);
     return entry;
   }
 

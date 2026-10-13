@@ -239,6 +239,16 @@ describe('loaders', () => {
     await expect(data.towns('13101')).rejects.toThrow('6 桁');
   });
 
+  test('numbers() が段B の範囲表とファイルの場所を返す。同じ版ではキャッシュする', async () => {
+    const { data } = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const first = await data.numbers(CHIYODA_LG);
+    expect(Object.keys(first.ranges).sort()).toEqual(['0005001', '0005002', '0006000']);
+    expect(first.ranges['0005001']?.住居表示?.length).toBeGreaterThan(0);
+    expect(first.path).toContain(`num/${CHIYODA_LG}`);
+    expect(await data.numbers(CHIYODA_LG)).toBe(first);
+    await expect(data.numbers('13101')).rejects.toThrow('6 桁');
+  });
+
   test('geoIndex() の読み取り役が近傍の町字を引ける。同じ版では使い回す', async () => {
     const { data } = createTestAddressData(dir);
     const first = await data.geoIndex();

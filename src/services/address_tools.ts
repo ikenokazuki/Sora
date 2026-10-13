@@ -1,8 +1,9 @@
 import { compareAddresses, checkZip, type AddressComparison, type ZipCheck } from './address_checks.js';
 import { getAddressContext, type AddressContext } from './address_context.js';
-import { AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { AddressInputError } from './address_errors.js';
+import { Gaps, type Incomplete } from './address_gaps.js';
 import type { NormalizedAddress } from './address_normalize.js';
-import { lookupZip, normalizeZip, zipsForAddress, type PostalCandidate, type ZipForAddress } from './address_postal.js';
+import { lookupZip, normalizeZip, toPostalEntry, zipsForAddress, type PostalCandidate, type PostalCodeEntry } from './address_postal.js';
 
 /** ABR（公共データ利用規約 第1.0版）の出典と加工の明記。 */
 export const ADDRESS_ATTRIBUTION =
@@ -17,17 +18,6 @@ export interface DatasetField {
   stale: boolean;
 }
 
-export interface UnavailableItem {
-  artifact: string;
-  message: string;
-}
-
-interface Incomplete {
-  incomplete?: true;
-  pending?: string[];
-  unavailable?: UnavailableItem[];
-}
-
 /**
  * 答えに使ったデータ（郵便番号・市区町村）の新しさ。全国マスターは名称とコードの対応だけで、
  * 更新日が古くても答えの古さを表さないので、使ったデータが他に無いときだけ数える。
@@ -38,34 +28,6 @@ function datasetField(ctx: AddressContext, ids: Iterable<string>): DatasetField 
   return { source: DATASET_SOURCE, updatedAt: info.updatedAt, stale: info.stale };
 }
 
-/** 待ち時間までに揃わなかったデータと、取得に失敗したデータを集める。 */
-class Gaps {
-  private readonly pending = new Set<string>();
-  private readonly unavailable = new Map<string, string>();
-
-  add(info: Incomplete): void {
-    for (const id of info.pending ?? []) this.pending.add(id);
-    for (const item of info.unavailable ?? []) this.unavailable.set(item.artifact, item.message);
-  }
-
-  /** データの取得に絡む例外なら記録して続行し、それ以外は投げ直す。 */
-  absorb(error: unknown): void {
-    if (error instanceof AddressPendingError) this.pending.add(error.pending);
-    else if (error instanceof AddressUnavailableError && error.artifact) this.unavailable.set(error.artifact, error.message);
-    else throw error;
-  }
-
-  result(): Incomplete {
-    if (this.pending.size === 0 && this.unavailable.size === 0) return {};
-    const out: Incomplete = { incomplete: true };
-    if (this.pending.size > 0) out.pending = [...this.pending];
-    if (this.unavailable.size > 0) out.unavailable = [...this.unavailable].map(([artifact, message]) => ({ artifact, message }));
-    return out;
-  }
-}
-
-type PostalCodeEntry = Omit<ZipForAddress, 'kind'>;
-const toEntry = ({ zipcode, town, townRaw, exact, fallback }: ZipForAddress): PostalCodeEntry => ({ zipcode, town, townRaw, exact, fallback });
 
 // ---------- search_postal_code ----------
 
@@ -113,7 +75,7 @@ export async function searchPostalCode(
   }
 
   const normalized = await ctx.normalizer.normalize(address as string);
-  const postalCodes = (await zipsForAddress(ctx, normalized)).map(toEntry);
+  const postalCodes = (await zipsForAddress(ctx, normalized)).map(toPostalEntry);
   const gaps = new Gaps();
   gaps.add(normalized);
   return {
@@ -161,7 +123,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
 
   let postalCodes: PostalCodeEntry[] = [];
   try {
-    postalCodes = (await zipsForAddress(ctx, normalized)).map(toEntry);
+    postalCodes = (await zipsForAddress(ctx, normalized)).map(toPostalEntry);
   } catch (error) {
     gaps.absorb(error);
   }

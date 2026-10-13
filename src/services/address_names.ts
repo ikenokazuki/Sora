@@ -55,6 +55,11 @@ export function lgCode6(code: number | string): string {
   return String(code).padStart(6, '0');
 }
 
+/** 町字名（大字・町名 + 丁目 + 小字）。ライブラリの結果の `town` と同じ。 */
+export function townNameOf(town: Pick<TownEntry, 'oaza_cho' | 'chome' | 'koaza'>): string {
+  return `${town.oaza_cho ?? ''}${town.chome ?? ''}${town.koaza ?? ''}`;
+}
+
 /** ライブラリが `ja/<都道府県>/<市区町村>.json` の名前に使う市区町村名（郡 + 市 + 区）。 */
 export function cityNameOf(city: { county?: string; city: string; ward?: string }): string {
   return `${city.county ?? ''}${city.city}${city.ward ?? ''}`;
