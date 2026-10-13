@@ -18,7 +18,8 @@ export class AddressDisabledError extends Error {
 
 /** 必要なデータを取得できない（国外からの接続拒否、通信失敗、取得元の形式変更）。REST では ADDRESS_DATA_UNAVAILABLE / 502。 */
 export class AddressUnavailableError extends Error {
-  constructor(message: string, readonly blocked = false) {
+  /** artifact は失敗したデータの ID（`master` / `postal` / `city:<lg_code>`）。 */
+  constructor(message: string, readonly blocked = false, readonly artifact?: string) {
     super(message);
     this.name = 'AddressUnavailableError';
   }
