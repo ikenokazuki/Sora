@@ -69,9 +69,12 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export class AddressStore {
   private chain: Promise<unknown> = Promise.resolve();
   private readonly used = new Map<string, number>();
-  private lastFlush = 0;
+  private lastFlush: number;
 
-  constructor(readonly dir: string, private readonly now: () => number = Date.now) {}
+  constructor(readonly dir: string, private readonly now: () => number = Date.now) {
+    // 起動直後の最初の利用で書き込まない（最終利用日時の保存は 60 秒に 1 回まで）。
+    this.lastFlush = now();
+  }
 
   private get statusPath(): string {
     return join(this.dir, 'status.json');

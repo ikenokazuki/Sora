@@ -28,8 +28,13 @@ interface Incomplete {
   unavailable?: UnavailableItem[];
 }
 
+/**
+ * 答えに使ったデータ（郵便番号・市区町村）の新しさ。全国マスターは名称とコードの対応だけで、
+ * 更新日が古くても答えの古さを表さないので、使ったデータが他に無いときだけ数える。
+ */
 function datasetField(ctx: AddressContext, ids: Iterable<string>): DatasetField {
-  const info = ctx.data.datasetInfo([...new Set(ids)]);
+  let info = ctx.data.datasetInfo([...new Set(ids)]);
+  if (info.updatedAt === null) info = ctx.data.datasetInfo(['master']);
   return { source: DATASET_SOURCE, updatedAt: info.updatedAt, stale: info.stale };
 }
 
@@ -102,7 +107,7 @@ export async function searchPostalCode(
       count: lookup.candidates.length,
       candidates: lookup.candidates,
       ...gaps.result(),
-      dataset: datasetField(ctx, ['postal', 'master', ...cities]),
+      dataset: datasetField(ctx, ['postal', ...cities]),
       attribution: ADDRESS_ATTRIBUTION,
     };
   }
@@ -117,7 +122,7 @@ export async function searchPostalCode(
     level: normalized.level,
     postalCodes,
     ...gaps.result(),
-    dataset: datasetField(ctx, ['postal', 'master', ...(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : [])]),
+    dataset: datasetField(ctx, ['postal', ...(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : [])]),
     attribution: ADDRESS_ATTRIBUTION,
   };
 }
@@ -183,7 +188,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
     ...base,
     postalCodes,
     ...gaps.result(),
-    dataset: datasetField(ctx, ['master', 'postal', ...cities]),
+    dataset: datasetField(ctx, ['postal', ...cities]),
     attribution: ADDRESS_ATTRIBUTION,
   };
   if (Object.keys(checks).length > 0) result.checks = checks;

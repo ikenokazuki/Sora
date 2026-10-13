@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, waitFor } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, CHIYODA_TOWNS, abrUrl, replaceTowns, townRow } from '../test_fixtures/address/harness.js';
 import { AddressInputError, AddressUnavailableError } from './address_errors.js';
 import { AddressNormalizer, shapeResult, splitPostalCode } from './address_normalize.js';
@@ -11,7 +11,10 @@ let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-norm-'));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  await settleAddressData();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const cityJobs = (runs: ReadonlyArray<{ kind: string }>) => runs.filter((job) => job.kind === 'city');
 
@@ -196,6 +199,7 @@ describe('世代の作り直し', () => {
       expect(first.level).toBe(3);
       expect(second.level).toBe(2);
     } finally {
+      await settleAddressData();
       rmSync(dirB, { recursive: true, force: true });
     }
   });
