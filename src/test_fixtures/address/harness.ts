@@ -103,6 +103,50 @@ export const SAPPORO_POS = [
   [SAPPORO_LG, '0014020', '141.3020', '43.0620', 'EPSG:6668'],
 ];
 
+// ---------- 段B（住居表示・地番）----------
+
+export const RSDT_HEADER = ['lg_code', 'machiaza_id', 'blk_id', 'rsdt_id', 'rsdt2_id', 'city', 'ward', 'oaza_cho', 'chome', 'koaza', 'machiaza_dist', 'blk_num', 'rsdt_num', 'rsdt_num2', 'basic_rsdt_div', 'rsdt_addr_flg', 'rsdt_addr_mtd_code', 'status_flg', 'efct_date', 'ablt_date', 'src_code', 'remarks'];
+export const RSDT_POS_HEADER = ['lg_code', 'machiaza_id', 'blk_id', 'rsdt_id', 'rsdt2_id', 'rsdt_addr_flg', 'rsdt_addr_mtd_code', 'rep_lon', 'rep_lat', 'rep_srid', 'rep_scale', 'rep_src_code', 'rsdt_addr_code_rdbl', 'rsdt_addr_data_mnt_date', 'basic_rsdt_div'];
+export const PARCEL_HEADER = ['lg_code', 'machiaza_id', 'prc_id', 'city', 'ward', 'oaza_cho', 'chome', 'koaza', 'machiaza_dist', 'prc_num1', 'prc_num2', 'prc_num3', 'rsdt_addr_flg', 'prc_rec_flg', 'prc_area_code', 'efct_date', 'ablt_date', 'src_code', 'remarks', 'real_prop_num'];
+export const PARCEL_POS_HEADER = ['lg_code', 'machiaza_id', 'prc_id', 'rep_lon', 'rep_lat', 'rep_srid', 'rep_scale', 'rep_src_code', 'plygn_fname', 'plygn_kcode', 'plygn_fmt', 'plygn_srid', 'plygn_scale', 'plygn_src_code', 'moj_map_city_code', 'moj_map_oaza_code', 'moj_map_chome_code', 'moj_map_koaza_code', 'moj_map_spare_code', 'moj_map_brushid'];
+
+export const rsdtRow = (lg: string, machiaza: string, blkId: string, rsdtId: string, rsdt2Id: string, blk: string, no: string, no2: string): string[] =>
+  [lg, machiaza, blkId, rsdtId, rsdt2Id, '千代田区', '', '', '', '', '', blk, no, no2, '0', '1', '1', '0', '1947-04-17', '', '0', ''];
+export const rsdtPosRow = (lg: string, machiaza: string, blkId: string, rsdtId: string, rsdt2Id: string, lon: string, lat: string, srid = 'EPSG:6668'): string[] =>
+  [lg, machiaza, blkId, rsdtId, rsdt2Id, '1', '1', lon, lat, srid, '2500', '1', 'http://gi.gsi.go.jp/jusho/x', '2017-08-04', '0'];
+export const parcelRow = (lg: string, machiaza: string, prcId: string, n1: string, n2: string, n3: string): string[] =>
+  [lg, machiaza, prcId, '札幌市', '中央区', '', '', '', '', n1, n2, n3, '0', '1', '', '1947-04-17', '', '1', '', ''];
+export const parcelPosRow = (lg: string, machiaza: string, prcId: string, lon: string, lat: string, srid = 'EPSG:6668'): string[] =>
+  [lg, machiaza, prcId, lon, lat, srid, '500', '1', '', '', '', srid, '500', '1', '01101', '001', '000', '0000', '00', 'H0001'];
+
+/** 千代田区の住居表示。永田町一丁目の 6-5 は位置参照が無く、永田町二丁目の 1-1-1 は住居番号2を持つ。 */
+export const CHIYODA_RSDT = [
+  rsdtRow(CHIYODA_LG, '0005001', '007', '001', '', '7', '1', ''),
+  rsdtRow(CHIYODA_LG, '0005001', '007', '002', '', '7', '2', ''),
+  rsdtRow(CHIYODA_LG, '0005001', '006', '005', '', '6', '5', ''),
+  rsdtRow(CHIYODA_LG, '0005002', '001', '001', '001', '1', '1', '1'),
+  rsdtRow(CHIYODA_LG, '0006000', '001', '001', '', '1', '1', ''),
+];
+export const CHIYODA_RSDT_POS = [
+  rsdtPosRow(CHIYODA_LG, '0005001', '007', '001', '', '139.7455123', '35.6759123'),
+  rsdtPosRow(CHIYODA_LG, '0005001', '007', '002', '', '139.7457', '35.6761'),
+  rsdtPosRow(CHIYODA_LG, '0005002', '001', '001', '001', '139.7433', '35.6741'),
+  rsdtPosRow(CHIYODA_LG, '0006000', '001', '001', '', '139.7521', '35.684'),
+];
+
+/** 札幌市中央区の地番（住居表示でない町）。北１条西２丁目の 12-4 は位置参照が無い。 */
+export const SAPPORO_PARCELS = [
+  parcelRow(SAPPORO_LG, '0013002', '001300020001200030', '12', '3', ''),
+  parcelRow(SAPPORO_LG, '0013002', '001300020001200040', '12', '4', ''),
+  parcelRow(SAPPORO_LG, '0013002', '001300020001300000', '13', '', ''),
+  parcelRow(SAPPORO_LG, '0013001', '001300010000100001', '1', '1', ''),
+];
+export const SAPPORO_PARCEL_POS = [
+  parcelPosRow(SAPPORO_LG, '0013002', '001300020001200030', '141.3541', '43.0640'),
+  parcelPosRow(SAPPORO_LG, '0013002', '001300020001300000', '141.3543', '43.0642'),
+  parcelPosRow(SAPPORO_LG, '0013001', '001300010000100001', '141.3544', '43.0630'),
+];
+
 /** 千代田区または札幌市中央区に町字（と代表点）を 1 つ足す。取得元の更新として署名が変わるよう etag を渡す。 */
 export function addTown(
   up: FakeUpstream,
@@ -160,6 +204,10 @@ export function sampleUpstream(): FakeUpstream {
   abr(`mt_town_pos/city/mt_town_pos_city${CHIYODA_LG}`, TOWN_POS_HEADER, CHIYODA_POS);
   abr(`mt_town/city/mt_town_city${SAPPORO_LG}`, TOWN_HEADER, SAPPORO_TOWNS);
   abr(`mt_town_pos/city/mt_town_pos_city${SAPPORO_LG}`, TOWN_POS_HEADER, SAPPORO_POS);
+  abr(`mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city${CHIYODA_LG}`, RSDT_HEADER, CHIYODA_RSDT);
+  abr(`mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city${CHIYODA_LG}`, RSDT_POS_HEADER, CHIYODA_RSDT_POS);
+  abr(`mt_parcel/city/mt_parcel_city${SAPPORO_LG}`, PARCEL_HEADER, SAPPORO_PARCELS);
+  abr(`mt_parcel_pos/city/mt_parcel_pos_city${SAPPORO_LG}`, PARCEL_POS_HEADER, SAPPORO_PARCEL_POS);
 
   up.set(JAPANPOST_KEN_ALL_PAGE, { body: '<a href="utf/zip/utf_add_2609.zip">差分</a><a href="utf/zip/utf_ken_all.zip">全国</a>', finalUrl: `${JP_BASE}/utf-zip.html` });
   up.set(JAPANPOST_JIGYOSYO_PAGE, { body: '<a href="zip/jigyosyo.zip">全国</a>', finalUrl: `${JP_BASE}/office/index-zip.html` });
