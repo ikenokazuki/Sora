@@ -1,3 +1,4 @@
+import { ADDRESS_ATTRIBUTION } from './address_attribution.js';
 import { getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
 
 export const CACHE_TTL_GEOCODING = 24 * 60 * 60 * 1000;
@@ -8,7 +9,7 @@ export interface GeocodingResult {
   address: string;
   lat: number;
   lon: number;
-  source: 'nominatim' | 'gsi';
+  source: 'nominatim' | 'gsi' | 'abr';
   needsVerification: boolean;
 }
 
@@ -16,12 +17,28 @@ export interface GeocodingResult {
 export const GEOCODING_ATTRIBUTIONS: Record<GeocodingResult['source'], string> = {
   nominatim: '出典: © OpenStreetMap contributors (ODbL) https://www.openstreetmap.org/copyright',
   gsi: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)',
+  abr: ADDRESS_ATTRIBUTION,
 };
 
 interface GeocoderOptions {
   fetchFn?: (url: string, init?: RequestInit) => Promise<Response>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** 住所・郵便番号をローカルデータで解決する。解決しなければ null。既定は住所モジュール。 */
+  local?: (query: string) => Promise<GeocodingResult | null>;
+}
+
+// 住所モジュールは最初に使われるまで読み込まない。待たず、失敗は「解決しない」として扱う。
+async function defaultLocal(query: string): Promise<GeocodingResult | null> {
+  try {
+    const { addressEnabled } = await import('./address_config.js');
+    if (!addressEnabled()) return null;
+    const { getAddressContext } = await import('./address_context.js');
+    const { localGeocode } = await import('./address_local_geocoder.js');
+    return await localGeocode(getAddressContext(), query);
+  } catch {
+    return null;
+  }
 }
 
 interface NominatimHit { display_name?: unknown; lat?: unknown; lon?: unknown; address?: Record<string, unknown> }
@@ -81,6 +98,7 @@ export function createGeocoder(options: GeocoderOptions = {}) {
   const fetchFn = options.fetchFn ?? ((url: string, init?: RequestInit) => fetch(url, init));
   const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const local = options.local ?? defaultLocal;
   let gate: Promise<void> = Promise.resolve();
   let lastStart = Number.NEGATIVE_INFINITY;
 
@@ -112,6 +130,9 @@ export function createGeocoder(options: GeocoderOptions = {}) {
   return async (rawQuery: string, request: { noCache?: boolean } = {}): Promise<GeocodingResult> => {
     const query = rawQuery.trim();
     if (!query) throw new Error('nominatim requires a non-empty place or address');
+    // ローカルで解決できれば、外部問い合わせの 1.1 秒間隔にも、キャッシュにも関わらない。
+    const resolvedLocally = await local(query);
+    if (resolvedLocally) return resolvedLocally;
     const key = `geo:nominatim:v1:${query}`;
     if (!request.noCache) {
       const cached = getFromCache<GeocodingResult>(key);

@@ -918,6 +918,7 @@ export const PoiSearchRequestSchema = z.object({
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
   noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持').meta({ default: false }),
+  withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データ未取得の地域では初回に取得を待つ（最大20秒）').meta({ default: false }),
 }).refine((v) => v.query !== undefined || v.bbox !== undefined || v.center !== undefined || (v.lat !== undefined && v.lon !== undefined), {
   message: 'query, bbox, center, または lat+lon のいずれかを指定してください',
 }).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
@@ -940,12 +941,23 @@ export const PoiItemSchema = z.object({
   source: z.string().optional().describe('代表出所 (jff/overture 等)'),
   licenses: z.array(z.string()).describe('保存時に保持する出所ライセンス一覧'),
   attributions: z.array(z.string()).describe('保存時に保持する帰属表示'),
+  addressInfo: z.object({
+    normalized: z.string().describe('正規化した住所'),
+    level: z.number().int().describe('正規化レベル (2 市区町村 / 3 町字 / 8 番地・号)'),
+    numberSource: z.enum(['rsdt', 'chiban']).nullable().describe('番地・号を何で照合したか。null は未照合'),
+    keys: z.record(z.string(), z.unknown()).describe('結合キー (lgCode, machiazaId など)'),
+    postalCodes: z.array(z.object({ zipcode: z.string(), town: z.string(), townRaw: z.string(), exact: z.boolean(), fallback: z.boolean() })),
+    check: z.object({
+      status: z.enum(['match', 'partial', 'mismatch', 'unknown']).describe('住所と施設の座標の突き合わせ結果'),
+      distanceMeters: z.number().optional(),
+    }),
+  }).optional().describe('withAddress 指定時だけ。住所を解釈できた施設に付く'),
 });
 export const PoiSearchResultSchema = z.object({
   query: z.string().optional().describe('検索クエリ'),
   centerResolved: z.object({
     input: z.string(), address: z.string().optional(), lat: z.number(), lon: z.number(),
-    source: z.enum(['nominatim', 'gsi']).optional(),
+    source: z.enum(['nominatim', 'gsi', 'abr']).optional(),
     attribution: z.string().optional().describe('座標解決の出典表示。結果を表示・公開する際に併記する'),
     needsVerification: z.boolean().describe('取得元の要確認フラグ。解決先が意図した地域か確認する'),
     ambiguous: z.boolean().describe('互換フィールド。needsVerificationと同値で、複数候補の存在を示すものではない'),
@@ -1872,7 +1884,7 @@ export const ElevationResultSchema = z.object({
   query: z.string().optional().describe('指定された検索クエリ文字列'),
   address: z.string().optional().describe('住所文字列'),
   matchedTitle: z.string().optional().describe('座標解決サービスが返した地名ラベル'),
-  geocodingSource: z.enum(['nominatim', 'gsi']).optional().describe('住所・地名からの座標解決の取得元'),
+  geocodingSource: z.enum(['nominatim', 'gsi', 'abr']).optional().describe('住所・地名からの座標解決の取得元'),
   geocodingAttribution: z.string().optional().describe('座標解決の出典表示。結果を表示・公開する際に併記する'),
   needsVerification: z.boolean().optional().describe('座標解決の取得元の要確認フラグ'),
   lat: z.number().describe('緯度 (10進数)'),
