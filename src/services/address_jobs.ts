@@ -1,10 +1,12 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildJaJson, buildTownJson, type Row } from './address_abr.js';
 import { parseCsvRows, readZipText } from './address_csv.js';
 import {
-  ABR_BASE, combineSignatures, downloadToFile, headSignature, latestSourceDate, resolveJapanPostLinks, type HttpDeps,
+  ABR_BASE, combineSignatures, downloadToFile, headSignature, latestSourceDate, resolveJapanPostLinks, type HttpDeps, type Signature,
 } from './address_http.js';
+import type { TownJson } from './address_names.js';
+import { buildNumbers, type NumberFiles } from './address_numbers.js';
 import { jobArtifactId, type AddressStore, type BuildJob } from './address_store.js';
 import { buildPostalDb, parseJigyosyo, parseKenAll } from './postal_code.js';
 
@@ -36,6 +38,7 @@ export async function runBuildJob(job: BuildJob, deps: JobDeps): Promise<void> {
   try {
     if (job.kind === 'master') await buildMaster(deps);
     else if (job.kind === 'postal') await buildPostal(deps);
+    else if (job.kind === 'num') await buildNum(job.lgCode, deps);
     else await buildCity(job.lgCode, deps);
   } catch (error) {
     await deps.store.markError(jobArtifactId(job), errorText(error)).catch(() => undefined);
@@ -113,6 +116,57 @@ async function buildCity(lgCode: string, deps: JobDeps): Promise<void> {
     const out = join(work, 'out');
     mkdirSync(out);
     writeFileSync(join(out, 'town.json'), JSON.stringify(town));
+    await store.publish(id, out, { sig, sourceDate });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+const NUM_FILES = {
+  rsdt: 'mt_rsdtdsp_rsdt/city/mt_rsdtdsp_rsdt_city',
+  rsdtPos: 'mt_rsdtdsp_rsdt_pos/city/mt_rsdtdsp_rsdt_pos_city',
+  parcel: 'mt_parcel/city/mt_parcel_city',
+  parcelPos: 'mt_parcel_pos/city/mt_parcel_pos_city',
+} as const;
+
+/**
+ * 番地・号（段B）。市区町村の住居表示・地番を取得して、町字ごとの節を並べた txt にする。
+ * 町字（段A）が無ければ先に作る。住居表示の町が無ければ住居表示を、それ以外の町が無ければ地番を取得しない。
+ * 取得元に無い市区町村は、空の ranges.json だけを公開する（毎回調べ直さないため）。
+ */
+async function buildNum(lgCode: string, deps: JobDeps): Promise<void> {
+  const { store, http } = deps;
+  if (!/^\d{6}$/.test(lgCode)) throw new Error(`不正な市区町村コード: ${lgCode}`);
+  const id = `num:${lgCode}`;
+  const cityId = `city:${lgCode}`;
+  if (!store.current(cityId)) await buildCity(lgCode, deps);
+  const city = store.current(cityId);
+  if (!city) throw new Error(`${cityId} を用意できませんでした`);
+  const towns = (JSON.parse(readFileSync(join(city.path, 'town.json'), 'utf8')) as TownJson).data;
+
+  const keys = Object.keys(NUM_FILES) as Array<keyof typeof NUM_FILES>;
+  const urls = keys.map((key) => `${ABR_BASE}/${NUM_FILES[key]}${lgCode}.csv.zip`);
+  const signatures = await Promise.all(urls.map((url) => headSignature(url, http)));
+  const sig = signatures.some((signature): signature is Signature => signature !== null) ? combineSignatures(signatures) : 'none';
+  const sourceDate = latestSourceDate(signatures);
+  if (store.current(id)?.meta.sig === sig) {
+    await store.markChecked(id, sourceDate);
+    return;
+  }
+  const wantRsdt = towns.some((town) => town.rsdt);
+  const wantParcel = towns.some((town) => !town.rsdt);
+  const work = store.makeWorkDir();
+  try {
+    const files: NumberFiles = {};
+    for (const [index, key] of keys.entries()) {
+      const wanted = key === 'rsdt' || key === 'rsdtPos' ? wantRsdt : wantParcel;
+      if (!wanted || !signatures[index]) continue;
+      const zip = join(work, `${key}.zip`);
+      if (await downloadToFile(urls[index] as string, zip, http)) files[key] = zip;
+    }
+    const out = join(work, 'out');
+    mkdirSync(out);
+    await buildNumbers({ outDir: out, towns, files });
     await store.publish(id, out, { sig, sourceDate });
   } finally {
     rmSync(work, { recursive: true, force: true });

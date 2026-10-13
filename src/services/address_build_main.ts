@@ -24,8 +24,8 @@ export function parseChildArgs(argv: readonly string[]): { dir: string; job: Bui
     throw new Error(`--job は JSON で指定してください: ${raw}`);
   }
   if (parsed.kind === 'master' || parsed.kind === 'postal') return { dir, job: { kind: parsed.kind } };
-  if (parsed.kind === 'city' && typeof parsed.lgCode === 'string' && /^\d{6}$/.test(parsed.lgCode)) {
-    return { dir, job: { kind: 'city', lgCode: parsed.lgCode } };
+  if ((parsed.kind === 'city' || parsed.kind === 'num') && typeof parsed.lgCode === 'string' && /^\d{6}$/.test(parsed.lgCode)) {
+    return { dir, job: { kind: parsed.kind, lgCode: parsed.lgCode } };
   }
   throw new Error(`不明なジョブです: ${raw}`);
 }

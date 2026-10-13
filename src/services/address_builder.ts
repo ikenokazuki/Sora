@@ -14,7 +14,7 @@ export function resolveBuildEntry(moduleDir: string, exists: (path: string) => b
   throw new Error(`住所データの構築用の入口が見つかりません（${moduleDir}）`);
 }
 
-const DEFAULT_TIMEOUT_MS: Record<BuildJob['kind'], number> = { city: 300_000, postal: 180_000, master: 180_000 };
+const DEFAULT_TIMEOUT_MS: Record<BuildJob['kind'], number> = { city: 300_000, num: 600_000, postal: 180_000, master: 180_000 };
 
 export interface ChildProcessBuilderOptions {
   /** 住所データの保存先。 */

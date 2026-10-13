@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -116,5 +116,78 @@ describe('postal', () => {
     );
     await expect(runBuildJob({ kind: 'postal' }, deps())).rejects.toThrow('1000001');
     expect(store.current('postal')).toBeNull();
+  });
+});
+
+describe('num', () => {
+  const rangesOf = (id: string): Record<string, { 住居表示?: { start: number; length: number }; 地番?: { start: number; length: number } }> =>
+    JSON.parse(readFileSync(join(store.current(id)!.path, 'ranges.json'), 'utf8'));
+  const sectionOf = (id: string, file: string, range: { start: number; length: number }): string =>
+    readFileSync(join(store.current(id)!.path, file)).subarray(range.start, range.start + range.length).toString('utf8');
+
+  test('住居表示の市区町村: 段A を先に作り、rsdt.txt と ranges.json を公開する。地番は取得しない', async () => {
+    await runBuildJob({ kind: 'num', lgCode: CHIYODA_LG }, deps());
+    const id = `num:${CHIYODA_LG}`;
+    const ranges = rangesOf(id);
+    expect(Object.keys(ranges).sort()).toEqual(['0005001', '0005002', '0006000']);
+    expect(sectionOf(id, 'rsdt.txt', ranges['0005001']!.住居表示!)).toContain('7,1,,139.745512,35.675912\n');
+    expect(existsSync(join(store.current(id)!.path, 'chiban.txt'))).toBe(false);
+    expect(store.current(`city:${CHIYODA_LG}`)).not.toBeNull();
+    expect(up.count('GET', 'mt_rsdtdsp_rsdt/city')).toBe(1);
+    expect(up.count('GET', 'mt_rsdtdsp_rsdt_pos/city')).toBe(1);
+    expect(up.count('GET', 'mt_parcel')).toBe(0);
+    expect(store.current(id)?.meta.sourceDate).toBe('2026-10-02');
+  });
+
+  test('地番の市区町村: chiban.txt を公開する。住居表示は取得しない', async () => {
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    const id = `num:${SAPPORO_LG}`;
+    const ranges = rangesOf(id);
+    expect(sectionOf(id, 'chiban.txt', ranges['0013002']!.地番!)).toContain('12,3,,141.354100,43.064000\n12,4,,,\n');
+    expect(existsSync(join(store.current(id)!.path, 'rsdt.txt'))).toBe(false);
+    expect(up.count('GET', 'mt_rsdtdsp')).toBe(0);
+    expect(up.count('GET', 'mt_parcel/city')).toBe(1);
+  });
+
+  test('取得元が変わっていなければダウンロードせず、確認日時だけ進める', async () => {
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    const seq = store.read().seq;
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    expect(store.read().seq).toBe(seq);
+    expect(up.count('GET', 'mt_parcel/city')).toBe(1);
+    expect(up.count('HEAD', 'mt_parcel/city')).toBe(2);
+  });
+
+  test('取得元が変わったら作り直し、旧版を維持して失敗を記録する経路も働く', async () => {
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    const before = store.current(`num:${SAPPORO_LG}`)!.meta.ver;
+    const url = abrUrl(`mt_parcel/city/mt_parcel_city${SAPPORO_LG}`);
+    up.set(url, { ...up.routes.get(url)!, etag: '"changed"' });
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    expect(store.current(`num:${SAPPORO_LG}`)!.meta.ver).not.toBe(before);
+
+    up.setZip(url, { 'broken.csv': 'lg_code,machiaza_id\r\n1,2\r\n' }, { etag: '"broken"', lastModified: ABR_LAST_MODIFIED });
+    const good = store.current(`num:${SAPPORO_LG}`)!.meta.ver;
+    await expect(runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps())).rejects.toThrow('prc_id');
+    expect(store.current(`num:${SAPPORO_LG}`)!.meta.ver).toBe(good);
+    expect(store.read().artifacts[`num:${SAPPORO_LG}`]?.error).toContain('prc_id');
+  });
+
+  test('住居表示も地番も無い市区町村は、空の ranges.json だけを公開し、2 回目は確認だけ', async () => {
+    for (const path of ['mt_parcel/city/mt_parcel_city', 'mt_parcel_pos/city/mt_parcel_pos_city']) up.routes.delete(abrUrl(`${path}${SAPPORO_LG}`));
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    const id = `num:${SAPPORO_LG}`;
+    expect(rangesOf(id)).toEqual({});
+    expect(readdirSync(store.current(id)!.path).sort()).toEqual(['ranges.json']);
+    const seq = store.read().seq;
+    await runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps());
+    expect(store.read().seq).toBe(seq);
+  });
+
+  test('国外 IP の拒否（403）と不正なコードは失敗として記録する', async () => {
+    up.set(abrUrl(`mt_parcel/city/mt_parcel_city${SAPPORO_LG}`), { body: '', status: 403 });
+    await expect(runBuildJob({ kind: 'num', lgCode: SAPPORO_LG }, deps())).rejects.toThrow('HTTP 403');
+    expect(store.read().failures[`num:${SAPPORO_LG}`]?.message).toContain('HTTP 403');
+    await expect(runBuildJob({ kind: 'num', lgCode: 'abc' }, deps())).rejects.toThrow('不正');
   });
 });
