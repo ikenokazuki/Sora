@@ -10,7 +10,7 @@
 
 - **ツールの登録は後ろへ回す。** 3 ツール（`search_postal_code`、`normalize_address`、`reverse_geocode`）の登録、ツール数の更新（47 → 50）、README・OpenAPI の更新は、全部そろってから 1 回で行う。途中でツール数が 47 → 49 → 50 と動くのを避けるため。
 - **ライブラリには「完成した市区町村」だけを見せる。** ライブラリは町の一覧を永久にメモリへ置くので、段A だけの `town.json` を見せたあとで段B が公開されると古い内容が残る。段B（次の計画）では、段B が完了するまでライブラリには市区町村の中身を見せず、取れている範囲（市区町村まで）で答える。この計画の時点では段A だけなので、段A の公開をもって「完成」とする。
-- **ライブラリの作り直しはメモリを漏らさない（実測）。** 20,000 町の市区町村を読み込ませた世代を 30 回作り直しても、ヒープは 9.4MB で一定、RSS は約 109MB で一定だった（Bun 1.3.3）。世代の作り直しは、版が変わったときと 24 時間ごとの 2 条件だけにする。
+- **ライブラリの作り直しは `require.cache` から消して import し直す。** 設計書の `?gen=` つきの import は、Bun 1.3.3 では同じインスタンスのままで効かない（`bun test` でも通常実行でも確認）。`delete require.cache[path]` のあとの import は別のインスタンスになり、20,000 町の市区町村を読み込ませた世代を 30 回作り直しても、ヒープは 9.4MB で一定、RSS は約 160MB で頭打ちだった（古いインスタンスは回収される）。作り直しの条件は、配った版が更新・破棄されたときと 24 時間ごとの 2 つだけ。
 - **`search_postal_code` の `noCache` は持たない。** 結果がローカルデータからの計算で、キャッシュする意味がないため。
 - **`ADDRESS_DATA_UNAVAILABLE` の HTTP ステータスは 502。** `formatError` が 503 を扱えないため（設計書の 503 を直す。タスク 7）。
 - **突き合わせの結果に `same-prefecture` を足す。** 都道府県だけ一致する場合を `different` にまとめると情報が落ちるため。
@@ -190,7 +190,7 @@ export class AddressNormalizer {
 
 **実装の要点:**
 
-- ライブラリは `import(`${import.meta.resolve('@geolonia/normalize-japanese-addresses')}?gen=${n}`)` で読む。`n` はモジュール全体の通し番号（インスタンス間でも重ならない）。読んだら `config.japaneseAddressesApi = 'file:///sora-address/ja'` にして、`requestHandlers.file` を差し替える。
+- ライブラリは `delete require.cache[path]` のあとに `import(import.meta.resolve('@geolonia/normalize-japanese-addresses'))` で読む（消して読むまでは、モジュール全体で 1 件ずつ）。読んだら `config.japaneseAddressesApi = 'file:///sora-address/ja'` にして、`requestHandlers.file` を差し替える。
 - 差し替えた `file(url, options)` は `decodeURI(url.pathname)` を読み、`ja.json` → マスター、`ja/<都道府県>/<市区町村>.json` → `data.master()` で市区町村名から 6 桁を引いて `data.ensure({kind:'city', lgCode})` の `town.json` を返す。`{ ok, json, text }` の形で返す。それ以外の経路は `ok: false`。配った版は世代ごとの `served: Map<id, ver>` に記録する。
 - 呼び出しごとの締め切りは `AsyncLocalStorage` で `file` に渡す（`waitMs` 全体で 1 つの締め切り）。
 - 世代の作り直し: 呼び出しの前に、`served` の版が現在の版（`data.status()`）と違う、または成果物が消えた、または経過が `maxAgeMs`（既定 24 時間）を超えたら、新しい世代を読む。作り直し中の同時の呼び出しは同じ読み込みを待つ。
@@ -310,7 +310,7 @@ export async function normalizeAddressTool(input: { address: string; level?: num
 **ファイル:** `Containerfile`（変更）、`docs/superpowers/specs/2026-10-13-address-data-design.md`（変更: 503 → 502、ツール登録の時期）、この計画書（実行結果を追記）
 
 - [ ] `Containerfile` のビルド段に `RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js` を足し、最終段に `COPY --from=builder /app/address-build.js /app/address-build.js` を足す。
-- [ ] バンドル確認: `bun build` で `address_normalize` を入口にしたバンドルを作り、`node_modules` を見える場所に置いて、動的 import（`?gen=N`）と `import.meta.resolve` が動くことを確認する。`address_build_main.ts` のバンドルを子として起動し、マスターの構築が通ることを実通信で確認する（日本のホスト）。
+- [ ] バンドル確認: `bun build` で `address_normalize` を入口にしたバンドルを作り、`node_modules` を見える場所に置いて、動的 import と `require.cache` による作り直し、`import.meta.resolve` が動くことを確認する。`address_build_main.ts` のバンドルを子として起動し、マスターの構築が通ることを実通信で確認する（日本のホスト）。
 - [ ] 実データでの確認（`ChildProcessBuilder` を使い、実際の子プロセスと通信で）: 初回の `normalize_address`（マスター + 市区町村）の所要時間、2 回目以降の p50/p95、`search_postal_code` の `1000014`・`0600042`・事業所番号、`〒150-0001` の逆引き、京都市中京区の通り名つき住所の絞り込み、構築中のプロセスの優先度（nice 10）の確認。
 - [ ] 設計書を直す（`ADDRESS_DATA_UNAVAILABLE` は 502、ツールの登録は 3 ツールがそろってから）。
 - [ ] 全件テスト（切り離して実行）、typecheck、lint。
