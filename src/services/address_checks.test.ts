@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
+import { sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
-import { checkZip, compareAddresses } from './address_checks.js';
+import { checkCoordinates, checkZip, compareAddresses } from './address_checks.js';
 import { AddressInputError } from './address_errors.js';
 import type { NormalizedAddress } from './address_normalize.js';
 
@@ -103,5 +104,78 @@ describe('checkZip', () => {
   test('不正な郵便番号は AddressInputError', async () => {
     const { ctx, normalize } = setup();
     await expect(checkZip(ctx, '12', await normalize('東京都千代田区永田町1-7-1'))).rejects.toBeInstanceOf(AddressInputError);
+  });
+});
+
+describe('checkCoordinates', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'addr-check-coords-'));
+  });
+  afterEach(async () => {
+    await settleAddressData();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const setup = () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const ctx = createAddressContext(built.data);
+    return { ctx, normalize: (input: string, level?: number) => ctx.normalizer.normalize(input, { level }) };
+  };
+
+  test('住所の番地・号の点に近ければ match', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区永田町1-7-1');
+    const check = await checkCoordinates(ctx, 35.675915, 139.745515, address);
+    expect(check).toMatchObject({ status: 'match', reason: expect.stringContaining('一致') });
+    expect(check.nearest).toMatchObject({ normalized: '東京都千代田区永田町一丁目7-1', level: 8 });
+    expect(check.distanceMeters).toBeLessThan(5);
+  });
+
+  test('同じ町・同じ街区だが住居番号が違い、住所の点から離れていれば partial', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区永田町1-7-1');
+    // 永田町一丁目 7-2 の点から北に 250m。同じ町字・同じ街区だが、住所の 7-1 の点から 150m を超える
+    const check = await checkCoordinates(ctx, 35.67835, 139.7457, address);
+    expect(check).toMatchObject({ status: 'partial', reason: expect.stringContaining('同じ番地・号ですが、点から離れています') });
+    expect(check.distanceMeters).toBeGreaterThan(150);
+  });
+
+  test('同じ市区町村で町が違えば partial（町違い）', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区永田町1-7-1');
+    const check = await checkCoordinates(ctx, 35.684052, 139.752145, address);
+    expect(check).toMatchObject({ status: 'partial', reason: expect.stringContaining('同じ市区町村ですが、町字が違います') });
+  });
+
+  test('別の市区町村の座標なら mismatch', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区永田町1-7-1');
+    const check = await checkCoordinates(ctx, 43.063, 141.3544, address);
+    expect(check).toMatchObject({ status: 'mismatch', reason: expect.stringContaining('札幌市中央区') });
+  });
+
+  test('level 3 の住所は、同じ町字の座標なら match（住所が主張する階層まで一致）', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区');
+    const town = await normalize('東京都千代田区永田町1-7-1', 3);
+    const check = await checkCoordinates(ctx, 35.6759, 139.7463, town);
+    expect(check).toMatchObject({ status: 'match' });
+    expect(check.nearest).toMatchObject({ normalized: expect.stringContaining('永田町一丁目') });
+    expect(address.level).toBe(2);
+  });
+
+  test('市区町村までの住所は、その市区町村内なら match', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('東京都千代田区');
+    const check = await checkCoordinates(ctx, 35.6759, 139.7463, address);
+    expect(check).toMatchObject({ status: 'match', reason: expect.stringContaining('範囲内') });
+  });
+
+  test('住所を解釈できなければ unknown、座標が不正なら AddressInputError', async () => {
+    const { ctx, normalize } = setup();
+    const address = await normalize('こんにちは');
+    expect(await checkCoordinates(ctx, 35.6759, 139.7463, address)).toMatchObject({ status: 'unknown', nearest: null });
+    await expect(checkCoordinates(ctx, 91, 139, address)).rejects.toBeInstanceOf(AddressInputError);
   });
 });
