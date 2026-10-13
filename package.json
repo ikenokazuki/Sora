@@ -30,12 +30,15 @@
     "traffic"
   ],
   "dependencies": {
+    "@geolonia/japanese-numeral": "^1.0.2",
+    "@geolonia/normalize-japanese-addresses": "3.1.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@mozilla/readability": "^0.6.0",
     "cheerio": "^1.2.0",
     "fast-xml-parser": "^5.11.0",
     "hono": "^4.13.3",
     "linkedom": "^0.18.13",
+    "papaparse": "^5.4.1",
     "puppeteer-core": "npm:rebrowser-puppeteer-core@^24.8.1",
     "turndown": "^7.2.4",
     "unpdf": "^1.8.1",
@@ -46,6 +49,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/bun": "latest",
+    "@types/papaparse": "^5.5.2",
     "@types/turndown": "^5.0.6",
     "typescript": "5.9.3"
   },
