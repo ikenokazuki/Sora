@@ -2,10 +2,15 @@ import Papa from 'papaparse';
 import yauzl from 'yauzl';
 
 /**
- * zip の最初のファイルを開き、読み取りストリームを渡す。ABR・日本郵便の配布物は 1 ファイルだけを含む。
+ * zip の最初のファイル（entryName を渡せば、名前が合う最初のファイル）を開き、読み取りストリームを渡す。ABR・日本郵便の配布物は 1 ファイルだけを含む。
+ * 国土交通省の配布物は CSV のほかに説明の HTML と XML を含み、順序も一定でないので、CSV を名前で選ぶ。
  * onStream は終わったら done() を、失敗したら done(error) を呼ぶ。
  */
-function openFirstEntry(zipPath: string, onStream: (stream: NodeJS.ReadableStream, done: (error?: Error) => void) => void): Promise<void> {
+function openFirstEntry(
+  zipPath: string,
+  onStream: (stream: NodeJS.ReadableStream, done: (error?: Error) => void) => void,
+  entryName?: RegExp,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     yauzl.open(zipPath, { lazyEntries: true, autoClose: false }, (openError, zip) => {
       if (openError || !zip) {
@@ -23,7 +28,7 @@ function openFirstEntry(zipPath: string, onStream: (stream: NodeJS.ReadableStrea
       zip.on('error', (error) => done(error));
       zip.on('end', () => done(new Error('zip にファイルがありません')));
       zip.on('entry', (entry: yauzl.Entry) => {
-        if (/\/$/.test(entry.fileName)) {
+        if (/\/$/.test(entry.fileName) || (entryName && !entryName.test(entry.fileName))) {
           zip.readEntry();
           return;
         }
@@ -41,18 +46,18 @@ function openFirstEntry(zipPath: string, onStream: (stream: NodeJS.ReadableStrea
 }
 
 /** zip の最初のファイルを読む。小さい zip（数MB 以下）向け。大きいものは streamZipCsv を使う。 */
-export async function readZipEntry(zipPath: string): Promise<Buffer> {
+export async function readZipEntry(zipPath: string, entryName?: RegExp): Promise<Buffer> {
   const chunks: Buffer[] = [];
   await openFirstEntry(zipPath, (stream, done) => {
     stream.on('data', (chunk: Buffer) => chunks.push(chunk));
     stream.on('error', (error) => done(error));
     stream.on('end', () => done());
-  });
+  }, entryName);
   return Buffer.concat(chunks);
 }
 
-export async function readZipText(zipPath: string, encoding = 'utf-8'): Promise<string> {
-  const buffer = await readZipEntry(zipPath);
+export async function readZipText(zipPath: string, encoding = 'utf-8', entryName?: RegExp): Promise<string> {
+  const buffer = await readZipEntry(zipPath, entryName);
   return new TextDecoder(encoding).decode(buffer).replace(/^﻿/, '');
 }
 

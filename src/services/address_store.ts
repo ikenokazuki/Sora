@@ -7,16 +7,18 @@ import { join } from 'node:path';
  * 構築ジョブ。親プロセスと子プロセスで共有する。
  * city は町字（段A）、num は住居表示・地番の番地・号（段B）。どちらも市区町村（6 桁のコード）単位。
  * index は逆ジオコーディング用の、町字の点の全国索引。
+ * mlit は国土交通省の街区レベル位置参照情報（街区符号の点）で、ABR で番地・号に届かない住所の補完に使う（市区町村単位）。
  */
 export type BuildJob =
   | { kind: 'master' }
   | { kind: 'postal' }
   | { kind: 'index' }
   | { kind: 'city'; lgCode: string }
-  | { kind: 'num'; lgCode: string };
+  | { kind: 'num'; lgCode: string }
+  | { kind: 'mlit'; lgCode: string };
 
 export function jobArtifactId(job: BuildJob): string {
-  return job.kind === 'city' || job.kind === 'num' ? `${job.kind}:${job.lgCode}` : job.kind;
+  return job.kind === 'city' || job.kind === 'num' || job.kind === 'mlit' ? `${job.kind}:${job.lgCode}` : job.kind;
 }
 
 const DAY = 86_400_000;
@@ -59,6 +61,7 @@ export function artifactRelDir(id: string): string {
   if (id === 'master' || id === 'postal' || id === 'index') return id;
   if (id.startsWith('city:') && /^\d{6}$/.test(id.slice(5))) return join('city', id.slice(5));
   if (id.startsWith('num:') && /^\d{6}$/.test(id.slice(4))) return join('num', id.slice(4));
+  if (id.startsWith('mlit:') && /^\d{6}$/.test(id.slice(5))) return join('mlit', id.slice(5));
   throw new Error(`unknown address artifact id: ${id}`);
 }
 
@@ -278,7 +281,7 @@ export class AddressStore {
     await this.update((status) => {
       let total = Object.values(status.artifacts).reduce((sum, meta) => sum + meta.bytes, 0);
       const candidates = Object.entries(status.artifacts)
-        .filter(([id, meta]) => (id.startsWith('city:') || id.startsWith('num:')) && !keep(id, meta) && !protect.has(id))
+        .filter(([id, meta]) => (id.startsWith('city:') || id.startsWith('num:') || id.startsWith('mlit:')) && !keep(id, meta) && !protect.has(id))
         .sort((a, b) => a[1].usedAt - b[1].usedAt);
       for (const [id, meta] of candidates) {
         if (total <= maxBytes) break;

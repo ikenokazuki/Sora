@@ -955,7 +955,7 @@ export const NormalizeAddressResultSchema = z.looseObject({
   other: z.string().describe('正規化できなかった残り (建物名など)'),
   normalized: z.string().describe('pref + city + town + addr'),
   level: z.number().int().describe('0 不明 / 1 都道府県 / 2 市区町村 / 3 町字 / 8 番地・号'),
-  numberSource: z.enum(['rsdt', 'chiban']).nullable().describe('番地・号を何で照合したか。存在確認は証拠であって証明ではない。null は整形のみで未照合'),
+  numberSource: z.enum(['rsdt', 'chiban', 'mlit']).nullable().describe('番地・号を何で照合したか。存在確認は証拠であって証明ではない。mlit は国土交通省の街区レベル位置参照情報で、街区符号まで（号は未照合。point.level は 7）。null は整形のみで未照合'),
   keys: z.record(z.string(), z.unknown()).describe('結合キー (prefCode, lgCode, machiazaId, blk, rsdt, prc)'),
   point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional(),
   postalCodes: z.array(z.looseObject({ zipcode: z.string() })),
@@ -1042,7 +1042,7 @@ export const PoiItemSchema = z.object({
   addressInfo: z.object({
     normalized: z.string().describe('正規化した住所'),
     level: z.number().int().describe('正規化レベル (2 市区町村 / 3 町字 / 8 番地・号)'),
-    numberSource: z.enum(['rsdt', 'chiban']).nullable().describe('番地・号を何で照合したか。null は未照合'),
+    numberSource: z.enum(['rsdt', 'chiban', 'mlit']).nullable().describe('番地・号を何で照合したか。mlit は街区符号まで。null は未照合'),
     keys: z.record(z.string(), z.unknown()).describe('結合キー (lgCode, machiazaId など)'),
     postalCodes: z.array(z.object({ zipcode: z.string(), town: z.string(), townRaw: z.string(), exact: z.boolean(), fallback: z.boolean() })),
     check: z.object({

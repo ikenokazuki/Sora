@@ -1,7 +1,9 @@
 import {
   ABR_BASE, JAPANPOST_FALLBACK, JAPANPOST_JIGYOSYO_PAGE, JAPANPOST_KEN_ALL_PAGE, type FetchFn,
 } from '../../services/address_http.js';
+import { mlitCityUrl } from '../../services/address_mlit.js';
 import { jigyosyoBytes } from './jigyosyo.js';
+import { mlitChiyodaBytes } from './mlit.js';
 import { makeZip } from './zip.js';
 
 export interface FakeRoute {
@@ -57,6 +59,7 @@ export const abrUrl = (path: string): string => `${ABR_BASE}/${path}.csv.zip`;
 export const CHIYODA_LG = '131016';
 export const SAPPORO_LG = '011011';
 export const ABR_LAST_MODIFIED = 'Fri, 02 Oct 2026 15:40:53 GMT';
+export const MLIT_LAST_MODIFIED = 'Tue, 07 Jul 2026 05:14:07 GMT';
 export const POSTAL_LAST_MODIFIED = 'Wed, 30 Sep 2026 07:46:52 GMT';
 /** 固定データの大きさに合わせた、構築結果の最小値。 */
 export const SMALL_MINIMUM = { prefs: 2, cities: 2, towns: 1, general: 3, office: 2, points: 3 } as const;
@@ -190,7 +193,7 @@ const JP_BASE = 'https://www.post.japanpost.jp/service/search/zipcode/download';
  * 全国マスター、千代田区と札幌市中央区の町字、日本郵便の郵便番号データを持つ偽の取得元。
  * numbers: true で、千代田区の住居表示と札幌市中央区の地番も持つ（無いときは 404、つまり番地・号のデータが無い市区町村）。
  */
-export function sampleUpstream(options: { numbers?: boolean } = {}): FakeUpstream {
+export function sampleUpstream(options: { numbers?: boolean; mlit?: boolean } = {}): FakeUpstream {
   const up = new FakeUpstream();
   const abr = (path: string, header: readonly string[], rows: readonly (readonly string[])[]): void => {
     const name = path.slice(path.lastIndexOf('/') + 1);
@@ -221,6 +224,7 @@ export function sampleUpstream(options: { numbers?: boolean } = {}): FakeUpstrea
     abr(`mt_parcel_pos/city/mt_parcel_pos_city${SAPPORO_LG}`, PARCEL_POS_HEADER, SAPPORO_PARCEL_POS);
   }
 
+  if (options.mlit) up.setZip(mlitCityUrl(CHIYODA_LG, '24.0a'), { '13101-24.0a/24.0a.html': '<html></html>', '13101-24.0a/13101_2025.csv': mlitChiyodaBytes(), '13101-24.0a/md_13101_2025.xml': '<xml/>' }, { lastModified: MLIT_LAST_MODIFIED });
   up.set(JAPANPOST_KEN_ALL_PAGE, { body: '<a href="utf/zip/utf_add_2609.zip">差分</a><a href="utf/zip/utf_ken_all.zip">全国</a>', finalUrl: `${JP_BASE}/utf-zip.html` });
   up.set(JAPANPOST_JIGYOSYO_PAGE, { body: '<a href="zip/jigyosyo.zip">全国</a>', finalUrl: `${JP_BASE}/office/index-zip.html` });
   up.setZip(JAPANPOST_FALLBACK.kenAll, { 'utf_ken_all.csv': KEN_ALL_FIXTURE }, { lastModified: POSTAL_LAST_MODIFIED });

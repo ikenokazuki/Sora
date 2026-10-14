@@ -7,6 +7,7 @@ import {
 } from '../test_fixtures/address/harness.js';
 import { GeoIndexReader } from './address_geo_index.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
+import { mlitCityUrl } from './address_mlit.js';
 import { runBuildJob, type JobDeps } from './address_jobs.js';
 import { AddressStore } from './address_store.js';
 import { PostalReader } from './postal_code.js';
@@ -17,7 +18,7 @@ let up: FakeUpstream;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'addr-jobs-'));
   store = new AddressStore(dir);
-  up = sampleUpstream({ numbers: true });
+  up = sampleUpstream({ numbers: true, mlit: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -157,6 +158,43 @@ describe('index', () => {
     await expect(runBuildJob({ kind: 'index' }, deps())).rejects.toThrow('01');
     up.set(abrUrl('mt_town_pos/pref/mt_town_pos_pref13'), { body: '', status: 403 });
     await expect(runBuildJob({ kind: 'index' }, deps())).rejects.toThrow('HTTP 403');
+  });
+});
+
+describe('mlit', () => {
+  test('街区レベル位置参照から、町ごとの街区符号の点の索引を公開する（更新前の履歴の行と代表でない行は使わない）', async () => {
+    await runBuildJob({ kind: 'mlit', lgCode: CHIYODA_LG }, deps());
+    const index = readJson(`mlit:${CHIYODA_LG}`, 'index.json');
+    expect(index.towns['永田町1']).toEqual({ '7': [139.745512, 35.675912], '9': [139.7461, 35.674] });
+    expect(index.towns['永田町2']).toEqual({ '5': [139.742, 35.6735] });
+    expect(store.current(`mlit:${CHIYODA_LG}`)?.meta.sourceDate).toBe('2026-07-07');
+    // 新しい版（25.0a）がまだ無いので、24.0a を使う
+    expect(up.requests.some((r) => r.url.includes('/25.0a/'))).toBe(true);
+  });
+
+  test('取得元が変わっていなければダウンロードせず、確認日時だけ進める', async () => {
+    await runBuildJob({ kind: 'mlit', lgCode: CHIYODA_LG }, deps());
+    const seq = store.read().seq;
+    const downloads = up.count('GET');
+    await runBuildJob({ kind: 'mlit', lgCode: CHIYODA_LG }, deps());
+    expect(store.read().seq).toBe(seq);
+    expect(up.count('GET')).toBe(downloads);
+  });
+
+  test('街区レベルのデータが無い市区町村は、空の索引だけを公開する（毎回調べ直さない）', async () => {
+    await runBuildJob({ kind: 'mlit', lgCode: SAPPORO_LG }, deps());
+    expect(readJson(`mlit:${SAPPORO_LG}`, 'index.json')).toEqual({ towns: {} });
+    expect(store.current(`mlit:${SAPPORO_LG}`)?.meta.sig).toBe('none');
+    const seq = store.read().seq;
+    await runBuildJob({ kind: 'mlit', lgCode: SAPPORO_LG }, deps());
+    expect(store.read().seq).toBe(seq);
+  });
+
+  test('国外 IP の拒否（403）と不正なコードは失敗として記録する', async () => {
+    up.set(mlitCityUrl(CHIYODA_LG, '25.0a'), { status: 403, body: '' });
+    await expect(runBuildJob({ kind: 'mlit', lgCode: CHIYODA_LG }, deps())).rejects.toThrow();
+    expect(store.read().failures[`mlit:${CHIYODA_LG}`]).toBeDefined();
+    await expect(runBuildJob({ kind: 'mlit', lgCode: '13' }, deps())).rejects.toThrow();
   });
 });
 

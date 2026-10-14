@@ -143,13 +143,14 @@ export async function runPreload(data: AddressData, options: PreloadOptions = {}
     for (const lgCode of lgCodes) {
       const cityId = `city:${lgCode}`;
       const numId = `num:${lgCode}`;
-      if (!(fresh(cityId, true) && fresh(numId, true))) {
+      const mlitId = `mlit:${lgCode}`;
+      if (!(fresh(cityId, true) && fresh(numId, true) && fresh(mlitId, true))) {
         if (!(await hasRoom())) {
           return halt('budget', `予算 ${Math.round(data.config.maxBytes / MB)}MB に空きがありません（使用中 ${Math.round(used() / MB)}MB）。SORA_ADDRESS_MAX_MB を増やして再起動すると、続きから取得します`);
         }
-        // 町字（段A）と番地・号（段B）を別々に頼み、できたそばから印を付ける（段B の構築後の破棄で段A が消えないように）。
+        // 町字（段A）、番地・号（段B）、街区レベル位置参照（国土交通省）を別々に頼み、できたそばから印を付ける（段B の構築後の破棄で段A が消えないように）。
         let ok = true;
-        for (const job of [{ kind: 'city', lgCode }, { kind: 'num', lgCode }] as const) {
+        for (const job of [{ kind: 'city', lgCode }, { kind: 'num', lgCode }, { kind: 'mlit', lgCode }] as const) {
           const id = jobArtifactId(job);
           if (!ok || fresh(id, true)) continue;
           ok = await build(job);

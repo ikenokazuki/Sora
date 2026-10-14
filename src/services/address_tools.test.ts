@@ -108,6 +108,15 @@ describe('番地・号まで照合した住所', () => {
 });
 
 describe('normalizeAddressTool', () => {
+  test('国土交通省の街区データで補った結果には、国土交通省の出典と加工の明記が付く', async () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true, mlit: true }) });
+    const ctx = createAddressContext(built.data);
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-9-5' }, ctx);
+    expect(result).toMatchObject({ level: 8, numberSource: 'mlit', point: { level: 7 } });
+    expect(result.attribution).toBe(addressAttribution(false, true));
+    expect(result.dataset.updatedAt).not.toBeNull();
+  });
+
   test('座標の突き合わせに使う番地・号のデータが間に合わなければ、結果に incomplete と pending を付ける', async () => {
     const built = createTestAddressData(dir, {
       up: sampleUpstream({ numbers: true }),
