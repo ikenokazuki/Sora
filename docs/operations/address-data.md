@@ -152,6 +152,9 @@ bun /app/address-build.js --dir /data/address --job '{"kind":"num","lgCode":"131
 - API 応答としては、答えを部分的に返せる場合は `unavailable: [{ artifact: "...", message: "... HTTP 403（国外 IP からの接続は拒否されます）" }]`（`incomplete: true`）、答えようがない場合は REST の 502 `ADDRESS_DATA_UNAVAILABLE`（`retryable: false`）が返却されます。待ち時間（`SORA_ADDRESS_WAIT_MS`）までにデータが揃わなかった場合は、502 `ADDRESS_DATA_PENDING`（`retryable: true`）です。
 - 国外ホスト上で Sora を運用する場合は、`SORA_ADDRESS=off` に設定するか、事前に国内ネットワークで `/data/address` を構築してマウントすることを推奨します。
 
+### 入力表記の言い換え
+入力のままでは番地・号（level 8）に届かず、データの不足でもないときだけ、言い換えた入力を試し、より深く届いた結果を採ります（届く入力には余分な処理をしません）。言い換えは、街区表記（`6街区21号` → `6-21`）、`線`・`号`・`番` の前の漢数字（`六十七番` → `67番`。`一番町` のような地名は変えない）、葦と芦の異体字（ABR の綴り `葦北郡芦北町` に合わせる）です。ABR に無い番地（街区符号が片仮名の住所、大字の無い住所など）は補えません。
+
 ### ディスク容量の枯渇
 - 1 市区町村あたりのデータサイズ目安（実測。§6）:
   - 段A（町字）: 十数KB 〜 約 500KB（京都市中京区が約 500KB）
