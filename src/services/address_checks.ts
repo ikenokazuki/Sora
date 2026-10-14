@@ -119,7 +119,7 @@ export type CoordinatesCheckStatus = 'match' | 'partial' | 'mismatch' | 'unknown
 export interface CoordinatesCheck {
   status: CoordinatesCheckStatus;
   /** 座標の最寄りの住所。 */
-  nearest: Pick<ReverseResult, 'normalized' | 'level' | 'keys' | 'point' | 'distanceMeters' | 'incomplete' | 'pending' | 'unavailable'> | null;
+  nearest: Pick<ReverseResult, 'normalized' | 'level' | 'numberSource' | 'keys' | 'point' | 'distanceMeters' | 'incomplete' | 'pending' | 'unavailable'> | null;
   /** 住所の代表点から、渡された座標までの距離。住所の点を特定できないときは undefined。 */
   distanceMeters?: number;
   reason: string;
@@ -147,7 +147,7 @@ export async function checkCoordinates(
   const reversed = await reverseGeocode(ctx, { lat, lon, ...options });
   const nearest: CoordinatesCheck['nearest'] = reversed.found
     ? {
-      normalized: reversed.normalized as string, level: reversed.level, keys: reversed.keys,
+      normalized: reversed.normalized as string, level: reversed.level, numberSource: reversed.numberSource, keys: reversed.keys,
       point: reversed.point, distanceMeters: reversed.distanceMeters,
     }
     : null;

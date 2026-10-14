@@ -1,4 +1,4 @@
-import { ADDRESS_ATTRIBUTION } from './address_attribution.js';
+import { ADDRESS_ATTRIBUTION, addressAttribution } from './address_attribution.js';
 import { checkCoordinates, compareAddresses, checkZip, type AddressComparison, type CoordinatesCheck, type ZipCheck } from './address_checks.js';
 import { getAddressContext, type AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
@@ -85,7 +85,7 @@ export async function searchPostalCode(
     postalCodes,
     ...gaps.result(),
     dataset: datasetField(ctx, ['postal', ...(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : [])]),
-    attribution: ADDRESS_ATTRIBUTION,
+    attribution: addressAttribution(normalized.numberSource === 'chiban'),
   };
 }
 
@@ -152,10 +152,12 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
     }
   }
   const cities = new Set<string>(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : []);
+  let usesParcel = normalized.numberSource === 'chiban' || checks.coordinates?.nearest?.numberSource === 'chiban';
   if (input.compareAddress?.trim()) {
     const other = await ctx.normalizer.normalize(input.compareAddress, { level });
     gaps.add(other);
     if (other.keys.lgCode) cities.add(`city:${other.keys.lgCode}`);
+    usesParcel = usesParcel || other.numberSource === 'chiban';
     checks.compare = { ...compareAddresses(normalized, other), other: { input: other.input, normalized: other.normalized, level: other.level } };
   }
 
@@ -165,7 +167,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
     postalCodes,
     ...gaps.result(),
     dataset: datasetField(ctx, ['postal', ...cities]),
-    attribution: ADDRESS_ATTRIBUTION,
+    attribution: addressAttribution(usesParcel),
   };
   if (Object.keys(checks).length > 0) result.checks = checks;
   return result;
@@ -189,6 +191,6 @@ export async function reverseGeocodeTool(input: ReverseGeocodeInput, ctx: Addres
   return {
     ...reversed,
     dataset: datasetField(ctx, used),
-    attribution: ADDRESS_ATTRIBUTION,
+    attribution: addressAttribution(reversed.numberSource === 'chiban' || reversed.alternatives.some((alt) => alt.numberSource === 'chiban')),
   };
 }

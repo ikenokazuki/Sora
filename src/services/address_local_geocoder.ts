@@ -1,4 +1,5 @@
 import type { AddressContext } from './address_context.js';
+import { addressAttribution } from './address_attribution.js';
 import { lookupZip, normalizeZip } from './address_postal.js';
 
 /** 局所ジオコーダーの結果。geocoding.ts の GeocodingResult と同じ形（循環を避けるためここで定義する）。 */
@@ -8,6 +9,8 @@ export interface LocalGeocodingResult {
   lon: number;
   source: 'abr';
   needsVerification: boolean;
+  /** 既定の出典では足りない結果（地番を使った住所）の出典表示。 */
+  attribution?: string;
 }
 
 const ZIP_ONLY = /^[\s　]*(?:〒[\s　]*)?[0-9０-９]{3}[-‐‑–—―−－ー]?[0-9０-９]{4}[\s　]*$/;
@@ -59,5 +62,9 @@ async function addressGeocode(ctx: AddressContext, query: string): Promise<Local
   if (result.level < 3 || !result.point) return null;
   // 番地・号が入力にあるのに照合できなかった（データに無い番地、段B が未取得）ときは、町字の代表点を番地の座標として返さない。
   if (result.level < 8 && LEFTOVER_NUMBER.test(result.other)) return null;
-  return { address: result.normalized, lat: result.point.lat, lon: result.point.lon, source: 'abr', needsVerification: false };
+  return {
+    address: result.normalized, lat: result.point.lat, lon: result.point.lon, source: 'abr', needsVerification: false,
+    // 地番の座標は法務省の登記所備付地図データに基づくので、その出典と加工の明記を添える。
+    ...(result.numberSource === 'chiban' ? { attribution: addressAttribution(true) } : {}),
+  };
 }

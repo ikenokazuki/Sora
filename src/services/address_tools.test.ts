@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
+import { addressAttribution } from './address_attribution.js';
 import { createAddressContext, setAddressContextForTest } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
 import { JAPANPOST_FALLBACK } from './address_http.js';
@@ -256,6 +257,52 @@ describe('reverseGeocodeTool', () => {
       found: true, level: 8, numberSource: 'chiban', normalized: '北海道札幌市中央区北１条西二丁目12-3',
       keys: { lgCode: SAPPORO_LG, machiazaId: '0013002', prc: ['12', '3'] },
     });
+  });
+});
+
+describe('出典: 地番を使った結果には、登記所備付地図データの出典と加工の明記を足す', () => {
+  const setup8 = () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    return createAddressContext(built.data);
+  };
+  const SAPPORO_12_3 = '札幌市中央区北1条西2丁目12-3';
+
+  test('住居表示だけを使った結果には足さない', async () => {
+    const ctx = setup8();
+    expect((await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx)).attribution).toBe(ADDRESS_ATTRIBUTION);
+    expect((await reverseGeocodeTool({ lat: 35.675915, lon: 139.745515 }, ctx)).attribution).toBe(ADDRESS_ATTRIBUTION);
+  });
+
+  test('地番を使った正規化・逆引き・郵便番号の逆引きには足す', async () => {
+    const ctx = setup8();
+    expect((await normalizeAddressTool({ address: SAPPORO_12_3 }, ctx)).attribution).toBe(addressAttribution(true));
+    expect((await reverseGeocodeTool({ lat: 43.064, lon: 141.3541 }, ctx)).attribution).toBe(addressAttribution(true));
+    expect((await searchPostalCode({ address: SAPPORO_12_3 }, ctx)).attribution).toBe(addressAttribution(true));
+  });
+
+  test('地番を使っていなければ足さない（郵便番号の順引き、地番に当たらなかった住所）', async () => {
+    const ctx = setup8();
+    expect((await searchPostalCode({ zipcode: '060-0001' }, ctx)).attribution).toBe(ADDRESS_ATTRIBUTION);
+    const missing = await normalizeAddressTool({ address: '札幌市中央区北1条西2丁目99' }, ctx);
+    expect(missing).toMatchObject({ level: 3, numberSource: null });
+    expect(missing.attribution).toBe(ADDRESS_ATTRIBUTION);
+  });
+
+  test('名寄せの相手や、座標の最寄りが地番なら足す', async () => {
+    const ctx = setup8();
+    const compared = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', compareAddress: SAPPORO_12_3 }, ctx);
+    expect(compared.attribution).toBe(addressAttribution(true));
+    const located = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', lat: 43.064, lon: 141.3541 }, ctx);
+    expect(located.checks?.coordinates?.nearest).toMatchObject({ numberSource: 'chiban' });
+    expect(located.attribution).toBe(addressAttribution(true));
+  });
+
+  test('逆引きの候補が地番なら足す（alternatives に numberSource を持たせる）', async () => {
+    const ctx = setup8();
+    // 札幌 13 番の点（141.3543, 43.0642）の近くで、最寄りは 13、次点に 12-3 がある
+    const result = await reverseGeocodeTool({ lat: 43.0642, lon: 141.3543 }, ctx);
+    expect(result.alternatives.every((alt) => alt.numberSource === 'chiban')).toBe(true);
+    expect(result.attribution).toBe(addressAttribution(true));
   });
 });
 

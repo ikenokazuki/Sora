@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
-import { createGeocoder } from './geocoding.js';
+import { GEOCODING_ATTRIBUTIONS, createGeocoder, geocodingAttribution } from './geocoding.js';
 
 const harajuku = [
   { display_name: '東京都渋谷区神宮前 原宿', lat: '35.669968', lon: '139.709008', address: { 'ISO3166-2-lvl4': 'JP-13' } },
@@ -133,5 +133,15 @@ describe('nominatim', () => {
   test('rejects HTTP errors without parsing their bodies as locations', async () => {
     const geocode = createGeocoder({ fetchFn: async () => Response.json(harajuku, { status: 503 }) });
     await expect(geocode('原宿')).rejects.toThrow('503');
+  });
+});
+
+describe('geocodingAttribution', () => {
+  const base = { address: 'x', lat: 35, lon: 139, needsVerification: false };
+
+  test('結果に固有の出典があればそれを、なければ取得元の既定を返す', () => {
+    expect(geocodingAttribution({ ...base, source: 'nominatim' })).toBe(GEOCODING_ATTRIBUTIONS.nominatim);
+    expect(geocodingAttribution({ ...base, source: 'abr' })).toBe(GEOCODING_ATTRIBUTIONS.abr);
+    expect(geocodingAttribution({ ...base, source: 'abr', attribution: '固有の出典' })).toBe('固有の出典');
   });
 });

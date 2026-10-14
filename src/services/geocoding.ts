@@ -11,6 +11,8 @@ export interface GeocodingResult {
   lon: number;
   source: 'nominatim' | 'gsi' | 'abr';
   needsVerification: boolean;
+  /** この結果に固有の出典表示。省略時は source の既定（GEOCODING_ATTRIBUTIONS）。 */
+  attribution?: string;
 }
 
 // 座標解決結果を表示・公開する際に必要な出典表示（OSM は ODbL）。
@@ -19,6 +21,11 @@ export const GEOCODING_ATTRIBUTIONS: Record<GeocodingResult['source'], string> =
   gsi: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)',
   abr: ADDRESS_ATTRIBUTION,
 };
+
+/** 結果を表示・公開する際に併記する出典。地番を使った住所の結果のように、取得元の既定より多く必要な結果は attribution を持つ。 */
+export function geocodingAttribution(result: Pick<GeocodingResult, 'source' | 'attribution'>): string {
+  return result.attribution ?? GEOCODING_ATTRIBUTIONS[result.source];
+}
 
 interface GeocoderOptions {
   fetchFn?: (url: string, init?: RequestInit) => Promise<Response>;
