@@ -108,6 +108,17 @@ describe('番地・号まで照合した住所', () => {
 });
 
 describe('normalizeAddressTool', () => {
+  test('街区の点で座標を補った地番の結果にも、国土交通省の出典と地番の出典が付く', async () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true, mlit: true }) });
+    const ctx = createAddressContext(built.data);
+    const result = await normalizeAddressTool({ address: '札幌市中央区北1条西2丁目12-4' }, ctx);
+    expect(result).toMatchObject({ numberSource: 'chiban', pointSource: 'mlit', point: { level: 7 } });
+    expect(result.attribution).toBe(addressAttribution(true, true));
+    const reversed = await reverseGeocodeTool({ lat: 43.0652, lon: 141.3541, maxDistanceMeters: 100 }, ctx);
+    expect(reversed).toMatchObject({ numberSource: 'mlit' });
+    expect(reversed.attribution).toBe(addressAttribution(false, true));
+  });
+
   test('市区町村の無い住所は、渡された zipcode で市区町村を補って解決し、zipcode の突き合わせも match になる', async () => {
     const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
     const ctx = createAddressContext(built.data);

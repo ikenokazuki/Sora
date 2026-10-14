@@ -90,6 +90,27 @@ describe('normalize（国土交通省の街区レベル位置参照で補う）'
   });
 });
 
+describe('normalize（座標の無い地番に街区の点を付ける）', () => {
+  const normalizerOf = (up = sampleUpstream({ numbers: true, mlit: true })) => new AddressNormalizer(createTestAddressData(dir, { up }).data);
+
+  test('ABR の地番に位置参照が無いとき、同じ本番の街区の点で座標を補う。番地の照合（chiban）は変えない', async () => {
+    const result = await normalizerOf().normalize('札幌市中央区北1条西2丁目12-4');
+    expect(result).toMatchObject({
+      level: 8, numberSource: 'chiban', normalized: '北海道札幌市中央区北１条西二丁目12-4', keys: { prc: ['12', '4'] },
+      point: { lat: 43.0641, lon: 141.3542, level: 7 }, pointSource: 'mlit',
+    });
+  });
+
+  test('位置参照のある地番はそのまま。街区データが無い・取得できないときは町字の代表点のまま', async () => {
+    const withData = await normalizerOf().normalize('札幌市中央区北1条西2丁目12-3');
+    expect(withData.point).toMatchObject({ lat: 43.064, lon: 141.3541, level: 8 });
+    expect(withData.pointSource).toBeUndefined();
+    const without = await normalizerOf(sampleUpstream({ numbers: true })).normalize('札幌市中央区北1条西2丁目12-4');
+    expect(without).toMatchObject({ numberSource: 'chiban', point: { level: 3 } });
+    expect(without.pointSource).toBeUndefined();
+  });
+});
+
 describe('normalize（郵便番号で市区町村を補う）', () => {
   const setup = () => new AddressNormalizer(createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) }).data);
 
