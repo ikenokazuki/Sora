@@ -80,6 +80,8 @@ export interface TestAddressDataOptions {
   maxBytes?: number;
   concurrency?: number;
   waitMs?: number;
+  /** 事前取得の指定（SORA_ADDRESS_PRELOAD の解釈結果）。 */
+  preload?: AddressConfig['preload'];
   now?: () => number;
   cooldownMs?: number;
   /** 中身の構築役を包む（GatedBuilder など）。 */
@@ -99,7 +101,7 @@ export function createTestAddressData(dir: string, options: TestAddressDataOptio
     maxBytes: options.maxBytes ?? 1024 * 1024 * 1024,
     waitMs: options.waitMs ?? 20_000,
     concurrency: options.concurrency ?? 1,
-    preload: null,
+    preload: options.preload ?? null,
   };
   const data = new AddressData({ config, builder, store, now, cooldownMs: options.cooldownMs, log: () => undefined });
   liveData.push(data);

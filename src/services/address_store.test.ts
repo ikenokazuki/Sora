@@ -119,6 +119,22 @@ describe('publish and current', () => {
   });
 });
 
+describe('work directories', () => {
+  test('作り直すときに、中断した構築の残り（古い作業ディレクトリ）を片付ける。新しいものは消さない', () => {
+    const stale = store.makeWorkDir();
+    writeFileSync(join(stale, 'half.zip'), 'x');
+    const old = new Date(Date.now() - 2 * 3_600_000);
+    utimesSync(stale, old, old);
+    const running = store.makeWorkDir();
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(running)).toBe(true);
+    // 動いている構築の作業ディレクトリは、次の構築を始めても残る
+    const next = store.makeWorkDir();
+    expect(existsSync(running)).toBe(true);
+    expect(existsSync(next)).toBe(true);
+  });
+});
+
 describe('checks and errors', () => {
   test('markChecked は確認日時を進め、エラーを消す', async () => {
     await store.publish('master', build({ 'ja.json': '{}' }), { sig: 's' });

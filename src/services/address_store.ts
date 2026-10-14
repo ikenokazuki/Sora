@@ -71,6 +71,7 @@ function dirSize(path: string): number {
   return total;
 }
 
+const STALE_WORK_MS = 3_600_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_TIMEOUT_MS = 10_000;
 const USE_FLUSH_MS = 60_000;
@@ -156,8 +157,29 @@ export class AddressStore {
     return existsSync(path) ? { meta, path } : null;
   }
 
-  /** 構築用の作業ディレクトリ。公開先と同じボリュームに作り、rename で原子的に移す。 */
+  /**
+   * 中断した構築（プロセスの終了・コンテナの入れ替え）が残した作業ディレクトリを消す。
+   * 動いている構築は最長でも 10 分で終わるので、1 時間より古いものは残り物。
+   */
+  private sweepWorkDirs(): void {
+    const parent = join(this.dir, 'tmp');
+    let names: string[];
+    try {
+      names = readdirSync(parent);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const path = join(parent, name);
+      try {
+        if (Date.now() - statSync(path).mtimeMs > STALE_WORK_MS) rmSync(path, { recursive: true, force: true });
+      } catch { /* 他のプロセスが先に消した */ }
+    }
+  }
+
+  /** 構築用の作業ディレクトリ。公開先と同じボリュームに作り、rename で原子的に移す。作るときに古い残りを片付ける。 */
   makeWorkDir(): string {
+    this.sweepWorkDirs();
     const path = join(this.dir, 'tmp', `${process.pid}-${this.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
     mkdirSync(path, { recursive: true });
     return path;
@@ -233,13 +255,30 @@ export class AddressStore {
     });
   }
 
-  /** 予算を超えていれば、最近使われていない市区町村から破棄する。破棄した ID を返す。 */
-  async evict(maxBytes: number, protect: ReadonlySet<string> = new Set()): Promise<string[]> {
+  /** 事前取得で揃えた成果物に印を付ける。印が効くかどうかは、破棄するときに呼び出し側が決める（evict の keep）。 */
+  async pin(ids: readonly string[]): Promise<void> {
+    await this.update((status) => {
+      for (const id of ids) {
+        const meta = status.artifacts[id];
+        if (meta) meta.pinned = true;
+      }
+    });
+  }
+
+  /**
+   * 予算を超えていれば、最近使われていない市区町村から破棄する。破棄した ID を返す。
+   * protect は構築中などで残す ID、keep は残す成果物（既定は印つき）。
+   */
+  async evict(
+    maxBytes: number,
+    protect: ReadonlySet<string> = new Set(),
+    keep: (id: string, meta: ArtifactMeta) => boolean = (_id, meta) => meta.pinned === true,
+  ): Promise<string[]> {
     const removed: string[] = [];
     await this.update((status) => {
       let total = Object.values(status.artifacts).reduce((sum, meta) => sum + meta.bytes, 0);
       const candidates = Object.entries(status.artifacts)
-        .filter(([id, meta]) => (id.startsWith('city:') || id.startsWith('num:')) && !meta.pinned && !protect.has(id))
+        .filter(([id, meta]) => (id.startsWith('city:') || id.startsWith('num:')) && !keep(id, meta) && !protect.has(id))
         .sort((a, b) => a[1].usedAt - b[1].usedAt);
       for (const [id, meta] of candidates) {
         if (total <= maxBytes) break;

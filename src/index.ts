@@ -194,4 +194,11 @@ if (import.meta.main) {
   console.log(`Starting Sora service on port ${PORT}...`);
 
   installShutdownHandlers(() => server.stop(true));
+
+  // 住所データの事前取得は、SORA_ADDRESS_PRELOAD を指定した運用者だけ。指定が無ければ何も読み込まず、何も始めない。
+  if (process.env.SORA_ADDRESS_PRELOAD?.trim()) {
+    void import('./services/address_preload.js')
+      .then(({ startAddressPreload }) => startAddressPreload())
+      .catch((error) => console.warn(`[Sora/Address] preload failed to start: ${error instanceof Error ? error.message : String(error)}`));
+  }
 }
