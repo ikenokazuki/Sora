@@ -132,7 +132,7 @@ bun /app/address-build.js --dir /data/address --job '{"kind":"num","lgCode":"131
 - 禁止行為のひとつに、データの内容を他の情報と照合して特定の個人を識別する行為があります。**地番から所有者などの個人を特定する用途には使えません。** 本機能は住所の実在確認と座標の取得のためのもので、個人の識別は行いません。この機能を使うサービスでも、同様の用途に使わないでください。
 - 地図の精度は作成時期などによって異なり、法務省はその正確性を保証しません。
 
-MCP ツールおよび REST レスポンスの `attribution` フィールドには、ABR と日本郵便の出典と加工の明記が自動で付きます。`get_elevation` と `search_poi` の座標解決では、`geocodingAttribution` と `centerResolved.attribution` が同じ役割です。結果に地番のデータ（`numberSource: "chiban"` の住所や、地番の点を最寄りとして返した逆引き）を使ったときは、さらに法務省の登記所備付地図データの出典、加工した旨、精度の注意が付きます。結果を表示・公開する際は、必ず併記してください。記載例にある利用日（「○年○月○日に利用」）は、表示・公開する側で必要に応じて付記してください（データの時点は `dataset.updatedAt` で分かります）。
+MCP ツールおよび REST レスポンスの `attribution` フィールドには、ABR と日本郵便の出典と加工の明記が自動で付きます。`get_elevation` と `search_poi` の座標解決では、`geocodingAttribution` と `centerResolved.attribution` が、`search_poi` の `withAddress` では `addressAttribution` が同じ役割です。結果に地番のデータ（`numberSource: "chiban"` の住所や、地番の点を最寄りとして返した逆引き）を使ったときは、さらに法務省の登記所備付地図データの出典、加工した旨、精度の注意が付きます。結果を表示・公開する際は、必ず併記してください。記載例にある利用日（「○年○月○日に利用」）は、表示・公開する側で必要に応じて付記してください（データの時点は `dataset.updatedAt` で分かります）。
 
 ---
 

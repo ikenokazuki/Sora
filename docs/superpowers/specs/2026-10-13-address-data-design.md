@@ -245,6 +245,8 @@ REST は `/geo/reverse`。入力は `{ lat, lon, maxDistanceMeters? }`（既定 
   - ローカルで解決できない入力（取得済みデータが無い、`off`、取得失敗、地名・駅名・施設名・通称）は、**待たずに**従来の経路（Nominatim → 国土地理院）へ進みます。`eager` では、データが無い市区町村の取得を裏で始めます。
   - `GeocodingResult.source` に `'abr'` を足し、`GEOCODING_ATTRIBUTIONS.abr`、`ElevationResultSchema` と `PoiSearchResultSchema` の enum、tool-health の出典マーカーと期待値（`geo.address` は `abr` も許す）を更新します。
 - **`search_poi`**: `center` が住所・郵便番号でも解決されます。新しい任意項目 `withAddress`（既定 false）で、各施設に `addressInfo{ normalized, level, numberSource, keys, postalCodes, check{ status, distanceMeters } }` を付け、施設の住所を座標と突き合わせます（住所の質が低い OpenPOI の結果を見分けられる）。
+  - 住所データの待ち時間（`SORA_ADDRESS_WAIT_MS`）は検索全体で共有します。揃う前に調べた施設、または調べきれなかった施設には `addressIncomplete: true` を付け、結果全体に `addressIncomplete`、`addressPending`（取得中のデータ）、`addressUnavailable`（取得に失敗したデータと理由）を返します。住所を解釈できなかった施設には印を付けないので、「時間切れ」と「解釈できない」を区別できます。住所機能が `off` のとき、住所の付与に失敗したときは `addressUnavailable` に理由を入れます。
+  - `addressInfo` を付けた施設があるときは、住所データの出典と加工の明記を `addressAttribution` で返します（地番を使った結果には法務省の出典も含む）。
 - **`get_elevation`**: `geocodeAddress` 経由で自動的にローカル優先になります。コード変更は不要です。
 - 外部依存として残るもの: Nominatim と国土地理院（住所以外の地名）、OpenPOI（`search_poi` の検索そのもの）、国土地理院の標高 API（`get_elevation`）。
 - 検討して統合しないもの: `get_weather` の `city_map.ts`（気象庁の予報区コードへの対応表で、ABR の市区町村コードでは置き換えられない）、`search_road_traffic` の都道府県名、`search_route` の駅名。
@@ -331,10 +333,10 @@ REST は `/geo/reverse`。入力は `{ lat, lon, maxDistanceMeters? }`（既定 
 
 ### 実装後に残った判断事項（2026-10-14 の確認で記録）
 
-4. ~~**地番データの出典と規約（1 の続き）。** 地番を使った結果（`numberSource: "chiban"`）の出力には、現状 ABR と日本郵便の出典しか付かない。~~ **解決済み（2026-10-14）**: 規約の本文を確認し、地番を使った結果には法務省の出典・加工した旨・精度の注意を足した（4.3）。対象は `search_postal_code`（住所から）、`normalize_address`（住所、座標の最寄り、名寄せの相手）、`reverse_geocode`（結果と候補）、局所ジオコーダー（`get_elevation`、`search_poi` の座標解決）。`search_poi` の `withAddress` は、7 の項目に合わせて直す。
+4. ~~**地番データの出典と規約（1 の続き）。** 地番を使った結果（`numberSource: "chiban"`）の出力には、現状 ABR と日本郵便の出典しか付かない。~~ **解決済み（2026-10-14）**: 規約の本文を確認し、地番を使った結果には法務省の出典・加工した旨・精度の注意を足した（4.3）。対象は `search_postal_code`（住所から）、`normalize_address`（住所、座標の最寄り、名寄せの相手）、`reverse_geocode`（結果と候補）、局所ジオコーダー（`get_elevation`、`search_poi` の座標解決）。`search_poi` の `withAddress` には `addressAttribution` を足した（設計 7）。
 5. **`SORA_ADDRESS_PRELOAD` は未実装。** 設定の読み込みだけがあり、事前取得は実行されない（`eager` の「データの無い地域で裏で取得を始める」は実装済み）。運用手引は子の入口を直接実行する手順で代替している。
-6. ~~**ローカルのジオコーダーは、町字（level 3）に届けば `needsVerification: false` で返す（設計 7 のとおり）。** 番地・号の段B が無い市区町村や番地が照合できない住所では、町字の代表点（数百 m〜数 km の誤差）になり、国土地理院の番地レベルの座標より粗くなりうる。~~ **解決済み（2026-10-14）**: 番地・号が入力にあるのに level 8 に届かない住所は、従来の経路へ回すことにした（7 に記載）。eager では、その回は従来の経路で答え、段B の取得を裏で始めるので、次の呼び出しからローカルで解決する。
-7. **`search_poi` の `withAddress` は、待ち時間（`SORA_ADDRESS_WAIT_MS`）を使い切ると、後ろの施設に `addressInfo` が付かない。** 「解釈できなかった」と「時間切れ」を区別する印が無い。
+6. ~~**ローカルのジオコーダーは、町字（level 3）に届けば `needsVerification: false` で返す（設計 7 のとおり）。** 番地・号の段B が無い市区町村や番地が照合できない住所では、町字の代表点（数百 m〜数 km の誤差）になり、国土地理院の番地レベルの座標より粗くなりうる。~~ **解決済み（2026-10-14）**: 番地・号が入力にあるのに level 8 に届かない住所は、従来の経路へ回すことにした（設計 7 に記載）。eager では、その回は従来の経路で答え、段B の取得を裏で始めるので、次の呼び出しからローカルで解決する。
+7. ~~**`search_poi` の `withAddress` は、待ち時間（`SORA_ADDRESS_WAIT_MS`）を使い切ると、後ろの施設に `addressInfo` が付かない。** 「解釈できなかった」と「時間切れ」を区別する印が無い。~~ **解決済み（2026-10-14）**: 施設ごとの `addressIncomplete` と、結果全体の `addressIncomplete` / `addressPending` / `addressUnavailable`、出典の `addressAttribution` を足した（設計 7 に記載）。あわせて、座標の突き合わせ（`checkCoordinates`）が逆ジオコーディングのデータ不足（`incomplete` / `pending`）を捨てていたのを直し、`normalize_address` の `checks.coordinates` と結果全体にも反映するようにした。
 8. **tool-health の住所ケース（`geo.postal_code` など）は、`attribution` の有無しか確かめていない。** 件数・町名・`found` などの中身は見ていない。
 
 ## 13. 実装の分け方（概要）
