@@ -50,6 +50,32 @@ describe('reverseGeocode', () => {
     expect(result.incomplete).toBeUndefined();
   });
 
+  test('ABR の番地・号の点が範囲内に無ければ、国土交通省の街区の点を候補にする（ABR の町に対応する町だけ）', async () => {
+    const { ctx } = setup({ up: sampleUpstream({ numbers: true, mlit: true }) });
+    const result = await reverseGeocode(ctx, { lat: 43.0652, lon: 141.3541, maxDistanceMeters: 100 });
+    expect(result).toMatchObject({
+      found: true, level: 8, numberSource: 'mlit', normalized: '北海道札幌市中央区北１条西二丁目40',
+      address: { pref: '北海道', city: '札幌市中央区', town: '北１条西二丁目', addr: '40' },
+      keys: { prefCode: '01', lgCode: SAPPORO_LG, machiazaId: '0013002', prc: ['40'] },
+      point: { lat: 43.0648, lon: 141.3541, level: 7 },
+    });
+    expect(result.distanceMeters).toBeLessThan(60);
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('同じ点を複数の街区が共有しているとき（地番の街区は代表点を共有する）は、どの番地か決められないので使わない', async () => {
+    const { ctx } = setup({ up: sampleUpstream({ numbers: true, mlit: true }) });
+    const result = await reverseGeocode(ctx, { lat: 43.0661, lon: 141.355, maxDistanceMeters: 100 });
+    expect(result).toMatchObject({ found: true, level: 3, numberSource: null, normalized: '北海道札幌市中央区北１条西二丁目' });
+  });
+
+  test('ABR の点が範囲内にあれば、街区の点が近くても ABR を優先する。街区データが無ければ町字の答え', async () => {
+    const { ctx } = setup({ up: sampleUpstream({ numbers: true, mlit: true }) });
+    expect(await reverseGeocode(ctx, { lat: 43.0652, lon: 141.3541 })).toMatchObject({ level: 8, numberSource: 'chiban', normalized: '北海道札幌市中央区北１条西二丁目13' });
+    const { ctx: plain } = setup({ up: sampleUpstream({ numbers: true }) });
+    expect(await reverseGeocode(plain, { lat: 43.0652, lon: 141.3541, maxDistanceMeters: 100 })).toMatchObject({ level: 3, numberSource: null });
+  });
+
   test('alternatives は次に近い住所を近い順に最大 3 件、重複なしで返す', async () => {
     const { ctx } = setup();
     const result = await reverseGeocode(ctx, { lat: 35.6759, lon: 139.7455, maxDistanceMeters: 1000 });

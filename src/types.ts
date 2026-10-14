@@ -957,7 +957,8 @@ export const NormalizeAddressResultSchema = z.looseObject({
   level: z.number().int().describe('0 不明 / 1 都道府県 / 2 市区町村 / 3 町字 / 8 番地・号'),
   numberSource: z.enum(['rsdt', 'chiban', 'mlit']).nullable().describe('番地・号を何で照合したか。存在確認は証拠であって証明ではない。mlit は国土交通省の街区レベル位置参照情報で、街区符号まで（号は未照合。point.level は 7）。null は整形のみで未照合'),
   keys: z.record(z.string(), z.unknown()).describe('結合キー (prefCode, lgCode, machiazaId, blk, rsdt, prc)'),
-  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional(),
+  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional().describe('代表点。level は 8 番地・号の点 / 7 街区の代表点 (国土交通省) / 3 町字 / 2 市区町村。精度は level で判断する'),
+  pointSource: z.enum(['mlit']).optional().describe('point を国土交通省の街区の点で補ったとき mlit (ABR の地番に位置参照が無い場合。point.level は 7)'),
   postalCodes: z.array(z.looseObject({ zipcode: z.string() })),
   checks: z.looseObject({
     zipcode: z.looseObject({
@@ -997,8 +998,8 @@ export const ReverseGeocodeResultSchema = z.looseObject({
   }).optional().describe('見つけた住所の構成要素'),
   normalized: z.string().optional(),
   level: z.number().int().describe('8 番地・号 / 3 町字 / 2 市区町村 / 0 見つからない'),
-  numberSource: z.enum(['rsdt', 'chiban']).nullable(),
-  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional().describe('見つけた点 (番地・号、町字、市区町村の代表点)'),
+  numberSource: z.enum(['rsdt', 'chiban', 'mlit']).nullable().describe('番地・号の点の出所。mlit は国土交通省の街区の点で、ABR の点が範囲内に無いときだけ (point.level は 7、号は無い)'),
+  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional().describe('見つけた点 (番地・号、街区、町字、市区町村の代表点)'),
   distanceMeters: z.number().optional().describe('最寄りの点までの距離。ポリゴンの包含判定ではなく代表点による最寄り判定'),
   approximate: z.boolean().optional(),
   keys: z.record(z.string(), z.unknown()),

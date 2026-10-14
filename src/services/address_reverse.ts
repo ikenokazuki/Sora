@@ -7,6 +7,7 @@ import { distanceMeters, type NearTown } from './address_geo_index.js';
 import { townNameOf, type TownEntry } from './address_names.js';
 import type { AddressKeys, NormalizedAddress } from './address_normalize.js';
 import { toPostalEntry, zipsForAddress, type PostalCodeEntry } from './address_postal.js';
+import { foldName } from './postal_code.js';
 
 /** txt の節の 1 行。座標が無い番号は lon / lat が undefined。 */
 export interface SectionRow {
@@ -32,8 +33,8 @@ export interface ReverseAlternative {
   normalized: string;
   level: number;
   distanceMeters: number;
-  /** 番地・号を何の点から得たか（町字の候補は null）。 */
-  numberSource: 'rsdt' | 'chiban' | null;
+  /** 番地・号を何の点から得たか（町字の候補は null）。mlit は国土交通省の街区の点。 */
+  numberSource: 'rsdt' | 'chiban' | 'mlit' | null;
 }
 
 export interface ReverseResult extends Incomplete {
@@ -46,7 +47,8 @@ export interface ReverseResult extends Incomplete {
   normalized?: string;
   /** 8 番地・号 / 3 町字 / 2 市区町村 / 0 見つからない。 */
   level: number;
-  numberSource: 'rsdt' | 'chiban' | null;
+  /** mlit は国土交通省の街区の点（ABR の点が範囲内に無いときだけ。point.level は 7、号は無い）。 */
+  numberSource: 'rsdt' | 'chiban' | 'mlit' | null;
   /** 入力の座標から、見つけた点までの距離。 */
   distanceMeters?: number;
   /** 見つけた点（番地・号、町字、市区町村の代表点）。 */
@@ -91,6 +93,55 @@ interface FoundPoint {
   lon: number;
   lat: number;
   distance: number;
+}
+
+/** 国土交通省の街区の点。ABR の町に対応する町だけを使う。 */
+interface MlitFound {
+  city: MasterCity;
+  entry: TownEntry;
+  townName: string;
+  block: string;
+  lon: number;
+  lat: number;
+  distance: number;
+}
+
+/** 読み込んだ市区町村の街区の点のうち、範囲内のものを近い順に返す。取得中・失敗は gaps に記録して飛ばす。 */
+async function mlitPointsNear(
+  ctx: AddressContext,
+  loaded: ReadonlyMap<string, { city: MasterCity; entries: readonly TownEntry[] }>,
+  origin: { lat: number; lon: number },
+  maxDistance: number,
+  remaining: () => number,
+  gaps: Gaps,
+): Promise<MlitFound[]> {
+  const found: MlitFound[] = [];
+  // 度で粗く絞ってから距離を測る（市区町村の街区は数万件ありうる）。
+  const latSpan = (maxDistance / 111_000) * 1.2;
+  const lonSpan = latSpan / Math.max(0.2, Math.cos((origin.lat * Math.PI) / 180));
+  for (const [lgCode, { city, entries }] of loaded) {
+    let index: Awaited<ReturnType<typeof ctx.data.mlit>>['index'];
+    try {
+      index = (await ctx.data.mlit(lgCode, remaining())).index;
+    } catch (error) {
+      gaps.absorb(error);
+      continue;
+    }
+    const byName = new Map(entries.map((entry) => [foldName(townNameOf(entry)), entry] as const));
+    for (const [key, blocks] of Object.entries(index.towns)) {
+      const entry = byName.get(key);
+      if (!entry) continue;
+      for (const [block, [lon, lat]] of Object.entries(blocks)) {
+        if (Math.abs(lat - origin.lat) > latSpan || Math.abs(lon - origin.lon) > lonSpan) continue;
+        const distance = distanceMeters(origin, { lat, lon });
+        if (distance <= maxDistance) found.push({ city, entry, townName: townNameOf(entry), block, lon, lat, distance });
+      }
+    }
+  }
+  // 地番の街区は、近くの複数の番地が 1 つの代表点を共有する。どの番地か決められないので、共有された点は使わない。
+  const sharing = new Map<string, number>();
+  for (const one of found) sharing.set(`${one.lat},${one.lon}`, (sharing.get(`${one.lat},${one.lon}`) ?? 0) + 1);
+  return found.filter((one) => sharing.get(`${one.lat},${one.lon}`) === 1).sort((a, b) => a.distance - b.distance);
 }
 
 const numberText = (numbers: readonly string[]): string => numbers.filter(Boolean).join('-');
@@ -148,6 +199,7 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
 
   const candidates: Candidate[] = [];
   const points: FoundPoint[] = [];
+  const loaded = new Map<string, { city: MasterCity; entries: readonly TownEntry[] }>();
   for (const [lgCode, group] of cities) {
     const city = master.byLgCode.get(lgCode);
     if (!city) continue;
@@ -164,6 +216,7 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
     } catch (error) {
       gaps.absorb(error);
     }
+    loaded.set(lgCode, { city, entries: towns.json.data });
     const byId = new Map(towns.json.data.map((entry) => [entry.machiaza_id, entry] as const));
     for (const town of group) {
       const entry = byId.get(town.machiazaId);
@@ -186,6 +239,9 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
   candidates.sort((a, b) => a.near.distanceMeters - b.near.distanceMeters);
 
   const best = points[0];
+  // ABR の番地・号の点が範囲内に無いときだけ、国土交通省の街区の点を候補にする。
+  const blocks = best ? [] : await mlitPointsNear(ctx, loaded, { lat, lon }, maxDistance, remaining, gaps);
+  const block = blocks[0];
   const nearestTown = candidates[0];
   let result: ReverseResult;
   let address: NormalizedAddress | undefined;
@@ -214,6 +270,28 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
     address = {
       input: normalized, pref: candidate.city.pref, city: candidate.city.name, town: candidate.townName, addr: number, other: '', normalized,
       level: 8, numberSource, keys,
+    };
+  } else if (block) {
+    const textOf = (found: MlitFound): string => `${found.city.pref}${found.city.name}${found.townName}${found.block}`;
+    const normalized = textOf(block);
+    const keys: AddressKeys = { prefCode: block.city.prefCode, lgCode: block.city.lgCode, machiazaId: block.entry.machiaza_id, prc: [block.block] };
+    const seen = new Set([normalized]);
+    const alternatives: ReverseAlternative[] = [];
+    for (const other of blocks.slice(1)) {
+      const text = textOf(other);
+      if (seen.has(text)) continue;
+      seen.add(text);
+      alternatives.push({ normalized: text, level: 8, distanceMeters: Math.round(other.distance), numberSource: 'mlit' });
+      if (alternatives.length >= MAX_ALTERNATIVES) break;
+    }
+    result = {
+      lat, lon, found: true, level: 8, numberSource: 'mlit', approximate: true, normalized,
+      address: { pref: block.city.pref, city: block.city.name, town: block.townName, addr: block.block },
+      distanceMeters: Math.round(block.distance * 10) / 10, point: { lat: block.lat, lon: block.lon, level: 7 }, keys, postalCodes: [], alternatives,
+    };
+    address = {
+      input: normalized, pref: block.city.pref, city: block.city.name, town: block.townName, addr: block.block, other: '', normalized,
+      level: 8, numberSource: 'mlit', keys,
     };
   } else if (nearestTown) {
     const normalized = nameOf(nearestTown);

@@ -43,6 +43,8 @@ export interface NormalizedAddress {
   numberSource: 'rsdt' | 'chiban' | 'mlit' | null;
   keys: AddressKeys;
   point?: { lat: number; lon: number; level: number };
+  /** point を国土交通省の街区の点で補ったとき 'mlit'（ABR の地番に位置参照が無い場合。point.level は 7）。 */
+  pointSource?: 'mlit';
   /** 待ち時間までにデータが揃わず、取れている範囲で答えた。 */
   incomplete?: true;
   pending?: string[];
@@ -97,6 +99,8 @@ export interface LibraryResult {
     chiban?: { prc_num1: string; prc_num2: string; prc_num3: string };
     /** 国土交通省の街区レベル位置参照情報で補った街区符号。 */
     mlit?: { block: string };
+    /** 地番の位置参照が無く、点を国土交通省の街区の点で補った。 */
+    mlitPoint?: boolean;
   };
 }
 
@@ -140,6 +144,7 @@ export function shapeResult(input: string, postalCode: string | undefined, resul
   };
   if (postalCode) shaped.postalCode = postalCode;
   if (result.point) shaped.point = { lat: result.point.lat, lon: result.point.lng, level: result.point.level };
+  if (metadata.mlitPoint) shaped.pointSource = 'mlit';
   if (notes.pending || notes.unavailable) {
     shaped.incomplete = true;
     if (notes.pending) shaped.pending = notes.pending;
@@ -327,6 +332,10 @@ export class AddressNormalizer {
     if (level >= 4 && result.level >= 3 && result.level < 8 && result.metadata.city && result.other.trim() !== '' && !notes.pending && !notes.unavailable) {
       result = await this.supplementFromMlit(result, deadline, notes);
     }
+    // ABR の地番に位置参照が無く、点が町字の代表点のときは、同じ本番の街区の点で補う（地番の照合は変えない）。
+    if (level >= 4 && result.metadata.chiban && (result.point?.level ?? 0) < 8 && !notes.pending && !notes.unavailable) {
+      result = await this.fillParcelPointFromMlit(result, deadline);
+    }
     return shapeResult(input, postalCode, result, notes);
   }
 
@@ -344,6 +353,21 @@ export class AddressNormalizer {
       };
     } catch (error) {
       if (error instanceof AddressPendingError) notes.pending = [error.pending];
+      return result;
+    }
+  }
+
+  /** 座標の無い地番に、国土交通省の街区の点を付ける。見つからない・取得できないときは、そのまま返す。 */
+  private async fillParcelPointFromMlit(result: LibraryResult, deadline: number): Promise<LibraryResult> {
+    const { chiban, city } = result.metadata;
+    if (!chiban || !city) return result;
+    try {
+      const { index } = await this.data.mlit(lgCode6(city.code), Math.max(0, deadline - this.now()));
+      const parcel = [chiban.prc_num1, chiban.prc_num2, chiban.prc_num3].filter((part) => part !== '').join('-');
+      const hit = lookupMlit(index, result.town ?? '', parcel);
+      if (!hit) return result;
+      return { ...result, point: { lat: hit.lat, lng: hit.lon, level: 7 }, metadata: { ...result.metadata, mlitPoint: true } };
+    } catch {
       return result;
     }
   }

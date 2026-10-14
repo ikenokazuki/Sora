@@ -3,7 +3,7 @@ import {
 } from '../../services/address_http.js';
 import { mlitCityUrl } from '../../services/address_mlit.js';
 import { jigyosyoBytes } from './jigyosyo.js';
-import { mlitChiyodaBytes } from './mlit.js';
+import { mlitChiyodaBytes, mlitSapporoBytes } from './mlit.js';
 import { makeZip } from './zip.js';
 
 export interface FakeRoute {
@@ -224,6 +224,7 @@ export function sampleUpstream(options: { numbers?: boolean; mlit?: boolean } = 
     abr(`mt_parcel_pos/city/mt_parcel_pos_city${SAPPORO_LG}`, PARCEL_POS_HEADER, SAPPORO_PARCEL_POS);
   }
 
+  if (options.mlit) up.setZip(mlitCityUrl(SAPPORO_LG, '24.0a'), { '01101-24.0a/24.0a.html': '<html></html>', '01101-24.0a/01101_2025.csv': mlitSapporoBytes() }, { lastModified: MLIT_LAST_MODIFIED });
   if (options.mlit) up.setZip(mlitCityUrl(CHIYODA_LG, '24.0a'), { '13101-24.0a/24.0a.html': '<html></html>', '13101-24.0a/13101_2025.csv': mlitChiyodaBytes(), '13101-24.0a/md_13101_2025.xml': '<xml/>' }, { lastModified: MLIT_LAST_MODIFIED });
   up.set(JAPANPOST_KEN_ALL_PAGE, { body: '<a href="utf/zip/utf_add_2609.zip">差分</a><a href="utf/zip/utf_ken_all.zip">全国</a>', finalUrl: `${JP_BASE}/utf-zip.html` });
   up.set(JAPANPOST_JIGYOSYO_PAGE, { body: '<a href="zip/jigyosyo.zip">全国</a>', finalUrl: `${JP_BASE}/office/index-zip.html` });

@@ -182,11 +182,11 @@ describe('mlit', () => {
   });
 
   test('街区レベルのデータが無い市区町村は、空の索引だけを公開する（毎回調べ直さない）', async () => {
-    await runBuildJob({ kind: 'mlit', lgCode: SAPPORO_LG }, deps());
-    expect(readJson(`mlit:${SAPPORO_LG}`, 'index.json')).toEqual({ towns: {} });
-    expect(store.current(`mlit:${SAPPORO_LG}`)?.meta.sig).toBe('none');
+    await runBuildJob({ kind: 'mlit', lgCode: '011002' }, deps());
+    expect(readJson('mlit:011002', 'index.json')).toEqual({ towns: {} });
+    expect(store.current('mlit:011002')?.meta.sig).toBe('none');
     const seq = store.read().seq;
-    await runBuildJob({ kind: 'mlit', lgCode: SAPPORO_LG }, deps());
+    await runBuildJob({ kind: 'mlit', lgCode: '011002' }, deps());
     expect(store.read().seq).toBe(seq);
   });
 

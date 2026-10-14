@@ -1639,7 +1639,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         sessionActivated,
         'normalize_address',
         'disaster',
-        '【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。返却: { normalized, level, numberSource, keys, point: { lat, lon, level }, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }',
+        '【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。返却: { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }',
         {
           address: z.string().trim().min(1).max(300).describe('正規化する住所。先頭の〒郵便番号は postalCode として分離'),
           level: z.number().int().min(1).max(8).optional().describe('正規化する最大の階層 (1〜8、既定 8)。8は番地・号まで').meta({ default: 8 }),
@@ -1672,7 +1672,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         sessionActivated,
         'reverse_geocode',
         'disaster',
-        '【緯度経度 → 住所逆引き】緯度経度から最寄りの番地・号または町字の住所を特定します（全国町字点索引・ABR住居表示/地番データ）。代表点による最寄り判定。返却: { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }',
+        '【緯度経度 → 住所逆引き】緯度経度から最寄りの番地・号または町字の住所を特定します（全国町字点索引・ABR住居表示/地番データ）。代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点（numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。返却: { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }',
         {
           lat: z.number().min(-90).max(90).describe('緯度'),
           lon: z.number().min(-180).max(180).describe('経度'),

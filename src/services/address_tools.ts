@@ -85,7 +85,7 @@ export async function searchPostalCode(
     postalCodes,
     ...gaps.result(),
     dataset: datasetField(ctx, ['postal', ...(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : [])]),
-    attribution: addressAttribution(normalized.numberSource === 'chiban', normalized.numberSource === 'mlit'),
+    attribution: addressAttribution(normalized.numberSource === 'chiban', normalized.numberSource === 'mlit' || normalized.pointSource === 'mlit'),
   };
 }
 
@@ -154,14 +154,14 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
   }
   const cities = new Set<string>(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : []);
   let usesParcel = normalized.numberSource === 'chiban' || checks.coordinates?.nearest?.numberSource === 'chiban';
-  let usesMlit = normalized.numberSource === 'mlit';
+  let usesMlit = normalized.numberSource === 'mlit' || normalized.pointSource === 'mlit';
   if (usesMlit && normalized.keys.lgCode) cities.add(`mlit:${normalized.keys.lgCode}`);
   if (input.compareAddress?.trim()) {
     const other = await ctx.normalizer.normalize(input.compareAddress, { level });
     gaps.add(other);
     if (other.keys.lgCode) cities.add(`city:${other.keys.lgCode}`);
     usesParcel = usesParcel || other.numberSource === 'chiban';
-    usesMlit = usesMlit || other.numberSource === 'mlit';
+    usesMlit = usesMlit || other.numberSource === 'mlit' || other.pointSource === 'mlit';
     checks.compare = { ...compareAddresses(normalized, other), other: { input: other.input, normalized: other.normalized, level: other.level } };
   }
 
@@ -195,6 +195,9 @@ export async function reverseGeocodeTool(input: ReverseGeocodeInput, ctx: Addres
   return {
     ...reversed,
     dataset: datasetField(ctx, used),
-    attribution: addressAttribution(reversed.numberSource === 'chiban' || reversed.alternatives.some((alt) => alt.numberSource === 'chiban')),
+    attribution: addressAttribution(
+      reversed.numberSource === 'chiban' || reversed.alternatives.some((alt) => alt.numberSource === 'chiban'),
+      reversed.numberSource === 'mlit' || reversed.alternatives.some((alt) => alt.numberSource === 'mlit'),
+    ),
   };
 }
