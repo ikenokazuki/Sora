@@ -137,6 +137,42 @@ export function shapeResult(input: string, postalCode: string | undefined, resul
   return shaped;
 }
 
+// ---------- 言い換え ----------
+
+const KANJI_DIGITS: Record<string, number> = { 〇: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** 漢数字（〇一二…九十百）をアラビア数字にする。百・十の位取りを読む。 */
+function kanjiToNumber(text: string): number {
+  let total = 0;
+  let current = 0;
+  for (const ch of text) {
+    if (ch === '百') {
+      total += (current || 1) * 100;
+      current = 0;
+    } else if (ch === '十') {
+      total += (current || 1) * 10;
+      current = 0;
+    } else {
+      current = current * 10 + (KANJI_DIGITS[ch] ?? 0);
+    }
+  }
+  return total + current;
+}
+
+/**
+ * 入力のままでは番地・号に届かないときに試す、言い換えた入力の候補。ライブラリが読めない表記を補う。
+ * 街区表記（6街区21号 → 6-21）、番地・線・号の漢数字（六十七番 → 67番。一番町のような地名は変えない）、葦と芦の異体字（葦北郡芦北町）。
+ */
+export function addressVariants(address: string): string[] {
+  const variants = [
+    address.replace(/(\d+)街区(\d+)号/, '$1-$2'),
+    address.replace(/([〇一二三四五六七八九十百]+)(線|号(?!館)|番(?!町))/g, (_, digits: string, unit: string) => `${kanjiToNumber(digits)}${unit}`),
+    // ABR は郡を「葦北郡」、町や大字を「芦北」と書く（葦北郡芦北町）。どちらの字で書かれた入力もこの綴りに合わせる。
+    address.replaceAll('葦', '芦').replaceAll('芦北郡', '葦北郡'),
+  ];
+  return [...new Set(variants)].filter((variant) => variant !== address);
+}
+
 // ---------- ライブラリの読み込みと仮想ファイル ----------
 
 interface FileResponse {
@@ -242,6 +278,17 @@ export class AddressNormalizer {
           notes.unavailable = [{ artifact: error.artifact, message: error.message }];
         } else {
           throw error;
+        }
+      }
+    }
+    // 番地・号に届かず、データの不足でもないときは、言い換えた入力を試し、より深く届いたものを採る。
+    if (level >= 4 && result.level < 8 && !notes.pending && !notes.unavailable) {
+      for (const variant of addressVariants(address)) {
+        try {
+          const retried = await callState.run({ deadline }, () => generation.lib.normalize(variant, { level }));
+          if (retried.level > result.level) result = retried;
+        } catch {
+          // 言い換えで失敗しても、入力のままの答えを返す。
         }
       }
     }

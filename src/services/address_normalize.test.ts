@@ -7,7 +7,7 @@ import {
   ABR_LAST_MODIFIED, CHIYODA_LG, CHIYODA_TOWNS, RSDT_POS_HEADER, abrUrl, csv, replaceTowns, rsdtPosRow, sampleUpstream, townRow,
 } from '../test_fixtures/address/harness.js';
 import { AddressInputError, AddressUnavailableError } from './address_errors.js';
-import { AddressNormalizer, shapeResult, splitPostalCode } from './address_normalize.js';
+import { AddressNormalizer, addressVariants, shapeResult, splitPostalCode } from './address_normalize.js';
 
 let dir: string;
 beforeEach(() => {
@@ -44,7 +44,33 @@ describe('splitPostalCode', () => {
   });
 });
 
+describe('addressVariants', () => {
+  test.each([
+    ['都城市姫城町6街区21号', ['都城市姫城町6-21']],
+    ['旭川市西神楽一線五号六十七番九十号', ['旭川市西神楽1線5号67番90号']],
+    ['熊本県葦北郡葦北町大字葦北2670', ['熊本県葦北郡芦北町大字芦北2670']],
+    ['芦北郡芦北町芦北2670', ['葦北郡芦北町芦北2670']],
+  ])('言い換えの候補: %s', (input, expected) => {
+    expect(addressVariants(input)).toEqual(expected);
+  });
+
+  test('言い換えるところが無ければ候補は空。地名の漢数字（一番町、三井）は変えない', () => {
+    expect(addressVariants('東京都千代田区永田町1-7-1')).toEqual([]);
+    expect(addressVariants('東京都千代田区一番町1-1')).toEqual([]);
+    expect(addressVariants('東京都千代田区三井ビル')).toEqual([]);
+  });
+});
+
 describe('normalize', () => {
+  test('入力のままでは番地・号に届かなければ、言い換えた入力で届いたものを採る（街区表記）', async () => {
+    const { data } = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const normalizer = new AddressNormalizer(data);
+    const result = await normalizer.normalize('東京都千代田区永田町一丁目7街区1号');
+    expect(result).toMatchObject({ level: 8, numberSource: 'rsdt', normalized: '東京都千代田区永田町一丁目7-1' });
+    // 入力のままで届く住所は、言い換えない
+    expect((await normalizer.normalize('東京都千代田区永田町1-7-1')).input).toBe('東京都千代田区永田町1-7-1');
+  });
+
   test('町字まで解決し、キーと代表点を返す', async () => {
     const { data } = createTestAddressData(dir);
     const normalizer = new AddressNormalizer(data);
