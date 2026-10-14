@@ -722,11 +722,13 @@ export const TOOL_CASES: HealthCase[] = [
   // 番地住所は OSM に無いことが多く国土地理院へフォールバックする。OSM 側で解決されても正しい地点なら合格。
   toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi', 'abr'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim', 'abr'])),
+  // 検索語（ラーメン）を付けると、OpenPOI が半径を無視して名前が一致する遠くの施設（6〜14km 先）を返すようになった（2026-10-14）。
+  // 検索語なしなら半径内の施設が返るので、中心の解決と半径内の検査をそのまま保てる。
   toolCase('geo.poi', ['search_poi'], ['nominatim', 'openpoi'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { query: 'ラーメン', center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_poi', { center: '原宿', radiusMeters: 1000, limit: 2, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_poi');
     const observation = checkHarajukuPoi(raw);
-    const rest = await ctx.rest.call('GET', '/geo/poi?query=' + encodeURIComponent('ラーメン') + '&center=' + encodeURIComponent('原宿') + '&radiusMeters=1000&limit=2&noCache=true', undefined, 60000);
+    const rest = await ctx.rest.call('GET', '/geo/poi?center=' + encodeURIComponent('原宿') + '&radiusMeters=1000&limit=2&noCache=true', undefined, 60000);
     checkHarajukuPoi(rest.json);
     return observation;
   }),
