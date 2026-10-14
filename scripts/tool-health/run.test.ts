@@ -9,7 +9,7 @@ import {
 } from './report.js';
 import { ProviderHttpError, ProviderNetworkError } from '../../src/services/country_intel/provider_registry.js';
 import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified } from './types.js';
-import { parseArgs } from './run.js';
+import { classifyRestStatus, parseArgs } from './run.js';
 
 describe('runner arg contract', () => {
   test('parseArgs reads flags', () => {
@@ -62,6 +62,20 @@ describe('classification', () => {
     expect(() => classifyProviderError(new ProviderHttpError(400), 's')).toThrow(LiveFail);
     expect(() => classifyProviderError(new ProviderNetworkError('x'), 's')).toThrow(LiveUnavailable);
     expect(() => classifyProviderError(new TypeError('fetch failed'), 's')).toThrow(LiveUnavailable);
+  });
+  test('REST statuses classify by status, and address data errors by their code', () => {
+    const body = (code: string, retryable: boolean, status = 502) => JSON.stringify({ error: 'x', code, status, retryable });
+    expect(() => classifyRestStatus(429, 'slow down', 'w')).toThrow(LiveUnavailable);
+    expect(() => classifyRestStatus(503, 'down', 'w')).toThrow(LiveUnavailable);
+    expect(() => classifyRestStatus(403, 'denied', 'w')).toThrow(LiveBlocked);
+    expect(() => classifyRestStatus(400, 'bad', 'w')).toThrow(LiveFail);
+    // 住所データがまだ揃わない（構築は裏で続く）のは、外部の障害ではなく「まだ証明できない」
+    expect(() => classifyRestStatus(502, body('ADDRESS_DATA_PENDING', true), 'w')).toThrow(LiveUnverified);
+    // 国外 IP の拒否は再試行しても変わらない（retryable: false）
+    expect(() => classifyRestStatus(502, body('ADDRESS_DATA_UNAVAILABLE', false), 'w')).toThrow(LiveBlocked);
+    expect(() => classifyRestStatus(502, body('ADDRESS_DATA_UNAVAILABLE', true), 'w')).toThrow(LiveUnavailable);
+    // 機能の無効化は、こちら側の契約違反
+    expect(() => classifyRestStatus(404, body('ADDRESS_DISABLED', false, 404), 'w')).toThrow(LiveFail);
   });
   test('missing test data is unverified, never pass', () => {
     const secrets = { getCase: () => undefined, hasCase: () => false };

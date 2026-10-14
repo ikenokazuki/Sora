@@ -337,7 +337,7 @@ REST は `/geo/reverse`。入力は `{ lat, lon, maxDistanceMeters? }`（既定 
 5. **`SORA_ADDRESS_PRELOAD` は未実装。** 設定の読み込みだけがあり、事前取得は実行されない（`eager` の「データの無い地域で裏で取得を始める」は実装済み）。運用手引は子の入口を直接実行する手順で代替している。
 6. ~~**ローカルのジオコーダーは、町字（level 3）に届けば `needsVerification: false` で返す（設計 7 のとおり）。** 番地・号の段B が無い市区町村や番地が照合できない住所では、町字の代表点（数百 m〜数 km の誤差）になり、国土地理院の番地レベルの座標より粗くなりうる。~~ **解決済み（2026-10-14）**: 番地・号が入力にあるのに level 8 に届かない住所は、従来の経路へ回すことにした（設計 7 に記載）。eager では、その回は従来の経路で答え、段B の取得を裏で始めるので、次の呼び出しからローカルで解決する。
 7. ~~**`search_poi` の `withAddress` は、待ち時間（`SORA_ADDRESS_WAIT_MS`）を使い切ると、後ろの施設に `addressInfo` が付かない。** 「解釈できなかった」と「時間切れ」を区別する印が無い。~~ **解決済み（2026-10-14）**: 施設ごとの `addressIncomplete` と、結果全体の `addressIncomplete` / `addressPending` / `addressUnavailable`、出典の `addressAttribution` を足した（設計 7 に記載）。あわせて、座標の突き合わせ（`checkCoordinates`）が逆ジオコーディングのデータ不足（`incomplete` / `pending`）を捨てていたのを直し、`normalize_address` の `checks.coordinates` と結果全体にも反映するようにした。
-8. **tool-health の住所ケース（`geo.postal_code` など）は、`attribution` の有無しか確かめていない。** 件数・町名・`found` などの中身は見ていない。
+8. ~~**tool-health の住所ケース（`geo.postal_code` など）は、`attribution` の有無しか確かめていない。** 件数・町名・`found` などの中身は見ていない。~~ **解決済み（2026-10-14）**: 3 ケースとも、実データで確認した期待値（郵便番号 100-0014 → 永田町、永田町1-5-1 → level 8 の住居表示、その点の逆引き）を MCP と REST の両方で検査する。`incomplete`、取得中、国外 IP の拒否は、契約違反（`fail`）と区別して `unverified` / `blocked` / `unavailable` に分類し、最初の取得は外部依存として1回再試行する（`docs/testing/tool-health.md`）。実データでは、国会議事堂の 永田町1-7-1 は ABR に住居番号が無く町字（level 3）止まりなので、番地まで届くことの検査には永田町1-5-1 を使う。
 
 ## 13. 実装の分け方（概要）
 
