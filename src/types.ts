@@ -970,6 +970,8 @@ export const NormalizeAddressResultSchema = z.looseObject({
       reason: z.string(),
       distanceMeters: z.number().optional().describe('最寄りの住所の点までの距離'),
       nearest: z.looseObject({ normalized: z.string().optional(), level: z.number().int() }).nullable().describe('渡された座標の最寄りの住所'),
+      incomplete: z.boolean().optional().describe('突き合わせに使うデータが間に合わなかった。最寄りの住所が町字止まりになるので、判定は暫定。数秒後の再呼び出しで確かめる'),
+      pending: z.array(z.string()).optional().describe('取得中のデータ'),
     }).optional().describe('lat / lon 指定時の、住所との突き合わせ'),
     compare: z.looseObject({
       relation: z.enum(['identical', 'same-block', 'same-town', 'same-city', 'same-prefecture', 'different']),
@@ -1014,7 +1016,7 @@ export const PoiSearchRequestSchema = z.object({
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
   noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持').meta({ default: false }),
-  withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データ未取得の地域では初回に取得を待つ（最大20秒）').meta({ default: false }),
+  withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データ未取得の地域では初回に取得を待つ（最大20秒）。待ち時間までに揃わなかった施設は addressIncomplete: true で、数秒後の再実行で完全になる').meta({ default: false }),
 }).refine((v) => v.query !== undefined || v.bbox !== undefined || v.center !== undefined || (v.lat !== undefined && v.lon !== undefined), {
   message: 'query, bbox, center, または lat+lon のいずれかを指定してください',
 }).refine((v) => (v.lat === undefined) === (v.lon === undefined), {
@@ -1048,6 +1050,7 @@ export const PoiItemSchema = z.object({
       distanceMeters: z.number().optional(),
     }),
   }).optional().describe('withAddress 指定時だけ。住所を解釈できた施設に付く'),
+  addressIncomplete: z.boolean().optional().describe('withAddress 指定時だけ。住所データが揃う前に調べた（addressInfo が無い、または町字止まりなど暫定）。解釈できない住所には付かない'),
 });
 export const PoiSearchResultSchema = z.object({
   query: z.string().optional().describe('検索クエリ'),
@@ -1063,6 +1066,10 @@ export const PoiSearchResultSchema = z.object({
   pois: z.array(PoiItemSchema).describe('施設一覧'),
   source: z.literal('openpoi').describe('データソース'),
   attribution: z.string().describe('OpenPOI API の出典表示。公開時は pois[].attributions と併せて表示すること'),
+  addressAttribution: z.string().optional().describe('withAddress 指定時だけ。addressInfo を付けた施設があるときの、住所データの出典・加工の明記。地番を使った結果には法務省の出典も含む。公開時は併せて表示すること'),
+  addressIncomplete: z.boolean().optional().describe('withAddress 指定時だけ。待ち時間までに住所データが揃わなかった、または取得に失敗した施設がある'),
+  addressPending: z.array(z.string()).optional().describe('withAddress 指定時だけ。取得中の住所データ'),
+  addressUnavailable: z.array(z.object({ artifact: z.string(), message: z.string() })).optional().describe('withAddress 指定時だけ。取得に失敗した住所データと理由'),
 });
 
 export const FlightStatusRequestSchema = z.object({

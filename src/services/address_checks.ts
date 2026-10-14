@@ -1,5 +1,6 @@
 import type { AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
+import { Gaps, type Incomplete } from './address_gaps.js';
 import type { NormalizedAddress } from './address_normalize.js';
 import { normalizeZip, zipsForAddress, type ZipForAddress } from './address_postal.js';
 import { reverseGeocode, type ReverseResult } from './address_reverse.js';
@@ -116,10 +117,11 @@ export async function checkZip(ctx: AddressContext, zipcode: string, address: No
 
 export type CoordinatesCheckStatus = 'match' | 'partial' | 'mismatch' | 'unknown';
 
-export interface CoordinatesCheck {
+/** incomplete / pending / unavailable: 突き合わせに使うデータ（逆ジオコーディング）が揃う前の答え。最寄りの住所が町字止まりなどになる。 */
+export interface CoordinatesCheck extends Incomplete {
   status: CoordinatesCheckStatus;
   /** 座標の最寄りの住所。 */
-  nearest: Pick<ReverseResult, 'normalized' | 'level' | 'numberSource' | 'keys' | 'point' | 'distanceMeters' | 'incomplete' | 'pending' | 'unavailable'> | null;
+  nearest: Pick<ReverseResult, 'normalized' | 'level' | 'numberSource' | 'keys' | 'point' | 'distanceMeters'> | null;
   /** 住所の代表点から、渡された座標までの距離。住所の点を特定できないときは undefined。 */
   distanceMeters?: number;
   reason: string;
@@ -145,6 +147,12 @@ export async function checkCoordinates(
     return { status: 'unknown', nearest: null, reason: '住所を市区町村まで解釈できないため、突き合わせできません' };
   }
   const reversed = await reverseGeocode(ctx, { lat, lon, ...options });
+  const gaps = new Gaps();
+  gaps.add(reversed);
+  return { ...judgeCoordinates(address, reversed), ...gaps.result() };
+}
+
+function judgeCoordinates(address: NormalizedAddress, reversed: ReverseResult): CoordinatesCheck {
   const nearest: CoordinatesCheck['nearest'] = reversed.found
     ? {
       normalized: reversed.normalized as string, level: reversed.level, numberSource: reversed.numberSource, keys: reversed.keys,

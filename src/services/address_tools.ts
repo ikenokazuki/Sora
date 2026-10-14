@@ -147,6 +147,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
     if (lat === undefined || lon === undefined) throw new AddressInputError('lat と lon は組で指定してください');
     try {
       checks.coordinates = await checkCoordinates(ctx, lat, lon, normalized);
+      gaps.add(checks.coordinates);
     } catch (error) {
       gaps.absorb(error);
     }

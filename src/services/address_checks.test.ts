@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
-import { sampleUpstream } from '../test_fixtures/address/harness.js';
+import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
+import { CHIYODA_LG, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { checkCoordinates, checkZip, compareAddresses } from './address_checks.js';
 import { AddressInputError } from './address_errors.js';
@@ -130,6 +130,20 @@ describe('checkCoordinates', () => {
     expect(check).toMatchObject({ status: 'match', reason: expect.stringContaining('一致') });
     expect(check.nearest).toMatchObject({ normalized: '東京都千代田区永田町一丁目7-1', level: 8 });
     expect(check.distanceMeters).toBeLessThan(5);
+    expect(check.incomplete).toBeUndefined();
+  });
+
+  test('番地・号のデータが間に合わなければ、突き合わせにも incomplete と pending を付ける（町字止まりの答えを本当の不一致と区別できる）', async () => {
+    const built = createTestAddressData(dir, {
+      up: sampleUpstream({ numbers: true }),
+      wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'num'),
+      waitMs: 300, concurrency: 2,
+    });
+    const ctx = createAddressContext(built.data);
+    const town = await ctx.normalizer.normalize('東京都千代田区永田町1-7-1', { level: 3 });
+    const check = await checkCoordinates(ctx, 35.675915, 139.745515, town);
+    expect(check.nearest).toMatchObject({ level: 3 });
+    expect(check).toMatchObject({ incomplete: true, pending: [`num:${CHIYODA_LG}`] });
   });
 
   test('同じ町・同じ街区だが住居番号が違い、住所の点から離れていれば partial', async () => {

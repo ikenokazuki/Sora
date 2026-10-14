@@ -108,6 +108,19 @@ describe('番地・号まで照合した住所', () => {
 });
 
 describe('normalizeAddressTool', () => {
+  test('座標の突き合わせに使う番地・号のデータが間に合わなければ、結果に incomplete と pending を付ける', async () => {
+    const built = createTestAddressData(dir, {
+      up: sampleUpstream({ numbers: true }),
+      wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'num'),
+      waitMs: 300, concurrency: 2,
+    });
+    const ctx = createAddressContext(built.data);
+    // level 3 までの正規化は段A だけで揃う。座標の突き合わせ（逆ジオコーディング）だけが段B を待つ
+    const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', level: 3, lat: 35.675915, lon: 139.745515 }, ctx);
+    expect(result.checks?.coordinates?.nearest).toMatchObject({ level: 3 });
+    expect(result).toMatchObject({ incomplete: true, pending: [`num:${CHIYODA_LG}`] });
+  });
+
   test('正規化した住所と、キー・代表点・郵便番号を返す', async () => {
     const { ctx } = setup();
     const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);

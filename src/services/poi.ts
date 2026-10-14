@@ -1,6 +1,8 @@
 import type { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
-import type { PoiAddressInfo } from './address_poi.js';
+import { addressAttribution } from './address_attribution.js';
+import type { UnavailableItem } from './address_gaps.js';
+import type { PoiAddressAnnotation, PoiAddressInfo } from './address_poi.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 
 export interface PoiItem {
@@ -17,6 +19,8 @@ export interface PoiItem {
   licenses: string[];
   attributions: string[];
   addressInfo?: PoiAddressInfo;
+  /** withAddress 指定時だけ。住所データが揃う前に調べた（addressInfo が無い、または町字止まりなど暫定）。 */
+  addressIncomplete?: true;
 }
 
 export interface PoiSearchResult {
@@ -26,6 +30,12 @@ export interface PoiSearchResult {
   pois: PoiItem[];
   source: 'openpoi';
   attribution: string;
+  /** withAddress 指定時だけ。addressInfo を付けた施設があるときの、住所データの出典・加工の明記。 */
+  addressAttribution?: string;
+  /** withAddress 指定時だけ。待ち時間までに住所データが揃わなかった、または取得に失敗した施設がある。 */
+  addressIncomplete?: true;
+  addressPending?: string[];
+  addressUnavailable?: UnavailableItem[];
 }
 
 export const OPENPOI_ATTRIBUTION = '出典: OpenPOI API (https://openpoiapi.com/attribution.html)';
@@ -87,7 +97,7 @@ export interface PoiCenterResolved {
   candidates: PoiCenterCandidate[];
 }
 export type PoiGeocode = (center: string, options?: { noCache?: boolean }) => Promise<Partial<GeocodingResult>>;
-export type PoiAddressAnnotator = (pois: readonly PoiItem[]) => Promise<Array<PoiAddressInfo | null>>;
+export type PoiAddressAnnotator = (pois: readonly PoiItem[]) => Promise<PoiAddressAnnotation>;
 
 // 住所モジュールは withAddress を指定されたときだけ読み込む。
 const defaultAnnotator: PoiAddressAnnotator = async (pois) => {
@@ -161,12 +171,36 @@ export async function searchOpenPoi(
       const item = normalizePoiItem(r);
       return item ? [item] : [];
     });
-  if (input.withAddress && pois.length > 0) {
-    const infos = await annotate(pois).catch(() => [] as Array<PoiAddressInfo | null>);
-    pois.forEach((poi, index) => {
-      const info = infos[index];
-      if (info) poi.addressInfo = info;
-    });
+  const addressNotes = input.withAddress && pois.length > 0 ? await attachAddresses(pois, annotate) : {};
+  return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi', attribution: OPENPOI_ATTRIBUTION, ...addressNotes };
+}
+
+type AddressNotes = Pick<PoiSearchResult, 'addressAttribution' | 'addressIncomplete' | 'addressPending' | 'addressUnavailable'>;
+
+/** 施設に addressInfo と incomplete を付け、結果全体に出典とデータの不足を返す。失敗しても検索結果は返す。 */
+async function attachAddresses(pois: PoiItem[], annotate: PoiAddressAnnotator): Promise<AddressNotes> {
+  let annotation: PoiAddressAnnotation;
+  try {
+    annotation = await annotate(pois);
+  } catch (error) {
+    return { addressIncomplete: true, addressUnavailable: [{ artifact: 'address', message: String((error as Error)?.message ?? error).slice(0, 160) }] };
   }
-  return { ...(input.query ? { query: input.query } : {}), ...(centerResolved ? { centerResolved } : {}), count: record.count, pois, source: 'openpoi', attribution: OPENPOI_ATTRIBUTION };
+  let attached = false;
+  let usesParcel = false;
+  pois.forEach((poi, index) => {
+    const result = annotation.results[index];
+    if (result?.info) {
+      poi.addressInfo = result.info;
+      attached = true;
+      usesParcel = usesParcel || result.info.numberSource === 'chiban';
+    }
+    if (result?.incomplete) poi.addressIncomplete = true;
+  });
+  const { incomplete, pending, unavailable } = annotation.gaps;
+  return {
+    ...(attached ? { addressAttribution: addressAttribution(usesParcel) } : {}),
+    ...(incomplete ? { addressIncomplete: true as const } : {}),
+    ...(pending ? { addressPending: pending } : {}),
+    ...(unavailable ? { addressUnavailable: unavailable } : {}),
+  };
 }

@@ -1573,7 +1573,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       sessionActivated,
       'search_poi',
       'disaster',
-      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
+      '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
       {
         query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
         lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
@@ -1583,7 +1583,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
         limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
         noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
-        withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す').meta({ default: false }),
+        withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データが揃う前に調べた施設は addressIncomplete: true（足りないデータは addressPending / addressUnavailable）で、数秒後の再実行で完全になる。解釈できない住所は addressInfo なしで印も付かない').meta({ default: false }),
       },
       async (opts) => {
         try {
