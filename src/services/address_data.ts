@@ -359,10 +359,26 @@ export class AddressData {
     }
   }
 
+  /** 事前取得（SORA_ADDRESS_PRELOAD）の範囲にある市区町村の成果物か。 */
+  inPreloadScope(id: string): boolean {
+    const { preload } = this.config;
+    if (!preload) return false;
+    const match = /^(?:city|num):(\d{2})\d{4}$/.exec(id);
+    return match !== null && (preload === 'all' || preload.includes(match[1] as string));
+  }
+
+  /**
+   * 使用量が maxBytes に収まるまで、最近使われていない市区町村から破棄する。破棄した ID を返す。
+   * 事前取得の範囲にあり、印が付いた成果物は破棄しない。範囲外の印や、指定を外したあとの印は効かない。
+   */
+  evictTo(maxBytes: number, protect: ReadonlySet<string> = new Set()): Promise<string[]> {
+    return this.store.evict(maxBytes, protect, (id, meta) => meta.pinned === true && this.inPreloadScope(id));
+  }
+
   /** 予算を超えていれば破棄する。直前に作ったものと、構築中・待機中のものは残す。 */
   private async afterBuild(id: string): Promise<void> {
     try {
-      await this.store.evict(this.config.maxBytes, new Set([id, ...this.inflight.keys()]));
+      await this.evictTo(this.config.maxBytes, new Set([id, ...this.inflight.keys()]));
     } catch (error) {
       this.log(`[Sora/Address] evict failed: ${error instanceof Error ? error.message : String(error)}`);
     }
