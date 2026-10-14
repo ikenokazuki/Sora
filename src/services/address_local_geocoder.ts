@@ -60,8 +60,10 @@ async function addressGeocode(ctx: AddressContext, query: string): Promise<Local
   const result = await ctx.normalizer.normalize(query, { waitMs: 0 });
   // 町字（level 3）に届いて座標がある入力だけ。市区町村止まりは地名として従来の経路に任せる。
   if (result.level < 3 || !result.point) return null;
-  // 番地・号が入力にあるのに照合できなかった（データに無い番地、段B が未取得）ときは、町字の代表点を番地の座標として返さない。
-  if (result.level < 8 && LEFTOVER_NUMBER.test(result.other)) return null;
+  // 番地・号が入力にあるのに、その点を得られなかったときは、町字の代表点を番地の座標として返さない。
+  // 照合できなかった（データに無い番地、段B が未取得）場合と、照合できても位置参照が無い場合（点は町字の代表点になる）がある。
+  const wantsNumber = result.level >= 8 || LEFTOVER_NUMBER.test(result.other);
+  if (wantsNumber && result.point.level < 8) return null;
   return {
     address: result.normalized, lat: result.point.lat, lon: result.point.lon, source: 'abr', needsVerification: false,
     // 地番の座標は法務省の登記所備付地図データに基づくので、その出典と加工の明記を添える。

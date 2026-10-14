@@ -66,6 +66,17 @@ describe('localGeocode', () => {
     }
   });
 
+  test('番地・号は照合できても、その点が無い住所は、町字の代表点を番地の座標として返さず null', async () => {
+    const built = setup();
+    await built.data.ensure({ kind: 'master' });
+    await built.data.ensure({ kind: 'city', lgCode: SAPPORO_LG });
+    await built.data.ensure({ kind: 'num', lgCode: SAPPORO_LG });
+    // 北１条西２丁目の 12-4 は地番にあるが、位置参照が無い（正規化の座標は町字の代表点になる）
+    expect(await localGeocode(built.ctx, '札幌市中央区北1条西2丁目12-4')).toBeNull();
+    // 位置参照のある 12-3 は、番地の点で解決する
+    expect(await localGeocode(built.ctx, '札幌市中央区北1条西2丁目12-3')).toMatchObject({ lat: 43.064, lon: 141.3541, source: 'abr' });
+  });
+
   test('番地・号のデータが無い市区町村でも、番地付きの住所は町字の代表点を返さず null', async () => {
     const built = createTestAddressData(join(dir, 'no-numbers'), { up: sampleUpstream() });
     const ctx = createAddressContext(built.data);
