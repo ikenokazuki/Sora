@@ -1643,7 +1643,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         {
           address: z.string().trim().min(1).max(300).describe('正規化する住所。先頭の〒郵便番号は postalCode として分離'),
           level: z.number().int().min(1).max(8).optional().describe('正規化する最大の階層 (1〜8、既定 8)。8は番地・号まで').meta({ default: 8 }),
-          zipcode: z.string().trim().optional().describe('住所と突き合わせる郵便番号。checks.zipcode に match/partial/mismatch を返す'),
+          zipcode: z.string().trim().optional().describe('住所と突き合わせる郵便番号。市区町村の無い住所は、この番号の市区町村を補って解決する。checks.zipcode に match/partial/mismatch を返す'),
           lat: z.number().min(-90).max(90).optional().describe('突き合わせる緯度 (lon とペア)。checks.coordinates を返す'),
           lon: z.number().min(-180).max(180).optional().describe('突き合わせる経度 (lat とペア)'),
           compareAddress: z.string().trim().max(300).optional().describe('名寄せの相手の住所。checks.compare に一致階層と違いを返す'),

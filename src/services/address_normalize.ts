@@ -54,6 +54,8 @@ export interface NormalizeOptions {
   level?: number;
   /** データの取得を待つ上限。省略時は設定の waitMs。 */
   waitMs?: number;
+  /** 住所とは別に渡された 7 桁の郵便番号。住所が解釈できないとき、先頭の郵便番号が無ければ、これで市区町村を補う。 */
+  zipcode?: string;
 }
 
 export interface AddressNormalizerOptions {
@@ -303,10 +305,11 @@ export class AddressNormalizer {
     }
     // 住所が解釈できず、先頭に郵便番号があるときは、郵便番号から都道府県・市区町村を補って解決し直す
     // （日本郵便は、正しい7桁の郵便番号があれば市区町村名を省略してよいとしている）。
-    if (result.level === 0 && postalCode) {
-      const city = await this.cityOfPostalCode(postalCode, options.waitMs);
+    const zipForCity = postalCode ?? options.zipcode;
+    if (result.level === 0 && zipForCity) {
+      const city = await this.cityOfPostalCode(zipForCity, options.waitMs);
       if (city) {
-        const filled = await this.normalize(`${city}${address}`, options);
+        const filled = await this.normalize(`${city}${address}`, { ...options, zipcode: undefined });
         if (filled.level > 0) return { ...filled, input, postalCode };
       }
     }
