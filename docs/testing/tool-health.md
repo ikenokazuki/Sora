@@ -41,6 +41,10 @@ npm run test:tools:live
   - 住所 `東京都千代田区永田町1-5-1` → `level: 8`、`numberSource: "rsdt"`、`東京都千代田区永田町一丁目5-1`、結合キーの市区町村コード、座標が永田町の範囲内、郵便番号 `1000014`。
   - 座標 `35.673766, 139.746379`（上の住所の点）→ 同じ永田町一丁目の住居表示の番地が 50m 以内で返る（`level: 8`、`numberSource: "rsdt"`）。
   - 国会議事堂の `永田町1-7-1` は ABR に住居番号が無く、町字（level 3）止まりになるので、番地まで届くことの検査には使わない。ABR のデータが変わって上の住所が届かなくなったら、実データで届く住所に差し替える。
+- 追加のケース（`normalize_address`）:
+  - `geo.normalize_address.mlit`: `港区芝大門1-10-18-3F` が国土交通省の街区データで補われ、`numberSource: "mlit"`、`level: 8`、`東京都港区芝大門一丁目10`、`other` が `18-3F`、`point.level: 7`、国土交通省の出典が付く。
+  - `geo.normalize_address.zipcode`: 市区町村の無い `千駄ヶ谷2-34-8テラス外苑204` と `zipcode: 1510051` で、`東京都渋谷区千駄ヶ谷二丁目34-8`（level 8）に解決され、`checks.zipcode.status` が `match`。
+  - `geo.normalize_address.parcel_point`: ABR の地番に座標が無い `山形県天童市大字山口4559-4` が地番で照合され（`numberSource: "chiban"`）、点が町字の代表点でなく街区の点（`point.level: 7`、`pointSource: "mlit"`、国土交通省の出典）になる。ABR が座標を足して番地の点（`point.level: 8`）になっても合格。
 - 分類: 応答の `incomplete`（データが揃う前の答え）は、内容を検査せずに分ける。`pending` だけなら `unverified`、`unavailable` に 403・国外 IP の拒否があれば `blocked`、そのほかの取得失敗は `unavailable`。出典（`attribution` に「アドレス・ベース・レジストリ」）が無い応答は、incomplete でも `fail`。
 - エラー応答の分類: MCP のエラー文（取得中は `unverified`、403・国外 IP は `blocked`、取得失敗・構築の時間切れは `unavailable`）と、REST のエラーコード（`ADDRESS_DATA_PENDING` は `unverified`、`ADDRESS_DATA_UNAVAILABLE` で `retryable: false` は `blocked`、そのほかの 502 は `unavailable`）で分ける。`ADDRESS_DISABLED` や入力の誤りは、こちら側の契約違反として `fail`。
 - GitHub Actions などの国外 IP では、ABR の CDN が接続を拒否するため `blocked` になる。国内の環境で同じ image を比較実行する。

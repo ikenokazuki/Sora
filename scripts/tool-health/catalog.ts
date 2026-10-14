@@ -433,6 +433,65 @@ export function checkNormalizedAddressResult(raw: unknown, label: string): CaseO
   return abrObservation();
 }
 
+// ---------- 街区データ（国土交通省）・zipcode・座標の補完 ----------
+
+const MLIT_ATTRIBUTION_MARKER = '国土交通省';
+const SHIBA_BOX: GeoBox = { name: 'Shiba-Daimon 1, Minato', minLat: 35.65, maxLat: 35.67, minLon: 139.74, maxLon: 139.76 };
+const TENDO_BOX: GeoBox = { name: 'Yamaguchi, Tendo', minLat: 38.33, maxLat: 38.43, minLon: 140.35, maxLon: 140.48 };
+
+function requireMlitAttribution(record: Record<string, unknown>, label: string): void {
+  if (typeof record.attribution !== 'string' || !record.attribution.includes(MLIT_ATTRIBUTION_MARKER)) {
+    throw new LiveFail(`${label} missing the MLIT attribution`);
+  }
+}
+
+/** 街区符号まで国土交通省のデータで照合した住所（ABR に無い街区）。号は未照合で other に残る。 */
+export function checkMlitAddressResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  if (record.level !== 8 || record.numberSource !== 'mlit') {
+    throw new LiveFail(`${label} was not supplemented by the MLIT block data (level ${String(record.level)}, numberSource ${String(record.numberSource)})`);
+  }
+  if (record.normalized !== '東京都港区芝大門一丁目10' || typeof record.other !== 'string' || !record.other.startsWith('18')) {
+    throw new LiveFail(`${label} normalized to an unexpected address: ${String(record.normalized)} / ${String(record.other)}`);
+  }
+  const point = record.point as { lat?: number; lon?: number; level?: number } | undefined;
+  if (point?.level !== 7) throw new LiveFail(`${label} point.level is ${String(point?.level)}, expected 7 (block)`);
+  requireWithin(point.lat, point.lon, SHIBA_BOX, `${label} point`);
+  requireMlitAttribution(record, label);
+  return abrObservation();
+}
+
+/** 市区町村の無い住所が、別に渡した zipcode で市区町村を補って番地・号まで解決され、突き合わせが match になる。 */
+export function checkZipcodeFilledAddressResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  if (record.level !== 8 || record.normalized !== '東京都渋谷区千駄ヶ谷二丁目34-8') {
+    throw new LiveFail(`${label} did not resolve the address from the zipcode (level ${String(record.level)}, normalized ${String(record.normalized)})`);
+  }
+  const keys = (typeof record.keys === 'object' && record.keys !== null ? record.keys : {}) as { lgCode?: unknown };
+  if (keys.lgCode !== '131130') throw new LiveFail(`${label} returned unexpected keys (lgCode ${String(keys.lgCode)}, expected 131130)`);
+  const checks = record.checks as { zipcode?: { status?: unknown } } | undefined;
+  if (checks?.zipcode?.status !== 'match') throw new LiveFail(`${label} zipcode check is ${String(checks?.zipcode?.status)}, expected match`);
+  return abrObservation();
+}
+
+/** ABR の地番に座標が無い住所（天童市）。地番で照合でき、点は街区の点（7）か、ABR が座標を足した番地の点（8）。 */
+export function checkParcelPointResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  if (record.level !== 8 || record.numberSource !== 'chiban' || typeof record.normalized !== 'string' || !record.normalized.startsWith('山形県天童市大字山口4559')) {
+    throw new LiveFail(`${label} did not match the parcel (level ${String(record.level)}, numberSource ${String(record.numberSource)}, normalized ${String(record.normalized)})`);
+  }
+  const point = record.point as { lat?: number; lon?: number; level?: number } | undefined;
+  if (point?.level !== 7 && point?.level !== 8) {
+    throw new LiveFail(`${label} point.level is ${String(point?.level)}; the town point should have been replaced by a block (7) or parcel (8) point`);
+  }
+  requireWithin(point.lat, point.lon, TENDO_BOX, `${label} point`);
+  if (point.level === 7) {
+    if (record.pointSource !== 'mlit') throw new LiveFail(`${label} used a block point without pointSource mlit`);
+    requireMlitAttribution(record, label);
+  }
+  return abrObservation();
+}
+
 /** 住所の点を逆引きすると、その近くの住居表示の番地・号が返る。 */
 export function checkReverseGeocodeResult(raw: unknown, label: string): CaseObservation {
   const record = requireAddressPayload(raw, label);
@@ -745,6 +804,30 @@ export const TOOL_CASES: HealthCase[] = [
     const observation = checkNormalizedAddressResult(raw, 'normalize_address');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(NAGATACHO_ADDRESS), undefined, 60000);
     checkNormalizedAddressResult(rest.json, 'GET /geo/address/normalize');
+    return observation;
+  }),
+  toolCase('geo.normalize_address.mlit', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+    const address = '港区芝大門1-10-18-3F';
+    const raw = await callAddressTool(ctx, 'normalize_address', { address });
+    const observation = checkMlitAddressResult(raw, 'normalize_address (mlit)');
+    const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
+    checkMlitAddressResult(rest.json, 'GET /geo/address/normalize (mlit)');
+    return observation;
+  }),
+  toolCase('geo.normalize_address.zipcode', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
+    const body = { address: '千駄ヶ谷2-34-8テラス外苑204', zipcode: '1510051' };
+    const raw = await callAddressTool(ctx, 'normalize_address', body);
+    const observation = checkZipcodeFilledAddressResult(raw, 'normalize_address (zipcode)');
+    const rest = await ctx.rest.call('POST', '/geo/address/normalize', body, 60000);
+    checkZipcodeFilledAddressResult(rest.json, 'POST /geo/address/normalize (zipcode)');
+    return observation;
+  }),
+  toolCase('geo.normalize_address.parcel_point', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+    const address = '山形県天童市大字山口4559-4';
+    const raw = await callAddressTool(ctx, 'normalize_address', { address });
+    const observation = checkParcelPointResult(raw, 'normalize_address (parcel point)');
+    const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
+    checkParcelPointResult(rest.json, 'GET /geo/address/normalize (parcel point)');
     return observation;
   }),
   toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], true, 90000, async (ctx) => {
