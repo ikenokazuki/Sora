@@ -146,3 +146,59 @@ describe('live address checks', () => {
     await expect(check.run(failing('Reverse geocode error: lat は -90〜90 の数値で指定してください'))).rejects.toBeInstanceOf(LiveFail);
   });
 });
+
+// 街区データ（国土交通省）で補った住所、zipcode で市区町村を補った住所、座標の無い地番の補完。
+const MLIT_ATTRIBUTION = '街区符号の点: 出典「位置参照情報ダウンロードサービス（国土交通省）」（https://nlftp.mlit.go.jp/isj/index.html）を加工して作成';
+const shiba = {
+  input: '港区芝大門1-10-18-3F', pref: '東京都', city: '港区', town: '芝大門一丁目', addr: '10', other: '18-3F',
+  normalized: '東京都港区芝大門一丁目10', level: 8, numberSource: 'mlit', keys: { prefCode: '13', lgCode: '131032', machiazaId: '0006001', prc: ['10'] },
+  point: { lat: 35.658751, lon: 139.752938, level: 7 }, postalCodes: [{ zipcode: '1050012' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
+};
+const sendagaya = {
+  input: '千駄ヶ谷2-34-8テラス外苑204', pref: '東京都', city: '渋谷区', town: '千駄ヶ谷二丁目', addr: '34-8', other: 'テラス外苑204',
+  normalized: '東京都渋谷区千駄ヶ谷二丁目34-8', level: 8, numberSource: 'rsdt', keys: { prefCode: '13', lgCode: '131130', machiazaId: '0000002' },
+  point: { lat: 35.676, lon: 139.711, level: 8 }, postalCodes: [{ zipcode: '1510051' }],
+  checks: { zipcode: { status: 'match', zipcode: '1510051', expected: [{ zipcode: '1510051' }], reason: '町域の番号に含まれます' } }, attribution: ABR,
+};
+const tendo = {
+  input: '山形県天童市大字山口4559-4', pref: '山形県', city: '天童市', town: '大字山口', addr: '4559-4', other: '',
+  normalized: '山形県天童市大字山口4559-4', level: 8, numberSource: 'chiban', keys: { prefCode: '06', lgCode: '062103', machiazaId: '0040000', prc: ['4559', '4'] },
+  point: { lat: 38.380088, lon: 140.414751, level: 7 }, pointSource: 'mlit', postalCodes: [{ zipcode: '9940101' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
+};
+
+describe('live address checks（街区データ・zipcode・座標の補完）', () => {
+  test('MLIT: 街区符号までの照合は numberSource mlit、level 8、point.level 7、国土交通省の出典', async () => {
+    const check = addressCase('geo.normalize_address.mlit');
+    await expect(check.run(context(shiba))).resolves.toHaveProperty('sources');
+    await expect(check.run(context({ ...shiba, numberSource: 'rsdt' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, level: 3, numberSource: null }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, normalized: '東京都港区芝大門一丁目11' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, point: { ...shiba.point, level: 3 } }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, point: { lat: 43.06, lon: 141.35, level: 7 } }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, attribution: ABR }))).rejects.toThrow('attribution');
+    await expect(check.run(context(shiba, { ...shiba, numberSource: null }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...shiba, incomplete: true, pending: ['mlit:131032'] }))).rejects.toBeInstanceOf(LiveUnverified);
+  });
+
+  test('zipcode: 市区町村の無い住所が zipcode で解決され、zipcode の突き合わせが match', async () => {
+    const check = addressCase('geo.normalize_address.zipcode');
+    await expect(check.run(context(sendagaya))).resolves.toHaveProperty('sources');
+    await expect(check.run(context({ ...sendagaya, level: 0, numberSource: null, normalized: '' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...sendagaya, normalized: '東京都新宿区千駄ヶ谷二丁目34-8' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...sendagaya, checks: { zipcode: { status: 'unknown' } } }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context(sendagaya, { ...sendagaya, level: 0 }))).rejects.toBeInstanceOf(LiveFail);
+  });
+
+  test('座標の無い地番: 地番で照合でき、点は街区の点（7）か番地の点（8）。7 のときは mlit の印と出典', async () => {
+    const check = addressCase('geo.normalize_address.parcel_point');
+    await expect(check.run(context(tendo))).resolves.toHaveProperty('sources');
+    // ABR が位置参照を足して、番地の点（8）になっても合格
+    const exact = { ...tendo, point: { ...tendo.point, level: 8 }, pointSource: undefined, attribution: ABR };
+    await expect(check.run(context(exact))).resolves.toHaveProperty('sources');
+    // 町字の代表点（3）のままは不合格（補完が働いていない）
+    await expect(check.run(context({ ...tendo, point: { ...tendo.point, level: 3 }, pointSource: undefined }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...tendo, pointSource: undefined }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...tendo, attribution: ABR }))).rejects.toThrow('attribution');
+    await expect(check.run(context({ ...tendo, numberSource: 'mlit' }))).rejects.toBeInstanceOf(LiveFail);
+  });
+});
