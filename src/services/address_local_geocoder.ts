@@ -50,9 +50,14 @@ async function zipGeocode(ctx: AddressContext, query: string): Promise<LocalGeoc
   };
 }
 
+/** ライブラリは番地・号の表記（9番9号、９－９、九の九など）をどれも 9-9 の形にして other に残す。建物名は原文のまま。 */
+const LEFTOVER_NUMBER = /^[0-9０-９]/;
+
 async function addressGeocode(ctx: AddressContext, query: string): Promise<LocalGeocodingResult | null> {
   const result = await ctx.normalizer.normalize(query, { waitMs: 0 });
   // 町字（level 3）に届いて座標がある入力だけ。市区町村止まりは地名として従来の経路に任せる。
   if (result.level < 3 || !result.point) return null;
+  // 番地・号が入力にあるのに照合できなかった（データに無い番地、段B が未取得）ときは、町字の代表点を番地の座標として返さない。
+  if (result.level < 8 && LEFTOVER_NUMBER.test(result.other)) return null;
   return { address: result.normalized, lat: result.point.lat, lon: result.point.lon, source: 'abr', needsVerification: false };
 }

@@ -238,6 +238,7 @@ REST は `/geo/reverse`。入力は `{ lat, lon, maxDistanceMeters? }`（既定 
 - **ローカル優先のジオコーダー**（`src/services/geocoding.ts`）:
   - `createGeocoder({ local })` に注入口を足し、既定は住所モジュールの局所ジオコーダーにします。呼び出し側の `geocodeAddress` は変えません。
   - 住所らしい入力（正規化が level 3 以上で点がある）と郵便番号（`1000001`、`〒100-0001`）はローカルで解決します。`source: 'abr'`、`needsVerification: false`（郵便番号が複数の町にまたがる場合は `true`）。1.1 秒間隔の制限を受けません。
+  - ただし、番地・号が入力にあるのに level 8 まで照合できなかった住所（データに無い番地、段B が未取得または無い市区町村）は、町字の代表点を番地の座標として返さず、従来の経路へ回します。ライブラリは番地・号の表記（`9番9号`、`９－９`、`九の九` など）をどれも `9-9` の形にして `other` に残し、建物名は原文のまま残すため、`other` が数字で始まるかで見分けます。建物名だけが続く入力（`永田町一丁目 ABCビル3F`）は、番地を求めていないので町字の代表点で解決します。
   - ローカルで解決できない入力（取得済みデータが無い、`off`、取得失敗、地名・駅名・施設名・通称）は、**待たずに**従来の経路（Nominatim → 国土地理院）へ進みます。`eager` では、データが無い市区町村の取得を裏で始めます。
   - `GeocodingResult.source` に `'abr'` を足し、`GEOCODING_ATTRIBUTIONS.abr`、`ElevationResultSchema` と `PoiSearchResultSchema` の enum、tool-health の出典マーカーと期待値（`geo.address` は `abr` も許す）を更新します。
 - **`search_poi`**: `center` が住所・郵便番号でも解決されます。新しい任意項目 `withAddress`（既定 false）で、各施設に `addressInfo{ normalized, level, numberSource, keys, postalCodes, check{ status, distanceMeters } }` を付け、施設の住所を座標と突き合わせます（住所の質が低い OpenPOI の結果を見分けられる）。
@@ -329,7 +330,7 @@ REST は `/geo/reverse`。入力は `{ lat, lon, maxDistanceMeters? }`（既定 
 
 4. **地番データの出典と規約（1 の続き）。** 地番を使った結果（`numberSource: "chiban"`）の出力には、現状 ABR と日本郵便の出典しか付かない。規約を確認し、必要なら出典文言を足すか、地番の段を無効にして出荷する。
 5. **`SORA_ADDRESS_PRELOAD` は未実装。** 設定の読み込みだけがあり、事前取得は実行されない（`eager` の「データの無い地域で裏で取得を始める」は実装済み）。運用手引は子の入口を直接実行する手順で代替している。
-6. **ローカルのジオコーダーは、町字（level 3）に届けば `needsVerification: false` で返す（設計 7 のとおり）。** 番地・号の段B が無い市区町村や番地が照合できない住所では、町字の代表点（数百 m〜数 km の誤差）になり、国土地理院の番地レベルの座標より粗くなりうる。番地が入力に含まれるのに level 8 に届かない場合は、従来の経路へ回す案がある（未決定）。
+6. ~~**ローカルのジオコーダーは、町字（level 3）に届けば `needsVerification: false` で返す（設計 7 のとおり）。** 番地・号の段B が無い市区町村や番地が照合できない住所では、町字の代表点（数百 m〜数 km の誤差）になり、国土地理院の番地レベルの座標より粗くなりうる。~~ **解決済み（2026-10-14）**: 番地・号が入力にあるのに level 8 に届かない住所は、従来の経路へ回すことにした（7 に記載）。eager では、その回は従来の経路で答え、段B の取得を裏で始めるので、次の呼び出しからローカルで解決する。
 7. **`search_poi` の `withAddress` は、待ち時間（`SORA_ADDRESS_WAIT_MS`）を使い切ると、後ろの施設に `addressInfo` が付かない。** 「解釈できなかった」と「時間切れ」を区別する印が無い。
 8. **tool-health の住所ケース（`geo.postal_code` など）は、`attribution` の有無しか確かめていない。** 件数・町名・`found` などの中身は見ていない。
 
