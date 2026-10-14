@@ -522,10 +522,10 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・気象警報・注意報（大雨、洪水、暴風、大雪、波浪、高潮、雷等）を市区町村・都道府県単位でリアルタイム取得します。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")<br>- `areaCode` (string, 任意): 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") |
 | `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強) |
 | `get_elevation` | 住所・地名をNominatimで緯度経度へ解決し、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度<br>- `lon` (number, 任意): 経度<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
-| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をNominatimで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 取得済みローカル住所データで各POIに addressInfo を付与<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
+| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をNominatimで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 各POIの住所を正規化して郵便番号を付け、POIの座標と突き合わせて addressInfo として付与（住所データ未取得の地域は初回に取得を待つ。最大 `SORA_ADDRESS_WAIT_MS`）<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
 | `search_postal_code` | 日本郵便およびデジタル庁 ABR による郵便番号検索・逆引き。郵便番号から住所候補（町字・事業所）を引く、または住所から郵便番号を逆引きします。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)<br>- `address` (string, 任意): 住所文字列 (zipcode と排他) |
 | `normalize_address` | デジタル庁 ABR による住所正規化・代表点座標解決・名寄せ突き合わせ。住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 必須): 正規化対象住所 (例: "東京都千代田区永田町1-7-1")<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8)<br>- `zipcode` (string, 任意): 突き合わせ用郵便番号<br>- `lat` / `lon` (number, 任意): 突き合わせ用座標<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 |
-| `reverse_geocode` | デジタル庁 ABR による緯度経度からの最寄り住所逆引き。住居表示または地番レベル（level 8）の住所文字列、全国地方公共団体コード、街区・番地号キー、郵便番号を即座に特定します。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `lat` (number, 必須): 緯度 (-90〜90)<br>- `lon` (number, 必須): 経度 (-180〜180)<br>- `maxDistanceMeters` (number, 任意): 探索半径 (メートル, デフォルト: 1000, 上限: 3000) |
+| `reverse_geocode` | デジタル庁 ABR による緯度経度からの最寄り住所逆引き。住居表示または地番レベル（level 8）の住所文字列、全国地方公共団体コード、街区・番地号キー、郵便番号を即座に特定します。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `lat` (number, 必須): 緯度 (-90〜90)<br>- `lon` (number, 必須): 経度 (-180〜180)<br>- `maxDistanceMeters` (number, 任意): 番地・号の点を探す範囲 (メートル, デフォルト: 300, 上限: 2000) |
 
 ---
 
@@ -1489,7 +1489,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ### 3.16 座標解決・国土地理院の標高取得 (`POST /geo/elevation` / `GET /geo/elevation`)
 
-住所・地名を[Nominatim (OpenStreetMap)](https://nominatim.org/)で緯度経度へ解決し（該当なしの番地住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)で補完）、国土地理院からその地点の海抜標高（m）を取得します。座標解決の取得元は`geocodingSource`、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
+住所・地名を[Nominatim (OpenStreetMap)](https://nominatim.org/)で緯度経度へ解決し（該当なしの番地住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)で補完）、国土地理院からその地点の海抜標高（m）を取得します。住所・郵便番号は、取得済みの住所データ（デジタル庁 ABR・日本郵便。`search_postal_code` などで一度取得した市区町村）があればそちらを優先して解決し（`geocodingSource: "abr"`）、地名・駅名・施設名や未取得の地域は従来どおり Nominatim → 国土地理院です。座標解決の取得元は`geocodingSource`（`nominatim` / `gsi` / `abr`）、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
 
 地名解決は`search_poi`と共有します。同一Soraプロセス内のMCP・REST全要求で、Nominatimへの実際の問い合わせ開始を1.1秒以上空けます。同じ地名の同時要求は1回にまとめ、成功結果は24時間キャッシュします。異なる未キャッシュ地名の要求は順番に待機します。`noCache: true`でも1.1秒間隔の制限は維持します。直接`lat` / `lon`を指定した場合は地名解決を行いません。
 
@@ -1993,12 +1993,12 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 50 ツール静的一括ロード |
-| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード（`lazy`: オンデマンド遅延ロード、`eager`: 共有ジオコーダーでもローカル住所優先、`off`: 完全無効化） |
+| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: 3 ツールが呼ばれたときだけ必要な市区町村を取得する（`get_elevation` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: 3 ツールを登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
 | `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
 | `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
-| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する都道府県コード（カンマ区切り、例: `13` や `13,14`、全国は `all`） |
+| `SORA_ADDRESS_PRELOAD` | *(未設定)* | **予約（未実装）**。値は読み込まれるが、現在は事前取得を実行しない。事前に準備したい場合は、運用手引 `docs/operations/address-data.md` の「データ構築の手動実行」で子の入口を直接実行する |
 | `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
 | `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
 | `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
