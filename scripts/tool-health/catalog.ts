@@ -338,11 +338,117 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
   ] };
 }
 
-function checkAddressPayload(raw: unknown, label: string): CaseObservation {
+// ---------- 住所系ツール（デジタル庁 ABR・日本郵便） ----------
+
+// 永田町一丁目5-1 は ABR の住居表示で番地まで照合できる実在の住所。国会議事堂の 永田町1-7-1 は住居番号が無く町字止まりなので、
+// 番地まで届くことの検査には使えない（その座標を get_elevation で解決する geo.address は、町字の点でも箱に入るので使える）。
+// ABR のデータが変わって届かなくなったら、実データで届く住所に差し替える。
+const NAGATACHO_ADDRESS = '東京都千代田区永田町1-5-1';
+const NAGATACHO_NORMALIZED = '東京都千代田区永田町一丁目5-1';
+const NAGATACHO_POINT = { lat: 35.673766, lon: 139.746379 };
+const NAGATACHO_ZIPCODE = '1000014';
+const NAGATACHO_LG_CODE = '131016';
+/** 住所の点から逆引きした最寄りの番地の点までの許容距離。同じ点なら 0m 前後。 */
+const NAGATACHO_REVERSE_METERS = 50;
+
+const abrObservation = (count?: number): CaseObservation =>
+  ({ sources: [{ source: 'abr', format: 'json', upstreamStatus: 'unknown', cached: false, ...(count !== undefined ? { count } : {}) }] });
+
+/** 住所機能のエラー文を分類する。mcpJson は日本語の取得中・取得失敗の文を知らないので、ここで補う。該当しなければ null。 */
+export function classifyAddressMessage(message: string): LiveUnverified | LiveBlocked | LiveUnavailable | null {
+  // 待ち時間までにデータが揃わなかっただけ（構築は裏で続く）。外部の障害ではなく、まだ証明できない。
+  if (/address data pending|データを取得中/.test(message)) return new LiveUnverified(message);
+  // 国外 IP の拒否。再試行しても変わらない。
+  if (/HTTP 403|国外 IP/.test(message)) return new LiveBlocked(message);
+  if (/取得できませんでした|終わりませんでした/.test(message)) return new LiveUnavailable(message);
+  return null;
+}
+
+/** 住所系ツールを呼ぶ。機能が返した取得中・取得失敗のエラー文は、契約違反ではなく外部の状態として分類する。 */
+async function callAddressTool(ctx: CaseContext, tool: string, args: Record<string, unknown>): Promise<unknown> {
+  let text: string;
+  try {
+    ({ text } = await mcpJson(ctx, tool, args, 60000));
+  } catch (error) {
+    if (error instanceof LiveFail) throw classifyAddressMessage(error.message) ?? error;
+    throw error;
+  }
+  return toolPayload(text, tool);
+}
+
+/** データが揃う前の答え（incomplete）を分類する。内容の検査に進むと、取得中なだけの応答を契約違反にしてしまう。 */
+function incompleteAddressFailure(record: Record<string, unknown>, label: string): LiveUnverified | LiveBlocked | LiveUnavailable {
+  const unavailable = Array.isArray(record.unavailable) ? (record.unavailable as Array<{ artifact?: unknown; message?: unknown }>) : [];
+  const reasons = unavailable.map((item) => `${String(item.artifact)}: ${String(item.message)}`).join('; ');
+  if (unavailable.some((item) => /HTTP 403|国外 IP/.test(String(item.message)))) return new LiveBlocked(`${label} could not fetch the address data (${reasons})`);
+  if (unavailable.length > 0) return new LiveUnavailable(`${label} could not fetch the address data (${reasons})`);
+  const pending = Array.isArray(record.pending) ? record.pending.join(',') : 'unknown';
+  return new LiveUnverified(`${label} answered before the address data was ready (pending: ${pending})`);
+}
+
+/** 住所系の応答に共通の検査: 形、ABR の出典、データが揃っていること。 */
+function requireAddressPayload(raw: unknown, label: string): Record<string, unknown> {
   if (typeof raw !== 'object' || raw === null) throw new LiveFail(`${label} returned invalid payload`);
   const record = raw as Record<string, unknown>;
-  if (typeof record.attribution !== 'string') throw new LiveFail(`${label} missing attribution`);
-  return { sources: [{ source: 'abr', format: 'json', upstreamStatus: 'unknown', cached: false }] };
+  const marker = GEOCODING_ATTRIBUTION_MARKERS.abr;
+  if (typeof record.attribution !== 'string' || !record.attribution.includes(marker)) throw new LiveFail(`${label} missing address attribution`);
+  if (record.incomplete === true) throw incompleteAddressFailure(record, label);
+  return record;
+}
+
+function requireNagatachoKeys(keys: unknown, label: string): void {
+  const record = (typeof keys === 'object' && keys !== null ? keys : {}) as { prefCode?: unknown; lgCode?: unknown };
+  if (record.prefCode !== '13' || record.lgCode !== NAGATACHO_LG_CODE) {
+    throw new LiveFail(`${label} returned unexpected keys (lgCode ${String(record.lgCode)}, expected ${NAGATACHO_LG_CODE})`);
+  }
+}
+
+function requireNagatachoZip(postalCodes: unknown, label: string): void {
+  const zips = Array.isArray(postalCodes) ? (postalCodes as Array<{ zipcode?: unknown }>) : [];
+  if (!zips.some((zip) => zip.zipcode === NAGATACHO_ZIPCODE)) throw new LiveFail(`${label} did not return the zip code ${NAGATACHO_ZIPCODE}`);
+}
+
+/** 郵便番号 100-0014 が千代田区永田町に解決される。 */
+export function checkPostalCodeResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  const candidates = Array.isArray(record.candidates) ? (record.candidates as Array<Record<string, unknown>>) : [];
+  const hit = candidates.find((c) => c.prefecture === '東京都' && c.city === '千代田区' && typeof c.town === 'string' && c.town.startsWith('永田町') && c.lgCode === NAGATACHO_LG_CODE);
+  if (record.zipcode !== NAGATACHO_ZIPCODE || !hit) {
+    throw new LiveFail(`${label} did not resolve ${NAGATACHO_ZIPCODE} to 東京都千代田区永田町 (zipcode ${String(record.zipcode)}, ${candidates.length} candidates)`);
+  }
+  return abrObservation(candidates.length);
+}
+
+/** 住所が住居表示の番地・号まで照合され、結合キー・座標・郵便番号が付く。 */
+export function checkNormalizedAddressResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  if (record.level !== 8 || record.numberSource !== 'rsdt') {
+    throw new LiveFail(`${label} did not reach the residential number (level ${String(record.level)}, numberSource ${String(record.numberSource)}, normalized ${String(record.normalized)})`);
+  }
+  if (record.normalized !== NAGATACHO_NORMALIZED) throw new LiveFail(`${label} normalized to an unexpected address: ${String(record.normalized)}`);
+  requireNagatachoKeys(record.keys, label);
+  const point = record.point as { lat?: number; lon?: number } | undefined;
+  requireWithin(point?.lat, point?.lon, NAGATACHO_1_7, `${label} point`);
+  requireNagatachoZip(record.postalCodes, label);
+  return abrObservation();
+}
+
+/** 住所の点を逆引きすると、その近くの住居表示の番地・号が返る。 */
+export function checkReverseGeocodeResult(raw: unknown, label: string): CaseObservation {
+  const record = requireAddressPayload(raw, label);
+  if (record.found !== true) throw new LiveFail(`${label} found no address at the sample point (${String(record.reason)})`);
+  if (record.level !== 8 || record.numberSource !== 'rsdt') {
+    throw new LiveFail(`${label} did not reach a residential number (level ${String(record.level)}, numberSource ${String(record.numberSource)}, normalized ${String(record.normalized)})`);
+  }
+  if (typeof record.normalized !== 'string' || !record.normalized.startsWith('東京都千代田区永田町一丁目')) {
+    throw new LiveFail(`${label} returned an unexpected address: ${String(record.normalized)}`);
+  }
+  if (typeof record.distanceMeters !== 'number' || !Number.isFinite(record.distanceMeters) || record.distanceMeters > NAGATACHO_REVERSE_METERS) {
+    throw new LiveFail(`${label} returned an address ${String(record.distanceMeters)}m from the sample point (limit ${NAGATACHO_REVERSE_METERS}m)`);
+  }
+  requireNagatachoKeys(record.keys, label);
+  requireNagatachoZip(record.postalCodes, label);
+  return abrObservation();
 }
 
 
@@ -624,28 +730,26 @@ export const TOOL_CASES: HealthCase[] = [
     checkHarajukuPoi(rest.json);
     return observation;
   }),
-  toolCase('geo.postal_code', ['search_postal_code'], ['abr'], false, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_postal_code', { zipcode: '100-0014' }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_postal_code');
-    const observation = checkAddressPayload(raw, 'search_postal_code');
+  // 初回の呼び出しは取得元（ABR・日本郵便）からデータを取ってくるので、外部に依存する。
+  toolCase('geo.postal_code', ['search_postal_code'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'search_postal_code', { zipcode: '100-0014' });
+    const observation = checkPostalCodeResult(raw, 'search_postal_code');
     const rest = await ctx.rest.call('GET', '/geo/postal-code?zipcode=100-0014', undefined, 60000);
-    checkAddressPayload(rest.json, 'GET /geo/postal-code');
+    checkPostalCodeResult(rest.json, 'GET /geo/postal-code');
     return observation;
   }),
-  toolCase('geo.normalize_address', ['normalize_address'], ['abr'], false, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'normalize_address', { address: '東京都千代田区永田町1-7-1' }, 60000);
-    const raw = toolPayload(rawJsonText, 'normalize_address');
-    const observation = checkAddressPayload(raw, 'normalize_address');
-    const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent('東京都千代田区永田町1-7-1'), undefined, 60000);
-    checkAddressPayload(rest.json, 'GET /geo/address/normalize');
+  toolCase('geo.normalize_address', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'normalize_address', { address: NAGATACHO_ADDRESS });
+    const observation = checkNormalizedAddressResult(raw, 'normalize_address');
+    const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(NAGATACHO_ADDRESS), undefined, 60000);
+    checkNormalizedAddressResult(rest.json, 'GET /geo/address/normalize');
     return observation;
   }),
-  toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], false, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'reverse_geocode', { lat: 35.675895, lon: 139.746306 }, 60000);
-    const raw = toolPayload(rawJsonText, 'reverse_geocode');
-    const observation = checkAddressPayload(raw, 'reverse_geocode');
-    const rest = await ctx.rest.call('GET', '/geo/reverse?lat=35.675895&lon=139.746306', undefined, 60000);
-    checkAddressPayload(rest.json, 'GET /geo/reverse');
+  toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'reverse_geocode', NAGATACHO_POINT);
+    const observation = checkReverseGeocodeResult(raw, 'reverse_geocode');
+    const rest = await ctx.rest.call('GET', `/geo/reverse?lat=${NAGATACHO_POINT.lat}&lon=${NAGATACHO_POINT.lon}`, undefined, 60000);
+    checkReverseGeocodeResult(rest.json, 'GET /geo/reverse');
     return observation;
   }),
   toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, async (ctx) => {

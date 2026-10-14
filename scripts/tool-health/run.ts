@@ -46,7 +46,25 @@ function claimFreePort(): number {
   return port;
 }
 
-function classifyRestStatus(status: number, body: string, what: string): never {
+/** REST のエラー本文（formatError の形）から、エラーコードと再試行できるかを読む。JSON でなければ null。 */
+function restErrorOf(body: string): { code?: string; retryable?: boolean } | null {
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown; retryable?: unknown };
+    return {
+      ...(typeof parsed.code === 'string' ? { code: parsed.code } : {}),
+      ...(typeof parsed.retryable === 'boolean' ? { retryable: parsed.retryable } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function classifyRestStatus(status: number, body: string, what: string): never {
+  const failure = restErrorOf(body);
+  // 住所データがまだ揃わない（構築は裏で続く）。外部の障害ではなく、まだ証明できない。
+  if (failure?.code === 'ADDRESS_DATA_PENDING') throw new LiveUnverified(`${what} HTTP ${status}: ${body.slice(0, 160)}`);
+  // 取得元が国外 IP を拒否している（retryable: false）。再試行しても変わらない。
+  if (failure?.code === 'ADDRESS_DATA_UNAVAILABLE' && failure.retryable === false) throw new LiveBlocked(`${what} HTTP ${status}: ${body.slice(0, 160)}`);
   if (status === 429 || status >= 500) throw new LiveUnavailable(`${what} HTTP ${status}: ${body.slice(0, 160)}`);
   if (status === 403) throw new LiveBlocked(`${what} HTTP 403: ${body.slice(0, 160)}`);
   throw new LiveFail(`${what} HTTP ${status}: ${body.slice(0, 300)}`);

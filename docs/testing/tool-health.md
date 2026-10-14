@@ -32,6 +32,19 @@ npm run test:tools:live
 
 配送番号に履歴がなくなった・SNS投稿が消えた場合は `SORA_TOOL_HEALTH_CASES_JSON` の該当caseを更新する。それまでは `unverified` で落とす（ダミー番号の `not_found` 期待に書き換えない）。
 
+## 住所系のケース（ABR・日本郵便）
+
+`geo.postal_code`・`geo.normalize_address`・`geo.reverse_geocode` は、MCP と REST の両方を同じ検査にかける。候補コンテナの最初の呼び出しは、取得元（ABR の CDN・日本郵便）からデータを取ってくるので、外部に依存するケースとして1回再試行する。
+
+- 入力と期待値（実データで確認済み）:
+  - 郵便番号 `100-0014` → 千代田区永田町（全国地方公共団体コード 131016）の候補がある。
+  - 住所 `東京都千代田区永田町1-5-1` → `level: 8`、`numberSource: "rsdt"`、`東京都千代田区永田町一丁目5-1`、結合キーの市区町村コード、座標が永田町の範囲内、郵便番号 `1000014`。
+  - 座標 `35.673766, 139.746379`（上の住所の点）→ 同じ永田町一丁目の住居表示の番地が 50m 以内で返る（`level: 8`、`numberSource: "rsdt"`）。
+  - 国会議事堂の `永田町1-7-1` は ABR に住居番号が無く、町字（level 3）止まりになるので、番地まで届くことの検査には使わない。ABR のデータが変わって上の住所が届かなくなったら、実データで届く住所に差し替える。
+- 分類: 応答の `incomplete`（データが揃う前の答え）は、内容を検査せずに分ける。`pending` だけなら `unverified`、`unavailable` に 403・国外 IP の拒否があれば `blocked`、そのほかの取得失敗は `unavailable`。出典（`attribution` に「アドレス・ベース・レジストリ」）が無い応答は、incomplete でも `fail`。
+- エラー応答の分類: MCP のエラー文（取得中は `unverified`、403・国外 IP は `blocked`、取得失敗・構築の時間切れは `unavailable`）と、REST のエラーコード（`ADDRESS_DATA_PENDING` は `unverified`、`ADDRESS_DATA_UNAVAILABLE` で `retryable: false` は `blocked`、そのほかの 502 は `unavailable`）で分ける。`ADDRESS_DISABLED` や入力の誤りは、こちら側の契約違反として `fail`。
+- GitHub Actions などの国外 IP では、ABR の CDN が接続を拒否するため `blocked` になる。国内の環境で同じ image を比較実行する。
+
 ## 失敗時の診断
 
 1. `tool-health-<lane>.md` の status 列で分類を確認する。
