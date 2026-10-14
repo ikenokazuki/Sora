@@ -57,6 +57,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
 import { errorMessage } from './errors.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { addressEnabled } from './services/address_config.js';
+import { addressErrorMessage } from './services/address_errors.js';
 
 export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
@@ -321,7 +322,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasDisaster) {
     tier1Directives.push(
-      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation, address & postal codes): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation, addresses): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
     );
   }
   if (hasYahoo) {
@@ -1624,7 +1625,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           } catch (err) {
             return {
               isError: true,
-              content: [{ type: 'text', text: `Postal code error: ${errorMessage(err) || err}` }],
+              content: [{ type: 'text', text: `Postal code error: ${addressErrorMessage(err)}` }],
             };
           }
         },
@@ -1657,7 +1658,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           } catch (err) {
             return {
               isError: true,
-              content: [{ type: 'text', text: `Address normalize error: ${errorMessage(err) || err}` }],
+              content: [{ type: 'text', text: `Address normalize error: ${addressErrorMessage(err)}` }],
             };
           }
         },
@@ -1687,7 +1688,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
           } catch (err) {
             return {
               isError: true,
-              content: [{ type: 'text', text: `Reverse geocode error: ${errorMessage(err) || err}` }],
+              content: [{ type: 'text', text: `Reverse geocode error: ${addressErrorMessage(err)}` }],
             };
           }
         },
@@ -2445,7 +2446,7 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
-/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（47 ツールの定義を持つため） */
+/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（50 ツールの定義を持つため） */
 export const DEFAULT_MAX_MCP_SESSIONS = 100;
 /** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
 export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;

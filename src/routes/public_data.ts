@@ -360,10 +360,12 @@ publicDataRoutes.get('/geo/poi', async (c) => {
 
 // ABR 住所データ: 郵便番号・正規化・逆ジオコーディング。住所モジュールは呼ばれたときだけ読み込む。
 async function addressErrorResponse(c: Context, err: unknown) {
-  const { AddressDisabledError, AddressInputError, AddressUnavailableError } = await import('../services/address_errors.js');
-  const message = errorMessage(err) || 'Address lookup failed';
+  const { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError, addressErrorMessage } = await import('../services/address_errors.js');
+  const message = addressErrorMessage(err) || errorMessage(err) || 'Address lookup failed';
   if (err instanceof AddressInputError) return formatError(c, message, 'INVALID_INPUT', 400);
   if (err instanceof AddressDisabledError) return formatError(c, message, 'ADDRESS_DISABLED', 404);
+  // 待ち時間までにデータが揃わなかった。構築は裏で続くので、しばらくして再実行すれば答えられる。
+  if (err instanceof AddressPendingError) return formatError(c, message, 'ADDRESS_DATA_PENDING', 502, true);
   if (err instanceof AddressUnavailableError) return formatError(c, message, 'ADDRESS_DATA_UNAVAILABLE', 502, !err.blocked);
   return formatError(c, message, 'GEO_ERROR', 500);
 }
