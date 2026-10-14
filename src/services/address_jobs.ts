@@ -7,6 +7,7 @@ import {
 } from './address_http.js';
 import { buildGeoIndex, type GeoPoint } from './address_geo_index.js';
 import { lgCode6, type JaJson, type TownJson } from './address_names.js';
+import { MLIT_VERSIONS, buildMlitIndex, mlitCityUrl } from './address_mlit.js';
 import { buildNumbers, type NumberFiles } from './address_numbers.js';
 import { jobArtifactId, type AddressStore, type BuildJob } from './address_store.js';
 import { buildPostalDb, parseJigyosyo, parseKenAll } from './postal_code.js';
@@ -44,6 +45,7 @@ export async function runBuildJob(job: BuildJob, deps: JobDeps): Promise<void> {
     else if (job.kind === 'postal') await buildPostal(deps);
     else if (job.kind === 'index') await buildIndex(deps);
     else if (job.kind === 'num') await buildNum(job.lgCode, deps);
+    else if (job.kind === 'mlit') await buildMlit(job.lgCode, deps);
     else await buildCity(job.lgCode, deps);
   } catch (error) {
     await deps.store.markError(jobArtifactId(job), errorText(error)).catch(() => undefined);
@@ -240,6 +242,46 @@ async function buildNum(lgCode: string, deps: JobDeps): Promise<void> {
     const out = join(work, 'out');
     mkdirSync(out);
     await buildNumbers({ outDir: out, towns, files });
+    await store.publish(id, out, { sig, sourceDate });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 国土交通省の街区レベル位置参照情報（市区町村単位の zip、Shift_JIS）から、町ごとの街区符号の点の索引を作る。
+ * 新しい版から順に試して、最初に見つかった版を使う。どの版にも無い市区町村は、空の索引だけを公開する（毎回調べ直さないため）。
+ */
+async function buildMlit(lgCode: string, deps: JobDeps): Promise<void> {
+  const { store, http } = deps;
+  if (!/^\d{6}$/.test(lgCode)) throw new Error(`不正な市区町村コード: ${lgCode}`);
+  const id = `mlit:${lgCode}`;
+  let found: { url: string; version: string; signature: Signature } | null = null;
+  for (const version of MLIT_VERSIONS) {
+    const url = mlitCityUrl(lgCode, version);
+    const signature = await headSignature(url, http);
+    if (signature) {
+      found = { url, version, signature };
+      break;
+    }
+  }
+  const sig = found ? `${found.version}:${combineSignatures([found.signature])}` : 'none';
+  const sourceDate = found ? latestSourceDate([found.signature]) : undefined;
+  if (store.current(id)?.meta.sig === sig) {
+    await store.markChecked(id, sourceDate);
+    return;
+  }
+  const work = store.makeWorkDir();
+  try {
+    let rows: Row[] = [];
+    if (found) {
+      const zip = join(work, 'mlit.zip');
+      if (!(await downloadToFile(found.url, zip, http))) throw new Error(`国土交通省の街区レベル位置参照情報が見つかりません: ${found.url}`);
+      rows = parseCsvRows(await readZipText(zip, 'shift_jis', /\.csv$/i));
+    }
+    const out = join(work, 'out');
+    mkdirSync(out);
+    writeFileSync(join(out, 'index.json'), JSON.stringify(buildMlitIndex(rows)));
     await store.publish(id, out, { sig, sourceDate });
   } finally {
     rmSync(work, { recursive: true, force: true });

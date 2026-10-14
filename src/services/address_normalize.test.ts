@@ -61,6 +61,35 @@ describe('addressVariants', () => {
   });
 });
 
+describe('normalize（国土交通省の街区レベル位置参照で補う）', () => {
+  const setup = (up = sampleUpstream({ numbers: true, mlit: true })) => {
+    const built = createTestAddressData(dir, { up });
+    return { ...built, normalizer: new AddressNormalizer(built.data) };
+  };
+
+  test('ABR で番地・号に届かず、街区符号が国土交通省のデータにあれば、街区までの点で答える', async () => {
+    const { normalizer } = setup();
+    const result = await normalizer.normalize('東京都千代田区永田町1-9-5');
+    expect(result).toMatchObject({
+      level: 8, numberSource: 'mlit', normalized: '東京都千代田区永田町一丁目9', addr: '9', other: '5',
+      keys: { lgCode: CHIYODA_LG, prc: ['9'] }, point: { lat: 35.674, lon: 139.7461, level: 7 },
+    });
+    expect(result.incomplete).toBeUndefined();
+  });
+
+  test('ABR で届く住所には使わない。街区符号が無ければ町字止まりのまま', async () => {
+    const { normalizer } = setup();
+    expect(await normalizer.normalize('東京都千代田区永田町1-7-1')).toMatchObject({ numberSource: 'rsdt', level: 8 });
+    expect(await normalizer.normalize('東京都千代田区永田町1-3-1')).toMatchObject({ numberSource: null, level: 3, other: '3-1' });
+    expect((await normalizer.normalize('東京都千代田区永田町1-9-5', { level: 3 })).numberSource).toBeNull();
+  });
+
+  test('国土交通省のデータを取得できなくても、ABR だけの答えを返す', async () => {
+    const { normalizer } = setup(sampleUpstream({ numbers: true }));
+    expect(await normalizer.normalize('東京都千代田区永田町1-9-5')).toMatchObject({ level: 3, numberSource: null, other: '9-5' });
+  });
+});
+
 describe('normalize（郵便番号で市区町村を補う）', () => {
   const setup = () => new AddressNormalizer(createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) }).data);
 

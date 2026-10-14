@@ -187,18 +187,20 @@ async function attachAddresses(pois: PoiItem[], annotate: PoiAddressAnnotator): 
   }
   let attached = false;
   let usesParcel = false;
+  let usesMlit = false;
   pois.forEach((poi, index) => {
     const result = annotation.results[index];
     if (result?.info) {
       poi.addressInfo = result.info;
       attached = true;
       usesParcel = usesParcel || result.info.numberSource === 'chiban';
+      usesMlit = usesMlit || result.info.numberSource === 'mlit';
     }
     if (result?.incomplete) poi.addressIncomplete = true;
   });
   const { incomplete, pending, unavailable } = annotation.gaps;
   return {
-    ...(attached ? { addressAttribution: addressAttribution(usesParcel) } : {}),
+    ...(attached ? { addressAttribution: addressAttribution(usesParcel, usesMlit) } : {}),
     ...(incomplete ? { addressIncomplete: true as const } : {}),
     ...(pending ? { addressPending: pending } : {}),
     ...(unavailable ? { addressUnavailable: unavailable } : {}),

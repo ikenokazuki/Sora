@@ -35,6 +35,10 @@ function viewOf(address: NormalizedAddress): NumberView {
   if (address.numberSource === 'rsdt') {
     return { key: [address.keys.blk, address.keys.rsdt, address.keys.rsdt2].filter(Boolean).join('-'), block: address.keys.blk, verified: true, rest: compact(address.other) };
   }
+  if (address.numberSource === 'mlit') {
+    // 街区符号まで。号は照合していないので、建物名や号の比較は文字列のまま（verified にしない）。
+    return { key: address.keys.prc?.[0], block: address.keys.prc?.[0], verified: false, rest: compact(address.other) };
+  }
   if (address.numberSource === 'chiban') {
     const prc = address.keys.prc ?? [];
     return { key: prc.join('-'), block: prc[0], verified: true, rest: compact(address.other) };

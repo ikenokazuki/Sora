@@ -85,7 +85,7 @@ export async function searchPostalCode(
     postalCodes,
     ...gaps.result(),
     dataset: datasetField(ctx, ['postal', ...(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : [])]),
-    attribution: addressAttribution(normalized.numberSource === 'chiban'),
+    attribution: addressAttribution(normalized.numberSource === 'chiban', normalized.numberSource === 'mlit'),
   };
 }
 
@@ -154,11 +154,14 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
   }
   const cities = new Set<string>(normalized.keys.lgCode ? [`city:${normalized.keys.lgCode}`] : []);
   let usesParcel = normalized.numberSource === 'chiban' || checks.coordinates?.nearest?.numberSource === 'chiban';
+  let usesMlit = normalized.numberSource === 'mlit';
+  if (usesMlit && normalized.keys.lgCode) cities.add(`mlit:${normalized.keys.lgCode}`);
   if (input.compareAddress?.trim()) {
     const other = await ctx.normalizer.normalize(input.compareAddress, { level });
     gaps.add(other);
     if (other.keys.lgCode) cities.add(`city:${other.keys.lgCode}`);
     usesParcel = usesParcel || other.numberSource === 'chiban';
+    usesMlit = usesMlit || other.numberSource === 'mlit';
     checks.compare = { ...compareAddresses(normalized, other), other: { input: other.input, normalized: other.normalized, level: other.level } };
   }
 
@@ -168,7 +171,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
     postalCodes,
     ...gaps.result(),
     dataset: datasetField(ctx, ['postal', ...cities]),
-    attribution: addressAttribution(usesParcel),
+    attribution: addressAttribution(usesParcel, usesMlit),
   };
   if (Object.keys(checks).length > 0) result.checks = checks;
   return result;

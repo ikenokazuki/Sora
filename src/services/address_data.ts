@@ -9,6 +9,7 @@ import {
   AddressStore, jobArtifactId, ttlFor, type AddressStatus, type ArtifactMeta, type BuildJob,
 } from './address_store.js';
 import { GeoIndexReader } from './address_geo_index.js';
+import type { MlitIndex } from './address_mlit.js';
 import type { NumberRanges } from './address_numbers.js';
 import { PostalReader } from './postal_code.js';
 
@@ -105,7 +106,7 @@ const HOUR = 3_600_000;
  */
 export type BuildPolicy = 'never' | 'background';
 const buildPolicy = new AsyncLocalStorage<BuildPolicy>();
-const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4 };
+const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4, mlit: 5 };
 const TOWN_CACHE_MAX = 50;
 const NUMBERS_CACHE_MAX = 30;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
@@ -138,6 +139,7 @@ export class AddressData {
   private readonly townCache = new Map<string, { ver: string; json: TownJson }>();
   private postalCache: { ver: string; reader: PostalReader } | null = null;
   private geoCache: { ver: string; reader: GeoIndexReader } | null = null;
+  private readonly mlitCache = new Map<string, { ver: string; index: MlitIndex }>();
   private readonly numbersCache = new Map<string, { ver: string; path: string; ranges: NumberRanges }>();
 
   constructor(private readonly options: AddressDataOptions) {
@@ -255,6 +257,24 @@ export class AddressData {
     return entry;
   }
 
+  /** 市区町村の街区レベル位置参照の索引（国土交通省）。最大 30 市区町村を版ごとにメモリへ置く。 */
+  async mlit(lgCode: string, waitMs?: number): Promise<{ ver: string; index: MlitIndex }> {
+    if (!/^\d{6}$/.test(lgCode)) throw new Error(`市区町村コードは 6 桁で指定してください: ${lgCode}`);
+    const ready = await this.ensure({ kind: 'mlit', lgCode }, waitMs);
+    const cached = this.mlitCache.get(lgCode);
+    if (cached?.ver === ready.ver) {
+      this.mlitCache.delete(lgCode);
+      this.mlitCache.set(lgCode, cached);
+      return cached;
+    }
+    const index = JSON.parse(await Bun.file(join(ready.path, 'index.json')).text()) as MlitIndex;
+    const entry = { ver: ready.ver, index };
+    this.mlitCache.delete(lgCode);
+    this.mlitCache.set(lgCode, entry);
+    while (this.mlitCache.size > NUMBERS_CACHE_MAX) this.mlitCache.delete(this.mlitCache.keys().next().value as string);
+    return entry;
+  }
+
   /** 郵便番号の読み取り役。版が変わったら新しいものに替え、古いものは猶予のあとで閉じる。 */
   async postal(waitMs?: number): Promise<{ ver: string; reader: PostalReader }> {
     const ready = await this.ensure({ kind: 'postal' }, waitMs);
@@ -363,7 +383,7 @@ export class AddressData {
   inPreloadScope(id: string): boolean {
     const { preload } = this.config;
     if (!preload) return false;
-    const match = /^(?:city|num):(\d{2})\d{4}$/.exec(id);
+    const match = /^(?:city|num|mlit):(\d{2})\d{4}$/.exec(id);
     return match !== null && (preload === 'all' || preload.includes(match[1] as string));
   }
 

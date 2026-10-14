@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressData } from './address_data.js';
+import { lookupMlit } from './address_mlit.js';
 import { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 import { lgCode6, type TownJson } from './address_names.js';
 import type { NumberRanges } from './address_numbers.js';
@@ -35,8 +36,11 @@ export interface NormalizedAddress {
   normalized: string;
   /** 0 都道府県も不明 / 1 都道府県 / 2 市区町村 / 3 町字 / 8 番地・号。 */
   level: number;
-  /** 番地・号を何で照合したか。null は整形だけで未照合。 */
-  numberSource: 'rsdt' | 'chiban' | null;
+  /**
+   * 番地・号を何で照合したか。null は整形だけで未照合。
+   * mlit は国土交通省の街区レベル位置参照情報で、街区符号（住居表示でない町は地番の本番）まで。号は未照合で、点は街区の代表点（point.level 7）。
+   */
+  numberSource: 'rsdt' | 'chiban' | 'mlit' | null;
   keys: AddressKeys;
   point?: { lat: number; lon: number; level: number };
   /** 待ち時間までにデータが揃わず、取れている範囲で答えた。 */
@@ -89,6 +93,8 @@ export interface LibraryResult {
     machiAza?: { machiaza_id: string };
     rsdt?: { blk_num: string; rsdt_num: string; rsdt_num2: string };
     chiban?: { prc_num1: string; prc_num2: string; prc_num3: string };
+    /** 国土交通省の街区レベル位置参照情報で補った街区符号。 */
+    mlit?: { block: string };
   };
 }
 
@@ -114,6 +120,9 @@ export function shapeResult(input: string, postalCode: string | undefined, resul
   } else if (metadata.chiban) {
     numberSource = 'chiban';
     keys.prc = [metadata.chiban.prc_num1, metadata.chiban.prc_num2, metadata.chiban.prc_num3].filter((part) => part !== '');
+  } else if (metadata.mlit) {
+    numberSource = 'mlit';
+    keys.prc = [metadata.mlit.block];
   }
   const shaped: NormalizedAddress = {
     input,
@@ -311,7 +320,29 @@ export class AddressNormalizer {
       if (gap?.pending) notes.pending = [...(notes.pending ?? []), `num:${lgCode}`];
       else if (gap) notes.unavailable = [...(notes.unavailable ?? []), { artifact: `num:${lgCode}`, message: gap.message }];
     }
+    // ABR で番地・号に届かず、データの不足でもないときは、国土交通省の街区レベル位置参照情報で街区符号を補う。
+    if (level >= 4 && result.level >= 3 && result.level < 8 && result.metadata.city && result.other.trim() !== '' && !notes.pending && !notes.unavailable) {
+      result = await this.supplementFromMlit(result, deadline, notes);
+    }
     return shapeResult(input, postalCode, result, notes);
+  }
+
+  /** 街区符号を国土交通省のデータで補う。取得できなくても、ABR だけの答えをそのまま返す（取得中のときだけ pending を記録する）。 */
+  private async supplementFromMlit(result: LibraryResult, deadline: number, notes: Notes): Promise<LibraryResult> {
+    const city = result.metadata.city;
+    if (!city) return result;
+    try {
+      const { index } = await this.data.mlit(lgCode6(city.code), Math.max(0, deadline - this.now()));
+      const hit = lookupMlit(index, result.town ?? '', result.other);
+      if (!hit) return result;
+      return {
+        ...result, level: 8, addr: hit.block, other: hit.rest,
+        point: { lat: hit.lat, lng: hit.lon, level: 7 }, metadata: { ...result.metadata, mlit: { block: hit.block } },
+      };
+    } catch (error) {
+      if (error instanceof AddressPendingError) notes.pending = [error.pending];
+      return result;
+    }
   }
 
   /** 郵便番号が 1 つの市区町村に決まるとき、その都道府県と市区町村。決まらない、データが無いときは null。 */

@@ -9,7 +9,7 @@ import { toPostalEntry, zipsForAddress, type PostalCodeEntry } from './address_p
 export interface PoiAddressInfo {
   normalized: string;
   level: number;
-  numberSource: 'rsdt' | 'chiban' | null;
+  numberSource: 'rsdt' | 'chiban' | 'mlit' | null;
   keys: AddressKeys;
   postalCodes: PostalCodeEntry[];
   check: { status: CoordinatesCheckStatus; distanceMeters?: number };
