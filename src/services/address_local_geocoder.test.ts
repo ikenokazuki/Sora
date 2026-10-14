@@ -43,14 +43,52 @@ describe('localGeocode', () => {
     expect(built.up.requests).toEqual([]);
   });
 
-  test('eager: データが無ければ待たずに null を返し、裏で取得を始める', async () => {
+  test('eager: データが無ければ待たずに null を返し、裏で取得を始める（番地・号まで揃ってから解決する）', async () => {
     const built = setup('eager');
     expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1')).toBeNull();
     await waitFor(() => built.data.peek('master') !== null);
     // マスターが揃えば、次の呼び出しで市区町村の取得が始まる（その回は市区町村までの答え）。
     expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1')).toBeNull();
     await waitFor(() => built.data.peek(`city:${CHIYODA_LG}`) !== null);
+    // 町字までは分かるが、番地・号をまだ照合できない（段B が無い）ので、従来の経路に任せる。段B の取得は始める。
+    expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1')).toBeNull();
+    await waitFor(() => built.data.peek(`num:${CHIYODA_LG}`) !== null);
     expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1')).toMatchObject({ source: 'abr', needsVerification: false });
+  });
+
+  test('番地・号が入力にあるのに照合できない住所は、町字の代表点を返さず null（従来の経路へ）', async () => {
+    const built = setup();
+    await warm(built);
+    // データに無い番地。町字までしか分からない。表記が違っても同じ
+    for (const query of ['東京都千代田区永田町1-9-9', '東京都千代田区永田町一丁目９－９', '東京都千代田区永田町一丁目九番九号', '東京都千代田区永田町一丁目7番地']) {
+      expect(await localGeocode(built.ctx, query)).toBeNull();
+    }
+  });
+
+  test('番地・号のデータが無い市区町村でも、番地付きの住所は町字の代表点を返さず null', async () => {
+    const built = createTestAddressData(join(dir, 'no-numbers'), { up: sampleUpstream() });
+    const ctx = createAddressContext(built.data);
+    await built.data.ensure({ kind: 'master' });
+    await built.data.ensure({ kind: 'city', lgCode: CHIYODA_LG });
+    expect(await localGeocode(ctx, '東京都千代田区永田町1-7-1')).toBeNull();
+    // 番地の無い入力なら、同じデータで町字の代表点を返せる
+    expect(await localGeocode(ctx, '東京都千代田区永田町一丁目')).toMatchObject({ source: 'abr' });
+  });
+
+  test('番地の無い町字までの住所は、町字の代表点で解決する（建物名は番地ではない）', async () => {
+    const built = setup();
+    await warm(built);
+    expect(await localGeocode(built.ctx, '東京都千代田区永田町一丁目')).toMatchObject({ address: '東京都千代田区永田町一丁目', source: 'abr', needsVerification: false });
+    expect(await localGeocode(built.ctx, '東京都千代田区永田町一丁目 ABCビル3F')).toMatchObject({ address: '東京都千代田区永田町一丁目', source: 'abr' });
+    expect(await localGeocode(built.ctx, '東京都千代田区永田町一丁目 三井ビル')).toMatchObject({ source: 'abr' });
+  });
+
+  test('番地・号まで照合できた住所は、建物名が続いても番地の座標で解決する', async () => {
+    const built = setup();
+    await warm(built);
+    expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1 ABCビル3F')).toMatchObject({
+      address: '東京都千代田区永田町一丁目7-1', lat: 35.675912, lon: 139.745512,
+    });
   });
 
   test('取得済みの住所を、番地の座標で解決する', async () => {
