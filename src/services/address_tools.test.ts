@@ -108,6 +108,14 @@ describe('番地・号まで照合した住所', () => {
 });
 
 describe('normalizeAddressTool', () => {
+  test('市区町村の無い住所は、渡された zipcode で市区町村を補って解決し、zipcode の突き合わせも match になる', async () => {
+    const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
+    const ctx = createAddressContext(built.data);
+    const result = await normalizeAddressTool({ address: '永田町一丁目7-1', zipcode: '100-0014' }, ctx);
+    expect(result).toMatchObject({ level: 8, normalized: '東京都千代田区永田町一丁目7-1' });
+    expect(result.checks?.zipcode).toMatchObject({ status: 'match' });
+  });
+
   test('国土交通省の街区データで補った結果には、国土交通省の出典と加工の明記が付く', async () => {
     const built = createTestAddressData(dir, { up: sampleUpstream({ numbers: true, mlit: true }) });
     const ctx = createAddressContext(built.data);

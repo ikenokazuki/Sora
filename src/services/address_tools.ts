@@ -122,7 +122,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
   if (!Number.isInteger(level) || level < 1 || level > 8) throw new AddressInputError('level は 1〜8 の整数で指定してください');
   const zipcode = input.zipcode?.trim() ? normalizeZip(input.zipcode) : undefined;
 
-  const normalized = await ctx.normalizer.normalize(input.address, { level });
+  const normalized = await ctx.normalizer.normalize(input.address, { level, zipcode });
   const gaps = new Gaps();
   gaps.add(normalized);
 

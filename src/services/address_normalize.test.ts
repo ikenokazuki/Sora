@@ -101,6 +101,15 @@ describe('normalize（郵便番号で市区町村を補う）', () => {
     expect(await normalizer.normalize('100-0014 大字永田町1丁目7-1')).toMatchObject({ level: 8 });
   });
 
+  test('住所とは別に渡された郵便番号（zipcode）でも、同じように市区町村を補う。先頭の郵便番号が優先', async () => {
+    const normalizer = setup();
+    const result = await normalizer.normalize('永田町一丁目7-1', { zipcode: '1000014' });
+    expect(result).toMatchObject({ level: 8, normalized: '東京都千代田区永田町一丁目7-1', input: '永田町一丁目7-1' });
+    expect(result.postalCode).toBeUndefined();
+    expect((await normalizer.normalize('永田町一丁目7-1', { zipcode: '9999999' })).level).toBe(0);
+    expect((await normalizer.normalize('〒100-0014 永田町一丁目7-1', { zipcode: '0600001' })).level).toBe(8);
+  });
+
   test('郵便番号が無い、見つからない、解釈できる住所には使わない', async () => {
     const normalizer = setup();
     expect((await normalizer.normalize('永田町一丁目7-1')).level).toBe(0);
