@@ -292,6 +292,15 @@ export class AddressNormalizer {
         }
       }
     }
+    // 住所が解釈できず、先頭に郵便番号があるときは、郵便番号から都道府県・市区町村を補って解決し直す
+    // （日本郵便は、正しい7桁の郵便番号があれば市区町村名を省略してよいとしている）。
+    if (result.level === 0 && postalCode) {
+      const city = await this.cityOfPostalCode(postalCode, options.waitMs);
+      if (city) {
+        const filled = await this.normalize(`${city}${address}`, options);
+        if (filled.level > 0) return { ...filled, input, postalCode };
+      }
+    }
     this.data.store.touch('master');
     if (result.metadata.city) {
       const lgCode = lgCode6(result.metadata.city.code);
@@ -303,6 +312,17 @@ export class AddressNormalizer {
       else if (gap) notes.unavailable = [...(notes.unavailable ?? []), { artifact: `num:${lgCode}`, message: gap.message }];
     }
     return shapeResult(input, postalCode, result, notes);
+  }
+
+  /** 郵便番号が 1 つの市区町村に決まるとき、その都道府県と市区町村。決まらない、データが無いときは null。 */
+  private async cityOfPostalCode(zipcode: string, waitMs?: number): Promise<string | null> {
+    try {
+      const { reader } = await this.data.postal(waitMs);
+      const cities = new Set(reader.byZip(zipcode).map((row) => `${row.pref}${row.city}`));
+      return cities.size === 1 ? ([...cities][0] ?? null) : null;
+    } catch {
+      return null;
+    }
   }
 
   /** 使えるライブラリの世代を返す。配ったデータが更新・破棄されたか、古くなっていれば読み直す。 */

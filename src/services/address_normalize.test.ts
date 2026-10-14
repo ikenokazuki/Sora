@@ -61,6 +61,25 @@ describe('addressVariants', () => {
   });
 });
 
+describe('normalize（郵便番号で市区町村を補う）', () => {
+  const setup = () => new AddressNormalizer(createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) }).data);
+
+  test('住所が解釈できず、先頭に郵便番号があるときは、郵便番号の都道府県・市区町村を補って解決し直す', async () => {
+    const normalizer = setup();
+    expect(await normalizer.normalize('〒100-0014 永田町一丁目7-1')).toMatchObject({
+      level: 8, normalized: '東京都千代田区永田町一丁目7-1', postalCode: '1000014', input: '〒100-0014 永田町一丁目7-1',
+    });
+    expect(await normalizer.normalize('100-0014 大字永田町1丁目7-1')).toMatchObject({ level: 8 });
+  });
+
+  test('郵便番号が無い、見つからない、解釈できる住所には使わない', async () => {
+    const normalizer = setup();
+    expect((await normalizer.normalize('永田町一丁目7-1')).level).toBe(0);
+    expect((await normalizer.normalize('〒999-9999 永田町一丁目7-1')).level).toBe(0);
+    expect(await normalizer.normalize('〒060-0001 東京都千代田区永田町一丁目7-1')).toMatchObject({ level: 8 });
+  });
+});
+
 describe('normalize', () => {
   test('入力のままでは番地・号に届かなければ、言い換えた入力で届いたものを採る（街区表記）', async () => {
     const { data } = createTestAddressData(dir, { up: sampleUpstream({ numbers: true }) });
