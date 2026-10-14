@@ -931,6 +931,8 @@ export const PostalCodeResultSchema = z.looseObject({
   count: z.number().int().optional().describe('順引き時の候補数。該当なしは 0'),
   candidates: z.array(z.looseObject({
     kind: z.enum(['general', 'office', 'po_box']), prefecture: z.string(), city: z.string(), town: z.string(),
+    detail: z.string().optional().describe('事業所の小字・丁目・番地等'),
+    office: z.string().optional().describe('事業所名 (office / po_box のみ)'),
     lgCode: z.string().optional(), lat: z.number().optional(), lon: z.number().optional(),
     locationLevel: z.number().int().optional().describe('座標の細かさ。2 市区町村 / 3 町字 / 8 番地'),
   })).optional(),
@@ -957,7 +959,25 @@ export const NormalizeAddressResultSchema = z.looseObject({
   keys: z.record(z.string(), z.unknown()).describe('結合キー (prefCode, lgCode, machiazaId, blk, rsdt, prc)'),
   point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional(),
   postalCodes: z.array(z.looseObject({ zipcode: z.string() })),
-  checks: z.looseObject({}).optional().describe('指定した突き合わせ (zipcode / coordinates / compare)'),
+  checks: z.looseObject({
+    zipcode: z.looseObject({
+      status: z.enum(['match', 'partial', 'mismatch', 'unknown']).describe('match 町域の番号に含まれる / partial 同じ市区町村の別の町・既定の番号 / mismatch 別の市区町村・存在しない / unknown 住所を解釈できない'),
+      zipcode: z.string(), reason: z.string(),
+      expected: z.array(z.looseObject({ zipcode: z.string() })).describe('この住所に当たる郵便番号'),
+    }).optional().describe('zipcode 指定時 (または住所の先頭の郵便番号) の、住所との突き合わせ'),
+    coordinates: z.looseObject({
+      status: z.enum(['match', 'partial', 'mismatch', 'unknown']).describe('match 住所が主張する階層まで一致 (番地・号は 150m 以内) / partial 同じ町字で番地・号が違う・同じ市区町村で町が違う / mismatch 市区町村が違う / unknown 住所を解釈できない'),
+      reason: z.string(),
+      distanceMeters: z.number().optional().describe('最寄りの住所の点までの距離'),
+      nearest: z.looseObject({ normalized: z.string().optional(), level: z.number().int() }).nullable().describe('渡された座標の最寄りの住所'),
+    }).optional().describe('lat / lon 指定時の、住所との突き合わせ'),
+    compare: z.looseObject({
+      relation: z.enum(['identical', 'same-block', 'same-town', 'same-city', 'same-prefecture', 'different']),
+      sameLevel: z.number().int().describe('キーが一致した最も深い階層 (0 / 1 / 2 / 3 / 8)'),
+      differences: z.array(z.string()).describe('違いのある部分'),
+      other: z.looseObject({ input: z.string(), normalized: z.string(), level: z.number().int() }),
+    }).optional().describe('compareAddress 指定時の、2 つの住所の名寄せ'),
+  }).optional().describe('指定した突き合わせ (zipcode / coordinates / compare)'),
   ...addressResultBase,
 });
 
@@ -969,9 +989,14 @@ export const ReverseGeocodeRequestSchema = z.object({
 export const ReverseGeocodeResultSchema = z.looseObject({
   lat: z.number(), lon: z.number(),
   found: z.boolean(),
+  reason: z.string().optional().describe('found が false の理由'),
+  address: z.looseObject({
+    pref: z.string(), city: z.string(), town: z.string().optional(), addr: z.string().optional().describe('番地・号 (level 8 のみ)'),
+  }).optional().describe('見つけた住所の構成要素'),
   normalized: z.string().optional(),
-  level: z.number().int(),
+  level: z.number().int().describe('8 番地・号 / 3 町字 / 2 市区町村 / 0 見つからない'),
   numberSource: z.enum(['rsdt', 'chiban']).nullable(),
+  point: z.object({ lat: z.number(), lon: z.number(), level: z.number().int() }).optional().describe('見つけた点 (番地・号、町字、市区町村の代表点)'),
   distanceMeters: z.number().optional().describe('最寄りの点までの距離。ポリゴンの包含判定ではなく代表点による最寄り判定'),
   approximate: z.boolean().optional(),
   keys: z.record(z.string(), z.unknown()),

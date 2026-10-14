@@ -25,10 +25,19 @@ export class AddressUnavailableError extends Error {
   }
 }
 
-/** 待ち時間の上限までにデータが揃わなかった。呼び出し側は取れている範囲で答える。 */
+/**
+ * 待ち時間の上限までにデータが揃わなかった。呼び出し側は取れている範囲で答える。
+ * 答えようがない場合（全国マスターや郵便番号が揃わない）の REST は ADDRESS_DATA_PENDING / 502（再試行できる）。
+ */
 export class AddressPendingError extends Error {
   constructor(readonly pending: string) {
     super(`address data pending: ${pending}`);
     this.name = 'AddressPendingError';
   }
+}
+
+/** 利用者（MCP の呼び出し元・REST の利用者）に見せるエラー文。待ち時間切れは、構築が裏で続いているので再実行すれば答えられると添える。 */
+export function addressErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return error instanceof AddressPendingError ? `${message}（データを取得中です。しばらくして再実行してください）` : message;
 }

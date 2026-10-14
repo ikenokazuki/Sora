@@ -346,5 +346,45 @@ describe('REST routes (/geo/*)', () => {
     const res = await publicDataRoutes.request('/geo/reverse?lat=invalid&lon=139.7');
     expect(res.status).toBe(400);
   });
+
+  const postJson = (path: string, body: unknown) =>
+    publicDataRoutes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  test('SORA_ADDRESS=off では 3 つとも 404 ADDRESS_DISABLED', async () => {
+    const built = createTestAddressData(dir, { mode: 'off' });
+    setAddressContextForTest(createAddressContext(built.data));
+    for (const [path, body] of [
+      ['/geo/postal-code', { zipcode: '100-0014' }],
+      ['/geo/address/normalize', { address: '東京都千代田区永田町1-7-1' }],
+      ['/geo/reverse', { lat: 35.6759, lon: 139.7463 }],
+    ] as const) {
+      const res = await postJson(path, body);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ code: 'ADDRESS_DISABLED', retryable: false });
+    }
+  });
+
+  test('待ち時間までにデータが揃わなければ 502 ADDRESS_DATA_PENDING（再試行できる）', async () => {
+    setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'postal'), waitMs: 200 });
+    const res = await postJson('/geo/postal-code', { zipcode: '100-0014' });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'ADDRESS_DATA_PENDING', retryable: true, error: expect.stringContaining('postal') });
+  });
+
+  test('国外 IP の拒否 (403) は 502 ADDRESS_DATA_UNAVAILABLE で再試行不可、一時的な失敗 (5xx) は再試行可', async () => {
+    const blocked = sampleUpstream();
+    blocked.set(abrUrl('mt_city/mt_city_all'), { body: '', status: 403 });
+    setup({ up: blocked });
+    const res403 = await postJson('/geo/address/normalize', { address: '東京都千代田区永田町1-7-1' });
+    expect(res403.status).toBe(502);
+    expect(await res403.json()).toMatchObject({ code: 'ADDRESS_DATA_UNAVAILABLE', retryable: false });
+
+    const flaky = sampleUpstream();
+    flaky.set(abrUrl('mt_city/mt_city_all'), { body: '', status: 500 });
+    setup({ up: flaky });
+    const res500 = await postJson('/geo/address/normalize', { address: '東京都千代田区永田町1-7-1' });
+    expect(res500.status).toBe(502);
+    expect(await res500.json()).toMatchObject({ code: 'ADDRESS_DATA_UNAVAILABLE', retryable: true });
+  });
 });
 

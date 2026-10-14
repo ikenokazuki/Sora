@@ -4,7 +4,7 @@ import { createMcpServer, slimToolsListMessage } from './mcp.js';
 
 async function main() {
   const server = createMcpServer({
-    deferTools: false, // stdio 環境では全ツール（47 種）を直接即時登録
+    deferTools: false, // stdio 環境では全ツール（50 種）を直接即時登録
   });
   const transport = new StdioServerTransport();
   // HTTP 経路（sanitizeMcpResponse）と同じく、tools/list から outputSchema を除外し inputSchema を整形する
