@@ -1,6 +1,6 @@
 import { resolveCityId } from './life.js';
 import { getFromCache, setToCache } from '../cache.js';
-import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
+import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 import { errorMessage } from '../errors.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
@@ -355,7 +355,7 @@ export async function fetchElevationAndCoordinates(options: {
     query: rawAddress,
     address: rawAddress,
     matchedTitle,
-    ...(geocoding ? { geocodingSource: geocoding.source, geocodingAttribution: GEOCODING_ATTRIBUTIONS[geocoding.source], needsVerification: geocoding.needsVerification } : {}),
+    ...(geocoding ? { geocodingSource: geocoding.source, geocodingAttribution: geocodingAttribution(geocoding), needsVerification: geocoding.needsVerification } : {}),
     lat,
     lon,
     elevationMeters,

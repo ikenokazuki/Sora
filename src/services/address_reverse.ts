@@ -32,6 +32,8 @@ export interface ReverseAlternative {
   normalized: string;
   level: number;
   distanceMeters: number;
+  /** 番地・号を何の点から得たか（町字の候補は null）。 */
+  numberSource: 'rsdt' | 'chiban' | null;
 }
 
 export interface ReverseResult extends Incomplete {
@@ -199,7 +201,9 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
       const text = `${nameOf(point.candidate)}${numberText(point.numbers)}`;
       if (seen.has(text)) continue;
       seen.add(text);
-      alternatives.push({ normalized: text, level: 8, distanceMeters: Math.round(point.distance) });
+      alternatives.push({
+        normalized: text, level: 8, distanceMeters: Math.round(point.distance), numberSource: point.kind === '住居表示' ? 'rsdt' : 'chiban',
+      });
       if (alternatives.length >= MAX_ALTERNATIVES) break;
     }
     result = {
@@ -220,7 +224,7 @@ export async function reverseGeocode(ctx: AddressContext, input: ReverseInput): 
       const text = nameOf(other);
       if (seen.has(text)) continue;
       seen.add(text);
-      alternatives.push({ normalized: text, level: 3, distanceMeters: Math.round(other.near.distanceMeters) });
+      alternatives.push({ normalized: text, level: 3, distanceMeters: Math.round(other.near.distanceMeters), numberSource: null });
       if (alternatives.length >= MAX_ALTERNATIVES) break;
     }
     result = {

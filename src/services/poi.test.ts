@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { GEOCODING_ATTRIBUTIONS } from './geocoding.js';
 import { normalizePoiItem, searchOpenPoi } from './poi.js';
 import { PoiSearchRequestSchema } from '../types.js';
 
@@ -107,6 +108,15 @@ describe('openpoi center geocoding', () => {
     });
     expect(urls).toHaveLength(1);
     expect(new URL(urls[0]).searchParams.get('center')).toBe('139.709008,35.669968');
+  });
+  test('center attribution prefers the one the geocoder attached to its result', async () => {
+    const fetchFn = async () => okResponse({ count: 0, results: [] });
+    const parcel = await searchOpenPoi({ query: 'x', center: '札幌市中央区北1条西2丁目12-3' }, fetchFn, 5000, async () => ({
+      lat: 43.064, lon: 141.3541, source: 'abr', attribution: '出典: 地番の出典つき',
+    }));
+    expect(parcel.centerResolved?.attribution).toBe('出典: 地番の出典つき');
+    const plain = await searchOpenPoi({ query: 'x', center: '札幌市中央区北1条西2丁目' }, fetchFn, 5000, async () => ({ lat: 43.064, lon: 141.3541, source: 'abr' }));
+    expect(plain.centerResolved?.attribution).toBe(GEOCODING_ATTRIBUTIONS.abr);
   });
   test('unresolvable center fails loudly, never silent nationwide', async () => {
     const { searchOpenPoi } = await import('./poi.js');

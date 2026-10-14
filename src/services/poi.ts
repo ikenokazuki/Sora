@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { PoiSearchRequestSchema } from '../types.js';
 import type { PoiAddressInfo } from './address_poi.js';
-import { GEOCODING_ATTRIBUTIONS, geocodeAddress, type GeocodingResult } from './geocoding.js';
+import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 
 export interface PoiItem {
   name: string;
@@ -124,7 +124,7 @@ export async function searchOpenPoi(
     centerResolved = {
       input: input.center, ...(coords.address ? { address: coords.address } : {}),
       lat: coords.lat, lon: coords.lon, source: coords.source,
-      ...(coords.source ? { attribution: GEOCODING_ATTRIBUTIONS[coords.source] } : {}),
+      ...(coords.source ? { attribution: geocodingAttribution({ source: coords.source, attribution: coords.attribution }) } : {}),
       needsVerification: coords.needsVerification ?? false,
       ambiguous: coords.needsVerification ?? false, candidates: [],
     };

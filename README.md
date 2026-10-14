@@ -1551,6 +1551,8 @@ OpenPOIの複数語検索はORのため、場所を`query`へ混ぜず`center`�
 - **リクエスト例 (POST)**: `{"lat": 35.675915, "lon": 139.745515}`
 - **リクエスト例 (GET)**: `GET /geo/reverse?lat=35.675915&lon=139.745515`
 
+住所系3エンドポイントの`attribution`は、結果を表示・公開する際に併記してください。地番（`numberSource: "chiban"`）を使った結果には、デジタル庁 ABR と日本郵便に加えて、法務省「登記所備付地図データ」の出典、加工した旨、精度の注意が付きます。
+
 ---
 
 ### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
@@ -2057,6 +2059,12 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 
 - **Nominatim / OpenStreetMap**: [nominatim.org](https://nominatim.org/)（地名・住所の座標解決。データ © OpenStreetMap contributors, ODbL）
   - 住所・地名・ランドマーク名から緯度経度を解決できる公開APIの提供と運用に感謝いたします。Soraは問い合わせを1.1秒以上の間隔に制限し、成功結果を24時間キャッシュして利用しています。利用にあたっては、検索頻度やサービスを利用して料金を取る行為に関する注意を含め、提供元の利用条件をご確認ください。
+- **デジタル庁 アドレス・ベース・レジストリ（ABR）**: [dataset.address-br.digital.go.jp](https://dataset.address-br.digital.go.jp/)（住所の町字・住居表示・地番とその位置参照。公共データ利用規約 第1.0版）
+  - 住所正規化・郵便番号・逆ジオコーディングの一次データとして、市区町村単位で取得して利用しています。出力の`attribution`で出典と加工の明記を併記しています。地番マスター・地番マスター位置参照は法務省の登記所備付地図データに基づき、[登記所備付地図データ利用規約](https://front.geospatial.jp/moj-chizu-xml-readme/)も適用されます。地番を使った結果には、その出典と加工した旨、地図の精度が作成時期などによって異なることを`attribution`に付けています。地番のデータを個人の特定に使うことは、規約で禁止されています。
+- **日本郵便 郵便番号データ**: [郵便番号データ（KEN_ALL・事業所個別郵便番号）](https://www.post.japanpost.jp/zipcode/dl/utf-zip.html)
+  - 郵便番号から住所候補を引く一次データとして利用しています（日本郵便は著作権を主張せず、自由に配布してよいとしています）。
+- **Geolonia normalize-japanese-addresses**: [geolonia/normalize-japanese-addresses](https://github.com/geolonia/normalize-japanese-addresses)（MIT）
+  - 住所正規化のアルゴリズムとして利用し、データは上の一次データから自前で作っています。
 - **OpenPOI API**: [API仕様・ドキュメント](https://docs.openpoiapi.com/)
   - 日本全国の施設POIを検索できる公開APIの提供に感謝いたします。Soraの施設検索では、施設名・所在地・座標とともに提供元の`licenses`および`attributions`を保持して返します。取得データの保存・再利用時もこれらの情報を保持してください。
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)

@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
-import { CHIYODA_LG, sampleUpstream } from '../test_fixtures/address/harness.js';
+import { CHIYODA_LG, SAPPORO_LG, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
+import { PARCEL_ATTRIBUTION, addressAttribution } from './address_attribution.js';
 import { localGeocode } from './address_local_geocoder.js';
 import { annotatePoiAddresses } from './address_poi.js';
 import { createGeocoder } from './geocoding.js';
@@ -97,6 +98,20 @@ describe('localGeocode', () => {
     expect(await localGeocode(built.ctx, '東京都千代田区永田町1-7-1')).toEqual({
       address: '東京都千代田区永田町一丁目7-1', lat: 35.675912, lon: 139.745512, source: 'abr', needsVerification: false,
     });
+  });
+
+  test('地番で照合した住所には法務省の出典を添え、住居表示や郵便番号の結果には添えない', async () => {
+    const built = setup();
+    await warm(built);
+    await built.data.ensure({ kind: 'city', lgCode: SAPPORO_LG });
+    await built.data.ensure({ kind: 'num', lgCode: SAPPORO_LG });
+    const parcel = await localGeocode(built.ctx, '札幌市中央区北1条西2丁目12-3');
+    expect(parcel).toMatchObject({ source: 'abr', attribution: addressAttribution(true) });
+    expect(parcel?.attribution).toContain(PARCEL_ATTRIBUTION);
+    const rsdt = await localGeocode(built.ctx, '東京都千代田区永田町1-7-1');
+    expect(rsdt).toMatchObject({ source: 'abr' });
+    expect(rsdt?.attribution).toBeUndefined();
+    expect((await localGeocode(built.ctx, '〒100-0014'))?.attribution).toBeUndefined();
   });
 
   test('取得済みの郵便番号を、町字の代表点で解決する', async () => {
