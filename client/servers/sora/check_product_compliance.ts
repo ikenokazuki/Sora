@@ -4,11 +4,11 @@ import { callSora } from '../../runtime.js';
 export type CheckProductComplianceInput = {
   /** 商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得） */
   url?: string;
-  /** 商品名・タイトル（例: "Wooden Building Blocks for Toddlers", "薬用美白クリーム", "Bicycle Helmet"） */
+  /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。HTS と判例は英語なので、日本語の商品は英訳して渡す。英語の語が無く htsCode も無いときは、英訳を促す needs_more_info を返す */
   productName?: string;
-  /** 商品の詳細説明・仕様・素材・用途など */
+  /** 商品の詳細説明・仕様・素材・用途など（英語） */
   description?: string;
-  /** 既知または候補のHTSコード（指定時は最優先で検証） */
+  /** ユーザーから明示された既知のHTSコード（指定時は最優先で検証）。推測・候補値は入れず、分類したいときは省略する（Sora が公式データと判例から特定する） */
   htsCode?: string;
   /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   targetAge?: "adult" | "child" | "unknown";
