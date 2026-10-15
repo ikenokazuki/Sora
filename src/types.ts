@@ -3078,7 +3078,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
           parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'manifest.json に載った相対パス (例: servers/sora/search_web.ts)' }],
-          responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)' } },
+          responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)', content: { 'text/plain': { schema: { type: 'string' } } } } },
         },
       },
       '/watch/list': {
