@@ -1,0 +1,899 @@
+[
+  {
+    "name": "browser_action",
+    "fn": "browserAction",
+    "category": "browser",
+    "description": "【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。返却: { success, url, sessionId?, markdown?, screenshot?, html?, actionOutputs?: [{ step, type, result?, error? }], error? }",
+    "keywords": [
+      "ブラウザ操作",
+      "クリック",
+      "入力",
+      "スクリーンショット",
+      "Stealth Chromium",
+      "セッション"
+    ],
+    "method": "POST",
+    "path": "/browser/action",
+    "file": "servers/sora/browser_action.ts"
+  },
+  {
+    "name": "check_cpsc_certificate",
+    "fn": "checkCpscCertificate",
+    "category": "trade",
+    "description": "【必須・即時推測厳禁】米国CPSC適合証明書（GCC/CPC）要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務を判定する際は、推測せず必ず本ツールを実行してください。非対象時のACE免責申告コード(Disclaimer)や根拠条文（16 CFR）を提示します。素材や年齢層が不明な場合は推測で埋めず未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }",
+    "keywords": [
+      "CPSC",
+      "GCC",
+      "CCC",
+      "eFiling",
+      "適合証明書",
+      "輸出",
+      "輸入",
+      "HTS",
+      "貿易",
+      "コンプライアンス"
+    ],
+    "method": "POST",
+    "path": "/trade/cpsc-check",
+    "file": "servers/sora/check_cpsc_certificate.ts"
+  },
+  {
+    "name": "check_fda_regulated",
+    "fn": "checkFdaRegulated",
+    "category": "trade",
+    "description": "【必須・即時推測厳禁】米国FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）を判定する際は、推測せず必ず本ツールを実行してください。食器・調理器具の食品接触用途が不明な場合は推測で埋めず省略すること。判定影響と確認質問(clarifyingQuestions)を返却します。返却: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation }",
+    "keywords": [
+      "FDA",
+      "食品医薬品局",
+      "Prior Notice",
+      "事前通知",
+      "FD Flag",
+      "MoCRA",
+      "輸出",
+      "輸入",
+      "HTS",
+      "貿易",
+      "コンプライアンス"
+    ],
+    "method": "POST",
+    "path": "/trade/fda-check",
+    "file": "servers/sora/check_fda_regulated.ts"
+  },
+  {
+    "name": "check_product_compliance",
+    "fn": "checkProductCompliance",
+    "category": "trade",
+    "description": "【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }",
+    "keywords": [
+      "商品判定",
+      "コンプライアンス",
+      "FDA",
+      "CPSC",
+      "eFiling",
+      "GCC",
+      "CCC",
+      "HTS",
+      "貿易一括判定",
+      "輸出",
+      "輸入"
+    ],
+    "method": "POST",
+    "path": "/trade/compliance",
+    "file": "servers/sora/check_product_compliance.ts"
+  },
+  {
+    "name": "crawl_site",
+    "fn": "crawlSite",
+    "category": "web",
+    "description": "【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }",
+    "keywords": [
+      "クロール",
+      "サイト巡回",
+      "再帰巡回",
+      "全ページ取得",
+      "まとめ読み",
+      "ドメイン探索",
+      "一括収集"
+    ],
+    "method": "POST",
+    "path": "/crawl",
+    "file": "servers/sora/crawl_site.ts"
+  },
+  {
+    "name": "fetch_social_post",
+    "fn": "fetchSocialPost",
+    "category": "web",
+    "description": "【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応（Metaのコメントは対象外）。Xの投稿は対象外のため fetch_x_post を使ってください。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }",
+    "keywords": [
+      "SNS",
+      "Weibo",
+      "微博",
+      "Threads",
+      "Instagram",
+      "Facebook",
+      "投稿取得",
+      "コメント"
+    ],
+    "method": "POST",
+    "path": "/social/fetch",
+    "file": "servers/sora/fetch_social_post.ts"
+  },
+  {
+    "name": "fetch_x_post",
+    "fn": "fetchXPost",
+    "category": "yahoo",
+    "description": "【X個別投稿の全文取得】search_realtimeで見つけたX投稿のうち詳しく知りたい1件の全文・投稿日時・メディアをFxTwitter経由で取得します（ID突合検証済みのみ返却、未検証の推測は返しません）。返却: { found, statusId, detail: { text, isNoteTweet, author, createdAt, media } }",
+    "keywords": [
+      "X",
+      "ツイート",
+      "ポスト",
+      "全文",
+      "ステータス",
+      "status"
+    ],
+    "method": "POST",
+    "path": "/realtime/post",
+    "file": "servers/sora/fetch_x_post.ts"
+  },
+  {
+    "name": "get_country_context",
+    "fn": "getCountryContext",
+    "category": "intel",
+    "description": "【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。返却: CountryContextReport",
+    "keywords": [
+      "国地域",
+      "コンテキスト",
+      "context",
+      "スナップショット"
+    ],
+    "method": "GET",
+    "path": "/intelligence/context/:contextId",
+    "file": "servers/sora/get_country_context.ts"
+  },
+  {
+    "name": "get_country_context_evidence",
+    "fn": "getCountryContextEvidence",
+    "category": "intel",
+    "description": "【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに属さない ID は拒否します。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, nextCursor? }",
+    "keywords": [
+      "国地域",
+      "根拠",
+      "evidence",
+      "原文",
+      "詳細"
+    ],
+    "method": "GET",
+    "path": "/intelligence/context/:contextId/evidence",
+    "file": "servers/sora/get_country_context_evidence.ts"
+  },
+  {
+    "name": "get_country_context_updates",
+    "fn": "getCountryContextUpdates",
+    "category": "intel",
+    "description": "【国地域レポートの差分取得】contextId のレポートについて、前回以降の根拠の追加・訂正・削除・取得障害を取得します。前回の nextCursor を cursor に渡すと続きから取得します。返却: { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }",
+    "keywords": [
+      "国地域",
+      "更新",
+      "差分",
+      "updates"
+    ],
+    "method": "GET",
+    "path": "/intelligence/context/:contextId/updates",
+    "file": "servers/sora/get_country_context_updates.ts"
+  },
+  {
+    "name": "get_elevation",
+    "fn": "getElevation",
+    "category": "disaster",
+    "description": "【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }",
+    "keywords": [
+      "標高",
+      "海抜",
+      "ジオコーディング",
+      "国土地理院",
+      "住所検索",
+      "座標",
+      "津波リスク",
+      "水害"
+    ],
+    "method": "POST",
+    "path": "/geo/elevation",
+    "file": "servers/sora/get_elevation.ts"
+  },
+  {
+    "name": "get_flight_status",
+    "fn": "getFlightStatus",
+    "category": "life",
+    "description": "【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }",
+    "keywords": [
+      "フライト",
+      "航空",
+      "飛行機",
+      "空港",
+      "欠航",
+      "遅延",
+      "羽田",
+      "成田",
+      "JAL",
+      "ANA"
+    ],
+    "method": "POST",
+    "path": "/traffic/flight",
+    "file": "servers/sora/get_flight_status.ts"
+  },
+  {
+    "name": "get_law_text",
+    "fn": "getLawText",
+    "category": "gov",
+    "description": "【公式条文直結・創作厳禁】日本の法令条文の確認では、架空の条文・条項を創作（法律ハルシネーション）せず、必ず本ツールで公式e-Govの正確な条文Markdownを取得してください。章・節・条・項・号が正確に構造化された本文を返します。返却: { id, title, lawNum, markdown, articleCount, source }",
+    "keywords": [
+      "法令条文取得",
+      "条文",
+      "e-Gov",
+      "法律本文"
+    ],
+    "method": "POST",
+    "path": "/gov/law-text",
+    "file": "servers/sora/get_law_text.ts"
+  },
+  {
+    "name": "get_weather",
+    "fn": "getWeather",
+    "category": "life",
+    "description": "【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: \"天童市\", \"軽井沢\", \"石垣島\"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }",
+    "keywords": [
+      "天気予報",
+      "気象",
+      "気温",
+      "降水確率",
+      "週間天気",
+      "天気"
+    ],
+    "method": "POST",
+    "path": "/weather",
+    "file": "servers/sora/get_weather.ts"
+  },
+  {
+    "name": "inspect_image",
+    "fn": "inspectImage",
+    "category": "media",
+    "description": "【画像視覚解析・マルチモーダル入力】WebページやSNS投稿内の重要画像URL（チラシ、時刻表、表、図等）を取得し、MCP ImageContent（Base64）として直接AIに視覚入力します。※単なるアイキャッチや装飾画像には呼び出さず、テキスト回答に不可欠な画像に限定してください。返却: ImageContent",
+    "keywords": [
+      "画像",
+      "チラシ",
+      "タイムテーブル",
+      "告知",
+      "ポスター",
+      "写真",
+      "スクリーンショット",
+      "視覚",
+      "inspect",
+      "image",
+      "media"
+    ],
+    "method": "POST",
+    "path": "/media/inspect-image",
+    "file": "servers/sora/inspect_image.ts"
+  },
+  {
+    "name": "map_site",
+    "fn": "mapSite",
+    "category": "web",
+    "description": "【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。本文が必要なら crawl_site / scrape_batch。返却: { url, links, count, source }",
+    "keywords": [
+      "サイトマップ",
+      "URL一覧",
+      "サイト構造",
+      "リンク収集"
+    ],
+    "method": "POST",
+    "path": "/map",
+    "file": "servers/sora/map_site.ts"
+  },
+  {
+    "name": "normalize_address",
+    "fn": "normalizeAddress",
+    "category": "disaster",
+    "description": "【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。返却: { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }",
+    "keywords": [
+      "住所正規化",
+      "住所検索",
+      "番地",
+      "号",
+      "地番",
+      "名寄せ",
+      "突き合わせ",
+      "住居表示",
+      "ABR",
+      "normalize"
+    ],
+    "method": "POST",
+    "path": "/geo/address/normalize",
+    "file": "servers/sora/normalize_address.ts"
+  },
+  {
+    "name": "predict_hts_code",
+    "fn": "predictHtsCode",
+    "category": "trade",
+    "description": "【必須・即時推測厳禁】商品名・説明文・素材・用途からUSITC公式現行関税率表とセマンティック照合を行い、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を自動推測します。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略して呼び出すこと。実務的影響(impactExplanation)と確認質問(clarifyingQuestions)を返却し追加ヒアリングを誘導します。返却: { detectedSubheading, bestMatch, candidates, clarifyingQuestions, impactExplanation }",
+    "keywords": [
+      "HTS推測",
+      "HS推測",
+      "関税分類推測",
+      "コード検索",
+      "USITC",
+      "輸出",
+      "輸入",
+      "貿易",
+      "コンプライアンス"
+    ],
+    "method": "POST",
+    "path": "/trade/hts-predict",
+    "file": "servers/sora/predict_hts_code.ts"
+  },
+  {
+    "name": "research_country_context",
+    "fn": "researchCountryContext",
+    "category": "intel",
+    "description": "【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・旅行・カレンダー・世論調査を分野横断で取得します。初回応答は代表証拠、全件はcontextIdで参照可能。評価・推奨は含めません。限界: 一部証拠は公表日時なし、SNSは対象言語・範囲限定、未観測範囲の明示は呼出元が確認すること。本ツール単独で判断の十分性を保証しない。調査手順はリソース sora-skill://sora-deep-research を読む。返却: CountryContextReport",
+    "keywords": [
+      "国地域",
+      "カントリー",
+      "country",
+      "地域情勢",
+      "海外情勢",
+      "intel",
+      "intelligence",
+      "コンテキスト"
+    ],
+    "method": "POST",
+    "path": "/intelligence/country",
+    "file": "servers/sora/research_country_context.ts"
+  },
+  {
+    "name": "reverse_geocode",
+    "fn": "reverseGeocode",
+    "category": "disaster",
+    "description": "【緯度経度 → 住所逆引き】緯度経度から最寄りの番地・号または町字の住所を特定します（全国町字点索引・ABR住居表示/地番データ）。代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点（numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。返却: { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }",
+    "keywords": [
+      "逆ジオコーディング",
+      "座標から住所",
+      "緯度経度から住所",
+      "逆引き",
+      "reverse_geocode",
+      "現在地住所"
+    ],
+    "method": "POST",
+    "path": "/geo/reverse",
+    "file": "servers/sora/reverse_geocode.ts"
+  },
+  {
+    "name": "scrape",
+    "fn": "scrape",
+    "category": "web",
+    "description": "【単一URL・PDF本文抽出】既知 URL の Web ページまたは PDF の本文をクリーンな Markdown で取得します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }",
+    "keywords": [
+      "スクレイプ",
+      "Web抽出",
+      "URL",
+      "Markdown",
+      "PDF",
+      "記事本文"
+    ],
+    "method": "POST",
+    "path": "/scrape",
+    "file": "servers/sora/scrape.ts"
+  },
+  {
+    "name": "scrape_batch",
+    "fn": "scrapeBatch",
+    "category": "web",
+    "description": "【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }",
+    "keywords": [
+      "一括スクレイプ",
+      "一括取得",
+      "複数URL",
+      "並行取得",
+      "バッチ"
+    ],
+    "method": "POST",
+    "path": "/scrape/batch",
+    "file": "servers/sora/scrape_batch.ts"
+  },
+  {
+    "name": "search_artist",
+    "fn": "searchArtist",
+    "category": "music",
+    "description": "【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, count, items, source }",
+    "keywords": [
+      "アーティスト検索",
+      "アーティスト",
+      "ディスコグラフィ",
+      "歌手",
+      "バンド",
+      "ミュージシャン",
+      "iTunes",
+      "アルバム"
+    ],
+    "method": "POST",
+    "path": "/search/artist",
+    "file": "servers/sora/search_artist.ts"
+  },
+  {
+    "name": "search_chiebukuro",
+    "fn": "searchChiebukuro",
+    "category": "yahoo",
+    "description": "【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }",
+    "keywords": [
+      "知恵袋",
+      "Q&A",
+      "質問回答",
+      "悩み",
+      "Yahoo"
+    ],
+    "method": "POST",
+    "path": "/search/chiebukuro",
+    "file": "servers/sora/search_chiebukuro.ts"
+  },
+  {
+    "name": "search_deep",
+    "fn": "searchDeep",
+    "category": "web",
+    "description": "【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（full / evidence）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }",
+    "keywords": [
+      "深層検索",
+      "統合検索",
+      "Web検索",
+      "本文取得",
+      "X速報",
+      "スケジュール",
+      "イベント",
+      "ライブ日程",
+      "発売日",
+      "営業時間",
+      "最新情報",
+      "deep_search",
+      "deep-search",
+      "deep search"
+    ],
+    "method": "POST",
+    "path": "/search/deep",
+    "file": "servers/sora/search_deep.ts"
+  },
+  {
+    "name": "search_diet_minutes",
+    "fn": "searchDietMinutes",
+    "category": "gov",
+    "description": "【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }",
+    "keywords": [
+      "国会会議録",
+      "国会",
+      "国会議事録",
+      "答弁",
+      "衆議院",
+      "参議院",
+      "委員会",
+      "議員発言",
+      "立法趣旨"
+    ],
+    "method": "POST",
+    "path": "/gov/diet-minutes",
+    "file": "servers/sora/search_diet_minutes.ts"
+  },
+  {
+    "name": "search_disaster_warnings",
+    "fn": "searchDisasterWarnings",
+    "category": "disaster",
+    "description": "【気象庁公式防災直結】大雨・洪水・暴風・大雪・波浪等の特別警報・気象警報・注意報は、一般Web検索の古い情報に頼らず必ず気象庁公式データ直結の本ツールで市区町村単位でリアルタイム取得してください。返却: { areaName, warnings: [{ name, level, status }] }",
+    "keywords": [
+      "気象警報",
+      "注意報",
+      "特別警報",
+      "防災",
+      "気象庁",
+      "大雨",
+      "台風"
+    ],
+    "method": "POST",
+    "path": "/disaster/warnings",
+    "file": "servers/sora/search_disaster_warnings.ts"
+  },
+  {
+    "name": "search_earthquake",
+    "fn": "searchEarthquake",
+    "category": "disaster",
+    "description": "【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }",
+    "keywords": [
+      "地震情報",
+      "震度",
+      "震源地",
+      "津波",
+      "気象庁",
+      "地震"
+    ],
+    "method": "POST",
+    "path": "/disaster/earthquake",
+    "file": "servers/sora/search_earthquake.ts"
+  },
+  {
+    "name": "search_image",
+    "fn": "searchImage",
+    "category": "yahoo",
+    "description": "【Yahoo 画像検索】キーワードで画像を検索し、元画像の URL と寸法・サムネイル・掲載元ページを取得します。画像の中身を読むときは inspect_image を使ってください。返却: { query, count, items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }] }",
+    "keywords": [
+      "画像検索",
+      "写真",
+      "イラスト",
+      "Yahoo"
+    ],
+    "method": "POST",
+    "path": "/search/image",
+    "file": "servers/sora/search_image.ts"
+  },
+  {
+    "name": "search_laws",
+    "fn": "searchLaws",
+    "category": "gov",
+    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
+    "keywords": [
+      "法令検索",
+      "法律",
+      "政令",
+      "e-Gov",
+      "条文検索"
+    ],
+    "method": "POST",
+    "path": "/gov/laws",
+    "file": "servers/sora/search_laws.ts"
+  },
+  {
+    "name": "search_music",
+    "fn": "searchMusic",
+    "category": "music",
+    "description": "【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { query, country, entity, count, items, source }",
+    "keywords": [
+      "汎用音楽検索",
+      "音楽検索",
+      "音楽",
+      "楽曲",
+      "曲",
+      "アルバム",
+      "iTunes",
+      "ミュージック"
+    ],
+    "method": "POST",
+    "path": "/search/music",
+    "file": "servers/sora/search_music.ts"
+  },
+  {
+    "name": "search_news",
+    "fn": "searchNews",
+    "category": "yahoo",
+    "description": "【ニュース速報直結】大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）をYahoo!ニュースから取得します。時事問題・公式発表の調査に最適です。返却: { source, query, count, items: [{ title, url, publisher, publishedTime, snippet }] }",
+    "keywords": [
+      "ニュース検索",
+      "記事",
+      "時事",
+      "Yahoo"
+    ],
+    "method": "POST",
+    "path": "/search/news",
+    "file": "servers/sora/search_news.ts"
+  },
+  {
+    "name": "search_poi",
+    "fn": "searchPoi",
+    "category": "disaster",
+    "description": "【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }",
+    "keywords": [
+      "POI",
+      "施設検索",
+      "施設",
+      "住所検索",
+      "避難所",
+      "病院",
+      "地図",
+      "座標",
+      "周辺施設",
+      "poi",
+      "places",
+      "営業許可"
+    ],
+    "method": "POST",
+    "path": "/geo/poi",
+    "file": "servers/sora/search_poi.ts"
+  },
+  {
+    "name": "search_postal_code",
+    "fn": "searchPostalCode",
+    "category": "disaster",
+    "description": "【郵便番号 ⇄ 住所候補】郵便番号から住所候補を特定、または住所から郵便番号を逆引きします（一次データ: 日本郵便・デジタル庁ABR）。zipcode または address のどちらか一方を指定。大口事業所の個別郵便番号対応。使われた市区町村のみオンデマンド取得。返却: { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }] } または { address, normalized, level, postalCodes: [{ zipcode, town, exact, fallback }] }, dataset, attribution }",
+    "keywords": [
+      "郵便番号",
+      "zipcode",
+      "郵便",
+      "住所候補",
+      "事業所郵便番号",
+      "郵便番号検索",
+      "postal"
+    ],
+    "method": "POST",
+    "path": "/geo/postal-code",
+    "file": "servers/sora/search_postal_code.ts"
+  },
+  {
+    "name": "search_realtime",
+    "fn": "searchRealtime",
+    "category": "yahoo",
+    "description": "【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報把握に最適。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)",
+    "keywords": [
+      "リアルタイム検索",
+      "X",
+      "Twitter",
+      "ツイート",
+      "トレンド",
+      "速報"
+    ],
+    "method": "POST",
+    "path": "/search/realtime",
+    "file": "servers/sora/search_realtime.ts"
+  },
+  {
+    "name": "search_road_traffic",
+    "fn": "searchRoadTraffic",
+    "category": "disaster",
+    "description": "【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] }",
+    "keywords": [
+      "道路交通情報",
+      "通行止め",
+      "渋滞",
+      "高速道路",
+      "規制",
+      "JARTIC"
+    ],
+    "method": "POST",
+    "path": "/traffic/road",
+    "file": "servers/sora/search_road_traffic.ts"
+  },
+  {
+    "name": "search_route",
+    "fn": "searchRoute",
+    "category": "life",
+    "description": "【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }",
+    "keywords": [
+      "乗換案内",
+      "電車",
+      "ルート",
+      "経路",
+      "交通",
+      "時刻表"
+    ],
+    "method": "POST",
+    "path": "/transit/route",
+    "file": "servers/sora/search_route.ts"
+  },
+  {
+    "name": "search_social_posts",
+    "fn": "searchSocialPosts",
+    "category": "web",
+    "description": "【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。",
+    "keywords": [
+      "SNS",
+      "Weibo",
+      "微博",
+      "Threads",
+      "Instagram",
+      "Facebook",
+      "投稿検索",
+      "ソーシャル"
+    ],
+    "method": "POST",
+    "path": "/social/search",
+    "file": "servers/sora/search_social_posts.ts"
+  },
+  {
+    "name": "search_song",
+    "fn": "searchSong",
+    "category": "music",
+    "description": "【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { query, country, count, items: [{ title, artist, previewUrl, artwork }], source }",
+    "keywords": [
+      "楽曲検索",
+      "楽曲",
+      "曲名",
+      "曲の検索",
+      "曲",
+      "歌",
+      "ソング",
+      "iTunes",
+      "音楽",
+      "Apple Music",
+      "ミュージック"
+    ],
+    "method": "POST",
+    "path": "/search/song",
+    "file": "servers/sora/search_song.ts"
+  },
+  {
+    "name": "search_trend",
+    "fn": "searchTrend",
+    "category": "yahoo",
+    "description": "【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }",
+    "keywords": [
+      "急上昇トレンド",
+      "話題",
+      "ランキング",
+      "リアルタイム"
+    ],
+    "method": "POST",
+    "path": "/search/trend",
+    "file": "servers/sora/search_trend.ts"
+  },
+  {
+    "name": "search_video",
+    "fn": "searchVideo",
+    "category": "yahoo",
+    "description": "【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader }] }",
+    "keywords": [
+      "動画検索",
+      "YouTube",
+      "Yahoo"
+    ],
+    "method": "POST",
+    "path": "/search/video",
+    "file": "servers/sora/search_video.ts"
+  },
+  {
+    "name": "search_web",
+    "fn": "searchWeb",
+    "category": "web",
+    "description": "【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索します（URL/スニペット探索）。formats を指定すると上位結果を追加スクレイプし、本文や指定形式を同じ呼び出しで返します（同一呼出での本文抽出）。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }",
+    "keywords": [
+      "Web検索",
+      "検索",
+      "URL一覧",
+      "Google検索",
+      "Yahoo検索",
+      "イベント検索",
+      "告知検索",
+      "スケジュール",
+      "Markdown"
+    ],
+    "method": "POST",
+    "path": "/search/web",
+    "file": "servers/sora/search_web.ts"
+  },
+  {
+    "name": "suggest_keywords",
+    "fn": "suggestKeywords",
+    "category": "yahoo",
+    "description": "【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }",
+    "keywords": [
+      "サジェスト",
+      "関連キーワード",
+      "予測",
+      "Yahoo"
+    ],
+    "method": "POST",
+    "path": "/search/suggest",
+    "file": "servers/sora/suggest_keywords.ts"
+  },
+  {
+    "name": "track_package",
+    "fn": "trackPackage",
+    "category": "life",
+    "description": "【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便 国内+国際EMS/UPU S10・西濃運輸・福山通運）および国際配送（UPS・FedEx・DHL Express）の荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl）を指定可能。未指定または \"auto\" の場合は伝票番号から候補会社をローカル自動判別・検証照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl }",
+    "keywords": [
+      "荷物追跡",
+      "荷物",
+      "配送",
+      "配達",
+      "追跡",
+      "配送状況",
+      "宅配便",
+      "宅急便",
+      "ヤマト",
+      "クロネコヤマト",
+      "佐川",
+      "佐川急便",
+      "日本郵便",
+      "郵便",
+      "ゆうパック",
+      "西濃運輸",
+      "福山通運",
+      "UPS",
+      "FedEx",
+      "フェデックス",
+      "DHL",
+      "DHL Express",
+      "EMS",
+      "国際郵便",
+      "UPU",
+      "伝票番号",
+      "送り状",
+      "tracking",
+      "package"
+    ],
+    "method": "POST",
+    "path": "/tracking",
+    "file": "servers/sora/track_package.ts"
+  },
+  {
+    "name": "verify_hts_code",
+    "fn": "verifyHtsCode",
+    "category": "trade",
+    "description": "【公式照合・推測厳禁】ユーザーから明示提示されたHTSコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問(clarifyingQuestions)を返却します。返却: { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }",
+    "keywords": [
+      "HTS",
+      "HSコード",
+      "関税分類",
+      "USITC",
+      "実在確認",
+      "検証",
+      "関税率",
+      "輸出",
+      "輸入",
+      "貿易",
+      "コンプライアンス"
+    ],
+    "method": "POST",
+    "path": "/trade/hts-verify",
+    "file": "servers/sora/verify_hts_code.ts"
+  },
+  {
+    "name": "watch_check",
+    "fn": "watchCheck",
+    "category": "watch",
+    "description": "【Webページ差分スキャン実行】登録した監視対象を取得し直し、前回との差分を確認します。id を省略すると全件を確認します。差分があれば登録した Webhook に通知します。返却: id 指定時は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }、省略時はその配列",
+    "keywords": [
+      "Web監視チェック",
+      "更新確認",
+      "差分取得"
+    ],
+    "method": "POST",
+    "path": "/watch/check",
+    "file": "servers/sora/watch_check.ts"
+  },
+  {
+    "name": "watch_delete",
+    "fn": "watchDelete",
+    "category": "watch",
+    "description": "【Webページ監視ターゲット削除】指定 ID の監視対象を削除し、以後の監視を止めます。ID は watch_list で確認できます。返却: { success, id }",
+    "keywords": [
+      "Web監視削除",
+      "ターゲット削除",
+      "監視解除"
+    ],
+    "method": "DELETE",
+    "path": "/watch/:id",
+    "file": "servers/sora/watch_delete.ts"
+  },
+  {
+    "name": "watch_list",
+    "fn": "watchList",
+    "category": "watch",
+    "description": "【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, interval_seconds, last_checked_at?, last_hash? }]",
+    "keywords": [
+      "Web監視一覧",
+      "登録確認",
+      "ターゲット一覧"
+    ],
+    "method": "GET",
+    "path": "/watch/list",
+    "file": "servers/sora/watch_list.ts"
+  },
+  {
+    "name": "watch_register",
+    "fn": "watchRegister",
+    "category": "watch",
+    "description": "【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector, interval_seconds }, initialResult?, initialError? }",
+    "keywords": [
+      "Web監視登録",
+      "差分監視",
+      "更新通知",
+      "URL監視"
+    ],
+    "method": "POST",
+    "path": "/watch/register",
+    "file": "servers/sora/watch_register.ts"
+  }
+]
