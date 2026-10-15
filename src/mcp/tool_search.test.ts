@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createMcpServer } from './mcp.js';
+import { createMcpServer } from '../mcp.js';
 
 const search = async (server: unknown, args: Record<string, unknown>) =>
   ((server as any)._registeredTools['search_tools'].handler(args) as Promise<any>);
