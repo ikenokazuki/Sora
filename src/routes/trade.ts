@@ -5,6 +5,7 @@ import {
   verifyHtsCode,
   predictHtsCode,
   checkProductCompliance,
+  TradeInputError,
 } from '../scraper.js';
 import {
   CpscCertificateCheckRequestSchema,
@@ -102,6 +103,7 @@ tradeRoutes.post('/trade/hts-predict', async (c) => {
     const result = await predictHtsCode(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TradeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'HTS code prediction failed', 'TRADE_ERROR', 500);
   }
 });

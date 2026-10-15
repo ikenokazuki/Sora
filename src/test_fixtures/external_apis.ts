@@ -1,62 +1,23 @@
-// テスト用の外部 API の固定応答。USITC・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報を、
+// テスト用の外部 API の固定応答。USITC・CBP 判例・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報を、
 // ネットワークなしで同じ形の応答で返す。実 API との突き合わせは live-tools.yml（tool-health）で行う。
 // 形は各 API の実際の応答に合わせ、中身はテストに必要な最小限にしている。
+import crossExcerpt from './cross_search_excerpt.json';
+import usitcExcerpt from './usitc_export_excerpt.json';
 
-type Row = { htsno: string; indent: string; description: string; general?: string; special?: string; other?: string };
+/**
+ * USITC HTS 全件の export（/reststop/exportList）の抜粋。実際の関税率表の行（中間行を含む）を、
+ * 見出し 0902, 3304, 3305, 6109, 6506, 6911, 6912, 7323, 8504, 8506, 8507, 8544, 8712, 9403, 9405, 9503, 9504 について、2026-10-15 に取得したものから切り出した。
+ */
+const usitcExport = usitcExcerpt as unknown[];
 
-/** USITC HTS の行（実際の関税率表の記載に沿った抜粋）。検索は HTS 番号の前方一致で返す。 */
-const USITC_ROWS: Row[] = [
-  { htsno: '0902.10', indent: '0', description: 'Green tea (not fermented) in immediate packings of a content not exceeding 3 kg' },
-  { htsno: '0902.10.10', indent: '1', description: 'Flavored', general: '6.4%' },
-  { htsno: '0902.10.1015', indent: '2', description: 'Certified organic' },
-  { htsno: '0902.10.1050', indent: '2', description: 'Other' },
-  { htsno: '0902.10.90', indent: '1', description: 'Other', general: 'Free' },
-  { htsno: '0902.10.9015', indent: '2', description: 'Certified organic' },
-  { htsno: '0902.10.9050', indent: '2', description: 'Other' },
-  { htsno: '2106.90', indent: '0', description: 'Other' },
-  { htsno: '2106.90.99', indent: '1', description: 'Other', general: '6.4%' },
-  { htsno: '2106.90.9998', indent: '2', description: 'Other' },
-  { htsno: '3304.99', indent: '0', description: 'Other' },
-  { htsno: '3304.99.10', indent: '1', description: 'Petroleum jelly put up for retail sale', general: 'Free' },
-  { htsno: '3304.99.1000', indent: '2', description: 'Petroleum jelly put up for retail sale' },
-  { htsno: '3304.99.50', indent: '1', description: 'Other', general: 'Free' },
-  { htsno: '3304.99.5000', indent: '2', description: 'Other' },
-  { htsno: '3926.90', indent: '0', description: 'Other articles of plastics' },
-  { htsno: '3926.90.99', indent: '1', description: 'Other', general: '5.3%' },
-  { htsno: '3926.90.9985', indent: '2', description: 'Other' },
-  { htsno: '6506.10', indent: '0', description: 'Safety headgear' },
-  { htsno: '6506.10.30', indent: '1', description: 'Of reinforced or laminated plastics', general: 'Free' },
-  { htsno: '6506.10.3030', indent: '2', description: 'Motorcycle helmets' },
-  { htsno: '6506.10.3045', indent: '2', description: 'Athletic, recreational and sporting headgear' },
-  { htsno: '6506.10.60', indent: '1', description: 'Other', general: 'Free' },
-  { htsno: '6506.10.6060', indent: '2', description: 'Other' },
-  { htsno: '6912.00', indent: '0', description: 'Ceramic tableware, kitchenware, other household articles and toilet articles, other than of porcelain or china' },
-  { htsno: '6912.00.44', indent: '1', description: 'Mugs and other steins', general: '10%' },
-  { htsno: '6912.00.4400', indent: '2', description: 'Mugs and other steins' },
-  { htsno: '6912.00.48', indent: '1', description: 'Other', general: '9.8%' },
-  { htsno: '6912.00.4810', indent: '2', description: 'Suitable for food or drink contact' },
-  { htsno: '8504.40', indent: '0', description: 'Static converters' },
-  { htsno: '8504.40.95', indent: '1', description: 'Other', general: 'Free' },
-  { htsno: '8504.40.9580', indent: '2', description: 'Other' },
-  { htsno: '8506.10', indent: '0', description: 'Manganese dioxide' },
-  { htsno: '8506.10.00', indent: '1', description: 'Manganese dioxide', general: '2.7%' },
-  { htsno: '8506.10.0010', indent: '2', description: 'Alkaline: Button cells' },
-  { htsno: '8506.10.0090', indent: '2', description: 'Other' },
-  { htsno: '9403.60', indent: '0', description: 'Other wooden furniture' },
-  { htsno: '9403.60.80', indent: '1', description: 'Other', general: 'Free' },
-  { htsno: '9403.60.8081', indent: '2', description: 'Other' },
-  // 9503 項は6桁の細分が無く、8桁の 9503.00.00 が最上位の行になる
-  { htsno: '9503.00.00', indent: '0', description: 'Tricycles, scooters, pedal cars and similar wheeled toys; dolls\' carriages; dolls; other toys; reduced-scale ("scale") models and similar recreational models, working or not; puzzles of all kinds; parts and accessories thereof', general: 'Free' },
-  { htsno: '9503.00.0071', indent: '2', description: 'Other: Labeled or determined by importer as intended for use by persons under 3 years of age' },
-  { htsno: '9503.00.0073', indent: '2', description: 'Other: Labeled or determined by importer as intended for use by persons 3 to 12 years of age' },
-  { htsno: '9503.00.0090', indent: '2', description: 'Other' },
-];
+/**
+ * CBP 分類判例の検索（rulings.cbp.gov/api/search）の抜粋。照会語（小文字）ごとの実際の応答。
+ * hts_predict の照会語は trade.ts の crossQueriesFor が決める。表に無い語は 0 件を返す。
+ */
+const crossSearch = crossExcerpt as Record<string, { totalHits: number; rulings: unknown[] }>;
 
-const digits = (s: string) => s.replace(/\D/g, '');
-
-function usitcSearch(keyword: string): Row[] {
-  const key = digits(keyword);
-  return key ? USITC_ROWS.filter((r) => digits(r.htsno).startsWith(key)) : [];
+function crossSearchResponse(term: string): unknown {
+  return crossSearch[term.toLowerCase()] ?? { totalHits: 0, rulings: [] };
 }
 
 /** iTunes Search API の検索結果。term ごとに、曲（song）とアーティスト（musicArtist）を返す。 */
@@ -217,7 +178,8 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 
 /** 対応するホストなら固定応答を返す。対応しなければ undefined（本物の fetch に回す）。 */
 export function externalApiFixtureResponse(url: URL): Response | undefined {
-  if (url.hostname === 'hts.usitc.gov' && url.pathname === '/reststop/search') return json(usitcSearch(url.searchParams.get('keyword') || ''));
+  if (url.hostname === 'hts.usitc.gov' && url.pathname === '/reststop/exportList') return json(usitcExport);
+  if (url.hostname === 'rulings.cbp.gov' && url.pathname === '/api/search') return json(crossSearchResponse(url.searchParams.get('term') || ''));
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
     const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d{6})\.json$/);
