@@ -382,7 +382,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ```
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
-`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。さらに `GET /client` が、全ツールの型付き TypeScript 関数（`client/`、`bun run gen:client` で生成）を配ります。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。
+`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。さらに `GET /client` が、全ツールの型付き TypeScript 関数（`client/`、`bun run gen:client` で生成）を配ります。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。コードを実行できる LLM には、instructions・`search_tools` の応答・MCP リソース `sora-client://guide` からこのクライアントを案内します（直接 MCP を呼ぶより優先）。
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
 Web 検索と本文スクレイピング、一括並行取得、深層統合検索、動的ツール発見、サイトマップ解析、再帰クロール。

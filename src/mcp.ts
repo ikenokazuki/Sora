@@ -31,6 +31,19 @@ export {
 export type { GhostFetchModule, McpServerOptions, McpSessionState, SoraModule, ToolCatalogEntry } from './mcp/registry.js';
 export { buildSoraMcpInstructions, SORA_MCP_INSTRUCTIONS } from './mcp/instructions.js';
 
+const CLIENT_GUIDE = [
+  '# Sora client (for code execution environments)',
+  '',
+  'If you can run code that reaches this server, call Sora from typed functions instead of MCP tools and print only the fields you need. Large results stay out of your context.',
+  '',
+  '1. List files: `GET {SORA_URL}/client` -> `{ files: [...] }` (send `Authorization: Bearer $SORA_API_KEY` when the server needs a key).',
+  '2. Download each file: `GET {SORA_URL}/client/<path>` into one directory (keep the paths).',
+  '3. Read `README.md` and `catalog.json`; find a tool with `searchTools("keyword", "names")` in `search.ts`; read `servers/sora/<tool>.ts` for its input and output types.',
+  '4. Call it: `import { searchDeep } from "./servers/sora/index.js"; const r = await searchDeep({ query, limit: 3 }); console.log(r.results.map((x) => x.title + " " + x.url).join("\\n"));`',
+  '',
+  'Set `SORA_URL` (default http://127.0.0.1:3016) and `SORA_API_KEY`. Errors are thrown as `SoraError { code, status, retryable, details }`.',
+].join('\n');
+
 /** createMcpServer が作ったサーバーのツール台帳（クライアント生成などの読み取り用）。 */
 const TOOL_CATALOGS = new WeakMap<McpServer, Map<string, ToolCatalogEntry>>();
 export function toolCatalogOf(server: McpServer): ReadonlyMap<string, ToolCatalogEntry> {
@@ -116,6 +129,14 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       );
     }
   } catch {}
+
+  // コードを実行できる呼び出し側向けに、型付きクライアントの取得手順を MCP リソースで配る。
+  mcpServer.resource(
+    'sora-client-guide',
+    'sora-client://guide',
+    { mimeType: 'text/markdown', description: 'Sora の型付き TypeScript クライアント（コード実行環境向け）の取得と使い方' },
+    async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: CLIENT_GUIDE }] }),
+  );
 
   TOOL_CATALOGS.set(mcpServer, toolCatalog);
   return mcpServer;
