@@ -932,11 +932,19 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'verify_hts_code');
     return mustContain(raw, ['9503'], 'usitc-verify');
   }),
-  toolCase('trade.predict', ['predict_hts_code'], ['usitc'], true, 90000, async (ctx) => {
+  toolCase('trade.predict', ['predict_hts_code'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'predict_hts_code', { productName: 'Green Tea' }, 60000);
+    const { text: rawJsonText } = await mcpJson(ctx, 'predict_hts_code', { productName: 'Green Tea' }, 80000);
     const raw = toolPayload(rawJsonText, 'predict_hts_code');
-    return mustContain(raw, ['bestMatch'], 'usitc-predict');
+    // 緑茶は 0902（茶）か 2101（茶の抽出物）。USITC の全件データと CBP 判例の構造（evidence）まで確かめる
+    const parsed = parseFirstJson(textOf(raw), 'predict_hts_code') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
+    if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('predict_hts_code classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
+    if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('predict_hts_code returned no evidence.dataFetchedAt');
+    // 判例の照会が失敗（unavailable）でも推測は返る。判例の応答の形が変わったときは no_rulings が続くので、ここでは状態を記録する
+    return { sources: [
+      { source: 'usitc-export', count: 1, format: 'json', upstreamStatus: 'unknown' },
+      { source: 'cbp-cross:' + (parsed.evidence.crossStatus ?? 'unknown'), count: 1, format: 'json', upstreamStatus: 'unknown' },
+    ] };
   }),
   toolCase('trade.compliance', ['check_product_compliance'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);

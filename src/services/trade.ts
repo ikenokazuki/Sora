@@ -1,8 +1,16 @@
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
-import { getFromCache, setToCache } from '../cache.js';
 import { errorMessage } from '../errors.js';
-
-export const CACHE_TTL_USITC = 24 * 60 * 60 * 1000; // USITC HTSデータは24時間キャッシュ
+import { type CrossRuling, type CrossStatus, lookupCrossRulings } from './cbp_cross.js';
+import {
+  type HtsLine,
+  type HtsSearchHit,
+  getHtsLine,
+  hasEnglishWords,
+  htsDataInfo,
+  htsLinesUnder,
+  queryTerms,
+  searchHtsLines,
+} from './hts_data.js';
 
 export interface CpscApplicableRegulation {
   cfr: string;
@@ -518,6 +526,8 @@ export interface VerifyHtsCodeResult {
   matchLevel: 'exact' | '6-digit-category' | 'unmatched';
   hsCode?: string;
   officialDescription?: string;
+  /** 公式の階層での位置（最上位の見出しから親まで）。"Other" のような説明だけでは分からないときの手がかり。 */
+  officialPath?: string[];
   generalRate?: string;
   otherRate?: string;
   specialRate?: string;
@@ -535,47 +545,21 @@ const DISCLAIMER_USITC =
   '最終的な分類確定にはCBPのCROSS判定検索（rulings.cbp.gov）や通関士等の専門家への確認が必要です。' +
   'なお、HTS Revision 18等の大統領布告・通商法301条（中国原産品追加関税等）に基づくChapter 99の特別追加関税は別途個別確認が必要です。';
 
-/** 10桁の数字文字列を USITC 表記 (XXXX.XX.XXXX) に変換 */
-function toUsitcFullFormat(normalized: string): string {
-  return `${normalized.slice(0, 4)}.${normalized.slice(4, 6)}.${normalized.slice(6, 10)}`;
+/** 文末の区切り（: ; ,）を取る。HTS の説明は中間行が "Other:" のように終わる。 */
+function tidyHts(s: string): string {
+  return s.replace(/[\s:;,]+$/, '').trim();
 }
 
-/** 10桁の数字文字列の先頭6桁を USITC 表記 (XXXX.XX) に変換 */
-function toUsitcSixDigitFormat(normalized: string): string {
-  return `${normalized.slice(0, 4)}.${normalized.slice(4, 6)}`;
-}
-
-interface UsitcSearchItem {
-  htsno: string;
-  description: string;
-  indent: string;
-  general?: string;
-  other?: string;
-  special?: string;
-}
-
-async function searchUsitc(query: string): Promise<UsitcSearchItem[]> {
-  const cacheKey = `trade:usitc:${query}`;
-  const cached = getFromCache<{ items: UsitcSearchItem[] }>(cacheKey);
-  if (cached) return cached.items;
-
-  const url = `https://hts.usitc.gov/reststop/search?keyword=${encodeURIComponent(query)}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Sora-Trade-Compliance-Fetcher/1.0', Accept: 'application/json' },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) {
-    throw new Error(`USITC HTS検索APIへのアクセスに失敗しました (HTTP ${res.status}): ${url}`);
-  }
-  const items = (await res.json()) as UsitcSearchItem[];
-  setToCache(cacheKey, { items }, CACHE_TTL_USITC);
-  return items;
+/** 候補の表示用の説明。"Other" のように説明だけでは分からない行には、親の説明を添える。 */
+function describeCandidate(line: HtsLine): string {
+  const own = tidyHts(line.description);
+  const parent = tidyHts(line.path[line.path.length - 1] ?? '');
+  return /^other\b/i.test(own) && parent ? `${parent} › ${own}` : own;
 }
 
 /**
- * LLM・利用者が推論したHTSコード候補を米国USITC公式データで実在確認・関税率取得する。
- * キーワード検索による一意特定は不可能と判明したため（複数キーワードでもAND検索にならず、
- * 章指定パラメータも効果なし）、逆にコード候補を渡して裏取りする設計にした。
+ * LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS全件のローカルコピー）で実在確認し、関税率を取得する。
+ * 率は、その行に無ければ最も近い祖先の率を継承する（10桁の行の多くは率を持たない）。
  */
 export async function verifyHtsCode(options: {
   htsCode: string;
@@ -591,43 +575,51 @@ export async function verifyHtsCode(options: {
   }
 
   const normalized = normalizeHtsCode(htsCode);
-  const fullQuery = toUsitcFullFormat(normalized);
-  const exactMatches = await searchUsitc(fullQuery);
-  const exact = exactMatches.find((item) => normalizeHtsCode(item.htsno) === normalized);
+  const line = normalized.length >= 8 ? await getHtsLine(normalized) : undefined;
 
-  if (exact) {
+  if (line) {
+    // 8桁の行にこれより細かい行（10桁の統計細分）がある場合は、10桁の確定を促す
+    const finer = line.leaf ? [] : await htsLinesUnder(normalized, { leafOnly: true, limit: 30 });
     return {
       htsCode,
       productDescription,
       verified: true,
       matchLevel: 'exact',
       hsCode: normalized.slice(0, 6),
-      officialDescription: exact.description,
-      generalRate: exact.general,
-      otherRate: exact.other,
-      specialRate: exact.special,
-      nearbyCandidates: [],
+      officialDescription: line.description,
+      officialPath: line.path.map(tidyHts),
+      generalRate: line.general || undefined,
+      otherRate: line.other || undefined,
+      specialRate: line.special || undefined,
+      nearbyCandidates: finer.map((l) => ({ htsCode: l.code, description: describeCandidate(l) })),
       disclaimer: DISCLAIMER_USITC,
       source: 'usitc-hts',
-      inputCompleteness: 'complete',
-      impactExplanation: '米国USITC公式関税率表にて10桁統計細分コードの実在および一般関税率が確認されました。',
+      ...(finer.length > 0
+        ? {
+            inputCompleteness: 'partial' as const,
+            missingInputs: ['hts10DigitSubdivision'],
+            clarifyingQuestions: [
+              '指定されたコードには、より細かい10桁の統計細分があります。製品の詳細な素材構成比率、寸法、または特定機能（手動/電動等）を教えていただけますか？',
+            ],
+            impactExplanation:
+              '8桁の行は実在しますが、米国の10桁統計細分が未確定です。統計細分によって一般関税率や適用される追加関税が異なる場合があります。',
+          }
+        : {
+            inputCompleteness: 'complete' as const,
+            impactExplanation: '米国USITC公式関税率表にて10桁統計細分コードの実在および一般関税率が確認されました。',
+          }),
     };
   }
 
-  const sixDigitQuery = toUsitcSixDigitFormat(normalized);
-  const categoryMatches = await searchUsitc(sixDigitQuery);
-
-  if (categoryMatches.length > 0) {
+  const categoryLines = normalized.length >= 4 ? await htsLinesUnder(normalized.slice(0, 6), { leafOnly: true, limit: 30 }) : [];
+  if (categoryLines.length > 0) {
     return {
       htsCode,
       productDescription,
       verified: false,
       matchLevel: '6-digit-category',
       hsCode: normalized.slice(0, 6),
-      nearbyCandidates: categoryMatches.map((item) => ({
-        htsCode: item.htsno,
-        description: item.description,
-      })),
+      nearbyCandidates: categoryLines.map((l) => ({ htsCode: l.code, description: describeCandidate(l) })),
       disclaimer: DISCLAIMER_USITC,
       source: 'usitc-hts',
       inputCompleteness: 'partial',
@@ -661,6 +653,18 @@ export async function verifyHtsCode(options: {
 // ==========================================
 // 3.5. 商品情報からの HTS/HSコード推測エンジン (predictHtsCode)
 // ==========================================
+// 品目の規則表や辞書は持たない。次の二つの手がかりを6桁の単位で統合し、足りない情報は分岐点の質問で補う。
+//   (1) USITC 公式 HTS 全件の階層つき全文検索（hts_data.ts）
+//   (2) CBP の分類判例（CROSS）。普段の言葉と法令の用語をつなぐ
+// 判例が使えないとき（通信失敗・該当なし）は (1) だけで答える。
+
+/** 入力の誤り（英語の語が無い、該当する品目が見つからない）。REST では 400 にする。 */
+export class TradeInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TradeInputError';
+  }
+}
 
 export interface PredictHtsOptions {
   productName: string;
@@ -672,11 +676,36 @@ export interface PredictHtsOptions {
   hasBattery?: boolean;
 }
 
+export type PredictHtsSource = 'hts-text' | 'cbp-ruling';
+
 export interface PredictHtsCandidate {
   htsCode: string;
   description: string;
   generalRate: string;
   score: number;
+  path?: string[];
+  sources?: PredictHtsSource[];
+}
+
+export interface HtsDecisionOption {
+  text: string;
+  htsCode?: string;
+  generalRate?: string;
+}
+
+/** 候補が公式の階層のどこで分かれるか。選択肢は公式の説明文。答えを description に加えて再実行すると絞れる。 */
+export interface HtsDecisionPoint {
+  question: string;
+  options: HtsDecisionOption[];
+}
+
+export interface PredictHtsEvidence {
+  dataFetchedAt: string;
+  crossStatus: CrossStatus;
+  crossQuery?: string;
+  crossNote?: string;
+  /** 最有力の6桁を支持した判例（上位3件）。 */
+  rulings: { rulingNumber: string; date: string; subject: string; tariffs: string[]; url: string }[];
 }
 
 export interface PredictHtsResult {
@@ -686,7 +715,10 @@ export interface PredictHtsResult {
     htsCode: string;
     description: string;
     parentDescription?: string;
+    path?: string[];
     generalRate: string;
+    /** 率を継承した祖先のコード。その行自身の率なら無い。 */
+    rateFrom?: string;
     score: number;
     confidence: 'high' | 'medium' | 'low';
     reason: string;
@@ -694,6 +726,8 @@ export interface PredictHtsResult {
     fda?: CheckFdaRegulatedResult;
   };
   candidates: PredictHtsCandidate[];
+  decisionPoints?: HtsDecisionPoint[];
+  evidence: PredictHtsEvidence;
   disclaimer: string;
   inputCompleteness?: 'complete' | 'partial';
   missingInputs?: string[];
@@ -701,560 +735,302 @@ export interface PredictHtsResult {
   impactExplanation?: string;
 }
 
-interface SubheadingRule {
-  category: string;
-  subheadings: {
-    subheading: string;
-    description: string;
-    matchScore: (input: PredictHtsOptions, text: string) => number;
-  }[];
+// 6桁の候補の統合: 判例の票の割合（CROSS_WEIGHT）と、候補の6桁の中で測り直した全文検索の点数（残り）の和。
+// 評価セット eval/hts_predict_cases.json の dev で決めた（0.6〜0.7、候補数 4〜8 で結果は同じ）。
+const CROSS_WEIGHT = 0.7;
+const CANDIDATES_PER_SOURCE = 6;
+// 本体ではなく部品・付属品の行を選ぶ誤りを減らす。見出しが "Parts" で始まる6桁は、商品の語に部品・付属品を示す語が無いとき減点する。
+const PARTS_HEADING_PENALTY = 0.5;
+const PARTS_HEADING = /^(other )?parts\b/i;
+const ACCESSORY_WORDS = /\b(parts?|accessor\w*|components?|replacement|spare|case|cases|cover|covers|strap|straps|band|bands|holder|sleeve|adapter|charger|cable|stand|mount)\b/i;
+// 信頼度の閾値（dev＋test 103件で適合率を測って決めた: high 90%、low 42%）
+const HIGH_CROSS_SHARE = 0.4;
+const LOW_MARGIN = 0.1;
+const MAX_DECISION_OPTIONS = 6;
+const DECISION_TEXT_LIMIT = 160;
+
+const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const formatSubheading = (d6: string) => `${d6.slice(0, 4)}.${d6.slice(4, 6)}`;
+
+/**
+ * CROSS に問い合わせる語。検索は AND 条件で、語が多いと 0 件になるため、絞りながら順に試す。
+ *   1. 品名の全ての語  2. 前置詞・接続詞（for, with, and など）より前の名詞句  3. その名詞句の後ろ 4・3・2・1 語
+ * 品名の末尾は名詞なので、後ろから絞る（"Wooden Building Blocks for Toddlers" は "wooden building blocks" が先に試される）。
+ * HTS の語彙にない語（speaker、kettle など）こそ品名の肝なので、語彙での絞り込みはしない。
+ */
+function crossQueriesFor(productName: string): string[] {
+  const head = productName.split(/\b(?:for|with|without|and|in|to|by|from)\b|[,;(|]/i)[0];
+  const all = queryTerms(productName).slice(0, 8);
+  const noun = queryTerms(head);
+  return [...new Set([all.join(' '), noun.slice(0, 8).join(' '), ...[4, 3, 2, 1].map((n) => noun.slice(-n).join(' '))])].filter(Boolean);
 }
 
-const PREDICT_SUBHEADING_RULES: SubheadingRule[] = [
-  // 1. 玩具
-  {
-    category: 'Toys',
-    subheadings: [
-      {
-        subheading: '9503.00',
-        description: 'Tricycles, scooters, pedal cars, dolls, puzzles, other toys',
-        matchScore: (input, text) => {
-          if (/toy|toys|block|puzzle|lego|doll|plush|知育|おもちゃ|玩具|ぬいぐるみ|フィギュア/i.test(text)) return 18;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 2. ヘルメット
-  {
-    category: 'Bicycle Helmets',
-    subheadings: [
-      {
-        subheading: '6506.10',
-        description: 'Safety headgear (helmets)',
-        matchScore: (input, text) => {
-          if (/helmet|ヘルメット/i.test(text)) return 18;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 3. 自転車
-  {
-    category: 'Bicycles',
-    subheadings: [
-      {
-        subheading: '8712.00',
-        description: 'Bicycles and other cycles, not motorized',
-        matchScore: (input, text) => {
-          if (/bicycle|bike|cycling|自転車/i.test(text) && !/helmet|ヘルメット/i.test(text)) return 18;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 4. アパレル (Tシャツ、シャツ、ボトムス等)
-  {
-    category: 'Apparel',
-    subheadings: [
-      {
-        subheading: '6109.10',
-        description: 'T-shirts, singlets and other vests, knitted or crocheted, of cotton',
-        matchScore: (input, text) => {
-          const isTshirt = /t-shirt|tee|singlet|tシャツ/i.test(text);
-          const isCotton = /cotton|綿/i.test(text) || input.material === 'cotton';
-          if (isTshirt && isCotton) return 18;
-          if (isTshirt) return 12;
-          return 0;
-        },
-      },
-      {
-        subheading: '6205.20',
-        description: "Men's or boys' shirts, of cotton, not knitted",
-        matchScore: (input, text) => {
-          const isShirt = /shirt|シャツ/i.test(text) && !/t-shirt|tシャツ/i.test(text);
-          if (isShirt) return 14;
-          return 0;
-        },
-      },
-      {
-        subheading: '6204.62',
-        description: "Women's or girls' trousers, bib and brace overalls, breeches and shorts, of cotton",
-        matchScore: (input, text) => {
-          if (/pants|trousers|shorts|jeans|ズボン|パンツ|ジーンズ/i.test(text) && /women|lady|レディース/i.test(text)) return 14;
-          return 0;
-        },
-      },
-      {
-        subheading: '6203.42',
-        description: "Men's or boys' trousers, bib and brace overalls, breeches and shorts, of cotton",
-        matchScore: (input, text) => {
-          if (/pants|trousers|shorts|jeans|ズボン|パンツ|ジーンズ/i.test(text)) return 12;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 5. 食器・キッチン用品 (素材別)
-  {
-    category: 'Kitchenware & Tableware',
-    subheadings: [
-      {
-        subheading: '6912.00',
-        description: 'Ceramic tableware, kitchenware, other household articles',
-        matchScore: (input, text) => {
-          const isDish = /mug|cup|plate|bowl|dish|tableware|kitchenware|マグ|カップ|皿|食器|調理器具/i.test(text);
-          const isCeramic = /ceramic|stoneware|earthenware|陶器|磁器|せっ器/i.test(text) || input.material === 'ceramic';
-          if (isDish && isCeramic) return 22;
-          if (isDish && !input.material) return 8;
-          return 0;
-        },
-      },
-      {
-        subheading: '7013.49',
-        description: 'Glassware of a kind used for table or kitchen purposes',
-        matchScore: (input, text) => {
-          const isDish = /glass|mug|cup|bottle|グラス|コップ|瓶/i.test(text);
-          const isGlass = /glass|ガラス/i.test(text) || input.material === 'glass';
-          if (isDish && isGlass) return 22;
-          return 0;
-        },
-      },
-      {
-        subheading: '7323.93',
-        description: 'Table, kitchen or other household articles, of stainless steel',
-        matchScore: (input, text) => {
-          const isDish = /cookware|pan|pot|knife|fork|spoon|bottle|mug|鍋|フライパン|ボトル|ステンレスマグ/i.test(text);
-          const isMetal = /stainless|steel|metal|ステンレス|金属/i.test(text) || input.material === 'metal';
-          if (isDish && isMetal) return 22;
-          return 0;
-        },
-      },
-      {
-        subheading: '3924.10',
-        description: 'Tableware and kitchenware, of plastics',
-        matchScore: (input, text) => {
-          const isDish = /mug|cup|plate|bowl|bottle|容器|食器|コップ/i.test(text);
-          const isPlastic = /plastic|プラスチック|樹脂/i.test(text) || input.material === 'plastic';
-          if (isDish && isPlastic) return 20;
-          return 0;
-        },
-      },
-      {
-        subheading: '4419.90',
-        description: 'Tableware and kitchenware, of wood',
-        matchScore: (input, text) => {
-          const isDish = /tableware|kitchenware|spoon|fork|chopsticks|bowl|木製食器|スプーン|箸/i.test(text);
-          const isWood = /wood|wooden|木製/i.test(text) || input.material === 'wood';
-          if (isDish && isWood) return 20;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 6. 化粧品・スキンケア
-  {
-    category: 'Cosmetics',
-    subheadings: [
-      {
-        subheading: '3304.99',
-        description: 'Beauty or make-up preparations and preparations for the care of the skin (other than medicaments)',
-        matchScore: (input, text) => {
-          if (/cream|lotion|serum|skincare|moisturizer|cosmetic|beauty|クリーム|乳液|美容液|化粧水|スキンケア|コスメ/i.test(text)) return 18;
-          return 0;
-        },
-      },
-      {
-        subheading: '3304.10',
-        description: 'Lip make-up preparations',
-        matchScore: (input, text) => {
-          if (/lip|lipstick|lip balm|リップ|口紅/i.test(text)) return 20;
-          return 0;
-        },
-      },
-      {
-        subheading: '3305.10',
-        description: 'Shampoos',
-        matchScore: (input, text) => {
-          if (/shampoo|シャンプー/i.test(text)) return 20;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 7. 食品・飲料
-  {
-    category: 'Food Preparations',
-    subheadings: [
-      {
-        subheading: '0902.10',
-        description: 'Green tea (not fermented) in immediate packings of a content not exceeding 3 kg',
-        matchScore: (input, text) => {
-          if (/green tea|matcha|緑茶|抹茶|煎茶/i.test(text)) return 22;
-          return 0;
-        },
-      },
-      {
-        subheading: '1806.90',
-        description: 'Chocolate and other food preparations containing cocoa',
-        matchScore: (input, text) => {
-          if (/chocolate|cocoa|チョコレート|チョコ/i.test(text)) return 20;
-          return 0;
-        },
-      },
-      {
-        subheading: '2106.90',
-        description: 'Food preparations not elsewhere specified or included',
-        matchScore: (input, text) => {
-          if (/snack|confectionery|supplement|food|お菓子|サプリメント|健康食品|食品/i.test(text)) return 14;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 8. 医薬品・医療機器
-  {
-    category: 'Pharmaceuticals',
-    subheadings: [
-      {
-        subheading: '3004.90',
-        description: 'Medicaments consisting of mixed or unmixed products for therapeutic uses',
-        matchScore: (input, text) => {
-          if (/medicine|pharmaceutical|drug|tablet|capsule|医薬品|薬/i.test(text)) return 18;
-          return 0;
-        },
-      },
-    ],
-  },
-  {
-    category: 'Medical Devices',
-    subheadings: [
-      {
-        subheading: '9018.90',
-        description: 'Instruments and appliances used in medical, surgical, dental or veterinary sciences',
-        matchScore: (input, text) => {
-          if (/medical device|syringe|bandage|surgical|医療機器|注射器/i.test(text)) return 18;
-          return 0;
-        },
-      },
-      {
-        subheading: '9025.19',
-        description: 'Thermometers and pyrometers, not combined with other instruments',
-        matchScore: (input, text) => {
-          if (/thermometer|体温計/i.test(text)) return 20;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 9. 家具・寝具
-  {
-    category: 'Furniture',
-    subheadings: [
-      {
-        subheading: '9403.60',
-        description: 'Other wooden furniture',
-        matchScore: (input, text) => {
-          const isFurn = /furniture|table|desk|cabinet|shelf|家具|机|テーブル|棚/i.test(text);
-          const isWood = /wood|wooden|木製/i.test(text) || input.material === 'wood';
-          if (isFurn && isWood) return 18;
-          if (isFurn) return 12;
-          return 0;
-        },
-      },
-      {
-        subheading: '9401.61',
-        description: 'Seats with wooden frames, upholstered',
-        matchScore: (input, text) => {
-          if (/chair|seat|sofa|椅子|チェア|ソファ/i.test(text)) return 16;
-          return 0;
-        },
-      },
-      {
-        subheading: '9404.90',
-        description: 'Articles of bedding and similar furnishing',
-        matchScore: (input, text) => {
-          if (/bedding|pillow|mattress|crib|bassinet|枕|布団|マットレス|ベビーベッド/i.test(text)) return 18;
-          return 0;
-        },
-      },
-    ],
-  },
-  // 10. 電子機器・電源
-  {
-    category: 'Electronics',
-    subheadings: [
-      {
-        subheading: '8504.40',
-        description: 'Static converters (power supplies, chargers, adapters)',
-        matchScore: (input, text) => {
-          if (/charger|adapter|power supply|converter|充電器|アダプタ|電源/i.test(text)) return 18;
-          return 0;
-        },
-      },
-      {
-        subheading: '8518.30',
-        description: 'Headphones and earphones, whether or not combined with a microphone',
-        matchScore: (input, text) => {
-          if (/headphone|earphone|earbuds|イヤホン|ヘッドホン/i.test(text)) return 20;
-          return 0;
-        },
-      },
-      {
-        subheading: '8506.10',
-        description: 'Manganese dioxide primary cells and primary batteries',
-        matchScore: (input, text) => {
-          if (input.hasBattery && /button|coin|ボタン電池|コイン電池/i.test(text)) return 22;
-          return 0;
-        },
-      },
-    ],
-  },
-];
+// 判例が挙げた古い6桁（改訂で番号が変わったもの）を、現行の6桁に振り分けるときの上限。多いと曖昧なので使わない。
+const MAX_HEADING_FANOUT = 6;
 
-function scoreHtsCandidate(
-  item: UsitcSearchItem,
-  input: PredictHtsOptions,
-  combinedText: string,
-  parentDesc: string,
-): number {
-  let score = 0;
-  const digits = normalizeHtsCode(item.htsno);
-  const is10Digit = digits.length === 10;
-  const is8Digit = digits.length === 8;
-
-  // 10桁統計細分コードを大幅優先（米国税関申告には10桁が必須）
-  if (is10Digit) {
-    score += 15;
-  } else if (is8Digit) {
-    score += 5;
+/**
+ * 判例が挙げたコードを、現行の木にある6桁に直す。10桁の葉があればそれを、8桁の行（これより細かい行を持つ）があればその8桁も返す。
+ * 6桁が現行に無いとき（HTS の改訂で小見出しの番号が変わった）は、現行の6桁に振り分ける。
+ * 分割（9405.20 → 9405.21・9405.29）では上位5桁が保たれるので、まず上位5桁が同じ6桁へ。統合（9503.30 → 9503.00）では保たれないので、次に見出し（4桁）の下の6桁へ。
+ */
+async function resolveCitedCode(digits: string): Promise<{ d6s: string[]; leaf?: HtsLine; p8?: string } | undefined> {
+  let leaf: HtsLine | undefined;
+  let p8: string | undefined;
+  if (digits.length >= 8) {
+    const line = await getHtsLine(digits);
+    if (line?.leaf) leaf = line;
+    else if (!line && digits.length > 8 && (await getHtsLine(digits.slice(0, 8)))) p8 = digits.slice(0, 8);
+    else if (line && digits.length === 8) p8 = digits;
   }
-
-  const descCombined = `${item.description} ${parentDesc}`.toLowerCase();
-  const textLower = combinedText.toLowerCase();
-
-  // 対象年齢マッチ
-  if (input.targetAge === 'child') {
-    if (/under 3 years|3 to 12 years|infant|toddler|children|child/i.test(descCombined)) {
-      score += 10;
-    }
-    if (/3 to 12 years/i.test(item.description) && /3\+|3 to 12|toddler|child/i.test(textLower)) {
-      score += 5;
-    }
-  } else if (input.targetAge === 'adult') {
-    if (/men|women|adult/i.test(descCombined)) {
-      score += 8;
-    }
-  }
-
-  // 自転車ヘルメット (Athletic vs Motorcycle)
-  if (/bicycle|cycling|bike|athletic|sport/i.test(textLower)) {
-    if (/athletic, recreational and sporting/i.test(descCombined)) score += 15;
-    if (/motorcycle/i.test(descCombined) && !/motorcycle|バイク/i.test(textLower)) score -= 12;
-  }
-
-  // 食器 (Mugs / Cups / Plates)
-  if (/mug|cup|マグ|カップ/i.test(textLower)) {
-    if (/mugs|teacups/i.test(descCombined)) score += 14;
-  }
-
-  // 化粧品 (Petroleum jelly ではなく Other)
-  if (/cream|lotion|serum|skincare|moisturizer/i.test(textLower)) {
-    if (/petroleum jelly/i.test(item.description)) {
-      score -= 10;
-    } else if (/other/i.test(item.description)) {
-      score += 10;
-    }
-  }
-
-  // Tシャツ (Men's vs Women's)
-  if (/t-shirt|tee/i.test(textLower)) {
-    if (/t-shirts/i.test(descCombined)) score += 10;
-    if (/men/i.test(textLower) && /men's/i.test(item.description)) score += 12;
-  }
-
-  // 有機食品 (Organic)
-  if (/organic|有機/i.test(textLower) && /certified organic/i.test(descCombined)) {
-    score += 10;
-  }
-
-  // 単語一致ボーナス
-  const words = textLower.split(/\s+/).filter((w) => w.length > 2);
-  for (const w of words) {
-    if (descCombined.includes(w)) score += 2;
-  }
-
-  return score;
+  const d6 = digits.slice(0, 6);
+  if (leaf || p8 || (await htsLinesUnder(d6, { limit: 1 })).length > 0) return { d6s: [d6], leaf, p8 };
+  const heading = await htsLinesUnder(digits.slice(0, 4), { limit: 400 });
+  const children = [...new Set(heading.filter((l) => l.digits.length >= 6).map((l) => l.digits.slice(0, 6)))];
+  const split = children.filter((c) => c.startsWith(digits.slice(0, 5)));
+  const target = split.length > 0 ? split : children;
+  return target.length > 0 && target.length <= MAX_HEADING_FANOUT ? { d6s: target } : undefined;
 }
 
-function inferTargetAge(text: string): 'child' | 'adult' | 'unknown' {
-  const lower = text.toLowerCase();
-  if (
-    /(?:child|children|baby|infant|toddler|kid|kids|boy|girl|0-3|3\+|4\+|5\+|6\+|7\+|8\+|9\+|10\+|11\+|12\+|子供|子ども|乳幼児|赤ちゃん|男の子|女の子|歳児|歳以上)/i.test(
-      lower,
-    )
-  ) {
-    return 'child';
-  }
-  if (/(?:adult|men|women|lady|gentleman|大人|成人|メンズ|レディース)/i.test(lower)) {
-    return 'adult';
-  }
-  return 'unknown';
+/** その6桁が、部品・付属品の見出しの下か（"Parts" で始まる見出し／小見出し）。 */
+async function isPartsHeading(d6: string): Promise<boolean> {
+  const first = (await htsLinesUnder(d6, { limit: 1 }))[0];
+  if (!first) return false;
+  return PARTS_HEADING.test(first.path[0] ?? '') || PARTS_HEADING.test(first.path[1] ?? '') || (first.indent <= 1 && PARTS_HEADING.test(first.description));
 }
 
-function inferMaterial(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  if (/plastic|プラスチック|樹脂/i.test(lower)) return 'plastic';
-  if (/wood|wooden|木製|天然木/i.test(lower)) return 'wood';
-  if (/metal|steel|aluminum|金属|ステンレス|アルミ/i.test(lower)) return 'metal';
-  if (/cotton|綿|コットン/i.test(lower)) return 'cotton';
-  if (/glass|ガラス/i.test(lower)) return 'glass';
-  if (/leather|本革|レザー/i.test(lower)) return 'leather';
-  if (/silicone|シリコン/i.test(lower)) return 'silicone';
-  return undefined;
+/** 候補の葉の公式の位置（祖先の説明＋自分の説明）。 */
+const pathOf = (line: HtsLine) => [...line.path, line.description].map(tidyHts);
+
+/**
+ * 候補の葉が公式の階層で最初に分かれる位置を求め、その位置の説明文を選択肢にした質問を作る。
+ * 先頭の候補が最有力。候補が1つしか無い、または全て同じ位置なら undefined。
+ */
+function buildDecisionPoint(pool: HtsLine[]): HtsDecisionPoint | undefined {
+  if (pool.length < 2) return undefined;
+  const paths = pool.map(pathOf);
+  const shortest = Math.min(...paths.map((p) => p.length));
+  let depth = 0;
+  while (depth < shortest - 1 && paths.every((p) => p[depth] === paths[0][depth])) depth++;
+
+  const groups = new Map<string, HtsLine>();
+  for (const [i, line] of pool.entries()) {
+    const label = truncate(paths[i].slice(depth, depth + 3).join(' › '), DECISION_TEXT_LIMIT);
+    if (!groups.has(label)) groups.set(label, line);
+  }
+  if (groups.size < 2) return undefined;
+
+  const options = [...groups.entries()].slice(0, MAX_DECISION_OPTIONS).map(([text, line]) => ({
+    text,
+    htsCode: line.code,
+    generalRate: line.general || undefined,
+  }));
+  // 質問の見出し: 分かれる位置の祖先のうち、"Other" ではなく内容のある最も近いもの。見出しの段で分かれるときは、見出しの違いを尋ねる
+  const stem = paths[0].slice(0, depth).reverse().find((t) => !/^other\b/i.test(t));
+  return {
+    question: stem
+      ? `分類の確認: 公式の区分「${truncate(stem, DECISION_TEXT_LIMIT)}」のうち、商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。`
+      : '分類の確認: 候補が異なる見出しに分かれています。商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。',
+    options,
+  };
+}
+
+function decisionPointText(dp: HtsDecisionPoint): string {
+  const list = dp.options
+    .map((o, i) => `(${i + 1}) ${o.text}${o.htsCode ? ` [${o.htsCode}${o.generalRate ? `, ${o.generalRate}` : ''}]` : ''}`)
+    .join(' / ');
+  return `${dp.question} 選択肢: ${list}`;
 }
 
 /**
- * 商品情報（商品名・説明・素材・カテゴリ・用途）から、USITC公式現行関税率表と照合して確度の高いHTSコード候補・関税率・規制要件を推測
+ * 商品情報（英語の商品名・説明・素材など）から、米国の10桁HTSコード候補・関税率・規制要件を推測する。
+ * USITC 公式の関税率表（全件）の階層つき全文検索と、CBP の分類判例を統合する。
  */
 export async function predictHtsCode(options: PredictHtsOptions): Promise<PredictHtsResult> {
   const productName = options.productName?.trim();
   if (!productName) {
-    throw new Error('productName is required for HTS code prediction');
+    throw new TradeInputError('productName is required for HTS code prediction');
+  }
+  const combinedText = [productName, options.description, options.productCategory, options.material]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  if (!hasEnglishWords(combinedText)) {
+    throw new TradeInputError(
+      'HTSの照合は英語の品目説明で行います。productName と description を、商品の一般名の英語（例: "Stainless Steel Water Bottle"）にして再実行してください。',
+    );
+  }
+  const searchText = options.hasBattery ? `${combinedText} battery` : combinedText;
+
+  // 1. 二つの手がかりを並行して取る
+  const [ftsHits, cross] = await Promise.all([
+    searchHtsLines(searchText, { limit: 60 }),
+    lookupCrossRulings(crossQueriesFor(productName)),
+  ]);
+
+  // 2. 全文検索: 6桁ごとの最良の行（順位は検索の順）
+  const textOrder: string[] = [];
+  for (const hit of ftsHits) {
+    const d6 = hit.digits.slice(0, 6);
+    if (!textOrder.includes(d6)) textOrder.push(d6);
   }
 
-  const combinedText = `${productName} ${options.description || ''} ${options.productCategory || ''} ${options.material || ''}`.trim();
-
-  // 1. サブヘディングの候補を特定
-  let bestSub: { subheading: string; category: string; desc: string; score: number } | null = null;
-  for (const rule of PREDICT_SUBHEADING_RULES) {
-    for (const sub of rule.subheadings) {
-      const score = sub.matchScore(options, combinedText);
-      if (!bestSub || score > bestSub.score) {
-        bestSub = { subheading: sub.subheading, category: rule.category, desc: sub.description, score };
+  // 3. 判例: 現行の木にあるコードへの票（上位の判例ほど重く、1件の判例が複数の6桁を挙げたら分ける）
+  const votes = new Map<string, number>();
+  const citedLeaves = new Map<string, Map<string, { line: HtsLine; votes: number }>>();
+  const cited8 = new Map<string, Map<string, number>>(); // 6桁 → (判例が挙げた8桁 → 票)
+  const supporting = new Map<string, CrossRuling[]>();
+  for (const [rank, ruling] of cross.rulings.entries()) {
+    const resolved = (await Promise.all(ruling.tariffs.map(resolveCitedCode))).filter((r): r is NonNullable<typeof r> => !!r);
+    const distinct6 = new Set(resolved.flatMap((r) => r.d6s));
+    if (distinct6.size === 0) continue;
+    const weight = 1 / (rank + 1) / distinct6.size;
+    for (const d6 of distinct6) {
+      votes.set(d6, (votes.get(d6) ?? 0) + weight);
+      supporting.set(d6, [...(supporting.get(d6) ?? []), ruling]);
+    }
+    for (const r of resolved) {
+      if (r.p8) {
+        const m8 = cited8.get(r.p8.slice(0, 6)) ?? new Map();
+        m8.set(r.p8, (m8.get(r.p8) ?? 0) + weight);
+        cited8.set(r.p8.slice(0, 6), m8);
       }
+      if (!r.leaf) continue;
+      const d6 = r.leaf.digits.slice(0, 6);
+      const m = citedLeaves.get(d6) ?? new Map();
+      m.set(r.leaf.digits, { line: r.leaf, votes: (m.get(r.leaf.digits)?.votes ?? 0) + weight });
+      citedLeaves.set(d6, m);
     }
   }
+  const crossOrder = [...votes.entries()].sort((a, b) => b[1] - a[1]).map(([d6]) => d6);
+  const totalVotes = [...votes.values()].reduce((a, b) => a + b, 0);
 
-  // フォールバック: 一般雑貨 (3926.90)
-  const targetSubheading = bestSub && bestSub.score > 0 ? bestSub.subheading : '3926.90';
-  const targetCategory = bestSub && bestSub.score > 0 ? bestSub.category : 'General Goods';
+  // 4. 6桁の統合。全文検索の点数は、候補の6桁の中だけで測り直す
+  //    （商品の語が HTS に無いと、全体の検索は無関係な行に引かれるため）
+  const candidate6 = new Set([...crossOrder.slice(0, CANDIDATES_PER_SOURCE), ...textOrder.slice(0, CANDIDATES_PER_SOURCE)]);
+  if (candidate6.size === 0) {
+    throw new TradeInputError(
+      '商品名・説明に該当するHTSの品目を見つけられませんでした。商品の一般名（英語）・素材・用途を具体的にして再実行してください。',
+    );
+  }
+  const inPrefix = new Map<string, HtsSearchHit[]>();
+  const partsOnly = new Set<string>();
+  const wantsParts = ACCESSORY_WORDS.test(combinedText);
+  await Promise.all(
+    [...candidate6].map(async (d6) => {
+      inPrefix.set(d6, await searchHtsLines(searchText, { prefix: d6, limit: 10 }));
+      if (!wantsParts && (await isPartsHeading(d6))) partsOnly.add(d6);
+    }),
+  );
+  const textScore = (d6: string) => inPrefix.get(d6)?.[0]?.score ?? 0;
+  const textMax = Math.max(1e-9, ...[...candidate6].map(textScore));
+  const crossShareOf = (d6: string) => (totalVotes > 0 ? (votes.get(d6) ?? 0) / totalVotes : 0);
+  const fused = new Map<string, number>();
+  for (const d6 of candidate6) {
+    const score = CROSS_WEIGHT * crossShareOf(d6) + (1 - CROSS_WEIGHT) * (textScore(d6) / textMax);
+    fused.set(d6, partsOnly.has(d6) ? score * PARTS_HEADING_PENALTY : score);
+  }
+  const ranked = [...fused.entries()].sort((a, b) => b[1] - a[1]);
+  const best6 = ranked[0][0];
 
-  // 2. USITC APIからサブヘディング配下のコード一覧を取得
-  const rawItems = await searchUsitc(targetSubheading);
-  const targetChapter = targetSubheading.slice(0, 2);
-
-  // Chapter 99 (一時措置・特別除外) を除外し、該当章 (01〜97) のコードに絞り込む
-  const usitcItems = rawItems.filter((item) => {
-    const d = normalizeHtsCode(item.htsno);
-    return d.startsWith(targetChapter);
-  });
-
-  if (usitcItems.length === 0) {
-    throw new Error(`USITC API returned no valid HTS entries for subheading ${targetSubheading}`);
+  // 5. 最有力の6桁の中の行: 判例が挙げた現行の葉（票の多い順）→ 判例が挙げた8桁の下で全文検索 → 6桁の中で全文検索
+  const inBest6 = inPrefix.get(best6) ?? [];
+  const citedBest = [...(citedLeaves.get(best6)?.values() ?? [])].sort((a, b) => b.votes - a.votes).map((c) => c.line);
+  const topCited8 = [...(cited8.get(best6)?.entries() ?? [])].sort((a, b) => b[1] - a[1])[0]?.[0];
+  let inCited8: HtsLine[] = [];
+  if (citedBest.length === 0 && topCited8) {
+    const hits = await searchHtsLines(searchText, { prefix: topCited8, limit: 10 });
+    // 商品の語に当たる行が無ければ、その8桁の最後の葉（通常は "Other"）
+    inCited8 = hits.length > 0 ? hits : (await htsLinesUnder(topCited8, { leafOnly: true, limit: 200 })).slice(-1);
+  }
+  const siblings = await htsLinesUnder(best6, { leafOnly: true, limit: 80 });
+  const bestLine: HtsLine | undefined = citedBest[0] ?? inCited8[0] ?? inBest6[0] ?? siblings[siblings.length - 1];
+  if (!bestLine) {
+    throw new TradeInputError('該当するHTSの行を特定できませんでした。商品の一般名（英語）・素材・用途を具体的にして再実行してください。');
   }
 
-  // 親見出しのテキストおよび一般関税率を特定
-  const rootItem = usitcItems.find((i) => i.indent === '0') || usitcItems[0];
-  const rootGeneralRate = rootItem?.general || 'Free';
-  const parentDesc = rootItem ? rootItem.description : '';
+  // 6. 信頼度: 判例の1位・全文検索の1位・最終候補が一致して票が集まっていれば high、
+  //    首位との差が小さい、またはどちらの1位でもなければ low
+  const crossShare = crossShareOf(best6);
+  const margin = ranked[0][1] - (ranked[1]?.[1] ?? 0);
+  const textTop = textOrder[0];
+  const crossTop = crossOrder[0];
+  const confidence: 'high' | 'medium' | 'low' =
+    textTop === best6 && crossTop === best6 && crossShare >= HIGH_CROSS_SHARE
+      ? 'high'
+      : margin < LOW_MARGIN || (textTop !== best6 && crossTop !== best6)
+        ? 'low'
+        : 'medium';
 
-  // 3. 各アイテムをスコアリング
-  const scored = usitcItems.map((item) => {
-    const score = scoreHtsCandidate(item, options, combinedText, parentDesc);
-    const effectiveRate = item.general && item.general.trim().length > 0 ? item.general : rootGeneralRate;
-    return { item, score, effectiveRate };
-  });
+  // 7. 候補: 6桁ごとに代表の行を1つ（上位5つの6桁）
+  const repFor = async (d6: string): Promise<{ line: HtsLine; sources: PredictHtsSource[] } | undefined> => {
+    const cited = [...(citedLeaves.get(d6)?.values() ?? [])].sort((a, b) => b.votes - a.votes)[0]?.line;
+    const line = d6 === best6 ? bestLine : (cited ?? inPrefix.get(d6)?.[0] ?? (await htsLinesUnder(d6, { leafOnly: true, limit: 1 }))[0]);
+    if (!line) return undefined;
+    const sources: PredictHtsSource[] = [];
+    if (textOrder.includes(d6)) sources.push('hts-text');
+    if (votes.has(d6)) sources.push('cbp-ruling');
+    return { line, sources };
+  };
+  const reps = (await Promise.all(ranked.slice(0, 5).map(([d6]) => repFor(d6)))).filter((r): r is NonNullable<typeof r> => !!r);
+  const candidates: PredictHtsCandidate[] = reps.map(({ line, sources }) => ({
+    htsCode: line.code,
+    description: describeCandidate(line),
+    generalRate: line.general || 'N/A',
+    score: Math.round((fused.get(line.digits.slice(0, 6)) ?? 0) * 1000) / 10,
+    path: line.path.map(tidyHts),
+    sources,
+  }));
 
-  scored.sort((a, b) => b.score - a.score);
+  // 8. 分岐点: 6桁が競っているときは6桁の代表どうし、そうでなければ最有力の6桁の下の全ての葉で、分かれる位置を探す
+  //    （商品の語が当たらない行も含める。例: 自転車用ヘルメットは "Athletic, recreational and sporting headgear" で、"helmet" の語を含まない）
+  const contested = ranked.length > 1 && ranked[1][1] >= 0.6 * ranked[0][1];
+  const pool: HtsLine[] = [bestLine];
+  const addToPool = (l?: HtsLine) => {
+    if (l && !pool.some((p) => p.digits === l.digits)) pool.push(l);
+  };
+  if (contested) for (const r of reps) addToPool(r.line);
+  else for (const l of [...citedBest, ...inCited8, ...inBest6, ...siblings]) addToPool(l);
+  const decision = confidence === 'high' ? undefined : buildDecisionPoint(pool);
 
-  // 10桁統計細分コードを優先抽出
-  const top10Candidates = scored.filter((s) => normalizeHtsCode(s.item.htsno).length === 10);
-  const selectedTop = top10Candidates.length > 0 ? top10Candidates[0] : scored[0];
-
-  const topHtsCode = selectedTop.item.htsno;
-
-  // 4. 最有力候補に対する CPSC および FDA 判定の並行実行
+  // 9. CPSC・FDA の判定（最有力のコードで）
+  const category = tidyHts(bestLine.path[0] ?? bestLine.description);
   const [cpscRes, fdaRes] = await Promise.all([
     checkCpscCertificate({
-      htsCode: topHtsCode,
+      htsCode: bestLine.code,
       targetAge: options.targetAge || 'unknown',
       material: options.material,
-      productCategory: options.productCategory || targetCategory,
+      productCategory: options.productCategory || category,
       description: combinedText,
     }),
     Promise.resolve(
       checkFdaRegulated({
-        htsCode: topHtsCode,
+        htsCode: bestLine.code,
         productDescription: combinedText,
         foodContact: options.foodContact,
       }),
     ),
   ]);
 
-  // 確信度の算出
-  const confidence: 'high' | 'medium' | 'low' =
-    selectedTop.score >= 25 ? 'high' : selectedTop.score >= 12 ? 'medium' : 'low';
-
-  const candidates: PredictHtsCandidate[] = scored
-    .filter((s) => normalizeHtsCode(s.item.htsno).length >= 8)
-    .slice(0, 3)
-    .map((s) => ({
-      htsCode: s.item.htsno,
-      description: s.item.description,
-      generalRate: s.effectiveRate,
-      score: s.score,
-    }));
-
-  // 不足情報の動的検知
+  // 10. 不足情報: 分岐点の質問と、CPSC・FDA の判定が実際に必要とした情報（キーワードでの推測はしない）
   const missingInputs: string[] = [];
   const clarifyingQuestions: string[] = [];
-
-  const inferredMaterial = inferMaterial(combinedText);
-  if (!options.material && !inferredMaterial) {
-    missingInputs.push('material');
-    clarifyingQuestions.push(
-      '製品の主要素材は何ですか？（例: 陶磁器、ガラス、プラスチック、ステンレス、木、綿など。素材の違いによってHTSコードおよび一般関税率が大きく変動します）',
-    );
+  const addMissing = (inputs?: string[], questions?: string[]) => {
+    for (const m of inputs ?? []) if (m !== 'exactHtsClassification' && !missingInputs.includes(m)) missingInputs.push(m);
+    for (const q of questions ?? []) if (!clarifyingQuestions.includes(q)) clarifyingQuestions.push(q);
+  };
+  if (decision) {
+    missingInputs.push('classificationDetail');
+    clarifyingQuestions.push(decisionPointText(decision));
   }
+  if (cpscRes.applicableRegulations.length > 0) addMissing(cpscRes.missingInputs, cpscRes.clarifyingQuestions);
+  addMissing(fdaRes.missingInputs, fdaRes.clarifyingQuestions);
 
-  const effectiveTargetAge =
-    options.targetAge && options.targetAge !== 'unknown' ? options.targetAge : inferTargetAge(combinedText);
-  if (effectiveTargetAge === 'unknown') {
-    missingInputs.push('targetAge');
-    clarifyingQuestions.push(
-      'この製品の対象年齢は12歳以下の子供向けですか、それとも大人・一般向けですか？（子供向けの場合、CPSC適合性試験および2026年7月完全義務化のCPC証明書eFilingが必要となります）',
-    );
-  }
-
-  // 食品接触用途の確認（食器・キッチン用品関連）
-  const hasFoodContactKeywords =
-    /(?:mug|cup|plate|bowl|bottle|tumbler|dish|glassware|ceramic|kitchen|tableware|cookware|food|container|食器|カップ|マグ|水筒|皿|調理器具|箸|スプーン|フォーク)/i.test(
-      combinedText,
-    );
-  if (hasFoodContactKeywords && options.foodContact === undefined) {
-    missingInputs.push('foodContact');
-    clarifyingQuestions.push(
-      'この製品は飲食物に直接接触する用途（飲食・調理・保存等）で使用されますか？それとも装飾・観賞用等の非食品用途ですか？（食品接触用途の場合、FDAの事前通知(Prior Notice)や食品接触安全基準が適用されます）',
-    );
-  }
-
-  // 電池・バッテリーの確認（電子機器・電動品・玩具関連）
-  const hasBatteryKeywords =
-    /(?:electronic|electric|battery|gadget|toy|watch|clock|light|led|robot|motor|drone|headphone|earphone|speaker|電子|電動|バッテリー|電池|時計|玩具)/i.test(
-      combinedText,
-    );
-  if (hasBatteryKeywords && options.hasBattery === undefined) {
-    missingInputs.push('hasBattery');
-    clarifyingQuestions.push(
-      'この製品は電池・バッテリー（ボタン電池、コイン電池、リチウムイオン電池等）を使用・内蔵・同梱していますか？（ボタン電池内蔵の場合、CPSC 16 CFR 1263規格適合やGCC証明書が必須となります）',
-    );
-  }
-
-  const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
-  let impactExplanation: string | undefined = undefined;
+  let impactExplanation: string;
   if (missingInputs.length > 0) {
     const impacts: string[] = [];
+    if (missingInputs.includes('classificationDetail')) {
+      impacts.push('候補が公式の階層の途中で分かれており、どの区分に当たるかで10桁のコードと一般関税率が変わる');
+    }
     if (missingInputs.includes('material')) {
       impacts.push('素材の違いによりHTSコードおよび一般関税率が大きく変動（例: 0%〜20%以上）');
     }
@@ -1264,32 +1040,56 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     if (missingInputs.includes('foodContact')) {
       impacts.push('食品接触用途の場合はFDA食品安全基準適用、非接触の場合はACE免責(Disclaimer)申告が可能');
     }
-    if (missingInputs.includes('hasBattery')) {
-      impacts.push('ボタン電池内蔵品の場合はCPSC 16 CFR 1263規格およびGCC証明書作成が義務化');
-    }
-    impactExplanation = `一部の情報（${missingInputs.join('、')}）が未指定のため、代表的な仕様を前提とした暫定的なHTSコード候補を提示しています。実務上、【${impacts.join('、')}】という重大な分岐が生じるため、正確な関税率算出および通関規制判定には追加情報の確認を強く推奨します。`;
+    impactExplanation = `一部の情報（${missingInputs.join('、')}）が未指定のため、暫定的なHTSコード候補を提示しています。${
+      impacts.length > 0 ? `実務上、【${impacts.join('、')}】という重大な分岐が生じるため、` : ''
+    }正確な関税率算出および通関規制判定には追加情報の確認を強く推奨します。`;
   } else {
-    impactExplanation =
-      '製品情報（素材・対象年齢・用途等）が十分に提供されており、高確度なHTSコード候補および規制要件を特定しました。';
+    impactExplanation = '製品情報（素材・対象年齢・用途等）が十分に提供されており、高確度なHTSコード候補および規制要件を特定しました。';
   }
 
+  const supportingRulings = (supporting.get(best6) ?? []).slice(0, 3);
+  const reasonParts = [
+    `商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて${formatSubheading(best6)}を最有力としました`,
+    cross.status === 'ok'
+      ? `CBP分類判例${cross.rulings.length}件のうち${supporting.get(best6)?.length ?? 0}件が同じ6桁です`
+      : cross.status === 'no_rulings'
+        ? 'CBP分類判例には該当がありませんでした'
+        : 'CBP分類判例は参照できませんでした',
+  ];
+
   return {
-    detectedSubheading: targetSubheading,
-    category: targetCategory,
+    detectedSubheading: formatSubheading(best6),
+    category,
     bestMatch: {
-      htsCode: topHtsCode,
-      description: selectedTop.item.description,
-      parentDescription: parentDesc,
-      generalRate: selectedTop.effectiveRate,
-      score: selectedTop.score,
+      htsCode: bestLine.code,
+      description: bestLine.description,
+      parentDescription: bestLine.path.map(tidyHts).join(' › ') || undefined,
+      path: bestLine.path.map(tidyHts),
+      generalRate: bestLine.general || 'N/A',
+      rateFrom: bestLine.rateFrom,
+      score: Math.round((fused.get(best6) ?? 0) * 1000) / 10,
       confidence,
-      reason: `商品名・説明文・素材から "${targetCategory}" (Subheading ${targetSubheading}) と分類し、USITC公式品目定義とのセマンティック照合により最適コードを特定しました。`,
+      reason: `${reasonParts.join('。')}。`,
       cpsc: cpscRes,
       fda: fdaRes,
     },
     candidates,
+    decisionPoints: decision ? [decision] : undefined,
+    evidence: {
+      dataFetchedAt: (await htsDataInfo()).fetchedAt,
+      crossStatus: cross.status,
+      crossQuery: cross.query,
+      crossNote: cross.error,
+      rulings: supportingRulings.map((r) => ({
+        rulingNumber: r.rulingNumber,
+        date: r.date,
+        subject: r.subject,
+        tariffs: r.tariffs,
+        url: r.url,
+      })),
+    },
     disclaimer: DISCLAIMER_USITC,
-    inputCompleteness,
+    inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
     missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
     clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
     impactExplanation,
@@ -1341,100 +1141,6 @@ export interface CheckProductComplianceResult {
   actionPlan: string[];
   disclaimer: string;
 }
-
-const CATEGORY_HTS_DEFAULTS: {
-  category: string;
-  keywords: string[];
-  defaultHts: string;
-  targetAge?: 'child' | 'adult';
-  /** この分類に必要な追加情報。不足している場合、推測ではなくユーザーへの確認を促す。 */
-  requires?: ('material' | 'targetAge' | 'foodContact' | 'hasBattery')[];
-}[] = [
-  {
-    category: 'Toys',
-    keywords: ['toy', 'toys', 'doll', 'puzzle', 'lego', 'block', 'figure', 'plush', '玩具', 'おもちゃ', 'ぬいぐるみ', '知育', 'フィギュア'],
-    defaultHts: '9503.00.0073',
-    targetAge: 'child',
-  },
-  {
-    category: 'Bicycle Helmets',
-    keywords: ['helmet', 'bicycle helmet', 'bike helmet', 'ヘルメット'],
-    defaultHts: '6506.10.3045',
-    requires: ['targetAge'], // 子供用か大人用かで CCC/GCC が分岐
-  },
-  {
-    category: 'Bicycles',
-    keywords: ['bicycle', 'bike', 'cycling', '自転車'],
-    defaultHts: '8712.00.1510',
-    requires: ['targetAge'], // 子供用自転車は別 HTS (8712.00.1510 vs 9501.00.4000)
-  },
-  {
-    category: 'Cosmetics',
-    keywords: ['cosmetic', 'lotion', 'cream', 'serum', 'skincare', 'makeup', 'lipstick', 'sunscreen', '化粧品', '美容液', '乳液', '日焼け止め', 'コスメ'],
-    defaultHts: '3304.99.5000',
-  },
-  {
-    category: 'Food Preparations',
-    keywords: ['food', 'snack', 'candy', 'supplement', 'tea', 'coffee', 'confectionery', '食品', 'お菓子', 'サプリメント', '茶', '飲料'],
-    defaultHts: '2106.90.9998',
-  },
-  {
-    category: 'Pharmaceuticals',
-    keywords: ['medicine', 'pharmaceutical', 'drug', 'tablet', 'capsule', '医薬品', '薬'],
-    defaultHts: '3004.90.0000',
-  },
-  {
-    category: 'Medical Devices',
-    keywords: ['medical', 'thermometer', 'syringe', 'bandage', 'mask', '医療機器', '体温計', 'マスク'],
-    defaultHts: '9018.90.8000',
-  },
-  {
-    category: 'Infant Sleep Products',
-    keywords: ['crib', 'bassinet', 'cradle', 'baby mattress', 'ベビーベッド', 'クーファン'],
-    defaultHts: '9404.90.9622',
-    targetAge: 'child',
-  },
-  {
-    category: 'Pacifiers',
-    keywords: ['pacifier', 'teether', 'おしゃぶり', '歯固め'],
-    defaultHts: '3926.90.1600',
-    targetAge: 'child',
-  },
-  {
-    category: 'Children’s Clothing',
-    keywords: ['baby clothing', 'infant clothes', 'kids clothes', '子供服', 'ベビー服'],
-    defaultHts: '6209.20.3000',
-    targetAge: 'child',
-  },
-  {
-    category: 'Adult Clothing',
-    keywords: ['shirt', 'pants', 'jacket', 't-shirt', 'apparel', 'clothing', '服', 'シャツ', 'ジャケット'],
-    defaultHts: '6205.20.2061',
-    targetAge: 'adult',
-  },
-  {
-    category: 'Imitation Jewelry',
-    keywords: ['jewelry', 'necklace', 'earring', 'bracelet', 'accessory', 'アクセサリー', 'ネックレス', 'ピアス'],
-    defaultHts: '7117.19.9000',
-  },
-  {
-    category: 'Furniture',
-    keywords: ['furniture', 'table', 'chair', 'desk', 'cabinet', 'shelf', '家具', '机', '椅子', 'テーブル', '棚'],
-    defaultHts: '9403.60.8081',
-  },
-  {
-    category: 'Kitchenware',
-    keywords: ['kitchen', 'cookware', 'pan', 'pot', 'knife', 'spoon', 'fork', 'mug', 'cup', 'bottle', '調理器具', '包丁', '鍋', 'フライパン', 'マグカップ', 'ボトル'],
-    defaultHts: '7323.93.0080',
-    requires: ['material', 'foodContact'], // 素材で 6912/7013/7323/3924 等が分岐、飲食用途でFDA判断が変わる
-  },
-  {
-    category: 'Electronics',
-    keywords: ['electronics', 'charger', 'cable', 'battery', 'headphone', 'speaker', 'adapter', '電子機器', '充電器', 'ケーブル', 'イヤホン', 'スピーカー'],
-    defaultHts: '8504.40.9580',
-    requires: ['hasBattery'], // 電池搭載有無・種別でCPSC Button Cell & Coin Batteriesカテゴリへ分岐、DOT/PHMSA危険物表示要否にも影響
-  },
-];
 
 function buildIntegratedActionPlan(
   htsResult: VerifyHtsCodeResult,
@@ -1529,95 +1235,16 @@ function buildIntegratedActionPlan(
 }
 
 /**
- * 判定に必要な情報が不足している場合、LLMがユーザーへ確認すべき質問リストを返す。
- * 空配列の場合は情報十分でパイプライン実行可能。
- * キーワードリストは持たず、CATEGORY_HTS_DEFAULTS の requires フィールドを参照する。
- *
- * この関数（needs_more_info）は「分類そのものを開始できないケース」を扱う事前ゲート。
- * 分類実行後に判明する不確実性（近傍一致のHTS、CPSC/FDAのボーダーライン判定等）は
- * buildIntegratedActionPlan が missingInfo/nextActions 経由で potential_action_required として扱う。
- * 両者はパイプライン実行前後で分かれており重複しない。
- */
-function gatherClarifyingQuestions(
-  combinedText: string,
-  opts: {
-    material?: string;
-    targetAge?: string;
-    htsCode?: string;
-    foodContact?: boolean;
-    hasBattery?: boolean;
-    matchedEntry?: { requires?: ('material' | 'targetAge' | 'foodContact' | 'hasBattery')[] };
-    isFallback: boolean;
-  },
-): string[] {
-  const questions: string[] = [];
-
-  // 商品情報が空
-  if (!combinedText) {
-    questions.push('商品名または商品説明を教えてください。');
-    return questions;
-  }
-
-  // HTSコードが明示されている場合は推測精度の問題はない
-  if (opts.htsCode) return questions;
-
-  const requires = opts.matchedEntry?.requires ?? [];
-
-  // カテゴリが特定できず汎用フォールバックになる場合
-  if (opts.isFallback) {
-    questions.push(
-      '商品の種類・素材をより詳しく教えてください（例: 素材・用途・対象ユーザーなど）。' +
-      '入力された情報だけでは正確なHTSコードの分類が困難です。',
-    );
-    return questions; // fallback 時はこれ以上詳細に聞けないので早期返却
-  }
-
-  // カテゴリはマッチしたが素材が必要
-  if (requires.includes('material') && !opts.material) {
-    questions.push(
-      '商品の素材を教えてください（例: 陶器・磁器・ガラス・ステンレス・プラスチック・木材・綿など）。' +
-      '素材によってHTSコードおよび関税率が大きく異なります。',
-    );
-  }
-
-  // 食品接触用途の確認（false=非食品接触という明示回答も「回答済み」として扱う）
-  if (requires.includes('foodContact') && opts.foodContact === undefined) {
-    questions.push(
-      'この商品は飲食物と接触する用途（飲み物・食べ物を入れる / 口をつける）で使用しますか？' +
-      'それとも装飾目的・非食品接触用途ですか？（FDA食品接触安全基準の適用有無に影響します）',
-    );
-  }
-
-  // 対象年齢の確認（targetAge が unknown かつカテゴリが要求している場合）
-  if (requires.includes('targetAge') && (!opts.targetAge || opts.targetAge === 'unknown')) {
-    questions.push(
-      'この商品の主な対象ユーザーを教えてください（子供向け 12歳以下 / 大人向け / 全年齢対象）。' +
-      '子供向けの場合はCPSC認定第三者試験機関による試験とCCC証明書が義務付けられます。',
-    );
-  }
-
-  // 電池搭載有無・種別の確認（CPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要）
-  if (requires.includes('hasBattery') && opts.hasBattery === undefined) {
-    questions.push(
-      'この商品は電池・バッテリーを使用しますか？使用する場合、ボタン電池・コイン電池ですか、' +
-      'それとも他の種類の電池（リチウムイオン電池等）ですか？（電池の種類によりCPSC規制対象カテゴリや' +
-      '輸送時の危険物表示義務が変わります）',
-    );
-  }
-
-  return questions;
-}
-
-/**
- * 商品情報（URL または 商品名・説明・素材など）から、HTS実在検証・FDA規制判定・CPSC証明書/eFiling判定を一連のパイプラインとして一括実行
+ * 商品情報（URL または 商品名・説明・素材など）から、HTS実在検証・FDA規制判定・CPSC証明書/eFiling判定を一連のパイプラインとして一括実行。
+ * HTSコードが未指定なら predictHtsCode で推測する。確度が低い・英語の情報が無いときは、既定のコードで進めず確認質問を返す。
  */
 export async function checkProductCompliance(
   options: CheckProductComplianceOptions,
 ): Promise<CheckProductComplianceResult> {
   let productName = options.productName?.trim();
   let description = options.description?.trim();
-  let targetAge = options.targetAge;
-  let material = options.material?.trim();
+  const targetAge = options.targetAge ?? 'unknown';
+  const material = options.material?.trim();
   const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
 
@@ -1644,113 +1271,70 @@ export async function checkProductCompliance(
 
   const combinedText = `${productName || ''} ${description || ''} ${productCategory || ''} ${material || ''}`.trim();
 
-  // 2. 属性の自動推定（未指定の場合）
-  if (!targetAge || targetAge === 'unknown') {
-    targetAge = inferTargetAge(combinedText);
-  }
-  const inferredMaterial = !material ? inferMaterial(combinedText) : undefined;
-  if (!material) {
-    material = inferredMaterial;
-  }
-
-  // カテゴリマッチの試行
-  let detectedCategory: string | undefined = undefined;
-  let isFallback = false;
-  let matchedEntry: (typeof CATEGORY_HTS_DEFAULTS)[number] | undefined;
-  if (!htsCode) {
-    matchedEntry = CATEGORY_HTS_DEFAULTS.find((entry) =>
-      entry.keywords.some((kw) => combinedText.toLowerCase().includes(kw.toLowerCase())),
-    );
-    if (matchedEntry) {
-      detectedCategory = matchedEntry.category;
-      if (targetAge === 'unknown' && matchedEntry.targetAge) {
-        targetAge = matchedEntry.targetAge;
-      }
-    } else {
-      isFallback = true;
-    }
-  }
-
-  // 2.5. 不足情報チェック：問題がある場合はパイプラインを実行せず即時返却
-  const clarifyingQuestions = gatherClarifyingQuestions(combinedText, {
-    material: inferredMaterial || material,
-    targetAge,
-    htsCode,
-    foodContact: options.foodContact,
-    hasBattery: options.hasBattery,
-    matchedEntry,
-    isFallback,
+  const needsMoreInfo = (
+    questions: string[],
+    missing: string[],
+    htsPrediction?: PredictHtsResult,
+  ): CheckProductComplianceResult => ({
+    product: {
+      name: productName,
+      description: combinedText || undefined,
+      url: options.url,
+      detectedCategory: htsPrediction?.category || productCategory,
+      targetAge,
+      material,
+    },
+    overallStatus: 'needs_more_info',
+    summary: '正確な判定に必要な情報が不足しています。以下の質問にご回答ください。',
+    inputCompleteness: 'partial',
+    missingInputs: missing,
+    clarifyingQuestions: questions,
+    impactExplanation:
+      '商品の種類が特定できないため、HTSコード分類（関税率）やPGA規制（CPSC/FDA）の分岐を特定できません。',
+    htsPrediction,
+    actionPlan: ['上記の質問にご回答いただいた上で、再度お問い合わせください。'],
+    disclaimer: DISCLAIMER_COMPLIANCE,
   });
-  if (clarifyingQuestions.length > 0) {
-    const missingInputs = matchedEntry?.requires ? [...matchedEntry.requires] : ['productDetails'];
-    return {
-      product: {
-        name: productName,
-        description: combinedText || undefined,
-        url: options.url,
-        detectedCategory: detectedCategory || productCategory,
-        targetAge: targetAge || 'unknown',
-        material,
-      },
-      overallStatus: 'needs_more_info',
-      summary: '正確な判定に必要な情報が不足しています。以下の質問にご回答ください。',
-      inputCompleteness: 'partial',
-      missingInputs,
-      clarifyingQuestions,
-      impactExplanation:
-        '素材・対象年齢・飲食用途・電池等の重要属性が未確定のため、HTSコード分類（関税率）やPGA規制（CPSC/FDA）の分岐を特定できません。',
-      actionPlan: ['上記の質問にご回答いただいた上で、再度お問い合わせください。'],
-      disclaimer: DISCLAIMER_COMPLIANCE,
-    };
+
+  if (!combinedText) {
+    return needsMoreInfo(['商品名または商品説明を教えてください。'], ['productDetails']);
   }
 
-  // 3. HTSコードの確定（既知カテゴリのデフォルトまたは推測エンジン）
-  let htsPredictionResult: PredictHtsResult | undefined = undefined;
+  // 2. HTSコードの確定: 指定が無ければ推測する。指定があっても、章の食い違いの検知のために推測を試みる
+  let htsPrediction: PredictHtsResult | undefined;
+  let predictionNote: string | undefined;
   try {
-    htsPredictionResult = await predictHtsCode({
-      productName: productName || 'General Goods',
+    htsPrediction = await predictHtsCode({
+      productName: productName || combinedText,
       description: description || combinedText,
       material,
-      productCategory: productCategory || detectedCategory,
-      targetAge: targetAge || 'unknown',
+      productCategory,
+      targetAge,
       foodContact: options.foodContact,
       hasBattery: options.hasBattery,
     });
   } catch (e) {
-    console.warn('[TradeCompliance] predictHtsCode failed:', errorMessage(e));
+    if (!(e instanceof TradeInputError)) console.warn('[TradeCompliance] predictHtsCode failed:', errorMessage(e));
+    predictionNote = errorMessage(e);
   }
 
   if (!htsCode) {
-    if (matchedEntry) {
-      if (matchedEntry.category === 'Electronics' && options.hasBattery === true && options.batteryType === 'button_coin') {
-        htsCode = '8506.10.0010'; // CPSC "Button Cell & Coin Batteries" 代表コード
-        detectedCategory = 'Button Cell & Coin Batteries';
-      } else {
-        htsCode = matchedEntry.defaultHts;
-      }
-    } else if (htsPredictionResult?.bestMatch?.htsCode) {
-      htsCode = htsPredictionResult.bestMatch.htsCode;
-      if (!detectedCategory) {
-        detectedCategory = htsPredictionResult.category;
-      }
-    } else if (material === 'wood') {
-      htsCode = '9403.60.8081';
-      detectedCategory = 'Wooden Articles';
-    } else if (material === 'metal') {
-      htsCode = '7326.90.8688';
-      detectedCategory = 'Metal Articles';
-    } else if (material === 'cotton') {
-      htsCode = '6307.90.9889';
-      detectedCategory = 'Textile Articles';
-    } else {
-      htsCode = '3926.90.9985';
-      detectedCategory = 'General Goods';
+    if (!htsPrediction || htsPrediction.bestMatch.confidence === 'low') {
+      const questions = htsPrediction?.clarifyingQuestions?.length
+        ? htsPrediction.clarifyingQuestions
+        : [
+            predictionNote ??
+              '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
+          ];
+      return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
     }
+    htsCode = htsPrediction.bestMatch.htsCode;
   }
+  const detectedCategory = htsPrediction?.category;
 
-  const effectiveDescription = description || productName || combinedText || 'Product description for compliance check';
+  const effectiveDescription = description || productName || combinedText;
 
-  // 4. パイプライン並行実行 (HTS検証, FDA判定, CPSC判定)
+  // 3. パイプライン並行実行 (HTS検証, FDA判定, CPSC判定)
   const [htsVerification, fdaResult, cpscResult] = await Promise.all([
     verifyHtsCode({ htsCode, productDescription: effectiveDescription }),
     Promise.resolve(
@@ -1762,57 +1346,62 @@ export async function checkProductCompliance(
     ),
     checkCpscCertificate({
       htsCode,
-      targetAge: targetAge || 'unknown',
+      targetAge,
       material,
       productCategory: productCategory || detectedCategory,
       description: effectiveDescription,
     }),
   ]);
 
-  // 5. アクションプラン & 総合レポート生成
+  // 4. アクションプラン & 総合レポート生成
   const { overallStatus, summary, actionPlan } = buildIntegratedActionPlan(
     htsVerification,
     fdaResult,
     cpscResult,
   );
 
-  if (matchedEntry?.category === 'Electronics' && options.hasBattery === true && options.batteryType === 'other') {
+  if (options.hasBattery === true && options.batteryType === 'button_coin') {
+    actionPlan.push(
+      '【CPSC ボタン電池・コイン電池】ボタン電池・コイン電池を使う製品は、誤飲防止の規則（Reese’s Law, 16 CFR 1263）の包装・警告表示・性能基準への適合確認が必要です。',
+    );
+  } else if (options.hasBattery === true && options.batteryType === 'other') {
     actionPlan.push(
       '【DOT/PHMSA 危険物】リチウムイオン電池等を含む場合、輸送時にUN3480/UN3481区分の適切な表示・梱包' +
       '（危険物輸送規則, 49 CFR）が必要か確認してください。',
     );
   }
 
-  // 5.5. 安全弁（フェイルセーフ）：呼び出し元から指定された HTSコードと商品推定分類との章（Chapter）乖離検知
+  // 4.5. 安全弁（フェイルセーフ）：呼び出し元から指定された HTSコードと、商品情報から推測した章（Chapter）の乖離検知
   let hasChapterMismatch = false;
   let mismatchWarning: string | undefined = undefined;
-  if (options.htsCode) {
+  if (options.htsCode && htsPrediction && htsPrediction.bestMatch.confidence !== 'low') {
     const passedChapter = options.htsCode.replace(/\D/g, '').slice(0, 2);
-    const predictedHts = htsPredictionResult?.bestMatch?.htsCode;
-    const predictedChapter = predictedHts ? predictedHts.replace(/\D/g, '').slice(0, 2) : undefined;
-    const defaultChapter = matchedEntry?.defaultHts ? matchedEntry.defaultHts.replace(/\D/g, '').slice(0, 2) : undefined;
+    const predictedHts = htsPrediction.bestMatch.htsCode;
+    const predictedChapter = predictedHts.replace(/\D/g, '').slice(0, 2);
 
-    if (passedChapter && predictedChapter && passedChapter !== predictedChapter && (!defaultChapter || passedChapter !== defaultChapter)) {
+    if (passedChapter && passedChapter !== predictedChapter) {
       hasChapterMismatch = true;
-      const estimatedCat = htsPredictionResult?.category || detectedCategory || 'General Goods';
-      mismatchWarning = `【HTSコード乖離注意】指定されたHTSコード (${options.htsCode}, Chapter ${passedChapter}) は、商品情報から推定される品目分類 (${estimatedCat}, 推奨Chapter ${predictedChapter} / コード例: ${predictedHts}) と章（Chapter）が異なっています。AI・LLMによる推測値である場合は、htsCodeを未指定（省略）にして再実行するとSoraのUSITC公式推測エンジンによる最適なコードが自動判定されます。`;
+      mismatchWarning = `【HTSコード乖離注意】指定されたHTSコード (${options.htsCode}, Chapter ${passedChapter}) は、商品情報から推定される品目分類 (${htsPrediction.category}, 推奨Chapter ${predictedChapter} / コード例: ${predictedHts}) と章（Chapter）が異なっています。AI・LLMによる推測値である場合は、htsCodeを未指定（省略）にして再実行するとSoraのUSITC公式推測エンジンによる最適なコードが自動判定されます。`;
       actionPlan.unshift(mismatchWarning);
     }
   }
 
-  // 6. サブモジュールからの不足情報・確認質問・実務影響の統合
+  // 5. サブモジュールからの不足情報・確認質問・実務影響の統合
+  //    CPSC の対象リストに無いコードでは、CPSC の判定は一律に「カテゴリを教えてください」と尋ねる。
+  //    公式の階層で分類済みなので、リストに近いコードが無いときの CPSC の質問は使わない（推測と同じ扱い）。
+  const cpscAsks = cpscResult.applicableRegulations.length > 0;
   const subMissingInputs = Array.from(
     new Set([
-      ...(htsPredictionResult?.missingInputs || []),
-      ...(cpscResult.missingInputs || []),
+      ...(options.htsCode ? [] : htsPrediction?.missingInputs || []),
+      ...(cpscAsks ? cpscResult.missingInputs || [] : []),
       ...(fdaResult.missingInputs || []),
       ...(htsVerification.missingInputs || []),
     ]),
   );
   const subClarifyingQuestions = Array.from(
     new Set([
-      ...(htsPredictionResult?.clarifyingQuestions || []),
-      ...(cpscResult.clarifyingQuestions || []),
+      ...(options.htsCode ? [] : htsPrediction?.clarifyingQuestions || []),
+      ...(cpscAsks ? cpscResult.clarifyingQuestions || [] : []),
       ...(fdaResult.clarifyingQuestions || []),
       ...(htsVerification.clarifyingQuestions || []),
     ]),
@@ -1833,7 +1422,7 @@ export async function checkProductCompliance(
       description: effectiveDescription,
       url: options.url,
       detectedCategory: detectedCategory || productCategory,
-      targetAge: targetAge || 'unknown',
+      targetAge,
       material,
       htsCode,
     },
@@ -1844,11 +1433,10 @@ export async function checkProductCompliance(
     clarifyingQuestions: subClarifyingQuestions.length > 0 ? subClarifyingQuestions : undefined,
     impactExplanation,
     htsVerification,
-    htsPrediction: htsPredictionResult,
+    htsPrediction,
     fda: fdaResult,
     cpsc: cpscResult,
     actionPlan,
     disclaimer: DISCLAIMER_COMPLIANCE,
   };
 }
-

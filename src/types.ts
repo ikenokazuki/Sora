@@ -856,8 +856,8 @@ export const ProductComplianceRequestSchema = z.object({
   batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
 });
 export const PredictHtsCodeRequestSchema = z.object({
-  productName: z.string().min(1, 'productName は必須です').describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers"）'),
-  description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
+  productName: z.string().min(1, 'productName は必須です').describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400）'),
+  description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）'),
   material: z.string().optional().describe('主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します'),
   productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。【推測値の入力厳禁】不明な場合は省略すること'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】CPSC証明書およびeFiling要件が分岐するため、不明な場合は省略すること'),
@@ -2103,10 +2103,11 @@ export const VerifyHtsCodeResultSchema = z.object({
   htsCode: z.string().describe('検証対象の HTS コード'),
   productDescription: z.string().describe('指定された製品説明'),
   verified: z.boolean().describe('USITC 公式データベースに実在するコードか'),
-  matchLevel: z.enum(['exact', '6-digit-category', 'unmatched']).describe('一致レベル: "exact"(10桁完全一致), "6-digit-category"(6桁類一致), "unmatched"(不一致)'),
+  matchLevel: z.enum(['exact', '6-digit-category', 'unmatched']).describe('一致レベル: "exact"(8桁または10桁の行が実在), "6-digit-category"(6桁類一致), "unmatched"(不一致)'),
   hsCode: z.string().optional().describe('国際共通 6桁 HS コード'),
   officialDescription: z.string().optional().describe('USITC 公式品名解説'),
-  generalRate: z.string().optional().describe('基本関税率 (General Rate of Duty)'),
+  officialPath: z.array(z.string()).optional().describe('公式の階層での位置（最上位の見出しから親まで）。"Other" のように説明だけでは分からないときの手がかり'),
+  generalRate: z.string().optional().describe('基本関税率 (General Rate of Duty)。その行に率が無ければ最も近い祖先の率を継承した値'),
   otherRate: z.string().optional().describe('第2欄税率 (Column 2 Rate)'),
   specialRate: z.string().optional().describe('特恵関税・特定協定税率 (Special Rate)'),
   nearbyCandidates: z.array(HtsCandidateSchema).describe('近隣・関連する候補 HTS コード一覧'),
@@ -2123,26 +2124,55 @@ export const PredictHtsCandidateSchema = z.object({
   description: z.string().describe('候補品目の公式説明'),
   generalRate: z.string().describe('関税率'),
   score: z.number().describe('マッチング適合スコア'),
+  path: z.array(z.string()).optional().describe('公式の階層での位置（最上位の見出しから親まで）'),
+  sources: z.array(z.enum(['hts-text', 'cbp-ruling'])).optional().describe('この6桁を挙げた手がかり: "hts-text"(HTS全文検索), "cbp-ruling"(CBP分類判例)'),
+});
+
+export const HtsDecisionPointSchema = z.object({
+  question: z.string().describe('分類の確認質問。公式の階層で候補が最初に分かれる区分を尋ねる'),
+  options: z.array(z.object({
+    text: z.string().describe('公式の区分の説明文'),
+    htsCode: z.string().optional().describe('その区分の代表コード'),
+    generalRate: z.string().optional().describe('その区分の代表コードの一般関税率'),
+  })).describe('選択肢。答えとなる区分の語を description に加えて再実行すると絞り込める'),
+});
+
+export const PredictHtsEvidenceSchema = z.object({
+  dataFetchedAt: z.string().describe('参照した USITC HTS 全件データの取得日時 (ISO 8601)'),
+  crossStatus: z.enum(['ok', 'no_rulings', 'unavailable']).describe('CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(通信失敗。HTS全文検索だけで答えた)'),
+  crossQuery: z.string().optional().describe('判例が得られた照会語'),
+  crossNote: z.string().optional().describe('判例を参照できなかった理由'),
+  rulings: z.array(z.object({
+    rulingNumber: z.string().describe('判例番号'),
+    date: z.string().describe('判例の日付 (YYYY-MM-DD)'),
+    subject: z.string().describe('判例の件名'),
+    tariffs: z.array(z.string()).describe('判例が挙げた分類コード（数字のみ）'),
+    url: z.string().describe('判例の URL (rulings.cbp.gov)'),
+  })).describe('最有力の6桁を支持した判例（上位3件）'),
 });
 
 export const PredictHtsCodeResultSchema = z.object({
   detectedSubheading: z.string().describe('推定された 6桁 HS 号 (例: "9503.00")'),
-  category: z.string().describe('判定された製品カテゴリ (Toys, Apparel, Electronics 等)'),
+  category: z.string().describe('最有力コードの属する公式の見出しの説明'),
   bestMatch: z.object({
     htsCode: z.string().describe('最有力候補 HTS 10桁コード'),
     description: z.string().describe('最有力品目の説明'),
-    parentDescription: z.string().optional().describe('親階層品目解説'),
-    generalRate: z.string().describe('推定関税率'),
-    score: z.number().describe('適合度スコア'),
-    confidence: z.enum(['high', 'medium', 'low']).describe('推定信頼度'),
+    parentDescription: z.string().optional().describe('公式の階層での位置（" › " 区切り）'),
+    path: z.array(z.string()).optional().describe('公式の階層での位置（最上位の見出しから親まで）'),
+    generalRate: z.string().describe('一般関税率。その行に率が無ければ最も近い祖先の率を継承。どこにも無ければ "N/A"'),
+    rateFrom: z.string().optional().describe('率を継承した祖先のコード。その行自身の率なら無い'),
+    score: z.number().describe('適合度スコア (0〜100)'),
+    confidence: z.enum(['high', 'medium', 'low']).describe('推定信頼度。high: 判例とHTS全文検索が同じ6桁を指し票が集まった（評価で約9割が一致）, medium: 約7割, low: 約3〜4割'),
     reason: z.string().describe('推論理由・分類根拠'),
     cpsc: CpscCertificateCheckResultSchema.optional().describe('該当品目の CPSC 規制判定結果'),
     fda: CheckFdaRegulatedResultSchema.optional().describe('該当品目の FDA 規制判定結果'),
   }).describe('最適マッチ品目'),
-  candidates: z.array(PredictHtsCandidateSchema).describe('上位候補 HTS コード一覧'),
+  candidates: z.array(PredictHtsCandidateSchema).describe('上位候補（異なる6桁ごとに代表の行を1つ、最大5件）'),
+  decisionPoints: z.array(HtsDecisionPointSchema).optional().describe('候補が公式の階層のどこで分かれるか（confidence が high でないときに付く）'),
+  evidence: PredictHtsEvidenceSchema.describe('根拠: 参照したデータの取得日時と、CBP 判例'),
   disclaimer: z.string().describe('法的免責事項文'),
   inputCompleteness: z.enum(['complete', 'partial']).optional().describe('入力充足度'),
-  missingInputs: z.array(z.string()).optional().describe('未指定項目一覧'),
+  missingInputs: z.array(z.string()).optional().describe('未指定項目一覧（classificationDetail: 分類の確認が必要）'),
   clarifyingQuestions: z.array(z.string()).optional().describe('ユーザーへの確認質問リスト'),
   impactExplanation: z.string().optional().describe('関税・規制への影響説明'),
 });
@@ -3355,7 +3385,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/hts-predict': {
         post: {
-          summary: '商品情報からのHTS/HSコード推測（USITC公式API連動・候補提示・関税率取得・先回り推測抑止&動的質問生成）',
+          summary: '商品情報からのHTS/HSコード推測（USITC公式HTS全件の階層つき全文検索とCBP分類判例の統合・候補提示・関税率取得・分岐点の確認質問）。入力は英語',
           requestBody: {
             content: {
               'application/json': {
@@ -3371,6 +3401,9 @@ export function generateOpenApiDocument() {
                   schema: zodToOpenApiSchema(PredictHtsCodeResultSchema),
                 },
               },
+            },
+            '400': {
+              description: '入力の誤り: productName が空、英語の語が無い、または該当する品目が見つからない（INVALID_INPUT）',
             },
           },
         },

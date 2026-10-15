@@ -143,8 +143,6 @@ import {
   checkCpscCertificate,
   checkFdaRegulated,
   verifyHtsCode,
-  predictHtsCode,
-  checkProductCompliance,
   detectSpaOrBotPage,
   pickProxyUrl,
   pickBrowserProfile,
@@ -4290,187 +4288,8 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   // =========================================================================
-  // 🚢 checkProductCompliance (商品統合コンプライアンス一括判定) テスト
+  // 🚢 米国向け輸出入コンプライアンス（CPSC・FDA・HTS）テスト。HTS の推測と一括判定は src/services/trade.test.ts
   // =========================================================================
-  it('checkProductCompliance should infer toy attributes and require CPSC CCC and eFiling', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Wooden Building Blocks for Toddlers',
-      description: 'Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.',
-    });
-
-    expect(res.product.targetAge).toBe('child');
-    expect(res.product.material).toBe('wood');
-    expect(res.product.htsCode).toBe('9503.00.0073');
-    expect(res.overallStatus).toBe('action_required');
-    expect(res.cpsc!.certificateRequired).toBe(true);
-    expect(res.cpsc!.certificateType).toBe('CCC');
-    expect(res.cpsc!.eFilingRequired).toBe(true);
-    expect(res.fda!.fdaRegulatedLikely).toBe(false);
-    expect(res.actionPlan.some((a) => a.includes('CCC'))).toBe(true);
-    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr.includes('16 CFR 1501'))).toBe(true);
-    expect(res.actionPlan.some((a) => a.includes('16 CFR 1501'))).toBe(true);
-  });
-
-  it('checkProductCompliance should correctly evaluate explicit HTS code and helmet category', async () => {
-    const res = await checkProductCompliance({
-      htsCode: '6506103045',
-      productName: 'Aerodynamic Bicycle Helmet',
-      description: 'Protective adult cycling helmet with adjustable chin strap.',
-      targetAge: 'adult',
-    });
-
-    expect(res.cpsc!.certificateRequired).toBe(true);
-    expect(res.cpsc!.certificateType).toBe('GCC');
-    expect(res.cpsc!.eFilingRequired).toBe(true);
-    expect(res.overallStatus).toBe('action_required');
-    expect(res.cpsc!.applicableRegulations.some((r) => r.cfr === '個別規格要確認')).toBe(true);
-    expect(res.actionPlan.some((a) => a.includes('GCC'))).toBe(true);
-  });
-
-  it('checkProductCompliance should detect cosmetics and flag FDA regulation', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Moisturizing Face Cream and Serum',
-      description: 'Organic skincare lotion and beauty cosmetic cream.',
-    });
-
-    expect(res.fda!.fdaRegulatedLikely).toBe(true);
-    expect(res.fda!.possiblePrograms).toContain('COS');
-    expect(res.cpsc!.certificateRequired).not.toBe(true);
-    expect(res.overallStatus).toBe('action_required');
-    expect(res.actionPlan.some((a) => a.includes('MoCRA'))).toBe(true);
-  });
-
-  it('checkProductCompliance should detect food preparations and flag Prior Notice', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Green Tea Matcha Snack Confectionery',
-      description: 'Japanese dietary food snack and organic powdered beverage.',
-    });
-
-    expect(res.fda!.fdaRegulatedLikely).toBe(true);
-    expect(res.fda!.possiblePrograms).toContain('FOO');
-    expect(res.fda!.priorNoticeMayApply).toBe(true);
-    expect(res.overallStatus).toBe('action_required');
-    expect(res.actionPlan.some((a) => a.includes('Prior Notice'))).toBe(true);
-  });
-
-  it('checkProductCompliance should classify general adult furniture without requiring CPSC CCC', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Solid Oak Dining Table for Living Room',
-      description: 'Modern minimalist wooden dining table for home furniture.',
-    });
-
-    expect(res.product.targetAge).toBe('unknown');
-    expect(res.product.material).toBe('wood');
-    expect(res.product.htsCode).toBe('9403.60.8081');
-    expect(res.cpsc!.certificateRequired).not.toBe(true);
-    expect(res.cpsc!.eFilingRequired).toBe(false);
-    expect(res.fda!.fdaRegulatedLikely).toBe(false);
-    expect(['likely_exempt', 'potential_action_required']).toContain(res.overallStatus);
-  });
-
-  it('checkProductCompliance should route Electronics with button/coin battery to CPSC Button Cell & Coin Batteries HTS', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Wireless Remote Control',
-      description: 'A small electronics remote control device with charger cable.',
-      targetAge: 'adult',
-      hasBattery: true,
-      batteryType: 'button_coin',
-    });
-
-    expect(res.product.htsCode).toBe('8506.10.0010');
-    expect(res.product.detectedCategory).toBe('Button Cell & Coin Batteries');
-    expect(res.cpsc!.certificateRequired).toBe(true);
-    expect(res.cpsc!.certificateType).toBe('GCC');
-    expect(res.cpsc!.applicableRegulations.some((r) => r.summary.includes('Button Cell & Coin Batteries'))).toBe(true);
-  });
-
-  it('checkProductCompliance should append DOT/PHMSA hazmat note for non-button electronics batteries', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Rechargeable Power Bank',
-      description: 'A rechargeable electronics power bank with lithium-ion battery and USB cable.',
-      targetAge: 'adult',
-      hasBattery: true,
-      batteryType: 'other',
-    });
-
-    expect(res.product.htsCode).toBe('8504.40.9580');
-    expect(res.actionPlan.some((a) => a.includes('UN3480') || a.includes('PHMSA'))).toBe(true);
-  });
-
-  it('checkProductCompliance should ask about battery presence/type when Electronics category is matched without hasBattery', async () => {
-    const res = await checkProductCompliance({
-      productName: 'USB Charging Cable',
-      description: 'A charger cable for electronics devices.',
-    });
-
-    expect(res.overallStatus).toBe('needs_more_info');
-    expect(res.clarifyingQuestions?.some((q) => q.includes('電池'))).toBe(true);
-  });
-
-  it('checkProductCompliance should ask for missing material on Kitchenware without a foodContact dead-end', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Kitchen Mug',
-      description: 'A mug for everyday kitchen use, dishwasher safe.',
-      foodContact: true,
-    });
-
-    expect(res.overallStatus).toBe('needs_more_info');
-    expect(res.clarifyingQuestions?.some((q) => q.includes('素材'))).toBe(true);
-    expect(res.clarifyingQuestions?.some((q) => q.includes('食品接触'))).toBe(false);
-    expect(res.htsVerification).toBeUndefined();
-  });
-
-  it('checkProductCompliance should run the full pipeline once Kitchenware material and foodContact are both supplied', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Kitchen Mug',
-      description: 'A mug for everyday kitchen use, dishwasher safe.',
-      material: 'ceramic',
-      foodContact: true,
-      targetAge: 'adult',
-      productCategory: 'tableware',
-    });
-
-    expect(res.overallStatus).not.toBe('needs_more_info');
-    expect(res.htsVerification).toBeDefined();
-    expect(res.fda).toBeDefined();
-    expect(res.cpsc).toBeDefined();
-  });
-
-  it('predictHtsCode should generate clarifyingQuestions and impactExplanation when critical attributes are missing', async () => {
-    // 素材・年齢・食品接触・電池が未指定のマグカップ
-    const resPartial = await predictHtsCode({
-      productName: 'Travel Coffee Mug',
-      description: 'Insulated mug for hot drinks',
-    });
-
-    expect(resPartial.inputCompleteness).toBe('partial');
-    expect(resPartial.missingInputs).toBeDefined();
-    expect(resPartial.missingInputs).toContain('material');
-    expect(resPartial.missingInputs).toContain('foodContact');
-    expect(resPartial.clarifyingQuestions).toBeDefined();
-    expect(resPartial.clarifyingQuestions?.length).toBeGreaterThan(0);
-    expect(resPartial.clarifyingQuestions?.some((q) => q.includes('素材'))).toBe(true);
-    expect(resPartial.clarifyingQuestions?.some((q) => q.includes('接触') || q.includes('食品'))).toBe(true);
-    expect(resPartial.impactExplanation).toBeDefined();
-    expect(resPartial.impactExplanation).toContain('関税率');
-  });
-
-  it('predictHtsCode should return inputCompleteness: complete when all relevant attributes are provided', async () => {
-    const resComplete = await predictHtsCode({
-      productName: 'Ceramic Coffee Mug for Adults',
-      description: 'Stoneware coffee mug for kitchen use',
-      material: 'ceramic',
-      targetAge: 'adult',
-      foodContact: true,
-      hasBattery: false,
-    });
-
-    expect(resComplete.inputCompleteness).toBe('complete');
-    expect(resComplete.missingInputs).toBeUndefined();
-    expect(resComplete.clarifyingQuestions).toBeUndefined();
-    expect(resComplete.impactExplanation).toContain('十分に提供');
-  });
-
   it('checkCpscCertificate should return clarifyingQuestions and impactExplanation when targetAge is unknown', async () => {
     const res = await checkCpscCertificate({
       htsCode: '9503.00.0073',
@@ -4512,138 +4331,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.impactExplanation).toContain('6桁国際共通');
   });
 
-  it('POST /trade/hts-predict should include clarifyingQuestions and impactExplanation when input is partial', async () => {
-    const req = new Request('http://localhost/trade/hts-predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        productName: 'Desk Lamp',
-      }),
-    });
-
-    const res = await app.fetch(req);
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as any;
-    expect(json.inputCompleteness).toBe('partial');
-    expect(json.missingInputs).toBeDefined();
-    expect(json.clarifyingQuestions).toBeDefined();
-    expect(json.clarifyingQuestions.length).toBeGreaterThan(0);
-    expect(json.impactExplanation).toBeDefined();
-  });
-
-  it('checkProductCompliance should ask for targetAge when Bicycle Helmet category is matched without it', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Adjustable Helmet',
-      description: 'A protective head helmet with an adjustable strap for outdoor use.',
-    });
-
-    expect(res.overallStatus).toBe('needs_more_info');
-    expect(res.clarifyingQuestions?.some((q) => q.includes('対象ユーザー'))).toBe(true);
-  });
-
-  it('checkProductCompliance should return the fallback clarifying question when no category matches', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Quantum Widget Model X',
-      description: 'A completely novel gadget with no established classification.',
-    });
-
-    expect(res.overallStatus).toBe('needs_more_info');
-    expect(res.clarifyingQuestions?.length).toBe(1);
-    expect(res.clarifyingQuestions?.[0]).toContain('正確なHTSコードの分類が困難');
-  });
-
-  it('checkProductCompliance should warn when specified HTS code conflicts with estimated category chapter', async () => {
-    const res = await checkProductCompliance({
-      productName: 'Wooden Building Blocks for Toddlers',
-      description: 'Solid natural wood building blocks for 3-year-olds',
-      material: 'wood',
-      targetAge: 'child',
-      htsCode: '8504.40.9580', // Chapter 85 (Power supplies) - completely mismatched with Toys/Wooden articles
-    });
-
-    expect(res.actionPlan.some((p) => p.includes('【HTSコード乖離注意】'))).toBe(true);
-    expect(res.impactExplanation).toContain('【HTSコード乖離注意】');
-    expect(res.impactExplanation).toContain('8504.40.9580');
-    expect(res.impactExplanation).toContain('Chapter 85');
-  });
-
-  it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
-    const req = new Request('http://localhost/trade/compliance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        productName: 'Kids Plastic Doll Toy',
-        description: 'Doll figure with accessories for children',
-      }),
-    });
-
-    const res = await app.fetch(req);
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as any;
-    expect(json.product.targetAge).toBe('child');
-    expect(json.overallStatus).toBe('action_required');
-    expect(json.cpsc.certificateType).toBe('CCC');
-    expect(json.actionPlan.length).toBeGreaterThan(0);
-    expect(json.disclaimer).toBeTruthy();
-  });
-
-  it('predictHtsCode should predict 9503 toy HTS code with CCC and eFiling requirement', async () => {
-    const res = await predictHtsCode({
-      productName: 'Wooden Building Blocks Set',
-      description: 'Educational building blocks for toddlers aged 3 to 12 years',
-      material: 'wood',
-      targetAge: 'child',
-    });
-
-    expect(res.detectedSubheading).toBe('9503.00');
-    expect(res.category).toBe('Toys');
-    expect(res.bestMatch.htsCode.startsWith('9503')).toBe(true);
-    expect(res.bestMatch.cpsc?.certificateRequired).toBe(true);
-    expect(res.bestMatch.cpsc?.certificateType).toBe('CCC');
-    expect(res.bestMatch.cpsc?.eFilingRequired).toBe(true);
-    expect(res.candidates.length).toBeGreaterThan(0);
-  });
-
-  it('predictHtsCode should predict 6912 ceramic tableware and flag FDA FD1 FCS', async () => {
-    const res = await predictHtsCode({
-      productName: 'Ceramic Coffee Mug',
-      description: 'Stoneware coffee mug for kitchen use',
-      material: 'ceramic',
-      foodContact: true,
-    });
-
-    expect(res.detectedSubheading).toBe('6912.00');
-    expect(res.bestMatch.htsCode.startsWith('6912')).toBe(true);
-    expect(res.bestMatch.fda?.fdFlag).toBe('FD1');
-    expect(res.bestMatch.fda?.fdaRegulatedLikely).toBe(true);
-    expect(res.bestMatch.fda?.possiblePrograms).toContain('FCS');
-  });
-
-  it('predictHtsCode should predict 3304 cosmetic lotion with FDA FD2 COS MoCRA requirement', async () => {
-    const res = await predictHtsCode({
-      productName: 'Hydrating Face Moisturizer Cream',
-      description: 'Organic skincare beauty lotion',
-    });
-
-    expect(res.detectedSubheading).toBe('3304.99');
-    expect(res.bestMatch.htsCode.startsWith('3304')).toBe(true);
-    expect(res.bestMatch.fda?.fdFlag).toBe('FD2');
-    expect(res.bestMatch.fda?.possiblePrograms).toContain('COS');
-    expect(res.bestMatch.fda?.requiredActions?.some((a) => a.includes('MoCRA'))).toBe(true);
-  });
-
-  it('predictHtsCode should predict 0902 green tea with FDA FD4 Prior Notice requirement', async () => {
-    const res = await predictHtsCode({
-      productName: 'Japanese Organic Matcha Green Tea Powder',
-      description: 'Pure powdered green tea leaves for beverage',
-    });
-
-    expect(res.detectedSubheading).toBe('0902.10');
-    expect(res.bestMatch.htsCode.startsWith('0902')).toBe(true);
-    expect(res.bestMatch.fda?.fdFlag).toBe('FD4');
-    expect(res.bestMatch.fda?.priorNoticeRequired).toBe(true);
-  });
-
   it('checkFdaRegulated should evaluate FD1-FD4 flags and foodContact differentiation', () => {
     // FD4: 食品
     const resFood = checkFdaRegulated({ htsCode: '0902.10.0000' });
@@ -4679,7 +4366,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resUnmapped.disclaimerCodeHint).toContain('A');
   });
 
-  it('POST /trade/hts-predict REST endpoint should return predicted HTS code and PGA analysis', async () => {
+  it('POST /trade/hts-predict should return the classification, the official position, the evidence and the PGA analysis', async () => {
     const req = new Request('http://localhost/trade/hts-predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4694,10 +4381,61 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as any;
     expect(json.detectedSubheading).toBe('6506.10');
-    expect(json.category).toBe('Bicycle Helmets');
-    expect(json.bestMatch.htsCode.startsWith('6506')).toBe(true);
+    expect(json.bestMatch.htsCode.startsWith('6506.10')).toBe(true);
     expect(json.bestMatch.cpsc.certificateType).toBe('GCC');
+    expect(json.bestMatch.path.length).toBeGreaterThan(0);
     expect(json.candidates.length).toBeGreaterThan(0);
+    expect(json.evidence.crossStatus).toBe('ok');
+    expect(json.evidence.rulings[0].url).toContain('rulings.cbp.gov');
+    // 候補が公式の階層で分かれるので、分岐点の質問が付く
+    expect(json.decisionPoints[0].options.length).toBeGreaterThan(1);
+    expect(json.missingInputs).toContain('classificationDetail');
+  });
+
+  it('POST /trade/hts-predict should reject input with no English word (400 INVALID_INPUT) and a missing productName', async () => {
+    const japanese = await app.fetch(
+      new Request('http://localhost/trade/hts-predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productName: '陶器のマグカップ' }),
+      }),
+    );
+    expect(japanese.status).toBe(400);
+    const body = (await japanese.json()) as any;
+    expect(body.code).toBe('INVALID_INPUT');
+    expect(body.error).toContain('英語');
+
+    const missing = await app.fetch(
+      new Request('http://localhost/trade/hts-predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'a mug' }),
+      }),
+    );
+    expect(missing.status).toBe(400);
+  });
+
+  it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
+    const req = new Request('http://localhost/trade/compliance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productName: 'Kids Plastic Doll Toy',
+        description: 'Doll figure with accessories for children',
+        targetAge: 'child',
+      }),
+    });
+
+    const res = await app.fetch(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.product.targetAge).toBe('child');
+    expect(json.product.htsCode.startsWith('9503')).toBe(true);
+    expect(json.overallStatus).toBe('action_required');
+    expect(json.cpsc.certificateType).toBe('CCC');
+    expect(json.htsPrediction.bestMatch.confidence).toBe('high');
+    expect(json.actionPlan.length).toBeGreaterThan(0);
+    expect(json.disclaimer).toBeTruthy();
   });
 
   it('POST /trade/fda-check should parse foodContact and evaluate FD1 status', async () => {
@@ -5045,14 +4783,16 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(SORA_MCP_INSTRUCTIONS).toContain('music');
 
       expect(SORA_MCP_INSTRUCTIONS).toContain('CRITICAL HTS RULE');
-      expect(SORA_MCP_INSTRUCTIONS).toContain("NEVER inject or invent your own guessed HTS code into 'htsCode'");
+      expect(SORA_MCP_INSTRUCTIONS).toContain("NEVER supply a guessed 'htsCode'");
+      expect(SORA_MCP_INSTRUCTIONS).toContain('plain English generic name'); // HTS と判例は英語
 
       const server = createMcpServer({ deferTools: false });
       expect((server.server as any)._instructions).toBe(SORA_MCP_INSTRUCTIONS);
       const regTools: Record<string, any> = (server as any)._registeredTools || {};
       const complianceTool = regTools['check_product_compliance'];
       expect(complianceTool).toBeDefined();
-      expect(complianceTool.description).toContain('HTSコードを推定したい場合はhtsCode引数を必ず未指定');
+      expect(complianceTool.description).toContain('HTSコードを推定したい場合はhtsCodeを必ず省略');
+      expect(complianceTool.description).toContain('英語の一般名');
     });
 
     it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve universal investigation descriptions', () => {
