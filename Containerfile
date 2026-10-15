@@ -41,6 +41,7 @@ WORKDIR /app
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /app/server.js /app/server.js
 COPY --from=builder /app/address-build.js /app/address-build.js
+COPY --from=builder /app/client /app/client
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/bin/yahoo-search-mcp /app/yahoo-search-mcp

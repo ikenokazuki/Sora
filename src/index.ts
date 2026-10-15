@@ -26,6 +26,7 @@ import { mediaRoutes } from './routes/media.js';
 import { trackingRoutes } from './routes/tracking.js';
 import { intelligenceRoutes } from './routes/intelligence.js';
 import { socialRoutes } from './routes/social.js';
+import { clientRoutes } from './routes/client.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 import { createRestOriginPolicy } from './security/rest_origin.js';
 export { formatError, mcpSessionManager };
@@ -134,6 +135,7 @@ app.route('/', mediaRoutes);
 app.route('/', trackingRoutes);
 app.route('/', intelligenceRoutes);
 app.route('/', socialRoutes);
+app.route('/', clientRoutes);
 
 // ==========================================
 // 4. グレースフル・シャットダウン (ブラウザプロセス・DB完全解放)
