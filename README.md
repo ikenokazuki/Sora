@@ -210,7 +210,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `POST /browser/action` (初回実行) | **約 1.1 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
 | `POST /browser/action` (セッション継続) | **約 0.3 〜 0.6 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 | `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
-| `POST /trade/hts-predict` (HTSコード推測) | **約 0.2 〜 0.4 秒** | **0.5 ms** | 商品名・素材からの10桁HTS自動推測＋関税率＋多層防御ヒアリング誘導 |
+| `POST /trade/hts-predict` (HTSコード推測) | **約 0.3 〜 0.5 秒**（初回のみ約 20 秒） | **約 50 ms** | USITC 公式 HTS 全件の階層つき全文検索（約 1 ms）＋CBP 分類判例の照会（約 0.1〜0.2 秒 × 最大 5 回）の統合。初回は HTS 全件（約 12MB）を取得して保存する |
 | `POST /tracking` (荷物追跡) | **約 200 〜 400 ms** | **0.5 ms** | 主要8社（ヤマト・佐川・日本郵便・西濃・福山・UPS・FedEx・DHL）並行投機照会＋自動判別 |
 
 #### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
@@ -350,7 +350,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `normalize_address`: デジタル庁 ABR 住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合
   - `reverse_geocode`: デジタル庁 ABR 緯度経度座標からの最寄り住所逆引き（住居表示・地番）
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
-  - `predict_hts_code`: 米国 USITC 公式 HTS/HS コード自動推測・ヒアリング誘導
+  - `predict_hts_code`: 米国 HTS/HS コード推測（USITC 公式 HTS 全件＋CBP 分類判例。英語で入力）・分岐点の確認質問
   - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
   - `check_fda_regulated`: 米国 FDA 規制判定
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
@@ -571,11 +571,11 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `predict_hts_code` | 商品名・説明文・素材・用途・対象年齢・食品接触有無から、セマンティックスコアリングと米国USITC公式API（hts.usitc.gov）を連携させた2段階ハイブリッド照合により、米国通関申告に必須となる10桁HTSコードおよび一般関税率・関連PGA規制（CPSC/FDA）を自動推測します。 | `bestMatch`, `detectedSubheading` | - `productName` (string, 必須): 商品名 (例: "Pokemon Pikachu Plush Toy")<br>- `description` (string, 任意): 詳細説明・用途<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か (食器・調理器具のFD1判定分岐)<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無 |
+| `predict_hts_code` | 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語の語が無いと 400）。 | `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `productName` (string, 必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `description` (string, 任意): 詳細説明・用途（英語）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か (食器・調理器具のFD1判定分岐)<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無 |
 | `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品や類似コード品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint: A または B`）を案内します。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主な素材<br>- `productCategory` (string, 任意): 製品カテゴリ補足<br>- `description` (string, 任意): 自由記述補足 |
 | `check_fda_regulated` | HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "0902.10.10.15", "3304.99.5000")<br>- `productDescription` (string, 任意): 製品の自由記述説明<br>- `foodContact` (boolean, 任意): 食品・飲料接触用途か（食器・調理器具のFD1判定分岐） |
-| `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式品目名・一般関税率を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するため必須 |
-| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリから、HTS自動推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品名<br>- `description` (string, 任意): 商品説明・素材・用途<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材<br>- `productCategory` (string, 任意): 製品カテゴリ<br>- `foodContact` (boolean, 任意): 飲食接触用途か<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無 |
+| `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するため必須 |
+| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材<br>- `productCategory` (string, 任意): 製品カテゴリ<br>- `foodContact` (boolean, 任意): 飲食接触用途か<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無 |
 
 ---
 
@@ -1664,70 +1664,173 @@ HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用�
   ```
 
 ### 3.20 HTS/HSコード実在確認・検証 (`POST /trade/hts-verify`)
-LLM・利用者が推論したHTSコード候補を、米国USITC公式データ (hts.usitc.gov) と照合し実在確認・正式品目名・一般関税率を取得します。6桁サブヘディングまでしか一致しない場合は `clarifyingQuestions` で10桁統計細分の特定に必要な追加仕様をヒアリング誘導します。HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。
+LLM・利用者が推論したHTSコード候補を、米国USITC公式データ（HTS 全件のローカルコピー。取得と保存は 3.21 を参照）と照合し、実在確認・正式品目名・公式の階層での位置（`officialPath`）・一般関税率を取得します。**10桁の行の約6割は自分の行に率を持たず**、最も近い祖先の行の率が適用されます。返す率はこの継承を反映した値です。8桁の行にこれより細かい10桁の統計細分がある場合や、6桁までしか一致しない場合は `clarifyingQuestions` で10桁統計細分の特定に必要な追加仕様をヒアリング誘導します。HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。
 
 - **リクエスト**:
   ```json
   {
-    "htsCode": "9503.00.00.11",
-    "productDescription": "Stuffed plush toy doll for children under 3 years"
+    "htsCode": "9503.00.00.73",
+    "productDescription": "Wooden building blocks for children aged 3 to 12"
   }
   ```
 - **レスポンス例（完全一致）**:
   ```json
   {
-    "htsCode": "9503.00.00.11",
-    "productDescription": "Stuffed plush toy doll for children under 3 years",
+    "htsCode": "9503.00.00.73",
+    "productDescription": "Wooden building blocks for children aged 3 to 12",
     "verified": true,
     "matchLevel": "exact",
     "hsCode": "950300",
-    "officialDescription": "Under 3 years of age",
+    "officialDescription": "3 to 12 years of age",
+    "officialPath": [
+      "Tricycles, scooters, pedal cars and similar wheeled toys; do…",
+      "“Childrenʼs productsˮ as defined in 15 U.S.C. § 2052",
+      "Other",
+      "Labeled or determined by importer as intended for use by per…"
+    ],
     "generalRate": "Free",
     "otherRate": "70%",
-    "specialRate": "Free (AU, BH, CL, CO, ...)",
     "nearbyCandidates": [],
     "inputCompleteness": "complete",
     "impactExplanation": "米国USITC公式関税率表にて10桁統計細分コードの実在および一般関税率が確認されました。",
-    "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。...",
-    "source": "usitc-hts"
+    "source": "usitc-hts",
+    "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。..."
   }
   ```
 
 ### 3.21 商品情報からのHTS/HSコード推測 (`POST /trade/hts-predict`)
-商品名・説明文・素材・用途・対象年齢・食品接触有無から、セマンティックスコアリングと米国USITC公式API（hts.usitc.gov）を連携させた2段階ハイブリッド照合により、米国通関申告に必須となる10桁HTSコードおよび一般関税率・関連PGA規制（CPSC/FDA）を自動推測します。
+商品の**英語の一般名・説明**から、米国通関申告に必須となる10桁HTSコード・一般関税率・関連PGA規制（CPSC/FDA）を推測します。品目ごとの規則表や辞書は持たず、次の二つの公式データを**6桁の単位**で統合します。
 
-> **多層防御・先回り推測の防止**: LLMが素材や対象年齢を一般論ででっち上げてツールを呼び出さないよう、スキーマとプロンプトで「不明な任意項目は省略すること」を徹底しています。品名のみ等の部分的な入力に対しても暫定推測結果を返しつつ、`missingInputs`（未指定項目）、`clarifyingQuestions`（LLMがユーザーへ確認すべき質問文）、`impactExplanation`（情報不足による関税率や規制の分岐説明）を返却し、自然な追加ヒアリングを誘導します。
+1. **USITC 公式 HTS 全件の階層つき全文検索**: 初回の呼び出しで HTS 全件（約 12MB）を取得し、SQLite に保存します（`SORA_HTS_DIR`。約 21MB）。「Other:」「Available in specified sets:」のような説明だけの中間行も含む完全な木として持ち、各行に祖先の説明（`path`）と、継承した関税率（`rateFrom`）を付けます。申告に使う約 2 万の行を FTS5（BM25）で引きます。
+2. **CBP の分類判例（CROSS）**: 「wallet → 4202.31」「wristwatch → 9102」のように、普段の言葉と法令の用語をつなぎます。このツールが呼ばれたときだけ照会し、24 時間キャッシュします。検索は AND 条件なので、品名を絞りながら（全ての語 → 前置詞より前の名詞句 → 後ろの4・3・2・1語）順に試します。判例が挙げたコードは現行の木で照合し、改訂で番号が変わったもの（9503.30 → 9503.00 など）は現行の6桁へ振り分けます。
 
-- **リクエスト (品名のみの最小入力例)**:
+二つの手がかりが同じ6桁を指し、判例の票が集まっているほど `confidence` が高くなります。6桁の中の行（10桁）は、判例が挙げた行、次に全文検索の順で選びます。本体ではなく部品・付属品の行（見出しが "Parts" で始まる）は、商品の語に部品・付属品を示す語が無いとき減点します。判例が使えないとき（通信失敗・該当なし）は、HTS の全文検索だけで答え、`evidence.crossStatus` に理由を残します。
+
+> **精度（実測）**: 代表的な輸出品150件（`eval/hts_predict_cases.json`。dev 52・test 51・保留 47）で、1位の6桁（HS6）の一致は **72.0%**、候補（上位5つの6桁）の中に正解がある割合は **89.3%** でした。調整に使っていない保留セットでは 68.1%（候補内 85.1%）です。`confidence` は実績とよく合います: `high` の的中 94%（31/33）、`medium` 79%（59/75）、`low` 43%（18/42）。HTS の全文検索だけ（判例なし）では 37.3% で、`high` は付きません。変更前の実装は 18.0%（保留セットでは 6.4%）でした。評価の方法と外れた事例は [docs/evaluations/hts-predict/results.md](docs/evaluations/hts-predict/results.md) にあります。評価は6桁までで、10桁の選択は測っていません。
+
+> **入力は英語**: HTS も判例も英語なので、`productName` と `description` は商品の一般名の英語（宣伝文句・ブランド名は除く）で渡します。日本語の商品は呼び出し側で英訳してください（MCP では LLM が行います）。英語の語が無い入力は `400 INVALID_INPUT` です（`/trade/compliance` では `needs_more_info` で英訳を促します）。長い出品タイトルは判例に当たらないことがあり、その場合は全文検索だけで答えます。
+
+> **分岐点の質問**: `confidence` が `high` でないとき、候補が公式の階層のどこで分かれるかを調べ、**公式の説明文を選択肢にした質問**（`decisionPoints`）を返します。選択肢には、商品の語を含まない行も載ります（自転車用ヘルメットは "Athletic, recreational and sporting headgear" で、"helmet" の語を含みません）。ユーザーの答えとなる区分の語を `description` に加えて再実行すると、絞り込めます。
+
+> **多層防御・先回り推測の防止**: LLMが素材や対象年齢を一般論ででっち上げてツールを呼び出さないよう、スキーマとプロンプトで「不明な任意項目は省略すること」を徹底しています。CPSC/FDA の判定が実際に必要とした情報だけを `missingInputs`（未指定項目）、`clarifyingQuestions`（LLMがユーザーへ確認すべき質問文）、`impactExplanation`（情報不足による関税率や規制の分岐説明）として返し、キーワードによる推測や質問はしません。
+
+> **運用**: HTS 全件は、この機能（`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance`）が初めて呼ばれたときだけ取得します（約 20 秒）。起動時の取得や常駐処理はありません。7 日を過ぎると次の利用時に裏で更新し、失敗したときは古いコピーのまま答えます。最初の取得を待たせたくないときは、先に一度 `POST /trade/hts-verify` を呼んでください。
+
+- **リクエスト**:
   ```json
   {
-    "productName": "Travel Coffee Mug",
-    "description": "Insulated mug for hot drinks"
+    "productName": "Bicycle Helmet",
+    "description": "Protective helmet for road cycling"
   }
   ```
-- **レスポンス例 (動的ヒアリング誘導)**:
+- **レスポンス例 (候補が公式の階層で分かれる場合)**:
   ```json
   {
-    "detectedSubheading": "6912.00",
-    "category": "Tableware",
+    "detectedSubheading": "6506.10",
+    "category": "Other headgear, whether or not lined or trimmed",
     "bestMatch": {
-      "htsCode": "6912.00.4100",
-      "description": "Mugs and other steins",
-      "generalRate": "5.7%",
-      "score": 32,
-      "confidence": "high",
-      "reason": "商品名・説明文から \"Tableware\" (Subheading 6912.00) と分類し、USITC公式品目定義とのセマンティック照合により最適コードを特定しました。",
+      "htsCode": "6506.10.60.45",
+      "description": "Athletic, recreational and sporting headgear",
+      "parentDescription": "Other headgear, whether or not lined or trimmed › Safety headgear › Other › Other",
+      "generalRate": "Free",
+      "rateFrom": "6506.10.60",
+      "score": 51.1,
+      "confidence": "medium",
+      "reason": "商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて6506.10を最有力としました。CBP分類判例9件のうち6件が同じ6桁です。",
       "cpsc": { ... },
-      "fda": { "fdFlag": "FD1", "fdaRegulatedLikely": true, "possiblePrograms": ["FCS"] }
+      "fda": { ... }
     },
-    "candidates": [ ... ],
-    "inputCompleteness": "partial",
-    "missingInputs": ["material", "foodContact"],
-    "clarifyingQuestions": [
-      "製品の主要素材は何ですか？（例: 陶磁器、ガラス、プラスチック、ステンレス、木、綿など。素材の違いによってHTSコードおよび一般関税率が大きく変動します）",
-      "この製品は飲食物に直接接触する用途（飲食・調理・保存等）で使用されますか？それとも装飾・観賞用等の非食品用途ですか？（食品接触用途の場合、FDAの事前通知(Prior Notice)や食品接触安全基準が適用されます）"
+    "candidates": [
+      {
+        "htsCode": "6506.10.60.45",
+        "description": "Athletic, recreational and sporting headgear",
+        "generalRate": "Free",
+        "score": 51.1,
+        "sources": [
+          "hts-text",
+          "cbp-ruling"
+        ]
+      },
+      {
+        "htsCode": "8712.00.48.00",
+        "description": "Bicycles and other cycles (including delivery tricycles), not motorized › Other bicycles",
+        "generalRate": "11%",
+        "score": 30,
+        "sources": [
+          "hts-text"
+        ]
+      },
+      { ... }
     ],
-    "impactExplanation": "一部の情報（material、foodContact）が未指定のため、代表的な仕様を前提とした暫定的なHTSコード候補を提示しています。実務上、【素材の違いによりHTSコードおよび一般関税率が大きく変動（例: 0%〜20%以上）、食品接触用途の場合はFDA食品安全基準適用、非接触の場合はACE免責(Disclaimer)申告が可能】という重大な分岐が生じるため、正確な関税率算出および通関規制判定には追加情報の確認を強く推奨します。",
+    "decisionPoints": [
+      {
+        "question": "分類の確認: 公式の区分「Safety headgear」のうち、商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。",
+        "options": [
+          {
+            "text": "Other › Other › Athletic, recreational and sporting headgear",
+            "htsCode": "6506.10.60.45",
+            "generalRate": "Free"
+          },
+          {
+            "text": "Of reinforced or laminated plastics › Other › Athletic, recreational and sporting headgear",
+            "htsCode": "6506.10.30.45",
+            "generalRate": "Free"
+          },
+          {
+            "text": "Other › Motorcycle helmets",
+            "htsCode": "6506.10.60.30",
+            "generalRate": "Free"
+          },
+          {
+            "text": "Of reinforced or laminated plastics › Motorcycle helmets",
+            "htsCode": "6506.10.30.30",
+            "generalRate": "Free"
+          },
+          {
+            "text": "Of reinforced or laminated plastics › Other › Other",
+            "htsCode": "6506.10.30.75",
+            "generalRate": "Free"
+          },
+          {
+            "text": "Other › Other › Other",
+            "htsCode": "6506.10.60.75",
+            "generalRate": "Free"
+          }
+        ]
+      }
+    ],
+    "evidence": {
+      "dataFetchedAt": "2026-10-15T08:04:13.615Z",
+      "crossStatus": "ok",
+      "crossQuery": "bicycle helmet",
+      "rulings": [
+        {
+          "rulingNumber": "N352469",
+          "date": "2025-09-09",
+          "subject": "The tariff classification of a bicycle helmet from China",
+          "tariffs": [
+            "6506106045",
+            "99030124",
+            "99030125",
+            "99038815"
+          ],
+          "url": "https://rulings.cbp.gov/ruling/N352469"
+        },
+        { ... }
+      ]
+    },
+    "inputCompleteness": "partial",
+    "missingInputs": [
+      "classificationDetail",
+      "targetAge",
+      "material"
+    ],
+    "clarifyingQuestions": [
+      "分類の確認: 公式の区分「Safety headgear」のうち、商品が当たるのはどれですか？ …（選択肢は decisionPoints と同じ）",
+      "この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？",
+      "製品の主要素材は何ですか？（…）"
+    ],
+    "impactExplanation": "一部の情報（classificationDetail、targetAge、material）が未指定のため、暫定的なHTSコード候補を提示しています。…",
     "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。..."
   }
   ```
@@ -1735,7 +1838,12 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 ---
 
 ### 3.22 商品統合コンプライアンス一括判定 (`POST /trade/compliance`)
-商品ページのURL、または商品名・説明・素材・カテゴリから、HTS自動推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。
+商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジン（3.21）と連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。
+
+- `htsCode` を省略すると、3.21 の推測で決めたコードを使います。`htsCode` を渡した場合はそれを検証し、商品情報から推測した章（Chapter）と食い違えば `【HTSコード乖離注意】` を付けます。
+- 推測の確度が低い（`low`）、または英語の情報が無いときは、既定のコードで進めず `overallStatus: "needs_more_info"` と確認質問（候補付きの `htsPrediction`）を返します。
+- 対象年齢（`targetAge`）と素材（`material`）は、文章から推定せず、呼び出し側が渡した値だけを使います（文章に書かれた事実なら、LLM が渡して構いません）。不足すれば CPSC の判定が `clarifyingQuestions` で尋ねます。
+- 電池は `hasBattery` と `batteryType` を渡したときだけ反映します（`button_coin` は CPSC の Reese's Law（16 CFR 1263）、`other` は DOT/PHMSA の危険物表示の確認）。
 
 - **リクエスト**:
   ```bash
@@ -1743,7 +1851,9 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
     -H "Content-Type: application/json" \
     -d '{
       "productName": "Wooden Building Blocks for Toddlers",
-      "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint."
+      "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.",
+      "targetAge": "child",
+      "material": "wood"
     }'
   ```
 - **レスポンス例**:
@@ -1752,18 +1862,30 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
     "product": {
       "name": "Wooden Building Blocks for Toddlers",
       "description": "Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.",
-      "detectedCategory": "Toys",
+      "detectedCategory": "Tricycles, scooters, pedal cars and similar wheele…",
       "targetAge": "child",
       "material": "wood",
-      "htsCode": "9503.00.0073"
+      "htsCode": "9503.00.00.73"
     },
     "overallStatus": "action_required",
-    "summary": "CPSC規制対象 (CCC証明書作成 & eFiling電子申告が必須)",
+    "summary": "CPSC規制対象 (CCC証明書作成 & eFiling電子申告が完全義務化)",
+    "inputCompleteness": "complete",
+    "impactExplanation": "提供された製品仕様（素材・年齢層・用途等）に基づき、高精度な総合コンプライアンス診断を実施しました。",
     "htsVerification": {
-      "htsCode": "9503.00.0073",
+      "htsCode": "9503.00.00.73",
       "verified": true,
       "matchLevel": "exact",
       "generalRate": "Free"
+    },
+    "htsPrediction": {
+      "detectedSubheading": "9503.00",
+      "bestMatch": {
+        "htsCode": "9503.00.00.73",
+        "description": "3 to 12 years of age",
+        "generalRate": "Free",
+        "score": 80.9,
+        "confidence": "high"
+      }
     },
     "fda": {
       "fdaRegulatedLikely": false,
@@ -1778,27 +1900,22 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
       "applicableRegulations": [
         {
           "cfr": "CPSC HTS Guidance List (2026年完全義務化施行)",
-          "summary": "HTSコード \"9503.00.0073\" は \"Toys\" カテゴリとしてCPSC eFiling対象HTSリストに掲載"
+          "summary": "HTSコード \"9503.00.00.73\" は \"Toys\" カテゴリとしてCPSC eFiling対象HTSリストに掲載（2026年7月…"
+        },
+        {
+          "cfr": "ASTM F963 / 16 CFR 1501",
+          "summary": "玩具安全規格 ASTM F963（CPSIAにより強制規格化）および小部品誤飲防止基準（16 CFR 1501）。…"
         }
-      ],
-      "disclaimerCodeHint": "A (Not Regulated by CPSC) または B (Not Subject to Mandatory Standard)"
-    },
-    "htsPrediction": {
-      "detectedSubheading": "9503.00",
-      "bestMatch": {
-        "htsCode": "9503.00.00.13",
-        "description": "3 to 12 years of age",
-        "generalRate": "Free",
-        "score": 27,
-        "confidence": "high"
-      }
+      ]
     },
     "actionPlan": [
-      "【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください。",
+      "【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください（小部品誤飲・窒息ハザード試験 16 CFR 1501 を含む）。",
       "【CPSC CCC】試験結果に基づき Children’s Product Certificate (CCC) を作成・発行してください。",
-      "【CPSC eFiling完全義務化】2026年7月8日以降、米国到着前にCBP ACEシステムへの電子申告(eFiling: フルメッセージセット送信またはProduct Registry事前登録)が必須です。",
-      "【特別追加関税確認】HTS Revision 18等の大統領布告・通商法301条に基づくChapter 99特別追加関税の適用有無を通関業者にご確認ください。"
-    ]
+      "【CPSC eFiling（完全義務化）】米国税関(CBP) ACEシステムへの輸入通関申告時に証明書データを電子申告してください（申告方式: フルPGAメッセージセット送信、また…",
+      "【適用規格】CPSC HTS Guidance List (2026年完全義務化施行): HTSコード \"9503.00.00.73\" は \"Toys\" カテゴリとしてCPSC e…",
+      "…"
+    ],
+    "disclaimer": "本判定結果は参考情報を提供するものであり、法的助言・通関確定情報ではありません。..."
   }
   ```
 
@@ -2022,6 +2139,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ALLOW_BROWSER_EVALUATE` | `true` | `false` 指定時に `/browser/action` での `evaluate`（任意JS実行）を完全遮断・ロックダウン |
 | `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます |
 | `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます） |
 | `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
 | `ALLOW_LOCAL_FETCH` | `false` | `true` の場合、`localhost` / プライベート IP へのスクレイピングを許可します（SSRF 対策の緩和。**テスト用途のみ**） |
