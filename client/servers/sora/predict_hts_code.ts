@@ -2,9 +2,9 @@
 import { callSora } from '../../runtime.js';
 
 export type PredictHtsCodeInput = {
-  /** 商品名・タイトル（例: "Wooden Building Blocks for Toddlers"） */
+  /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400） */
   productName: string;
-  /** 商品の詳細説明・仕様・素材・用途など */
+  /** 商品の詳細説明・仕様・素材・用途など（英語） */
   description?: string;
   /** 主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します */
   material?: string;
@@ -21,7 +21,7 @@ export type PredictHtsCodeInput = {
 export type PredictHtsCodeOutput = {
   /** 推定された 6桁 HS 号 (例: "9503.00") */
   detectedSubheading: string;
-  /** 判定された製品カテゴリ (Toys, Apparel, Electronics 等) */
+  /** 最有力コードの属する公式の見出しの説明 */
   category: string;
   /** 最適マッチ品目 */
   bestMatch: {
@@ -29,13 +29,17 @@ export type PredictHtsCodeOutput = {
     htsCode: string;
     /** 最有力品目の説明 */
     description: string;
-    /** 親階層品目解説 */
+    /** 公式の階層での位置（" › " 区切り） */
     parentDescription?: string;
-    /** 推定関税率 */
+    /** 公式の階層での位置（最上位の見出しから親まで） */
+    path?: string[];
+    /** 一般関税率。その行に率が無ければ最も近い祖先の率を継承。どこにも無ければ "N/A" */
     generalRate: string;
-    /** 適合度スコア */
+    /** 率を継承した祖先のコード。その行自身の率なら無い */
+    rateFrom?: string;
+    /** 適合度スコア (0〜100) */
     score: number;
-    /** 推定信頼度 */
+    /** 推定信頼度。high: 判例とHTS全文検索が同じ6桁を指し票が集まった（評価で約9割が一致）, medium: 約7割, low: 約3〜4割 */
     confidence: "high" | "medium" | "low";
     /** 推論理由・分類根拠 */
     reason: string;
@@ -111,7 +115,7 @@ export type PredictHtsCodeOutput = {
       impactExplanation?: string;
     };
   };
-  /** 上位候補 HTS コード一覧 */
+  /** 上位候補（異なる6桁ごとに代表の行を1つ、最大5件） */
   candidates: {
     /** 候補 HTS コード */
     htsCode: string;
@@ -121,12 +125,54 @@ export type PredictHtsCodeOutput = {
     generalRate: string;
     /** マッチング適合スコア */
     score: number;
+    /** 公式の階層での位置（最上位の見出しから親まで） */
+    path?: string[];
+    /** この6桁を挙げた手がかり: "hts-text"(HTS全文検索), "cbp-ruling"(CBP分類判例) */
+    sources?: ("hts-text" | "cbp-ruling")[];
   }[];
+  /** 候補が公式の階層のどこで分かれるか（confidence が high でないときに付く） */
+  decisionPoints?: {
+    /** 分類の確認質問。公式の階層で候補が最初に分かれる区分を尋ねる */
+    question: string;
+    /** 選択肢。答えとなる区分の語を description に加えて再実行すると絞り込める */
+    options: {
+      /** 公式の区分の説明文 */
+      text: string;
+      /** その区分の代表コード */
+      htsCode?: string;
+      /** その区分の代表コードの一般関税率 */
+      generalRate?: string;
+    }[];
+  }[];
+  /** 根拠: 参照したデータの取得日時と、CBP 判例 */
+  evidence: {
+    /** 参照した USITC HTS 全件データの取得日時 (ISO 8601) */
+    dataFetchedAt: string;
+    /** CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(通信失敗。HTS全文検索だけで答えた) */
+    crossStatus: "ok" | "no_rulings" | "unavailable";
+    /** 判例が得られた照会語 */
+    crossQuery?: string;
+    /** 判例を参照できなかった理由 */
+    crossNote?: string;
+    /** 最有力の6桁を支持した判例（上位3件） */
+    rulings: {
+      /** 判例番号 */
+      rulingNumber: string;
+      /** 判例の日付 (YYYY-MM-DD) */
+      date: string;
+      /** 判例の件名 */
+      subject: string;
+      /** 判例が挙げた分類コード（数字のみ） */
+      tariffs: string[];
+      /** 判例の URL (rulings.cbp.gov) */
+      url: string;
+    }[];
+  };
   /** 法的免責事項文 */
   disclaimer: string;
   /** 入力充足度 */
   inputCompleteness?: "complete" | "partial";
-  /** 未指定項目一覧 */
+  /** 未指定項目一覧（classificationDetail: 分類の確認が必要） */
   missingInputs?: string[];
   /** ユーザーへの確認質問リスト */
   clarifyingQuestions?: string[];
@@ -134,7 +180,7 @@ export type PredictHtsCodeOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・即時推測厳禁】商品名・説明文・素材・用途からUSITC公式現行関税率表とセマンティック照合を行い、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を自動推測します。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略して呼び出すこと。実務的影響(impactExplanation)と確認質問(clarifyingQuestions)を返却し追加ヒアリングを誘導します。返却: { detectedSubheading, bestMatch, candidates, clarifyingQuestions, impactExplanation } */
+/** 【必須・即時推測厳禁】商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語の語が無いとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation } */
 export function predictHtsCode(input: PredictHtsCodeInput): Promise<PredictHtsCodeOutput> {
   return callSora<PredictHtsCodeOutput>({ method: 'POST', path: '/trade/hts-predict' }, input);
 }

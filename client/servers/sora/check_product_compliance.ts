@@ -62,13 +62,15 @@ export type CheckProductComplianceOutput = {
     productDescription: string;
     /** USITC 公式データベースに実在するコードか */
     verified: boolean;
-    /** 一致レベル: "exact"(10桁完全一致), "6-digit-category"(6桁類一致), "unmatched"(不一致) */
+    /** 一致レベル: "exact"(8桁または10桁の行が実在), "6-digit-category"(6桁類一致), "unmatched"(不一致) */
     matchLevel: "exact" | "6-digit-category" | "unmatched";
     /** 国際共通 6桁 HS コード */
     hsCode?: string;
     /** USITC 公式品名解説 */
     officialDescription?: string;
-    /** 基本関税率 (General Rate of Duty) */
+    /** 公式の階層での位置（最上位の見出しから親まで）。"Other" のように説明だけでは分からないときの手がかり */
+    officialPath?: string[];
+    /** 基本関税率 (General Rate of Duty)。その行に率が無ければ最も近い祖先の率を継承した値 */
     generalRate?: string;
     /** 第2欄税率 (Column 2 Rate) */
     otherRate?: string;
@@ -102,7 +104,7 @@ export type CheckProductComplianceOutput = {
   htsPrediction?: {
     /** 推定された 6桁 HS 号 (例: "9503.00") */
     detectedSubheading: string;
-    /** 判定された製品カテゴリ (Toys, Apparel, Electronics 等) */
+    /** 最有力コードの属する公式の見出しの説明 */
     category: string;
     /** 最適マッチ品目 */
     bestMatch: {
@@ -110,13 +112,17 @@ export type CheckProductComplianceOutput = {
       htsCode: string;
       /** 最有力品目の説明 */
       description: string;
-      /** 親階層品目解説 */
+      /** 公式の階層での位置（" › " 区切り） */
       parentDescription?: string;
-      /** 推定関税率 */
+      /** 公式の階層での位置（最上位の見出しから親まで） */
+      path?: string[];
+      /** 一般関税率。その行に率が無ければ最も近い祖先の率を継承。どこにも無ければ "N/A" */
       generalRate: string;
-      /** 適合度スコア */
+      /** 率を継承した祖先のコード。その行自身の率なら無い */
+      rateFrom?: string;
+      /** 適合度スコア (0〜100) */
       score: number;
-      /** 推定信頼度 */
+      /** 推定信頼度。high: 判例とHTS全文検索が同じ6桁を指し票が集まった（評価で約9割が一致）, medium: 約7割, low: 約3〜4割 */
       confidence: "high" | "medium" | "low";
       /** 推論理由・分類根拠 */
       reason: string;
@@ -192,7 +198,7 @@ export type CheckProductComplianceOutput = {
         impactExplanation?: string;
       };
     };
-    /** 上位候補 HTS コード一覧 */
+    /** 上位候補（異なる6桁ごとに代表の行を1つ、最大5件） */
     candidates: {
       /** 候補 HTS コード */
       htsCode: string;
@@ -202,12 +208,54 @@ export type CheckProductComplianceOutput = {
       generalRate: string;
       /** マッチング適合スコア */
       score: number;
+      /** 公式の階層での位置（最上位の見出しから親まで） */
+      path?: string[];
+      /** この6桁を挙げた手がかり: "hts-text"(HTS全文検索), "cbp-ruling"(CBP分類判例) */
+      sources?: ("hts-text" | "cbp-ruling")[];
     }[];
+    /** 候補が公式の階層のどこで分かれるか（confidence が high でないときに付く） */
+    decisionPoints?: {
+      /** 分類の確認質問。公式の階層で候補が最初に分かれる区分を尋ねる */
+      question: string;
+      /** 選択肢。答えとなる区分の語を description に加えて再実行すると絞り込める */
+      options: {
+        /** 公式の区分の説明文 */
+        text: string;
+        /** その区分の代表コード */
+        htsCode?: string;
+        /** その区分の代表コードの一般関税率 */
+        generalRate?: string;
+      }[];
+    }[];
+    /** 根拠: 参照したデータの取得日時と、CBP 判例 */
+    evidence: {
+      /** 参照した USITC HTS 全件データの取得日時 (ISO 8601) */
+      dataFetchedAt: string;
+      /** CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(通信失敗。HTS全文検索だけで答えた) */
+      crossStatus: "ok" | "no_rulings" | "unavailable";
+      /** 判例が得られた照会語 */
+      crossQuery?: string;
+      /** 判例を参照できなかった理由 */
+      crossNote?: string;
+      /** 最有力の6桁を支持した判例（上位3件） */
+      rulings: {
+        /** 判例番号 */
+        rulingNumber: string;
+        /** 判例の日付 (YYYY-MM-DD) */
+        date: string;
+        /** 判例の件名 */
+        subject: string;
+        /** 判例が挙げた分類コード（数字のみ） */
+        tariffs: string[];
+        /** 判例の URL (rulings.cbp.gov) */
+        url: string;
+      }[];
+    };
     /** 法的免責事項文 */
     disclaimer: string;
     /** 入力充足度 */
     inputCompleteness?: "complete" | "partial";
-    /** 未指定項目一覧 */
+    /** 未指定項目一覧（classificationDetail: 分類の確認が必要） */
     missingInputs?: string[];
     /** ユーザーへの確認質問リスト */
     clarifyingQuestions?: string[];
@@ -291,7 +339,7 @@ export type CheckProductComplianceOutput = {
   disclaimer: string;
 };
 
-/** 【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan } */
+/** 【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan } */
 export function checkProductCompliance(input: CheckProductComplianceInput): Promise<CheckProductComplianceOutput> {
   return callSora<CheckProductComplianceOutput>({ method: 'POST', path: '/trade/compliance' }, input);
 }
