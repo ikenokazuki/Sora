@@ -10,7 +10,15 @@ Anthropic の記事「[Code execution with MCP](https://www.anthropic.com/engine
 | ツールをコードの API として扱い、結果をコードで絞る | `GET /client` が配る型付きの TypeScript クライアント（`client/`）。結果の絞り込み・集計・連鎖をコード側で行い、モデルには必要な分だけ返す。 |
 | コードの実行環境はクライアント側に置く | Sora はコードを実行しない。サンドボックスは利用者側で用意する。 |
 
-Sora の MCP サーバーは、これまでどおり MCP だけで使える。クライアントは追加の選択肢である。
+Sora の MCP サーバーは、これまでどおり MCP だけで使える。コードを実行できる呼び出し側には、クライアントを優先して使わせる。
+
+## LLM がクライアントを見つける経路
+
+- **instructions**: 「コードを実行できるなら型付きクライアント（`GET /client`、リソース `sora-client://guide`）を使い、必要な項目だけ出力する。できなければ MCP のツールを直接呼ぶ」という一行を載せている。
+- **MCP リソース `sora-client://guide`**: 取得手順（一覧の取得、各ファイルのダウンロード、`README.md` / `catalog.json` / `search.ts` の読み方、呼び出し例、環境変数）。`resources/list` に出る。
+- **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
+
+どれも `tools/list` を増やさない（既定 24,671 文字のまま）。
 
 ## クライアントを取得する
 

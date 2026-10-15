@@ -20,12 +20,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     '# Sora MCP Server - AI Interaction & Tool Routing Guidelines',
     '',
     '## 1. Zero-Refusal & Active Investigation Policy',
-    '- **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates, etc.").',
+    '- **NEVER refuse to answer or give up by claiming "a specific tool is not available"** (e.g. "I have no tool for live concert schedules, business hours, release dates.").',
   ];
 
   if (hasWeb) {
     lines.push(
-      '- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST use `search_deep` or `search_web`** to investigate official websites, announcements, and schedules.',
+      '- If a query asks for factual, real-time, time-sensitive, or external information not covered by a Tier 1 specialized domain tool, **you MUST use `search_deep` or `search_web`**.',
     );
   } else {
     lines.push(
@@ -41,6 +41,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     '- **Host Deferred Loading**: If the host provides tool discovery, use the host-provided tool search to load a missing definition; Sora search_tools is then not needed.',
     '- **Legacy Sora Activation**: Otherwise, if the server uses deferred activation, call search_tools with relevant keywords, then wait for the host to load its input schema before calling the tool (a name in search output alone is not callable).',
     '- **Unavailable Modules**: If discovery cannot find the tool, its module may be disabled; use a safe available fallback without inventing data.',
+    '- **Code Execution (preferred)**: If you can run code that reaches this server, fetch the typed client (`GET /client`, resource `sora-client://guide`) and print only the fields you need. Otherwise call the MCP tools directly.',
   );
 
   if (hasWeb || hasBrowser || hasWatch || hasMedia) {
@@ -113,7 +114,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     lines.push(
       '',
       '### Tier 1: Official Specialized Domain Directives (MANDATORY TOOL CALL)',
-      'For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol to invoke the corresponding specialized Sora MCP tool:',
+      'For queries strictly within the following domains, **NEVER answer using internal parametric knowledge, estimations, or general web search**. Follow the Dynamic Tool Discovery Protocol and call the specialized tool:',
       tier1Directives.join('\n'),
     );
   }
@@ -131,9 +132,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       '  - **`realtimeAnchor`** (`anchor` on `search_realtime`): Pass the query word that is the proper noun (person, group, work or venue name) when known; relaxed X searches then keep it.',
       '  - **`schedule`** (response field): events from the top pages, merged by date and name, upcoming first with past events after them. Read it first for schedule or event-date questions; `sources` lists the pages. `includeMedia: false` omits image/video URLs when they are not needed.',
       '  - **`contextSufficiency`** (response field): `partial` / `insufficient` with `reasons` (`unmentioned:<term>` = no evidence mentions the term, `unanswered:<term>` = no time/price/date value found, `few-success` = fewer than 3 pages retrieved) shows what is missing; investigate those items further. `no_gap_detected` only means no gap was found by lexical checks, not that the answer is verified.',
-      '  - *Token Efficiency*: Do not prune or reduce upstream acquisition/retrieval early to save tokens; rely on post-acquisition safe projection (evidence mode).',
+      '  - *Token Efficiency*: Do not cut upstream retrieval early to save tokens; evidence mode already trims safely.',
       '- **`search_web` (Candidate Discovery & Optional 1-Call Enrichment)**:',
-      '  - **URL / Snippet Discovery**: Call with `formats` omitted for lightweight candidate search without scraping.',
+      '  - **URL / Snippet Discovery**: Omit `formats` for lightweight candidate search.',
       '  - **Search + Content in One Call**: Specify `formats: ["markdown"]` (or `formats: ["markdown", "tables"]`) to scrape top results and attach requested formats in a single round-trip.',
       '  - *Note*: If snippets lack details, read the page with `scrape`, unless `formats` already retrieved it.',
     );
@@ -142,7 +143,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   lines.push(
     '',
     '## 5. Interactive Clarification Flow',
-    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters (e.g., material, target age). Promptly present the returned questions and impact explanation to the user to obtain accurate specifications.",
+    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters Present the returned questions and impact explanation to the user.",
   );
 
   return lines.join('\n');
