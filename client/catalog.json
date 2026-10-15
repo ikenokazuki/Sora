@@ -63,7 +63,7 @@
     "name": "check_product_compliance",
     "fn": "checkProductCompliance",
     "category": "trade",
-    "description": "【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCode引数を必ず未指定（省略）にしてください。未指定時にSoraのUSITC公式推測エンジンが自動特定します。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }",
+    "description": "【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }",
     "keywords": [
       "商品判定",
       "コンプライアンス",
@@ -315,7 +315,7 @@
     "name": "predict_hts_code",
     "fn": "predictHtsCode",
     "category": "trade",
-    "description": "【必須・即時推測厳禁】商品名・説明文・素材・用途からUSITC公式現行関税率表とセマンティック照合を行い、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を自動推測します。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略して呼び出すこと。実務的影響(impactExplanation)と確認質問(clarifyingQuestions)を返却し追加ヒアリングを誘導します。返却: { detectedSubheading, bestMatch, candidates, clarifyingQuestions, impactExplanation }",
+    "description": "【必須・即時推測厳禁】商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語の語が無いとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation }",
     "keywords": [
       "HTS推測",
       "HS推測",

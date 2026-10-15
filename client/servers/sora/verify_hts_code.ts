@@ -15,13 +15,15 @@ export type VerifyHtsCodeOutput = {
   productDescription: string;
   /** USITC 公式データベースに実在するコードか */
   verified: boolean;
-  /** 一致レベル: "exact"(10桁完全一致), "6-digit-category"(6桁類一致), "unmatched"(不一致) */
+  /** 一致レベル: "exact"(8桁または10桁の行が実在), "6-digit-category"(6桁類一致), "unmatched"(不一致) */
   matchLevel: "exact" | "6-digit-category" | "unmatched";
   /** 国際共通 6桁 HS コード */
   hsCode?: string;
   /** USITC 公式品名解説 */
   officialDescription?: string;
-  /** 基本関税率 (General Rate of Duty) */
+  /** 公式の階層での位置（最上位の見出しから親まで）。"Other" のように説明だけでは分からないときの手がかり */
+  officialPath?: string[];
+  /** 基本関税率 (General Rate of Duty)。その行に率が無ければ最も近い祖先の率を継承した値 */
   generalRate?: string;
   /** 第2欄税率 (Column 2 Rate) */
   otherRate?: string;
