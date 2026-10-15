@@ -18,7 +18,6 @@ export function parseGdeltSeendate(value?: string): string | undefined {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-export interface GdeltTimelinePoint { date: string; value: number; }
 export interface GdeltTimelineFixture { timeline?: { series?: string; data?: { date?: string; value?: number }[] }[]; }
 
 export interface HistoricalMediaObservation {

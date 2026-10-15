@@ -44,58 +44,6 @@ export function parseBlueskyEvent(envelope: unknown, retrievedAt: string): Evide
   };
 }
 
-export interface BlueskyCollectionOptions {
-  dids: string[];
-  endpoint?: string;
-  onRecord: (detail: EvidenceDetail) => Promise<void> | void;
-  onDelete?: (did: string, rkey: string) => void;
-  onGap?: (reason: string) => void;
-}
-
-export function startBlueskyCollection(options: BlueskyCollectionOptions): { stop(): void } {
-  let stopped = false;
-  let socket: WebSocket | undefined;
-  let backoffMs = 2000;
-  let lastCursor: string | undefined;
-  const params = new URLSearchParams({ collections: 'app.bsky.feed.post', kinds: 'commit' });
-  for (const did of options.dids) params.append('dids', did);
-  const base = options.endpoint ?? BLUESKY_JETSTREAM_ENDPOINT;
-  const connect = (): void => {
-    if (stopped) return;
-    const url = lastCursor ? base + '?' + params.toString() + '&cursor=' + encodeURIComponent(lastCursor) : base + '?' + params.toString();
-    try {
-      socket = new WebSocket(url, ['xrpc.v1.json']);
-    } catch {
-      scheduleReconnect();
-      return;
-    }
-    socket.onmessage = (event) => {
-      if (stopped) return;
-      const raw = String(event.data ?? '');
-      if (raw.length > 1024 * 1024) { options.onGap?.('oversize message dropped'); return; }
-      let envelope: BlueskyEnvelope;
-      try { envelope = JSON.parse(raw) as BlueskyEnvelope; } catch { return; }
-      const cursor = (envelope.payload as { cursor?: unknown })?.cursor;
-      if (typeof cursor === 'number' || typeof cursor === 'string') lastCursor = String(cursor);
-      if (envelope.payload?.operation === 'delete' && typeof envelope.payload.did === 'string' && typeof envelope.payload.rkey === 'string') {
-        options.onDelete?.(envelope.payload.did, envelope.payload.rkey);
-        return;
-      }
-      const detail = parseBlueskyEvent(envelope, new Date().toISOString());
-      if (detail) void Promise.resolve(options.onRecord(detail)).catch(() => undefined);
-    };
-    socket.onclose = () => { scheduleReconnect(); };
-    socket.onerror = () => { try { socket?.close(); } catch { /* reconnect handles */ } };
-  };
-  const scheduleReconnect = (): void => {
-    if (stopped) return;
-    options.onGap?.('jetstream reconnect');
-    setTimeout(() => { backoffMs = Math.min(backoffMs * 2, 30000); connect(); }, backoffMs);
-  };
-  connect();
-  return { stop(): void { stopped = true; try { socket?.close(); } catch { /* already closed */ } } };
-}
-
 export function buildBlueskySearchUrl(query: string, lang: string | undefined, limit = 25): string {
   const params = new URLSearchParams({ q: query, limit: String(limit), sort: 'latest' });
   if (lang) params.set('lang', lang);

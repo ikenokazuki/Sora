@@ -8,9 +8,7 @@ import {
   dbUpdateWatchTargetCheck,
   dbDeleteWatchTarget,
   dbInsertWatchHistory,
-  dbListWatchHistory,
   type WatchTargetRecord,
-  type WatchHistoryRecord,
 } from '../db.js';
 import { errorCode, errorMessage } from '../errors.js';
 
@@ -184,10 +182,6 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
 
 export function listWatchTargets(): WatchTargetRecord[] {
   return dbListWatchTargets();
-}
-
-export function getWatchHistory(targetId: string, limit = 20): WatchHistoryRecord[] {
-  return dbListWatchHistory(targetId, limit);
 }
 
 export function deleteWatchTarget(targetId: string): boolean {

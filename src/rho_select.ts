@@ -832,7 +832,3 @@ export function extractQueryHighlightsRhoSelect(
   };
 }
 
-/**
- * 後方互換用エイリアス
- */
-export const extractQueryHighlightsRho = extractQueryHighlightsRhoSelect;

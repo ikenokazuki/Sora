@@ -46,4 +46,3 @@ export function createWeiboSessionStore(opener: WeiboSessionOpener, now: () => n
   return { get, invalidate };
 }
 
-export type WeiboSessionStore = ReturnType<typeof createWeiboSessionStore>;
