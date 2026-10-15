@@ -4,7 +4,7 @@ import { callSora } from '../../runtime.js';
 export type PredictHtsCodeInput = {
   /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400） */
   productName: string;
-  /** 商品の詳細説明・仕様・素材・用途など（英語） */
+  /** 商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要） */
   description?: string;
   /** 主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します */
   material?: string;

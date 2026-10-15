@@ -749,6 +749,14 @@ const LOW_MARGIN = 0.1;
 const MAX_DECISION_OPTIONS = 6;
 const DECISION_TEXT_LIMIT = 160;
 
+/**
+ * 否定された語（"not ceramic", "without battery"）は商品の特徴ではないので、検索から外す。
+ * 呼び出し側の LLM が "Not textile, not tin foil, not ceramic" のように書き足すことがあり、そのままだと箔や陶器の行を引いてしまう。
+ */
+export function stripNegations(text: string): string {
+  return text.replace(/\b(?:not|no|without|excluding|except|isn't|doesn't)\b(?:\s+[a-z][a-z-]*){1,3}/gi, ' ').replace(/\bnon-[a-z]+/gi, ' ');
+}
+
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const formatSubheading = (d6: string) => `${d6.slice(0, 4)}.${d6.slice(4, 6)}`;
 
@@ -859,7 +867,8 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
       'HTSの照合は英語の品目説明で行います。productName と description を、商品の一般名の英語（例: "Stainless Steel Water Bottle"）にして再実行してください。',
     );
   }
-  const searchText = options.hasBattery ? `${combinedText} battery` : combinedText;
+  const factualText = stripNegations(combinedText);
+  const searchText = options.hasBattery ? `${factualText} battery` : factualText;
 
   // 1. 二つの手がかりを並行して取る
   const [ftsHits, cross] = await Promise.all([
@@ -1320,12 +1329,18 @@ export async function checkProductCompliance(
 
   if (!htsCode) {
     if (!htsPrediction || htsPrediction.bestMatch.confidence === 'low') {
+      // 商品ページが日本語のときは、該当なしではなく英訳が必要だと伝える
+      const japanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(combinedText);
       const questions = htsPrediction?.clarifyingQuestions?.length
         ? htsPrediction.clarifyingQuestions
-        : [
-            predictionNote ??
-              '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
-          ];
+        : !htsPrediction && japanese
+          ? [
+              '商品名・説明が日本語です。HTS と判例は英語なので、商品の一般名・素材・用途を英語にして productName と description に渡して再実行してください（宣伝文句やブランド名は除く。例: "PU Leather Coaster"）。',
+            ]
+          : [
+              predictionNote ??
+                '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
+            ];
       return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
     }
     htsCode = htsPrediction.bestMatch.htsCode;

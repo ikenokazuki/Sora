@@ -85,24 +85,35 @@ async function fetchRulings(term: string): Promise<{ rulings: CrossRuling[]; tot
 }
 
 /**
- * 照会語を順に試し、判例が minRulings 件以上得られた最初の結果を返す（CROSS の検索は AND 条件で、語が多いと 0 件になる）。
- * どれも足りなければ、得られた中で最も多かったものを返す。
+ * 照会語を順に試し、判例を target 件まで集める。検索は AND 条件で、語が多いと 0 件になる。
+ * 具体的な照会語の判例（"leather coaster" の 4205.00 など少数でも的確なもの）を先頭に残し、足りない分を
+ * 一般的な照会語（"coaster" の 132 件）で補う。照会語は具体的なものから渡す。
  */
-export async function lookupCrossRulings(queries: string[], minRulings = 3): Promise<CrossLookup> {
+export async function lookupCrossRulings(queries: string[], target = PAGE_SIZE): Promise<CrossLookup> {
   if (Date.now() < unavailableUntil) return { status: 'unavailable', rulings: [], error: '直前の照会に失敗したため、一時的に照会を控えています' };
-  let best: CrossLookup = { status: 'no_rulings', rulings: [] };
+  const seen = new Set<string>();
+  const rulings: CrossRuling[] = [];
+  const used: string[] = [];
+  const found = (): CrossLookup => (rulings.length > 0 ? { status: 'ok', query: used.join(' / '), rulings } : { status: 'no_rulings', rulings: [] });
   for (const q of queries) {
+    if (rulings.length >= target) break;
     try {
-      const { rulings, totalHits } = await fetchRulings(q);
+      const { rulings: got, totalHits } = await fetchRulings(q);
       if (totalHits > MAX_TOTAL_HITS) break; // これ以降の照会語はさらに短く、より一般的になる
-      if (rulings.length > best.rulings.length) best = { status: 'ok', query: q, rulings };
-      if (rulings.length >= minRulings) break;
+      let added = false;
+      for (const r of got) {
+        if (seen.has(r.rulingNumber) || rulings.length >= target) continue;
+        seen.add(r.rulingNumber);
+        rulings.push(r);
+        added = true;
+      }
+      if (added) used.push(q);
     } catch (err) {
       unavailableUntil = Date.now() + BREAKER_MS;
-      return best.rulings.length > 0 ? best : { status: 'unavailable', rulings: [], error: errorMessage(err) };
+      return rulings.length > 0 ? found() : { status: 'unavailable', rulings: [], error: errorMessage(err) };
     }
   }
-  return best;
+  return found();
 }
 
 /** テスト用: 照会を控える状態を解除する。 */

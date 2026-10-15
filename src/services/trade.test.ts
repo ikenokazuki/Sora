@@ -3,7 +3,7 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { TradeInputError, checkProductCompliance, predictHtsCode, verifyHtsCode } from './trade.js';
+import { TradeInputError, checkProductCompliance, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
 
 // HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
@@ -142,6 +142,16 @@ describe('HTS prediction and product compliance', () => {
       } finally {
         globalThis.fetch = fixtureFetch;
       }
+    });
+
+    it('does not search for words the description rules out ("Not ceramic, not a mug"), which pulled tableware into the candidates', async () => {
+      expect(stripNegations('Round coaster. Not textile, not tin foil, not ceramic. Without battery, non-toxic paint.')).not.toMatch(/textile|foil|ceramic|battery|toxic/);
+      expect(stripNegations('Round coaster of PU leather, 8.8 cm')).toBe('Round coaster of PU leather, 8.8 cm');
+      const base = { productName: 'Wooden Building Blocks for Toddlers', description: 'Educational wooden toy blocks for children aged 3+.' };
+      const withNegation = await predictHtsCode({ ...base, description: `${base.description} Not ceramic, not a mug, not a helmet.` });
+      const without = await predictHtsCode(base);
+      expect(withNegation.candidates.map((c) => c.htsCode.slice(0, 6))).toEqual(without.candidates.map((c) => c.htsCode.slice(0, 6)));
+      expect(withNegation.candidates.some((c) => c.htsCode.startsWith('6912') || c.htsCode.startsWith('6506'))).toBe(false);
     });
 
     it('does not report an answer for nonsense with a confident label', async () => {
@@ -312,6 +322,13 @@ describe('HTS prediction and product compliance', () => {
       expect(res.overallStatus).toBe('needs_more_info');
       expect(res.clarifyingQuestions?.[0]).toContain('英語');
       expect(res.missingInputs).toEqual(['productDetails']);
+    });
+
+    it('tells the caller to translate a Japanese product page instead of reporting "nothing found"', async () => {
+      const res = await checkProductCompliance({ productName: '【あさみみちゃん】ランダムPUレザーコースター', description: 'PUレザータイプのコースター 素材：PUレザー 直径8.8cm' });
+      expect(res.overallStatus).toBe('needs_more_info');
+      expect(res.clarifyingQuestions?.[0]).toContain('日本語');
+      expect(res.clarifyingQuestions?.[0]).toContain('英語');
     });
 
     it('asks for the product name when there is nothing to classify', async () => {
