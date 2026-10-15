@@ -3106,6 +3106,24 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      '/client': {
+        get: {
+          summary: '生成済み TypeScript クライアントのファイル一覧 (manifest.json)。コード実行環境向け',
+          responses: {
+            '200': {
+              description: '配布するファイルの相対パス一覧',
+              content: { 'application/json': { schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } } },
+            },
+          },
+        },
+      },
+      '/client/{path}': {
+        get: {
+          summary: '生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
+          parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'manifest.json に載った相対パス (例: servers/sora/search_web.ts)' }],
+          responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)' } },
+        },
+      },
       '/watch/list': {
         get: {
           summary: '登録済み差分監視ターゲット一覧取得 (SQLite 永続化)',
