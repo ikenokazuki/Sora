@@ -3,7 +3,7 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { TradeInputError, checkProductCompliance, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
+import { TradeInputError, checkProductCompliance, crossQueriesFor, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
 
 // HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
@@ -152,6 +152,39 @@ describe('HTS prediction and product compliance', () => {
       const without = await predictHtsCode(base);
       expect(withNegation.candidates.map((c) => c.htsCode.slice(0, 6))).toEqual(without.candidates.map((c) => c.htsCode.slice(0, 6)));
       expect(withNegation.candidates.some((c) => c.htsCode.startsWith('6912') || c.htsCode.startsWith('6506'))).toBe(false);
+    });
+
+    it('puts the explicit material first in the ruling queries ("plastic coaster" reaches 3924.10 rulings that "coaster" alone does not show)', async () => {
+      expect(crossQueriesFor('PU Leather Coaster', 'plastic').slice(0, 2)).toEqual(['plastic leather coaster', 'plastic coaster']);
+      expect(crossQueriesFor('PU Leather Coaster')[0]).toBe('pu leather coaster');
+      expect(crossQueriesFor('Wooden Building Blocks for Toddlers', 'wood')).toContain('wood building blocks');
+      // 実際に CBP へ出る照会語にも反映される
+      const asked: string[] = [];
+      const fixtureFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const u = new URL(raw);
+        if (u.hostname === 'rulings.cbp.gov') asked.push(u.searchParams.get('term') ?? '');
+        return fixtureFetch(input as never, init);
+      }) as typeof fetch;
+      try {
+        await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Coffee mug', material: 'plastic' });
+      } finally {
+        globalThis.fetch = fixtureFetch;
+      }
+      expect(asked[0]).toBe('plastic coffee mug');
+    });
+
+    it('asks for the material when the answer is not high-confidence and none was given, and not otherwise', async () => {
+      const unsure = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', description: 'Protective adult cycling helmet.' });
+      expect(unsure.bestMatch.confidence).not.toBe('high');
+      expect(unsure.missingInputs).toContain('material');
+      expect(unsure.clarifyingQuestions?.some((q) => q.includes('material に英語で指定'))).toBe(true);
+      const given = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', description: 'Protective adult cycling helmet.', material: 'plastic' });
+      expect(given.clarifyingQuestions?.some((q) => q.includes('material に英語で指定'))).toBe(false);
+      const sure = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', targetAge: 'adult', foodContact: true });
+      expect(sure.bestMatch.confidence).toBe('high');
+      expect(sure.clarifyingQuestions?.some((q) => q.includes('material に英語で指定')) ?? false).toBe(false);
     });
 
     it('does not report an answer for nonsense with a confident label', async () => {

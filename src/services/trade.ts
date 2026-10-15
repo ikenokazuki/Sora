@@ -746,6 +746,8 @@ const ACCESSORY_WORDS = /\b(parts?|accessor\w*|components?|replacement|spare|cas
 // 信頼度の閾値（dev＋test 103件で適合率を測って決めた: high 90%、low 42%）
 const HIGH_CROSS_SHARE = 0.4;
 const LOW_MARGIN = 0.1;
+const MATERIAL_QUESTION =
+  '素材は何ですか？ material に英語で指定して再実行すると、素材つき（例: "plastic coaster"）で判例を引き直します（plastic, textile, leather, wood, ceramic, glass, metal, paper など）。PU・ビニールなどの合成皮革は、織物の基布が主体なら textile、そうでなければ plastic で、leather は本革だけです。';
 const MAX_DECISION_OPTIONS = 6;
 const DECISION_TEXT_LIMIT = 160;
 
@@ -766,11 +768,14 @@ const formatSubheading = (d6: string) => `${d6.slice(0, 4)}.${d6.slice(4, 6)}`;
  * 品名の末尾は名詞なので、後ろから絞る（"Wooden Building Blocks for Toddlers" は "wooden building blocks" が先に試される）。
  * HTS の語彙にない語（speaker、kettle など）こそ品名の肝なので、語彙での絞り込みはしない。
  */
-function crossQueriesFor(productName: string): string[] {
+export function crossQueriesFor(productName: string, material?: string): string[] {
   const head = productName.split(/\b(?:for|with|without|and|in|to|by|from)\b|[,;(|]/i)[0];
   const all = queryTerms(productName).slice(0, 8);
   const noun = queryTerms(head);
-  return [...new Set([all.join(' '), noun.slice(0, 8).join(' '), ...[4, 3, 2, 1].map((n) => noun.slice(-n).join(' '))])].filter(Boolean);
+  // 呼び出し側が素材を明示したら、素材つきの照会を最も具体的なものとして先頭に置く（"plastic coaster" は "coaster" の上位10件に無い 3924.10 の判例に当たる）
+  const materialTerms = queryTerms(material ?? '').slice(0, 2);
+  const withMaterial = materialTerms.length > 0 && noun.length > 0 ? [2, 1].map((n) => [...materialTerms, ...noun.slice(-n)].join(' ')) : [];
+  return [...new Set([...withMaterial, all.join(' '), noun.slice(0, 8).join(' '), ...[4, 3, 2, 1].map((n) => noun.slice(-n).join(' '))])].filter(Boolean);
 }
 
 // 判例が挙げた古い6桁（改訂で番号が変わったもの）を、現行の6桁に振り分けるときの上限。多いと曖昧なので使わない。
@@ -873,7 +878,7 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   // 1. 二つの手がかりを並行して取る
   const [ftsHits, cross] = await Promise.all([
     searchHtsLines(searchText, { limit: 60 }),
-    lookupCrossRulings(crossQueriesFor(productName)),
+    lookupCrossRulings(crossQueriesFor(productName, options.material)),
   ]);
 
   // 2. 全文検索: 6桁ごとの最良の行（順位は検索の順）
@@ -1033,6 +1038,13 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   }
   if (cpscRes.applicableRegulations.length > 0) addMissing(cpscRes.missingInputs, cpscRes.clarifyingQuestions);
   addMissing(fdaRes.missingInputs, fdaRes.clarifyingQuestions);
+  // 確度が高くなく、素材が未指定のとき: 素材を指定すると判例を素材つきで引き直す（同じ品名でも素材で章が分かれる。例: plastic coaster は 3924.10、textile coaster は 6304.93）
+  //   CPSC が同じ素材を尋ねているときは、質問を1つにまとめる（CPSC の理由は impactExplanation に残る）
+  if (confidence !== 'high' && !options.material?.trim()) {
+    if (!missingInputs.includes('material')) missingInputs.push('material');
+    for (let i = clarifyingQuestions.length - 1; i >= 0; i--) if (clarifyingQuestions[i].startsWith('製品の主要素材は何ですか')) clarifyingQuestions.splice(i, 1);
+    clarifyingQuestions.push(MATERIAL_QUESTION);
+  }
 
   let impactExplanation: string;
   if (missingInputs.length > 0) {
