@@ -504,7 +504,7 @@ export function getCountryIntelDbMetrics(): CountryIntelDbMetrics {
   return { path, mainBytes, walBytes, shmBytes, totalBytes: mainBytes + walBytes + shmBytes };
 }
 
-import type { ContextChange, ContextUpdates, EvidenceDetail, EvidencePage, SourceState } from './detail.js';
+import type { ContextChange, ContextUpdates, EvidenceDetail, EvidencePage } from './detail.js';
 import { EvidenceDetailSchema } from './detail.js';
 
 interface EvidenceDetailRow {
@@ -576,40 +576,6 @@ export function getEvidenceDetails(contextId: string, ids: readonly string[]): E
     if (row) out.push(toEvidenceDetail(row));
   }
   return out;
-}
-
-interface SourceStateRow {
-  source_id: string;
-  last_checked_at: number | null;
-  last_success_at: number | null;
-  provider_updated_at: number | null;
-  last_error_code: string | null;
-  etag: string | null;
-  last_modified: string | null;
-  retry_at: number | null;
-  cursor: string | null;
-}
-
-export function readSourceState(sourceId: string): SourceState | undefined {
-  const row = getDb().query<SourceStateRow, [string]>('SELECT source_id, last_checked_at, last_success_at, provider_updated_at, last_error_code, etag, last_modified, retry_at, cursor FROM intel_source_states WHERE source_id = ?').get(sourceId);
-  if (!row) return undefined;
-  const asIso = (value: number | null): string | undefined => (value === null ? undefined : new Date(value).toISOString());
-  return {
-    sourceId: row.source_id,
-    ...(asIso(row.last_checked_at) ? { lastCheckedAt: asIso(row.last_checked_at) } : {}),
-    ...(asIso(row.last_success_at) ? { lastSuccessfulFetchAt: asIso(row.last_success_at) } : {}),
-    ...(asIso(row.provider_updated_at) ? { providerUpdatedAt: asIso(row.provider_updated_at) } : {}),
-    ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
-    ...(row.etag ? { etag: row.etag } : {}),
-    ...(row.last_modified ? { lastModified: row.last_modified } : {}),
-    ...(asIso(row.retry_at) ? { retryAt: asIso(row.retry_at) } : {}),
-    ...(row.cursor ? { cursor: row.cursor } : {}),
-  };
-}
-
-export function writeSourceState(state: SourceState): void {
-  const toEpoch = (value: string | undefined): number | null => (value === undefined ? null : epoch(value));
-  getDb().query('INSERT INTO intel_source_states(source_id, last_checked_at, last_success_at, provider_updated_at, last_error_code, etag, last_modified, retry_at, cursor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET last_checked_at = excluded.last_checked_at, last_success_at = excluded.last_success_at, provider_updated_at = excluded.provider_updated_at, last_error_code = excluded.last_error_code, etag = excluded.etag, last_modified = excluded.last_modified, retry_at = excluded.retry_at, cursor = excluded.cursor').run(state.sourceId, toEpoch(state.lastCheckedAt), toEpoch(state.lastSuccessfulFetchAt), toEpoch(state.providerUpdatedAt), state.lastErrorCode ?? null, state.etag ?? null, state.lastModified ?? null, toEpoch(state.retryAt), state.cursor ?? null);
 }
 
 const PAGE_CURSOR_TTL_MS = 24 * 60 * 60 * 1000;

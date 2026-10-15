@@ -4,11 +4,7 @@ export const SocialPlatformSchema = z.enum(['weibo', 'threads', 'instagram', 'fa
 export type SocialPlatform = z.infer<typeof SocialPlatformSchema>;
 
 export const SocialTimeStatusSchema = z.enum(['known', 'date_only', 'unknown', 'conflict']);
-export type SocialTimeStatus = z.infer<typeof SocialTimeStatusSchema>;
-
 export const SocialResultStatusSchema = z.enum(['ok', 'partial', 'empty', 'unavailable']);
-export type SocialResultStatus = z.infer<typeof SocialResultStatusSchema>;
-
 export const SocialCommentSchema = z.object({
   id: z.string(),
   author: z.string().optional(),
@@ -24,8 +20,6 @@ export const SocialCommentsSchema = z.object({
   items: z.array(SocialCommentSchema),
   reason: z.string().optional(),
 });
-export type SocialComments = z.infer<typeof SocialCommentsSchema>;
-
 export const SocialPostSchema = z.object({
   id: z.string(),
   platform: SocialPlatformSchema,

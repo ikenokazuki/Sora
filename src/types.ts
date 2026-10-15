@@ -332,25 +332,6 @@ export interface BrowserActionOptions {
   timeout?: number;
 }
 
-export interface BrowserActionResult {
-  success: boolean;
-  url: string;
-  sessionId?: string;
-  sessionClosed?: boolean;
-  markdown?: string;
-  screenshot?: string;
-  html?: string;
-  actionOutputs?: Array<{
-    step: number;
-    type: string;
-    result?: any;
-    error?: string;
-  }>;
-  error?: string;
-  renderedWithBrowser?: boolean;
-  source: 'browser';
-}
-
 export interface BatchScrapeResult {
   total: number;
   successful: number;
@@ -397,14 +378,6 @@ export interface WeatherForecastOptions {
 // ==========================================
 // 構造化エラーレスポンス型
 // ==========================================
-export interface ApiErrorResponse {
-  error: string;
-  code: string;
-  status: number;
-  retryable: boolean;
-  details?: any;
-}
-
 // ==========================================
 // 共通 Zod スキーマ
 // ==========================================
@@ -712,8 +685,6 @@ export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
 export type IntegratedSearchResponseMode = z.infer<
   typeof IntegratedSearchResponseModeSchema
 >;
-export const DEFAULT_INTEGRATED_SEARCH_RESPONSE_MODE: IntegratedSearchResponseMode = 'full';
-
 export const SEARCH_WEB_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('Web 検索キーワード'),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列 (例: ["natalie.mu"])'),
@@ -766,8 +737,6 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
-export type IntegratedSearchRequest = z.infer<typeof IntegratedSearchRequestSchema>;
-
 export const SuggestRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索語句プレフィックス'),
   limit: z.number().int().min(1).max(20).optional().describe('取得するサジェスト候補件数 (デフォルト: 10)').meta({ default: 10 }),
@@ -855,8 +824,6 @@ export const DietMinutesSearchRequestSchema = z.object({
   limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
-export type DietMinutesSearchOptions = z.infer<typeof DietMinutesSearchRequestSchema>;
-
 export const CpscCertificateCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
   targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
@@ -888,8 +855,6 @@ export const ProductComplianceRequestSchema = z.object({
   hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。【推測値のでっち上げ厳禁】Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること'),
   batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
 });
-export type ProductComplianceRequestOptions = z.infer<typeof ProductComplianceRequestSchema>;
-
 export const PredictHtsCodeRequestSchema = z.object({
   productName: z.string().min(1, 'productName は必須です').describe('商品名・タイトル（例: "Wooden Building Blocks for Toddlers"）'),
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など'),
@@ -899,16 +864,12 @@ export const PredictHtsCodeRequestSchema = z.object({
   foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。【推測値のでっち上げ厳禁】FDA規制・Prior Notice要否が分岐するため、不明な場合は省略すること'),
   hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。【推測値のでっち上げ厳禁】CPSC規格や危険物表示義務が分岐するため、不明な場合は省略すること'),
 });
-export type PredictHtsCodeRequestOptions = z.infer<typeof PredictHtsCodeRequestSchema>;
-
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
   lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
   lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
   noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
 });
-export type ElevationOptions = z.infer<typeof ElevationRequestSchema>;
-
 // 住所データ（ABR）: 郵便番号・正規化・逆ジオコーディング。結果は内部の型をそのまま返すので、主要項目だけを定義する。
 const AddressDatasetSchema = z.object({
   source: z.string(),
@@ -1025,8 +986,6 @@ export const PoiSearchRequestSchema = z.object({
 }).refine((v) => v.center === undefined || (v.lat === undefined && v.lon === undefined), {
   message: 'center と lat/lon は同時に指定できません',
 });
-export type PoiSearchOptions = z.infer<typeof PoiSearchRequestSchema>;
-
 export const PoiItemSchema = z.object({
   name: z.string().describe('施設名'),
   nameKana: z.string().optional().describe('施設名カナ'),
@@ -1084,8 +1043,6 @@ export const FlightStatusRequestSchema = z.object({
 export const InspectImageRequestSchema = z.object({
   url: z.string().url('有効な画像URLを指定してください').describe('読み取り対象の画像URL (https://...)'),
 });
-export type InspectImageOptions = z.infer<typeof InspectImageRequestSchema>;
-
 // ==========================================
 // 荷物追跡 (Package Tracking)
 // ==========================================

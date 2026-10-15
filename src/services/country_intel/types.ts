@@ -539,8 +539,6 @@ export const SituationSectionSchema = z.object({
   evidenceIds: z.array(z.string()),
 });
 
-export type EvidenceStrength = 'PRIMARY' | 'CORROBORATED' | 'SECONDARY' | 'WEAK' | 'UNVERIFIED';
-
 export type FactBasis = 'provider_field' | 'source_excerpt' | 'rule_derived';
 export const FactBasisSchema = z.enum(['provider_field', 'source_excerpt', 'rule_derived']);
 

@@ -18,8 +18,6 @@ interface CacheEntry<T> {
 export const CACHE_TTL_DEFAULT = 30 * 60 * 1000; // 30分
 export const CACHE_TTL_WEATHER = 60 * 60 * 1000; // 1時間
 export const CACHE_TTL_TREND = 2 * 60 * 1000;   // 2分
-export const CACHE_TTL_REALTIME = 3 * 60 * 1000; // 3分
-
 /**
  * キャッシュキーの本体を、結果に影響する入力から作る。
  *

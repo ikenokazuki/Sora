@@ -14,4 +14,3 @@ export const EVIDENCE_WEIGHTS = {
   oldYear: 0.75,
   yearMismatch: 0.8,
 } as const;
-export type EvidenceWeightKey = keyof typeof EVIDENCE_WEIGHTS;
