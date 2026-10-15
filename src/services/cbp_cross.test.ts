@@ -61,64 +61,65 @@ describe('CBP CROSS ruling lookup', () => {
         ruling('N6', '6911.10.5800', { categories: 'Classification, Marking' }),
       ],
     };
-    const res = await lookupCrossRulings(['mug'], 1);
+    const res = await lookupCrossRulings(['mug']);
     expect(res.status).toBe('ok');
     expect(res.rulings.map((r) => r.rulingNumber)).toEqual(['N1', 'N6']);
     expect(res.rulings[0]).toMatchObject({ date: '2020-01-02', tariffs: ['6912004400'], url: 'https://rulings.cbp.gov/ruling/N1' });
   });
 
-  it('tries the queries in order and stops at the first one with enough rulings (the search is AND, so long titles get 0 hits)', async () => {
-    responses['wooden building blocks'] = { rulings: [ruling('A', '9503.00.00'), ruling('B', '9503.00.00'), ruling('C', '9503.00.00')] };
-    responses.blocks = { rulings: [ruling('Z', '3926.90.99')] };
-    const res = await lookupCrossRulings(['wooden building blocks toddlers', 'wooden building blocks', 'blocks'], 3);
-    expect(terms).toEqual(['wooden building blocks toddlers', 'wooden building blocks']);
-    expect(res.query).toBe('wooden building blocks');
-    expect(res.rulings).toHaveLength(3);
+  it('keeps the few rulings of a specific query first and fills up from the general one (leather coaster: 2 rulings, coaster: 132)', async () => {
+    responses['pu leather coaster'] = { rulings: [] };
+    responses['leather coaster'] = { rulings: [ruling('D85840', '4205.00.8000'), ruling('d84016', '4205.00.8000')] };
+    responses.coaster = { totalHits: 132, rulings: [ruling('N022273', '6304.93.0000'), ruling('D85840', '4205.00.8000'), ruling('N030229', '6304.92.0000')] };
+    const res = await lookupCrossRulings(['pu leather coaster', 'leather coaster', 'coaster']);
+    expect(terms).toEqual(['pu leather coaster', 'leather coaster', 'coaster']);
+    expect(res.rulings.map((r) => r.rulingNumber)).toEqual(['D85840', 'd84016', 'N022273', 'N030229']); // 重複は除き、具体的な照会語の判例が先頭
+    expect(res.query).toBe('leather coaster / coaster');
   });
 
-  it('falls back to the query that returned the most rulings when none reaches the minimum', async () => {
-    responses['a b'] = { rulings: [ruling('A', '6912.00.44')] };
-    responses.b = { rulings: [ruling('X', '6912.00.44'), ruling('Y', '6912.00.45')] };
-    const res = await lookupCrossRulings(['a b', 'b'], 3);
-    expect(res.query).toBe('b');
-    expect(res.rulings).toHaveLength(2);
+  it('stops asking once it has enough rulings, and caps the list at the target', async () => {
+    responses.a = { rulings: Array.from({ length: 12 }, (_, i) => ruling(`A${i}`, '6912.00.4400')) };
+    responses.b = { rulings: [ruling('B1', '6912.00.4500')] };
+    const res = await lookupCrossRulings(['a', 'b'], 10);
+    expect(terms).toEqual(['a']);
+    expect(res.rulings).toHaveLength(10);
   });
 
   it('reports no_rulings when nothing matches', async () => {
-    const res = await lookupCrossRulings(['quantum widget'], 3);
+    const res = await lookupCrossRulings(['quantum widget']);
     expect(res).toEqual({ status: 'no_rulings', rulings: [] });
   });
 
   it('ignores words that match thousands of rulings (their top hits are unrelated to the product)', async () => {
     responses.model = { totalHits: 9599, rulings: [ruling('A', '9503.00.00'), ruling('B', '9503.00.00'), ruling('C', '9503.00.00')] };
-    const res = await lookupCrossRulings(['model'], 1);
+    const res = await lookupCrossRulings(['model']);
     expect(res.status).toBe('no_rulings');
   });
 
   it('caches a term, so a repeated lookup does not call CROSS again', async () => {
     responses.mug = { rulings: [ruling('N1', '6912.00.4400')] };
-    await lookupCrossRulings(['mug'], 1);
-    await lookupCrossRulings(['mug'], 1);
+    await lookupCrossRulings(['mug']);
+    await lookupCrossRulings(['mug']);
     expect(terms).toEqual(['mug']);
   });
 
   it('reports unavailable on an upstream error and stays quiet for a while instead of retrying every request', async () => {
     responses.mug = 'fail';
-    const first = await lookupCrossRulings(['mug'], 1);
+    const first = await lookupCrossRulings(['mug']);
     expect(first.status).toBe('unavailable');
     expect(first.error).toContain('503');
-    const second = await lookupCrossRulings(['cup'], 1);
+    const second = await lookupCrossRulings(['cup']);
     expect(second.status).toBe('unavailable');
     expect(terms).toEqual(['mug']); // 2回目は通信していない
     resetCrossBreakerForTest();
     responses.cup = { rulings: [ruling('N1', '6912.00.4400')] };
-    expect((await lookupCrossRulings(['cup'], 1)).status).toBe('ok');
+    expect((await lookupCrossRulings(['cup'])).status).toBe('ok');
   });
 
   it('keeps the rulings already found when a later query fails', async () => {
     responses.a = { rulings: [ruling('N1', '6912.00.4400')] };
     responses.b = 'fail';
-    const res = await lookupCrossRulings(['a', 'b'], 3);
+    const res = await lookupCrossRulings(['a', 'b']);
     expect(res.status).toBe('ok');
     expect(res.rulings).toHaveLength(1);
   });

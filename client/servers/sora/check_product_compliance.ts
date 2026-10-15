@@ -6,7 +6,7 @@ export type CheckProductComplianceInput = {
   url?: string;
   /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。HTS と判例は英語なので、日本語の商品は英訳して渡す。英語の語が無く htsCode も無いときは、英訳を促す needs_more_info を返す */
   productName?: string;
-  /** 商品の詳細説明・仕様・素材・用途など（英語） */
+  /** 商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要） */
   description?: string;
   /** ユーザーから明示された既知のHTSコード（指定時は最優先で検証）。推測・候補値は入れず、分類したいときは省略する（Sora が公式データと判例から特定する） */
   htsCode?: string;
