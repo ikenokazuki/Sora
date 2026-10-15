@@ -1,0 +1,1690 @@
+{
+ "note": "Labels authored 2026-10-15 from HTS knowledge; each expected prefix verified to exist in the current USITC tree. dev = tune on, test = report only (seen once, then used for error analysis), holdout = written before looking at any output, run once for the final report.",
+ "cases": [
+  {
+   "id": "c001",
+   "split": "dev",
+   "productName": "Stoneware Coffee Mug",
+   "description": "Ceramic stoneware mug for coffee",
+   "expected": {
+    "hs6": [
+     "691200"
+    ]
+   }
+  },
+  {
+   "id": "c002",
+   "split": "test",
+   "productName": "Porcelain Tea Cup and Saucer Set",
+   "description": "Fine bone china teacup with saucer",
+   "expected": {
+    "hs6": [
+     "691110"
+    ]
+   }
+  },
+  {
+   "id": "c003",
+   "split": "dev",
+   "productName": "Japanese Ceramic Rice Bowl",
+   "description": "Hand-painted ceramic bowl for rice",
+   "expected": {
+    "hs6": [
+     "691110",
+     "691200"
+    ]
+   }
+  },
+  {
+   "id": "c004",
+   "split": "test",
+   "productName": "Vacuum Insulated Stainless Steel Water Bottle",
+   "description": "Double-wall vacuum insulated bottle keeps drinks cold for 24 hours",
+   "expected": {
+    "hs6": [
+     "961700"
+    ]
+   }
+  },
+  {
+   "id": "c005",
+   "split": "dev",
+   "productName": "Stainless Steel Frying Pan",
+   "description": "Tri-ply stainless steel skillet for cooking",
+   "expected": {
+    "hs6": [
+     "732393"
+    ]
+   }
+  },
+  {
+   "id": "c006",
+   "split": "test",
+   "productName": "Nonstick Aluminum Frying Pan",
+   "description": "Nonstick aluminum skillet for cooking",
+   "expected": {
+    "hs6": [
+     "761510"
+    ]
+   }
+  },
+  {
+   "id": "c007",
+   "split": "dev",
+   "productName": "Cast Iron Skillet",
+   "description": "Pre-seasoned cast iron frying pan",
+   "expected": {
+    "hs6": [
+     "732391"
+    ]
+   }
+  },
+  {
+   "id": "c008",
+   "split": "test",
+   "productName": "Chef Knife",
+   "description": "Stainless steel kitchen knife with fixed blade",
+   "expected": {
+    "hs6": [
+     "821191",
+     "821192"
+    ]
+   }
+  },
+  {
+   "id": "c009",
+   "split": "dev",
+   "productName": "Bamboo Chopsticks Set",
+   "description": "Reusable bamboo chopsticks, 5 pairs",
+   "expected": {
+    "hs6": [
+     "441912",
+     "441919",
+     "441990"
+    ]
+   }
+  },
+  {
+   "id": "c010",
+   "split": "test",
+   "productName": "Glass Flower Vase",
+   "description": "Decorative clear glass vase for flowers",
+   "expected": {
+    "hs6": [
+     "701399"
+    ]
+   }
+  },
+  {
+   "id": "c011",
+   "split": "dev",
+   "productName": "Scented Candle",
+   "description": "Soy wax candle in glass jar, lavender scent",
+   "expected": {
+    "hs6": [
+     "340600"
+    ]
+   }
+  },
+  {
+   "id": "c012",
+   "split": "test",
+   "productName": "Cotton Bath Towel",
+   "description": "Terry bath towel of 100% cotton",
+   "expected": {
+    "hs6": [
+     "630260"
+    ]
+   }
+  },
+  {
+   "id": "c013",
+   "split": "dev",
+   "productName": "Folding Umbrella",
+   "description": "Compact telescopic umbrella with auto open",
+   "expected": {
+    "hs6": [
+     "660191",
+     "660199"
+    ]
+   }
+  },
+  {
+   "id": "c014",
+   "split": "test",
+   "productName": "Sunglasses",
+   "description": "UV400 polarized sunglasses",
+   "expected": {
+    "hs6": [
+     "900410"
+    ]
+   }
+  },
+  {
+   "id": "c015",
+   "split": "dev",
+   "productName": "Ballpoint Pen",
+   "description": "Retractable ballpoint pen, blue ink",
+   "expected": {
+    "hs6": [
+     "960810"
+    ]
+   }
+  },
+  {
+   "id": "c016",
+   "split": "test",
+   "productName": "Mechanical Pencil",
+   "description": "0.5mm mechanical pencil for drafting",
+   "expected": {
+    "hs6": [
+     "960840"
+    ]
+   }
+  },
+  {
+   "id": "c017",
+   "split": "dev",
+   "productName": "Spiral Notebook",
+   "description": "A5 spiral bound notebook with ruled pages",
+   "expected": {
+    "hs6": [
+     "482020"
+    ]
+   }
+  },
+  {
+   "id": "c018",
+   "split": "test",
+   "productName": "Paperback Novel",
+   "description": "Printed paperback book, fiction",
+   "expected": {
+    "hs6": [
+     "490199"
+    ]
+   }
+  },
+  {
+   "id": "c019",
+   "split": "dev",
+   "productName": "Leather Wallet",
+   "description": "Bifold wallet made of genuine cowhide leather",
+   "expected": {
+    "hs6": [
+     "420231"
+    ]
+   }
+  },
+  {
+   "id": "c020",
+   "split": "test",
+   "productName": "Polyester Backpack",
+   "description": "School backpack with outer surface of polyester textile",
+   "expected": {
+    "hs6": [
+     "420292"
+    ]
+   }
+  },
+  {
+   "id": "c021",
+   "split": "dev",
+   "productName": "Leather Handbag",
+   "description": "Women's handbag with outer surface of leather",
+   "expected": {
+    "hs6": [
+     "420221"
+    ]
+   }
+  },
+  {
+   "id": "c022",
+   "split": "test",
+   "productName": "Hard Shell Suitcase",
+   "description": "Travel suitcase with hard plastic shell and wheels",
+   "expected": {
+    "hs6": [
+     "420212"
+    ]
+   }
+  },
+  {
+   "id": "c023",
+   "split": "dev",
+   "productName": "Men's Cotton T-Shirt",
+   "description": "Short sleeve knitted crew neck tee, 100% cotton",
+   "expected": {
+    "hs6": [
+     "610910"
+    ]
+   }
+  },
+  {
+   "id": "c024",
+   "split": "test",
+   "productName": "Women's Denim Jeans",
+   "description": "High waist jeans of cotton denim, not knitted",
+   "expected": {
+    "hs6": [
+     "620462"
+    ]
+   }
+  },
+  {
+   "id": "c025",
+   "split": "dev",
+   "productName": "Silk Scarf",
+   "description": "Women's scarf of 100% silk",
+   "expected": {
+    "hs6": [
+     "621410"
+    ]
+   }
+  },
+  {
+   "id": "c026",
+   "split": "test",
+   "productName": "Cotton Crew Socks",
+   "description": "Knitted cotton socks, 6 pairs",
+   "expected": {
+    "hs6": [
+     "611595"
+    ]
+   }
+  },
+  {
+   "id": "c027",
+   "split": "dev",
+   "productName": "Wool Knit Sweater",
+   "description": "Men's pullover sweater, knitted, of wool",
+   "expected": {
+    "hs6": [
+     "611011"
+    ]
+   }
+  },
+  {
+   "id": "c028",
+   "split": "test",
+   "productName": "Running Shoes",
+   "description": "Athletic sneakers with textile upper and rubber outer sole",
+   "expected": {
+    "hs6": [
+     "640411"
+    ]
+   }
+  },
+  {
+   "id": "c029",
+   "split": "dev",
+   "productName": "Leather Dress Shoes",
+   "description": "Men's oxford shoes with leather upper and leather outer sole",
+   "expected": {
+    "hs6": [
+     "640351",
+     "640359",
+     "640391",
+     "640399"
+    ]
+   }
+  },
+  {
+   "id": "c030",
+   "split": "test",
+   "productName": "Baseball Cap",
+   "description": "Adjustable cotton baseball cap",
+   "expected": {
+    "hs6": [
+     "650500"
+    ]
+   }
+  },
+  {
+   "id": "c031",
+   "split": "dev",
+   "productName": "Quartz Wristwatch",
+   "description": "Analog quartz wrist watch with stainless steel case",
+   "expected": {
+    "hs6": [
+     "910211"
+    ]
+   }
+  },
+  {
+   "id": "c032",
+   "split": "test",
+   "productName": "USB-C Wall Charger",
+   "description": "65W power adapter for laptops and phones",
+   "expected": {
+    "hs6": [
+     "850440"
+    ]
+   }
+  },
+  {
+   "id": "c033",
+   "split": "dev",
+   "productName": "Portable Bluetooth Speaker",
+   "description": "Rechargeable wireless speaker",
+   "expected": {
+    "hs6": [
+     "851821",
+     "851822",
+     "851829"
+    ]
+   }
+  },
+  {
+   "id": "c034",
+   "split": "test",
+   "productName": "Wireless Earbuds",
+   "description": "True wireless bluetooth earbuds with charging case",
+   "expected": {
+    "hs6": [
+     "851830",
+     "851762"
+    ]
+   }
+  },
+  {
+   "id": "c035",
+   "split": "dev",
+   "productName": "Android Tablet",
+   "description": "10-inch tablet computer with touchscreen, 128GB",
+   "expected": {
+    "hs6": [
+     "847130",
+     "847141",
+     "847150"
+    ]
+   }
+  },
+  {
+   "id": "c036",
+   "split": "test",
+   "productName": "Laptop Computer",
+   "description": "14-inch portable laptop computer, 16GB RAM, 512GB SSD",
+   "expected": {
+    "hs6": [
+     "847130"
+    ]
+   }
+  },
+  {
+   "id": "c037",
+   "split": "dev",
+   "productName": "Smartphone",
+   "description": "6.1-inch unlocked 5G smartphone, 128GB",
+   "expected": {
+    "hs6": [
+     "851713"
+    ]
+   }
+  },
+  {
+   "id": "c038",
+   "split": "test",
+   "productName": "LED Desk Lamp",
+   "description": "Dimmable LED desk lamp with USB charging port",
+   "expected": {
+    "hs6": [
+     "940521",
+     "940529"
+    ]
+   }
+  },
+  {
+   "id": "c039",
+   "split": "dev",
+   "productName": "HDMI Cable",
+   "description": "High speed HDMI cable with connectors, 2 meters",
+   "expected": {
+    "hs6": [
+     "854442",
+     "854449"
+    ]
+   }
+  },
+  {
+   "id": "c040",
+   "split": "test",
+   "productName": "Lithium-ion Power Bank",
+   "description": "10000mAh portable battery charger for phones",
+   "expected": {
+    "hs6": [
+     "850760"
+    ]
+   }
+  },
+  {
+   "id": "c041",
+   "split": "dev",
+   "productName": "Digital Camera",
+   "description": "Mirrorless digital camera body, 24MP",
+   "expected": {
+    "hs6": [
+     "852589"
+    ]
+   }
+  },
+  {
+   "id": "c042",
+   "split": "test",
+   "productName": "Lipstick",
+   "description": "Matte lip color",
+   "expected": {
+    "hs6": [
+     "330410"
+    ]
+   }
+  },
+  {
+   "id": "c043",
+   "split": "dev",
+   "productName": "Shampoo",
+   "description": "Hair shampoo 500ml",
+   "expected": {
+    "hs6": [
+     "330510"
+    ]
+   }
+  },
+  {
+   "id": "c044",
+   "split": "test",
+   "productName": "Face Moisturizer Cream",
+   "description": "Hydrating skincare cream for face",
+   "expected": {
+    "hs6": [
+     "330499"
+    ]
+   }
+  },
+  {
+   "id": "c045",
+   "split": "dev",
+   "productName": "Perfume",
+   "description": "Eau de parfum spray 50ml",
+   "expected": {
+    "hs6": [
+     "330300"
+    ]
+   }
+  },
+  {
+   "id": "c046",
+   "split": "test",
+   "productName": "Toothpaste",
+   "description": "Fluoride toothpaste 100g",
+   "expected": {
+    "hs6": [
+     "330610"
+    ]
+   }
+  },
+  {
+   "id": "c047",
+   "split": "dev",
+   "productName": "Bar Soap",
+   "description": "Handmade bar soap for washing",
+   "expected": {
+    "hs6": [
+     "340111"
+    ]
+   }
+  },
+  {
+   "id": "c048",
+   "split": "test",
+   "productName": "Japanese Green Tea",
+   "description": "Sencha loose leaf green tea, 100g bag",
+   "expected": {
+    "hs6": [
+     "090210"
+    ]
+   }
+  },
+  {
+   "id": "c049",
+   "split": "dev",
+   "productName": "Matcha Powder",
+   "description": "Ceremonial grade powdered green tea, 30g tin",
+   "expected": {
+    "hs6": [
+     "090210",
+     "090220"
+    ]
+   }
+  },
+  {
+   "id": "c050",
+   "split": "test",
+   "productName": "Soy Sauce",
+   "description": "Naturally brewed soy sauce 1L",
+   "expected": {
+    "hs6": [
+     "210310"
+    ]
+   }
+  },
+  {
+   "id": "c051",
+   "split": "dev",
+   "productName": "Instant Ramen Noodles",
+   "description": "Pre-cooked instant noodles with soup packet",
+   "expected": {
+    "hs6": [
+     "190230",
+     "210410"
+    ]
+   }
+  },
+  {
+   "id": "c052",
+   "split": "test",
+   "productName": "Sake",
+   "description": "Japanese rice wine, 15% alcohol, 720ml bottle",
+   "expected": {
+    "hs6": [
+     "220600"
+    ]
+   }
+  },
+  {
+   "id": "c053",
+   "split": "dev",
+   "productName": "Whisky",
+   "description": "Japanese blended whisky 43% alcohol 700ml",
+   "expected": {
+    "hs6": [
+     "220830"
+    ]
+   }
+  },
+  {
+   "id": "c054",
+   "split": "test",
+   "productName": "Milk Chocolate Bar",
+   "description": "Milk chocolate bar 100g, filled with caramel",
+   "expected": {
+    "hs6": [
+     "180631",
+     "180632",
+     "180690"
+    ]
+   }
+  },
+  {
+   "id": "c055",
+   "split": "dev",
+   "productName": "Rice Crackers",
+   "description": "Japanese senbei rice crackers snack",
+   "expected": {
+    "hs6": [
+     "190590"
+    ]
+   }
+  },
+  {
+   "id": "c056",
+   "split": "test",
+   "productName": "Dried Seaweed Nori",
+   "description": "Roasted nori seaweed sheets for sushi",
+   "expected": {
+    "hs6": [
+     "121221",
+     "121229"
+    ]
+   }
+  },
+  {
+   "id": "c057",
+   "split": "dev",
+   "productName": "Miso Paste",
+   "description": "Fermented soybean miso paste 500g",
+   "expected": {
+    "hs6": [
+     "200899"
+    ]
+   }
+  },
+  {
+   "id": "c058",
+   "split": "test",
+   "productName": "Plush Teddy Bear",
+   "description": "Stuffed toy for children",
+   "expected": {
+    "hs6": [
+     "950300"
+    ]
+   }
+  },
+  {
+   "id": "c059",
+   "split": "dev",
+   "productName": "Anime Action Figure",
+   "description": "Collectible PVC figure 1/7 scale of anime character",
+   "expected": {
+    "hs6": [
+     "950300",
+     "392640"
+    ]
+   }
+  },
+  {
+   "id": "c060",
+   "split": "test",
+   "productName": "Jigsaw Puzzle",
+   "description": "1000 piece jigsaw puzzle for adults",
+   "expected": {
+    "hs6": [
+     "950300"
+    ]
+   }
+  },
+  {
+   "id": "c061",
+   "split": "dev",
+   "productName": "Wooden Building Blocks",
+   "description": "Educational wooden toy blocks for toddlers",
+   "expected": {
+    "hs6": [
+     "950300"
+    ]
+   }
+  },
+  {
+   "id": "c062",
+   "split": "test",
+   "productName": "Playing Cards",
+   "description": "Standard deck of plastic-coated playing cards",
+   "expected": {
+    "hs6": [
+     "950440"
+    ]
+   }
+  },
+  {
+   "id": "c063",
+   "split": "dev",
+   "productName": "Video Game Controller",
+   "description": "Wireless gamepad controller for game console",
+   "expected": {
+    "hs6": [
+     "950450"
+    ]
+   }
+  },
+  {
+   "id": "c064",
+   "split": "test",
+   "productName": "Yoga Mat",
+   "description": "Non-slip rubber yoga mat 6mm",
+   "expected": {
+    "hs6": [
+     "950691"
+    ]
+   }
+  },
+  {
+   "id": "c065",
+   "split": "dev",
+   "productName": "Golf Club",
+   "description": "Golf driver club with graphite shaft",
+   "expected": {
+    "hs6": [
+     "950631"
+    ]
+   }
+  },
+  {
+   "id": "c066",
+   "split": "test",
+   "productName": "Fishing Rod",
+   "description": "Telescopic carbon fiber fishing rod",
+   "expected": {
+    "hs6": [
+     "950710"
+    ]
+   }
+  },
+  {
+   "id": "c067",
+   "split": "dev",
+   "productName": "Bicycle Helmet",
+   "description": "Adult road cycling safety helmet",
+   "expected": {
+    "hs6": [
+     "650610"
+    ]
+   }
+  },
+  {
+   "id": "c068",
+   "split": "test",
+   "productName": "Adult Bicycle",
+   "description": "Road bike with 21 speeds, not motorized",
+   "expected": {
+    "hs6": [
+     "871200"
+    ]
+   }
+  },
+  {
+   "id": "c069",
+   "split": "dev",
+   "productName": "Plastic Hair Clip",
+   "description": "Claw clip hair accessory made of plastic",
+   "expected": {
+    "hs6": [
+     "961511"
+    ]
+   }
+  },
+  {
+   "id": "c070",
+   "split": "test",
+   "productName": "Hair Brush",
+   "description": "Detangling hair brush with plastic bristles",
+   "expected": {
+    "hs6": [
+     "960329"
+    ]
+   }
+  },
+  {
+   "id": "c071",
+   "split": "dev",
+   "productName": "Toothbrush",
+   "description": "Manual toothbrush with soft bristles",
+   "expected": {
+    "hs6": [
+     "960321"
+    ]
+   }
+  },
+  {
+   "id": "c072",
+   "split": "test",
+   "productName": "Wooden Dining Table",
+   "description": "Solid oak dining table for six",
+   "expected": {
+    "hs6": [
+     "940360"
+    ]
+   }
+  },
+  {
+   "id": "c073",
+   "split": "dev",
+   "productName": "Foam Mattress",
+   "description": "Memory foam mattress, queen size",
+   "expected": {
+    "hs6": [
+     "940421"
+    ]
+   }
+  },
+  {
+   "id": "c074",
+   "split": "test",
+   "productName": "Bed Pillow",
+   "description": "Polyester fiber filled pillow",
+   "expected": {
+    "hs6": [
+     "940490"
+    ]
+   }
+  },
+  {
+   "id": "c075",
+   "split": "dev",
+   "productName": "Leather Dog Collar",
+   "description": "Adjustable leather collar for dogs",
+   "expected": {
+    "hs6": [
+     "420100"
+    ]
+   }
+  },
+  {
+   "id": "c076",
+   "split": "test",
+   "productName": "Plastic Food Storage Container",
+   "description": "Plastic lunch box with lid, microwave safe",
+   "expected": {
+    "hs6": [
+     "392410"
+    ]
+   }
+  },
+  {
+   "id": "c077",
+   "split": "dev",
+   "productName": "Disposable Plastic Cups",
+   "description": "Pack of 100 disposable plastic drinking cups",
+   "expected": {
+    "hs6": [
+     "392410"
+    ]
+   }
+  },
+  {
+   "id": "c078",
+   "split": "test",
+   "productName": "Silicone Spatula",
+   "description": "Heat resistant silicone kitchen spatula",
+   "expected": {
+    "hs6": [
+     "392410"
+    ]
+   }
+  },
+  {
+   "id": "c079",
+   "split": "dev",
+   "productName": "Baby Cotton Bodysuit",
+   "description": "Infant bodysuit, knitted cotton, 3 pack",
+   "expected": {
+    "hs6": [
+     "611120"
+    ]
+   }
+  },
+  {
+   "id": "c080",
+   "split": "test",
+   "productName": "Disposable Face Mask",
+   "description": "Three-layer disposable non-woven face mask",
+   "expected": {
+    "hs6": [
+     "630790"
+    ]
+   }
+  },
+  {
+   "id": "c081",
+   "split": "dev",
+   "productName": "Digital Thermometer",
+   "description": "Digital clinical thermometer for body temperature",
+   "expected": {
+    "hs6": [
+     "902519"
+    ]
+   }
+  },
+  {
+   "id": "c082",
+   "split": "test",
+   "productName": "Adhesive Bandages",
+   "description": "Sterile adhesive bandages, 100 count",
+   "expected": {
+    "hs6": [
+     "300590"
+    ]
+   }
+  },
+  {
+   "id": "c083",
+   "split": "dev",
+   "productName": "Camera Lens",
+   "description": "Telephoto zoom lens for DSLR camera",
+   "expected": {
+    "hs6": [
+     "900211",
+     "900219"
+    ]
+   }
+  },
+  {
+   "id": "c084",
+   "split": "test",
+   "productName": "Binoculars",
+   "description": "Compact 10x42 binoculars",
+   "expected": {
+    "hs6": [
+     "900510"
+    ]
+   }
+  },
+  {
+   "id": "c085",
+   "split": "dev",
+   "productName": "Electric Toothbrush",
+   "description": "Rechargeable sonic electric toothbrush",
+   "expected": {
+    "hs6": [
+     "850980",
+     "851090"
+    ]
+   }
+  },
+  {
+   "id": "c086",
+   "split": "test",
+   "productName": "Hair Dryer",
+   "description": "Electric hair dryer 1800W with diffuser",
+   "expected": {
+    "hs6": [
+     "851631"
+    ]
+   }
+  },
+  {
+   "id": "c087",
+   "split": "dev",
+   "productName": "Electric Kettle",
+   "description": "Stainless steel electric kettle 1.7L",
+   "expected": {
+    "hs6": [
+     "851679"
+    ]
+   }
+  },
+  {
+   "id": "c088",
+   "split": "test",
+   "productName": "Rice Cooker",
+   "description": "Electric rice cooker 5.5 cup",
+   "expected": {
+    "hs6": [
+     "851660"
+    ]
+   }
+  },
+  {
+   "id": "c089",
+   "split": "dev",
+   "productName": "Microwave Oven",
+   "description": "Countertop microwave oven 20L",
+   "expected": {
+    "hs6": [
+     "851650"
+    ]
+   }
+  },
+  {
+   "id": "c090",
+   "split": "test",
+   "productName": "LED Light Bulb",
+   "description": "E26 LED light bulb 9W warm white",
+   "expected": {
+    "hs6": [
+     "853952"
+    ]
+   }
+  },
+  {
+   "id": "c091",
+   "split": "dev",
+   "productName": "Wall Clock",
+   "description": "Battery operated analog wall clock",
+   "expected": {
+    "hs6": [
+     "910521",
+     "910529"
+    ]
+   }
+  },
+  {
+   "id": "c092",
+   "split": "test",
+   "productName": "Steel Screws",
+   "description": "Assorted stainless steel wood screws",
+   "expected": {
+    "hs6": [
+     "731815"
+    ]
+   }
+  },
+  {
+   "id": "c093",
+   "split": "dev",
+   "productName": "Claw Hammer",
+   "description": "Steel claw hammer with wooden handle",
+   "expected": {
+    "hs6": [
+     "820520"
+    ]
+   }
+  },
+  {
+   "id": "c094",
+   "split": "test",
+   "productName": "Acrylic Paint Set",
+   "description": "Set of 24 acrylic paints for artists",
+   "expected": {
+    "hs6": [
+     "321390"
+    ]
+   }
+  },
+  {
+   "id": "c095",
+   "split": "dev",
+   "productName": "Crayons",
+   "description": "Box of 24 wax crayons for children",
+   "expected": {
+    "hs6": [
+     "960990",
+     "960920"
+    ]
+   }
+  },
+  {
+   "id": "c096",
+   "split": "test",
+   "productName": "Silicone Phone Case",
+   "description": "Protective silicone case for smartphone",
+   "expected": {
+    "hs6": [
+     "392690"
+    ]
+   }
+  },
+  {
+   "id": "c097",
+   "split": "dev",
+   "productName": "Wireless Computer Mouse",
+   "description": "Bluetooth optical mouse",
+   "expected": {
+    "hs6": [
+     "847160"
+    ]
+   }
+  },
+  {
+   "id": "c098",
+   "split": "test",
+   "productName": "Mechanical Keyboard",
+   "description": "USB mechanical gaming keyboard",
+   "expected": {
+    "hs6": [
+     "847160"
+    ]
+   }
+  },
+  {
+   "id": "c099",
+   "split": "dev",
+   "productName": "USB Flash Drive",
+   "description": "64GB USB 3.0 flash drive",
+   "expected": {
+    "hs6": [
+     "852351"
+    ]
+   }
+  },
+  {
+   "id": "c100",
+   "split": "test",
+   "productName": "SD Memory Card",
+   "description": "128GB SDXC memory card",
+   "expected": {
+    "hs6": [
+     "852351"
+    ]
+   }
+  },
+  {
+   "id": "c101",
+   "split": "dev",
+   "productName": "Over-Ear Headphones",
+   "description": "Wired stereo over-ear headphones with microphone",
+   "expected": {
+    "hs6": [
+     "851830"
+    ]
+   }
+  },
+  {
+   "id": "c102",
+   "split": "test",
+   "productName": "Smart Watch",
+   "description": "Fitness smart watch with heart rate monitor and bluetooth",
+   "expected": {
+    "hs6": [
+     "851762",
+     "910212"
+    ]
+   }
+  },
+  {
+   "id": "c103",
+   "split": "dev",
+   "productName": "Bamboo Cutting Board",
+   "description": "Large bamboo cutting board for kitchen",
+   "expected": {
+    "hs6": [
+     "441919",
+     "441990",
+     "441911"
+    ]
+   }
+  },
+  {
+   "id": "h01",
+   "split": "holdout",
+   "productName": "Stainless Steel Lunch Box",
+   "description": "Insulated stainless steel food container with lid",
+   "expected": {
+    "hs6": [
+     "732393"
+    ]
+   }
+  },
+  {
+   "id": "h02",
+   "split": "holdout",
+   "productName": "Women's Yoga Leggings",
+   "description": "Knitted leggings of polyester and spandex for women",
+   "expected": {
+    "hs6": [
+     "610463",
+     "610469"
+    ]
+   }
+  },
+  {
+   "id": "h03",
+   "split": "holdout",
+   "productName": "Down Jacket",
+   "description": "Men's padded winter jacket filled with duck down, woven nylon shell",
+   "expected": {
+    "hs6": [
+     "620140"
+    ]
+   }
+  },
+  {
+   "id": "h04",
+   "split": "holdout",
+   "productName": "Leather Belt",
+   "description": "Men's genuine leather belt with metal buckle",
+   "expected": {
+    "hs6": [
+     "420330"
+    ]
+   }
+  },
+  {
+   "id": "h05",
+   "split": "holdout",
+   "productName": "Wool Beanie Hat",
+   "description": "Knitted wool winter hat",
+   "expected": {
+    "hs6": [
+     "650500"
+    ]
+   }
+  },
+  {
+   "id": "h06",
+   "split": "holdout",
+   "productName": "Sports Bra",
+   "description": "Women's knitted sports bra of nylon and spandex",
+   "expected": {
+    "hs6": [
+     "621210"
+    ]
+   }
+  },
+  {
+   "id": "h07",
+   "split": "holdout",
+   "productName": "Cotton Bed Sheet Set",
+   "description": "Queen size cotton sheet set with pillowcases",
+   "expected": {
+    "hs6": [
+     "630231",
+     "630221"
+    ]
+   }
+  },
+  {
+   "id": "h08",
+   "split": "holdout",
+   "productName": "Blackout Curtains",
+   "description": "Woven polyester blackout window curtains",
+   "expected": {
+    "hs6": [
+     "630392",
+     "630312"
+    ]
+   }
+  },
+  {
+   "id": "h09",
+   "split": "holdout",
+   "productName": "Webcam",
+   "description": "USB webcam 1080p for computers",
+   "expected": {
+    "hs6": [
+     "852589"
+    ]
+   }
+  },
+  {
+   "id": "h10",
+   "split": "holdout",
+   "productName": "External Hard Drive",
+   "description": "Portable external USB hard disk drive 2TB",
+   "expected": {
+    "hs6": [
+     "847170"
+    ]
+   }
+  },
+  {
+   "id": "h11",
+   "split": "holdout",
+   "productName": "Wireless Router",
+   "description": "WiFi 6 dual band wireless router",
+   "expected": {
+    "hs6": [
+     "851762"
+    ]
+   }
+  },
+  {
+   "id": "h12",
+   "split": "holdout",
+   "productName": "Computer Monitor",
+   "description": "27-inch LCD computer monitor",
+   "expected": {
+    "hs6": [
+     "852852"
+    ]
+   }
+  },
+  {
+   "id": "h13",
+   "split": "holdout",
+   "productName": "Television",
+   "description": "55-inch 4K LED smart TV",
+   "expected": {
+    "hs6": [
+     "852872"
+    ]
+   }
+  },
+  {
+   "id": "h14",
+   "split": "holdout",
+   "productName": "Electric Guitar",
+   "description": "Solid body electric guitar",
+   "expected": {
+    "hs6": [
+     "920790",
+     "920710"
+    ]
+   }
+  },
+  {
+   "id": "h15",
+   "split": "holdout",
+   "productName": "Acoustic Guitar",
+   "description": "Six string acoustic guitar",
+   "expected": {
+    "hs6": [
+     "920290"
+    ]
+   }
+  },
+  {
+   "id": "h16",
+   "split": "holdout",
+   "productName": "Harmonica",
+   "description": "Diatonic harmonica 10 holes",
+   "expected": {
+    "hs6": [
+     "920590"
+    ]
+   }
+  },
+  {
+   "id": "h17",
+   "split": "holdout",
+   "productName": "Baby Stroller",
+   "description": "Foldable infant stroller",
+   "expected": {
+    "hs6": [
+     "871500"
+    ]
+   }
+  },
+  {
+   "id": "h18",
+   "split": "holdout",
+   "productName": "Child Car Seat",
+   "description": "Infant car seat with harness",
+   "expected": {
+    "hs6": [
+     "940180"
+    ]
+   }
+  },
+  {
+   "id": "h19",
+   "split": "holdout",
+   "productName": "Electric Scooter",
+   "description": "Foldable electric kick scooter",
+   "expected": {
+    "hs6": [
+     "871160"
+    ]
+   }
+  },
+  {
+   "id": "h20",
+   "split": "holdout",
+   "productName": "Camping Tent",
+   "description": "4-person dome tent of polyester",
+   "expected": {
+    "hs6": [
+     "630622"
+    ]
+   }
+  },
+  {
+   "id": "h21",
+   "split": "holdout",
+   "productName": "Sleeping Bag",
+   "description": "Mummy sleeping bag for camping",
+   "expected": {
+    "hs6": [
+     "940430"
+    ]
+   }
+  },
+  {
+   "id": "h22",
+   "split": "holdout",
+   "productName": "Water Gun Toy",
+   "description": "Plastic water gun toy for kids",
+   "expected": {
+    "hs6": [
+     "950300"
+    ]
+   }
+  },
+  {
+   "id": "h23",
+   "split": "holdout",
+   "productName": "Dog Food",
+   "description": "Dry dog food 2kg bag",
+   "expected": {
+    "hs6": [
+     "230910"
+    ]
+   }
+  },
+  {
+   "id": "h24",
+   "split": "holdout",
+   "productName": "Honey",
+   "description": "Pure natural honey 500g",
+   "expected": {
+    "hs6": [
+     "040900"
+    ]
+   }
+  },
+  {
+   "id": "h25",
+   "split": "holdout",
+   "productName": "Instant Coffee",
+   "description": "Freeze dried instant coffee 100g",
+   "expected": {
+    "hs6": [
+     "210111"
+    ]
+   }
+  },
+  {
+   "id": "h26",
+   "split": "holdout",
+   "productName": "Olive Oil",
+   "description": "Extra virgin olive oil 1L bottle",
+   "expected": {
+    "hs6": [
+     "150920"
+    ]
+   }
+  },
+  {
+   "id": "h27",
+   "split": "holdout",
+   "productName": "Dried Mango",
+   "description": "Dried mango slices 200g",
+   "expected": {
+    "hs6": [
+     "080450"
+    ]
+   }
+  },
+  {
+   "id": "h28",
+   "split": "holdout",
+   "productName": "Roasted Almonds",
+   "description": "Roasted salted almonds 500g",
+   "expected": {
+    "hs6": [
+     "200819"
+    ]
+   }
+  },
+  {
+   "id": "h29",
+   "split": "holdout",
+   "productName": "Butter Cookies",
+   "description": "Butter cookies in tin 400g",
+   "expected": {
+    "hs6": [
+     "190531"
+    ]
+   }
+  },
+  {
+   "id": "h30",
+   "split": "holdout",
+   "productName": "Strawberry Jam",
+   "description": "Strawberry jam 340g jar",
+   "expected": {
+    "hs6": [
+     "200799"
+    ]
+   }
+  },
+  {
+   "id": "h31",
+   "split": "holdout",
+   "productName": "Red Wine",
+   "description": "Red wine 750ml bottle 13% alcohol",
+   "expected": {
+    "hs6": [
+     "220421"
+    ]
+   }
+  },
+  {
+   "id": "h32",
+   "split": "holdout",
+   "productName": "Lager Beer",
+   "description": "Lager beer 330ml can",
+   "expected": {
+    "hs6": [
+     "220300"
+    ]
+   }
+  },
+  {
+   "id": "h33",
+   "split": "holdout",
+   "productName": "Face Sheet Mask",
+   "description": "Hydrating sheet face mask with serum",
+   "expected": {
+    "hs6": [
+     "330499"
+    ]
+   }
+  },
+  {
+   "id": "h34",
+   "split": "holdout",
+   "productName": "Nail Polish",
+   "description": "Gel nail polish 15ml",
+   "expected": {
+    "hs6": [
+     "330430"
+    ]
+   }
+  },
+  {
+   "id": "h35",
+   "split": "holdout",
+   "productName": "Hair Dye",
+   "description": "Permanent hair color cream",
+   "expected": {
+    "hs6": [
+     "330590"
+    ]
+   }
+  },
+  {
+   "id": "h36",
+   "split": "holdout",
+   "productName": "Sunscreen Lotion",
+   "description": "SPF 50 sunscreen lotion for face and body",
+   "expected": {
+    "hs6": [
+     "330499"
+    ]
+   }
+  },
+  {
+   "id": "h37",
+   "split": "holdout",
+   "productName": "Disposable Diapers",
+   "description": "Baby diapers size 3, 60 count",
+   "expected": {
+    "hs6": [
+     "961900"
+    ]
+   }
+  },
+  {
+   "id": "h38",
+   "split": "holdout",
+   "productName": "Toilet Paper",
+   "description": "2-ply toilet tissue rolls, 12 pack",
+   "expected": {
+    "hs6": [
+     "481810"
+    ]
+   }
+  },
+  {
+   "id": "h39",
+   "split": "holdout",
+   "productName": "Laundry Detergent",
+   "description": "Liquid laundry detergent 2L",
+   "expected": {
+    "hs6": [
+     "340250"
+    ]
+   }
+  },
+  {
+   "id": "h40",
+   "split": "holdout",
+   "productName": "Disposable Razors",
+   "description": "Men's disposable razors 5 pack",
+   "expected": {
+    "hs6": [
+     "821210"
+    ]
+   }
+  },
+  {
+   "id": "h41",
+   "split": "holdout",
+   "productName": "Office Scissors",
+   "description": "Stainless steel office scissors",
+   "expected": {
+    "hs6": [
+     "821300"
+    ]
+   }
+  },
+  {
+   "id": "h42",
+   "split": "holdout",
+   "productName": "Brass Padlock",
+   "description": "Brass padlock with 3 keys",
+   "expected": {
+    "hs6": [
+     "830110"
+    ]
+   }
+  },
+  {
+   "id": "h43",
+   "split": "holdout",
+   "productName": "Cordless Drill",
+   "description": "Cordless electric drill 18V with battery",
+   "expected": {
+    "hs6": [
+     "846721"
+    ]
+   }
+  },
+  {
+   "id": "h44",
+   "split": "holdout",
+   "productName": "Robot Vacuum Cleaner",
+   "description": "Robotic vacuum cleaner with mapping",
+   "expected": {
+    "hs6": [
+     "850811",
+     "850819"
+    ]
+   }
+  },
+  {
+   "id": "h45",
+   "split": "holdout",
+   "productName": "Refrigerator",
+   "description": "Household refrigerator freezer 300L",
+   "expected": {
+    "hs6": [
+     "841810",
+     "841821",
+     "841829"
+    ]
+   }
+  },
+  {
+   "id": "h46",
+   "split": "holdout",
+   "productName": "Air Purifier",
+   "description": "HEPA air purifier for home",
+   "expected": {
+    "hs6": [
+     "842139"
+    ]
+   }
+  },
+  {
+   "id": "h47",
+   "split": "holdout",
+   "productName": "Sewing Machine",
+   "description": "Household electric sewing machine",
+   "expected": {
+    "hs6": [
+     "845210"
+    ]
+   }
+  }
+ ]
+}
