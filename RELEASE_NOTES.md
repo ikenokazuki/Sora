@@ -1,3 +1,28 @@
+# Sora v2.41.0 — HTS コード推測を、USITC 公式 HTS 全件の全文検索と CBP 分類判例の統合に替えた
+
+- **`predict_hts_code`（`POST /trade/hts-predict`）の精度を上げました。** 品目ごとの規則表（約30品目の正規表現）をやめ、公式の二つのデータを6桁の単位で統合します。代表的な輸出品150件（英語）で、1位の6桁の一致が 18.0% → **72.0%**、調整に使っていない保留の47件では 6.4% → **68.1%** です。候補（上位5つの6桁）の中に正解がある割合は 89.3%（保留 85.1%）です。評価の方法と外れた事例は `docs/evaluations/hts-predict/results.md` にあります。評価は6桁までで、10桁の選択は測っていません。
+  - **USITC の HTS 全件**: 初回の呼び出しで全件（約 12MB）を取得し、SQLite に保存します（`SORA_HTS_DIR`、約 21MB）。説明だけの中間行も含む完全な木として持ち、各行に祖先の説明（`path`）を付けて全文検索します（FTS5）。
+  - **CBP の分類判例（CROSS）**: 普段の言葉と法令の用語をつなぎます。呼ばれたときだけ照会し、24 時間キャッシュします。判例が挙げるコードは現行の木で照合し、改訂で番号が変わったもの（9503.30 → 9503.00、9405.20 → 9405.21・9405.29）は現行の6桁へ振り分けます。落ちているときは全文検索だけで答えます（精度は約半分、`confidence` は `high` にならない）。`evidence.crossStatus` で分かります。
+  - 以前の実装は、規則表に無い品目をすべて 3926.90（プラスチック製品）にし、正規表現が語の一部にも当たる（steel の中の tee で腕時計が T シャツ、clip の中の lip でヘアクリップが口紅）ため、`confidence` が実績と合いませんでした（high 16 件中 8 件が的中）。
+  - `confidence` は実績に合うようにしました（評価で `high` の的中 94%、`medium` 79%、`low` 43%）。
+  - 候補が公式の階層で分かれるときは、**公式の説明文を選択肢にした質問**（`decisionPoints`）を返します。答えとなる区分の語を `description` に加えて再実行すると絞れます。
+- **一般関税率の継承を直しました。** 以前は、10桁の行に率が無いと見出し行の率（多くは空）にし、`Free` と答えていました。10桁の全 19,831 行のうち 7,539 行で率が違いました（陶器のマグが 9.8% のところ `Free`）。最も近い祖先の率を継承し、どの行から継いだかを `rateFrom` に返します。
+- **`verify_hts_code`（`POST /trade/hts-verify`）**: 同じ HTS 全件のコピーで照合します。公式の階層での位置（`officialPath`）を返し、8桁の行にこれより細かい行があるときは10桁の確定を促します。
+- **`check_product_compliance`（`POST /trade/compliance`）**: キーワード表の既定コードをやめ、`htsCode` が無ければ推測の結果を使います。素材と用途を指定した "Ceramic Coffee Mug" が coffee に反応して食品（2106.90）と判定され、FDA の事前通知が案内される誤りがなくなります。
+- 運用:
+  - HTS 全件は、`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときだけ取得します（約 20 秒）。起動時の取得や常駐処理はありません。7 日を過ぎると次の利用時に裏で更新し、失敗したときは古いコピーのまま答えます。
+  - 判例の照会は商品名を絞りながら最大 5 回、順に行います（中央値 0.33 秒、同じ商品の再問い合わせは約 50 ms）。
+- **応答の形と動作が変わります**:
+  - **入力は英語です。** HTS も判例も英語なので、`productName` と `description` は商品の一般名の英語で渡します（MCP の説明にも書きました）。英語の語が無い入力は、`/trade/hts-predict` が `400 INVALID_INPUT`、`/trade/compliance` が `needs_more_info`（英訳を促す質問）です。
+  - `/trade/hts-predict` に項目を足しました: `decisionPoints`、`evidence`、`bestMatch.path`・`rateFrom`、`candidates[].path`・`sources`。`missingInputs` に `classificationDetail` が加わることがあります。`category` は最有力の行の公式の見出しの説明になります（以前は "Toys" などの固定の名前）。`candidates` は異なる6桁ごとの代表の行（最大5件）です。
+  - `/trade/hts-predict` は、キーワードによる質問（電池・食品接触・素材・年齢）をやめました。CPSC・FDA の判定が実際に必要とした情報だけを `missingInputs` と `clarifyingQuestions` に返します。
+  - `/trade/compliance` は、`targetAge` と `material` を文章から推定しなくなりました。呼び出し側が渡した値だけを使います。分類の確度が `low` のときは、既定のコードで進めず `needs_more_info` を返します。ボタン電池は `hasBattery` と `batteryType: "button_coin"` を渡したときだけ、CPSC の Reese's Law（16 CFR 1263）の確認を `actionPlan` に足します（HTS を差し替えなくなりました）。
+- 品質:
+  - 評価セット（`eval/hts_predict_cases.json`、150件）と評価スクリプト（`scripts/eval-hts-predict.ts`）を足しました。dev で調整し、test と保留で確かめます。
+  - テストの USITC の応答を、実際の関税率表の抜粋と判例の応答の抜粋（`src/test_fixtures`）に替えました。推測の組み立てのテストを `src/services/trade.test.ts` に、取得・検索のテストを `hts_data.test.ts`、`cbp_cross.test.ts` に足しました。
+  - tool-health の `trade.predict` は、緑茶が 0902 か 2101 に分類されること、`evidence` の形まで確かめます。
+- 型付きクライアント（）を、新しい応答項目に合わせて再生成しました。
+
 # Sora v2.40.1 — コードを実行できる LLM を型付きクライアントへ誘導、スキルの配布を修正
 
 - コードを実行できる LLM が、型付きクライアント（`GET /client`）を優先して使えるようにしました。
