@@ -41,7 +41,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     '- **Host Deferred Loading**: If the host provides tool discovery, use the host-provided tool search to load a missing definition; Sora search_tools is then not needed.',
     '- **Legacy Sora Activation**: Otherwise, if the server uses deferred activation, call search_tools with relevant keywords, then wait for the host to load its input schema before calling the tool (a name in search output alone is not callable).',
     '- **Unavailable Modules**: If discovery cannot find the tool, its module may be disabled; use a safe available fallback without inventing data.',
-    '- **Code Execution (preferred)**: If you can run code that reaches this server, fetch the typed client (`GET /client`, resource `sora-client://guide`) and print only the fields you need. Otherwise call the MCP tools directly.',
+    '- **Code Execution (preferred)**: If you can run code that reaches this server, fetch the typed client (`GET /client`, skill resource `sora-skill://sora-client`) and print only the fields you need. Otherwise call the MCP tools directly.',
   );
 
   if (hasWeb || hasBrowser || hasWatch || hasMedia) {

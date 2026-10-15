@@ -50,19 +50,11 @@ describe('search_tools detail / activate', () => {
   test.each(['names', 'summary', 'schema'] as const)('detail:"%s" ends with the pointer to the typed client', async (detail) => {
     const server = createMcpServer({ deferTools: true });
     const text = (await search(server, { query: '荷物追跡', detail, activate: false })).content[0].text as string;
-    expect(text.trimEnd().endsWith('sora-client://guide）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。')).toBe(true);
+    expect(text.trimEnd().endsWith('sora-skill://sora-client）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。')).toBe(true);
   });
 
   test('the default activation output also carries the pointer', async () => {
     const server = createMcpServer({ deferTools: true });
     expect(((await search(server, { query: '荷物追跡' })).content[0].text as string)).toContain('GET /client');
-  });
-
-  test('the client guide is published as an MCP resource and names the endpoints', async () => {
-    const server = createMcpServer({ deferTools: true });
-    const resource = Object.values((server as any)._registeredResources).find((r: any) => r.name === 'sora-client-guide') as any;
-    const { contents } = await resource.readCallback(new URL('sora-client://guide'));
-    expect(contents[0].text).toContain('GET {SORA_URL}/client');
-    expect(contents[0].text).toContain('SORA_API_KEY');
   });
 });

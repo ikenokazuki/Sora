@@ -15,4 +15,4 @@ console.log(result.results.map((r) => `${r.title} ${r.url}`).join('\n'));
 - `SORA_API_KEY` — sent as `Authorization: Bearer` when the server requires a key.
 - Errors are thrown as `SoraError { code, status, retryable, details }`.
 - `catalog.json` lists every tool (name, function, category, route). `searchTools(query, 'names')` in `search.ts` finds tools without reading each file.
-- Files: `runtime.ts` (HTTP), `search.ts`, `servers/sora/<tool>.ts` (one per tool), `servers/sora/index.ts`.
+- Files: `runtime.ts` (HTTP), `search.ts`, `servers/sora/<tool>.ts` (one per tool), `servers/sora/index.ts`, `SKILL.md` (how to use this client, as an agent skill).
