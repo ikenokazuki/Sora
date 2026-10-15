@@ -56,6 +56,7 @@ import { CountryContextReportSchema, IntelSocialInputSchema, COUNTRY_INTEL_TOPIC
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
 import { errorMessage } from './errors.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { formatToolMatches, type ToolMatch } from './mcp_tool_search.js';
 import { addressEnabled } from './services/address_config.js';
 import { addressErrorMessage } from './services/address_errors.js';
 
@@ -2328,26 +2329,23 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
       '見つからない場合は該当モジュールが無効か利用不可です。返却: 有効化したツールの一覧（テキスト）',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
+      detail: z.enum(['names', 'summary', 'schema']).optional().describe('names=名前とカテゴリのみ / summary=説明の要約（既定） / schema=入力スキーマ付き（最大8件）'),
+      activate: z.boolean().optional().describe('false なら有効化せずに調べるだけ（既定 true）'),
     },
-    async ({ query }) => {
+    async ({ query, detail, activate }) => {
       const matches = searchCatalog(toolCatalog, query);
-      const newlyEnabled: string[] = [];
-      const alreadyEnabled: string[] = [];
-
-      for (const entry of matches) {
+      const found: ToolMatch[] = matches.map((entry) => {
+        if (activate === false) return { entry, newlyEnabled: false };
         sessionActivated.add(entry.name);
-        if (!entry.handle.enabled) {
+        const newlyEnabled = !entry.handle.enabled;
+        if (newlyEnabled) {
           entry.handle.enable();
           entry.compatibilityHandle?.enable();
-          const cleanDesc = entry.description.replace(/^【.*?】/, '').slice(0, 80);
-          const tag = entry.description.match(/^【(.*?)】/)?.[0] || '';
-          newlyEnabled.push(`- ${entry.name}: ${tag}${cleanDesc}... (状態: 有効化完了)`);
-        } else {
-          alreadyEnabled.push(`- ${entry.name} (状態: 既に有効)`);
         }
-      }
+        return { entry, newlyEnabled };
+      });
 
-      if (newlyEnabled.length === 0 && alreadyEnabled.length === 0) {
+      if (found.length === 0) {
         const activeCategories: string[] = [];
         if (shouldEnableWeb) activeCategories.push('web (一括/クロール)');
         if (shouldEnableBrowser) activeCategories.push('browser (操作)');
@@ -2374,17 +2372,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
         };
       }
 
-      const messages: string[] = [];
-      if (newlyEnabled.length > 0) {
-        messages.push(`以下のツールをセッション内で有効化しました:\n${newlyEnabled.join('\n')}\n\n対象ツールを直接呼び出してください。`);
-      }
-      if (alreadyEnabled.length > 0) {
-        messages.push(`以下のツールはすでに有効化されています:\n${alreadyEnabled.join('\n')}`);
-      }
-
-      return {
-        content: [{ type: 'text', text: messages.join('\n\n') }],
-      };
+      return { content: [{ type: 'text', text: formatToolMatches(found, { detail, activate }) }] };
     },
   );
 
