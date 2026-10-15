@@ -1,7 +1,7 @@
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
-import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
-import type { ToolCatalogEntry } from './mcp.js';
+import { sanitizeJsonSchemaForGemini } from '../schema_sanitizer.js';
+import type { ToolCatalogEntry } from './registry.js';
 
 export type SearchDetail = 'names' | 'summary' | 'schema';
 
