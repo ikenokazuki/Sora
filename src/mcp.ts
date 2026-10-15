@@ -383,6 +383,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
 
 export const SORA_MCP_INSTRUCTIONS = buildSoraMcpInstructions();
 
+/** createMcpServer が作ったサーバーのツール台帳（クライアント生成などの読み取り用）。 */
+const TOOL_CATALOGS = new WeakMap<McpServer, Map<string, ToolCatalogEntry>>();
+export function toolCatalogOf(server: McpServer): ReadonlyMap<string, ToolCatalogEntry> {
+  return TOOL_CATALOGS.get(server) ?? new Map();
+}
+
 export function createMcpServer(options?: McpServerOptions): McpServer {
   const instructions = buildSoraMcpInstructions(options?.modules);
   const mcpServer = new McpServer(
@@ -2406,6 +2412,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     }
   } catch {}
 
+  TOOL_CATALOGS.set(mcpServer, toolCatalog);
   return mcpServer;
 }
 
