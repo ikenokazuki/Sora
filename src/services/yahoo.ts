@@ -457,18 +457,29 @@ export function normalizeDomainList(list: readonly string[] | undefined): string
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
-/** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
-/** Stable coalescing key for one Yahoo Web search (flags included). */
-export function yahooWebSearchFlightKey(options: {
+/** Yahoo Web 検索の入力。`verbose` と `_callMcp` は呼び出し側（と試験）が差し込む内部用。 */
+export interface YahooWebSearchOptions {
   query: string;
   includeDomains?: string[];
   excludeDomains?: string[];
-  updated?: string;
+  updated?: 'all' | 'day' | 'week' | 'year';
   disableFallback?: boolean;
-}): string {
+  noCache?: boolean;
+  verbose?: boolean;
+  _callMcp?: typeof callYahooMcp;
+}
+
+export interface YahooWebSearchDeps {
+  callYahooMcp?: typeof callYahooMcp;
+  fetchYahooWebDirect?: typeof fetchYahooWebDirect;
+}
+
+/** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
+/** Stable coalescing key for one Yahoo Web search (flags included). */
+export function yahooWebSearchFlightKey(options: YahooWebSearchOptions): string {
   const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
   const native = process.env.SORA_WEB_NATIVE_RANKING !== 'false' ? 'native' : 'legacy';
-  const v = (options as any)?.verbose === true ? 'verbose' : 'compact';
+  const v = options.verbose === true ? 'verbose' : 'compact';
   return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
 }
 
@@ -476,14 +487,7 @@ export function yahooWebSearchFlightKey(options: {
  * Yahoo Web execution order (spec section 30):
  * Fresh Cache -> SingleFlight -> Provider Controller -> Yahoo -> Stale fallback.
  */
-export async function searchYahooWeb(options: {
-  query: string;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-  updated?: 'all' | 'day' | 'week' | 'year';
-  disableFallback?: boolean;
-  noCache?: boolean;
-}, deps?: { callYahooMcp?: typeof callYahooMcp }): Promise<any> {
+export async function searchYahooWeb(options: YahooWebSearchOptions, deps?: YahooWebSearchDeps): Promise<any> {
   options = { ...options, includeDomains: normalizeDomainList(options.includeDomains), excludeDomains: normalizeDomainList(options.excludeDomains) };
   const flightKey = yahooWebSearchFlightKey(options);
   const fresh = options.noCache ? null : getYahooFreshCache<any>(flightKey);
@@ -502,18 +506,10 @@ export async function searchYahooWeb(options: {
   return res;
 }
 
-async function searchYahooWebUncached(options: {
-  query: string;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-  updated?: 'all' | 'day' | 'week' | 'year';
-  disableFallback?: boolean;
-}, deps: { callYahooMcp?: typeof callYahooMcp } | undefined, flightKey: string): Promise<any> {
-  const callMcp: typeof callYahooMcp =
-    (deps as any)?.callYahooMcp ?? (options as any)?._callMcp ?? callYahooMcp;
+async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: YahooWebSearchDeps | undefined, flightKey: string): Promise<any> {
+  const callMcp: typeof callYahooMcp = deps?.callYahooMcp ?? options._callMcp ?? callYahooMcp;
   const providerErrors: Array<{ query: string; message: string }> = [];
-  const fetchDirect: typeof fetchYahooWebDirect =
-    (deps as any)?.fetchYahooWebDirect ?? fetchYahooWebDirect;
+  const fetchDirect: typeof fetchYahooWebDirect = deps?.fetchYahooWebDirect ?? fetchYahooWebDirect;
   // The bundled MCP binary carries a fingerprint Yahoo currently rate-limits
   // (HTTP 429) while direct fetches with a browser fingerprint succeed.
   // Direct fetch is therefore the primary route; the binary is the alternate.
@@ -533,7 +529,7 @@ async function searchYahooWebUncached(options: {
   // Pressure-aware query budget (spec sections 15-17): provider health wins over flags.
   const yahooPressureLevel = pressureBypassed() ? 'low' as const : yahooWebPressure.getLevel();
   const yahooQueryBudget = getYahooQueryBudget(yahooPressureLevel);
-  const verboseDiag = (options as any)?.verbose === true;
+  const verboseDiag = options.verbose === true;
 
   let lastParsedData: any = { items: [], count: 0, source: 'web' };
 
@@ -1089,6 +1085,10 @@ export interface YahooRealtimeOptions {
   anchor?: string;
   /** 返す投稿の上限（既定は limit、それも無ければ20）。deep search の realtimeLimit 用 */
   maxItems?: number;
+  /** 試験用の差し込み。Yahoo 呼び出し */
+  _callMcp?: typeof callYahooMcp;
+  /** 試験用の差し込み。語ごとの総件数の取得 */
+  _termTotals?: typeof fetchRealtimeTermTotals;
 }
 
 /** 返す投稿の既定の上限（search_realtime の limit の既定値と同じ）。 */
@@ -1247,7 +1247,7 @@ export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): stri
     options.limit ?? 20,
     options.page ?? 1,
     options.disableFallback === true,
-    (options as any)?.verbose === true,
+    options.verbose === true,
     options.focus ?? 'auto',
     options.anchor?.trim() || 'auto',
     process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on',
@@ -1767,15 +1767,7 @@ async function resolveRealtimeAnchor(
 }
 
 /** Yahoo リアルタイム検索 (Retrieval v1: bounded query union + parallel waves + adaptive stop) */
-export async function searchYahooRealtime(options: YahooRealtimeOptions | {
-  query: string;
-  sort?: 'recent' | 'popular';
-  limit?: number;
-  page?: number;
-  disableFallback?: boolean;
-  detailEnrichment?: boolean;
-  verbose?: boolean;
-}): Promise<{
+export async function searchYahooRealtime(options: YahooRealtimeOptions): Promise<{
   items: any[];
   count: number;
   effectiveQuery: string;
@@ -1807,8 +1799,8 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
   const detailEnrichment = typeof options === 'object' && options.detailEnrichment !== undefined
     ? options.detailEnrichment
     : true;
-  const callMcp: typeof callYahooMcp = (options as any)?._callMcp || callYahooRealtimeJson;
-  const termTotals: typeof fetchRealtimeTermTotals = (options as any)?._termTotals || fetchRealtimeTermTotals;
+  const callMcp: typeof callYahooMcp = options._callMcp || callYahooRealtimeJson;
+  const termTotals: typeof fetchRealtimeTermTotals = options._termTotals || fetchRealtimeTermTotals;
   // wave1 で網羅できなかった時だけ解決する（それまで undefined = 従来の緩和）
   let anchor: ResolvedRealtimeAnchor | undefined;
   const anchorAliases = (): Record<string, string[]> => (anchor?.alias ? { [anchor.term]: [anchor.alias] } : {});
@@ -1886,11 +1878,11 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
         finalItems,
         originalQuery,
         defaultXDetailProvider,
-        { verbose: (options as any)?.verbose === true },
+        { verbose: options.verbose === true },
       );
       finalItems = enriched;
     } else if (finalItems.length > 0) {
-      finalItems = finalItems.map((it) => cleanRealtimeItem(it, (options as any)?.verbose === true));
+      finalItems = finalItems.map((it) => cleanRealtimeItem(it, options.verbose === true));
     }
     return {
       source: 'x' as const,
@@ -1916,7 +1908,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
     };
   };
 
-  if ((options as any)?.disableFallback === true) {
+  if (options.disableFallback === true) {
     const q = builtQuery;
     const batches = q ? await runRealtimeWave([q], 0, sort, limit, page, callMcp, 1, providerErrors) : [];
     if (batches.some((b) => b.throttled)) {
@@ -2101,7 +2093,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions | {
 /** X (Twitter) アカウントページやポストURLからリアルタイム検索・スニペットを用いてコンテンツを抽出（未ログイン遮断バイパス） */
 export async function fetchTweetsForUrlOrUser(
   urlOrHandle: string,
-  options: { limit?: number; contextTitle?: string; snippet?: string } = {},
+  options: { limit?: number; contextTitle?: string; snippet?: string; _searchPage?: typeof searchYahooRealtimePage } = {},
 ): Promise<{ title: string; content: string; author?: string; publishedTime?: string; siteName: string } | null> {
   let handle = '';
   let statusId = '';
@@ -2162,7 +2154,7 @@ export async function fetchTweetsForUrlOrUser(
     if (cleanTitle.length > 2) searchQueries.push(cleanTitle);
   }
 
-  const searchPage: typeof searchYahooRealtimePage = (options as any)._searchPage || searchYahooRealtimePage;
+  const searchPage: typeof searchYahooRealtimePage = options._searchPage || searchYahooRealtimePage;
   let matchedItems: any[] = [];
   let authorName = '';
 
