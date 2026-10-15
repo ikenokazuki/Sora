@@ -29,7 +29,7 @@ function summaryLine(entry: ToolCatalogEntry): string {
 }
 
 /** コードを実行できる呼び出し側を、型付きクライアントへ誘導する一文。 */
-export const CLIENT_HINT = 'コードを実行できる環境があるなら、MCP で直接呼ぶより、型付きクライアント（GET /client、リソース sora-client://guide）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。';
+export const CLIENT_HINT = 'コードを実行できる環境があるなら、MCP で直接呼ぶより、型付きクライアント（GET /client、スキル sora-skill://sora-client）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。';
 
 /**
  * search_tools の本文を作る。末尾に型付きクライアントへの案内を付ける。

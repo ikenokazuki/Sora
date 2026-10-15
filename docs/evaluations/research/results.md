@@ -134,7 +134,7 @@ A腕の厳密二値ルールは全件で同一に適用したが、条件変化�
 
 Task 1（現状凍結）: `bun test src/services/country_intel` は383 pass、0 fail（61ファイル、1253 expect）。`bun build ./src/index.ts --target=bun` 成功（1303 modules）。`git diff --check` はクリーン。未コミット差分（25ファイル変更、collector 2ファイルのステージ済み削除）は保持し、破壊していない。
 
-Task 2（スキル試案）: `docs/skills/sora-research/SKILL.md` を試案として作成。記載ツールは `src/mcp.ts` に存在するものだけ（search_tools、search_web、search_deep、scrape、scrape_batch、research_country_context、get_country_context、get_country_context_evidence、get_country_context_updates、search_realtime）。製品導入済みとして扱わない。
+Task 2（スキル試案）: `docs/skills/sora-research/SKILL.md` を試案として作成（のち `plugins/sora-deep-research/skills/sora-deep-research/SKILL.md` に統合して削除）。記載ツールは `src/mcp.ts` に存在するものだけ（search_tools、search_web、search_deep、scrape、scrape_batch、research_country_context、get_country_context、get_country_context_evidence、get_country_context_updates、search_realtime）。製品導入済みとして扱わない。
 
 残作業: cases.json 24件中23件がunreviewed、1件が部分確認のみ。参照回答の独立確認が終わるまでA/B比較を開始しない。複数モデルの利用可否も未確認。
 

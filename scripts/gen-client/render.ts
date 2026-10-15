@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { readSkill } from '../../src/mcp/resources.js';
 import { schemaToTs, type OpenApiSchema } from './openapi_to_ts.js';
 
 interface OpenApiParameter {
@@ -102,6 +103,7 @@ export function generateClient(doc: OpenApiDoc, restMap: RestMap, tools: ToolMet
   files['runtime.ts'] = template('runtime.ts');
   files['search.ts'] = template('search.ts');
   files['README.md'] = template('README.md');
+  files['SKILL.md'] = readSkill('sora-client') ?? (() => { throw new Error('gen-client: sora-client skill not found'); })();
   files['manifest.json'] = `${JSON.stringify({ files: Object.keys(files).sort() }, null, 2)}\n`;
   return files;
 }

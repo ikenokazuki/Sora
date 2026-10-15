@@ -1,3 +1,12 @@
+# Sora v2.40.1 — コードを実行できる LLM を型付きクライアントへ誘導、スキルの配布を修正
+
+- コードを実行できる LLM が、型付きクライアント（`GET /client`）を優先して使えるようにしました。
+  - instructions に「コードを実行できるならクライアントを使い、必要な項目だけ出力する」という一行を足しました。
+  - `search_tools` の応答の末尾に、同じ案内を付けました。
+  - 新しいスキル `sora-client`（取得手順・使い方・絞り方）を、MCP リソース `sora-skill://sora-client`、プラグイン `sora-deep-research`、生成クライアントの `client/SKILL.md` で配ります。
+- 修正: 深層調査スキルの MCP リソース `sora-skill://sora-deep-research` は、これまで本番のイメージでは配られていませんでした（スキルのファイルがイメージに入っておらず、読む場所もバンドル後の配置と合っていませんでした）。イメージに同梱し、読む場所を直しました。
+- 整理: 評価実験用の古い試案 `docs/skills/sora-research` を廃止し、`plugins/sora-deep-research` に一本化しました（固有だった「曖昧さの扱い」は取り込みました）。MCP リソースの登録は `src/mcp/resources.ts` に集約しました。
+
 # Sora v2.40.0 — コード実行環境向けの型付きクライアントと、search_tools の段階的な開示
 
 - `search_tools` に任意引数を足しました。`detail`（`names` / `summary` / `schema`）で返す詳しさを選べ、`activate: false` で有効化せずに調べるだけにできます。引数なしの動きと出力は従来どおりです。

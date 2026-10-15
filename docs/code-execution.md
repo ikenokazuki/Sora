@@ -14,8 +14,11 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
 
 ## LLM がクライアントを見つける経路
 
-- **instructions**: 「コードを実行できるなら型付きクライアント（`GET /client`、リソース `sora-client://guide`）を使い、必要な項目だけ出力する。できなければ MCP のツールを直接呼ぶ」という一行を載せている。
-- **MCP リソース `sora-client://guide`**: 取得手順（一覧の取得、各ファイルのダウンロード、`README.md` / `catalog.json` / `search.ts` の読み方、呼び出し例、環境変数）。`resources/list` に出る。
+- **instructions**: 「コードを実行できるなら型付きクライアント（スキル `sora-client`、リソース `sora-skill://sora-client`）を使い、必要な項目だけ出力する。できなければ MCP のツールを直接呼ぶ」という一行を載せている。
+- **スキル `sora-client`**: 取得手順（一覧の取得、各ファイルのダウンロード、`README.md` / `catalog.json` / `search.ts` の読み方、呼び出し例、絞り方の原則、環境変数）。次の 3 か所に同じ内容で置いてある。
+  - プラグイン `plugins/sora-deep-research/skills/sora-client/`（Skills 対応環境に自動で認識される）
+  - MCP リソース `sora-skill://sora-client`（`resources/list` に出る）
+  - 生成クライアントの `client/SKILL.md`（取得した環境で認識される）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
 どれも `tools/list` を増やさない（既定 24,671 文字のまま）。
