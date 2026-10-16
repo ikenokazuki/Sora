@@ -89,6 +89,38 @@ describe('HTS local data (hts_data)', () => {
     });
   });
 
+  describe('indent depth', () => {
+    // USITC の indent は、中間の字下げを飛ばすことがある（6109.10: "T-shirts:" [4] の下の "Women's (339)" [5]）。
+    // 深さは「直前の行より1つ深い」と読み替え、直前の行の配下にする。そうしないと、直前の無関係な行が祖先に入る
+    function pathsOf(rows: { htsno: string; indent: string; description: string }[]): Record<string, string> {
+      const db = new Database(':memory:');
+      buildHtsDatabase(rows, db);
+      const out: Record<string, string> = {};
+      for (const r of db.query('SELECT code, indent, path FROM lines').all() as { code: string; indent: number; path: string }[]) {
+        out[r.code || '(mid)'] = `[${r.indent}] ${r.path.split('\u001f').join(' > ')}`;
+      }
+      return out;
+    }
+
+    it('treats a row deeper than the previous one as its child, even when the indent jumps', () => {
+      const paths = pathsOf([
+        { htsno: '6109.10.00', indent: '1', description: 'Of cotton' },
+        { htsno: '', indent: '3', description: 'T-shirts:' },
+        { htsno: '6109.10.00.40', indent: '5', description: "Women's (339)" },
+      ]);
+      // [5] のままでは [3] の配下にならず、直前の兄弟行が祖先に入ってしまう
+      expect(paths['6109.10.00.40']).toContain('T-shirts:');
+      expect(paths['6109.10.00.40']).toMatch(/^\[2\]/);
+    });
+
+    it('keeps the real export hierarchy for the cotton T-shirt rows', async () => {
+      const line = await getHtsLine('6109.10.00.40');
+      expect(line?.path).toContain('T-shirts:');
+      expect(line?.path).not.toContain('T-shirts, all white');
+      expect(line?.path).toContain("Women's or girls':");
+    });
+  });
+
   describe('search over the downloaded tree (fixture excerpt of the real export)', () => {
     it('downloads the export once, even for concurrent first calls', async () => {
       await Promise.all([searchHtsLines('ceramic mug'), getHtsLine('6912.00.44.00'), htsLinesUnder('6912')]);

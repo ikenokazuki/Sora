@@ -759,6 +759,172 @@ export function stripNegations(text: string): string {
   return text.replace(/\b(?:not|no|without|excluding|except|isn't|doesn't)\b(?:\s+[a-z][a-z-]*){1,3}/gi, ' ').replace(/\bnon-[a-z]+/gi, ' ');
 }
 
+/**
+ * 公式の行の説明文に現れる、年齢・性別の区分の語。検索語ではなく、候補の行の説明文の側を調べる。
+ * under/over の年齢は (kind:'childAge', max: 3) のように正規化し、入力の年齢表現と突き合わせる。
+ */
+interface AgeGenderMarker {
+  kind: 'men' | 'women' | 'boys' | 'girls' | 'infants' | 'children' | 'childAge';
+  /** "Under N years" の N（含まない）。"M to N years" では使わない */
+  max?: number;
+  /** "M to N years" の M（含む）。"Under N years" では 0 */
+  min?: number;
+}
+
+const AGE_GENDER_PATTERNS: { re: RegExp; mark: AgeGenderMarker }[] = [
+  { re: /\bunder (\d+) years? of age\b/i, mark: { kind: 'childAge' } }, // max は文中の数字で埋める
+  { re: /\b(\d+) to (\d+) years? of age\b/i, mark: { kind: 'childAge' } },
+  { re: /\bmen'?s?(?: or boys'?)?\b/i, mark: { kind: 'men' } },
+  { re: /\bwomen'?s?(?: or girls'?)?\b/i, mark: { kind: 'women' } },
+  { re: /\bfor men\b/i, mark: { kind: 'men' } },
+  { re: /\bfor women\b/i, mark: { kind: 'women' } },
+  { re: /\bboys?\b/i, mark: { kind: 'boys' } },
+  { re: /\bgirls?\b/i, mark: { kind: 'girls' } },
+  { re: /\binfants?(?:'|’)?\b|\bbab(?:y|ies)\b/i, mark: { kind: 'infants' } },
+  { re: /\bchildren\b|\bchild\b|\btoddlers?\b/i, mark: { kind: 'children' } },
+];
+
+/** 行の公式の説明文（自分と祖先）から、年齢・性別の区分を取り出す。該当が無ければ空。
+ *  同じ文言の行が複数あるとき（9503 の "Under 3 years of age" が .11 と .71）は、
+ *  祖先の説明もマーカーに含めて区別できるように、行ごとのマーカー列を返す。
+ *  祖先の区分（"Children's products" など）は、年齢の判定には使わず、同一文言の行の区別にだけ使う。
+ */
+function lineMarkers(line: HtsLine): AgeGenderMarker[][] {
+  const own: AgeGenderMarker[] = [];
+  const ancestors: AgeGenderMarker[] = [];
+  const collect = (text: string, out: AgeGenderMarker[]) => {
+    for (const { re, mark } of AGE_GENDER_PATTERNS) {
+      const m = text.match(re);
+      if (!m) continue;
+      if (mark.kind === 'childAge') {
+        const nums = (m[0].match(/\d+/g) ?? []).map(Number);
+        out.push(nums.length === 1 ? { kind: 'childAge', min: 0, max: nums[0] } : { kind: 'childAge', min: nums[0], max: nums[1] + 1 });
+      } else {
+        out.push({ ...mark });
+      }
+    }
+  };
+  collect(line.description, own);
+  for (const a of line.path) collect(a, ancestors);
+  // 行自体に区分が無いときは、祖先の区分を借りる（"Other" のような行）。行自体にあるときは行を優先
+  return [own.length > 0 ? own : ancestors];
+}
+
+export interface ProductAgeGender {
+  men?: boolean;
+  women?: boolean;
+  boys?: boolean;
+  girls?: boolean;
+  infants?: boolean;
+  children?: boolean;
+  /** 説明文から読めた対象年齢（歳）。"aged 3+"、"for 3-year-olds"、"3 to 12 years" の下限など */
+  ageYears?: number;
+}
+
+/**
+ * 入力の年齢・性別の情報。説明文の表現を優先し（事実だから）、無ければ targetAge を使う。
+ * 性別は説明文からしか取らない（targetAge には性別の情報が無い）。
+ */
+export function detectProductAgeGender(text: string, targetAge?: string): ProductAgeGender {
+  const out: ProductAgeGender = {};
+  // "men" は "women" の部分文字列なので、women を先に除いてから判定する
+  const noWomen = text.replace(/\bwomen'?s?\b/gi, ' ');
+  if (/\bmen'?s\b|\bfor men\b/i.test(noWomen)) out.men = true;
+  if (/\bwomen'?s\b|\bfor women\b/i.test(text)) out.women = true;
+  if (/\bboys?\b/i.test(text)) out.boys = true;
+  if (/\bgirls?\b/i.test(text)) out.girls = true;
+  if (/\binfants?\b|\bbab(?:y|ies)\b/i.test(text)) { out.infants = true; out.children = true; }
+  if (/\btoddlers?\b|\bchildren\b|\bchild\b/i.test(text)) out.children = true;
+  const m =
+    text.match(/\baged?\s*(\d+)\s*(?:\+|plus|and (?:up|over|older))\b/i) ??
+    text.match(/\bfor\s*(?:ages?\s*)?(\d+)\s*[-–]\s*\d+\s*(?:years?|yrs?)(?:\s*old)?\b/i) ??
+    text.match(/\b(\d+)\s*[-–]\s*\d+\s*(?:years?|yrs?)(?:\s*old)?\b/i) ??
+    text.match(/\b(\d+)\s*(?:years?|yrs?)(?:\s*old)?\s*(?:and (?:up|over|older)|\+)/i) ??
+    text.match(/\bfor\s*(\d+)\s*[-–]?\s*year[-–]?olds?\b/i) ??
+    text.match(/\bchildren\s+aged\s*(\d+)\s*[-–+]\b/i) ??
+    text.match(/\baged\s*(\d+)\s*[-–]\b/i);
+  if (m) out.ageYears = Number(m[1]);
+  else if (targetAge === 'child') out.children = true;
+  return out;
+}
+
+/**
+ * 行が、入力の年齢・性別に合うか。合う・合わない・分からない（行に区分が無い）の3値を返す。
+ * 性別: 行が men's なら入力に men/boys が要り、women's なら women/girls が要る。children/infants の行は性別では絞らない。
+ * 年齢: "Under N years" の行は入力の年齢が N 未満のときだけ合い、"M to N years" の行は M 以上のときだけ合う。
+ *   入力の年齢が不明でも、targetAge=child なら "Under 3" は除外しない（3歳未満かもしれない）が、
+ *   "3 to 12" 側も選ばない（分からないので、ここでは絞らない）。
+ */
+function matchAgeGender(line: HtsLine, info: ProductAgeGender): 'match' | 'mismatch' | 'unknown' {
+  const markerSets = lineMarkers(line);
+  if (markerSets.every((ms) => ms.length === 0)) return 'unknown';
+  // いずれかのマーカー列で「合う」があれば match。全ての列で合わなければ mismatch
+  let anyMatch = false;
+  for (const markers of markerSets) {
+    if (markers.length === 0) continue;
+    const r = matchMarkerSet(markers, info);
+    if (r === 'match') anyMatch = true;
+    else if (r === 'mismatch') return 'mismatch';
+  }
+  return anyMatch ? 'match' : 'unknown';
+}
+
+/** 1つのマーカー列（行自体、または祖先）の判定 */
+function matchMarkerSet(markers: AgeGenderMarker[], info: ProductAgeGender): 'match' | 'mismatch' | 'unknown' {
+  let matched = false;
+  for (const mk of markers) {
+    switch (mk.kind) {
+      case 'men':
+        if (info.men || info.boys) matched = true;
+        else if (info.women || info.girls) return 'mismatch';
+        break;
+      case 'women':
+        if (info.women || info.girls) matched = true;
+        else if (info.men || info.boys) return 'mismatch';
+        break;
+      case 'boys':
+        if (info.boys || info.men) matched = true;
+        break;
+      case 'girls':
+        if (info.girls || info.women) matched = true;
+        break;
+      case 'infants':
+        if (info.infants) matched = true;
+        else if (info.ageYears !== undefined && info.ageYears >= 3) return 'mismatch';
+        break;
+      case 'children':
+        if (info.children || info.infants) matched = true;
+        break;
+      case 'childAge': {
+        const max = mk.max ?? 99;
+        const min = mk.min ?? 0;
+        if (info.ageYears !== undefined) {
+          if (info.ageYears >= min && info.ageYears < max) matched = true;
+          else return 'mismatch';
+        } else if (info.children && min >= 3) {
+          // 年齢不明の子供向け: "3 to 12" 側は選ばず、"Under 3" 側も除外しない（分からないので絞らない）
+          return 'unknown';
+        }
+        break;
+      }
+    }
+  }
+  return matched ? 'match' : 'unknown';
+}
+
+/** reason 用に、入力の年齢・性別を短く表す（例: "3歳以上"、"men's"）。 */
+function describeAgeGender(info: ProductAgeGender): string {
+  const parts: string[] = [];
+  if (info.ageYears !== undefined) parts.push(`${info.ageYears}歳以上`);
+  else if (info.children) parts.push('子供向け');
+  if (info.men) parts.push("men's");
+  if (info.women) parts.push("women's");
+  if (info.boys) parts.push('boys');
+  if (info.girls) parts.push('girls');
+  if (info.infants) parts.push('infant');
+  return parts.join('・') || '年齢・性別';
+}
+
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const formatSubheading = (d6: string) => `${d6.slice(0, 4)}.${d6.slice(4, 6)}`;
 
@@ -946,9 +1112,21 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   const ranked = [...fused.entries()].sort((a, b) => b[1] - a[1]);
   const best6 = ranked[0][0];
 
-  // 5. 最有力の6桁の中の行: 判例が挙げた現行の葉（票の多い順）→ 判例が挙げた8桁の下で全文検索 → 6桁の中で全文検索
+  // 5. 最有力の6桁の中の行: 年齢・性別に合う行 → 判例が挙げた現行の葉（票の多い順）→ 判例が挙げた8桁の下で全文検索 → 6桁の中で全文検索
+  //    年齢・性別は、公式の行の説明文（"Men's"、"Under 3 years of age" など）と入力の年齢・性別を突き合わせる。
+  //    玩具の年齢（3歳未満 / 3〜12歳）、アパレル・靴の男女区分など、同じ6桁の中で分かれる行の選択に使う。
+  const ageGender = detectProductAgeGender(factualText, options.targetAge);
   const inBest6 = inPrefix.get(best6) ?? [];
   const citedBest = [...(citedLeaves.get(best6)?.values() ?? [])].sort((a, b) => b.votes - a.votes).map((c) => c.line);
+  const siblings = await htsLinesUnder(best6, { leafOnly: true, limit: 80 });
+  const ageGenderMatch = (line?: HtsLine) => (line ? matchAgeGender(line, ageGender) : 'unknown');
+  // 不一致の行を除き、一致する行があればその中から選ぶ。一致が複数・ゼロなら今の順位のまま
+  const filterAgeGender = (lines: HtsLine[]): HtsLine[] => {
+    if (lines.every((l) => ageGenderMatch(l) === 'unknown')) return lines;
+    const kept = lines.filter((l) => ageGenderMatch(l) !== 'mismatch');
+    return kept.length > 0 ? kept : lines;
+  };
+  const ageMatchedSiblings = filterAgeGender(siblings).filter((l) => ageGenderMatch(l) === 'match');
   const topCited8 = [...(cited8.get(best6)?.entries() ?? [])].sort((a, b) => b[1] - a[1])[0]?.[0];
   let inCited8: HtsLine[] = [];
   if (citedBest.length === 0 && topCited8) {
@@ -956,14 +1134,16 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     // 商品の語に当たる行が無ければ、その8桁の最後の葉（通常は "Other"）
     inCited8 = hits.length > 0 ? hits : (await htsLinesUnder(topCited8, { leafOnly: true, limit: 200 })).slice(-1);
   }
-  const siblings = await htsLinesUnder(best6, { leafOnly: true, limit: 80 });
-  const bestLine: HtsLine | undefined = citedBest[0] ?? inCited8[0] ?? inBest6[0] ?? siblings[siblings.length - 1];
+  const bestLine: HtsLine | undefined =
+    filterAgeGender(citedBest)[0] ?? filterAgeGender(inCited8)[0] ?? filterAgeGender(inBest6)[0] ?? ageMatchedSiblings[0] ?? siblings[siblings.length - 1];
   if (!bestLine) {
     throw new TradeInputError('該当するHTSの行を特定できませんでした。商品の一般名（英語）・素材・用途を具体的にして再実行してください。');
   }
+  const ageGenderApplied = ageGenderMatch(bestLine) === 'match';
 
   // 6. 信頼度: 判例の1位・全文検索の1位・最終候補が一致して票が集まっていれば high、
-  //    首位との差が小さい、またはどちらの1位でもなければ low
+  //    首位との差が小さい、またはどちらの1位でもなければ low。
+  //    年齢・性別で10桁を確定できたときは、6桁の一致に加えて low を避ける（兄弟の行との取り違えが解けたため）
   const crossShare = crossShareOf(best6);
   const margin = ranked[0][1] - (ranked[1]?.[1] ?? 0);
   const textTop = textOrder[0];
@@ -972,7 +1152,9 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     textTop === best6 && crossTop === best6 && crossShare >= HIGH_CROSS_SHARE
       ? 'high'
       : margin < LOW_MARGIN || (textTop !== best6 && crossTop !== best6)
-        ? 'low'
+        ? ageGenderApplied && (textTop === best6 || crossTop === best6)
+          ? 'medium'
+          : 'low'
         : 'medium';
 
   // 7. 候補: 6桁ごとに代表の行を1つ（上位5つの6桁）
@@ -1071,12 +1253,15 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   const supportingRulings = (supporting.get(best6) ?? []).slice(0, 3);
   const reasonParts = [
     `商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて${formatSubheading(best6)}を最有力としました`,
+    ageGenderApplied
+      ? `10桁は入力の年齢・性別（${describeAgeGender(ageGender)}）に合う「${tidyHts(bestLine.description)}」の行を選びました`
+      : undefined,
     cross.status === 'ok'
       ? `CBP分類判例${cross.rulings.length}件のうち${supporting.get(best6)?.length ?? 0}件が同じ6桁です`
       : cross.status === 'no_rulings'
         ? 'CBP分類判例には該当がありませんでした'
         : 'CBP分類判例は参照できませんでした',
-  ];
+  ].filter((p): p is string => !!p);
 
   return {
     detectedSubheading: formatSubheading(best6),
