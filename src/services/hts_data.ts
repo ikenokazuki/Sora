@@ -107,7 +107,11 @@ export function buildHtsDatabase(rows: HtsExportRow[], db: Database, fetchedAt: 
   const indents: number[] = [];
 
   for (const [i, r] of rows.entries()) {
-    const indent = Math.max(0, Number.parseInt(r.indent ?? '0', 10) || 0);
+    // USITC の indent は、同じ見出しの配下の小見出しの番号だけが変わった行（例: 6109.10 の "Underwear (352)" の下の
+    // "Women's (339)"、indent 3→5）で、中間の字下げを飛ばすことがある。深さは「直前の行より1つ深い」と読み替える
+    const rawIndent = Math.max(0, Number.parseInt(r.indent ?? '0', 10) || 0);
+    const prevIndent = indents.length > 0 ? indents[indents.length - 1] : -1;
+    const indent = rawIndent > prevIndent ? prevIndent + 1 : rawIndent;
     stack.length = Math.min(stack.length, indent);
     const parent = stack[stack.length - 1];
     const code = clean(r.htsno);

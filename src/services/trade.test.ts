@@ -3,7 +3,7 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { TradeInputError, checkProductCompliance, crossQueriesFor, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
+import { TradeInputError, checkProductCompliance, crossQueriesFor, detectProductAgeGender, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
 
 // HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
@@ -192,6 +192,41 @@ describe('HTS prediction and product compliance', () => {
       expect(res.bestMatch.confidence).toBe('low');
       expect(res.evidence.crossStatus).toBe('no_rulings');
       expect(res.missingInputs).toContain('classificationDetail');
+    });
+  });
+
+  describe('age and gender line selection (10-digit choice inside the best subheading)', () => {
+    it('reads the age and gender from the description text, facts first', () => {
+      expect(detectProductAgeGender("Men's Cotton T-Shirt", 'adult')).toMatchObject({ men: true });
+      expect(detectProductAgeGender("Women's Cotton T-Shirt", 'adult')).toMatchObject({ women: true });
+      expect(detectProductAgeGender("Women's Cotton T-Shirt", 'adult').men).toBeUndefined(); // "women" contains "men"
+      expect(detectProductAgeGender('blocks for children aged 3-plus.', 'child')).toMatchObject({ children: true, ageYears: 3 });
+      expect(detectProductAgeGender('Soft blocks for babies under 3 years.', 'child')).toMatchObject({ infants: true });
+      expect(detectProductAgeGender('Wooden blocks.', 'child')).toMatchObject({ children: true });
+      expect(detectProductAgeGender('Wooden blocks.', undefined).children).toBeUndefined();
+    });
+
+    it('picks the "3 to 12 years" line for a toy described as aged 3+', async () => {
+      const res = await predictHtsCode({
+        productName: 'Wooden Building Blocks for Toddlers',
+        description: 'Educational wooden puzzle block toy for children aged 3-plus. Non-toxic paint.',
+        targetAge: 'child',
+        material: 'wood',
+      });
+      expect(res.detectedSubheading).toBe('9503.00');
+      expect(res.bestMatch.htsCode).toBe('9503.00.00.73');
+      expect(res.bestMatch.confidence).not.toBe('low');
+      expect(res.bestMatch.reason).toContain('3歳以上');
+    });
+
+    it('picks the matching gender line for apparel when the text says it', async () => {
+      // 白いTシャツ（品名に white が無いので暫定は "all white" の行だが、男女の区分は men's の枝）
+      const men = await predictHtsCode({ productName: "Men's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee, 100% cotton', targetAge: 'adult' });
+      expect(men.bestMatch.htsCode.startsWith('6109.10')).toBe(true);
+      expect(men.bestMatch.path?.join(' ')).toMatch(/Men's/);
+      expect(men.bestMatch.path?.join(' ')).not.toMatch(/Women's/);
+      const women = await predictHtsCode({ productName: "Women's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee for women, 100% cotton', targetAge: 'adult' });
+      expect(women.bestMatch.description).toMatch(/Women's/);
     });
   });
 
