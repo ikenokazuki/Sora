@@ -17,9 +17,11 @@ import {
   searchMusic,
   searchSong,
   searchArtist,
+  getLyrics,
 } from '../scraper.js';
 import {
   SongSearchRequestSchema,
+  LyricsRequestSchema,
   ArtistSearchRequestSchema,
   MusicSearchRequestSchema,
   IntegratedSearchRequestSchema,
@@ -474,6 +476,25 @@ export const handleSongSearch = async (c: Context) => {
 };
 searchRoutes.post('/search/song', handleSongSearch);
 searchRoutes.post('/search/music/song', handleSongSearch);
+
+// 曲名指定 歌詞全文取得 (POST /search/lyrics)
+searchRoutes.post('/search/lyrics', async (c) => {
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+  const parsed = LyricsRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'query is required for lyrics', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+  try {
+    return c.json(await getLyrics(parsed.data));
+  } catch (err) {
+    return formatError(c, errorMessage(err) || 'Lyrics fetch failed', 'LYRICS_ERROR', 500);
+  }
+});
 
 // アーティスト名指定 音楽メタデータ検索 (POST /search/artist & POST /search/music/artist)
 export const handleArtistSearch = async (c: Context) => {

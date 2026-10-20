@@ -98,6 +98,7 @@ export * from './services/disaster.js';
 export * from './services/traffic.js';
 export * from './services/watch.js';
 export * from './services/music.js';
+export * from './services/lyrics.js';
 export * from './services/gov.js';
 export * from './services/health.js';
 export * from './services/trade.js';

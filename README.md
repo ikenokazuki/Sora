@@ -550,6 +550,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "季節外れのリナリア")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `get_lyrics` | 曲名（任意でアーティスト名）から Uta-Net の歌詞全文・作詞者・作曲者を取得します（REST: `POST /search/lyrics`）。歌詞は著作物のため、利用の責任は利用者にあります。 |
 | `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、公式カタログの代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。※ライブ・公演日程や最新の出演スケジュール・最新活動情報は `search_deep` または `search_realtime` を使用してください。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "君と見るそら", "CUTIE STREET")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 | `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行します（汎用・後方互換用）。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm", "artistTerm", "albumTerm"<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 

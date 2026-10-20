@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { searchArtist, searchMusic, searchSong } from '../scraper.js';
+import { getLyrics, searchArtist, searchMusic, searchSong } from '../scraper.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
 
@@ -96,5 +96,34 @@ export function registerMusicTools(context: ToolRegistrationContext): void {
       }
     },
     { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', '音楽検索', '音楽', '楽曲', '曲', 'アルバム', 'iTunes', 'ミュージック'] },
+  );
+
+  // Tool 25: get_lyrics (Uta-Net 曲名指定 歌詞全文取得) - DEFERRED
+  registerTool(
+    mcpServer,
+    toolCatalog,
+    sessionActivated,
+    'get_lyrics',
+    'music',
+    '【Uta-Net直結】曲名（任意でアーティスト名）を指定して歌詞全文・作詞者・作曲者を取得します。歌詞は著作物のため、取得結果の利用は利用者の責任で行ってください。同名曲が複数ある場合は artist で絞るか candidates から pick を指定します。返却: { query, title, artist, lyricist, composer, lyrics, url, source, candidates }',
+    {
+      query: z.string().min(1).describe('曲名 (例: "夜に駆ける")'),
+      artist: z.string().optional().describe('アーティスト名 (同名曲の絞り込み)'),
+      pick: z.number().int().min(0).max(9).optional().describe('候補の何番目を取得するか (0始まり, デフォルト: 0)').meta({ default: 0 }),
+    },
+    async (opts) => {
+      try {
+        const result = await getLyrics(opts);
+        return {
+          content: [{ type: 'text', text: toolJson(result) }],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `Lyrics error: ${errorMessage(err) || err}` }],
+        };
+      }
+    },
+    { defaultEnabled: deferredDefault, keywords: ['歌詞', '歌詞検索', 'リリック', 'lyrics', '作詞', '作曲'] },
   );
 }

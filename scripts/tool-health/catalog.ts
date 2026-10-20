@@ -42,7 +42,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
   'get_elevation', 'search_poi', 'search_postal_code', 'normalize_address', 'reverse_geocode',
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
-  'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
+  'search_song', 'search_artist', 'search_music', 'get_lyrics', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
   'check_product_compliance', 'inspect_image', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
@@ -84,6 +84,7 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   watch_list: { method: 'GET', path: '/watch/list' },
   watch_delete: { method: 'DELETE', path: '/watch/:id' },
   search_song: { method: 'POST', path: '/search/song' },
+  get_lyrics: { method: 'POST', path: '/search/lyrics' },
   search_artist: { method: 'POST', path: '/search/artist' },
   search_music: { method: 'POST', path: '/search/music' },
   search_laws: { method: 'POST', path: '/gov/laws' },
@@ -875,6 +876,11 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'search_song');
     mustHaveItems(raw, 'search_song', 'title');
     return mustContain(raw, ['itunes'], 'itunes-song');
+  }),
+  toolCase('music.lyrics', ['get_lyrics'], ['uta-net'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_lyrics', { query: '夜に駆ける', artist: 'YOASOBI' }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_lyrics');
+    return mustContain(raw, ['uta-net', 'lyrics'], 'uta-net-lyrics');
   }),
   toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_artist', { query: 'YOASOBI', limit: 2 }, 60000);
