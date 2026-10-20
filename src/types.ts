@@ -786,6 +786,13 @@ export const SongSearchRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
+export const LyricsRequestSchema = z.object({
+  query: z.string().min(1, 'query は必須です').describe('曲名'),
+  artist: z.string().optional().describe('アーティスト名 (同名曲の絞り込み)'),
+  pick: z.number().int().min(0).max(9).optional().describe('候補の何番目を取得するか (0始まり, デフォルト: 0)').meta({ default: 0 }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
+});
+
 export const ArtistSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('アーティスト名'),
   country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
@@ -1987,6 +1994,23 @@ export const MusicSearchResultSchema = z.object({
   ...CACHE_META_SHAPE,
 });
 
+export const LyricsResultSchema = z.object({
+  query: z.string().describe('検索曲名'),
+  title: z.string().describe('曲名'),
+  artist: z.string().describe('アーティスト名'),
+  lyricist: z.string().optional().describe('作詞者'),
+  composer: z.string().optional().describe('作曲者'),
+  lyrics: z.string().describe('歌詞全文'),
+  url: z.string().describe('取得元ページ URL'),
+  source: z.literal('uta-net').describe('データソース ("uta-net")'),
+  candidates: z.array(z.object({
+    title: z.string().describe('曲名'),
+    artist: z.string().describe('アーティスト名'),
+    url: z.string().describe('曲ページ URL'),
+  })).describe('他の候補 (pick で選択)'),
+  ...CACHE_META_SHAPE,
+});
+
 export const InspectImageResultSchema = z.object({
   success: z.boolean().describe('画像解析・Base64変換が成功したか'),
   url: z.string().describe('取得元画像 URL'),
@@ -3157,6 +3181,28 @@ export function generateOpenApiDocument() {
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(MusicSearchResultSchema),
+                },
+              },
+            },
+          },
+        },
+      },
+      '/search/lyrics': {
+        post: {
+          summary: '曲名指定 歌詞全文取得 (Uta-Net)',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(LyricsRequestSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '歌詞全文と作詞作曲者',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(LyricsResultSchema),
                 },
               },
             },

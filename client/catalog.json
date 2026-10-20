@@ -237,6 +237,23 @@
     "file": "servers/sora/get_law_text.ts"
   },
   {
+    "name": "get_lyrics",
+    "fn": "getLyrics",
+    "category": "music",
+    "description": "【Uta-Net直結】曲名（任意でアーティスト名）を指定して歌詞全文・作詞者・作曲者を取得します。歌詞は著作物のため、取得結果の利用は利用者の責任で行ってください。同名曲が複数ある場合は artist で絞るか candidates から pick を指定します。返却: { query, title, artist, lyricist, composer, lyrics, url, source, candidates }",
+    "keywords": [
+      "歌詞",
+      "歌詞検索",
+      "リリック",
+      "lyrics",
+      "作詞",
+      "作曲"
+    ],
+    "method": "POST",
+    "path": "/search/lyrics",
+    "file": "servers/sora/get_lyrics.ts"
+  },
+  {
     "name": "get_weather",
     "fn": "getWeather",
     "category": "life",
