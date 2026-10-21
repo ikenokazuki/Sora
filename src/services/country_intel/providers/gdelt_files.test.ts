@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { collectGdeltWindow, createGdeltExportProvider, filterGdeltRowsForRegion, parseGdeltExport, parseGdeltLastUpdate } from './gdelt_files.js';
+import { collectGdeltWindow, createGdeltExportProvider, filterGdeltRowsForRegion, parseGdeltExport, parseGdeltLastUpdate, previousGdeltExportUrl } from './gdelt_files.js';
 import type { CollectionWindow } from '../detail.js';
 import type { RegionIdentity } from '../types.js';
 
@@ -60,5 +60,52 @@ describe('gdelt files', () => {
     const tone = toneResult.items.flatMap((item) => item.metric ? [item.metric] : []).find((metric) => metric.key === 'gdelt_media_tone');
     expect(tone?.current).toBe(-3.5);
     expect(tone?.direction).toBe('unknown');
+  });
+});
+
+describe('gdelt export: the newest file is not always on the CDN yet', () => {
+  const zip = (stamp: string) => `https://data.gdeltproject.org/gdeltv2/${stamp}.export.CSV.zip`;
+  const run = async (missing: string[]) => {
+    const tried: string[] = [];
+    const fetchFn = (async (url: string) => {
+      if (url.endsWith('lastupdate.txt')) return new Response(`1 a http://data.gdeltproject.org/gdeltv2/20260921181500.export.CSV.zip\n`, { status: 200 });
+      tried.push(url);
+      if (missing.some((stamp) => url === zip(stamp))) return new Response('not found', { status: 404 });
+      return new Response('zip-bytes', { status: 200 });
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const provider = createGdeltExportProvider({ fetchFn, decompressZip: async () => tsv });
+    const input = { request: { region: 'CN' } as never, region: china, queries: [] };
+    return { tried, result: provider.run(input, new AbortController().signal) };
+  };
+
+  test('previousGdeltExportUrl steps back one 15-minute slot, across hours and days', () => {
+    expect(previousGdeltExportUrl(zip('20260921181500'))).toBe(zip('20260921180000'));
+    expect(previousGdeltExportUrl(zip('20260921180000'))).toBe(zip('20260921174500'));
+    expect(previousGdeltExportUrl(zip('20260921000000'))).toBe(zip('20260920234500'));
+    expect(previousGdeltExportUrl('https://example.com/other.zip')).toBeUndefined();
+  });
+
+  test('a 404 on the newest file falls back to the previous slot', async () => {
+    const { tried, result } = await run(['20260921181500']);
+    expect((await result).items).toHaveLength(1);
+    expect(tried).toEqual([zip('20260921181500'), zip('20260921180000')]);
+  });
+
+  test('it gives up with the 404 after three earlier slots', async () => {
+    const { tried, result } = await run(['20260921181500', '20260921180000', '20260921174500', '20260921173000']);
+    await expect(result).rejects.toMatchObject({ status: 404 });
+    expect(tried).toHaveLength(4);
+  });
+
+  test('other HTTP errors are not retried on earlier slots', async () => {
+    const tried: string[] = [];
+    const fetchFn = (async (url: string) => {
+      if (url.endsWith('lastupdate.txt')) return new Response(`1 a http://data.gdeltproject.org/gdeltv2/20260921181500.export.CSV.zip\n`, { status: 200 });
+      tried.push(url);
+      return new Response('boom', { status: 403 });
+    }) as (url: string, init?: RequestInit) => Promise<Response>;
+    const provider = createGdeltExportProvider({ fetchFn, decompressZip: async () => tsv });
+    await expect(provider.run({ request: { region: 'CN' } as never, region: china, queries: [] }, new AbortController().signal)).rejects.toMatchObject({ status: 403 });
+    expect(tried).toHaveLength(1);
   });
 });
