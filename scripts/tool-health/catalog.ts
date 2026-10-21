@@ -1,7 +1,7 @@
 // Canonical tool + dependency ledger with live case definitions (Task 8).
 // Live cases use real service paths through the public MCP/REST server.
 import {
-  LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
+  LiveBlocked, LiveEmpty, LiveFail, LiveUnavailable, LiveUnverified,
   type CaseContext, type CaseObservation, type HealthCase,
 } from './types.js';
 import { getAllCarrierAdapters } from '../../src/services/tracking/registry.js';
@@ -122,6 +122,19 @@ export function looksBlocked(text: string): boolean {
   return LOGIN_MARKERS.some((m) => lower.includes(m.toLowerCase()));
 }
 
+/**
+ * fetch_social_post の応答（status と failures）を分類する。投稿を読めなかった理由は、アンカー不足ではなく状態として分ける。
+ * 読めなかった（unavailable / partial / empty）は、ログイン画面・403 なら blocked、それ以外は上流の不調として unavailable。
+ */
+export function classifySocialFetch(payload: unknown, source: string): void {
+  const p = payload as { status?: unknown; failures?: unknown } | null;
+  if (p?.status === 'ok') return;
+  const failures = Array.isArray(p?.failures) ? (p.failures as unknown[]).map(String) : [];
+  const detail = `${source} status=${String(p?.status)}: ${failures.join('; ').slice(0, 240) || 'no failure reason'}`;
+  if (/403|forbidden|login|challenge|blocked/i.test(detail)) throw new LiveBlocked(detail);
+  throw new LiveUnavailable(detail);
+}
+
 export function mustContain(result: unknown, anchors: string[], source: string): CaseObservation {
   const text = textOf(result);
   const missing = anchors.filter((a) => !text.includes(a));
@@ -155,7 +168,7 @@ export async function mcpJson(ctx: CaseContext, tool: string, args: Record<strin
   const record = envelope.result ?? envelope;
   if (record?.isError) {
     const msg = (record.content ?? []).map((c) => c.text ?? '').join(' ').slice(0, 300);
-    if (/rate limited|429|timeout|5\d\d|fetch failed|network/i.test(msg)) throw new LiveUnavailable(tool + ': ' + msg);
+    if (/rate limited|429|timeout|timed out|5\d\d|fetch failed|request failed|network|ECONN|ETIMEDOUT/i.test(msg)) throw new LiveUnavailable(tool + ': ' + msg);
     if (/forbidden|401|403|login|challenge/i.test(msg)) throw new LiveBlocked(tool + ': ' + msg);
     throw new LiveFail(tool + ': ' + msg);
   }
@@ -650,7 +663,8 @@ export const TOOL_CASES: HealthCase[] = [
       await ensureEnabled(ctx, 'SNS', 30000);
       const def = DEFAULT_SOCIAL_POSTS[platform];
       const secret = secretOrDefault(ctx, `social.${platform}.post`, ['url', 'text'], def);
-      const { raw } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url, commentLimit: 0 }, 100000);
+      const { raw, text: payloadText } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url, commentLimit: 0 }, 100000);
+      classifySocialFetch(toolPayload(payloadText, 'fetch_social_post'), `social-fetch-${platform}`);
       mustContain(raw, [platform === 'weibo' ? 'weibo' : platform], `social-fetch-${platform}`);
       const text = textOf(raw);
       if (!text.includes(secret.text)) {
@@ -1044,7 +1058,7 @@ export function classifyProviderError(e: unknown, source: string): never {
 
 /** alwaysPopulated: 急上昇一覧・大手のニュースや RSS・数値データなど、普段は必ず中身がある取得元。0件は構造変化として fail にする。 */
 export function checkProviderItems(items: AcquisitionItem[], source: string, regions?: string, opts: { alwaysPopulated?: boolean } = {}): CaseObservation {
-  if (items.length === 0 && opts.alwaysPopulated) throw new LiveFail(source + ' returned zero items from an always-populated source (likely structure or endpoint change)');
+  if (items.length === 0 && opts.alwaysPopulated) throw new LiveEmpty(source + ' returned zero items from an always-populated source (likely structure or endpoint change)');
   if (items.length === 0) throw new LiveUnverified(source + ' returned zero items (needs triage: quiet upstream or broken parse)');
   const withUrl = items.filter((i) => (typeof i.evidence?.url === 'string' && i.evidence.url.startsWith('http')) || i.calendar !== undefined || typeof i.metric?.current === 'number');
   if (withUrl.length === 0) throw new LiveFail(source + ' items carry no evidence URLs');
