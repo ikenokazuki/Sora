@@ -54,7 +54,10 @@ export function createBingNewsProvider(fetchFn?: GdeltFetch): CountryIntelProvid
             sourceId: 'bing_news', timeoutMs: 6000, format: 'xml', signal, fetchFn: runFetch,
           });
           const now = new Date();
-          const entries = parseFeed(await response.text(), 'bing-news')
+          const body = await response.text();
+          // 同意画面や CAPTCHA は 200 の HTML で返ることがある。ニュースが無いのではなく、取得に失敗している
+          if (!/<(rss|feed)[\s>]/i.test(body)) throw new ProviderHttpError(502, undefined, 'Bing News returned a page that is not a feed');
+          const entries = parseFeed(body, 'bing-news')
             .filter((entry) => isRecentPublication(entry.publishedAt, now))
             .flatMap((entry) => {
               const url = bingArticleUrl(entry.link);
