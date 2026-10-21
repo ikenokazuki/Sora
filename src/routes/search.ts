@@ -33,7 +33,7 @@ import {
 import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHints } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
-import { SearchWebRequestSchema, buildSearchWebCacheKey, searchWebWithFormats } from '../search_web_formats.js';
+import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
 
@@ -181,13 +181,7 @@ searchRoutes.post('/search/web', async (c) => {
     const rawBody = await c.req.json();
     const parsed = SearchWebRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: 'invalid search_web request', details: parsed.error.format() }, 400);
-    const body = parsed.data;
-    const cacheKey = `${buildSearchWebCacheKey(body)}:${body.verbose === true ? 'verbose' : 'compact'}`;
-    if (!body.noCache) { const cached = getFromCache<unknown>(cacheKey); if (cached) return c.json(cached); }
-    const parsedData = await searchWebWithFormats(body);
-    const responseData = { query: body.query, source: 'web', type: 'web', data: parsedData, cached: false };
-    if (!body.noCache) setToCache(cacheKey, responseData);
-    return c.json(responseData);
+    return c.json(await searchWebForRest(parsed.data));
   } catch (err) { return c.json({ error: errorMessage(err) || 'Web search failed' }, 500); }
 });
 
