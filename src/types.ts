@@ -1990,7 +1990,7 @@ export const MusicSearchResultSchema = z.object({
 
 export const LyricsRequestSchema = z.object({
   title: z.string().min(1, 'title は必須です').describe('曲名 (例: "夜に駆ける")'),
-  artist: z.string().optional().describe('歌手・グループ名。省略できるが、LRCLIB に無い曲（地下アイドル・インディーズ）を TuneCore で探すときは必須'),
+  artist: z.string().optional().describe('歌手・グループ名。省略できるが、LRCLIB に無い曲（地下アイドル・インディーズ）を AWA や TuneCore で探すときは必須'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -2004,10 +2004,10 @@ export const LyricsResultSchema = z.object({
   found: z.boolean().describe('歌詞を取得できたか'),
   track: LyricsCandidateSchema.optional().describe('特定した曲（歌詞が無い場合も、曲を特定できたときは入る）'),
   lyrics: z.string().optional().describe('歌詞全文（found が true のときのみ。改行区切り）'),
-  source: z.enum(['lrclib', 'tunecore']).optional().describe('取得元: "lrclib"(利用者投稿の歌詞データベース), "tunecore"(TuneCore Japan の LinkCore)'),
-  sourceUrl: z.string().optional().describe('取得元の URL。TuneCore は LinkCore の歌詞ページ（ブラウザで開ける）、LRCLIB は記録の API URL'),
-  reason: z.enum(['no-match', 'no-lyrics-registered', 'search-unavailable']).optional().describe('found が false の理由: "no-match"(見つからない), "no-lyrics-registered"(曲は特定できたが TuneCore に歌詞が無い), "search-unavailable"(取得元が使えず判断できない)'),
-  candidates: z.array(LyricsCandidateSchema).describe('別の候補（表記ゆれの手がかり。LRCLIB の別曲、TuneCore の同じ歌手の曲名）'),
+  source: z.enum(['lrclib', 'awa', 'tunecore']).optional().describe('取得元: "lrclib"(利用者投稿の歌詞データベース), "awa"(AWA の公開の曲ページ), "tunecore"(TuneCore Japan の LinkCore)'),
+  sourceUrl: z.string().optional().describe('取得元の URL。AWA は曲ページ、TuneCore は LinkCore の歌詞ページ（どちらもブラウザで開ける）、LRCLIB は記録の API URL'),
+  reason: z.enum(['no-match', 'no-lyrics-registered', 'search-unavailable']).optional().describe('found が false の理由: "no-match"(見つからない), "no-lyrics-registered"(曲は特定できたが AWA にも TuneCore にも歌詞が無い), "search-unavailable"(取得元が使えず判断できない)'),
+  candidates: z.array(LyricsCandidateSchema).describe('別の候補（表記ゆれの手がかり。LRCLIB の別曲、AWA と TuneCore の同じ歌手の曲名）'),
   notice: z.string().describe('利用上の注意（著作物。個人利用の範囲で使い、再配布・公開しない）'),
   ...CACHE_META_SHAPE,
 });
@@ -3840,7 +3840,7 @@ export function generateOpenApiDocument() {
   if (isModuleActive('lyrics')) {
     paths['/lyrics'] = {
       post: {
-        summary: '歌手・曲名から歌詞全文を取得 (自己責任・個人利用。LRCLIB、無ければ TuneCore Japan の LinkCore)',
+        summary: '歌手・曲名から歌詞全文を取得 (自己責任・個人利用。LRCLIB、無ければ AWA、TuneCore Japan の LinkCore の順)',
         requestBody: { content: { 'application/json': { schema: zodToOpenApiSchema(LyricsRequestSchema) } } },
         responses: {
           '200': {
