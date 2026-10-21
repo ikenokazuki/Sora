@@ -9,6 +9,8 @@ export type HealthStatus =
   | 'not_applicable';
 
 export class LiveFail extends Error { readonly kind = 'fail' as const; }
+/** 普段は必ず中身がある取得元が 0 件だった。構造変化かもしれないが、一時的な空振りのこともあるので、runner が間隔を空けて取り直す。 */
+export class LiveEmpty extends LiveFail {}
 export class LiveUnavailable extends Error { readonly kind = 'unavailable' as const; }
 export class LiveBlocked extends Error { readonly kind = 'blocked' as const; }
 export class LiveUnverified extends Error { readonly kind = 'unverified' as const; }

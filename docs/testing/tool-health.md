@@ -20,7 +20,9 @@ npm run test:tools:live
 
 ## 判定
 
-`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・`unavailable`・未登録が1件でもあれば exit 1。`blocked`・`unverified` だけなら exit 3（soft hold。下の「公開gate」を参照）。`unavailable` のみ1回再試行し、復旧時は `recovered=true` を記録する。
+`pass` / `pass_empty`（正常0件の証明あり）/ `fail` / `unavailable` / `blocked` / `unverified`（資格情報・test data不足）/ `not_applicable`（外部処理なし）。`fail`・未登録が1件でもある、または `unavailable` が全体の 25% を超えれば exit 1。`unavailable`・`blocked`・`unverified` だけなら exit 3（soft hold。下の「公開gate」を参照）。
+
+再試行: ツールの `unavailable`・`unverified` と provider の `unavailable` は2秒空けて1回取り直し、復旧時は `recovered=true` を記録する。普段は必ず中身がある取得元の0件（`LiveEmpty`。`fail` の一種）は、5秒・15秒空けて最大2回取り直す。空振りが続けば構造変化として `fail` のまま。一時的な空振りで公開を止めないための取り直しで、基準は緩めない。
 
 ## 新tool追加時
 
@@ -54,7 +56,7 @@ npm run test:tools:live
 1. `tool-health-<lane>.md` の status 列で分類を確認する。
 2. `blocked`（403・login画面）は取得先・通信環境の問題。GitHub runnerだけ403の場合は通常環境の同imageで比較実行する。
 3. `unavailable`（5xx・timeout・429）は上流障害。`attempts` と所要時間を確認する。
-4. `fail`（anchor不足・JSON形式変化）は外部仕様変更の疑い。該当adapterのparser条件を観測してから修正し、伏字fixture＋本体回帰testを通してlive再実行する。
+4. `fail`（anchor不足・JSON形式変化）は外部仕様変更の疑い。ただし、取得先が「読めなかった」と自分で返している場合（SNS の `status` が `ok` でない、ツールのエラー文が timeout・request failed など）は `fail` にせず、`unavailable`/`blocked` と理由つきで分ける（`classifySocialFetch`・`mcpJson`）。時刻名のファイルを取る provider（GDELT）は、最新が CDN に無い404のとき数スロット前のファイルに戻る。該当adapterのparser条件を観測してから修正し、伏字fixture＋本体回帰testを通してlive再実行する。
 5. `unverified` は test data・資格情報の不足。値を補充して再実行する。
 6. 災害系providerが静穏日に0件で `unverified` になることがある。異常ではなくtriage対象として記録する。
 
@@ -63,7 +65,7 @@ npm run test:tools:live
 - PR: `test.yml`（全test＋typecheck）。Secret不要。
 - main push／tag: `docker-publish.yml`（本体検査→候補build→候補のままlive→同一image push）。別buildの差し替えなし。
 - 定期（UTC 23:19）・手動: `live-tools.yml`（standard のみ。ホテルレーンは廃止した）。
-- 公開保留条件: liveの `fail`/`unavailable`/未登録（exit 1）。`blocked`/`unverified` だけなら soft hold（exit 3）で公開は進む。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
+- 公開保留条件: liveの `fail`/未登録、または `unavailable` が全体の 25% 超（exit 1）。`unavailable`/`blocked`/`unverified` だけなら soft hold（exit 3）で公開は進む。外部障害と本体退行をreportで分けて確認し、契約を弱めて通さない。
 
 ## 環境依存の既知事項（2026-10-02 実測）
 
