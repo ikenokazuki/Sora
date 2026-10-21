@@ -2,14 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import {
   checkTrackingNegative,
   checkTrackingNoCreds,
-  checkProviderItems, checkTrackingResult, classifyProviderError, mustContain, mustHaveItems, secretOrUnverified,
+  checkProviderItems, checkTrackingResult, classifyProviderError, classifySocialFetch, mcpJson, mustContain, mustHaveItems, secretOrUnverified,
 } from './catalog.js';
 import {
   collectKnownCaseIds, gateExit, isGatePass, nonPassLines, redact, registerSecrets, summarize, toJUnit, toMarkdown, validateCasesJson,
 } from './report.js';
 import { ProviderHttpError, ProviderNetworkError } from '../../src/services/country_intel/provider_registry.js';
-import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified } from './types.js';
-import { classifyRestStatus, parseArgs } from './run.js';
+import { LiveBlocked, LiveEmpty, LiveFail, LiveUnavailable, LiveUnverified } from './types.js';
+import { classifyRestStatus, parseArgs, providerRetryDelay } from './run.js';
 
 describe('runner arg contract', () => {
   test('parseArgs reads flags', () => {
@@ -144,5 +144,37 @@ describe('always-populated providers', () => {
     expect(() => checkProviderItems([], 'weibo_hot', undefined, { alwaysPopulated: true })).toThrow(LiveFail);
     expect(() => checkProviderItems([], 'gdacs')).toThrow(LiveUnverified);
     expect(checkProviderItems([item], 'weibo_hot', undefined, { alwaysPopulated: true }).sources[0].count).toBe(1);
+  });
+});
+
+describe('flaky external sources are told apart from real breakage', () => {
+  test('an empty always-populated source is a LiveEmpty (a LiveFail) that the runner may retry', () => {
+    expect(() => checkProviderItems([], 'bing_news', undefined, { alwaysPopulated: true })).toThrow(LiveEmpty);
+    expect(() => checkProviderItems([], 'bing_news', undefined, { alwaysPopulated: true })).toThrow(LiveFail);
+    expect(providerRetryDelay(new LiveEmpty('x'), 1)).toBe(5000);
+    expect(providerRetryDelay(new LiveEmpty('x'), 2)).toBe(15000);
+    expect(providerRetryDelay(new LiveEmpty('x'), 3)).toBeUndefined();
+  });
+  test('an unavailable provider is retried once, real failures and blocks never', () => {
+    expect(providerRetryDelay(new LiveUnavailable('x'), 1)).toBe(2000);
+    expect(providerRetryDelay(new LiveUnavailable('x'), 2)).toBeUndefined();
+    expect(providerRetryDelay(new LiveFail('x'), 1)).toBeUndefined();
+    expect(providerRetryDelay(new LiveBlocked('x'), 1)).toBeUndefined();
+  });
+
+  const callWith = (text: string) => ({ mcp: { callTool: async () => ({ isError: true, content: [{ type: 'text', text }] }) } }) as never;
+  test('a timed-out or failed upstream request in a tool error is unavailable, not a failure', async () => {
+    await expect(mcpJson(callWith('POI search error: OpenPOI request failed: The operation timed out.'), 'search_poi', {}, 1000)).rejects.toThrow(LiveUnavailable);
+    await expect(mcpJson(callWith('Lyrics error: Request failed: ECONNRESET'), 'get_lyrics', {}, 1000)).rejects.toThrow(LiveUnavailable);
+    await expect(mcpJson(callWith('schema mismatch: field x missing'), 'search_poi', {}, 1000)).rejects.toThrow(LiveFail);
+  });
+
+  test('a social fetch that could not read the post says why, instead of "missing anchors"', () => {
+    const src = 'social-fetch-facebook';
+    expect(() => classifySocialFetch({ status: 'unavailable', failures: ['no readable body'], warnings: [] }, src)).toThrow(LiveUnavailable);
+    expect(() => classifySocialFetch({ status: 'unavailable', failures: ['rate limited (429)'], warnings: [] }, src)).toThrow(/429/);
+    expect(() => classifySocialFetch({ status: 'partial', failures: ['static fetch: 403 forbidden'], warnings: [] }, src)).toThrow(LiveBlocked);
+    expect(() => classifySocialFetch({ status: 'empty', failures: [], warnings: [] }, src)).toThrow(LiveUnavailable);
+    expect(() => classifySocialFetch({ status: 'ok', post: { platform: 'facebook' }, failures: [], warnings: [] }, src)).not.toThrow();
   });
 });
