@@ -604,12 +604,12 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
 
 - 歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。利用の責任は利用者にあります。応答の `notice` にも同じ注意を入れています。
-- 取得元は 2 つです。まず LRCLIB（利用者投稿の歌詞データベース。キー不要）を引き、無ければ TuneCore Japan の LinkCore（地下アイドル・インディーズ向け）を引きます。LinkCore は、権利者が TuneCore に歌詞を登録した曲だけが対象です（著作権管理団体の管理曲は出ません）。TuneCore 経由で探すには `artist` が必須です。
+- 取得元は 3 つで、効率のよい順に引きます。まず LRCLIB（利用者投稿の歌詞データベース。キー不要。Web 検索を使わず速い）、無ければ AWA の公開の曲ページ（検索 1 回とページ 1〜2 枚で済む）、それでも無ければ TuneCore Japan の LinkCore（複数のリリースページをたどるので遅い）です。AWA と LinkCore は地下アイドル・インディーズ向けです。LinkCore は、権利者が TuneCore に歌詞を登録した曲だけが対象です（著作権管理団体の管理曲は出ません）。AWA の利用規約は、私的利用の範囲を超える複製・公衆送信を禁じているので、個人利用に限ってください。AWA や TuneCore 経由で探すには `artist` が必須です。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ外部に問い合わせ、結果と LinkCore のリリース情報（題名と URL。歌詞本文は含まない）をキャッシュします。LinkCore の入口には Yahoo! JAPAN の Web 検索を使います。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `get_lyrics` ・ DEFERRED | 歌手・曲名から歌詞全文を取得します。見つからないときは `reason`（`no-match` / `no-lyrics-registered` / `search-unavailable`）と `candidates` を返します。 | `source: "lyrics"` | - `title` (string, 必須)<br>- `artist` (string, 任意。TuneCore 経由では必須)<br>- `noCache` (boolean, 任意) |
+| `get_lyrics` ・ DEFERRED | 歌手・曲名から歌詞全文を取得します。見つからないときは `reason`（`no-match` / `no-lyrics-registered` / `search-unavailable`）と `candidates` を返します。 | `source: "lyrics"` | - `title` (string, 必須)<br>- `artist` (string, 任意。AWA・TuneCore 経由では必須)<br>- `noCache` (boolean, 任意) |
 
 ```bash
 docker run -d -p 3016:8000 -e ENABLED_MODULES="all,lyrics" ghcr.io/ikenokazuki/sora:latest
@@ -2107,7 +2107,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
     "artist": "歌手・グループ名"
   }
   ```
-  `artist` は省略できますが、LRCLIB に無い曲（地下アイドル・インディーズ）を TuneCore の LinkCore で探すときは必須です。
+  `artist` は省略できますが、LRCLIB に無い曲（地下アイドル・インディーズ）を AWA や TuneCore の LinkCore で探すときは必須です。
 - **レスポンス例**:
   ```json
   {
@@ -2120,8 +2120,8 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
     "notice": "歌詞は著作物です。個人利用の範囲で使い、再配布・公開はしないでください。…"
   }
   ```
-- **見つからないとき**は HTTP 200 で `found: false` を返し、`reason` で区別します。`no-match`（見つからない。`candidates` に別の候補）、`no-lyrics-registered`（曲は特定できたが TuneCore に歌詞が登録されていない。`track` に曲）、`search-unavailable`（取得元が使えず判断できない。取り直せるようキャッシュしません）。取得元との通信に失敗したときは 502 `LYRICS_UPSTREAM_ERROR`（`retryable: true`）です。
-- 取得元は、まず LRCLIB（利用者投稿の歌詞データベース）、無ければ TuneCore Japan の LinkCore です。`source` と、人が開ける `sourceUrl`（LinkCore の歌詞ページ）で分かります。
+- **見つからないとき**は HTTP 200 で `found: false` を返し、`reason` で区別します。`no-match`（見つからない。`candidates` に別の候補）、`no-lyrics-registered`（曲は特定できたが AWA にも TuneCore にも歌詞が登録されていない。`track` に曲）、`search-unavailable`（取得元が使えず判断できない。取り直せるようキャッシュしません）。想定外の失敗は 502 `LYRICS_UPSTREAM_ERROR`（`retryable: true`）です。
+- 取得元は、まず LRCLIB（利用者投稿の歌詞データベース）、無ければ AWA の公開の曲ページ、それでも無ければ TuneCore Japan の LinkCore です。`source`（`lrclib` / `awa` / `tunecore`）と、人が開ける `sourceUrl`（AWA は曲ページ、LinkCore は歌詞ページ）で分かります。
 
 ---
 

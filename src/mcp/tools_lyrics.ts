@@ -15,10 +15,10 @@ export function registerLyricsTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'get_lyrics',
     'lyrics',
-    '【歌詞全文・自己責任】歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。まず LRCLIB（利用者投稿の歌詞データベース）、無ければ TuneCore Japan の LinkCore（地下アイドル・インディーズ）を引きます。歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。LRCLIB に無い曲を TuneCore で探すには artist が必須です。found が false のときは reason（no-match / no-lyrics-registered / search-unavailable）と candidates を見て、表記を直して再実行してください。返却: { found, track, lyrics, source, sourceUrl, reason, candidates, notice }',
+    '【歌詞全文・自己責任】歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。まず LRCLIB（利用者投稿の歌詞データベース）、無ければ AWA、それでも無ければ TuneCore Japan の LinkCore（地下アイドル・インディーズ）を引きます。歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください（AWA の利用規約も私的利用の範囲を求めています）。LRCLIB に無い曲を AWA や TuneCore で探すには artist が必須です。found が false のときは reason（no-match / no-lyrics-registered / search-unavailable）と candidates を見て、表記を直して再実行してください。返却: { found, track, lyrics, source, sourceUrl, reason, candidates, notice }',
     {
       title: z.string().min(1).describe('曲名 (例: "夜に駆ける")'),
-      artist: z.string().optional().describe('歌手・グループ名。省略できるが、LRCLIB に無い曲（地下アイドル・インディーズ）を TuneCore で探すときは必須'),
+      artist: z.string().optional().describe('歌手・グループ名。省略できるが、LRCLIB に無い曲（地下アイドル・インディーズ）を AWA や TuneCore で探すときは必須'),
       noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
     },
     async (opts) => {

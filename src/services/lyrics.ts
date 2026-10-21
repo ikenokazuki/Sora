@@ -1,11 +1,14 @@
 import type { z } from 'zod';
 import { cacheKeyDigest, getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
 import { SORA_VERSION, type LyricsResultSchema } from '../types.js';
-import { findLinkcoreLyrics, matchesArtist, normalizeName, type LinkcoreDeps } from './lyrics_linkcore.js';
+import { findAwaLyrics, type AwaDeps, type AwaOutcome } from './lyrics_awa.js';
+import { findLinkcoreLyrics, matchesArtist, normalizeName, type LinkcoreDeps, type LinkcoreOutcome } from './lyrics_linkcore.js';
 
 /**
  * 歌詞全文の取得（モジュール 'lyrics'。ENABLED_MODULES に名前を挙げたときだけ使える、自己責任の機能）。
- * 歌手名と曲名から、LRCLIB（利用者投稿の歌詞データベース。API キー不要）を引き、無ければ TuneCore Japan の LinkCore を引く。
+ * 歌手名と曲名から、LRCLIB（利用者投稿の歌詞データベース。API キー不要）を引き、無ければ AWA、それでも無ければ TuneCore Japan の LinkCore を引く。
+ * 順番は効率で決めた。LRCLIB は Web 検索を使わず速い。AWA は検索 1 回とページ 1〜2 枚で済み、収録も広い（君と見るそらは 18/18。TuneCore は 10/18）。
+ * TuneCore は複数のリリースページをたどるので遅い。AWA で見つかれば TuneCore の検索自体をしない。
  */
 
 export type LyricsResult = z.infer<typeof LyricsResultSchema>;
@@ -15,6 +18,7 @@ export interface LyricsOptions { title: string; artist?: string; noCache?: boole
 export interface LyricsDeps {
   fetchFn?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  awa?: AwaDeps;
   linkcore?: LinkcoreDeps;
 }
 
@@ -130,19 +134,36 @@ async function lookup(title: string, artist: string | undefined, deps: LyricsDep
     lrclibDown = true; // 2 回失敗しても TuneCore を試す
   }
 
-  if (artist) {
-    const out = await findLinkcoreLyrics(artist, title, deps.linkcore);
+  if (!artist) return { found: false, reason: lrclibDown ? 'search-unavailable' : 'no-match', candidates, notice: LYRICS_NOTICE };
+
+  // AWA と TuneCore は、どちらも Web 検索（Yahoo）で入口を見つける。検索が使えなければ、もう一方も引かない
+  const sources: Array<{ source: 'awa' | 'tunecore'; run: () => Promise<AwaOutcome | LinkcoreOutcome> }> = [
+    { source: 'awa', run: () => findAwaLyrics(artist, title, deps.awa) },
+    { source: 'tunecore', run: () => findLinkcoreLyrics(artist, title, deps.linkcore) },
+  ];
+  let unregistered: Candidate | undefined;
+  let down = lrclibDown;
+  for (const { source, run } of sources) {
+    let out: AwaOutcome | LinkcoreOutcome;
+    try {
+      out = await run();
+    } catch {
+      down = true; // ページを読めなかった取得元は飛ばして、次へ進む
+      continue;
+    }
     if (out.status === 'found' && out.track && out.lyrics) {
-      return { found: true, track: out.track, lyrics: out.lyrics, source: 'tunecore', sourceUrl: out.sourceUrl, candidates: [], notice: LYRICS_NOTICE };
+      return { found: true, track: out.track, lyrics: out.lyrics, source, sourceUrl: out.sourceUrl, candidates: [], notice: LYRICS_NOTICE };
     }
-    if (out.status === 'no-lyrics-registered') {
-      return { found: false, reason: 'no-lyrics-registered', track: out.track, candidates, notice: LYRICS_NOTICE };
+    if (out.status === 'no-lyrics-registered') unregistered ??= out.track;
+    if (out.status === 'search-unavailable') {
+      down = true;
+      break;
     }
-    candidates = [...candidates, ...out.candidates.map((t) => ({ title: t, artist }))].slice(0, MAX_CANDIDATES);
-    const reason = out.status === 'search-unavailable' || lrclibDown ? 'search-unavailable' : 'no-match';
-    return { found: false, reason, candidates, notice: LYRICS_NOTICE };
+    candidates = [...candidates, ...out.candidates.map((t) => ({ title: t, artist }))];
   }
-  return { found: false, reason: lrclibDown ? 'search-unavailable' : 'no-match', candidates, notice: LYRICS_NOTICE };
+  const merged = [...new Map(candidates.map((c) => [`${normalizeName(c.title)}\u0000${normalizeName(c.artist)}`, c])).values()].slice(0, MAX_CANDIDATES);
+  if (unregistered) return { found: false, reason: 'no-lyrics-registered', track: unregistered, candidates: merged, notice: LYRICS_NOTICE };
+  return { found: false, reason: down ? 'search-unavailable' : 'no-match', candidates: merged, notice: LYRICS_NOTICE };
 }
 
 export async function getLyrics(options: LyricsOptions, deps: LyricsDeps = {}): Promise<LyricsResult> {
