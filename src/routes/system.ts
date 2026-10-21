@@ -13,6 +13,7 @@ import {
 import { getActiveSessionCount } from '../browser_session.js';
 import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
+import { isModuleActive } from '../mcp/registry.js';
 import { mcpSessionManager } from './mcp_route.js';
 
 export const systemRoutes = new Hono();
@@ -79,6 +80,7 @@ systemRoutes.get('/', (c) => {
       crawl: 'POST /crawl',
       crawlStream: 'POST /crawl/stream',
       cacheClear: 'POST /cache/clear',
+      ...(isModuleActive('lyrics') ? { lyrics: 'POST /lyrics' } : {}),
     },
   });
 });
