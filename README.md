@@ -2096,6 +2096,33 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 コード実行環境向けの型付き TypeScript クライアント（全ツール分）を読み取り専用で配ります。`GET /client` は配布するファイルの一覧（`manifest.json`）を返し、`GET /client/<path>` が一覧に載ったファイルを返します（`.json` は `application/json`、それ以外は `text/plain`）。一覧に無いパスや `..` を含むパスは 404。認証は他の REST と同じです。クライアントは OpenAPI から `bun run gen:client` で生成し、リポジトリの `client/` にコミットしています。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。
 
+### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)
+
+歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**`ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 12: Lyrics」を参照してください。歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。
+
+- **リクエスト** (`POST /lyrics`):
+  ```json
+  {
+    "title": "曲名",
+    "artist": "歌手・グループ名"
+  }
+  ```
+  `artist` は省略できますが、LRCLIB に無い曲（地下アイドル・インディーズ）を TuneCore の LinkCore で探すときは必須です。
+- **レスポンス例**:
+  ```json
+  {
+    "found": true,
+    "track": { "title": "曲名", "artist": "歌手・グループ名" },
+    "lyrics": "（歌詞全文。改行区切り）",
+    "source": "tunecore",
+    "sourceUrl": "https://linkco.re/xxxxxxxx/songs/1234567/lyrics",
+    "candidates": [],
+    "notice": "歌詞は著作物です。個人利用の範囲で使い、再配布・公開はしないでください。…"
+  }
+  ```
+- **見つからないとき**は HTTP 200 で `found: false` を返し、`reason` で区別します。`no-match`（見つからない。`candidates` に別の候補）、`no-lyrics-registered`（曲は特定できたが TuneCore に歌詞が登録されていない。`track` に曲）、`search-unavailable`（取得元が使えず判断できない。取り直せるようキャッシュしません）。取得元との通信に失敗したときは 502 `LYRICS_UPSTREAM_ERROR`（`retryable: true`）です。
+- 取得元は、まず LRCLIB（利用者投稿の歌詞データベース）、無ければ TuneCore Japan の LinkCore です。`source` と、人が開ける `sourceUrl`（LinkCore の歌詞ページ）で分かります。
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ

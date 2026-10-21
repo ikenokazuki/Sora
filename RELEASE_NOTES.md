@@ -1,3 +1,14 @@
+# Sora v2.42.0 — 歌詞全文の取得（`lyrics` モジュール。自己責任の明示オプトイン）を足した
+
+- 歌手／グループ名と曲名から歌詞全文を取得する `get_lyrics`（MCP）と `POST /lyrics`（REST）を足しました。API キーは要りません。
+  - **既定では無効です。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ有効になります（例: `ENABLED_MODULES=all,lyrics`）。`all` や未設定では有効になりません。無効のときは、MCP ツールが登録されず、REST は 404（`MODULE_DISABLED`）を返し、OpenAPI・`GET /`・MCP instructions・`search_tools` にも出ません。起動時の処理・常駐タイマー・事前取得はありません。既存のモジュールの挙動は変わりません。
+  - **取得元は 2 つ**です。まず LRCLIB（利用者投稿の歌詞データベース。キー不要）を引き、無ければ TuneCore Japan の LinkCore を引きます。LinkCore は地下アイドル・インディーズ向けで、権利者が TuneCore に歌詞を登録した曲だけが対象です（著作権管理団体の管理曲は出ません）。TuneCore 経由で探すには `artist` が必須です。LinkCore の歌詞ページの URL は歌手名・曲名から導けないため、`site:linkco.re` の Web 検索で同じ歌手のリリースを 1 件見つけ、リリースページ同士のリンクをたどって曲を探します。
+  - 君と見るそら（TuneCore 配信、18 曲）で検証しました。LRCLIB は 0 曲、LinkCore は 18 曲すべてのトラックを特定し、歌詞は登録のある 10 曲で取得できました（残り 8 曲は TuneCore に歌詞が無く、`no-lyrics-registered` を返します）。
+  - 見つからないときは HTTP 200 で `found: false` と `reason`（`no-match` / `no-lyrics-registered` / `search-unavailable`）、`candidates`（表記ゆれの手がかり）を返します。取得元が使えなかった結果はキャッシュしません。LRCLIB には User-Agent で Sora を名乗り、`Retry-After` を守って 1 回だけ再試行します。
+  - 歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。応答の `notice` にも同じ注意を入れています。歌ネットは利用規約がスクレイピングを禁じているため使いません。
+- `isModuleActive` に「明示指定のみ」のモジュールの一覧を足しました（`lyrics` だけ）。README の REST の例の照合は、`lyrics` を有効にした OpenAPI で行います。
+- 型付きクライアント（`client/`）は既定の構成から生成するため、変更はありません。
+
 # Sora v2.41.2 — HTS 推測で、10桁の行を年齢・性別で選び、字下げの飛びで壊れる祖先の説明を直した
 
 - 本番の会話で見つかった不具合を直しました（積み木の一括判定が `needs_more_info` で止まる）。
