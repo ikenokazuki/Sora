@@ -19,6 +19,7 @@ const IDX_AVG_TONE = 34;
 const IDX_ACTION_GEO_COUNTRY = 53;
 const IDX_SOURCE_URL = 60;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+const MAX_EARLIER_SLOTS = 3;
 
 export function parseGdeltExport(tsv: string): GdeltEventRow[] {
   return tsv.split('\n').flatMap((line) => {
@@ -47,6 +48,15 @@ export function parseGdeltLastUpdate(text: string): string[] {
     .map((line) => line.trim().split(/\s+/).at(-1) ?? '')
     .filter((url) => url.includes('.export.CSV.zip'))
     .map((url) => (url.startsWith('http://') ? 'https://' + url.slice('http://'.length) : url));
+}
+
+/** 15 分前の export ファイルの URL。ファイル名が時刻（YYYYMMDDHHMMSS）でなければ undefined。 */
+export function previousGdeltExportUrl(url: string): string | undefined {
+  const m = /^(.*\/)(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\.export\.CSV\.zip)$/.exec(url);
+  if (!m) return undefined;
+  const earlier = new Date(Date.UTC(+m[2], +m[3] - 1, +m[4], +m[5], +m[6], +m[7]) - FIFTEEN_MINUTES_MS);
+  const stamp = earlier.toISOString().replace(/\.\d{3}Z$/, '').replace(/[-T:]/g, '');
+  return m[1] + stamp + m[8];
 }
 
 export function filterGdeltRowsForRegion(rows: readonly GdeltEventRow[], region: RegionIdentity): GdeltEventRow[] {
@@ -185,15 +195,23 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
       const urls = parseGdeltLastUpdate(await updateRes.text());
       const latest = urls.at(-1);
       if (!latest) throw new ProviderHttpError(502, undefined, 'GDELT export list is empty');
-      let bytes: Uint8Array;
-      try {
-        const zipRes = await fetchProviderResponse(latest, { sourceId: 'gdelt_export', timeoutMs: 30000, format: 'text', signal, fetchFn: runFetch });
-        bytes = new Uint8Array(await zipRes.arrayBuffer());
-      } catch (e) {
-        if (signal.aborted) throw e;
-        if (e instanceof ProviderHttpError) throw e;
-        throw new ProviderNetworkError(String(e));
+      // lastupdate.txt は、CDN に載る前の最新ファイルを挙げることがある（404）。そのときは数スロット前のファイルを使う。
+      let bytes: Uint8Array | undefined;
+      for (let candidate: string | undefined = latest, back = 0; candidate && !bytes; back++) {
+        try {
+          const zipRes = await fetchProviderResponse(candidate, { sourceId: 'gdelt_export', timeoutMs: 30000, format: 'text', signal, fetchFn: runFetch });
+          bytes = new Uint8Array(await zipRes.arrayBuffer());
+        } catch (e) {
+          if (signal.aborted) throw e;
+          if (e instanceof ProviderHttpError && e.status === 404 && back < MAX_EARLIER_SLOTS) {
+            candidate = previousGdeltExportUrl(candidate);
+            if (candidate) continue;
+          }
+          if (e instanceof ProviderHttpError) throw e;
+          throw new ProviderNetworkError(String(e));
+        }
       }
+      if (!bytes) throw new ProviderHttpError(502, undefined, 'GDELT export file could not be resolved');
       let tsv: string;
       try {
         tsv = await decompress(bytes);

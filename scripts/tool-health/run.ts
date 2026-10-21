@@ -8,7 +8,7 @@ import {
   collectKnownCaseIds, gateExit, MAX_UNAVAILABLE_RATIO, nonPassLines, tooManyUnavailable, redact, registerSecrets, summarize, validateCasesJson, writeReports,
 } from './report.js';
 import {
-  LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified,
+  LiveBlocked, LiveEmpty, LiveFail, LiveUnavailable, LiveUnverified,
   type CaseContext, type CaseResult, type HealthCase, type HealthStatus, type ObservedSource,
 } from './types.js';
 
@@ -286,6 +286,17 @@ async function runToolCase(
   }
 }
 
+/**
+ * provider の検査を取り直すまでの待ち時間（ミリ秒）。取り直さないなら undefined。attempts はこれまでの試行回数。
+ * 上流の不調（unavailable）は 1 回、普段は必ず中身がある取得元の空振り（LiveEmpty）は 2 回まで取り直す。
+ * 空振りが続けば構造変化として fail のまま。blocked と通常の fail は取り直さない。
+ */
+export function providerRetryDelay(error: unknown, attempts: number): number | undefined {
+  if (error instanceof LiveUnavailable) return attempts === 1 ? 2000 : undefined;
+  if (error instanceof LiveEmpty) return attempts === 1 ? 5000 : attempts === 2 ? 15000 : undefined;
+  return undefined;
+}
+
 async function runProviderCase(p: ProviderCase, record: (r: CaseResult) => void): Promise<void> {
   const startedAt = new Date().toISOString();
   const started = Date.now();
@@ -303,8 +314,9 @@ async function runProviderCase(p: ProviderCase, record: (r: CaseResult) => void)
         : e instanceof LiveBlocked ? 'blocked'
         : e instanceof LiveUnverified ? 'unverified'
         : 'fail';
-      if (status === 'unavailable' && attempts === 1) {
-        await new Promise((r) => setTimeout(r, 2000));
+      const retryAfterMs = providerRetryDelay(e, attempts);
+      if (retryAfterMs !== undefined) {
+        await new Promise((r) => setTimeout(r, retryAfterMs));
         continue;
       }
       const reason = e instanceof Error ? e.message : String(e).slice(0, 200);

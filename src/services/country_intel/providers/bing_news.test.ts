@@ -47,3 +47,13 @@ test('Bing exposes missing fresh subjects instead of treating old articles as cu
   expect(result.items).toEqual([]);
   expect(result.gaps?.some((gap) => gap.area === 'economy' && gap.reason.includes('no_recent_items'))).toBe(true);
 });
+
+test('a non-feed page served with 200 is a failed fetch, an empty feed is just no items', async () => {
+  const region = resolveRegion('US');
+  const input: ProviderInput = { request: { region: 'US' }, region, queries: [] };
+  const page = (body: string) => (async () => new Response(body, { status: 200, headers: { 'content-type': 'text/html' } })) as never;
+  await expect(createBingNewsProvider(page('<html><body>Please verify you are human</body></html>')).run(input, AbortSignal.timeout(5000)))
+    .rejects.toMatchObject({ status: 502 });
+  const empty = await createBingNewsProvider(page('<rss version="2.0"><channel></channel></rss>')).run(input, AbortSignal.timeout(5000));
+  expect(empty.items).toHaveLength(0);
+});
