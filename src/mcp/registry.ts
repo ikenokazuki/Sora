@@ -2,7 +2,7 @@ import type { McpServer, RegisteredTool, ToolCallback } from '@modelcontextproto
 import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import type { XPostDetailProvider } from '../services/x_detail.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel' | 'lyrics';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
@@ -163,16 +163,19 @@ export function searchCatalog(
   return (tiers.find((matches) => matches.length > 0) ?? []).slice(0, 3);
 }
 
+/** `all` や未設定では有効にならず、名前を挙げたときだけ有効になるモジュール（自己責任で使う機能）。 */
+const EXPLICIT_ONLY_MODULES: readonly SoraModule[] = ['lyrics'];
+
 /** モジュールが有効化されているかを判定 */
 export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 'all')[]): boolean {
+  const allCovers = !EXPLICIT_ONLY_MODULES.includes(mod);
   if (explicitModules && explicitModules.length > 0) {
-    if (explicitModules.includes('all')) return true;
-    return explicitModules.includes(mod);
+    return explicitModules.includes(mod) || (allCovers && explicitModules.includes('all'));
   }
   const envVal = process.env.ENABLED_MODULES?.toLowerCase().trim();
-  if (!envVal || envVal === 'all' || envVal === '*') return true;
+  if (!envVal || envVal === 'all' || envVal === '*') return allCovers;
   const activeList = envVal.split(',').map((s) => s.trim());
-  return activeList.includes(mod) || activeList.includes('all');
+  return activeList.includes(mod) || (allCovers && activeList.includes('all'));
 }
 
 /** 各モジュールのツール登録関数に渡す、サーバー単位の共通状態。 */

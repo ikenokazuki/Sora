@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isModuleActive } from './mcp/registry.js';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
@@ -7,7 +8,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.41.2';
+export const SORA_VERSION = '2.42.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -1987,6 +1988,30 @@ export const MusicSearchResultSchema = z.object({
   ...CACHE_META_SHAPE,
 });
 
+export const LyricsRequestSchema = z.object({
+  title: z.string().min(1, 'title は必須です').describe('曲名 (例: "夜に駆ける")'),
+  artist: z.string().optional().describe('歌手・グループ名。省略できるが、LRCLIB に無い曲（地下アイドル・インディーズ）を TuneCore で探すときは必須'),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
+});
+
+export const LyricsCandidateSchema = z.object({
+  title: z.string().describe('曲名'),
+  artist: z.string().describe('歌手・グループ名'),
+  album: z.string().optional().describe('アルバム名'),
+});
+
+export const LyricsResultSchema = z.object({
+  found: z.boolean().describe('歌詞を取得できたか'),
+  track: LyricsCandidateSchema.optional().describe('特定した曲（歌詞が無い場合も、曲を特定できたときは入る）'),
+  lyrics: z.string().optional().describe('歌詞全文（found が true のときのみ。改行区切り）'),
+  source: z.enum(['lrclib', 'tunecore']).optional().describe('取得元: "lrclib"(利用者投稿の歌詞データベース), "tunecore"(TuneCore Japan の LinkCore)'),
+  sourceUrl: z.string().optional().describe('取得元の URL。TuneCore は LinkCore の歌詞ページ（ブラウザで開ける）、LRCLIB は記録の API URL'),
+  reason: z.enum(['no-match', 'no-lyrics-registered', 'search-unavailable']).optional().describe('found が false の理由: "no-match"(見つからない), "no-lyrics-registered"(曲は特定できたが TuneCore に歌詞が無い), "search-unavailable"(取得元が使えず判断できない)'),
+  candidates: z.array(LyricsCandidateSchema).describe('別の候補（表記ゆれの手がかり。LRCLIB の別曲、TuneCore の同じ歌手の曲名）'),
+  notice: z.string().describe('利用上の注意（著作物。個人利用の範囲で使い、再配布・公開しない）'),
+  ...CACHE_META_SHAPE,
+});
+
 export const InspectImageResultSchema = z.object({
   success: z.boolean().describe('画像解析・Base64変換が成功したか'),
   url: z.string().describe('取得元画像 URL'),
@@ -3811,5 +3836,20 @@ export function generateOpenApiDocument() {
   paths['/search/deep'] = paths['/search'];
   paths['/search/integrated'] = paths['/search'];
   paths['/deep-search'] = paths['/search'];
+  // 歌詞は ENABLED_MODULES に名前を挙げたときだけ公開する（自己責任の機能。既定では仕様書にも出さない）
+  if (isModuleActive('lyrics')) {
+    paths['/lyrics'] = {
+      post: {
+        summary: '歌手・曲名から歌詞全文を取得 (自己責任・個人利用。LRCLIB、無ければ TuneCore Japan の LinkCore)',
+        requestBody: { content: { 'application/json': { schema: zodToOpenApiSchema(LyricsRequestSchema) } } },
+        responses: {
+          '200': {
+            description: '歌詞の取得結果 (見つからない場合も 200 で found: false と reason を返す)',
+            content: { 'application/json': { schema: zodToOpenApiSchema(LyricsResultSchema) } },
+          },
+        },
+      },
+    };
+  }
   return doc;
 }

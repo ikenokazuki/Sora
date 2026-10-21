@@ -98,7 +98,15 @@ export function checkReadmeExamples(markdown: string, doc: any = generateOpenApi
 }
 
 export function checkRepositoryReadme(): ReadmeExampleFinding[] {
-  return checkReadmeExamples(readFileSync(new URL('../../README.md', import.meta.url), 'utf8'));
+  // 自己責任の lyrics モジュールは既定の仕様書に出ないので、README の例はそれを有効にした仕様書と照合する
+  const saved = process.env.ENABLED_MODULES;
+  process.env.ENABLED_MODULES = 'all,lyrics';
+  try {
+    return checkReadmeExamples(readFileSync(new URL('../../README.md', import.meta.url), 'utf8'));
+  } finally {
+    if (saved === undefined) delete process.env.ENABLED_MODULES;
+    else process.env.ENABLED_MODULES = saved;
+  }
 }
 
 if (import.meta.main) {

@@ -13,6 +13,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const hasTrade = hasMod('trade');
   const hasIntel = hasMod('intel');
   const hasWatch = hasMod('watch');
+  const hasLyrics = hasMod('lyrics');
   // inspect_image は web モジュールでも有効になる（createMcpServer の shouldEnableMedia と同じ条件）
   const hasMedia = hasMod('media') || hasWeb;
 
@@ -107,6 +108,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   if (hasIntel) {
     tier1Directives.push(
       "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report by its contextId with get_country_context, get_country_context_evidence, get_country_context_updates. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
+    );
+  }
+
+  if (hasLyrics) {
+    tier1Directives.push(
+      "9. Song Lyrics (opt-in, personal use at the user's own risk; lyrics are copyrighted): NEVER write lyrics from memory. Use 'lyrics' tool get_lyrics with the artist/group name and the title (the artist is required for underground idols and indie acts found via TuneCore). Show or quote only what the user asked for.",
     );
   }
 
