@@ -320,7 +320,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ## 2. 提供 MCP ツール一覧 (全 50 ツール / 11 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **11 個の論理モジュール（全 50 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。
+Sora は、目的に応じて **11 個の論理モジュール（全 50 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
 Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (36ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 36 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
@@ -599,6 +599,25 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得 |
 | `get_country_context_evidence` ・ DEFERRED | 証拠明細の取得 |
 | `get_country_context_updates` ・ DEFERRED | 更新差分の取得 |
+
+### 🎤 Module 12: Lyrics (`ENABLED_MODULES=all,lyrics`)
+歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+
+- 歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。利用の責任は利用者にあります。応答の `notice` にも同じ注意を入れています。
+- 取得元は 2 つです。まず LRCLIB（利用者投稿の歌詞データベース。キー不要）を引き、無ければ TuneCore Japan の LinkCore（地下アイドル・インディーズ向け）を引きます。LinkCore は、権利者が TuneCore に歌詞を登録した曲だけが対象です（著作権管理団体の管理曲は出ません）。TuneCore 経由で探すには `artist` が必須です。
+- 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ外部に問い合わせ、結果と LinkCore のリリース情報（題名と URL。歌詞本文は含まない）をキャッシュします。LinkCore の入口には Yahoo! JAPAN の Web 検索を使います。
+
+| ツール名 | 説明 | 識別プロパティ | 主要引数 |
+|---|---|---|---|
+| `get_lyrics` ・ DEFERRED | 歌手・曲名から歌詞全文を取得します。見つからないときは `reason`（`no-match` / `no-lyrics-registered` / `search-unavailable`）と `candidates` を返します。 | `source: "lyrics"` | - `title` (string, 必須)<br>- `artist` (string, 任意。TuneCore 経由では必須)<br>- `noCache` (boolean, 任意) |
+
+```bash
+docker run -d -p 3016:8000 -e ENABLED_MODULES="all,lyrics" ghcr.io/ikenokazuki/sora:latest
+
+curl -X POST http://localhost:3016/lyrics \
+  -H 'content-type: application/json' \
+  -d '{"title": "曲名", "artist": "歌手名"}'
+```
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
@@ -2126,7 +2145,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
 | `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel` または `all`） |
+| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 50 ツール静的一括ロード |
