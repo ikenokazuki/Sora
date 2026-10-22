@@ -4,7 +4,7 @@ import {
   SearchWebRequestSchema,
   type SearchWebRequest,
 } from './types.js';
-import { getFromCache, setToCache } from './cache.js';
+import { getFromCache, searchCacheTtl, setToCache } from './cache.js';
 import { normalizeDomainList, searchYahooWeb } from './services/yahoo.js';
 import { scrapeUrl } from './scraper.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
@@ -30,7 +30,8 @@ export async function searchWebForRest(body: SearchWebRequest, deps: SearchWebFo
   if (!body.noCache) { const cached = getFromCache<unknown>(cacheKey); if (cached) return cached; }
   const data = await searchWebWithFormats(body, deps);
   const response = { query: body.query, source: 'web', type: 'web', data, cached: false };
-  if (!body.noCache && !isTransientWebSearch(data)) setToCache(cacheKey, response);
+  // 0 件の答えは一時的な不調かもしれないので、短くだけ残す
+  if (!body.noCache && !isTransientWebSearch(data)) setToCache(cacheKey, response, searchCacheTtl(data));
   return response;
 }
 

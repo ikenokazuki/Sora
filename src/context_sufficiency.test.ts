@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { summarizeContextSufficiency } from './context_sufficiency.js';
+import { summarizeContextSufficiency, isUnusableIntegratedSearch } from './context_sufficiency.js';
 
 const filler = (s: string) => `# ${s}\n\n${s} の詳細です。`.repeat(6);
 const page = (title: string, highlights: string[] = [], extra: Record<string, any> = {}) => ({
@@ -56,5 +56,23 @@ describe('summarizeContextSufficiency', () => {
     const plain = (t: string) => ({ title: t, markdown: `${filler(t)}\n\n${t} の出演時間は 14:10 からです。` });
     const out = summarizeContextSufficiency([plain('君と見るそら'), plain('君と見るそら ライブ'), plain('君と見るそら 情報')], [], '君と見るそら 出演時間');
     expect(out.level).toBe('no_gap_detected');
+  });
+});
+
+describe('isUnusableIntegratedSearch', () => {
+  test('no-usable-content is unusable even when pages were attempted', () => {
+    expect(isUnusableIntegratedSearch({ results: [{ url: 'https://e/a', scrapeError: 'x' }], contextSufficiency: { level: 'insufficient', reasons: ['no-usable-content'] } })).toBe(true);
+  });
+  test('no pages and no posts is unusable, with or without the sufficiency signal', () => {
+    expect(isUnusableIntegratedSearch({ results: [], realtime: { items: [] } })).toBe(true);
+    expect(isUnusableIntegratedSearch({ results: [] })).toBe(true);
+    expect(isUnusableIntegratedSearch({})).toBe(true);
+  });
+  test('pages alone, or posts alone, are usable', () => {
+    expect(isUnusableIntegratedSearch({ results: [{ url: 'https://e/a', markdown: 'text' }] })).toBe(false);
+    expect(isUnusableIntegratedSearch({ results: [], realtime: { items: [{ text: 'post' }] } })).toBe(false);
+  });
+  test('a partial answer is usable', () => {
+    expect(isUnusableIntegratedSearch({ results: [{ url: 'https://e/a', markdown: 'text' }], contextSufficiency: { level: 'partial', reasons: ['few-success'] } })).toBe(false);
   });
 });
