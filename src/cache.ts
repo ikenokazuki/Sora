@@ -18,6 +18,22 @@ interface CacheEntry<T> {
 export const CACHE_TTL_DEFAULT = 30 * 60 * 1000; // 30分
 export const CACHE_TTL_WEATHER = 60 * 60 * 1000; // 1時間
 export const CACHE_TTL_TREND = 2 * 60 * 1000;   // 2分
+/** 結果が空・使える中身が無い応答の TTL。一時的な不調を長く残さず、同じ検索の連打だけを防ぐ。 */
+export const CACHE_TTL_EMPTY = 60 * 1000; // 1分
+
+/** 検索系の応答が空か（items / results が 0 件、またはそれらが無く count が 0）。 */
+export function isEmptySearchResult(result: unknown): boolean {
+  const r = result as { items?: unknown; results?: unknown; count?: unknown } | null | undefined;
+  if (!r || typeof r !== 'object') return false;
+  if (Array.isArray(r.items)) return r.items.length === 0;
+  if (Array.isArray(r.results)) return r.results.length === 0;
+  return r.count === 0;
+}
+
+/** 検索系の応答を残す期間。空なら短く、そうでなければ既定。 */
+export function searchCacheTtl(result: unknown): number {
+  return isEmptySearchResult(result) ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT;
+}
 /**
  * キャッシュキーの本体を、結果に影響する入力から作る。
  *

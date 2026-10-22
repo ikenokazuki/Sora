@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_CHARS,
   CACHE_TTL_TREND,
   getFromCache,
+  searchCacheTtl,
   setToCache,
   integratedSearch,
   fetchRealtimeTrends,
@@ -317,7 +318,7 @@ searchRoutes.post('/search/image', async (c) => {
     }
 
     const result = await searchYahooImage({ query, limit, page });
-    if (!noCache) setToCache(cacheKey, result);
+    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Image search failed' }, 500);
@@ -338,7 +339,7 @@ searchRoutes.post('/search/video', async (c) => {
     }
 
     const result = await searchYahooVideo({ query, limit, page });
-    if (!noCache) setToCache(cacheKey, result);
+    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Video search failed' }, 500);
@@ -359,7 +360,7 @@ searchRoutes.post('/search/news', async (c) => {
     }
 
     const result = await searchYahooNews({ query, limit });
-    if (!noCache) setToCache(cacheKey, result);
+    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'News search failed' }, 500);
@@ -380,7 +381,7 @@ searchRoutes.post('/search/chiebukuro', async (c) => {
     }
 
     const result = await searchYahooChiebukuro({ query, limit, page, status });
-    if (!noCache) setToCache(cacheKey, result);
+    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Chiebukuro search failed' }, 500);
@@ -401,7 +402,7 @@ searchRoutes.post('/search/suggest', async (c) => {
     }
 
     const result = await getSuggestedKeywords({ query, limit });
-    if (!noCache) setToCache(cacheKey, result);
+    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Suggest keywords failed' }, 500);

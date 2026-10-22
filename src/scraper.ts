@@ -15,6 +15,8 @@ import {
   getFromCache,
   runWithSingleFlight,
   setToCache,
+  CACHE_TTL_DEFAULT,
+  CACHE_TTL_EMPTY,
   CACHE_TTL_TREND,
 } from './cache.js';
 import {
@@ -88,6 +90,11 @@ import {
 // ==========================================
 export * from './types.js';
 export * from './cache.js';
+
+/** 何も取れなかった統合検索（結果 0 件・no-usable-content）は、取り直せるように短くだけキャッシュする。 */
+const integratedSearchCacheTtl = (response: unknown) => (isUnusableIntegratedSearch(response) ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
+/** 本文を読み取れなかった scrape（contentStatus が unavailable）も、短くだけキャッシュする。 */
+const scrapeCacheTtl = (result: { contentStatus?: string } | null | undefined) => (result?.contentStatus === 'unavailable' ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
 export * from './db.js';
 export * from './enrichment.js';
 export * from './browser_engine.js';
@@ -114,7 +121,7 @@ import {
 import { readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
 import { settleWithDeadline } from './scrape_deadline.js';
-import { summarizeContextSufficiency } from './context_sufficiency.js';
+import { isUnusableIntegratedSearch, summarizeContextSufficiency } from './context_sufficiency.js';
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
   convertHtmlToMarkdown,
@@ -659,7 +666,7 @@ export async function scrapeUrl(options: {
               siteName: tweetRes.siteName,
             };
             result = await finalizeScrapeResult(baseResult, finalizeOpts);
-            if (useSharedCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
         }
@@ -685,7 +692,7 @@ export async function scrapeUrl(options: {
             const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
             const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
             result = await finalizeScrapeResult(pdfResult, finalizeOpts);
-            if (useSharedCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
 
@@ -780,7 +787,7 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
             result = await finalizeScrapeResult(result, finalizeOpts);
 
-            if (useSharedCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
             return result;
           }
@@ -864,7 +871,7 @@ export async function scrapeUrl(options: {
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
             result = await finalizeScrapeResult(initialHttpResult, finalizeOpts);
-            if (useSharedCache) setToCache(cacheKey, result);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
           throw browserErr;
@@ -927,7 +934,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
         result = await finalizeScrapeResult(result, finalizeOpts);
 
-        if (useSharedCache) setToCache(cacheKey, result);
+        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
         return result;
       } catch (err) {
@@ -2321,12 +2328,12 @@ export async function integratedSearch(options: {
   // response (the cache key already separates verbose from compact).
   // verbose が真のときは schedule を足さず、results[].events のまま返す（MCP の入力スキーマと OpenAPI の説明どおり）。
   if (options.verbose === true) {
-    if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, finalResponse);
+    if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, finalResponse, integratedSearchCacheTtl(finalResponse));
     return finalResponse;
   }
   const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {});
   // 締切で欠けた結果は劣化応答なのでキャッシュしない
-  if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse);
+  if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse, integratedSearchCacheTtl(finalResponse));
   return publicResponse;
 }
 

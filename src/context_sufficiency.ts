@@ -43,3 +43,14 @@ export function summarizeContextSufficiency(webItems: any[], realtimeItems: any[
   }
   return { level: reasons.length === 0 ? 'no_gap_detected' : 'partial', reasons };
 }
+
+/**
+ * 使える中身が無い統合検索の応答か。contextSufficiency が no-usable-content、またはページも X の投稿も無い。
+ * こうした応答は一時的な不調（取得失敗・ブロック）のことが多いので、長くキャッシュしない。
+ */
+export function isUnusableIntegratedSearch(response: any): boolean {
+  if (response?.contextSufficiency?.reasons?.includes('no-usable-content')) return true;
+  const noPages = !Array.isArray(response?.results) || response.results.length === 0;
+  const noPosts = !Array.isArray(response?.realtime?.items) || response.realtime.items.length === 0;
+  return noPages && noPosts;
+}
