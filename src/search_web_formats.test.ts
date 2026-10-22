@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setSystemTime, test } from 'bun:test';
 import { SEARCH_WEB_INPUT_SHAPE, SearchWebRequestSchema, buildSearchWebCacheKey, isTransientWebSearch, searchWebForRest, searchWebWithFormats } from './search_web_formats.js';
 describe('search_web formats orchestration',()=>{
   test('legacy no-format path preserves provider values without scraping',async()=>{ const provider={items:[{title:'A',url:'https://e/a',snippet:'s'}],count:1,source:'web'}; let calls=0; const r=await searchWebWithFormats({query:'x'},{searchYahooWeb:async()=>provider,scrapeUrl:async()=>{calls++; throw new Error('no');}} as any); expect(r).toEqual(provider); expect(calls).toBe(0); });
@@ -24,8 +24,26 @@ describe('REST /search/web cache: an answer that came from a throttled source is
     expect(isTransientWebSearch(throttled)).toBe(true);
     expect(isTransientWebSearch({ ...healthy, stale: true })).toBe(true);
     expect(isTransientWebSearch(healthy)).toBe(false);
-    expect(isTransientWebSearch({ items: [], count: 0, source: 'web' })).toBe(false); // 本当に 0 件の検索は、キャッシュしてよい
+    expect(isTransientWebSearch({ items: [], count: 0, source: 'web' })).toBe(false); // 0 件の検索は一時的とは限らないので、短くキャッシュする（下のテスト）
     expect(isTransientWebSearch(null)).toBe(false);
+  });
+
+  test('a zero-result answer is kept only briefly: served within a minute, asked again after it', async () => {
+    const query = newQuery();
+    const empty = { items: [], count: 0, source: 'web' };
+    const first = source(() => empty);
+    await searchWebForRest({ query }, first.deps);
+    const within = source(() => healthy);
+    expect((await searchWebForRest({ query }, within.deps)).data.items).toHaveLength(0);
+    expect(within.calls()).toBe(0);
+    setSystemTime(new Date(Date.now() + 61_000));
+    try {
+      const after = source(() => healthy);
+      expect((await searchWebForRest({ query }, after.deps)).data.items).toHaveLength(1);
+      expect(after.calls()).toBe(1);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test('a throttled answer is returned, but the next call asks the source again', async () => {
