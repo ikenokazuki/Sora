@@ -8,7 +8,7 @@ import {
   type ResolvedMcpOriginConfig,
 } from './mcp_origin.js';
 import { incrementSecurityCounter } from './metrics.js';
-import { MCP_PATHS, PUBLIC_PATHS } from './public_paths.js';
+import { MCP_PATHS, isPublicPath } from './public_paths.js';
 
 // REST の信頼境界。
 //
@@ -97,7 +97,7 @@ export function createRestOriginPolicy(options: McpOriginOptions = {}): RestOrig
 
   const guard: MiddlewareHandler = async (c, next) => {
     // 公開経路は誰でも読んでよい。MCP の経路は mcp_origin.ts が、ブラウザかどうかによらず検査する
-    if (PUBLIC_PATHS.has(c.req.path) || MCP_PATHS.has(c.req.path)) return next();
+    if (isPublicPath(c.req.path) || MCP_PATHS.has(c.req.path)) return next();
     const decision = decide(c);
     if (decision.allowed) return next();
     incrementSecurityCounter('sora_rest_origin_rejected_total');
@@ -105,7 +105,7 @@ export function createRestOriginPolicy(options: McpOriginOptions = {}): RestOrig
   };
 
   const corsOrigin = (origin: string, c: Context): string | null => {
-    if (PUBLIC_PATHS.has(c.req.path)) return '*';
+    if (isPublicPath(c.req.path)) return '*';
     if (!origin) return null;
     const decision = decide(c);
     return decision.allowed && decision.origin !== undefined ? decision.origin : null;
