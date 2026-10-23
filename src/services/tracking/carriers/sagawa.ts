@@ -27,6 +27,9 @@ interface SagawaSearchResult {
   message?: string;
   results?: Array<{
     status?: string;
+    dateLines?: Array<{ label?: string; value?: string }>;
+    pickupOffice?: { name?: string } | null;
+    deliveryOffice?: { name?: string } | null;
     history?: Array<{ status?: string; date?: string; office?: string }>;
   }>;
 }
@@ -128,6 +131,10 @@ export const sagawaAdapter: TrackingCarrierAdapter = {
         location: h.office || undefined,
       }));
       const currentStatusText = found.status || events.at(-1)?.status || '荷物情報取得';
+      // 「配達完了日」「お届け予定日」の行だけを日時として使う（ほかの行の意味は分からない）。
+      const deliveryDate = found.dateLines
+        ?.find((line) => /配達完了|お届け予定|配達予定/.test(line.label ?? ''))
+        ?.value?.replace(/\s+/g, ' ').trim();
 
       return {
         ...base,
@@ -135,6 +142,9 @@ export const sagawaAdapter: TrackingCarrierAdapter = {
         statusText: currentStatusText,
         events,
         details: {
+          origin: found.pickupOffice?.name || undefined,
+          destination: found.deliveryOffice?.name || undefined,
+          deliveryDate: deliveryDate || undefined,
           serviceType: '飛脚宅配便',
         },
       };

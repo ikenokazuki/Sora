@@ -10,7 +10,11 @@ const flight = (result: unknown) =>
     headers: { 'content-type': 'text/x-component' },
   });
 
-const shipment = (status: string, history: Array<{ status: string; date: string; office: string }>) => ({
+const shipment = (
+  status: string,
+  history: Array<{ status: string; date: string; office: string }>,
+  extra: Record<string, unknown> = {},
+) => ({
   ok: true,
   results: [{
     trackingNumber: '123456789012',
@@ -22,6 +26,7 @@ const shipment = (status: string, history: Array<{ status: string; date: string;
     deliveryOffice: null,
     packageCount: '1個',
     history,
+    ...extra,
   }],
 });
 
@@ -35,7 +40,11 @@ describe('Sagawa tracking response handling', () => {
       { status: '↓集荷', date: '10/20 16:37', office: '渋谷営業所' },
       { status: '↓輸送中', date: '10/20 22:34', office: '関東中継センター' },
       { status: '⇒配達完了（宅配BOX）', date: '10/23 18:00', office: '那覇営業所' },
-    ])));
+    ], {
+      dateLines: [{ label: '配達完了日　　：', value: '10月23日　18時00分' }],
+      pickupOffice: { name: '渋谷営業所', tel: '0570-00-0000', fax: '03-0000-0000' },
+      deliveryOffice: { name: '那覇営業所', tel: '0570-00-0000', fax: '098-000-0000' },
+    })));
 
     const result = await trackByCarrier('sagawa', '1234-5678-9012');
 
@@ -55,6 +64,12 @@ describe('Sagawa tracking response handling', () => {
       { status: '輸送中', date: '10/20 22:34', location: '関東中継センター' },
       { status: '配達完了（宅配BOX）', date: '10/23 18:00', location: '那覇営業所' },
     ]);
+    expect(result.details).toEqual({
+      origin: '渋谷営業所',
+      destination: '那覇営業所',
+      deliveryDate: '10月23日 18時00分',
+      serviceType: '飛脚宅配便',
+    });
     expect(result.verification?.level).toBe('strong');
     expect(result.trackingUrl).toBe(PAGE);
   });
