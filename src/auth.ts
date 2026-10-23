@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
 import { dbIncrementApiUsage } from './db.js';
-import { PUBLIC_PATHS } from './security/public_paths.js';
+import { isPublicPath } from './security/public_paths.js';
 import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
 
 declare module 'hono' {
@@ -86,7 +86,7 @@ export function warnOnceNoKey(): void {
 export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler {
   return async (c, next) => {
     // 1. 公開エンドポイント（ヘルスチェック、ルート、メトリクス、ドキュメント）は認証不要
-    if (PUBLIC_PATHS.has(c.req.path)) {
+    if (isPublicPath(c.req.path)) {
       return next();
     }
 

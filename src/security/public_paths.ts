@@ -11,5 +11,13 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   '/swagger',
 ]);
 
+/**
+ * 認証なしで公開する経路か。荷物ごとの表示ページ（/t/...）は誰でも開けるが、Sora が発行した署名付きの URL だけを
+ * 表示する（services/tracking/page.ts）。EC サイトのページやメールのリンクから開かれるので、ブラウザの別サイト由来の要求も通す。
+ */
+export function isPublicPath(path: string): boolean {
+  return PUBLIC_PATHS.has(path) || path.startsWith('/t/');
+}
+
 /** MCP の経路。これらは mcp_origin.ts が、ブラウザかどうかによらず Host と Origin を検査する。 */
 export const MCP_PATHS: ReadonlySet<string> = new Set(['/mcp', '/sse', '/message']);
