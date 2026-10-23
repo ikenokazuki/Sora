@@ -512,7 +512,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日および週間（最大8日間）の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 地点ID (例「130010」)<br>- `days` (number, 任意): 予報日数 (1〜8日, デフォルト: 7) |
 | `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
 | `get_flight_status` | 主要空港（羽田・成田・伊丹・関空・中部・新千歳・福岡・那覇等）の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 行先・航空会社名絞り込み |
-| `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および UPS の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）および公式追跡Webリンク生成に対応。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukuyama"`, `"ups"`) |
+| `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）と国際配送（UPS、FedEx、DHL Express）の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）と、公式追跡ページの URL（`trackingUrl`。佐川急便は番号を渡せないため入力ページ）を返す。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukutsu"`, `"ups"`, `"fedex"`, `"dhl"`) |
 
 
 ---
@@ -1975,15 +1975,17 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   ```
 
 ### 3.24 荷物追跡・配達状況照会 (`POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`)
-日本の主要配送業者5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）および国際配送の UPS の荷物配達状況をスクレイピング・API連携により横断追跡・正規化します。伝票番号（ハイフン有無・全角半角不問）のフォーマットや Modulus 7 / Luhn チェックサムによる運送会社自動判別に対応。並行投機照会の **Fail-fast 早期確定**（結果確定時に他社タイムアウトを待たず即時返却）および UPS 認証情報未設定時の安全な `status: "unknown"` フォールバックを備えています。5分間のインメモリキャッシュを内蔵。
+日本の主要運送会社5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）と国際配送の UPS・FedEx・DHL Express の配達状況を、各社の公式追跡ページ・API から取得し、共通の形式に揃えて返します。伝票番号（ハイフン有無・全角半角不問）の形式や Modulus 7 / Luhn チェックサムで運送会社を自動判別し、候補を 2 社ずつ照会して、配送の実績を確認できた時点で残りの候補は照会しません（最大 4 社）。UPS 認証情報未設定時の安全な `status: "unknown"` フォールバックを備えています。結果はメモリにキャッシュします（配達完了は 24 時間、それ以外は 5 分。`error` は保存しません）。
 
 - **対応キャリア**:
   - `yamato` (ヤマト運輸 / クロネコヤマト)
   - `sagawa` (佐川急便)
-  - `japanpost` (日本郵便 / ゆうパック・書留)
+  - `japanpost` (日本郵便 / ゆうパック・書留・国際郵便 EMS/UPU S10)
   - `seino` (西濃運輸 / カンガルー便)
-  - `fukutsu` / `fukuyama` (福山通運)
+  - `fukutsu` (福山通運)
   - `ups` (UPS / United Parcel Service)
+  - `fedex` (FedEx)
+  - `dhl` (DHL Express)
   - `auto` (自動判別: デフォルト)
 
 - **リクエスト (POST /tracking)**:
@@ -1999,22 +2001,36 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   - `GET /tracking/yamato/123456789012` (キャリア指定)
   - クエリパラメータ: `?noCache=true` (キャッシュバイパス)
 
-- **レスポンス例**:
+- **主な返却項目**:
+  - `status`: 統一ステータス（`delivered` / `in_transit` / `registered` / `returned` / `not_found` / `error` / `unknown`）。`error` は照会の失敗（HTTP エラー・通信失敗など）で、`not_found`（該当なし）とは区別します。
+  - `events`: 追跡履歴（`date`・`status`・`location`）。
+  - `details`: 取れた範囲の詳細。`origin`（発送元・引受営業所）、`destination`（お届け先・配達営業所）、`deliveryDate`（お届け予定日時または配達完了日時。形式は運送会社の表記のまま）、`serviceType`（サービス種別）。
+  - `trackingUrl`: 公式追跡ページの URL。
+  - `verification`・`resolvedCarrier`: 配送の実績を確認できたか（結果の確からしさ）と、確定した運送会社・判別方法。
+
+- **佐川急便**: 2026 年 10 月 23 日に再開した新しいお荷物問い合わせサービス（`https://e-customer.sagawa-exp.co.jp/k2k`）から取得します。旧追跡ページ（`k2k.sagawa-exp.co.jp`）は停止しています。
+  - 新しいサービスには送り状番号を URL で渡す方法がないため、`trackingUrl` は番号に関わらず入力ページです。利用者に案内するときは、送り状番号も一緒に伝えてください。
+  - `details` には、集荷営業所（`origin`）、配達営業所（`destination`）、配達完了日またはお届け予定日（`deliveryDate`、例: `10月23日 18時00分`）が入ります。
+  - 佐川の応答を読めないとき（停止・保守のページなど）は、`not_found` ではなく `error` を返します。
+
+- **レスポンス例**（自動判別で佐川急便に確定した例）:
   ```json
   {
-    "carrier": "yamato",
-    "carrierName": "ヤマト運輸",
+    "carrier": "sagawa",
+    "carrierName": "佐川急便",
     "trackingNumber": "123456789012",
     "status": "delivered",
-    "statusText": "配達完了",
+    "statusText": "配達完了（宅配BOX）",
     "events": [
-      { "date": "2026/09/08 18:20", "status": "荷物受付", "location": "東京ベース店" },
-      { "date": "2026/09/09 08:15", "status": "配達中", "location": "渋谷センター" },
-      { "date": "2026/09/09 14:30", "status": "配達完了", "location": "渋谷センター" }
+      { "date": "10/20 16:37", "status": "集荷", "location": "渋谷営業所" },
+      { "date": "10/20 22:34", "status": "輸送中", "location": "関東中継センター" },
+      { "date": "10/23 18:00", "status": "配達完了（宅配BOX）", "location": "那覇営業所" }
     ],
-    "trackingUrl": "https://toi.kuronekoyamato.co.jp/cgi-bin/tneko",
-    "details": { "deliveryDate": "2026/09/09 14:30", "serviceType": "宅急便" },
-    "cached": false
+    "trackingUrl": "https://e-customer.sagawa-exp.co.jp/k2k",
+    "details": { "origin": "渋谷営業所", "destination": "那覇営業所", "deliveryDate": "10月23日 18時00分", "serviceType": "飛脚宅配便" },
+    "verification": { "level": "strong", "reasons": ["Active shipment with 3 events and verified status 'delivered'"] },
+    "resolvedCarrier": { "code": "sagawa", "name": "佐川急便", "confidence": "strong", "verification": "strong", "method": "network_verified" },
+    "fetchedAt": "2026-10-23T09:30:00.000Z"
   }
   ```
 
@@ -2330,4 +2346,4 @@ NODE_ENV=test SORA_DB_PATH=:memory: bun test --timeout 60000
 SORA_LIVE_TESTS=1 NODE_ENV=test SORA_DB_PATH=:memory: bun test src/services/tracking.test.ts --timeout 60000
 ```
 
-通常CIでは佐川の未登録応答・HTTP 403/429/503・通信失敗を固定応答で検証します。GitHub Actions の Test ワークフローは失敗時のログ全文と失敗一覧を表示し、JUnitと実行ログを7日間保存します。
+通常CIでは、佐川急便の新しいお荷物問い合わせサービスの応答（配達済み・該当なし・受付エラー・停止ページなど想定外の形）、HTTP 403/429/503、通信失敗、検索 ID の取り直しを固定応答で検証します。GitHub Actions の Test ワークフローは失敗時のログ全文と失敗一覧を表示し、JUnitと実行ログを7日間保存します。

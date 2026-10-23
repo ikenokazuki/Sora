@@ -2235,9 +2235,9 @@ export const TrackingEventSchema = z.object({
 });
 
 export const TrackingDetailsSchema = z.object({
-  origin: z.string().optional().describe('発送元地域・引受営業所'),
-  destination: z.string().optional().describe('配達先地域・お届け先営業所'),
-  deliveryDate: z.string().optional().describe('お届け予定日時または配達完了日時'),
+  origin: z.string().optional().describe('発送元地域・引受（集荷）営業所 (例: "渋谷営業所")'),
+  destination: z.string().optional().describe('配達先地域・配達担当営業所 (例: "那覇営業所")'),
+  deliveryDate: z.string().optional().describe('お届け予定日時または配達完了日時。形式は運送会社の表記のまま (例: "2026-10-23T18:00:00+09:00", "10月23日 18時00分")'),
   serviceType: z.string().optional().describe('配送サービス種別 (例: "宅急便", "飛脚宅配便", "ゆうパック/ゆうパケット/EMS/国際郵便", "カンガルー便")'),
 });
 
@@ -2248,7 +2248,7 @@ export const TrackingResultSchema = z.object({
   status: z.enum(['delivered', 'in_transit', 'registered', 'returned', 'error', 'not_found', 'unknown']).describe('統一配送ステータスコード: "delivered"(配達完了), "in_transit"(輸送中), "registered"(荷物受付), "returned"(返送), "error"(エラー), "not_found"(未登録), "unknown"(不明)'),
   statusText: z.string().describe('配送ステータスの日本語表示テキスト (例: "配達完了", "配達中", "輸送中")'),
   events: z.array(TrackingEventSchema).describe('荷物の追跡履歴イベント配列 (時系列)'),
-  trackingUrl: z.string().describe('各運送会社の公式追跡 Web ページ URL'),
+  trackingUrl: z.string().describe('各運送会社の公式追跡 Web ページ URL。佐川急便は送り状番号を URL で渡せないため入力ページ (https://e-customer.sagawa-exp.co.jp/k2k) で、開いた後に番号の入力が必要'),
   details: TrackingDetailsSchema.optional().describe('荷物詳細情報 (発送元、お届け先、配達日、サービス種別等)'),
   postal: z.object({
     network: z.string().optional().describe('国際郵便ネットワーク (例: "upu")'),
