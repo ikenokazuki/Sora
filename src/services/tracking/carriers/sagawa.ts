@@ -1,4 +1,3 @@
-import * as cheerio from 'cheerio';
 import type {
   TrackingCarrierAdapter,
   CarrierDetectionSignal,
@@ -16,13 +15,66 @@ import { errorMessage } from '../../../errors.js';
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// 旧サイト（k2k.sagawa-exp.co.jp）は 2026-10 に止まり、Next.js 製の新サイトに移った。検索はサーバーアクション
+// searchPackages への POST 1 本で、Cookie も Origin も要らない（Next-Action ヘッダと multipart の 2 項目だけ）。
+// 応答は React Flight 形式で、`1:` の行がアクションの戻り値の JSON。
+const TRACKING_PAGE = 'https://e-customer.sagawa-exp.co.jp/k2k';
+// アクション ID は佐川のデプロイで変わりうる。古い ID は 409 で拒否されるので、そのときページの JS から取り直し、以後はそれを使う。
+let searchActionId = '60e3b76ba7f1d28cf3c3fa01680217528f16cd1984';
+
+interface SagawaSearchResult {
+  ok?: boolean;
+  message?: string;
+  results?: Array<{
+    status?: string;
+    dateLines?: Array<{ label?: string; value?: string }>;
+    pickupOffice?: { name?: string } | null;
+    deliveryOffice?: { name?: string } | null;
+    history?: Array<{ status?: string; date?: string; office?: string }>;
+  }>;
+}
+
+function search(num: string, signal: AbortSignal): Promise<Response> {
+  const form = new FormData();
+  form.set('_1_tracking_number', num); // `$K1` が指すフォームの項目
+  form.set('0', '[null,"$K1"]'); // アクションの引数（前回の状態, フォーム）
+  return fetch(TRACKING_PAGE, {
+    method: 'POST',
+    headers: { 'User-Agent': DEFAULT_USER_AGENT, 'Next-Action': searchActionId },
+    body: form,
+    signal,
+  });
+}
+
+async function refreshActionId(signal: AbortSignal): Promise<void> {
+  const headers = { 'User-Agent': DEFAULT_USER_AGENT };
+  const html = await (await fetch(TRACKING_PAGE, { headers, signal })).text();
+  const scripts = await Promise.all(
+    [...new Set(html.match(/\/k2k\/_next\/static\/chunks\/[\w.-]+\.js/g))].map(
+      async (src) => (await fetch(new URL(src, TRACKING_PAGE), { headers, signal })).text(),
+    ),
+  );
+  const id = /"([0-9a-f]{40,})",[^)]*"searchPackages"\)/.exec(scripts.join('\n'))?.[1];
+  if (!id) throw new Error('佐川急便の searchPackages アクション ID が見つかりません');
+  searchActionId = id;
+}
+
+function parseSearchResult(body: string): SagawaSearchResult | null {
+  const row = body.split('\n').find((line) => line.startsWith('1:'));
+  try {
+    return row ? JSON.parse(row.slice(2)) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const sagawaAdapter: TrackingCarrierAdapter = {
   code: 'sagawa',
   name: '佐川急便',
 
-  trackingUrl(trackingNumber: string): string {
-    const num = cleanTrackingNumber(trackingNumber);
-    return `https://k2k.sagawa-exp.co.jp/p/web/okurijosearch.do?okurijoNo=${encodeURIComponent(num)}`;
+  // 新サイトには番号を渡せる URL が無く（入力フォームだけ）、番号に関わらず同じページになる。
+  trackingUrl(): string {
+    return TRACKING_PAGE;
   },
 
   detect(trackingNumber: string, hints?: TrackingDetectionHints): CarrierDetectionSignal {
@@ -50,104 +102,54 @@ export const sagawaAdapter: TrackingCarrierAdapter = {
 
   async track(trackingNumber: string, context?: TrackingContext): Promise<TrackingResult> {
     const num = cleanTrackingNumber(trackingNumber);
-    const carrier = 'sagawa';
-    const trackingUrl = sagawaAdapter.trackingUrl(num);
+    const base = { carrier: 'sagawa', carrierName: sagawaAdapter.name, trackingNumber: num, trackingUrl: TRACKING_PAGE } as const;
+    const fail = (statusText: string, error: string): TrackingResult =>
+      ({ ...base, status: 'error', statusText, events: [], error });
+    const signal = context?.signal || AbortSignal.timeout(10000);
 
     try {
-      const res = await fetch(`https://k2k.sagawa-exp.co.jp/p/web/okurijosearch.do?okurijoNo=${encodeURIComponent(num)}`, {
-        headers: {
-          'User-Agent': DEFAULT_USER_AGENT,
-        },
-        signal: context?.signal || AbortSignal.timeout(10000),
-      });
-
-      if (!res.ok) {
-        return {
-          carrier,
-          carrierName: sagawaAdapter.name,
-          trackingNumber: num,
-          status: 'error',
-          statusText: `佐川急便サーバーエラー (${res.status})`,
-          events: [],
-          trackingUrl,
-          error: `HTTP ${res.status}: ${res.statusText}`,
-        };
+      let res = await search(num, signal);
+      if (res.status === 409) {
+        await refreshActionId(signal);
+        res = await search(num, signal);
       }
 
-      const html = await res.text();
-      const $ = cheerio.load(html);
+      if (!res.ok) return fail(`佐川急便サーバーエラー (${res.status})`, `HTTP ${res.status}: ${res.statusText}`);
 
-      const stateSpan = $('.table_okurijo_index .state').text().trim();
-      if (stateSpan.includes('該当なし') || html.includes('該当なし')) {
-        return {
-          carrier,
-          carrierName: sagawaAdapter.name,
-          trackingNumber: num,
-          status: 'not_found',
-          statusText: '該当するお荷物が見つかりません',
-          events: [],
-          trackingUrl,
-        };
+      // 想定外の形（停止・保守のページなど）を「該当なし」と取り違えない。読めなければ error にする。
+      const data = parseSearchResult(await res.text());
+      const found = data?.ok ? data.results?.[0] : undefined;
+      if (!found) return fail('佐川急便の応答を解釈できませんでした', data?.message ?? 'Unexpected response format');
+
+      if (found.status?.includes('該当なし')) {
+        return { ...base, status: 'not_found', statusText: '該当するお荷物が見つかりません', events: [] };
       }
 
-      const events: TrackingEvent[] = [];
-      const detailTable = $('.table_okurijo_detail2').last();
-
-      detailTable.find('tr').each((_, tr) => {
-        const tds = $(tr).find('td');
-        if (tds.length >= 2) {
-          const statusText = tds.eq(0).text().trim().replace(/^⇒\s*/, '');
-          const dateText = tds.eq(1).text().trim();
-          const officeText = tds.length >= 3 ? tds.eq(2).text().trim() : '';
-
-          if (statusText || dateText) {
-            events.push({
-              status: statusText,
-              date: dateText,
-              location: officeText || undefined,
-            });
-          }
-        }
-      });
-
-      if (events.length === 0 && !stateSpan) {
-        return {
-          carrier,
-          carrierName: sagawaAdapter.name,
-          trackingNumber: num,
-          status: 'not_found',
-          statusText: '該当する荷物情報が見つかりませんでした',
-          events: [],
-          trackingUrl,
-        };
-      }
-
-      const currentStatusText = stateSpan || (events.length > 0 ? events[events.length - 1].status : '荷物情報取得');
-      const status = determineStatus(currentStatusText);
+      const events: TrackingEvent[] = (found.history ?? []).map((h) => ({
+        status: (h.status ?? '').replace(/^[⇒↓]\s*/, ''),
+        date: h.date,
+        location: h.office || undefined,
+      }));
+      const currentStatusText = found.status || events.at(-1)?.status || '荷物情報取得';
+      // 「配達完了日」「お届け予定日」の行だけを日時として使う（ほかの行の意味は分からない）。
+      const deliveryDate = found.dateLines
+        ?.find((line) => /配達完了|お届け予定|配達予定/.test(line.label ?? ''))
+        ?.value?.replace(/\s+/g, ' ').trim();
 
       return {
-        carrier,
-        carrierName: sagawaAdapter.name,
-        trackingNumber: num,
-        status,
+        ...base,
+        status: determineStatus(currentStatusText),
         statusText: currentStatusText,
         events,
-        trackingUrl,
         details: {
+          origin: found.pickupOffice?.name || undefined,
+          destination: found.deliveryOffice?.name || undefined,
+          deliveryDate: deliveryDate || undefined,
           serviceType: '飛脚宅配便',
         },
       };
     } catch (err) {
-      return {
-        carrier,
-        carrierName: sagawaAdapter.name,
-        trackingNumber: num,
-        status: 'error',
-        statusText: '佐川急便への照会に失敗しました',
-        events: [],
-        trackingUrl,
-        error: errorMessage(err) || String(err),
-      };
+      return fail('佐川急便への照会に失敗しました', errorMessage(err) || String(err));
     }
   },
 

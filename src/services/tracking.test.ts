@@ -36,7 +36,7 @@ describe('Tracking Service Unit Tests', () => {
         'https://jizen.kuronekoyamato.co.jp/jizen/servlet/crjz.b.NQ0010?id=123456789012',
       );
       expect(getCarrierTrackingUrl('sagawa', '1234-5678-9012')).toContain(
-        'https://k2k.sagawa-exp.co.jp/p/web/okurijosearch.do?okurijoNo=123456789012',
+        'https://e-customer.sagawa-exp.co.jp/k2k',
       );
       expect(getCarrierTrackingUrl('japanpost', '1234-5678-9012')).toContain(
         'https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S002&locale=ja&reqCodeNo1=123456789012',
