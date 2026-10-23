@@ -1076,6 +1076,8 @@ export interface TrackingResult {
   statusText: string;
   events: TrackingEvent[];
   trackingUrl: string;
+  /** Sora が発行する荷物ごとの表示ページ（設定したときだけ。services/tracking/page.ts） */
+  pageUrl?: string;
   details?: {
     origin?: string;
     destination?: string;
@@ -2249,6 +2251,7 @@ export const TrackingResultSchema = z.object({
   statusText: z.string().describe('配送ステータスの日本語表示テキスト (例: "配達完了", "配達中", "輸送中")'),
   events: z.array(TrackingEventSchema).describe('荷物の追跡履歴イベント配列 (時系列)'),
   trackingUrl: z.string().describe('各運送会社の公式追跡 Web ページ URL。佐川急便は送り状番号を URL で渡せないため入力ページ (https://e-customer.sagawa-exp.co.jp/k2k) で、開いた後に番号の入力が必要'),
+  pageUrl: z.string().optional().describe('Sora が発行する荷物ごとの表示ページ URL (GET /t/{carrier}/{number})。利用者に案内できる、番号入りの URL。運送会社の公式ページではない。SORA_TRACKING_PAGE_SECRET と SORA_PUBLIC_URL を設定したときだけ付く'),
   details: TrackingDetailsSchema.optional().describe('荷物詳細情報 (発送元、お届け先、配達日、サービス種別等)'),
   postal: z.object({
     network: z.string().optional().describe('国際郵便ネットワーク (例: "upu")'),
@@ -3715,6 +3718,21 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+          },
+        },
+      },
+      '/t/{carrier}/{number}': {
+        get: {
+          summary: '荷物ごとの表示ページ (HTML。照会結果の pageUrl で発行される)',
+          description: '利用者に案内するための HTML ページ。運送会社の公式ページではないことを先頭に表示する。SORA_TRACKING_PAGE_SECRET と SORA_PUBLIC_URL を設定したときだけ有効。認証は不要で、Sora が発行した署名 (sig) が合うときだけ表示し、それ以外は 404',
+          parameters: [
+            { name: 'carrier', in: 'path', required: true, schema: { type: 'string', enum: ['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'] }, description: '運送会社コード' },
+            { name: 'number', in: 'path', required: true, schema: { type: 'string' }, description: '追跡番号・送り状番号' },
+            { name: 'sig', in: 'query', required: true, schema: { type: 'string' }, description: 'Sora が発行した署名 (pageUrl に含まれる)' },
+          ],
+          responses: {
+            '200': { description: '配達状況の HTML ページ', content: { 'text/html': { schema: { type: 'string' } } } },
+            '404': { description: '署名が合わない、または表示ページが無効' },
           },
         },
       },

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { trackPackage, cleanTrackingNumber } from '../services/tracking.js';
+import { isValidTrackingPage, renderTrackingPage } from '../services/tracking/page.js';
 import { TrackingRequestSchema, CARRIER_CODES } from '../types.js';
 import { errorMessage } from '../errors.js';
 
@@ -71,6 +72,20 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
       500,
     );
   }
+});
+
+// GET /t/:carrier/:number?sig=… (荷物ごとの表示ページ。Sora が発行した署名付き URL だけを表示する)
+trackingRoutes.get('/t/:carrier/:number', async (c) => {
+  const carrier = TrackingRequestSchema.shape.carrier.unwrap().safeParse(c.req.param('carrier'));
+  const num = cleanTrackingNumber(c.req.param('number'));
+  if (!carrier.success || carrier.data === 'auto' || !isValidTrackingPage(carrier.data, num, c.req.query('sig'))) {
+    return c.notFound();
+  }
+  const result = await trackPackage({ trackingNumber: num, carrier: carrier.data });
+  // 全体の CSP（default-src 'none'）に、ページ内のスタイルだけを足す。スクリプトは使わない
+  c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+  c.header('Cache-Control', 'no-store');
+  return c.html(renderTrackingPage(result));
 });
 
 // GET /tracking/:number (伝票番号から自動判別)
