@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { YoutubeTranscriptRequestSchema, YoutubeTranscriptResultSchema } from '../types.js';
-import { getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
+import { attachVideoTranscripts, getYoutubeExcerpt, getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
 
 // 字幕・題名・説明文はすべてテスト用の作り物。実在の動画の字幕は使わない。
 let seq = 0;
@@ -432,5 +432,80 @@ describe('getYoutubeTranscript: YouTube refuses or cannot be reached', () => {
     const { calls, deps } = fakeYoutube({});
     await expect(getYoutubeTranscript({ url: 'https://example.com/watch?v=abcdefghijk' }, deps)).rejects.toBeInstanceOf(YoutubeInputError);
     expect(calls).toEqual([]);
+  });
+});
+
+describe('getYoutubeExcerpt: the parts of a video that match a search', () => {
+  const lecture = manualJson3([[0, '挨拶です'], [30_000, '今日は特異値分解の話'], [60_000, '関係ない雑談'], [90_000, '特異値分解の応用と特異値'], [120_000, 'おわり']]);
+  const fake = () => fakeYoutube({ player: player({ tracks: [track('ja')], length: 150 }), captions: { ja: lecture } });
+  const full = '[0:00] 挨拶です\n[0:30] 今日は特異値分解の話\n[1:00] 関係ない雑談\n[1:30] 特異値分解の応用と特異値\n[2:00] おわり';
+
+  test('returns the paragraphs that mention the query, in time order', async () => {
+    const r = await getYoutubeExcerpt({ url: vid(), query: '特異値分解 わかりやすく', maxChars: 2000 }, fake().deps);
+    expect(r.transcript).toMatchObject({ status: 'ok', excerpt: 'relevant', text: '[0:30] 今日は特異値分解の話\n[1:30] 特異値分解の応用と特異値', totalChars: full.length });
+    expect(r.transcript?.chars).toBe(r.transcript?.text?.length);
+    expect(r).toMatchObject({ found: true, title: 'テストの動画', channel: 'テスト投稿者', durationSec: 150 });
+  });
+
+  test('keeps the best-matching paragraphs when maxChars is tight', async () => {
+    const best = '[1:30] 特異値分解の応用と特異値';
+    const r = await getYoutubeExcerpt({ url: vid(), query: '特異値分解', maxChars: best.length + 2 }, fake().deps);
+    expect(r.transcript?.text).toBe(best);
+  });
+
+  test('falls back to the beginning when no paragraph mentions the query', async () => {
+    const head = '[0:00] 挨拶です\n[0:30] 今日は特異値分解の話';
+    const r = await getYoutubeExcerpt({ url: vid(), query: '量子コンピュータ', maxChars: head.length }, fake().deps);
+    expect(r.transcript).toMatchObject({ status: 'ok', excerpt: 'head', text: head });
+  });
+
+  test('passes the reason through when there is no transcript', async () => {
+    const { deps } = fakeYoutube({ player: player() });
+    const r = await getYoutubeExcerpt({ url: vid(), query: '何か', maxChars: 2000 }, deps);
+    expect(r.transcript).toMatchObject({ status: 'none', reason: 'no-captions' });
+    expect(r.transcript?.text).toBeUndefined();
+  });
+});
+
+describe('attachVideoTranscripts: video search results with transcripts', () => {
+  const item = (url: string, platform: string) => ({ title: url, url, platform, source: 'video' as const });
+  const search = () => ({
+    source: 'video' as const,
+    items: [
+      item('https://www.youtube.com/watch?v=aaaaaaaaaaa', 'YouTube'),
+      item('https://x.com/someone/status/1', 'X'),
+      item('https://www.youtube.com/watch?v=bbbbbbbbbbb', 'YouTube'),
+      item('https://www.youtube.com/watch?v=ccccccccccc', 'YouTube'),
+    ],
+  });
+
+  test('adds an excerpt to the first YouTube results only, and leaves the rest as they were', async () => {
+    const asked: Array<{ url: string; query: string; maxChars?: number }> = [];
+    const excerpt = (async (o: { url: string; query: string; maxChars?: number }) => {
+      asked.push(o);
+      return { found: true, videoId: 'x', url: o.url, transcript: { status: 'ok' as const, excerpt: 'relevant' as const, text: `[0:00] ${o.url.slice(-3)}` } };
+    }) as unknown as typeof getYoutubeExcerpt;
+    const r = await attachVideoTranscripts(search(), '検索語', { count: 2, maxChars: 1500 }, { excerpt });
+    expect(asked.map((a) => [a.url.slice(-11), a.query, a.maxChars])).toEqual([['aaaaaaaaaaa', '検索語', 1500], ['bbbbbbbbbbb', '検索語', 1500]]);
+    expect(r.items[0]).toMatchObject({ transcript: { status: 'ok', text: '[0:00] aaa' } });
+    expect(r.items[1]).not.toHaveProperty('transcript');
+    expect(r.items[2]).toMatchObject({ transcript: { text: '[0:00] bbb' } });
+    expect(r.items[3]).not.toHaveProperty('transcript');
+  });
+
+  test('keeps the other videos when one transcript fails, and does nothing for count 0', async () => {
+    const excerpt = (async (o: { url: string }) => {
+      if (o.url.endsWith('bbbbbbbbbbb')) throw new Error('YouTube request failed: fetch failed');
+      return { found: true, videoId: 'x', url: o.url, transcript: { status: 'ok' as const, excerpt: 'head' as const, text: '[0:00] ok' } };
+    }) as unknown as typeof getYoutubeExcerpt;
+    const r = await attachVideoTranscripts(search(), 'q', { count: 3, maxChars: 2000 }, { excerpt });
+    expect(r.items[0]).toMatchObject({ transcript: { status: 'ok' } });
+    expect(r.items[2]).toMatchObject({ transcript: { status: 'unavailable', reason: 'request-failed' } });
+    expect((r.items[2] as { transcript?: { message?: string } }).transcript?.message).toContain('fetch failed');
+    expect(r.items[3]).toMatchObject({ transcript: { status: 'ok' } });
+    let called = false;
+    const untouched = await attachVideoTranscripts(search(), 'q', { count: 0, maxChars: 2000 }, { excerpt: (async () => { called = true; }) as unknown as typeof getYoutubeExcerpt });
+    expect(called).toBe(false);
+    expect(untouched.items.some((i) => 'transcript' in i)).toBe(false);
   });
 });

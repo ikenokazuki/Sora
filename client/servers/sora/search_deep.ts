@@ -64,6 +64,8 @@ export type SearchDeepInput = {
   verbose?: boolean;
   /** 遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる */
   scrapeDeadlineMs?: number;
+  /** 動画の中身が要るとき、上位の YouTube 動画の字幕を何本読むか (デフォルト: 0, 最大: 5) */
+  videos?: number;
   /** 本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限 */
   maxTotalChars?: number;
   /** 返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。 */
@@ -123,8 +125,8 @@ export type SearchDeepOutput = {
     isTruncated?: boolean;
     /** verbose 時の MIME タイプ (例: "text/html", "application/pdf") */
     contentType?: string;
-    /** 本文の取得元 */
-    source?: "web" | "x";
+    /** 本文の取得元 ("youtube" は videos で足した動画。本文は字幕) */
+    source?: "web" | "x" | "youtube";
     /** Stealth Chromium ブラウザで JS 描画されたか */
     renderedWithBrowser?: boolean;
     /** OGP アイキャッチ画像 URL */

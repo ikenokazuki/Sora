@@ -4,7 +4,8 @@ import { formatCompactRealtimeResponse } from '../search_compact.js';
 import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
 import { ChiebukuroStatusSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
-import { registerTool, toolJson } from './registry.js';
+import { attachVideoTranscripts } from '../services/youtube.js';
+import { isModuleActive, registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -46,14 +47,20 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_video',
     'yahoo',
-    '【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader }] }',
+    '【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。transcripts に本数を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, transcript }] }',
     {
       query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
+      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
+      transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
+      transcriptChars: z.number().int().min(500).max(10_000).optional().describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)').meta({ default: 2000 }),
     },
-    async ({ query, limit }) => {
+    async ({ query, limit, transcripts, transcriptChars }) => {
       try {
-        const result = await searchYahooVideo({ query, limit });
+        let result = await searchYahooVideo({ query, limit });
+        // ponytail: youtube モジュールが無効な設定では transcripts を無視する
+        if (transcripts && isModuleActive('youtube', context.options?.modules)) {
+          result = await attachVideoTranscripts(result, query, { count: transcripts, maxChars: transcriptChars ?? 2000 });
+        }
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };

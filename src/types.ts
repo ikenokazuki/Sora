@@ -607,6 +607,8 @@ export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
+  transcriptChars: z.number().int().min(500).max(10_000).optional().describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)').meta({ default: 2000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -734,6 +736,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
+  videos: z.number().int().min(0).max(5).optional().describe('動画の中身が要るとき、上位の YouTube 動画の字幕を何本読むか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
   maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限'),
   responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
@@ -1575,7 +1578,7 @@ export const TrendSearchResponseSchema = z.object({
 });
 
 export const IntegratedSearchItemSchema = ScrapeResponseSchema.omit({ content: true }).extend({
-  source: z.enum(['web', 'x']).optional().describe('本文の取得元'),
+  source: z.enum(['web', 'x', 'youtube']).optional().describe('本文の取得元 ("youtube" は videos で足した動画。本文は字幕)'),
   markdown: z.string().optional().describe('取得本文。evidence モードで省略する場合がある'),
   snippet: z.string().optional().describe('検索エンジン由来の抜粋'),
   domain: z.string().optional().describe('検索先ドメイン'),
@@ -1655,6 +1658,20 @@ export const ImageSearchResponseSchema = z.object({
   items: z.array(ImageSearchItemSchema).describe('画像検索結果一覧'),
 });
 
+/** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_video の transcripts、search_deep の videos）。 */
+export const YoutubeExcerptSchema = z.object({
+  status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
+  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画)'),
+  message: z.string().optional().describe('status が ok 以外のときの説明 (話の中身を推測で補わないよう求める)'),
+  source: z.enum(['manual', 'auto']).optional().describe('字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
+  language: z.string().optional().describe('字幕の言語コード'),
+  note: z.string().optional().describe('自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある)'),
+  excerpt: z.enum(['relevant', 'head']).optional().describe('"relevant"(検索語を含む段落), "head"(検索語を含む段落が無いので先頭から)'),
+  text: z.string().optional().describe('選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube_transcript で読む'),
+  chars: z.number().optional().describe('text の文字数'),
+  totalChars: z.number().optional().describe('動画全体の字幕の文字数'),
+});
+
 export const VideoSearchItemSchema = z.object({
   id: z.string().optional().describe('動画ID'),
   title: z.string().describe('動画タイトル'),
@@ -1666,6 +1683,7 @@ export const VideoSearchItemSchema = z.object({
   uploader: z.string().optional().describe('投稿者'),
   platform: z.string().optional().describe('配信プラットフォーム (例: "YouTube")'),
   source: z.literal('video').describe('ソース ("video")'),
+  transcript: YoutubeExcerptSchema.optional().describe('YouTube の字幕のうち検索語に関係する部分 (transcripts を指定したときの上位の YouTube 動画だけ)'),
 });
 export const VideoSearchResponseSchema = z.object({
   ...YahooEnvelopeShape,
