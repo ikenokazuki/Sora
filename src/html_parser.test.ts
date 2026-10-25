@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { convertHtmlToMarkdown } from './html_parser.js';
+import { convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeUrl } from './html_parser.js';
 
 describe('event details and publication dates', () => {
   const event = {
@@ -239,5 +239,42 @@ describe('multiple events in the markdown callout', () => {
   it('keeps each callout line on one line even when a name contains line breaks', () => {
     const result = convertHtmlToMarkdown(pageWith([{ name: '公演\nDAY1', startDate: '2999-01-01T18:00:00+09:00' }]), 'https://example.com/schedule', 30000);
     expect(calloutLines(result.markdown)[0]).toContain('公演 DAY1');
+  });
+});
+
+describe('parseYouTubeUrl', () => {
+  it('reads the video id and the start time from the URL forms YouTube shares', () => {
+    expect(parseYouTubeUrl('https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s')).toEqual({ videoId: '5Jq35KcE8vI', startSec: 367 });
+    expect(parseYouTubeUrl('https://youtu.be/5Jq35KcE8vI?si=abc&t=6m7s')).toEqual({ videoId: '5Jq35KcE8vI', startSec: 367 });
+    expect(parseYouTubeUrl('https://m.youtube.com/live/Ab-_0123456?t=1h2m3s')).toEqual({ videoId: 'Ab-_0123456', startSec: 3723 });
+    expect(parseYouTubeUrl('https://www.youtube-nocookie.com/embed/Ab-_0123456?start=90')).toEqual({ videoId: 'Ab-_0123456', startSec: 90 });
+    expect(parseYouTubeUrl('https://www.youtube.com/shorts/Ab-_0123456')).toEqual({ videoId: 'Ab-_0123456' });
+    expect(parseYouTubeUrl('https://music.youtube.com/watch?v=Ab-_0123456&list=PL1')).toEqual({ videoId: 'Ab-_0123456' });
+    expect(parseYouTubeUrl('www.youtube.com/watch?v=Ab-_0123456&t=0')).toEqual({ videoId: 'Ab-_0123456' });
+    expect(parseYouTubeUrl(' Ab-_0123456 ')).toEqual({ videoId: 'Ab-_0123456' });
+  });
+
+  it('rejects other hosts, malformed ids and pages that are not a video', () => {
+    for (const input of [
+      'https://notyoutube.com/watch?v=Ab-_0123456',
+      'https://www.youtube.com/watch?v=short',
+      'https://www.youtube.com/channel/UCabcdefghij',
+      'https://example.com/Ab-_0123456',
+      'Ab-_012345',
+      '',
+    ]) {
+      expect(parseYouTubeUrl(input)).toBeUndefined();
+    }
+  });
+});
+
+describe('parseTimestampChapters', () => {
+  it('reads chapter lines in time order and skips repeated times and overlong titles', () => {
+    const text = `概要です\n0:00 はじめに\n1:02:03 まとめ\n 2:30 本題\n2:30 同じ時刻\n10:15 ${'あ'.repeat(81)}`;
+    expect(parseTimestampChapters(text)).toEqual([
+      { title: 'はじめに', time: '0:00', seconds: 0 },
+      { title: '本題', time: '2:30', seconds: 150 },
+      { title: 'まとめ', time: '1:02:03', seconds: 3723 },
+    ]);
   });
 });
