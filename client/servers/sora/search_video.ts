@@ -8,6 +8,10 @@ export type SearchVideoInput = {
   limit?: number;
   /** ページ番号 (1-based, 上限: 100) */
   page?: number;
+  /** 上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5) */
+  transcripts?: number;
+  /** 字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000) */
+  transcriptChars?: number;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
 };
@@ -49,10 +53,33 @@ export type SearchVideoOutput = {
     platform?: string;
     /** ソース ("video") */
     source: "video";
+    /** YouTube の字幕のうち検索語に関係する部分 (transcripts を指定したときの上位の YouTube 動画だけ) */
+    transcript?: {
+      /** "ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行) */
+      status: "ok" | "none" | "unavailable";
+      /** status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画) */
+      reason?: "no-captions" | "live-now" | "language-mismatch" | "blocked" | "request-failed" | "video-unavailable";
+      /** status が ok 以外のときの説明 (話の中身を推測で補わないよう求める) */
+      message?: string;
+      /** 字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕) */
+      source?: "manual" | "auto";
+      /** 字幕の言語コード */
+      language?: string;
+      /** 自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある) */
+      note?: string;
+      /** "relevant"(検索語を含む段落), "head"(検索語を含む段落が無いので先頭から) */
+      excerpt?: "relevant" | "head";
+      /** 選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube_transcript で読む */
+      text?: string;
+      /** text の文字数 */
+      chars?: number;
+      /** 動画全体の字幕の文字数 */
+      totalChars?: number;
+    };
   }[];
 };
 
-/** 【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader }] } */
+/** 【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。transcripts に本数を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, transcript }] } */
 export function searchVideo(input: SearchVideoInput): Promise<SearchVideoOutput> {
   return callSora<SearchVideoOutput>({ method: 'POST', path: '/search/video' }, input);
 }
