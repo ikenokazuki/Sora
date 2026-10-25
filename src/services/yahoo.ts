@@ -28,6 +28,7 @@ import {
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
 import { errorMessage } from '../errors.js';
+import { splitQueryUrls } from '../html_parser.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -2256,6 +2257,13 @@ export async function searchYahooVideo(options: {
   limit?: number;
   page?: number;
 }): Promise<any> {
+  // URL を検索語にすると関係ない動画が返るので、検索せずに読み方を返す
+  if (splitQueryUrls(options.query).urls.length > 0) {
+    return {
+      source: 'video', query: options.query, count: 0, items: [],
+      message: '検索語が URL です。URL の動画は、YouTube なら get_youtube_transcript、ほかは scrape で読んでください。',
+    };
+  }
   const mcpRes = await callYahooMcp('yahoo_video_search', {
     query: options.query,
     ...(options.limit ? { limit: options.limit } : {}),

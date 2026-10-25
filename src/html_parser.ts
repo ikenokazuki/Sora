@@ -544,6 +544,22 @@ export function parseYouTubeUrl(input: string): { videoId: string; startSec?: nu
   return startSec ? { videoId, startSec } : { videoId };
 }
 
+// 全角の括弧・句読点で止める（「（URL）と」）。日本語の入った URL（/wiki/君と見るそら）は切らない。
+// ponytail: 空白なしで日本語の語が続く URL（「URLを要約」）は語まで URL に入る。呼び出し側の AI はふつう空白で区切る
+const QUERY_URL = /https?:\/\/[^\s<>"'`、。，．「」『』（）【】〔〕！？]+/gi;
+
+/** URL の後ろに続いた句読点・括弧を外す。`)` は、URL の中の `(` と対になっていないときだけ外す（`/wiki/Foo_(bar)`）。 */
+function trimQueryUrl(url: string): string {
+  const trimmed = url.replace(/[.,;:!?'"\]}>]+$/, '');
+  return trimmed.endsWith(')') && trimmed.split(')').length > trimmed.split('(').length ? trimQueryUrl(trimmed.slice(0, -1)) : trimmed;
+}
+
+/** 検索語の中の http(s) の URL（重複を除き、出てきた順）と、URL を除いた残りの語。 */
+export function splitQueryUrls(query: string): { urls: string[]; text: string } {
+  const urls = [...new Set((query.match(QUERY_URL) ?? []).map(trimQueryUrl))];
+  return { urls, text: query.replace(QUERY_URL, ' ').replace(/\s+/g, ' ').trim() };
+}
+
 /**
  * 時刻で始まる行（`0:00 はじめに`・`1:02:03 | まとめ`）をチャプターとして時刻順に読む。同じ時刻は最初の行だけ、題名は 2〜80 文字。
  * 行頭の字下げ・記号（`　∟0:33:27`・`- 1:02:54`・`• 1:05:17`）と、時刻の後の区切り（`|`・`-`・`：`）は読み飛ばす。

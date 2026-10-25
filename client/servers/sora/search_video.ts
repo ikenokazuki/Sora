@@ -77,6 +77,8 @@ export type SearchVideoOutput = {
       totalChars?: number;
     };
   }[];
+  /** 検索しなかった理由と代わりの読み方 (検索語が URL のとき) */
+  message?: string;
 };
 
 /** 【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。transcripts に本数を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, transcript }] } */
