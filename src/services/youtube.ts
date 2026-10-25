@@ -5,7 +5,8 @@ import { errorMessage } from '../errors.js';
 import { parseTimestampChapters, parseYouTubeUrl } from '../html_parser.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
-import { DEFAULT_MAX_CHARS, type YoutubeTranscriptResultSchema } from '../types.js';
+import { bm25BodyScore, extractTermsWithBigrams } from '../extractor/hierarchical_bm25.js';
+import { DEFAULT_MAX_CHARS, type MediaInfo, type YoutubeExcerptSchema, type YoutubeTranscriptResultSchema } from '../types.js';
 
 /**
  * YouTube の動画の題名・説明文・チャプターと、時刻つきの字幕（モジュール 'youtube'）。
@@ -15,6 +16,7 @@ import { DEFAULT_MAX_CHARS, type YoutubeTranscriptResultSchema } from '../types.
  */
 
 export type YoutubeTranscriptResult = z.infer<typeof YoutubeTranscriptResultSchema>;
+export type YoutubeExcerpt = z.infer<typeof YoutubeExcerptSchema>;
 type Transcript = NonNullable<YoutubeTranscriptResult['transcript']>;
 type TrackInfo = NonNullable<YoutubeTranscriptResult['availableTracks']>[number];
 
@@ -336,7 +338,8 @@ function sliceParagraphs(paragraphs: Paragraph[], fromSec: number, maxChars: num
   };
 }
 
-export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, deps: YoutubeDeps = {}): Promise<YoutubeTranscriptResult> {
+/** 動画の記録を、キャッシュか YouTube から読む。範囲や長さの切り出しはしない（字幕の全文と検索結果の抜粋で共有する）。 */
+async function loadRecord(options: Pick<YoutubeTranscriptOptions, 'url' | 'lang' | 'noCache'>, deps: YoutubeDeps): Promise<{ record: VideoRecord; startSec?: number }> {
   const parsed = parseYouTubeUrl(options.url);
   if (!parsed) throw new YoutubeInputError('url must be a YouTube video URL or an 11-character video ID');
   const lang = options.lang?.trim().toLowerCase() || 'ja';
@@ -348,9 +351,13 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
     if (!options.noCache && looked.ttlMs > 0) setToCache(key, looked.record, looked.ttlMs);
     record = looked.record;
   }
+  return { record, startSec: parsed.startSec };
+}
 
+export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, deps: YoutubeDeps = {}): Promise<YoutubeTranscriptResult> {
+  const { record, startSec } = await loadRecord(options, deps);
   const { transcript, ...rest } = record;
-  const result: YoutubeTranscriptResult = { ...rest, ...(parsed.startSec ? { requestedStartSec: parsed.startSec } : {}) };
+  const result: YoutubeTranscriptResult = { ...rest, ...(startSec ? { requestedStartSec: startSec } : {}) };
   if (transcript) {
     const { paragraphs, ...meta } = transcript;
     result.transcript = paragraphs
@@ -358,4 +365,136 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
       : meta;
   }
   return result;
+}
+
+/**
+ * 検索語を含む段落を、点数の高い順に maxChars まで選び、時刻順に並べる（BM25。日本語は語と 2 語のつながりで数える）。
+ * どの段落にも検索語が無ければ、先頭から返す。最初に選ぶ段落は maxChars を超えても丸ごと返す。
+ */
+function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxChars: number): Pick<YoutubeExcerpt, 'excerpt' | 'text' | 'chars' | 'totalChars'> {
+  const lines = paragraphs.map((p) => `[${clock(p.startSec)}] ${p.text}`);
+  const blocks = paragraphs.map((p) => ({ headingPath: [], nearestHeading: '', depth: 0, body: p.text }));
+  const terms = extractTermsWithBigrams(query);
+  const scores = blocks.map((b) => bm25BodyScore(b, terms, blocks));
+  const relevant = scores.some((score) => score > 0);
+  const order = relevant
+    ? scores.map((score, i) => ({ score, i })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.i)
+    : lines.map((_, i) => i);
+  const chosen: number[] = [];
+  let used = 0;
+  for (const i of order) {
+    const cost = lines[i].length + (chosen.length > 0 ? 1 : 0);
+    if (chosen.length > 0 && used + cost > maxChars) {
+      if (relevant) continue; // 点数順では、長い段落を飛ばして短い次点を入れる
+      break;
+    }
+    chosen.push(i);
+    used += cost;
+  }
+  const text = chosen.sort((a, b) => a - b).map((i) => lines[i]).join('\n');
+  return { excerpt: relevant ? 'relevant' : 'head', text, chars: text.length, totalChars: lines.join('\n').length };
+}
+
+export interface YoutubeExcerptOptions { url: string; query: string; maxChars?: number; lang?: string; noCache?: boolean }
+export type YoutubeExcerptResult = Omit<YoutubeTranscriptResult, 'transcript' | 'description' | 'chapters' | 'requestedStartSec' | 'availableTracks'> & { transcript: YoutubeExcerpt };
+
+/** 動画の字幕のうち、検索語に関係する部分だけを返す（search_video の transcripts、search_deep の videos）。全文は getYoutubeTranscript。 */
+export async function getYoutubeExcerpt(options: YoutubeExcerptOptions, deps: YoutubeDeps = {}): Promise<YoutubeExcerptResult> {
+  const { record } = await loadRecord(options, deps);
+  const { transcript, description: _description, chapters: _chapters, availableTracks: _tracks, ...meta } = record;
+  if (!record.found || !transcript) {
+    return { ...meta, transcript: { status: 'unavailable', reason: 'video-unavailable', message: record.message ?? '再生できない動画です' } };
+  }
+  const { paragraphs, ...status } = transcript;
+  if (!paragraphs) return { ...meta, transcript: status };
+  return { ...meta, transcript: { ...status, ...selectRelevantParagraphs(paragraphs, options.query, options.maxChars ?? 2000) } };
+}
+
+/**
+ * 動画検索の結果のうち、先頭から count 本の YouTube 動画に、検索語に関係する字幕の部分を付ける。YouTube 以外の結果はそのまま。
+ * 1 本が失敗しても、ほかの動画と検索結果は返す。
+ */
+export async function attachVideoTranscripts<T extends { items?: Array<{ url?: string }> }>(
+  result: T,
+  query: string,
+  options: { count: number; maxChars: number },
+  deps: { excerpt?: typeof getYoutubeExcerpt } = {},
+): Promise<T> {
+  const items = Array.isArray(result.items) ? result.items : [];
+  const targets = items.filter((item) => item.url && parseYouTubeUrl(item.url)).slice(0, Math.max(0, options.count));
+  if (targets.length === 0) return result;
+  const excerpt = deps.excerpt ?? getYoutubeExcerpt;
+  const attached = new Map(await Promise.all(targets.map(async (item) => {
+    try {
+      return [item, (await excerpt({ url: item.url as string, query, maxChars: options.maxChars })).transcript] as const;
+    } catch (err) {
+      const message = errorMessage(err) || String(err);
+      return [item, { status: 'unavailable', reason: /bot check|login required/i.test(message) ? 'blocked' : 'request-failed', message } as YoutubeExcerpt] as const;
+    }
+  })));
+  return { ...result, items: items.map((item) => (attached.has(item) ? { ...item, transcript: attached.get(item) } : item)) };
+}
+
+/** 字幕の見出しの時刻。YouTube の t= と同じ書き方（`1m23s`・`1h02m03s`）。 */
+const tLabel = (sec: number) => {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = String(sec % 60).padStart(2, '0');
+  return h > 0 ? `${h}h${String(m).padStart(2, '0')}m${s}s` : `${m}m${s}s`;
+};
+
+export interface YoutubePage {
+  title: string;
+  content: string;
+  description?: string;
+  publishedTime?: string;
+  author?: string;
+  contentStatus: 'body' | 'metadata_only' | 'unavailable';
+  media?: MediaInfo;
+}
+
+/**
+ * scrape 用に、動画を Markdown の本文にする（動画のページは、おすすめ動画の一覧しか読めない）。
+ * 字幕の段落は `### 1m23s` の見出しで分け、段落の選び方（rho-select）がそれぞれを候補にできるようにする。
+ * `[1:23]` のような時刻の書き方は、「何時」の答えを探す採点（answerability）に時刻と誤認されるので使わない。
+ * YouTube に拒否されても投げずに unavailable のページを返す（scrape の再試行で問い合わせを重ねない）。
+ */
+export async function getYoutubePage(url: string, options: { noCache?: boolean } = {}, deps: YoutubeDeps = {}): Promise<YoutubePage> {
+  let record: VideoRecord;
+  try {
+    ({ record } = await loadRecord({ url, noCache: options.noCache }, deps));
+  } catch (err) {
+    return { title: 'YouTube', content: `# YouTube の動画\n\n${url}\n\nYouTube から動画の情報を取得できませんでした（${errorMessage(err) || err}）。時間をおいて再試行してください。`, contentStatus: 'unavailable' };
+  }
+  if (!record.found) {
+    return { title: 'YouTube', content: `# YouTube の動画\n\n${record.url}\n\n${record.message ?? '再生できない動画です'}`, contentStatus: 'unavailable' };
+  }
+
+  const t = record.transcript;
+  const title = record.title || 'YouTube の動画';
+  const meta = [
+    record.channel ? `- チャンネル: ${record.channel}` : '',
+    record.publishedAt ? `- 公開日: ${record.publishedAt}` : '',
+    record.durationSec ? `- 長さ: ${record.durationSec} 秒` : '',
+    `- URL: ${record.url}`,
+  ].filter(Boolean).join('\n');
+  const transcript = t?.status === 'ok' && t.paragraphs
+    ? `## 字幕（${t.source === 'auto' ? 'YouTube の自動字幕。聞き間違いを含む' : '手動の字幕'}）\n\n${t.paragraphs.map((p) => `### ${tLabel(p.startSec)}\n\n${p.text}`).join('\n\n')}`
+    : `## 字幕\n\n${t?.message ?? 'この動画には字幕（自動字幕を含む）がありません。'}`;
+  const content = [`# ${title}`, meta, record.description ? `## 説明文\n\n${record.description}` : '', transcript].filter(Boolean).join('\n\n');
+  return {
+    title,
+    content,
+    description: record.description ? record.description.slice(0, 200) : undefined,
+    publishedTime: record.publishedAt,
+    author: record.channel,
+    contentStatus: t?.status === 'ok' ? 'body' : t?.status === 'unavailable' ? 'unavailable' : 'metadata_only',
+    media: {
+      type: 'youtube',
+      videoId: record.videoId,
+      thumbnail: `https://img.youtube.com/vi/${record.videoId}/maxresdefault.jpg`,
+      ...(record.durationSec ? { duration: `PT${record.durationSec}S` } : {}),
+      ...(record.chapters ? { chapters: record.chapters } : {}),
+    },
+  };
 }

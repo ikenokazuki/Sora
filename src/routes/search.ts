@@ -37,6 +37,8 @@ import { formatError } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
+import { isModuleActive } from '../mcp/registry.js';
+import { attachVideoTranscripts } from '../services/youtube.js';
 
 export const searchRoutes = new Hono();
 
@@ -187,7 +189,7 @@ searchRoutes.post('/search/web', async (c) => {
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
-const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true });
+const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true, videos: true });
 const handleIntegratedSearch = async (c: Context) => {
   try {
     const body = await c.req.json();
@@ -331,14 +333,18 @@ searchRoutes.post('/search/video', async (c) => {
     const parsed = VideoSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     const { query, limit, page, noCache } = parsed.data;
+    // ponytail: youtube モジュールが無効な設定では transcripts を無視する
+    const transcripts = isModuleActive('youtube') ? parsed.data.transcripts ?? 0 : 0;
+    const transcriptChars = parsed.data.transcriptChars ?? 2000;
 
-    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}`;
+    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}${transcripts ? `:t${transcripts}x${transcriptChars}` : ''}`;
     if (!noCache) {
       const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    const result = await searchYahooVideo({ query, limit, page });
+    let result = await searchYahooVideo({ query, limit, page });
+    if (transcripts) result = await attachVideoTranscripts(result, query, { count: transcripts, maxChars: transcriptChars });
     if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
   } catch (err) {
