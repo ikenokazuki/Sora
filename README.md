@@ -628,7 +628,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - 字幕は Android アプリと同じ YouTube の内部 API（innertube）から取ります。公開 API ではないため、YouTube の変更で止まることがあります。bot の確認を回避する処理（PO トークンの生成・Cookie）は持ちません。
 - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ YouTube に問い合わせ、結果を 30 分（字幕なしは 60 秒）キャッシュします。
-- ほかのツールからも使われます。`scrape`（`scrape_batch`・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分けます）。`search_video` の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。
+- ほかのツールからも使われます。`scrape`（`scrape_batch`・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_video` の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
