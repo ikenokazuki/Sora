@@ -1080,7 +1080,9 @@ export interface TrackingResult {
   pageUrl?: string;
   details?: {
     origin?: string;
+    originPhone?: string;
     destination?: string;
+    destinationPhone?: string;
     deliveryDate?: string;
     serviceType?: string;
     retrieval?: string;
@@ -2238,7 +2240,9 @@ export const TrackingEventSchema = z.object({
 
 export const TrackingDetailsSchema = z.object({
   origin: z.string().optional().describe('発送元地域・引受（集荷）営業所 (例: "渋谷営業所")'),
+  originPhone: z.string().optional().describe('origin の営業所の電話番号。運送会社が公開しているときだけ。形式は運送会社の表記のまま (例: "0570-01-0213")'),
   destination: z.string().optional().describe('配達先地域・配達担当営業所 (例: "那覇営業所")'),
+  destinationPhone: z.string().optional().describe('destination の営業所の電話番号。運送会社が公開しているときだけ。形式は運送会社の表記のまま (例: "0570-01-0551")'),
   deliveryDate: z.string().optional().describe('お届け予定日時または配達完了日時。形式は運送会社の表記のまま (例: "2026-10-23T18:00:00+09:00", "10月23日 18時00分")'),
   serviceType: z.string().optional().describe('配送サービス種別 (例: "宅急便", "飛脚宅配便", "ゆうパック/ゆうパケット/EMS/国際郵便", "カンガルー便")'),
 });

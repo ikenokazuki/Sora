@@ -86,6 +86,12 @@ describe('Tracking Service Unit Tests', () => {
       expect(determineStatus('入力されたお問合せ番号が見当りません')).toBe('not_found');
       expect(determineStatus('お問い合わせ番号が見つかりません')).toBe('not_found');
     });
+
+    it('不在は再配達待ちなので in_transit にする。不在を含んでも、返送など既存の判定は変えない', () => {
+      expect(determineStatus('ご不在')).toBe('in_transit');
+      expect(determineStatus('不在持ち戻り')).toBe('in_transit');
+      expect(determineStatus('ご不在のため差出人に返送')).toBe('returned');
+    });
   });
 
   describe('detectCandidates', () => {

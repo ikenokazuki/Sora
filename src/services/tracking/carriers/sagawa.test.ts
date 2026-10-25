@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { trackByCarrier } from '../index.js';
+import { trackByCarrier, trackPackageAuto } from '../index.js';
+import { getCarrierAdapter } from '../registry.js';
 
 const PAGE = 'https://e-customer.sagawa-exp.co.jp/k2k';
 
@@ -43,7 +44,7 @@ describe('Sagawa tracking response handling', () => {
     ], {
       dateLines: [{ label: '配達完了日　　：', value: '10月23日　18時00分' }],
       pickupOffice: { name: '渋谷営業所', tel: '0570-00-0000', fax: '03-0000-0000' },
-      deliveryOffice: { name: '那覇営業所', tel: '0570-00-0000', fax: '098-000-0000' },
+      deliveryOffice: { name: '那覇営業所', tel: '0570-00-0001', fax: '098-000-0000' },
     })));
 
     const result = await trackByCarrier('sagawa', '1234-5678-9012');
@@ -66,7 +67,9 @@ describe('Sagawa tracking response handling', () => {
     ]);
     expect(result.details).toEqual({
       origin: '渋谷営業所',
+      originPhone: '0570-00-0000',
       destination: '那覇営業所',
+      destinationPhone: '0570-00-0001',
       deliveryDate: '10月23日 18時00分',
       serviceType: '飛脚宅配便',
     });
@@ -129,6 +132,59 @@ describe('Sagawa tracking response handling', () => {
     expect(result.error).toBe('Connection refused');
     expect(result.events).toEqual([]);
     expect(result.verification?.level).toBe('none');
+  });
+
+  test('an absent-recipient status is in transit, not unknown, and verifies the parcel', async () => {
+    fetchSpy.mockResolvedValue(flight(shipment('ご不在', [
+      { status: '↓集荷', date: '10/23 16:07', office: '渋谷営業所' },
+      { status: '⇒ご不在', date: '10/25 11:30', office: '札幌東営業所' },
+    ])));
+
+    const result = await trackByCarrier('sagawa', '123456789012');
+    expect(result.status).toBe('in_transit');
+    expect(result.statusText).toBe('ご不在');
+    expect(result.verification?.level).toBe('strong');
+  });
+
+  test('a status word we cannot classify still verifies the parcel as Sagawa when it has a history', async () => {
+    fetchSpy.mockResolvedValue(flight(shipment('未知の状態', [
+      { status: '⇒未知の状態', date: '10/25 11:30', office: '札幌東営業所' },
+    ])));
+
+    const result = await trackByCarrier('sagawa', '123456789012');
+    expect(result.status).toBe('unknown');
+    expect(result.verification?.level).toBe('strong');
+
+    // 履歴が無い結果や、要求と違う番号の結果は、根拠にならない
+    const adapter = getCarrierAdapter('sagawa')!;
+    expect(adapter.verify({ ...result, events: [] }, '123456789012').level).toBe('none');
+    expect(adapter.verify(result, '999999999999').level).toBe('none');
+  });
+
+  test('auto-detection picks Sagawa for a parcel whose latest status is absent-recipient, not the Yamato candidate ranked first', async () => {
+    // 自動判別は複数の社に問い合わせるので、呼ばれるたびに新しい Response を返す（本文は 1 度しか読めない）
+    fetchSpy.mockImplementation((async (_input: RequestInfo | URL) => flight(shipment('ご不在', [
+      { status: '↓集荷', date: '10/23 16:07', office: '渋谷営業所' },
+      { status: '⇒ご不在', date: '10/25 11:30', office: '札幌東営業所' },
+    ]))) as typeof fetch);
+    // 12 桁はヤマトと佐川が同点で、ヤマトが先に並ぶ。ヤマトは該当なしを返す
+    const yamato = spyOn(getCarrierAdapter('yamato')!, 'track').mockImplementation(async (num: string) => ({
+      carrier: 'yamato',
+      carrierName: 'ヤマト運輸',
+      trackingNumber: num,
+      status: 'not_found',
+      statusText: '伝票番号誤り',
+      events: [],
+      trackingUrl: 'https://jizen.kuronekoyamato.co.jp/',
+    }));
+    try {
+      const result = await trackPackageAuto('123456789012', { noCache: true });
+      expect(result.carrier).toBe('sagawa');
+      expect(result.status).toBe('in_transit');
+      expect(result.resolvedCarrier?.method).toBe('network_verified');
+    } finally {
+      yamato.mockRestore();
+    }
   });
 
   // 取り直した ID はモジュールに残るので、ID に触れるこのテストは最後に置く。
