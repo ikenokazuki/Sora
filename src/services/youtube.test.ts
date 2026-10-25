@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { YoutubeTranscriptResultSchema } from '../types.js';
+import { YoutubeTranscriptRequestSchema, YoutubeTranscriptResultSchema } from '../types.js';
 import { getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
 
 // 字幕・題名・説明文はすべてテスト用の作り物。実在の動画の字幕は使わない。
@@ -250,9 +250,9 @@ describe('getYoutubeTranscript: range and length', () => {
   const paragraphs = manualJson3([[0, '最初の段落'], [30_000, '二つ目の段落'], [60_000, '三つ目の段落'], [90_000, '四つ目の段落']]);
   const fake = () => fakeYoutube({ player: player({ tracks: [track('ja')], length: 120 }), captions: { ja: paragraphs } });
 
-  test('returns the paragraphs that overlap the requested range', async () => {
-    const r = await getYoutubeTranscript({ url: vid(), fromSec: 35, toSec: 70 }, fake().deps);
-    expect(r.transcript).toMatchObject({ text: '[0:30] 二つ目の段落\n[1:00] 三つ目の段落', fromSec: 30, toSec: 90, truncated: false });
+  test('returns the paragraphs from the one that contains fromSec', async () => {
+    const r = await getYoutubeTranscript({ url: vid(), fromSec: 35 }, fake().deps);
+    expect(r.transcript).toMatchObject({ text: '[0:30] 二つ目の段落\n[1:00] 三つ目の段落\n[1:30] 四つ目の段落', fromSec: 30, toSec: 120, truncated: false });
     expect(r.transcript?.nextFromSec).toBeUndefined();
   });
 
@@ -268,11 +268,21 @@ describe('getYoutubeTranscript: range and length', () => {
     expect(r.transcript).toMatchObject({ text: '[0:00] 最初の段落', truncated: true, nextFromSec: 30 });
   });
 
-  test('returns an empty text with finite numbers when fromSec is past the end', async () => {
+  test('returns an empty text with finite numbers and says why when fromSec is past the end', async () => {
     const r = await getYoutubeTranscript({ url: vid(), fromSec: 500 }, fake().deps);
     expect(r.transcript).toMatchObject({ text: '', chars: 0, truncated: false });
     expect(r.transcript?.toSec).toBeUndefined();
+    expect(r.transcript?.message).toContain('fromSec');
     expect(YoutubeTranscriptResultSchema.safeParse(JSON.parse(JSON.stringify(r))).success).toBe(true);
+  });
+
+  test('has no toSec input, so a client that fills optional arguments with their minimum still gets the whole text', async () => {
+    // 本番で、呼び出し側が toSec: 1 を付けてきて、冒頭が待機画面（字幕は 0:43 から）の動画の本文が空になった
+    const late = fakeYoutube({ player: player({ tracks: [track('ja')], length: 120 }), captions: { ja: manualJson3([[43_000, '待機画面のあと'], [80_000, '本題']]) } });
+    const r = await getYoutubeTranscript({ url: vid(), fromSec: 0, toSec: 1 } as Parameters<typeof getYoutubeTranscript>[0], late.deps);
+    expect(r.transcript).toMatchObject({ status: 'ok', fromSec: 43, text: '[0:43] 待機画面のあと\n[1:20] 本題', truncated: false });
+    expect(YoutubeTranscriptRequestSchema.shape).not.toHaveProperty('toSec');
+    expect(YoutubeTranscriptRequestSchema.parse({ url: 'abcdefghijk', toSec: 1 })).toEqual({ url: 'abcdefghijk' });
   });
 
   test('serves a later range from the cache without asking YouTube again', async () => {

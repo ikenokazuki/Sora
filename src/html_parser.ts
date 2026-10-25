@@ -544,11 +544,16 @@ export function parseYouTubeUrl(input: string): { videoId: string; startSec?: nu
   return startSec ? { videoId, startSec } : { videoId };
 }
 
-/** 時刻で始まる行（`0:00 はじめに`・`1:02:03 まとめ`）をチャプターとして時刻順に読む。同じ時刻は最初の行だけ、題名は 2〜80 文字。 */
+/**
+ * 時刻で始まる行（`0:00 はじめに`・`1:02:03 | まとめ`）をチャプターとして時刻順に読む。同じ時刻は最初の行だけ、題名は 2〜80 文字。
+ * 行頭の字下げ・記号（`　∟0:33:27`・`- 1:02:54`・`• 1:05:17`）と、時刻の後の区切り（`|`・`-`・`：`）は読み飛ばす。
+ */
+const CHAPTER_LINE = /(?:^|\n)[ \t\u3000]*(?:[∟└├┗┣・•*>＞▶►■□◆◇○●-]+[ \t\u3000]*)?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[ \t\u3000]*[|｜:：・–—-][ \t\u3000]*|[ \t\u3000]+)([^\r\n]+)/g;
+
 export function parseTimestampChapters(text: string): Array<{ title: string; time: string; seconds: number }> {
   const chapters: Array<{ title: string; time: string; seconds: number }> = [];
   const seenTimes = new Set<string>();
-  for (const match of text.matchAll(/(?:^|\n)[ \t]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[ \t]+([^\r\n]+)/g)) {
+  for (const match of text.matchAll(CHAPTER_LINE)) {
     const hours = match[1] ? parseInt(match[1], 10) : 0;
     const mins = parseInt(match[2], 10);
     const secs = parseInt(match[3], 10);

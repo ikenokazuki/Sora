@@ -2020,7 +2020,6 @@ export const YoutubeTranscriptRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('YouTube の動画 URL (watch・youtu.be・shorts・live・embed) か 11 文字の動画 ID。URL の t= は requestedStartSec として返す'),
   lang: z.string().optional().describe('字幕の言語 (デフォルト: "ja")。この言語の手動字幕、自動字幕の順に選び、無ければ他の言語').meta({ default: 'ja' }),
   fromSec: z.number().int().min(0).max(86_400).optional().describe('この秒から返す (デフォルト: 0。続きは nextFromSec を渡す)').meta({ default: 0 }),
-  toSec: z.number().int().min(1).max(86_400).optional().describe('この秒まで返す (省略時は最後まで)'),
   maxChars: z.number().int().min(1).max(50_000).optional().describe(`返す字幕の最大文字数 (デフォルト: ${DEFAULT_MAX_CHARS})`).meta({ default: DEFAULT_MAX_CHARS }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -2034,7 +2033,7 @@ const YoutubeTrackSchema = z.object({
 export const YoutubeTranscriptSchema = z.object({
   status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
   reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed']).optional().describe('status が ok 以外の理由: "no-captions"(自動字幕を含め字幕が無い), "live-now"(配信中), "language-mismatch"(自動字幕が題名と別の言語しか無い), "blocked"(YouTube が拒否、または空の応答), "request-failed"(通信の失敗)'),
-  message: z.string().optional().describe('status が ok 以外のときの説明。話の中身を推測で補わないよう求める'),
+  message: z.string().optional().describe('status が ok 以外のとき、または fromSec より後に字幕が無いときの説明 (話の中身を推測で補わないよう求める)'),
   source: z.enum(['manual', 'auto']).optional().describe('字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
   language: z.string().optional().describe('字幕の言語コード'),
   note: z.string().optional().describe('自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある)'),
