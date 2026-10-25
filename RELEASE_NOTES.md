@@ -1,3 +1,13 @@
+# Sora v2.46.0 — YouTube の動画の字幕・説明文・チャプターを返すようにした
+
+- **YouTube の動画の中身を、Gemini 以外の AI でも要約・抽出できるようにしました。** 新しいツール `get_youtube_transcript`（REST: `POST /youtube/transcript`）に動画の URL か動画 ID を渡すと、題名・投稿者・公開日・長さ・説明文・チャプターと、約 30 秒ごとの段落の先頭に `[m:ss]` を付けた字幕を返します。要約は呼び出し側の AI が書きます（Sora は LLM を呼びません）。
+  - 手動の字幕を優先し、無ければ YouTube の自動字幕を返します。自動字幕は `transcript.source: "auto"` と `note` で示します（音声認識なので、聞き間違いを含み、固有名詞や句読点が正しくないことがあります）。言語は `lang`（既定 `ja`）、元の音声の言語、英語の順に選びます。
+  - 字幕が無い動画は、`transcript.status: "none"` と理由（`no-captions` 字幕なし、`live-now` 配信中、`language-mismatch` 題名と言語の合わない自動字幕だけ）を返し、話の中身を推測しないよう求めます。YouTube が取得を拒否したとき・通信に失敗したときは `unavailable` で、キャッシュしません。音声認識はしません。
+  - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
+  - モジュール `youtube` は既定で有効です（`ENABLED_MODULES=all` に含まれます）。MCP では `search_tools` で有効化する遅延ツールです。呼ばれたときだけ YouTube に問い合わせ、起動時の処理・常駐タイマー・事前取得はありません。
+  - 字幕は YouTube の公開 API ではない経路（Android アプリと同じ innertube）から取ります。YouTube の変更で止まることがあります。bot の確認を回避する処理（PO トークンの生成・Cookie）は持ちません。
+- **`scrape` の YouTube の URL の判定を直しました。** ホストを完全一致で判定するようにし（`notyoutube.com` などを YouTube とみなさない）、shorts・live の URL にも `media` が付くようになりました。
+
 # Sora v2.45.0 — 「ご不在」の佐川の荷物を自動判別で取りこぼすのを直し、営業所の電話番号を返すようにした
 
 - **荷物状況が「ご不在」の荷物を、再配達待ち（`in_transit`）として扱うようにしました。** これまでは分類できずに `unknown` になり、表示ページには「配達状況を確認できませんでした」と出ていました。さらに `unknown` は確認済みにならないため、運送会社を指定しない自動判別（`track_package` で `carrier` を省く、または `auto`）では佐川の荷物が採用されず、同点で先頭のヤマトの「見つかりません」になっていました。
