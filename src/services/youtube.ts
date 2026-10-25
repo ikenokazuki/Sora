@@ -5,7 +5,7 @@ import { errorMessage } from '../errors.js';
 import { parseTimestampChapters, parseYouTubeUrl } from '../html_parser.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
-import { bm25BodyScore, extractTermsWithBigrams } from '../extractor/hierarchical_bm25.js';
+import { extractTermsWithBigrams, scorePassage } from '../extractor/hierarchical_bm25.js';
 import { DEFAULT_MAX_CHARS, type MediaInfo, type YoutubeExcerptSchema, type YoutubeTranscriptResultSchema } from '../types.js';
 
 /**
@@ -371,10 +371,27 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
  * 検索語を含む段落を、点数の高い順に maxChars まで選び、時刻順に並べる（BM25。日本語は語と 2 語のつながりで数える）。
  * どの段落にも検索語が無ければ、先頭から返す。最初に選ぶ段落は maxChars を超えても丸ごと返す。
  */
-function pickParagraphs(paragraphs: Paragraph[], query: string, budget: number, render: (p: Paragraph) => string, separator: string): { chosen: string[]; relevant: boolean } {
-  const blocks = paragraphs.map((p) => ({ headingPath: [], nearestHeading: '', depth: 0, body: p.text }));
+type Chapters = NonNullable<YoutubeTranscriptResult['chapters']>;
+
+/** 段落が入るチャプターの番号（開始秒が段落以下の最後のチャプター）。チャプターが無ければ -1。 */
+const chapterIndexOf = (chapters: Chapters, startSec: number) => {
+  let found = -1;
+  chapters.forEach((c, i) => { if (c.seconds <= startSec) found = i; });
+  return found;
+};
+
+/**
+ * 検索語を含む段落を、点数の高い順に budget まで選び、時刻順の番号で返す。点数は見出しの階層ボーナス付き BM25
+ * （`scorePassage`。段落が入るチャプターの名前を見出しとして加点する。日本語は語と 2 語のつながりで数える）。
+ * どの段落にも点が付かなければ、先頭から選ぶ。最初に選ぶ段落は budget を超えても選ぶ。
+ */
+function rankParagraphs(paragraphs: Paragraph[], query: string, budget: number, cost: (i: number) => number, separator: number, chapters: Chapters = []): { indices: number[]; relevant: boolean } {
+  const blocks = paragraphs.map((p) => {
+    const chapter = chapters[chapterIndexOf(chapters, p.startSec)]?.title;
+    return { headingPath: chapter ? [chapter] : [], nearestHeading: chapter ?? '', depth: chapter ? 1 : 0, body: p.text };
+  });
   const terms = extractTermsWithBigrams(query);
-  const scores = blocks.map((b) => bm25BodyScore(b, terms, blocks));
+  const scores = blocks.map((b) => scorePassage(b, terms, blocks));
   const relevant = scores.some((score) => score > 0);
   const order = relevant
     ? scores.map((score, i) => ({ score, i })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.i)
@@ -382,22 +399,22 @@ function pickParagraphs(paragraphs: Paragraph[], query: string, budget: number, 
   const chosen: number[] = [];
   let used = 0;
   for (const i of order) {
-    const cost = render(paragraphs[i]).length + (chosen.length > 0 ? separator.length : 0);
-    if (chosen.length > 0 && used + cost > budget) {
+    const add = cost(i) + (chosen.length > 0 ? separator : 0);
+    if (chosen.length > 0 && used + add > budget) {
       if (relevant) continue; // 点数順では、長い段落を飛ばして短い次点を入れる
       break;
     }
     chosen.push(i);
-    used += cost;
+    used += add;
   }
-  return { chosen: chosen.sort((a, b) => a - b).map((i) => render(paragraphs[i])), relevant };
+  return { indices: chosen.sort((a, b) => a - b), relevant };
 }
 
-function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxChars: number): Pick<YoutubeExcerpt, 'excerpt' | 'text' | 'chars' | 'totalChars'> {
-  const line = (p: Paragraph) => `[${clock(p.startSec)}] ${p.text}`;
-  const { chosen, relevant } = pickParagraphs(paragraphs, query, maxChars, line, '\n');
-  const text = chosen.join('\n');
-  return { excerpt: relevant ? 'relevant' : 'head', text, chars: text.length, totalChars: paragraphs.map(line).join('\n').length };
+function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxChars: number, chapters?: Chapters): Pick<YoutubeExcerpt, 'excerpt' | 'text' | 'chars' | 'totalChars'> {
+  const lines = paragraphs.map((p) => `[${clock(p.startSec)}] ${p.text}`);
+  const { indices, relevant } = rankParagraphs(paragraphs, query, maxChars, (i) => lines[i].length, 1, chapters);
+  const text = indices.map((i) => lines[i]).join('\n');
+  return { excerpt: relevant ? 'relevant' : 'head', text, chars: text.length, totalChars: lines.join('\n').length };
 }
 
 export interface YoutubeExcerptOptions { url: string; query: string; maxChars?: number; lang?: string; noCache?: boolean }
@@ -412,7 +429,7 @@ export async function getYoutubeExcerpt(options: YoutubeExcerptOptions, deps: Yo
   }
   const { paragraphs, ...status } = transcript;
   if (!paragraphs) return { ...meta, transcript: status };
-  return { ...meta, transcript: { ...status, ...selectRelevantParagraphs(paragraphs, options.query, options.maxChars ?? 2000) } };
+  return { ...meta, transcript: { ...status, ...selectRelevantParagraphs(paragraphs, options.query, options.maxChars ?? 2000, record.chapters) } };
 }
 
 /**
@@ -483,12 +500,29 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean; 
     record.durationSec ? `- 長さ: ${record.durationSec} 秒` : '',
     `- URL: ${record.url}`,
   ].filter(Boolean).join('\n');
-  const head = [`# ${title}`, meta, record.description ? `## 説明文\n\n${record.description}` : ''].filter(Boolean).join('\n\n');
+  // チャプターは字幕の見出しにするので、説明文からはチャプターの行を外す（目次の行が検索語に一致し、字幕より先に根拠として選ばれていた）
+  const chapters = record.chapters ?? [];
+  const description = chapters.length > 0
+    ? (record.description ?? '').split('\n').filter((line) => parseTimestampChapters(line).length === 0).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    : record.description ?? '';
+  const head = [`# ${title}`, meta, description ? `## 説明文\n\n${description}` : ''].filter(Boolean).join('\n\n');
   let transcript: string;
   if (t?.status === 'ok' && t.paragraphs) {
+    const paragraphs = t.paragraphs;
     const heading = `## 字幕（${t.source === 'auto' ? 'YouTube の自動字幕。聞き間違いを含む' : '手動の字幕'}）`;
-    const block = (p: Paragraph) => `### ${tLabel(p.startSec)}\n\n${p.text}`;
-    const all = t.paragraphs.map(block).join('\n\n');
+    // チャプターがあれば `### 2h02m02s〜 題名` の下に `#### 2h02m15s` の段落を並べる（段落の選び方が、チャプター名も見出しとして評価する）
+    const level = chapters.length > 0 ? '####' : '###';
+    const block = (p: Paragraph) => `${level} ${tLabel(p.startSec)}\n\n${p.text}`;
+    const render = (indices: number[]) => {
+      let current = -2;
+      return indices.flatMap((i) => {
+        const c = chapterIndexOf(chapters, paragraphs[i].startSec);
+        const out = c !== current && c >= 0 ? [`### ${tLabel(chapters[c].seconds)}〜 ${chapters[c].title}`] : [];
+        current = c;
+        return [...out, block(paragraphs[i])];
+      }).join('\n\n');
+    };
+    const all = render(paragraphs.map((_, i) => i));
     const maxChars = options.maxChars ?? Infinity;
     if (head.length + heading.length + all.length + 4 <= maxChars) {
       transcript = `${heading}\n\n${all}`;
@@ -497,9 +531,10 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean; 
       const note = (relevant: boolean) => relevant
         ? `（字幕は全体で ${all.length} 字あり、長いので、検索語に関係する段落だけを時刻順に載せています。全体は get_youtube_transcript で読めます。）`
         : `（字幕は全体で ${all.length} 字あり、長いので先頭から載せています。続きは get_youtube_transcript の fromSec で読めます。）`;
-      const budget = maxChars - head.length - heading.length - note(true).length - 8;
-      const { chosen, relevant } = pickParagraphs(t.paragraphs, options.query ?? '', budget, block, '\n\n');
-      transcript = `${heading}\n\n${note(relevant)}\n\n${chosen.join('\n\n')}`;
+      const chapterHeadings = chapters.reduce((n, c) => n + c.title.length + 16, 0); // 選んだ段落のチャプターの見出しの分を、多めに取っておく
+      const budget = maxChars - head.length - heading.length - note(true).length - chapterHeadings - 8;
+      const { indices, relevant } = rankParagraphs(paragraphs, options.query ?? '', budget, (i) => block(paragraphs[i]).length, 2, chapters);
+      transcript = `${heading}\n\n${note(relevant)}\n\n${render(indices)}`;
     }
   } else {
     transcript = `## 字幕\n\n${t?.message ?? 'この動画には字幕（自動字幕を含む）がありません。'}`;

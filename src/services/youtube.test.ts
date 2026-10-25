@@ -453,6 +453,16 @@ describe('getYoutubeExcerpt: the parts of a video that match a search', () => {
     expect(r.transcript?.text).toBe(best);
   });
 
+  test('scores a paragraph by the chapter it belongs to, as well as by its own words', async () => {
+    // 段落の本文に検索語が無くても、検索語を含むチャプターの中の段落を選ぶ（見出しの階層ボーナス付き BM25）
+    const { deps } = fakeYoutube({
+      player: player({ tracks: [track('ja')], length: 120, description: '0:00 はじめに\n1:00 量子力学' }),
+      captions: { ja: manualJson3([[0, '挨拶です'], [30_000, '雑談です'], [60_000, '波動関数の話'], [90_000, 'シュレディンガー方程式']]) },
+    });
+    const r = await getYoutubeExcerpt({ url: vid(), query: '量子力学', maxChars: 2000 }, deps);
+    expect(r.transcript).toMatchObject({ excerpt: 'relevant', text: '[1:00] 波動関数の話\n[1:30] シュレディンガー方程式' });
+  });
+
   test('falls back to the beginning when no paragraph mentions the query', async () => {
     const head = '[0:00] 挨拶です\n[0:30] 今日は特異値分解の話';
     const r = await getYoutubeExcerpt({ url: vid(), query: '量子コンピュータ', maxChars: head.length }, fake().deps);
