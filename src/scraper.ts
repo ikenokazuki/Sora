@@ -67,6 +67,7 @@ import { resolveChromiumPath } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import {
   searchYahooWeb,
+  searchYahooVideo,
   normalizeDomainList,
   normalizeRealtimeItem,
   searchYahooRealtime,
@@ -126,7 +127,10 @@ import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './r
 import {
   convertHtmlToMarkdown,
   matchUrlPattern,
+  parseYouTubeUrl,
 } from './html_parser.js';
+import { isModuleActive } from './mcp/registry.js';
+import { getYoutubePage } from './services/youtube.js';
 import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
@@ -642,6 +646,37 @@ export async function scrapeUrl(options: {
       try {
         let result: ScrapeResult;
         let initialHttpResult: ScrapeResult | null = null;
+
+        // YouTube の動画 URL は、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から本文を作る。
+        // ページそのもの（HTML・リンク・スクリーンショット）やブラウザでの描画を求められたときは、通常の取得に任せる
+        const wantsPage = formats.some((f) => f === 'html' || f === 'rawHtml' || f === 'links' || f === 'screenshot') || options.mode === 'browser' || options.renderJs === true;
+        if (!wantsPage && isModuleActive('youtube') && parseYouTubeUrl(url)) {
+          const page = await getYoutubePage(url, { noCache: options.noCache });
+          const stats = calculateContentStats(page.content);
+          const truncatedContent = safeTruncateMarkdown(page.content, maxChars);
+          const baseResult: ScrapeResult = {
+            url,
+            title: page.title,
+            content: truncatedContent,
+            isTruncated: page.content.length > maxChars,
+            contentType: 'text/markdown',
+            source: 'web',
+            links: [],
+            characterCount: stats.characterCount,
+            wordCount: stats.wordCount,
+            readingTimeMin: stats.readingTimeMin,
+            estimatedTokens: estimateTokens(truncatedContent),
+            author: page.author,
+            publishedTime: page.publishedTime,
+            siteName: 'YouTube',
+            description: page.description,
+            contentStatus: page.contentStatus,
+            media: page.media,
+          };
+          result = await finalizeScrapeResult(baseResult, finalizeOpts);
+          if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+          return result;
+        }
 
         // X (Twitter) アカウントURL/ポストURLのインテリジェント・バイパス (未ログイン遮断回避)
         if (/https?:\/\/(?:x\.com|twitter\.com|mobile\.twitter\.com)\/[a-zA-Z0-9_]+/i.test(url)) {
@@ -1665,6 +1700,8 @@ export async function integratedSearch(options: {
   scrapeBudget?: number;
   /** 本文取得の締切 (ms)。半数が終わったら SCRAPE_DEADLINE_GRACE_MS だけ待ち、全体では本値で打ち切る。0 で無効。 */
   scrapeDeadlineMs?: number;
+  /** Yahoo の動画検索の上位の YouTube 動画を、字幕から何本読んで results に足すか（0〜5。既定 0 で、動画は検索しない）。 */
+  videos?: number;
   tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
@@ -1697,6 +1734,7 @@ export async function integratedSearch(options: {
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
+  const videos = isModuleActive('youtube') ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
   const requestTenantId = options.tenantId ?? 'legacy';
   const digest = cacheKeyDigest<IntegratedSearchOptions, IntegratedSearchKeyIgnored>({
     limit,
@@ -1726,6 +1764,7 @@ export async function integratedSearch(options: {
     highlightMaxCount: highlightMaxCount ?? 'auto',
     adaptiveScrape,
     scrapeBudget,
+    videos,
   });
   const cacheKey = `search:integrated:v10:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
@@ -1734,6 +1773,37 @@ export async function integratedSearch(options: {
   }
 
   const webSearchPromise = searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
+  // 動画（videos）は Web 検索と並行して探し、字幕を読む（Web のページを読む間に終わる。実測 0.6〜2.3 秒）
+  const videoResultsPromise: Promise<Record<string, any>[]> = videos > 0 && scrapeContent
+    ? searchYahooVideo({ query, limit: 10 })
+        .then(async (found: any) => {
+          const seen = new Set<string>();
+          const picked = (Array.isArray(found?.items) ? found.items : []).filter((item: any) => {
+            const id = typeof item?.url === 'string' ? parseYouTubeUrl(item.url)?.videoId : undefined;
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          }).slice(0, videos);
+          const read = await Promise.all(picked.map(async (item: any) => {
+            const scrape = await scrapeUrl({
+              url: item.url, tenantId: requestTenantId, contextTitle: item.title, snippet: item.summary, maxChars, timeoutMs: 12000,
+              query, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables,
+              highlightAlgorithm, highlightOverheadTokens, highlightMaxCount,
+            }).catch(() => null);
+            // 取得できなかった動画は根拠に入れない（字幕の無い動画は、説明文だけの結果として入れる）
+            if (!scrape || scrape.contentStatus === 'unavailable') return null;
+            return {
+              title: scrape.title, url: item.url, snippet: item.summary, source: 'youtube',
+              description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName,
+              highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics,
+              temporalAnchors: scrape.temporalAnchors, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}),
+              ...projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }),
+            };
+          }));
+          return read.filter((r): r is NonNullable<typeof r> => r !== null);
+        })
+        .catch(() => [])
+    : Promise.resolve([]);
   // 公式アカウントの投稿は、公式枠（先頭5件）と X 検索の別名検出（20件）で1回の取得を共有する
   const officialPostsByHandle = new Map<string, Promise<any[]>>();
   const fetchOfficialPosts = (handle: string): Promise<any[]> => {
@@ -1848,6 +1918,7 @@ export async function integratedSearch(options: {
   const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
   const scrapeDeadlineMs = options.scrapeDeadlineMs ?? (Number.isFinite(envDeadline) && process.env.SORA_SCRAPE_DEADLINE_MS ? envDeadline : DEFAULT_SCRAPE_DEADLINE_MS);
   let scrapeDeadlineHit = false;
+  const videoDeadlineAt = Date.now() + scrapeDeadlineMs;
   let enrichedResults = topItems;
   if (scrapeContent) {
     const settled = await settleWithDeadline(
@@ -2142,6 +2213,20 @@ export async function integratedSearch(options: {
         }
       }
     } catch { }
+
+    // 動画は Web のページの後に足す（補充の計算を崩さない）。同じ動画が Web の結果にあれば足さない
+    const webVideoIds = new Set(enrichedResults.map((r: any) => parseYouTubeUrl(String(r?.url || r?.link || ''))?.videoId).filter(Boolean));
+    // 締切（scrapeDeadlineMs）があれば、そこまでだけ待つ。間に合わなかったら動画は足さず、欠けた結果として保存しない
+    let videoTimer: ReturnType<typeof setTimeout> | undefined;
+    const videoItems = await Promise.race([
+      videoResultsPromise,
+      ...(scrapeDeadlineMs > 0 ? [new Promise<null>((resolve) => { videoTimer = setTimeout(() => resolve(null), Math.max(0, videoDeadlineAt - Date.now())); })] : []),
+    ]);
+    if (videoTimer) clearTimeout(videoTimer);
+    if (videoItems === null) scrapeDeadlineHit = true;
+    for (const video of videoItems ?? []) {
+      if (!webVideoIds.has(parseYouTubeUrl(video.url)?.videoId)) enrichedResults.push(video);
+    }
 
     // Attempt order index for observability (RFC schema). Main wave keeps
     // pool order; refill and adaptive pushes append in attempt order.
