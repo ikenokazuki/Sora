@@ -8,8 +8,6 @@ export type GetYoutubeTranscriptInput = {
   lang?: string;
   /** この秒から返す (デフォルト: 0。続きは nextFromSec を渡す) */
   fromSec?: number;
-  /** この秒まで返す (省略時は最後まで) */
-  toSec?: number;
   /** 返す字幕の最大文字数 (デフォルト: 30000) */
   maxChars?: number;
   /** キャッシュをバイパスするか */
@@ -58,7 +56,7 @@ export type GetYoutubeTranscriptOutput = {
     status: "ok" | "none" | "unavailable";
     /** status が ok 以外の理由: "no-captions"(自動字幕を含め字幕が無い), "live-now"(配信中), "language-mismatch"(自動字幕が題名と別の言語しか無い), "blocked"(YouTube が拒否、または空の応答), "request-failed"(通信の失敗) */
     reason?: "no-captions" | "live-now" | "language-mismatch" | "blocked" | "request-failed";
-    /** status が ok 以外のときの説明。話の中身を推測で補わないよう求める */
+    /** status が ok 以外のとき、または fromSec より後に字幕が無いときの説明 (話の中身を推測で補わないよう求める) */
     message?: string;
     /** 字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕) */
     source?: "manual" | "auto";

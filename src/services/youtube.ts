@@ -18,7 +18,8 @@ export type YoutubeTranscriptResult = z.infer<typeof YoutubeTranscriptResultSche
 type Transcript = NonNullable<YoutubeTranscriptResult['transcript']>;
 type TrackInfo = NonNullable<YoutubeTranscriptResult['availableTracks']>[number];
 
-export interface YoutubeTranscriptOptions { url: string; lang?: string; fromSec?: number; toSec?: number; maxChars?: number; noCache?: boolean }
+// 範囲の終わり（toSec）は持たない。省略できる引数に最小値を入れてくる呼び出し側があり、toSec: 1 で最初の段落しか返らなかった
+export interface YoutubeTranscriptOptions { url: string; lang?: string; fromSec?: number; maxChars?: number; noCache?: boolean }
 export interface YoutubeDeps {
   /** player の POST と timedtext の取得 */
   fetchFn?: typeof fetch;
@@ -305,15 +306,15 @@ const clock = (sec: number) => {
 };
 
 /**
- * 範囲に重なる段落を、maxChars に収まる分だけ返す。
+ * fromSec を含む段落から、maxChars に収まる分だけ返す。
  * 最初の段落は maxChars を超えても丸ごと返す（切ると、nextFromSec で続きを読んだときにその残りが飛ぶ）。
  */
-function sliceParagraphs(paragraphs: Paragraph[], fromSec: number, toSec: number, maxChars: number, durationSec?: number): Partial<Transcript> {
+function sliceParagraphs(paragraphs: Paragraph[], fromSec: number, maxChars: number, durationSec?: number): Partial<Transcript> {
   const lines = paragraphs.map((p) => `[${clock(p.startSec)}] ${p.text}`);
   const totalChars = lines.join('\n').length;
   const endOf = (i: number) => paragraphs[i + 1]?.startSec ?? Math.max(durationSec ?? 0, paragraphs[i].startSec + 1);
-  const picked = paragraphs.flatMap((p, i) => (endOf(i) > fromSec && p.startSec < toSec ? [i] : []));
-  if (picked.length === 0) return { fromSec, ...(Number.isFinite(toSec) ? { toSec } : {}), text: '', chars: 0, totalChars, truncated: false };
+  const picked = paragraphs.flatMap((_, i) => (endOf(i) > fromSec ? [i] : []));
+  if (picked.length === 0) return { fromSec, text: '', chars: 0, totalChars, truncated: false, message: `fromSec（${fromSec} 秒）より後に字幕はありません。` };
 
   let text = '';
   let end = picked[0]; // 返さなかった最初の段落
@@ -340,7 +341,7 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
   if (!parsed) throw new YoutubeInputError('url must be a YouTube video URL or an 11-character video ID');
   const lang = options.lang?.trim().toLowerCase() || 'ja';
 
-  const key = `youtube:${cacheKeyDigest<YoutubeTranscriptOptions, 'fromSec' | 'toSec' | 'maxChars' | 'noCache'>({ url: parsed.videoId, lang })}`;
+  const key = `youtube:${cacheKeyDigest<YoutubeTranscriptOptions, 'fromSec' | 'maxChars' | 'noCache'>({ url: parsed.videoId, lang })}`;
   let record: VideoRecord | null = options.noCache ? null : getFromCache<VideoRecord>(key);
   if (!record) {
     const looked = await runWithSingleFlight(key, () => lookup(parsed.videoId, lang, deps));
@@ -353,7 +354,7 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
   if (transcript) {
     const { paragraphs, ...meta } = transcript;
     result.transcript = paragraphs
-      ? { ...meta, ...sliceParagraphs(paragraphs, options.fromSec ?? 0, options.toSec ?? Infinity, options.maxChars ?? DEFAULT_MAX_CHARS, record.durationSec) }
+      ? { ...meta, ...sliceParagraphs(paragraphs, options.fromSec ?? 0, options.maxChars ?? DEFAULT_MAX_CHARS, record.durationSec) }
       : meta;
   }
   return result;

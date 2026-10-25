@@ -52,7 +52,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 
 - MCP: `get_youtube_transcript`（カテゴリ `youtube`）。
 - REST: `POST /youtube/transcript`。
-- 入力: `url`（必須。URL か 11 文字の動画 ID）、`lang`（既定 `ja`）、`fromSec`・`toSec`（秒）、`maxChars`（1〜50,000、既定 30,000）、`noCache`。
+- 入力: `url`（必須。URL か 11 文字の動画 ID）、`lang`（既定 `ja`）、`fromSec`（読み始める秒）、`maxChars`（1〜50,000、既定 30,000）、`noCache`。
 - 受け付ける URL: `youtube.com`（`www.`・`m.`・`music.`）、`youtube-nocookie.com`、`youtu.be` の `/watch?v=`・`/shorts/`・`/live/`・`/embed/`・`/v/`。ホストは完全一致で判定します。`t`・`start`（`367`・`367s`・`6m7s`・`1h2m3s`）は `requestedStartSec` として返すだけで、範囲は変えません。全体を要約するか、その場面を見るかは AI が決め、必要なら `fromSec` を渡します。
 - 出力: `found`、`videoId`、`url`、`title`、`channel`、`publishedAt`、`durationSec`、`isLiveNow`、`category`、`description`、`chapters`（`title`・`time`・`seconds`。`scrape` の `media.chapters` と同じ形）、`requestedStartSec`、`transcript`、`availableTracks`（`language`・`source`・`name`）。
   - `transcript`: `status`、`reason`、`message`、`source`（`manual` / `auto`）、`language`、`note`、`fromSec`、`toSec`、`text`、`chars`、`totalChars`、`truncated`、`nextFromSec`。
@@ -93,13 +93,15 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 
 ## 実装後の確認（2026-10-25。worktree のサーバーをこのホストで起動）
 
-- https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s: `found: true`。題名・投稿者・公開日（2026-10-23）・536 秒・People & Blogs・`requestedStartSec: 367` が返りました。字幕は `ja` の自動字幕で、17 段落・3,400 字（時刻と区切りを含む）、1 回目は 1.43 秒です。`fromSec: 367, toSec: 427` は、範囲に重なる 5:51・6:24・6:56 の 3 段落（615 字）をキャッシュから 0.002 秒で返しました。この動画には AI 吹き替えらしい英語の音声トラック（`en-US.10`）があり、`en` の自動字幕はその音声のものでした。
+- https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s: `found: true`。題名・投稿者・公開日（2026-10-23）・536 秒・People & Blogs・`requestedStartSec: 367` が返りました。字幕は `ja` の自動字幕で、17 段落・3,400 字（時刻と区切りを含む）、1 回目は 1.43 秒です。`fromSec: 367, toSec: 427` は、範囲に重なる 5:51・6:24・6:56 の 3 段落（615 字）をキャッシュから 0.002 秒で返しました（v2.46.0 での確認。`toSec` は v2.46.1 で入力から外しました）。この動画には AI 吹き替えらしい英語の音声トラック（`en-US.10`）があり、`en` の自動字幕はその音声のものでした。
 - 日本語の自動字幕に句読点が付いていました。そこで `note` は「句読点が無い」と言い切らず、「固有名詞や句読点が正しくないことがある」としました。固有名詞の聞き間違い（説明文の「東名阪ツアー」が「透明ハンツア」になるなど）は実際にありました。
 - 字幕なし（HTJEmwSRU60）は `none` / `no-captions`、日本語の MV に `id` の自動字幕だけ（iWu-1vjzvQ0）は `none` / `language-mismatch` でした。Me at the zoo（jNQXAC9IVRw、`de`・`en` の手動字幕）は `en` を選びました。存在しない ID は `found: false`（「この動画は再生できません」）、URL でない入力は 400 です。`maxChars: 1000` では 998 字で切り、`truncated: true`・`nextFromSec: 161` を返しました。
 - MCP: 初期の一覧には出ず、`search_tools` の「YouTube 字幕」で見つかって有効になり、同じ結果を返しました。instructions にも載ります。
 - 全件テスト（CI と同じ bun 1.4.2）: 2,212 件成功、失敗 0。
 
 ## 割り切り
+
+- 範囲の終わり（`toSec`）は入力に持ちません。v2.46.0 では持っていましたが、本番で、省略できる引数に最小値を入れてくる呼び出し側が `toSec: 1` を送り、冒頭が待機画面（字幕は 0:43 から）の講義動画で本文が空になりました。0 秒から字幕がある動画でも、最初の段落だけが `truncated: false` で返り、全部読んだと誤解されます。一部だけ読む使い方は `fromSec` と `maxChars` で足りるので、v2.46.1 で入力から外しました（送られても入力の検証で取り除かれ、無視されます）。出力の `toSec`（返した本文の終わり）は残します。
 
 - ANDROID クライアントの版（`20.10.38`）は定数で固定しています。YouTube に拒否されたら、youtube-transcript-api や yt-dlp の版に合わせて上げます。
 - 長い配信の一部だけを質問に合わせて選ぶ機能（`query`）は持ちません。必要になったら、段落を見出しにして `extractWithEscalation` で選びます。
