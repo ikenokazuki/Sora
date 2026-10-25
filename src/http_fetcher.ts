@@ -442,7 +442,11 @@ export async function fetchWithSafeRedirects(
 
     const contentLength = res.headers.get('content-length');
     if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BODY_BYTES) {
-      throw new Error(`レスポンスサイズが上限 (${MAX_RESPONSE_BODY_BYTES / (1024 * 1024)}MB) を超過しています: ${contentLength} bytes`);
+      // 読まない本体は捨てる（受け取り続けない）。大きな動画・音声のファイルを呼び出し側が見分けられるよう、種類も渡す
+      await res.body?.cancel().catch(() => {});
+      throw Object.assign(new Error(`レスポンスサイズが上限 (${MAX_RESPONSE_BODY_BYTES / (1024 * 1024)}MB) を超過しています: ${contentLength} bytes`), {
+        code: 'RESPONSE_TOO_LARGE', finalUrl: currentUrl, contentType: res.headers.get('content-type') ?? '', contentLength,
+      });
     }
 
     if ([301, 302, 303, 307, 308].includes(res.status)) {

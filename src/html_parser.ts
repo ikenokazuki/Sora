@@ -544,6 +544,36 @@ export function parseYouTubeUrl(input: string): { videoId: string; startSec?: nu
   return startSec ? { videoId, startSec } : { videoId };
 }
 
+// URL に入らない文字と、全角の括弧・句読点・引用符（「（URL）と」「“URL”」）で止める。次の http(s):// の手前でも止める
+// （「URL,URL」「[URL](URL)」）。日本語の入った URL（/wiki/君と見るそら）は切らない。
+// ponytail: 空白なしで日本語の語が続く URL（「URLを要約」）は語まで URL に入る。呼び出し側の AI はふつう空白で区切る
+const QUERY_URL = /https?:\/\/(?:(?!https?:\/\/)[^\s<>"`|[\]{}、。，．「」『』（）【】〔〕“”‘’])+/gi;
+
+/** URL の中で対になっていない `)` から後ろと、末尾の句読点を外す（`(URL)の内容` → URL。`/wiki/Foo_(bar)` はそのまま）。 */
+function trimQueryUrl(url: string): string {
+  let depth = 0;
+  for (let i = 0; i < url.length; i++) {
+    if (url[i] === '(') depth++;
+    else if (url[i] === ')' && --depth < 0) return trimQueryUrl(url.slice(0, i));
+  }
+  return url.replace(/[.,;:!?'*~！？：；…]+$/u, '');
+}
+
+/** ホスト名に `.` がある URL だけを読む対象にする（「https://とは」や localhost は検索語のまま）。 */
+function isReadableQueryUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.includes('.');
+  } catch {
+    return false;
+  }
+}
+
+/** 検索語の中の http(s) の URL（重複を除き、出てきた順）と、URL を除いた残りの語。 */
+export function splitQueryUrls(query: string): { urls: string[]; text: string } {
+  const urls = [...new Set((query.match(QUERY_URL) ?? []).map(trimQueryUrl).filter(isReadableQueryUrl))];
+  return { urls, text: query.replace(QUERY_URL, ' ').replace(/\s+/g, ' ').trim() };
+}
+
 /**
  * 時刻で始まる行（`0:00 はじめに`・`1:02:03 | まとめ`）をチャプターとして時刻順に読む。同じ時刻は最初の行だけ、題名は 2〜80 文字。
  * 行頭の字下げ・記号（`　∟0:33:27`・`- 1:02:54`・`• 1:05:17`）と、時刻の後の区切り（`|`・`-`・`：`）は読み飛ばす。

@@ -28,6 +28,7 @@ import {
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
 import { errorMessage } from '../errors.js';
+import { splitQueryUrls } from '../html_parser.js';
 
 // Yahoo MCP バイナリのパス
 export const YAHOO_MCP_PATH =
@@ -903,7 +904,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
 export interface YahooWebDirectItem { url: string; title?: string; snippet?: string; domain?: string; }
 
 function stripYahooTags(text: string): string {
-  return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&nbsp;/g, ' ').replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 }
 
 /** Yahooの縦断ナビ（画像・動画・地図・リアルタイム等）へのリンクか。結果候補にしない。 */
@@ -2250,12 +2251,89 @@ export async function searchYahooImage(options: {
   }
 }
 
-/** Yahoo 動画検索 */
-export async function searchYahooVideo(options: {
+export type YahooVideoUpdated = 'all' | 'hour' | 'day' | 'week' | 'month' | 'year';
+export type YahooVideoPlatform = 'all' | 'youtube' | 'tiktok' | 'x' | 'instagram' | 'niconico' | 'dailymotion';
+
+export interface YahooVideoSearchOptions {
   query: string;
   limit?: number;
   page?: number;
-}): Promise<any> {
+  /** 投稿日の期間（Yahoo の動画検索の絞り込み） */
+  updated?: YahooVideoUpdated;
+  /** 動画サイト。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語の site: で絞る */
+  platform?: YahooVideoPlatform;
+}
+
+// Yahoo の動画検索のページの URL の指定（2026-10-26 にページの JavaScript から確認）。pd は投稿日、st は動画サイト、b は何件目から。
+// st が無い TikTok・X・Instagram は、検索語に site: を足すと、そのサイトの動画だけになる（実測で 20 件すべて TikTok）
+const VIDEO_UPDATED_PD: Partial<Record<YahooVideoUpdated, string>> = { hour: '0', day: '1', week: '2', month: '3', year: '4' };
+const VIDEO_PLATFORM_ST: Partial<Record<YahooVideoPlatform, string>> = { youtube: 'youtube', niconico: 'niconico', dailymotion: 'dailymotion' };
+const VIDEO_PLATFORM_DOMAIN: Partial<Record<YahooVideoPlatform, string>> = { tiktok: 'tiktok.com', x: 'x.com', instagram: 'instagram.com' };
+const VIDEO_PAGE_SIZE = 20;
+
+export function buildYahooVideoSearchUrl(options: YahooVideoSearchOptions): string {
+  const domain = options.platform ? VIDEO_PLATFORM_DOMAIN[options.platform] : undefined;
+  const params = new URLSearchParams({ p: domain ? `${options.query} site:${domain}` : options.query, ei: 'UTF-8' });
+  const pd = options.updated ? VIDEO_UPDATED_PD[options.updated] : undefined;
+  if (pd) params.set('pd', pd);
+  const st = options.platform ? VIDEO_PLATFORM_ST[options.platform] : undefined;
+  if (st) params.set('st', st);
+  if (options.page && options.page > 1) params.set('b', String((options.page - 1) * VIDEO_PAGE_SIZE + 1));
+  return 'https://search.yahoo.co.jp/video/search?' + params.toString();
+}
+
+/** Yahoo の動画検索のページ（__NEXT_DATA__）の結果を、同梱の MCP の検索と同じ形で読む。 */
+export function parseYahooVideoHtml(html: string): any[] {
+  const json = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  const items = json ? JSON.parse(json)?.props?.initialState?.domainState?.videoAlgo?.items : undefined;
+  if (!Array.isArray(items)) throw new Error('Yahoo video search page has no results data');
+  return items.map((item: any) => {
+    const summary = stripYahooTags(item.summary ?? '');
+    return {
+      id: item.id,
+      title: stripYahooTags(item.title ?? ''),
+      url: item.refererUrl,
+      duration: item.duration,
+      ...(summary ? { summary } : {}),
+      thumbnail: item.thumbnail?.url,
+      upload_date: item.uploadDate,
+      uploader: item.uploader,
+      source: item.source,
+    };
+  });
+}
+
+/**
+ * 期間・動画サイトを付けて、Yahoo の動画検索のページを直接読む（同梱の MCP は検索語と件数しか受け付けない）。
+ * 同梱の MCP と同じく、Yahoo への間隔を守り、ブレーカーが開いている間は送らず、429 でブレーカーを開く。
+ */
+async function fetchYahooVideoDirect(options: YahooVideoSearchOptions): Promise<any> {
+  await gateYahooCall();
+  if (isYahooBreakerOpen()) {
+    try { incrementSecurityCounter('sora_throttled_total'); } catch {}
+    throw Object.assign(new Error('Yahoo provider throttled by breaker'), { code: 'YAHOO_RATE_LIMITED' });
+  }
+  const { response } = await fetchWithSafeRedirects(buildYahooVideoSearchUrl(options), 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
+  if (!response.ok) {
+    if (response.status === 429) tripYahooBreaker();
+    throw new YahooProviderError(`Yahoo video search failed: ${response.status}`, response.status, parseRetryAfterMs(response.headers.get('retry-after')));
+  }
+  const items = parseYahooVideoHtml(await response.text()).slice(0, options.limit ?? VIDEO_PAGE_SIZE);
+  return { ok: true, provider: 'yahoo_japan', vertical: 'video', query: options.query, page: options.page ?? 1, count: items.length, items };
+}
+
+/** Yahoo 動画検索 */
+export async function searchYahooVideo(options: YahooVideoSearchOptions): Promise<any> {
+  // URL を検索語にすると関係ない動画が返るので、検索せずに読み方を返す
+  if (splitQueryUrls(options.query).urls.length > 0) {
+    return {
+      source: 'video', query: options.query, count: 0, items: [],
+      message: '検索語が URL です。URL の動画は、YouTube なら get_youtube_transcript、ほかは scrape で読んでください。',
+    };
+  }
+  if ((options.updated && options.updated !== 'all') || (options.platform && options.platform !== 'all')) {
+    return normalizeYahooMediaItems(await fetchYahooVideoDirect(options), 'video');
+  }
   const mcpRes = await callYahooMcp('yahoo_video_search', {
     query: options.query,
     ...(options.limit ? { limit: options.limit } : {}),

@@ -367,7 +367,7 @@ export async function fetchWithStealthBrowser(
   fullPage = true,
   tenantId = 'legacy',
   readiness?: { isContentReady: (html: string, finalUrl: string) => boolean; onWait?: () => void },
-): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string }> {
+): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
     throw new Error('Chromium/Chrome が見つからないためブラウザレンダリングを実行できません');
@@ -467,6 +467,12 @@ export async function fetchWithStealthBrowser(
           }
         });
       }
+
+      // 本文のドキュメントの HTTP の状態（リダイレクトの後の最後のもの）。エラーの画面を本文と見分けるのに使う
+      let status: number | undefined;
+      page.on('response', (response) => {
+        if (response.request().isNavigationRequest() && response.frame() === page.mainFrame()) status = response.status();
+      });
 
       const deadline = Date.now() + timeoutMs;
       const remaining = () => Math.max(0, deadline - Date.now());
@@ -588,7 +594,7 @@ export async function fetchWithStealthBrowser(
         }
       }
 
-      return { html, title, screenshot, finalUrl };
+      return { html, title, screenshot, finalUrl, status };
     } finally {
       if (isDedicated) {
         await browser.close();
