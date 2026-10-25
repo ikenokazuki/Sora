@@ -32,6 +32,13 @@ export function isValidTrackingPage(carrier: string, num: string, sig: string | 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (text: string | undefined): string => (text ?? '').replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
 
+// 電話番号は運送会社の表記のまま見せる。電話をかけるリンクにするのは、数字・ハイフン・括弧・+・空白だけで、数字を含むときだけ。
+const telephone = (phone: string | undefined): string => {
+  if (!phone) return '';
+  const digits = phone.replace(/[^\d+]/g, '');
+  return `<br>TEL ${digits && /^[\d\-+() ]+$/.test(phone) ? `<a href="tel:${digits}">${esc(phone)}</a>` : esc(phone)}`;
+};
+
 const STATUS_MESSAGES: Partial<Record<TrackingResult['status'], string>> = {
   not_found: '該当するお荷物が見つかりません。送り状番号をお確かめください。出荷の直後は、表示されるまで時間がかかることがあります。',
   error: '現在、配達状況を取得できません。時間をおいて再度お試しいただくか、公式ページでご確認ください。',
@@ -58,11 +65,12 @@ export function renderTrackingPage(result: TrackingResult): string {
   const carrierName = esc(result.carrierName);
   const num = esc(result.trackingNumber);
   const details = result.details ?? {};
-  const message = STATUS_MESSAGES[result.status];
+  // 状態を分類できなかっただけで、状態と履歴は取れているなら、「確認できませんでした」とは書かない。
+  const message = result.status === 'unknown' && result.events.length > 0 ? undefined : STATUS_MESSAGES[result.status];
   const dateLabel = result.status === 'delivered' ? '配達完了日' : 'お届け予定日';
-  const offices = [['集荷営業所', details.origin], ['配達営業所', details.destination]]
-    .filter(([, value]) => value)
-    .map(([label, value]) => `<tr><th>${label}</th><td>${esc(value)}</td></tr>`)
+  const offices = [['集荷営業所', details.origin, details.originPhone], ['配達営業所', details.destination, details.destinationPhone]]
+    .filter(([, name]) => name)
+    .map(([label, name, phone]) => `<tr><th>${label}</th><td>${esc(name)}${telephone(phone)}</td></tr>`)
     .join('');
   const history = result.events
     .map((e) => `<tr><td>${esc(e.status)}</td><td>${esc(e.date)}</td><td>${esc(e.location)}</td></tr>`)

@@ -78,6 +78,31 @@ describe('tracking page', () => {
     expect(failed).not.toContain('javascript:');
   });
 
+  test('says the status could not be confirmed only when there is no history to show', () => {
+    const withHistory = renderTrackingPage({ ...delivered('123456789012'), status: 'unknown', statusText: '未知の状態' });
+    expect(withHistory).toContain('未知の状態');
+    expect(withHistory).not.toContain('配達状況を確認できませんでした');
+    const empty = renderTrackingPage({ ...delivered('123456789012'), status: 'unknown', statusText: '未知の状態', events: [] });
+    expect(empty).toContain('配達状況を確認できませんでした。公式ページでご確認ください。');
+  });
+
+  test('shows each office phone under its name as a tel: link, nothing when the carrier gave none, and never as markup', () => {
+    const html = renderTrackingPage({
+      ...delivered('123456789012'),
+      details: { origin: '渋谷営業所', originPhone: '0570-01-0213', destination: '那覇営業所' },
+    });
+    expect(html).toContain('<tr><th>集荷営業所</th><td>渋谷営業所<br>TEL <a href="tel:0570010213">0570-01-0213</a></td></tr>');
+    expect(html).toContain('<tr><th>配達営業所</th><td>那覇営業所</td></tr>');
+
+    const odd = renderTrackingPage({
+      ...delivered('123456789012'),
+      details: { destination: '那覇営業所', destinationPhone: '"><img src=x onerror=alert(1)>' },
+    });
+    expect(odd).not.toContain('<img');
+    expect(odd).not.toContain('href="tel:');
+    expect(odd).toContain('TEL &quot;&gt;&lt;img src=x onerror=alert(1)&gt;');
+  });
+
   test('opens from another site without an API key, and only with the signature Sora issued', async () => {
     enable();
     process.env.WEB_FETCHER_API_KEY = 'secret-key';
