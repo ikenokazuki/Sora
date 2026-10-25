@@ -603,10 +603,15 @@ export const ImageSearchRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
+export const VideoSearchUpdatedSchema = z.enum(['all', 'hour', 'day', 'week', 'month', 'year']);
+export const VideoPlatformSchema = z.enum(['all', 'youtube', 'tiktok', 'x', 'instagram', 'niconico', 'dailymotion']);
+
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
   page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  updated: VideoSearchUpdatedSchema.optional().describe('投稿日の期間 (デフォルト: "all")').meta({ default: 'all' }),
+  platform: VideoPlatformSchema.optional().describe('動画サイト (デフォルト: "all")').meta({ default: 'all' }),
   transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
   transcriptChars: z.number().int().min(500).max(10_000).optional().describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)').meta({ default: 2000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
@@ -1689,6 +1694,7 @@ export const VideoSearchResponseSchema = z.object({
   ...YahooEnvelopeShape,
   source: z.literal('video').describe('ソース ("video")'),
   items: z.array(VideoSearchItemSchema).describe('動画検索結果一覧'),
+  message: z.string().optional().describe('検索しなかった理由と代わりの読み方 (検索語が URL のとき)'),
 });
 
 export const NewsSearchItemSchema = z.object({
