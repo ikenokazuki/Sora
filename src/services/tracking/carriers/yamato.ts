@@ -34,6 +34,10 @@ export function determineStatus(text: string): TrackingResult['status'] {
   if (/誤り|見当りません|見当たりません|見つかりません|該当なし|未登録|該当する荷物はありません/i.test(t)) {
     return 'not_found';
   }
+  // 不在で持ち戻った荷物は再配達待ち（持戻と同じ扱い）。既存の判定を変えないよう、最後に置く。
+  if (/不在/.test(t)) {
+    return 'in_transit';
+  }
   return 'unknown';
 }
 

@@ -28,8 +28,8 @@ interface SagawaSearchResult {
   results?: Array<{
     status?: string;
     dateLines?: Array<{ label?: string; value?: string }>;
-    pickupOffice?: { name?: string } | null;
-    deliveryOffice?: { name?: string } | null;
+    pickupOffice?: { name?: string; tel?: string } | null;
+    deliveryOffice?: { name?: string; tel?: string } | null;
     history?: Array<{ status?: string; date?: string; office?: string }>;
   }>;
 }
@@ -143,7 +143,9 @@ export const sagawaAdapter: TrackingCarrierAdapter = {
         events,
         details: {
           origin: found.pickupOffice?.name || undefined,
+          originPhone: found.pickupOffice?.tel || undefined,
           destination: found.deliveryOffice?.name || undefined,
+          destinationPhone: found.deliveryOffice?.tel || undefined,
           deliveryDate: deliveryDate || undefined,
           serviceType: '飛脚宅配便',
         },
@@ -154,6 +156,15 @@ export const sagawaAdapter: TrackingCarrierAdapter = {
   },
 
   verify(result: TrackingResult, requestedTrackingNumber: string): TrackingVerification {
+    // 佐川の応答は構造化された JSON で、番号が無ければ「該当なし」になる。履歴があるのに状態語だけ分類できない（unknown）
+    // ときも、その番号は佐川の荷物。共通の検証は unknown を根拠にしないので、自動判別で別の社に取り違えられてしまう。
+    if (
+      result.status === 'unknown' &&
+      result.events.length > 0 &&
+      cleanTrackingNumber(result.trackingNumber) === cleanTrackingNumber(requestedTrackingNumber)
+    ) {
+      return { level: 'strong', reasons: [`Sagawa returned ${result.events.length} history entries (status text not classified)`] };
+    }
     return evaluateTrackingVerification(result, requestedTrackingNumber);
   },
 };

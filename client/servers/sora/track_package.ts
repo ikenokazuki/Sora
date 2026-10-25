@@ -48,8 +48,12 @@ export type TrackPackageOutput = {
   details?: {
     /** 発送元地域・引受（集荷）営業所 (例: "渋谷営業所") */
     origin?: string;
+    /** origin の営業所の電話番号。運送会社が公開しているときだけ。形式は運送会社の表記のまま (例: "0570-01-0213") */
+    originPhone?: string;
     /** 配達先地域・配達担当営業所 (例: "那覇営業所") */
     destination?: string;
+    /** destination の営業所の電話番号。運送会社が公開しているときだけ。形式は運送会社の表記のまま (例: "0570-01-0551") */
+    destinationPhone?: string;
     /** お届け予定日時または配達完了日時。形式は運送会社の表記のまま (例: "2026-10-23T18:00:00+09:00", "10月23日 18時00分") */
     deliveryDate?: string;
     /** 配送サービス種別 (例: "宅急便", "飛脚宅配便", "ゆうパック/ゆうパケット/EMS/国際郵便", "カンガルー便") */
@@ -122,7 +126,7 @@ export type TrackPackageOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便 国内+国際EMS/UPU S10・西濃運輸・福山通運）および国際配送（UPS・FedEx・DHL Express）の荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl）を指定可能。未指定または "auto" の場合は伝票番号から候補会社をローカル自動判別・検証照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl, details: { origin, destination, deliveryDate, serviceType }, pageUrl }。佐川急便の trackingUrl は入力ページ（送り状番号を URL で渡せない）。pageUrl は Sora が発行する荷物ごとの表示ページで、利用者への案内に使える（設定時のみ。公式ページではない） */
+/** 【公式直結・荷物追跡】日本の主要運送会社（ヤマト運輸・佐川急便・日本郵便 国内+国際EMS/UPU S10・西濃運輸・福山通運）および国際配送（UPS・FedEx・DHL Express）の荷物追跡情報・配送ステータス（配達中、配達完了、引受、持ち戻り等）および詳細履歴を取得します。運送会社コード（yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl）を指定可能。未指定または "auto" の場合は伝票番号から候補会社をローカル自動判別・検証照会します。返却: { carrier, carrierName, trackingNumber, status, statusText, events: [{ date, status, location }], trackingUrl, details: { origin, originPhone, destination, destinationPhone, deliveryDate, serviceType }, pageUrl }。佐川急便の trackingUrl は入力ページ（送り状番号を URL で渡せない）。pageUrl は Sora が発行する荷物ごとの表示ページで、利用者への案内に使える（設定時のみ。公式ページではない） */
 export function trackPackage(input: TrackPackageInput): Promise<TrackPackageOutput> {
   return callSora<TrackPackageOutput>({ method: 'POST', path: '/tracking' }, input);
 }
