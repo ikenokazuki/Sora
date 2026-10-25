@@ -10,7 +10,7 @@ import { DEFAULT_MAX_CHARS, type YoutubeTranscriptResultSchema } from '../types.
 /**
  * YouTube の動画の題名・説明文・チャプターと、時刻つきの字幕（モジュール 'youtube'）。
  * 字幕は Android アプリと同じ innertube の player から一覧を取り、timedtext を json3 で読む。
- * 動画ページに埋め込まれた字幕の URL は PO トークン必須で空になるため、player が拒否されたときの代用にだけ使う。
+ * 動画ページに埋め込まれた字幕の URL は PO トークン必須で空になるため、player が使えないときの代用にだけ使う。
  * 要約は呼び出し側の AI が書く。字幕が無い動画は「字幕なし」と理由を返し、音声認識はしない。
  */
 
@@ -37,6 +37,7 @@ const ANDROID_UA = 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) g
 const PLAYER_TIMEOUT_MS = 8000;
 const WATCH_TIMEOUT_MS = 10_000;
 const CAPTION_TIMEOUT_MS = 10_000;
+const PLAYER_MAX_BYTES = 5 * 1024 * 1024;
 const WATCH_MAX_BYTES = 5 * 1024 * 1024;
 const CAPTION_MAX_BYTES = 25 * 1024 * 1024; // 5 時間の配信の自動字幕で約 5MB
 const PARAGRAPH_MS = 30_000;
@@ -52,13 +53,13 @@ const RECENT_HINT = '投稿から間もないため、しばらくすると自�
 const LIVE_NOW = `配信中のため字幕がありません。配信が終わると自動字幕が付くことがあります。${DO_NOT_GUESS}`;
 const BLOCKED = `YouTube が字幕の取得を拒否しました（bot の確認、または空の応答）。時間をおいて再試行してください。${DO_NOT_GUESS}`;
 const REQUEST_FAILED = `YouTube から字幕を取得できませんでした（通信の失敗）。時間をおいて再試行してください。${DO_NOT_GUESS}`;
-const mismatch = (code: string) => `自動字幕は ${code} のものしか無く、題名の言語と合わないため返していません。lang: '${code}' を指定すると取得できます。`;
+const mismatch = (code: string) => `自動字幕は ${code} のもので、題名の言語と合わないため返していません。lang: '${code}' を指定すると取得できます。`;
 
 interface CaptionTrack { baseUrl?: string; languageCode?: string; kind?: string; name?: { runs?: Array<{ text?: string }>; simpleText?: string } }
 interface Playability { status?: string; reason?: string }
 interface PlayerResponse {
   playabilityStatus?: Playability;
-  videoDetails?: { title?: string; author?: string; lengthSeconds?: string; shortDescription?: string; isLive?: boolean };
+  videoDetails?: { videoId?: string; title?: string; author?: string; lengthSeconds?: string; shortDescription?: string; isLive?: boolean };
   captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[]; audioTracks?: Array<{ audioTrackId?: string }>; defaultAudioTrackIndex?: number } };
   microformat?: { playerMicroformatRenderer?: { publishDate?: string; category?: string; liveBroadcastDetails?: { isLiveNow?: boolean } } };
 }
@@ -74,16 +75,28 @@ const watchUrl = (videoId: string) => `https://www.youtube.com/watch?v=${videoId
 const isBotCheck = (p?: Playability) => p?.status === 'LOGIN_REQUIRED' && /bot/i.test(p.reason ?? '');
 const baseLang = (code: string) => code.toLowerCase().split('-')[0];
 const isAuto = (t: CaptionTrack) => t.kind === 'asr';
+const clean = (text?: string) => (text === undefined ? undefined : cleanMarkdownTokens(text));
+
+/** 字幕の取得先は www.youtube.com の /api/timedtext だけ（応答に入っていた URL でも、それ以外には出さない）。 */
+function captionUrl(t: CaptionTrack): URL | undefined {
+  try {
+    const url = new URL(t.baseUrl ?? '');
+    return url.protocol === 'https:' && url.hostname === 'www.youtube.com' && url.pathname === '/api/timedtext' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 async function fetchPlayer(videoId: string, fetchFn: typeof fetch): Promise<PlayerResponse> {
   const res = await fetchFn(PLAYER_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': ANDROID_UA },
     body: JSON.stringify({ context: { client: { ...ANDROID_CLIENT, hl: 'ja', gl: 'JP' } }, videoId }),
+    redirect: 'error',
     signal: AbortSignal.timeout(PLAYER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`player HTTP ${res.status}`);
-  return await res.json() as PlayerResponse;
+  return JSON.parse(new TextDecoder().decode(await readBodyWithLimit(res, PLAYER_MAX_BYTES))) as PlayerResponse;
 }
 
 async function defaultFetchWatchPage(url: string): Promise<string> {
@@ -120,16 +133,24 @@ function extractInitialPlayerResponse(html: string): PlayerResponse | undefined 
 }
 
 /**
- * 言語の候補の順に、手動の字幕、自動字幕の順で選ぶ。どれも無ければ他の言語の手動、自動の順。
- * 候補は指定の言語、元の音声の言語、英語（翻訳の字幕の中では読める AI が多い）。
+ * 字幕を試す順に並べる。言語の候補（指定の言語、元の音声の言語、英語）ごとに、言語コードが完全に一致する手動、
+ * 基本の言語（zh-Hant なら zh）が同じ手動、同じ順の自動字幕。最後に残りの手動、残りの自動。
  */
-function pickTrack(tracks: CaptionTrack[], langs: string[]): CaptionTrack | undefined {
+function rankTracks(tracks: CaptionTrack[], langs: string[]): CaptionTrack[] {
+  const ranked = new Set<CaptionTrack>();
   for (const lang of langs) {
-    const same = (t: CaptionTrack) => baseLang(t.languageCode ?? '') === baseLang(lang);
-    const hit = tracks.find((t) => same(t) && !isAuto(t)) ?? tracks.find((t) => same(t) && isAuto(t));
-    if (hit) return hit;
+    const exact = (t: CaptionTrack) => (t.languageCode ?? '').toLowerCase() === lang.toLowerCase();
+    const base = (t: CaptionTrack) => baseLang(t.languageCode ?? '') === baseLang(lang);
+    for (const auto of [false, true]) {
+      for (const match of [exact, base]) {
+        const hit = tracks.find((t) => isAuto(t) === auto && match(t));
+        if (hit) ranked.add(hit);
+      }
+    }
   }
-  return tracks.find((t) => !isAuto(t)) ?? tracks.find(isAuto);
+  for (const t of tracks) if (!isAuto(t)) ranked.add(t);
+  for (const t of tracks) ranked.add(t);
+  return [...ranked];
 }
 
 /** 元の音声の言語。既定の音声トラックの ID（`ja.4`）から読み、無ければ自動字幕の言語（AI 吹き替えの音声が無い動画では、自動字幕は元の音声のもの）。 */
@@ -138,7 +159,10 @@ function originalLanguage(renderer: NonNullable<PlayerResponse['captions']>['pla
   return audioTrackId?.split('.')[0] || tracks.find(isAuto)?.languageCode;
 }
 
-/** json3 を約 30 秒か 300 字ごとの段落にする。改行だけの event（自動字幕の aAppend）と表示窓の定義は飛ばす。 */
+/**
+ * json3 を約 30 秒か 300 字ごとの段落にする。改行だけの event（自動字幕の aAppend）と表示窓の定義は飛ばす。
+ * 同じ秒のうちは文字数が超えても段落を分けない（同じ開始秒の段落ができると、続きを読むときに長さ 0 の段落として落ちる）。
+ */
 function json3ToParagraphs(json: Json3): Paragraph[] {
   const paragraphs: Array<{ startMs: number; parts: string[]; len: number }> = [];
   for (const ev of json.events ?? []) {
@@ -146,7 +170,8 @@ function json3ToParagraphs(json: Json3): Paragraph[] {
     if (!text) continue;
     const startMs = ev.tStartMs ?? 0;
     const cur = paragraphs.at(-1);
-    if (cur && startMs - cur.startMs < PARAGRAPH_MS && cur.len < PARAGRAPH_CHARS) {
+    const sameSecond = cur !== undefined && Math.floor(startMs / 1000) === Math.floor(cur.startMs / 1000);
+    if (cur && startMs - cur.startMs < PARAGRAPH_MS && (cur.len < PARAGRAPH_CHARS || sameSecond)) {
       cur.parts.push(text);
       cur.len += text.length + 1;
     } else {
@@ -158,18 +183,12 @@ function json3ToParagraphs(json: Json3): Paragraph[] {
 
 type CaptionOutcome = { paragraphs: Paragraph[] } | { failed: 'blocked' | 'request-failed' };
 
-async function fetchCaptions(baseUrl: string | undefined, fetchFn: typeof fetch): Promise<CaptionOutcome> {
-  let url: URL;
-  try {
-    url = new URL(baseUrl ?? '');
-  } catch {
-    return { failed: 'blocked' };
-  }
-  if (url.hostname !== 'www.youtube.com' || url.pathname !== '/api/timedtext') return { failed: 'blocked' }; // 応答に入っていた URL でも、字幕の取得先以外には出さない
+async function fetchCaptions(url: URL, fetchFn: typeof fetch): Promise<CaptionOutcome> {
   url.searchParams.set('fmt', 'json3');
   let body: string;
   try {
-    const res = await fetchFn(url.toString(), { headers: { 'User-Agent': ANDROID_UA }, signal: AbortSignal.timeout(CAPTION_TIMEOUT_MS) });
+    const res = await fetchFn(url.toString(), { headers: { 'User-Agent': ANDROID_UA }, redirect: 'error', signal: AbortSignal.timeout(CAPTION_TIMEOUT_MS) });
+    if (res.status === 403 || res.status === 429) return { failed: 'blocked' };
     if (!res.ok) return { failed: 'request-failed' };
     body = new TextDecoder().decode(await readBodyWithLimit(res, CAPTION_MAX_BYTES));
   } catch {
@@ -182,71 +201,89 @@ async function fetchCaptions(baseUrl: string | undefined, fetchFn: typeof fetch)
   }
 }
 
-async function lookup(videoId: string, lang: string, deps: YoutubeDeps): Promise<VideoRecord> {
+async function lookup(videoId: string, lang: string, deps: YoutubeDeps): Promise<{ record: VideoRecord; ttlMs: number }> {
   const fetchFn = deps.fetchFn ?? fetch;
   const now = deps.now ?? Date.now;
   const [playerOut, pageOut] = await Promise.allSettled([fetchPlayer(videoId, fetchFn), (deps.fetchWatchPage ?? defaultFetchWatchPage)(watchUrl(videoId))]);
   const fromPlayer = playerOut.status === 'fulfilled' ? playerOut.value : undefined;
   const page = pageOut.status === 'fulfilled' ? extractInitialPlayerResponse(pageOut.value) : undefined;
+  const url = watchUrl(videoId);
 
-  // player が使えなければ、動画ページに埋め込まれた応答で代用する
-  const source = fromPlayer && !isBotCheck(fromPlayer.playabilityStatus) ? fromPlayer : page;
-  if (!source || isBotCheck(source.playabilityStatus)) {
+  // player が再生できると答えた、この動画の応答だけを使う。player は古いクライアントへの拒否や、別の動画の応答を返すことがあるので、
+  // そのときは動画ページに埋め込まれた応答で代用する（字幕の URL は PO トークン付きで空になり、unavailable になる）
+  const usable = (p?: PlayerResponse): p is PlayerResponse =>
+    p?.playabilityStatus?.status === 'OK' && !!p.videoDetails && (!p.videoDetails.videoId || p.videoDetails.videoId === videoId);
+  const source = usable(fromPlayer) ? fromPlayer : usable(page) ? page : undefined;
+  if (!source) {
+    // 再生できない理由は、動画ページ（web）の答えを先に見る
+    const refusal = [page, fromPlayer].find((p) => p?.playabilityStatus?.status && p.playabilityStatus.status !== 'OK' && !isBotCheck(p.playabilityStatus));
+    if (refusal) {
+      const p = refusal.playabilityStatus;
+      return { record: { found: false, videoId, url, reason: 'video-unavailable', message: p?.reason || p?.status || '再生できない動画です' }, ttlMs: CACHE_TTL_EMPTY };
+    }
     const bot = [fromPlayer, page].find((p) => isBotCheck(p?.playabilityStatus));
     if (bot) throw new Error(`YouTube login required (bot check): ${bot.playabilityStatus?.reason}`);
-    const cause = playerOut.status === 'rejected' ? errorMessage(playerOut.reason) : pageOut.status === 'rejected' ? errorMessage(pageOut.reason) : 'no player response';
+    const cause = playerOut.status === 'rejected' ? errorMessage(playerOut.reason) : pageOut.status === 'rejected' ? errorMessage(pageOut.reason) : 'no usable player response';
     throw new Error(`YouTube request failed: ${cause}`);
-  }
-  const url = watchUrl(videoId);
-  const playability = source.playabilityStatus;
-  if (playability?.status !== 'OK') {
-    return { found: false, videoId, url, reason: 'video-unavailable', message: playability?.reason || playability?.status || '再生できない動画です' };
   }
 
   const details = source.videoDetails ?? {};
   const micro = page?.microformat?.playerMicroformatRenderer;
-  const title = details.title === undefined ? undefined : cleanMarkdownTokens(details.title);
+  const title = clean(details.title);
+  const durationSec = Number(details.lengthSeconds) || undefined;
   const isLiveNow = micro?.liveBroadcastDetails?.isLiveNow ?? details.isLive;
   const description = cleanMarkdownTokens(details.shortDescription ?? '');
-  const chapters = parseTimestampChapters(description);
+  // YouTube と同じく、0:00 から始まるときだけチャプターとみなす（ライブ告知の「17:00 開場」を拾わない）
+  const timestamps = parseTimestampChapters(description);
+  const chapters = timestamps[0]?.seconds === 0 ? timestamps.filter((c) => !durationSec || c.seconds < durationSec) : [];
   const renderer = source.captions?.playerCaptionsTracklistRenderer;
   const tracks = renderer?.captionTracks ?? [];
   const availableTracks: TrackInfo[] = tracks.map((t) => ({
     language: t.languageCode ?? '',
     source: isAuto(t) ? 'auto' : 'manual',
-    name: t.name?.runs?.map((r) => r.text ?? '').join('') || t.name?.simpleText || t.languageCode || '',
+    name: cleanMarkdownTokens(t.name?.runs?.map((r) => r.text ?? '').join('') || t.name?.simpleText || t.languageCode || ''),
   }));
 
-  const picked = pickTrack(tracks, [lang, originalLanguage(renderer, tracks), 'en'].filter((l): l is string => !!l));
-  let transcript: NonNullable<VideoRecord['transcript']>;
-  if (!picked) {
+  // 日本語の動画に、別の言語の音声認識の結果だけが付いていることがある（中身は意味をなさない）
+  const mismatched = (t: CaptionTrack) => isAuto(t) && baseLang(lang) === 'ja' && baseLang(t.languageCode ?? '') !== 'ja' && KANA.test(title ?? '');
+  const ranked = rankTracks(tracks.filter((t) => captionUrl(t)), [lang, originalLanguage(renderer, tracks), 'en'].filter((l): l is string => !!l));
+  const candidates = ranked.filter((t) => !mismatched(t));
+
+  let transcript: NonNullable<VideoRecord['transcript']> | undefined;
+  if (tracks.length === 0) {
     const published = Date.parse(micro?.publishDate ?? '');
     transcript = isLiveNow
       ? { status: 'none', reason: 'live-now', message: LIVE_NOW }
       : { status: 'none', reason: 'no-captions', message: now() - published < RECENT_MS ? `${NO_CAPTIONS}${RECENT_HINT}` : NO_CAPTIONS };
-  } else if (isAuto(picked) && baseLang(picked.languageCode ?? '') !== baseLang(lang) && baseLang(lang) === 'ja' && KANA.test(title ?? '')) {
-    // 日本語の動画に、別の言語の音声認識の結果だけが付いていることがある（中身は意味をなさない）
-    transcript = { status: 'none', reason: 'language-mismatch', message: mismatch(picked.languageCode ?? '') };
+  } else if (ranked.length === 0) {
+    transcript = { status: 'unavailable', reason: 'blocked', message: BLOCKED }; // 字幕はあるのに、取得先の URL が想定と違う
+  } else if (candidates.length === 0) {
+    transcript = { status: 'none', reason: 'language-mismatch', message: mismatch(ranked[0].languageCode ?? '') };
   } else {
-    const out = await fetchCaptions(picked.baseUrl, fetchFn);
-    if ('failed' in out) {
-      transcript = { status: 'unavailable', reason: out.failed, message: out.failed === 'blocked' ? BLOCKED : REQUEST_FAILED };
-    } else if (out.paragraphs.length === 0) {
-      transcript = { status: 'none', reason: 'no-captions', message: NO_CAPTIONS };
-    } else {
-      const note = isAuto(picked) ? (micro?.category === 'Music' ? `${NOTE_AUTO}${NOTE_MUSIC}` : NOTE_AUTO) : undefined;
-      transcript = { status: 'ok', source: isAuto(picked) ? 'auto' : 'manual', language: picked.languageCode ?? '', ...(note ? { note } : {}), paragraphs: out.paragraphs };
+    // 選んだ字幕が空なら、次の候補を試す。取得に失敗したら、そこで止める
+    for (const t of candidates) {
+      const out = await fetchCaptions(captionUrl(t) as URL, fetchFn);
+      if ('failed' in out) {
+        transcript = { status: 'unavailable', reason: out.failed, message: out.failed === 'blocked' ? BLOCKED : REQUEST_FAILED };
+        break;
+      }
+      if (out.paragraphs.length > 0) {
+        const note = isAuto(t) ? (micro?.category === 'Music' ? `${NOTE_AUTO}${NOTE_MUSIC}` : NOTE_AUTO) : undefined;
+        transcript = { status: 'ok', source: isAuto(t) ? 'auto' : 'manual', language: t.languageCode ?? '', ...(note ? { note } : {}), paragraphs: out.paragraphs };
+        break;
+      }
     }
+    transcript ??= { status: 'none', reason: 'no-captions', message: NO_CAPTIONS };
   }
 
-  return {
+  const record: VideoRecord = {
     found: true,
     videoId,
     url,
     title,
-    channel: details.author,
+    channel: clean(details.author),
     publishedAt: micro?.publishDate,
-    durationSec: Number(details.lengthSeconds) || undefined,
+    durationSec,
     isLiveNow,
     category: micro?.category,
     description,
@@ -254,6 +291,10 @@ async function lookup(videoId: string, lang: string, deps: YoutubeDeps): Promise
     transcript,
     availableTracks,
   };
+  // 字幕を取れなかった結果は、次の呼び出しで取り直せるようにキャッシュしない。
+  // 字幕なしと、動画ページを読めず公開日などが欠けた結果は、短くだけ残す
+  const ttlMs = transcript.status === 'unavailable' ? 0 : transcript.status === 'ok' && page ? CACHE_TTL_DEFAULT : CACHE_TTL_EMPTY;
+  return { record, ttlMs };
 }
 
 const clock = (sec: number) => {
@@ -263,27 +304,22 @@ const clock = (sec: number) => {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 };
 
-/** 範囲に重なる段落を、maxChars に収まる分だけ返す。1 段落も収まらなければ最初の段落を切る。 */
+/**
+ * 範囲に重なる段落を、maxChars に収まる分だけ返す。
+ * 最初の段落は maxChars を超えても丸ごと返す（切ると、nextFromSec で続きを読んだときにその残りが飛ぶ）。
+ */
 function sliceParagraphs(paragraphs: Paragraph[], fromSec: number, toSec: number, maxChars: number, durationSec?: number): Partial<Transcript> {
   const lines = paragraphs.map((p) => `[${clock(p.startSec)}] ${p.text}`);
   const totalChars = lines.join('\n').length;
   const endOf = (i: number) => paragraphs[i + 1]?.startSec ?? Math.max(durationSec ?? 0, paragraphs[i].startSec + 1);
   const picked = paragraphs.flatMap((p, i) => (endOf(i) > fromSec && p.startSec < toSec ? [i] : []));
-  if (picked.length === 0) return { fromSec, toSec, text: '', chars: 0, totalChars, truncated: false };
+  if (picked.length === 0) return { fromSec, ...(Number.isFinite(toSec) ? { toSec } : {}), text: '', chars: 0, totalChars, truncated: false };
 
   let text = '';
   let end = picked[0]; // 返さなかった最初の段落
-  let cut = false;
   for (const i of picked) {
     const next = text ? `${text}\n${lines[i]}` : lines[i];
-    if (next.length > maxChars) {
-      if (!text) {
-        text = lines[i].slice(0, maxChars);
-        end = i + 1;
-        cut = true;
-      }
-      break;
-    }
+    if (text && next.length > maxChars) break;
     text = next;
     end = i + 1;
   }
@@ -294,7 +330,7 @@ function sliceParagraphs(paragraphs: Paragraph[], fromSec: number, toSec: number
     text,
     chars: text.length,
     totalChars,
-    truncated: cut || end <= last,
+    truncated: end <= last,
     ...(end <= last ? { nextFromSec: paragraphs[end].startSec } : {}),
   };
 }
@@ -307,10 +343,9 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
   const key = `youtube:${cacheKeyDigest<YoutubeTranscriptOptions, 'fromSec' | 'toSec' | 'maxChars' | 'noCache'>({ url: parsed.videoId, lang })}`;
   let record: VideoRecord | null = options.noCache ? null : getFromCache<VideoRecord>(key);
   if (!record) {
-    record = await runWithSingleFlight(key, () => lookup(parsed.videoId, lang, deps));
-    // 字幕を取れなかった結果は、次の呼び出しで取り直せるようにキャッシュしない。字幕なしは短く
-    const ttl = record.transcript?.status === 'ok' ? CACHE_TTL_DEFAULT : record.transcript?.status === 'unavailable' ? 0 : CACHE_TTL_EMPTY;
-    if (!options.noCache && ttl > 0) setToCache(key, record, ttl);
+    const looked = await runWithSingleFlight(key, () => lookup(parsed.videoId, lang, deps));
+    if (!options.noCache && looked.ttlMs > 0) setToCache(key, looked.record, looked.ttlMs);
+    record = looked.record;
   }
 
   const { transcript, ...rest } = record;

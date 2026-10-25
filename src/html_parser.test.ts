@@ -252,6 +252,8 @@ describe('parseYouTubeUrl', () => {
     expect(parseYouTubeUrl('https://music.youtube.com/watch?v=Ab-_0123456&list=PL1')).toEqual({ videoId: 'Ab-_0123456' });
     expect(parseYouTubeUrl('www.youtube.com/watch?v=Ab-_0123456&t=0')).toEqual({ videoId: 'Ab-_0123456' });
     expect(parseYouTubeUrl(' Ab-_0123456 ')).toEqual({ videoId: 'Ab-_0123456' });
+    // 読めない開始秒は捨てて、動画 ID だけを返す
+    expect(parseYouTubeUrl('https://www.youtube.com/watch?v=Ab-_0123456&t=99999999999999999999999999999999999')).toEqual({ videoId: 'Ab-_0123456' });
   });
 
   it('rejects other hosts, malformed ids and pages that are not a video', () => {
@@ -259,6 +261,8 @@ describe('parseYouTubeUrl', () => {
       'https://notyoutube.com/watch?v=Ab-_0123456',
       'https://www.youtube.com/watch?v=short',
       'https://www.youtube.com/channel/UCabcdefghij',
+      'https://www.youtube.com/embed/videoseries?list=PL1234567890',
+      'https://www.youtube.com/embed/live_stream?channel=UC1',
       'https://example.com/Ab-_0123456',
       'Ab-_012345',
       '',

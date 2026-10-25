@@ -8,7 +8,7 @@ export type GetYoutubeTranscriptInput = {
   lang?: string;
   /** この秒から返す (デフォルト: 0。続きは nextFromSec を渡す) */
   fromSec?: number;
-  /** この秒まで返す (省略時は最後まで。YouTube の動画は最長 12 時間) */
+  /** この秒まで返す (省略時は最後まで) */
   toSec?: number;
   /** 返す字幕の最大文字数 (デフォルト: 30000) */
   maxChars?: number;
@@ -76,7 +76,7 @@ export type GetYoutubeTranscriptOutput = {
     chars?: number;
     /** 動画全体の本文の文字数 */
     totalChars?: number;
-    /** maxChars か範囲の都合で、続きがあるか */
+    /** maxChars で切ったか (切ったときは nextFromSec から続きを読める。最初の段落は maxChars を超えても丸ごと返す) */
     truncated?: boolean;
     /** 続きの開始秒。fromSec に渡すと続きを返す */
     nextFromSec?: number;
