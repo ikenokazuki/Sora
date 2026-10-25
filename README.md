@@ -2002,21 +2002,21 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
   - クエリパラメータ: `?noCache=true` (キャッシュバイパス)
 
 - **主な返却項目**:
-  - `status`: 統一ステータス（`delivered` / `in_transit` / `registered` / `returned` / `not_found` / `error` / `unknown`）。`error` は照会の失敗（HTTP エラー・通信失敗など）で、`not_found`（該当なし）とは区別します。
+  - `status`: 統一ステータス（`delivered` / `in_transit` / `registered` / `returned` / `not_found` / `error` / `unknown`）。`error` は照会の失敗（HTTP エラー・通信失敗など）で、`not_found`（該当なし）とは区別します。不在で持ち戻った荷物（佐川の「ご不在」など）は再配達待ちなので `in_transit` です。
   - `events`: 追跡履歴（`date`・`status`・`location`）。
-  - `details`: 取れた範囲の詳細。`origin`（発送元・引受営業所）、`destination`（お届け先・配達営業所）、`deliveryDate`（お届け予定日時または配達完了日時。形式は運送会社の表記のまま）、`serviceType`（サービス種別）。
+  - `details`: 取れた範囲の詳細。`origin`（発送元・引受営業所）、`originPhone`（その営業所の電話番号）、`destination`（お届け先・配達営業所）、`destinationPhone`（その営業所の電話番号）、`deliveryDate`（お届け予定日時または配達完了日時。形式は運送会社の表記のまま）、`serviceType`（サービス種別）。電話番号は運送会社が公開しているときだけ入り、表記も運送会社のままです（今は佐川急便のみ）。
   - `trackingUrl`: 公式追跡ページの URL。
   - `pageUrl`: Sora が発行する荷物ごとの表示ページの URL（設定したときだけ。下記）。
   - `verification`・`resolvedCarrier`: 配送の実績を確認できたか（結果の確からしさ）と、確定した運送会社・判別方法。
 
 - **佐川急便**: 2026 年 10 月 23 日に再開した新しいお荷物問い合わせサービス（`https://e-customer.sagawa-exp.co.jp/k2k`）から取得します。旧追跡ページ（`k2k.sagawa-exp.co.jp`）は停止しています。
   - 新しいサービスには送り状番号を URL で渡す方法がないため、`trackingUrl` は番号に関わらず入力ページです。利用者に案内するときは、送り状番号も一緒に伝えてください。
-  - `details` には、集荷営業所（`origin`）、配達営業所（`destination`）、配達完了日またはお届け予定日（`deliveryDate`、例: `10月23日 18時00分`）が入ります。
+  - `details` には、集荷営業所（`origin`）とその電話番号（`originPhone`）、配達営業所（`destination`）とその電話番号（`destinationPhone`）、配達完了日またはお届け予定日（`deliveryDate`、例: `10月23日 18時00分`）が入ります。
   - 佐川の応答を読めないとき（停止・保守のページなど）は、`not_found` ではなく `error` を返します。
 
 - **荷物ごとの表示ページ（`pageUrl`、`GET /t/:carrier/:number`）**: 利用者に案内できる、送り状番号入りの URL を Sora が発行します。佐川急便のように、公式に番号を渡せる URL が無い運送会社のためのものです（どの運送会社でも使えます）。
   - `SORA_TRACKING_PAGE_SECRET` と `SORA_PUBLIC_URL` の両方を設定すると、照会結果に `pageUrl`（`<SORA_PUBLIC_URL>/t/<carrier>/<番号>?sig=<署名>`）が付きます。未設定なら付かず、表示ページは `404` です。
-  - ページは、佐川急便の結果画面と同じ並び・項目名（お問い合せ送り状No.、状態、集荷・配達営業所、荷物状況／日時／担当営業所）で表示し、先頭に運送会社の公式ページではないことを示します。運送会社のロゴや配色は使いません。公式ページへのリンクも置きます。
+  - ページは、佐川急便の結果画面と同じ並び・項目名（お問い合せ送り状No.、状態、集荷・配達営業所、荷物状況／日時／担当営業所）で表示し、営業所の電話番号があれば営業所名の下に `TEL` として出します（タップで電話をかけられます）。先頭に運送会社の公式ページではないことを示します。運送会社のロゴや配色は使いません。公式ページへのリンクも置きます。
   - 認証は不要で、EC サイトのページやメールのリンクからそのまま開けます。Sora が発行した署名が合う URL だけを表示するので、任意の番号の照会には使えません。秘密鍵を変えると、発行済みの URL はすべて無効になります。
   - ページを開いたときに運送会社へ問い合わせます（照会と同じキャッシュを使います）。スクリプトは使わず、表示する文字はすべてエスケープします。
 
@@ -2034,7 +2034,7 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
       { "date": "10/23 18:00", "status": "配達完了（宅配BOX）", "location": "那覇営業所" }
     ],
     "trackingUrl": "https://e-customer.sagawa-exp.co.jp/k2k",
-    "details": { "origin": "渋谷営業所", "destination": "那覇営業所", "deliveryDate": "10月23日 18時00分", "serviceType": "飛脚宅配便" },
+    "details": { "origin": "渋谷営業所", "originPhone": "0570-00-0000", "destination": "那覇営業所", "destinationPhone": "0570-00-0001", "deliveryDate": "10月23日 18時00分", "serviceType": "飛脚宅配便" },
     "verification": { "level": "strong", "reasons": ["Active shipment with 3 events and verified status 'delivered'"] },
     "resolvedCarrier": { "code": "sagawa", "name": "佐川急便", "confidence": "strong", "verification": "strong", "method": "network_verified" },
     "fetchedAt": "2026-10-23T09:30:00.000Z"
