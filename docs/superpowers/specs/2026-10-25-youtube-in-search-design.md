@@ -22,6 +22,7 @@ YouTube の字幕（`get_youtube_transcript`、v2.46.0）を、検索の側か�
 
 - `scrapeUrl` の中で、X の投稿の差し替えと同じ場所で、YouTube の動画 URL を `getYoutubePage`（`src/services/youtube.ts`）で本文にします。段落の選び方（rho-select）、`maxChars`、キャッシュは、ほかのページと同じように効きます。`scrape_batch`・`search_web` の `formats`・`search_deep` も同じ経路を通ります。
 - 本文は、題名・チャンネル・公開日・長さ・URL、説明文、字幕です。字幕の段落は `### 1m23s` の見出しで分け、段落ごとに選べるようにします。`[1:23]` のような時刻の書き方は、「何時」の答えを探す採点（`src/retrieval/answerability.ts` の `TIME_PATTERN`）に時刻と誤認されるので使いません。長さも「秒」で書きます（「時間」の「時」も同じ採点に当たるため）。
+- 字幕が `maxChars` に収まらないときは、切る前に、検索語（`query`）に関係する段落を BM25 で選び、時刻順に載せます（検索語を含む段落が無ければ先頭から）。`scrape` は `maxChars` で切ってから段落を選ぶため、そのままでは長い講義の後半が選ぶ対象になりませんでした（v2.47.1）。どちらの場合も、載せ方と全体の文字数を本文に書き添えます。キャッシュのキーには `query` と `maxChars` が入っているので、本文が検索語で変わっても混ざりません。
 - `contentStatus` は、字幕があれば `body`、無ければ `metadata_only`、取得できなければ `unavailable` です。`search_deep` は後の 2 つを使えないページとして扱い、次の候補を読みます。YouTube に拒否されても例外にせず `unavailable` のページを返し、`scrape` の再試行で問い合わせを重ねません。
 - ページそのもの（`html`・`rawHtml`・`links`・`screenshot`）やブラウザでの描画（`mode: "browser"`・`renderJs`）を求められたとき、youtube モジュールが無効なときは、今までどおりページを読みます。
 
@@ -36,9 +37,11 @@ YouTube の字幕（`get_youtube_transcript`、v2.46.0）を、検索の側か�
 - 動画は `results` の Web のページの後に `source: "youtube"` で足します。根拠だけを返す形（`responseMode: "evidence"`）、全体の文字数の上限（`maxTotalChars`）、十分さの判定（`contextSufficiency`）、キャッシュは、そのまま効きます。同じ動画が Web の結果にあれば足しません。取得できなかった動画は足しません（字幕の無い動画は、説明文だけの結果として足します）。
 - 締切（`scrapeDeadlineMs`）があれば、そこまでだけ待ちます。間に合わなかったときは動画を足さず、その応答はキャッシュしません。
 
-### 既定値
+### 既定値と案内
 
 省略できる引数には、すべて既定値を持たせます。v2.46.1 で分かった「既定値の無い引数に最小値を入れてくる呼び出し側」でも、意図しない動作にならないようにするためです。
+
+既定は 0 なので、AI が指定しないと動画は使われません。instructions の YouTube の項目（10 番）を短く書き直し、「動画を探すなら `search_video` の `transcripts:3`、調べものなら `search_deep` に `videos:2`」を足しました（v2.47.1、8,706 → 8,750 字。上限 8,800 字の中）。yahoo・web のモジュールを外した設定では、そのツールの案内を出しません。
 
 ## 確認
 
@@ -48,5 +51,4 @@ YouTube の字幕（`get_youtube_transcript`、v2.46.0）を、検索の側か�
 ## 対象外
 
 - `get_youtube_transcript` に検索語で部分を選ぶ機能（`query`）を足すこと。今は `search_video` と `search_deep` の側だけで選びます。
-- instructions への案内の追加（文字数の余裕が 94 字しかないため。引数の説明で案内します）。
 - 字幕の無い動画の音声認識（[YouTube の字幕の設計](2026-10-25-youtube-transcript-design.md) の対象外を参照）。

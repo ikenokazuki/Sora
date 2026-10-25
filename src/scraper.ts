@@ -651,7 +651,7 @@ export async function scrapeUrl(options: {
         // ページそのもの（HTML・リンク・スクリーンショット）やブラウザでの描画を求められたときは、通常の取得に任せる
         const wantsPage = formats.some((f) => f === 'html' || f === 'rawHtml' || f === 'links' || f === 'screenshot') || options.mode === 'browser' || options.renderJs === true;
         if (!wantsPage && isModuleActive('youtube') && parseYouTubeUrl(url)) {
-          const page = await getYoutubePage(url, { noCache: options.noCache });
+          const page = await getYoutubePage(url, { noCache: options.noCache, query: options.query, maxChars });
           const stats = calculateContentStats(page.content);
           const truncatedContent = safeTruncateMarkdown(page.content, maxChars);
           const baseResult: ScrapeResult = {
