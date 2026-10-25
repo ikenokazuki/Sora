@@ -21,7 +21,7 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
   - 生成クライアントの `client/SKILL.md`（取得した環境で認識される）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
-どれも `tools/list` を増やさない（既定 24,671 文字のまま）。
+どれも `tools/list` を増やさない（既定 24,728 文字のまま）。
 
 ## クライアントを取得する
 
@@ -62,17 +62,17 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## 実測
 
-2026-10-15 に実際の通信で測った。文字数は、クライアントが受け取る HTTP 本文の長さ。
+2026-10-25 に実際の通信で測った（`get_youtube_transcript` を足した後）。文字数は、クライアントが受け取る HTTP 本文の長さ。
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 24,671 |
-| 全ツール（50 ツール） | 60,202 |
-| `instructions` | 8,494 |
+| 既定（14 ツール） | 24,728 |
+| 全ツール（51 ツール） | 61,876 |
+| `instructions` | 8,706 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 504、`names` 245、`summary` 449、`schema` 2,362 文字。
+`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,477 文字。
 
 **`search_deep`（「TypeScript 5.5 新機能」、上位 3 件）**
 
