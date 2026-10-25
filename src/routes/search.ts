@@ -332,18 +332,19 @@ searchRoutes.post('/search/video', async (c) => {
   try {
     const parsed = VideoSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, page, noCache } = parsed.data;
+    const { query, limit, page, noCache, updated, platform } = parsed.data;
     // ponytail: youtube モジュールが無効な設定では transcripts を無視する
     const transcripts = isModuleActive('youtube') ? parsed.data.transcripts ?? 0 : 0;
     const transcriptChars = parsed.data.transcriptChars ?? 2000;
 
-    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}${transcripts ? `:t${transcripts}x${transcriptChars}` : ''}`;
+    const filters = `${updated && updated !== 'all' ? `:u${updated}` : ''}${platform && platform !== 'all' ? `:p${platform}` : ''}`;
+    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}${transcripts ? `:t${transcripts}x${transcriptChars}` : ''}${filters}`;
     if (!noCache) {
       const cached = getFromCache<unknown>(cacheKey);
       if (cached) return c.json(cached);
     }
 
-    let result = await searchYahooVideo({ query, limit, page });
+    let result = await searchYahooVideo({ query, limit, page, updated, platform });
     if (transcripts) result = await attachVideoTranscripts(result, query, { count: transcripts, maxChars: transcriptChars });
     if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
     return c.json(result);
