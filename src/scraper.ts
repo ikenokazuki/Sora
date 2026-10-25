@@ -1829,9 +1829,10 @@ export async function integratedSearch(options: {
   const webSearchPromise = readQueryUrls
     ? Promise.resolve({ items: queryUrls.slice(0, limit).map((url) => ({ title: url, url, source: 'web' })) })
     : searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
-  // 動画（videos）は Web 検索と並行して探し、字幕を読む（Web のページを読む間に終わる。実測 0.6〜2.3 秒）
+  // 動画（videos）は Web 検索と並行して探し、字幕を読む（Web のページを読む間に終わる。実測 0.6〜2.3 秒）。
+  // 字幕を読めるのは YouTube だけなので YouTube に絞り、期間（updated）も Web 検索と同じにする
   const videoResultsPromise: Promise<Record<string, any>[]> = videos > 0 && scrapeContent
-    ? searchYahooVideo({ query, limit: 10 })
+    ? searchYahooVideo({ query, limit: 10, platform: 'youtube', ...(updated && updated !== 'all' ? { updated } : {}) })
         .then(async (found: any) => {
           const seen = new Set<string>();
           const picked = (Array.isArray(found?.items) ? found.items : []).filter((item: any) => {

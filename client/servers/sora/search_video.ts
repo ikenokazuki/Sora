@@ -8,6 +8,10 @@ export type SearchVideoInput = {
   limit?: number;
   /** ページ番号 (1-based, 上限: 100) */
   page?: number;
+  /** 投稿日の期間 (デフォルト: "all") */
+  updated?: "all" | "hour" | "day" | "week" | "month" | "year";
+  /** 動画サイト (デフォルト: "all") */
+  platform?: "all" | "youtube" | "tiktok" | "x" | "instagram" | "niconico" | "dailymotion";
   /** 上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5) */
   transcripts?: number;
   /** 字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000) */
@@ -81,7 +85,7 @@ export type SearchVideoOutput = {
   message?: string;
 };
 
-/** 【Yahoo 動画検索】キーワードで YouTube 等の動画を検索し、動画 URL・タイトル・再生時間・サムネイル・投稿日・投稿者を取得します。transcripts に本数を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, transcript }] } */
+/** 【Yahoo 動画検索】キーワードで YouTube・TikTok 等の動画を検索します。transcripts を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }] } */
 export function searchVideo(input: SearchVideoInput): Promise<SearchVideoOutput> {
   return callSora<SearchVideoOutput>({ method: 'POST', path: '/search/video' }, input);
 }
