@@ -54,7 +54,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - REST: `POST /youtube/transcript`。
 - 入力: `url`（必須。URL か 11 文字の動画 ID）、`lang`（既定 `ja`）、`fromSec`・`toSec`（秒）、`maxChars`（1〜50,000、既定 30,000）、`noCache`。
 - 受け付ける URL: `youtube.com`（`www.`・`m.`・`music.`）、`youtube-nocookie.com`、`youtu.be` の `/watch?v=`・`/shorts/`・`/live/`・`/embed/`・`/v/`。ホストは完全一致で判定します。`t`・`start`（`367`・`367s`・`6m7s`・`1h2m3s`）は `requestedStartSec` として返すだけで、範囲は変えません。全体を要約するか、その場面を見るかは AI が決め、必要なら `fromSec` を渡します。
-- 出力: `found`、`videoId`、`url`、`title`、`channel`、`publishedAt`、`durationSec`、`isLiveNow`、`category`、`description`、`chapters`（`startSec`・`time`・`title`）、`requestedStartSec`、`transcript`、`availableTracks`（`language`・`source`・`name`）。
+- 出力: `found`、`videoId`、`url`、`title`、`channel`、`publishedAt`、`durationSec`、`isLiveNow`、`category`、`description`、`chapters`（`title`・`time`・`seconds`。`scrape` の `media.chapters` と同じ形）、`requestedStartSec`、`transcript`、`availableTracks`（`language`・`source`・`name`）。
   - `transcript`: `status`、`reason`、`message`、`source`（`manual` / `auto`）、`language`、`note`、`fromSec`、`toSec`、`text`、`chars`、`totalChars`、`truncated`、`nextFromSec`。
   - `found: false` のとき `reason` は `video-unavailable`（非公開・削除・年齢制限など）で、`message` に YouTube の理由文を入れます。
 
@@ -64,18 +64,18 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 2. player（ANDROID）と動画ページを並行して取得します。動画ページが取れなければ、公開日・カテゴリ・配信中かどうかを省きます。
 3. 再生できない動画は `found: false` を返します。
 4. 字幕の一覧は player のものを使い、player が拒否されたときは動画ページの一覧で代用します。
-5. 字幕は、`lang` の手動 → `lang` の自動 → ほかの言語の手動 → ほかの言語の自動、の順に選びます。
+5. 字幕は、言語の候補（`lang`、元の音声の言語、英語）の順に、それぞれ手動 → 自動で選び、どれも無ければほかの言語の手動 → 自動を選びます。元の音声の言語は、既定の音声トラックの ID（`audioTracks[defaultAudioTrackIndex].audioTrackId`、例 `ja.4`）から読み、無ければ自動字幕の言語を使います。AI 吹き替えの英語の音声にも自動字幕が付くため、自動字幕の言語だけでは元の言語を決められません（テスト対象の動画がこれでした）。英語の動画で、翻訳の字幕（`de` など）が一覧の先に来ても英語を選びます。
 6. 字幕の URL は `www.youtube.com` の `/api/timedtext` だけを許可して取得します。
 7. 本文と説明文は `cleanMarkdownTokens` を通します（間接プロンプトインジェクション対策）。
 8. 改行だけの event を飛ばし、約 30 秒か 300 字ごとに段落にまとめ、先頭に `[m:ss]`（1 時間以上は `[h:mm:ss]`）を付けた 1 本の文字列にします。
 
 ### 字幕の状態
 
-- `ok`: 本文を返します。自動字幕には `note`（音声認識による自動字幕で、句読点が無く誤りを含む。引用するときは自動字幕と伝える）を付け、カテゴリが Music なら歌声の聞き取りで精度が低いことを足します。
+- `ok`: 本文を返します。自動字幕には `note`（音声認識による自動字幕で、聞き間違いを含み、固有名詞や句読点が正しくないことがある。引用するときは自動字幕と伝える）を付け、カテゴリが Music なら歌声の聞き取りで精度が低いことを足します。
 - `none` / `no-captions`: 字幕がありません。公開から 48 時間以内なら、しばらくすると自動字幕が付くことがある、と足します。
 - `none` / `live-now`: 配信中です。配信が終わると自動字幕が付くことがあります。
 - `none` / `language-mismatch`: 題名にかなを含むのに、自動字幕が `ja` 以外しかありません（`lang` が `ja` のときだけ判定）。本文は返さず、その言語を `lang` に指定すると取得できると書きます。
-- `unavailable` / `blocked`: YouTube が字幕の取得を拒否しました（bot 確認、空の応答）。時間をおいて再試行するよう書き、キャッシュしません。
+- `unavailable` / `blocked`: YouTube が字幕の取得を拒否しました（bot 確認、空の応答）。`unavailable` / `request-failed`: 通信に失敗しました。どちらも時間をおいて再試行するよう書き、キャッシュしません。
 
 ### 長さの制御
 
@@ -87,9 +87,13 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - MCP: 例外は `isError` で `YouTube error: <理由>` を返します。bot 確認は `login required (bot check)` を含め、tool-health で `blocked` に分類されるようにします。
 - REST: 入力の誤りは 400、例外は 502 `YOUTUBE_UPSTREAM_ERROR`（retryable）。動画が見つからない場合と字幕なしは 200 です。
 
-## 実装後の確認
+## 実装後の確認（2026-10-25。worktree のサーバーをこのホストで起動）
 
-https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s（536 秒、2026-10-23 公開、`ja` と `en` の自動字幕）で確認します。`ja` の自動字幕は 3,281 字、6:07〜7:07 は 385 字です。あわせて、字幕なし・言語外れ・不正な ID・存在しない ID の動画も確認します。
+- https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s: `found: true`。題名・投稿者・公開日（2026-10-23）・536 秒・People & Blogs・`requestedStartSec: 367` が返りました。字幕は `ja` の自動字幕で、17 段落・3,400 字（時刻と区切りを含む）、1 回目は 1.43 秒です。`fromSec: 367, toSec: 427` は、範囲に重なる 5:51・6:24・6:56 の 3 段落（615 字）をキャッシュから 0.002 秒で返しました。この動画には AI 吹き替えらしい英語の音声トラック（`en-US.10`）があり、`en` の自動字幕はその音声のものでした。
+- 日本語の自動字幕に句読点が付いていました。そこで `note` は「句読点が無い」と言い切らず、「固有名詞や句読点が正しくないことがある」としました。固有名詞の聞き間違い（説明文の「東名阪ツアー」が「透明ハンツア」になるなど）は実際にありました。
+- 字幕なし（HTJEmwSRU60）は `none` / `no-captions`、日本語の MV に `id` の自動字幕だけ（iWu-1vjzvQ0）は `none` / `language-mismatch` でした。Me at the zoo（jNQXAC9IVRw、`de`・`en` の手動字幕）は `en` を選びました。存在しない ID は `found: false`（「この動画は再生できません」）、URL でない入力は 400 です。`maxChars: 1000` では 998 字で切り、`truncated: true`・`nextFromSec: 161` を返しました。
+- MCP: 初期の一覧には出ず、`search_tools` の「YouTube 字幕」で見つかって有効になり、同じ結果を返しました。instructions にも載ります。
+- 全件テスト（CI と同じ bun 1.4.2）: 2,212 件成功、失敗 0。
 
 ## 割り切り
 
