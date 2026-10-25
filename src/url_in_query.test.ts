@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { closeSharedBrowser, resolveChromiumPath } from './browser_engine.js';
 import { splitQueryUrls } from './html_parser.js';
 import { integratedSearch, scrapeUrl } from './scraper.js';
+import * as xDetail from './services/x_detail.js';
 import * as yahoo from './services/yahoo.js';
 
 // 検索語の URL と、読めないページ（画像などのファイル・エラーのページ）。ページ・字幕・題名はすべてテスト用の作り物。
@@ -107,6 +108,15 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
     expect(r.results.map((x: any) => x.url)).toEqual([`${base}/a`, `${base}/b`]);
     expect(r.results.map((x: any) => x.title)).toEqual(['ページ/a', 'ページ/b']);
     expect((r.results[0].highlights ?? []).join('\n')).toContain('3000 円');
+  });
+
+  test('an X post URL takes the title of the post, not the URL', async () => {
+    spySearches();
+    const detail = spyOn(xDetail.defaultXDetailProvider, 'fetchStatus').mockResolvedValue({ text: 'テストの投稿の本文です', author: { name: 'テスト', screenName: 'test_user' } } as never);
+    cleanups.push(() => detail.mockRestore());
+    const r = await integratedSearch({ query: 'https://x.com/test_user/status/1234567890123456789', noCache: true }) as any;
+    expect(r.results[0].title).toBe('テスト (@test_user) on X: "テストの投稿の本文です..."');
+    expect(r.results[0].markdown).toContain('テストの投稿の本文です');
   });
 
   test('says there is no usable content when the URL is a file it cannot read', async () => {

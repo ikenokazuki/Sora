@@ -24,12 +24,13 @@ LibreChat の Agent が「この動画を要約して」に対し、`search_deep
 - TikTok: Chrome の 403 のエラー画面（"You don't have authorization to view this page"）を、本文として返していた。
 - 画像ファイル（jpg）: 画像のデータを文字として 1,500 字返し、本文として扱っていた。
 
-TikTok は、このサーバーからは字幕も説明文も取れない。
+TikTok（2026-10-26）:
 
-- 動画のページは WAF の確認画面（1.4KB）になり、ブラウザで開くと HTTP 403 になる。
-- 公式の oEmbed は、動画については埋め込みのタグ（iframe）しか返さない。題名・投稿者も無い。プロフィールの oEmbed は返る。
-- 埋め込みのプレーヤーのページ（`/player/v1/<動画 ID>`）は開ける（39KB）が、中身は空の枠である。動画のデータは、開いたあとに JavaScript が TikTok のボット対策の署名（mssdk・argus）を付けて取りに行く。
-- このため、TikTok の字幕は今回扱わない。試すなら、YouTube の音声認識と同じく、許可を得てから別の計画にする。
+- 静的な取得では、動画のページは WAF の確認画面（1.4KB）になる。
+- Sora のブラウザ（`scrape` の通常の描画）では、開けることも 403 になることもある。本番では 403 になり、Chrome のエラー画面の文字が本文になっていた。その後の手元の確認では、確かめた 2 本とも開けた（約 12 秒、ページは約 50 万字）。
+- 開けたページのデータ（`__UNIVERSAL_DATA_FOR_REHYDRATION__` の `webapp.video-detail`）には、説明文（`desc`）と、字幕の欄（`video.subtitleInfos`・`video.claInfo.captionInfos`）がある。確かめた 2 本は、どちらも字幕が無かった（`captionInfos: []`、`noCaptionReason: 3`）。
+- 公式の oEmbed は、このサーバーからだと、動画については埋め込みのタグ（iframe）しか返さない（題名・投稿者も無い）。埋め込みのプレーヤーのページ（`/player/v1/<動画 ID>`）は空の枠で、データは開いたあとに TikTok のボット対策の署名（mssdk・argus）を付けて取りに行く。
+- このため、TikTok の字幕は今回は扱わない。字幕のある動画で、ページのデータの字幕の URL を読めるかを、別に確かめる。
 
 ## 設計
 
@@ -55,16 +56,16 @@ TikTok は、このサーバーからは字幕も説明文も取れない。
 ### scrape: エラーのページ
 
 - HTTP の状態が 400 以上のページは、`contentStatus` を `unavailable` にし、本文の先頭に HTTP の状態を書く。静的な取得とブラウザの両方で行う。ブラウザでは、本文のドキュメントの応答の状態を記録する。
-- TikTok（ブラウザで 403）は、これで「読めない」になる。`search_deep` は `unavailable` のページを根拠に数えず、次の候補を読む。
+- TikTok がブラウザでも 403 を返したときは、これで「読めない」になる。`search_deep` は `unavailable` のページを根拠に数えず、次の候補を読む。
 - 既知の限界: 404 を返しつつ JavaScript で本文を出すページ（SPA の 404 フォールバック）も `unavailable` になる。
 
 ### 十分さの判定
 
-- `contextSufficiency` は、`metadata_only`・`unavailable` のページを証拠に数えない（取得失敗と同じ）。画像や TikTok だけを読んだときは `no-usable-content` になる。
+- `contextSufficiency` は、`metadata_only`・`unavailable` のページを証拠に数えない（取得失敗と同じ）。画像のファイルや、403 で読めなかったページだけを読んだときは `no-usable-content` になる。
 
 ## 対象外
 
-- TikTok の字幕（上記）。
+- TikTok の字幕（上記。字幕のある動画で別に確かめる）。
 - 短縮 URL（t.co など）を転送先の URL で判定すること。今は t.co 経由の YouTube を字幕で読まない。
 - Instagram などの投稿を `fetch_social_post` の仕組みで読むこと。
 - 検索語に URL と語の両方があるときに、語で検索も行うこと。

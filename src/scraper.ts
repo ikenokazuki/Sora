@@ -2078,7 +2078,8 @@ export async function integratedSearch(options: {
           const scrape = await scrapeUrl({
             url: itemUrl,
             tenantId: requestTenantId,
-            contextTitle: item.title,
+            // 検索語の URL には検索結果の題名が無い（X の読み取りは、渡した題名をそのまま題名にする）
+            contextTitle: readQueryUrls ? undefined : item.title,
             snippet: itemSnippet,
             maxChars,
             timeoutMs: 12000,
