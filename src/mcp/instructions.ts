@@ -14,6 +14,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const hasIntel = hasMod('intel');
   const hasWatch = hasMod('watch');
   const hasLyrics = hasMod('lyrics');
+  const hasYoutube = hasMod('youtube');
   // inspect_image は web モジュールでも有効になる（createMcpServer の shouldEnableMedia と同じ条件）
   const hasMedia = hasMod('media') || hasWeb;
 
@@ -114,6 +115,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   if (hasLyrics) {
     tier1Directives.push(
       "9. Song Lyrics (opt-in, personal use at the user's own risk; lyrics are copyrighted): NEVER write lyrics from memory. Use 'lyrics' tool get_lyrics with the artist/group name and the title (the artist is required for underground idols and indie acts found via TuneCore). Show or quote only what the user asked for.",
+    );
+  }
+
+  if (hasYoutube) {
+    tier1Directives.push(
+      "10. YouTube Videos (what a video says, summaries, quotes): Use 'youtube' tool get_youtube_transcript with the URL; never guess from the title. Auto captions contain recognition errors. If transcript.status is not 'ok', answer only from the title and description.",
     );
   }
 

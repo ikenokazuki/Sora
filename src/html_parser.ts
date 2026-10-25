@@ -511,6 +511,58 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
   return tables;
 }
 
+const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
+const YOUTUBE_VIDEO_ID = /^[\w-]{11}$/;
+const YOUTUBE_PATH_VIDEO_ID = /^\/(?:shorts|live|embed|v)\/([\w-]{11})(?:[/?#]|$)/;
+/** `/embed/` の後に来る、動画 ID ではない 11 文字の語（再生リストとチャンネルの配信の埋め込み） */
+const YOUTUBE_NOT_VIDEO_IDS = new Set(['videoseries', 'live_stream']);
+
+/** YouTube の `t` / `start`（`367`・`367s`・`6m7s`・`1h2m3s`）を秒にする。0 と読めない値は undefined。 */
+function parseYouTubeStart(value: string | null): number | undefined {
+  const m = value?.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
+  if (!m) return undefined;
+  const seconds = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+  return seconds > 0 && Number.isSafeInteger(seconds) ? seconds : undefined;
+}
+
+/** YouTube の動画 URL（watch・youtu.be・shorts・live・embed・v）か 11 文字の動画 ID から、動画 ID と開始秒を読む。ホストは完全一致で判定する。 */
+export function parseYouTubeUrl(input: string): { videoId: string; startSec?: number } | undefined {
+  const raw = input.trim();
+  if (YOUTUBE_VIDEO_ID.test(raw)) return { videoId: raw };
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return undefined;
+  }
+  const host = url.hostname.toLowerCase();
+  let videoId: string | undefined;
+  if (host === 'youtu.be') videoId = url.pathname.slice(1).split('/')[0];
+  else if (YOUTUBE_HOSTS.has(host)) videoId = url.pathname === '/watch' ? url.searchParams.get('v') ?? undefined : url.pathname.match(YOUTUBE_PATH_VIDEO_ID)?.[1];
+  if (!videoId || !YOUTUBE_VIDEO_ID.test(videoId) || YOUTUBE_NOT_VIDEO_IDS.has(videoId)) return undefined;
+  const startSec = parseYouTubeStart(url.searchParams.get('t') ?? url.searchParams.get('start'));
+  return startSec ? { videoId, startSec } : { videoId };
+}
+
+/** 時刻で始まる行（`0:00 はじめに`・`1:02:03 まとめ`）をチャプターとして時刻順に読む。同じ時刻は最初の行だけ、題名は 2〜80 文字。 */
+export function parseTimestampChapters(text: string): Array<{ title: string; time: string; seconds: number }> {
+  const chapters: Array<{ title: string; time: string; seconds: number }> = [];
+  const seenTimes = new Set<string>();
+  for (const match of text.matchAll(/(?:^|\n)[ \t]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[ \t]+([^\r\n]+)/g)) {
+    const hours = match[1] ? parseInt(match[1], 10) : 0;
+    const mins = parseInt(match[2], 10);
+    const secs = parseInt(match[3], 10);
+    const title = match[4].replace(/\s+/g, ' ').trim();
+    const timeStr = match[1] ? `${match[1]}:${match[2]}:${match[3]}` : `${match[2]}:${match[3]}`;
+
+    if (!seenTimes.has(timeStr) && title.length >= 2 && title.length <= 80) {
+      seenTimes.add(timeStr);
+      chapters.push({ title, time: timeStr, seconds: hours * 3600 + mins * 60 + secs });
+    }
+  }
+  return chapters.sort((a, b) => a.seconds - b.seconds);
+}
+
 /** YouTube / 動画メディアメタデータ & チャプター抽出 */
 export function extractMediaInfo(
   $: cheerio.CheerioAPI,
@@ -518,49 +570,17 @@ export function extractMediaInfo(
   rawHtml?: string,
 ): MediaInfo | undefined {
   try {
-    const urlObj = new URL(targetUrl);
-    const host = urlObj.hostname.toLowerCase();
-
-    if (host.includes('youtube.com') || host.includes('youtu.be')) {
-      let videoId: string | undefined;
-      if (host.includes('youtu.be')) {
-        videoId = urlObj.pathname.slice(1).split('?')[0];
-      } else {
-        videoId = urlObj.searchParams.get('v') || undefined;
-      }
-
-      if (videoId) {
-        const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        const duration = $('meta[itemprop="duration"]').attr('content') || undefined;
-
-        const chapters: Array<{ title: string; time: string; seconds: number }> = [];
-        const fullText = (rawHtml || '') + '\n' + $('body').text();
-        const timestampRegex = /(?:^|\n)[ \t]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[ \t]+([^\r\n]+)/g;
-        let match: RegExpExecArray | null;
-        const seenTimes = new Set<string>();
-
-        while ((match = timestampRegex.exec(fullText)) !== null) {
-          const hours = match[1] ? parseInt(match[1], 10) : 0;
-          const mins = parseInt(match[2], 10);
-          const secs = parseInt(match[3], 10);
-          const title = match[4].replace(/\s+/g, ' ').trim();
-          const timeStr = match[1] ? `${match[1]}:${match[2]}:${match[3]}` : `${match[2]}:${match[3]}`;
-
-          if (!seenTimes.has(timeStr) && title.length >= 2 && title.length <= 80) {
-            seenTimes.add(timeStr);
-            const totalSeconds = hours * 3600 + mins * 60 + secs;
-            chapters.push({ title, time: timeStr, seconds: totalSeconds });
-          }
-        }
-
-        return {
-          type: 'youtube',
-          videoId,
-          thumbnail,
-          duration,
-          chapters: chapters.length > 0 ? chapters.sort((a, b) => a.seconds - b.seconds) : undefined,
-        };
-      }
+    const youtube = parseYouTubeUrl(targetUrl);
+    if (youtube) {
+      const { videoId } = youtube;
+      const chapters = parseTimestampChapters((rawHtml || '') + '\n' + $('body').text());
+      return {
+        type: 'youtube',
+        videoId,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        duration: $('meta[itemprop="duration"]').attr('content') || undefined,
+        chapters: chapters.length > 0 ? chapters : undefined,
+      };
     }
 
     const videoSrc = $('video source, video').attr('src');

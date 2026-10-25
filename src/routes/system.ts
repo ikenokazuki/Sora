@@ -76,6 +76,7 @@ systemRoutes.get('/', (c) => {
       tradeHtsPredict: 'POST /trade/hts-predict',
       tradeCompliance: 'POST /trade/compliance',
       mediaInspectImage: 'POST /media/inspect-image',
+      youtubeTranscript: 'POST /youtube/transcript',
       map: 'POST /map',
       crawl: 'POST /crawl',
       crawlStream: 'POST /crawl/stream',

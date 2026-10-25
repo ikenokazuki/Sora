@@ -352,7 +352,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
       // Regression guards with healthy safety margin
       expect(toolChars).toBeLessThan(30000);
-      expect(instructionChars).toBeLessThan(8500);
+      // 2026-10-25 に YouTube の指示（10 番目）を足して 8,443 → 8,706 字になり、上限を 8,500 から 8,800 に上げた
+      expect(instructionChars).toBeLessThan(8800);
       expect(estimatedTokens).toBeLessThan(10000);
 
       await client.close();
