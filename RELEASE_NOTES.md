@@ -1,3 +1,11 @@
+# Sora v2.47.0 — 検索（scrape・search_video・search_deep）で YouTube の字幕を使うようにした
+
+- **`scrape` が YouTube の動画 URL を、字幕と説明文から作った本文で返すようになりました。** これまでは動画のページを読み、おすすめ動画の一覧（別の動画の題名）を本文として返していました（約 10 秒）。今は約 1.5 秒で、題名・チャンネル・公開日・長さ・説明文・字幕（自動字幕と明記）を返します。`scrape_batch`、`search_web` の `formats`、`search_deep` も同じです。
+  - 字幕の段落は `### 1m23s` の見出しで分け、検索語に関係する段落が選ばれるようにしました。
+  - 字幕が無い動画は `contentStatus: "metadata_only"`、取得できない動画は `"unavailable"` です。ページそのもの（`html`・`rawHtml`・`links`・`screenshot`）やブラウザでの描画を求めたときは、今までどおり動画のページを読みます。
+- **`search_video` に `transcripts`（0〜5、既定 0）と `transcriptChars`（500〜10,000、既定 2,000）を足しました。** 上位の YouTube 動画の指定した本数に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます。検索語を含む段落が無いときは、先頭から返します（`excerpt: "head"`）。全文は `get_youtube_transcript` で読めます。
+- **`search_deep` に `videos`（0〜5、既定 0）を足しました。** Web 検索と並行して Yahoo の動画検索を行い、上位の YouTube 動画の字幕を、ほかのページと同じように根拠として `results` に `source: "youtube"` で足します。動画の側はページを読む処理と並行して終わるので、待ち時間はほとんど増えません。既定は 0 で、指定しなければ動画は検索しません（Yahoo の検索と YouTube への問い合わせが増えないように）。
+
 # Sora v2.46.1 — YouTube の字幕の入力から toSec を外し、記号つきのチャプターを読むようにした
 
 - **`get_youtube_transcript` / `POST /youtube/transcript` の入力から `toSec` を外しました。** 省略できる引数に最小値を入れてくる呼び出し側が `toSec: 1` を送ると、冒頭が待機画面の動画では本文が空になり、0 秒から字幕がある動画でも最初の段落だけが `truncated: false` で返っていました。一部だけ読むときは `fromSec` と `maxChars` を使ってください。送られてきた `toSec` は無視します（エラーにはなりません）。出力の `toSec`（返した本文の終わり）はそのままです。
