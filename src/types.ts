@@ -2019,8 +2019,8 @@ export const LyricsResultSchema = z.object({
 export const YoutubeTranscriptRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('YouTube の動画 URL (watch・youtu.be・shorts・live・embed) か 11 文字の動画 ID。URL の t= は requestedStartSec として返す'),
   lang: z.string().optional().describe('字幕の言語 (デフォルト: "ja")。この言語の手動字幕、自動字幕の順に選び、無ければ他の言語').meta({ default: 'ja' }),
-  fromSec: z.number().int().min(0).max(43_200).optional().describe('この秒から返す (デフォルト: 0。続きは nextFromSec を渡す)').meta({ default: 0 }),
-  toSec: z.number().int().min(1).max(43_200).optional().describe('この秒まで返す (省略時は最後まで。YouTube の動画は最長 12 時間)'),
+  fromSec: z.number().int().min(0).max(86_400).optional().describe('この秒から返す (デフォルト: 0。続きは nextFromSec を渡す)').meta({ default: 0 }),
+  toSec: z.number().int().min(1).max(86_400).optional().describe('この秒まで返す (省略時は最後まで)'),
   maxChars: z.number().int().min(1).max(50_000).optional().describe(`返す字幕の最大文字数 (デフォルト: ${DEFAULT_MAX_CHARS})`).meta({ default: DEFAULT_MAX_CHARS }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -2043,7 +2043,7 @@ export const YoutubeTranscriptSchema = z.object({
   text: z.string().optional().describe('字幕の本文。約 30 秒ごとの段落で、各行の先頭に [m:ss] (1 時間以上は [h:mm:ss])'),
   chars: z.number().optional().describe('text の文字数'),
   totalChars: z.number().optional().describe('動画全体の本文の文字数'),
-  truncated: z.boolean().optional().describe('maxChars か範囲の都合で、続きがあるか'),
+  truncated: z.boolean().optional().describe('maxChars で切ったか (切ったときは nextFromSec から続きを読める。最初の段落は maxChars を超えても丸ごと返す)'),
   nextFromSec: z.number().optional().describe('続きの開始秒。fromSec に渡すと続きを返す'),
 });
 

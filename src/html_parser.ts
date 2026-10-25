@@ -514,13 +514,15 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
 const YOUTUBE_VIDEO_ID = /^[\w-]{11}$/;
 const YOUTUBE_PATH_VIDEO_ID = /^\/(?:shorts|live|embed|v)\/([\w-]{11})(?:[/?#]|$)/;
+/** `/embed/` の後に来る、動画 ID ではない 11 文字の語（再生リストとチャンネルの配信の埋め込み） */
+const YOUTUBE_NOT_VIDEO_IDS = new Set(['videoseries', 'live_stream']);
 
 /** YouTube の `t` / `start`（`367`・`367s`・`6m7s`・`1h2m3s`）を秒にする。0 と読めない値は undefined。 */
 function parseYouTubeStart(value: string | null): number | undefined {
   const m = value?.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/);
   if (!m) return undefined;
   const seconds = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
-  return seconds > 0 ? seconds : undefined;
+  return seconds > 0 && Number.isSafeInteger(seconds) ? seconds : undefined;
 }
 
 /** YouTube の動画 URL（watch・youtu.be・shorts・live・embed・v）か 11 文字の動画 ID から、動画 ID と開始秒を読む。ホストは完全一致で判定する。 */
@@ -537,7 +539,7 @@ export function parseYouTubeUrl(input: string): { videoId: string; startSec?: nu
   let videoId: string | undefined;
   if (host === 'youtu.be') videoId = url.pathname.slice(1).split('/')[0];
   else if (YOUTUBE_HOSTS.has(host)) videoId = url.pathname === '/watch' ? url.searchParams.get('v') ?? undefined : url.pathname.match(YOUTUBE_PATH_VIDEO_ID)?.[1];
-  if (!videoId || !YOUTUBE_VIDEO_ID.test(videoId)) return undefined;
+  if (!videoId || !YOUTUBE_VIDEO_ID.test(videoId) || YOUTUBE_NOT_VIDEO_IDS.has(videoId)) return undefined;
   const startSec = parseYouTubeStart(url.searchParams.get('t') ?? url.searchParams.get('start'));
   return startSec ? { videoId, startSec } : { videoId };
 }
