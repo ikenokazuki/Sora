@@ -44,7 +44,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
-  'check_product_compliance', 'inspect_image', 'research_country_context', 'get_country_context',
+  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
 
@@ -95,6 +95,7 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   predict_hts_code: { method: 'POST', path: '/trade/hts-predict' },
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
+  get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
   get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
   get_country_context_evidence: { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
@@ -973,6 +974,20 @@ export const TOOL_CASES: HealthCase[] = [
     const img = (record.content ?? []).find((c) => c.type === 'image');
     if (!img?.data || !img.mimeType?.startsWith('image/')) throw new LiveFail('inspect_image returned no image payload');
     return { sources: [{ source: 'image-bytes', format: img.mimeType, upstreamStatus: 'unknown' }] };
+  }),
+  toolCase('youtube.transcript', ['get_youtube_transcript'], ['youtube'], true, 90000, async (ctx) => {
+    await ensureEnabled(ctx, 'YouTube 字幕', 30000);
+    // YouTube 最初の動画（2005 年、手動の字幕あり）。消えにくい
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_transcript', { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', maxChars: 2000 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube_transcript') as { found?: boolean; transcript?: { status?: string; reason?: string; message?: string; text?: string } };
+    const t = raw.transcript;
+    if (t?.status === 'unavailable') {
+      const detail = `get_youtube_transcript ${t.reason}: ${t.message ?? ''}`;
+      throw t.reason === 'blocked' ? new LiveBlocked(detail) : new LiveUnavailable(detail);
+    }
+    if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube_transcript returned no transcript: ' + textOf(raw).slice(0, 200));
+    mustContain(raw, ['Me at the zoo'], 'youtube-player');
+    return { sources: [{ source: 'youtube-timedtext', count: t.text.length, format: 'json3', upstreamStatus: 'unknown' }] };
   }),
   toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);

@@ -2016,6 +2016,61 @@ export const LyricsResultSchema = z.object({
   ...CACHE_META_SHAPE,
 });
 
+export const YoutubeTranscriptRequestSchema = z.object({
+  url: z.string().min(1, 'url は必須です').describe('YouTube の動画 URL (watch・youtu.be・shorts・live・embed) か 11 文字の動画 ID。URL の t= は requestedStartSec として返す'),
+  lang: z.string().optional().describe('字幕の言語 (デフォルト: "ja")。この言語の手動字幕、自動字幕の順に選び、無ければ他の言語').meta({ default: 'ja' }),
+  fromSec: z.number().int().min(0).max(43_200).optional().describe('この秒から返す (デフォルト: 0。続きは nextFromSec を渡す)').meta({ default: 0 }),
+  toSec: z.number().int().min(1).max(43_200).optional().describe('この秒まで返す (省略時は最後まで。YouTube の動画は最長 12 時間)'),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe(`返す字幕の最大文字数 (デフォルト: ${DEFAULT_MAX_CHARS})`).meta({ default: DEFAULT_MAX_CHARS }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
+});
+
+const YoutubeTrackSchema = z.object({
+  language: z.string().describe('言語コード (例: "ja")'),
+  source: z.enum(['manual', 'auto']).describe('"manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
+  name: z.string().describe('YouTube 上の表示名 (例: "日本語 (自動生成)")'),
+});
+
+export const YoutubeTranscriptSchema = z.object({
+  status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
+  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed']).optional().describe('status が ok 以外の理由: "no-captions"(自動字幕を含め字幕が無い), "live-now"(配信中), "language-mismatch"(自動字幕が題名と別の言語しか無い), "blocked"(YouTube が拒否、または空の応答), "request-failed"(通信の失敗)'),
+  message: z.string().optional().describe('status が ok 以外のときの説明。話の中身を推測で補わないよう求める'),
+  source: z.enum(['manual', 'auto']).optional().describe('字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
+  language: z.string().optional().describe('字幕の言語コード'),
+  note: z.string().optional().describe('自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある)'),
+  fromSec: z.number().optional().describe('返した本文の開始秒'),
+  toSec: z.number().optional().describe('返した本文の終了秒'),
+  text: z.string().optional().describe('字幕の本文。約 30 秒ごとの段落で、各行の先頭に [m:ss] (1 時間以上は [h:mm:ss])'),
+  chars: z.number().optional().describe('text の文字数'),
+  totalChars: z.number().optional().describe('動画全体の本文の文字数'),
+  truncated: z.boolean().optional().describe('maxChars か範囲の都合で、続きがあるか'),
+  nextFromSec: z.number().optional().describe('続きの開始秒。fromSec に渡すと続きを返す'),
+});
+
+export const YoutubeTranscriptResultSchema = z.object({
+  found: z.boolean().describe('動画を再生できる状態で見つけたか'),
+  videoId: z.string().describe('動画 ID'),
+  url: z.string().describe('動画の URL (https://www.youtube.com/watch?v=...)'),
+  reason: z.enum(['video-unavailable']).optional().describe('found が false の理由: "video-unavailable"(非公開・削除・年齢制限など)'),
+  message: z.string().optional().describe('found が false のときの YouTube の説明'),
+  title: z.string().optional().describe('動画の題名'),
+  channel: z.string().optional().describe('投稿したチャンネル名'),
+  publishedAt: z.string().optional().describe('公開日時 (ISO 8601)'),
+  durationSec: z.number().optional().describe('長さ (秒)'),
+  isLiveNow: z.boolean().optional().describe('配信中か'),
+  category: z.string().optional().describe('YouTube のカテゴリ (例: "Music")'),
+  description: z.string().optional().describe('説明文'),
+  chapters: z.array(z.object({
+    title: z.string().describe('チャプター名'),
+    time: z.string().describe('表示時間文字列 (例: 1:23)'),
+    seconds: z.number().describe('開始秒'),
+  })).optional().describe('説明文の時刻行から読んだチャプター'),
+  requestedStartSec: z.number().optional().describe('URL の t= で指定された秒 (利用者が注目している位置)'),
+  transcript: YoutubeTranscriptSchema.optional().describe('字幕 (found が true のときのみ)'),
+  availableTracks: z.array(YoutubeTrackSchema).optional().describe('動画にある字幕の一覧。lang に言語コードを渡すと別の字幕を返す'),
+  ...CACHE_META_SHAPE,
+});
+
 export const InspectImageResultSchema = z.object({
   success: z.boolean().describe('画像解析・Base64変換が成功したか'),
   url: z.string().describe('取得元画像 URL'),
@@ -3660,6 +3715,18 @@ export function generateOpenApiDocument() {
                   schema: zodToOpenApiSchema(InspectImageResultSchema),
                 },
               },
+            },
+          },
+        },
+      },
+      '/youtube/transcript': {
+        post: {
+          summary: 'YouTube 動画の題名・説明文・チャプターと時刻つきの字幕 (手動の字幕、無ければ YouTube の自動字幕)',
+          requestBody: { content: { 'application/json': { schema: zodToOpenApiSchema(YoutubeTranscriptRequestSchema) } } },
+          responses: {
+            '200': {
+              description: '動画と字幕 (動画が見つからない場合は found: false、字幕が無い場合は transcript.status: "none" も 200 で返す)',
+              content: { 'application/json': { schema: zodToOpenApiSchema(YoutubeTranscriptResultSchema) } },
             },
           },
         },
