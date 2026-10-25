@@ -20,6 +20,7 @@ import { registerTradeTools } from './mcp/tools_trade.js';
 import { registerMediaTools } from './mcp/tools_media.js';
 import { registerIntelTools } from './mcp/tools_intel.js';
 import { registerLyricsTools } from './mcp/tools_lyrics.js';
+import { registerYoutubeTools } from './mcp/tools_youtube.js';
 
 export {
   clearSharedActivatedTools,
@@ -74,6 +75,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableMedia = isModuleActive('media', options?.modules) || isModuleActive('web', options?.modules);
   const shouldEnableIntel = isModuleActive('intel', options?.modules);
   const shouldEnableLyrics = isModuleActive('lyrics', options?.modules); // 'all' では有効にならない（名前を挙げたときだけ）
+  const shouldEnableYoutube = isModuleActive('youtube', options?.modules);
 
   const context: ToolRegistrationContext = { mcpServer, toolCatalog, sessionActivated, deferredDefault, options, serverTenantId };
   if (shouldEnableWeb) registerWebTools(context);
@@ -88,7 +90,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   if (shouldEnableMedia) registerMediaTools(context);
   if (shouldEnableIntel) registerIntelTools(context);
   if (shouldEnableLyrics) registerLyricsTools(context);
-  registerToolSearch(context, {web: shouldEnableWeb, browser: shouldEnableBrowser, yahoo: shouldEnableYahoo, life: shouldEnableLife, disaster: shouldEnableDisaster, watch: shouldEnableWatch, music: shouldEnableMusic, gov: shouldEnableGov, trade: shouldEnableTrade, media: shouldEnableMedia, lyrics: shouldEnableLyrics});
+  if (shouldEnableYoutube) registerYoutubeTools(context);
+  registerToolSearch(context, {web: shouldEnableWeb, browser: shouldEnableBrowser, yahoo: shouldEnableYahoo, life: shouldEnableLife, disaster: shouldEnableDisaster, watch: shouldEnableWatch, music: shouldEnableMusic, gov: shouldEnableGov, trade: shouldEnableTrade, media: shouldEnableMedia, lyrics: shouldEnableLyrics, youtube: shouldEnableYoutube});
 
   registerSkillResources(mcpServer);
 
@@ -121,7 +124,7 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
-/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（50 ツールの定義を持つため） */
+/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（51 ツールの定義を持つため） */
 export const DEFAULT_MAX_MCP_SESSIONS = 100;
 /** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
 export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;

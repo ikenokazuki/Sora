@@ -47,6 +47,7 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
         if (enabled.trade) activeCategories.push('trade (輸出/HTS/CPSC/FDA)');
         if (enabled.media) activeCategories.push('media (画像検査)');
         if (enabled.lyrics) activeCategories.push('lyrics (歌詞・自己責任)');
+        if (enabled.youtube) activeCategories.push('youtube (YouTube の字幕・説明文)');
 
         const categoryText = activeCategories.length > 0
           ? `\n現在有効なカテゴリ: ${activeCategories.join(', ')}`
