@@ -43,7 +43,6 @@ describe('buildYahooVideoSearchUrl', () => {
     expect(params({ query: '君と見るそら', platform: 'youtube' }).get('st')).toBe('youtube');
     expect(params({ query: '君と見るそら', platform: 'niconico' }).get('st')).toBe('niconico');
     expect(params({ query: '君と見るそら', platform: 'dailymotion' }).get('st')).toBe('dailymotion');
-    expect(params({ query: '君と見るそら', platform: 'tiktok' })).toMatchObject({});
     expect(params({ query: '君と見るそら', platform: 'tiktok' }).get('p')).toBe('君と見るそら site:tiktok.com');
     expect(params({ query: '君と見るそら', platform: 'x' }).get('p')).toBe('君と見るそら site:x.com');
     expect(params({ query: '君と見るそら', platform: 'instagram' }).get('p')).toBe('君と見るそら site:instagram.com');
@@ -85,10 +84,19 @@ describe('searchYahooVideo with a period or a platform', () => {
     expect(r).toMatchObject({ source: 'video', query: '君と見るそら', count: 1, items: [{ title: '君と見るそらのライブ', platform: 'YouTube', source: 'video' }] });
   });
 
-  test('reports a refused request as an error instead of an empty result', async () => {
+  test('reports a refused request as an error instead of an empty result, and opens the Yahoo breaker on 429', async () => {
     const spy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockResolvedValue({ finalUrl: 'x', response: new Response('busy', { status: 429 }) } as never);
-    cleanups.push(() => spy.mockRestore());
+    cleanups.push(() => spy.mockRestore(), () => yahoo.resetYahooBreaker());
     await expect(yahoo.searchYahooVideo({ query: '君と見るそら', updated: 'day' })).rejects.toThrow('429');
+    expect(yahoo.isYahooBreakerOpen()).toBe(true);
+  });
+
+  test('does not send a request while the Yahoo breaker is open', async () => {
+    const spy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockResolvedValue({ finalUrl: 'x', response: new Response(nextData(pageItems)) } as never);
+    cleanups.push(() => spy.mockRestore(), () => yahoo.resetYahooBreaker());
+    yahoo.tripYahooBreaker();
+    await expect(yahoo.searchYahooVideo({ query: '君と見るそら', platform: 'youtube' })).rejects.toThrow('breaker');
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

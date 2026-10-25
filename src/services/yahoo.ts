@@ -2303,10 +2303,19 @@ export function parseYahooVideoHtml(html: string): any[] {
   });
 }
 
-/** 期間・動画サイトを付けて、Yahoo の動画検索のページを直接読む（同梱の MCP は検索語と件数しか受け付けない）。 */
+/**
+ * 期間・動画サイトを付けて、Yahoo の動画検索のページを直接読む（同梱の MCP は検索語と件数しか受け付けない）。
+ * 同梱の MCP と同じく、Yahoo への間隔を守り、ブレーカーが開いている間は送らず、429 でブレーカーを開く。
+ */
 async function fetchYahooVideoDirect(options: YahooVideoSearchOptions): Promise<any> {
+  await gateYahooCall();
+  if (isYahooBreakerOpen()) {
+    try { incrementSecurityCounter('sora_throttled_total'); } catch {}
+    throw Object.assign(new Error('Yahoo provider throttled by breaker'), { code: 'YAHOO_RATE_LIMITED' });
+  }
   const { response } = await fetchWithSafeRedirects(buildYahooVideoSearchUrl(options), 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
   if (!response.ok) {
+    if (response.status === 429) tripYahooBreaker();
     throw new YahooProviderError(`Yahoo video search failed: ${response.status}`, response.status, parseRetryAfterMs(response.headers.get('retry-after')));
   }
   const items = parseYahooVideoHtml(await response.text()).slice(0, options.limit ?? VIDEO_PAGE_SIZE);

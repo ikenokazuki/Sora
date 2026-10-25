@@ -173,7 +173,9 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
   };
 }
 
-/** 画像・音声・動画のファイルの結果。中身は文字にできないので読まず、種類と大きさだけを書く。 */
+const MEDIA_CONTENT_TYPE = /^(?:image|audio|video)\//;
+
+/** 画像・音声・動画のファイルの結果。中身は文字にできないので読まず、種類と大きさだけを書く（本文は無いので unavailable）。 */
 function mediaFileResult(url: string, contentType: string, contentLength: string | null): ScrapeResult {
   const type = contentType.split(';')[0].trim();
   let name = '';
@@ -201,14 +203,18 @@ function mediaFileResult(url: string, contentType: string, contentLength: string
     wordCount: stats.wordCount,
     readingTimeMin: stats.readingTimeMin,
     estimatedTokens: estimateTokens(content),
-    contentStatus: 'metadata_only',
+    contentStatus: 'unavailable',
   };
 }
 
-/** HTTP の状態が 400 以上のページは本文として扱わない（ブロックやエラーの画面。TikTok はブラウザでも 403）。 */
+/**
+ * HTTP の状態が 400 以上のページは本文として扱わない（ブロックやエラーの画面。TikTok はブラウザでも 403 のことがある）。
+ * 仕上げ（finalizeScrapeResult）の後に当て、エラー画面の文から作ったハイライトは外す。
+ */
 function markHttpError(result: ScrapeResult, status: number | undefined): ScrapeResult {
   if (!status || status < 400) return result;
-  return { ...result, contentStatus: 'unavailable', content: `HTTP ${status} が返ったため、本文として扱いません。\n\n${result.content}` };
+  const { highlights: _h, highlightItems: _i, highlightDiagnostics: _d, textFragmentUrl: _t, ...rest } = result;
+  return { ...rest, contentStatus: 'unavailable', content: `HTTP ${status} が返ったため、本文として扱いません。\n\n${result.content}` };
 }
 
 // ==========================================
@@ -685,6 +691,7 @@ export async function scrapeUrl(options: {
       try {
         let result: ScrapeResult;
         let initialHttpResult: ScrapeResult | null = null;
+        let initialHttpStatus: number | undefined;
 
         // YouTube の動画 URL は、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から本文を作る。
         // ページそのもの（HTML・リンク・スクリーンショット）やブラウザでの描画を求められたときは、通常の取得に任せる
@@ -750,15 +757,25 @@ export async function scrapeUrl(options: {
 
         if (!isForcedBrowser) {
           onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
-          const { finalUrl, response } = await fetchWithSafeRedirects(
-            url,
-            timeoutMs,
-            5,
-            options.headers,
-            options.cookies,
-            undefined,
-            options.tenantId ?? 'legacy',
-          );
+          let fetched: Awaited<ReturnType<typeof fetchWithSafeRedirects>>;
+          try {
+            fetched = await fetchWithSafeRedirects(
+              url,
+              timeoutMs,
+              5,
+              options.headers,
+              options.cookies,
+              undefined,
+              options.tenantId ?? 'legacy',
+            );
+          } catch (err: any) {
+            // 上限を超える動画・音声のファイルも、読めないファイルとして返す（取得の失敗にしない）
+            if (err?.code !== 'RESPONSE_TOO_LARGE' || !MEDIA_CONTENT_TYPE.test(String(err.contentType).toLowerCase())) throw err;
+            result = await finalizeScrapeResult(mediaFileResult(err.finalUrl || url, err.contentType, err.contentLength), finalizeOpts);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+            return result;
+          }
+          const { finalUrl, response } = fetched;
 
           const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
 
@@ -770,9 +787,9 @@ export async function scrapeUrl(options: {
             return result;
           }
 
-          if (/^(?:image|audio|video)\//.test(contentType)) {
+          if (MEDIA_CONTENT_TYPE.test(contentType)) {
             await response.body?.cancel().catch(() => {});
-            result = await finalizeScrapeResult(mediaFileResult(finalUrl, contentType, response.headers.get('Content-Length')), finalizeOpts);
+            result = markHttpError(await finalizeScrapeResult(mediaFileResult(finalUrl, contentType, response.headers.get('Content-Length')), finalizeOpts), response.status);
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
@@ -866,7 +883,7 @@ export async function scrapeUrl(options: {
             };
 
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
-            result = await finalizeScrapeResult(markHttpError(result, response.status), finalizeOpts);
+            result = markHttpError(await finalizeScrapeResult(result, finalizeOpts), response.status);
 
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -875,7 +892,8 @@ export async function scrapeUrl(options: {
 
           // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）
           if (parsed.markdown && parsed.markdown.trim().length >= 50) {
-            initialHttpResult = markHttpError({
+            initialHttpStatus = response.status;
+            initialHttpResult = {
               url: finalUrl,
               title: parsed.title,
               content: parsed.markdown,
@@ -913,7 +931,7 @@ export async function scrapeUrl(options: {
               qualityReasons: parsed.qualityReasons,
               missingFields: parsed.missingFields,
               evidence: parsed.evidence,
-            }, response.status);
+            };
           }
         }
 
@@ -951,7 +969,7 @@ export async function scrapeUrl(options: {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
-            result = await finalizeScrapeResult(initialHttpResult, finalizeOpts);
+            result = markHttpError(await finalizeScrapeResult(initialHttpResult, finalizeOpts), initialHttpStatus);
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
@@ -1013,7 +1031,7 @@ export async function scrapeUrl(options: {
         };
 
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
-        result = await finalizeScrapeResult(markHttpError(result, browserRes.status), finalizeOpts);
+        result = markHttpError(await finalizeScrapeResult(result, finalizeOpts), browserRes.status);
 
         if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -1984,7 +2002,7 @@ export async function integratedSearch(options: {
         if (!itemUrl) return item;
         const itemSnippet = item.snippet || item.description || '';
 
-        if (xSourceIsolation) {
+        if (xSourceIsolation && !readQueryUrls) {
           const plan = xPlanByIndex.get(itemIndex);
           if (plan) {
             const isolatedBase = stripXWebDiscoveryText(item);
@@ -2299,6 +2317,9 @@ export async function integratedSearch(options: {
     // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)。検索語の URL は渡された順のまま
     if (enrichedResults.length > 1 && !readQueryUrls) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);
+      // 本文を読めなかったページ（エラーの画面・読めないファイル）は、検索語によく合っていても、読めたページの後ろに回す
+      const unreadable = (r: any) => r?.contentStatus === 'unavailable';
+      enrichedResults = [...enrichedResults.filter((r: any) => !unreadable(r)), ...enrichedResults.filter(unreadable)];
     }
   }
 

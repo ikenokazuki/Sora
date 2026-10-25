@@ -25,6 +25,8 @@ X の検索（`search_realtime`）のように、動画の検索（`search_video
   - `updated`: `all`・`hour`・`day`・`week`・`month`・`year`（Yahoo の `pd`）
   - `platform`: `all`・`youtube`・`tiktok`・`x`・`instagram`・`niconico`・`dailymotion`。YouTube・ニコニコ・Dailymotion は Yahoo の `st` で、TikTok・X・Instagram は検索語に `site:` を足して絞る。
 - どちらかを指定したときは、Sora が Yahoo の動画検索のページを直接読む（Web 検索の直接取得と同じ `fetchWithSafeRedirects`）。結果は同梱の MCP と同じ形にそろえる。Yahoo が拒否したとき（429 など）は、絞り込みの無い結果で代わりにせず、エラーにする。
+- 同梱の MCP の経路と同じく、Yahoo への間隔を守り（`gateYahooCall`）、ブレーカーが開いている間は送らず、429 でブレーカーを開く（`tripYahooBreaker`）。`search_deep` の `videos` は毎回この経路を通るので、oshiframe と分け合う Yahoo の枠を守るため。
+- 0 件のページは `videoAlgo.items: []` で返る（2026-10-26 に確認）。`__NEXT_DATA__` が無いページ（ブロックの画面など）はエラーにする。`site:x.com` でも 20 件すべてが X になった。
 - `search_deep` の `videos` は、字幕を読めるのが YouTube だけなので YouTube に絞って探し、期間は `search_deep` の `updated`（Web 検索と同じ）を使う。`search_deep` に引数は足さない（最初から公開しているツールで、説明の文字数に余裕が無い）。
 - 全ツールの一覧の文字数は 62,284 から 62,556 になった。`search_video` の説明文の重複（返す項目を本文と「返却」の両方に書いていた）を削ったうえで、上限を 62,500 から 63,000 に上げた。
 
