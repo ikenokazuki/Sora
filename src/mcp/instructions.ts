@@ -119,8 +119,10 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
 
   if (hasYoutube) {
+    // 動画を探すとき・調べものでは、検索の側の指定（既定は 0）を使うよう、有効なモジュールのぶんだけ案内する
+    const viaSearch = [hasYahoo && 'to find videos use search_video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
     tier1Directives.push(
-      "10. YouTube Videos (what a video says, summaries, quotes): Use 'youtube' tool get_youtube_transcript with the URL; never guess from the title. Auto captions contain recognition errors. If transcript.status is not 'ok', answer only from the title and description.",
+      `10. YouTube Videos (what a video says, summaries, quotes): get_youtube_transcript with the URL; never guess from the title.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
     );
   }
 

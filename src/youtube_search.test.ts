@@ -58,6 +58,28 @@ describe('getYoutubePage: a YouTube video as a page for scrape', () => {
     expect(page.content.split('## 字幕')[1]).not.toMatch(/\d{1,2}:\d{2}/);
   });
 
+  test('for a transcript longer than maxChars, keeps the paragraphs that match the query even late in the video', async () => {
+    // 100 分の講義。検索語は 90 分の段落にだけある（maxChars で先頭から切ると、ここは載らない）
+    const filler = 'あいうえおかきくけこさしすせそたちつてとなにぬねの'.repeat(6);
+    const events: Array<[number, string]> = Array.from({ length: 200 }, (_, i) => [i * 30_000, i === 180 ? `ここで特異値分解を説明します ${filler}` : `${i}番目の話 ${filler}`]);
+    restore = stubYoutube({ events }).restore;
+    const page = await getYoutubePage(`https://www.youtube.com/watch?v=${vid()}`, { query: '特異値分解', maxChars: 5000 });
+    expect(page.content.length).toBeLessThanOrEqual(5000);
+    expect(page.content).toContain('### 1h30m00s\n\nここで特異値分解を説明します');
+    expect(page.content).toContain('検索語に関係する段落');
+    expect(page.contentStatus).toBe('body');
+  });
+
+  test('for a long transcript without a query, keeps the opening paragraphs and says where to read on', async () => {
+    const filler = 'あいうえおかきくけこ'.repeat(15);
+    restore = stubYoutube({ events: Array.from({ length: 200 }, (_, i) => [i * 30_000, `${i}番目 ${filler}`] as [number, string]) }).restore;
+    const page = await getYoutubePage(`https://www.youtube.com/watch?v=${vid()}`, { maxChars: 5000 });
+    expect(page.content.length).toBeLessThanOrEqual(5000);
+    expect(page.content).toContain('### 0m00s\n\n0番目');
+    expect(page.content).not.toContain('### 1h30m00s');
+    expect(page.content).toContain('fromSec');
+  });
+
   test('says there are no captions and marks the page as metadata only', async () => {
     restore = stubYoutube({ tracks: false }).restore;
     const page = await getYoutubePage(`https://youtu.be/${vid()}`);

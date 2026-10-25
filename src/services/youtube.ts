@@ -371,28 +371,33 @@ export async function getYoutubeTranscript(options: YoutubeTranscriptOptions, de
  * 検索語を含む段落を、点数の高い順に maxChars まで選び、時刻順に並べる（BM25。日本語は語と 2 語のつながりで数える）。
  * どの段落にも検索語が無ければ、先頭から返す。最初に選ぶ段落は maxChars を超えても丸ごと返す。
  */
-function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxChars: number): Pick<YoutubeExcerpt, 'excerpt' | 'text' | 'chars' | 'totalChars'> {
-  const lines = paragraphs.map((p) => `[${clock(p.startSec)}] ${p.text}`);
+function pickParagraphs(paragraphs: Paragraph[], query: string, budget: number, render: (p: Paragraph) => string, separator: string): { chosen: string[]; relevant: boolean } {
   const blocks = paragraphs.map((p) => ({ headingPath: [], nearestHeading: '', depth: 0, body: p.text }));
   const terms = extractTermsWithBigrams(query);
   const scores = blocks.map((b) => bm25BodyScore(b, terms, blocks));
   const relevant = scores.some((score) => score > 0);
   const order = relevant
     ? scores.map((score, i) => ({ score, i })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.i)
-    : lines.map((_, i) => i);
+    : paragraphs.map((_, i) => i);
   const chosen: number[] = [];
   let used = 0;
   for (const i of order) {
-    const cost = lines[i].length + (chosen.length > 0 ? 1 : 0);
-    if (chosen.length > 0 && used + cost > maxChars) {
+    const cost = render(paragraphs[i]).length + (chosen.length > 0 ? separator.length : 0);
+    if (chosen.length > 0 && used + cost > budget) {
       if (relevant) continue; // 点数順では、長い段落を飛ばして短い次点を入れる
       break;
     }
     chosen.push(i);
     used += cost;
   }
-  const text = chosen.sort((a, b) => a - b).map((i) => lines[i]).join('\n');
-  return { excerpt: relevant ? 'relevant' : 'head', text, chars: text.length, totalChars: lines.join('\n').length };
+  return { chosen: chosen.sort((a, b) => a - b).map((i) => render(paragraphs[i])), relevant };
+}
+
+function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxChars: number): Pick<YoutubeExcerpt, 'excerpt' | 'text' | 'chars' | 'totalChars'> {
+  const line = (p: Paragraph) => `[${clock(p.startSec)}] ${p.text}`;
+  const { chosen, relevant } = pickParagraphs(paragraphs, query, maxChars, line, '\n');
+  const text = chosen.join('\n');
+  return { excerpt: relevant ? 'relevant' : 'head', text, chars: text.length, totalChars: paragraphs.map(line).join('\n').length };
 }
 
 export interface YoutubeExcerptOptions { url: string; query: string; maxChars?: number; lang?: string; noCache?: boolean }
@@ -459,7 +464,7 @@ export interface YoutubePage {
  * `[1:23]` のような時刻の書き方は、「何時」の答えを探す採点（answerability）に時刻と誤認されるので使わない。
  * YouTube に拒否されても投げずに unavailable のページを返す（scrape の再試行で問い合わせを重ねない）。
  */
-export async function getYoutubePage(url: string, options: { noCache?: boolean } = {}, deps: YoutubeDeps = {}): Promise<YoutubePage> {
+export async function getYoutubePage(url: string, options: { noCache?: boolean; query?: string; maxChars?: number } = {}, deps: YoutubeDeps = {}): Promise<YoutubePage> {
   let record: VideoRecord;
   try {
     ({ record } = await loadRecord({ url, noCache: options.noCache }, deps));
@@ -478,10 +483,28 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean }
     record.durationSec ? `- 長さ: ${record.durationSec} 秒` : '',
     `- URL: ${record.url}`,
   ].filter(Boolean).join('\n');
-  const transcript = t?.status === 'ok' && t.paragraphs
-    ? `## 字幕（${t.source === 'auto' ? 'YouTube の自動字幕。聞き間違いを含む' : '手動の字幕'}）\n\n${t.paragraphs.map((p) => `### ${tLabel(p.startSec)}\n\n${p.text}`).join('\n\n')}`
-    : `## 字幕\n\n${t?.message ?? 'この動画には字幕（自動字幕を含む）がありません。'}`;
-  const content = [`# ${title}`, meta, record.description ? `## 説明文\n\n${record.description}` : '', transcript].filter(Boolean).join('\n\n');
+  const head = [`# ${title}`, meta, record.description ? `## 説明文\n\n${record.description}` : ''].filter(Boolean).join('\n\n');
+  let transcript: string;
+  if (t?.status === 'ok' && t.paragraphs) {
+    const heading = `## 字幕（${t.source === 'auto' ? 'YouTube の自動字幕。聞き間違いを含む' : '手動の字幕'}）`;
+    const block = (p: Paragraph) => `### ${tLabel(p.startSec)}\n\n${p.text}`;
+    const all = t.paragraphs.map(block).join('\n\n');
+    const maxChars = options.maxChars ?? Infinity;
+    if (head.length + heading.length + all.length + 4 <= maxChars) {
+      transcript = `${heading}\n\n${all}`;
+    } else {
+      // scrape は maxChars で切ってから段落を選ぶので、長い字幕は切る前に、検索語に関係する段落を選んで載せる（無ければ先頭から）
+      const note = (relevant: boolean) => relevant
+        ? `（字幕は全体で ${all.length} 字あり、長いので、検索語に関係する段落だけを時刻順に載せています。全体は get_youtube_transcript で読めます。）`
+        : `（字幕は全体で ${all.length} 字あり、長いので先頭から載せています。続きは get_youtube_transcript の fromSec で読めます。）`;
+      const budget = maxChars - head.length - heading.length - note(true).length - 8;
+      const { chosen, relevant } = pickParagraphs(t.paragraphs, options.query ?? '', budget, block, '\n\n');
+      transcript = `${heading}\n\n${note(relevant)}\n\n${chosen.join('\n\n')}`;
+    }
+  } else {
+    transcript = `## 字幕\n\n${t?.message ?? 'この動画には字幕（自動字幕を含む）がありません。'}`;
+  }
+  const content = [head, transcript].join('\n\n');
   return {
     title,
     content,
