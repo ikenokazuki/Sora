@@ -273,6 +273,19 @@ describe('parseYouTubeUrl', () => {
 });
 
 describe('parseTimestampChapters', () => {
+  it('reads chapter lines with separators and indented or bulleted sub-chapters', () => {
+    const text = '【チャプター】\n0:00:00 | 待機画面\n0:00:42 | ♩「歌」\n◼️データ\n0:25:36 | データ | ベクトル\n　∟0:33:27 | 耳学問＞ 統計\n　　∟0:57:18 | 耳学問＞ 対角化\n- 1:02:54 - スペクトル定理\n• 1:05:17：直交';
+    expect(parseTimestampChapters(text)).toEqual([
+      { title: '待機画面', time: '0:00:00', seconds: 0 },
+      { title: '♩「歌」', time: '0:00:42', seconds: 42 },
+      { title: 'データ | ベクトル', time: '0:25:36', seconds: 1536 },
+      { title: '耳学問＞ 統計', time: '0:33:27', seconds: 2007 },
+      { title: '耳学問＞ 対角化', time: '0:57:18', seconds: 3438 },
+      { title: 'スペクトル定理', time: '1:02:54', seconds: 3774 },
+      { title: '直交', time: '1:05:17', seconds: 3917 },
+    ]);
+  });
+
   it('reads chapter lines in time order and skips repeated times and overlong titles', () => {
     const text = `概要です\n0:00 はじめに\n1:02:03 まとめ\n 2:30 本題\n2:30 同じ時刻\n10:15 ${'あ'.repeat(81)}`;
     expect(parseTimestampChapters(text)).toEqual([

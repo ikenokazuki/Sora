@@ -631,7 +631,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
-| `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` / `toSec` (integer, 任意)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
+| `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` (integer, 任意。読み始める秒)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
@@ -2171,7 +2171,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
     "maxChars": 30000
   }
   ```
-  `fromSec`・`toSec` で範囲を、`lang` で字幕の言語（既定 `ja`）を指定できます。
+  `fromSec` で読み始める秒を、`lang` で字幕の言語（既定 `ja`）を指定できます。範囲の終わりは指定しません（一部だけ読むときは `maxChars` を小さくします）。
 - **レスポンス例**:
   ```json
   {
@@ -2203,7 +2203,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
   }
   ```
 - **字幕が無いとき**も HTTP 200 です。`transcript.status` が `none`（`reason` は `no-captions` 字幕なし、`live-now` 配信中、`language-mismatch` 自動字幕が題名と別の言語だけ。`lang` を指定すると取得できる）か `unavailable`（`blocked` YouTube が拒否、`request-failed` 通信の失敗。キャッシュしません）になり、`message` に説明が入ります。再生できない動画（非公開・削除・年齢制限など）は `found: false`（`reason: "video-unavailable"`）です。URL でも動画 ID でもない入力は 400 `INVALID_INPUT`、YouTube に届かないときは 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`）です。
-- `transcript.text` は約 30 秒ごとの段落で、各行の先頭に `[m:ss]`（1 時間以上は `[h:mm:ss]`）が付きます。`maxChars` を超えると段落の境目で切り、`truncated: true` と `nextFromSec` を返します。`nextFromSec` を `fromSec` に渡すと続きを返します。
+- `transcript.text` は約 30 秒ごとの段落で、各行の先頭に `[m:ss]`（1 時間以上は `[h:mm:ss]`）が付きます。`maxChars` を超えると段落の境目で切り、`truncated: true` と `nextFromSec` を返します。`nextFromSec` を `fromSec` に渡すと続きを返します。`fromSec` より後に字幕が無いときは、空の `text` と `message` を返します。
 
 ---
 
