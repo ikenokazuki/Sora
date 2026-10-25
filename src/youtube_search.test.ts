@@ -52,7 +52,10 @@ describe('getYoutubePage: a YouTube video as a page for scrape', () => {
     expect(page.media?.chapters?.map((c) => c.title)).toEqual(['はじめに', '特異値分解']);
     expect(page.content).toContain('# 特異値分解の講義');
     expect(page.content).toContain('## 説明文');
-    expect(page.content).toContain('### 0m30s\n\n今日は特異値分解の話をします');
+    // 字幕の段落はチャプターの見出しの下に並べ、説明文からはチャプターの行を外す（目次が根拠として選ばれないように）
+    expect(page.content).toContain('### 0m30s〜 特異値分解\n\n#### 0m30s\n\n今日は特異値分解の話をします');
+    expect(page.content).toContain('線形代数の講義です');
+    expect(page.content.split('## 字幕')[0]).not.toContain('0:30 特異値分解');
     expect(page.content).toContain('自動字幕');
     // [0:30] のような時刻の書き方は、「何時」の答えを探す採点に時刻と誤認されるので使わない
     expect(page.content.split('## 字幕')[1]).not.toMatch(/\d{1,2}:\d{2}/);
@@ -65,7 +68,7 @@ describe('getYoutubePage: a YouTube video as a page for scrape', () => {
     restore = stubYoutube({ events }).restore;
     const page = await getYoutubePage(`https://www.youtube.com/watch?v=${vid()}`, { query: '特異値分解', maxChars: 5000 });
     expect(page.content.length).toBeLessThanOrEqual(5000);
-    expect(page.content).toContain('### 1h30m00s\n\nここで特異値分解を説明します');
+    expect(page.content).toContain('#### 1h30m00s\n\nここで特異値分解を説明します');
     expect(page.content).toContain('検索語に関係する段落');
     expect(page.contentStatus).toBe('body');
   });
@@ -75,8 +78,8 @@ describe('getYoutubePage: a YouTube video as a page for scrape', () => {
     restore = stubYoutube({ events: Array.from({ length: 200 }, (_, i) => [i * 30_000, `${i}番目 ${filler}`] as [number, string]) }).restore;
     const page = await getYoutubePage(`https://www.youtube.com/watch?v=${vid()}`, { maxChars: 5000 });
     expect(page.content.length).toBeLessThanOrEqual(5000);
-    expect(page.content).toContain('### 0m00s\n\n0番目');
-    expect(page.content).not.toContain('### 1h30m00s');
+    expect(page.content).toContain('#### 0m00s\n\n0番目');
+    expect(page.content).not.toContain('#### 1h30m00s');
     expect(page.content).toContain('fromSec');
   });
 
@@ -101,7 +104,7 @@ describe('scrapeUrl with a YouTube video URL', () => {
     restore = stub.restore;
     const r = await scrapeUrl({ url: `https://www.youtube.com/watch?v=${vid()}`, query: '特異値分解', noCache: true });
     expect(r).toMatchObject({ title: '特異値分解の講義', siteName: 'YouTube', author: '講義チャンネル', contentStatus: 'body', source: 'web' });
-    expect(r.content).toContain('### 1m30s');
+    expect(r.content).toContain('#### 1m30s');
     expect(r.media?.type).toBe('youtube');
     expect((r.highlights ?? []).join('\n')).toContain('特異値分解');
     expect(stub.calls).toContain('timedtext');
