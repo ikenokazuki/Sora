@@ -1689,6 +1689,7 @@ export const VideoSearchResponseSchema = z.object({
   ...YahooEnvelopeShape,
   source: z.literal('video').describe('ソース ("video")'),
   items: z.array(VideoSearchItemSchema).describe('動画検索結果一覧'),
+  message: z.string().optional().describe('検索しなかった理由と代わりの読み方 (検索語が URL のとき)'),
 });
 
 export const NewsSearchItemSchema = z.object({

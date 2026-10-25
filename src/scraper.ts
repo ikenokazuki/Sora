@@ -128,6 +128,7 @@ import {
   convertHtmlToMarkdown,
   matchUrlPattern,
   parseYouTubeUrl,
+  splitQueryUrls,
 } from './html_parser.js';
 import { isModuleActive } from './mcp/registry.js';
 import { getYoutubePage } from './services/youtube.js';
@@ -170,6 +171,44 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     renderedWithBrowser: true,
     source: 'browser',
   };
+}
+
+/** 画像・音声・動画のファイルの結果。中身は文字にできないので読まず、種類と大きさだけを書く。 */
+function mediaFileResult(url: string, contentType: string, contentLength: string | null): ScrapeResult {
+  const type = contentType.split(';')[0].trim();
+  let name = '';
+  try { name = decodeURIComponent(new URL(url).pathname.split('/').pop() || ''); } catch {}
+  const bytes = Number(contentLength);
+  const content = [
+    `# ${name || url}`,
+    '',
+    `- 種類: ${type}`,
+    `- 大きさ: ${bytes > 0 ? `${bytes.toLocaleString('en-US')} バイト` : '不明'}`,
+    `- URL: ${url}`,
+    '',
+    '画像・音声・動画のファイルです。Sora はファイルの中身を読めません。',
+  ].join('\n');
+  const stats = calculateContentStats(content);
+  return {
+    url,
+    title: name || url,
+    content,
+    isTruncated: false,
+    contentType: type,
+    source: 'web',
+    links: [],
+    characterCount: stats.characterCount,
+    wordCount: stats.wordCount,
+    readingTimeMin: stats.readingTimeMin,
+    estimatedTokens: estimateTokens(content),
+    contentStatus: 'metadata_only',
+  };
+}
+
+/** HTTP の状態が 400 以上のページは本文として扱わない（ブロックやエラーの画面。TikTok はブラウザでも 403）。 */
+function markHttpError(result: ScrapeResult, status: number | undefined): ScrapeResult {
+  if (!status || status < 400) return result;
+  return { ...result, contentStatus: 'unavailable', content: `HTTP ${status} が返ったため、本文として扱いません。\n\n${result.content}` };
 }
 
 // ==========================================
@@ -731,6 +770,13 @@ export async function scrapeUrl(options: {
             return result;
           }
 
+          if (/^(?:image|audio|video)\//.test(contentType)) {
+            await response.body?.cancel().catch(() => {});
+            result = await finalizeScrapeResult(mediaFileResult(finalUrl, contentType, response.headers.get('Content-Length')), finalizeOpts);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+            return result;
+          }
+
           const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
           const html = decodeHtmlBuffer(buf, contentType);
 
@@ -820,7 +866,7 @@ export async function scrapeUrl(options: {
             };
 
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
-            result = await finalizeScrapeResult(result, finalizeOpts);
+            result = await finalizeScrapeResult(markHttpError(result, response.status), finalizeOpts);
 
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -829,7 +875,7 @@ export async function scrapeUrl(options: {
 
           // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）
           if (parsed.markdown && parsed.markdown.trim().length >= 50) {
-            initialHttpResult = {
+            initialHttpResult = markHttpError({
               url: finalUrl,
               title: parsed.title,
               content: parsed.markdown,
@@ -867,7 +913,7 @@ export async function scrapeUrl(options: {
               qualityReasons: parsed.qualityReasons,
               missingFields: parsed.missingFields,
               evidence: parsed.evidence,
-            };
+            }, response.status);
           }
         }
 
@@ -875,7 +921,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
         const needScreenshot = formats.includes('screenshot');
         const fullPage = options.fullPage ?? true;
-        let browserRes: { html: string; title: string; screenshot?: string; finalUrl: string };
+        let browserRes: { html: string; title: string; screenshot?: string; finalUrl: string; status?: number };
 
         try {
           browserRes = await fetchWithStealthBrowser(
@@ -967,7 +1013,7 @@ export async function scrapeUrl(options: {
         };
 
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
-        result = await finalizeScrapeResult(result, finalizeOpts);
+        result = await finalizeScrapeResult(markHttpError(result, browserRes.status), finalizeOpts);
 
         if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -1705,9 +1751,14 @@ export async function integratedSearch(options: {
   tenantId?: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
+  // 検索語に URL があれば、検索せずにその URL を読む（URL を検索語にすると、Web・X・動画のどの検索でも関係ない結果になる）。
+  // URL 以外の語は、ハイライトの選択と十分さの判定に使う
+  const { urls: queryUrls, text: queryText } = splitQueryUrls(query);
+  const readQueryUrls = queryUrls.length > 0;
+  const evidenceQuery = readQueryUrls ? queryText : query;
   const limit = Math.min(options.limit ?? 5, 20);
   const scrapeContent = options.scrapeContent !== false;
-  const includeRealtime = options.includeRealtime !== false;
+  const includeRealtime = !readQueryUrls && options.includeRealtime !== false;
   const realtimeSort = options.realtimeSort || 'recent';
   const realtimeFocus: RealtimeFocus = options.realtimeFocus ?? detectRealtimeFocus(query);
   const realtimeAnchor = options.realtimeAnchor?.trim() || undefined;
@@ -1718,12 +1769,12 @@ export async function integratedSearch(options: {
   const includeDomains = normalizeDomainList(options.includeDomains);
   const excludeDomains = normalizeDomainList(options.excludeDomains);
   const updated = options.updated;
-  const extractHighlights = options.extractHighlights ?? (Boolean(query?.trim()));
+  const extractHighlights = options.extractHighlights ?? Boolean(evidenceQuery.trim());
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const dedup = options.dedup ?? false;
   const reorderUFlat = options.reorderUFlat ?? false;
-  const enablePrf = options.enablePrf ?? false;
+  const enablePrf = !readQueryUrls && (options.enablePrf ?? false);
   const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
   const minimizeTables = options.minimizeTables;
@@ -1734,8 +1785,11 @@ export async function integratedSearch(options: {
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
-  const videos = isModuleActive('youtube') ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
+  const videos = isModuleActive('youtube') && !readQueryUrls ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
   const requestTenantId = options.tenantId ?? 'legacy';
+  // 題名は検索結果のものを使う。ただし検索語の URL と YouTube の動画は、読んだページの題名にする
+  // （Yahoo は YouTube の題名を英語に訳して返すことがある。2026-10-26 に確認）
+  const pageTitle = (scrape: ScrapeResult) => (scrape.title && (readQueryUrls || scrape.media?.type === 'youtube') ? { title: scrape.title } : {});
   const digest = cacheKeyDigest<IntegratedSearchOptions, IntegratedSearchKeyIgnored>({
     limit,
     scrapeContent,
@@ -1772,7 +1826,9 @@ export async function integratedSearch(options: {
     if (cached) return cached;
   }
 
-  const webSearchPromise = searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
+  const webSearchPromise = readQueryUrls
+    ? Promise.resolve({ items: queryUrls.slice(0, limit).map((url) => ({ title: url, url, source: 'web' })) })
+    : searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
   // 動画（videos）は Web 検索と並行して探し、字幕を読む（Web のページを読む間に終わる。実測 0.6〜2.3 秒）
   const videoResultsPromise: Promise<Record<string, any>[]> = videos > 0 && scrapeContent
     ? searchYahooVideo({ query, limit: 10 })
@@ -1891,7 +1947,7 @@ export async function integratedSearch(options: {
   const xRetrievalCache = new Map<string, Promise<any>>();
 
   // 擬似適合フィードバック (PRF) によるクエリ拡張
-  let effectiveQuery = query;
+  let effectiveQuery = evidenceQuery;
   let prfInfo: { expandedQuery: string; expansionTerms: string[] } | null = null;
   if (enablePrf && searchResults.length > 0) {
     const topDocs = topItems.map((i: any) => `${i.title || ''} ${i.snippet || ''}`);
@@ -2040,6 +2096,7 @@ export async function integratedSearch(options: {
 
           const enrichedItem: Record<string, any> = {
             ...item,
+            ...pageTitle(scrape),
             ogImage: scrape.ogImage,
             description: scrape.description,
             publishedTime: scrape.publishedTime,
@@ -2142,6 +2199,7 @@ export async function integratedSearch(options: {
             });
             const enrichedSpare: Record<string, any> = {
               ...spareItem,
+              ...pageTitle(scrape),
               ogImage: scrape.ogImage,
               description: scrape.description,
               publishedTime: scrape.publishedTime,
@@ -2202,7 +2260,7 @@ export async function integratedSearch(options: {
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
               const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
-              const enrichedSpare: Record<string, any> = { ...spareItem, ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
+              const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
               enrichedResults.push(enrichedSpare);
@@ -2236,8 +2294,8 @@ export async function integratedSearch(options: {
       }
     });
 
-    // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)
-    if (enrichedResults.length > 1) {
+    // 深層エビデンス駆動リランキング (スクレイピング本文・ハイライトの網羅性・エビデンススコアに基づく順位適正化)。検索語の URL は渡された順のまま
+    if (enrichedResults.length > 1 && !readQueryUrls) {
       enrichedResults = rerankByDeepEvidence(enrichedResults, query);
     }
   }
@@ -2404,7 +2462,7 @@ export async function integratedSearch(options: {
     finalResponse.contextSufficiency = summarizeContextSufficiency(
       enrichedResults,
       includeRealtime ? finalResponse.realtime?.items ?? [] : [],
-      query,
+      evidenceQuery,
     );
   }
 
