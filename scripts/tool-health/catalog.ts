@@ -44,7 +44,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
-  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'research_country_context', 'get_country_context',
+  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
 
@@ -96,6 +96,7 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
   get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
+  get_youtube_channel: { method: 'POST', path: '/youtube/channel' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
   get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
   get_country_context_evidence: { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
@@ -225,7 +226,7 @@ const isFilled = (v: unknown): boolean => v !== undefined && v !== null && v !==
 
 export function mustHaveItems(result: unknown, source: string, fields?: string | string[], min = 1): { items: unknown[]; observation: CaseObservation } {
   const record = result as Record<string, unknown>;
-  const candidates = ['items', 'results', 'pois', 'flights', 'routes', 'forecasts', 'suggestions', 'posts', 'laws', 'speeches', 'warnings', 'records', 'earthquakes'];
+  const candidates = ['items', 'results', 'pois', 'flights', 'routes', 'forecasts', 'suggestions', 'posts', 'laws', 'speeches', 'warnings', 'records', 'earthquakes', 'videos'];
   let items: unknown[] | undefined;
   for (const key of candidates) {
     if (Array.isArray(record?.[key])) { items = record[key] as unknown[]; break; }
@@ -988,6 +989,15 @@ export const TOOL_CASES: HealthCase[] = [
     if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube_transcript returned no transcript: ' + textOf(raw).slice(0, 200));
     mustContain(raw, ['Me at the zoo'], 'youtube-player');
     return { sources: [{ source: 'youtube-timedtext', count: t.text.length, format: 'json3', upstreamStatus: 'unknown' }] };
+  }),
+  toolCase('youtube.channel', ['get_youtube_channel'], ['youtube'], true, 90000, async (ctx) => {
+    await ensureEnabled(ctx, 'YouTube チャンネル', 30000);
+    // YouTube 公式のチャンネル。消えにくく、最新の動画がある。フィードとページの形は実機で未確認のため、上流の失敗（同意の画面・ブロック・形の変化）は止めずに unavailable にする
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_channel', { url: 'https://www.youtube.com/@YouTube', limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube_channel') as { found?: boolean; reason?: string; message?: string };
+    if (raw.found !== true) throw new LiveUnavailable(`get_youtube_channel ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
+    const { items } = mustHaveItems(raw, 'get_youtube_channel', ['videoId', 'title', 'publishedAt']);
+    return { sources: [{ source: 'youtube-feed', count: items.length, format: 'atom', upstreamStatus: 'unknown' }] };
   }),
   toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);

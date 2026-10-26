@@ -1,12 +1,13 @@
+import { XMLParser } from 'fast-xml-parser';
 import type { z } from 'zod';
 import { CACHE_TTL_DEFAULT, CACHE_TTL_EMPTY, cacheKeyDigest, getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
 import { cleanMarkdownTokens } from '../enrichment.js';
 import { errorMessage } from '../errors.js';
-import { parseTimestampChapters, parseYouTubeUrl } from '../html_parser.js';
+import { parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from '../html_parser.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
 import { extractTermsWithBigrams, scorePassage } from '../extractor/hierarchical_bm25.js';
-import { DEFAULT_MAX_CHARS, type MediaInfo, type YoutubeExcerptSchema, type YoutubeTranscriptResultSchema } from '../types.js';
+import { DEFAULT_MAX_CHARS, type MediaInfo, type YoutubeChannelResultSchema, type YoutubeExcerptSchema, type YoutubeTranscriptResultSchema } from '../types.js';
 
 /**
  * YouTube の動画の題名・説明文・チャプターと、時刻つきの字幕（モジュール 'youtube'）。
@@ -27,6 +28,8 @@ export interface YoutubeDeps {
   fetchFn?: typeof fetch;
   /** 動画ページの HTML の取得 */
   fetchWatchPage?: (url: string) => Promise<string>;
+  /** チャンネルのページの HTML の取得（ハンドルから ID を読む）。ページが無ければ（404）undefined */
+  fetchChannelPage?: (url: string) => Promise<string | undefined>;
   now?: () => number;
 }
 
@@ -556,4 +559,138 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean; 
       ...(record.chapters ? { chapters: record.chapters } : {}),
     },
   };
+}
+
+// ---- チャンネルの最新動画（get_youtube_channel） ----
+// 公開の Atom フィード（最新 15 件）を読む。ハンドルからのチャンネル ID は、チャンネルのページの HTML から読む。
+// 字幕は付けない（動画を選んだあとに getYoutubeTranscript）。形式は公知の仕様からの想定で、実機では未確認（docs/superpowers/specs/2026-10-26-youtube-channel-design.md）。
+
+export type YoutubeChannelResult = z.infer<typeof YoutubeChannelResultSchema>;
+type ChannelVideo = NonNullable<YoutubeChannelResult['videos']>[number];
+export interface YoutubeChannelOptions { url: string; limit?: number; noCache?: boolean }
+
+const CHANNEL_FEED_TIMEOUT_MS = 8000;
+const CHANNEL_FEED_MAX_BYTES = 2 * 1024 * 1024;
+const CHANNEL_PAGE_MAX_BYTES = 3 * 1024 * 1024;
+const CHANNEL_ID_TTL_MS = 24 * 60 * 60 * 1000; // ハンドルと ID の対応。ページが 1〜2MB あるので、フィードより長く覚える
+const CHANNEL_DESCRIPTION_CHARS = 500;
+const CHANNEL_DEFAULT_LIMIT = 10;
+const CHANNEL_FEED_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+const CHANNEL_NOT_FOUND = 'このチャンネルは見つかりませんでした（存在しない、または削除されています）。';
+
+/** チャンネルのページの HTML からチャンネル ID を読む。RSS の alternate リンク → canonical → itemprop → 埋め込みデータの externalId の順。 */
+export function extractChannelId(html: string): string | undefined {
+  let canonical: string | undefined;
+  let itemprop: string | undefined;
+  for (const tag of html.match(/<(?:link|meta)\b[^>]*>/gi) ?? []) {
+    const attr = (name: string) => tag.match(new RegExp(`\\b${name}="([^"]*)"`, 'i'))?.[1];
+    if (/^<link/i.test(tag)) {
+      const rss = attr('type')?.toLowerCase() === 'application/rss+xml' ? attr('href')?.match(/\bchannel_id=(UC[\w-]{22})(?![\w-])/)?.[1] : undefined;
+      if (rss) return rss;
+      if (attr('rel')?.toLowerCase() === 'canonical') canonical ??= attr('href')?.match(/\/channel\/(UC[\w-]{22})(?:[/?#]|$)/)?.[1];
+    } else if (/^(?:identifier|channelid)$/i.test(attr('itemprop') ?? '')) {
+      itemprop ??= attr('content')?.match(/^(UC[\w-]{22})$/)?.[1];
+    }
+  }
+  return canonical ?? itemprop ?? html.match(/"externalId":"(UC[\w-]{22})"/)?.[1];
+}
+
+async function defaultFetchChannelPage(url: string): Promise<string | undefined> {
+  const { finalUrl, response } = await fetchWithSafeRedirects(url, WATCH_TIMEOUT_MS, 3);
+  const consent = /^https?:\/\/consent\.youtube\.com\//.test(finalUrl);
+  if (response.status === 404 || consent || !response.ok) {
+    await response.body?.cancel().catch(() => {});
+    if (response.status === 404) return undefined;
+    throw new Error(consent ? 'consent page redirect' : `channel page HTTP ${response.status}`);
+  }
+  return new TextDecoder().decode(await readBodyWithLimit(response, CHANNEL_PAGE_MAX_BYTES));
+}
+
+async function fetchChannelFeed(channelId: string, fetchFn: typeof fetch): Promise<string | undefined> {
+  const res = await fetchFn(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, {
+    headers: { 'User-Agent': CHANNEL_FEED_UA, Accept: 'application/atom+xml, application/xml;q=0.9, */*;q=0.8' },
+    redirect: 'error',
+    signal: AbortSignal.timeout(CHANNEL_FEED_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    if (res.status === 404) return undefined;
+    throw new Error(`feed HTTP ${res.status}`);
+  }
+  return new TextDecoder().decode(await readBodyWithLimit(res, CHANNEL_FEED_MAX_BYTES));
+}
+
+// 属性（views）を読むので ignoreAttributes を切り、数字だけの題名や ID を数にしないよう parseTagValue も切る。entry が 1 件でも配列にする
+const channelFeedParser = new XMLParser({ ignoreAttributes: false, parseTagValue: false, isArray: (name) => name === 'entry' });
+type FeedNode = Record<string, unknown>;
+const feedStr = (v: unknown) => (typeof v === 'string' ? v : undefined);
+const feedNode = (v: unknown): FeedNode => (v && typeof v === 'object' ? (v as FeedNode) : {});
+
+function parseChannelFeed(xml: string): { title?: string; videos: ChannelVideo[] } {
+  const feed = (channelFeedParser.parse(xml) as { feed?: unknown }).feed;
+  if (!feed || typeof feed !== 'object') throw new Error('unexpected feed (not Atom)');
+  const entries = (feed as FeedNode).entry;
+  const videos = (Array.isArray(entries) ? entries : []).flatMap((raw): ChannelVideo[] => {
+    const entry = feedNode(raw);
+    const videoId = feedStr(entry['yt:videoId']);
+    if (!videoId || !/^[\w-]{11}$/.test(videoId)) return [];
+    const group = feedNode(entry['media:group']);
+    const description = clean(feedStr(group['media:description']))?.trim().slice(0, CHANNEL_DESCRIPTION_CHARS);
+    const rawViews = feedNode(feedNode(group['media:community'])['media:statistics'])['@_views'];
+    const publishedAt = feedStr(entry.published);
+    const updatedAt = feedStr(entry.updated);
+    return [{
+      videoId,
+      url: watchUrl(videoId),
+      title: clean(feedStr(entry.title)) ?? '',
+      ...(publishedAt ? { publishedAt } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
+      ...(description ? { description } : {}),
+      ...(typeof rawViews === 'string' && /^\d+$/.test(rawViews) ? { views: Number(rawViews) } : {}),
+    }];
+  });
+  const title = clean(feedStr((feed as FeedNode).title))?.trim();
+  return { ...(title ? { title } : {}), videos };
+}
+
+/** ハンドル・旧式の名前のチャンネルのページから ID を読む（24 時間覚える）。ページが無ければ undefined。同意の画面・形の変化は例外。 */
+async function resolveChannelId(pagePath: string, noCache: boolean, deps: YoutubeDeps): Promise<string | undefined> {
+  const key = `youtube:channel-id:${pagePath.toLowerCase()}`;
+  const known = noCache ? null : getFromCache<{ channelId: string }>(key);
+  if (known) return known.channelId;
+  const html = await (deps.fetchChannelPage ?? defaultFetchChannelPage)(`https://www.youtube.com${pagePath}`);
+  if (html === undefined) return undefined;
+  const channelId = extractChannelId(html);
+  if (!channelId) throw new Error(/consent\.youtube\.com/.test(html) ? 'consent page (channel id not found)' : 'channel id not found in the channel page');
+  if (!noCache) setToCache(key, { channelId }, CHANNEL_ID_TTL_MS);
+  return channelId;
+}
+
+async function lookupChannel(ref: NonNullable<ReturnType<typeof parseYouTubeChannelRef>>, noCache: boolean, deps: YoutubeDeps): Promise<{ record: YoutubeChannelResult; ttlMs: number }> {
+  const notFound = { record: { found: false, reason: 'channel-not-found', message: CHANNEL_NOT_FOUND } satisfies YoutubeChannelResult, ttlMs: CACHE_TTL_EMPTY };
+  try {
+    const channelId = 'channelId' in ref ? ref.channelId : await resolveChannelId(ref.pagePath, noCache, deps);
+    if (!channelId) return notFound;
+    const xml = await fetchChannelFeed(channelId, deps.fetchFn ?? fetch);
+    if (xml === undefined) return notFound;
+    const { title, videos } = parseChannelFeed(xml);
+    const record: YoutubeChannelResult = { found: true, channelId, ...(title ? { title } : {}), url: `https://www.youtube.com/channel/${channelId}`, videos };
+    return { record, ttlMs: videos.length > 0 ? CACHE_TTL_DEFAULT : CACHE_TTL_EMPTY };
+  } catch (err) {
+    throw new Error(`YouTube request failed: ${errorMessage(err) || err}`); // 同意の画面・ブロック・429/5xx・読めない応答。found: false にせず、キャッシュもしない
+  }
+}
+
+/** チャンネルの最新の動画を新しい順に返す（最大 15 件）。チャンネルが無ければ found: false。 */
+export async function getYoutubeChannel(options: YoutubeChannelOptions, deps: YoutubeDeps = {}): Promise<YoutubeChannelResult> {
+  const ref = parseYouTubeChannelRef(options.url);
+  if (!ref) throw new YoutubeInputError('url must be a YouTube channel URL, an @handle or a channel ID (UC…)');
+  const key = `youtube:channel:${cacheKeyDigest<YoutubeChannelOptions, 'limit' | 'noCache'>({ url: 'channelId' in ref ? ref.channelId : ref.pagePath.toLowerCase() })}`;
+  let record: YoutubeChannelResult | null = options.noCache ? null : getFromCache<YoutubeChannelResult>(key);
+  if (!record) {
+    const looked = await runWithSingleFlight(key, () => lookupChannel(ref, options.noCache === true, deps));
+    if (!options.noCache && looked.ttlMs > 0) setToCache(key, looked.record, looked.ttlMs);
+    record = looked.record;
+  }
+  return record.videos ? { ...record, videos: record.videos.slice(0, options.limit ?? CHANNEL_DEFAULT_LIMIT) } : record;
 }

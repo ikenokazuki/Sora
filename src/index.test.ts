@@ -3598,8 +3598,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(51);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(37);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(52);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(38);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4068,7 +4068,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 51 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 52 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4113,7 +4113,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('normalize_address');
     expect(enabledToolsAll).toContain('reverse_geocode');
     expect(enabledToolsAll).toContain('get_youtube_transcript');
-    expect(enabledToolsAll.length).toBe(51);
+    expect(enabledToolsAll).toContain('get_youtube_channel');
+    expect(enabledToolsAll.length).toBe(52);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -5422,7 +5423,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 80 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 81 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5454,8 +5455,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(80);
-      expect(withContentCount).toBe(80);
+      expect(operationCount).toBe(81);
+      expect(withContentCount).toBe(81);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

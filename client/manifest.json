@@ -19,6 +19,7 @@
     "servers/sora/get_flight_status.ts",
     "servers/sora/get_law_text.ts",
     "servers/sora/get_weather.ts",
+    "servers/sora/get_youtube_channel.ts",
     "servers/sora/get_youtube_transcript.ts",
     "servers/sora/index.ts",
     "servers/sora/inspect_image.ts",
