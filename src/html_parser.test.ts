@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeUrl } from './html_parser.js';
+import { convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
 
 describe('event details and publication dates', () => {
   const event = {
@@ -268,6 +268,51 @@ describe('parseYouTubeUrl', () => {
       '',
     ]) {
       expect(parseYouTubeUrl(input)).toBeUndefined();
+    }
+  });
+});
+
+describe('parseYouTubeChannelRef', () => {
+  const ID = 'UCBR8-60-B28hp2BmDPdntcQ';
+
+  it('reads a channel id, and the page path of a handle or a legacy name', () => {
+    expect(parseYouTubeChannelRef(ID)).toEqual({ channelId: ID });
+    expect(parseYouTubeChannelRef(`https://www.youtube.com/channel/${ID}/videos`)).toEqual({ channelId: ID });
+    expect(parseYouTubeChannelRef('https://www.youtube.com/@YouTube')).toEqual({ pagePath: '/@YouTube' });
+    expect(parseYouTubeChannelRef('youtube.com/@You.Tube_-1?si=abc')).toEqual({ pagePath: '/@You.Tube_-1' });
+    expect(parseYouTubeChannelRef(' @YouTube ')).toEqual({ pagePath: '/@YouTube' });
+    expect(parseYouTubeChannelRef('https://m.youtube.com/@YouTube/videos')).toEqual({ pagePath: '/@YouTube' });
+    expect(parseYouTubeChannelRef('https://www.youtube.com/c/YouTubeCreators')).toEqual({ pagePath: '/c/YouTubeCreators' });
+    expect(parseYouTubeChannelRef('https://www.youtube.com/user/Google/featured')).toEqual({ pagePath: '/user/Google' });
+  });
+
+  it('accepts a Japanese handle written raw or percent-encoded, and builds the same encoded path', () => {
+    const encoded = '/@%E3%81%8A%E3%81%AF%E3%82%88%E3%81%86';
+    expect(parseYouTubeChannelRef('@おはよう')).toEqual({ pagePath: encoded });
+    expect(parseYouTubeChannelRef('https://www.youtube.com/@おはよう')).toEqual({ pagePath: encoded });
+    expect(parseYouTubeChannelRef('https://www.youtube.com/@%E3%81%8A%E3%81%AF%E3%82%88%E3%81%86')).toEqual({ pagePath: encoded });
+  });
+
+  it('rejects videos, other hosts, look-alike hosts, and names with characters that are not allowed', () => {
+    for (const input of [
+      '',
+      '@',
+      'jNQXAC9IVRw',
+      'https://www.youtube.com/watch?v=jNQXAC9IVRw',
+      'https://youtu.be/jNQXAC9IVRw',
+      'https://www.youtube.com/playlist?list=PL1234567890',
+      'https://www.youtube.com/channel/UCshort',
+      `https://www.youtube.com/channel/${ID}x`,
+      'https://example.com/@YouTube',
+      'https://www.youtube.com.evil.example/@YouTube',
+      'https://www.youtube.com@evil.example/@YouTube',
+      'https://music.youtube.com/@YouTube',
+      'https://www.youtube.com/@bad name',
+      'https://www.youtube.com/@a%2Fb',
+      'https://www.youtube.com/@%E0%A4%A',
+      `${ID}x`,
+    ]) {
+      expect(parseYouTubeChannelRef(input)).toBeUndefined();
     }
   });
 });

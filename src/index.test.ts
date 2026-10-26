@@ -5422,7 +5422,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 80 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 81 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5454,8 +5454,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(80);
-      expect(withContentCount).toBe(80);
+      expect(operationCount).toBe(81);
+      expect(withContentCount).toBe(81);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

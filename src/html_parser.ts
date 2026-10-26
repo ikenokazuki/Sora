@@ -544,6 +544,42 @@ export function parseYouTubeUrl(input: string): { videoId: string; startSec?: nu
   return startSec ? { videoId, startSec } : { videoId };
 }
 
+const YOUTUBE_CHANNEL_ID = /^UC[\w-]{22}$/;
+const YOUTUBE_CHANNEL_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com']);
+/** ハンドル・旧式のチャンネル名に使える文字（日本語のハンドルもある） */
+const YOUTUBE_CHANNEL_NAME = /^[\p{L}\p{N}._\-·]{1,100}$/u;
+
+/**
+ * YouTube のチャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`）、`@ハンドル`、`UC…` のチャンネル ID を読む。
+ * ID が分かればその ID、それ以外はチャンネルのページのパス（% エンコード済み。ここで検証した部品だけでできている）を返す。
+ * 動画の URL と、ほかのホストは undefined。ホストは完全一致で判定し、`/@ハンドル/videos` のように後ろが付いていても最初の部分だけを使う。
+ */
+export function parseYouTubeChannelRef(input: string): { channelId: string } | { pagePath: string } | undefined {
+  const raw = input.trim();
+  if (YOUTUBE_CHANNEL_ID.test(raw)) return { channelId: raw };
+  let url: URL;
+  try {
+    url = new URL(raw.startsWith('@') ? `https://www.youtube.com/${raw}` : /^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return undefined;
+  }
+  if (!YOUTUBE_CHANNEL_HOSTS.has(url.hostname.toLowerCase())) return undefined;
+  let parts: string[];
+  try {
+    parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return undefined;
+  }
+  const [first = '', second = ''] = parts;
+  if (first.startsWith('@')) {
+    const handle = first.slice(1);
+    return YOUTUBE_CHANNEL_NAME.test(handle) ? { pagePath: `/@${encodeURIComponent(handle)}` } : undefined;
+  }
+  if (first === 'channel') return YOUTUBE_CHANNEL_ID.test(second) ? { channelId: second } : undefined;
+  if ((first === 'c' || first === 'user') && YOUTUBE_CHANNEL_NAME.test(second)) return { pagePath: `/${first}/${encodeURIComponent(second)}` };
+  return undefined;
+}
+
 // URL に入らない文字と、全角の括弧・句読点・引用符（「（URL）と」「“URL”」）で止める。次の http(s):// の手前でも止める
 // （「URL,URL」「[URL](URL)」）。日本語の入った URL（/wiki/君と見るそら）は切らない。
 // ponytail: 空白なしで日本語の語が続く URL（「URLを要約」）は語まで URL に入る。呼び出し側の AI はふつう空白で区切る
