@@ -182,3 +182,70 @@ describe('REST /youtube/channel', () => {
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /youtube/channel');
   });
 });
+
+describe('MCP tool get_youtube_channel', () => {
+  test('is registered by default as a deferred youtube tool, and absent when the module is left out', () => {
+    delete process.env.ENABLED_MODULES;
+    const entry = toolCatalogOf(createMcpServer()).get('get_youtube_channel');
+    expect(entry?.category).toBe('youtube');
+    expect(entry?.handle.enabled).toBe(false);
+    expect(toolCatalogOf(createMcpServer({ modules: ['web'], deferTools: false })).has('get_youtube_channel')).toBe(false);
+  });
+
+  test('lists with a required url, and a call returns the videos as JSON or a YouTube error', async () => {
+    const saved = globalThis.fetch;
+    const channelId = 'UCmcpTest0000000000000a1';
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).startsWith(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`)) {
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <title>テストチャンネルMCP</title>
+ <entry><yt:videoId>mcpTest0001</yt:videoId><title>テストの動画MCP</title><published>2026-10-20T10:00:00+00:00</published><updated>2026-10-20T10:00:00+00:00</updated>
+  <media:group><media:description>説明です</media:description><media:community><media:statistics views="42"/></media:community></media:group></entry>
+</feed>`);
+      }
+      return new Response('', { status: 404 });
+    }) as unknown as typeof fetch;
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'youtube-channel-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_youtube_channel') as any;
+      expect(tool.inputSchema.required).toEqual(['url']);
+      const res = await client.callTool({ name: 'get_youtube_channel', arguments: { url: channelId, limit: 5 } }) as any;
+      expect(JSON.parse(res.content[0].text)).toMatchObject({
+        found: true,
+        channelId,
+        title: 'テストチャンネルMCP',
+        videos: [{ videoId: 'mcpTest0001', title: 'テストの動画MCP', description: '説明です', views: 42 }],
+      });
+      const bad = await client.callTool({ name: 'get_youtube_channel', arguments: { url: 'https://example.com/x' } }) as any;
+      expect(bad.isError).toBe(true);
+      expect(bad.content[0].text).toContain('YouTube error');
+    } finally {
+      globalThis.fetch = saved;
+      await client.close();
+      await server.close();
+    }
+  });
+
+  test('search_tools finds it by YouTube チャンネル, without matching the transcript tool, and enables it for the session', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer();
+    const client = new Client({ name: 'youtube-channel-defer-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube_channel');
+      const found = await client.callTool({ name: 'search_tools', arguments: { query: 'YouTube チャンネル' } }) as any;
+      expect(found.content[0].text).toContain('get_youtube_channel');
+      expect(found.content[0].text).not.toContain('get_youtube_transcript');
+      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube_channel');
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
