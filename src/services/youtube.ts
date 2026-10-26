@@ -66,8 +66,8 @@ interface PlayerResponse {
   captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[]; audioTracks?: Array<{ audioTrackId?: string }>; defaultAudioTrackIndex?: number } };
   microformat?: { playerMicroformatRenderer?: { publishDate?: string; category?: string; liveBroadcastDetails?: { isLiveNow?: boolean } } };
 }
-interface Json3 { events?: Array<{ tStartMs?: number; segs?: Array<{ utf8?: string }> }> }
-interface Paragraph { startSec: number; text: string }
+export interface Json3 { events?: Array<{ tStartMs?: number; segs?: Array<{ utf8?: string }> }> }
+export interface Paragraph { startSec: number; text: string }
 
 /** キャッシュする形。本文は段落の配列で持ち、範囲と長さの切り出しは呼び出しごとに行う。 */
 type VideoRecord = Omit<YoutubeTranscriptResult, 'transcript' | 'requestedStartSec'> & {
@@ -165,8 +165,9 @@ function originalLanguage(renderer: NonNullable<PlayerResponse['captions']>['pla
 /**
  * json3 を約 30 秒か 300 字ごとの段落にする。改行だけの event（自動字幕の aAppend）と表示窓の定義は飛ばす。
  * 同じ秒のうちは文字数が超えても段落を分けない（同じ開始秒の段落ができると、続きを読むときに長さ 0 の段落として落ちる）。
+ * TikTok の字幕（WebVTT）も、この形にして同じように段落にする（services/tiktok.ts）。
  */
-function json3ToParagraphs(json: Json3): Paragraph[] {
+export function json3ToParagraphs(json: Json3): Paragraph[] {
   const paragraphs: Array<{ startMs: number; parts: string[]; len: number }> = [];
   for (const ev of json.events ?? []) {
     const text = (ev.segs ?? []).map((s) => s.utf8 ?? '').join('').replace(/\s+/g, ' ').trim();
@@ -458,7 +459,7 @@ export async function attachVideoTranscripts<T extends { items?: Array<{ url?: s
 }
 
 /** 字幕の見出しの時刻。YouTube の t= と同じ書き方（`1m23s`・`1h02m03s`）。 */
-const tLabel = (sec: number) => {
+export const tLabel = (sec: number) => {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = String(sec % 60).padStart(2, '0');
