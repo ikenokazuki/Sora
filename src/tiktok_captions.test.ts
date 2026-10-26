@@ -122,6 +122,14 @@ describe('scrapeUrl with a TikTok video URL', () => {
     expect(r.content).toContain('最後まで見てね');
   });
 
+  test('a TikTok page still on the challenge ("Please wait...") comes back unavailable', async () => {
+    stubCaptionFetch();
+    stubBrowser('<html><head><title>TikTok</title></head><body><p>Please wait...</p></body></html>', 200);
+    const r = await scrapeUrl({ url: 'https://www.tiktok.com/@test_user/video/7000000000000000003', noCache: true });
+    expect(r.contentStatus).toBe('unavailable');
+    expect(r.content).toContain('確認の画面');
+  });
+
   test('a TikTok page answered with 403 stays unavailable', async () => {
     stubCaptionFetch();
     stubBrowser('<html><body><h1>You don\'t have authorization to view this page.</h1><p>HTTP ERROR 403</p></body></html>', 403);
