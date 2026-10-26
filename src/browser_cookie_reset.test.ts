@@ -47,6 +47,30 @@ describe.skipIf(!resolveChromiumPath())('stored cookies and error pages', () => 
     expect(dbGetTenantStorage('legacy', '127.0.0.1')?.waf_state).toBeUndefined();
   }, 30000);
 
+  // TikTok は確認の画面（"Please wait..."、HTTP 200）も返す。その画面の札を戻すと、毎回確認の画面になった（2026-10-26、本番）
+  const challenge = page('Please wait...').replace(/<p>.*<\/p>/, '<p>Please wait...</p>').replace('<h1>テストのページ</h1>', '');
+
+  test('a page still on a challenge with the stored cookies is opened again without them', async () => {
+    let requests = 0;
+    const base = serve((req) => {
+      if (new URL(req.url).pathname !== '/challenged') return new Response('', { status: 404 }); // favicon など
+      requests++;
+      const pending = (req.headers.get('cookie') ?? '').includes('chal=pending');
+      return new Response(pending ? challenge : page(`${'本文の段落です。'.repeat(20)}`), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    });
+    dbSaveTenantCookies('legacy', '127.0.0.1', [{ name: 'chal', value: 'pending', domain: '127.0.0.1', path: '/' }]);
+    const r = await scrapeUrl({ url: `${base}/challenged`, mode: 'browser', timeoutMs: 8000, noCache: true });
+    expect(r.content).toContain('本文の段落です');
+    expect(requests).toBe(2);
+    expect((dbGetTenantCookies('legacy', '127.0.0.1') ?? []).map((c) => c.name)).not.toContain('chal');
+  }, 30000);
+
+  test('the cookies a challenge page sets are not stored', async () => {
+    const base = serve(() => new Response(challenge, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': 'chal_token=pending; Path=/' } }));
+    await scrapeUrl({ url: `${base}/always-challenged`, mode: 'browser', timeoutMs: 8000, noCache: true });
+    expect((dbGetTenantCookies('legacy', '127.0.0.1') ?? []).map((c) => c.name)).not.toContain('chal_token');
+  }, 30000);
+
   test('the cookies an error page sets are not stored', async () => {
     const base = serve(() => new Response(page('Forbidden'), { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': 'waf_token=bad; Path=/' } }));
     const r = await scrapeUrl({ url: `${base}/blocked`, mode: 'browser', timeoutMs: 8000, noCache: true });
