@@ -62,15 +62,15 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## 実測
 
-2026-10-25 に実際の通信で測った（`get_youtube_transcript` を足した後）。文字数は、クライアントが受け取る HTTP 本文の長さ。
+2026-10-26 に実際の通信で測った（`get_youtube_channel` を足した後）。文字数は、クライアントが受け取る HTTP 本文の長さ。
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 24,728 |
-| 全ツール（51 ツール） | 61,876 |
-| `instructions` | 8,706 |
+| 既定（14 ツール） | 24,861 |
+| 全ツール（52 ツール） | 63,342 |
+| `instructions` | 8,750 |
 
 `search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,477 文字。
 
