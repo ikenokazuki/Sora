@@ -140,3 +140,45 @@ describe('REST /youtube/transcript', () => {
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /youtube/transcript');
   });
 });
+
+const postChannel = (a: { request: Hono['request'] }, body: unknown) =>
+  a.request('/youtube/channel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+
+// チャンネル名・題名はすべてテスト用の作り物。
+const fakeChannelResult = {
+  found: true,
+  channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa',
+  title: 'テストチャンネル',
+  url: 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
+  videos: [{ videoId: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', title: 'テストの動画' }],
+};
+
+describe('REST /youtube/channel', () => {
+  test('validates the body, passes it on, and maps errors to 400 and a retryable 502', async () => {
+    let seen: unknown;
+    const ok = new Hono().route('/', createYoutubeRoutes(undefined, async (input) => { seen = input; return fakeChannelResult; }));
+    expect(await (await postChannel(ok, { url: '@YouTube', limit: 3 })).json()).toMatchObject({ found: true, channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa', videos: [{ videoId: 'abcdefghijk' }] });
+    expect(seen).toEqual({ url: '@YouTube', limit: 3 });
+    expect((await postChannel(ok, {})).status).toBe(400);
+    expect((await postChannel(ok, '{broken')).status).toBe(400);
+    expect((await postChannel(ok, { url: '@YouTube', limit: 0 })).status).toBe(400);
+    expect((await postChannel(ok, { url: '@YouTube', limit: 16 })).status).toBe(400);
+
+    const notChannel = new Hono().route('/', createYoutubeRoutes(undefined, async () => { throw new YoutubeInputError('url must be a YouTube channel URL, an @handle or a channel ID (UC…)'); }));
+    const bad = await postChannel(notChannel, { url: 'https://example.com/' });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ code: 'INVALID_INPUT' });
+
+    const down = new Hono().route('/', createYoutubeRoutes(undefined, async () => { throw new Error('YouTube request failed: feed HTTP 429'); }));
+    const res = await postChannel(down, { url: '@YouTube' });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'YOUTUBE_UPSTREAM_ERROR', retryable: true });
+  });
+
+  test('is mounted on the app, and listed in OpenAPI and GET /', async () => {
+    expect((await postChannel(app, {})).status).toBe(400);
+    const doc = generateOpenApiDocument() as any;
+    expect(doc.paths['/youtube/channel'].post.requestBody.content['application/json'].schema.required).toEqual(['url']);
+    expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /youtube/channel');
+  });
+});

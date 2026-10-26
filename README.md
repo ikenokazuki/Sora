@@ -76,7 +76,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 80 オペレーション（71 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 81 オペレーション（72 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -2205,6 +2205,41 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
   ```
 - **字幕が無いとき**も HTTP 200 です。`transcript.status` が `none`（`reason` は `no-captions` 字幕なし、`live-now` 配信中、`language-mismatch` 自動字幕が題名と別の言語だけ。`lang` を指定すると取得できる）か `unavailable`（`blocked` YouTube が拒否、`request-failed` 通信の失敗。キャッシュしません）になり、`message` に説明が入ります。再生できない動画（非公開・削除・年齢制限など）は `found: false`（`reason: "video-unavailable"`）です。URL でも動画 ID でもない入力は 400 `INVALID_INPUT`、YouTube に届かないときは 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`）です。
 - `transcript.text` は約 30 秒ごとの段落で、各行の先頭に `[m:ss]`（1 時間以上は `[h:mm:ss]`）が付きます。`maxChars` を超えると段落の境目で切り、`truncated: true` と `nextFromSec` を返します。`nextFromSec` を `fromSec` に渡すと続きを返します。`fromSec` より後に字幕が無いときは、空の `text` と `message` を返します。
+
+### 3.33 YouTube チャンネルの最新動画 (`POST /youtube/channel`, v2.50.0)
+
+YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル ID）から、最新の動画を新しい順に返します。公開の Atom フィードを読むので、Yahoo の検索は使いません。動画の字幕は、返った `videoId` を `POST /youtube/transcript` に渡して読みます。設定と注意は「Module 13: YouTube」を参照してください。
+
+- **リクエスト** (`POST /youtube/channel`):
+  ```json
+  {
+    "url": "https://www.youtube.com/@ハンドル",
+    "limit": 5
+  }
+  ```
+  `url` には、チャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`。後ろに `/videos` などが付いていても可）、`@ハンドル`、`UC` で始まる 24 文字のチャンネル ID を渡せます。`limit` は 1〜15（既定 10）です。
+- **レスポンス例**:
+  ```json
+  {
+    "found": true,
+    "channelId": "UCxxxxxxxxxxxxxxxxxxxxxx",
+    "title": "チャンネル名",
+    "url": "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx",
+    "videos": [
+      {
+        "videoId": "xxxxxxxxxxx",
+        "url": "https://www.youtube.com/watch?v=xxxxxxxxxxx",
+        "title": "動画の題名",
+        "publishedAt": "2026-10-23T04:00:19+00:00",
+        "updatedAt": "2026-10-24T00:00:00+00:00",
+        "description": "説明文の先頭 500 字",
+        "views": 1234
+      }
+    ]
+  }
+  ```
+- **チャンネルが無いとき**（ページもフィードも 404）は HTTP 200 で `found: false`（`reason: "channel-not-found"`）です。動画が無いチャンネルは `found: true` で `videos` が空です。YouTube のチャンネルの URL でも `@ハンドル` でも ID でもない入力は 400 `INVALID_INPUT`、同意の画面・ブロック・429/5xx・読めない応答は 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）です。
+- フィードは最新 15 件までで、ショート動画も含みます。結果は 30 分（見つからない・動画が無いときは 1 分）キャッシュし、ハンドルから ID への対応は 24 時間覚えます。`noCache: true` で取り直します。
 
 ---
 
