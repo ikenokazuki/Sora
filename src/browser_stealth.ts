@@ -373,12 +373,12 @@ export async function fetchWithStealthBrowser(
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number }> {
   const render = (useStoredSession: boolean) =>
     renderWithStealthBrowser(url, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, useStoredSession);
-  const { restoredSession, ...first } = await render(true);
-  // 保存していた Cookie・localStorage を戻して開いたページがエラーなら（保存分は消してある）、戻さずに 1 回だけ開き直す。
-  // エラーの画面から保存した札（TikTok の WAF の Cookie）を戻し続けて、毎回 403 になっていた（2026-10-26、本番）。
-  // ブラウザの枠（browserSemaphore）を手放してから開き直す
-  if (!restoredSession || (first.status ?? 0) < 400) return first;
-  const { restoredSession: _again, ...second } = await render(false);
+  const { restoredSession, blocked, ...first } = await render(true);
+  // 保存していた Cookie・localStorage を戻して開いたページが、エラーか、待っても確認の画面のままなら（保存分は消してある）、
+  // 戻さずに 1 回だけ開き直す。エラーや確認の画面（TikTok の "Please wait..."）から保存した札を戻し続けて、毎回 403 か
+  // 確認の画面になっていた（2026-10-26、本番）。ブラウザの枠（browserSemaphore）を手放してから開き直す
+  if (!restoredSession || ((first.status ?? 0) < 400 && !blocked)) return first;
+  const { restoredSession: _again, blocked: _blockedAgain, ...second } = await render(false);
   return second;
 }
 
@@ -393,7 +393,7 @@ async function renderWithStealthBrowser(
   tenantId: string,
   readiness: StealthReadiness | undefined,
   useStoredSession: boolean,
-): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number; restoredSession: boolean }> {
+): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number; restoredSession: boolean; blocked: boolean }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
     throw new Error('Chromium/Chrome が見つからないためブラウザレンダリングを実行できません');
@@ -561,10 +561,12 @@ async function renderWithStealthBrowser(
         html = await captureHtml();
       }
       const finalUrl = page.url();
+      // 待っても本文が出ず、確認の画面（ボット対策）のままか
+      const blocked = Boolean(readiness && !readiness.isContentReady(html, finalUrl));
       const title = await page.title();
 
-      if (!carriesCredentials && (status ?? 0) >= 400) {
-        // エラーの画面（ブロックなど）の Cookie・localStorage は保存せず、保存していた分も消す
+      if (!carriesCredentials && ((status ?? 0) >= 400 || blocked)) {
+        // エラーの画面（ブロックなど）と確認の画面の Cookie・localStorage は保存せず、保存していた分も消す
         dbDeleteTenantSession(tenantId, domain);
       } else if (!carriesCredentials) {
         try {
@@ -627,7 +629,7 @@ async function renderWithStealthBrowser(
         }
       }
 
-      return { html, title, screenshot, finalUrl, status, restoredSession };
+      return { html, title, screenshot, finalUrl, status, restoredSession, blocked };
     } finally {
       if (isDedicated) {
         await browser.close();

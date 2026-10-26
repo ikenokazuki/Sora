@@ -238,14 +238,15 @@ function mediaFileResult(url: string, contentType: string, contentLength: string
   };
 }
 
-/**
- * HTTP の状態が 400 以上のページは本文として扱わない（ブロックやエラーの画面。TikTok はブラウザでも 403 のことがある）。
- * 仕上げ（finalizeScrapeResult）の後に当て、エラー画面の文から作ったハイライトは外す。
- */
-function markHttpError(result: ScrapeResult, status: number | undefined): ScrapeResult {
-  if (!status || status < 400) return result;
+/** 本文を読めなかったページにする（unavailable）。仕上げ（finalizeScrapeResult）の後に当て、その画面の文から作ったハイライトは外す。 */
+function markUnreadable(result: ScrapeResult, note: string): ScrapeResult {
   const { highlights: _h, highlightItems: _i, highlightDiagnostics: _d, textFragmentUrl: _t, ...rest } = result;
-  return { ...rest, contentStatus: 'unavailable', content: `HTTP ${status} が返ったため、本文として扱いません。\n\n${result.content}` };
+  return { ...rest, contentStatus: 'unavailable', content: `${note}\n\n${result.content}` };
+}
+
+/** HTTP の状態が 400 以上のページは本文として扱わない（ブロックやエラーの画面。TikTok はブラウザでも 403 のことがある）。 */
+function markHttpError(result: ScrapeResult, status: number | undefined): ScrapeResult {
+  return !status || status < 400 ? result : markUnreadable(result, `HTTP ${status} が返ったため、本文として扱いません。`);
 }
 
 // ==========================================
@@ -1054,6 +1055,10 @@ export async function scrapeUrl(options: {
 
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
         result = markHttpError(await finalizeScrapeResult(result, finalizeOpts), browserRes.status);
+        // TikTok の動画でページのデータが無いのは、確認の画面（"Please wait..."）のままのとき。その文を本文にしない
+        if (tiktokVideo && result.contentStatus !== 'unavailable') {
+          result = markUnreadable(result, 'TikTok の確認の画面のまま、動画のデータを読めませんでした。時間をおいて再試行してください。');
+        }
 
         if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
