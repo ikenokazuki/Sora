@@ -61,7 +61,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (37ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 37 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 51 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (38ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 38 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 52 ツール）。
 
 ```json
 {
@@ -76,7 +76,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 80 オペレーション（71 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 81 オペレーション（72 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -318,12 +318,12 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 51 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 52 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 51 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 52 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (37ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 37 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (38ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 38 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -340,10 +340,11 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 37 ツール)**:
+- **動的有効化 (・ DEFERRED 38 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
+  - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
   - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
   - `get_elevation`: Nominatim 住所・地名の座標解決 & 国土地理院の標高（海抜）取得
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
@@ -378,8 +379,8 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
 │                 │                   │                  │                 │             │               │              │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 37ツール)
-図は 8 列の簡略表示です。Media（`inspect_image`）・YouTube（`get_youtube_transcript`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
+★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 38ツール)
+図は 8 列の簡略表示です。Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 ```
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
@@ -405,7 +406,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全51ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全52ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -621,18 +622,20 @@ curl -X POST http://localhost:3016/lyrics \
 ```
 
 ### 🎬 Module 13: YouTube (`ENABLED_MODULES=youtube`)
-YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。
+YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（`get_youtube_channel`。字幕は一覧の `videoId` を `get_youtube_transcript` に渡して読みます）。
 
 - 字幕は手動の字幕を優先し、無ければ YouTube の自動字幕（音声認識）を返します。自動字幕は `transcript.source: "auto"` と `note` で明示します。聞き間違いを含み、固有名詞や句読点が正しくないことがあります。
 - 字幕が無い動画（自動字幕も無い MV・ショートなど）は、`transcript.status: "none"` と理由（`no-captions` / `live-now` / `language-mismatch`）を返します。音声認識はしません。YouTube が取得を拒否したときは `unavailable`（`blocked` / `request-failed`）で、キャッシュしません。
 - 字幕は Android アプリと同じ YouTube の内部 API（innertube）から取ります。公開 API ではないため、YouTube の変更で止まることがあります。bot の確認を回避する処理（PO トークンの生成・Cookie）は持ちません。
 - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ YouTube に問い合わせ、結果を 30 分（字幕なしは 60 秒）キャッシュします。
+- `get_youtube_channel` は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
 - ほかのツールからも使われます。`scrape`（`scrape_batch`・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_video` の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_video` は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
 | `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` (integer, 任意。読み始める秒)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
+| `get_youtube_channel` ・ DEFERRED | YouTube チャンネルの最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。`search_tools` で有効化してください。REST: `POST /youtube/channel` | - `url` (string, 必須。チャンネルの URL・@ハンドル・UC… の ID)<br>- `limit` (integer, 任意。1〜15、既定 10)<br>- `noCache` (boolean, 任意) |
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
@@ -2206,6 +2209,41 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - **字幕が無いとき**も HTTP 200 です。`transcript.status` が `none`（`reason` は `no-captions` 字幕なし、`live-now` 配信中、`language-mismatch` 自動字幕が題名と別の言語だけ。`lang` を指定すると取得できる）か `unavailable`（`blocked` YouTube が拒否、`request-failed` 通信の失敗。キャッシュしません）になり、`message` に説明が入ります。再生できない動画（非公開・削除・年齢制限など）は `found: false`（`reason: "video-unavailable"`）です。URL でも動画 ID でもない入力は 400 `INVALID_INPUT`、YouTube に届かないときは 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`）です。
 - `transcript.text` は約 30 秒ごとの段落で、各行の先頭に `[m:ss]`（1 時間以上は `[h:mm:ss]`）が付きます。`maxChars` を超えると段落の境目で切り、`truncated: true` と `nextFromSec` を返します。`nextFromSec` を `fromSec` に渡すと続きを返します。`fromSec` より後に字幕が無いときは、空の `text` と `message` を返します。
 
+### 3.33 YouTube チャンネルの最新動画 (`POST /youtube/channel`, v2.50.0)
+
+YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル ID）から、最新の動画を新しい順に返します。公開の Atom フィードを読むので、Yahoo の検索は使いません。動画の字幕は、返った `videoId` を `POST /youtube/transcript` に渡して読みます。設定と注意は「Module 13: YouTube」を参照してください。
+
+- **リクエスト** (`POST /youtube/channel`):
+  ```json
+  {
+    "url": "https://www.youtube.com/@ハンドル",
+    "limit": 5
+  }
+  ```
+  `url` には、チャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`。後ろに `/videos` などが付いていても可）、`@ハンドル`、`UC` で始まる 24 文字のチャンネル ID を渡せます。`limit` は 1〜15（既定 10）です。
+- **レスポンス例**:
+  ```json
+  {
+    "found": true,
+    "channelId": "UCxxxxxxxxxxxxxxxxxxxxxx",
+    "title": "チャンネル名",
+    "url": "https://www.youtube.com/channel/UCxxxxxxxxxxxxxxxxxxxxxx",
+    "videos": [
+      {
+        "videoId": "xxxxxxxxxxx",
+        "url": "https://www.youtube.com/watch?v=xxxxxxxxxxx",
+        "title": "動画の題名",
+        "publishedAt": "2026-10-23T04:00:19+00:00",
+        "updatedAt": "2026-10-24T00:00:00+00:00",
+        "description": "説明文の先頭 500 字",
+        "views": 1234
+      }
+    ]
+  }
+  ```
+- **チャンネルが無いとき**（ページもフィードも 404）は HTTP 200 で `found: false`（`reason: "channel-not-found"`）です。動画が無いチャンネルは `found: true` で `videos` が空です。YouTube のチャンネルの URL でも `@ハンドル` でも ID でもない入力は 400 `INVALID_INPUT`、同意の画面・ブロック・429/5xx・読めない応答は 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）です。
+- フィードは最新 15 件までで、ショート動画も含みます。結果は 30 分（見つからない・動画が無いときは 1 分）キャッシュし、ハンドルから ID への対応は 24 時間覚えます。`noCache: true` で取り直します。
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ
@@ -2258,7 +2296,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 51 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 52 ツール静的一括ロード |
 | `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: 3 ツールが呼ばれたときだけ必要な市区町村を取得する（`get_elevation` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: 3 ツールを登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |

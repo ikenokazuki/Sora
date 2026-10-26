@@ -8,7 +8,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.49.2';
+export const SORA_VERSION = '2.50.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -2094,6 +2094,33 @@ export const YoutubeTranscriptResultSchema = z.object({
   ...CACHE_META_SHAPE,
 });
 
+export const YoutubeChannelRequestSchema = z.object({
+  url: z.string().min(1, 'url は必須です').describe('YouTube のチャンネルの URL (/@ハンドル・/channel/UC…・/c/名前・/user/名前)、@ハンドル、UC で始まる 24 文字のチャンネル ID'),
+  limit: z.number().int().min(1).max(15).optional().describe('返す動画の最大数 (デフォルト: 10, 最大: 15)').meta({ default: 10 }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
+});
+
+const YoutubeChannelVideoSchema = z.object({
+  videoId: z.string().describe('動画 ID'),
+  url: z.string().describe('動画の URL (https://www.youtube.com/watch?v=...)'),
+  title: z.string().describe('動画の題名'),
+  publishedAt: z.string().optional().describe('公開日時 (ISO 8601)'),
+  updatedAt: z.string().optional().describe('更新日時 (ISO 8601。題名や説明文を直すと変わる)'),
+  description: z.string().optional().describe('説明文の先頭 500 字'),
+  views: z.number().optional().describe('視聴回数 (フィードに載っていたときのみ。少し古いことがある)'),
+});
+
+export const YoutubeChannelResultSchema = z.object({
+  found: z.boolean().describe('チャンネルを見つけたか'),
+  reason: z.enum(['channel-not-found']).optional().describe('found が false の理由: "channel-not-found"(チャンネルが無い・削除された)'),
+  message: z.string().optional().describe('found が false のときの説明'),
+  channelId: z.string().optional().describe('チャンネル ID (UC で始まる 24 文字)'),
+  title: z.string().optional().describe('チャンネル名'),
+  url: z.string().optional().describe('チャンネルの URL (https://www.youtube.com/channel/UC...)'),
+  videos: z.array(YoutubeChannelVideoSchema).optional().describe('最新の動画。新しい順 (found が true のときのみ。動画が無いチャンネルは空)'),
+  ...CACHE_META_SHAPE,
+});
+
 export const InspectImageResultSchema = z.object({
   success: z.boolean().describe('画像解析・Base64変換が成功したか'),
   url: z.string().describe('取得元画像 URL'),
@@ -3750,6 +3777,18 @@ export function generateOpenApiDocument() {
             '200': {
               description: '動画と字幕 (動画が見つからない場合は found: false、字幕が無い場合は transcript.status: "none" も 200 で返す)',
               content: { 'application/json': { schema: zodToOpenApiSchema(YoutubeTranscriptResultSchema) } },
+            },
+          },
+        },
+      },
+      '/youtube/channel': {
+        post: {
+          summary: 'YouTube チャンネルの最新の動画 (題名・公開日・説明文・視聴回数。新しい順に最大 15 件。字幕は /youtube/transcript で読む)',
+          requestBody: { content: { 'application/json': { schema: zodToOpenApiSchema(YoutubeChannelRequestSchema) } } },
+          responses: {
+            '200': {
+              description: 'チャンネルの最新の動画 (チャンネルが見つからない場合は found: false)',
+              content: { 'application/json': { schema: zodToOpenApiSchema(YoutubeChannelResultSchema) } },
             },
           },
         },

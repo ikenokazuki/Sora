@@ -13,6 +13,7 @@ export * from './get_elevation.js';
 export * from './get_flight_status.js';
 export * from './get_law_text.js';
 export * from './get_weather.js';
+export * from './get_youtube_channel.js';
 export * from './get_youtube_transcript.js';
 export * from './inspect_image.js';
 export * from './map_site.js';

@@ -1,11 +1,11 @@
 import { errorMessage } from '../errors.js';
-import { getYoutubeTranscript } from '../services/youtube.js';
-import { YoutubeTranscriptRequestSchema } from '../types.js';
+import { getYoutubeChannel, getYoutubeTranscript } from '../services/youtube.js';
+import { YoutubeChannelRequestSchema, YoutubeTranscriptRequestSchema } from '../types.js';
 import { registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
-/** 🎬 Category 13: YouTube (モジュール: 'youtube'。動画の字幕・説明文。要約は呼び出し側の AI が書く) */
+/** 🎬 Category 13: YouTube (モジュール: 'youtube'。動画の字幕・説明文と、チャンネルの最新動画。要約は呼び出し側の AI が書く) */
 export function registerYoutubeTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
   // Tool 52: get_youtube_transcript (YouTube の字幕・説明文) - DEFERRED
@@ -28,5 +28,26 @@ export function registerYoutubeTools(context: ToolRegistrationContext): void {
       }
     },
     { defaultEnabled: deferredDefault, keywords: ['YouTube', 'ユーチューブ', '動画', '字幕', '自動字幕', '文字起こし', '要約', 'transcript', 'captions', 'youtu.be'] },
+  );
+  // Tool 53: get_youtube_channel (YouTube チャンネルの最新動画) - DEFERRED
+  registerTool(
+    mcpServer,
+    toolCatalog,
+    sessionActivated,
+    'get_youtube_channel',
+    'youtube',
+    '【YouTube チャンネルの最新動画】チャンネルの URL・@ハンドル・UC… のチャンネル ID から、最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件返します。Yahoo の検索は使いません。動画の中身は、返った videoId を get_youtube_transcript に渡して読みます。チャンネルが無いときは found が false。返却: { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] }',
+    YoutubeChannelRequestSchema.shape,
+    async (opts) => {
+      try {
+        return { content: [{ type: 'text', text: toolJson(await getYoutubeChannel(opts)) }] };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `YouTube error: ${errorMessage(err) || err}` }],
+        };
+      }
+    },
+    { defaultEnabled: deferredDefault, keywords: ['YouTube', 'ユーチューブ', 'チャンネル', 'channel', '新着', '最新動画', '動画一覧', '投稿', 'ハンドル', 'RSS'] },
   );
 }

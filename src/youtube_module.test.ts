@@ -140,3 +140,112 @@ describe('REST /youtube/transcript', () => {
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /youtube/transcript');
   });
 });
+
+const postChannel = (a: { request: Hono['request'] }, body: unknown) =>
+  a.request('/youtube/channel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+
+// チャンネル名・題名はすべてテスト用の作り物。
+const fakeChannelResult = {
+  found: true,
+  channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa',
+  title: 'テストチャンネル',
+  url: 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
+  videos: [{ videoId: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', title: 'テストの動画' }],
+};
+
+describe('REST /youtube/channel', () => {
+  test('validates the body, passes it on, and maps errors to 400 and a retryable 502', async () => {
+    let seen: unknown;
+    const ok = new Hono().route('/', createYoutubeRoutes(undefined, async (input) => { seen = input; return fakeChannelResult; }));
+    expect(await (await postChannel(ok, { url: '@YouTube', limit: 3 })).json()).toMatchObject({ found: true, channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa', videos: [{ videoId: 'abcdefghijk' }] });
+    expect(seen).toEqual({ url: '@YouTube', limit: 3 });
+    expect((await postChannel(ok, {})).status).toBe(400);
+    expect((await postChannel(ok, '{broken')).status).toBe(400);
+    expect((await postChannel(ok, { url: '@YouTube', limit: 0 })).status).toBe(400);
+    expect((await postChannel(ok, { url: '@YouTube', limit: 16 })).status).toBe(400);
+
+    const notChannel = new Hono().route('/', createYoutubeRoutes(undefined, async () => { throw new YoutubeInputError('url must be a YouTube channel URL, an @handle or a channel ID (UC…)'); }));
+    const bad = await postChannel(notChannel, { url: 'https://example.com/' });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ code: 'INVALID_INPUT' });
+
+    const down = new Hono().route('/', createYoutubeRoutes(undefined, async () => { throw new Error('YouTube request failed: feed HTTP 429'); }));
+    const res = await postChannel(down, { url: '@YouTube' });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'YOUTUBE_UPSTREAM_ERROR', retryable: true });
+  });
+
+  test('is mounted on the app, and listed in OpenAPI and GET /', async () => {
+    expect((await postChannel(app, {})).status).toBe(400);
+    const doc = generateOpenApiDocument() as any;
+    expect(doc.paths['/youtube/channel'].post.requestBody.content['application/json'].schema.required).toEqual(['url']);
+    expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /youtube/channel');
+  });
+});
+
+describe('MCP tool get_youtube_channel', () => {
+  test('is registered by default as a deferred youtube tool, and absent when the module is left out', () => {
+    delete process.env.ENABLED_MODULES;
+    const entry = toolCatalogOf(createMcpServer()).get('get_youtube_channel');
+    expect(entry?.category).toBe('youtube');
+    expect(entry?.handle.enabled).toBe(false);
+    expect(toolCatalogOf(createMcpServer({ modules: ['web'], deferTools: false })).has('get_youtube_channel')).toBe(false);
+  });
+
+  test('lists with a required url, and a call returns the videos as JSON or a YouTube error', async () => {
+    const saved = globalThis.fetch;
+    const channelId = 'UCmcpTest0000000000000a1';
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).startsWith(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`)) {
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <title>テストチャンネルMCP</title>
+ <entry><yt:videoId>mcpTest0001</yt:videoId><title>テストの動画MCP</title><published>2026-10-20T10:00:00+00:00</published><updated>2026-10-20T10:00:00+00:00</updated>
+  <media:group><media:description>説明です</media:description><media:community><media:statistics views="42"/></media:community></media:group></entry>
+</feed>`);
+      }
+      return new Response('', { status: 404 });
+    }) as unknown as typeof fetch;
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'youtube-channel-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_youtube_channel') as any;
+      expect(tool.inputSchema.required).toEqual(['url']);
+      const res = await client.callTool({ name: 'get_youtube_channel', arguments: { url: channelId, limit: 5 } }) as any;
+      expect(JSON.parse(res.content[0].text)).toMatchObject({
+        found: true,
+        channelId,
+        title: 'テストチャンネルMCP',
+        videos: [{ videoId: 'mcpTest0001', title: 'テストの動画MCP', description: '説明です', views: 42 }],
+      });
+      const bad = await client.callTool({ name: 'get_youtube_channel', arguments: { url: 'https://example.com/x' } }) as any;
+      expect(bad.isError).toBe(true);
+      expect(bad.content[0].text).toContain('YouTube error');
+    } finally {
+      globalThis.fetch = saved;
+      await client.close();
+      await server.close();
+    }
+  });
+
+  test('search_tools finds it by YouTube チャンネル, without matching the transcript tool, and enables it for the session', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer();
+    const client = new Client({ name: 'youtube-channel-defer-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube_channel');
+      const found = await client.callTool({ name: 'search_tools', arguments: { query: 'YouTube チャンネル' } }) as any;
+      expect(found.content[0].text).toContain('get_youtube_channel');
+      expect(found.content[0].text).not.toContain('get_youtube_transcript');
+      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube_channel');
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
