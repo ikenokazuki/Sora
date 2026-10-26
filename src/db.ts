@@ -467,6 +467,16 @@ export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]):
   dbSaveTenantCookies('legacy', domain, cookies);
 }
 
+/** そのサイトの保存した Cookie と localStorage を消す（エラーの画面から保存した札を、次に戻さないため）。 */
+export function dbDeleteTenantSession(tenantId: string, domain: string, scope = 'default'): void {
+  try {
+    const db = getDb();
+    for (const table of ['domain_cookies_v2', 'domain_storage_v2']) {
+      db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
+    }
+  } catch {}
+}
+
 export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default'): PersistedCookie[] | undefined {
   try {
     const db = getDb();
