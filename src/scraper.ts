@@ -131,6 +131,7 @@ import {
   splitQueryUrls,
 } from './html_parser.js';
 import { isModuleActive } from './mcp/registry.js';
+import { getTiktokPage, parseTikTokVideoUrl } from './services/tiktok.js';
 import { getYoutubePage } from './services/youtube.js';
 import {
   fetchWithStealthBrowser,
@@ -174,6 +175,36 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
 }
 
 const MEDIA_CONTENT_TYPE = /^(?:image|audio|video)\//;
+
+/** 動画（YouTube・TikTok）を字幕と説明文で本文にした結果。 */
+function videoPageResult(
+  url: string,
+  page: { title: string; content: string; author?: string; publishedTime?: string; description?: string; contentStatus: ScrapeResult['contentStatus']; media?: ScrapeResult['media'] },
+  siteName: string,
+  maxChars: number,
+): ScrapeResult {
+  const stats = calculateContentStats(page.content);
+  const content = safeTruncateMarkdown(page.content, maxChars);
+  return {
+    url,
+    title: page.title,
+    content,
+    isTruncated: page.content.length > maxChars,
+    contentType: 'text/markdown',
+    source: 'web',
+    links: [],
+    characterCount: stats.characterCount,
+    wordCount: stats.wordCount,
+    readingTimeMin: stats.readingTimeMin,
+    estimatedTokens: estimateTokens(content),
+    author: page.author,
+    publishedTime: page.publishedTime,
+    siteName,
+    description: page.description,
+    contentStatus: page.contentStatus,
+    ...(page.media ? { media: page.media } : {}),
+  };
+}
 
 /** 画像・音声・動画のファイルの結果。中身は文字にできないので読まず、種類と大きさだけを書く（本文は無いので unavailable）。 */
 function mediaFileResult(url: string, contentType: string, contentLength: string | null): ScrapeResult {
@@ -698,28 +729,7 @@ export async function scrapeUrl(options: {
         const wantsPage = formats.some((f) => f === 'html' || f === 'rawHtml' || f === 'links' || f === 'screenshot') || options.mode === 'browser' || options.renderJs === true;
         if (!wantsPage && isModuleActive('youtube') && parseYouTubeUrl(url)) {
           const page = await getYoutubePage(url, { noCache: options.noCache, query: options.query, maxChars });
-          const stats = calculateContentStats(page.content);
-          const truncatedContent = safeTruncateMarkdown(page.content, maxChars);
-          const baseResult: ScrapeResult = {
-            url,
-            title: page.title,
-            content: truncatedContent,
-            isTruncated: page.content.length > maxChars,
-            contentType: 'text/markdown',
-            source: 'web',
-            links: [],
-            characterCount: stats.characterCount,
-            wordCount: stats.wordCount,
-            readingTimeMin: stats.readingTimeMin,
-            estimatedTokens: estimateTokens(truncatedContent),
-            author: page.author,
-            publishedTime: page.publishedTime,
-            siteName: 'YouTube',
-            description: page.description,
-            contentStatus: page.contentStatus,
-            media: page.media,
-          };
-          result = await finalizeScrapeResult(baseResult, finalizeOpts);
+          result = await finalizeScrapeResult(videoPageResult(url, page, 'YouTube', maxChars), finalizeOpts);
           if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
           return result;
         }
@@ -752,8 +762,10 @@ export async function scrapeUrl(options: {
           }
         }
 
-        const isForcedBrowser = options.mode === 'browser' || options.renderJs === true;
         const isFastMode = options.mode === 'fast' || options.fastOnly === true;
+        // TikTok の動画は、静的な取得では WAF の確認画面しか返らないので、最初からブラウザで開く（ページそのものを求められたときは除く）
+        const tiktokVideo = !wantsPage && parseTikTokVideoUrl(url) !== undefined;
+        const isForcedBrowser = options.mode === 'browser' || options.renderJs === true || (tiktokVideo && !isFastMode && Boolean(resolveChromiumPath()));
 
         if (!isForcedBrowser) {
           onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
@@ -974,6 +986,16 @@ export async function scrapeUrl(options: {
             return result;
           }
           throw browserErr;
+        }
+
+        // TikTok の動画は、ページの埋め込みデータから説明文と自動字幕を本文にする（403 のときや、データが無いときは、ふつうのページとして読む）
+        if (tiktokVideo && !((browserRes.status ?? 0) >= 400)) {
+          const page = await getTiktokPage(browserRes.html, url, { title: browserRes.title });
+          if (page) {
+            result = await finalizeScrapeResult(videoPageResult(url, page, 'TikTok', maxChars), finalizeOpts);
+            if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+            return result;
+          }
         }
 
         const parsed = convertHtmlToMarkdown(
