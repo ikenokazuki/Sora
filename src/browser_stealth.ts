@@ -8,6 +8,7 @@ import {
   setupPageSecurity,
 } from './browser_engine.js';
 import {
+  dbDeleteTenantSession,
   dbGetTenantCookies,
   dbGetTenantStorage,
   dbSaveTenantCookies,
@@ -357,6 +358,8 @@ const NETWORK_IDLE_CAP_MS = 5000;
 /**
  * Stealth Chromium レンダリング
  */
+type StealthReadiness = { isContentReady: (html: string, finalUrl: string) => boolean; onWait?: () => void };
+
 export async function fetchWithStealthBrowser(
   url: string,
   timeoutMs = 30000,
@@ -366,8 +369,31 @@ export async function fetchWithStealthBrowser(
   needScreenshot = false,
   fullPage = true,
   tenantId = 'legacy',
-  readiness?: { isContentReady: (html: string, finalUrl: string) => boolean; onWait?: () => void },
+  readiness?: StealthReadiness,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number }> {
+  const render = (useStoredSession: boolean) =>
+    renderWithStealthBrowser(url, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, useStoredSession);
+  const { restoredSession, ...first } = await render(true);
+  // 保存していた Cookie・localStorage を戻して開いたページがエラーなら（保存分は消してある）、戻さずに 1 回だけ開き直す。
+  // エラーの画面から保存した札（TikTok の WAF の Cookie）を戻し続けて、毎回 403 になっていた（2026-10-26、本番）。
+  // ブラウザの枠（browserSemaphore）を手放してから開き直す
+  if (!restoredSession || (first.status ?? 0) < 400) return first;
+  const { restoredSession: _again, ...second } = await render(false);
+  return second;
+}
+
+async function renderWithStealthBrowser(
+  url: string,
+  timeoutMs: number,
+  clipSelector: string | undefined,
+  customCookies: CookieParam[] | undefined,
+  waitUntil: 'networkidle0' | 'networkidle2',
+  needScreenshot: boolean,
+  fullPage: boolean,
+  tenantId: string,
+  readiness: StealthReadiness | undefined,
+  useStoredSession: boolean,
+): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number; restoredSession: boolean }> {
   const chromePath = resolveChromiumPath();
   if (!chromePath) {
     throw new Error('Chromium/Chrome が見つからないためブラウザレンダリングを実行できません');
@@ -399,8 +425,11 @@ export async function fetchWithStealthBrowser(
       // 呼び出し側が Cookie（ログイン状態）を渡した取得では、そこで得た Cookie・localStorage を保存しない。
       // 保存すると、後続の「資格情報なし」リクエストへ引き継がれ、ログイン済みの内容が共有キャッシュに入る。
       const carriesCredentials = Boolean(customCookies && customCookies.length > 0);
-      const persistedCookies = dbGetTenantCookies(tenantId, domain);
+      // ログイン状態を渡された取得では、保存分を消して開き直すことはしない（エラーの原因が渡された Cookie のこともある）
+      let restoredSession = false;
+      const persistedCookies = useStoredSession ? dbGetTenantCookies(tenantId, domain) : undefined;
       if (persistedCookies && persistedCookies.length > 0) {
+        restoredSession = !carriesCredentials;
         const restoredCookies = persistedCookies.map((c) => ({
           name: c.name,
           value: c.value,
@@ -415,8 +444,9 @@ export async function fetchWithStealthBrowser(
         } catch {}
       }
 
-      const persistedStorage = dbGetTenantStorage(tenantId, domain);
+      const persistedStorage = useStoredSession ? dbGetTenantStorage(tenantId, domain) : undefined;
       if (persistedStorage && Object.keys(persistedStorage).length > 0) {
+        restoredSession = !carriesCredentials;
         await page.evaluateOnNewDocument((data: Record<string, string>) => {
           try {
             for (const [k, v] of Object.entries(data)) {
@@ -533,7 +563,10 @@ export async function fetchWithStealthBrowser(
       const finalUrl = page.url();
       const title = await page.title();
 
-      if (!carriesCredentials) {
+      if (!carriesCredentials && (status ?? 0) >= 400) {
+        // エラーの画面（ブロックなど）の Cookie・localStorage は保存せず、保存していた分も消す
+        dbDeleteTenantSession(tenantId, domain);
+      } else if (!carriesCredentials) {
         try {
           const currentCookies = await page.cookies();
           if (currentCookies.length > 0) {
@@ -594,7 +627,7 @@ export async function fetchWithStealthBrowser(
         }
       }
 
-      return { html, title, screenshot, finalUrl, status };
+      return { html, title, screenshot, finalUrl, status, restoredSession };
     } finally {
       if (isDedicated) {
         await browser.close();
