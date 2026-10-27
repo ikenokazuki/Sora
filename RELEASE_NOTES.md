@@ -1,3 +1,12 @@
+# Sora v2.51.0 — 音から曲を特定する recognize_song を足した（名前を挙げたときだけ有効なモジュール shazam）
+
+- **音声・動画ファイルの音から曲を特定する `recognize_song`（`POST /music/recognize`）を足しました。** 音を Shazam で特定し、iTunes の曲（`search_song` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。音は、音声・動画ファイルの URL（20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。
+- **モジュール `shazam` は、歌詞と同じく `ENABLED_MODULES` に名前を挙げたときだけ有効です（`ENABLED_MODULES=all,shazam`）。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うためです。既定の構成のツール・REST・OpenAPI・指示文は変わりません。
+- **[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper)（MIT）の楽曲認識の部分を TypeScript に移植しました。** 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし（イメージに ffmpeg は足していません）、12 秒の窓から指紋を作って送ります。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。iTunes とは Shazam が返す Apple の曲 ID でつなぎ、無ければ曲名とアーティストの一致する検索結果を使います。
+- **当たらないときは `found: false` と `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）を返します。** Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR` です。結果は音のハッシュごとに 30 分（当たらないときは 1 分）キャッシュします。
+- **Shazam が返す曲名はローマ字・英語の表記で、日本語の曲名は `itunes` の側に入ります。** Shazam の Apple の曲 ID は、渡した音の元と別の版（シングルとアルバムなど）のことがあります。
+- **tool-health の毎日の実 API の検査に、iTunes の試聴音源で 1 回だけ送る検査を足しました**（候補コンテナを `ENABLED_MODULES=all,shazam` で起動します）。
+
 # Sora v2.50.0 — YouTube チャンネルの最新の動画を返すようにした
 
 - **YouTube チャンネルの最新の動画を返す `get_youtube_channel`（`POST /youtube/channel`）を足しました。** チャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`）、`@ハンドル`、`UC…` のチャンネル ID を渡すと、最新の動画を新しい順に最大 15 件（題名・公開日・更新日・説明文の先頭 500 字・視聴回数）返します。YouTube の公開の Atom フィードを読むので、Yahoo の検索（oshiframe など他のアプリと分け合う枠）もブラウザも使いません。動画の字幕は、返った `videoId` を `get_youtube_transcript` に渡して読みます。
