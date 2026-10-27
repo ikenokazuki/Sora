@@ -1,3 +1,8 @@
+# Sora v2.51.1 — 楽曲認識で、ずれの大きい当たりを確かでないものとして扱う
+
+- **Shazam が返した当たりのうち、時間・周波数のずれが 0.002 を超えるものは、次の窓で確かめるようにしました。** v2.51.0 の本番前の確認で、君と見るそら「遠回りがいいっ!」の試聴音源の 12 秒目からの窓に、Shazam が別の曲を返しました（周波数のずれ 0.0051。正しい当たりは 0.00012 以下）。確かな当たりが無いときは、その当たりを `match.uncertain: true` と注意の `message` を付けて返します。
+- **`match` に `timeSkew`・`frequencySkew`、`attempts` に `uncertain` を足しました。**
+
 # Sora v2.51.0 — 音から曲を特定する recognize_song を足した（名前を挙げたときだけ有効なモジュール shazam）
 
 - **音声・動画ファイルの音から曲を特定する `recognize_song`（`POST /music/recognize`）を足しました。** 音を Shazam で特定し、iTunes の曲（`search_song` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。音は、音声・動画ファイルの URL（20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。

@@ -18,6 +18,9 @@ const MAX_TRIES = 3;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 const SHAZAM_TIMEOUT_MS = 20_000;
 const ITUNES_TIMEOUT_MS = 8_000;
+// これより大きい時間・周波数のずれの当たりは、確かでないものとして扱う。2026-10-27 の実測では、
+// 正しい当たりは 0.00012 以下、Shazam が別の曲を返した当たりは周波数のずれが 0.0051 だった
+const MAX_SKEW = 0.002;
 const SHAZAM_QUERY = 'sync=true&webv3=true&sampling=true&connected=&shazamapiversion=v3&sharehub=true&video=v0';
 // Shazam の iOS アプリの名乗り。tag の窓口はこれを求める（元のコードの TAG_HEADERS と同じ）
 const SHAZAM_HEADERS: Record<string, string> = {
@@ -33,6 +36,7 @@ const SHAZAM_HEADERS: Record<string, string> = {
 const NO_MATCH = 'Shazam で曲を特定できませんでした。別の位置（offsetSec）や、はっきり録れた音で試してください。曲名を推測で答えないでください。';
 const NOT_AUDIO = '音声・動画として読めませんでした。動画のページ（YouTube など）ではなく、音声・動画ファイル（mp3・m4a・wav・ogg・webm・flac・mp4 など）の URL を渡してください。';
 const TOO_SHORT = '音が短すぎるか静かすぎます（3 秒以上の音が要ります）。offsetSec が音の長さを超えていないかも確かめてください。';
+const UNCERTAIN = '音の高さ・速さのずれが大きい当たりです（別の曲のことがあります）。別の位置（offsetSec）でも確かめてください。';
 const TOO_LARGE = `ファイルが大きすぎます（URL から読むのは ${MAX_URL_BYTES / 1024 / 1024} MB まで）。曲の部分だけを切り出した音を渡してください。`;
 
 export class SongRecognitionInputError extends Error {}
@@ -60,8 +64,8 @@ export interface SongRecognitionResult {
   itunes: MusicItem | null;
   itunesMatch: 'apple-id' | 'title-artist' | null;
   shazam?: ShazamTrack;
-  match?: { songOffsetSec?: number; clipOffsetSec: number };
-  attempts: Array<{ offsetSec: number; durationSec: number; matched: boolean }>;
+  match?: { songOffsetSec?: number; clipOffsetSec: number; timeSkew?: number; frequencySkew?: number; uncertain?: true };
+  attempts: Array<{ offsetSec: number; durationSec: number; matched: boolean; uncertain?: true }>;
   audio?: { bytes: number; durationSec?: number; contentType: string };
   cached?: boolean;
 }
@@ -175,9 +179,11 @@ function appleMusicId(t: Record<string, any>): string | undefined {
   return undefined;
 }
 
-/** Shazam の tag の応答から、曲と、その音が曲の何秒目かを読む。当たらなかったら null。 */
-export function parseShazamResponse(body: unknown): { track: ShazamTrack; songOffsetSec?: number } | null {
-  const b = body as { matches?: Array<{ offset?: unknown }>; track?: Record<string, any> } | null;
+type ShazamMatch = { track: ShazamTrack; songOffsetSec?: number; timeSkew?: number; frequencySkew?: number };
+
+/** Shazam の tag の応答から、曲と、その音が曲の何秒目か、時間・周波数のずれを読む。当たらなかったら null。 */
+export function parseShazamResponse(body: unknown): ShazamMatch | null {
+  const b = body as { matches?: Array<{ offset?: unknown; timeskew?: unknown; frequencyskew?: unknown }>; track?: Record<string, any> } | null;
   const t = b?.track;
   const key = idOf(t?.key) ?? str(t?.key);
   const title = str(t?.title);
@@ -188,7 +194,7 @@ export function parseShazamResponse(body: unknown): { track: ShazamTrack; songOf
     if (section?.type !== 'SONG') continue;
     for (const row of Array.isArray(section.metadata) ? section.metadata : []) meta[String(row?.title ?? '').toLowerCase()] = str(row?.text);
   }
-  const offset = b?.matches?.[0]?.offset;
+  const { offset, timeskew, frequencyskew } = b?.matches?.[0] ?? {};
   return {
     track: {
       key, title, artist,
@@ -196,8 +202,12 @@ export function parseShazamResponse(body: unknown): { track: ShazamTrack; songOf
       genre: str(t.genres?.primary), url: str(t.url), artwork: str(t.images?.coverarthq) ?? str(t.images?.coverart),
     },
     ...(typeof offset === 'number' ? { songOffsetSec: round3(offset) } : {}),
+    ...(typeof timeskew === 'number' ? { timeSkew: timeskew } : {}),
+    ...(typeof frequencyskew === 'number' ? { frequencySkew: frequencyskew } : {}),
   };
 }
+
+const isUncertain = (m: ShazamMatch) => Math.abs(m.timeSkew ?? 0) > MAX_SKEW || Math.abs(m.frequencySkew ?? 0) > MAX_SKEW;
 
 async function itunesResults(url: string, fetchFn: typeof fetch): Promise<any[]> {
   const res = await fetchFn(url, { headers: { 'User-Agent': 'Sora-Music-Metadata-Fetcher/1.0' }, signal: AbortSignal.timeout(ITUNES_TIMEOUT_MS) });
@@ -235,6 +245,15 @@ async function identify(audio: DownloadedAudio, offsetSec: number | undefined, c
   if (decoded.durationSec < MIN_WINDOW_SECONDS) return { result: refusal('too-short', TOO_SHORT, info), ttlMs: CACHE_TTL_EMPTY };
   const fetchFn = deps.fetchFn ?? fetch;
   const attempts: SongRecognitionResult['attempts'] = [];
+  let weak: { match: ShazamMatch; clipOffsetSec: number } | undefined;
+  const found = async (m: ShazamMatch, clipOffsetSec: number, uncertain: boolean): Promise<{ result: SongRecognitionResult; ttlMs: number }> => {
+    const linked = await linkItunes(m.track, country, fetchFn);
+    const match = { songOffsetSec: m.songOffsetSec, clipOffsetSec, timeSkew: m.timeSkew, frequencySkew: m.frequencySkew, ...(uncertain ? { uncertain: true as const } : {}) };
+    return {
+      result: { found: true, ...(uncertain ? { message: UNCERTAIN } : {}), itunes: linked.item, itunesMatch: linked.by, shazam: m.track, match, attempts, audio: info },
+      ttlMs: linked.failed || uncertain ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT,
+    };
+  };
   for (const w of decoded.windows) {
     let sig: { uri: string; sampleMs: number };
     try {
@@ -244,17 +263,17 @@ async function identify(audio: DownloadedAudio, offsetSec: number | undefined, c
       throw e;
     }
     const matched = parseShazamResponse(await sendSignature(sig, country, fetchFn));
-    attempts.push({ offsetSec: w.offsetSec, durationSec: sig.sampleMs / 1000, matched: matched !== null });
+    const uncertain = matched !== null && isUncertain(matched);
+    attempts.push({ offsetSec: w.offsetSec, durationSec: sig.sampleMs / 1000, matched: matched !== null, ...(uncertain ? { uncertain: true as const } : {}) });
     if (!matched) continue;
-    const linked = await linkItunes(matched.track, country, fetchFn);
-    return {
-      result: {
-        found: true, itunes: linked.item, itunesMatch: linked.by, shazam: matched.track,
-        match: { songOffsetSec: matched.songOffsetSec, clipOffsetSec: w.offsetSec }, attempts, audio: info,
-      },
-      ttlMs: linked.failed ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT,
-    };
+    // ずれの大きい当たりは別の曲のことがある。次の窓で確かな当たりが出ればそちらを返す
+    if (uncertain) {
+      weak ??= { match: matched, clipOffsetSec: w.offsetSec };
+      continue;
+    }
+    return found(matched, w.offsetSec, false);
   }
+  if (weak) return found(weak.match, weak.clipOffsetSec, true);
   if (attempts.length === 0) return { result: refusal('too-short', TOO_SHORT, info), ttlMs: CACHE_TTL_EMPTY };
   return { result: refusal('no-match', NO_MATCH, info, attempts), ttlMs: CACHE_TTL_EMPTY };
 }
