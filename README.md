@@ -320,7 +320,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ## 2. 提供 MCP ツール一覧 (全 52 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 52 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 52 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
 Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (38ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 38 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
@@ -636,6 +636,24 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 |---|---|---|
 | `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` (integer, 任意。読み始める秒)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
 | `get_youtube_channel` ・ DEFERRED | YouTube チャンネルの最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。`search_tools` で有効化してください。REST: `POST /youtube/channel` | - `url` (string, 必須。チャンネルの URL・@ハンドル・UC… の ID)<br>- `limit` (integer, 任意。1〜15、既定 10)<br>- `noCache` (boolean, 任意) |
+
+### 🎧 Module 14: Song Recognition (`ENABLED_MODULES=all,shazam`)
+音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_song` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+
+- 音は、音声・動画ファイルの URL（mp3・m4a・wav・ogg・webm・flac・mp4 など。20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。
+- 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし、12 秒の窓から Shazam の指紋を作って送ります（[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper) の `sigx.py`、MIT を移植）。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。
+- iTunes とは、Shazam が返す Apple の曲 ID で lookup を引いてつなぎます。無いときは、曲名とアーティストが一致する iTunes の検索結果を使い、それも無ければ `itunes: null` です。
+- 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ Shazam と iTunes に問い合わせ、結果を音のハッシュでキャッシュします（当たり 30 分、外れ 1 分）。
+
+| ツール名 | 説明 | 主要引数 |
+|---|---|---|
+| `recognize_song` ・ DEFERRED | 音から曲を特定し、iTunes の曲とつなぎます。特定できないときは `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）を返します。`search_tools` で有効化してください。REST: `POST /music/recognize` | - `url` (string, 必須。音声・動画ファイルの URL)<br>- `offsetSec` (integer, 任意。聞き始める秒)<br>- `country` (string, 任意。既定 `jp`)<br>- `noCache` (boolean, 任意) |
+
+```bash
+docker run -d -p 3016:8000 -e ENABLED_MODULES="all,shazam" ghcr.io/ikenokazuki/sora:latest
+
+curl -X POST http://localhost:3016/music/recognize -F file=@clip.m4a -F offsetSec=0
+```
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
 
@@ -2244,6 +2262,26 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 - **チャンネルが無いとき**（ページもフィードも 404）は HTTP 200 で `found: false`（`reason: "channel-not-found"`）です。動画が無いチャンネルは `found: true` で `videos` が空です。YouTube のチャンネルの URL でも `@ハンドル` でも ID でもない入力は 400 `INVALID_INPUT`、同意の画面・ブロック・429/5xx・読めない応答は 502 `YOUTUBE_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）です。
 - フィードは最新 15 件までで、ショート動画も含みます。結果は 30 分（見つからない・動画が無いときは 1 分）キャッシュし、ハンドルから ID への対応は 24 時間覚えます。`noCache: true` で取り直します。
 
+### 3.34 音から曲を特定 (`POST /music/recognize`, v2.51.0, 明示オプトイン)
+
+音声・動画ファイルの音から曲を Shazam で特定し、iTunes の曲とつなぎます。**`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 14: Song Recognition」を参照してください。
+
+- **リクエスト**: JSON の `{ "url": "https://…/clip.m4a", "offsetSec": 0, "country": "jp" }`、または multipart/form-data の `file`（ほかの引数は同じ名前の欄。10 MB まで）。
+- **レスポンス**（当たったとき）:
+  ```json
+  {
+    "found": true,
+    "itunes": { "id": "1700000001", "type": "song", "title": "曲名", "artist": "アーティスト", "previewUrl": "https://…", "url": "https://music.apple.com/…" },
+    "itunesMatch": "apple-id",
+    "shazam": { "key": "900001", "title": "曲名", "artist": "アーティスト", "isrc": "JPXX02600001", "appleMusicId": "1700000001" },
+    "match": { "songOffsetSec": 61.2, "clipOffsetSec": 12 },
+    "attempts": [{ "offsetSec": 0, "durationSec": 12, "matched": false }, { "offsetSec": 12, "durationSec": 12, "matched": true }],
+    "audio": { "bytes": 1047712, "durationSec": 30, "contentType": "audio/mp4" }
+  }
+  ```
+- **特定できないとき**は HTTP 200 で `found: false` と `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）と `message` を返します。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）、入力の誤りは 400 `INVALID_INPUT` です。
+- 結果は音のハッシュ・`offsetSec`・`country` ごとに 30 分（特定できないときは 1 分）キャッシュします。`noCache: true` で取り直します。
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ
@@ -2293,7 +2331,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
 | `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
 | `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効 |
+| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 52 ツール静的一括ロード |
@@ -2382,6 +2420,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   - 日本の全現行法令オープンデータおよび e-Gov 法令 API v2 の一般公開に深く感謝いたします。
 - **iTunes Search API** (Apple Inc.):
   - 公式な音楽メタデータ検索 API の提供に感謝いたします。
+- **Shazam Scraper**: [omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper)（MIT）
+  - 楽曲認識の音の指紋（`sigx.py`）と、窓の選び方・送り方を TypeScript に移植しました（元は shazamio / SongRec の参照実装の移植です）。ライセンスの表示は `src/services/shazam_signature.ts` の先頭にあります。
 - **天気予報 API（livedoor 天気互換）設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
   - livedoor 天気互換フォーマットの分かりやすいスキーマ設計と長年のコミュニティ貢献に感謝いたします。
 - **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
