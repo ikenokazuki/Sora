@@ -83,6 +83,7 @@ systemRoutes.get('/', (c) => {
       crawlStream: 'POST /crawl/stream',
       cacheClear: 'POST /cache/clear',
       ...(isModuleActive('lyrics') ? { lyrics: 'POST /lyrics' } : {}),
+      ...(isModuleActive('shazam') ? { musicRecognize: 'POST /music/recognize' } : {}),
     },
   });
 });

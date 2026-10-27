@@ -28,6 +28,7 @@ import { intelligenceRoutes } from './routes/intelligence.js';
 import { socialRoutes } from './routes/social.js';
 import { lyricsRoutes } from './routes/lyrics.js';
 import { youtubeRoutes } from './routes/youtube.js';
+import { songRecognitionRoutes } from './routes/song_recognition.js';
 import { clientRoutes } from './routes/client.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 import { createRestOriginPolicy } from './security/rest_origin.js';
@@ -139,6 +140,7 @@ app.route('/', intelligenceRoutes);
 app.route('/', socialRoutes);
 app.route('/', lyricsRoutes);
 app.route('/', youtubeRoutes);
+app.route('/', songRecognitionRoutes);
 app.route('/', clientRoutes);
 
 // ==========================================

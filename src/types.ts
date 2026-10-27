@@ -2040,6 +2040,58 @@ export const LyricsResultSchema = z.object({
   ...CACHE_META_SHAPE,
 });
 
+export const SongRecognitionRequestSchema = z.object({
+  url: z.string().min(1, 'url は必須です').describe('音声・動画ファイルの URL（mp3・m4a・wav・ogg・webm・flac・mp4 など。20 MB まで）。YouTube などの動画のページの URL は読めない'),
+  offsetSec: z.number().int().min(0).optional().describe('聞き始める位置（秒）。省略すると、36 秒を超える音は真ん中、続けて先頭から 12 秒ずつ、合わせて最大 3 回試す'),
+  country: z.string().regex(/^[A-Za-z]{2}$/, 'country は 2 文字の国コードです').optional().describe('iTunes の国コード (デフォルト: "jp")').meta({ default: 'jp' }),
+  noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
+});
+
+/** multipart/form-data で音を送るときの、ファイル以外の欄（文字列で届く）。 */
+export const SongRecognitionFormSchema = z.object({
+  offsetSec: z.coerce.number().int().min(0).optional().describe('聞き始める位置（秒）'),
+  country: SongRecognitionRequestSchema.shape.country,
+  noCache: z.enum(['true', 'false']).transform((v) => v === 'true').optional().describe('キャッシュをバイパスするか ("true" / "false")'),
+});
+
+export const ShazamTrackSchema = z.object({
+  key: z.string().describe('Shazam の曲の ID'),
+  title: z.string().describe('曲名（Shazam の表記）'),
+  artist: z.string().describe('アーティスト名（Shazam の表記）'),
+  isrc: z.string().optional().describe('ISRC'),
+  appleMusicId: z.string().optional().describe('Apple Music / iTunes の曲の ID'),
+  album: z.string().optional().describe('アルバム名'),
+  label: z.string().optional().describe('レーベル'),
+  released: z.string().optional().describe('発売の年（Shazam の表記）'),
+  genre: z.string().optional().describe('ジャンル'),
+  url: z.string().optional().describe('Shazam の曲のページ'),
+  artwork: z.string().optional().describe('ジャケット画像の URL'),
+});
+
+export const SongRecognitionResultSchema = z.object({
+  found: z.boolean().describe('曲を特定できたか'),
+  reason: z.enum(['no-match', 'not-audio', 'too-short', 'too-large', 'download-failed']).optional().describe('found が false の理由: "no-match"(Shazam が特定できない), "not-audio"(音声・動画として読めない。ページの URL など), "too-short"(3 秒未満・無音), "too-large"(URL のファイルが 20 MB 超), "download-failed"(URL を読めない)'),
+  message: z.string().optional().describe('found が false のときの説明と次の手'),
+  itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_song の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
+  itunesMatch: z.enum(['apple-id', 'title-artist']).nullable().describe('iTunes の曲の見つけ方: "apple-id"(Shazam の Apple の曲 ID), "title-artist"(曲名とアーティストの一致)。見つからなければ null'),
+  shazam: ShazamTrackSchema.optional().describe('Shazam が特定した曲'),
+  match: z.object({
+    songOffsetSec: z.number().optional().describe('当たった音が、曲の何秒目か'),
+    clipOffsetSec: z.number().describe('渡した音の何秒目から聞いた窓で当たったか'),
+  }).optional().describe('当たった位置'),
+  attempts: z.array(z.object({
+    offsetSec: z.number().describe('窓の始まり（秒）'),
+    durationSec: z.number().describe('送った長さ（秒）'),
+    matched: z.boolean().describe('この窓で当たったか'),
+  })).describe('Shazam に送った窓'),
+  audio: z.object({
+    bytes: z.number().describe('受け取った音の大きさ（バイト）'),
+    durationSec: z.number().optional().describe('音の長さ（秒）'),
+    contentType: z.string().describe('受け取った音の形式（Content-Type）'),
+  }).optional().describe('受け取った音'),
+  ...CACHE_META_SHAPE,
+});
+
 export const YoutubeTranscriptRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('YouTube の動画 URL (watch・youtu.be・shorts・live・embed) か 11 文字の動画 ID。URL の t= は requestedStartSec として返す'),
   lang: z.string().optional().describe('字幕の言語 (デフォルト: "ja")。この言語の手動字幕、自動字幕の順に選び、無ければ他の言語').meta({ default: 'ja' }),
@@ -3997,6 +4049,37 @@ export function generateOpenApiDocument() {
           '200': {
             description: '歌詞の取得結果 (見つからない場合も 200 で found: false と reason を返す)',
             content: { 'application/json': { schema: zodToOpenApiSchema(LyricsResultSchema) } },
+          },
+        },
+      },
+    };
+  }
+  // 楽曲認識は ENABLED_MODULES に名前を挙げたときだけ公開する（Shazam の iPhone アプリと同じ窓口を使うため）
+  if (isModuleActive('shazam')) {
+    paths['/music/recognize'] = {
+      post: {
+        summary: '音声・動画ファイルの音から曲を特定し、iTunes の曲とつなぐ (Shazam。ENABLED_MODULES に shazam を挙げたときだけ)',
+        requestBody: {
+          content: {
+            'application/json': { schema: zodToOpenApiSchema(SongRecognitionRequestSchema) },
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: { type: 'string', format: 'binary', description: '音声・動画ファイル（10 MB まで）' },
+                  offsetSec: { type: 'integer', minimum: 0, description: '聞き始める位置（秒）' },
+                  country: { type: 'string', description: 'iTunes の国コード (デフォルト: "jp")' },
+                  noCache: { type: 'boolean', description: 'キャッシュをバイパスするか' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: '曲の特定の結果 (特定できない場合も 200 で found: false と reason を返す)',
+            content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionResultSchema) } },
           },
         },
       },

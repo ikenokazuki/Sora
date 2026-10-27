@@ -48,6 +48,7 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
         if (enabled.media) activeCategories.push('media (画像検査)');
         if (enabled.lyrics) activeCategories.push('lyrics (歌詞・自己責任)');
         if (enabled.youtube) activeCategories.push('youtube (YouTube の字幕・説明文)');
+        if (enabled.shazam) activeCategories.push('shazam (楽曲認識・Shazam)');
 
         const categoryText = activeCategories.length > 0
           ? `\n現在有効なカテゴリ: ${activeCategories.join(', ')}`
