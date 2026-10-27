@@ -98,9 +98,9 @@ export function checkReadmeExamples(markdown: string, doc: any = generateOpenApi
 }
 
 export function checkRepositoryReadme(): ReadmeExampleFinding[] {
-  // 自己責任の lyrics モジュールは既定の仕様書に出ないので、README の例はそれを有効にした仕様書と照合する
+  // 名前を挙げたときだけの lyrics・shazam モジュールは既定の仕様書に出ないので、README の例はそれらを有効にした仕様書と照合する
   const saved = process.env.ENABLED_MODULES;
-  process.env.ENABLED_MODULES = 'all,lyrics';
+  process.env.ENABLED_MODULES = 'all,lyrics,shazam';
   try {
     return checkReadmeExamples(readFileSync(new URL('../../README.md', import.meta.url), 'utf8'));
   } finally {
