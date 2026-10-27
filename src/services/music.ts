@@ -28,6 +28,30 @@ export interface MusicSearchResult {
   source: 'itunes';
 }
 
+/** iTunes Search / Lookup API の 1 件を MusicItem にする（検索と、Shazam の曲の lookup で共用）。 */
+export function toMusicItem(r: any, entity: string): MusicItem {
+  const isSong = r.wrapperType === 'track' || r.kind === 'song';
+  const isAlbum = r.wrapperType === 'collection' || entity === 'album';
+
+  const thumb = r.artworkUrl100 || r.artworkUrl60;
+  const highRes = thumb ? thumb.replace(/\/\d+x\d+bb\./, '/600x600bb.') : undefined;
+
+  return {
+    id: String(r.trackId || r.collectionId || r.artistId || ''),
+    type: isSong ? 'song' : isAlbum ? 'album' : 'artist',
+    title: r.trackName || r.collectionName || r.artistName || 'Unknown Title',
+    artist: r.artistName || 'Unknown Artist',
+    album: r.collectionName || undefined,
+    artwork: thumb ? { thumbnail: thumb, highRes } : undefined,
+    previewUrl: r.previewUrl || undefined,
+    releaseDate: r.releaseDate || undefined,
+    genre: r.primaryGenreName || undefined,
+    trackNumber: typeof r.trackNumber === 'number' ? r.trackNumber : undefined,
+    trackTimeMillis: typeof r.trackTimeMillis === 'number' ? r.trackTimeMillis : undefined,
+    url: r.trackViewUrl || r.collectionViewUrl || r.artistViewUrl || undefined,
+  };
+}
+
 /** iTunes Search API による音楽・アルバム・アーティストメタデータ検索 (汎用) */
 export async function searchMusic(options: {
   query: string;
@@ -70,28 +94,7 @@ export async function searchMusic(options: {
   const data = await res.json() as any;
   const rawResults = Array.isArray(data?.results) ? data.results : [];
 
-  const items: MusicItem[] = rawResults.map((r: any) => {
-    const isSong = r.wrapperType === 'track' || r.kind === 'song';
-    const isAlbum = r.wrapperType === 'collection' || entity === 'album';
-
-    const thumb = r.artworkUrl100 || r.artworkUrl60;
-    const highRes = thumb ? thumb.replace(/\/\d+x\d+bb\./, '/600x600bb.') : undefined;
-
-    return {
-      id: String(r.trackId || r.collectionId || r.artistId || ''),
-      type: isSong ? 'song' : isAlbum ? 'album' : 'artist',
-      title: r.trackName || r.collectionName || r.artistName || 'Unknown Title',
-      artist: r.artistName || 'Unknown Artist',
-      album: r.collectionName || undefined,
-      artwork: thumb ? { thumbnail: thumb, highRes } : undefined,
-      previewUrl: r.previewUrl || undefined,
-      releaseDate: r.releaseDate || undefined,
-      genre: r.primaryGenreName || undefined,
-      trackNumber: typeof r.trackNumber === 'number' ? r.trackNumber : undefined,
-      trackTimeMillis: typeof r.trackTimeMillis === 'number' ? r.trackTimeMillis : undefined,
-      url: r.trackViewUrl || r.collectionViewUrl || r.artistViewUrl || undefined,
-    };
-  });
+  const items: MusicItem[] = rawResults.map((r: any) => toMusicItem(r, entity));
 
   const result: MusicSearchResult = {
     query,
