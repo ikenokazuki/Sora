@@ -2279,6 +2279,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
     "audio": { "bytes": 1047712, "durationSec": 30, "contentType": "audio/mp4" }
   }
   ```
+- Shazam が返した当たりのうち、時間・周波数のずれ（`match.timeSkew`・`match.frequencySkew`）が 0.002 を超えるものは、別の曲のことがあるので次の窓で確かめます。確かな当たりが無ければ、その当たりを `match.uncertain: true` と注意の `message` を付けて返します。
 - **特定できないとき**は HTTP 200 で `found: false` と `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）と `message` を返します。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）、入力の誤りは 400 `INVALID_INPUT` です。
 - 結果は音のハッシュ・`offsetSec`・`country` ごとに 30 分（特定できないときは 1 分）キャッシュします。`noCache: true` で取り直します。
 
