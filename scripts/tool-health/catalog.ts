@@ -44,7 +44,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
-  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'research_country_context', 'get_country_context',
+  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
 
@@ -97,6 +97,7 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
   get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
   get_youtube_channel: { method: 'POST', path: '/youtube/channel' },
+  recognize_song: { method: 'POST', path: '/music/recognize' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
   get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
   get_country_context_evidence: { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
@@ -998,6 +999,22 @@ export const TOOL_CASES: HealthCase[] = [
     if (raw.found !== true) throw new LiveUnavailable(`get_youtube_channel ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
     const { items } = mustHaveItems(raw, 'get_youtube_channel', ['videoId', 'title', 'publishedAt']);
     return { sources: [{ source: 'youtube-feed', count: items.length, format: 'atom', upstreamStatus: 'unknown' }] };
+  }),
+  toolCase('shazam.recognize', ['recognize_song'], ['shazam', 'itunes'], true, 120000, async (ctx) => {
+    await ensureEnabled(ctx, '楽曲認識', 30000);
+    // iTunes の試聴音源（YOASOBI「アイドル」）の 8 秒目からの 12 秒を、Shazam に 1 回だけ送る。
+    // GitHub の実行環境を Shazam が拒否したら、エラーの文（HTTP 403）で blocked になる（soft hold）
+    const { text: songText } = await mcpJson(ctx, 'search_song', { query: 'YOASOBI アイドル', limit: 1 }, 30000);
+    const preview = (toolPayload(songText, 'search_song') as { items?: Array<{ previewUrl?: string }> }).items?.[0]?.previewUrl;
+    if (!preview) throw new LiveUnavailable('search_song returned no preview URL for the recognition sample');
+    const { text } = await mcpJson(ctx, 'recognize_song', { url: preview, offsetSec: 8 }, 90000);
+    const raw = toolPayload(text, 'recognize_song') as { found?: boolean; reason?: string; message?: string };
+    if (raw.found !== true) {
+      const detail = `recognize_song ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`;
+      throw raw.reason === 'download-failed' ? new LiveUnavailable(detail) : new LiveFail(detail);
+    }
+    mustContain(raw, ['YOASOBI'], 'shazam');
+    return { sources: [{ source: 'shazam-tag', count: 1, format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);
