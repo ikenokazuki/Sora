@@ -89,7 +89,8 @@ describe('recognizeSong', () => {
     const tag = calls.filter((c) => c.url.startsWith('https://amp.shazam.com/'));
     expect(tag).toHaveLength(2);
     expect(tag[0].url).toMatch(/^https:\/\/amp\.shazam\.com\/discovery\/v5\/en\/JP\/iphone\/-\/tag\/[0-9A-F-]{36}\/[0-9A-F-]{36}\?sync=true/);
-    expect((tag[0].init?.headers as Record<string, string>)['X-Shazam-Platform']).toBe('IPHONE');
+    const headers = tag[0].init?.headers as Record<string, string> | undefined;
+    expect(headers?.['X-Shazam-Platform']).toBe('IPHONE');
     const body = JSON.parse(String(tag[0].init?.body));
     expect(body.signature.uri.startsWith('data:audio/vnd.shazam.sig;base64,')).toBe(true);
     expect(body.signature.samplems).toBe(12000);
