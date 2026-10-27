@@ -15,7 +15,7 @@ export function registerShazamTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'recognize_song',
     'shazam',
-    '【楽曲認識・Shazam】音声・動画ファイルの URL から、流れている曲を Shazam で特定し、iTunes の曲（search_song と同じ形。id は trackId、ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。mp3・m4a・wav・ogg・webm・flac・mp4 など 20 MB まで。YouTube などの動画のページの URL は読めません。offsetSec を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。found が false のときは reason（no-match / not-audio / too-short / too-large / download-failed）と message に従い、曲名を推測で答えないでください。返却: { found, reason, message, itunes, itunesMatch, shazam, match, attempts, audio }',
+    '【楽曲認識・Shazam】音声・動画ファイルの URL から、流れている曲を Shazam で特定し、iTunes の曲（search_song と同じ形。id は trackId、ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。mp3・m4a・wav・ogg・webm・flac・mp4 など 20 MB まで。YouTube などの動画のページの URL は読めません。offsetSec を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。found が false のときは reason（no-match / not-audio / too-short / too-large / download-failed）と message に従い、曲名を推測で答えないでください。match.uncertain が true の当たりは別の曲のことがあるので、確かではないと伝えてください。返却: { found, reason, message, itunes, itunesMatch, shazam, match, attempts, audio }',
     SongRecognitionRequestSchema.shape,
     async (opts) => {
       try {

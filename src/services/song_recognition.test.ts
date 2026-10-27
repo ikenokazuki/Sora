@@ -12,6 +12,8 @@ const TRACK = {
   sections: [{ type: 'SONG', metadata: [{ title: 'Album', text: 'テストアルバム' }, { title: 'Label', text: 'テストレーベル' }, { title: 'Released', text: '2026' }] }],
 };
 const HIT = { matches: [{ id: '900001', offset: 61.25, timeskew: 0.0001, frequencyskew: 0 }], track: TRACK, tagid: 'X' };
+// 実際に Shazam が別の曲を返したときの形（2026-10-27、音の高さのずれが 0.5%）
+const WEAK = { matches: [{ id: '800001', offset: 142.7, timeskew: -0.0006, frequencyskew: -0.0051 }], track: { ...TRACK, key: '800001', title: '別の曲', subtitle: '別の楽団', trackadamid: '1700000099' } };
 const ITUNES_TRACK = {
   wrapperType: 'track', kind: 'song', trackId: 1700000001, trackName: 'テスト曲', artistName: 'テスト歌手', collectionName: 'テストアルバム',
   artworkUrl100: 'https://img.example/a/100x100bb.jpg', previewUrl: 'https://audio.example/p.m4a', releaseDate: '2026-01-01T00:00:00Z',
@@ -58,7 +60,7 @@ describe('parseShazamResponse', () => {
         album: 'テストアルバム', label: 'テストレーベル', released: '2026', genre: 'J-Pop',
         url: 'https://www.shazam.com/track/900001/test', artwork: 'https://img.example/hq.jpg',
       },
-      songOffsetSec: 61.25,
+      songOffsetSec: 61.25, timeSkew: 0.0001, frequencySkew: 0,
     });
   });
 
@@ -105,6 +107,22 @@ describe('recognizeSong', () => {
     expect(await recognizeSong({ audio: audio(2) }, { fetchFn: both.fn, decode: decodeOk() })).toMatchObject({ itunesMatch: 'title-artist', itunes: { id: '1700000010' } });
     const onlyNear = fakeFetch({ shazam: () => Response.json(HIT), lookup: lookupEmpty, search: () => Response.json({ resultCount: 1, results: [near] }) });
     expect(await recognizeSong({ audio: audio(3) }, { fetchFn: onlyNear.fn, decode: decodeOk() })).toMatchObject({ found: true, itunesMatch: null, itunes: null });
+  });
+
+  test('a match with a large pitch or speed skew is checked against the next window', async () => {
+    const { fn } = fakeFetch({ shazam: (n) => Response.json(n === 1 ? WEAK : HIT) });
+    const out = await recognizeSong({ audio: audio(40) }, { fetchFn: fn, decode: decodeOk(30) });
+    expect(out).toMatchObject({ found: true, shazam: { key: '900001' }, match: { clipOffsetSec: 12 } });
+    expect(out.match?.uncertain).toBeUndefined();
+    expect(out.message).toBeUndefined();
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: true, uncertain: true }, { offsetSec: 12, durationSec: 12, matched: true }]);
+  });
+
+  test('when only a weak match is found it is returned as uncertain, with a warning', async () => {
+    const { fn } = fakeFetch({ shazam: () => Response.json(WEAK), lookup: () => Response.json({ resultCount: 0, results: [] }) });
+    const out = await recognizeSong({ audio: audio(41), offsetSec: 12 }, { fetchFn: fn, decode: decodeOk() });
+    expect(out).toMatchObject({ found: true, shazam: { key: '800001' }, match: { clipOffsetSec: 12, uncertain: true, frequencySkew: -0.0051 } });
+    expect(out.message).toContain('別の曲');
   });
 
   test('an iTunes failure keeps the match', async () => {
