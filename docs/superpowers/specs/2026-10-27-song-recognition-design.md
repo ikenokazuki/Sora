@@ -41,7 +41,7 @@
 ```
 {
   found: boolean,
-  reason?: 'no-match' | 'not-audio' | 'too-short' | 'too-large',
+  reason?: 'no-match' | 'not-audio' | 'too-short' | 'too-large' | 'download-failed',
   message?: string,
   itunes: MusicItem | null,          // search_song の items と同じ形（id は trackId）
   itunesMatch: 'apple-id' | 'title-artist' | null,
@@ -62,7 +62,7 @@
 
 ### 中の流れ（`src/services/song_recognition.ts`）
 
-1. 音を受け取る。URL は `fetchWithSafeRedirects` と `readBodyWithLimit`（20 MB）で読む（SSRF の防御は今の取得と同じ）。応答が HTML のときは `not-audio` にし、「動画のページではなく、音声・動画ファイルの URL を渡す」と書く。20 MB を超えたら `too-large`。
+1. 音を受け取る。URL は `fetchWithSafeRedirects` と `readBodyWithLimit`（20 MB）で読む（SSRF の防御は今の取得と同じ）。応答が HTML のときは `not-audio` にし、「動画のページではなく、音声・動画ファイルの URL を渡す」と書く。20 MB を超えたら `too-large`。読めない・HTTP 400 以上は `download-failed`。
 2. 変換する。ブラウザの枠（`browserSemaphore`）を取り、共有の Chromium（`getBrowser`）の空のページで `decodeAudioData` を行う。チャンネルの平均でモノラルにし、使う窓だけを Int16 にして Bun に返す。読めない形式は `not-audio`、3 秒未満は `too-short`。使い終わったページは閉じ、`recordBrowserUsage` を呼ぶ。
 3. 窓を選ぶ（元のコードと同じ）。`offsetSec` があれば、そこから 12 秒の 1 回だけ。無ければ、36 秒を超える音は真ん中の 12 秒から、続けて先頭から 12 秒ずつ、合わせて最大 3 回。当たった時点で止める。
 4. 指紋を作る（`src/services/shazam_signature.ts`）。`sigx.py` を TypeScript に移植する。FFT は 2048 点の実数 FFT を自前で書き、依存は足さない。CRC-32 は Bun の組み込みを使う。ファイルの先頭に、元の MIT のライセンス表示を残す。
@@ -73,11 +73,11 @@
 ### エラーの返し方
 
 - MCP: 結果は `toolJson`。例外は `isError` で `Song recognition error: <理由>`（tool-health の分類に合わせ、ブロックは `blocked`、通信の失敗は `request failed`・`timeout` を含める）。
-- REST: 400 `INVALID_JSON` / `INVALID_INPUT`、例外は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`（再試行可）。当たらない・音でない・短すぎる・大きすぎるは 200 で `found: false` と `reason`。
+- REST: 400 `INVALID_JSON` / `INVALID_INPUT`、例外は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`（再試行可）。当たらない・音でない・短すぎる・大きすぎる・URL を読めないは 200 で `found: false` と `reason`。
 
 ### そのほか
 
-- MCP の指示文（instructions）には足さない（上限の 8,800 字の近くまで使っている）。使い方と、`found: false` のときに推測しないことは、ツールの説明文に書く。
+- MCP の指示文には、モジュールが有効なときだけ 11 番目の指示（音の曲名は recognize_song。found: false なら推測しない）を足す（歌詞と同じ。既定の指示の長さは変わらない）。使い方は、ツールの説明文にも書く。
 - tool-health の台帳に `recognize_song` と `POST /music/recognize` を載せ、実 API の検査に 1 件入れる（iTunes の試聴音源の URL を渡し、`found: true` で Apple の曲 ID が一致することを見る）。GitHub の実行環境から Shazam が拒否されたら、ブロックとして扱う（soft hold）。
 - ツール数・操作数・`context_budget` などを固定しているテストは、モジュールが既定で無効なので変わらない見込み。変わるものは直す。
 
