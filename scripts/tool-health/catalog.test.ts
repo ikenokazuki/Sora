@@ -8,7 +8,8 @@ import {
 
 async function canonicalNames(): Promise<string[]> {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  const server = createMcpServer({ deferTools: false });
+  // 候補コンテナは ENABLED_MODULES=all,shazam で起動する（run.ts）。名前を挙げたときだけのモジュールも数える
+  const server = createMcpServer({ deferTools: false, modules: ['all', 'shazam'] });
   const client = new Client({ name: 'catalog-check', version: '1.0.0' });
   await server.connect(st);
   await client.connect(ct);

@@ -4,7 +4,7 @@
 
 ## 構成
 
-- 台帳: `scripts/tool-health/catalog.ts`（canonical 52、REST対応表、tool live case、provider live case）
+- 台帳: `scripts/tool-health/catalog.ts`（canonical 53、REST対応表、tool live case、provider live case）
 - 本体検査: `bun test`（`src/tool_contracts.test.ts`＝REST対応、`src/tool_transport_smoke.test.ts`＝実HTTP輸送＋F1、`scripts/tool-health/catalog.test.ts`＝登録集合照合）
 - live runner: `scripts/tool-health/run.ts`（公開toolは候補コンテナの `/app/server.js` へHTTP、providerは同一checkoutの実取得器で確認）
 - 報告: JSON＋Markdown＋JUnitを `tool-health-out/` へ。7日artifact保存。

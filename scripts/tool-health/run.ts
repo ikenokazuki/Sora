@@ -129,6 +129,8 @@ export async function main(): Promise<number> {
     'run', '-d', '--rm', '--name', container,
     '-p', `127.0.0.1:${hostPort}:8000`,
     '-e', 'SORA_DB_PATH=/tmp/tool-health.db',
+    // 名前を挙げたときだけのモジュール（楽曲認識）も検査する。歌詞は入れない
+    '-e', 'ENABLED_MODULES=all,shazam',
     '-e', `SORA_ALLOWED_HOSTS=${hostName},localhost:${hostPort}`,
     '-e', `SORA_ALLOWED_ORIGINS=http://${hostName},http://localhost:${hostPort}`,
     ...PASS_THROUGH_ENV.filter((k) => process.env[k]).flatMap((k) => ['-e', `${k}=${process.env[k]}`]),
