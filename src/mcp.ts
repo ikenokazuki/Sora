@@ -21,6 +21,7 @@ import { registerMediaTools } from './mcp/tools_media.js';
 import { registerIntelTools } from './mcp/tools_intel.js';
 import { registerLyricsTools } from './mcp/tools_lyrics.js';
 import { registerYoutubeTools } from './mcp/tools_youtube.js';
+import { registerShazamTools } from './mcp/tools_shazam.js';
 
 export {
   clearSharedActivatedTools,
@@ -76,6 +77,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   const shouldEnableIntel = isModuleActive('intel', options?.modules);
   const shouldEnableLyrics = isModuleActive('lyrics', options?.modules); // 'all' では有効にならない（名前を挙げたときだけ）
   const shouldEnableYoutube = isModuleActive('youtube', options?.modules);
+  const shouldEnableShazam = isModuleActive('shazam', options?.modules); // 'all' では有効にならない（名前を挙げたときだけ）
 
   const context: ToolRegistrationContext = { mcpServer, toolCatalog, sessionActivated, deferredDefault, options, serverTenantId };
   if (shouldEnableWeb) registerWebTools(context);
@@ -91,7 +93,8 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
   if (shouldEnableIntel) registerIntelTools(context);
   if (shouldEnableLyrics) registerLyricsTools(context);
   if (shouldEnableYoutube) registerYoutubeTools(context);
-  registerToolSearch(context, {web: shouldEnableWeb, browser: shouldEnableBrowser, yahoo: shouldEnableYahoo, life: shouldEnableLife, disaster: shouldEnableDisaster, watch: shouldEnableWatch, music: shouldEnableMusic, gov: shouldEnableGov, trade: shouldEnableTrade, media: shouldEnableMedia, lyrics: shouldEnableLyrics, youtube: shouldEnableYoutube});
+  if (shouldEnableShazam) registerShazamTools(context);
+  registerToolSearch(context, {web: shouldEnableWeb, browser: shouldEnableBrowser, yahoo: shouldEnableYahoo, life: shouldEnableLife, disaster: shouldEnableDisaster, watch: shouldEnableWatch, music: shouldEnableMusic, gov: shouldEnableGov, trade: shouldEnableTrade, media: shouldEnableMedia, lyrics: shouldEnableLyrics, youtube: shouldEnableYoutube, shazam: shouldEnableShazam});
 
   registerSkillResources(mcpServer);
 

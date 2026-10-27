@@ -15,6 +15,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const hasWatch = hasMod('watch');
   const hasLyrics = hasMod('lyrics');
   const hasYoutube = hasMod('youtube');
+  const hasShazam = hasMod('shazam');
   // inspect_image は web モジュールでも有効になる（createMcpServer の shouldEnableMedia と同じ条件）
   const hasMedia = hasMod('media') || hasWeb;
 
@@ -123,6 +124,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     const viaSearch = [hasYahoo && 'to find videos use search_video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
     tier1Directives.push(
       `10. YouTube Videos (what a video says, summaries, quotes): get_youtube_transcript with the URL; never guess from the title.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
+    );
+  }
+
+  if (hasShazam) {
+    tier1Directives.push(
+      "11. Song Identification (opt-in): to name the song playing in an audio or video file, use 'shazam' tool recognize_song with the file URL (not a video page). If found is false, never guess the title.",
     );
   }
 
