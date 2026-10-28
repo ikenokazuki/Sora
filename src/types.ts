@@ -671,7 +671,9 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
   videos: z.number().int().min(0).max(5).optional().describe('動画の中身が要るとき、上位の YouTube 動画の字幕を何本読むか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
   maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限'),
-  responseMode: IntegratedSearchResponseModeSchema.optional().default('full').describe('返却モード (デフォルト: "full")。"full": 従来互換で全文および周辺文脈を保持。"evidence": query-selected highlights を保持し、安全条件を満たす結果だけ全文 Markdown の重複返却を省略する明示opt-in。質問への回答に必要な情報が局所的で highlights だけで十分な場合は evidence を使用する。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を使用する。evidence は全文同等ではないため、返却後に必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
+  // 既定は evidence（ハイライト中心）。測定は docs/evaluations/response-compression/results.md。
+  // 全文が要る呼び出し側は responseMode: 'full' を渡す。
+  responseMode: IntegratedSearchResponseModeSchema.optional().default('evidence').describe('返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
 export const SuggestRequestSchema = z.object({
@@ -1534,7 +1536,7 @@ export const IntegratedSearchResponseSchema = z.object({
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
   prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
-  responseMode: z.literal('evidence').optional().describe('evidence 指定時に返す。full および verbose 時は省略'),
+  responseMode: z.literal('evidence').optional().describe('evidence（既定）のとき返す。full および verbose 時は省略'),
   contextSufficiency: z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
     reasons: z.array(z.string()).describe('few-success（取得成功が3件未満） / unmentioned:語（クエリ語がどの証拠にも無い） / unanswered:語（時刻・金額・日付などの回答値が見つからない） / no-usable-content'),

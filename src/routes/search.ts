@@ -35,7 +35,7 @@ import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHi
 import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
-import { IntegratedSearchResponseModeSchema, formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
+import { formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
 import { isModuleActive } from '../mcp/registry.js';
 import { attachVideoTranscripts } from '../services/youtube.js';
@@ -207,9 +207,8 @@ const handleIntegratedSearch = async (c: Context) => {
     const extractHighlights = body?.extractHighlights;
     const onlyMainContent = body?.onlyMainContent;
     const formats = body?.formats;
-    const responseModeParsed = IntegratedSearchResponseModeSchema.safeParse(
-      body?.responseMode ?? 'full',
-    );
+    // 既定（evidence）は共有スキーマの default から取る。null も省略と同じ扱い
+    const responseModeParsed = IntegratedSearchRequestSchema.shape.responseMode.safeParse(body?.responseMode ?? undefined);
     if (!responseModeParsed.success) {
       return c.json({ error: 'responseMode must be "full" or "evidence"' }, 400);
     }

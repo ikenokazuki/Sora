@@ -190,6 +190,9 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 
 ## Deep Search の応答量と待ち時間
 
+- `responseMode` の既定は `evidence` です（MCP・REST 共通）。検索語に合うハイライトを
+  返し、ハイライトのある結果では本文の Markdown を省きます。全文が要るときは
+  `full` を指定します。測定は `docs/evaluations/response-compression/results.md`。
 - `maxTotalChars`（任意）は本文合計の上限です。上位ほど多く配分し、短い
   ページの余りは残りへ再配分します。`highlights` は削りません。切り詰める結果では、
   本文の塊を先に残して「短いラベル（16字以下）のリンクだけの塊」（グローバルナビなど）を先に落とします。
