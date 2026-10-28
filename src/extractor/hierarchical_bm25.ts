@@ -176,17 +176,20 @@ export function ancestorBonus(
 
 /**
  * 最終スコア = BM25本文スコア + Σ(祖先レベルのボーナス)
+ * k1 と b は、日本語の公開評価集 JQaRA の dev で決めた（docs/evaluations/term-matching/results.md）。
+ * 段落の長さの差を強く罰しない（b が小さい）ほうが、長い段落の答えを落とさない。
  */
 export function scorePassage(
   block: HeadingBlock,
   terms: string[],
   allBlocks: HeadingBlock[],
-  opts?: { k1?: number; gamma?: number }
+  opts?: { k1?: number; b?: number; gamma?: number }
 ): number {
-  const k1 = opts?.k1 ?? 1.5;
+  const k1 = opts?.k1 ?? 0.9;
+  const b = opts?.b ?? 0.4;
   const gamma = opts?.gamma ?? 0.6;
 
-  const bodyScore = bm25BodyScore(block, terms, allBlocks, k1);
+  const bodyScore = bm25BodyScore(block, terms, allBlocks, k1, b);
   const bonus = ancestorBonus(block, terms, allBlocks, gamma);
 
   return bodyScore + bonus;
