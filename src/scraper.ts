@@ -4,7 +4,6 @@ import type { CookieParam } from 'puppeteer-core';
 import {
   type BatchScrapeResult,
   type BrowserActionOptions,
-  type HighlightAlgorithm,
   type ScrapeFormat,
   type ScrapeResult,
   type SitemapEntry,
@@ -41,11 +40,11 @@ import {
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
   computeAnswerability,
+  extractQueryHighlightDetails,
 } from './enrichment.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { incrementSecurityCounter } from './security/metrics.js';
-import { extractQueryHighlightsRhoSelect } from './rho_select.js';
-import { extractQueryHighlightsRhoV2, extractWithEscalation } from './rho_select_v2_adapter.js';
+import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
@@ -266,8 +265,6 @@ export async function finalizeScrapeResult(
     reorderUFlat?: boolean;
     diversityWeight?: number;
     annotateTemporal?: boolean;
-    highlightAlgorithm?: HighlightAlgorithm;
-    highlightOverheadTokens?: number;
     highlightMaxCount?: number;
     verbose?: boolean;
     shouldExtractSummary: boolean;
@@ -309,42 +306,22 @@ export async function finalizeScrapeResult(
       supplemental.push(result.description.trim());
     }
 
-    if (options.highlightAlgorithm === 'rho-select' || options.highlightAlgorithm === 'legacy') {
-      const rho = extractQueryHighlightsRhoSelect(result.content, options.query, {
-        maxHighlights: options.highlightMaxCount ?? 3,
-        overheadTokens: options.highlightOverheadTokens ?? 96,
-        supplementalEvidence: supplemental,
-      });
-      result.highlights = rho.highlights;
-      result.highlightItems = rho.highlights.map((h: string, idx: number) => ({
-        text: h,
-        score: Number((1.0 - idx * 0.1).toFixed(4)),
-      }));
-      if (options.verbose) {
-        result.highlightDiagnostics = rho.diagnostics;
-      }
-      if (result.highlights && result.highlights.length > 0) {
-        result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
-      }
-    } else {
-      // Default to rho-select-v2 (Canonical Engine) with recall escalation
-      const v2 = extractWithEscalation(result.content, options.query, {
-        tau: options.highlightOverheadTokens ?? 96,
-        supplementalEvidence: supplemental,
-        highlightMaxCount: options.highlightMaxCount,
-        limits: { maxBlocks: 500, maxExtractionMs: 2000 },
-      });
-      result.highlights = v2.highlights;
-      result.highlightItems = v2.highlightItems.map((item) => ({
-        text: item.text,
-        score: item.score,
-      }));
-      if (options.verbose) {
-        result.highlightDiagnostics = v2.diagnostics;
-      }
-      if (result.highlights && result.highlights.length > 0) {
-        result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
-      }
+    // 段落ごとの BM25（見出し階層ボーナス付き）の上位を、MMR で重複を避けて選ぶ（extractQueryHighlightDetails）
+    const picked = extractQueryHighlightDetails(result.content, options.query, { maxHighlights: options.highlightMaxCount ?? 3 });
+    let highlights = picked.highlights;
+    let items: Array<{ text: string; score: number }> = picked.highlightItems.map((item) => ({ text: item.text, score: item.score }));
+    // 本文に検索語が無いときは、検索結果のスニペットや説明文を根拠にする
+    if (highlights.length === 0 && supplemental.length > 0) {
+      highlights = [`> 📌 **補完証拠 (スニペット)**: ${supplemental[0]}`];
+      items = [{ text: highlights[0], score: 0 }];
+    }
+    result.highlights = highlights;
+    result.highlightItems = items;
+    if (options.verbose) {
+      result.highlightDiagnostics = picked.diagnostics;
+    }
+    if (result.highlights.length > 0) {
+      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
     }
   }
   const isHighlightOnlyMode =
@@ -503,8 +480,10 @@ export function shouldEscalateToBrowser(args: {
   if (body.length < 50) return { escalate: true, reason: 'no-static-content' };
   if (!args.query) return { escalate: true, reason: 'no-query' };
   try {
-    const recall = extractWithEscalation(body, args.query, { tau: 96 });
-    const coverage = recall.diagnostics.answerCoverage ?? 0;
+    // 静的な本文から広めに 5 件のハイライトを選び、問いの語（最大 10 語）の回答値が揃っているかを見る
+    const highlights = extractQueryHighlightDetails(body, args.query, { maxHighlights: 5 }).highlights;
+    const requirements = tokenizeAndSelectTerms(args.query, parseMarkdownSections(body), 10).terms;
+    const coverage = requirements.length > 0 ? computeEvidenceCoverage(highlights, entityTermsForQuery(args.query), requirements).answerCoverage : 0;
     if (coverage >= 0.5) return { escalate: false, reason: `recall-answers:${coverage.toFixed(2)}` };
     return { escalate: true, reason: `weak-evidence:${coverage.toFixed(2)}` };
   } catch {
@@ -577,8 +556,6 @@ export function buildScrapeCacheKey(
     query: options.query ?? '',
     extractHighlights: resolved.shouldExtractHighlights,
     onlyHighlights: options.onlyHighlights === true,
-    highlightAlgorithm: options.highlightAlgorithm ?? 'rho-select-v2',
-    highlightOverheadTokens: options.highlightOverheadTokens ?? 96,
     highlightMaxCount: options.highlightMaxCount ?? 'auto',
     evidenceMode: options.evidenceMode ?? 'full',
     includeDiagnostics: options.includeDiagnostics !== false,
@@ -623,8 +600,6 @@ export async function scrapeUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: HighlightAlgorithm;
-  highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   includeDiagnostics?: boolean;
@@ -697,8 +672,6 @@ export async function scrapeUrl(options: {
       query: options.query,
       shouldExtractHighlights: shouldExtractHighlights ?? (!!options.onlyHighlights),
       shouldOnlyHighlights: options.onlyHighlights ?? false,
-      highlightAlgorithm: options.highlightAlgorithm,
-      highlightOverheadTokens: options.highlightOverheadTokens,
       highlightMaxCount: options.highlightMaxCount,
       verbose: options.verbose,
       evidenceMode: options.evidenceMode,
@@ -1103,8 +1076,6 @@ export async function scrapeBatchUrls(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: HighlightAlgorithm;
-  highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   includeDiagnostics?: boolean;
@@ -1382,8 +1353,6 @@ export async function crawlSiteUrl(options: {
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
-  highlightAlgorithm?: HighlightAlgorithm;
-  highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   reorderUFlat?: boolean;
   diversityWeight?: number;
@@ -1412,8 +1381,6 @@ export async function crawlSiteUrl(options: {
     query,
     extractHighlights,
     onlyHighlights,
-    highlightAlgorithm,
-    highlightOverheadTokens,
     highlightMaxCount,
     reorderUFlat,
     diversityWeight,
@@ -1472,8 +1439,6 @@ export async function crawlSiteUrl(options: {
             query,
             extractHighlights,
             onlyHighlights,
-            highlightAlgorithm,
-            highlightOverheadTokens,
             highlightMaxCount,
             reorderUFlat,
             diversityWeight,
@@ -1785,8 +1750,6 @@ export async function integratedSearch(options: {
   diversityWeight?: number;
   annotateTemporal?: boolean;
   minimizeTables?: boolean;
-  highlightAlgorithm?: HighlightAlgorithm;
-  highlightOverheadTokens?: number;
   highlightMaxCount?: number;
   adaptiveScrape?: boolean;
   scrapeBudget?: number;
@@ -1824,8 +1787,6 @@ export async function integratedSearch(options: {
   const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
   const minimizeTables = options.minimizeTables;
-  const highlightAlgorithm = options.highlightAlgorithm || 'rho-select-v2';
-  const highlightOverheadTokens = options.highlightOverheadTokens ?? 96;
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
@@ -1859,8 +1820,6 @@ export async function integratedSearch(options: {
     diversityWeight: diversityWeight ?? 'default',
     annotateTemporal: annotateTemporal === true,
     minimizeTables: minimizeTables !== false,
-    highlightAlgorithm,
-    highlightOverheadTokens,
     highlightMaxCount: highlightMaxCount ?? 'auto',
     adaptiveScrape,
     scrapeBudget,
@@ -1891,7 +1850,7 @@ export async function integratedSearch(options: {
             const scrape = await scrapeUrl({
               url: item.url, tenantId: requestTenantId, contextTitle: item.title, snippet: item.summary, maxChars, timeoutMs: 12000,
               query, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables,
-              highlightAlgorithm, highlightOverheadTokens, highlightMaxCount,
+              highlightMaxCount,
             }).catch(() => null);
             // 取得できなかった動画は根拠に入れない（字幕の無い動画は、説明文だけの結果として入れる）
             if (!scrape || scrape.contentStatus === 'unavailable') return null;
@@ -2067,17 +2026,10 @@ export async function integratedSearch(options: {
                 : [],
             );
 
-            const rho =
+            const picked =
               isolatedEvidence.eligibleForPrimaryEvidence &&
               isolatedEvidence.markdown
-                ? extractQueryHighlightsRhoV2(
-                    isolatedEvidence.markdown,
-                    query,
-                    {
-                      overheadTokens: highlightOverheadTokens,
-                      highlightMaxCount,
-                    },
-                  )
+                ? extractQueryHighlightDetails(isolatedEvidence.markdown, query, { maxHighlights: highlightMaxCount ?? 3 })
                 : null;
 
             const isolatedItem: Record<string, any> = {
@@ -2104,9 +2056,9 @@ export async function integratedSearch(options: {
                   isolatedEvidence.relatedItems.length,
                 retrievalKey: plan.key,
               },
-              highlights: rho?.highlights,
-              highlightItems: rho?.highlightItems,
-              highlightDiagnostics: rho?.diagnostics,
+              highlights: picked?.highlights,
+              highlightItems: picked?.highlightItems,
+              highlightDiagnostics: picked?.diagnostics,
             };
 
             if (
@@ -2137,8 +2089,6 @@ export async function integratedSearch(options: {
             diversityWeight,
             annotateTemporal,
             minimizeTables,
-            highlightAlgorithm,
-            highlightOverheadTokens,
             highlightMaxCount,
           });
 
@@ -2241,8 +2191,6 @@ export async function integratedSearch(options: {
               diversityWeight,
               annotateTemporal,
               minimizeTables,
-              highlightAlgorithm,
-              highlightOverheadTokens,
               highlightMaxCount,
             });
             const enrichedSpare: Record<string, any> = {
@@ -2307,7 +2255,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';

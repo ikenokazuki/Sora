@@ -527,7 +527,7 @@ export interface YoutubePage {
 
 /**
  * scrape 用に、動画を Markdown の本文にする（動画のページは、おすすめ動画の一覧しか読めない）。
- * 字幕の段落は `### 1m23s` の見出しで分け、段落の選び方（rho-select）がそれぞれを候補にできるようにする。
+ * 字幕の段落は `### 1m23s` の見出しで分け、ハイライトの選び方（extractQueryHighlightDetails）がそれぞれを候補にできるようにする。
  * `[1:23]` のような時刻の書き方は、「何時」の答えを探す採点（answerability）に時刻と誤認されるので使わない。
  * YouTube に拒否されても投げずに unavailable のページを返す（scrape の再試行で問い合わせを重ねない）。
  */

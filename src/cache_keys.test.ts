@@ -62,8 +62,6 @@ describe('buildScrapeCacheKey', () => {
     ['stripLinks', { stripLinks: true }],
     ['filterLinkDensity', { filterLinkDensity: true }],
     ['onlyHighlights', { onlyHighlights: true }],
-    ['highlightAlgorithm', { highlightAlgorithm: 'rho-select' }],
-    ['highlightOverheadTokens', { highlightOverheadTokens: 64 }],
     ['highlightMaxCount', { highlightMaxCount: 5 }],
     ['evidenceMode', { evidenceMode: 'highlights' }],
     ['includeDiagnostics', { includeDiagnostics: false }],

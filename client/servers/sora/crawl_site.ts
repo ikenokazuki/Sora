@@ -22,10 +22,6 @@ export type CrawlSiteInput = {
   extractHighlights?: boolean;
   /** 抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか */
   onlyHighlights?: boolean;
-  /** ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy" */
-  highlightAlgorithm?: "rho-select" | "rho-select-v2" | "legacy";
-  /** ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96) */
-  highlightOverheadTokens?: number;
   /** ハイライト最大選択件数 (デフォルト: 3) */
   highlightMaxCount?: number;
   /** Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false) */
@@ -191,38 +187,22 @@ export type CrawlSiteOutput = {
       /** 信頼度 */
       confidence: "high" | "medium";
     }[];
-    /** ρSelect アルゴリズム実行時診断情報 */
+    /** ハイライト選択の診断情報（verbose 時のみ） */
     highlightDiagnostics?: {
-      /** 候補文総数 */
+      /** クエリ語句網羅率 (0.0〜1.0) */
+      queryCoverage: number;
+      /** 本文中にマッチした検索語句リスト */
+      matchedTerms: string[];
+      /** マッチしなかった未充足語句リスト */
+      missingTerms: string[];
+      /** スコア > 0 の候補ブロック数 */
       candidateCount: number;
-      /** 重複除去後の候補文数 */
-      compactCandidateCount: number;
-      /** 検索語句数 */
-      termCount: number;
-      /** 証拠レベル数 */
-      evidenceLevels: number;
-      /** 特徴量数 */
-      featureCount: number;
-      /** 探索状態数 */
-      stateCount: number;
-      /** フロンティア数 */
-      frontierCount: number;
-      /** 最終選択ハイライト件数 */
-      selectedCount: number;
-      /** 選択トークン合計数 */
-      selectedTokens: number;
-      /** ユーティリティ（有用性合計値） */
-      utility: number;
-      /** トークン密度 (utility / tokens) */
-      density: number;
-      /** Dinkelbach パラメータ λ */
-      lambda: number;
-      /** 収束までの反復回数 */
-      dinkelbachIterations: number;
-      /** 理論最適密度 */
-      directOptimumDensity: number;
-      /** 完全一致判定フラグ */
-      exactAgreement: boolean;
+      /** 最高関連スコア */
+      topScore: number;
+      /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
+      weakEvidenceSignal: boolean;
+      /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
+      reasons: string[];
     };
     /** ハイライト該当箇所へジャンプする Chrome URL */
     textFragmentUrl?: string;
