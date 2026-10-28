@@ -463,6 +463,21 @@ describe('getYoutubeExcerpt: the parts of a video that match a search', () => {
     expect(r.transcript).toMatchObject({ excerpt: 'relevant', text: '[1:00] 波動関数の話\n[1:30] シュレディンガー方程式' });
   });
 
+  test('without chapters, prefers the stretch that keeps talking about the query over a passing mention', async () => {
+    // 検索語が出るのは 0:30（ついでの一言）・3:00・4:30 だけ。3:30・4:00 は検索語が無いが、同じ話の続き（話題のつながりで選ぶ）
+    const { deps } = fakeYoutube({
+      player: player({ tracks: [track('ja')], length: 330, description: 'チャプターの無い説明文です' }),
+      captions: { ja: manualJson3([
+        [0, '挨拶です'], [30_000, '最後にスペクトル定理にも少し触れます'], [60_000, '線形写像の復習'], [90_000, '行列の積の話'],
+        [120_000, '雑談です'], [150_000, '休憩です'], [180_000, 'スペクトル定理の証明に入ります'], [210_000, '固有値と固有ベクトルで対角化します'],
+        [240_000, '直交行列は内積を保ちます'], [270_000, 'これでスペクトル定理が示せました'], [300_000, 'おわり'],
+      ]) },
+    });
+    const stretch = '[3:00] スペクトル定理の証明に入ります\n[3:30] 固有値と固有ベクトルで対角化します\n[4:00] 直交行列は内積を保ちます\n[4:30] これでスペクトル定理が示せました';
+    const r = await getYoutubeExcerpt({ url: vid(), query: 'スペクトル定理', maxChars: stretch.length }, deps);
+    expect(r.transcript).toMatchObject({ excerpt: 'relevant', text: stretch });
+  });
+
   test('falls back to the beginning when no paragraph mentions the query', async () => {
     const head = '[0:00] 挨拶です\n[0:30] 今日は特異値分解の話';
     const r = await getYoutubeExcerpt({ url: vid(), query: '量子コンピュータ', maxChars: head.length }, fake().deps);

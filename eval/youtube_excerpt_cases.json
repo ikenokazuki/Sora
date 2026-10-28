@@ -1,0 +1,713 @@
+{
+ "version": 1,
+ "notes": "字幕の段落選びの評価（docs/evaluations/youtube-excerpt/results.md）。正解は説明欄のチャプターの時間帯（秒、[lo, hi)）、検索語はチャプターの題名。字幕の本文は含めない。split は動画単位（dev はパラメータ決め、held は判断用）。",
+ "cases": [
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "授業計画について",
+   "lo": 67,
+   "hi": 163,
+   "split": "dev"
+  },
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "物性物理学で目指していること",
+   "lo": 635,
+   "hi": 708,
+   "split": "dev"
+  },
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "原子核物理学で目指していること",
+   "lo": 1270,
+   "hi": 1575,
+   "split": "dev"
+  },
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "原子核の種類について",
+   "lo": 2488,
+   "hi": 2791,
+   "split": "dev"
+  },
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "中性子ハローとは？",
+   "lo": 3312,
+   "hi": 3441,
+   "split": "dev"
+  },
+  {
+   "videoId": "RUVV6JpKf0g",
+   "query": "まとめ，出席確認",
+   "lo": 4432,
+   "hi": 4559,
+   "split": "dev"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "縄文〜弥生時代",
+   "lo": 96,
+   "hi": 242,
+   "split": "held"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "蘇我馬子",
+   "lo": 565,
+   "hi": 830,
+   "split": "held"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "古事記",
+   "lo": 1232,
+   "hi": 1577,
+   "split": "held"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "平城京・道鏡",
+   "lo": 1785,
+   "hi": 1980,
+   "split": "held"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "平将門",
+   "lo": 2255,
+   "hi": 2599,
+   "split": "held"
+  },
+  {
+   "videoId": "pGroc3O2V4Y",
+   "query": "白河上皇・平清盛",
+   "lo": 2795,
+   "hi": 3034,
+   "split": "held"
+  },
+  {
+   "videoId": "z4V9R2fmpJA",
+   "query": "勉強法は3パターンに分類される",
+   "lo": 31,
+   "hi": 113,
+   "split": "dev"
+  },
+  {
+   "videoId": "z4V9R2fmpJA",
+   "query": "学校だけで勉強するパターン",
+   "lo": 113,
+   "hi": 295,
+   "split": "dev"
+  },
+  {
+   "videoId": "z4V9R2fmpJA",
+   "query": "予備校で勉強するパターン",
+   "lo": 295,
+   "hi": 567,
+   "split": "dev"
+  },
+  {
+   "videoId": "z4V9R2fmpJA",
+   "query": "参考書で勉強するパターン",
+   "lo": 567,
+   "hi": 799,
+   "split": "dev"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "Pythonとは",
+   "lo": 35,
+   "hi": 501,
+   "split": "held"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "変数",
+   "lo": 1873,
+   "hi": 2390,
+   "split": "held"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "配列/リスト",
+   "lo": 3086,
+   "hi": 3887,
+   "split": "held"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "反復/繰り返し処理",
+   "lo": 5283,
+   "hi": 6124,
+   "split": "held"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "ライブラリ",
+   "lo": 6996,
+   "hi": 7913,
+   "split": "held"
+  },
+  {
+   "videoId": "hv0w4ZCT-uQ",
+   "query": "待ち行列",
+   "lo": 9466,
+   "hi": 10492,
+   "split": "held"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "「Podcast」野村さんの自己紹介",
+   "lo": 119,
+   "hi": 199,
+   "split": "dev"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "自分を一言で表す言葉に本質がある",
+   "lo": 405,
+   "hi": 556,
+   "split": "dev"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "Podcastのビジネス面の効果",
+   "lo": 821,
+   "hi": 882,
+   "split": "dev"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "コンテンツ作り×カテゴリー戦略",
+   "lo": 1120,
+   "hi": 1238,
+   "split": "dev"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "原体験がないならつくる",
+   "lo": 1935,
+   "hi": 2172,
+   "split": "dev"
+  },
+  {
+   "videoId": "QUGKTxN4D8Q",
+   "query": "クロスメディアのYouTubeを相談",
+   "lo": 2486,
+   "hi": 2899,
+   "split": "dev"
+  },
+  {
+   "videoId": "ZOyAJyNDtXc",
+   "query": "ポッドキャストの魅力・おすすめポイント",
+   "lo": 53,
+   "hi": 209,
+   "split": "held"
+  },
+  {
+   "videoId": "ZOyAJyNDtXc",
+   "query": "週刊 日経トレンディ＆クロストレンド",
+   "lo": 250,
+   "hi": 326,
+   "split": "held"
+  },
+  {
+   "videoId": "ZOyAJyNDtXc",
+   "query": "ぼくらの戦略論",
+   "lo": 445,
+   "hi": 515,
+   "split": "held"
+  },
+  {
+   "videoId": "ZOyAJyNDtXc",
+   "query": "二番経営～組織を支えるNo.2の悲喜こもごも",
+   "lo": 515,
+   "hi": 587,
+   "split": "held"
+  },
+  {
+   "videoId": "ZOyAJyNDtXc",
+   "query": "余談：チャンネル開設半年の振り返り",
+   "lo": 600,
+   "hi": 670,
+   "split": "held"
+  },
+  {
+   "videoId": "EeSerya_9XE",
+   "query": "AI（機械学習）とは",
+   "lo": 92,
+   "hi": 309,
+   "split": "dev"
+  },
+  {
+   "videoId": "EeSerya_9XE",
+   "query": "機械学習とは",
+   "lo": 309,
+   "hi": 493,
+   "split": "dev"
+  },
+  {
+   "videoId": "EeSerya_9XE",
+   "query": "機械学習に必要な2つのステップ",
+   "lo": 493,
+   "hi": 671,
+   "split": "dev"
+  },
+  {
+   "videoId": "EeSerya_9XE",
+   "query": "機械学習の3大トピック",
+   "lo": 671,
+   "hi": 909,
+   "split": "dev"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "行列の定義",
+   "lo": 0,
+   "hi": 270,
+   "split": "held"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "転置行列",
+   "lo": 378,
+   "hi": 542,
+   "split": "held"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "随伴(エルミート)行列",
+   "lo": 615,
+   "hi": 697,
+   "split": "held"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "単位行列",
+   "lo": 786,
+   "hi": 884,
+   "split": "held"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "小行列",
+   "lo": 962,
+   "hi": 1160,
+   "split": "held"
+  },
+  {
+   "videoId": "tYdjAntFflg",
+   "query": "小行列で表すときの注意点",
+   "lo": 1160,
+   "hi": 1246,
+   "split": "held"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "ふるさと納税は本当にお得なのか？",
+   "lo": 202,
+   "hi": 325,
+   "split": "dev"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "寄附金の内訳と中間業者の問題",
+   "lo": 653,
+   "hi": 720,
+   "split": "dev"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "お得かどうか③国の視点",
+   "lo": 1006,
+   "hi": 1069,
+   "split": "dev"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "利益の中身とボーリング・カンパニー",
+   "lo": 1625,
+   "hi": 1773,
+   "split": "dev"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "拾ったお金の謝礼にかかる税金",
+   "lo": 2188,
+   "hi": 2286,
+   "split": "dev"
+  },
+  {
+   "videoId": "2Jv-YK9fj5c",
+   "query": "第2シーズンのお知らせ",
+   "lo": 2669,
+   "hi": 2808,
+   "split": "dev"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "独学で迷わない｜英語力ゼロから3ヶ月で達成する「最強の順番」とは",
+   "lo": 142,
+   "hi": 295,
+   "split": "held"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "ステップ1:【土台】『中学英語をもう一度ひとつひとつわかりやすく』で「わかる」体験を高速周回",
+   "lo": 394,
+   "hi": 584,
+   "split": "held"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "ステップ2：【幹】『キク中学英文法』で「使える化」する",
+   "lo": 584,
+   "hi": 876,
+   "split": "held"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "① 単語OSのインストール：『DataBase 3300』攻略法",
+   "lo": 1051,
+   "hi": 1329,
+   "split": "held"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "② 発音OSのインストール：『英語喉50のメソッド』攻略法",
+   "lo": 1329,
+   "hi": 1524,
+   "split": "held"
+  },
+  {
+   "videoId": "SCYKjFCslLk",
+   "query": "無料特典のお知らせ",
+   "lo": 1725,
+   "hi": 1921,
+   "split": "held"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "トルコ系民族の進出とソグド人」「トルキスタンの成立」「トルコ人のイスラーム化",
+   "lo": 0,
+   "hi": 176,
+   "split": "dev"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "モンゴル帝国の形成」「元の東アジア支配」「モンゴル時代の東西交流」「モンゴル帝国の解体",
+   "lo": 817,
+   "hi": 1246,
+   "split": "dev"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "朝貢体制の動揺",
+   "lo": 1803,
+   "hi": 1935,
+   "split": "dev"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "清朝の統治",
+   "lo": 2391,
+   "hi": 2601,
+   "split": "dev"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "ティムール朝の興亡",
+   "lo": 3085,
+   "hi": 3158,
+   "split": "dev"
+  },
+  {
+   "videoId": "meT-LbO-6II",
+   "query": "東南アジアの交易の発展",
+   "lo": 3651,
+   "hi": 3786,
+   "split": "dev"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "調理小物",
+   "lo": 125,
+   "hi": 352,
+   "split": "held"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "基本の調味料",
+   "lo": 858,
+   "hi": 1107,
+   "split": "held"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "まず揃える食器",
+   "lo": 1389,
+   "hi": 1453,
+   "split": "held"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "野菜の切り方",
+   "lo": 1714,
+   "hi": 2308,
+   "split": "held"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "野菜の茹で方",
+   "lo": 2725,
+   "hi": 2875,
+   "split": "held"
+  },
+  {
+   "videoId": "vAQlrxbyd64",
+   "query": "終わりのあいさつ",
+   "lo": 3298,
+   "hi": 3365,
+   "split": "held"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "原子の構造、電子配置",
+   "lo": 271,
+   "hi": 699,
+   "split": "dev"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "練習問題",
+   "lo": 3780,
+   "hi": 4121,
+   "split": "dev"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "原子量、分子量、式量",
+   "lo": 7586,
+   "hi": 7964,
+   "split": "dev"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "理想気体の取り扱い（PV=nRT、分圧）",
+   "lo": 14813,
+   "hi": 15202,
+   "split": "dev"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "固体の溶解度",
+   "lo": 20088,
+   "hi": 20324,
+   "split": "dev"
+  },
+  {
+   "videoId": "WE_BclRgeRQ",
+   "query": "コロイドの性質",
+   "lo": 25685,
+   "hi": 26307,
+   "split": "dev"
+  },
+  {
+   "videoId": "wExyye6tKGg",
+   "query": "裁判例の事案「東京地裁 R7.12.5」について",
+   "lo": 48,
+   "hi": 128,
+   "split": "held"
+  },
+  {
+   "videoId": "wExyye6tKGg",
+   "query": "裁判所の結論",
+   "lo": 128,
+   "hi": 267,
+   "split": "held"
+  },
+  {
+   "videoId": "wExyye6tKGg",
+   "query": "企業側から見たポイント",
+   "lo": 267,
+   "hi": 394,
+   "split": "held"
+  },
+  {
+   "videoId": "wExyye6tKGg",
+   "query": "本件で本来とるべきだった手順",
+   "lo": 394,
+   "hi": 737,
+   "split": "held"
+  },
+  {
+   "videoId": "wExyye6tKGg",
+   "query": "咲くやこの花法律事務所のサポート内容",
+   "lo": 737,
+   "hi": 852,
+   "split": "held"
+  },
+  {
+   "videoId": "JRdKRA11848",
+   "query": "ギモン①肝機能に関わる3つの数値とは？",
+   "lo": 70,
+   "hi": 143,
+   "split": "dev"
+  },
+  {
+   "videoId": "JRdKRA11848",
+   "query": "ギモン③ALTが高くなる原因",
+   "lo": 196,
+   "hi": 264,
+   "split": "dev"
+  },
+  {
+   "videoId": "JRdKRA11848",
+   "query": "ギモン⑤脂肪肝とお酒の関係",
+   "lo": 303,
+   "hi": 392,
+   "split": "dev"
+  },
+  {
+   "videoId": "JRdKRA11848",
+   "query": "ギモン⑥「ビリルビン」とは？",
+   "lo": 392,
+   "hi": 550,
+   "split": "dev"
+  },
+  {
+   "videoId": "JRdKRA11848",
+   "query": "本日のまとめ",
+   "lo": 550,
+   "hi": 613,
+   "split": "dev"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "平均",
+   "lo": 58,
+   "hi": 179,
+   "split": "held"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "中央値",
+   "lo": 236,
+   "hi": 313,
+   "split": "held"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "四分位数",
+   "lo": 313,
+   "hi": 450,
+   "split": "held"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "分散、標準偏差",
+   "lo": 450,
+   "hi": 873,
+   "split": "held"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "相関係数",
+   "lo": 873,
+   "hi": 1124,
+   "split": "held"
+  },
+  {
+   "videoId": "WcmBwp3-knc",
+   "query": "Python実装",
+   "lo": 1164,
+   "hi": 2440,
+   "split": "held"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "①「時間は友、衝動は敵」を忘れない",
+   "lo": 97,
+   "hi": 263,
+   "split": "dev"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "③SNSの情報に踊らされない",
+   "lo": 438,
+   "hi": 521,
+   "split": "dev"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "④積立投資の効果は後から効いてくる",
+   "lo": 521,
+   "hi": 647,
+   "split": "dev"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "⑥暴落は必ず来るものとして準備する",
+   "lo": 876,
+   "hi": 962,
+   "split": "dev"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "⑦分散投資の大切さを侮らない",
+   "lo": 962,
+   "hi": 1057,
+   "split": "dev"
+  },
+  {
+   "videoId": "UK27sXFc-3A",
+   "query": "⑩セキュリティ対策を絶対に怠らない",
+   "lo": 1168,
+   "hi": 1304,
+   "split": "dev"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "時間尺度の困難とは",
+   "lo": 218,
+   "hi": 391,
+   "split": "held"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "宇宙年齢の測定法",
+   "lo": 391,
+   "hi": 649,
+   "split": "held"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "見えるはずのアンドロメダ",
+   "lo": 649,
+   "hi": 902,
+   "split": "held"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "星の種族が時間を伸ばす",
+   "lo": 902,
+   "hi": 1296,
+   "split": "held"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "ハッブルの無念",
+   "lo": 1296,
+   "hi": 1479,
+   "split": "held"
+  },
+  {
+   "videoId": "Mw6kQNhPt0s",
+   "query": "最大の敵の貢献",
+   "lo": 1479,
+   "hi": 1572,
+   "split": "held"
+  }
+ ]
+}
