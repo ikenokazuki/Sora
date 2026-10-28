@@ -1,5 +1,5 @@
 /**
- * Shazam の音の指紋（SigX）。計算と形の検査は packages/audio-signature（npm の @ikenokazuki/audio-signature、MIT。
+ * Shazam の音の指紋（SigX）。計算と形の検査は packages/audio-signature（npm の audio-signature、MIT。
  * omkarcloud/shazam-scraper の shazam/sigx.py の移植で、ライセンスの表示もそこにある）にあり、ここは Shazam の tag の窓口に送る
  * data URI の形だけを持つ。
  */

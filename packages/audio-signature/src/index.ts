@@ -1,5 +1,5 @@
 /*!
- * @ikenokazuki/audio-signature — 16 kHz・モノラルの PCM から、楽曲認識に使う音の指紋（SigX の形）を作り、その形を確かめる。
+ * audio-signature — 16 kHz・モノラルの PCM から、楽曲認識に使う音の指紋（SigX の形）を作り、その形を確かめる。
  *
  * omkarcloud の sigx.py（Python）を TypeScript に移植した。2048 点の Hanning 窓の FFT を 128 サンプルごとに取り、
  * 3 つの帯（250〜520 Hz、520〜1450 Hz、1450〜3500 Hz）のピークを、magic 0xCAFE2580・CRC-32・帯ごとの TLV の 2 進の形に詰める。

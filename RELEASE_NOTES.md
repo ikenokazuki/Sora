@@ -5,7 +5,7 @@
 - **この入口はキャッシュしません**（読みも書きもせず、同時の要求もまとめません）。ライブの録音は毎回違うので当たりが無く、残すと「この時刻にこの曲」が DB に残るだけになるためです。
 - **iTunes の曲に `artistId`（iTunes のアーティスト ID）を足しました。** `search_song`・`search_artist`・`search_music` の `items` と、楽曲認識の `itunes` に入ります（任意の欄の追加なので、今の利用者は壊れません）。
 - 窓ごとの照会の処理を、音声の経路と指紋の経路で共有しました。`/music/recognize` の動きは変わりません。
-- **指紋の計算と形の検査を、npm のパッケージ `@ikenokazuki/audio-signature`（`packages/audio-signature/`、MIT）に抜き出しました。** ブラウザ・Bun・Node で動き、端末で指紋を作るアプリ（client-app）が同じ計算と検査を使います。Sora はリポジトリの中のソースをそのまま使い（npm からは取りません）、`/music/recognize` と `/music/recognize/signature` の動きは変わりません。
+- **指紋の計算と形の検査を、npm のパッケージ `audio-signature`（`packages/audio-signature/`、MIT）に抜き出しました。** ブラウザ・Bun・Node で動き、端末で指紋を作るアプリ（client-app）が同じ計算と検査を使います。Sora はリポジトリの中のソースをそのまま使い（npm からは取りません）、`/music/recognize` と `/music/recognize/signature` の動きは変わりません。
 
 # Sora v2.51.1 — 楽曲認識で、ずれの大きい当たりを確かでないものとして扱う
 

@@ -1,5 +1,5 @@
 {
-  "name": "@ikenokazuki/audio-signature",
+  "name": "audio-signature",
   "version": "1.0.0",
   "description": "16 kHz mono PCM to a SigX audio signature (fingerprint) for music recognition, and a shape check for it. Browser, Bun and Node.",
   "type": "module",
