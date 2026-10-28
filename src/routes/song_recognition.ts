@@ -1,20 +1,35 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { errorMessage } from '../errors.js';
 import { isModuleActive } from '../mcp/registry.js';
-import { recognizeSong, SongRecognitionInputError, type SongRecognitionOptions } from '../services/song_recognition.js';
-import { SongRecognitionFormSchema, SongRecognitionRequestSchema } from '../types.js';
+import { recognizeSignature, recognizeSong, SongRecognitionInputError, type SongRecognitionOptions } from '../services/song_recognition.js';
+import { SongRecognitionFormSchema, SongRecognitionRequestSchema, SongRecognitionSignatureRequestSchema } from '../types.js';
 import { formatError } from './utils.js';
+
+const moduleDisabled = (c: Context) =>
+  formatError(c, 'shazam module is not enabled. Add it to ENABLED_MODULES by name (e.g. ENABLED_MODULES=all,shazam); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
+
+/** 認識の呼び出しを実行し、入力の誤りは 400、Shazam 側の拒否・障害は 502 にする。 */
+async function respond(c: Context, run: () => Promise<unknown>) {
+  try {
+    return c.json(await run());
+  } catch (err) {
+    if (err instanceof SongRecognitionInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    return formatError(c, errorMessage(err) || 'Song recognition failed', 'SONG_RECOGNITION_UPSTREAM_ERROR', 502, true);
+  }
+}
 
 /**
  * 音から曲を特定する (POST /music/recognize)。JSON の url か、multipart/form-data の file を受け取る。
+ * 作り済みの指紋は POST /music/recognize/signature（キャッシュしない）。
  * モジュール 'shazam' を ENABLED_MODULES に名前で挙げたときだけ応答する。特定できない場合も 200 で found: false。
  */
-export function createSongRecognitionRoutes(run: (input: SongRecognitionOptions) => Promise<unknown> = recognizeSong) {
+export function createSongRecognitionRoutes(
+  run: (input: SongRecognitionOptions) => Promise<unknown> = recognizeSong,
+  runSignature: (input: { signature: string; sampleMs: number; country?: string }) => Promise<unknown> = recognizeSignature,
+) {
   const routes = new Hono();
   routes.post('/music/recognize', async (c) => {
-    if (!isModuleActive('shazam')) {
-      return formatError(c, 'shazam module is not enabled. Add it to ENABLED_MODULES by name (e.g. ENABLED_MODULES=all,shazam); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
-    }
+    if (!isModuleActive('shazam')) return moduleDisabled(c);
     let input: SongRecognitionOptions;
     if ((c.req.header('content-type') ?? '').toLowerCase().startsWith('multipart/form-data')) {
       let form: Record<string, string | File>;
@@ -45,12 +60,22 @@ export function createSongRecognitionRoutes(run: (input: SongRecognitionOptions)
       }
       input = parsed.data;
     }
+    return respond(c, () => run(input));
+  });
+  routes.post('/music/recognize/signature', async (c) => {
+    if (!isModuleActive('shazam')) return moduleDisabled(c);
+    let rawBody: unknown;
     try {
-      return c.json(await run(input));
-    } catch (err) {
-      if (err instanceof SongRecognitionInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
-      return formatError(c, errorMessage(err) || 'Song recognition failed', 'SONG_RECOGNITION_UPSTREAM_ERROR', 502, true);
+      rawBody = await c.req.json();
+    } catch {
+      return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
     }
+    const parsed = SongRecognitionSignatureRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return formatError(c, issue ? `${issue.path.join('.') || 'signature'}: ${issue.message}` : 'signature is required', 'INVALID_INPUT', 400, false, parsed.error.format());
+    }
+    return respond(c, () => runSignature(parsed.data));
   });
   return routes;
 }
