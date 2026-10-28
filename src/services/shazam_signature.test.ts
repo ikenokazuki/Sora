@@ -126,4 +126,15 @@ describe('checkSignatureBytes', () => {
     expect(checkSignatureBytes(bytes, 11999)).toBe(false);
     expect(checkSignatureBytes(bytes, 12001)).toBe(false);
   });
+
+  test('accepts the sampleMs signatureUri reports, for 128128 samples (a length where float math truncates one too low) and for every length from 3 s to 12 s', () => {
+    const s = signatureUri(toneBursts(1000, 9).subarray(0, 128128));
+    expect(s.sampleMs).toBe(8008);
+    expect(checkSignatureBytes(Buffer.from(s.uri.slice(DATA_URI_PREFIX.length), 'base64'), s.sampleMs)).toBe(true);
+    const gen = new SignatureGenerator();
+    for (let n = MIN_WINDOW_SECONDS * SAMPLE_RATE; n <= 12 * SAMPLE_RATE; n++) {
+      gen.numberSamples = n;
+      if (!checkSignatureBytes(gen.encode(), gen.sampleMs())) throw new Error(`rejected at ${n} samples (sampleMs ${gen.sampleMs()})`);
+    }
+  });
 });
