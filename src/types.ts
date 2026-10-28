@@ -8,7 +8,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '2.51.1';
+export const SORA_VERSION = '2.52.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 
 export const SCRAPE_FORMATS = [
@@ -1992,6 +1992,7 @@ export const MusicItemSchema = z.object({
   type: z.enum(['song', 'album', 'artist']).describe('種別: "song"(曲), "album"(アルバム), "artist"(アーティスト)'),
   title: z.string().describe('楽曲名またはアルバム名・アーティスト名'),
   artist: z.string().describe('アーティスト名'),
+  artistId: z.number().optional().describe('iTunes のアーティスト ID'),
   album: z.string().optional().describe('収録アルバム名'),
   artwork: z.object({
     thumbnail: z.string().optional().describe('サムネイル画像 URL (100x100)'),
@@ -2052,6 +2053,14 @@ export const SongRecognitionFormSchema = z.object({
   offsetSec: z.coerce.number().int().min(0).optional().describe('聞き始める位置（秒）'),
   country: SongRecognitionRequestSchema.shape.country,
   noCache: z.enum(['true', 'false']).transform((v) => v === 'true').optional().describe('キャッシュをバイパスするか ("true" / "false")'),
+});
+
+/** 作り済みの指紋を受け取る入口（POST /music/recognize/signature）。REST だけ。 */
+export const SongRecognitionSignatureRequestSchema = z.object({
+  signature: z.string().max(65536).regex(/^[A-Za-z0-9+/]+={0,2}$/, 'signature は base64 の文字列です')
+    .describe('指紋（16 kHz・モノラルの音から作った SigX のバイト列）の base64。data URI の接頭辞は付けない。65536 文字まで'),
+  sampleMs: z.number().int().min(3000).max(12000).describe('指紋を作った音の長さ（ミリ秒、3000〜12000）。指紋のヘッダーのサンプル数と合わなければ 400'),
+  country: SongRecognitionRequestSchema.shape.country,
 });
 
 export const ShazamTrackSchema = z.object({
@@ -4083,6 +4092,20 @@ export function generateOpenApiDocument() {
         responses: {
           '200': {
             description: '曲の特定の結果 (特定できない場合も 200 で found: false と reason を返す)',
+            content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionResultSchema) } },
+          },
+        },
+      },
+    };
+    paths['/music/recognize/signature'] = {
+      post: {
+        summary: '作り済みの音の指紋（16 kHz・モノラルの音から作った SigX）で曲を特定し、iTunes の曲とつなぐ (Shazam。ENABLED_MODULES に shazam を挙げたときだけ。REST だけ・キャッシュしない)',
+        requestBody: {
+          content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionSignatureRequestSchema) } },
+        },
+        responses: {
+          '200': {
+            description: '曲の特定の結果 (/music/recognize と同じ形。attempts は 1 件、audio は無い。特定できない場合も 200 で found: false と reason を返す)',
             content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionResultSchema) } },
           },
         },

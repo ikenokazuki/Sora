@@ -1,6 +1,6 @@
 {
   "name": "sora",
-  "version": "2.51.1",
+  "version": "2.52.0",
   "description": "Ultra-fast, lightweight web scraping, deep search, and MCP service (Firecrawl & Tavily Alternative)",
   "type": "module",
   "license": "BUSL-1.1",
@@ -12,9 +12,9 @@
     "test:rho-v2-stress": "bun test src/rho_select_v2_stress.test.ts",
     "build": "bun build ./src/index.ts --target=bun --outfile server.js",
     "test:intel:live": "bun run src/services/country_intel/live_smoke.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p packages/audio-signature --noEmit",
     "gen:client": "NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file scripts/gen-client/index.ts",
-    "lint": "biome lint src scripts",
+    "lint": "biome lint src scripts packages",
     "test:tools:live": "bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health:candidate --out ./tool-health-out",
     "schema:notation": "NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file scripts/schema-notation/scan.ts"
   },

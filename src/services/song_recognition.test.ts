@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
 import { toneBursts } from '../test_fixtures/audio.js';
 import { AudioDecodeError } from './audio_decode.js';
-import { MAX_URL_BYTES, SongRecognitionInputError, downloadAudio, parseShazamResponse, pickWindows, recognizeSong } from './song_recognition.js';
+import { DATA_URI_PREFIX, signatureUri } from './shazam_signature.js';
+import { MAX_URL_BYTES, SongRecognitionInputError, downloadAudio, parseShazamResponse, pickWindows, recognizeSignature, recognizeSong } from './song_recognition.js';
 
 // 合成の音と、作り物の Shazam・iTunes の応答だけを使う
 const TRACK = {
@@ -15,7 +16,7 @@ const HIT = { matches: [{ id: '900001', offset: 61.25, timeskew: 0.0001, frequen
 // 実際に Shazam が別の曲を返したときの形（2026-10-27、音の高さのずれが 0.5%）
 const WEAK = { matches: [{ id: '800001', offset: 142.7, timeskew: -0.0006, frequencyskew: -0.0051 }], track: { ...TRACK, key: '800001', title: '別の曲', subtitle: '別の楽団', trackadamid: '1700000099' } };
 const ITUNES_TRACK = {
-  wrapperType: 'track', kind: 'song', trackId: 1700000001, trackName: 'テスト曲', artistName: 'テスト歌手', collectionName: 'テストアルバム',
+  wrapperType: 'track', kind: 'song', trackId: 1700000001, trackName: 'テスト曲', artistName: 'テスト歌手', artistId: 1600000001, collectionName: 'テストアルバム',
   artworkUrl100: 'https://img.example/a/100x100bb.jpg', previewUrl: 'https://audio.example/p.m4a', releaseDate: '2026-01-01T00:00:00Z',
   primaryGenreName: 'J-Pop', trackTimeMillis: 200000, trackViewUrl: 'https://music.apple.com/jp/album/x/1?i=1700000001',
 };
@@ -83,7 +84,7 @@ describe('recognizeSong', () => {
     const { fn, calls } = fakeFetch({ shazam: (n) => Response.json(n === 2 ? HIT : { matches: [] }) });
     const out = await recognizeSong({ audio: audio(1) }, { fetchFn: fn, decode: decodeOk(30) });
     expect(out).toMatchObject({
-      found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001', title: 'テスト曲', artist: 'テスト歌手' },
+      found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001', title: 'テスト曲', artist: 'テスト歌手', artistId: 1600000001 },
       shazam: { key: '900001' }, match: { songOffsetSec: 61.25, clipOffsetSec: 12 },
     });
     expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: false }, { offsetSec: 12, durationSec: 12, matched: true }]);
@@ -177,6 +178,78 @@ describe('recognizeSong', () => {
     await expect(recognizeSong({})).rejects.toBeInstanceOf(SongRecognitionInputError);
     await expect(recognizeSong({ url: 'file:///etc/passwd' })).rejects.toBeInstanceOf(SongRecognitionInputError);
     await expect(recognizeSong({ audio: audio(30), country: 'japan' })).rejects.toBeInstanceOf(SongRecognitionInputError);
+  });
+});
+
+describe('recognizeSignature', () => {
+  const sig = (seconds = 12) => {
+    const { uri, sampleMs } = signatureUri(toneBursts(1000, seconds));
+    return { signature: uri.slice(DATA_URI_PREFIX.length), sampleMs };
+  };
+
+  test('sends the signature unchanged behind the data URI prefix, in one window, and links iTunes', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const input = sig(5);
+    const out = await recognizeSignature(input, { fetchFn: fn });
+    expect(out).toMatchObject({ found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001' }, shazam: { key: '900001' }, match: { songOffsetSec: 61.25, clipOffsetSec: 0 } });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 5, matched: true }]);
+    expect(out).not.toHaveProperty('audio');
+    const tag = calls.filter((c) => c.url.startsWith('https://amp.shazam.com/'));
+    expect(tag).toHaveLength(1);
+    expect(JSON.parse(String(tag[0].init?.body)).signature).toEqual({ uri: DATA_URI_PREFIX + input.signature, samplems: 5000 });
+  });
+
+  test('a weak match is returned as found and uncertain, with the warning', async () => {
+    const { fn } = fakeFetch({ shazam: () => Response.json(WEAK), lookup: () => Response.json({ resultCount: 0, results: [] }) });
+    const out = await recognizeSignature(sig(), { fetchFn: fn });
+    expect(out).toMatchObject({ found: true, shazam: { key: '800001' }, match: { clipOffsetSec: 0, uncertain: true } });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: true, uncertain: true }]);
+    expect(out.message).toContain('別の曲');
+  });
+
+  test('no match is found:false no-match with the one attempt and no audio', async () => {
+    const { fn } = fakeFetch({});
+    const out = await recognizeSignature(sig(), { fetchFn: fn });
+    expect(out).toMatchObject({ found: false, reason: 'no-match', itunes: null, itunesMatch: null });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: false }]);
+    expect(out).not.toHaveProperty('audio');
+  });
+
+  test('an iTunes failure after a match is an upstream error, not a match without iTunes', async () => {
+    const down = (status: number) => () => new Response('no', { status });
+    const timedOut = () => { throw new DOMException('timed out', 'TimeoutError'); };
+    const empty = () => Response.json({ resultCount: 0, results: [] });
+    for (const itunes of [{ lookup: down(403) }, { lookup: down(429) }, { lookup: timedOut }, { lookup: empty, search: down(503) }]) {
+      const { fn } = fakeFetch({ shazam: () => Response.json(HIT), ...itunes });
+      await expect(recognizeSignature(sig(), { fetchFn: fn })).rejects.toThrow('iTunes lookup failed');
+    }
+  });
+
+  test('never caches nor merges requests for the same signature', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const input = sig();
+    await Promise.all([recognizeSignature(input, { fetchFn: fn }), recognizeSignature(input, { fetchFn: fn })]);
+    const again = await recognizeSignature(input, { fetchFn: fn });
+    expect(again.cached).toBeUndefined();
+    expect(shazamCallsOf(calls)).toBe(3);
+  });
+
+  test('a signature that is not one, or a bad country, is an input error and nothing is sent', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const { signature, sampleMs } = sig();
+    const flipped = Buffer.from(signature, 'base64');
+    flipped[flipped.length - 1] ^= 1;
+    for (const bad of [
+      { signature: 'not base64!', sampleMs },
+      { signature: signature.slice(0, -1), sampleMs }, // base64 として往復しない
+      { signature: Buffer.alloc(40).toString('base64'), sampleMs },
+      { signature: flipped.toString('base64'), sampleMs },
+      { signature, sampleMs: sampleMs - 1 },
+      { signature, sampleMs, country: 'japan' },
+    ]) {
+      await expect(recognizeSignature(bad, { fetchFn: fn })).rejects.toBeInstanceOf(SongRecognitionInputError);
+    }
+    expect(calls).toHaveLength(0);
   });
 });
 

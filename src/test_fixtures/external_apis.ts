@@ -21,11 +21,11 @@ function crossSearchResponse(term: string): unknown {
 }
 
 /** iTunes Search API の検索結果。term ごとに、曲（song）とアーティスト（musicArtist）を返す。 */
-const ITUNES_TRACKS: Array<{ trackName: string; artistName: string; collectionName: string; trackId: number }> = [
-  { trackName: 'アイドル', artistName: 'YOASOBI', collectionName: 'アイドル - Single', trackId: 1680000001 },
-  { trackName: '夜に駆ける', artistName: 'YOASOBI', collectionName: 'THE BOOK', trackId: 1680000002 },
-  { trackName: 'Subtitle', artistName: 'Official髭男dism', collectionName: 'Subtitle - Single', trackId: 1680000003 },
-  { trackName: 'Pretender', artistName: 'Official髭男dism', collectionName: 'Traveler', trackId: 1680000004 },
+const ITUNES_TRACKS: Array<{ trackName: string; artistName: string; artistId: number; collectionName: string; trackId: number }> = [
+  { trackName: 'アイドル', artistName: 'YOASOBI', artistId: 9000, collectionName: 'アイドル - Single', trackId: 1680000001 },
+  { trackName: '夜に駆ける', artistName: 'YOASOBI', artistId: 9000, collectionName: 'THE BOOK', trackId: 1680000002 },
+  { trackName: 'Subtitle', artistName: 'Official髭男dism', artistId: 9001, collectionName: 'Subtitle - Single', trackId: 1680000003 },
+  { trackName: 'Pretender', artistName: 'Official髭男dism', artistId: 9001, collectionName: 'Traveler', trackId: 1680000004 },
 ];
 
 function itunesSearch(url: URL): unknown {
@@ -47,7 +47,7 @@ function itunesSearch(url: URL): unknown {
     return t.trackName.toLowerCase().includes(term) || t.artistName.toLowerCase().includes(term);
   });
   const results = matches.map((t) => ({
-    wrapperType: 'track', kind: 'song', trackId: t.trackId, trackName: t.trackName, artistName: t.artistName,
+    wrapperType: 'track', kind: 'song', trackId: t.trackId, trackName: t.trackName, artistName: t.artistName, artistId: t.artistId,
     collectionName: t.collectionName, artworkUrl100: `https://is1-ssl.mzstatic.com/image/thumb/${t.trackId}/100x100bb.jpg`,
     previewUrl: `https://audio-ssl.itunes.apple.com/${t.trackId}.m4a`, releaseDate: '2023-04-12T12:00:00Z',
     primaryGenreName: 'J-Pop', trackTimeMillis: 213000, trackNumber: 1, trackViewUrl: `https://music.apple.com/jp/album/${t.trackId}`,

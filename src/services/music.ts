@@ -5,6 +5,7 @@ export interface MusicItem {
   type: 'song' | 'album' | 'artist';
   title: string;
   artist: string;
+  artistId?: number;     // iTunes のアーティスト ID
   album?: string;
   artwork?: {
     thumbnail?: string; // 100x100
@@ -41,6 +42,7 @@ export function toMusicItem(r: any, entity: string): MusicItem {
     type: isSong ? 'song' : isAlbum ? 'album' : 'artist',
     title: r.trackName || r.collectionName || r.artistName || 'Unknown Title',
     artist: r.artistName || 'Unknown Artist',
+    artistId: typeof r.artistId === 'number' ? r.artistId : undefined,
     album: r.collectionName || undefined,
     artwork: thumb ? { thumbnail: thumb, highRes } : undefined,
     previewUrl: r.previewUrl || undefined,

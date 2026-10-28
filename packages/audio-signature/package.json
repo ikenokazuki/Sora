@@ -1,0 +1,32 @@
+{
+  "name": "audio-signature",
+  "version": "1.0.0",
+  "description": "16 kHz mono PCM to a SigX audio signature (fingerprint) for music recognition, and a shape check for it. Browser, Bun and Node.",
+  "type": "module",
+  "license": "MIT",
+  "author": "ikeno",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikenokazuki/Sora.git",
+    "directory": "packages/audio-signature"
+  },
+  "keywords": ["audio", "fingerprint", "signature", "sigx", "music-recognition", "pcm"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "LICENSE", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p .",
+    "prepack": "tsc -p .",
+    "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
