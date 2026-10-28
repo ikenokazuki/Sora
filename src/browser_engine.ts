@@ -131,34 +131,7 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     if (!CHROME_EXECUTABLE_PATH) {
       throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
     }
-    const args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      // --disable-gpu は付けない: WebGLコンテキスト自体が取得不能になり
-      // (canvas.getContext('webgl') が null)、bot対策サイトの検出項目になる。
-      // SwiftShaderソフトウェアレンダリングで代替され、実測でパフォーマンス
-      // 悪化もない（誤差範囲でむしろ僅かに高速）。
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1920,1080',
-      // WebRTCがSTUN経由で実IPを漏らす対策（プロキシ運用時に致命的、実測でIP露出を確認済み）。
-      // 非プロキシ経由のUDP直接通信を無効化する。
-      '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
-      `--proxy-server=${effectiveProxy}`,
-    ];
-    if (effectiveBypass) {
-      args.push(`--proxy-bypass-list=${effectiveBypass}`);
-    }
-    const dedicated = await puppeteer.launch({
-      executablePath: CHROME_EXECUTABLE_PATH,
-      headless: true,
-      args,
-      // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
-      // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
-      // true にする一因（実測で確認済み）。--disable-popup-blocking/--disable-default-apps
-      // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
-      ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
-    });
+    const dedicated = await launchStealthChromium(effectiveProxy, effectiveBypass);
     return { browser: dedicated, isDedicated: true };
   }
 
@@ -192,34 +165,66 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
   throw new Error('共有ブラウザを起動できませんでした');
 }
 
-/** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */
-function launchSharedBrowser(effectiveProxy: string | undefined, effectiveBypass: string | undefined): Promise<Browser> {
+/** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
+export const STEALTH_TIMEZONE = 'Asia/Tokyo';
+
+/**
+ * 起動時に --user-agent へ渡す UA。ページごとの CDP の上書きは、Service Worker などには届かず
+ * "HeadlessChrome" と本物の OS が見える（実測で CreepJS の headless 判定が 33% → 0%）。
+ * browser_stealth.ts と循環するので、起動のときに読み込む。
+ */
+async function stealthUserAgent(): Promise<string | undefined> {
+  try {
+    return (await import('./browser_stealth.js')).getFallbackUserAgent();
+  } catch {
+    return undefined;
+  }
+}
+
+/** 共有・専用のどちらの Chromium も、ここで起動する。 */
+async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
+  const userAgent = await stealthUserAgent();
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    // --disable-gpu は付けない（理由は上記 dedicated ブラウザ側のコメント参照）
+    // --disable-gpu は付けない: WebGLコンテキスト自体が取得不能になり
+    // (canvas.getContext('webgl') が null)、bot対策サイトの検出項目になる。
+    // SwiftShaderソフトウェアレンダリングで代替され、実測でパフォーマンス
+    // 悪化もない（誤差範囲でむしろ僅かに高速）。
     '--disable-blink-features=AutomationControlled',
     '--window-size=1920,1080',
-    // WebRTCがSTUN経由で実IPを漏らす対策（理由は上記 dedicated ブラウザ側のコメント参照）
+    // WebRTCがSTUN経由で実IPを漏らす対策（プロキシ運用時に致命的、実測でIP露出を確認済み）。
+    // 非プロキシ経由のUDP直接通信を無効化する。
     '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    // navigator.language(s)・Worker・別オリジンの iframe・Accept-Language（Chrome と同じ位置）まで Chromium 自身が揃える。
+    // JS で上書きすると getter が native でなくなり、Worker や iframe には届かない。静的取得の ACCEPT_LANGUAGE と同じ並び。
+    '--accept-lang=ja-JP,ja,en-US,en',
+    // ヘッドレスは hover / pointer が none になる。デスクトップのマウスに揃える。
+    '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
   ];
-
-  if (effectiveProxy) {
-    args.push(`--proxy-server=${effectiveProxy}`);
-    if (effectiveBypass) {
-      args.push(`--proxy-bypass-list=${effectiveBypass}`);
-    }
+  if (userAgent) args.push(`--user-agent=${userAgent}`);
+  if (proxy) {
+    args.push(`--proxy-server=${proxy}`);
+    if (bypass) args.push(`--proxy-bypass-list=${bypass}`);
   }
+  return puppeteer.launch({
+    executablePath: CHROME_EXECUTABLE_PATH,
+    headless: true,
+    args,
+    // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
+    // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
+    // true にする一因（実測で確認済み）。--disable-popup-blocking/--disable-default-apps
+    // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
+    ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+    // コンテナは UTC のため、ロケールが ja-JP でも時刻が UTC になる。日本の IP と ja-JP に合わせる（Worker にも届く）。
+    env: { ...process.env, TZ: STEALTH_TIMEZONE },
+  });
+}
 
-  const launched = puppeteer
-    .launch({
-      executablePath: CHROME_EXECUTABLE_PATH,
-      headless: true,
-      args,
-      // 理由は上記 dedicated ブラウザ側のコメント参照
-      ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
-    })
+/** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */
+function launchSharedBrowser(effectiveProxy: string | undefined, effectiveBypass: string | undefined): Promise<Browser> {
+  const launched = launchStealthChromium(effectiveProxy, effectiveBypass)
     .then((browser) => {
       sharedBrowserInstance = browser;
       markSharedBrowserUsed();

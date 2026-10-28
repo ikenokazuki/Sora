@@ -14,7 +14,7 @@ import {
   dbSaveTenantCookies,
   dbSaveTenantStorage,
 } from './db.js';
-import { ACCEPT_LANGUAGE, groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
+import { groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
 import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
@@ -135,25 +135,14 @@ export async function applyNativeEmulationOverrides(page: Page): Promise<void> {
   } catch {}
 }
 
-export function patchCanvasFingerprint(): void {
-  const seed = Math.random() * 10000;
-  const proto = (globalThis as any).CanvasRenderingContext2D?.prototype;
-  if (!proto?.getImageData) return;
-
-  const originalGetImageData = proto.getImageData;
-  proto.getImageData = function (this: any, ...args: any[]) {
-    const imageData = originalGetImageData.apply(this, args);
-    const data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const pseudoRandom = Math.abs(Math.sin(seed * (i + 1))) % 1;
-      if (pseudoRandom < 0.02) {
-        data[i] = data[i] ^ 1;
-      }
-    }
-    return imageData;
-  };
-}
-
+/**
+ * ページに Windows の Chrome らしさを入れる。UA・viewport・ロケールは CDP、言語・タイムゾーン・webdriver・hover は
+ * 起動フラグ（browser_engine.ts）に任せ、JS で上書きするのは次の 2 つだけ。
+ * - platform: CDP の platform は本スレッドにしか効かず、別オリジンの iframe では Linux x86_64 に戻るため。
+ * - WebRTC: ICE 候補のフィルタ。
+ * webdriver・languages・window.chrome・canvas の上書きは、native の方が本物に近く（getter が native、配列が凍結済みで同一、
+ * window.chrome.runtime なし）、Worker や iframe にも届くので持たない。
+ */
 export async function applyStealthEvasions(page: Page): Promise<void> {
   try {
     const defaultUa = await page.browser().userAgent();
@@ -164,29 +153,14 @@ export async function applyStealthEvasions(page: Page): Promise<void> {
   }
   await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT });
   await applyNativeEmulationOverrides(page);
-  await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
 
   await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
-      get: () => undefined,
-      configurable: true,
-    });
-    (globalThis as any).chrome = {
-      runtime: {},
-      app: {},
-      csi: () => {},
-      loadTimes: () => {},
-    };
-    Object.defineProperty(navigator, 'languages', {
-      get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-    });
     Object.defineProperty(Object.getPrototypeOf(navigator), 'platform', {
       get: () => 'Win32',
       configurable: true,
     });
   });
   await page.evaluateOnNewDocument(patchWebRtcIpLeak);
-  await page.evaluateOnNewDocument(patchCanvasFingerprint);
 }
 
 export async function bypassCloudflareTurnstile(page: Page, timeoutMs = 10000): Promise<boolean> {
@@ -410,16 +384,7 @@ async function renderWithStealthBrowser(
     try {
       const page: Page = await context.newPage();
       await setupPageSecurity(page, !needScreenshot && !clipSelector);
-      try {
-        const defaultUa = await browser.userAgent();
-        await page.setUserAgent(buildUserAgentFromDefault(defaultUa), buildUserAgentMetadata(defaultUa));
-      } catch {
-        const fallbackUa = getFallbackUserAgent();
-        await page.setUserAgent(fallbackUa, buildUserAgentMetadata(fallbackUa));
-      }
-      await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT });
-      await applyNativeEmulationOverrides(page);
-      await page.setExtraHTTPHeaders({ 'Accept-Language': ACCEPT_LANGUAGE });
+      await applyStealthEvasions(page);
 
       const domain = new URL(url).hostname;
       // 呼び出し側が Cookie（ログイン状態）を渡した取得では、そこで得た Cookie・localStorage を保存しない。
@@ -468,22 +433,6 @@ async function renderWithStealthBrowser(
         }));
         await page.setCookie(...(puppeteerCookies as any));
       }
-
-      await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
-          get: () => undefined,
-          configurable: true,
-        });
-        Object.defineProperty(Object.getPrototypeOf(navigator), 'platform', {
-          get: () => 'Win32',
-          configurable: true,
-        });
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['ja-JP', 'ja', 'en-US', 'en'],
-        });
-      });
-      await page.evaluateOnNewDocument(patchWebRtcIpLeak);
-      await page.evaluateOnNewDocument(patchCanvasFingerprint);
 
       const timeTreeResponses: unknown[] = [];
       const timeTreePending: Promise<void>[] = [];
