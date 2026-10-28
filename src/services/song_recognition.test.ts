@@ -15,7 +15,7 @@ const HIT = { matches: [{ id: '900001', offset: 61.25, timeskew: 0.0001, frequen
 // 実際に Shazam が別の曲を返したときの形（2026-10-27、音の高さのずれが 0.5%）
 const WEAK = { matches: [{ id: '800001', offset: 142.7, timeskew: -0.0006, frequencyskew: -0.0051 }], track: { ...TRACK, key: '800001', title: '別の曲', subtitle: '別の楽団', trackadamid: '1700000099' } };
 const ITUNES_TRACK = {
-  wrapperType: 'track', kind: 'song', trackId: 1700000001, trackName: 'テスト曲', artistName: 'テスト歌手', collectionName: 'テストアルバム',
+  wrapperType: 'track', kind: 'song', trackId: 1700000001, trackName: 'テスト曲', artistName: 'テスト歌手', artistId: 1600000001, collectionName: 'テストアルバム',
   artworkUrl100: 'https://img.example/a/100x100bb.jpg', previewUrl: 'https://audio.example/p.m4a', releaseDate: '2026-01-01T00:00:00Z',
   primaryGenreName: 'J-Pop', trackTimeMillis: 200000, trackViewUrl: 'https://music.apple.com/jp/album/x/1?i=1700000001',
 };
@@ -83,7 +83,7 @@ describe('recognizeSong', () => {
     const { fn, calls } = fakeFetch({ shazam: (n) => Response.json(n === 2 ? HIT : { matches: [] }) });
     const out = await recognizeSong({ audio: audio(1) }, { fetchFn: fn, decode: decodeOk(30) });
     expect(out).toMatchObject({
-      found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001', title: 'テスト曲', artist: 'テスト歌手' },
+      found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001', title: 'テスト曲', artist: 'テスト歌手', artistId: 1600000001 },
       shazam: { key: '900001' }, match: { songOffsetSec: 61.25, clipOffsetSec: 12 },
     });
     expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: false }, { offsetSec: 12, durationSec: 12, matched: true }]);

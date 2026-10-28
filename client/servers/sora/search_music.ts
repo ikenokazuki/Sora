@@ -37,6 +37,8 @@ export type SearchMusicOutput = {
     title: string;
     /** アーティスト名 */
     artist: string;
+    /** iTunes のアーティスト ID */
+    artistId?: number;
     /** 収録アルバム名 */
     album?: string;
     /** ジャケット・アートワーク画像 */
