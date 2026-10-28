@@ -1,13 +1,13 @@
-# @ikenokazuki/audio-signature
+# audio-signature
 
 16 kHz・モノラルの PCM（Int16）から、楽曲認識に使う音の指紋（SigX の形のバイト列）を作り、その形を確かめます。ブラウザ・Bun・Node で動きます（依存なし、ESM）。
 
 ```sh
-npm install @ikenokazuki/audio-signature
+npm install audio-signature
 ```
 
 ```ts
-import { checkSignatureBase64, createSignature, encodeBase64 } from '@ikenokazuki/audio-signature';
+import { checkSignatureBase64, createSignature, encodeBase64 } from 'audio-signature';
 
 const { bytes, sampleMs } = createSignature(pcm); // pcm: 16 kHz・モノラルの Int16Array。先頭の 12 秒だけを使う
 const signature = encodeBase64(bytes);
