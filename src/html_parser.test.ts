@@ -340,3 +340,17 @@ describe('parseTimestampChapters', () => {
     ]);
   });
 });
+
+describe('main content of list pages', () => {
+  // Readability はリンクの多い一覧を本文にせず、横の宣伝の段落を選ぶことがある（WCXB の一覧・まとめのページで多かった）。
+  // 宣伝が 500 字（Readability が取り直さない長さ）を超え、一覧がその 3 倍ある形で確かめる
+  const items = Array.from({ length: 36 }, (_, i) => `2026.10.${String((i % 28) + 1).padStart(2, '0')} 定期公演 第${100 - i}回の出演メンバー、開演時間と整理番号の入場順のお知らせ`);
+  const promo = '会員になると、先行受付の抽選、限定の動画、メンバーからのメッセージ、誕生日のお祝いメール、会報の電子版など、たくさんの特典をご利用いただけます。'.repeat(7);
+  const list = `<ul class="news">${items.map((t, i) => `<li class="news-item"><a href="/news/${i}">${t}</a></li>`).join('')}</ul>`;
+  const html = `<html><head><title>NEWS</title></head><body><div id="wrap"><div class="side"><div class="promo"><p>${promo}</p></div></div><div class="list">${list}</div></div></body></html>`;
+
+  it('takes the repeated news items instead of a promo paragraph that Readability picked', () => {
+    const { markdown } = convertHtmlToMarkdown(html, 'https://example.com/news/', 100000);
+    for (const t of items) expect(markdown).toContain(t);
+  });
+});
