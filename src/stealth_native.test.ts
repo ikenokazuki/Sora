@@ -116,7 +116,16 @@ Promise.all([dedicated, shared]).then(([w, s]) => {
 `;
 const workerPage = `<!doctype html><html><head><meta charset="utf-8"><title>worker</title></head><body><p id="r">pending</p><script>${WORKER_PROBE}</script></body></html>`;
 
-function expectNativeTokens(text: string) {
+/** 実行中の Chromium のメジャーバージョン */
+async function chromiumMajor(): Promise<number> {
+  const { browser } = await getBrowser();
+  return parseInt((await browser.version()).match(/\/(\d+)\./)?.[1] ?? '0', 10);
+}
+
+// hover / pointer は --blink-settings で揃える。手元の 148 と本番の 156 では効くが、CI の Chrome for Testing 141 は無視する（実測）
+const BLINK_SETTINGS_HOVER_FROM = 148;
+
+function expectNativeTokens(text: string, major: number) {
   for (const token of [
     'webdriver=false',
     'webdriverGetterNative=true',
@@ -129,8 +138,7 @@ function expectNativeTokens(text: string) {
     'tz=Asia/Tokyo',
     'chromeRuntime=undefined',
     'getImageDataNative=true',
-    'hover=true',
-    'pointerFine=true',
+    ...(major >= BLINK_SETTINGS_HOVER_FROM ? ['hover=true', 'pointerFine=true'] : []),
   ]) {
     expect(text).toContain(token);
   }
@@ -145,7 +153,7 @@ describe.skipIf(!resolveChromiumPath())('ブラウザの偽装は Chromium 本�
       await applyStealthEvasions(page);
       await page.goto(`${server.base}/native`);
       await page.waitForFunction(() => document.getElementById('r')?.textContent?.includes('done=1'), { timeout: 10000 });
-      expectNativeTokens(await page.evaluate(() => document.getElementById('r')!.textContent!));
+      expectNativeTokens(await page.evaluate(() => document.getElementById('r')!.textContent!), await chromiumMajor());
     } finally {
       await page.close();
       server.close();
@@ -170,29 +178,45 @@ describe.skipIf(!resolveChromiumPath())('ブラウザの偽装は Chromium 本�
     }
   }, 40000);
 
-  test('Accept-Language は Chrome と同じ位置（Accept-Encoding の後）に、日本語で送られる', async () => {
+  test('Accept-Language は日本語で送られ、位置は偽装を入れない素のページと同じ（ヘッダを後から足して動かさない）', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: '<!doctype html><body>ok</body>' }));
     const { browser } = await getBrowser();
-    const page = await browser.newPage();
+    const plain = await browser.newPage();
+    const stealth = await browser.newPage();
     try {
-      await applyStealthEvasions(page);
-      await page.goto(`${server.base}/header-order`);
-      const seen = server.last('/header-order');
-      expect(headerValue(seen, 'accept-language')?.startsWith('ja-JP')).toBe(true);
-      const order = names(seen).map((n) => n.toLowerCase());
-      expect(order.indexOf('accept-language')).toBeGreaterThan(order.indexOf('accept-encoding'));
+      await plain.goto(`${server.base}/plain`);
+      await applyStealthEvasions(stealth);
+      await stealth.goto(`${server.base}/stealth`);
+      const plainOrder = names(server.last('/plain')).map((n) => n.toLowerCase());
+      const stealthSeen = server.last('/stealth');
+      const stealthOrder = names(stealthSeen).map((n) => n.toLowerCase());
+      expect(headerValue(stealthSeen, 'accept-language')?.startsWith('ja-JP')).toBe(true);
+      // 標準の位置はビルドごとに違う（Chrome for Testing 141 は前の方、148 以降は Accept-Encoding の後）。
+      // setExtraHTTPHeaders で後から足すと、これより後ろに並ぶヘッダが変わる
+      expect(stealthOrder.slice(stealthOrder.indexOf('accept-language'))).toEqual(plainOrder.slice(plainOrder.indexOf('accept-language')));
     } finally {
-      await page.close();
+      await plain.close();
+      await stealth.close();
       server.close();
     }
   }, 30000);
+
+  test('起動引数に、言語・UA・hover / pointer のフラグが入っている', async () => {
+    const { browser } = await getBrowser();
+    const args = browser.process()?.spawnargs ?? [];
+    expect(args).toContain('--accept-lang=ja-JP,ja,en-US,en');
+    expect(args.some((a) => a.startsWith('--blink-settings=primaryHoverType=2'))).toBe(true);
+    const ua = args.find((a) => a.startsWith('--user-agent='));
+    expect(ua).toContain('Windows NT 10.0');
+    expect(ua).not.toContain('Headless');
+  });
 
   test('fetchWithStealthBrowser（scrapeUrl の renderJs）でも同じく native のまま揃う', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: probePage() }));
     try {
       const result = await scrapeUrl({ url: `${server.base}/render`, renderJs: true, noCache: true });
       expect(result.content).toContain('done=1');
-      expectNativeTokens(result.content);
+      expectNativeTokens(result.content, await chromiumMajor());
     } finally {
       server.close();
     }
