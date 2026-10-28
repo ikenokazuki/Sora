@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
 import { toneBursts } from '../test_fixtures/audio.js';
 import { AudioDecodeError } from './audio_decode.js';
-import { MAX_URL_BYTES, SongRecognitionInputError, downloadAudio, parseShazamResponse, pickWindows, recognizeSong } from './song_recognition.js';
+import { DATA_URI_PREFIX, signatureUri } from './shazam_signature.js';
+import { MAX_URL_BYTES, SongRecognitionInputError, downloadAudio, parseShazamResponse, pickWindows, recognizeSignature, recognizeSong } from './song_recognition.js';
 
 // 合成の音と、作り物の Shazam・iTunes の応答だけを使う
 const TRACK = {
@@ -177,6 +178,68 @@ describe('recognizeSong', () => {
     await expect(recognizeSong({})).rejects.toBeInstanceOf(SongRecognitionInputError);
     await expect(recognizeSong({ url: 'file:///etc/passwd' })).rejects.toBeInstanceOf(SongRecognitionInputError);
     await expect(recognizeSong({ audio: audio(30), country: 'japan' })).rejects.toBeInstanceOf(SongRecognitionInputError);
+  });
+});
+
+describe('recognizeSignature', () => {
+  const sig = (seconds = 12) => {
+    const { uri, sampleMs } = signatureUri(toneBursts(1000, seconds));
+    return { signature: uri.slice(DATA_URI_PREFIX.length), sampleMs };
+  };
+
+  test('sends the signature unchanged behind the data URI prefix, in one window, and links iTunes', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const input = sig(5);
+    const out = await recognizeSignature(input, { fetchFn: fn });
+    expect(out).toMatchObject({ found: true, itunesMatch: 'apple-id', itunes: { id: '1700000001' }, shazam: { key: '900001' }, match: { songOffsetSec: 61.25, clipOffsetSec: 0 } });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 5, matched: true }]);
+    expect(out).not.toHaveProperty('audio');
+    const tag = calls.filter((c) => c.url.startsWith('https://amp.shazam.com/'));
+    expect(tag).toHaveLength(1);
+    expect(JSON.parse(String(tag[0].init?.body)).signature).toEqual({ uri: DATA_URI_PREFIX + input.signature, samplems: 5000 });
+  });
+
+  test('a weak match is returned as found and uncertain, with the warning', async () => {
+    const { fn } = fakeFetch({ shazam: () => Response.json(WEAK), lookup: () => Response.json({ resultCount: 0, results: [] }) });
+    const out = await recognizeSignature(sig(), { fetchFn: fn });
+    expect(out).toMatchObject({ found: true, shazam: { key: '800001' }, match: { clipOffsetSec: 0, uncertain: true } });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: true, uncertain: true }]);
+    expect(out.message).toContain('別の曲');
+  });
+
+  test('no match is found:false no-match with the one attempt and no audio', async () => {
+    const { fn } = fakeFetch({});
+    const out = await recognizeSignature(sig(), { fetchFn: fn });
+    expect(out).toMatchObject({ found: false, reason: 'no-match', itunes: null, itunesMatch: null });
+    expect(out.attempts).toEqual([{ offsetSec: 0, durationSec: 12, matched: false }]);
+    expect(out).not.toHaveProperty('audio');
+  });
+
+  test('never caches nor merges requests for the same signature', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const input = sig();
+    await Promise.all([recognizeSignature(input, { fetchFn: fn }), recognizeSignature(input, { fetchFn: fn })]);
+    const again = await recognizeSignature(input, { fetchFn: fn });
+    expect(again.cached).toBeUndefined();
+    expect(shazamCallsOf(calls)).toBe(3);
+  });
+
+  test('a signature that is not one, or a bad country, is an input error and nothing is sent', async () => {
+    const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
+    const { signature, sampleMs } = sig();
+    const flipped = Buffer.from(signature, 'base64');
+    flipped[flipped.length - 1] ^= 1;
+    for (const bad of [
+      { signature: 'not base64!', sampleMs },
+      { signature: signature.slice(0, -1), sampleMs }, // base64 として往復しない
+      { signature: Buffer.alloc(40).toString('base64'), sampleMs },
+      { signature: flipped.toString('base64'), sampleMs },
+      { signature, sampleMs: sampleMs - 1 },
+      { signature, sampleMs, country: 'japan' },
+    ]) {
+      await expect(recognizeSignature(bad, { fetchFn: fn })).rejects.toBeInstanceOf(SongRecognitionInputError);
+    }
+    expect(calls).toHaveLength(0);
   });
 });
 

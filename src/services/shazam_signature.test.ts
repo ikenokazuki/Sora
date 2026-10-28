@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { toneBursts } from '../test_fixtures/audio.js';
-import { MIN_WINDOW_SECONDS, SAMPLE_RATE, SignatureGenerator, SignatureTooShortError, powerSpectrum, signatureUri } from './shazam_signature.js';
+import { DATA_URI_PREFIX, MIN_WINDOW_SECONDS, SAMPLE_RATE, SignatureGenerator, SignatureTooShortError, checkSignatureBytes, powerSpectrum, signatureUri } from './shazam_signature.js';
 
 const peakHz = (correctedBin: number) => correctedBin * (SAMPLE_RATE / 2 / 1024 / 64);
 const u32 = (b: Uint8Array, at: number) => new DataView(b.buffer, b.byteOffset).getUint32(at, true);
@@ -90,5 +90,40 @@ describe('signatureUri', () => {
   test('too short or silent audio is refused', () => {
     expect(() => signatureUri(toneBursts(1000, MIN_WINDOW_SECONDS - 1))).toThrow(SignatureTooShortError);
     expect(() => signatureUri(new Int16Array(12 * SAMPLE_RATE))).toThrow(SignatureTooShortError);
+  });
+});
+
+describe('checkSignatureBytes', () => {
+  const made = () => new Uint8Array(Buffer.from(signatureUri(toneBursts(1000)).uri.slice(DATA_URI_PREFIX.length), 'base64'));
+  const withCrc = (b: Uint8Array) => { new DataView(b.buffer).setUint32(4, Bun.hash.crc32(b.subarray(8)) >>> 0, true); return b; };
+
+  test('accepts what signatureUri makes, also through a view with an offset, and the 56-byte empty signature', () => {
+    const bytes = made();
+    expect(checkSignatureBytes(bytes, 12000)).toBe(true);
+    const padded = new Uint8Array(bytes.length + 3);
+    padded.set(bytes, 3);
+    expect(checkSignatureBytes(padded.subarray(3), 12000)).toBe(true);
+    const three = signatureUri(toneBursts(1000, 3));
+    expect(checkSignatureBytes(Buffer.from(three.uri.slice(DATA_URI_PREFIX.length), 'base64'), 3000)).toBe(true);
+    const empty = new SignatureGenerator();
+    empty.numberSamples = 192000;
+    expect(empty.encode().length).toBe(56);
+    expect(checkSignatureBytes(empty.encode(), 12000)).toBe(true);
+  });
+
+  test('refuses a short buffer, another magic, a CRC mismatch, a wrong size field and another sampleMs', () => {
+    const bytes = made();
+    expect(checkSignatureBytes(bytes.subarray(0, 55), 12000)).toBe(false);
+    const magic = bytes.slice();
+    magic[0] ^= 1;
+    expect(checkSignatureBytes(magic, 12000)).toBe(false);
+    const crc = bytes.slice();
+    crc[crc.length - 1] ^= 1;
+    expect(checkSignatureBytes(crc, 12000)).toBe(false);
+    const size = bytes.slice();
+    new DataView(size.buffer).setUint32(8, size.length - 47, true);
+    expect(checkSignatureBytes(withCrc(size), 12000)).toBe(false);
+    expect(checkSignatureBytes(bytes, 11999)).toBe(false);
+    expect(checkSignatureBytes(bytes, 12001)).toBe(false);
   });
 });

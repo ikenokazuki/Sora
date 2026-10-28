@@ -37,7 +37,7 @@ export const MIN_WINDOW_SECONDS = 3;
 
 const MAX_PEAKS = 255;
 const SAMPLE_RATE_ID = 3; // ヘッダーの 16 kHz の番号
-const DATA_URI_PREFIX = 'data:audio/vnd.shazam.sig;base64,';
+export const DATA_URI_PREFIX = 'data:audio/vnd.shazam.sig;base64,';
 const FFT_SIZE = 2048;
 const BIN_COUNT = 1025;
 const HISTORY = 256;
@@ -244,4 +244,14 @@ export function signatureUri(samples: Int16Array, maxSeconds = WINDOW_SECONDS): 
     throw new SignatureTooShortError('音が短すぎるか静かすぎて、指紋を作れません');
   }
   return { uri: gen.uri(), sampleMs: gen.sampleMs() };
+}
+
+/** 作り済みの指紋のバイト列が、このファイルの encode() の形か。長さ・先頭の印・CRC-32・大きさの欄・長さ（sampleMs）を見る（すべてリトルエンディアン）。 */
+export function checkSignatureBytes(bytes: Uint8Array, sampleMs: number): boolean {
+  if (bytes.length < 56) return false;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return view.getUint32(0, true) === 0xcafe2580
+    && view.getUint32(4, true) === (Bun.hash.crc32(bytes.subarray(8)) >>> 0)
+    && view.getUint32(8, true) === bytes.length - 48
+    && Math.trunc((view.getUint32(40, true) - 3840) / 16) === sampleMs;
 }
