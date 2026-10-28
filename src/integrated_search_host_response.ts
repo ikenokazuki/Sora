@@ -247,10 +247,11 @@ function applyMarkdownBudget(
 /**
  * Host-facing boundary for integrated search.
  *
- * `full` is the default and returns the original object by identity.
- * `verbose` always forces full.
+ * `full` keeps each result's markdown (only includeMedia: false and maxTotalChars change it). `verbose` always forces full.
+ * The MCP search_deep and the REST /search pass `evidence` when the caller omits responseMode
+ * (INTEGRATED_SEARCH_INPUT_SHAPE); `full` is only this function's fallback.
  *
- * `evidence` is explicit opt-in and is intentionally query-selective.
+ * `evidence` is intentionally query-selective.
  * It preserves the existing JSON envelope/properties and only removes
  * per-result `markdown` when conservative safety conditions allow it.
  */
