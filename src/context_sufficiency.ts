@@ -10,10 +10,10 @@ export interface ContextSufficiency {
  * 応答に付ける「根拠は足りているか」の信号。応答内容は変えず、判断は上位エージェントに任せる。
  *
  * 既存の部品を束ねている。要件語は verbose 診断（searchDiagnostics.webRequirements）と同じ extractQueryRequirements の
- * entity+intent 語。証拠は各ページの ρSelect 選抜（highlights。無ければ本文）と X の投稿本文、判定は ρSelect v2 診断と同じ
+ * entity+intent 語。証拠は各ページのハイライト（無ければ本文）と X の投稿本文、判定は
  * computeEvidenceCoverage（要件ごとの言及・回答値の有無）。取得失敗・スニペット代替・締切超過のページと、本文を読めなかった
  * ページ（contentStatus が unavailable。エラーの画面や画像のファイルなど）は証拠に数えない。説明文だけのページ（metadata_only）は数える。
- * ρSelect の要件選択（tokenizeAndSelectTerms）は語数超過時にコーパス内の出現で選別し、どのページにも無い語を落とすため、
+ * tokenizeAndSelectTerms（extractor/markdown_sections）は語数超過時にコーパス内の出現で選別し、どのページにも無い語を落とすため、
  * 欠落の検出には使わない。
  * 語彙ベースの検出なので、partial/insufficient は不足の根拠になるが、no_gap_detected は十分の保証ではない。
  */

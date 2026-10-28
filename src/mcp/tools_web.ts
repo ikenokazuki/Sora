@@ -3,7 +3,7 @@ import { crawlSiteUrl, integratedSearch, mapSiteUrl, scrapeBatchUrls, scrapeUrl 
 import { formatCompactScrapeResult } from '../response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from '../search_web_formats.js';
 import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_response.js';
-import { DEFAULT_HIGHLIGHT_ALGORITHM, HighlightAlgorithmSchema, INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, ScrapeFormatSchema } from '../types.js';
+import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
@@ -178,17 +178,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-      highlightAlgorithm: HighlightAlgorithmSchema
-        .optional()
-        .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-        .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-      highlightOverheadTokens: z
-        .number()
-        .int()
-        .min(1)
-        .max(4096)
-        .optional()
-        .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
       highlightMaxCount: z
         .number()
         .int()
@@ -197,9 +186,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
     },
-    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
+    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -228,9 +217,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
     SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
+    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [
@@ -259,7 +248,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（full / evidence）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
     INTEGRATED_SEARCH_INPUT_SHAPE,
-    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
+    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, reorderUFlat, enablePrf, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
       try {
         const result = await integratedSearch({
           query,
@@ -291,8 +280,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           diversityWeight,
           annotateTemporal,
           minimizeTables,
-          highlightAlgorithm,
-          highlightOverheadTokens,
           highlightMaxCount,
         });
         return {
@@ -376,17 +363,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-      highlightAlgorithm: HighlightAlgorithmSchema
-        .optional()
-        .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-        .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-      highlightOverheadTokens: z
-        .number()
-        .int()
-        .min(1)
-        .max(4096)
-        .optional()
-        .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
       highlightMaxCount: z
         .number()
         .int()
@@ -395,9 +371,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
     },
-    async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount }) => {
+    async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount }) => {
       try {
-        const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightAlgorithm, highlightOverheadTokens, highlightMaxCount });
+        const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
