@@ -820,6 +820,49 @@ export function resolveImageUrl(
 const STRUCTURED_CONTENT_SELECTOR =
   'table, [role="grid"], [role="gridcell"], [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]';
 
+/** 本文の候補にしない領域（ナビ・ヘッダー・フッター・補助）。 */
+const NON_CONTENT_SELECTOR = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"]';
+/** これ以下の長さの項目はナビのラベルとみなす（integrated_search_host_response の NAV_LABEL_MAX_CHARS と同じ考え）。 */
+const ITEM_LABEL_MAX_CHARS = 16;
+/** Readability の本文がこれより短いときだけ、項目の並びへの差し替えを考える。
+ * 上限が無いと、知恵袋の質問と回答（約 740 字）のように正しく取れた本文が、横の関連の並びに替わった。 */
+const REPEATED_RESCUE_MAX_READ_CHARS = 600;
+/** 差し替える項目の並びの、本文の文字数の下限。 */
+const REPEATED_RESCUE_MIN_CHARS = 300;
+/** 意味的主領域の無いページで、ページ全体に戻すのは Readability の本文がこれより短いときだけ（予定表だけのページなど）。 */
+const BODY_FALLBACK_MAX_READ_CHARS = 500;
+
+/** 見出しのある表（th・thead・caption があり、中に表を入れていないもの）。古いページの段組みに使うレイアウト用の表と分ける。 */
+const isDataTable = ($: cheerio.CheerioAPI, el: any) => $(el).find('table').length === 0 && $(el).find('th, thead, caption').length > 0;
+
+/**
+ * 同じ形（タグと class）の子要素が 3 つ以上並ぶ入れ物のうち、ナビのラベルでない項目の文字数の合計が最も多いもの。
+ * 一覧のカード・掲示板の投稿・検索結果の行がこれに当たる。項目の 6 割以上が短いラベルなら、ナビとして数えない。
+ */
+function largestRepeatedItemList($: cheerio.CheerioAPI): { el: any; chars: number } | undefined {
+  let best: { el: any; chars: number } | undefined;
+  $('body').find('*').each((_, el) => {
+    const kids = $(el).children().toArray();
+    if (kids.length < 3) return;
+    const groups = new Map<string, any[]>();
+    for (const k of kids) {
+      const sig = `${(k as any).tagName}|${($(k).attr('class') || '').trim().split(/\s+/).sort().join('.')}`;
+      groups.set(sig, [...(groups.get(sig) ?? []), k]);
+    }
+    for (const items of groups.values()) {
+      if (items.length < 3) continue;
+      const lens = items.map((it) => $(it).text().replace(/\s+/g, ' ').trim().length);
+      const content = lens.filter((n) => n > ITEM_LABEL_MAX_CHARS);
+      if (content.length < 3 || content.length < items.length * 0.4) continue;
+      const chars = content.reduce((a, n) => a + n, 0);
+      if (best && chars <= best.chars) continue;
+      if ($(el).closest(NON_CONTENT_SELECTOR).length > 0) continue;
+      best = { el, chars };
+    }
+  });
+  return best;
+}
+
 /**
  * Readability 結果と意味的コンテナを比較し、本文の劣化を防ぐ。
  * Readability が表/grid 内の本文を落としている場合も考慮し、
@@ -828,7 +871,17 @@ const STRUCTURED_CONTENT_SELECTOR =
  */
 function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): string {
   const readability$ = cheerio.load(readabilityHtml);
-  if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
+  const readText = readability$.text().replace(/\s+/g, ' ').trim();
+  // 一覧・まとめ・掲示板: Readability は本文を一つの要素として取るので、カード 1 枚や横の宣伝枠だけになることがある。
+  // Readability の本文が短く、同じ形の項目が並ぶ入れ物にその 3 倍以上の文字があれば、そちらに替える
+  // （WCXB の評価で、一覧・掲示板の 4 割前後が本文の 3 割も取れていなかった）
+  if (readText.length < REPEATED_RESCUE_MAX_READ_CHARS) {
+    const list = largestRepeatedItemList($);
+    if (list && list.chars >= Math.max(REPEATED_RESCUE_MIN_CHARS, readText.length * 3)) return $.html(list.el) ?? readabilityHtml;
+  }
+  // レイアウト用の表は救済の対象にしない。対象にすると下でページ全体に戻り、ナビやフッターまで本文に入った
+  // （Bevendorff ら 2023 の評価集の L3S-GN1 で精度 0.58。docs/evaluations/main-content/results.md）
+  if ($(STRUCTURED_CONTENT_SELECTOR).filter((_, el) => !$(el).is('table') || isDataTable($, el)).length === 0) return readabilityHtml;
   const hasSemanticContainer = $('main, [role="main"], article, #content, #main').length > 0;
   // Readability 側の実質ブロック (80文字以上の p/li/blockquote) 。なければ全文保持を条件にする。
   const readBlocks: string[] = [];
@@ -858,7 +911,8 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
   if (bestHtml) return bestHtml;
   if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
   // 意味的主領域があるのに表が aside だけの場合、body へ戻さず Readability を維持する。
-  if (!hasSemanticContainer) return $('body').html() || readabilityHtml;
+  // 意味的主領域が無くても、Readability が本文を取れていれば（BODY_FALLBACK_MAX_READ_CHARS 以上）ページ全体には戻さない。
+  if (!hasSemanticContainer && readText.length < BODY_FALLBACK_MAX_READ_CHARS) return $('body').html() || readabilityHtml;
   return readabilityHtml;
 }
 
