@@ -215,6 +215,16 @@ describe('recognizeSignature', () => {
     expect(out).not.toHaveProperty('audio');
   });
 
+  test('an iTunes failure after a match is an upstream error, not a match without iTunes', async () => {
+    const down = (status: number) => () => new Response('no', { status });
+    const timedOut = () => { throw new DOMException('timed out', 'TimeoutError'); };
+    const empty = () => Response.json({ resultCount: 0, results: [] });
+    for (const itunes of [{ lookup: down(403) }, { lookup: down(429) }, { lookup: timedOut }, { lookup: empty, search: down(503) }]) {
+      const { fn } = fakeFetch({ shazam: () => Response.json(HIT), ...itunes });
+      await expect(recognizeSignature(sig(), { fetchFn: fn })).rejects.toThrow('iTunes lookup failed');
+    }
+  });
+
   test('never caches nor merges requests for the same signature', async () => {
     const { fn, calls } = fakeFetch({ shazam: () => Response.json(HIT) });
     const input = sig();

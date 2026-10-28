@@ -234,7 +234,7 @@ async function linkItunes(track: ShazamTrack, country: string, fetchFn: typeof f
 }
 
 type Window = { offsetSec: number; sig: { uri: string; sampleMs: number } };
-type Hit = { result: SongRecognitionResult; ttlMs: number };
+type Hit = { result: SongRecognitionResult; ttlMs: number; linkFailed?: boolean };
 
 /** 指紋の窓を順に Shazam に送る。確かな当たりが出たらそこで止め、ずれの大きい当たりだけなら最後にそれを返す。当たりが無ければ hit は null。 */
 async function queryWindows(windows: Iterable<Window>, country: string, fetchFn: typeof fetch): Promise<{ hit: Hit | null; attempts: SongRecognitionResult['attempts'] }> {
@@ -246,6 +246,7 @@ async function queryWindows(windows: Iterable<Window>, country: string, fetchFn:
     return {
       result: { found: true, ...(uncertain ? { message: UNCERTAIN } : {}), itunes: linked.item, itunesMatch: linked.by, shazam: m.track, match, attempts },
       ttlMs: linked.failed || uncertain ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT,
+      linkFailed: linked.failed,
     };
   };
   for (const w of windows) {
@@ -336,5 +337,8 @@ export async function recognizeSignature(options: { signature: string; sampleMs:
     throw new SongRecognitionInputError('signature が指紋の形になっていないか、sampleMs と長さが合いません');
   }
   const { hit, attempts } = await queryWindows([{ offsetSec: 0, sig: { uri: DATA_URI_PREFIX + options.signature, sampleMs: options.sampleMs } }], country, deps.fetchFn ?? fetch);
+  // iTunes の失敗（時間切れ・403・429 など）を itunes: null で返すと、iTunes に無い曲と見分けが付かない。
+  // 上流の失敗（502）にして、呼び出し側が指紋を残して照会し直せるようにする（音声の経路は当たりを返す）
+  if (hit?.linkFailed) throw new Error('iTunes lookup failed');
   return hit ? hit.result : refusal('no-match', NO_MATCH, undefined, attempts);
 }
