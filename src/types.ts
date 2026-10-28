@@ -136,37 +136,7 @@ export interface HighlightItem {
   temporalAnchors?: TemporalAnchor[];
 }
 
-/** ρSelect (rho-select) 実行時診断メタデータ */
-export interface RhoSelectDiagnostics {
-  candidateCount: number;
-  compactCandidateCount: number;
-  termCount: number;
-  evidenceLevels: number;
-  featureCount: number;
-  stateCount: number;
-  frontierCount: number;
-  selectedCount: number;
-  selectedTokens: number;
-  utility: number;
-  density: number;
-  lambda: number;
-  dinkelbachIterations: number;
-  directOptimumDensity: number;
-  exactAgreement: boolean;
-}
 
-/** ハイライト選択アルゴリズム種別 */
-export const HIGHLIGHT_ALGORITHMS = [
-  'rho-select',
-  'rho-select-v2',
-  'legacy',
-] as const;
-
-export type HighlightAlgorithm = (typeof HIGHLIGHT_ALGORITHMS)[number];
-
-export const HighlightAlgorithmSchema = z.enum(HIGHLIGHT_ALGORITHMS);
-
-export const DEFAULT_HIGHLIGHT_ALGORITHM: HighlightAlgorithm = 'rho-select-v2';
 
 export interface RhoOptimizerCertificate {
   scope: 'score_defined_objective_only';
@@ -181,31 +151,6 @@ export interface RhoOptimizerCertificate {
   postProcessed: boolean;
 }
 
-export interface RhoSelectV2Diagnostics {
-  engine: 'rho-select-v2';
-  requirementsSource: 'explicit' | 'query_terms';
-  requirements: string[];
-  requirementWeights: number[];
-  scoreReliability: { status: 'not_calibrated' };
-  candidateCount: number;
-  keptCandidateCount: number;
-  selectedCount: number;
-  selectedTokens: number;
-  utility: number;
-  cost: number;
-  rho: number;
-  witnessSubsetBound: string;
-  certificate: RhoOptimizerCertificate;
-  warning?: string;
-  history?: Array<{
-    iteration: number;
-    stateCount: number;
-    lowerBound: number;
-    upperBound: number;
-    relativeGap: number;
-    partitionSizes: number[];
-  }>;
-}
 
 /** 決定論的証拠充足性観測量 (Evidence Diagnostics) - Soraは意味判定を行わず客観的観測値のみ返却 */
 export interface EvidenceDiagnostics {
@@ -261,7 +206,7 @@ export interface ScrapeResult {
   discrepancies?: CandidateDiscrepancy[];
   derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
-  highlightDiagnostics?: RhoSelectDiagnostics | RhoSelectV2Diagnostics;
+  highlightDiagnostics?: EvidenceDiagnostics;
   textFragmentUrl?: string;
   summary?: string[];
   citations?: Citation[];
@@ -409,8 +354,6 @@ export const ScrapeRequestSchema = z.object({
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
   includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
@@ -499,17 +442,6 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .optional()
       .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
-    highlightAlgorithm: HighlightAlgorithmSchema
-      .optional()
-      .default(DEFAULT_HIGHLIGHT_ALGORITHM)
-      .describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-    highlightOverheadTokens: z
-      .number()
-      .int()
-      .min(1)
-      .max(4096)
-      .optional()
-      .describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
     highlightMaxCount: z
       .number()
       .int()
@@ -573,8 +505,6 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
@@ -736,8 +666,6 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
   minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  highlightAlgorithm: HighlightAlgorithmSchema.optional().default(DEFAULT_HIGHLIGHT_ALGORITHM).describe('ハイライト選択アルゴリズム: "rho-select-v2"(デフォルト: 論文版クエリ証明書付き最適化), "rho-select"(旧レガシー版), "legacy"'),
-  highlightOverheadTokens: z.number().int().min(1).max(4096).optional().describe('ρSelect の固定コンテキストオーバーヘッドトークン数 τ (デフォルト: 96)').meta({ default: 96 }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
@@ -1261,23 +1189,6 @@ export const HighlightItemSchema = z.object({
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('時間的文脈注記'),
 });
 
-export const RhoSelectDiagnosticsSchema = z.object({
-  candidateCount: z.number().describe('候補文総数'),
-  compactCandidateCount: z.number().describe('重複除去後の候補文数'),
-  termCount: z.number().describe('検索語句数'),
-  evidenceLevels: z.number().describe('証拠レベル数'),
-  featureCount: z.number().describe('特徴量数'),
-  stateCount: z.number().describe('探索状態数'),
-  frontierCount: z.number().describe('フロンティア数'),
-  selectedCount: z.number().describe('最終選択ハイライト件数'),
-  selectedTokens: z.number().describe('選択トークン合計数'),
-  utility: z.number().describe('ユーティリティ（有用性合計値）'),
-  density: z.number().describe('トークン密度 (utility / tokens)'),
-  lambda: z.number().describe('Dinkelbach パラメータ λ'),
-  dinkelbachIterations: z.number().describe('収束までの反復回数'),
-  directOptimumDensity: z.number().describe('理論最適密度'),
-  exactAgreement: z.boolean().describe('完全一致判定フラグ'),
-});
 
 export const EvidenceDiagnosticsSchema = z.object({
   queryCoverage: z.number().describe('クエリ語句網羅率 (0.0〜1.0)'),
@@ -1408,7 +1319,7 @@ export const ScrapeResponseSchema = z.object({
   discrepancies: z.array(CandidateDiscrepancySchema).optional().describe('日付・金額・バージョンの不一致候補'),
   derivations: z.array(DerivationTraceSchema).optional().describe('決定論的な単位・漢数字変換導出履歴'),
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('相対日付表現の絶対日時解決結果一覧'),
-  highlightDiagnostics: RhoSelectDiagnosticsSchema.optional().describe('ρSelect アルゴリズム実行時診断情報'),
+  highlightDiagnostics: EvidenceDiagnosticsSchema.optional().describe('ハイライト選択の診断情報（verbose 時のみ）'),
   textFragmentUrl: z.string().optional().describe('ハイライト該当箇所へジャンプする Chrome URL'),
   summary: z.array(z.string()).optional().describe('抽出型自動要約 (TL;DR) 箇条書きリスト'),
   citations: z.array(CitationSchema).optional().describe('本文中の引用・出典リンク一覧'),

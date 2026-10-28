@@ -1,6 +1,18 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
-import { parseBlocks, scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage } from './extractor/hierarchical_bm25.js';
+import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage, type HeadingBlock } from './extractor/hierarchical_bm25.js';
+import { parseMarkdownSections, tokenizeAndSelectTerms } from './extractor/markdown_sections.js';
+import {
+  analyzeFacetEvidence,
+  associationMultiplier,
+  dateYearMultiplier,
+  detectCurrentIntent,
+  entityTermsForQuery,
+  extractDateRequirements,
+  splitSentences,
+  structuralMultiplier,
+  temporalMultiplier,
+} from './retrieval/answerability.js';
 import {
   assignBlockProvenance,
   formatBlockAnchor,
@@ -19,7 +31,6 @@ import {
   annotateTextWithTemporalAnchors,
   type TemporalAnchor,
 } from './extractor/temporal_anchor.js';
-import { extractQueryHighlightsRhoV2 } from './rho_select_v2_adapter.js';
 export {
   normalizeSafeNumeric,
   assignBlockProvenance,
@@ -568,7 +579,13 @@ export function extractQueryHighlightDetails(
   }
 
   const terms = extractTermsWithBigrams(query);
-  const rawBlocks = parseBlocks(content);
+  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンクだけのナビの塊を外し、
+  // リストの中の見出しも見出しとして扱う）
+  const sections = parseMarkdownSections(content);
+  const rawBlocks: HeadingBlock[] = sections.map((sec) => {
+    const headingPath = sec.heading ? sec.heading.split(' > ') : [];
+    return { headingPath, nearestHeading: headingPath[headingPath.length - 1] ?? '', depth: sec.headingLevel, body: sec.fullText };
+  });
   if (terms.length === 0 || rawBlocks.length === 0) {
     return {
       highlights: [],
@@ -591,8 +608,29 @@ export function extractQueryHighlightDetails(
 
   const scoredCandidates: ScoredCandidate[] = [];
 
+  // 答えの値の倍率: 要件の語の回答値（対象つき）・表の行・定義の組がある節を上げ、最新を問う問いでは古い値を、
+  // 日付を問う問いでは年の合わない日付を下げる（倍率は retrieval/evidence_weights の一表）
+  const requirements = tokenizeAndSelectTerms(query, sections, 6).terms;
+  const entities = entityTermsForQuery(query);
+  const currentIntent = detectCurrentIntent(query);
+  const dateReqs = extractDateRequirements(query);
+  const answerValueMultiplier = (block: HeadingBlock): number => {
+    const text = `${block.nearestHeading}\n${block.body}`;
+    const sentences = splitSentences(text);
+    const lower = text.toLowerCase();
+    let best = 1;
+    let found = false;
+    for (const r of requirements) {
+      if (!lower.includes(r.toLowerCase())) continue;
+      const m = Math.max(associationMultiplier(analyzeFacetEvidence(sentences, entities, r)), structuralMultiplier(text, r)) * temporalMultiplier(sentences, r, currentIntent);
+      best = found ? Math.max(best, m) : m;
+      found = true;
+    }
+    return best * dateYearMultiplier(sentences, dateReqs);
+  };
+
   for (const block of blocks) {
-    const score = scorePassage(block, terms, blocks);
+    const score = scorePassage(block, terms, blocks) * answerValueMultiplier(block);
     if (score <= 0) continue;
 
     let snippetBody = block.body;
@@ -704,20 +742,9 @@ export function extractQueryHighlightDetails(
   };
 }
 
-/** クエリ関連ハイライト抽出 (ρSelect への一本化ラッパー) */
-export function extractQueryHighlights(
-  content: string,
-  query: string,
-  maxHighlights = 3,
-  _options?: QueryHighlightDetailsOptions,
-): string[] {
-  const result = extractQueryHighlightsRhoV2(content, query, {
-    tau: 96,
-  });
-  if (maxHighlights && maxHighlights > 0 && result.highlights.length > maxHighlights) {
-    return result.highlights.slice(0, maxHighlights);
-  }
-  return result.highlights;
+/** クエリ関連ハイライト抽出（本文だけが要るときの入口。中身は extractQueryHighlightDetails） */
+export function extractQueryHighlights(content: string, query: string, maxHighlights = 3): string[] {
+  return extractQueryHighlightDetails(content, query, { maxHighlights }).highlights;
 }
 
 /** ドメインフィルタリング (includeDomains / excludeDomains) */
@@ -939,7 +966,7 @@ export function computeAnswerability(item: { title?: string; snippet?: string; d
 
 export interface DeepEvidenceRerankOptions {
   requirements?: string[];
-  enableRhoFeature?: boolean;
+  enableHighlightFeature?: boolean;
 }
 
 /**
@@ -957,7 +984,7 @@ const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST)
  * 深層スクレイピング後のエビデンス駆動リランキング (Evidence-Aware Deep Reranking)
  *
  * 【位置づけ】
- * 本機能は ρSelect のオプティマイザ本体（Optimizer Core）ではなく、
+ * 本機能はハイライトの選択そのものではなく、
  * 「Production Retrieval-Verification Layer（検索検証レイヤー）」として動作する。
  *
  * 【解決する課題】
@@ -969,7 +996,7 @@ const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST)
  * 1. 堅牢なターム分解: extractTermsWithBigrams により日本語無空白クエリでも正確にタームを抽出
  * 2. Intent Anchor 自動選定: 固定末尾語依存を廃止し、属性語辞書またはコーパス稀少語（低DF語）から意図語を同定
  * 3. 有界な Rank Prior: (N-index) 依存を廃止し、alpha / sqrt(rank) による正規化事前確率を採用
- * 4. 校正済み ρSelect エビデンス: ハイライト存在基礎点と相対スケーリングによる頑健な証拠加算（Ablation対応）
+ * 4. ハイライトのエビデンス: ハイライト存在基礎点と相対スケーリングによる頑健な証拠加算（Ablation対応）
  */
 export function rerankByDeepEvidence<T extends {
   title?: string;
@@ -1141,17 +1168,15 @@ export function rerankByDeepEvidence<T extends {
       }
     }
 
-    // C. ρSelect v2 エビデンス特徴量（校正済み & Ablation 対応: 第4.4項）
-    const enableRho = options?.enableRhoFeature !== false;
-    if (enableRho) {
+    // C. ハイライトのエビデンス特徴量（Ablation 対応: 第4.4項）
+    if (options?.enableHighlightFeature !== false) {
       const hasHighlights = (item.highlights && item.highlights.length > 0) || (item.highlightItems && item.highlightItems.length > 0);
       if (hasHighlights) {
         score += 3.0; // ハイライト存在基礎点
         if (maxHighlightScore > 0 && item.highlightItems && item.highlightItems.length > 0) {
           const topScore = item.highlightItems[0]?.score ?? 0;
-          // 相対正規化により実運用スケール（0.005〜0.02）の差異を吸収
-          const normalizedRelativeRho = Math.max(0, Math.min(1, topScore / maxHighlightScore));
-          score += normalizedRelativeRho * 3.0;
+          // ページの間の点数の尺度の違いを、最高点との比で吸収する
+          score += Math.max(0, Math.min(1, topScore / maxHighlightScore)) * 3.0;
         }
       }
     }

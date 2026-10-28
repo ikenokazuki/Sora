@@ -5182,8 +5182,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(reranked[0].rank).toBe(1);
     });
 
-    it('rerankByDeepEvidence should support ablation study with enableRhoFeature: false', () => {
-      // 評価プロトコル第4.4項: enableRhoFeature: false (Ablation)
+    it('rerankByDeepEvidence should support ablation study with enableHighlightFeature: false', () => {
+      // 評価プロトコル第4.4項: enableHighlightFeature: false (Ablation)
       const query = 'TypeScript チュートリアル';
       const items = [
         {
@@ -5202,8 +5202,8 @@ describe('Sora REST & MCP Endpoints', () => {
         },
       ];
 
-      // enableRhoFeature: false の場合、ハイライト加算（最大6点）は行われない
-      const rerankedAblated = rerankByDeepEvidence(items, query, { enableRhoFeature: false });
+      // enableHighlightFeature: false の場合、ハイライト加算（最大6点）は行われない
+      const rerankedAblated = rerankByDeepEvidence(items, query, { enableHighlightFeature: false });
       expect(rerankedAblated).toBeDefined();
       expect(rerankedAblated.length).toBe(2);
     });
