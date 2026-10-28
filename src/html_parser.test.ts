@@ -366,3 +366,18 @@ describe('main content of pages laid out with tables', () => {
     expect(markdown).not.toContain('無断転載を禁じます');
   });
 });
+
+describe('table rows', () => {
+  it('does not repeat the text of a table nested in a layout table', () => {
+    const html = '<html><head><title>t</title></head><body><table><tr><td>メニュー</td><td><p>本文の段落です。</p><table><tr><td>内側の表の文です</td><td>2 列目</td></tr></table></td></tr></table></body></html>';
+    const result = convertHtmlToMarkdown(html, 'https://example.com/t', 100000);
+    expect(result.markdown.split('内側の表の文です').length - 1).toBe(1);
+    expect(result.tables?.[0]?.rows ?? []).toHaveLength(0);
+  });
+
+  it('does not throw when the first row has no cells', () => {
+    const html = '<html><head><title>t</title></head><body><table><tr></tr><tr><th>項目</th><th>値</th></tr><tr><td>重量</td><td>199g</td></tr></table></body></html>';
+    const result = convertHtmlToMarkdown(html, 'https://example.com/t', 100000);
+    expect(result.tables?.[0]?.rows).toEqual([{ 項目: '重量', 値: '199g' }]);
+  });
+});
