@@ -232,7 +232,7 @@ export class SignatureGenerator {
   }
 
   sampleMs(): number {
-    return Math.trunc((this.numberSamples / SAMPLE_RATE) * 1000);
+    return Math.trunc(this.numberSamples / (SAMPLE_RATE / 1000)); // 16 で割る（浮動小数の ×1000 だと 1 小さくなる長さがある）
   }
 }
 
