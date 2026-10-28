@@ -384,12 +384,55 @@ const chapterIndexOf = (chapters: Chapters, startSec: number) => {
   return found;
 };
 
+/** 話題に「関係あり」の状態から次の段落でも関係ありに留まる確率など。評価（docs/evaluations/youtube-excerpt/results.md）の dev で決めた。 */
+const TOPIC_STAY = 0.9;
+const TOPIC_BETA = 2;
+const TOPIC_THETA = 0.1;
+const TOPIC_PRIOR = 0.1;
+/** これ未満の段落は、検索語を含まない限り選ばない（予算が余っても、話題から遠い段落で埋めない）。 */
+const TOPIC_MIN_POSTERIOR = 0.3;
+
 /**
- * 検索語を含む段落を、点数の高い順に budget まで選び、時刻順の番号で返す。点数は見出しの階層ボーナス付き BM25
+ * 各段落が、検索語の話題に「関係あり」の状態にいる事後確率。関係あり/なしの 2 状態の隠れマルコフモデルを、
+ * 前向き・後ろ向きアルゴリズムで解く（Jiang & Zhai 2006）。関係ありでの段落の出やすさは、なしの exp(β(点数/最高点 − θ)) 倍とする。
+ * 話題は何段落も続くので、検索語の出ない続きの段落が上がり、ついでに一言触れただけの離れた段落は下がる。
+ */
+function topicPosterior(scores: number[]): number[] {
+  const n = scores.length;
+  const max = Math.max(0, ...scores);
+  const lr = scores.map((s) => Math.exp(TOPIC_BETA * ((max > 0 ? s / max : 0) - TOPIC_THETA)));
+  const fwd: Array<[number, number]> = [];
+  let r = TOPIC_PRIOR * lr[0];
+  let m = 1 - TOPIC_PRIOR;
+  fwd.push([r / (r + m), m / (r + m)]);
+  for (let i = 1; i < n; i++) {
+    const [pr, pm] = fwd[i - 1];
+    r = (pr * TOPIC_STAY + pm * (1 - TOPIC_STAY)) * lr[i];
+    m = pr * (1 - TOPIC_STAY) + pm * TOPIC_STAY;
+    fwd.push([r / (r + m), m / (r + m)]);
+  }
+  const post = new Array<number>(n);
+  let [br, bm] = [1, 1];
+  for (let i = n - 1; i >= 0; i--) {
+    if (i < n - 1) {
+      r = TOPIC_STAY * lr[i + 1] * br + (1 - TOPIC_STAY) * bm;
+      m = (1 - TOPIC_STAY) * lr[i + 1] * br + TOPIC_STAY * bm;
+      [br, bm] = [r / (r + m), m / (r + m)];
+    }
+    const a = fwd[i][0] * br;
+    post[i] = a / (a + fwd[i][1] * bm);
+  }
+  return post;
+}
+
+/**
+ * 検索語の話題の段落を、点数の高い順に budget まで選び、時刻順の番号で返す。点数は見出しの階層ボーナス付き BM25
  * （`scorePassage`。段落が入るチャプターの名前を見出しとして加点する。日本語は語と 2 語のつながりで数える）。
+ * チャプターが無いときは、点数の代わりに話題のつながり（`topicPosterior`）の順に選ぶ。チャプターがあるときは、
+ * チャプター名の加点のほうが当たる（評価で、つながりを使うと精度が下がった）。
  * どの段落にも点が付かなければ、先頭から選ぶ。最初に選ぶ段落は budget を超えても選ぶ。
  */
-function rankParagraphs(paragraphs: Paragraph[], query: string, budget: number, cost: (i: number) => number, separator: number, chapters: Chapters = []): { indices: number[]; relevant: boolean } {
+export function rankParagraphs(paragraphs: Paragraph[], query: string, budget: number, cost: (i: number) => number, separator: number, chapters: Chapters = []): { indices: number[]; relevant: boolean } {
   const blocks = paragraphs.map((p) => {
     const chapter = chapters[chapterIndexOf(chapters, p.startSec)]?.title;
     return { headingPath: chapter ? [chapter] : [], nearestHeading: chapter ?? '', depth: chapter ? 1 : 0, body: p.text };
@@ -397,8 +440,11 @@ function rankParagraphs(paragraphs: Paragraph[], query: string, budget: number, 
   const terms = extractTermsWithBigrams(query);
   const scores = blocks.map((b) => scorePassage(b, terms, blocks));
   const relevant = scores.some((score) => score > 0);
+  const ranked = relevant && chapters.length === 0
+    ? topicPosterior(scores).map((p, i) => (p >= TOPIC_MIN_POSTERIOR || scores[i] > 0 ? p : 0))
+    : scores;
   const order = relevant
-    ? scores.map((score, i) => ({ score, i })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.i)
+    ? ranked.map((score, i) => ({ score, i })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((x) => x.i)
     : paragraphs.map((_, i) => i);
   const chosen: number[] = [];
   let used = 0;
