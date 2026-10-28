@@ -644,6 +644,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし、12 秒の窓から Shazam の指紋を作って送ります（[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper) の `sigx.py`、MIT を移植）。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。
 - iTunes とは、Shazam が返す Apple の曲 ID で lookup を引いてつなぎます。無いときは、曲名とアーティストが一致する iTunes の検索結果を使い、それも無ければ `itunes: null` です。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ Shazam と iTunes に問い合わせ、結果を音のハッシュでキャッシュします（当たり 30 分、外れ 1 分）。
+- 端末などで作った指紋を受け取る `POST /music/recognize/signature`（REST だけ。MCP のツールはありません）もあります。録音そのものを送らずに済みます。受け取った指紋は形を確かめてから変えずに Shazam に送り、キャッシュしません（§3.34）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
@@ -2282,6 +2283,14 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 - Shazam が返した当たりのうち、時間・周波数のずれ（`match.timeSkew`・`match.frequencySkew`）が 0.002 を超えるものは、別の曲のことがあるので次の窓で確かめます。確かな当たりが無ければ、その当たりを `match.uncertain: true` と注意の `message` を付けて返します。
 - **特定できないとき**は HTTP 200 で `found: false` と `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）と `message` を返します。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`（`retryable: true`。キャッシュしません）、入力の誤りは 400 `INVALID_INPUT` です。
 - 結果は音のハッシュ・`offsetSec`・`country` ごとに 30 分（特定できないときは 1 分）キャッシュします。`noCache: true` で取り直します。
+- **作り済みの指紋で照会する**（`POST /music/recognize/signature`, v2.52.0）: 16 kHz・モノラルの音から作った指紋（SigX のバイト列）を受け取り、変えずに Shazam に送ります。REST だけで、MCP のツールはありません。リクエスト:
+  ```json
+  { "signature": "gCX+yvdV…", "sampleMs": 12000, "country": "jp" }
+  ```
+  - `signature` は指紋のバイト列の base64（`data:audio/vnd.shazam.sig;base64,` の接頭辞は付けない。65536 文字まで）、`sampleMs` は指紋を作った音の長さ（ミリ秒。3000〜12000 の整数）です。
+  - 送る前に形を確かめます: base64 として読めて 56 バイト以上・先頭の magic が `0xCAFE2580`・オフセット 4 の値がバイト 8 以降の CRC-32・オフセット 8 の値が全長 − 48・ヘッダーのサンプル数（オフセット 40 の値 − 3840）を 16 で割った整数部が `sampleMs`。どれかが合わなければ 400 `INVALID_INPUT` で、Shazam に送りません。
+  - 応答は `/music/recognize` と同じ形です（`attempts` は 1 件で `offsetSec: 0`、`audio` は付きません）。窓が 1 つなので、ずれの大きい当たりは、そのまま `match.uncertain: true` で返します。
+  - キャッシュしません（読みも書きもせず、同時の要求もまとめません）。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`、モジュールが無効なら 404 `MODULE_DISABLED` です。
 
 ---
 
