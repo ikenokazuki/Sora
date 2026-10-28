@@ -829,6 +829,11 @@ const ITEM_LABEL_MAX_CHARS = 16;
 const REPEATED_RESCUE_MAX_READ_CHARS = 600;
 /** 差し替える項目の並びの、本文の文字数の下限。 */
 const REPEATED_RESCUE_MIN_CHARS = 300;
+/** 意味的主領域の無いページで、ページ全体に戻すのは Readability の本文がこれより短いときだけ（予定表だけのページなど）。 */
+const BODY_FALLBACK_MAX_READ_CHARS = 500;
+
+/** 見出しのある表（th・thead・caption があり、中に表を入れていないもの）。古いページの段組みに使うレイアウト用の表と分ける。 */
+const isDataTable = ($: cheerio.CheerioAPI, el: any) => $(el).find('table').length === 0 && $(el).find('th, thead, caption').length > 0;
 
 /**
  * 同じ形（タグと class）の子要素が 3 つ以上並ぶ入れ物のうち、ナビのラベルでない項目の文字数の合計が最も多いもの。
@@ -874,7 +879,9 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
     const list = largestRepeatedItemList($);
     if (list && list.chars >= Math.max(REPEATED_RESCUE_MIN_CHARS, readText.length * 3)) return $.html(list.el) ?? readabilityHtml;
   }
-  if ($(STRUCTURED_CONTENT_SELECTOR).length === 0) return readabilityHtml;
+  // レイアウト用の表は救済の対象にしない。対象にすると下でページ全体に戻り、ナビやフッターまで本文に入った
+  // （Bevendorff ら 2023 の評価集の L3S-GN1 で精度 0.58。docs/evaluations/main-content/results.md）
+  if ($(STRUCTURED_CONTENT_SELECTOR).filter((_, el) => !$(el).is('table') || isDataTable($, el)).length === 0) return readabilityHtml;
   const hasSemanticContainer = $('main, [role="main"], article, #content, #main').length > 0;
   // Readability 側の実質ブロック (80文字以上の p/li/blockquote) 。なければ全文保持を条件にする。
   const readBlocks: string[] = [];
@@ -904,7 +911,8 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
   if (bestHtml) return bestHtml;
   if (readability$(STRUCTURED_CONTENT_SELECTOR).length > 0) return readabilityHtml;
   // 意味的主領域があるのに表が aside だけの場合、body へ戻さず Readability を維持する。
-  if (!hasSemanticContainer) return $('body').html() || readabilityHtml;
+  // 意味的主領域が無くても、Readability が本文を取れていれば（BODY_FALLBACK_MAX_READ_CHARS 以上）ページ全体には戻さない。
+  if (!hasSemanticContainer && readText.length < BODY_FALLBACK_MAX_READ_CHARS) return $('body').html() || readabilityHtml;
   return readabilityHtml;
 }
 

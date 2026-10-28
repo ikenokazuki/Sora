@@ -354,3 +354,15 @@ describe('main content of list pages', () => {
     for (const t of items) expect(markdown).toContain(t);
   });
 });
+
+describe('main content of pages laid out with tables', () => {
+  // 古いページは段組みに表を使う。レイアウト用の表を「表の本文」とみなしてページ全体に戻すと、ナビやフッターまで本文に入った
+  const article = Array.from({ length: 6 }, (_, i) => `<p>第${i + 1}段落。市議会は本日、新しい図書館の建設計画について審議し、開館時間の延長と駐車場の拡張を含む修正案を賛成多数で可決しました。</p>`).join('');
+  const html = `<html><head><title>市議会のニュース</title></head><body><table><tr><td class="side"><a href="/a">トップ</a><br><a href="/b">地域のお知らせと市内のイベントの一覧</a><br><a href="/c">お問い合わせ窓口のご案内</a></td><td><h1>図書館の建設計画を可決</h1>${article}</td></tr></table><div class="foot">このサイトに掲載の記事・写真の無断転載を禁じます。運営: 地域ニュース社</div></body></html>`;
+
+  it('keeps the article that Readability found instead of falling back to the whole page', () => {
+    const { markdown } = convertHtmlToMarkdown(html, 'https://example.com/news/1', 100000);
+    expect(markdown).toContain('修正案を賛成多数で可決しました');
+    expect(markdown).not.toContain('無断転載を禁じます');
+  });
+});
