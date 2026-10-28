@@ -16,6 +16,8 @@
   - rho-select v2 の r_it: 選ばれた 55 件すべてで `evidenceScores` と一致
 - **調整と判断**: dev で決め、test で判断しました。JQaRA は文の形の質問で、Sora の実際の検索語（語を並べた形）とは違います。そのため、変えるのは test で上がり、字幕の評価（`docs/evaluations/youtube-excerpt/results.md`）で下がらないものだけにしました。
 - **実行**: `bun scripts/eval-jqara.ts --data <JSONL の場所> --split test [--select]`。parquet から JSONL への変換の仕方は、スクリプトの先頭にあります。
+  - `--select` は、ハイライトの選び方（`extractQueryHighlightDetails`）が選んだ段落の精度を出します。
+  - 下の rho-select の数字は、v2.53.0 の時点のコードで測ったものです。
 
 ## 結果
 
@@ -60,4 +62,4 @@ k1 と b は、dev で (d) と組み合わせて 4 × 4 の格子を回し、い
 - **目的の式:** 要件ごとに一番の段落を集める式なので、語が一緒に出る段落を評価しません。
 - **長さの罰:** 短い段落を好みます。
 
-JQaRA は候補がどれも問いに近い難しい集まりで、文の形の質問です。Sora の使われ方（1 つのページの節から、語を並べた検索語で選ぶ）とは違うので、この結果だけで rho-select を変えることはしません。
+置き換え先の候補として、見出し階層ボーナス付き BM25 に MMR を組み合わせた選び方（`extractQueryHighlightDetails`）も測りました。dev の 1,737 問で、選んだ数は 2.90、正解の割合 0.531、1 つでも正解を選べた問い 0.881 でした。字幕（`docs/evaluations/youtube-excerpt`）でも、チャプターの無い動画では rho-select より上でした（正解の割合 0.385 対 0.316、1 つでも正解 0.673 対 0.356）。この結果をもとに、rho-select を廃止しました（別の PR）。

@@ -1,12 +1,13 @@
 // 段落の点数（scorePassage）を、日本語の公開評価集 JQaRA（CC BY-SA 4.0）で測る。docs/evaluations/term-matching/results.md
 // 問いごとの候補（dev 50 件・test 100 件）を一つのページの段落とみなし（見出しは title、IDF も候補の中で数える）、点数の順の nDCG@10・MRR@10 を出す。
-// 同点は id のハッシュの順（データの並びには正解が先に来る偏りがある）。--select で、本番と同じ呼び方の rho-select が選んだ段落の精度も見る。
+// 同点は id のハッシュの順（データの並びには正解が先に来る偏りがある）。--select で、ハイライトの選び方（extractQueryHighlightDetails）が
+// 選んだ段落の精度と、同じ数を scorePassage の上位から取った場合を比べる。
 //   curl -L -o data/jqara/test.parquet https://huggingface.co/datasets/hotchpotch/JQaRA/resolve/main/data/test-00000-of-00001.parquet
 //   duckdb -c "COPY (SELECT q_id, any_value(question) AS question, list(struct_pack(id := id, title := title, text := text, label := label)) AS passages FROM 'data/jqara/test.parquet' GROUP BY q_id ORDER BY q_id) TO 'data/jqara/test.jsonl' (FORMAT JSON)"
 //   bun scripts/eval-jqara.ts --data data/jqara --split test [--select]
 import { readFileSync } from 'node:fs';
 import { extractTermsWithBigrams, scorePassage } from '../src/extractor/hierarchical_bm25.js';
-import { buildCandidateBlocks, extractWithEscalation } from '../src/rho_select_v2_adapter.js';
+import { extractQueryHighlightDetails } from '../src/enrichment.js';
 
 type Passage = { id: string; title: string; text: string; label: number };
 type Q = { q_id: string; question: string; passages: Passage[] };
@@ -42,22 +43,22 @@ for (const [name, fn] of Object.entries(scorers)) {
 }
 
 if (args.includes('--select')) {
-  let n = 0, k = 0, rhoPos = 0, rhoHit = 0, bmPos = 0, bmHit = 0;
+  let n = 0, k = 0, hlPos = 0, hlHit = 0, bmPos = 0, bmHit = 0;
   for (const q of qs) {
     if (!q.passages.some((p) => p.label > 0)) continue;
     const md = q.passages.map((p) => `## ${p.title}\n\n${p.text}`).join('\n\n');
-    const cands = buildCandidateBlocks(md);
-    if (cands.length !== q.passages.length) continue;
-    const r = extractWithEscalation(md, q.question, { tau: 96, limits: { maxBlocks: 500, maxExtractionMs: 2000 } });
-    const sel = r.highlightItems.map((it) => cands.findIndex((c) => c.snippetText === it.text)).filter((i) => i >= 0);
+    // ハイライトは「## 見出し\n\n本文（長い節は区間を切り出し）」なので、本文の先頭 30 字を含む候補に当てる
+    const sel = extractQueryHighlightDetails(md, q.question, {}).highlights
+      .map((h) => q.passages.findIndex((p) => p.text.includes(h.replace(/^## .*\n\n/, '').replace(/^\.\.\./, '').slice(0, 30))))
+      .filter((i) => i >= 0);
     n++;
     if (sel.length === 0) continue;
     k += sel.length;
     const p = sel.filter((i) => q.passages[i].label > 0).length;
-    rhoPos += p; if (p > 0) rhoHit++;
+    hlPos += p; if (p > 0) hlHit++;
     const top = rank(s0(q), q.passages).slice(0, sel.length);
     const t = top.filter((i) => q.passages[i].label > 0).length;
     bmPos += t; if (t > 0) bmHit++;
   }
-  console.log(JSON.stringify({ split, questions: n, avgSelected: +(k / n).toFixed(2), rhoSelect: { precision: +(rhoPos / k).toFixed(4), hit: +(rhoHit / n).toFixed(4) }, scorePassageSameCount: { precision: +(bmPos / k).toFixed(4), hit: +(bmHit / n).toFixed(4) } }));
+  console.log(JSON.stringify({ split, questions: n, avgSelected: +(k / n).toFixed(2), highlights: { precision: +(hlPos / k).toFixed(4), hit: +(hlHit / n).toFixed(4) }, scorePassageSameCount: { precision: +(bmPos / k).toFixed(4), hit: +(bmHit / n).toFixed(4) } }));
 }
