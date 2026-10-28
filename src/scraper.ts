@@ -116,6 +116,7 @@ export * from './browser_stealth.js';
 
 import {
   decodeHtmlBuffer,
+  defaultReferrerHeaders,
   fetchWithSafeRedirects,
   MAX_RESPONSE_BODY_BYTES,
 } from './http_fetcher.js';
@@ -776,7 +777,7 @@ export async function scrapeUrl(options: {
               url,
               timeoutMs,
               5,
-              options.headers,
+              { ...defaultReferrerHeaders(options.headers, options.cookies), ...options.headers },
               options.cookies,
               undefined,
               options.tenantId ?? 'legacy',

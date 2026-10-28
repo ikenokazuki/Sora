@@ -79,6 +79,33 @@ export const EMULATION_OS = 'windows';
 export const ACCEPT_LANGUAGE = 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7';
 
 /**
+ * Chrome がヘッダを送る順序と、HTTP/1.1 での表記（HTTP/2 では wreq-js が小文字にする）。Host は先頭。
+ * wreq-js は要求ごとに渡したヘッダを先頭へ移すので、Accept-Language や Referer を要求ごとに渡すと Chrome の順序が崩れる。
+ * セッションにこの順序を持たせれば、日本語の Accept-Language も、Referer も、本物の位置に入る（tls.peet.ws で確認）。
+ */
+const CHROME_HEADER_ORDER = [
+  'Host', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'Upgrade-Insecure-Requests', 'User-Agent', 'Accept',
+  'Sec-Fetch-Site', 'Sec-Fetch-Mode', 'Sec-Fetch-User', 'Sec-Fetch-Dest', 'Referer', 'Accept-Encoding', 'Accept-Language', 'priority',
+];
+
+/** 検索結果から来たように見せる Referer。 */
+const GOOGLE_REFERER = 'https://www.google.com/';
+
+/**
+ * ページ取得の 1 回目に付ける、検索経由の閲覧のヘッダ（Referer と、それに合う Sec-Fetch-Site: cross-site）。
+ * 付けないのは、SORA_DEFAULT_REFERER=off のとき、呼び出し側が Referer を指定したとき、資格情報を運ぶとき。
+ * 有料記事の「Google 経由は無料」を装う形にもなり、アクセス解析には検索流入として数えられるので、切れる口を残す。
+ * 汎用の fetchWithSafeRedirects は robots.txt・sitemap・画像・JSON API にも使われる（他サイトの Referer を弾くサイトがある）ので、
+ * ここでは付けず、呼び出し側（scrapeUrl のページ取得）が使う。
+ */
+export function defaultReferrerHeaders(headers?: Record<string, string>, cookies?: Array<unknown>): Record<string, string> {
+  if (process.env.SORA_DEFAULT_REFERER?.trim().toLowerCase() === 'off') return {};
+  if (hasSensitiveRequestCredentials({ headers, cookies })) return {};
+  if (Object.keys(headers ?? {}).some((k) => k.toLowerCase() === 'referer')) return {};
+  return { Referer: GOOGLE_REFERER, 'Sec-Fetch-Site': 'cross-site' };
+}
+
+/**
  * 実行環境の Chromium のバージョンに最も近い wreq プロファイルを選ぶ。
  * ブラウザ経路は buildUserAgentFromDefault で実バージョンを名乗るため、
  * 静的fetch側も同じバージョンに揃えないと同一Cookieでバージョンが飛ぶ。
@@ -197,6 +224,8 @@ export class NativeFetchSession implements UniversalHttpSession {
     if (!headers.has('User-Agent') && !headers.has('user-agent')) {
       headers.set('User-Agent', getFallbackUserAgent());
     }
+    // wreq-js のセッションは emulation に持つ。要求ごとに渡すと Chrome の順序が崩れるので、こちらだけが既定を足す
+    if (!headers.has('Accept-Language')) headers.set('Accept-Language', ACCEPT_LANGUAGE);
     const host = NativeFetchSession.domainOf(url);
     const jar = this.cookies.get(host);
     if (jar && jar.size > 0 && !headers.has('Cookie')) {
@@ -302,6 +331,7 @@ export async function getOrCreateHttpSession(
     session = await mod.createSession({
       browser,
       os: EMULATION_OS,
+      emulation: { headers: { 'accept-language': ACCEPT_LANGUAGE }, origHeaders: CHROME_HEADER_ORDER },
       ...(proxyUrl ? { proxy: proxyUrl } : {}),
     });
   } else {
@@ -426,7 +456,6 @@ export async function fetchWithSafeRedirects(
     const keepCookie = !hostChanged && cookieHeader;
     if (strippedAuth || (hostChanged && cookieHeader)) incrementSecurityCounter('sora_credential_strip_total');
     const headers: Record<string, string> = {
-      'Accept-Language': ACCEPT_LANGUAGE,
       ...(keepCookie ? { Cookie: cookieHeader } : {}),
       ...sanitizedCustomHeaders,
     };
