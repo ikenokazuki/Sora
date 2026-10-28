@@ -10,7 +10,7 @@
 Yahoo 検索 (Web / Realtime)
   ↓ 候補統合 (RRF)・診断スコア付与
 Scrape 対象の選択 (上限 limit に対し候補プールを広めに確保)
-  ↓ 本文取得 (静的 HTTP → 必要時のみ Chromium)
+  ↓ 本文取得 (静的 HTTP → 必要時のみ Chromium)・本文の取り出し (rs-trafilatura / Readability)
 証拠抽出 (ハイライト選択: BM25 + 回答値の倍率 + MMR)
   ↓ 深層リランキング (取得後エビデンスで再評価)
 応答 (compact 既定、verbose 時のみ診断情報を付与)
@@ -121,6 +121,29 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 - 取得後の本文・ハイライトで最終リランキングします。
 - 価格・日付などの値を求めるクエリは、回答カバレッジが閾値未満なら
   追加取得を続けます（言及のみでは止めません）。
+
+## 本文の取り出し
+
+- ページの本文は、[rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura) と Readability で取り出します（`src/extractor/rs_trafilatura.ts`、`src/html_parser.ts`）。
+  - rs-trafilatura のコマンドは `RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。コマンドには、取得した HTML をそのまま渡します。
+  - 返るもの: 本文の HTML、ページの種類（article・listing・forum・product・collection・documentation・service）
+  - `--markdown` を付けて呼びます。付けないと、本文の HTML からリンクが落ちます。
+  - 本文の HTML は Sora の変換（turndown）に通します。rs-trafilatura 自身の Markdown は、一覧のページで字下げが残り、トークンが 15〜42% 多くなるためです。
+  - 変換の前に、見えない要素や Cookie の案内を除きます（元のページと同じ処理）。rs-trafilatura の本文には画像が入りません。画像の一覧（`images`）は、今までどおりページ全体から取ります。
+- 振り分け:
+  - 「記事」と判定されたページでは、Readability の本文を使います。Readability の本文が 200 字未満のときだけ、rs-trafilatura の本文に替えます。
+  - ほかの種類と判定されたページでは、rs-trafilatura の本文を使います。一覧・予定・掲示板・商品のページでは、rs-trafilatura が強いためです。
+  - コマンドが無い・失敗した・5 秒を超えたときは、Readability だけを使います。手元の開発環境と CI のテストは、こちらの経路で動きます。
+- Readability の経路では、次の 2 つの救済を行います。
+  - 一覧のカード 1 枚や宣伝の枠だけになったときは、同じ形の項目の並びに替えます。
+  - 表で段組みした古いページでも、ページ全体には戻しません。
+- 入れ子の表は、外の表のセルの文字として 1 回だけ出します（中の表の行を、外の表の行として数えません）。
+- `onlyMainContent: false` のときは、どちらも使わずページ全体を変換します。
+- ブラウザの待機中に描画の完了を確かめる処理は、Readability の経路だけで行います（同期で何度も呼ばれるため）。
+- 評価は `docs/evaluations/main-content/results.md`。
+  - WCXB の test（511 ページ）: 0.840 → 0.876
+  - 2007〜2017 年ごろの英語の記事中心の評価集（3,985 ページ）: 0.875 → 0.861
+  - 日本語のページ（72 件）: 変わった 33 件（重複を除く）のうち、良くなった 14 件・悪くなった 4 件。トークンは −3%
 
 ## 証拠抽出（ハイライト選択）
 

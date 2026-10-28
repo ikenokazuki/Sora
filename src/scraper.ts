@@ -46,6 +46,7 @@ import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './securit
 import { incrementSecurityCounter } from './security/metrics.js';
 import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
+import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
@@ -783,6 +784,7 @@ export async function scrapeUrl(options: {
 
           const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
           const html = decodeHtmlBuffer(buf, contentType);
+          const rsMain = onlyMainContent ? await extractMainContentWithRs(html, finalUrl) : undefined;
 
           const parsed = convertHtmlToMarkdown(
             html,
@@ -795,6 +797,7 @@ export async function scrapeUrl(options: {
             options.stripLinks,
             options.filterLinkDensity,
             options.keepDataImages,
+            rsMain,
           );
 
           const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
@@ -984,6 +987,7 @@ export async function scrapeUrl(options: {
           options.stripLinks,
           options.filterLinkDensity,
           options.keepDataImages,
+          onlyMainContent ? await extractMainContentWithRs(browserRes.html, browserRes.finalUrl) : undefined,
         );
 
         result = {
