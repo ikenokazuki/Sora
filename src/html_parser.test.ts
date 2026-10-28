@@ -340,3 +340,29 @@ describe('parseTimestampChapters', () => {
     ]);
   });
 });
+
+describe('main content of list pages', () => {
+  // Readability はリンクの多い一覧を本文にせず、横の宣伝の段落を選ぶことがある（WCXB の一覧・まとめのページで多かった）。
+  // 宣伝が 500 字（Readability が取り直さない長さ）を超え、一覧がその 3 倍ある形で確かめる
+  const items = Array.from({ length: 36 }, (_, i) => `2026.10.${String((i % 28) + 1).padStart(2, '0')} 定期公演 第${100 - i}回の出演メンバー、開演時間と整理番号の入場順のお知らせ`);
+  const promo = '会員になると、先行受付の抽選、限定の動画、メンバーからのメッセージ、誕生日のお祝いメール、会報の電子版など、たくさんの特典をご利用いただけます。'.repeat(7);
+  const list = `<ul class="news">${items.map((t, i) => `<li class="news-item"><a href="/news/${i}">${t}</a></li>`).join('')}</ul>`;
+  const html = `<html><head><title>NEWS</title></head><body><div id="wrap"><div class="side"><div class="promo"><p>${promo}</p></div></div><div class="list">${list}</div></div></body></html>`;
+
+  it('takes the repeated news items instead of a promo paragraph that Readability picked', () => {
+    const { markdown } = convertHtmlToMarkdown(html, 'https://example.com/news/', 100000);
+    for (const t of items) expect(markdown).toContain(t);
+  });
+});
+
+describe('main content of pages laid out with tables', () => {
+  // 古いページは段組みに表を使う。レイアウト用の表を「表の本文」とみなしてページ全体に戻すと、ナビやフッターまで本文に入った
+  const article = Array.from({ length: 6 }, (_, i) => `<p>第${i + 1}段落。市議会は本日、新しい図書館の建設計画について審議し、開館時間の延長と駐車場の拡張を含む修正案を賛成多数で可決しました。</p>`).join('');
+  const html = `<html><head><title>市議会のニュース</title></head><body><table><tr><td class="side"><a href="/a">トップ</a><br><a href="/b">地域のお知らせと市内のイベントの一覧</a><br><a href="/c">お問い合わせ窓口のご案内</a></td><td><h1>図書館の建設計画を可決</h1>${article}</td></tr></table><div class="foot">このサイトに掲載の記事・写真の無断転載を禁じます。運営: 地域ニュース社</div></body></html>`;
+
+  it('keeps the article that Readability found instead of falling back to the whole page', () => {
+    const { markdown } = convertHtmlToMarkdown(html, 'https://example.com/news/1', 100000);
+    expect(markdown).toContain('修正案を賛成多数で可決しました');
+    expect(markdown).not.toContain('無断転載を禁じます');
+  });
+});
