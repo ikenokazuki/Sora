@@ -3,6 +3,7 @@
 - **作り済みの音の指紋（SigX）を受け取って曲を特定する `POST /music/recognize/signature` を足しました。** 16 kHz・モノラルの音から作った指紋のバイト列の base64（data URI の接頭辞なし）と長さ（`sampleMs`、3000〜12000）を送ると、`/music/recognize` と同じ形の結果を返します（`attempts` は 1 件、`audio` は無し）。録音そのものを Sora に送らずに済みます。REST だけで、MCP のツールは足していません。モジュール `shazam` を名前で挙げたときだけ有効で、無効なら 404 `MODULE_DISABLED` です。
 - **受け取った指紋は、Shazam に送る前に形を確かめます。** 先頭の magic・CRC-32・全長・ヘッダーのサンプル数と `sampleMs` の一致のどれかが合わなければ 400 `INVALID_INPUT` で、送りません。窓は 1 つなので、ずれの大きい当たりは、そのまま `match.uncertain: true` で返します。
 - **この入口はキャッシュしません**（読みも書きもせず、同時の要求もまとめません）。ライブの録音は毎回違うので当たりが無く、残すと「この時刻にこの曲」が DB に残るだけになるためです。
+- **この入口では、当たっても iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は 502 `SONG_RECOGNITION_UPSTREAM_ERROR` にします。** `itunes: null`（iTunes につなげる曲が無い）と見分けられるので、呼び出し側は指紋を残して照会し直せます。`/music/recognize` と `recognize_song` は今までどおり、`itunes: null` で当たりを返します。
 - **iTunes の曲に `artistId`（iTunes のアーティスト ID）を足しました。** `search_song`・`search_artist`・`search_music` の `items` と、楽曲認識の `itunes` に入ります（任意の欄の追加なので、今の利用者は壊れません）。
 - 窓ごとの照会の処理を、音声の経路と指紋の経路で共有しました。`/music/recognize` の動きは変わりません。
 - **指紋の計算と形の検査を、npm のパッケージ `audio-signature`（`packages/audio-signature/`、MIT）に抜き出しました。** ブラウザ・Bun・Node で動き、端末で指紋を作るアプリ（oshiframe）が同じ計算と検査を使います。Sora はリポジトリの中のソースをそのまま使い（npm からは取りません）、`/music/recognize` と `/music/recognize/signature` の動きは変わりません。

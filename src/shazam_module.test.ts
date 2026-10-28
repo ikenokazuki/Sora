@@ -182,6 +182,16 @@ describe('REST /music/recognize/signature', () => {
       expect(await res.json()).toMatchObject({ code: 'SONG_RECOGNITION_UPSTREAM_ERROR', retryable: true });
     }
   });
+
+  test('a match whose iTunes lookup is refused is 502 too, so the caller can retry it', async () => {
+    process.env.ENABLED_MODULES = 'all,shazam';
+    const hit = { matches: [{ offset: 1 }], track: { key: '900001', title: 'テスト曲', subtitle: 'テスト歌手', trackadamid: '1700000001' } };
+    const itunesRefused = (async (url: string) => (url.startsWith('https://amp.shazam.com/') ? Response.json(hit) : new Response('no', { status: 403 }))) as unknown as typeof fetch;
+    const real = new Hono().route('/', createSongRecognitionRoutes(undefined, (input) => recognizeSignature(input, { fetchFn: itunesRefused })));
+    const res = await postSig(real, sigBody());
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'SONG_RECOGNITION_UPSTREAM_ERROR', retryable: true, error: 'iTunes lookup failed' });
+  });
 });
 
 describe('documentation follows the module', () => {

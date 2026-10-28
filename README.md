@@ -2291,6 +2291,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - 送る前に形を確かめます: base64 として読めて 56 バイト以上・先頭の magic が `0xCAFE2580`・オフセット 4 の値がバイト 8 以降の CRC-32・オフセット 8 の値が全長 − 48・ヘッダーのサンプル数（オフセット 40 の値 − 3840）を 16 で割った整数部が `sampleMs`。どれかが合わなければ 400 `INVALID_INPUT` で、Shazam に送りません。
   - 応答は `/music/recognize` と同じ形です（`attempts` は 1 件で `offsetSec: 0`、`audio` は付きません）。窓が 1 つなので、ずれの大きい当たりは、そのまま `match.uncertain: true` で返します。
   - キャッシュしません（読みも書きもせず、同時の要求もまとめません）。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`、モジュールが無効なら 404 `MODULE_DISABLED` です。
+  - 当たっても、iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は同じ 502 にします。`itunes: null` は iTunes につなげる曲が無かったときだけなので、呼び出し側は 502 なら指紋を残して照会し直せます（`/music/recognize` は今までどおり `itunes: null` で当たりを返します）。
 
 ---
 
