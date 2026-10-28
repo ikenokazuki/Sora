@@ -6,7 +6,9 @@ import { app } from './index.js';
 import { buildSoraMcpInstructions, createMcpServer, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
 import { createSongRecognitionRoutes } from './routes/song_recognition.js';
-import { SongRecognitionInputError, type SongRecognitionOptions, type SongRecognitionResult } from './services/song_recognition.js';
+import { recognizeSignature, SongRecognitionInputError, type SongRecognitionOptions, type SongRecognitionResult } from './services/song_recognition.js';
+import { DATA_URI_PREFIX, signatureUri } from './services/shazam_signature.js';
+import { toneBursts } from './test_fixtures/audio.js';
 import { generateOpenApiDocument } from './types.js';
 
 const savedModules = process.env.ENABLED_MODULES;
@@ -124,15 +126,76 @@ describe('REST /music/recognize', () => {
   });
 });
 
+const sigBody = () => {
+  const { uri, sampleMs } = signatureUri(toneBursts(1000));
+  return { signature: uri.slice(DATA_URI_PREFIX.length), sampleMs };
+};
+const postSig = (a: { request: Hono['request'] }, body: unknown) =>
+  a.request('/music/recognize/signature', { method: 'POST', headers: { 'content-type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+const upstream = (status: number) => (async () => new Response('no', { status })) as unknown as typeof fetch;
+
+describe('REST /music/recognize/signature', () => {
+  test('is a 404 MODULE_DISABLED by default and under all', async () => {
+    delete process.env.ENABLED_MODULES;
+    for (const value of [undefined, 'all']) {
+      if (value) process.env.ENABLED_MODULES = value;
+      const res = await postSig(app, sigBody());
+      expect(res.status).toBe(404);
+      expect(((await res.json()) as any).code).toBe('MODULE_DISABLED');
+    }
+  });
+
+  test('when enabled it validates the body and passes it on', async () => {
+    process.env.ENABLED_MODULES = 'all,shazam';
+    let seen: unknown;
+    const ok = new Hono().route('/', createSongRecognitionRoutes(undefined, async (input) => { seen = input; return fakeResult; }));
+    const body = sigBody();
+    expect((await postSig(ok, { ...body, country: 'JP' })).status).toBe(200);
+    expect(seen).toEqual({ ...body, country: 'JP' });
+    for (const bad of [
+      {}, { ...body, sampleMs: 2999 }, { ...body, sampleMs: 12001 }, { ...body, sampleMs: 12000.5 },
+      { ...body, signature: 'A'.repeat(65537) }, { ...body, signature: 'not base64!' }, { ...body, country: 'japan' },
+    ]) {
+      expect((await postSig(ok, bad)).status).toBe(400);
+    }
+    expect((await postSig(ok, '{broken')).status).toBe(400);
+  });
+
+  test('a broken signature is 400 INVALID_INPUT without asking Shazam; Shazam refusals and outages are 502', async () => {
+    process.env.ENABLED_MODULES = 'all,shazam';
+    let sent = 0;
+    const counting = (async () => { sent++; return Response.json({ matches: [] }); }) as unknown as typeof fetch;
+    const real = new Hono().route('/', createSongRecognitionRoutes(undefined, (input) => recognizeSignature(input, { fetchFn: counting })));
+    const body = sigBody();
+    const flipped = Buffer.from(body.signature, 'base64');
+    flipped[flipped.length - 1] ^= 1;
+    for (const bad of [{ ...body, signature: flipped.toString('base64') }, { ...body, sampleMs: 11000 }, { ...body, signature: body.signature.slice(0, -1) }]) {
+      const res = await postSig(real, bad);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as any).code).toBe('INVALID_INPUT');
+    }
+    expect(sent).toBe(0);
+    for (const status of [403, 429, 503]) {
+      const down = new Hono().route('/', createSongRecognitionRoutes(undefined, (input) => recognizeSignature(input, { fetchFn: upstream(status) })));
+      const res = await postSig(down, body);
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ code: 'SONG_RECOGNITION_UPSTREAM_ERROR', retryable: true });
+    }
+  });
+});
+
 describe('documentation follows the module', () => {
   test('OpenAPI and the endpoint list include /music/recognize only when it is enabled', async () => {
     delete process.env.ENABLED_MODULES;
     expect((generateOpenApiDocument() as any).paths['/music/recognize']).toBeUndefined();
+    expect((generateOpenApiDocument() as any).paths['/music/recognize/signature']).toBeUndefined();
     expect(JSON.stringify(await (await app.request('/')).json())).not.toContain('/music/recognize');
     process.env.ENABLED_MODULES = 'all,shazam';
     const doc = generateOpenApiDocument() as any;
     expect(doc.paths['/music/recognize'].post.requestBody.content['application/json'].schema.required).toEqual(['url']);
     expect(doc.paths['/music/recognize'].post.requestBody.content['multipart/form-data'].schema.required).toEqual(['file']);
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /music/recognize');
+    expect(doc.paths['/music/recognize/signature'].post.requestBody.content['application/json'].schema.required).toEqual(['signature', 'sampleMs']);
+    expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /music/recognize/signature');
   });
 });
