@@ -1992,6 +1992,7 @@ export const MusicItemSchema = z.object({
   type: z.enum(['song', 'album', 'artist']).describe('種別: "song"(曲), "album"(アルバム), "artist"(アーティスト)'),
   title: z.string().describe('楽曲名またはアルバム名・アーティスト名'),
   artist: z.string().describe('アーティスト名'),
+  artistId: z.number().optional().describe('iTunes のアーティスト ID'),
   album: z.string().optional().describe('収録アルバム名'),
   artwork: z.object({
     thumbnail: z.string().optional().describe('サムネイル画像 URL (100x100)'),
