@@ -22,6 +22,7 @@ import {
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import { sortEventsByProximity } from './events.js';
+import type { RsMainContent } from './extractor/rs_trafilatura.js';
 
 /** Markdown 冒頭の「📅 イベント情報」に出す予定の上限。超えた分は件数だけ示す（events には全件が入る） */
 const MAX_EVENT_CALLOUT = 10;
@@ -42,13 +43,20 @@ export const turndown = new TurndownService({
 turndown.addRule('gfmTable', {
   filter: 'table',
   replacement: (_content, node: any) => {
-    const rows = Array.from((node as any).querySelectorAll('tr'));
+    // 入れ子の表の文字は外の表のセルの文字に含まれるので、この表の行と、行の直下のセルだけを使う
+    // （入れ子の行・セルも使うと、段組みの表のページで同じ文が何度も出る）
+    const ownTable = (el: any) => {
+      let p = el.parentNode;
+      while (p && p.nodeName !== 'TABLE') p = p.parentNode;
+      return p;
+    };
+    const rows = Array.from((node as any).querySelectorAll('tr')).filter((row: any) => ownTable(row) === node);
     if (rows.length === 0) return '';
 
     const grid: string[][] = [];
     rows.forEach((row: any, rIdx: number) => {
       let cIdx = 0;
-      const cells = Array.from((row as any).querySelectorAll('th, td'));
+      const cells = Array.from((row as any).childNodes).filter((c: any) => c.nodeName === 'TH' || c.nodeName === 'TD');
       cells.forEach((cell: any) => {
         while (grid[rIdx]?.[cIdx] !== undefined) {
           cIdx++;
@@ -68,10 +76,12 @@ turndown.addRule('gfmTable', {
       });
     });
 
-    if (grid.length === 0 || grid[0].length === 0) return '';
+    // セルの無い行（<tr></tr>）は行番号だけ進んで穴になるので、詰めてから使う（1 行目が空だと例外になっていた）
+    const denseGrid = grid.filter((row) => row && row.length > 0);
+    if (denseGrid.length === 0) return '';
 
     // Smart Table Minimizer: 空欄列・冗長プレースホルダー列・空行の自動パージ
-    const minimizedGrid = minimizeTableMatrix(grid);
+    const minimizedGrid = minimizeTableMatrix(denseGrid);
     if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return '';
 
     const maxCols = Math.max(...minimizedGrid.map((r) => r.length));
@@ -462,9 +472,10 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
     const caption = $t.find('caption').first().text().trim() || undefined;
 
     const grid: string[][] = [];
-    $t.find('tr').each((rIdx, tr) => {
+    // 入れ子の表の行・セルは使わない（外の表のセルの文字に含まれる。gfmTable と同じ）
+    $t.find('tr').filter((_, tr) => $(tr).closest('table').get(0) === tableEl).each((rIdx, tr) => {
       let cIdx = 0;
-      $(tr).find('th, td').each((_, cell) => {
+      $(tr).children('th, td').each((_, cell) => {
         while (grid[rIdx]?.[cIdx] !== undefined) {
           cIdx++;
         }
@@ -484,10 +495,12 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
       });
     });
 
-    if (grid.length === 0 || grid[0].length === 0) return;
+    // セルの無い行（<tr></tr>）は行番号だけ進んで穴になるので、詰めてから使う（1 行目が空だと例外になっていた）
+    const denseGrid = grid.filter((row) => row && row.length > 0);
+    if (denseGrid.length === 0) return;
 
     // Smart Table Minimizer による空列・無情報列パージ
-    const minimizedGrid = minimizeTableMatrix(grid);
+    const minimizedGrid = minimizeTableMatrix(denseGrid);
     if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return;
 
     const rawHeaders = minimizedGrid[0].map((h, i) => h || `col_${i + 1}`);
@@ -916,6 +929,12 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
   return readabilityHtml;
 }
 
+/**
+ * rs-trafilatura が「記事」と判定しても、Readability の本文がこれより短ければ rs-trafilatura の本文を使う。
+ * 日本語のページで Readability が取り損ねたときは 200 字以下で、短いニュースの記事は 250 字前後でも本文として完結している
+ */
+const RS_ARTICLE_MIN_READ_CHARS = 200;
+
 export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,
@@ -928,6 +947,8 @@ export function convertHtmlToMarkdown(
   stripLinks?: boolean,
   filterLinkDensity?: boolean,
   keepDataImages = false,
+  // rs-trafilatura の本文（extractMainContentWithRs）。あれば、ページの種類で Readability と振り分ける
+  rsMain?: RsMainContent,
 ): {
   title: string;
   markdown: string;
@@ -1178,19 +1199,29 @@ export function convertHtmlToMarkdown(
     }
   });
 
-  // 9. Mozilla Readability による本文抽出
+  // 9. 本文の取り出し。rs-trafilatura の本文があれば、ページの種類で振り分ける: 記事と判定され、
+  // Readability の本文が RS_ARTICLE_MIN_READ_CHARS 以上のときだけ Readability、ほかは rs-trafilatura
+  // （一覧・予定・掲示板のページで rs-trafilatura が強く、古い記事のページでは Readability が強い。docs/evaluations/main-content/results.md）
   let contentHtml = '';
   if (onlyMainContent) {
-    try {
-      const { document } = parseHTML($.html());
-      const reader = new Readability(document);
-      const article = reader.parse();
-      if (article?.content) {
-        contentHtml = selectMainContent($, article.content);
+    const tryReadability = !rsMain || rsMain.pageType === 'article';
+    if (tryReadability) {
+      try {
+        const { document } = parseHTML($.html());
+        const reader = new Readability(document);
+        const article = reader.parse();
+        if (article?.content) {
+          contentHtml = selectMainContent($, article.content);
+        }
+      } catch {}
+      if (!contentHtml) {
+        contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
       }
-    } catch {}
-    if (!contentHtml) {
-      contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
+    }
+    if (rsMain && (!tryReadability || cheerio.load(contentHtml).text().replace(/\s+/g, ' ').trim().length < RS_ARTICLE_MIN_READ_CHARS)) {
+      const rs$ = cheerio.load(rsMain.contentHtml, null, false);
+      rs$(noiseSelectors.join(', ')).remove();
+      contentHtml = rs$.html() ?? '';
     }
   } else {
     contentHtml = $('body').html() || $.html() || '';
