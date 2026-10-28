@@ -8,7 +8,20 @@ RUN bun build ./src/index.ts --target=bun --outfile=server.js
 # 住所データの構築専用の入口。アプリ本体を読み込まないので、子プロセスとして軽く起動できる
 RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js
 
-# Stage 2: Harvest Chromium and required dependencies (Debian Bookworm)
+# Stage 2: 本文の取り出しに使う rs-trafilatura（https://github.com/Murrough-Foley/rs-trafilatura、MIT OR Apache-2.0）。
+# 版はコミットで固定する。上流は Cargo.lock を持たない（.gitignore）ので、依存の版は vendor/rs-trafilatura/Cargo.lock で固定する
+# （2026-10-28 に Cargo 1.91 で作ったもの）。rust-toolchain.toml の 1.85 の指定は消して、この Cargo.lock を作った版でビルドする。
+# 評価は docs/evaluations/main-content/results.md
+FROM docker.io/library/rust:1.91-slim-bookworm AS rs-trafilatura
+ARG RS_TRAFILATURA_REV=2a4f56eef84cca2d319d27c9108373d593110355
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/Murrough-Foley/rs-trafilatura /src \
+    && cd /src && git checkout "$RS_TRAFILATURA_REV" \
+    && rm -f rust-toolchain.toml
+COPY vendor/rs-trafilatura/Cargo.lock /src/Cargo.lock
+RUN cd /src && cargo build --release --locked --bin extract_stdin
+
+# Stage 3: Harvest Chromium and required dependencies (Debian Bookworm)
 FROM docker.io/library/debian:bookworm-slim AS browser-harvester
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
@@ -33,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
-# Stage 3: Final Minimal Distroless Image
+# Stage 4: Final Minimal Distroless Image
 FROM gcr.io/distroless/cc-debian12:latest
 WORKDIR /app
 
@@ -56,6 +69,9 @@ COPY --from=browser-harvester /lib/x86_64-linux-gnu /lib/x86_64-linux-gnu
 COPY --from=browser-harvester /usr/share/fonts /usr/share/fonts
 COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
+# 本文の取り出し（src/extractor/rs_trafilatura.ts が RS_TRAFILATURA_PATH から呼ぶ）
+COPY --from=rs-trafilatura /src/target/release/extract_stdin /usr/local/bin/rs-trafilatura
+COPY --from=rs-trafilatura /src/LICENSE-MIT /src/LICENSE-APACHE /usr/share/licenses/rs-trafilatura/
 # PID 1 で孤児プロセスを回収する init。bun が PID 1 だと、共有 Chromium を閉じるたびに
 # 補助プロセス（zygote・crashpad）がゾンビとして残る
 COPY --from=browser-harvester /usr/bin/tini-static /usr/bin/tini
@@ -63,7 +79,8 @@ COPY --from=browser-harvester /usr/bin/tini-static /usr/bin/tini
 ENV PORT=8000 \
     NODE_ENV=production \
     CHROME_PATH=/usr/lib/chromium/chromium \
-    YAHOO_MCP_PATH=/app/yahoo-search-mcp
+    YAHOO_MCP_PATH=/app/yahoo-search-mcp \
+    RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/bun", "/app/server.js"]

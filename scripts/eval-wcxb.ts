@@ -6,8 +6,10 @@
 // --bevendorff <dir> のときは、Bevendorff ら（SIGIR 2023）の評価集（https://github.com/chatnoir-eu/web-content-extraction-benchmark の
 // datasets/combined.tar.xz を展開した combined/）を読み、評価集ごとの語の F1（WCXB と同じ式）を出す。
 //   bun scripts/eval-wcxb.ts --bevendorff data/wceb/combined
+// RS_TRAFILATURA_PATH に rs-trafilatura のコマンドを渡すと、本番と同じく rs-trafilatura の本文で振り分ける（未設定なら Readability だけ）。
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
+import { extractMainContentWithRs } from '../src/extractor/rs_trafilatura.js';
 import { convertHtmlToMarkdown } from '../src/html_parser.js';
 
 const args = process.argv.slice(2);
@@ -20,13 +22,21 @@ function decode(buf: Uint8Array): string {
   if (cs && cs !== 'utf-8' && cs !== 'utf8') { try { return new TextDecoder(cs).decode(buf); } catch {} }
   return new TextDecoder('utf-8').decode(buf);
 }
-/** Markdown の記号と URL を外す（採点は \w+ の語で数えるので、URL の語を残さない）。 */
+/** frontmatter・Markdown の記号・URL を外す（採点は \w+ の語で数えるので、URL の語を残さない）。 */
 const toText = (md: string) => md
+  .replace(/^---\n[\s\S]*?\n---\n/, '')
   .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
   .replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
   .replace(/^\|?[\s:|-]+\|[\s:|-]*$/gm, '').replace(/\|/g, ' ').replace(/[*_`~]{1,3}/g, '');
 
-const extract = (html: string, url: string) => { try { return toText(convertHtmlToMarkdown(html, url, 10_000_000, false, true).markdown); } catch { return ''; } };
+const extract = async (html: string, url: string) => {
+  try {
+    const rsMain = await extractMainContentWithRs(html, url);
+    return toText(convertHtmlToMarkdown(html, url, 10_000_000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown);
+  } catch {
+    return '';
+  }
+};
 
 const bev = arg('--bevendorff');
 if (bev) {
@@ -43,10 +53,11 @@ if (bev) {
   const all: number[] = [];
   for (const f of readdirSync(`${bev}/ground-truth`).filter((x) => x.endsWith('.jsonl')).sort()) {
     const ds = f.slice(0, -6);
-    const scores = readFileSync(`${bev}/ground-truth/${f}`, 'utf8').split('\n').filter(Boolean).map((l) => {
+    const scores: number[] = [];
+    for (const l of readFileSync(`${bev}/ground-truth/${f}`, 'utf8').split('\n').filter(Boolean)) {
       const g = JSON.parse(l);
-      return f1(extract(decode(readFileSync(`${bev}/html/${ds}/${g.page_id}.html`)), 'https://example.com/'), g.plaintext ?? '');
-    });
+      scores.push(f1(await extract(decode(readFileSync(`${bev}/html/${ds}/${g.page_id}.html`)), 'https://example.com/'), g.plaintext ?? ''));
+    }
     all.push(...scores);
     console.log(JSON.stringify({ dataset: ds, pages: scores.length, f1: +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(3) }));
   }
@@ -59,7 +70,7 @@ for (const f of readdirSync(`${dir}/ground-truth`).filter((x) => x.endsWith('.js
   const id = f.slice(0, -5);
   const gt = JSON.parse(readFileSync(`${dir}/ground-truth/${f}`, 'utf8'));
   const html = decode(gunzipSync(readFileSync(`${dir}/html/${id}.html.gz`)));
-  predictions[id] = extract(html, gt.url || 'https://example.com/');
+  predictions[id] = await extract(html, gt.url || 'https://example.com/');
 }
 writeFileSync(out, JSON.stringify(predictions));
 console.log(JSON.stringify({ pages: Object.keys(predictions).length, out }));
