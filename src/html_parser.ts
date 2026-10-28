@@ -22,6 +22,7 @@ import {
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import { sortEventsByProximity } from './events.js';
+import type { RsMainContent } from './extractor/rs_trafilatura.js';
 
 /** Markdown 冒頭の「📅 イベント情報」に出す予定の上限。超えた分は件数だけ示す（events には全件が入る） */
 const MAX_EVENT_CALLOUT = 10;
@@ -928,6 +929,12 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
   return readabilityHtml;
 }
 
+/**
+ * rs-trafilatura が「記事」と判定しても、Readability の本文がこれより短ければ rs-trafilatura の本文を使う。
+ * 日本語のページで Readability が取り損ねたときは 200 字以下で、短いニュースの記事は 250 字前後でも本文として完結している
+ */
+const RS_ARTICLE_MIN_READ_CHARS = 200;
+
 export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,
@@ -940,6 +947,8 @@ export function convertHtmlToMarkdown(
   stripLinks?: boolean,
   filterLinkDensity?: boolean,
   keepDataImages = false,
+  // rs-trafilatura の本文（extractMainContentWithRs）。あれば、ページの種類で Readability と振り分ける
+  rsMain?: RsMainContent,
 ): {
   title: string;
   markdown: string;
@@ -1190,19 +1199,29 @@ export function convertHtmlToMarkdown(
     }
   });
 
-  // 9. Mozilla Readability による本文抽出
+  // 9. 本文の取り出し。rs-trafilatura の本文があれば、ページの種類で振り分ける: 記事と判定され、
+  // Readability の本文が RS_ARTICLE_MIN_READ_CHARS 以上のときだけ Readability、ほかは rs-trafilatura
+  // （一覧・予定・掲示板のページで rs-trafilatura が強く、古い記事のページでは Readability が強い。docs/evaluations/main-content/results.md）
   let contentHtml = '';
   if (onlyMainContent) {
-    try {
-      const { document } = parseHTML($.html());
-      const reader = new Readability(document);
-      const article = reader.parse();
-      if (article?.content) {
-        contentHtml = selectMainContent($, article.content);
+    const tryReadability = !rsMain || rsMain.pageType === 'article';
+    if (tryReadability) {
+      try {
+        const { document } = parseHTML($.html());
+        const reader = new Readability(document);
+        const article = reader.parse();
+        if (article?.content) {
+          contentHtml = selectMainContent($, article.content);
+        }
+      } catch {}
+      if (!contentHtml) {
+        contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
       }
-    } catch {}
-    if (!contentHtml) {
-      contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
+    }
+    if (rsMain && (!tryReadability || cheerio.load(contentHtml).text().replace(/\s+/g, ' ').trim().length < RS_ARTICLE_MIN_READ_CHARS)) {
+      const rs$ = cheerio.load(rsMain.contentHtml, null, false);
+      rs$(noiseSelectors.join(', ')).remove();
+      contentHtml = rs$.html() ?? '';
     }
   } else {
     contentHtml = $('body').html() || $.html() || '';

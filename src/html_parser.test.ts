@@ -367,6 +367,33 @@ describe('main content of pages laid out with tables', () => {
   });
 });
 
+describe('main content chosen between rs-trafilatura and Readability', () => {
+  // Readability の本文が 1,000 字（RS_ARTICLE_MIN_READ_CHARS）を超える記事
+  const article = Array.from({ length: 20 }, (_, i) => `<p>第${i + 1}段落。市議会は本日、新しい図書館の建設計画について審議し、開館時間の延長と駐車場の拡張を含む修正案を賛成多数で可決しました。</p>`).join('');
+  const html = `<html><head><title>ニュース</title></head><body><div class="side">会員登録はこちらから。</div><article><h1>図書館の建設計画を可決</h1>${article}</article></body></html>`;
+  const rsHtml = '<div><h2>今月の予定</h2><ul><li>10月1日 定期公演</li><li>10月8日 握手会</li></ul></div>';
+  const md = (rsMain?: Parameters<typeof convertHtmlToMarkdown>[10]) =>
+    convertHtmlToMarkdown(html, 'https://example.com/news/1', 100000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown;
+
+  it('uses the rs-trafilatura content for pages it does not classify as articles', () => {
+    const out = md({ pageType: 'listing', contentHtml: rsHtml });
+    expect(out).toContain('10月8日 握手会');
+    expect(out).not.toContain('修正案を賛成多数で可決しました');
+  });
+
+  it('keeps the Readability article when rs-trafilatura says article and Readability found a long body', () => {
+    const out = md({ pageType: 'article', contentHtml: rsHtml });
+    expect(out).toContain('修正案を賛成多数で可決しました');
+    expect(out).not.toContain('10月8日 握手会');
+  });
+
+  it('uses the rs-trafilatura content when Readability found only a short body', () => {
+    const short = `<html><head><title>x</title></head><body><article><p>短い本文です。</p></article></body></html>`;
+    const out = convertHtmlToMarkdown(short, 'https://example.com/x', 100000, false, true, undefined, undefined, undefined, undefined, false, { pageType: 'article', contentHtml: rsHtml }).markdown;
+    expect(out).toContain('10月1日 定期公演');
+  });
+});
+
 describe('table rows', () => {
   it('does not repeat the text of a table nested in a layout table', () => {
     const html = '<html><head><title>t</title></head><body><table><tr><td>メニュー</td><td><p>本文の段落です。</p><table><tr><td>内側の表の文です</td><td>2 列目</td></tr></table></td></tr></table></body></html>';
