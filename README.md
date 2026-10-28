@@ -2431,7 +2431,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **iTunes Search API** (Apple Inc.):
   - 公式な音楽メタデータ検索 API の提供に感謝いたします。
 - **Shazam Scraper**: [omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper)（MIT）
-  - 楽曲認識の音の指紋（`sigx.py`）と、窓の選び方・送り方を TypeScript に移植しました（元は shazamio / SongRec の参照実装の移植です）。ライセンスの表示は `src/services/shazam_signature.ts` の先頭にあります。
+  - 楽曲認識の音の指紋（`sigx.py`）と、窓の選び方・送り方を TypeScript に移植しました（元は shazamio / SongRec の参照実装の移植です）。指紋の計算と形の検査は `packages/audio-signature/` にあり、npm の [`@ikenokazuki/audio-signature`](https://www.npmjs.com/package/@ikenokazuki/audio-signature)（MIT）として公開しています。ライセンスの表示は `packages/audio-signature/src/index.ts` の先頭と `packages/audio-signature/LICENSE` にあります。
 - **天気予報 API（livedoor 天気互換）設計着想**: [tsukumijima/weather-api](https://github.com/tsukumijima/weather-api) / [weather.tsukumijima.net](https://weather.tsukumijima.net/)
   - livedoor 天気互換フォーマットの分かりやすいスキーマ設計と長年のコミュニティ貢献に感謝いたします。
 - **Yahoo Japan Search MCP**: [mouseos/Yahoo-Japan-Search-MCP](https://github.com/mouseos/Yahoo-Japan-Search-MCP)
@@ -2481,7 +2481,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **Change Date (オープンソース転換日)**:
   - **2030年8月1日**（またはそれ以前）に、自動的に完全な **MIT License** に転換されます。
 
-詳細については [LICENSE](LICENSE) をご確認ください。
+詳細については [LICENSE](LICENSE) をご確認ください。ただし `packages/audio-signature/`（npm の `@ikenokazuki/audio-signature`）は、移植元に合わせて MIT License です（[packages/audio-signature/LICENSE](packages/audio-signature/LICENSE)）。
 
 Copyright (c) 2026 ikeno
 

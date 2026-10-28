@@ -5,7 +5,7 @@ import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
 import { AudioDecodeError, decodeAudioWindows, type DecodedWindows } from './audio_decode.js';
 import { toMusicItem, type MusicItem } from './music.js';
-import { DATA_URI_PREFIX, MIN_WINDOW_SECONDS, SignatureTooShortError, WINDOW_SECONDS, checkSignatureBytes, signatureUri } from './shazam_signature.js';
+import { DATA_URI_PREFIX, MIN_WINDOW_SECONDS, SignatureTooShortError, WINDOW_SECONDS, checkSignatureBase64, signatureUri } from './shazam_signature.js';
 
 /**
  * 音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲とつなぐ（モジュール 'shazam'）。
@@ -332,8 +332,7 @@ export async function recognizeSong(options: SongRecognitionOptions, deps: SongR
  */
 export async function recognizeSignature(options: { signature: string; sampleMs: number; country?: string }, deps: SongRecognitionDeps = {}): Promise<SongRecognitionResult> {
   const country = countryOf(options.country);
-  const bytes = Buffer.from(options.signature, 'base64');
-  if (bytes.toString('base64') !== options.signature || !checkSignatureBytes(bytes, options.sampleMs)) {
+  if (!checkSignatureBase64(options.signature, options.sampleMs)) {
     throw new SongRecognitionInputError('signature が指紋の形になっていないか、sampleMs と長さが合いません');
   }
   const { hit, attempts } = await queryWindows([{ offsetSec: 0, sig: { uri: DATA_URI_PREFIX + options.signature, sampleMs: options.sampleMs } }], country, deps.fetchFn ?? fetch);
