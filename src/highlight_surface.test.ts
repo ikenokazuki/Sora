@@ -60,7 +60,7 @@ describe('Phase 0 canonical Host-facing highlight surface', () => {
       content: 'Body',
       highlights: ['evidence'],
       highlightItems: [{ text: 'evidence', score: 0.99 }],
-      highlightDiagnostics: { engine: 'rho-select-v2' },
+      highlightDiagnostics: { blockCount: 1 },
     };
     const output = formatCompactScrapeResult(result, { verbose: true });
     expect(output).toBe(result);

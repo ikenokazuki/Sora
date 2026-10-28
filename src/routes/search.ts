@@ -272,8 +272,6 @@ const handleIntegratedSearch = async (c: Context) => {
       diversityWeight: body?.diversityWeight,
       annotateTemporal: body?.annotateTemporal,
       minimizeTables: body?.minimizeTables,
-      highlightAlgorithm: body?.highlightAlgorithm,
-      highlightOverheadTokens: body?.highlightOverheadTokens,
       highlightMaxCount: body?.highlightMaxCount,
       verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });

@@ -10,7 +10,7 @@
 
 import { getFromCache, setToCache, runWithSingleFlight } from '../cache.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
-import { tokenizeAndSelectTerms, type ParsedSection } from '../rho_select.js';
+import { tokenizeAndSelectTerms, type ParsedSection } from '../extractor/markdown_sections.js';
 import { parseXDiscoverySeed } from '../x_source_isolation.js';
 
 export interface XPostDetail {

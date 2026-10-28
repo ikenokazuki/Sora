@@ -13,7 +13,7 @@ import {
   structuralMultiplier,
   temporalMultiplier,
 } from './answerability.js';
-import { extractQueryHighlightsRhoV2 } from '../rho_select_v2_adapter.js';
+import { extractQueryHighlightDetails } from '../enrichment.js';
 function chrN(): string { return String.fromCharCode(10); }
 describe('answerability signals (hermetic)', () => {
   test('splits sentences on Japanese periods', () => {
@@ -51,7 +51,7 @@ describe('answerability signals (hermetic)', () => {
     const right = analyzeFacetEvidence(splitSentences('Astra Phone Xの価格は159,800円です。'), ['astra', 'phone', 'x'], '価格');
     expect(associationMultiplier(right)).toBeGreaterThan(associationMultiplier(wrong));
   });
-  test('adapter ranks answered entity evidence above stuffed and wrong-entity blocks', () => {
+  test('highlights rank answered entity evidence above stuffed and wrong-entity blocks', () => {
     const markdown = [
       '# Wモデル',
       '',
@@ -66,17 +66,8 @@ describe('answerability signals (hermetic)', () => {
       'Astra Phone Xの価格は159,800円です。',
       '',
     ].join(chrN());
-    const res = extractQueryHighlightsRhoV2(markdown, 'Astra Phone X 価格', { requirements: ['価格'] });
-    const scores = new Map<string, number>();
-    for (const h of res.highlightItems) {
-      const ev = h.evidenceScores[0] || 0;
-      if (h.text.includes('159,800')) scores.set('correct', ev);
-      if (h.text.includes('99,800')) scores.set('wrong', ev);
-      if (h.text.includes('重量 発売日')) scores.set('stuffed', ev);
-    }
-    expect(scores.has('correct')).toBe(true);
-    expect(scores.get('correct') as number).toBeGreaterThan((scores.get('wrong') as number) || 0);
-    expect(scores.get('correct') as number).toBeGreaterThan((scores.get('stuffed') as number) || 0);
+    const res = extractQueryHighlightDetails(markdown, 'Astra Phone X 価格', { maxHighlights: 3 });
+    expect(res.highlights[0]).toContain('159,800');
   });
 });
 describe('structural evidence signals (hermetic)', () => {
@@ -92,7 +83,7 @@ describe('structural evidence signals (hermetic)', () => {
   test('definition key value pairs score above prose', () => {
     expect(structuralMultiplier('重量' + chrN() + '199g', '重量')).toBe(1.4);
   });
-  test('adapter ranks table evidence above mention-only', () => {
+  test('highlights rank table evidence above mention-only', () => {
     const markdown = [
       '# 仕様表',
       '',
@@ -105,15 +96,8 @@ describe('structural evidence signals (hermetic)', () => {
       '重量について解説します。',
       '',
     ].join(chrN());
-    const res = extractQueryHighlightsRhoV2(markdown, 'Astra Phone X 重量', { requirements: ['重量'] });
-    const scores = new Map<string, number>();
-    for (const h of res.highlightItems) {
-      const ev = h.evidenceScores[0] || 0;
-      if (h.text.includes('199g')) scores.set('table', ev);
-      if (h.text.includes('解説します')) scores.set('mention', ev);
-    }
-    expect(scores.has('table')).toBe(true);
-    expect(scores.get('table') as number).toBeGreaterThan((scores.get('mention') as number) || 0);
+    const res = extractQueryHighlightDetails(markdown, 'Astra Phone X 重量', { maxHighlights: 3 });
+    expect(res.highlights[0]).toContain('199g');
   });
 });
 describe('temporal relevance signals (hermetic)', () => {
@@ -135,7 +119,7 @@ describe('temporal relevance signals (hermetic)', () => {
     const y = new Date().getFullYear();
     expect(temporalMultiplier([(y - 2) + '年価格 139,800円'], '価格', false)).toBe(1.0);
   });
-  test('adapter prefers current-year evidence for latest-price queries', () => {
+  test('highlights prefer current-year evidence for latest-price queries', () => {
     const y = new Date().getFullYear();
     const markdown = [
       '# 旧価格',
@@ -147,17 +131,8 @@ describe('temporal relevance signals (hermetic)', () => {
       '現行価格 ' + y + '年 159,800円',
       '',
     ].join(chrN());
-    const res = extractQueryHighlightsRhoV2(markdown, '最新価格', { requirements: ['価格', '重量'] });
-    const scores = new Map<string, number[]>();
-    for (const h of res.highlightItems) {
-      if (h.text.includes('159,800')) scores.set('current', h.evidenceScores);
-      if (h.text.includes('139,800')) scores.set('old', h.evidenceScores);
-    }
-    expect(scores.has('current')).toBe(true);
-    expect(scores.has('old')).toBe(true);
-    const cur = scores.get('current') as number[];
-    const oldScores = scores.get('old') as number[];
-    expect(cur[0]).toBeGreaterThan(oldScores[0]);
+    const res = extractQueryHighlightDetails(markdown, '最新価格', { maxHighlights: 3 });
+    expect(res.highlights[0]).toContain('159,800');
   });
 });
 describe('evidence coverage diagnostics (hermetic)', () => {
@@ -172,7 +147,7 @@ describe('evidence coverage diagnostics (hermetic)', () => {
     expect(cov.answeredRequirements).toEqual(['価格', '重量']);
     expect(cov.missingRequirements).toEqual(['Wi-Fi']);
   });
-  test('adapter diagnostics expose answer coverage and missing requirements', () => {
+  test('coverage over the selected highlights exposes answered and missing requirements', () => {
     const markdown = [
       '# 価格',
       '',
@@ -187,47 +162,22 @@ describe('evidence coverage diagnostics (hermetic)', () => {
       'Wi-Fiについて解説します。',
       '',
     ].join(chrN());
-    const res = extractQueryHighlightsRhoV2(markdown, 'Astra Phone X 価格 重量 Wi-Fi', { requirements: ['価格', '重量', 'Wi-Fi'] });
-    expect(res.diagnostics.answerCoverage).toBeCloseTo(2 / 3, 10);
-    expect(res.diagnostics.answeredRequirements).toEqual(['価格', '重量']);
-    expect(res.diagnostics.missingRequirements).toEqual(['Wi-Fi']);
+    const query = 'Astra Phone X 価格 重量 Wi-Fi';
+    const res = extractQueryHighlightDetails(markdown, query, { maxHighlights: 3 });
+    const cov = computeEvidenceCoverage(res.highlights, entityTermsForQuery(query), ['価格', '重量', 'Wi-Fi']);
+    expect(cov.answerCoverage).toBeCloseTo(2 / 3, 10);
+    expect(cov.answeredRequirements).toEqual(['価格', '重量']);
+    expect(cov.missingRequirements).toEqual(['Wi-Fi']);
   });
 });
-describe('adaptive candidate expansion (hermetic)', () => {
-  function longDoc(answerAt: number, total: number): string {
+describe('buried answers (hermetic)', () => {
+  test('finds the answer in the 21st of 22 sections', () => {
     const parts: string[] = [];
-    for (let i = 0; i < total; i++) {
-      parts.push('# S' + i);
-      parts.push('');
-      if (i === answerAt) {
-        parts.push('Astra Phone Xの価格は159,800円です。');
-      } else {
-        parts.push('価格について解説します。参考情報その' + i + '。');
-      }
-      parts.push('');
+    for (let i = 0; i < 22; i++) {
+      parts.push('# S' + i, '', i === 20 ? 'Astra Phone Xの価格は159,800円です。' : '価格について解説します。参考情報その' + i + '。', '');
     }
-    return parts.join(chrN());
-  }
-  test('expands beyond 12 when answer is buried', () => {
-    const res = extractQueryHighlightsRhoV2(longDoc(20, 22), 'Astra Phone X 価格', { requirements: ['価格'] });
-    expect(res.diagnostics.candidateExpansion as object).toBeDefined();
-    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
-    expect(exp.stages).toBeGreaterThan(1);
-    expect(exp.final).toBeGreaterThan(12);
-    const hasAnswer = res.highlightItems.some((h) => h.text.includes('159,800'));
-    expect(hasAnswer).toBe(true);
-  });
-  test('stops at 12 when answer is up front', () => {
-    const res = extractQueryHighlightsRhoV2(longDoc(2, 22), 'Astra Phone X 価格', { requirements: ['価格'] });
-    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
-    expect(exp.stages).toBe(1);
-    expect(exp.final).toBe(12);
-  });
-  test('opt-out runs a single full stage', () => {
-    const res = extractQueryHighlightsRhoV2(longDoc(20, 22), 'Astra Phone X 価格', { requirements: ['価格'], adaptiveCandidate: false });
-    const exp = res.diagnostics.candidateExpansion as { initial: number; final: number; stages: number };
-    expect(exp.stages).toBe(1);
-    expect(exp.final).toBe(22);
+    const res = extractQueryHighlightDetails(parts.join(chrN()), 'Astra Phone X 価格', { maxHighlights: 3 });
+    expect(res.highlights[0]).toContain('159,800');
   });
 });
 describe('date requirement matching (hermetic)', () => {
@@ -252,7 +202,7 @@ describe('date requirement matching (hermetic)', () => {
     expect(dateYearMultiplier(['10月11日のライブ'], req, ref)).toBe(1.0);
     expect(dateYearMultiplier(['2026年10月11日のライブ'], [], ref)).toBe(1.0);
   });
-  test('adapter prefers the implied-year evidence', () => {
+  test('highlights prefer the implied-year evidence', () => {
     const ref = new Date();
     const future = new Date(ref.getTime() + 20 * 24 * 60 * 60 * 1000);
     const m = future.getMonth() + 1;
@@ -268,16 +218,8 @@ describe('date requirement matching (hermetic)', () => {
       y + '年' + m + '月' + d + '日 ライブ',
       '',
     ].join(chrN());
-    const res = extractQueryHighlightsRhoV2(markdown, '君と見るそら ' + m + '月' + d + '日 ライブ', { requirements: ['ライブ', '重量'] });
-    const scores = new Map<string, number>();
-    for (const h of res.highlightItems) {
-      const ev = h.evidenceScores[0] || 0;
-      if (h.text.includes(y + '年')) scores.set('current', ev);
-      if (h.text.includes((y - 1) + '年')) scores.set('old', ev);
-    }
-    expect(scores.has('current')).toBe(true);
-    expect(scores.has('old')).toBe(true);
-    expect(scores.get('current') as number).toBeGreaterThan(scores.get('old') as number);
+    const res = extractQueryHighlightDetails(markdown, '君と見るそら ' + m + '月' + d + '日 ライブ', { maxHighlights: 3 });
+    expect(res.highlights[0]).toContain(y + '年');
   });
 });
 describe('relative day resolution (hermetic)', () => {

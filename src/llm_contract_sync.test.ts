@@ -11,9 +11,6 @@ import {
   SearchWebQuerySchema,
   IntegratedSearchRequestSchema,
   INTEGRATED_SEARCH_INPUT_SHAPE,
-  HighlightAlgorithmSchema,
-  DEFAULT_HIGHLIGHT_ALGORITHM,
-  HIGHLIGHT_ALGORITHMS,
   generateOpenApiDocument,
 } from './types.js';
 import { SEARCH_WEB_INPUT_SHAPE } from './search_web_formats.js';
@@ -107,8 +104,6 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'diversityWeight',
         'annotateTemporal',
         'minimizeTables',
-        'highlightAlgorithm',
-        'highlightOverheadTokens',
         'highlightMaxCount',
         'verbose',
         'responseMode',
@@ -165,14 +160,10 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(mcpShape[key]).toBeDefined();
       }
 
-      // 2. highlightAlgorithm default & enum
-      const hlDefault = typeof (sharedShape.highlightAlgorithm as any)._def.defaultValue === 'function'
-        ? (sharedShape.highlightAlgorithm as any)._def.defaultValue()
-        : (sharedShape.highlightAlgorithm as any)._def.defaultValue;
-      expect(hlDefault).toBe('rho-select-v2');
-      expect(openApiProps.highlightAlgorithm.default).toBe('rho-select-v2');
-      const expectedAlgos = ['rho-select', 'rho-select-v2', 'legacy'];
-      expect(openApiProps.highlightAlgorithm.enum).toEqual(expectedAlgos);
+      // 2. ハイライトの選び方は 1 つだけ（rho-select の廃止で highlightAlgorithm・highlightOverheadTokens は無くなった）
+      expect((sharedShape as Record<string, unknown>).highlightAlgorithm).toBeUndefined();
+      expect(openApiProps.highlightAlgorithm).toBeUndefined();
+      expect(openApiProps.highlightOverheadTokens).toBeUndefined();
 
       // 3. responseMode default & enum
       const respDefault = typeof (sharedShape.responseMode as any)._def.defaultValue === 'function'
@@ -198,27 +189,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
     });
   });
 
-  describe('C. highlightAlgorithm parity', () => {
-    it('shared HIGHLIGHT_ALGORITHMS contains rho-select-v2 and default is rho-select-v2', () => {
-      expect(HIGHLIGHT_ALGORITHMS).toContain('rho-select-v2');
-      expect(DEFAULT_HIGHLIGHT_ALGORITHM).toBe('rho-select-v2');
-      expect(HighlightAlgorithmSchema.safeParse('rho-select-v2').success).toBe(true);
-    });
-
-    it('MCP scrape, scrape_batch, search_deep, crawl_site include rho-select-v2 in schema', () => {
+  describe('C. no highlight algorithm switch', () => {
+    it('MCP scrape, scrape_batch, search_deep, crawl_site no longer take highlightAlgorithm or highlightOverheadTokens', () => {
       const server = createMcpServer({ deferTools: false });
-      const tools = ['scrape', 'scrape_batch', 'search_deep', 'crawl_site'];
-
-      for (const toolName of tools) {
+      for (const toolName of ['scrape', 'scrape_batch', 'search_deep', 'crawl_site']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
-        const hlSchema = schema.highlightAlgorithm;
-        expect(hlSchema).toBeDefined();
-        expect(hlSchema.safeParse('rho-select-v2').success).toBe(true);
-        expect(hlSchema.safeParse('rho-select').success).toBe(true);
-        expect(hlSchema.safeParse('rho-bm25').success).toBe(false);
-        expect(hlSchema.safeParse('legacy').success).toBe(true);
+        expect(schema.highlightAlgorithm).toBeUndefined();
+        expect(schema.highlightOverheadTokens).toBeUndefined();
+        expect(schema.highlightMaxCount).toBeDefined();
       }
     });
   });

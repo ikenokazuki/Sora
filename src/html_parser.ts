@@ -1164,7 +1164,7 @@ export function convertHtmlToMarkdown(
   }
   if (events.length > 0) {
     // 開催中・今後の予定を近い順、過去を後ろに並べて 1 件 1 行で出す。
-    // 行頭の「> 📅 **…**:」は本文の評価から除外される目印なので、全行に付ける（rho_select / enrichment / scrape_content_quality）
+    // 行頭の「> 📅 **…**:」は本文の評価から除外される目印なので、全行に付ける（extractor/markdown_sections / enrichment / scrape_content_quality）
     const ordered = sortEventsByProximity(events);
     const flat = (value: string) => value.replace(/\s+/g, ' ').trim();
     for (const ev of ordered.slice(0, MAX_EVENT_CALLOUT)) {

@@ -16,18 +16,18 @@ ENTITY_STOPWORDS (answerability.ts) stays separate on purpose: it filters entity
 
 src/retrieval/rrf.ts is gone; the weighted reciprocalRankFusion in enrichment.ts is the only implementation.
 
-## 4. Circular import enrichment and rho_select_v2_adapter (DONE, verified 2026-10-11)
+## 4. Circular import enrichment and rho_select_v2_adapter (DONE, verified 2026-10-11; rho-select removed 2026-10-28)
 
-rho_select_v2_adapter.ts no longer imports enrichment.ts: estimateTokens lives in src/text_tokens.ts and the
-scoring helpers in src/retrieval/answerability.ts. enrichment.ts -> rho_select_v2_adapter.ts is now one-way.
+rho-select (rho_select.ts, rho_select_v2*.ts) was removed. Highlights are chosen by enrichment.ts
+(extractQueryHighlightDetails); the section parser and term selection it shared now live in
+src/extractor/markdown_sections.ts.
 
 ## 5. BM25 spread (LOW, scoped 2026-10-01)
 
 Mostly layered reuse: hierarchical_bm25.ts holds canonical primitives,
 information_retrieval.ts holds complementary MMR/PRF/Jaccard.
-The inline BM25 variants in enrichment.ts (title/snippet) and
-rho_select_v2_adapter.ts (heading/body matrix) serve different inputs
-and stay separate by design. Fixed the one real dupe:
+The inline BM25 variant in enrichment.ts (title/snippet) serves a
+different input and stays separate by design. Fixed the one real dupe:
 answerability.ts splitSentences now re-exports the canonical one.
 
 ## 6. Scattered score multipliers (DONE 2026-10-01)
