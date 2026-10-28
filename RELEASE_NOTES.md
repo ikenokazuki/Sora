@@ -1,3 +1,12 @@
+# Sora v2.53.0 — ブラウザの偽装を Chromium 自身の仕組みに寄せ、静的取得のヘッダ順を Chrome に揃えた
+
+- **ブラウザ（Chromium）の偽装を、JS の上書きから、起動フラグと CDP に寄せました。** 言語は `--accept-lang`（`navigator.language(s)`・Worker・別オリジンの iframe まで揃い、`Accept-Language` が Chrome と同じ位置に入ります）、UA は `--user-agent`（Service Worker・SharedWorker の UA に `HeadlessChrome` が見えていたのを消します。外部の検出サイト CreepJS の headless 判定は、本番イメージで 67% → 0%）、hover / pointer は `--blink-settings`（デスクトップのマウスに揃えます）。タイムゾーンは起動時の `TZ=Asia/Tokyo` にしました（本番のコンテナは UTC で、ロケールの ja-JP と食い違っていました）。
+- **JS で上書きするのは、platform と WebRTC のラッパーだけにしました。** 次の上書きは、本来の値の方が本物に近く、Worker や iframe にも届くので削除しました。`navigator.webdriver`（本来は `false`。上書きで `undefined` になり、getter が native でなくなっていました）、`navigator.languages`（`navigator.language` が `en-US` のまま `languages[0]` だけ `ja-JP` になり、Worker は `en-US` でした）、`window.chrome` のスタブ（`runtime: {}` を足していました）、canvas の雑音（`getImageData` だけで `toDataURL` に効きませんでした）、`setExtraHTTPHeaders` で足していた `Accept-Language`（Chrome と違う位置に入っていました）。
+- **静的取得のヘッダ順を、Chrome に揃えました。** wreq-js は要求ごとに渡したヘッダを先頭へ移すため、`Accept-Language` が先頭に出ていました。セッションの `emulation` に `accept-language` と `origHeaders`（Chrome の順序と表記）を持たせ、`Accept-Language` と `Referer` が Chrome と同じ位置に入ります。TLS の JA4 と HTTP/2 の指紋は変わりません（tls.peet.ws で確認）。
+- **`scrape` の静的取得の 1 回目に、Google の `Referer` と、それに合う `Sec-Fetch-Site: cross-site` を既定で付けるようにしました。** `SORA_DEFAULT_REFERER=off` で無効にできます。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶとき、そして robots.txt・sitemap・画像・JSON API には付けません。ブラウザ経路には付けません（`page.goto` の `referer` は `Sec-Fetch-Site` が `none` のままで、Chrome の実際の動きと食い違うため）。有料記事の「Google 経由は無料」を装う形にもなり、アクセス解析には検索流入として数えられるので、気になる場合は `off` にしてください。
+- **既知の限界。** Windows の Chrome を名乗るため、Worker の `navigator.platform` は `Linux x86_64` のままです（外部の検出サイト deviceandbrowserinfo は、これを理由に「bot」と判定します）。また、IP で止める CDN（例: `https://www.sanae.gr.jp/` は、どの構成でも CloudFront の 403）は、この変更では通りません。
+- 新しいテスト `src/stealth_native.test.ts` で、native の getter・言語・タイムゾーン・hover・Worker / SharedWorker・ヘッダ順・`Referer` を固定しました。canvas の雑音のテストは、機能ごと削除しました。
+
 # Sora v2.52.0 — 楽曲認識で、作り済みの指紋を受け取れるようにした
 
 - **作り済みの音の指紋（SigX）を受け取って曲を特定する `POST /music/recognize/signature` を足しました。** 16 kHz・モノラルの音から作った指紋のバイト列の base64（data URI の接頭辞なし）と長さ（`sampleMs`、3000〜12000）を送ると、`/music/recognize` と同じ形の結果を返します（`attempts` は 1 件、`audio` は無し）。録音そのものを Sora に送らずに済みます。REST だけで、MCP のツールは足していません。モジュール `shazam` を名前で挙げたときだけ有効で、無効なら 404 `MODULE_DISABLED` です。
