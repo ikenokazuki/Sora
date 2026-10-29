@@ -46,6 +46,7 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
   }
 }
 import * as cheerio from 'cheerio';
+import { extractQueryHighlightDetails } from './enrichment.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -460,6 +461,52 @@ describe('web-fetcher Core Functions', () => {
     expect(longHighlights.length).toBeGreaterThan(0);
     expect(longHighlights[0]).toContain('大規模言語モデル（LLM）の台頭');
     expect(longHighlights[0]).toContain('ハイブリッド手法');
+  });
+
+  it('extractQueryHighlightDetails: 件数の指定が無ければ書き出し・字数の目安・取りこぼしの語で足し、指定があればその件数まで', () => {
+    // 長い節（800 字超で窓で切る）: 答えの文（検索語なし）は書き出しにあり、検索語は後ろの文にだけある
+    const longSection = ['## 概要', '', '創業は1931年である。', ...Array.from({ length: 50 }, (_, i) => `関係のない説明の文がここに続きます${i}。`), '東京ドーム チケット 発売の案内はこちら。'].join('\n');
+    const windowed = extractQueryHighlightDetails(longSection, '東京ドーム チケット 発売', { maxHighlights: 1 }).highlights[0];
+    expect(windowed).toContain('創業は1931年');
+    expect(windowed).toContain('発売の案内');
+    expect(windowed).not.toContain('続きます25。');
+    // 短い節が 6 つ: 既定なら 3 件より多く、maxHighlights: 3 なら 3 件
+    const many = Array.from({ length: 6 }, (_, i) => `## 節${i}\n\n東京ドーム チケット 発売 ${'情報'.repeat(i + 1)}${i}`).join('\n\n');
+    expect(extractQueryHighlightDetails(many, '東京ドーム チケット 発売').highlights.length).toBeGreaterThan(3);
+    expect(extractQueryHighlightDetails(many, '東京ドーム チケット 発売', { maxHighlights: 3 }).highlights.length).toBe(3);
+    // REST は件数を検査しない: null は省略と同じ、端数は切り上げ、1 未満は 1
+    const count = (maxHighlights: any) => extractQueryHighlightDetails(many, '東京ドーム チケット 発売', { maxHighlights }).highlights.length;
+    expect(count(null)).toBeGreaterThan(3);
+    expect([count(0), count(-1), count(2.5)]).toEqual([1, 1, 3]);
+    // 1 字の語（採点では外れる）だけを含む節も、選んだハイライトに無ければ 1 つ足す
+    const oneChar = '## 海\n\nカモメ 海辺の話。\n\n## 別\n\nこの鳥は渡りをする。';
+    expect(extractQueryHighlightDetails(oneChar, 'カモメ 鳥').highlights.join('\n')).toContain('渡りをする');
+    expect(extractQueryHighlightDetails(oneChar, 'カモメ 鳥', { maxHighlights: 3 }).highlights.join('\n')).not.toContain('渡りをする');
+  });
+
+  it('extractQueryHighlightDetails: 窓の書き出しは返す文だけに付け、選ぶ節（件数の指定あり・既定の先頭 3 件）は変えない', () => {
+    // 長い節の書き出しが「山の話」とほぼ同じ語。書き出しを MMR の類似度に入れると「山の話」が重複扱いで外れる
+    const lead = '富士山の標高は3776メートルで静岡県と山梨県にまたがる日本最高峰の火山として古くから信仰の対象である。';
+    const md = [
+      `## 山の話\n\n${lead}東京ドーム チケット 発売。`,
+      ['## 長い節', '', lead, ...Array.from({ length: 50 }, (_, i) => `関係のない説明の文がここに続きます${i}。`), ...Array.from({ length: 5 }, () => '東京ドーム チケット 発売の案内。')].join('\n'),
+      '## 別の話\n\n東京ドーム チケット 発売。',
+      '## 他\n\n東京ドーム チケット 発売の日程。整理 番号 公演 会場。',
+    ].join('\n\n');
+    const headings = (hs: string[]) => hs.map((h) => h.split('\n')[0]);
+    const k3 = extractQueryHighlightDetails(md, '東京ドーム チケット 発売', { maxHighlights: 3 }).highlights;
+    expect(headings(k3)).toEqual(['## 長い節', '## 他', '## 山の話']);
+    expect(k3[0]).toContain('富士山の標高');
+    expect(headings(extractQueryHighlightDetails(md, '東京ドーム チケット 発売').highlights).slice(0, 3)).toEqual(['## 長い節', '## 他', '## 山の話']);
+  });
+
+  it('extractQueryHighlightDetails: 取りこぼしの語で足す節は字数に上限があり、収まらない表は飛ばして次の節を足す', () => {
+    const table = ['| 鳥 | 説明 |', '|---|---|', ...Array.from({ length: 200 }, (_, i) => `| 鳥${i} | 説明の行${i} |`)].join('\n');
+    const md = `## 海\n\nカモメ 海辺の話。\n\n## 表\n\n${table}\n\n## 別\n\nこの鳥は渡りをする。`;
+    const hs = extractQueryHighlightDetails(md, 'カモメ 鳥').highlights;
+    expect(hs.join('\n')).toContain('渡りをする');
+    expect(hs.join('\n')).not.toContain('鳥199');
+    expect(hs.reduce((n, h) => n + h.length, 0)).toBeLessThanOrEqual(1600);
   });
 
   it('generateTextFragmentUrl should create valid W3C Scroll-to-Text Fragment URLs', () => {

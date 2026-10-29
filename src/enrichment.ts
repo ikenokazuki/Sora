@@ -1,6 +1,6 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
-import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalPassage, type HeadingBlock } from './extractor/hierarchical_bm25.js';
+import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalWindow, type HeadingBlock } from './extractor/hierarchical_bm25.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms } from './extractor/markdown_sections.js';
 import {
   analyzeFacetEvidence,
@@ -539,11 +539,21 @@ export interface ParsedSection {
   startIndex: number;
 }
 
+// maxHighlights を指定しないときの足し方: 上位 3 件の後、合計がこの字数に収まる限り、窓で切った節を丸ごとに戻し、
+// さらに後ろの候補を足す（最大 8 件）。語を並べた検索語で答えの節が 4 位以下・窓の外になるのを拾う
+const HIGHLIGHT_CHAR_BUDGET = 1600;
+const BUDGET_MAX_HIGHLIGHTS = 8;
+// 長い節を窓で切るとき、前に付ける節の書き出しの字数（返す文だけに付け、MMR の類似度には使わない）
+const WINDOW_LEAD_CHARS = 350;
+// 取りこぼした語を補う節を試す数の上限
+const FILL_MAX_TRIES = 5;
+
 export interface QueryHighlightDetailsOptions {
   sourceId?: string;
   url?: string;
   publishedTime?: string;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
+  /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補いをしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
   reorderUFlat?: boolean;
   diversityWeight?: number;
@@ -564,7 +574,9 @@ export function extractQueryHighlightDetails(
   query: string,
   options: QueryHighlightDetailsOptions = {},
 ): QueryHighlightDetailsResult {
-  const maxHighlights = options.maxHighlights ?? 3;
+  // 件数を指定されなければ（null も省略と同じ）、上位 3 件の後に字数の目安まで足す。REST は件数を検査しないので、端数は切り上げ、1 未満は 1 にする
+  const extend = options.maxHighlights == null;
+  const maxHighlights = extend ? 3 : Math.max(1, Math.ceil(options.maxHighlights as number)) || 1;
   const sourceId = options.sourceId || 'S1';
   const evidenceMode = options.evidenceMode || 'highlights';
 
@@ -603,7 +615,10 @@ export function extractQueryHighlightDetails(
     block: ProvenanceBlock;
     score: number;
     snippet: string;
+    /** MMR の類似度を測る文: 窓で切った節は書き出しを付けない窓（選ぶ節を書き出しで変えない） */
     rawSnippetBody: string;
+    /** 窓で切ったときの、節を丸ごと出す形 */
+    wholeSnippet?: string;
   }
 
   const scoredCandidates: ScoredCandidate[] = [];
@@ -634,12 +649,11 @@ export function extractQueryHighlightDetails(
     if (score <= 0) continue;
 
     let snippetBody = block.body;
-    const isTableOrCode =
-      (block.body.includes('|') && block.body.includes('---')) ||
-      block.body.includes('```');
-
-    if (block.body.length > 800 && !isTableOrCode) {
-      snippetBody = dinkelbachOptimalPassage(block.body, terms, blocks);
+    let similarityText = block.body;
+    if (block.body.length > 800 && !isTableOrCode(block.body)) {
+      const win = dinkelbachOptimalWindow(block.body, terms, blocks, { leadChars: WINDOW_LEAD_CHARS });
+      snippetBody = win.withLead;
+      similarityText = win.passage;
     }
 
     const headingPrefix = block.headingPath.length > 0
@@ -655,7 +669,8 @@ export function extractQueryHighlightDetails(
       block,
       score,
       snippet: `${anchorHeader}${headingPrefix}${snippetBody}`.trim(),
-      rawSnippetBody: snippetBody,
+      rawSnippetBody: similarityText,
+      wholeSnippet: snippetBody !== block.body ? `${anchorHeader}${headingPrefix}${block.body}`.trim() : undefined,
     });
   }
 
@@ -687,12 +702,56 @@ export function extractQueryHighlightDetails(
 
   // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
   const diversityWeight = options.diversityWeight ?? 0.7;
-  const mmrCandidates = selectMaximalMarginalRelevance(validCandidates, {
+  // MMR の貪欲な順は上限に依らず、類似度は書き出しを付けない窓で測るので、件数を指定したときの節と、
+  // 指定しないときの先頭 3 件（U 字の並べ替えの前）は、目安を入れる前と同じ
+  const mmrOrder = selectMaximalMarginalRelevance(validCandidates, {
     getScore: (c) => c.score,
     getText: (c) => c.rawSnippetBody,
-    limit: maxHighlights,
+    limit: extend ? BUDGET_MAX_HIGHLIGHTS : maxHighlights,
     lambda: diversityWeight,
   });
+  const mmrCandidates = mmrOrder.slice(0, maxHighlights);
+  if (extend) {
+    let used = mmrCandidates.reduce((n, c) => n + c.snippet.length, 0);
+    // 1. 余りがあれば、窓で切った節を丸ごとに戻す（順位の高い順）
+    for (const c of mmrCandidates) {
+      if (!c.wholeSnippet || used + c.wholeSnippet.length - c.snippet.length > HIGHLIGHT_CHAR_BUDGET) continue;
+      used += c.wholeSnippet.length - c.snippet.length;
+      c.snippet = c.wholeSnippet;
+    }
+    // 2. 収まる候補を MMR の順に足す
+    for (const c of mmrOrder.slice(maxHighlights)) {
+      if (used + c.snippet.length > HIGHLIGHT_CHAR_BUDGET) continue;
+      mmrCandidates.push(c);
+      used += c.snippet.length;
+    }
+    // 3. 選んだハイライトに無い検索語（採点で外れる 1 字の語も含む）がページにあれば、それを最も多く含む節（同数なら点の高い節）を 1 つ足す。
+    //    本文は max(目安の残り, 800) 字まで: 窓で切る節（800 字超）は書き出しと窓で収まり、収まらない表・コード・切れ目の無い長い文の節は
+    //    飛ばして次の節を試す（試すのは FILL_MAX_TRIES 節まで。窓の計算は節ごとに全節の IDF を数えるため）
+    const covered = mmrCandidates.map((c) => c.snippet.toLowerCase()).join('\n');
+    const missing = coverageWords(query).filter((w) => !covered.includes(w));
+    if (missing.length > 0) {
+      const chosen = new Set(mmrCandidates.map((c) => c.block));
+      const scoreOf = new Map(scoredCandidates.map((c) => [c.block, c.score]));
+      const cap = Math.max(HIGHLIGHT_CHAR_BUDGET - used, 800);
+      const fills = blocks
+        .filter((b) => !chosen.has(b))
+        .map((b) => ({ b, hits: missing.filter((w) => `${b.headingPath.join(' ')}\n${b.body}`.toLowerCase().includes(w)).length }))
+        .filter((f) => f.hits > 0)
+        .sort((x, y) => y.hits - x.hits || (scoreOf.get(y.b) ?? 0) - (scoreOf.get(x.b) ?? 0));
+      for (const { b } of fills.slice(0, FILL_MAX_TRIES)) {
+        const fillTerms = missing.filter((w) => b.body.toLowerCase().includes(w));
+        const body = b.body.length > 800 && !isTableOrCode(b.body)
+          ? dinkelbachOptimalWindow(b.body, fillTerms.length > 0 ? fillTerms : terms, blocks, { leadChars: WINDOW_LEAD_CHARS }).withLead
+          : b.body;
+        if (body.length > cap) continue;
+        const headingPrefix = b.headingPath.length > 0 ? `## ${b.headingPath.join(' > ')}\n\n` : '';
+        const anchorHeader = evidenceMode === 'contextual_highlights' ? `${formatBlockAnchor(b.ref)}\n` : '';
+        mmrCandidates.push({ block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body });
+        break;
+      }
+    }
+  }
 
   // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
   const finalCandidates = options.reorderUFlat
@@ -740,6 +799,22 @@ export function extractQueryHighlightDetails(
     discrepancies,
     temporalAnchors: allTemporalAnchors,
   };
+}
+
+/** 表・コードの節（窓で切らない） */
+function isTableOrCode(body: string): boolean {
+  return (body.includes('|') && body.includes('---')) || body.includes('```');
+}
+
+/** 取りこぼしを確かめる検索語: Segmenter の語（1 字の語も含む）。ひらがなだけの語・記号・不要語は除く */
+function coverageWords(query: string): string[] {
+  const out = new Set<string>();
+  for (const seg of new Intl.Segmenter('ja', { granularity: 'word' }).segment(query)) {
+    const w = seg.segment.toLowerCase().trim();
+    if (!seg.isWordLike || !w || /^[\p{Script=Hiragana}ー]+$/u.test(w) || !/[\p{L}\p{N}]/u.test(w) || STOPWORDS_LIST.includes(w)) continue;
+    out.add(w);
+  }
+  return [...out];
 }
 
 /** クエリ関連ハイライト抽出（本文だけが要るときの入口。中身は extractQueryHighlightDetails） */

@@ -290,9 +290,22 @@ export function dinkelbachOptimalPassage(
   allBlocks: HeadingBlock[],
   opts?: { minChars?: number; maxChars?: number; alpha?: number; maxIter?: number }
 ): string {
-  if (!body || terms.length === 0) return body;
+  return dinkelbachOptimalWindow(body, terms, allBlocks, opts).passage;
+}
+
+/**
+ * dinkelbachOptimalPassage の窓（passage）と、窓が節の先頭から始まらないとき節の書き出しを leadChars 字まで前に付けた形（withLead）。
+ * 書き出しには定義・要約が多く、検索語の無い答えの文もここに多い
+ */
+export function dinkelbachOptimalWindow(
+  body: string,
+  terms: string[],
+  allBlocks: HeadingBlock[],
+  opts?: { minChars?: number; maxChars?: number; alpha?: number; maxIter?: number; leadChars?: number }
+): { passage: string; withLead: string } {
+  if (!body || terms.length === 0) return { passage: body, withLead: body };
   const sentences = splitSentences(body);
-  if (sentences.length <= 1) return body;
+  if (sentences.length <= 1) return { passage: body, withLead: body };
 
   const minChars = opts?.minChars ?? 80;
   const maxChars = opts?.maxChars ?? 350;
@@ -329,7 +342,7 @@ export function dinkelbachOptimalPassage(
       if (acc.length + s.length > maxChars && acc.length >= minChars) break;
       acc += (acc ? ' ' : '') + s;
     }
-    return acc;
+    return { passage: acc, withLead: acc };
   }
 
   // Dinkelbach 反復: max (W(i, j) / (L(i, j)^alpha))
@@ -401,6 +414,8 @@ export function dinkelbachOptimalPassage(
   const result = selectedSentences.join(' ');
   const prefix = bestI > 0 ? '...' : '';
   const suffix = bestJ < m - 1 ? '...' : '';
+  const passage = `${prefix}${result}${suffix}`.trim();
+  const lead = bestI > 0 && opts?.leadChars ? sentences.slice(0, bestI).join(' ').slice(0, opts.leadChars) : '';
 
-  return `${prefix}${result}${suffix}`.trim();
+  return { passage, withLead: lead ? `${lead} ... ${result}${suffix}`.trim() : passage };
 }

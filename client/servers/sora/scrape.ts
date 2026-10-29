@@ -49,7 +49,7 @@ export type ScrapeInput = {
   extractHighlights?: boolean;
   /** 抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false) */
   onlyHighlights?: boolean;
-  /** ハイライト最大選択件数 (デフォルト: 3) */
+  /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
   /** 証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ) */
   evidenceMode?: "full" | "highlights" | "contextual_highlights";

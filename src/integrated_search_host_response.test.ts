@@ -4,6 +4,7 @@ import {
   projectIntegratedSearchEvidenceItem,
   serializeIntegratedSearchMcpResponse,
 } from './integrated_search_host_response.js';
+import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 
 function baseItem() {
   return {
@@ -107,6 +108,33 @@ describe('integrated search Host response', () => {
       extractHighlights: false,
     });
     expect(output.markdown).toBe(item.markdown);
+  });
+
+  test('highlights nearly as long as markdown: markdown kept instead of highlights', () => {
+    const item = { ...baseItem(), markdown: '## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'] };
+    const output = projectIntegratedSearchEvidenceItem(item, { responseMode: 'evidence' });
+    expect(output.markdown).toBe(item.markdown);
+    expect(output.highlights).toBeUndefined();
+    // maxTotalChars があると本文は切り詰められうるので、ハイライトを残す
+    const budgeted = projectIntegratedSearchEvidenceItem(item, { responseMode: 'evidence', maxTotalChars: 1000 });
+    expect(budgeted.highlights).toEqual(item.highlights);
+    expect(budgeted.markdown).toBeUndefined();
+  });
+
+  test('highlights nearly as long as markdown but pointed to by highlightsSameAs: highlights kept for the duplicate', () => {
+    const shortPage = { ...baseItem(), markdown: '## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'] };
+    const compact: Record<string, any> = formatCompactIntegratedSearchResponse({
+      query: 'Target answer',
+      results: [shortPage, { ...shortPage, url: 'https://m.example.com/article' }],
+    } as Record<string, any>);
+    expect(compact.results[1].highlightsSameAs).toBe(shortPage.url);
+    const output = formatIntegratedSearchHostResponse(compact, { responseMode: 'evidence' });
+    // 参照先のハイライトを消さない（消すと重複側の根拠がどこにも無い参照になる）
+    expect(output.results[0].highlights).toEqual(shortPage.highlights);
+    expect(output.results[0].markdown).toBeUndefined();
+    expect(output.results[1].highlights).toBeUndefined();
+    expect(output.results[1].markdown).toBeUndefined();
+    expect(output.results[1].highlightsSameAs).toBe(shortPage.url);
   });
 
   test('no highlights preserves markdown', () => {
