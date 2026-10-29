@@ -35,9 +35,7 @@ export const YAHOO_MCP_PATH =
   process.env.YAHOO_MCP_PATH ||
   (existsSync('/usr/local/bin/yahoo-search-mcp') ? '/usr/local/bin/yahoo-search-mcp' :
    existsSync(join(import.meta.dir, '../../bin/yahoo-search-mcp')) ? join(import.meta.dir, '../../bin/yahoo-search-mcp') :
-   existsSync('/home/ikeno/app/oshiframe/backend/bin/Yahoo-Japan-Search-MCP-v0.1.0-linux-x64/yahoo-search-mcp')
-     ? '/home/ikeno/app/oshiframe/backend/bin/Yahoo-Japan-Search-MCP-v0.1.0-linux-x64/yahoo-search-mcp'
-     : 'yahoo-search-mcp');
+   'yahoo-search-mcp');
 
 /** Upstream rate discipline for Yahoo MCP calls.
  * Sequential eval and multi-query union can burst against provider
