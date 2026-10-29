@@ -68,7 +68,7 @@ export type ScrapeBatchInput = {
   minimizeTables?: boolean;
   /** 記事本文のみを抽出するか (デフォルト: true) */
   onlyMainContent?: boolean;
-  /** ハイライト最大選択件数 (デフォルト: 3) */
+  /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
   /** デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false) */
   verbose?: boolean;

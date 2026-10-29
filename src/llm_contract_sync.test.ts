@@ -169,9 +169,10 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const respDefault = typeof (sharedShape.responseMode as any)._def.defaultValue === 'function'
         ? (sharedShape.responseMode as any)._def.defaultValue()
         : (sharedShape.responseMode as any)._def.defaultValue;
-      expect(respDefault).toBe('full');
-      expect(openApiProps.responseMode.default).toBe('full');
+      expect(respDefault).toBe('evidence');
+      expect(openApiProps.responseMode.default).toBe('evidence');
       expect(openApiProps.responseMode.enum).toEqual(['full', 'evidence']);
+      expect(mcpShape.responseMode.parse(undefined)).toBe('evidence');
 
       // 4. updated enum
       const expectedUpdated = ['all', 'day', 'week', 'year'];

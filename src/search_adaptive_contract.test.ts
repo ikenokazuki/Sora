@@ -111,6 +111,29 @@ describe('adaptive deep search public contract', () => {
     }
   });
 
+  test.each([
+    [{}, 'evidence'],
+    [{ responseMode: null }, 'evidence'],
+    [{ responseMode: 'full' }, 'full'],
+  ])('REST %j answers in %s mode (evidence is the default)', async (options, mode) => {
+    searchSpy.mockResolvedValue({
+      query: 'fixture', source: 'integrated', count: 1, cached: false,
+      results: [{
+        title: 'Fixture', url: 'https://example.com/article', source: 'web', snippet: 'search snippet',
+        markdown: '# Full source\n\n## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'],
+      }],
+    } as any);
+    const response = await searchRoutes.request('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'fixture', ...options }),
+    });
+    expect(response.status).toBe(200);
+    const json = await response.json() as any;
+    expect(json.responseMode).toBe(mode === 'evidence' ? 'evidence' : undefined);
+    expect(json.results[0].markdown === undefined).toBe(mode === 'evidence');
+    expect(json.results[0].highlights).toEqual(['## Target\n\nAnswer evidence']);
+  });
+
   test('omitting options preserves internal defaults', async () => {
     const response = await searchRoutes.request('/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
