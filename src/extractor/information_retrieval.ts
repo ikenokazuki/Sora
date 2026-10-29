@@ -93,9 +93,10 @@ export function computeTextSimilarity(textA: string, textB: string): number {
   if (!textA || !textB) return 0;
   if (textA === textB) return 1.0;
 
-  const termsA = extractSimilarityTokens(textA);
-  const termsB = extractSimilarityTokens(textB);
+  return tokenSetSimilarity(extractSimilarityTokens(textA), extractSimilarityTokens(textB));
+}
 
+function tokenSetSimilarity(termsA: Set<string>, termsB: Set<string>): number {
   if (termsA.size === 0 || termsB.size === 0) return 0;
 
   let intersection = 0;
@@ -137,8 +138,11 @@ export function selectMaximalMarginalRelevance<T>(
   const maxScore = Math.max(...rawScores);
   const normalizedScores = rawScores.map((s) => (maxScore > 0 ? s / maxScore : 0));
 
-  // テキストトークンのキャッシュ
+  // テキストと語の集合のキャッシュ（組ごとに分かち書きし直すと、件数 K で K^2 倍遅くなる）
   const texts = candidates.map((c) => options.getText(c));
+  const tokenSets = texts.map((t) => extractSimilarityTokens(t));
+  const similarity = (a: number, b: number) =>
+    !texts[a] || !texts[b] ? 0 : texts[a] === texts[b] ? 1.0 : tokenSetSimilarity(tokenSets[a], tokenSets[b]);
 
   const selectedIndices: number[] = [];
   const remainingIndices = new Set<number>(candidates.map((_, idx) => idx));
@@ -161,13 +165,12 @@ export function selectMaximalMarginalRelevance<T>(
     let bestCandidateIdx = -1;
 
     for (const candIdx of remainingIndices) {
-      const candText = texts[candIdx];
       const candNormScore = normalizedScores[candIdx];
 
       // すでに選択されたアイテム群との最大類似度を計算
       let maxSimToSelected = 0;
       for (const selIdx of selectedIndices) {
-        const sim = computeJaccardSimilarity(candText, texts[selIdx]);
+        const sim = similarity(candIdx, selIdx);
         if (sim > maxSimToSelected) {
           maxSimToSelected = sim;
         }

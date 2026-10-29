@@ -184,7 +184,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .min(1)
         .max(10)
         .optional()
-        .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+        .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
     async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, includeDiagnostics, includeDiscrepancies, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount }) => {
       try {
@@ -369,7 +369,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .min(1)
         .max(10)
         .optional()
-        .describe('ハイライト最大選択件数 (デフォルト: 3)').meta({ default: 3 }),
+        .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
     async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount }) => {
       try {

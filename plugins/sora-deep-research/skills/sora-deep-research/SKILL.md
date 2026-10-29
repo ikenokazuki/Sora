@@ -33,7 +33,7 @@ description: >
    - SNSを含める場合は `includeSocial: true` とし、対象・検索語・期間は `social` で指定する。Weiboは新着順、MetaはWeb索引経由の発見＋本文取得。Xは `search_realtime` を使う。（deferred。先に `search_tools` へ「国地域」）。
    - 代表証拠で足りなければ `get_country_context` → `get_country_context_evidence` → `get_country_context_updates` で原文・詳細を追う。
    - 一般の事実確認は `search_web`（`formats: ["markdown"]` で同コール取得も可）または `search_deep`。
-   - `search_deep` の既定（`responseMode: "evidence"`）は検索語に合うハイライトだけを返し、本文の Markdown を省く。網羅的な列挙・比較・全文の要約・本文の引用で裏付けたいときは `responseMode: "full"` を指定する。
+   - `search_deep` の既定（`responseMode: "evidence"`）は検索語に合うハイライトだけを返し、本文の Markdown を省く（ハイライトが本文とほぼ同じ長さの結果は本文を返す）。網羅的な列挙・比較・全文の要約・本文の引用で裏付けたいときは `responseMode: "full"` を指定する。
    - 既知URLの精読は `scrape`、複数は `scrape_batch`（最大20件）。
 5. 出典・時刻・対象の確認: 発行者、公表日時、取得日時、対象国・地域、対象期間を確認する。日付不明は最新としない。期限外は背景へ分ける。公的数値・発表日は公式ドメインを先に読む。
 6. 不足だけ追加調査: 未確認の確認事項IDごとに検索案と必要な出典種類を添えて補う。取得済みは取り直さない。

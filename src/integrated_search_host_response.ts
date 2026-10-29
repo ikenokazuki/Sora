@@ -28,6 +28,15 @@ function hasCanonicalHighlights(item: Record<string, any>): boolean {
   );
 }
 
+// ハイライトが本文のこの割合以上なら、本文を省いてもほとんど減らない。ハイライトの代わりに本文を返す（窓で切った根拠より答えを落とさない）
+const MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO = 0.75;
+
+function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
+  if (typeof item?.markdown !== 'string' || item.markdown.length === 0 || !Array.isArray(item?.highlights)) return false;
+  const highlightChars = item.highlights.reduce((n: number, h: unknown) => n + (typeof h === 'string' ? h.length : 0), 0);
+  return highlightChars >= item.markdown.length * MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO;
+}
+
 function isXItem(item: Record<string, any>): boolean {
   if (item?.source === 'x') return true;
 
@@ -60,11 +69,14 @@ function isXItem(item: Record<string, any>): boolean {
  * considers removing `markdown`.
  *
  * `markdown` is NEVER overwritten with highlights.
- * `highlights` is NEVER removed here (compact mode may replace a duplicate with `highlightsSameAs`).
+ * `highlights` is removed only when it is nearly as long as `markdown` (the markdown is kept instead),
+ * unless another result points to it with `highlightsSameAs` (`highlightsReferenced`) or `maxTotalChars`
+ * may cut that markdown; compact mode may replace a duplicate with `highlightsSameAs`.
  */
 export function projectIntegratedSearchEvidenceItem(
   sourceItem: Record<string, any>,
   options: IntegratedSearchHostResponseOptions = {},
+  highlightsReferenced = false,
 ): Record<string, any> {
   const item = { ...sourceItem };
 
@@ -85,7 +97,10 @@ export function projectIntegratedSearchEvidenceItem(
     // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる
     (hasCanonicalHighlights(item) || typeof item?.highlightsSameAs === 'string');
 
-  if (mayElideMarkdown) {
+  // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無いときだけ
+  if (mayElideMarkdown && !highlightsReferenced && options.maxTotalChars === undefined && highlightsNearlyAsLongAsMarkdown(item)) {
+    delete item.highlights;
+  } else if (mayElideMarkdown) {
     delete item.markdown;
   }
 
@@ -269,12 +284,16 @@ export function formatIntegratedSearchHostResponse(
     return withBudget(result);
   }
 
+  // compact が highlightsSameAs で指す先（先の結果の url または link）
+  const referenced = new Set(
+    Array.isArray(result?.results) ? result.results.map((item: Record<string, any>) => item?.highlightsSameAs).filter((u: unknown) => typeof u === 'string') : [],
+  );
   return withBudget({
     ...result,
     responseMode: 'evidence',
     results: Array.isArray(result?.results)
       ? result.results.map((item: Record<string, any>) =>
-          projectIntegratedSearchEvidenceItem(item, options),
+          projectIntegratedSearchEvidenceItem(item, options, referenced.has(item?.url || item?.link || '')),
         )
       : result?.results,
   });

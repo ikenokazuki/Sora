@@ -308,7 +308,7 @@ export async function finalizeScrapeResult(
     }
 
     // 段落ごとの BM25（見出し階層ボーナス付き）の上位を、MMR で重複を避けて選ぶ（extractQueryHighlightDetails）
-    const picked = extractQueryHighlightDetails(result.content, options.query, { maxHighlights: options.highlightMaxCount ?? 3 });
+    const picked = extractQueryHighlightDetails(result.content, options.query, { maxHighlights: options.highlightMaxCount });
     let highlights = picked.highlights;
     let items: Array<{ text: string; score: number }> = picked.highlightItems.map((item) => ({ text: item.text, score: item.score }));
     // 本文に検索語が無いときは、検索結果のスニペットや説明文を根拠にする
@@ -579,7 +579,7 @@ export function buildScrapeCacheKey(
     contextTitle: options.contextTitle ?? '',
     snippet: options.snippet ?? '',
   });
-  return `scrape:v7:${options.url}:${digest}`;
+  return `scrape:v8:${options.url}:${digest}`;
 }
 
 export async function scrapeUrl(options: {
@@ -1829,7 +1829,7 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v10:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v11:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -2033,7 +2033,7 @@ export async function integratedSearch(options: {
             const picked =
               isolatedEvidence.eligibleForPrimaryEvidence &&
               isolatedEvidence.markdown
-                ? extractQueryHighlightDetails(isolatedEvidence.markdown, query, { maxHighlights: highlightMaxCount ?? 3 })
+                ? extractQueryHighlightDetails(isolatedEvidence.markdown, query, { maxHighlights: highlightMaxCount })
                 : null;
 
             const isolatedItem: Record<string, any> = {
