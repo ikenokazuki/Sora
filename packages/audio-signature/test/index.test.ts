@@ -20,7 +20,7 @@ function toneBursts(freqHz: number, seconds = 12, amplitude = 8000): Int16Array 
   return out;
 }
 
-// Sora v2.51.1 の toneBursts(1000)（12 秒）から作った指紋の base64（184 バイト）。client-app の backend の fixture と同じ値
+// Sora v2.51.1 の toneBursts(1000)（12 秒）から作った指紋の base64（184 バイト）
 const GOLDEN = 'gCX+yvdV712IAAAAAJwRlAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAD9AgAAAHwAAAAAQIgAAABBAANgeAAAAAslev8fPiV6/x8/JXr/Hz4lev8fPyV6/x8+JXr/Hz8lev8fPiV6/x8/JXr/Hz4lev8fPyV6/x8+JXr/Hz8lev8fPiV6/x8/JXr/Hz4lev8fPyV6/x8+JXr/Hz8lev8fPiV6/x8/JXr/Hz4lev8fPyV6/x8+JXr/Hw==';
 
 const peakHz = (correctedBin: number) => correctedBin * (SAMPLE_RATE / 2 / 1024 / 64);

@@ -2370,7 +2370,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
 | `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
 | `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、本番の sora.example.com は `true` を指定して警告を止めています）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、その場合は `true` を指定して警告を止めます）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
 | `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
 | `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |

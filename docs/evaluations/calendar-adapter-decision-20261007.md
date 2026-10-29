@@ -37,6 +37,6 @@ scrapeとdeep検索のキャッシュ名前空間はv4へ変更し、汎用DOM�
 - 全テスト: 1,302成功、22スキップ、失敗0件。
 - 本番と同じBun・Chromiumを使った、通常記事・商品・表・Cookie・localStorage・Shadow DOM・遅延描画などの関連26テスト: 成功、失敗0件。
 - TimeTree専用テストでは予定の保持、終日予定の日付、文字列のエスケープ、不正リンクの除外、データなし・不正形式でDOMを維持すること、レスポンス待機の期限と追加レスポンスの回収を検証した。
-- 実APIの候補・本番確認、イメージ、取得時間、復旧手順は`docs/operations/fetcher.md`へ記録する。別取得範囲の単発計測を競合との速度保証には使わない。
+- 実APIの候補・本番確認、イメージ、取得時間、復旧手順は配備先の運用手順書へ記録する。別取得範囲の単発計測を競合との速度保証には使わない。
 
 参考: [MCP Tools仕様](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)。過去の汎用DOMのみの検証は`generic-calendar-extraction-20261007.md`、最初の専用補完検証は`browser-readiness-timetree-20261007.md`を参照する。

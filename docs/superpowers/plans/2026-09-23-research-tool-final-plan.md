@@ -49,7 +49,7 @@
 
 ## 3. 作業場所と変更の候補
 
-リポジトリ: /path/to/sora
+リポジトリ: Sora の作業ツリー（以下 /path/to/sora）
 
 既存コード:
 - src/mcp.ts: search_web、scrape、research_country_context等の公開契約。実際の入力を読んでから呼ぶ。

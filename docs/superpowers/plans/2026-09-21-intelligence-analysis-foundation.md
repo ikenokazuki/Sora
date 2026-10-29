@@ -3,7 +3,7 @@
 > Spec: pasted v1.0「Sora Country Intelligence 非LLM分析基盤 実装指示書」
 
 - base commit: `384d9855d3bd75cb937eaf9f496c17bbbc5dc33a` (ghostfetch/main, release v2.27.0)
-- work branch: `feat/intelligence-analysis-foundation` (isolated clone at /path/to/sora)
+- work branch: `feat/intelligence-analysis-foundation` (isolated clone)
 - recorded: 2026-09-21 JST
 
 ## Baseline results (production code untouched)
