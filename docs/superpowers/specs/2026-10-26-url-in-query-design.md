@@ -4,7 +4,7 @@
 
 ## 経緯
 
-LibreChat の Agent が「この動画を要約して」に対し、`search_deep` を `query: "https://www.youtube.com/watch?v=5Jq35KcE8vI"`・`limit: 5`・`videos: 3` で呼んだ。結果は 3 件だった。
+MCP クライアントの Agent が「この動画を要約して」に対し、`search_deep` を `query: "https://www.youtube.com/watch?v=5Jq35KcE8vI"`・`limit: 5`・`videos: 3` で呼んだ。結果は 3 件だった。
 
 - 1 件目は指定の動画。Yahoo の Web 検索がこのページを返したので、字幕で読めた。ただし題名は Yahoo の検索結果のもので、英語に訳されていた（"Chatting and doing my makeup, plus my latest dilemma"）。
 - 2・3 件目は関係ない動画（科学映像館の「窓ひらく」「あかり」）。Yahoo の動画検索に、URL そのものを検索語として渡したため。

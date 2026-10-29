@@ -4,9 +4,9 @@
 
 ## 目的
 
-推し活アプリの client-app が、推しの YouTube チャンネルの最近の動画（題名・公開日・説明文）を見つけ、その字幕（`get_youtube_transcript`）を読んで、推しインサイトと会話提案の材料にする。
+利用側のアプリが、YouTube チャンネルの最近の動画（題名・公開日・説明文）を見つけ、その字幕（`get_youtube_transcript`）を読んで、要約や分析の材料にする。
 
-`get_youtube_transcript` は動画 1 本の字幕を読めるが、チャンネルから動画を見つける窓口が Sora に無かった。`search_video` は Yahoo の動画検索（client-app と分け合う細い経路）で、投稿者を指定できない。チャンネルの最新動画の一覧を、Yahoo を使わずに返す `get_youtube_channel`（`POST /youtube/channel`）を足す。
+`get_youtube_transcript` は動画 1 本の字幕を読めるが、チャンネルから動画を見つける窓口が Sora に無かった。`search_video` は Yahoo の動画検索（ほかの利用と分け合う細い経路）で、投稿者を指定できない。チャンネルの最新動画の一覧を、Yahoo を使わずに返す `get_youtube_channel`（`POST /youtube/channel`）を足す。
 
 ## 調べたこと（2026-10-26）
 

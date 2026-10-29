@@ -44,7 +44,7 @@ SQLiteも読み取り専用で検査しました。稼働コンテナは`./data/
 
 ## 3. 実測した速報・ライブ経路
 
-詳細な時刻、URL、HTTP状態、件数は計画書横の`2026-09-22-global-intelligence-live-evidence.evidence.json`を参照してください。主試験は同一ホストのBunと稼働中web-fetcherコンテナのBunから実行しました。1経路1回ずつの観測であり、可用性SLAや平均・p95ではありません。
+詳細な時刻、URL、HTTP状態、件数は計画書横の`2026-09-22-global-intelligence-live-evidence.evidence.json`を参照してください。主試験は同一ホストのBunと稼働中のSoraのコンテナのBunから実行しました。1経路1回ずつの観測であり、可用性SLAや平均・p95ではありません。
 
 | 経路 | ホスト | コンテナ | 確認した内容 |
 |---|---|---|---|
