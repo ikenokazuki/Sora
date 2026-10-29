@@ -28,8 +28,9 @@ function hasCanonicalHighlights(item: Record<string, any>): boolean {
   );
 }
 
-// ハイライトが本文のこの割合以上なら、本文を省いてもほとんど減らない。ハイライトの代わりに本文を返す（窓で切った根拠より答えを落とさない）
-const MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO = 0.75;
+// ハイライトが本文のこの割合以上なら、本文を省いてもほとんど減らない。ハイライトの代わりに本文を返す（窓で切った根拠より答えを落とさない）。
+// 保存した実ページの 76 問では、0.75 から 0.85 に上げても答えの残る結果は変わらず、evidence のトークンが減る
+const MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO = 0.85;
 
 function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
   if (typeof item?.markdown !== 'string' || item.markdown.length === 0 || !Array.isArray(item?.highlights)) return false;

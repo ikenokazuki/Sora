@@ -500,6 +500,56 @@ describe('web-fetcher Core Functions', () => {
     expect(headings(extractQueryHighlightDetails(md, '東京ドーム チケット 発売').highlights).slice(0, 3)).toEqual(['## 長い節', '## 他', '## 山の話']);
   });
 
+  it('extractQueryHighlightDetails: 目安より長い節は、件数の指定が無ければ窓の外の段落も塊で拾い、節ごとに 1 つにまとめる', () => {
+    // 見出しが題名だけの長い節: 検索語の多い段落（窓）と、離れた段落の答えの文（検索語は一部だけ）
+    const filler = (i: number) => `関係のない説明の段落がここに続きます。番号は${i}です。季節の話や町の話が書かれています。`;
+    const md = [
+      '# 記事の題名',
+      '',
+      '記事の書き出しの段落です。',
+      ...Array.from({ length: 12 }, (_, i) => filler(i)),
+      '東京ドーム公演のチケット発売の案内です。東京ドーム チケット 発売の日程は追って知らせます。',
+      ...Array.from({ length: 12 }, (_, i) => filler(i + 12)),
+      'チケットの一般発売は3月14日の午前10時からです。',
+      ...Array.from({ length: 12 }, (_, i) => filler(i + 24)),
+    ].join('\n\n');
+    expect(md.length).toBeGreaterThan(1600);
+    const query = '東京ドーム チケット 発売';
+    const k3 = extractQueryHighlightDetails(md, query, { maxHighlights: 3 }).highlights;
+    expect(k3.join('\n')).not.toContain('3月14日');
+    const def = extractQueryHighlightDetails(md, query).highlights;
+    expect(def.length).toBe(1);
+    expect(def[0].startsWith('## 記事の題名\n\n記事の書き出しの段落です。')).toBe(true);
+    expect(def[0]).toContain('追って知らせます');
+    expect(def[0]).toContain('3月14日の午前10時');
+    expect(def[0]).toContain(' ... ');
+    expect(def[0].length).toBeLessThanOrEqual(1600);
+    // 。で文を切れない長い段落（英語など）は塊にしないので、字数の目安を大きく超えない
+    const en = ['# Title', '', ...Array.from({ length: 30 }, (_, i) => `${'Some unrelated words here. '.repeat(40)}Tokyo Dome ticket sale ${i}.`)].join('\n\n');
+    expect(extractQueryHighlightDetails(en, 'Tokyo Dome ticket sale').highlights.join('').length).toBeLessThan(2000);
+  });
+
+  it('extractQueryHighlightDetails: 件数の指定が無ければ、足切り（最高点の 0.35 倍）のすぐ下の節も字数の目安の残りで足す', () => {
+    const query = '東京ドーム チケット 発売';
+    const md = [
+      '## 発売\n\n東京ドーム チケット 発売の案内。東京ドーム チケット 発売は明日。',
+      '## 会場\n\n東京ドーム チケット 発売の会場。東京ドーム チケット。',
+      '## 日程\n\n東京ドーム チケット 発売の日程。東京ドーム。',
+      ...Array.from({ length: 6 }, (_, i) => `## 雑記${i}\n\n関係のない話${i}。`),
+      '## 注意\n\n北口。東京ドーム チケット。',
+    ].join('\n\n');
+    const headings = (hs: string[]) => hs.map((h) => h.split('\n')[0]);
+    const def = extractQueryHighlightDetails(md, query);
+    expect(headings(def.highlights)).toEqual(['## 発売', '## 会場', '## 日程', '## 注意']);
+    // 「注意」の点は最高点の 0.25〜0.35 倍
+    const ratio = def.highlightItems[3].score / def.highlightItems[0].score;
+    expect(ratio).toBeGreaterThanOrEqual(0.25);
+    expect(ratio).toBeLessThan(0.35);
+    expect(headings(extractQueryHighlightDetails(md, query, { maxHighlights: 3 }).highlights)).toEqual(['## 発売', '## 会場', '## 日程']);
+    // 本文が同じ節は 1 つだけ足す
+    expect(headings(extractQueryHighlightDetails(`${md}\n\n## 注意\n\n北口。東京ドーム チケット。`, query).highlights)).toEqual(['## 発売', '## 会場', '## 日程', '## 注意']);
+  });
+
   it('extractQueryHighlightDetails: 取りこぼしの語で足す節は字数に上限があり、収まらない表は飛ばして次の節を足す', () => {
     const table = ['| 鳥 | 説明 |', '|---|---|', ...Array.from({ length: 200 }, (_, i) => `| 鳥${i} | 説明の行${i} |`)].join('\n');
     const md = `## 海\n\nカモメ 海辺の話。\n\n## 表\n\n${table}\n\n## 別\n\nこの鳥は渡りをする。`;
