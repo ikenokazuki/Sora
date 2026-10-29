@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 作業ディレクトリは `/home/ikeno/Sora`。ブランチは `main` から `fix/api-schema-notation` を切って作業する。push・デプロイはしない。
+- 作業ディレクトリは Sora の作業ツリー（以下 `/path/to/sora`）。ブランチは `main` から `fix/api-schema-notation` を切って作業する。push・デプロイはしない。
 - テスト実行は必ず `NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file test ...`。型検査は `bun run typecheck`。
 - 単体テストで外部ネットワークに出ない。外部依存は `deps` 注入・`spyOn`・純粋関数の切り出しで置き換える。
 - 既定値の宣言は **`.meta({ default: 値 })` だけ** を使う。`.default()` は使わない（省略時の値が `undefined` から変わり、実装の分岐が変わるため）。既に `.default()` が付いている項目はそのまま残す。
@@ -26,7 +26,7 @@
 
 詳細は [2026-10-03-api-notation-audit.md](../audits/2026-10-03-api-notation-audit.md)。
 
-本番 `fetcher.ikebun.jp` のAPIドキュメントで `formats` や `highlightAlgorithm` の選択肢が出ない問題は、`main`（`f63bfab`・`56fe1f3`）で修正済み。本番イメージはその前のビルドなので、次回デプロイで解消する。
+本番の配備のAPIドキュメントで `formats` や `highlightAlgorithm` の選択肢が出ない問題は、`main`（`f63bfab`・`56fe1f3`）で修正済み。本番イメージはその前のビルドなので、次回デプロイで解消する。
 
 現在の作業ツリーを検出器で走査した結果（ホテル有効時の48ツール、入力項目918件）:
 
@@ -88,7 +88,7 @@
 
 - [ ] **Step 1: 変更内容を確認する**
 
-Run: `git -C /home/ikeno/Sora status --short`
+Run: `git -C /path/to/sora status --short`
 Expected: 上記ファイルだけが変更・未追跡として出る。それ以外が出たら作業を止めてユーザーに確認する。
 
 - [ ] **Step 2: 検証する**

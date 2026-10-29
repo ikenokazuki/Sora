@@ -168,7 +168,7 @@ test('detail remains available after report persistence and reopening', async ()
 - [ ] GDACS APIの`url.report`・`affectedcountries`・RSS名前空間、GDELTの実TSV列数とエラー本文を小さなfixtureとして保存する。取得URL・日時・形式・期待する国/項目IDを付記する。投稿全文や認証情報をfixtureへ含めない。
 - [ ] migration 3で詳細JSON、contextとevidenceの関連、source状態、差分履歴、取込区間を追加する。migration 1/2を書き換えない。外部HTTP待機中にDBトランザクションを保持しない。
 - [ ] `bun test src/services/country_intel/db.test.ts src/services/country_intel/maintenance.test.ts`を実行。再接続、旧レポート読出し、二重migration、ディスク書込み失敗の分類を確認する。
-- [ ] 実装時のデプロイ設定では`SORA_DB_PATH=/data/sora.db`と名前付きvolumeを指定する。実際の移行・再起動はTask 12でfetcherだけに適用する。
+- [ ] 実装時のデプロイ設定では`SORA_DB_PATH=/data/sora.db`と名前付きvolumeを指定する。実際の移行・再起動はTask 12でSoraのコンテナだけに適用する。
 
 ## Task 2: 通信制御と鮮度を正しく測る
 
@@ -441,9 +441,9 @@ test('language does not establish the event country', () => {
 - [ ] 国別過去検索が403だった今回の観測を踏まえ、検索APIを必須依存にしない。事前収集していない期間はunavailableとする。ライブ成功をXや他SNSの取得保証に置き換えない。
 - [ ] `bun test src/services/country_intel/providers/bluesky.test.ts`を実行する。Task 1～10はBluesky無効でも完成・リリース可能にする。
 
-## Task 12: 実通信・性能・回帰・fetcher更新
+## Task 12: 実通信・性能・回帰・配備の更新
 
-**Files:** Modify `live_smoke.ts`, `package.json`, `README.md`, `RELEASE_NOTES.md`; Create `live_probe.ts`, `performance.test.ts`。配備設定は実際の`/home/ikeno/app/modules/rootless-containers.nix`のfetcher部分だけを対象とする。
+**Files:** Modify `live_smoke.ts`, `package.json`, `README.md`, `RELEASE_NOTES.md`; Create `live_probe.ts`, `performance.test.ts`。配備設定はSoraのコンテナの部分だけを対象とする。
 
 - [ ] 計画作成時の証拠と本番実装後の測定結果を分ける。保存済みfixtureの試験をネットワーク成功の代わりにしない。`live_smoke.ts`に残るKOR/KRの古い期待値も現行契約へ合わせる。
 - [ ] 国・言語の受入試験はCN、DE、BR、EG、ID、US、JPの7地域。Yahoo不使用をspyで検証し、各地域で取得できた分野・言語・期間・sourceを表にする。全地域全分野の充足を件数だけで合格にしない。
@@ -461,7 +461,7 @@ git diff --check
 ```
 
 - [ ] レビューでは実fixture互換、国/期間/時刻、参照整合、長文欠落、既存API互換、永続DBを確認する。mainの最新差分を再確認して統合する。
-- [ ] 更新依頼がある段階でfetcherイメージだけをビルドし、Task 1のDBバックアップ・永続化移行後に再作成する。実image ID・git SHA・DB実パス・volume・再起動後のレポート/詳細件数を照合する。他コンテナとNixOS全体を再起動しない。タグの付替えだけで更新完了にしない。
+- [ ] 更新依頼がある段階でSoraのイメージだけをビルドし、Task 1のDBバックアップ・永続化移行後に再作成する。実image ID・git SHA・DB実パス・volume・再起動後のレポート/詳細件数を照合する。他コンテナとホスト全体を再起動しない。タグの付替えだけで更新完了にしない。
 
 ## 2. リリース単位と依存順
 
@@ -469,7 +469,7 @@ git diff --check
 2. **速報・詳細収集:** Task 4/5/6をTask 1/2の契約上で実装し、Task 7で接続。共通型変更は先に統合する。
 3. **LLMへの詳細提供:** Task 8→9→10。初回詳細・続き・不足情報・差分。
 4. **任意ライブSNS:** Task 11。Yahooを使わず、設定なしでも既存機能を継続。
-5. **受入・更新:** Task 12。性能・実通信・README/API・DB移行・fetcherのみ更新。
+5. **受入・更新:** Task 12。性能・実通信・README/API・DB移行・Soraのコンテナのみ更新。
 
 ## 3. 計画の自己レビュー
 

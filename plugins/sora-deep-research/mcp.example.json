@@ -3,7 +3,7 @@
     "sora": {
       "command": "bun",
       "args": ["run", "src/stdio.ts"],
-      "cwd": "/home/ikeno/work/sora"
+      "cwd": "/path/to/sora"
     }
   }
 }

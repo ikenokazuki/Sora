@@ -30,7 +30,7 @@
 - **この入口では、当たっても iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は 502 `SONG_RECOGNITION_UPSTREAM_ERROR` にします。** `itunes: null`（iTunes につなげる曲が無い）と見分けられるので、呼び出し側は指紋を残して照会し直せます。`/music/recognize` と `recognize_song` は今までどおり、`itunes: null` で当たりを返します。
 - **iTunes の曲に `artistId`（iTunes のアーティスト ID）を足しました。** `search_song`・`search_artist`・`search_music` の `items` と、楽曲認識の `itunes` に入ります（任意の欄の追加なので、今の利用者は壊れません）。
 - 窓ごとの照会の処理を、音声の経路と指紋の経路で共有しました。`/music/recognize` の動きは変わりません。
-- **指紋の計算と形の検査を、npm のパッケージ `audio-signature`（`packages/audio-signature/`、MIT）に抜き出しました。** ブラウザ・Bun・Node で動き、端末で指紋を作るアプリ（oshiframe）が同じ計算と検査を使います。Sora はリポジトリの中のソースをそのまま使い（npm からは取りません）、`/music/recognize` と `/music/recognize/signature` の動きは変わりません。
+- **指紋の計算と形の検査を、npm のパッケージ `audio-signature`（`packages/audio-signature/`、MIT）に抜き出しました。** ブラウザ・Bun・Node で動き、端末で指紋を作るアプリも、Sora と同じ計算と検査を使えます。Sora はリポジトリの中のソースをそのまま使い（npm からは取りません）、`/music/recognize` と `/music/recognize/signature` の動きは変わりません。
 
 # Sora v2.51.1 — 楽曲認識で、ずれの大きい当たりを確かでないものとして扱う
 
@@ -48,7 +48,7 @@
 
 # Sora v2.50.0 — YouTube チャンネルの最新の動画を返すようにした
 
-- **YouTube チャンネルの最新の動画を返す `get_youtube_channel`（`POST /youtube/channel`）を足しました。** チャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`）、`@ハンドル`、`UC…` のチャンネル ID を渡すと、最新の動画を新しい順に最大 15 件（題名・公開日・更新日・説明文の先頭 500 字・視聴回数）返します。YouTube の公開の Atom フィードを読むので、Yahoo の検索（oshiframe など他のアプリと分け合う枠）もブラウザも使いません。動画の字幕は、返った `videoId` を `get_youtube_transcript` に渡して読みます。
+- **YouTube チャンネルの最新の動画を返す `get_youtube_channel`（`POST /youtube/channel`）を足しました。** チャンネルの URL（`/@ハンドル`・`/channel/UC…`・`/c/名前`・`/user/名前`）、`@ハンドル`、`UC…` のチャンネル ID を渡すと、最新の動画を新しい順に最大 15 件（題名・公開日・更新日・説明文の先頭 500 字・視聴回数）返します。YouTube の公開の Atom フィードを読むので、Yahoo の検索（ほかの利用と分け合う枠）もブラウザも使いません。動画の字幕は、返った `videoId` を `get_youtube_transcript` に渡して読みます。
 - **ハンドルのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。** フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。チャンネルが無ければ `found: false`（`reason: "channel-not-found"`）です。同意の画面・ブロック・429/5xx・読めない応答は、`found: false` にせずエラー（REST は 502 `YOUTUBE_UPSTREAM_ERROR`）にして、キャッシュしません。
 - **YouTube モジュールの中にあり、MCP では遅延ツールです。** `ENABLED_MODULES` が未設定・`all`・`youtube` を含むときに使えます。`search_tools` で「YouTube チャンネル」と探すと有効になります。ツールは 51 から 52、全ツールの一覧は 62,556 から 63,342 文字になりました（初期の一覧は変わりません）。
 - **フィードとチャンネルのページの形は、実機で確かめていません。** 公開されているフィードとページの形からの想定で実装し、テストは合成したフィクスチャです。最初に本番へ載せたときに `curl` で確かめてください（手順は `docs/superpowers/specs/2026-10-26-youtube-channel-design.md`）。
@@ -304,7 +304,6 @@
 - GitHub Actions の Live tool health の定期実行（毎日）が、2026-10-02 の追加以降ずっと失敗していた問題を直しました。定期実行・手動実行では候補イメージのタグが空になり、実行が始まる前に終了していました。公開時の検査には影響していませんでした。
 - MCP の instructions と `POST /search` の API 説明に、`schedule` と `includeMedia` の使い方を追記しました。README の `scrape` 応答例を実際の出力形式（「📍 階層」「📅 イベント情報」の行）に合わせました。
 - スクレイプと深層検索のキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
-- 本番の fetcher.ikebun.jp は認証なしで公開する運用です（意図した方針）。キー未設定の警告を止めるため `SORA_ALLOW_ANONYMOUS=true` を指定しました。
 
 # Sora v2.36.1 — X 検索の誤りの修正と、応答の削減
 
@@ -794,7 +793,7 @@ MCP / REST の検索レスポンス整合性を保ちながら、必要なクラ
 - **自動テストスイート**: **全 292 テスト 100% PASS**（2,843 件の expect アサーション）
   - 新規 IR アルゴリズム、Temporal Anchor、Table Minimizer の単体・統合テストを完全網羅。
   - 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換。
-- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.16.0 稼働確認済み（`curl http://127.0.0.1:3016/health` → `200 OK`）。
+- **コンテナ**: v2.16.0 のイメージで稼働確認済み（`curl http://127.0.0.1:3016/health` → `200 OK`）。
 
 ---
 
@@ -966,7 +965,7 @@ MCP / REST の検索レスポンス整合性を保ちながら、必要なクラ
 
 - **自動テストスイート**: **全 209 テスト 100% PASS**（2,347 件の expect アサーション）
 - **外部 API 互換性**: 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換
-- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.9.0 稼働確認済み
+- **コンテナ**: v2.9.0 のイメージで稼働確認済み
 
 ---
 
@@ -1001,7 +1000,6 @@ podman pull ghcr.io/ikenokazuki/sora:2.9.0
 - GitHub Actions の Live tool health の定期実行（毎日）が、2026-10-02 の追加以降ずっと失敗していた問題を直しました。定期実行・手動実行では候補イメージのタグが空になり、実行が始まる前に終了していました。公開時の検査には影響していませんでした。
 - MCP の instructions と `POST /search` の API 説明に、`schedule` と `includeMedia` の使い方を追記しました。README の `scrape` 応答例を実際の出力形式（「📍 階層」「📅 イベント情報」の行）に合わせました。
 - スクレイプと深層検索のキャッシュ名前空間を更新しました。デプロイ後に旧版の応答が返り続けないためです。
-- 本番の fetcher.ikebun.jp は認証なしで公開する運用です（意図した方針）。キー未設定の警告を止めるため `SORA_ALLOW_ANONYMOUS=true` を指定しました。
 
 # Sora v2.36.1 — X 検索の誤りの修正と、応答の削減
 
@@ -1491,7 +1489,7 @@ MCP / REST の検索レスポンス整合性を保ちながら、必要なクラ
 - **自動テストスイート**: **全 292 テスト 100% PASS**（2,843 件の expect アサーション）
   - 新規 IR アルゴリズム、Temporal Anchor、Table Minimizer の単体・統合テストを完全網羅。
   - 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換。
-- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.16.0 稼働確認済み（`curl http://127.0.0.1:3016/health` → `200 OK`）。
+- **コンテナ**: v2.16.0 のイメージで稼働確認済み（`curl http://127.0.0.1:3016/health` → `200 OK`）。
 
 ---
 
@@ -1663,7 +1661,7 @@ MCP / REST の検索レスポンス整合性を保ちながら、必要なクラ
 
 - **自動テストスイート**: **全 209 テスト 100% PASS**（2,347 件の expect アサーション）
 - **外部 API 互換性**: 既存の全 REST エンドポイント・MCP ツール仕様と 100% 完全互換
-- **本番環境**: NixOS rootless Podman (krun / Firecracker) コンテナ `web-fetcher` にて v2.9.0 稼働確認済み
+- **コンテナ**: v2.9.0 のイメージで稼働確認済み
 
 ---
 

@@ -10,7 +10,7 @@
 
 **Spec:** [住所データ基盤と住所ツールの設計](../specs/2026-10-13-address-data-design.md)
 
-作成日: 2026-10-13。対象: v2.38.0、`feat/geo-address-data`（worktree `/home/ikeno/.worktrees/Sora/geo-address-data`）。
+作成日: 2026-10-13。対象: v2.38.0、`feat/geo-address-data`（worktree `/path/to/worktrees/geo-address-data`）。
 
 ## Global Constraints
 
@@ -27,7 +27,7 @@
 - エラーコード: 入力の誤りは `INVALID_INPUT`（400）、データを取得できないときは `ADDRESS_DATA_UNAVAILABLE`（502、`retryable: true`、メッセージに HTTP ステータスを含める）、無効化は `ADDRESS_DISABLED`（404）。仕様書の 503 は `formatError` が扱えないため 502 にする（続く計画で仕様書を直す）。
 - テストは通信なしで固定データだけを使う。`NODE_ENV=test SORA_DB_PATH=:memory:`。実行は `unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy` のうえ、nix の Chromium を `CHROME_PATH` に指定する。手元の bun は 1.3.3（CI は 1.4.2）。
 - コミットは英語の Conventional Commits。attribution 行（Co-Authored-By など）を付けない。push・リリースはしない。
-- ユーザーが編集中の `docs/operations/fetcher.md` に触れない。
+- ユーザーが編集中の運用の手順書に触れない。
 
 ## File Structure
 
@@ -2590,9 +2590,9 @@ git commit -m "feat(address): add build jobs for master, postal and city data"
 ```ts
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { AddressStore } from '/home/ikeno/.worktrees/Sora/geo-address-data/src/services/address_store.ts';
-import { runBuildJob, type BuildJob } from '/home/ikeno/.worktrees/Sora/geo-address-data/src/services/address_jobs.ts';
-import { PostalReader, linkPostalRows } from '/home/ikeno/.worktrees/Sora/geo-address-data/src/services/postal_code.ts';
+import { AddressStore } from '/path/to/worktrees/geo-address-data/src/services/address_store.ts';
+import { runBuildJob, type BuildJob } from '/path/to/worktrees/geo-address-data/src/services/address_jobs.ts';
+import { PostalReader, linkPostalRows } from '/path/to/worktrees/geo-address-data/src/services/postal_code.ts';
 
 const dir = process.argv[2];
 if (!dir) throw new Error('usage: bun address_build_smoke.ts <dir>');
@@ -2623,7 +2623,7 @@ reader.close();
 
 ```bash
 unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy
-bun --no-env-file /tmp/claude-1000/-home-ikeno/e1702966-c1e8-40ca-94a0-4630dcdd01ef/scratchpad/address_build_smoke.ts /tmp/claude-1000/-home-ikeno/e1702966-c1e8-40ca-94a0-4630dcdd01ef/scratchpad/address-smoke
+bun --no-env-file /path/to/scratchpad/address_build_smoke.ts /path/to/scratchpad/address-smoke
 ```
 
 Expected:

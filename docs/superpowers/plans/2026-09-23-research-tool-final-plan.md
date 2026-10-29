@@ -49,7 +49,7 @@
 
 ## 3. 作業場所と変更の候補
 
-リポジトリ: /home/ikeno/work/sora
+リポジトリ: Sora の作業ツリー（以下 /path/to/sora）
 
 既存コード:
 - src/mcp.ts: search_web、scrape、research_country_context等の公開契約。実際の入力を読んでから呼ぶ。
@@ -143,7 +143,7 @@ B: A＋現在の専用収集機能。必要なら最初は実験用の取得器s
 - [ ] 既存テストを実行し、開始時点の結果を記録。失敗を隠すため期待値を変更しない。
 
 コマンド:
-cd /home/ikeno/work/sora
+cd /path/to/sora
 bun test src/services/country_intel
 bun build ./src/index.ts --target=bun --outfile /tmp/sora-research-baseline.js
 git diff --check

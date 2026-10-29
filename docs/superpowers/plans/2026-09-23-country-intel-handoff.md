@@ -2,7 +2,7 @@
 
 ## 0. 最初に読むこと
 
-作業ディレクトリは `/home/ikeno/work/sora`。これは未コミット変更を含む作業ツリー。**`git reset`、`git clean`、一括復元、無断コミットをしない**。特に `src/services/country_intel/collector.ts` と同テストのステージ済み削除は、定期収集を外す従来作業の一部。まず `git status --short` と `git diff --stat`、必要なら `git diff --cached --stat` を確認する。現状の変更を土台に進める。
+作業ディレクトリは Sora の作業ツリー（以下 `/path/to/sora`）。これは未コミット変更を含む作業ツリー。**`git reset`、`git clean`、一括復元、無断コミットをしない**。特に `src/services/country_intel/collector.ts` と同テストのステージ済み削除は、定期収集を外す従来作業の一部。まず `git status --short` と `git diff --stat`、必要なら `git diff --cached --stat` を確認する。現状の変更を土台に進める。
 
 依頼の本質は、国・地域に関する汎用の情報収集器を**必要な時に一度呼ぶだけで、できる限り広く、根拠付きで取得する**こと。金融、マーケティング、旅行・観光、コンテンツ/SNS投稿判断などに共通利用する。特定用途向けの「投稿可否」判定器にしない。推奨やリスク点数は、取得レポートに勝手に混ぜない。対象は主要国全般。中国はインターネット環境の特殊さを検証する重要ケースだが、中国専用設計にしない。小国など取得困難な場合は、欠落を明示する。
 
@@ -74,7 +74,7 @@ REST は `POST /intelligence/country` で `{"region":"CN","noCache":true}` の�
 コード変更前に次を実行。`git diff --check` はワークツリーの差分チェック。テスト・ビルドが失敗したら原因を特定するまで新規プロバイダー実装を始めない。
 
 ```bash
-cd /home/ikeno/work/sora
+cd /path/to/sora
 git status --short
 git diff --cached --stat
 bun test src/services/country_intel
@@ -88,8 +88,8 @@ git diff --check
 
 ```bash
 cat > /tmp/sora-intel-probe.ts <<'TS'
-import { researchCountryWithDefaults } from '/home/ikeno/work/sora/src/services/country_intel/runtime.ts';
-import { closeDb } from '/home/ikeno/work/sora/src/db.ts';
+import { researchCountryWithDefaults } from '/path/to/sora/src/services/country_intel/runtime.ts';
+import { closeDb } from '/path/to/sora/src/db.ts';
 
 const regions = process.argv.slice(2);
 for (const region of regions) {

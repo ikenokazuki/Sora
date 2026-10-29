@@ -2370,12 +2370,12 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
 | `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
 | `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、本番の fetcher.ikebun.jp は `true` を指定して警告を止めています）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、その場合は `true` を指定して警告を止めます）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
 | `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
 | `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
 | `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
 | `SORA_TRACKING_PAGE_SECRET` | *(未設定)* | 荷物ごとの表示ページ（照会結果の `pageUrl`、`GET /t/:carrier/:number`）の署名に使う秘密鍵。`SORA_PUBLIC_URL` と両方を設定したときだけ表示ページが有効になり、照会結果に `pageUrl` が付きます。未設定なら表示ページは `404` で、起動時の処理もありません。値を変えると、発行済みの URL はすべて無効になります |
-| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://fetcher.ikebun.jp`）。`pageUrl` の組み立てに使います |
+| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。`pageUrl` の組み立てに使います |
 | `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
 | `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
