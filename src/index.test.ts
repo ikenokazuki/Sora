@@ -3980,7 +3980,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
   it('initDatabase should restrict the SQLite file to owner-only permissions (Cookie/API-key data must not be world-readable)', async () => {
     const fs = await import('fs');
-    const tmpPath = `/tmp/claude-1000/-home-ikeno/2e0d4d20-0144-47e3-85ee-bedd80157af7/scratchpad/sora-perm-test-${Date.now()}.db`;
+    const os = await import('os');
+    const tmpPath = `${os.tmpdir()}/sora-perm-test-${Date.now()}.db`;
     try {
       closeDb();
       initDatabase(tmpPath);
