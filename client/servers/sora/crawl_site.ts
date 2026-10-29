@@ -22,7 +22,7 @@ export type CrawlSiteInput = {
   extractHighlights?: boolean;
   /** 抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか */
   onlyHighlights?: boolean;
-  /** ハイライト最大選択件数 (デフォルト: 3) */
+  /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
   /** Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false) */
   reorderUFlat?: boolean;

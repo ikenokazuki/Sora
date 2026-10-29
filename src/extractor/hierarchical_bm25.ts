@@ -76,6 +76,8 @@ export function parseBlocks(markdown: string): HeadingBlock[] {
   return blocks;
 }
 
+const idfMemo = new WeakMap<HeadingBlock[], Map<string, number>>();
+
 /**
  * 全ブロック中、その語を body (または headingPath のいずれか) に含むブロック数から標準的な BM25 IDF を計算
  */
@@ -85,9 +87,15 @@ export function idf(
   field: 'body' | 'heading'
 ): number {
   if (!term || allBlocks.length === 0) return 0;
+  const lowerTerm = term.toLowerCase();
+  // 同じブロックの集合では覚えた値を返す（窓の文・節の塊の採点が、語ごとに全ブロックを読み直さないように）。集合は作った後に変えない前提
+  let memo = idfMemo.get(allBlocks);
+  if (!memo) idfMemo.set(allBlocks, (memo = new Map()));
+  const key = `${field}:${lowerTerm}`;
+  const known = memo.get(key);
+  if (known !== undefined) return known;
   const N = allBlocks.length;
   let docCount = 0;
-  const lowerTerm = term.toLowerCase();
 
   for (const block of allBlocks) {
     if (field === 'body') {
@@ -105,7 +113,9 @@ export function idf(
   }
 
   // スムージング付き BM25 IDF
-  return Math.log((N - docCount + 0.5) / (docCount + 0.5) + 1.0);
+  const value = Math.log((N - docCount + 0.5) / (docCount + 0.5) + 1.0);
+  memo.set(key, value);
+  return value;
 }
 
 /**
@@ -290,9 +300,23 @@ export function dinkelbachOptimalPassage(
   allBlocks: HeadingBlock[],
   opts?: { minChars?: number; maxChars?: number; alpha?: number; maxIter?: number }
 ): string {
-  if (!body || terms.length === 0) return body;
+  return dinkelbachOptimalWindow(body, terms, allBlocks, opts).passage;
+}
+
+/**
+ * dinkelbachOptimalPassage の窓（passage）と、窓が節の先頭から始まらないとき節の書き出しを leadChars 字まで前に付けた形（withLead）。
+ * 書き出しには定義・要約が多く、検索語の無い答えの文もここに多い。
+ * 検索語の重みで窓を選んだときは、本文の中での窓の位置（span: [開始, 終了)）と書き出しの終わり（leadEnd、書き出しが無ければ 0）も返す
+ */
+export function dinkelbachOptimalWindow(
+  body: string,
+  terms: string[],
+  allBlocks: HeadingBlock[],
+  opts?: { minChars?: number; maxChars?: number; alpha?: number; maxIter?: number; leadChars?: number }
+): { passage: string; withLead: string; span?: [number, number]; leadEnd?: number } {
+  if (!body || terms.length === 0) return { passage: body, withLead: body };
   const sentences = splitSentences(body);
-  if (sentences.length <= 1) return body;
+  if (sentences.length <= 1) return { passage: body, withLead: body };
 
   const minChars = opts?.minChars ?? 80;
   const maxChars = opts?.maxChars ?? 350;
@@ -329,7 +353,7 @@ export function dinkelbachOptimalPassage(
       if (acc.length + s.length > maxChars && acc.length >= minChars) break;
       acc += (acc ? ' ' : '') + s;
     }
-    return acc;
+    return { passage: acc, withLead: acc };
   }
 
   // Dinkelbach 反復: max (W(i, j) / (L(i, j)^alpha))
@@ -401,6 +425,27 @@ export function dinkelbachOptimalPassage(
   const result = selectedSentences.join(' ');
   const prefix = bestI > 0 ? '...' : '';
   const suffix = bestJ < m - 1 ? '...' : '';
+  const passage = `${prefix}${result}${suffix}`.trim();
+  const lead = bestI > 0 && opts?.leadChars ? sentences.slice(0, bestI).join(' ').slice(0, opts.leadChars) : '';
 
-  return `${prefix}${result}${suffix}`.trim();
+  // 文の本文中の位置（splitSentences の文は前後の空白を除いた本文の一部）
+  const offsets: number[] = [];
+  for (let k = 0, cur = 0; k <= bestJ; k++) {
+    const at = body.indexOf(sentences[k], cur);
+    offsets.push(at < 0 ? cur : at);
+    cur = offsets[k] + sentences[k].length;
+  }
+  // 書き出し（文を空白でつないだ先頭 leadChars 字）が本文のどこまでか
+  let leadEnd = 0;
+  for (let k = 0, joined = 0; lead && k < bestI && joined < lead.length; k++) {
+    leadEnd = offsets[k] + Math.min(sentences[k].length, lead.length - joined);
+    joined += sentences[k].length + 1;
+  }
+
+  return {
+    passage,
+    withLead: lead ? `${lead} ... ${result}${suffix}`.trim() : passage,
+    span: [offsets[bestI], offsets[bestJ] + sentences[bestJ].length],
+    leadEnd,
+  };
 }
