@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { fetchElevationAndCoordinates, fetchRecentEarthquakes, fetchRoadTraffic, fetchWeatherWarnings } from '../scraper.js';
-import { EarthquakeScaleSchema } from '../types.js';
+import { EARTHQUAKE_SCALE_CODES } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { addressEnabled } from '../services/address_config.js';
 import { addressErrorMessage } from '../services/address_errors.js';
@@ -77,7 +77,11 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }',
     {
       limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
-      minIntensity: EarthquakeScaleSchema.optional()
+      // Gemini の関数宣言は enum を文字列にしか許さず、数の enum が 1 つあるとツール一覧ごと 400 になる。
+      // MCP には範囲だけを出し、震度コードかどうかは refine で確かめる（REST の OpenAPI には enum を残す）
+      minIntensity: z.number().int().min(10).max(70)
+        .refine((v) => (EARTHQUAKE_SCALE_CODES as readonly number[]).includes(v), { message: `震度コードは ${EARTHQUAKE_SCALE_CODES.join('・')} のどれかです` })
+        .optional()
         .describe('最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10)')
         .meta({ default: 10 }),
     },
