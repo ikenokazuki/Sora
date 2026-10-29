@@ -119,6 +119,11 @@ describe('integrated search Host response', () => {
     const budgeted = projectIntegratedSearchEvidenceItem(item, { responseMode: 'evidence', maxTotalChars: 1000 });
     expect(budgeted.highlights).toEqual(item.highlights);
     expect(budgeted.markdown).toBeUndefined();
+    // 本文の 0.8 倍のハイライトは、本文を省いて返す
+    const shorter = { ...baseItem(), markdown: 'a'.repeat(100), highlights: ['a'.repeat(80)] };
+    const kept = projectIntegratedSearchEvidenceItem(shorter, { responseMode: 'evidence' });
+    expect(kept.highlights).toEqual(shorter.highlights);
+    expect(kept.markdown).toBeUndefined();
   });
 
   test('highlights nearly as long as markdown but pointed to by highlightsSameAs: highlights kept for the duplicate', () => {

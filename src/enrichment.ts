@@ -547,13 +547,19 @@ const BUDGET_MAX_HIGHLIGHTS = 8;
 const WINDOW_LEAD_CHARS = 350;
 // 取りこぼした語を補う節を試す数の上限
 const FILL_MAX_TRIES = 5;
+// maxHighlights を指定しないとき、足切り（最高点の 0.35 倍）に届かない節も、この倍率以上なら字数の目安の残りで足す
+const LOW_SCORE_RATIO = 0.25;
+// maxHighlights を指定しないとき、目安より長い節（表・コード以外。丸ごとには戻せない）は、窓に加えて、段落をこの字数までまとめた塊も
+// 候補にする（長い段落は文でまとめる）。答えが窓の外の段落にあるのを拾う。選んだ窓と塊は節ごとに 1 つのハイライトにまとめる。
+// 文で切れずにこの 2 倍を超えた塊（. や ．で文を終える英語・論文の段落など）は候補にしない（先頭 3 件は字数を確かめないので、目安を大きく超える）
+const SPLIT_CHUNK_CHARS = 300;
 
 export interface QueryHighlightDetailsOptions {
   sourceId?: string;
   url?: string;
   publishedTime?: string;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-  /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補いをしない）。選ぶ節は件数の目安を入れる前と同じ */
+  /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補い・長い節の塊をしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
   reorderUFlat?: boolean;
   diversityWeight?: number;
@@ -619,6 +625,8 @@ export function extractQueryHighlightDetails(
     rawSnippetBody: string;
     /** 窓で切ったときの、節を丸ごと出す形 */
     wholeSnippet?: string;
+    /** 塊に分けた節の窓・塊: 本文の中の位置と、まとめるときの見出し・書き出しの終わり */
+    part?: { span: [number, number]; chunk: boolean; prefix: string; leadEnd: number };
   }
 
   const scoredCandidates: ScoredCandidate[] = [];
@@ -650,8 +658,9 @@ export function extractQueryHighlightDetails(
 
     let snippetBody = block.body;
     let similarityText = block.body;
+    let win: ReturnType<typeof dinkelbachOptimalWindow> | undefined;
     if (block.body.length > 800 && !isTableOrCode(block.body)) {
-      const win = dinkelbachOptimalWindow(block.body, terms, blocks, { leadChars: WINDOW_LEAD_CHARS });
+      win = dinkelbachOptimalWindow(block.body, terms, blocks, { leadChars: WINDOW_LEAD_CHARS });
       snippetBody = win.withLead;
       similarityText = win.passage;
     }
@@ -664,14 +673,30 @@ export function extractQueryHighlightDetails(
     const anchorHeader = evidenceMode === 'contextual_highlights'
       ? `${formatBlockAnchor(block.ref)}\n`
       : '';
+    const prefix = `${anchorHeader}${headingPrefix}`;
 
+    // 目安より長い節は塊も候補にする（件数を指定しないときだけ）。窓は節の点のまま、塊は節の点 × 節の中での点の比
+    const split = extend && win?.span && block.body.length > HIGHLIGHT_CHAR_BUDGET;
+    const leadEnd = win?.leadEnd ?? 0;
     scoredCandidates.push({
       block,
       score,
-      snippet: `${anchorHeader}${headingPrefix}${snippetBody}`.trim(),
+      snippet: `${prefix}${snippetBody}`.trim(),
       rawSnippetBody: similarityText,
-      wholeSnippet: snippetBody !== block.body ? `${anchorHeader}${headingPrefix}${block.body}`.trim() : undefined,
+      wholeSnippet: snippetBody !== block.body && !split ? `${prefix}${block.body}`.trim() : undefined,
+      part: split ? { span: win!.span!, chunk: false, prefix, leadEnd } : undefined,
     });
+    if (split) {
+      const chunks = chunkSpans(block.body, SPLIT_CHUNK_CHARS).map(([a, b]) => {
+        const chunk = { ...block, body: block.body.slice(a, b).trim() };
+        return { span: [a, b] as [number, number], text: chunk.body, raw: scorePassage(chunk, terms, blocks) * answerValueMultiplier(chunk) };
+      });
+      const maxRaw = Math.max(...chunks.map((c) => c.raw));
+      for (const c of chunks) {
+        if (c.raw <= 0 || c.text.length > 2 * SPLIT_CHUNK_CHARS) continue;
+        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${prefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix, leadEnd } });
+      }
+    }
   }
 
   const topScore = scoredCandidates.length > 0
@@ -681,7 +706,7 @@ export function extractQueryHighlightDetails(
   const diagnostics = computeEvidenceDiagnostics(
     content,
     query,
-    scoredCandidates.length,
+    scoredCandidates.filter((c) => !c.part?.chunk).length,
     topScore,
   );
 
@@ -703,7 +728,7 @@ export function extractQueryHighlightDetails(
   // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
   const diversityWeight = options.diversityWeight ?? 0.7;
   // MMR の貪欲な順は上限に依らず、類似度は書き出しを付けない窓で測るので、件数を指定したときの節と、
-  // 指定しないときの先頭 3 件（U 字の並べ替えの前）は、目安を入れる前と同じ
+  // 指定しないときの先頭 3 件（U 字の並べ替えの前。目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
   const mmrOrder = selectMaximalMarginalRelevance(validCandidates, {
     getScore: (c) => c.score,
     getText: (c) => c.rawSnippetBody,
@@ -712,27 +737,28 @@ export function extractQueryHighlightDetails(
   });
   const mmrCandidates = mmrOrder.slice(0, maxHighlights);
   if (extend) {
-    let used = mmrCandidates.reduce((n, c) => n + c.snippet.length, 0);
+    let used = mergeSectionParts(mmrCandidates).reduce((n, c) => n + c.snippet.length, 0);
     // 1. 余りがあれば、窓で切った節を丸ごとに戻す（順位の高い順）
     for (const c of mmrCandidates) {
       if (!c.wholeSnippet || used + c.wholeSnippet.length - c.snippet.length > HIGHLIGHT_CHAR_BUDGET) continue;
       used += c.wholeSnippet.length - c.snippet.length;
       c.snippet = c.wholeSnippet;
     }
-    // 2. 収まる候補を MMR の順に足す
+    // 2. 収まる候補を MMR の順に足す（同じ節の窓・塊はまとめた字数で数える）
     for (const c of mmrOrder.slice(maxHighlights)) {
-      if (used + c.snippet.length > HIGHLIGHT_CHAR_BUDGET) continue;
+      const next = c.part ? mergeSectionParts([...mmrCandidates, c]).reduce((n, x) => n + x.snippet.length, 0) : used + c.snippet.length;
+      if (next > HIGHLIGHT_CHAR_BUDGET) continue;
       mmrCandidates.push(c);
-      used += c.snippet.length;
+      used = next;
     }
     // 3. 選んだハイライトに無い検索語（採点で外れる 1 字の語も含む）がページにあれば、それを最も多く含む節（同数なら点の高い節）を 1 つ足す。
     //    本文は max(目安の残り, 800) 字まで: 窓で切る節（800 字超）は書き出しと窓で収まり、収まらない表・コード・切れ目の無い長い文の節は
     //    飛ばして次の節を試す（試すのは FILL_MAX_TRIES 節まで。窓の計算は節ごとに全節の IDF を数えるため）
-    const covered = mmrCandidates.map((c) => c.snippet.toLowerCase()).join('\n');
+    const covered = mergeSectionParts(mmrCandidates).map((c) => c.snippet.toLowerCase()).join('\n');
     const missing = coverageWords(query).filter((w) => !covered.includes(w));
     if (missing.length > 0) {
       const chosen = new Set(mmrCandidates.map((c) => c.block));
-      const scoreOf = new Map(scoredCandidates.map((c) => [c.block, c.score]));
+      const scoreOf = new Map(scoredCandidates.filter((c) => !c.part?.chunk).map((c) => [c.block, c.score]));
       const cap = Math.max(HIGHLIGHT_CHAR_BUDGET - used, 800);
       const fills = blocks
         .filter((b) => !chosen.has(b))
@@ -747,16 +773,30 @@ export function extractQueryHighlightDetails(
         if (body.length > cap) continue;
         const headingPrefix = b.headingPath.length > 0 ? `## ${b.headingPath.join(' > ')}\n\n` : '';
         const anchorHeader = evidenceMode === 'contextual_highlights' ? `${formatBlockAnchor(b.ref)}\n` : '';
-        mmrCandidates.push({ block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body });
+        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body };
+        mmrCandidates.push(fill);
+        used += fill.snippet.length;
         break;
       }
+    }
+    // 4. 足切りに届かない、最高点の LOW_SCORE_RATIO 倍以上の節を、点の順に目安の残りに収まる限り足す（8 件まで）。
+    //    取りこぼしの補いの後に足すので、補いの節は変えない。MMR を通らないので、選んだ節と本文が同じ節は飛ばす
+    const chosenBlocks = new Set(mmrCandidates.map((c) => c.block));
+    const chosenBodies = new Set(mmrCandidates.map((c) => c.rawSnippetBody));
+    for (const c of scoredCandidates.slice(validCandidates.length)) {
+      if (mmrCandidates.length >= BUDGET_MAX_HIGHLIGHTS || c.score < topScore * LOW_SCORE_RATIO) break;
+      if (c.part?.chunk || chosenBlocks.has(c.block) || chosenBodies.has(c.rawSnippetBody) || used + c.snippet.length > HIGHLIGHT_CHAR_BUDGET) continue;
+      mmrCandidates.push(c);
+      chosenBodies.add(c.rawSnippetBody);
+      used += c.snippet.length;
     }
   }
 
   // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
+  const merged = mergeSectionParts(mmrCandidates);
   const finalCandidates = options.reorderUFlat
-    ? reorderLostInTheMiddle(mmrCandidates)
-    : mmrCandidates;
+    ? reorderLostInTheMiddle(merged)
+    : merged;
 
   const selectedHighlights: string[] = [];
   const selectedItems: HighlightItem[] = [];
@@ -799,6 +839,60 @@ export function extractQueryHighlightDetails(
     discrepancies,
     temporalAnchors: allTemporalAnchors,
   };
+}
+
+/**
+ * 同じ節から選んだ窓・塊を、その節で最初に選んだものの位置で 1 つのハイライトにまとめる: 書き出し・窓・塊を本文の順に並べ、
+ * 離れたところは ... でつなぐ。窓だけなら窓の形（書き出し付き）のまま
+ */
+function mergeSectionParts<T extends { block: HeadingBlock; snippet: string; part?: { span: [number, number]; chunk: boolean; prefix: string; leadEnd: number } }>(sel: T[]): T[] {
+  if (!sel.some((c) => c.part?.chunk)) return sel;
+  const out: T[] = [];
+  const done = new Set<HeadingBlock>();
+  for (const c of sel) {
+    if (!c.part) { out.push(c); continue; }
+    if (done.has(c.block)) continue;
+    done.add(c.block);
+    const parts = sel.filter((x) => x.part && x.block === c.block).map((x) => x.part!);
+    if (parts.length === 1 && !parts[0].chunk) { out.push(c); continue; }
+    const body = c.block.body;
+    const spans = [[0, parts[0].leadEnd] as [number, number], ...parts.map((p) => p.span)].sort((x, y) => x[0] - y[0]);
+    let text = '';
+    let end = 0;
+    for (const [a, b] of spans) {
+      if (b <= end) continue;
+      // 重なり・空白だけの間はそのままつなぐ
+      text += a <= end || !body.slice(end, a).trim() ? body.slice(end, b) : ` ... ${body.slice(a, b)}`;
+      end = b;
+    }
+    out.push({ ...c, snippet: `${c.part.prefix}${text.trim()}`.trim() });
+  }
+  return out;
+}
+
+/** 本文を [開始, 終了) の塊に分ける: 空行で区切った段落を前から max 字までまとめる。max 字を超える段落は文（。！？!? と改行で区切る）を max 字までまとめてから */
+function chunkSpans(body: string, max: number): Array<[number, number]> {
+  const pieces: Array<[number, number]> = [];
+  let start = 0;
+  for (const m of [...body.matchAll(/\n\s*\n/g), null]) {
+    const end = m ? m.index! : body.length;
+    const para = body.slice(start, end);
+    if (para.length <= max) pieces.push([start, end]);
+    else pieces.push(...packSpans([...para.matchAll(/[^。！？!?\r\n]+[。！？!?\r\n]*/g)].map((x) => [start + x.index!, start + x.index! + x[0].length] as [number, number]), max));
+    if (m) start = m.index! + m[0].length;
+  }
+  return packSpans(pieces, max).filter(([a, b]) => body.slice(a, b).trim());
+}
+
+/** 並んだ区間を、前から合わせて max 字以内になる限りまとめる */
+function packSpans(spans: Array<[number, number]>, max: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const [a, b] of spans) {
+    const last = out[out.length - 1];
+    if (last && b - last[0] <= max) last[1] = b;
+    else out.push([a, b]);
+  }
+  return out;
 }
 
 /** 表・コードの節（窓で切らない） */
