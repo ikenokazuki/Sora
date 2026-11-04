@@ -87,12 +87,17 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   // 1. YAML Frontmatter (--- ... ---) を本文ハイライト候補から除外
   let cleaned = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
   // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) からルートタイトルを抽出
+  // 行ごとに読み、最後の区切り（> › \）の後ろの字を取る（最後の区間が空の行は飛ばす）。
+  // 正規表現で読むと、区切りの多い行や、失敗する行の並びで組み合わせが増えて長く止まった。前の正規表現は、行が区切りで終わると
+  // 改行をまたいで次の行の字を取った（本文の 1 行目を見出しにした）が、それはしない
   let rootContext = '';
-  // 区切りを 1 つずつ越える形にする（.*? が区切りも飲み込む形は、区切りの多い行で組み合わせが指数で増えた）。
-  // 区間の頭は空白以外にして、区切りの後ろの空白の取り方を 1 通りにする
-  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:(?:(?![>›\\])\S(?:(?![>›\\]).)*)?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
-  if (breadcrumbMatch) {
-    rootContext = breadcrumbMatch[1].trim();
+  for (const line of cleaned.split(/\r?\n/)) {
+    const m = /^>[^\S\r\n]*📍[^\S\r\n]*\*\*階層\*\*:(.*)$/.exec(line);
+    const last = m?.[1].split(/[>›\\]/).pop()?.trim();
+    if (last) {
+      rootContext = last;
+      break;
+    }
   }
   cleaned = cleaned.replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '');
 

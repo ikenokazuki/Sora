@@ -52,9 +52,14 @@ test('前置きのパンくず（リンクの並び）は、区切りがあっ�
   expect(parseMarkdownSections('[ホーム](/x)[会社概要](/about)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
 });
 
-test('パンくずの行の区切りが多くても、最後の節を取る判定に時間がかからない', () => {
+test('パンくずの行から最後の節を取る（区切りが多くても、行が並んでも時間がかからない）', () => {
   expect(parseMarkdownSections('> 📍 **階層**: ホーム > ニュース > 記事の題\n\n本文です。').map((s) => s.heading)).toEqual(['記事の題']);
-  const t = performance.now();
+  // 行が区切りで終わるときは、次の行の字を見出しにしない（前の正規表現は改行をまたいで「本文です。」を取った）
+  expect(parseMarkdownSections('> 📍 **階層**: ホーム >\n\n本文です。').map((s) => s.heading)).toEqual(['']);
+  let t = performance.now();
   parseMarkdownSections(`# 見出し\n\n本文です。\n\n> 📍 **階層**: ${'>'.repeat(30)}`);
+  expect(performance.now() - t).toBeLessThan(500);
+  t = performance.now();
+  parseMarkdownSections(`# 見出し\n\n本文です。\n\n${'> 📍 **階層**: >\n'.repeat(5000)}`);
   expect(performance.now() - t).toBeLessThan(500);
 });
