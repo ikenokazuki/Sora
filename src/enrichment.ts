@@ -83,9 +83,10 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
-// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む
-const MD_DEST = String.raw`(?:[^()]|\([^()]*\))*`;
-const MD_ALT = String.raw`((?:\\.|[^\]\\])*)`;
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
+// どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
+const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
+const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
 const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
 const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
 const JS_LINK_RE = new RegExp(String.raw`\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');

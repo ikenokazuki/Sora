@@ -257,11 +257,14 @@ describe('web-fetcher Core Functions', () => {
       .toBe('[A](https://example.com/a)[\n\nB は取引所\n\n](https://example.com/b)');
     expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
     expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+    // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）
+    expect(cleanMarkdownTokens('前 ![図](data:image/png;base64,' + 'A'.repeat(2_000_000) + ') 後')).toBe('前 [画像: 図] 後');
   });
 
   it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
     expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
       .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
+    expect(replaceMarkdownImages('前 ![図](https://example.com/' + 'a'.repeat(2_000_000) + '.png) 後')).toBe('前 [画像: 図] 後');
   });
 
   it('convertHtmlToMarkdown should purge cookie banners, extract metadata (publishedTime, author, siteName), format GFM tables and preserve codeblock languages', () => {

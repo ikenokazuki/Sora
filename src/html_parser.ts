@@ -833,7 +833,7 @@ export function resolveImageUrl(
 
 /**
  * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。
- * # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする。mailto:・tel: はそのまま。
+ * # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。
  */
 export function absolutizeContentUrls(contentHtml: string, baseUrl: string): string {
   if (!contentHtml) return contentHtml;
