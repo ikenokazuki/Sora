@@ -29,20 +29,32 @@ describe('parseMarkdownSections のナビの段落', () => {
 test('isNavBlock: 短いラベルのリンク行だけの塊', () => {
   expect(isNavBlock('- [ホーム](/)\n- [会社概要](/about)')).toBe(true);
   expect(isNavBlock('- [ホーム](/)\n本文の文')).toBe(false);
+  // 行全体が 1 つのリンクか（最後の `](` の後ろの最初の `)` が行の末尾か）の境目: URL が空でも閉じていれば真、URL の後ろに文字と `)` があれば偽
+  expect(isNavBlock('[a]()\n[b](c)')).toBe(true);
+  expect(isNavBlock('[a](b) c)\n[d](e)')).toBe(false);
 });
 
 test('細工した入力でも、リンク行と前置きのパンくずの判定に時間がかからない', () => {
   // リンク行の判定: `](` の多い 1 行（前の正規表現は長さの二乗の時間で、200,000 字で 7〜18 秒止まった）
   let t = performance.now();
-  expect(isNavBlock(`[${'](' .repeat(50_000)}))\n[a](b)`)).toBe(false);
+  expect(isNavBlock(`[${']('.repeat(50_000)}))\n[a](b)`)).toBe(false);
   expect(performance.now() - t).toBeLessThan(500);
   // 前置きのパンくずの判定: リンクの並びの後ろに別の字（前の正規表現は組み合わせが指数で増え、121 字で 2 秒止まった）
   t = performance.now();
-  parseMarkdownSections(`${'[a](b)'.repeat(20)}x\n\n# 見出し\n\n本文です。`);
+  const sections = parseMarkdownSections(`${'[a](b)'.repeat(20)}x\n\n# 見出し\n\n本文です。`);
   expect(performance.now() - t).toBeLessThan(500);
+  // 「x」があるのでリンクの並びだけではなく、前置きは節に残る
+  expect(sections.map((s) => s.fullText)).toEqual([`${'[a](b)'.repeat(20)}x`, '本文です。']);
 });
 
 test('前置きのパンくず（リンクの並び）は、区切りがあってもなくても節にしない', () => {
   expect(parseMarkdownSections('[ホーム](/) > [ニュース](/news)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
   expect(parseMarkdownSections('[ホーム](/x)[会社概要](/about)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
+});
+
+test('パンくずの行の区切りが多くても、最後の節を取る判定に時間がかからない', () => {
+  expect(parseMarkdownSections('> 📍 **階層**: ホーム > ニュース > 記事の題\n\n本文です。').map((s) => s.heading)).toEqual(['記事の題']);
+  const t = performance.now();
+  parseMarkdownSections(`# 見出し\n\n本文です。\n\n> 📍 **階層**: ${'>'.repeat(30)}`);
+  expect(performance.now() - t).toBeLessThan(500);
 });

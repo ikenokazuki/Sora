@@ -88,7 +88,9 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   let cleaned = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
   // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) からルートタイトルを抽出
   let rootContext = '';
-  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:.*?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
+  // 区切りを 1 つずつ越える形にする（.*? が区切りも飲み込む形は、区切りの多い行で組み合わせが指数で増えた）。
+  // 区間の頭は空白以外にして、区切りの後ろの空白の取り方を 1 通りにする
+  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:(?:(?![>›\\])\S(?:(?![>›\\]).)*)?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
   if (breadcrumbMatch) {
     rootContext = breadcrumbMatch[1].trim();
   }
