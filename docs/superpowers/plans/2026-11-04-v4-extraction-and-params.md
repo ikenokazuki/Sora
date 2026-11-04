@@ -1644,6 +1644,42 @@ git add src/extractor/markdown_sections.ts src/extractor/markdown_sections.test.
 git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(highlights): リンク行とパンくずの判定の正規表現を、細工した入力で止まらない同じ意味の形にする" -m "リンク行の判定（isNavBlock）は ]( の多い 1 行で長さの二乗の時間がかかり、前置きのパンくずの判定は当たらない入力で組み合わせが指数で増えた（121 字で 2 秒）。どちらも同じ判定になる形に替える。ハイライトの評価の記録も、直したあとの数字にする。"
 ```
 
+- [ ] **Step 7（修正 1 回目で足す）: パンくずの行から最後の節を取る正規表現も直す**
+
+A11a の実装のあとに、同じファイルの 3 つ目が見つかった。`parseMarkdownSections` の先頭の `breadcrumbMatch`（`> 📍 **階層**: A > B > C` の行から最後の C を取る）は、`(?:.*?[>›\\]\s*)*` の形で、区切りの多い行が文書の終わりにあると組み合わせが指数で増える（`>` を 26〜28 個並べた行で 0.6〜1.0 秒、Bun 1.3.3。main にも 2026-09-11 からある）。区切りを 1 つずつ越える形にし、区切りの後ろの空白をどちらが取るかで迷わないよう、区間の頭を空白以外に限る。controller が前の形と乱数の入力 40 万件で比べ、一致の有無・位置・取り出す字とも違いは 0 件（改行をまたいで読む今の癖も同じ）。区切りの多い 200,000 字の 1 行でも 0.2 秒以内。
+
+`src/extractor/markdown_sections.ts` の
+
+```ts
+  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:.*?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
+```
+
+を、次にする:
+
+```ts
+  // 区切りを 1 つずつ越える形にする（.*? が区切りも飲み込む形は、区切りの多い行で組み合わせが指数で増えた）。
+  // 区間の頭は空白以外にして、区切りの後ろの空白の取り方を 1 通りにする
+  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:(?:(?![>›\\])\S(?:(?![>›\\]).)*)?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
+```
+
+`src/extractor/markdown_sections.test.ts` の末尾に足す:
+
+```ts
+test('パンくずの行の区切りが多くても、最後の節を取る判定に時間がかからない', () => {
+  expect(parseMarkdownSections('> 📍 **階層**: ホーム > ニュース > 記事の題\n\n本文です。').map((s) => s.heading)).toEqual(['記事の題']);
+  const t = performance.now();
+  parseMarkdownSections(`# 見出し\n\n本文です。\n\n> 📍 **階層**: ${'>'.repeat(30)}`);
+  expect(performance.now() - t).toBeLessThan(500);
+});
+```
+
+直す前にこのテストが時間の expect で落ちること、直したあとに通ることを確かめ、Step 4 のテストと全件を走らせ直す。`docs/evaluations/v4-highlights/results.md` の A11a の記述に、3 つ目（パンくずの行）の直す前と直したあとの時間（Bun 1.4.2）を 1 文足す。コミットは新しく作る:
+
+```bash
+git add src/extractor/markdown_sections.ts src/extractor/markdown_sections.test.ts docs/evaluations/v4-highlights/results.md
+git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(highlights): パンくずの行から最後の節を取る正規表現を、区切りの多い行で止まらない同じ意味の形にする"
+```
+
 ### Task A11b: 本文のリンクと画像の URL で、日本語などの字をパーセントエンコードしない
 
 A11 の修正の測り直しで、`absolutizeContentUrls`（A4）が `new URL(href, base).href` で日本語のパスをパーセントエンコードするため（`/wiki/大阪府` → `https://ja.wikipedia.org/wiki/%E5%A4%A7%E9%98%AA%E5%BA%9C`）、リンクの多い日本語のページで Markdown が base の 1.2〜1.4 倍になり、同じ maxChars（30,000 字）に入る本文が base の 52〜100% に減ることが分かった（大阪府 8,588 → 4,594 字）。絶対 URL のまま、非 ASCII の字のパーセントエンコードだけを字に戻す（IRI の形。ブラウザのアドレス欄と同じ）。空白・制御文字・書式文字（ゼロ幅の字など）になる並びと、UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま残す。ASCII の `%XX`（`%20`・`%2F` など）は触らない。controller の試し（A11 の保存した 10 ページ）では、30,000 字に入る本文が 10 ページとも base 以上になった（大阪府 10,144 字）。`links` の一覧（`formats: ["links"]`）は今のまま（エンコードした形）。
