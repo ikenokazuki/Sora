@@ -29,8 +29,10 @@ function isLabelLinkLine(line: string): LabelLinkVerdict {
 }
 
 /** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
- * 空のラベル行（取り除けなかった SNS アイコン列など）は無視する。画像だけのリンク行がある塊は動かさない
- * （別の塊にまとめられる。削除されることはないので害はない）。 */
+ * 空のラベル行（取り除けなかった SNS アイコン列など）と画像だけのリンク行は、テキストラベルとは数えないが、ナビであることは妨げない。
+ * テキストラベルの行が 1 つも無い塊（画像だけのリンクの列など）は、ナビとみなさない。
+ * ナビの塊は、節の中では dropNavParagraphs が（2 行以上のとき）節の本文とハイライトの候補から外し、
+ * search_deep の本文の配分（integrated_search_host_response の dropNavBlocksFirst）では本文の後ろへ回す。 */
 export function isNavBlock(block: string): boolean {
   const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
   // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
@@ -91,7 +93,8 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   // 正規表現で読むと、区切りの多い行や、失敗する行の並びで組み合わせが増えて長く止まった。前の正規表現は、行が区切りで終わると
   // 改行をまたいで次の行の字を取った（本文の 1 行目を見出しにした）が、それはしない
   let rootContext = '';
-  for (const line of cleaned.split(/\r?\n/)) {
+  // 行は、正規表現の ^ と $（m フラグ）が行の区切りにする \r\n・\n・\r・U+2028・U+2029 で分ける（JSON-LD の BreadcrumbList の名前に \r や U+2028 が入りうる）
+  for (const line of cleaned.split(/\r\n|[\n\r\u2028\u2029]/)) {
     const m = /^>[^\S\r\n]*📍[^\S\r\n]*\*\*階層\*\*:(.*)$/.exec(line);
     const last = m?.[1].split(/[>›\\]/).pop()?.trim();
     if (last) {

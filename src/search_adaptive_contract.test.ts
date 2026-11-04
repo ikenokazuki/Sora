@@ -68,9 +68,13 @@ describe('adaptive deep search public contract', () => {
     });
     const kept: any = await (await post({ query: 'fixture' })).json();
     expect(kept.results[0].ogImage).toBe('https://a.example/og.png');
+    // 指定が無いときは integratedSearch に includeMedia を渡さない（ページを取る側の既定のまま）
+    expect(searchSpy.mock.calls[0][0].includeMedia).toBeUndefined();
     const stripped: any = await (await post({ query: 'fixture', includeMedia: false })).json();
     expect(stripped.results[0].ogImage).toBeUndefined();
     expect(stripped.results[0].markdown).toBe('本文');
+    // false は応答を作る段階だけでなく、integratedSearch（ページを取る scrapeUrl）にも渡す
+    expect(searchSpy.mock.calls.at(-1)![0]).toMatchObject({ includeMedia: false });
     for (const includeMedia of ['false', 0, null]) {
       expect((await post({ query: 'fixture', includeMedia })).status).toBe(400);
     }
@@ -82,6 +86,7 @@ describe('adaptive deep search public contract', () => {
       const tool = (server as any)._registeredTools.search_deep;
       const result = await tool.handler(tool.inputSchema.parse({ query: 'fixture', includeMedia: false }));
       expect(JSON.parse(result.content[0].text).results[0].ogImage).toBeUndefined();
+      expect(searchSpy.mock.calls.at(-1)![0]).toMatchObject({ includeMedia: false });
     } finally {
       await server.close();
     }

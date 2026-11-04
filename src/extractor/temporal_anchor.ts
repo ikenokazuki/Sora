@@ -146,8 +146,13 @@ export function extractTemporalAnchors(
   return anchors;
 }
 
+// リンクと画像の飛び先 `](url "title")`。URL の中の括弧は 1 段まで読む（enrichment.ts の MD_DEST と同じ形）。
+// 日本語の URL を字のまま書くので、飛び先の中の「明日」などに注記を入れるとリンクが壊れる。
+const MD_LINK_DEST_RE = String.raw`\]\([^()]*(?:\([^()]*\)[^()]*)*\)`;
+
 /**
- * 本文中の相対日時表現に決定論的な絶対日時注記 (例: "明日 [2026-09-02]") を埋め込む
+ * 本文中の相対日時表現に決定論的な絶対日時注記 (例: "明日 [2026-09-02]") を埋め込む。
+ * リンクと画像の飛び先 `](…)` の中は書き換えない（リンクの文字と alt には注記を入れる）
  */
 export function annotateTextWithTemporalAnchors(
   text: string,
@@ -161,10 +166,10 @@ export function annotateTextWithTemporalAnchors(
   const sortedAnchors = anchors.slice().sort((a, b) => b.expression.length - a.expression.length);
 
   for (const anchor of sortedAnchors) {
-    // 既に注記されていない場合のみ注記付与
+    // 既に注記されていない場合のみ注記付与。飛び先は先に当てて、そのまま返す
     const escaped = anchor.expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`${escaped}(?!\\s*\\[\\d{4}-\\d{2}-\\d{2}\\])`, 'g');
-    annotated = annotated.replace(regex, `${anchor.expression} [${anchor.resolvedDate}]`);
+    const regex = new RegExp(`(${MD_LINK_DEST_RE})|${escaped}(?!\\s*\\[\\d{4}-\\d{2}-\\d{2}\\])`, 'g');
+    annotated = annotated.replace(regex, (_m, dest: string | undefined) => dest ?? `${anchor.expression} [${anchor.resolvedDate}]`);
   }
 
   return annotated;

@@ -1845,6 +1845,8 @@ export async function integratedSearch(options: {
   diversityWeight?: number;
   annotateTemporal?: boolean;
   minimizeTables?: boolean;
+  /** false なら、ページを取る scrapeUrl にも includeMedia: false を渡す（画像を戻す rs-trafilatura の 2 回目を走らせない）。応答から画像・動画を省くのは formatIntegratedSearchHostResponse */
+  includeMedia?: boolean;
   highlightMaxCount?: number;
   adaptiveScrape?: boolean;
   scrapeBudget?: number;
@@ -1882,6 +1884,9 @@ export async function integratedSearch(options: {
   const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
   const minimizeTables = options.minimizeTables;
+  // 偽のときだけ scrapeUrl に渡す（真・未指定は今までどおり何も渡さない）。scrapeUrl のキャッシュのキーには includeMedia が入る
+  const includeMedia = options.includeMedia !== false;
+  const mediaOption = includeMedia ? {} : { includeMedia: false };
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
   const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
@@ -1891,7 +1896,9 @@ export async function integratedSearch(options: {
   const requestTenantId = options.tenantId ?? 'legacy';
   // 題名は検索結果のものを使う。ただし検索語の URL と YouTube の動画は、読んだページの題名にする
   // （Yahoo は YouTube の題名を英語に訳して返すことがある。2026-10-26 に確認）
-  const pageTitle = (scrape: ScrapeResult) => (scrape.title && (readQueryUrls || scrape.media?.type === 'youtube') ? { title: scrape.title } : {});
+  // includeMedia: false の scrapeUrl は media を省くので、そのときは URL で YouTube の動画か見る
+  const isYouTubePage = (scrape: ScrapeResult) => (includeMedia ? scrape.media?.type === 'youtube' : parseYouTubeUrl(scrape.url) !== undefined);
+  const pageTitle = (scrape: ScrapeResult) => (scrape.title && (readQueryUrls || isYouTubePage(scrape)) ? { title: scrape.title } : {});
   const digest = cacheKeyDigest<IntegratedSearchOptions, IntegratedSearchKeyIgnored>({
     limit,
     scrapeContent,
@@ -1915,6 +1922,7 @@ export async function integratedSearch(options: {
     diversityWeight: diversityWeight ?? 'default',
     annotateTemporal: annotateTemporal === true,
     minimizeTables: minimizeTables !== false,
+    includeMedia,
     highlightMaxCount: highlightMaxCount ?? 'auto',
     adaptiveScrape,
     scrapeBudget,
@@ -2185,6 +2193,7 @@ export async function integratedSearch(options: {
             annotateTemporal,
             minimizeTables,
             highlightMaxCount,
+            ...mediaOption,
           });
 
           const enrichedItem: Record<string, any> = {
@@ -2287,6 +2296,7 @@ export async function integratedSearch(options: {
               annotateTemporal,
               minimizeTables,
               highlightMaxCount,
+              ...mediaOption,
             });
             const enrichedSpare: Record<string, any> = {
               ...spareItem,
@@ -2350,7 +2360,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount, ...mediaOption });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';

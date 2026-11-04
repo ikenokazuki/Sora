@@ -285,6 +285,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           annotateTemporal,
           minimizeTables,
           highlightMaxCount,
+          includeMedia,
         });
         return {
           content: [{

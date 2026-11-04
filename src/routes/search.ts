@@ -272,6 +272,7 @@ const handleIntegratedSearch = async (c: Context) => {
       annotateTemporal: body?.annotateTemporal,
       minimizeTables: body?.minimizeTables,
       highlightMaxCount: body?.highlightMaxCount,
+      includeMedia: includeMediaParsed.data,
       verbose: body?.verbose ?? c.req.query('verbose') === 'true',
     });
 

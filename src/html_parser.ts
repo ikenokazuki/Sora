@@ -832,36 +832,50 @@ export function resolveImageUrl(
 }
 
 /** 絶対 URL のうち、非 ASCII の字（日本語のパスなど）のパーセントエンコードを字に戻す。本文の字数を URL に取られないように。
- * 空白・制御文字・書式文字になる並びと、UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま。ASCII の %XX は触らない */
+ * 空白・制御文字・書式文字・見えない字（ハングルの空白字 U+3164・U+FFA0、CGJ U+034F、異体字セレクタなど）になる並びと、
+ * UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま。ASCII の %XX は触らない */
 function readableUrl(url: string): string {
   return url.replace(/(?:%[89a-f][0-9a-f])+/gi, (m) => {
     try {
       const s = decodeURIComponent(m);
-      return /[\p{C}\p{Z}]/u.test(s) ? m : s;
+      return /[\p{C}\p{Z}\p{Default_Ignorable_Code_Point}]/u.test(s) ? m : s;
     } catch {
       return m;
     }
   });
 }
 
+/** 飛び先の無いリンクの目印の要素名（属性は付けない）。absolutizeContentUrls が $.html() のあとで、この名前の開始・終了タグだけを消す */
+const UNLINKED_TAG = 'sora-unlinked';
+const UNLINKED_TAG_RE = /<\/?sora-unlinked>/g;
+
 /**
  * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。日本語などの字はパーセントエンコードせずに書く（links の一覧はエンコードした形）。
- * # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。
+ * # だけのリンク（#/route・#!/route のようなハッシュの経路は除く）と javascript: のリンクは、飛び先が無いので、リンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。
+ * 外すリンクは、要素を動かさずに目印の名前にし、直列化のあとでそのタグだけを消す。要素ごと外すと、並んだリンクで親の子の配列の切り貼りが長さの二乗の時間になる。
+ * href を外しただけの a や span にすると、Turndown が空の見出し・リストの項目を出したり、数字と点の逃がし方が変わったりして、Markdown が前と変わる。
  */
 export function absolutizeContentUrls(contentHtml: string, baseUrl: string): string {
   if (!contentHtml) return contentHtml;
   const $ = cheerio.load(contentHtml, null, false);
+  const unlinked = new Set<unknown>();
   $('a[href]').each((_, el) => {
     const $a = $(el);
     const href = ($a.attr('href') ?? '').trim();
-    if (!href || href.startsWith('#') || /^javascript:/i.test(href)) {
-      // 隣が要素（並んだリンクなど）のときは空白を挟み、外した文字が隣の文字とくっつかないようにする
-      if (el.prev?.type === 'tag') $a.before(' ');
-      if (el.next?.type === 'tag') $a.after(' ');
-      $a.replaceWith($a.contents());
-      return;
+    let abs: URL | undefined;
+    try { abs = new URL(href, baseUrl); } catch {}
+    // new URL はタブ・改行・先頭の制御文字を取り除くので、文字参照で崩した java&#9;script: は protocol で見る
+    if (!href || (href.startsWith('#') && !/^#!?\//.test(href)) || /^javascript:/i.test(href) || abs?.protocol === 'javascript:') {
+      el.attribs = {};
+      el.name = UNLINKED_TAG;
+      unlinked.add(el);
+      // 隣が要素（並んだリンクなど）のときは空白を挟み、外した文字が隣の文字とくっつかないようにする。
+      // 前が外したリンクなら、そのリンクが後ろに空白を足してある
+      if (el.prev?.type === 'tag' && !unlinked.has(el.prev)) $a.prepend(' ');
+      if (el.next?.type === 'tag') $a.append(' ');
+    } else if (abs) {
+      $a.attr('href', readableUrl(abs.href));
     }
-    try { $a.attr('href', readableUrl(new URL(href, baseUrl).href)); } catch {}
   });
   $('img[src]').each((_, el) => {
     const $img = $(el);
@@ -869,7 +883,8 @@ export function absolutizeContentUrls(contentHtml: string, baseUrl: string): str
     if (!src || src.startsWith('data:')) return;
     try { $img.attr('src', readableUrl(new URL(src, baseUrl).href)); } catch {}
   });
-  return $.html();
+  const html = $.html();
+  return unlinked.size > 0 ? html.replace(UNLINKED_TAG_RE, '') : html;
 }
 
 const STRUCTURED_CONTENT_SELECTOR =

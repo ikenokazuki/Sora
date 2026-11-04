@@ -253,8 +253,13 @@ describe('web-fetcher Core Functions', () => {
     expect(cleanMarkdownTokens('[![](https://example.com/a.png)](https://example.com/p)')).toBe('');
     expect(cleanMarkdownTokens('![](https://example.com/i/filters:format(webp)/a.jpg) 本文')).toBe('本文');
     expect(cleanMarkdownTokens('![](https://example.com/a.png "Skill verified")本文')).toBe('本文');
+    // 前後がどちらも空白でないときは、語がくっつかないように空白 1 字にする（前は、残った ! が区切っていた）
+    expect(cleanMarkdownTokens('Cocktail![](https://example.com/a.png)Friendsgiving')).toBe('Cocktail Friendsgiving');
     expect(cleanMarkdownTokens('[A](https://example.com/a)![](https://example.com/logo.png)[\n\nB は取引所\n\n](https://example.com/b)'))
-      .toBe('[A](https://example.com/a)[\n\nB は取引所\n\n](https://example.com/b)');
+      .toBe('[A](https://example.com/a) [\n\nB は取引所\n\n](https://example.com/b)');
+    // 片方が空白・行頭・行末なら、空白は足さない
+    expect(cleanMarkdownTokens('行末![](https://example.com/a.png)\n次の行')).toBe('行末\n次の行');
+    expect(cleanMarkdownTokens('前の行\n![](https://example.com/a.png)行頭')).toBe('前の行\n行頭');
     expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
     expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
     // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）
@@ -268,6 +273,29 @@ describe('web-fetcher Core Functions', () => {
     expect(cleanMarkdownTokens('前 [Click](javascript:void(0)) 後')).toBe('前 Click 後');
     // 地の文の「[text](javascript:…)」を Turndown が逃がした形は、字を壊さずそのまま残す
     expect(cleanMarkdownTokens('\\[text\\](javascript:void(0))')).toBe('\\[text\\](javascript:void(0))');
+  });
+
+  it('cleanMarkdownTokens は、直前の \\ が奇数個の [ だけをリンクとして読まない（偶数個なら \\ が字で、続くリンクは生きている）', () => {
+    // \[a](javascript:x) は逃がした [ （残す）。\\[a](javascript:x) は字の \ のあとの本物のリンク（外す）
+    expect(cleanMarkdownTokens('\\[a](javascript:x)')).toBe('\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\[a](javascript:x)')).toBe('\\\\a');
+    expect(cleanMarkdownTokens('\\\\\\[a](javascript:x)')).toBe('\\\\\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\\\\\[a](javascript:x)')).toBe('\\\\\\\\a');
+    expect(cleanMarkdownTokens('前 \\\\[a](javascript:x) 中 \\[b](javascript:y) 中 [c](javascript:z) 後')).toBe('前 \\\\a 中 \\[b](javascript:y) 中 c 後');
+    // \ の長い並びのあとでも、偶数個なら外し、奇数個なら残す（後読みを [ の位置でだけ評価しないと、JSC が途中で諦めて外すべきリンクが残り、1 秒ほどかかる）
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens('\\'.repeat(200_000) + '[a](javascript:x)')).toBe('\\'.repeat(200_000) + 'a');
+    expect(cleanMarkdownTokens('\\'.repeat(200_001) + '[a](javascript:x)')).toBe('\\'.repeat(200_001) + '[a](javascript:x)');
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it('cleanMarkdownTokens は、行の途中の長い空白で止まらない（行末の空白だけを消す）', () => {
+    // 行末の空白を消す正規表現は、空白の並びの途中のすべての位置から並びの最後まで読んで、長さの二乗の時間だった（16 万字で 27 秒）
+    const middle = 'a' + ' '.repeat(160_000) + 'b';
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens(middle)).toBe(middle);
+    expect(cleanMarkdownTokens(`${middle}${' \t'.repeat(80_000)}\n次の行`)).toBe(`${middle}\n次の行`);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {

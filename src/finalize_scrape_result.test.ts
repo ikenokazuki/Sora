@@ -46,7 +46,10 @@ describe('finalizeScrapeResult のハイライト', () => {
       opts({ annotateTemporal: true }),
     );
     expect(result.highlights?.[0]).toContain('明日 [2026-11-05]');
-    expect(decodeURIComponent(result.textFragmentUrl ?? '')).not.toContain('2026-11-05');
+    // 先に textFragmentUrl があることを確かめる（無いときに `?? ''` で通らないように）
+    expect(result.textFragmentUrl).toContain('#:~:text=');
+    expect(decodeURIComponent(result.textFragmentUrl as string)).toContain('明日の');
+    expect(decodeURIComponent(result.textFragmentUrl as string)).not.toContain('2026-11-05');
   });
 
   test('description はハイライトで置き換えない', async () => {

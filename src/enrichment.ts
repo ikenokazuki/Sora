@@ -95,8 +95,10 @@ const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
 const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
 const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
 const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
-// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる
-const JS_LINK_RE = new RegExp(String.raw`(?<!\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [。直前の `\` が奇数個）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる。
+// 直前の `\` が偶数個なら、`\\` が字の `\` で、続く `[a](javascript:x)` は生きたリンクなので外す。
+// 先頭の (?=\[) は、後読みを `[` の位置でだけ評価するため。無いと、`\` の長い並びで JSC が途中で諦めて（外すべきリンクが残り、0.7〜1 秒かかる）
+const JS_LINK_RE = new RegExp(String.raw`(?=\[)(?<!(?<!\\)(?:\\\\)*\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
 const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
 const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
 
@@ -104,8 +106,10 @@ const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, '
 export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
   let cleaned = markdown
-    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）
-    .replace(EMPTY_IMAGE_RE, '')
+    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）。
+    // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）
+    .replace(EMPTY_IMAGE_RE, (m, offset: number, whole: string) =>
+      /\S/.test(whole[offset - 1] ?? ' ') && /\S/.test(whole[offset + m.length] ?? ' ') ? ' ' : '')
     // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
     .replace(EMPTY_LINK_RE, '')
     // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
@@ -125,8 +129,8 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/^[ \t]+$/gm, '')
     // 5. 3連続以上の空行を2行に圧縮
     .replace(/\n{3,}/g, '\n\n')
-    // 6. 行末の不要な半角スペースを除去
-    .replace(/[ \t]+$/gm, '')
+    // 6. 行末の不要な半角スペースを除去。(?<![ \t]) は空白の並びの先頭からだけ試すため（無いと、行の途中の長い空白で、並びの途中のすべての位置から読んで二乗の時間になる）
+    .replace(/(?<![ \t])[ \t]+$/gm, '')
     // 7. ゼロ幅文字・不可視制御文字の除去 (間接プロンプトインジェクション緩和)
     .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
     // 8. LLM 特殊制御トークン・擬似システム命令タグの無害化 (間接プロンプトインジェクション防御)

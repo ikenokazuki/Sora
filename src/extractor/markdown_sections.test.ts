@@ -63,3 +63,31 @@ test('パンくずの行から最後の節を取る（区切りが多くても�
   parseMarkdownSections(`# 見出し\n\n本文です。\n\n${'> 📍 **階層**: >\n'.repeat(5000)}`);
   expect(performance.now() - t).toBeLessThan(500);
 });
+
+describe('パンくずの行から最後の節を取る（行の区切り・区切りの文字・最後の区間が空の行）', () => {
+  const headings = (doc: string) => parseMarkdownSections(doc).map((s) => s.heading);
+  const crumb = '> 📍 **階層**: ホーム > ニュース > 記事の題';
+
+  test('CRLF の文書でも最後の節を取る', () => {
+    expect(headings(`${crumb}\r\n\r\n本文です。`)).toEqual(['記事の題']);
+    // 行が区切りで終わるときは、CRLF でも次の行の字を見出しにしない
+    expect(headings('> 📍 **階層**: ホーム >\r\n\r\n本文です。')).toEqual(['']);
+  });
+
+  test('区切りが › でも、最後の節を取る', () => {
+    expect(headings('> 📍 **階層**: ホーム › ニュース › 記事の題\n\n本文です。')).toEqual(['記事の題']);
+  });
+
+  test('最後の区間が空の行は飛ばして、後ろの別のパンくずの行から取る', () => {
+    expect(headings(`> 📍 **階層**: ホーム >\n${crumb}\n\n本文です。`)).toEqual(['記事の題']);
+    expect(headings(`> 📍 **階層**: ホーム >\r\n${crumb}\r\n\r\n本文です。`)).toEqual(['記事の題']);
+  });
+
+  test('単独の \\r・U+2028・U+2029 で区切った文書でも、最後の節を取る', () => {
+    // JSON-LD の BreadcrumbList の名前に、これらの字が入りうる。前は \r?\n でしか行を分けず、行全体が 1 行のまま読めなかった
+    for (const [label, sep] of [['\\r', '\r'], ['U+2028', String.fromCharCode(0x2028)], ['U+2029', String.fromCharCode(0x2029)]] as const) {
+      expect(headings(`${crumb}${sep}${sep}本文です。`), label).toEqual(['記事の題']);
+      expect(headings(`> 📍 **階層**: ホーム >${sep}${crumb}${sep}${sep}本文です。`), `${label}: 最後の区間が空の行のあと`).toEqual(['記事の題']);
+    }
+  });
+});
