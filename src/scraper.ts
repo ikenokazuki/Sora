@@ -294,19 +294,19 @@ export async function finalizeScrapeResult(
     }
   }
 
-  // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
-  let highlightSource = result.content;
-  if (options.highlightSource !== undefined) {
-    highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
-    if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
-  }
-
   const stats = calculateContentStats(result.content);
   result.characterCount = stats.characterCount;
   result.wordCount = stats.wordCount;
   result.readingTimeMin = stats.readingTimeMin;
 
   if (options.shouldExtractHighlights && options.query) {
+    // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
+    let highlightSource = result.content;
+    if (options.highlightSource !== undefined) {
+      highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
+      if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
+    }
+
     const supplemental: string[] = [];
     if (options.snippet?.trim()) {
       supplemental.push(options.snippet.trim());
@@ -333,7 +333,7 @@ export async function finalizeScrapeResult(
       result.highlightDiagnostics = picked.diagnostics;
     }
     if (result.highlights.length > 0) {
-      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);
+      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0].replace(/ \[\d{4}-\d{2}-\d{2}\]/g, ''));
     }
   }
   const isHighlightOnlyMode =

@@ -28,6 +28,7 @@ describe('finalizeScrapeResult のハイライト', () => {
     const result = await finalizeScrapeResult(base(content), opts({ highlightSource: full }));
     expect(result.content).toBe(content);
     expect(result.highlights?.join('\n')).toContain('開場時間は 17:00');
+    expect('highlightSource' in result).toBe(false);
   });
 
   test('maskPii は全文にも当てる', async () => {
@@ -37,12 +38,14 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect(result.highlights?.join('\n')).not.toContain('info@example.com');
   });
 
-  test('annotateTemporal はハイライトにも注記を付ける', async () => {
+  test('annotateTemporal はハイライトにも注記を付け、ページの中の位置（textFragmentUrl）には注記を入れない', async () => {
+    // 基準の日時は、テストを走らせる場所の時間帯の正午（日付の計算はその時間帯で行うため）
     const result = await finalizeScrapeResult(
-      base('## 案内\n\n開場時間は明日の 17:00 です。', { publishedTime: '2026-11-04T12:00:00+09:00' }),
+      base('## 案内\n\n開場時間は明日の 17:00 です。', { publishedTime: new Date(2026, 10, 4, 12).toISOString() }),
       opts({ annotateTemporal: true }),
     );
     expect(result.highlights?.[0]).toContain('明日 [2026-11-05]');
+    expect(decodeURIComponent(result.textFragmentUrl ?? '')).not.toContain('2026-11-05');
   });
 
   test('description はハイライトで置き換えない', async () => {
