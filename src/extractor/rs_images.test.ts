@@ -65,6 +65,8 @@ describe('restoreRsImages', () => {
     expect(restoreRsImages('<p>説明</p>', `<p>説明${mark(0)}</p>`, kept)).toBe('<p>説明<img src="https://example.com/c.jpg" alt=""></p>');
     const withAlt = [{ src: 'https://example.com/d.jpg', alt: '図', title: '', caption: 'グラフの説明' }];
     expect(restoreRsImages('<p>本文</p>', `<p>本文${mark(0)}</p>`, withAlt)).toBe('<p>本文<img src="https://example.com/d.jpg" alt="図" title="グラフの説明"></p>');
+    const withTitle = [{ src: 'https://example.com/e.jpg', alt: '図', title: '元の題', caption: '消えた説明' }];
+    expect(restoreRsImages('<p>本文</p>', `<p>本文${mark(0)}</p>`, withTitle)).toBe('<p>本文<img src="https://example.com/e.jpg" alt="図" title="元の題 消えた説明"></p>');
   });
 
   test('比べる文字は、タグ・私用領域の文字・空白の違いを無視する', () => {
