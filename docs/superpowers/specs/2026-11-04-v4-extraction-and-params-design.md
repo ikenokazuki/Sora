@@ -103,7 +103,7 @@ Readability の経路と同じ隠し要素（hidden・aria-hidden・display:none
 
 ### 3. 変換と出力
 
-- 本文の URL: どちらの経路でも、Turndown に渡す前に、本文の `a[href]` と `img[src]` を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。`#` だけのリンクと `javascript:` のリンクは、リンクを外して文字だけにする。`mailto:` と `tel:` はそのまま。
+- 本文の URL: どちらの経路でも、Turndown に渡す前に、本文の `a[href]` と `img[src]` を、ページの URL を基準に絶対 URL にする（基準は links の一覧と同じ。日本語などの字はエンコードせずに書き、links の一覧はエンコードした形のまま。下の「実装中に足したこと」）。`#` だけのリンクと `javascript:` のリンクは、リンクを外して文字だけにする。`mailto:` と `tel:` はそのまま。
 - formats の `html`: 本文の HTML（Markdown の元にしたもので、URL を絶対にし、画像を戻したもの）を返す。onlyMainContent が false のときは body の HTML。`rawHtml` は今と同じく、取得したそのままの HTML。
 - includeMedia（scrape・scrape_batch・crawl_site。既定 true）: false のとき、search_deep と同じく、本文の画像を「[画像: alt]」に置き換え（alt が無ければ消し）、ogImage と media を省く。formats で求めた images の一覧と highlights は触らない。rs-trafilatura の 2 回目も走らせない。search_deep の `stripMedia` の画像の置き換えを共通の関数にして、両方から使う。
 
