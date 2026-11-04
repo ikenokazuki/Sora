@@ -10,6 +10,7 @@ import type {
   ScrapeContentStatus,
   TableData,
 } from './types.js';
+import { HIGHLIGHT_SOURCE_MAX_CHARS } from './types.js';
 import {
   calculateContentQuality,
   calculateExtractionCompleteness,
@@ -977,6 +978,7 @@ export function convertHtmlToMarkdown(
 ): {
   title: string;
   markdown: string;
+  fullMarkdown: string;
   contentStatus: ScrapeContentStatus;
   ogImage?: string;
   description?: string;
@@ -1331,6 +1333,8 @@ export function convertHtmlToMarkdown(
 
   const isTruncated = markdown.length > maxChars;
   const truncatedMarkdown = safeTruncateMarkdown(markdown, maxChars);
+  // ハイライトは、切る前の全文（上限まで）から選ぶ（finalizeScrapeResult）
+  const fullMarkdown = safeTruncateMarkdown(markdown, HIGHLIGHT_SOURCE_MAX_CHARS);
   const estimatedTokens = estimateTokens(truncatedMarkdown);
 
   // 品質・ページ種別・充足度・Evidence の算出
@@ -1393,6 +1397,7 @@ export function convertHtmlToMarkdown(
   return {
     title,
     markdown: truncatedMarkdown,
+    fullMarkdown,
     contentStatus,
     ogImage,
     description,

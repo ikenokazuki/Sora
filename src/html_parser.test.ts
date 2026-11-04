@@ -436,3 +436,13 @@ describe('本文の URL', () => {
     expect(result.html).not.toContain('<head');
   });
 });
+
+describe('切る前の全文', () => {
+  it('maxChars で切る前の全文を fullMarkdown で返す', () => {
+    const tail = '最後の段落に答えがある。';
+    const html = `<html><body><p>${'前の段落。'.repeat(200)}</p><p>${tail}</p></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/', 100, false, false);
+    expect(result.markdown).not.toContain(tail);
+    expect(result.fullMarkdown).toContain(tail);
+  });
+});
