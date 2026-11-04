@@ -1730,15 +1730,16 @@ git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.gi
 `<OUT>/live40.ts`:
 
 ```ts
-// JQaRA test の 40 問（q_id の順に 41 問おき）を、問い文の内容語（最大 5 つ）の検索語で、実際の integratedSearch に 1 回ずつ渡す。
-// X の速報なし。問いの間は 10 秒あける。同じ結果を full と evidence で直列化し、答えが残るかを数える。
+// JQaRA test の 40 問（q_id の順に 41 問おき、2 回目から 10 問ずらす = response-compression の 4 回目と同じ問い）を、
+// 問い文の内容語（最大 5 つ）の検索語で、実際の integratedSearch に 1 回ずつ渡す。X の速報なし。問いの間は 15 秒あける（4 回目と同じ）。
+// 同じ結果を full と evidence で直列化し、答えが残るかを、問いごとと結果のページごとに数える。
 import { readFileSync, writeFileSync } from 'node:fs';
 import { integratedSearch } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/scraper.ts';
 import { serializeIntegratedSearchMcpResponse } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/integrated_search_host_response.ts';
 const rows = readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const byQ = new Map<string, any>();
 for (const r of rows) if (!byQ.has(r.q_id)) byQ.set(r.q_id, r);
-const qs = [...byQ.values()].sort((a, b) => String(a.q_id).localeCompare(String(b.q_id))).filter((_, i) => i % 41 === 0).slice(0, 40);
+const qs = [...byQ.values()].sort((a, b) => String(a.q_id).localeCompare(String(b.q_id))).filter((_, i) => i % 41 === 10).slice(0, 40);
 const contentWords = (q: string) => [...new Intl.Segmenter('ja', { granularity: 'word' }).segment(q)]
   .filter((s) => s.isWordLike && !/^[\p{Script=Hiragana}ー]+$/u.test(s.segment)).map((s) => s.segment).filter((w, i, a) => a.indexOf(w) === i).slice(0, 5).join(' ');
 const out: any[] = [];
@@ -1751,12 +1752,12 @@ for (const q of qs) {
   const evidence = serializeIntegratedSearchMcpResponse(res, { responseMode: 'evidence' });
   out.push({ q_id: q.q_id, query, results: res.results?.length ?? 0, full: has(full), evidence: has(evidence) });
   console.error(q.q_id, query, out.at(-1));
-  await new Promise((r) => setTimeout(r, 10_000));
+  await new Promise((r) => setTimeout(r, 15_000));
 }
 writeFileSync(process.argv[3], JSON.stringify(out, null, 1));
 ```
 
-（JQaRA の JSONL の項目名が `q_id`・`question`・`answers` と違うときは、`scripts/eval-jqara.ts` の読み方に合わせる）
+（JQaRA の JSONL の項目名が `q_id`・`question`・`answers` と違うときは、`scripts/eval-jqara.ts` の読み方に合わせる。問いの選び方が 4 回目と同じになることを、`docs/evaluations/response-compression/results.md` の 4 回目の説明と照らして確かめる。ページごとの数は、4 回目と同じく「`full` の本文に答えがあるページのうち、`evidence` のそのページの部分にも答えが残るページ」を数える（数え方を報告に書く）。`full`・`evidence` の直列化の結果と検索の結果は、問いごとにファイルに残す）
 
 - [ ] **Step 2: 1 回だけ走らせる**
 
@@ -1765,7 +1766,7 @@ cd ~/.worktrees/Sora/v4-extraction && unset HTTPS_PROXY HTTP_PROXY
 <OUT>/bun142/node_modules/.bin/bun <OUT>/live40.ts <DATA>/jqara/test.jsonl <OUT>/live40.json
 ```
 
-Expected: 40 問を約 10 分で終える。`full` に答えがあった問いのうち `evidence` にも残った割合が、前回（`docs/evaluations/response-compression/results.md` の 2 回目: 29 問中 27 問、93%）より下がらない。
+Expected: 40 問を約 10 分で終える。Yahoo の 429（取得の拒否）が 1 回でも出たら、すぐ止めて報告する（手元からの検索は本番と同じ IP を使う。取り直さない）。`full` に答えがあった問いとページのうち `evidence` にも残った割合が、今の main の最新の記録（`docs/evaluations/response-compression/results.md` の 4 回目: 問い 29 問中 25 問・86%、ページ 92 ページ中 79 ページ・86%）から大きく下がらない。問いで 2 問分・ページで 5 ポイント以上下がったら、落ちた問いとページごとに、答えが本文のどこにあり、`evidence` がどの段落を選んだかを調べて報告に書き、原因が v4.0.0 の変更なら BLOCKED で止める（取り直しはしない）。
 
 - [ ] **Step 3: 記録して Commit**
 
