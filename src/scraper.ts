@@ -258,22 +258,30 @@ function markHttpError(result: ScrapeResult, status: number | undefined): Scrape
 const HIGHLIGHT_SEPARATOR = '\n\n---\n\n';
 
 /**
- * ハイライトを前から足し、つないだ字数（区切りの分も数える）が maxChars を超えるところで切る。
- * 超えるハイライトは残りの字数に切り、その後ろは捨てる（ハイライトは全文から選ぶので、窓で切らない表・コードの節などは maxChars より大きい）。
+ * ハイライトの合計を maxChars に収める。ハイライトは全文から選ぶので、窓で切らない表・コードの節や文が 1 つの節は maxChars より大きい。
+ * つないだ字数（区切りの分も数える）が収まるように、短いものを先に確保する（max-min）:
+ * 予算 = maxChars − 区切りの字数 ×（件数 − 1）。長さの短い順に、自分の長さと「残りの予算 ÷ 残りの件数（切り捨て）」の小さいほうを割り当てる。
+ * 割り当てが長さより短いものだけ切る。並びは変えず、切った結果が空白だけのものは外す。
+ * 予算が件数より小さい（区切りの分も入らない）ときは、先頭の 1 件だけを maxChars で切る。
  */
-function capHighlightItems<T extends { text: string }>(items: T[], maxChars: number): T[] {
-  const out: T[] = [];
-  let used = 0;
-  for (const item of items) {
-    const separator = out.length > 0 ? HIGHLIGHT_SEPARATOR.length : 0;
-    const room = maxChars - used - separator;
-    if (room <= 0) break;
-    const text = truncateMarkdownWithin(item.text, room);
-    if (!text.trim()) break;
-    out.push(text === item.text ? item : { ...item, text });
-    used += separator + text.length;
+export function capHighlightItems<T extends { text: string }>(items: T[], maxChars: number): T[] {
+  let budget = maxChars - HIGHLIGHT_SEPARATOR.length * Math.max(items.length - 1, 0);
+  if (items.length === 0 || budget >= items.reduce((sum, item) => sum + item.text.length, 0)) return items;
+  if (budget < items.length) {
+    const text = truncateMarkdownWithin(items[0].text, maxChars);
+    return text.trim() ? [{ ...items[0], text }] : [];
   }
-  return out;
+  const share: number[] = [];
+  let left = items.length;
+  for (const i of items.map((_, index) => index).sort((a, b) => items[a].text.length - items[b].text.length)) {
+    share[i] = Math.min(items[i].text.length, Math.floor(budget / left));
+    budget -= share[i];
+    left--;
+  }
+  return items.flatMap((item, i) => {
+    const text = share[i] < item.text.length ? truncateMarkdownWithin(item.text, share[i]) : item.text;
+    return text.trim() ? [text === item.text ? item : { ...item, text }] : [];
+  });
 }
 
 export async function finalizeScrapeResult(
