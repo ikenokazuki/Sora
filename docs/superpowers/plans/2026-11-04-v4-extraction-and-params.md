@@ -680,6 +680,7 @@ describe('finalizeScrapeResult のハイライト', () => {
     const result = await finalizeScrapeResult(base(content), opts({ highlightSource: full }));
     expect(result.content).toBe(content);
     expect(result.highlights?.join('\n')).toContain('開場時間は 17:00');
+    expect('highlightSource' in result).toBe(false);
   });
 
   test('maskPii は全文にも当てる', async () => {
@@ -689,12 +690,14 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect(result.highlights?.join('\n')).not.toContain('info@example.com');
   });
 
-  test('annotateTemporal はハイライトにも注記を付ける', async () => {
+  test('annotateTemporal はハイライトにも注記を付け、ページの中の位置（textFragmentUrl）には注記を入れない', async () => {
+    // 基準の日時は、テストを走らせる場所の時間帯の正午（日付の計算はその時間帯で行うため）
     const result = await finalizeScrapeResult(
-      base('## 案内\n\n開場時間は明日の 17:00 です。', { publishedTime: '2026-11-04T12:00:00+09:00' }),
+      base('## 案内\n\n開場時間は明日の 17:00 です。', { publishedTime: new Date(2026, 10, 4, 12).toISOString() }),
       opts({ annotateTemporal: true }),
     );
     expect(result.highlights?.[0]).toContain('明日 [2026-11-05]');
+    expect(decodeURIComponent(result.textFragmentUrl ?? '')).not.toContain('2026-11-05');
   });
 
   test('description はハイライトで置き換えない', async () => {
@@ -718,15 +721,15 @@ Expected: FAIL（全文から選ばない・注記が無い・description がハ
     highlightSource?: string;
 ```
 
-2. 本体の先頭の maskPii と safeNormalize の 2 つの if の後ろ（`const stats = calculateContentStats(result.content);` の前）に足す:
+2. `if (options.shouldExtractHighlights && options.query) {` のブロックの先頭（`const supplemental: string[] = [];` の前）に足す（ハイライトを作らない呼び出しでは、全文を加工しない）:
 
 ```ts
-  // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
-  let highlightSource = result.content;
-  if (options.highlightSource !== undefined) {
-    highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
-    if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
-  }
+    // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
+    let highlightSource = result.content;
+    if (options.highlightSource !== undefined) {
+      highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
+      if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
+    }
 ```
 
 3. `const picked = extractQueryHighlightDetails(result.content, options.query, { maxHighlights: options.highlightMaxCount });` を次に置き換える:
@@ -736,6 +739,12 @@ Expected: FAIL（全文から選ばない・注記が無い・description がハ
       maxHighlights: options.highlightMaxCount,
       ...(options.annotateTemporal ? { annotateTemporal: true, publishedTime: result.publishedTime } : {}),
     });
+```
+
+3b. 同じブロックの `result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0]);` を次にする（注記はページに無い文字なので、ページの中の位置を指すときは外す）:
+
+```ts
+      result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0].replace(/ \[\d{4}-\d{2}-\d{2}\]/g, ''));
 ```
 
 4. 次のブロックを消す:
