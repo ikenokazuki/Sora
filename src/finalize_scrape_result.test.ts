@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { HIGHLIGHT_CHAR_BUDGET } from './enrichment.js';
 import { capHighlightItems, finalizeScrapeResult } from './scraper.js';
 import type { ScrapeResult } from './types.js';
 
@@ -89,8 +90,8 @@ describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字
 
 describe('finalizeScrapeResult: ハイライトの合計は maxChars に収まる', () => {
   // ハイライトは全文から選ぶので、窓で切らない表・コードの節や、文が 1 つの節は、全文の字数のまま選ばれる（120,000 字の表の節で 120,000 字のハイライト）。
-  // 要求の maxChars を渡したときは、つないだ字数（区切りの分も数える）が maxChars に収まるように、短いハイライトを先に確保して、長いものを切る。
-  // maxChars を渡さないときは切らない
+  // 要求の maxChars を渡したときは、つないだ字数（区切りの分も数える）が maxChars に収まるように、ふつうのハイライトを前から丸ごと確保して、
+  // 残りで巨大なものを切る。maxChars を渡さないときは切らない
   const SEP = '\n\n---\n\n';
   const query = '開場時間 料金';
   const sum = (hs: string[] | undefined) => (hs ?? []).join(SEP).length;
@@ -171,6 +172,37 @@ describe('finalizeScrapeResult: ハイライトの合計は maxChars に収ま�
     expect(capped.highlightItems?.map((item) => item.score)).toEqual(whole.highlightItems?.map((item) => item.score));
   }, 30_000);
 
+  test('合計より小さい maxChars でも、ふつうの窓つきのハイライトは前から丸ごと残る（等分に切って答えを失わない）', async () => {
+    // 答えが各ハイライトの後半にある、同じ長さのハイライトが 3 件（窓で切った節。巨大なものは無い）
+    const filler = (tag: string, n: number) => `${tag}の案内です。`.repeat(Math.ceil(n / (tag.length + 6))).slice(0, n);
+    const doc = `# 公演案内\n\n${[1, 2, 3].map((i) => `## 会場${i}\n\n${filler(`会場${i}の説明`, 500)}開場時間は ANS${i} です。${filler(`会場${i}の注意`, 600)}`).join('\n\n')}`;
+    const run = (extra: Record<string, unknown> = {}) => finalizeScrapeResult(base(doc.slice(0, 15_000)), opts({ query: '開場時間', highlightSource: doc, ...extra }));
+    const whole = (await run()).highlights ?? [];
+    expect(whole.length).toBe(3);
+    expect(whole.every((h) => h.length <= HIGHLIGHT_CHAR_BUDGET && /ANS\d/.test(h))).toBe(true);
+    const answers = (hs: string[]) => hs.join('').match(/ANS\d/g) ?? [];
+
+    // 前の 2 件が丸ごと入り、3 件目は残りの 50 字で切れる（答えは前の 2 件のもの）
+    const twoMax = whole[0].length + SEP.length + whole[1].length + SEP.length + 50;
+    const two = await run({ maxChars: twoMax });
+    expect(two.highlights?.slice(0, 2)).toEqual(whole.slice(0, 2));
+    expect(two.highlights?.length).toBe(3);
+    expect(whole[2].startsWith(two.highlights?.[2] ?? '\0')).toBe(true);
+    expect(two.highlights?.[2].length).toBe(50);
+    expect(answers(two.highlights ?? [])).toEqual(answers(whole.slice(0, 2)));
+    expect(sum(two.highlights)).toBe(twoMax);
+
+    // 1 件目だけが丸ごと入り、2 件目は残りの 40 字で切れる
+    const oneMax = whole[0].length + SEP.length + 40;
+    const one = await run({ maxChars: oneMax });
+    expect(one.highlights?.[0]).toBe(whole[0]);
+    expect(whole[1].startsWith(one.highlights?.[1] ?? '\0')).toBe(true);
+    expect(one.highlights?.length).toBe(2);
+    expect(one.highlights?.[1].length).toBe(40);
+    expect(answers(one.highlights ?? [])).toEqual(answers(whole.slice(0, 1)));
+    expect(sum(one.highlights)).toBe(oneMax);
+  }, 30_000);
+
   test('onlyHighlights の content（ハイライトを区切りでつないだもの）も maxChars を超えない', async () => {
     const doc = huge[0][1];
     const result = await finalizeScrapeResult(base(doc.slice(0, 15_000)), opts({ query, highlightSource: doc, shouldOnlyHighlights: true, maxChars: 15_000 }));
@@ -198,22 +230,39 @@ describe('finalizeScrapeResult: ハイライトの合計は maxChars に収ま�
   });
 });
 
-describe('capHighlightItems: 短いものを先に確保し、残りを長いものに分ける', () => {
-  // 予算 = maxChars − 区切り（7 字）×（件数 − 1）。長さの短い順に、自分の長さと「残りの予算 ÷ 残りの件数（切り捨て）」の小さいほうを割り当てる。
-  // 割り当てが長さより短いものだけ切り、並びは変えない
+describe('capHighlightItems: ふつうのハイライトを前から丸ごと確保し、残りを巨大なものに分ける', () => {
+  // HIGHLIGHT_CHAR_BUDGET（1,600 字）以下のふつうのハイライトを、出力の順に丸ごと確保する。丸ごと入らないものが出たら、残りの字数で切り（空白だけなら外し）、
+  // そこでやめる（その後ろのふつうのものは外す）。残りの予算は、それより長いもの（表・コード・1 文の節）に、短いものを先に確保する形で分ける:
+  // 長さの短い順に、自分の長さと「残りの予算 ÷ 残りの件数（切り捨て）」の小さいほうを割り当てる。残りが無ければ外す。
+  // 区切り（7 字）は残す件数に合わせて数え、並びは変えない。予算（maxChars − 区切り ×（件数 − 1））が件数より小さいときは、先頭の 1 件だけを maxChars で切る
   const SEP = '\n\n---\n\n';
   const make = (...lengths: number[]) => lengths.map((n, i) => ({ text: 'abcdefghij'[i % 10].repeat(n), score: i }));
 
   test.each([
-    [[10, 100, 1000], 1000, [10, 100, 876]], // 短い 2 つは丸ごと。長いものが残りを使う
-    [[10, 100, 1000], 200, [10, 88, 88]], // 長い 2 つが、残りを等分する
-    [[100, 100, 100], 100, [28, 29, 29]], // 切り捨ての端数は、先に見る（同じ長さなら前の）ものが少ない
+    // ふつうのものだけ: 前から丸ごと。丸ごと入らないものを残りで切り、後ろは外す
+    [[460, 460, 460], 1000, [460, 460, 66]],
+    [[460, 460, 460], 500, [460, 33]],
+    [[10, 100, 1000], 1000, [10, 100, 876]],
+    [[10, 100, 1000], 200, [10, 100, 76]],
+    [[100, 100, 100], 100, [100]],
     [[10, 100], 117, [10, 100]], // ちょうど収まれば切らない
     [[10, 100], 116, [10, 99]],
     [[1000], 100, [100]],
-    [[100, 100, 100], 17, [1, 1, 1]], // 予算（17 − 区切り 14）が件数と同じなら、1 字ずつ
-    [[100, 100, 100], 16, [16]], // 区切りの分も入らないほど小さければ、先頭の 1 件だけを maxChars で切る
+    [[100, 100, 100], 17, [17]], // 予算（17 − 区切り 14）が件数と同じ 3 なので、ふつうに前から
+    [[100, 100, 100], 16, [16]], // 予算 2 が件数 3 より小さい（区切りの分も入らない）ので、先頭の 1 件だけを maxChars で切る
     [[100, 100, 100], 0, []],
+    // 巨大なもの（HIGHLIGHT_CHAR_BUDGET より長い）がある: ふつうのものを丸ごと確保して、残りを巨大なものが使う
+    [[460, 460, 120_000, 460], 5000, [460, 460, 3599, 460]], // 5000 − ふつう 3 件 1,380 − 区切り 3 つ 21
+    [[120_000, 460], 15_000, [14_533, 460]],
+    [[2000, 3000, 100], 3000, [1443, 1443, 100]], // 巨大なものが 2 つ: 残りを max-min で分ける
+    [[2000, 5000, 100], 6000, [2000, 3886, 100]],
+    [[5000, 2000, 100], 6000, [3886, 2000, 100]], // 短いほうを先に確保するので、並びが逆でも同じ
+    [[3000, 5000], 4000, [1996, 1997]], // 巨大なものだけ
+    [[460, 460, 460, 3000], 1000, [460, 460, 66]], // ふつうのもので予算を使い切ったら、巨大なものは外す
+    [[460, 2000], 467, [460]], // 残りが無い（467 − 460 − 区切り 7 = 0）
+    [[460, 2000, 3000], 475, [460]], // 残りは 1 字（475 − 460 − 区切り 14）で、巨大なもの 2 件に 1 字ずつは分けられない
+    [[HIGHLIGHT_CHAR_BUDGET, 100], 1000, [1000]], // ちょうど HIGHLIGHT_CHAR_BUDGET の長さはふつうのもの
+    [[HIGHLIGHT_CHAR_BUDGET + 1, 100], 1000, [893, 100]], // 1 字長いと巨大なもの
   ] as Array<[number[], number, number[]]>)('長さ %j を maxChars %d に収める → %j', (lengths, maxChars, expected) => {
     const capped = capHighlightItems(make(...lengths), maxChars);
     expect(capped.map((item) => item.text.length)).toEqual(expected);
@@ -223,9 +272,11 @@ describe('capHighlightItems: 短いものを先に確保し、残りを長いも
   test('収まるときは同じ配列を返し、切らないものは同じ項目のまま。切ったものは text だけが変わる', () => {
     const items = make(10, 100);
     expect(capHighlightItems(items, 117)).toBe(items);
-    const capped = capHighlightItems(make(10, 100, 1000), 200);
-    expect(capped[0]).toEqual({ text: 'a'.repeat(10), score: 0 });
-    expect(capped[2]).toEqual({ text: 'c'.repeat(88), score: 2 });
+    const long = make(10, 100, 1000);
+    const capped = capHighlightItems(long, 200);
+    expect(capped[0]).toBe(long[0]);
+    expect(capped[1]).toBe(long[1]);
+    expect(capped[2]).toEqual({ text: 'c'.repeat(76), score: 2 });
   });
 
   test('並びは変えない: U 字（1 位・3 位・2 位）に並んでいても、末尾（2 位）を落とさない', () => {
@@ -239,8 +290,11 @@ describe('capHighlightItems: 短いものを先に確保し、残りを長いも
     expect(capped.map((item) => item.text).join(SEP).length).toBe(15_000);
   });
 
-  test('切った結果が空白だけになったものは外す', () => {
-    const capped = capHighlightItems([{ text: ' '.repeat(50) + 'x'.repeat(50), score: 1 }, { text: 'y'.repeat(100), score: 2 }], 40);
-    expect(capped).toEqual([{ text: 'y'.repeat(17), score: 2 }]);
+  test('切った結果が空白だけになったものは外す（ふつうのものなら、そこでやめる）', () => {
+    // ふつうのもの: 丸ごと入らず、残りの字数で切ると空白だけ → 外して、後ろのふつうのものも外す
+    expect(capHighlightItems([{ text: ' '.repeat(50) + 'x'.repeat(50), score: 1 }, { text: 'y'.repeat(100), score: 2 }], 40)).toEqual([]);
+    // 巨大なもの: 割り当ての字数で切ると空白だけ → 外す
+    const capped = capHighlightItems([{ text: 'a'.repeat(100), score: 1 }, { text: ' '.repeat(2000) + 'x'.repeat(2000), score: 2 }], 1000);
+    expect(capped).toEqual([{ text: 'a'.repeat(100), score: 1 }]);
   });
 });

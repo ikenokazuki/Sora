@@ -36,6 +36,7 @@ import {
   replaceMarkdownImages,
   safeTruncateMarkdown,
   truncateMarkdownWithin,
+  HIGHLIGHT_CHAR_BUDGET,
   sendWebhookNotification,
   validateExtractedLinks,
   extractTemporalAnchors,
@@ -259,29 +260,52 @@ const HIGHLIGHT_SEPARATOR = '\n\n---\n\n';
 
 /**
  * ハイライトの合計を maxChars に収める。ハイライトは全文から選ぶので、窓で切らない表・コードの節や文が 1 つの節は maxChars より大きい。
- * つないだ字数（区切りの分も数える）が収まるように、短いものを先に確保する（max-min）:
- * 予算 = maxChars − 区切りの字数 ×（件数 − 1）。長さの短い順に、自分の長さと「残りの予算 ÷ 残りの件数（切り捨て）」の小さいほうを割り当てる。
- * 割り当てが長さより短いものだけ切る。並びは変えず、切った結果が空白だけのものは外す。
- * 予算が件数より小さい（区切りの分も入らない）ときは、先頭の 1 件だけを maxChars で切る。
+ * つないだ字数（区切りの分も、残す件数に合わせて数える）が収まるように、次の順で確保する:
+ * 1. HIGHLIGHT_CHAR_BUDGET 以下のふつうのハイライトを、出力の順に丸ごと。丸ごと入らないものが出たら、残りの字数で切り（空白だけなら外す）、
+ *    そこでやめる（その後ろのふつうのハイライトは外す）
+ * 2. 残りの予算を、それより長いもの（表・コード・1 文の節）に、短いものを先に確保する形（max-min）で分ける: 長さの短い順に、
+ *    自分の長さと「残りの予算 ÷ 残りの件数（切り捨て）」の小さいほうを割り当てる。残りが無ければ外す
+ * 並びは変えない。予算（maxChars − 区切り ×（件数 − 1））が件数より小さい（区切りの分も入らない）ときは、先頭の 1 件だけを maxChars で切る。
  */
 export function capHighlightItems<T extends { text: string }>(items: T[], maxChars: number): T[] {
-  let budget = maxChars - HIGHLIGHT_SEPARATOR.length * Math.max(items.length - 1, 0);
+  const gap = HIGHLIGHT_SEPARATOR.length;
+  const budget = maxChars - gap * Math.max(items.length - 1, 0);
   if (items.length === 0 || budget >= items.reduce((sum, item) => sum + item.text.length, 0)) return items;
   if (budget < items.length) {
     const text = truncateMarkdownWithin(items[0].text, maxChars);
     return text.trim() ? [{ ...items[0], text }] : [];
   }
-  const share: number[] = [];
-  let left = items.length;
-  for (const i of items.map((_, index) => index).sort((a, b) => items[a].text.length - items[b].text.length)) {
-    share[i] = Math.min(items[i].text.length, Math.floor(budget / left));
-    budget -= share[i];
-    left--;
-  }
-  return items.flatMap((item, i) => {
-    const text = share[i] < item.text.length ? truncateMarkdownWithin(item.text, share[i]) : item.text;
-    return text.trim() ? [text === item.text ? item : { ...item, text }] : [];
+  const kept: Array<T | undefined> = [];
+  const huge: number[] = [];
+  let used = 0;
+  let count = 0;
+  let stopped = false;
+  items.forEach((item, i) => {
+    if (item.text.length > HIGHLIGHT_CHAR_BUDGET) {
+      huge.push(i);
+      return;
+    }
+    if (stopped) return;
+    const room = maxChars - used - (count > 0 ? gap : 0);
+    const text = item.text.length <= room ? item.text : truncateMarkdownWithin(item.text, Math.max(room, 0));
+    stopped = text.length < item.text.length;
+    if (!text.trim()) return;
+    kept[i] = text === item.text ? item : { ...item, text };
+    used += (count > 0 ? gap : 0) + text.length;
+    count++;
   });
+  let rest = maxChars - used - gap * (count > 0 ? huge.length : Math.max(huge.length - 1, 0));
+  if (rest >= huge.length) {
+    let left = huge.length;
+    for (const i of huge.sort((a, b) => items[a].text.length - items[b].text.length)) {
+      const share = Math.min(items[i].text.length, Math.floor(rest / left));
+      rest -= share;
+      left--;
+      const text = share < items[i].text.length ? truncateMarkdownWithin(items[i].text, share) : items[i].text;
+      if (text.trim()) kept[i] = text === items[i].text ? items[i] : { ...items[i], text };
+    }
+  }
+  return kept.filter((item): item is T => item !== undefined);
 }
 
 export async function finalizeScrapeResult(

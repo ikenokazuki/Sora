@@ -564,7 +564,7 @@ export interface ParsedSection {
 
 // maxHighlights を指定しないときの足し方: 上位 3 件の後、合計がこの字数に収まる限り、窓で切った節を丸ごとに戻し、
 // さらに後ろの候補を足す（最大 8 件）。語を並べた検索語で答えの節が 4 位以下・窓の外になるのを拾う
-const HIGHLIGHT_CHAR_BUDGET = 1600;
+export const HIGHLIGHT_CHAR_BUDGET = 1600;
 const BUDGET_MAX_HIGHLIGHTS = 8;
 // 長い節を窓で切るとき、前に付ける節の書き出しの字数（返す文だけに付け、MMR の類似度には使わない）
 const WINDOW_LEAD_CHARS = 350;
