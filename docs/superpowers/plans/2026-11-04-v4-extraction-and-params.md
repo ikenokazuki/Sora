@@ -1543,6 +1543,107 @@ git add docs/evaluations/v4-highlights/results.md
 git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "docs(eval): ハイライトを全文から選ぶ直しと、ナビの段落を外す直しを測った記録を足す"
 ```
 
+### Task A11a: 節の分け方の 2 つの正規表現を、細工した入力で止まらない形にする
+
+A11 の評価と controller の確かめで、`src/extractor/markdown_sections.ts` の 2 つの正規表現が、細工した入力で長く処理を止めることが分かった（同期の処理なので、その間ほかの要求も止まる）。
+- リンク行の判定（`isLabelLinkLine` の `BRACKET_LINK_LINE`）: `](` の多い 1 行で長さの二乗の時間がかかる。200,000 字で 6.9 秒（Bun 1.4.2）・17.7 秒（Bun 1.3.3）。A7 から、すべてのハイライトの抽出が通り、上限も 200,000 字になった。
+- 前置き（最初の見出しの前）のパンくずの判定: `(?:\[.+?\]\(.+?\)…)+` の形は、当たらない入力で組み合わせが指数で増える。`[a](b)` を 20 回並べて `x` を付けた 121 字で 2.0 秒（main にも 2026-09-10 からある）。
+
+どちらも、同じ判定になる形に替える（controller が乱数の入力 30 万件ずつで比べ、違いは 0 件）。
+
+**Files:**
+- Modify: `src/extractor/markdown_sections.ts`
+- Modify: `docs/evaluations/v4-highlights/results.md`（二乗の時間の記述を、直したあとの数字にする）
+- Test: `src/extractor/markdown_sections.test.ts`
+
+**Interfaces:**
+- Consumes: なし（関数の形は変えない）
+- Produces: なし
+
+- [ ] **Step 1: 落ちるテストを書く**
+
+`src/extractor/markdown_sections.test.ts` の末尾に足す:
+
+```ts
+test('細工した入力でも、リンク行と前置きのパンくずの判定に時間がかからない', () => {
+  // リンク行の判定: `](` の多い 1 行（前の正規表現は長さの二乗の時間で、200,000 字で 7〜18 秒止まった）
+  let t = performance.now();
+  expect(isNavBlock(`[${'](' .repeat(50_000)}))\n[a](b)`)).toBe(false);
+  expect(performance.now() - t).toBeLessThan(500);
+  // 前置きのパンくずの判定: リンクの並びの後ろに別の字（前の正規表現は組み合わせが指数で増え、121 字で 2 秒止まった）
+  t = performance.now();
+  parseMarkdownSections(`${'[a](b)'.repeat(20)}x\n\n# 見出し\n\n本文です。`);
+  expect(performance.now() - t).toBeLessThan(500);
+});
+
+test('前置きのパンくず（リンクの並び）は、区切りがあってもなくても節にしない', () => {
+  expect(parseMarkdownSections('[ホーム](/) > [ニュース](/news)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
+  expect(parseMarkdownSections('[ホーム](/x)[会社概要](/about)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
+});
+```
+
+- [ ] **Step 2: 落ちることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/extractor/markdown_sections.test.ts`
+Expected: 1 つ目のテストが FAIL（時間が 500 ms を超える。前の正規表現なので数秒かかる）。2 つ目は PASS（今と同じ判定であることの確かめ）
+
+- [ ] **Step 3: 直す**
+
+`src/extractor/markdown_sections.ts` の先頭の次の 2 行を消す:
+
+```ts
+/** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
+const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
+```
+
+`isLabelLinkLine` の次の 3 行:
+
+```ts
+  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない
+  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
+  if (stripped === before || !BRACKET_LINK_LINE.test(trimmed)) return undefined;
+```
+
+を、次にする:
+
+```ts
+  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない:
+  // 行全体が 1 つのリンクとして読めるのは、最後の `](` の後ろの最初の `)` が行の末尾のとき（行は改行を含まない）。
+  // 正規表現 /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/ と同じ判定だが、正規表現は `](` の多い行で長さの二乗の時間がかかった
+  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
+  if (stripped === before || trimmed.indexOf(')', last + 2) !== trimmed.length - 1) return undefined;
+```
+
+`parseMarkdownSections` の中の前置きの判定の 1 行:
+
+```ts
+            /^(?:\[.+?\]\(.+?\)\s*(?:\\?>|›|>)?\s*)+$/s.test(fullText)) &&
+```
+
+を、次にする:
+
+```ts
+            // 「[リンク](URL)」の並びだけか。.+ が間のリンクも区切りも飲み込めるので、繰り返しの形 (?:\[.+?\]\(.+?\)…)+ と同じものに当たる
+            // （繰り返しの形は、当たらない入力で組み合わせが指数で増え、121 字で 2 秒かかった）
+            /^\[.+\]\(.+\)\s*(?:\\?>|›|>)?\s*$/s.test(fullText)) &&
+```
+
+- [ ] **Step 4: 通ることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/extractor/markdown_sections.test.ts src/integrated_search_host_response.test.ts src/finalize_scrape_result.test.ts && bun run typecheck && bun run lint`
+Expected: PASS・型の誤りなし・lint の指摘なし。全件も走らせる（Global Constraints の手順）。
+
+- [ ] **Step 5: 記録を直す**
+
+`docs/evaluations/v4-highlights/results.md` には、リンク行の判定が二乗の時間になる（200,000 字で 6.9 秒）という記述がある（要点・時間の節・「作った最悪の入力」の表・残る課題など）。A11 の報告（`.superpowers/sdd/2026-11-04-v4-extraction-and-params/task-A11-report.md`）にある「作った最悪の入力」のスクリプトを、直したあとのコードで同じ Bun 1.4.2 で測り直し、その記述を「A11a で同じ判定になる形に直した。直したあとは …ms」の形に直す（直す前の数字も残す）。前置きのパンくずの判定（121 字で 2.0 秒 → 直したあとの数字）も 1 文足す。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/extractor/markdown_sections.ts src/extractor/markdown_sections.test.ts docs/evaluations/v4-highlights/results.md
+git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(highlights): リンク行とパンくずの判定の正規表現を、細工した入力で止まらない同じ意味の形にする" -m "リンク行の判定（isNavBlock）は ]( の多い 1 行で長さの二乗の時間がかかり、前置きのパンくずの判定は当たらない入力で組み合わせが指数で増えた（121 字で 2 秒）。どちらも同じ判定になる形に替える。ハイライトの評価の記録も、直したあとの数字にする。"
+```
+
 ### Task A12: 実際の search_deep を 1 回だけ測る（40 問）
 
 **Files:**
