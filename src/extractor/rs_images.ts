@@ -24,8 +24,9 @@ export interface MarkedImage {
 /** 画像ごとに目印を置いた HTML と、目印の番号順の画像。もとからある私用領域の文字（アイコンのフォントなど）は消す */
 export function markImagesForRs(html: string, pageUrl: string): { html: string; images: MarkedImage[] } {
   const $ = cheerio.load(html);
-  $('*').contents().each((_, node: any) => {
-    if (node.type === 'text' && typeof node.data === 'string') node.data = node.data.replace(PRIVATE_USE, '');
+  // 要素ごとに、子の文字の節点を見る（$('*').contents() は要素の数の 2 乗の時間がかかるので使わない）
+  $.root().find('*').each((_, el) => {
+    for (const node of el.children) if (node.type === 'text') node.data = node.data.replace(PRIVATE_USE, '');
   });
   const images: MarkedImage[] = [];
   const marksByWrap = new Map<unknown, string>();
