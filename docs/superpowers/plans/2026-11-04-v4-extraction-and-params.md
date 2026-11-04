@@ -105,10 +105,10 @@ describe('markImagesForRs', () => {
     expect(images[0]).toEqual({ src: 'https://example.com/real.jpg', alt: '', title: '', caption: 'タイム テーブル' });
   });
 
-  test('もとからある私用領域の文字を消し、URL の決まらない画像には目印を置かない', () => {
-    const { html, images } = markImagesForRs('<html><body><p>アイコン<img alt="空"></p></body></html>', 'https://example.com/');
+  test('もとからある私用領域の文字を消し、src の無い画像には目印を置かない', () => {
+    const { html, images } = markImagesForRs('<html><body><p>\uE001アイコン<img alt="空"></p></body></html>', 'https://example.com/');
     expect(images).toEqual([]);
-    expect(html).not.toMatch(/[-]/);
+    expect(html).not.toMatch(/[\uE000-\uF8FF]/);
     expect(html).toContain('アイコン');
   });
 
@@ -141,7 +141,7 @@ import { resolveImageUrl } from '../html_parser.js';
 const MARK_BASE = 0xe000;
 /** 目印に使う私用領域（U+E000〜U+F8FF）の字数 */
 export const MAX_MARKED_IMAGES = 6400;
-const PRIVATE_USE = /[-]/g;
+const PRIVATE_USE = /[\uE000-\uF8FF]/g;
 
 export interface MarkedImage {
   /** 絶対 URL（決まらなければ src のまま） */
@@ -159,7 +159,7 @@ export function markImagesForRs(html: string, pageUrl: string): { html: string; 
     if (node.type === 'text' && typeof node.data === 'string') node.data = node.data.replace(PRIVATE_USE, '');
   });
   const images: MarkedImage[] = [];
-  const lastMark = new Map<unknown, unknown>();
+  const marksByWrap = new Map<unknown, string>();
   $('img').each((_, el) => {
     if (images.length >= MAX_MARKED_IMAGES) return false;
     const $img = $(el);
@@ -173,12 +173,11 @@ export function markImagesForRs(html: string, pageUrl: string): { html: string; 
       title: ($img.attr('title') ?? '').trim(),
       caption: $figure.length > 0 ? $figure.find('figcaption').first().text().replace(/\s+/g, ' ').trim() : '',
     });
-    // 同じ入れ物の 2 枚目からは、前の目印の後ろに置く（文書の順に並べる）
+    // 同じ入れ物の目印は文書の順につなぎ、最後に入れ物の後ろへ一度に入れる（cheerio の after() は文字の節点には効かないため）
     const wrap = $img.parents('a, figure, picture').last()[0] ?? el;
-    const after: any = lastMark.get(wrap) ?? wrap;
-    $(after).after(String.fromCharCode(MARK_BASE + images.length - 1));
-    lastMark.set(wrap, after.next);
+    marksByWrap.set(wrap, (marksByWrap.get(wrap) ?? '') + String.fromCharCode(MARK_BASE + images.length - 1));
   });
+  for (const [wrap, marks] of marksByWrap) $(wrap as any).after(marks);
   return { html: $.html(), images };
 }
 ```
@@ -234,7 +233,7 @@ describe('restoreRsImages', () => {
   });
 
   test('比べる文字は、タグ・私用領域の文字・空白の違いを無視する', () => {
-    expect(rsComparableText('<p>本文</p>\n<div>次</div>')).toBe('本文 次');
+    expect(rsComparableText('<p>本文\uE123</p>\n<div>次</div>')).toBe('本文 次');
   });
 });
 ```
@@ -314,7 +313,7 @@ const calls = (bin: string) => readFileSync(`${bin}.calls`, 'utf8').trim().split
 describe('extractMainContentWithRs の画像', () => {
   const page = '<html><body><p>本文<img src="/a.jpg" alt="写真"></p></body></html>';
   const first = '{"page_type":"listing","content_html":"<p>本文</p>"}';
-  const second = '{"page_type":"listing","content_html":"<p>本文</p>"}';
+  const second = '{"page_type":"listing","content_html":"<p>本文\uE000</p>"}';
 
   test('記事以外で画像があれば、目印を入れた HTML を種類付きで渡し、画像を戻す', async () => {
     const bin = twoRuns('images', first, second);
@@ -324,11 +323,11 @@ describe('extractMainContentWithRs の画像', () => {
     });
     expect(calls(bin)).toHaveLength(2);
     expect(calls(bin)[1]).toContain('--page-type listing');
-    expect(readFileSync(`${bin}.stdin.6`, 'utf8')).toContain('');
+    expect(readFileSync(`${bin}.stdin.6`, 'utf8')).toContain('\uE000');
   });
 
   test('2 回目の本文がずれたら 1 回目を返す', async () => {
-    const bin = twoRuns('shifted', first, '{"page_type":"listing","content_html":"<p>別の本文</p>"}');
+    const bin = twoRuns('shifted', first, '{"page_type":"listing","content_html":"<p>別の本文\uE000</p>"}');
     expect(await extractMainContentWithRs(page, 'https://example.com/p', bin)).toEqual({ pageType: 'listing', contentHtml: '<p>本文</p>' });
   });
 
