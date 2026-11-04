@@ -231,6 +231,8 @@ describe('restoreRsImages', () => {
     expect(restoreRsImages('<p>説明</p>', `<p>説明${mark(0)}</p>`, kept)).toBe('<p>説明<img src="https://example.com/c.jpg" alt=""></p>');
     const withAlt = [{ src: 'https://example.com/d.jpg', alt: '図', title: '', caption: 'グラフの説明' }];
     expect(restoreRsImages('<p>本文</p>', `<p>本文${mark(0)}</p>`, withAlt)).toBe('<p>本文<img src="https://example.com/d.jpg" alt="図" title="グラフの説明"></p>');
+    const withTitle = [{ src: 'https://example.com/e.jpg', alt: '図', title: '元の題', caption: '消えた説明' }];
+    expect(restoreRsImages('<p>本文</p>', `<p>本文${mark(0)}</p>`, withTitle)).toBe('<p>本文<img src="https://example.com/e.jpg" alt="図" title="元の題 消えた説明"></p>');
   });
 
   test('比べる文字は、タグ・私用領域の文字・空白の違いを無視する', () => {
@@ -258,7 +260,7 @@ const escapeAttr = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g,
 
 /**
  * 2 回目（目印入りの HTML）の本文が 1 回目と同じ文字なら、目印を img に置き換えた本文を返す。違えば undefined。
- * rs-trafilatura が説明文ごと消した figure の画像（説明文が 1 回目の本文に無いもの）は、説明文を alt（空のとき）か title に入れる。
+ * rs-trafilatura が説明文ごと消した figure の画像（説明文が 1 回目の本文に無いもの）は、説明文を alt（空のとき）か title（もとの title の後ろ）に入れる。
  */
 export function restoreRsImages(firstHtml: string, markedHtml: string, images: MarkedImage[]): string | undefined {
   const firstText = rsComparableText(firstHtml);
@@ -268,7 +270,7 @@ export function restoreRsImages(firstHtml: string, markedHtml: string, images: M
     if (!img) return '';
     const lost = img.caption !== '' && !firstText.includes(img.caption);
     const alt = img.alt || (lost ? img.caption : '');
-    const title = img.title || (lost && img.alt ? img.caption : '');
+    const title = [img.title, lost && img.alt ? img.caption : ''].filter(Boolean).join(' ');
     return `<img src="${escapeAttr(img.src)}" alt="${escapeAttr(alt)}"${title ? ` title="${escapeAttr(title)}"` : ''}>`;
   });
 }
