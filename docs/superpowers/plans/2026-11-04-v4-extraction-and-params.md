@@ -1176,11 +1176,14 @@ A10 の 1 回目の評価で見つかった不具合を直す（WCXB dev が bas
       .toBe('[A](https://example.com/a)[\n\nB は取引所\n\n](https://example.com/b)');
     expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
     expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+    // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）
+    expect(cleanMarkdownTokens('前 ![図](data:image/png;base64,' + 'A'.repeat(2_000_000) + ') 後')).toBe('前 [画像: 図] 後');
   });
 
   it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
     expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
       .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
+    expect(replaceMarkdownImages('前 ![図](https://example.com/' + 'a'.repeat(2_000_000) + '.png) 後')).toBe('前 [画像: 図] 後');
   });
 ```
 
@@ -1205,9 +1208,10 @@ Expected: 足した 3 件が FAIL（`商品 ! 説明`・`Click) です` など�
 `src/enrichment.ts` の `/** 不要な空リンク、無効な JavaScript リンク、…` の行（`cleanMarkdownTokens` の説明）のすぐ上に足す:
 
 ```ts
-// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む
-const MD_DEST = String.raw`(?:[^()]|\([^()]*\))*`;
-const MD_ALT = String.raw`((?:\\.|[^\]\\])*)`;
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
+// どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
+const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
+const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
 const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
 const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
 const JS_LINK_RE = new RegExp(String.raw`\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
@@ -1238,7 +1242,7 @@ export function replaceMarkdownImages(markdown: string): string {
 }
 ```
 
-`src/html_parser.ts` の `absolutizeContentUrls` で、リンクを外す分岐を差し替える:
+`src/html_parser.ts` の `absolutizeContentUrls` の説明の 2 行目を `* # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。` にし、リンクを外す分岐を差し替える:
 
 ```ts
     if (!href || href.startsWith('#') || /^javascript:/i.test(href)) {
@@ -1257,8 +1261,8 @@ export function replaceMarkdownImages(markdown: string): string {
  * 画像は alt ごと外し、data URI の画像の置き換え「[画像: alt]」も外す。alt の \] のような逃がした字と、URL の中の 1 段の括弧（format(webp) など）を読む。 */
 const toText = (md: string) => md
   .replace(/^---\n[\s\S]*?\n---\n/, '')
-  .replace(/!\[(?:\\.|[^\]\\])*\]\((?:[^()]|\([^()]*\))*\)/g, ' ').replace(/\[画像: (?:\\.|[^\]\\])*\]/g, ' ')
-  .replace(/\[((?:\\.|[^\]\\])*)\]\((?:[^()]|\([^()]*\))*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
+  .replace(/!\[[^\]\\]*(?:\\.[^\]\\]*)*\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, ' ').replace(/\[画像: [^\]\\]*(?:\\.[^\]\\]*)*\]/g, ' ')
+  .replace(/\[([^\]\\]*(?:\\.[^\]\\]*)*)\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
   .replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
   .replace(/^\|?[\s:|-]+\|[\s:|-]*$/gm, '').replace(/\|/g, ' ').replace(/[*_`~]{1,3}/g, '');
 ```
@@ -1342,9 +1346,9 @@ for (const set of ['ja-pages', 'ja-news']) {
     const md: string = convertHtmlToMarkdown(d.html, d.url, 10_000_000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown;
     // 本文の文字の比べ: 画像（[画像: …] も）を外し、リンクを文字だけにし、URL を外したあと、文字と数字だけを残す
     // （相対・絶対のリンク、外した # のリンク、! の残り、空白の違いでは変わらない）
-    const IMAGE = /!\[(?:\\.|[^\]\\])*\]\((?:[^()]|\([^()]*\))*\)/g;
-    const text = md.replace(IMAGE, ' ').replace(/\[画像: (?:\\.|[^\]\\])*\]/g, ' ')
-      .replace(/\[((?:\\.|[^\]\\])*)\]\((?:[^()]|\([^()]*\))*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
+    const IMAGE = /!\[[^\]\\]*(?:\\.[^\]\\]*)*\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g;
+    const text = md.replace(IMAGE, ' ').replace(/\[画像: [^\]\\]*(?:\\.[^\]\\]*)*\]/g, ' ')
+      .replace(/\[([^\]\\]*(?:\\.[^\]\\]*)*)\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
       .replace(/[^\p{L}\p{N}]+/gu, '');
     out[`${set}/${f}`] = { text, images: (md.match(IMAGE) ?? []).length };
   }
