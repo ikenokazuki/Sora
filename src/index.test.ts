@@ -260,6 +260,10 @@ describe('web-fetcher Core Functions', () => {
     // 片方が空白・行頭・行末なら、空白は足さない
     expect(cleanMarkdownTokens('行末![](https://example.com/a.png)\n次の行')).toBe('行末\n次の行');
     expect(cleanMarkdownTokens('前の行\n![](https://example.com/a.png)行頭')).toBe('前の行\n行頭');
+    // リンクの文字の端（前が [、または後ろが ]）にも足さない（語がくっつく心配が無く、[ Text] のように文字が増えるだけ）
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)Text](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[Text![](https://example.com/a.png)](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[A![](https://example.com/a.png)B](https://example.com/)')).toBe('[A B](https://example.com/)');
     expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
     expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
     // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）

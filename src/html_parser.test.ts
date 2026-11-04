@@ -476,6 +476,23 @@ describe('本文の URL', () => {
     expect(out).toBe(`<p>${'x '.repeat(119_999)}x</p>`);
   });
 
+  it('script・style・コメントの中に目印のタグに見える字を書いておいても、リンクを外したあとにその字が変わらない', () => {
+    // 外すリンクの目印のタグは、直列化した文字列から消す。script・style・コメントの中の字は、直列化でエスケープされずにそのまま出るので、
+    // 目印の名前が決まっていると、ページが `</scr<sora-unlinked>ipt>` のような字を書いておき、タグを消したあとに `</script>` ができて、
+    // 要素が早く閉じ、隠れていた字が本文に出た（間接プロンプトインジェクション）。名前を呼び出しごとの乱数にして、ページが前もって書けないようにした
+    const hidden = [
+      '<script>var a = "</scr<sora-unlinked>ipt><p>隠れた字 1</p>"; var b = "<sora-unlinked>";</script>',
+      '<style>.a::after { content: "</sty<sora-unlinked>le><p>隠れた字 2</p>"; }</style>',
+      '<!-- --<sora-unlinked>> <p>隠れた字 3</p> -->',
+    ].join('');
+    const out = absolutizeContentUrls(`<p>前<a href="#">リンク</a>後</p>${hidden}`, 'https://example.com/');
+    expect(out).toBe(`<p>前リンク後</p>${hidden}`);
+    // 目印の名前は、呼び出しごとに違う（消したあとに残らない）
+    expect(out).not.toMatch(/sora-unlinked-[0-9a-f]/);
+    const mdOut = convertHtmlToMarkdown(`<html><head><title>t</title></head><body><p>前<a href="#">リンク</a>後</p>${hidden}</body></html>`, 'https://example.com/', 30000, false, false).markdown;
+    expect(mdOut).not.toContain('隠れた字');
+  });
+
   it('rs-trafilatura の本文のリンクも絶対 URL にする', () => {
     const result = convertHtmlToMarkdown(
       '<html><body><ul><li><a href="/e/1">公演 1</a></li></ul></body></html>', 'https://example.com/live', 30000, false, true,

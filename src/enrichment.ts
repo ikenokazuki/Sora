@@ -107,9 +107,13 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
   if (!markdown) return '';
   let cleaned = markdown
     // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）。
-    // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）
-    .replace(EMPTY_IMAGE_RE, (m, offset: number, whole: string) =>
-      /\S/.test(whole[offset - 1] ?? ' ') && /\S/.test(whole[offset + m.length] ?? ' ') ? ' ' : '')
+    // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）。
+    // 前が `[`、または後ろが `]` のとき（リンクの文字の端）は足さない（[![](url)Text](url) が [ Text](url) にならないように）
+    .replace(EMPTY_IMAGE_RE, (m, offset: number, whole: string) => {
+      const before = whole[offset - 1] ?? ' ';
+      const after = whole[offset + m.length] ?? ' ';
+      return /\S/.test(before) && /\S/.test(after) && before !== '[' && after !== ']' ? ' ' : '';
+    })
     // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
     .replace(EMPTY_LINK_RE, '')
     // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
