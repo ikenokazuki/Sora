@@ -4,6 +4,43 @@
  * X の投稿の要件の確かめ（services/x_detail）が使う。もとは rho-select（廃止）の一部。
  */
 
+const NAV_LABEL_MAX_CHARS = 16;
+/** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
+const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
+
+/**
+ * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
+ * ラベルがテキストなら返し、画像だけ `[![alt](src)](url)`（SNS アイコン・バナー等）や空のラベルなら、
+ * 「リンク行だがナビの候補ではない」として null を返す。リンクですらない行は undefined。
+ */
+type LabelLinkVerdict = { label: string } | null | undefined;
+function isLabelLinkLine(line: string): LabelLinkVerdict {
+  const trimmed = line.trim();
+  const last = trimmed.lastIndexOf('](');
+  if (last < 0 || !trimmed.endsWith(')')) return undefined;
+  const before = trimmed.slice(0, last);
+  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない
+  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
+  if (stripped === before || !BRACKET_LINK_LINE.test(trimmed)) return undefined;
+  const label = stripped.trim();
+  if (!label || label === '-') return null;
+  if (label.startsWith('!')) return null;
+  return { label };
+}
+
+/** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
+ * 空のラベル行（取り除けなかった SNS アイコン列など）は無視する。画像だけのリンク行がある塊は動かさない
+ * （別の塊にまとめられる。削除されることはないので害はない）。 */
+export function isNavBlock(block: string): boolean {
+  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+  // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
+  const labels = lines.filter((l) => !/^[-*+]\s*$/.test(l)).map((l) => isLabelLinkLine(l));
+  // 全行がリンク行で、かつテキストラベルが1つ以上ある塊をナビとして扱う。
+  // 画像だけの行（バナー・SNS アイコン）はテキストラベルとみなさないが、ナビ扱いも妨げない
+  // （グローバルナビの途中に SNS アイコンが混じる equal-love.jp のような実データに対応）。
+  return labels.every((l) => l !== undefined) && labels.some((l) => l !== null && l.label.length <= NAV_LABEL_MAX_CHARS);
+}
+
 export interface ParsedSection {
   rawHeading: string;
   heading: string;
@@ -12,6 +49,32 @@ export interface ParsedSection {
   fullText: string;
   charLength: number;
   startIndex: number;
+}
+
+/**
+ * 空行で区切った段落のうち、短いラベルのリンクだけの段落（2 行以上。グローバルナビ・言語の一覧など）を外す。
+ * 1 行だけのリンク（「申し込み」など）は外さない。コードブロックの中は区切らない。
+ */
+function dropNavParagraphs(lines: string[]): string[] {
+  const out: string[] = [];
+  let block: string[] = [];
+  let inCode = false;
+  const end = () => {
+    const nonEmpty = block.filter((l) => l.trim() !== '').length;
+    if (block.length > 0 && !(nonEmpty >= 2 && isNavBlock(block.join('\n')))) out.push(...block);
+    block = [];
+  };
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) inCode = !inCode;
+    if (!inCode && line.trim() === '') {
+      end();
+      out.push(line);
+    } else {
+      block.push(line);
+    }
+  }
+  end();
+  return out;
 }
 
 /**
@@ -43,7 +106,9 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   const headingStack: { level: number; heading: string }[] = [];
 
   const flush = () => {
-    const fullText = currentParagraphs.join('\n').trim();
+    // 節の中の、短いラベルのリンクだけの段落は、ハイライトの候補にも書き出しにもしない
+    const keptLines = dropNavParagraphs(currentParagraphs);
+    const fullText = keptLines.join('\n').trim();
     if (fullText.length > 0) {
       // プリアンブル（見出し未設定の先頭テキスト）のノイズ判定
       // リンク密度が極端に高い、または純粋な矢印/パンくず記号（[リンク] > [リンク] 等）のみの場合はハイライト候補から除外
@@ -70,7 +135,7 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
         rawHeading: currentRawHeading,
         heading: finalHeading,
         headingLevel: currentLevel,
-        paragraphs: currentParagraphs.slice(),
+        paragraphs: keptLines,
         fullText,
         charLength: fullText.length,
         startIndex: sectionStartIndex,

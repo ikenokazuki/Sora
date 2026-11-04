@@ -1,4 +1,5 @@
 import { safeTruncateMarkdown } from './enrichment.js';
+import { isNavBlock } from './extractor/markdown_sections.js';
 import {
   type ScrapeFormat,
   IntegratedSearchResponseModeSchema,
@@ -135,43 +136,6 @@ function stripMedia(result: Record<string, any>): Record<string, any> {
     };
   }
   return out;
-}
-
-const NAV_LABEL_MAX_CHARS = 16;
-/** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
-const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
-
-/**
- * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
- * ラベルがテキストなら返し、画像だけ `[![alt](src)](url)`（SNS アイコン・バナー等）や空のラベルなら、
- * 「リンク行だがナビの候補ではない」として null を返す。リンクですらない行は undefined。
- */
-type LabelLinkVerdict = { label: string } | null | undefined;
-function isLabelLinkLine(line: string): LabelLinkVerdict {
-  const trimmed = line.trim();
-  const last = trimmed.lastIndexOf('](');
-  if (last < 0 || !trimmed.endsWith(')')) return undefined;
-  const before = trimmed.slice(0, last);
-  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない
-  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
-  if (stripped === before || !BRACKET_LINK_LINE.test(trimmed)) return undefined;
-  const label = stripped.trim();
-  if (!label || label === '-') return null;
-  if (label.startsWith('!')) return null;
-  return { label };
-}
-
-/** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
- * 空のラベル行（取り除けなかった SNS アイコン列など）は無視する。画像だけのリンク行がある塊は動かさない
- * （別の塊にまとめられる。削除されることはないので害はない）。 */
-function isNavBlock(block: string): boolean {
-  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
-  // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
-  const labels = lines.filter((l) => !/^[-*+]\s*$/.test(l)).map((l) => isLabelLinkLine(l));
-  // 全行がリンク行で、かつテキストラベルが1つ以上ある塊をナビとして扱う。
-  // 画像だけの行（バナー・SNS アイコン）はテキストラベルとみなさないが、ナビ扱いも妨げない
-  // （グローバルナビの途中に SNS アイコンが混じる equal-love.jp のような実データに対応）。
-  return labels.every((l) => l !== undefined) && labels.some((l) => l !== null && l.label.length <= NAV_LABEL_MAX_CHARS);
 }
 
 /**

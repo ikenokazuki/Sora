@@ -861,7 +861,7 @@ const STRUCTURED_CONTENT_SELECTOR =
 
 /** 本文の候補にしない領域（ナビ・ヘッダー・フッター・補助）。 */
 const NON_CONTENT_SELECTOR = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"]';
-/** これ以下の長さの項目はナビのラベルとみなす（integrated_search_host_response の NAV_LABEL_MAX_CHARS と同じ考え）。 */
+/** これ以下の長さの項目はナビのラベルとみなす（extractor/markdown_sections の NAV_LABEL_MAX_CHARS と同じ考え）。 */
 const ITEM_LABEL_MAX_CHARS = 16;
 /** Readability の本文がこれより短いときだけ、項目の並びへの差し替えを考える。
  * 上限が無いと、知恵袋の質問と回答（約 740 字）のように正しく取れた本文が、横の関連の並びに替わった。 */
