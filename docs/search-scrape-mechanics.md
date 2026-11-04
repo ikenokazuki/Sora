@@ -125,11 +125,13 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 ## 本文の取り出し
 
 - ページの本文は、[rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura) と Readability で取り出します（`src/extractor/rs_trafilatura.ts`、`src/html_parser.ts`）。
-  - rs-trafilatura のコマンドは `RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。コマンドには、取得した HTML をそのまま渡します。
+  - rs-trafilatura のコマンドは `RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。
+  - コマンドには、取得した HTML を渡します。`removeSelectors` を指定したときだけ、その要素を消してから渡します（隠し要素は消しません。消すと本文の取り出しの精度が下がるため。`docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md`）。
   - 返るもの: 本文の HTML、ページの種類（article・listing・forum・product・collection・documentation・service）
   - `--markdown` を付けて呼びます。付けないと、本文の HTML からリンクが落ちます。
   - 本文の HTML は Sora の変換（turndown）に通します。rs-trafilatura 自身の Markdown は、一覧のページで字下げが残り、トークンが 15〜42% 多くなるためです。
-  - 変換の前に、見えない要素や Cookie の案内を除きます（元のページと同じ処理）。rs-trafilatura の本文には画像が入りません。画像の一覧（`images`）は、今までどおりページ全体から取ります。
+  - 変換の前に、見えない要素や Cookie の案内を除きます（元のページと同じ処理）。
+  - rs-trafilatura の本文の HTML には画像が入りません。記事以外の種類で画像のあるページでは、画像の後ろに目印の 1 字を置いた HTML でもう一度取り出し、本文の文字が 1 回目と同じときだけ、目印を画像に戻します（`src/extractor/rs_images.ts`）。`includeMedia: false` のときは戻しません。画像の一覧（`images`）は、今までどおりページ全体から取ります。
 - 振り分け:
   - 「記事」と判定されたページでは、Readability の本文を使います。Readability の本文が 200 字未満のときだけ、rs-trafilatura の本文に替えます。
   - ほかの種類と判定されたページでは、rs-trafilatura の本文を使います。一覧・予定・掲示板・商品のページでは、rs-trafilatura が強いためです。
