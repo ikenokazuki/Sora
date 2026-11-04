@@ -73,3 +73,30 @@ describe('restoreRsImages', () => {
     expect(rsComparableText('<p>本文\uE123</p>\n<div>次</div>')).toBe('本文 次');
   });
 });
+
+test('1 つの figure に画像が多いページや、深い入れ子でも、目印を置くのに時間がかからない', () => {
+  let t = performance.now();
+  const many = markImagesForRs(`<figure>${'<img src="/a.jpg">'.repeat(6_400)}<figcaption>説明</figcaption></figure>`, 'https://example.com/');
+  expect(many.images).toHaveLength(6_400);
+  expect(many.images[6_399].caption).toBe('説明');
+  expect(performance.now() - t).toBeLessThan(500);
+  t = performance.now();
+  const deep = markImagesForRs(`${'<div>'.repeat(3_000)}${'<img src="/a.jpg">'.repeat(6_400)}${'</div>'.repeat(3_000)}`, 'https://example.com/');
+  expect(deep.images).toHaveLength(6_400);
+  // 単体では約 0.2 秒だが、全件の実行では約 0.7 秒かかる（旧コードは単体で約 18 秒）。500 ms だと全件の実行で落ちるので 2 秒にする
+  expect(performance.now() - t).toBeLessThan(2_000);
+});
+
+test('属性の値の私用領域の文字も消す（戻すときに属性の中の字を img に置き換えないように）', () => {
+  const pua = String.fromCharCode(0xe000);
+  const { html } = markImagesForRs(`<p title="a${pua}b">x</p><img src="/a.jpg">`, 'https://example.com/');
+  expect(html).toContain('title="ab"');
+});
+
+test('図の入れ子が深くても、説明文を探すのに時間がかからない', () => {
+  const t = performance.now();
+  const nested = markImagesForRs(`${'<figure><img src="/a.jpg"><figcaption>説明</figcaption>'.repeat(1_500)}${'</figure>'.repeat(1_500)}`, 'https://example.com/');
+  expect(nested.images).toHaveLength(1_500);
+  expect(nested.images[1_499].caption).toBe('説明');
+  expect(performance.now() - t).toBeLessThan(500);
+});
