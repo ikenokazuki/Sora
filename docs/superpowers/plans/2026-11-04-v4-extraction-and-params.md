@@ -42,6 +42,7 @@
 | Modify `src/extractor/markdown_sections.ts` | `isNavBlock` を移し、節の中のナビの段落を外す |
 | Create `src/extractor/markdown_sections.test.ts` | 上のテスト |
 | Modify `src/integrated_search_host_response.ts` | `isNavBlock` と `replaceMarkdownImages` を import して使う |
+| Modify `scripts/eval-wcxb.ts` | 採点の `toText` で画像を alt ごと外し切る（A10a） |
 | Modify `src/mcp/tools_web.ts`・`src/routes/scrape.ts` | includeMedia を受け取って渡す |
 | Create `src/finalize_scrape_result.test.ts`・`src/scrape_media.test.ts` | finalize と includeMedia・配線のテスト |
 | Modify `src/index.test.ts`・`src/cache_keys.test.ts`・`src/scrape_inputs.test.ts` | 消した関数のテスト、キーの版、includeMedia の転送 |
@@ -1142,7 +1143,145 @@ git add client README.md docs/search-scrape-mechanics.md
 git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "docs: includeMedia と formats の html、rs-trafilatura の経路の画像の説明を直し、クライアントを作り直す"
 ```
 
+### Task A10a: 画像の記法の掃除・外したリンクの区切り・採点の画像
+
+A10 の 1 回目の評価で見つかった不具合を直す（WCXB dev が base 0.8400 対 branch 0.8387 で止まった）。
+- `cleanMarkdownTokens` は空のリンクを空の画像より先に消すので、`![](url)` の `[](url)` だけが消えて `!` が残る。後ろが `[text](url)` だと `![text](url)`（画像の記法）になり、リンクの文が alt に見える。画像の URL に括弧があると（`filters:format(webp)` など）、URL の残りが本文に出る。base にもある不具合だが、rs-trafilatura の経路に画像が戻ると多く出る（WCXB dev の `!` の残り 1,145 → 4,121）。
+- `replaceMarkdownImages` と data URI の画像の置き換えも、URL の中の括弧と alt の `\]` で止まる。
+- `#`・`javascript:` のリンクを外すと（A4）、隣のリンクの文字とくっつく（`1990` `1991` → `19901991`）。
+- 採点（`scripts/eval-wcxb.ts` の `toText`）も、画像の URL の中の括弧・alt の `\]`・`[画像: alt]` を外せず、画像の語を本文の語に数える。設計書の 7 の「画像の行を外した本文が今と同じであること」を確かめられるよう、採点でも画像を外し切る。
+
+**Files:**
+- Modify: `src/enrichment.ts`（`cleanMarkdownTokens` の手順 1〜3.1、`replaceMarkdownImages`）
+- Modify: `src/html_parser.ts`（`absolutizeContentUrls`）
+- Modify: `scripts/eval-wcxb.ts`（`toText`）
+- Test: `src/index.test.ts`、`src/html_parser.test.ts`
+
+**Interfaces:**
+- Consumes: なし（関数の形は変えない）
+- Produces: なし
+
+- [ ] **Step 1: 落ちるテストを書く**
+
+`src/index.test.ts` の `import { extractQueryHighlightDetails } from './enrichment.js';` を `import { extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';` にし、`it('cleanMarkdownTokens should replace base64 inline images with [画像: alt] …` のテストの後ろに足す:
+
+```ts
+  it('cleanMarkdownTokens は alt の無い画像を ! を残さずに消し、URL の中の括弧も読む', () => {
+    expect(cleanMarkdownTokens('商品 ![](https://example.com/a.png) 説明')).toBe('商品  説明');
+    expect(cleanMarkdownTokens('- ![](https://example.com/a.png) [名前](https://example.com/p)')).toBe('-  [名前](https://example.com/p)');
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)](https://example.com/p)')).toBe('');
+    expect(cleanMarkdownTokens('![](https://example.com/i/filters:format(webp)/a.jpg) 本文')).toBe('本文');
+    expect(cleanMarkdownTokens('![](https://example.com/a.png "Skill verified")本文')).toBe('本文');
+    expect(cleanMarkdownTokens('[A](https://example.com/a)![](https://example.com/logo.png)[\n\nB は取引所\n\n](https://example.com/b)'))
+      .toBe('[A](https://example.com/a)[\n\nB は取引所\n\n](https://example.com/b)');
+    expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
+    expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+  });
+
+  it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
+    expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
+      .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
+  });
+```
+
+`src/html_parser.test.ts` の 2 行目の import に `absolutizeContentUrls` を足し（`import { absolutizeContentUrls, convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';`）、`describe('本文の URL', () => {` の中の最初の `it` の後ろに足す:
+
+```ts
+  it('並んだ # と javascript: のリンクを外すとき、隣の要素の文字とくっつけない', () => {
+    const html = '<p>年: <a href="javascript:void(0)">1990</a><a href="javascript:void(0)">1991</a><a href="#x">1992</a><a href="/y">1993</a></p><p>見出し<a href="#">リンク</a>です</p><p><a href="/z">Z</a><a href="#">B</a></p>';
+    expect(absolutizeContentUrls(html, 'https://example.com/dir/page')).toBe(
+      '<p>年: 1990 1991 1992 <a href="https://example.com/y">1993</a></p><p>見出しリンクです</p><p><a href="https://example.com/z">Z</a> B</p>',
+    );
+  });
+```
+
+- [ ] **Step 2: 落ちることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/index.test.ts -t 'cleanMarkdownTokens|replaceMarkdownImages'; bun test src/html_parser.test.ts -t '並んだ'`
+Expected: 足した 3 件が FAIL（`商品 ! 説明`・`Click) です` など）。もとからある cleanMarkdownTokens のテストは PASS
+
+- [ ] **Step 3: 直す**
+
+`src/enrichment.ts` の `/** 不要な空リンク、無効な JavaScript リンク、…` の行（`cleanMarkdownTokens` の説明）のすぐ上に足す:
+
+```ts
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む
+const MD_DEST = String.raw`(?:[^()]|\([^()]*\))*`;
+const MD_ALT = String.raw`((?:\\.|[^\]\\])*)`;
+const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
+const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
+const JS_LINK_RE = new RegExp(String.raw`\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
+const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
+```
+
+`cleanMarkdownTokens` の最初の 3 つの置き換えを、空の画像が先になるように差し替える:
+
+```ts
+  let cleaned = markdown
+    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）
+    .replace(EMPTY_IMAGE_RE, '')
+    // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
+    .replace(EMPTY_LINK_RE, '')
+    // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
+    .replace(JS_LINK_RE, '$1');
+```
+
+同じ関数の 3.1 の `cleaned.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_, alt) => {` を `cleaned.replace(DATA_IMAGE_RE, (_, alt) => {` にする（中身は変えない）。
+
+`replaceMarkdownImages` を差し替える:
+
+```ts
+/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
+export function replaceMarkdownImages(markdown: string): string {
+  return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+}
+```
+
+`src/html_parser.ts` の `absolutizeContentUrls` で、リンクを外す分岐を差し替える:
+
+```ts
+    if (!href || href.startsWith('#') || /^javascript:/i.test(href)) {
+      // 隣が要素（並んだリンクなど）のときは空白を挟み、外した文字が隣の文字とくっつかないようにする
+      if (el.prev?.type === 'tag') $a.before(' ');
+      if (el.next?.type === 'tag') $a.after(' ');
+      $a.replaceWith($a.contents());
+      return;
+    }
+```
+
+`scripts/eval-wcxb.ts` の `toText` を差し替える（説明の行も）:
+
+```ts
+/** frontmatter・Markdown の記号・URL を外す（採点は \w+ の語で数えるので、URL の語を残さない）。
+ * 画像は alt ごと外し、data URI の画像の置き換え「[画像: alt]」も外す。alt の \] のような逃がした字と、URL の中の 1 段の括弧（format(webp) など）を読む。 */
+const toText = (md: string) => md
+  .replace(/^---\n[\s\S]*?\n---\n/, '')
+  .replace(/!\[(?:\\.|[^\]\\])*\]\((?:[^()]|\([^()]*\))*\)/g, ' ').replace(/\[画像: (?:\\.|[^\]\\])*\]/g, ' ')
+  .replace(/\[((?:\\.|[^\]\\])*)\]\((?:[^()]|\([^()]*\))*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
+  .replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
+  .replace(/^\|?[\s:|-]+\|[\s:|-]*$/gm, '').replace(/\|/g, ' ').replace(/[*_`~]{1,3}/g, '');
+```
+
+- [ ] **Step 4: 通ることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/index.test.ts -t 'cleanMarkdownTokens|replaceMarkdownImages' && bun test src/html_parser.test.ts src/scrape_media.test.ts src/integrated_search_host_response.test.ts && bun run typecheck && bun run lint`
+Expected: PASS・型の誤りなし・lint の指摘なし
+
+全件も走らせる（Global Constraints の手順）。落ちたテストがあれば、期待が直した不具合（`!` の残り・`)` の残り・くっついた文字）をそのまま書いていたものかを確かめ、そうなら期待を直す。そうでなければ直さずに報告する。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/enrichment.ts src/html_parser.ts scripts/eval-wcxb.ts src/index.test.ts src/html_parser.test.ts
+git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(markdown): 画像の記法の掃除で ! を残さず、URL の中の括弧を読む" -m "空の画像を空のリンクより先に消す（![](url) の [](url) だけが消えて ! が残り、後ろのリンクが画像の記法になっていた）。replaceMarkdownImages と data URI の画像の置き換えも、URL の中の 1 段の括弧と alt の逃がした字を読む。# と javascript: のリンクを外すときは、隣の要素との間に空白を挟む。scripts/eval-wcxb.ts の採点でも、画像を alt ごと外し切る。"
+```
+
 ### Task A10: 本文の取り出しの評価（WCXB・Bevendorff らの評価集・日本語のページ）
+
+1 回目（A10a の前）は、cleanMarkdownTokens の不具合と採点の取りこぼしで止まった。A10a のあとに、下の手順で測り直す。1 回目の報告（`.superpowers/sdd/2026-11-04-v4-extraction-and-params/task-A10-report.md`）の `<OUT>` のスクリプト（`run-eval.sh`・`ja-length.py` など）は使い回してよい。
+
+コンテナには `--name v4eval-…` を付け、止めるときはその名前で止める。`podman ps -q` の全部や名前の無いものに `podman kill` を打たない（同じユーザーのほかのコンテナを止めてしまう）。
 
 **Files:**
 - Modify: `docs/evaluations/main-content/results.md`（節を足す）
@@ -1162,22 +1301,27 @@ cd ~/.worktrees/Sora/v4-base && unset HTTPS_PROXY HTTP_PROXY && bun install --fr
 
 rs-trafilatura の入ったイメージ（`localhost/sora-rs-test:dev`、`/usr/local/bin/rs-trafilatura`）の bun で、両方を同じ版で走らせる:
 
+採点（`scripts/eval-wcxb.ts` の `toText`）は、base でも branch のもの（A10a で画像を外し切るようにした）を重ねて使う:
+
 ```bash
+scorer="-v $HOME/.worktrees/Sora/v4-extraction/scripts/eval-wcxb.ts:/work/scripts/eval-wcxb.ts:ro"
 for side in base branch; do
   src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
   for split in dev test; do
-    podman run --rm --network none --entrypoint /usr/local/bin/bun \
-      -v $src:/work:ro -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
+    podman run --rm --name v4eval-$side-$split --network none --entrypoint /usr/local/bin/bun \
+      -v $src:/work:ro $scorer -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
       localhost/sora-rs-test:dev scripts/eval-wcxb.ts --data /data/wcxb --split $split --out /out/$side-$split.json
     python3 -I <DATA>/wcxb/evaluate.py --split $split --results <OUT>/$side-$split.json --per-type > <OUT>/$side-$split.txt
   done
-  podman run --rm --network none --entrypoint /usr/local/bin/bun \
-    -v $src:/work:ro -v <DATA>:/data:ro -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
+  podman run --rm --name v4eval-$side-bev --network none --entrypoint /usr/local/bin/bun \
+    -v $src:/work:ro $scorer -v <DATA>:/data:ro -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
     localhost/sora-rs-test:dev scripts/eval-wcxb.ts --bevendorff /data/wceb/combined > <OUT>/$side-bev.txt
 done
 ```
 
-Expected: 全体と種類ごとの F1 が、base と branch で同じ（採点は Markdown の画像を外すので、画像を戻しても点は変わらない。差が出たら、どのページで本文の文字が変わったかを調べる）。test は、dev で同じだと確かめてから 1 回だけ見る。
+（dev を先に走らせ、下の基準を確かめてから test を 1 回だけ走らせる）
+
+Expected: dev で、全体の F1 の差が 0.001 未満、種類ごとの差が 0.005 未満。Bevendorff らの評価集も、全ページの平均の差が 0.001 未満。F1 が 0.05 以上変わったページは、ページと原因を報告に書く。原因が、リンクの URL の絶対化・`#` と `javascript:` のリンクを外したこと（A4）・`!` の残りが消えたこと・外したリンクの間の空白（A10a）のどれでもなければ、BLOCKED で止める。test は、dev で確かめてから 1 回だけ見る（同じ基準で記録する）。
 
 - [ ] **Step 3: 日本語の 72 ページで、本文と画像を比べる**
 
@@ -1196,7 +1340,13 @@ for (const set of ['ja-pages', 'ja-news']) {
     if (typeof d.html !== 'string' || !d.html) continue;
     const rsMain = await extractMainContentWithRs(d.html, d.url);
     const md: string = convertHtmlToMarkdown(d.html, d.url, 10_000_000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown;
-    out[`${set}/${f}`] = { text: md.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\(https?:[^)]*\)/g, '()').replace(/\s+/g, ' ').trim(), images: (md.match(/!\[[^\]]*\]\([^)]*\)/g) ?? []).length };
+    // 本文の文字の比べ: 画像（[画像: …] も）を外し、リンクを文字だけにし、URL を外したあと、文字と数字だけを残す
+    // （相対・絶対のリンク、外した # のリンク、! の残り、空白の違いでは変わらない）
+    const IMAGE = /!\[(?:\\.|[^\]\\])*\]\((?:[^()]|\([^()]*\))*\)/g;
+    const text = md.replace(IMAGE, ' ').replace(/\[画像: (?:\\.|[^\]\\])*\]/g, ' ')
+      .replace(/\[((?:\\.|[^\]\\])*)\]\((?:[^()]|\([^()]*\))*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, '');
+    out[`${set}/${f}`] = { text, images: (md.match(IMAGE) ?? []).length };
   }
 }
 console.log(JSON.stringify(out));
@@ -1207,7 +1357,7 @@ base と branch の両方で走らせ、ページごとに比べる:
 ```bash
 for side in base branch; do
   src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
-  podman run --rm --network none --entrypoint /usr/local/bin/bun \
+  podman run --rm --name v4eval-$side-ja --network none --entrypoint /usr/local/bin/bun \
     -v $src:/work:ro -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
     localhost/sora-rs-test:dev /out/ja-compare.ts /data $side > <OUT>/$side-ja.json
 done
@@ -1220,9 +1370,13 @@ print('pages', len(a), 'text differs', diff, 'pages with more images', len(more)
 EOF
 ```
 
-Expected: `text differs` は空（リンクの URL は絶対になるので、URL を外して比べている）。画像が増えるのは、記事以外の種類のページ。
+Expected: `text differs` は空。画像が増えるのは、記事以外の種類のページ。違うページがあれば、ページと原因を報告に書き、原因が Step 2 の基準のどれでもなければ BLOCKED で止める。
+
+あわせて、Markdown 全体（URL を含む）の字数と推定トークン（`estimateTokens`）を base と branch で比べ、増えた内訳（画像の記法・リンクの飛び先・そのほか）、`%XX` の数、増えた幅の大きい 5 ページを書く（1 回目の `<OUT>/ja-length.py` を使ってよい）。
 
 - [ ] **Step 4: 時間とメモリを確かめる**
+
+A10a は rs-trafilatura の経路（`src/extractor/`）に触れないので、A10a の前に下の手順で測った `<OUT>/base-cost.json`・`<OUT>/branch-cost.json`（と、同じプロセスの中で 2 回目の有無を数えた補助の `<OUT>/branch-cost2.json`）をそのまま使い、測り直さない。
 
 `<OUT>/rs-cost.ts`（リポジトリには入れない）:
 
@@ -1274,7 +1428,7 @@ console.log(JSON.stringify(rows));
 ```bash
 for side in base branch; do
   src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
-  podman run --rm --network none --entrypoint /usr/local/bin/bun \
+  podman run --rm --name v4eval-$side-cost --network none --entrypoint /usr/local/bin/bun \
     -v $src:/work:ro -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
     localhost/sora-rs-test:dev /out/rs-cost.ts /data $side > <OUT>/$side-cost.json
 done
@@ -1292,7 +1446,9 @@ Expected: 2 回目を走らせたページで増える時間が中央値 100 ms 
 
 - [ ] **Step 5: 記録して Commit**
 
-`docs/evaluations/main-content/results.md` の「## 既知の限界」の前に「## rs-trafilatura の経路の画像（v4.0.0）」の節を足し、Step 2〜4 の数字（F1 が同じこと、日本語で画像が戻ったページ数と枚数、時間とメモリ）と、「既知の限界」の「rs-trafilatura の本文には画像が入りません」の行を「記事以外の種類で、本文が 1 回目と同じときだけ画像を戻す」形に直したことを書く。
+`docs/evaluations/main-content/results.md` の「## 既知の限界」の前に「## rs-trafilatura の経路の画像（v4.0.0）」の節を足し、Step 2〜4 の数字（F1 が同じこと、日本語で画像が戻ったページ数と枚数、Markdown の字数と推定トークンの増え方、時間とメモリ）と、「既知の限界」の「rs-trafilatura の本文には画像が入りません」の行を「記事以外の種類で、本文が 1 回目と同じときだけ画像を戻す」形に直したことを書く。節には次も書く:
+- 採点の `toText` は v4.0.0 から画像を alt ごと（URL の中の括弧・alt の `\]`・`[画像: alt]` まで）外す。base も同じ採点で測り直したので、表の base の値は前の節の値と少し違う（前の採点での値も並べる）。
+- alt の無い画像は、Markdown では消える（`cleanMarkdownTokens` の手順 1、前から同じ）。`formats: ["html"]` の本文には残る。
 
 ```bash
 git add docs/evaluations/main-content/results.md
