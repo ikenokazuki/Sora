@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
+import { absolutizeContentUrls, convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
 
 describe('event details and publication dates', () => {
   const event = {
@@ -419,6 +419,13 @@ describe('本文の URL', () => {
     expect(result.markdown).not.toContain('javascript:');
     expect(result.markdown).toContain('[mail](mailto:a@example.com)');
     expect(result.markdown).toContain('![b](https://example.com/dir/img/b.png)');
+  });
+
+  it('並んだ # と javascript: のリンクを外すとき、隣の要素の文字とくっつけない', () => {
+    const html = '<p>年: <a href="javascript:void(0)">1990</a><a href="javascript:void(0)">1991</a><a href="#x">1992</a><a href="/y">1993</a></p><p>見出し<a href="#">リンク</a>です</p><p><a href="/z">Z</a><a href="#">B</a></p>';
+    expect(absolutizeContentUrls(html, 'https://example.com/dir/page')).toBe(
+      '<p>年: 1990 1991 1992 <a href="https://example.com/y">1993</a></p><p>見出しリンクです</p><p><a href="https://example.com/z">Z</a> B</p>',
+    );
   });
 
   it('rs-trafilatura の本文のリンクも絶対 URL にする', () => {

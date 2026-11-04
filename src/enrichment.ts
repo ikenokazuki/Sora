@@ -83,21 +83,30 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む
+const MD_DEST = String.raw`(?:[^()]|\([^()]*\))*`;
+const MD_ALT = String.raw`((?:\\.|[^\]\\])*)`;
+const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
+const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
+const JS_LINK_RE = new RegExp(String.raw`\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
+const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
+
 /** 不要な空リンク、無効な JavaScript リンク、連続空行、巨大な base64 インライン画像をパージしてトークンを削減 */
 export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
   let cleaned = markdown
-    // 1. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
-    .replace(/\[(?:\s|&nbsp;)*\]\([^)]*\)/g, '')
-    // 2. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
-    .replace(/\[([^\]]+)\]\(javascript:[^)]*\)/gi, '$1')
-    // 3. 空の画像タグの除去: ![](url), ![] (url)
-    .replace(/!\[(?:\s|&nbsp;)*\]\s*\([^)]*\)/g, '');
+    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）
+    .replace(EMPTY_IMAGE_RE, '')
+    // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
+    .replace(EMPTY_LINK_RE, '')
+    // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
+    .replace(JS_LINK_RE, '$1');
 
   // 3.1. 巨大な base64 インライン画像の置換・パージ (LLM トークン浪費防止)
   // keepDataImages が false の場合、data:image/... を [画像: alt] に置換、alt が空なら完全除去
   if (!keepDataImages) {
-    cleaned = cleaned.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_, alt) => {
+    cleaned = cleaned.replace(DATA_IMAGE_RE, (_, alt) => {
       const trimmedAlt = alt.trim();
       return trimmedAlt ? `[画像: ${trimmedAlt}]` : '';
     });
@@ -121,9 +130,9 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .trim();
 }
 
-/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う。ponytail: URL に ')' を含む画像記法は対象外 */
+/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
 export function replaceMarkdownImages(markdown: string): string {
-  return markdown.replace(/!\[([^\]]*)\]\([^)]*\)/g, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+  return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
 }
 
 /** 超高速 抽出型自動要約 (重要文抽出 / TL;DR) */

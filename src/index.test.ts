@@ -46,7 +46,7 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
   }
 }
 import * as cheerio from 'cheerio';
-import { extractQueryHighlightDetails } from './enrichment.js';
+import { extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -245,6 +245,23 @@ describe('web-fetcher Core Functions', () => {
 
     const preserved = cleanMarkdownTokens(mdWithBase64, true);
     expect(preserved).toContain('data:image/png;base64');
+  });
+
+  it('cleanMarkdownTokens は alt の無い画像を ! を残さずに消し、URL の中の括弧も読む', () => {
+    expect(cleanMarkdownTokens('商品 ![](https://example.com/a.png) 説明')).toBe('商品  説明');
+    expect(cleanMarkdownTokens('- ![](https://example.com/a.png) [名前](https://example.com/p)')).toBe('-  [名前](https://example.com/p)');
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)](https://example.com/p)')).toBe('');
+    expect(cleanMarkdownTokens('![](https://example.com/i/filters:format(webp)/a.jpg) 本文')).toBe('本文');
+    expect(cleanMarkdownTokens('![](https://example.com/a.png "Skill verified")本文')).toBe('本文');
+    expect(cleanMarkdownTokens('[A](https://example.com/a)![](https://example.com/logo.png)[\n\nB は取引所\n\n](https://example.com/b)'))
+      .toBe('[A](https://example.com/a)[\n\nB は取引所\n\n](https://example.com/b)');
+    expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
+    expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+  });
+
+  it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
+    expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
+      .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
   });
 
   it('convertHtmlToMarkdown should purge cookie banners, extract metadata (publishedTime, author, siteName), format GFM tables and preserve codeblock languages', () => {

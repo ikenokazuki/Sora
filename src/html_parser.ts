@@ -842,6 +842,9 @@ export function absolutizeContentUrls(contentHtml: string, baseUrl: string): str
     const $a = $(el);
     const href = ($a.attr('href') ?? '').trim();
     if (!href || href.startsWith('#') || /^javascript:/i.test(href)) {
+      // 隣が要素（並んだリンクなど）のときは空白を挟み、外した文字が隣の文字とくっつかないようにする
+      if (el.prev?.type === 'tag') $a.before(' ');
+      if (el.next?.type === 'tag') $a.after(' ');
       $a.replaceWith($a.contents());
       return;
     }
