@@ -1444,54 +1444,6 @@ export function generateTextFragmentUrl(baseUrl: string, snippet: string): strin
 }
 
 /**
- * Meta Description vs Dynamic Snippet Arbiter (Google 流 最適説明文選定)
- * meta.description がクエリ主要語を含まない固定定型文である場合、本文から抽出した動的ハイライトを優先
- */
-export function chooseBestDescription(
-  metaDesc: string | undefined,
-  dynamicSnippet: string | undefined,
-  query: string,
-): string | undefined {
-  if (!metaDesc && !dynamicSnippet) return undefined;
-  if (!dynamicSnippet) return metaDesc;
-  // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
-  const cleanSnippet = dynamicSnippet
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
-    .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 250)
-    .trim();
-
-  // サニタイズ後にスニペットが空または極小になった場合は metaDesc を使用
-  if (!cleanSnippet || cleanSnippet.length < 10) return metaDesc;
-
-  if (!metaDesc) {
-    return cleanSnippet;
-  }
-  if (!query) return metaDesc;
-
-  const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return metaDesc;
-  const lowerMeta = metaDesc.toLowerCase();
-
-  // Meta Description 内のクエリ単語カバー率を計算
-  let metaMatchedCount = 0;
-  for (const term of terms) {
-    if (lowerMeta.includes(term)) metaMatchedCount++;
-  }
-
-  // Meta Description がクエリの半分以上の単語をカバーしており、かつ適正長の場合は著者の Meta を尊重
-  const coverage = metaMatchedCount / terms.length;
-  if (coverage >= 0.5 && metaDesc.length >= 40 && metaDesc.length <= 300) {
-    return metaDesc;
-  }
-
-  // クエリ単語が不足している、またはサイト共通ボイラープレートの疑いがある場合は本文動的スニペットを採用
-  return cleanSnippet;
-}
-
-/**
  * 高速インメモリ品質スコアリング
  * - Bot/Challenge/JS 検出
  * - 本文量

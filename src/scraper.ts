@@ -20,7 +20,6 @@ import {
 } from './cache.js';
 import {
   calculateContentStats,
-  chooseBestDescription,
   chunkMarkdownContent,
   dedupSearchResults,
   estimateTokens,
@@ -278,6 +277,8 @@ export async function finalizeScrapeResult(
     shouldMaskPii: boolean;
     webhookUrl?: string;
     snippet?: string;
+    /** ハイライトを選ぶ元（maxChars で切る前の全文。HTML・PDF の経路が渡す。無ければ content） */
+    highlightSource?: string;
   },
 ): Promise<ScrapeResult> {
   if (options.shouldMaskPii) {
@@ -291,6 +292,13 @@ export async function finalizeScrapeResult(
     if (norm.derivations.length > 0) {
       result.derivations = norm.derivations;
     }
+  }
+
+  // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
+  let highlightSource = result.content;
+  if (options.highlightSource !== undefined) {
+    highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
+    if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
   }
 
   const stats = calculateContentStats(result.content);
@@ -308,7 +316,10 @@ export async function finalizeScrapeResult(
     }
 
     // 段落ごとの BM25（見出し階層ボーナス付き）の上位を、MMR で重複を避けて選ぶ（extractQueryHighlightDetails）
-    const picked = extractQueryHighlightDetails(result.content, options.query, { maxHighlights: options.highlightMaxCount });
+    const picked = extractQueryHighlightDetails(highlightSource, options.query, {
+      maxHighlights: options.highlightMaxCount,
+      ...(options.annotateTemporal ? { annotateTemporal: true, publishedTime: result.publishedTime } : {}),
+    });
     let highlights = picked.highlights;
     let items: Array<{ text: string; score: number }> = picked.highlightItems.map((item) => ({ text: item.text, score: item.score }));
     // 本文に検索語が無いときは、検索結果のスニペットや説明文を根拠にする
@@ -354,10 +365,6 @@ export async function finalizeScrapeResult(
       result.readingTimeMin = updatedStats.readingTimeMin;
       result.estimatedTokens = estimateTokens(result.content);
     }
-  }
-  if (options.query) {
-    const topHighlight = result.highlights?.[0];
-    result.description = chooseBestDescription(result.description, topHighlight, options.query);
   }
   if (options.shouldExtractSummary) {
     result.summary = generateExtractiveSummary(result.content, 4);
@@ -699,6 +706,7 @@ export async function scrapeUrl(options: {
         let result: ScrapeResult;
         let initialHttpResult: ScrapeResult | null = null;
         let initialHttpStatus: number | undefined;
+        let initialHttpFull: string | undefined;
 
         // YouTube の動画 URL は、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から本文を作る。
         // ページそのもの（HTML・リンク・スクリーンショット）やブラウザでの描画を求められたときは、通常の取得に任せる
@@ -769,8 +777,8 @@ export async function scrapeUrl(options: {
 
           if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
             const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
-            const pdfResult = await parsePdfToMarkdown(buf, finalUrl, maxChars);
-            result = await finalizeScrapeResult(pdfResult, finalizeOpts);
+            const { fullContent, ...pdfResult } = await parsePdfToMarkdown(buf, finalUrl, maxChars);
+            result = await finalizeScrapeResult(pdfResult, { ...finalizeOpts, highlightSource: fullContent });
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
@@ -873,7 +881,7 @@ export async function scrapeUrl(options: {
             };
 
             onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
-            result = markHttpError(await finalizeScrapeResult(result, finalizeOpts), response.status);
+            result = markHttpError(await finalizeScrapeResult(result, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
 
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -883,6 +891,7 @@ export async function scrapeUrl(options: {
           // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）
           if (parsed.markdown && parsed.markdown.trim().length >= 50) {
             initialHttpStatus = response.status;
+            initialHttpFull = parsed.fullMarkdown;
             initialHttpResult = {
               url: finalUrl,
               title: parsed.title,
@@ -959,7 +968,7 @@ export async function scrapeUrl(options: {
           // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
           if (initialHttpResult) {
             onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
-            result = markHttpError(await finalizeScrapeResult(initialHttpResult, finalizeOpts), initialHttpStatus);
+            result = markHttpError(await finalizeScrapeResult(initialHttpResult, { ...finalizeOpts, highlightSource: initialHttpFull }), initialHttpStatus);
             if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
             return result;
           }
@@ -1032,7 +1041,7 @@ export async function scrapeUrl(options: {
         };
 
         onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });
-        result = markHttpError(await finalizeScrapeResult(result, finalizeOpts), browserRes.status);
+        result = markHttpError(await finalizeScrapeResult(result, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), browserRes.status);
         // TikTok の動画でページのデータが無いのは、確認の画面（"Please wait..."）のままのとき。その文を本文にしない
         if (tiktokVideo && result.contentStatus !== 'unavailable') {
           result = markUnreadable(result, 'TikTok の確認の画面のまま、動画のデータを読めませんでした。時間をおいて再試行してください。');

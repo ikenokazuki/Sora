@@ -94,7 +94,6 @@ import {
   mergeRealtimeItemsWithDedup,
   extractQueryHighlights,
   generateTextFragmentUrl,
-  chooseBestDescription,
   resolveCityId,
   executeBrowserActions,
   resolveChromiumPath,
@@ -565,28 +564,6 @@ describe('web-fetcher Core Functions', () => {
     const fragmentUrl = generateTextFragmentUrl(baseUrl, snippet);
     expect(fragmentUrl).toContain('https://note.com/kimisora_mix/n/nd94f3a06fe8f#:~:text=');
     expect(fragmentUrl).toContain(encodeURIComponent('スタンダード'));
-  });
-
-  it('chooseBestDescription should replace generic boilerplate meta with dynamic query snippet', () => {
-    const genericMeta = 'noteは、クリエイターが文章や画像、音声を投稿し、ユーザーがコンテンツを楽しんで応援できるプラットフォームです。';
-    const query = '君と見るそら ソライロ コール';
-    const dynamicSnippet = '## ・ソライロ\n\n〈イントロ〉スタンダード\nうりゃおい ×4 👏 ×5 しゃーいくぞ\nタイガー ファイヤー サイバー';
-
-    // 1. クエリ主要語を含まない定型文メタは動的スニペットに置き換えられる
-    const selected = chooseBestDescription(genericMeta, dynamicSnippet, query);
-    expect(selected).toBeDefined();
-    expect(selected).not.toContain('プラットフォーム');
-    expect(selected).toContain('ソライロ');
-
-    // 2. クエリ単語を十分に含む適切な Meta Description は尊重される
-    const relevantMeta = 'アイドルグループ「君と見るそら」の代表曲「ソライロ」のライブコール・MIX・口上まとめです。';
-    const selectedRelevant = chooseBestDescription(relevantMeta, dynamicSnippet, query);
-    expect(selectedRelevant).toBe(relevantMeta);
-
-    // 3. スペースなし日本語クエリでも形態素カバー率で判定できる
-    const nonSpacedQuery = 'ソライロコールまとめ';
-    const selectedNonSpaced = chooseBestDescription(relevantMeta, dynamicSnippet, nonSpacedQuery);
-    expect(selectedNonSpaced).toBe(relevantMeta);
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
