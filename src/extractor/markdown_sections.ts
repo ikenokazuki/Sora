@@ -5,8 +5,6 @@
  */
 
 const NAV_LABEL_MAX_CHARS = 16;
-/** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
-const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
 
 /**
  * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
@@ -19,9 +17,11 @@ function isLabelLinkLine(line: string): LabelLinkVerdict {
   const last = trimmed.lastIndexOf('](');
   if (last < 0 || !trimmed.endsWith(')')) return undefined;
   const before = trimmed.slice(0, last);
-  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない
+  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない:
+  // 行全体が 1 つのリンクとして読めるのは、最後の `](` の後ろの最初の `)` が行の末尾のとき（行は改行を含まない）。
+  // 正規表現 /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/ と同じ判定だが、正規表現は `](` の多い行で長さの二乗の時間がかかった
   const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
-  if (stripped === before || !BRACKET_LINK_LINE.test(trimmed)) return undefined;
+  if (stripped === before || trimmed.indexOf(')', last + 2) !== trimmed.length - 1) return undefined;
   const label = stripped.trim();
   if (!label || label === '-') return null;
   if (label.startsWith('!')) return null;
@@ -116,7 +116,9 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
         const isNavOnly =
           fullText.length < 250 &&
           (/^(?:.*?[>›\\]\s*)+.*$/s.test(fullText) ||
-            /^(?:\[.+?\]\(.+?\)\s*(?:\\?>|›|>)?\s*)+$/s.test(fullText)) &&
+            // 「[リンク](URL)」の並びだけか。.+ が間のリンクも区切りも飲み込めるので、繰り返しの形 (?:\[.+?\]\(.+?\)…)+ と同じものに当たる
+            // （繰り返しの形は、当たらない入力で組み合わせが指数で増え、121 字で 2 秒かかった）
+            /^\[.+\]\(.+\)\s*(?:\\?>|›|>)?\s*$/s.test(fullText)) &&
           (fullText.includes('](') || fullText.includes('>') || fullText.includes('\\>'));
         if (isNavOnly) {
           currentParagraphs = [];

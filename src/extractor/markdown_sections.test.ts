@@ -30,3 +30,19 @@ test('isNavBlock: 短いラベルのリンク行だけの塊', () => {
   expect(isNavBlock('- [ホーム](/)\n- [会社概要](/about)')).toBe(true);
   expect(isNavBlock('- [ホーム](/)\n本文の文')).toBe(false);
 });
+
+test('細工した入力でも、リンク行と前置きのパンくずの判定に時間がかからない', () => {
+  // リンク行の判定: `](` の多い 1 行（前の正規表現は長さの二乗の時間で、200,000 字で 7〜18 秒止まった）
+  let t = performance.now();
+  expect(isNavBlock(`[${'](' .repeat(50_000)}))\n[a](b)`)).toBe(false);
+  expect(performance.now() - t).toBeLessThan(500);
+  // 前置きのパンくずの判定: リンクの並びの後ろに別の字（前の正規表現は組み合わせが指数で増え、121 字で 2 秒止まった）
+  t = performance.now();
+  parseMarkdownSections(`${'[a](b)'.repeat(20)}x\n\n# 見出し\n\n本文です。`);
+  expect(performance.now() - t).toBeLessThan(500);
+});
+
+test('前置きのパンくず（リンクの並び）は、区切りがあってもなくても節にしない', () => {
+  expect(parseMarkdownSections('[ホーム](/) > [ニュース](/news)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
+  expect(parseMarkdownSections('[ホーム](/x)[会社概要](/about)\n\n# 見出し\n\n本文です。').map((s) => s.fullText)).toEqual(['本文です。']);
+});
