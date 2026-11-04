@@ -830,6 +830,31 @@ export function resolveImageUrl(
   return undefined;
 }
 
+/**
+ * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。
+ * # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする。mailto:・tel: はそのまま。
+ */
+export function absolutizeContentUrls(contentHtml: string, baseUrl: string): string {
+  if (!contentHtml) return contentHtml;
+  const $ = cheerio.load(contentHtml, null, false);
+  $('a[href]').each((_, el) => {
+    const $a = $(el);
+    const href = ($a.attr('href') ?? '').trim();
+    if (!href || href.startsWith('#') || /^javascript:/i.test(href)) {
+      $a.replaceWith($a.contents());
+      return;
+    }
+    try { $a.attr('href', new URL(href, baseUrl).href); } catch {}
+  });
+  $('img[src]').each((_, el) => {
+    const $img = $(el);
+    const src = ($img.attr('src') ?? '').trim();
+    if (!src || src.startsWith('data:')) return;
+    try { $img.attr('src', new URL(src, baseUrl).href); } catch {}
+  });
+  return $.html();
+}
+
 const STRUCTURED_CONTENT_SELECTOR =
   'table, [role="grid"], [role="gridcell"], [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]';
 
@@ -1226,6 +1251,8 @@ export function convertHtmlToMarkdown(
   } else {
     contentHtml = $('body').html() || $.html() || '';
   }
+  // 本文の a・img の URL を絶対にし、飛び先の無いリンクを外す（formats の html もこの HTML を返す）
+  contentHtml = absolutizeContentUrls(contentHtml, targetUrl);
 
   // 10. Frontmatter の組み立て
   const frontmatterLines: string[] = [];
@@ -1388,7 +1415,7 @@ export function convertHtmlToMarkdown(
     breadcrumb: breadcrumb.length > 0 ? breadcrumb : undefined,
     extracted,
     media,
-    html: rawHtml,
+    html: contentHtml,
     estimatedTokens,
     quality: qualityRes.score,
     completeness: completenessRes.completeness,

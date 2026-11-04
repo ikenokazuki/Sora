@@ -408,3 +408,31 @@ describe('table rows', () => {
     expect(result.tables?.[0]?.rows).toEqual([{ 項目: '重量', 値: '199g' }]);
   });
 });
+
+describe('本文の URL', () => {
+  it('本文のリンクと画像を絶対 URL にし、# と javascript: のリンクを外す', () => {
+    const html = '<html><head><title>t</title></head><body><p>Read <a href="/docs/a">docs</a>, <a href="#top">top</a>, <a href="javascript:void(0)">js</a> and <a href="mailto:a@example.com">mail</a>.</p><img src="img/b.png" alt="b"></body></html>';
+    const result = convertHtmlToMarkdown(html, 'https://example.com/dir/page', 30000, false, false);
+    expect(result.markdown).toContain('[docs](https://example.com/docs/a)');
+    expect(result.markdown).toContain(' top,');
+    expect(result.markdown).not.toContain('(#top)');
+    expect(result.markdown).not.toContain('javascript:');
+    expect(result.markdown).toContain('[mail](mailto:a@example.com)');
+    expect(result.markdown).toContain('![b](https://example.com/dir/img/b.png)');
+  });
+
+  it('rs-trafilatura の本文のリンクも絶対 URL にする', () => {
+    const result = convertHtmlToMarkdown(
+      '<html><body><ul><li><a href="/e/1">公演 1</a></li></ul></body></html>', 'https://example.com/live', 30000, false, true,
+      undefined, undefined, undefined, undefined, false, { pageType: 'listing', contentHtml: '<ul><li><a href="/e/1">公演 1</a></li></ul>' },
+    );
+    expect(result.markdown).toContain('[公演 1](https://example.com/e/1)');
+  });
+
+  it('formats の html は、ページ全体ではなく本文の HTML（URL は絶対）を返す', () => {
+    const result = convertHtmlToMarkdown('<html><head><title>t</title><script>x()</script></head><body><p><a href="/a">a</a></p></body></html>', 'https://example.com/', 30000, false, false);
+    expect(result.html).toContain('href="https://example.com/a"');
+    expect(result.html).not.toContain('<script');
+    expect(result.html).not.toContain('<head');
+  });
+});
