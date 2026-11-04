@@ -831,8 +831,21 @@ export function resolveImageUrl(
   return undefined;
 }
 
+/** 絶対 URL のうち、非 ASCII の字（日本語のパスなど）のパーセントエンコードを字に戻す。本文の字数を URL に取られないように。
+ * 空白・制御文字・書式文字になる並びと、UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま。ASCII の %XX は触らない */
+function readableUrl(url: string): string {
+  return url.replace(/(?:%[89a-f][0-9a-f])+/gi, (m) => {
+    try {
+      const s = decodeURIComponent(m);
+      return /[\p{C}\p{Z}]/u.test(s) ? m : s;
+    } catch {
+      return m;
+    }
+  });
+}
+
 /**
- * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。
+ * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。日本語などの字はパーセントエンコードせずに書く（links の一覧はエンコードした形）。
  * # だけのリンクと javascript: のリンクは、飛び先が無いのでリンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。
  */
 export function absolutizeContentUrls(contentHtml: string, baseUrl: string): string {
@@ -848,13 +861,13 @@ export function absolutizeContentUrls(contentHtml: string, baseUrl: string): str
       $a.replaceWith($a.contents());
       return;
     }
-    try { $a.attr('href', new URL(href, baseUrl).href); } catch {}
+    try { $a.attr('href', readableUrl(new URL(href, baseUrl).href)); } catch {}
   });
   $('img[src]').each((_, el) => {
     const $img = $(el);
     const src = ($img.attr('src') ?? '').trim();
     if (!src || src.startsWith('data:')) return;
-    try { $img.attr('src', new URL(src, baseUrl).href); } catch {}
+    try { $img.attr('src', readableUrl(new URL(src, baseUrl).href)); } catch {}
   });
   return $.html();
 }

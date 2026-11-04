@@ -442,6 +442,13 @@ describe('本文の URL', () => {
     expect(result.html).not.toContain('<script');
     expect(result.html).not.toContain('<head');
   });
+
+  it('本文のリンクと画像の URL は、日本語などの字をパーセントエンコードせずに書く', () => {
+    const html = '<p><a href="/wiki/%E5%A4%A7%E9%98%AA%E5%BA%9C">大阪府</a> <a href="/wiki/東京都">東京都</a> <a href="/s?q=%93%8C%8B%9E">sjis</a> <a href="/a%20b%E3%80%80c">space</a> <a href="/z%E2%80%8Bw">zw</a> <a href="/p%25E5">pct</a></p><img src="/img/%E5%9B%B3.png" alt="図">';
+    expect(absolutizeContentUrls(html, 'https://ja.wikipedia.org/wiki/x')).toBe(
+      '<p><a href="https://ja.wikipedia.org/wiki/大阪府">大阪府</a> <a href="https://ja.wikipedia.org/wiki/東京都">東京都</a> <a href="https://ja.wikipedia.org/s?q=%93%8C%8B%9E">sjis</a> <a href="https://ja.wikipedia.org/a%20b%E3%80%80c">space</a> <a href="https://ja.wikipedia.org/z%E2%80%8Bw">zw</a> <a href="https://ja.wikipedia.org/p%25E5">pct</a></p><img src="https://ja.wikipedia.org/img/図.png" alt="図">',
+    );
+  });
 });
 
 describe('切る前の全文', () => {
