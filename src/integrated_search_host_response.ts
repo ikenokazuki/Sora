@@ -1,4 +1,4 @@
-import { safeTruncateMarkdown } from './enrichment.js';
+import { replaceMarkdownImages, safeTruncateMarkdown } from './enrichment.js';
 import { isNavBlock } from './extractor/markdown_sections.js';
 import {
   type ScrapeFormat,
@@ -109,9 +109,6 @@ export function projectIntegratedSearchEvidenceItem(
   return item;
 }
 
-// ponytail: URL に ')' を含む画像記法は対象外
-const MARKDOWN_IMAGE = /!\[([^\]]*)\]\([^)]*\)/g;
-
 /** 画像・動画の URL を省く。本文中の画像記法は alt があれば「[画像: alt]」に置き換える。images（formats で明示要求）・highlights は触らない。 */
 function stripMedia(result: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = { ...result };
@@ -120,7 +117,7 @@ function stripMedia(result: Record<string, any>): Record<string, any> {
       if (!item || typeof item !== 'object') return item;
       const { ogImage: _og, media: _media, ...rest } = item;
       if (typeof rest.markdown === 'string') {
-        rest.markdown = rest.markdown.replace(MARKDOWN_IMAGE, (_m: string, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+        rest.markdown = replaceMarkdownImages(rest.markdown);
       }
       return rest;
     });

@@ -121,6 +121,11 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .trim();
 }
 
+/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う。ponytail: URL に ')' を含む画像記法は対象外 */
+export function replaceMarkdownImages(markdown: string): string {
+  return markdown.replace(/!\[([^\]]*)\]\([^)]*\)/g, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+}
+
 /** 超高速 抽出型自動要約 (重要文抽出 / TL;DR) */
 export function generateExtractiveSummary(text: string, maxSentences = 4): string[] {
   if (!text || text.trim().length === 0) return [];

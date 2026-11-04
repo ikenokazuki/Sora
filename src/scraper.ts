@@ -33,6 +33,7 @@ import {
   generateTextFragmentUrl,
   highlightQueryMatchesInMarkdown,
   maskPiiInText,
+  replaceMarkdownImages,
   safeTruncateMarkdown,
   sendWebhookNotification,
   validateExtractedLinks,
@@ -277,6 +278,7 @@ export async function finalizeScrapeResult(
     shouldMaskPii: boolean;
     webhookUrl?: string;
     snippet?: string;
+    includeMedia?: boolean;
     /** ハイライトを選ぶ元（maxChars で切る前の全文。HTML・PDF の経路が渡す。無ければ content） */
     highlightSource?: string;
   },
@@ -383,6 +385,17 @@ export async function finalizeScrapeResult(
   }
   if (options.shouldFormatAsPrompt) {
     result.promptContext = generatePromptContext(result);
+  }
+  // includeMedia: false は search_deep と同じく、本文の画像を [画像: alt] にし、ogImage と media を省く（images・highlights は触らない）
+  if (options.includeMedia === false) {
+    result.content = replaceMarkdownImages(result.content);
+    delete result.ogImage;
+    delete result.media;
+    const stats = calculateContentStats(result.content);
+    result.characterCount = stats.characterCount;
+    result.wordCount = stats.wordCount;
+    result.readingTimeMin = stats.readingTimeMin;
+    result.estimatedTokens = estimateTokens(result.content);
   }
   if (options.webhookUrl) {
     sendWebhookNotification(options.webhookUrl, result);
@@ -583,10 +596,11 @@ export function buildScrapeCacheKey(
     maskPii: options.maskPii === true,
     verbose: options.verbose === true,
     keepDataImages: options.keepDataImages === true,
+    includeMedia: options.includeMedia !== false,
     contextTitle: options.contextTitle ?? '',
     snippet: options.snippet ?? '',
   });
-  return `scrape:v8:${options.url}:${digest}`;
+  return `scrape:v9:${options.url}:${digest}`;
 }
 
 export async function scrapeUrl(options: {
@@ -633,6 +647,7 @@ export async function scrapeUrl(options: {
   tenantId?: string;
   verbose?: boolean;
   keepDataImages?: boolean;
+  includeMedia?: boolean;
   contextTitle?: string;
   snippet?: string;
   onProgress?: (event: { stage: 'start' | 'fetch' | 'render' | 'enrich' | 'done'; message: string; data?: any }) => void;
@@ -699,6 +714,7 @@ export async function scrapeUrl(options: {
       shouldMaskPii: options.maskPii ?? false,
       webhookUrl: options.webhookUrl,
       snippet: options.snippet,
+      includeMedia: options.includeMedia,
     };
 
     while (attempt <= retries) {
@@ -792,7 +808,7 @@ export async function scrapeUrl(options: {
 
           const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
           const html = decodeHtmlBuffer(buf, contentType);
-          const rsMain = onlyMainContent ? await extractMainContentWithRs(html, finalUrl) : undefined;
+          const rsMain = onlyMainContent ? await extractMainContentWithRs(html, finalUrl, undefined, { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia }) : undefined;
 
           const parsed = convertHtmlToMarkdown(
             html,
@@ -996,7 +1012,7 @@ export async function scrapeUrl(options: {
           options.stripLinks,
           options.filterLinkDensity,
           options.keepDataImages,
-          onlyMainContent ? await extractMainContentWithRs(browserRes.html, browserRes.finalUrl) : undefined,
+          onlyMainContent ? await extractMainContentWithRs(browserRes.html, browserRes.finalUrl, undefined, { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia }) : undefined,
         );
 
         result = {
@@ -1112,6 +1128,7 @@ export async function scrapeBatchUrls(options: {
   timeoutMs?: number;
   noCache?: boolean;
   tenantId?: string;
+  includeMedia?: boolean;
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, ...scrapeOpts } = options;
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
@@ -1371,6 +1388,7 @@ export async function crawlSiteUrl(options: {
   diversityWeight?: number;
   annotateTemporal?: boolean;
   minimizeTables?: boolean;
+  includeMedia?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
   tenantId?: string;
@@ -1399,6 +1417,7 @@ export async function crawlSiteUrl(options: {
     diversityWeight,
     annotateTemporal,
     minimizeTables,
+    includeMedia,
     noCache,
     webhookUrl,
     onPageScraped,
@@ -1457,6 +1476,7 @@ export async function crawlSiteUrl(options: {
             diversityWeight,
             annotateTemporal,
             minimizeTables,
+            includeMedia,
             noCache,
             ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
             ...(options.onlyMainContent !== undefined ? { onlyMainContent: options.onlyMainContent } : {}),
@@ -1838,7 +1858,7 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v11:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v12:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
