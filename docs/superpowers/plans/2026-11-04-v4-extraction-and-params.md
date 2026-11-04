@@ -1644,6 +1644,82 @@ git add src/extractor/markdown_sections.ts src/extractor/markdown_sections.test.
 git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(highlights): リンク行とパンくずの判定の正規表現を、細工した入力で止まらない同じ意味の形にする" -m "リンク行の判定（isNavBlock）は ]( の多い 1 行で長さの二乗の時間がかかり、前置きのパンくずの判定は当たらない入力で組み合わせが指数で増えた（121 字で 2 秒）。どちらも同じ判定になる形に替える。ハイライトの評価の記録も、直したあとの数字にする。"
 ```
 
+### Task A11b: 本文のリンクと画像の URL で、日本語などの字をパーセントエンコードしない
+
+A11 の修正の測り直しで、`absolutizeContentUrls`（A4）が `new URL(href, base).href` で日本語のパスをパーセントエンコードするため（`/wiki/大阪府` → `https://ja.wikipedia.org/wiki/%E5%A4%A7%E9%98%AA%E5%BA%9C`）、リンクの多い日本語のページで Markdown が base の 1.2〜1.4 倍になり、同じ maxChars（30,000 字）に入る本文が base の 52〜100% に減ることが分かった（大阪府 8,588 → 4,594 字）。絶対 URL のまま、非 ASCII の字のパーセントエンコードだけを字に戻す（IRI の形。ブラウザのアドレス欄と同じ）。空白・制御文字・書式文字（ゼロ幅の字など）になる並びと、UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま残す。ASCII の `%XX`（`%20`・`%2F` など）は触らない。controller の試し（A11 の保存した 10 ページ）では、30,000 字に入る本文が 10 ページとも base 以上になった（大阪府 10,144 字）。`links` の一覧（`formats: ["links"]`）は今のまま（エンコードした形）。
+
+**Files:**
+- Modify: `src/html_parser.ts`（`absolutizeContentUrls` と、そのすぐ上に `readableUrl` を足す）
+- Test: `src/html_parser.test.ts`
+- Modify: `docs/evaluations/main-content/results.md`（「## rs-trafilatura の経路の画像（v4.0.0）」の Markdown の字数・推定トークン・`%XX` の数）
+- Modify: `docs/evaluations/v4-highlights/results.md`（本文の字・30,000 字に入る本文・パーセントエンコードの記述）
+
+**Interfaces:**
+- Consumes: なし
+- Produces: なし（`absolutizeContentUrls` の形は変えない）
+
+- [ ] **Step 1: 落ちるテストを書く**
+
+`src/html_parser.test.ts` の `describe('本文の URL', () => {` の中に足す:
+
+```ts
+  it('本文のリンクと画像の URL は、日本語などの字をパーセントエンコードせずに書く', () => {
+    const html = '<p><a href="/wiki/%E5%A4%A7%E9%98%AA%E5%BA%9C">大阪府</a> <a href="/wiki/東京都">東京都</a> <a href="/s?q=%93%8C%8B%9E">sjis</a> <a href="/a%20b%E3%80%80c">space</a> <a href="/z%E2%80%8Bw">zw</a> <a href="/p%25E5">pct</a></p><img src="/img/%E5%9B%B3.png" alt="図">';
+    expect(absolutizeContentUrls(html, 'https://ja.wikipedia.org/wiki/x')).toBe(
+      '<p><a href="https://ja.wikipedia.org/wiki/大阪府">大阪府</a> <a href="https://ja.wikipedia.org/wiki/東京都">東京都</a> <a href="https://ja.wikipedia.org/s?q=%93%8C%8B%9E">sjis</a> <a href="https://ja.wikipedia.org/a%20b%E3%80%80c">space</a> <a href="https://ja.wikipedia.org/z%E2%80%8Bw">zw</a> <a href="https://ja.wikipedia.org/p%25E5">pct</a></p><img src="https://ja.wikipedia.org/img/図.png" alt="図">',
+    );
+  });
+```
+
+- [ ] **Step 2: 落ちることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/html_parser.test.ts -t '日本語などの字'`
+Expected: FAIL（`%E5%A4%A7…` のまま）
+
+- [ ] **Step 3: 直す**
+
+`src/html_parser.ts` の `absolutizeContentUrls` の説明（`/**` の行）のすぐ上に足す:
+
+```ts
+/** 絶対 URL のうち、非 ASCII の字（日本語のパスなど）のパーセントエンコードを字に戻す。本文の字数を URL に取られないように。
+ * 空白・制御文字・書式文字になる並びと、UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま。ASCII の %XX は触らない */
+function readableUrl(url: string): string {
+  return url.replace(/(?:%[89a-f][0-9a-f])+/gi, (m) => {
+    try {
+      const s = decodeURIComponent(m);
+      return /[\p{C}\p{Z}]/u.test(s) ? m : s;
+    } catch {
+      return m;
+    }
+  });
+}
+```
+
+`absolutizeContentUrls` の 2 か所を変える:
+- `try { $a.attr('href', new URL(href, baseUrl).href); } catch {}` → `try { $a.attr('href', readableUrl(new URL(href, baseUrl).href)); } catch {}`
+- `try { $img.attr('src', new URL(src, baseUrl).href); } catch {}` → `try { $img.attr('src', readableUrl(new URL(src, baseUrl).href)); } catch {}`
+
+説明の 1 行目の「絶対 URL にする（links の一覧と同じ基準）」の後ろに「。日本語などの字はパーセントエンコードせずに書く（links の一覧はエンコードした形）」を足す。
+
+- [ ] **Step 4: 通ることを確かめる**
+
+Run: `unset HTTPS_PROXY HTTP_PROXY; bun test src/html_parser.test.ts && bun run typecheck && bun run lint`
+Expected: PASS・型の誤りなし・lint の指摘なし。全件も走らせる（Global Constraints の手順）。落ちたテストがあれば、期待が本文のリンクのパーセントエンコードした形をそのまま書いていたものかを確かめ、そうなら期待を直す。そうでなければ直さずに報告する。
+
+- [ ] **Step 5: 記録を測り直す**
+
+コードを変えたので、URL の長さに関わる数字だけを測り直す（F1・本文の語・ハイライトの選び方は URL を外して比べているので変わらない）:
+- `docs/evaluations/main-content/results.md` の「## rs-trafilatura の経路の画像（v4.0.0）」: 日本語の 72 ページの Markdown の字数・推定トークン・増えた内訳・`%XX` の数・上位 5 ページを、A10 の 2 回目と同じスクリプト（`<OUT>/r2/` の ja-compare・ja-length）で branch だけ測り直す（base は変わらない）。
+- `docs/evaluations/v4-highlights/results.md`: 本文の字の表・30,000 字に入る本文・パーセントエンコードの記述を、A11 の修正 1 回目のスクリプト（`<OUT>/a11/r1/` の count-text.ts など）で測り直す。長いページ 10 件の判定は、保存した HTML を手元のサーバーから返す方法（`<OUT>/a11/run-local.ts`）で branch を測り直し、変わったら書き直す（ネットワークには出ない）。
+- どちらも、直す前の数字（パーセントエンコードした形）を 1 行残す。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/html_parser.ts src/html_parser.test.ts docs/evaluations/main-content/results.md docs/evaluations/v4-highlights/results.md
+git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit -m "fix(markdown): 本文のリンクと画像の URL で、日本語などの字をパーセントエンコードしない" -m "絶対 URL にするときに new URL().href が日本語のパスをパーセントエンコードし、リンクの多い日本語のページでは同じ maxChars に入る本文が半分ほどに減っていた。非 ASCII の字だけを字に戻す（空白・制御文字・書式文字と、UTF-8 として読めない並びはそのまま）。評価の記録の字数も測り直した。"
+```
+
 ### Task A12: 実際の search_deep を 1 回だけ測る（40 問）
 
 **Files:**
