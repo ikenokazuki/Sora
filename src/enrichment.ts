@@ -89,7 +89,8 @@ const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
 const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
 const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
 const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
-const JS_LINK_RE = new RegExp(String.raw`\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる
+const JS_LINK_RE = new RegExp(String.raw`(?<!\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
 const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
 const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
 
@@ -245,8 +246,9 @@ export function maskPiiInText(text: string): string {
   if (!text) return text;
   let masked = text;
 
-  // 1. メールアドレス
-  masked = masked.replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
+  // 1. メールアドレス。後読みで、ローカル部の字の並びの先頭からだけ試す（途中の字ごとに並びの最後まで読むと、長い英数字の並びで二乗の時間になる）。
+  //    後ろの枝は、前の一致が `_` `+` の手前で終わり、そこから次のメールが続く形（a@b.c_d@e.f）も前と同じに読むため
+  masked = masked.replace(/(?:(?<![a-zA-Z0-9_.+-])|(?=[_+])(?<=@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+))[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
 
   // 2. クレジットカード番号 (13〜19桁, Luhn 検証または一般的な4桁x4ブロック)
   masked = masked.replace(/\b(?:\d{4}[ -]?){3}\d{4}\b|\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g, (match) => {

@@ -5,6 +5,7 @@ import {
   extractTermsWithBigrams,
   idf,
   parseBlocks,
+  scorePassage,
   splitSentences,
   dinkelbachOptimalPassage,
 } from './hierarchical_bm25';
@@ -171,5 +172,12 @@ describe('Hierarchical BM25 Passage Extractor', () => {
     // 文1と文3の両方を含む最大密度の最適区間が切り出されていること
     expect(optimal).toContain('星風エトワールは圧倒的な歌唱力');
     expect(optimal).toContain('代表曲である星風エトワール');
+  });
+
+  it('scorePassage は、ブロックが 4 万あっても、平均の長さをブロックごとに数え直さない', () => {
+    const blocks = Array.from({ length: 40_000 }, (_, i) => ({ headingPath: [], nearestHeading: '', depth: 0, body: `検索語 ${i}` }));
+    const t0 = performance.now();
+    for (const block of blocks) scorePassage(block, ['検索語'], blocks);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });

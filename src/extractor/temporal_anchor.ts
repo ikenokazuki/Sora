@@ -91,7 +91,8 @@ export function extractTemporalAnchors(
   }
 
   // 2. N日前 / N日後
-  const nDayRegex = /([0-9０-９]+)\s*日(?:前|まえ|後)/g;
+  // 後読みで数字の並びの先頭からだけ試す（途中の数字ごとに並びの最後まで読むと、長い数字の並びで二乗の時間になる。一致の結果は同じ）
+  const nDayRegex = /(?<![0-9０-９])([0-9０-９]+)\s*日(?:前|まえ|後)/g;
   let match: RegExpExecArray | null;
   while ((match = nDayRegex.exec(text)) !== null) {
     const rawNum = match[1].replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xfee0));

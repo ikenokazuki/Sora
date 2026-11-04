@@ -53,3 +53,36 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect((await finalizeScrapeResult(base(tail), opts())).description).toBeUndefined();
   });
 });
+
+describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字まで）止まらない', () => {
+  // 値の種類・金額・N 日前・「万」・メールの正規表現が、数字・英字が長く続くと、並びの途中のすべての位置から並びの最後まで読んで、
+  // 長さの二乗の時間になっていた（20 万桁の数字で数分、20 万字の英字で十数秒）。作った入力で、抽出全体が数秒で終わることを確かめる。
+  // 上限の 3 秒は、直した形の単体の時間（Bun 1.4.2 で 0.02〜0.11 秒、1.3.3 で 0.4〜0.7 秒）の 4 倍以上で、前の形（14 秒以上）よりは十分に短い
+  const N = 200_000;
+  const query = '検索語 テスト';
+  const everything = {
+    shouldMaskPii: true, safeNormalize: true, annotateTemporal: true, includeDiscrepancies: true, includeDiagnostics: true, verbose: true, reorderUFlat: true,
+  };
+  const code = (payload: string) => `# 記事\n\n本文です。\n\n## コード\n\n\`\`\`\n${query} ${payload}\n\`\`\`\n`;
+  const prose = (payload: string) => `# 記事\n\n本文です。\n\n## 説明\n\n${query} ${payload}\n`;
+  const cases: Array<[string, string, Record<string, unknown>]> = [
+    ['「## コード」の節の 20 万桁の数字', code('1'.repeat(N)), {}],
+    ['ふつうの段落の 20 万桁の数字', prose('1'.repeat(N)), {}],
+    ['maskPii: 20 万字の英字', prose('a'.repeat(N)), { shouldMaskPii: true }],
+    ['maskPii: 10 万字の英字のあとに @ と 10 万字のドメイン', prose(`${'a'.repeat(N / 2)}@${'b'.repeat(N / 2)}`), { shouldMaskPii: true }],
+    ['maskPii: a_a_a_…（メールの直後の _ + も読む枝）', prose('a_'.repeat(N / 2)), { shouldMaskPii: true }],
+    ['全部の引数あり: 20 万桁の数字', prose('1'.repeat(N)), everything],
+    ['全部の引数あり: 20 万桁の全角数字', prose('１'.repeat(N)), everything],
+    ['全部の引数あり: カンマ区切りの数字が 20 万字', prose('1,'.repeat(N / 2)), everything],
+    ['全部の引数あり: 10 万桁の数字のあとに 10 万字の空白', prose(`${'1'.repeat(N / 2)}${' '.repeat(N / 2)}x`), everything],
+  ];
+  for (const [name, doc, extra] of cases) {
+    test(name, async () => {
+      const t0 = performance.now();
+      const result = await finalizeScrapeResult(base(doc.slice(0, 15_000)), opts({ query, highlightSource: doc, ...extra }));
+      const ms = performance.now() - t0;
+      expect(result.highlights?.join('\n')).toContain('検索語');
+      expect(ms).toBeLessThan(3000);
+    });
+  }
+});

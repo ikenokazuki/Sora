@@ -261,6 +261,15 @@ describe('web-fetcher Core Functions', () => {
     expect(cleanMarkdownTokens('前 ![図](data:image/png;base64,' + 'A'.repeat(2_000_000) + ') 後')).toBe('前 [画像: 図] 後');
   });
 
+  it('cleanMarkdownTokens は、逃がした \\[ が並んでも止まらず、逃がした \\[ から始まる字は javascript: のリンクとして読まない', () => {
+    const t0 = performance.now();
+    cleanMarkdownTokens('\\['.repeat(100_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(cleanMarkdownTokens('前 [Click](javascript:void(0)) 後')).toBe('前 Click 後');
+    // 地の文の「[text](javascript:…)」を Turndown が逃がした形は、字を壊さずそのまま残す
+    expect(cleanMarkdownTokens('\\[text\\](javascript:void(0))')).toBe('\\[text\\](javascript:void(0))');
+  });
+
   it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
     expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
       .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
@@ -2482,6 +2491,13 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(masked).toContain('[CREDIT_CARD]');
     expect(masked).not.toContain('info@example.com');
     expect(masked).not.toContain('090-1234-5678');
+  });
+
+  it('maskPiiInText は、メールの直後に _ や + でつながった次のメールも隠し、20 万字の英字の並びでも止まらない', () => {
+    expect(maskPiiInText('a@b.co_c@d.org と x@y.jp+z@w.net')).toBe('[EMAIL][EMAIL] と [EMAIL][EMAIL]');
+    const t0 = performance.now();
+    maskPiiInText('a'.repeat(200_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('convertHtmlToMarkdown should extract YouTube media info and chapters', () => {
