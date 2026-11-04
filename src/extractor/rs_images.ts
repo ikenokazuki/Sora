@@ -50,3 +50,27 @@ export function markImagesForRs(html: string, pageUrl: string): { html: string; 
   for (const [wrap, marks] of marksByWrap) $(wrap as any).after(marks);
   return { html: $.html(), images };
 }
+
+/** 1 回目と 2 回目の本文を比べる文字: タグと私用領域の文字を除き、空白をまとめる */
+export function rsComparableText(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(PRIVATE_USE, '').replace(/\s+/g, ' ').trim();
+}
+
+const escapeAttr = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * 2 回目（目印入りの HTML）の本文が 1 回目と同じ文字なら、目印を img に置き換えた本文を返す。違えば undefined。
+ * rs-trafilatura が説明文ごと消した figure の画像（説明文が 1 回目の本文に無いもの）は、説明文を alt（空のとき）か title に入れる。
+ */
+export function restoreRsImages(firstHtml: string, markedHtml: string, images: MarkedImage[]): string | undefined {
+  const firstText = rsComparableText(firstHtml);
+  if (rsComparableText(markedHtml) !== firstText) return undefined;
+  return markedHtml.replace(PRIVATE_USE, (ch) => {
+    const img = images[ch.charCodeAt(0) - MARK_BASE];
+    if (!img) return '';
+    const lost = img.caption !== '' && !firstText.includes(img.caption);
+    const alt = img.alt || (lost ? img.caption : '');
+    const title = img.title || (lost && img.alt ? img.caption : '');
+    return `<img src="${escapeAttr(img.src)}" alt="${escapeAttr(alt)}"${title ? ` title="${escapeAttr(title)}"` : ''}>`;
+  });
+}
