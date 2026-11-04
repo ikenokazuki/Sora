@@ -1,4 +1,4 @@
-import { replaceMarkdownImages, safeTruncateMarkdown } from './enrichment.js';
+import { replaceMarkdownImages, truncateMarkdownWithin } from './enrichment.js';
 import { isNavBlock } from './extractor/markdown_sections.js';
 import {
   type ScrapeFormat,
@@ -30,7 +30,8 @@ function hasCanonicalHighlights(item: Record<string, any>): boolean {
 }
 
 // ハイライトが本文のこの割合以上なら、本文を省いてもほとんど減らない。ハイライトの代わりに本文を返す（窓で切った根拠より答えを落とさない）。
-// 保存した実ページの 76 問では、0.75 から 0.85 に上げても答えの残る結果は変わらず、evidence のトークンが減る
+// 保存した実ページの 76 問では、0.75 から 0.85 に上げても答えの残る結果は変わらず、evidence のトークンが減る。
+// 本文が maxChars で切れた結果（isTruncated）には使わない: ハイライトは切る前の全文から選ぶので、本文に無い答えを持つことがある
 const MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO = 0.85;
 
 function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
@@ -72,8 +73,9 @@ function isXItem(item: Record<string, any>): boolean {
  *
  * `markdown` is NEVER overwritten with highlights.
  * `highlights` is removed only when it is nearly as long as `markdown` (the markdown is kept instead),
- * unless another result points to it with `highlightsSameAs` (`highlightsReferenced`) or `maxTotalChars`
- * may cut that markdown; compact mode may replace a duplicate with `highlightsSameAs`.
+ * unless another result points to it with `highlightsSameAs` (`highlightsReferenced`), `maxTotalChars`
+ * may cut that markdown, or the markdown was already cut (`isTruncated`: the highlights are chosen from the full
+ * text and may hold an answer the markdown lost); compact mode may replace a duplicate with `highlightsSameAs`.
  */
 export function projectIntegratedSearchEvidenceItem(
   sourceItem: Record<string, any>,
@@ -99,8 +101,9 @@ export function projectIntegratedSearchEvidenceItem(
     // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる
     (hasCanonicalHighlights(item) || typeof item?.highlightsSameAs === 'string');
 
-  // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無いときだけ
-  if (mayElideMarkdown && !highlightsReferenced && options.maxTotalChars === undefined && highlightsNearlyAsLongAsMarkdown(item)) {
+  // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無く、
+  // 本文が maxChars で切れていない（isTruncated でない）ときだけ
+  if (mayElideMarkdown && !highlightsReferenced && options.maxTotalChars === undefined && item.isTruncated !== true && highlightsNearlyAsLongAsMarkdown(item)) {
     delete item.highlights;
   } else if (mayElideMarkdown) {
     delete item.markdown;
@@ -212,9 +215,7 @@ function applyMarkdownBudget(
     const md: string = it.markdown;
     // ナビの塊を先に落として quota に収まればそれを返す。収まらなければ従来どおり先頭側を残して切る
     const ordered = dropNavBlocksFirst(md, quota[i]);
-    let kept = safeTruncateMarkdown(ordered, quota[i]);
-    // safeTruncateMarkdown は開いたコードブロックを閉じるため数文字はみ出しうる。その分だけ手前で切り直す
-    if (kept.length > quota[i]) kept = safeTruncateMarkdown(ordered, Math.max(0, 2 * quota[i] - kept.length));
+    let kept = truncateMarkdownWithin(ordered, quota[i]);
     const para = kept.lastIndexOf('\n\n');
     if (para > quota[i] * 0.5) kept = kept.slice(0, para).trimEnd();
     return { ...it, markdown: kept, markdownTruncated: { totalChars: md.length, keptChars: kept.length } };

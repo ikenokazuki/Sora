@@ -35,6 +35,7 @@ import {
   maskPiiInText,
   replaceMarkdownImages,
   safeTruncateMarkdown,
+  truncateMarkdownWithin,
   sendWebhookNotification,
   validateExtractedLinks,
   extractTemporalAnchors,
@@ -253,6 +254,28 @@ function markHttpError(result: ScrapeResult, status: number | undefined): Scrape
 // ==========================================
 // 3. スクレイピング完了処理 & オプション統合
 // ==========================================
+/** ハイライトを（onlyHighlights では）つなぐ区切り */
+const HIGHLIGHT_SEPARATOR = '\n\n---\n\n';
+
+/**
+ * ハイライトを前から足し、つないだ字数（区切りの分も数える）が maxChars を超えるところで切る。
+ * 超えるハイライトは残りの字数に切り、その後ろは捨てる（ハイライトは全文から選ぶので、窓で切らない表・コードの節などは maxChars より大きい）。
+ */
+function capHighlightItems<T extends { text: string }>(items: T[], maxChars: number): T[] {
+  const out: T[] = [];
+  let used = 0;
+  for (const item of items) {
+    const separator = out.length > 0 ? HIGHLIGHT_SEPARATOR.length : 0;
+    const room = maxChars - used - separator;
+    if (room <= 0) break;
+    const text = truncateMarkdownWithin(item.text, room);
+    if (!text.trim()) break;
+    out.push(text === item.text ? item : { ...item, text });
+    used += separator + text.length;
+  }
+  return out;
+}
+
 export async function finalizeScrapeResult(
   result: ScrapeResult,
   options: {
@@ -281,6 +304,8 @@ export async function finalizeScrapeResult(
     includeMedia?: boolean;
     /** ハイライトを選ぶ元（maxChars で切る前の全文。HTML・PDF の経路が渡す。無ければ content） */
     highlightSource?: string;
+    /** 要求の maxChars。ハイライトの合計（onlyHighlights では content）をこの字数に収める。無ければ切らない */
+    maxChars?: number;
   },
 ): Promise<ScrapeResult> {
   if (options.shouldMaskPii) {
@@ -329,6 +354,10 @@ export async function finalizeScrapeResult(
       highlights = [`> 📌 **補完証拠 (スニペット)**: ${supplemental[0]}`];
       items = [{ text: highlights[0], score: 0 }];
     }
+    if (options.maxChars !== undefined) {
+      items = capHighlightItems(items, options.maxChars);
+      highlights = items.map((item) => item.text);
+    }
     result.highlights = highlights;
     result.highlightItems = items;
     if (options.verbose) {
@@ -344,7 +373,7 @@ export async function finalizeScrapeResult(
     options.evidenceMode === 'contextual_highlights';
 
   if (isHighlightOnlyMode && result.highlights && result.highlights.length > 0) {
-    result.content = result.highlights.join('\n\n---\n\n');
+    result.content = result.highlights.join(HIGHLIGHT_SEPARATOR);
     const updatedStats = calculateContentStats(result.content);
     result.characterCount = updatedStats.characterCount;
     result.wordCount = updatedStats.wordCount;
@@ -715,6 +744,7 @@ export async function scrapeUrl(options: {
       webhookUrl: options.webhookUrl,
       snippet: options.snippet,
       includeMedia: options.includeMedia,
+      maxChars,
     };
 
     while (attempt <= retries) {
@@ -2289,7 +2319,7 @@ export async function integratedSearch(options: {
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
               const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount });
-              const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached };
+              const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
               enrichedResults.push(enrichedSpare);

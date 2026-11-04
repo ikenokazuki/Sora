@@ -83,6 +83,12 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
+/** safeTruncateMarkdown は、開いたコードブロックを閉じる 4 字のぶん maxChars をはみ出しうる。その分だけ手前で切り直して、maxChars 字以内にする */
+export function truncateMarkdownWithin(markdown: string, maxChars: number): string {
+  const kept = safeTruncateMarkdown(markdown, maxChars);
+  return kept.length > maxChars ? safeTruncateMarkdown(markdown, Math.max(0, 2 * maxChars - kept.length)) : kept;
+}
+
 // Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
 // どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
 const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
