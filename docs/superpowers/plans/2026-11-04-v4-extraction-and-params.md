@@ -1101,6 +1101,12 @@ Expected: `client/servers/sora/scrape.ts`・`scrape_batch.ts`・`crawl_site.ts` 
 
 同じ行の `formats` の説明 `` `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]` `` の後ろに `（\`html\` は本文の HTML、\`rawHtml\` は取得したそのままの HTML）` を足す。`scrape_batch` と `crawl_site` の行にも、同じ includeMedia の項目を足す。
 
+「最も高精度な LLM 活用のベストプラクティス」の 5 番（`> 5. **Google 流 説明文自動選定器 (Meta vs Body Dynamic Arbiter)**: …` の行。Task A6 で無くした動き）を、番号はそのままで次に置き換える:
+
+```
+> 5. **説明文（`description`）**: meta の説明文（og:description・meta description・JSON-LD）をそのまま返します。ハイライトで置き換えません（v4.0.0 から）。ページに meta の説明文が無いときは返しません。
+```
+
 - [ ] **Step 3: 仕組みの説明を直す**
 
 `docs/search-scrape-mechanics.md` の 128 行目「コマンドには、取得した HTML をそのまま渡します。」を次に置き換える:
