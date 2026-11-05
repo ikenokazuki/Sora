@@ -297,7 +297,7 @@ export type IntegratedSearchResponseMode = z.infer<
 >;
 
 /** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
-export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える').meta({ default: 'full' });
+export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す').meta({ default: 'full' });
 
 /** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });

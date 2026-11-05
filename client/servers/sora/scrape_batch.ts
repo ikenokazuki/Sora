@@ -16,7 +16,7 @@ export type ScrapeBatchInput = {
   headers?: Record<string, string>;
   /** ハイライト抽出用キーワード */
   query?: string;
-  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える */
+  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す */
   responseMode?: "full" | "evidence";
   /** Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか */
   stripLinks?: boolean;

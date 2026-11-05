@@ -232,7 +232,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   describe('C3. 使われていない加工の引数と結果の項目が無い', () => {
     // CrawlRequestSchema には元から無いので、scrape と batch だけを確かめる
     const removed = ['extractSummary', 'extractCitations', 'chunkMarkdown', 'chunkSize', 'validateLinks', 'formatAsPrompt', 'highlightMatches', 'filterLinkDensity', 'safeNormalize'];
-    const removedResultFields = ['summary', 'citations', 'chunks', 'promptContext', 'highlightedContent', 'linksWithStatus', 'derivations'];
+    const removedResultFields = ['summary', 'citations', 'chunks', 'promptContext', 'highlightedContent', 'linksWithStatus', 'derivations', 'evidenceDiagnostics', 'discrepancies'];
 
     it('scrape・batch の REST の形に無い', () => {
       for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema]) {

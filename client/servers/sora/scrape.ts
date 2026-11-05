@@ -45,7 +45,7 @@ export type ScrapeInput = {
   removeSelectors?: string[];
   /** ハイライト抽出用キーワード */
   query?: string;
-  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える */
+  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す */
   responseMode?: "full" | "evidence";
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;

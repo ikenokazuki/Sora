@@ -150,7 +150,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - Web検索の単一結果集合はプロバイダーの順位を保持します。複数クエリ統合は加重 RRF、Deep Search の本文・ハイライト選択は BM25 と回答値・対象との関連・日付整合性を用いて評価します。新しいページを一律に優先する設計ではありません。
 9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
    - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを決定論的に特定可能。
-   - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、`verbose: true` のとき `highlightDiagnostics` に、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
+   - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき（MCP の `scrape`・`scrape_batch` の `verbose` では付きません）`highlightDiagnostics` に、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
 10. **🌐 最新 IR (情報検索) & RAG 理論 (v2.16.0+)**:
    - **MMR (Maximal Marginal Relevance) 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を抑え、異なる観点の重要文を幅広く採択（多様性の重みは 0.7 固定）。
 11. **⏳ Temporal Context Anchor (時間的文脈アンカー / 相対日時の絶対解決)**:
@@ -378,7 +378,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) 任意引数 `detail`（`names` / `summary` / `schema`）で返す詳しさを、`activate:false` で有効化せずに調べるだけにできます。 |
 | `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
-| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxDepth` (number, 任意): 最大リンク深度 (デフォルト: 2)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
+| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 ---
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
@@ -404,7 +404,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > **より効果的なアプローチ**:
 > 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
 > 2. **クエリに関係する段落だけを読む（`query` の指定）**: `query` を指定すると、見出し階層ボーナス付き BM25 に回答値の倍率を掛けた点数で、クエリに関係する段落を MMR で重複を避けて選びます。LLM は長いページ全体を読む代わりに、関係する段落だけを読めるため、不要なトークンを減らせます。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します。
-> 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: `verbose: true` のとき、客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を `highlightDiagnostics` に付与します。LLM の自律判断を妨げず、決定論的な事実データを供給します。
+> 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき、客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を `highlightDiagnostics` に付与します（MCP の `scrape`・`scrape_batch` の `verbose` では付きません）。LLM の自律判断を妨げず、決定論的な事実データを供給します。
 > 4. **検索結果の動的コーパスIDF付きアイテム間 BM25+ リランキング & 深層エビデンス駆動リランキング**: `search_web`, `search_deep`, `search_chiebukuro` 等の検索結果は、返却されたヒットアイテム群からインメモリでドキュメント頻度 $df(t)$ と動的 IDF を算出し、タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化で瞬時にリランキングされます。さらに深層統合検索（`/search`, `/search/deep`）では、スクレイピング完了後に本文およびハイライトの重要クエリ単語カバレッジやハイライトの点数を再評価する**深層エビデンス駆動リランキング（`rerankByDeepEvidence`）**が自動作動し、スニペット段階の偽陽性（作詞者等のキーフレーズが本文に含まれない記事）を排除して真に回答根拠を含むソースを最上位に浮上させます。
 > 5. **説明文（`description`）**: meta の説明文（og:description・meta description・JSON-LD）をそのまま返します。ハイライトで置き換えません（v4.0.0 から）。ページに meta の説明文が無いときは返しません。
 > 6. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
@@ -786,7 +786,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 }
 ```
 - **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（要素指定のスクリーンショット）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape` と `scrape_batch` には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
-- **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます（`/scrape/batch`・`/crawl` と MCP の `scrape`・`scrape_batch`・`crawl_site` も同じ）。
+- **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`・`scrape_batch`・`crawl_site` も同じ）。
 - **レスポンス例 (デフォルト: Compact Mode - LLMトークンを50%以上削減)**:
 ```json
 {
@@ -1110,6 +1110,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "formats": ["markdown", "jsonLd", "images"]
 }
 ```
+- **REST だけの引数**: `maxDepth`（最大リンク深度。デフォルト: 2、上限: 5）。MCP の `crawl_site` にはありません。
 - **SSE ストリーミング (`POST /crawl/stream`)**: ページが取得されるたびにリアルタイムで Server-Sent Events（`start` -> `page` -> `done`）を配信。
 
 ---

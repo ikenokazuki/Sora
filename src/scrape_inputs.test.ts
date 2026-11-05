@@ -80,7 +80,7 @@ describe('scrape inputs reach the implementation', () => {
     expect(crawlSpy.mock.calls[0][0]).toMatchObject({ responseMode: 'evidence' });
   });
 
-  test('REST の scrape・batch・crawl のスキーマは responseMode に full と evidence だけを許す（/crawl の経路は、未知の値を full にする）', () => {
+  test('REST の scrape・batch・crawl のスキーマは responseMode に full と evidence だけを許す', () => {
     for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
       const input = schema === BatchScrapeRequestSchema ? { urls: ['https://example.com'] } : { url: 'https://example.com' };
       expect(schema.parse({ ...input, responseMode: 'evidence' })).toMatchObject({ responseMode: 'evidence' });

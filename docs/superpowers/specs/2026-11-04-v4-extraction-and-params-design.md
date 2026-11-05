@@ -125,7 +125,7 @@ Readability の経路と同じ隠し要素（hidden・aria-hidden・display:none
 
 | 引数 | 理由・消した後の動き |
 |---|---|
-| includeDiagnostics・includeDiscrepancies・diversityWeight・minimizeTables・reorderUFlat | 効いていない。表は今と同じく縮める |
+| includeDiagnostics・includeDiscrepancies・diversityWeight・minimizeTables・reorderUFlat | 効いていない（reorderUFlat は scrape のハイライトに効いていなかっただけで、crawl_site・search_deep・POST /crawl・POST /search では true のとき結果を U 字に並べ替えていた。消した後は並べ替えない）。表は今と同じく縮める |
 | evidenceMode の contextual_highlights | highlights と同じ |
 | extractSummary・extractCitations・chunkMarkdown・chunkSize・validateLinks・formatAsPrompt・highlightMatches・filterLinkDensity | 加工を呼び出し側で行える。使われていない |
 | safeNormalize | 本文の数と単位を書き換える（「2.4 km」が「2400 m」に、「500 ms」が「0.5 s」に）ので、引用元と文字が合わなくなる |
