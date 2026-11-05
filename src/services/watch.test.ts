@@ -68,3 +68,86 @@ describe('F7 selector presence', () => {
     expect(byId.get(b.target.id)?.errorCode).toBeUndefined();
   });
 });
+
+describe('webhookSent は送信の成否を表す', () => {
+  const previousLocal = process.env.ALLOW_LOCAL_FETCH;
+  afterEach(() => {
+    if (previousLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = previousLocal;
+  });
+
+  // 手元の受け口。status で応答し、受け取った本文を残す
+  const receiver = (status: number) => {
+    const bodies: unknown[] = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        bodies.push(await req.json());
+        return new Response('ok', { status });
+      },
+    });
+    return { url: `http://127.0.0.1:${server.port}/hook`, bodies, stop: () => server.stop(true) };
+  };
+
+  // 初回で基準を作り、2 回目で差分を出して、2 回目の結果を返す
+  const changeOnce = async (webhookUrl: string) => {
+    const { target } = await registerWatchTarget({ url: 'https://example.com/hook', webhookUrl, initialFetch: false });
+    await checkWatchTarget(target.id, matchScrape('version one text here') as never);
+    return checkWatchTarget(target.id, matchScrape('version two text here') as never);
+  };
+
+  test('2xx で受け取られたときだけ true', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const hook = receiver(200);
+    try {
+      const res = await changeOnce(hook.url);
+      expect(res.changed).toBe(true);
+      expect(res.webhookSent).toBe(true);
+      expect(hook.bodies).toHaveLength(1);
+      expect((hook.bodies[0] as { data: { event: string } }).data.event).toBe('watch.diff_detected');
+    } finally {
+      hook.stop();
+    }
+  });
+
+  test('受け口が 5xx を返したら false', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const hook = receiver(500);
+    try {
+      const res = await changeOnce(hook.url);
+      expect(res.changed).toBe(true);
+      expect(res.webhookSent).toBe(false);
+      expect(hook.bodies).toHaveLength(1);
+    } finally {
+      hook.stop();
+    }
+  });
+
+  test('つながらない先は false', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const res = await changeOnce('http://127.0.0.1:1/hook');
+    expect(res.changed).toBe(true);
+    expect(res.webhookSent).toBe(false);
+  });
+
+  test('SSRF の判定で止められた先は false（送っていない）', async () => {
+    delete process.env.ALLOW_LOCAL_FETCH;
+    const hook = receiver(200);
+    try {
+      const res = await changeOnce(hook.url);
+      expect(res.changed).toBe(true);
+      expect(res.webhookSent).toBe(false);
+      expect(hook.bodies).toHaveLength(0);
+    } finally {
+      hook.stop();
+    }
+  });
+
+  test('Webhook の無い監視や、差分の無い確認では webhookSent を返さない', async () => {
+    const { target } = await registerWatchTarget({ url: 'https://example.com/none', initialFetch: false });
+    await checkWatchTarget(target.id, matchScrape('version one text here') as never);
+    const changed = await checkWatchTarget(target.id, matchScrape('version two text here') as never);
+    expect(changed.changed).toBe(true);
+    expect(changed.webhookSent).toBeUndefined();
+  });
+});

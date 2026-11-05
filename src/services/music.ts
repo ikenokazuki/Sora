@@ -59,7 +59,7 @@ export async function searchMusic(options: {
   query: string;
   country?: string;
   entity?: 'song' | 'album' | 'musicArtist';
-  attribute?: 'songTerm' | 'artistTerm' | 'albumTerm' | string;
+  attribute?: 'songTerm' | 'artistTerm' | 'albumTerm';
   limit?: number;
   noCache?: boolean;
 }): Promise<MusicSearchResult> {

@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { scrapeUrl } from '../scraper.js';
-import { sendWebhookNotification } from '../enrichment.js';
+import { deliverWebhook } from '../enrichment.js';
 import {
   dbSaveWatchTarget,
   dbGetWatchTarget,
@@ -45,7 +45,6 @@ export async function registerWatchTarget(options: {
   title?: string;
   selector?: string;
   webhookUrl?: string;
-  intervalSeconds?: number;
   initialFetch?: boolean;
 }, scrapeImpl: typeof scrapeUrl = scrapeUrl
 ): Promise<{ target: WatchTargetRecord; initialResult?: WatchCheckResult; initialError?: { code: string; message: string } }> {
@@ -55,7 +54,6 @@ export async function registerWatchTarget(options: {
     title: options.title,
     selector: options.selector,
     webhook_url: options.webhookUrl,
-    interval_seconds: options.intervalSeconds,
   });
 
   let initialResult: WatchCheckResult | undefined = undefined;
@@ -105,7 +103,7 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
   const isChanged = !isFirstCheck && target.last_hash !== currentHash;
 
   let diffSummary: string | undefined = undefined;
-  let webhookSent = false;
+  let webhookSent: boolean | undefined;
 
   if (isFirstCheck) {
     diffSummary = `Initial baseline established (${cleanText.length} characters)`;
@@ -124,9 +122,9 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
     // ターゲットの最新状態更新
     dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000));
 
-    // Webhook 通知送信 (SSRF 保護済み)
+    // Webhook 通知送信 (SSRF 保護済み)。送った結果を待ち、2xx で受け取られたときだけ true
     if (target.webhook_url) {
-      sendWebhookNotification(target.webhook_url, {
+      webhookSent = await deliverWebhook(target.webhook_url, {
         event: 'watch.diff_detected',
         targetId: target.id,
         url: target.url,
@@ -135,7 +133,6 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
         currentHash,
         timestamp: checkedAt,
       });
-      webhookSent = true;
     }
   } else {
     // 差分なし: チェック時刻のみ更新
@@ -151,7 +148,7 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
     diffSummary,
     snapshotSnippet: cleanText.slice(0, 300),
     checkedAt,
-    webhookSent: webhookSent ? true : undefined,
+    webhookSent,
   };
 }
 

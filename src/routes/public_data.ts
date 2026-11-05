@@ -7,6 +7,7 @@ import {
   searchLaws,
   getLawData,
   searchDietMinutes,
+  GovInputError,
   fetchElevationAndCoordinates,
   fetchFlightStatus,
 } from '../scraper.js';
@@ -223,6 +224,7 @@ publicDataRoutes.post('/gov/diet-minutes', async (c) => {
     const result = await searchDietMinutes(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof GovInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
@@ -251,6 +253,7 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof GovInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });

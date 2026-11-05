@@ -106,19 +106,15 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
       carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional()
         .describe('運送会社コード: "yamato"(ヤマト運輸), "sagawa"(佐川急便), "japanpost"(日本郵便 国内+国際), "seino"(西濃運輸), "fukutsu"(福山通運), "ups"(UPS), "fedex"(FedEx), "dhl"(DHL Express)。省略または "auto" で自動判別'),
       preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional()
-        .describe('優先的に検証する運送会社候補のヒント配列'),
-      originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
-      destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
+        .describe('優先的に検証する運送会社候補のヒント配列。自動判別（carrier を省く・auto）のときだけ効く'),
       noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか').meta({ default: false }),
     },
-    async ({ trackingNumber, carrier, preferredCarriers, originCountry, destinationCountry, noCache }) => {
+    async ({ trackingNumber, carrier, preferredCarriers, noCache }) => {
       try {
         const result = await trackPackage({
           trackingNumber,
           carrier: carrier ?? 'auto',
           preferredCarriers,
-          originCountry,
-          destinationCountry,
           noCache: noCache ?? false,
         });
         return {

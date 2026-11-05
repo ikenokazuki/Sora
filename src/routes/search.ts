@@ -322,7 +322,7 @@ searchRoutes.post('/search/music', async (c) => {
 
   const parsed = MusicSearchRequestSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return formatError(c, 'query is required for music search', 'INVALID_INPUT', 400, false, parsed.error.format());
+    return formatError(c, 'Invalid music search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
   }
 
   try {

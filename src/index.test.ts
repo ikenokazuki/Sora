@@ -4323,7 +4323,6 @@ describe('Sora REST & MCP Endpoints', () => {
   it('checkFdaRegulated should return clarifyingQuestions and impactExplanation when foodContact is undefined for FD1 tableware', () => {
     const res = checkFdaRegulated({
       htsCode: '6912.00.4100',
-      productDescription: 'Ceramic coffee mugs',
     });
 
     expect(res.inputCompleteness).toBe('partial');
@@ -4462,7 +4461,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Ceramic coffee mugs',
         foodContact: true,
       }),
     });
@@ -4479,7 +4477,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Decorative display ceramic plate',
         foodContact: false,
       }),
     });

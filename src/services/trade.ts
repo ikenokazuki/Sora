@@ -99,8 +99,6 @@ export async function checkCpscCertificate(options: {
   htsCode: string;
   targetAge: 'adult' | 'child' | 'unknown';
   material?: string;
-  productCategory?: string;
-  description?: string;
 }): Promise<CpscCertificateCheckResult> {
   const htsCode = options.htsCode?.trim();
   if (!htsCode) {
@@ -220,19 +218,15 @@ export async function checkCpscCertificate(options: {
     applicableRegulations: [],
     disclaimerCodeHint: 'A (Not Regulated by CPSC)',
     missingInfo: [
-      `HTSコード "${htsCode}" はCPSC公式HTSリストに掲載がありません。ただしこのリストは非網羅的であり、掲載が無いことは証明書不要を意味しません。productCategory（製品カテゴリ）を補足するか、CPSC公式に個別確認してください。`,
+      `HTSコード "${htsCode}" はCPSC公式HTSリストに掲載がありません。ただしこのリストは非網羅的であり、掲載が無いことは証明書不要を意味しません。CPSC公式に個別確認してください。`,
     ],
     nextActions: [
-      'productCategory（製品カテゴリ）を追加して再判定するか、CPSC公式に個別確認してください。非規制品目であれば、ACE通関エラー防止のため免責コード（Disclaimer）での申告を通関業者へ指示してください。',
+      'CPSC公式に個別確認してください。非規制品目であれば、ACE通関エラー防止のため免責コード（Disclaimer）での申告を通関業者へ指示してください。',
     ],
     disclaimer: DISCLAIMER,
-    inputCompleteness: 'partial',
-    missingInputs: ['productCategory'],
-    clarifyingQuestions: [
-      '製品の大まかなカテゴリ（玩具、アパレル、家具、電子機器等）または用途を教えていただけますか？',
-    ],
+    inputCompleteness: 'complete',
     impactExplanation:
-      'CPSCのeFiling重点リストには掲載がありませんが、12歳以下の子供向け製品全般や特定安全基準品目はCPSC証明書が必要です。製品カテゴリが明確になればより精度の高い判定が可能です。',
+      'CPSCのeFiling重点リストには掲載がありませんが、12歳以下の子供向け製品全般や特定安全基準品目はCPSC証明書が必要です。このリストだけでは判定できないため、CPSC公式または専門家に個別確認してください。',
   };
 }
 
@@ -369,7 +363,6 @@ const USDA_JURISDICTION_CHAPTERS = ['02'];
 /** HTSコードからFDA規制対象の可能性およびCBP ACE FDフラグ(FD1〜FD4)を判定 */
 export function checkFdaRegulated(options: {
   htsCode: string;
-  productDescription?: string;
   foodContact?: boolean;
 }): CheckFdaRegulatedResult {
   const htsCode = options.htsCode?.trim();
@@ -1195,13 +1188,10 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
       htsCode: bestLine.code,
       targetAge: options.targetAge || 'unknown',
       material: options.material,
-      productCategory: options.productCategory || category,
-      description: combinedText,
     }),
     Promise.resolve(
       checkFdaRegulated({
         htsCode: bestLine.code,
-        productDescription: combinedText,
         foodContact: options.foodContact,
       }),
     ),
@@ -1218,7 +1208,7 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     missingInputs.push('classificationDetail');
     clarifyingQuestions.push(decisionPointText(decision));
   }
-  if (cpscRes.applicableRegulations.length > 0) addMissing(cpscRes.missingInputs, cpscRes.clarifyingQuestions);
+  addMissing(cpscRes.missingInputs, cpscRes.clarifyingQuestions);
   addMissing(fdaRes.missingInputs, fdaRes.clarifyingQuestions);
   // 確度が高くなく、素材が未指定のとき: 素材を指定すると判例を素材つきで引き直す（同じ品名でも素材で章が分かれる。例: plastic coaster は 3924.10、textile coaster は 6304.93）
   //   CPSC が同じ素材を尋ねているときは、質問を1つにまとめる（CPSC の理由は impactExplanation に残る）
@@ -1552,7 +1542,6 @@ export async function checkProductCompliance(
     Promise.resolve(
       checkFdaRegulated({
         htsCode,
-        productDescription: effectiveDescription,
         foodContact: options.foodContact,
       }),
     ),
@@ -1560,8 +1549,6 @@ export async function checkProductCompliance(
       htsCode,
       targetAge,
       material,
-      productCategory: productCategory || detectedCategory,
-      description: effectiveDescription,
     }),
   ]);
 
@@ -1599,13 +1586,10 @@ export async function checkProductCompliance(
   }
 
   // 5. サブモジュールからの不足情報・確認質問・実務影響の統合
-  //    CPSC の対象リストに無いコードでは、CPSC の判定は一律に「カテゴリを教えてください」と尋ねる。
-  //    公式の階層で分類済みなので、リストに近いコードが無いときの CPSC の質問は使わない（推測と同じ扱い）。
-  const cpscAsks = cpscResult.applicableRegulations.length > 0;
   const subMissingInputs = Array.from(
     new Set([
       ...(options.htsCode ? [] : htsPrediction?.missingInputs || []),
-      ...(cpscAsks ? cpscResult.missingInputs || [] : []),
+      ...(cpscResult.missingInputs || []),
       ...(fdaResult.missingInputs || []),
       ...(htsVerification.missingInputs || []),
     ]),
@@ -1613,7 +1597,7 @@ export async function checkProductCompliance(
   const subClarifyingQuestions = Array.from(
     new Set([
       ...(options.htsCode ? [] : htsPrediction?.clarifyingQuestions || []),
-      ...(cpscAsks ? cpscResult.clarifyingQuestions || [] : []),
+      ...(cpscResult.clarifyingQuestions || []),
       ...(fdaResult.clarifyingQuestions || []),
       ...(htsVerification.clarifyingQuestions || []),
     ]),

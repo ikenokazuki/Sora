@@ -632,7 +632,6 @@ export const WatchRegisterRequestSchema = z.object({
   title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
   selector: z.string().optional().describe('ピンポイントで差分監視する CSS セレクタ (例: "#status", ".news-list")'),
   webhookUrl: z.string().url().optional().describe('差分検知時に通知を送信する Webhook URL'),
-  intervalSeconds: z.number().int().min(1).max(604_800).optional().describe('監視インターバル目安 (秒, デフォルト: 3600, 上限: 604800)').meta({ default: 3600 }),
 });
 
 export const WatchCheckRequestSchema = z.object({
@@ -658,7 +657,7 @@ export const MusicSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
   country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
   entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")').meta({ default: 'song' }),
-  attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
+  attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -686,21 +685,18 @@ export const DietMinutesSearchRequestSchema = z.object({
 });
 export const CpscCertificateCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
-  targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
-  material: z.string().optional().describe('主な素材（鉛・フタル酸エステル規制関連で重要）。【推測値の入力厳禁】不明な場合は省略すること'),
-  productCategory: z.string().optional().describe('製品カテゴリの補足（HTSコードのみで対応表がヒットしない場合の補助情報）。【推測値の入力厳禁】不明な場合は省略すること'),
-  description: z.string().optional().describe('自由記述の補足説明'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
+  material: z.string().optional().describe('主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
 });
 
 export const FdaRegulatedCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "3004.90.0000", "2106.90.9998"）'),
-  productDescription: z.string().optional().describe('製品の自由記述説明（用途・素材等の補助情報）'),
-  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFD1適用分岐に使用。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します'),
+  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します'),
 });
 
 export const VerifyHtsCodeRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('検証したいHTSコード（例: "9503.00.0073"）。推測ではなく既知・候補のコードを指定すること'),
-  productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
+  productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。必須。判定には使わず、根拠の記録として応答に返す'),
 });
 
 export const ProductComplianceRequestSchema = z.object({
@@ -710,19 +706,19 @@ export const ProductComplianceRequestSchema = z.object({
   htsCode: z.string().optional().describe('ユーザーから明示された既知のHTSコード（指定時は最優先で検証）。推測・候補値は入れず、分類したいときは省略する（Sora が公式データと判例から特定する）'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
-  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。【推測値の入力厳禁】不明な場合は省略すること'),
-  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。【推測値のでっち上げ厳禁】Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること'),
-  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。【推測値のでっち上げ厳禁】Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること'),
+  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足し、batteryTypeがあれば注意書きを1行足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
 });
 export const PredictHtsCodeRequestSchema = z.object({
   productName: z.string().min(1, 'productName は必須です').describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400）'),
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
   material: z.string().optional().describe('主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します'),
-  productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。【推測値の入力厳禁】不明な場合は省略すること'),
+  productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】CPSC証明書およびeFiling要件が分岐するため、不明な場合は省略すること'),
-  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。【推測値のでっち上げ厳禁】FDA規制・Prior Notice要否が分岐するため、不明な場合は省略すること'),
-  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。【推測値のでっち上げ厳禁】CPSC規格や危険物表示義務が分岐するため、不明な場合は省略すること'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
 });
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
@@ -984,20 +980,14 @@ export interface TrackingResult {
 export const TrackingRequestSchema = z.object({
   trackingNumber: z.string().min(1, '追跡番号は必須です').describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず）'),
   carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional().describe('運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl, auto)。未指定または "auto" の場合は自動判別'),
-  preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列'),
-  originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
-  destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
+  preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列。自動判別（carrier を省く・auto）のときだけ効く'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか').meta({ default: false }),
-  verbose: z.boolean().optional().describe('詳細な detection 判定情報をレスポンスに含めるか'),
 });
 export interface TrackingRequest {
   trackingNumber: string;
   carrier?: CarrierCode | 'auto';
   preferredCarriers?: CarrierCode[];
-  originCountry?: string;
-  destinationCountry?: string;
   noCache?: boolean;
-  verbose?: boolean;
 }
 
 
@@ -2000,7 +1990,7 @@ export const WatchTargetRecordSchema = z.object({
   last_hash: z.string().nullable().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
   last_content: z.string().nullable().optional().describe('直前チェック時の本文スニペット'),
   webhook_url: z.string().nullable().optional().describe('差分検知通知先 Webhook URL'),
-  interval_seconds: z.number().describe('監視間隔 (秒)'),
+  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる'),
   last_checked_at: z.number().nullable().optional().describe('最終チェック日時 (Unixミリ秒)'),
   created_at: z.number().describe('ターゲット登録日時 (Unixミリ秒)'),
 });
@@ -2014,7 +2004,7 @@ export const WatchCheckResultSchema = z.object({
   diffSummary: z.string().optional().describe('差分検出内容のサマリー説明'),
   snapshotSnippet: z.string().optional().describe('最新コンテンツの冒頭スニペット'),
   checkedAt: z.string().describe('チェック実行日時 (ISO 8601)'),
-  webhookSent: z.boolean().optional().describe('Webhook 通知が送信されたか'),
+  webhookSent: z.boolean().optional().describe('Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略'),
   errorCode: z.string().optional().describe('失敗コード (WATCH_SELECTOR_NOT_FOUND 等)'),
 });
 
@@ -2235,7 +2225,7 @@ export const TrackingResultSchema = z.object({
       strength: z.enum(['exclusive', 'strong', 'weak']).describe('候補強度'),
       reasons: z.array(z.string()).describe('判定理由'),
     })).optional().describe('ローカル判定候補一覧'),
-  }).optional().describe('自動判別・検証診断情報 (verbose: true 時)'),
+  }).optional().describe('自動判別・検証診断情報'),
   resolvedCarrier: z.object({
     code: z.string().describe('確定した運送会社コード'),
     name: z.string().describe('確定した運送会社名称'),

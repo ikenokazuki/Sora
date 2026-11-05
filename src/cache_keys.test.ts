@@ -205,7 +205,7 @@ describe('trackingCacheKey', () => {
 
   test('キャリアを明示した照会は、ヒントを渡してもキーが変わらない（ヒントを使わないため）', () => {
     const plain = trackingCacheKey({ carrier: 'yamato' }, num);
-    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' }, num)).toBe(plain);
+    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'] }, num)).toBe(plain);
     expect(trackingCacheKey({ carrier: 'sagawa' }, num)).not.toBe(plain);
   });
 
@@ -217,15 +217,19 @@ describe('trackingCacheKey', () => {
       trackingCacheKey({ preferredCarriers: ['sagawa'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa'] }, num),
-      trackingCacheKey({ originCountry: 'JP' }, num),
-      trackingCacheKey({ destinationCountry: 'US' }, num),
     ];
     expect(new Set([plain, ...variants]).size).toBe(variants.length + 1);
   });
 
+  test('消した originCountry・destinationCountry を渡しても、キーは変わらない', () => {
+    const sent = { preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' } as never;
+    expect(trackingCacheKey(sent, num)).toBe(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num));
+    expect(trackingCacheKey({ originCountry: 'JP' } as never, num)).toBe(trackingCacheKey({}, num));
+  });
+
   test('優先キャリアの並び順・重複と、空のヒントは区別しない', () => {
     expect(trackingCacheKey({ preferredCarriers: ['sagawa', 'yamato'] }, num)).toBe(trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa', 'yamato'] }, num));
-    expect(trackingCacheKey({ preferredCarriers: [], originCountry: ' ', destinationCountry: '' }, num)).toBe(trackingCacheKey({}, num));
+    expect(trackingCacheKey({ preferredCarriers: [] }, num)).toBe(trackingCacheKey({}, num));
   });
 });
 
