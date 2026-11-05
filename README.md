@@ -134,7 +134,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`, `bash`, `curl` 等が存在せず、RCE（任意コード実行）攻撃を無力化。
    - SSRF / DNS Rebinding 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
 5. **🕹️ ステートフルなブラウザ操作 DSL**:
-   - `open` → `fill` → `click` → `screenshot` → `evaluate` の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
+   - `open` → `fill` → `click` → `screenshot` → `evaluate`（`evaluate` は `ALLOW_BROWSER_EVALUATE=true` のときだけ）の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
 6. **⚡ 次世代スクレイピング＆構造化抽出エンジン (v2.13.0+)**:
    - **BrowserContext セッション分離 & アセット高速遮断**: 常駐 Chromium におけるセッションごとの完全隔離と、不要メディア・Webフォント・3Dモデル・広告トラッカーのネットワーク層即時遮断（転送量を大幅に削減。ページにより異なる）。CSS/JS は保持しレイアウト計算と不可視要素除外を担保。
    - **本文ベースの静止検知（SPA待機）**: 固定スリープを廃止し、見えている本文（長さ・先頭/中央/末尾・画像数）が 200ms 変化しなくなった時点で完了。多言語化ウィジェット等が属性だけを書き換え続けるページで、上限まで待たない。`networkidle` が来ないページも、`load` 後 5 秒で打ち切って現在の DOM から本文を取得。
@@ -457,7 +457,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 ---
 
 ### 🤖 Module 2: Browser Actions & Automation (`ENABLED_MODULES=browser`)
-フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行、スクリーンショット撮影、マルチターン対話セッション。
+フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行（`ALLOW_BROWSER_EVALUATE=true` のときだけ）、スクリーンショット撮影、マルチターン対話セッション。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|

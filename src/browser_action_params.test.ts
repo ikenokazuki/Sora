@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from 'b
 import { inflateSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { clearCache, setToCache } from './cache.js';
 import { resolveChromiumPath } from './browser_engine.js';
 import { createMcpServer } from './mcp.js';
 import { browserRoutes } from './routes/browser.js';
@@ -131,6 +132,16 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
 
   test('inspect_image は、画像でない応答（HTML）をエラーにする', async () => {
     await expect(scraper.inspectImage({ url: `${base()}/article` })).rejects.toThrow(/画像ではありません.*text\/html/);
+  });
+
+  test('inspect_image は、画像でない応答を成功として保存していた古いキャッシュ（v1 のキー）を読まない', async () => {
+    const url = `${base()}/article`;
+    setToCache(`img_inspect:${url}`, { success: true, url, mimeType: 'image/jpeg', sizeBytes: 1, base64: 'AA==', imageContent: { type: 'image', data: 'AA==', mimeType: 'image/jpeg' } }, 60_000);
+    try {
+      await expect(scraper.inspectImage({ url })).rejects.toThrow(/画像ではありません/);
+    } finally {
+      clearCache();
+    }
   });
 
   test('inspect_image は、画像の応答は今までどおり返し、Content-Type が不明でも中身が画像なら返す', async () => {

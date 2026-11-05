@@ -86,7 +86,7 @@ export async function fetchImageBuffer(
 
 /** 画像をフェッチして MCP ImageContent / Base64 を生成 (LRUキャッシュ対応) */
 export async function inspectImage(options: { url: string }): Promise<InspectImageResult> {
-  const cacheKey = `img_inspect:${options.url}`;
+  const cacheKey = `img_inspect:v2:${options.url}`; // v2: 画像でない応答を image/jpeg の成功として保存していた v1 を読まない
   const cached = getFromCache<InspectImageResult>(cacheKey);
   if (cached) {
     return { ...cached, cached: true };
