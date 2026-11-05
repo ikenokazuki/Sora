@@ -606,7 +606,7 @@ export async function scrapeUrl(options: {
   removeSelectors?: string[];
   stripLinks?: boolean;
   query?: string;
-  /** 内部用（search_web の formats・国の情報）。公開の引数ではない */
+  /** 内部用（search_web の formats・国の情報・integratedSearch の中の scrapeUrl の呼び出し）。公開の引数ではない */
   extractHighlights?: boolean;
   /** 'evidence': ハイライトがあれば、content をハイライトに置き換える */
   responseMode?: 'full' | 'evidence';
@@ -1851,8 +1851,6 @@ export async function integratedSearch(options: {
   }
   const xRetrievalCache = new Map<string, Promise<any>>();
 
-  const effectiveQuery = evidenceQuery;
-
   // 公式Xアカウントの特定 (明示指定 or Web検索結果URLからの自動抽出)
   let targetOfficialHandle = officialAccountId;
   if (!targetOfficialHandle && searchResults.length > 0) {
@@ -1969,7 +1967,7 @@ export async function integratedSearch(options: {
             snippet: itemSnippet,
             maxChars,
             timeoutMs: 12000,
-            query: effectiveQuery,
+            query: evidenceQuery,
             extractHighlights,
             onlyMainContent,
             formats,
@@ -2069,7 +2067,7 @@ export async function integratedSearch(options: {
               snippet: spareSnippet,
               maxChars,
               timeoutMs: 12000,
-              query: effectiveQuery,
+              query: evidenceQuery,
               extractHighlights,
               onlyMainContent,
               formats,
@@ -2139,7 +2137,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, ...mediaOption });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: evidenceQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, ...mediaOption });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
@@ -2287,7 +2285,7 @@ export async function integratedSearch(options: {
     const diagRequirements = extractQueryRequirements(query);
     finalResponse.searchDiagnostics = buildSearchDiagnostics({
       originalQuery: query,
-      effectiveQuery,
+      effectiveQuery: evidenceQuery,
       webEffectiveQuery: webParsedRes?.effectiveQuery,
       webBindingQuery: webParsedRes?.bindingQuery,
       webRetrievalQueries: webParsedRes?.retrievalQueries,

@@ -392,18 +392,16 @@ export function extractQueryHighlightDetails(
       ? `## ${block.headingPath.join(' > ')}\n\n`
       : '';
 
-    const prefix = headingPrefix;
-
     // 目安より長い節は塊も候補にする（件数を指定しないときだけ）。窓は節の点のまま、塊は節の点 × 節の中での点の比
     const split = extend && win?.span && block.body.length > HIGHLIGHT_CHAR_BUDGET;
     const leadEnd = win?.leadEnd ?? 0;
     scoredCandidates.push({
       block,
       score,
-      snippet: `${prefix}${snippetBody}`.trim(),
+      snippet: `${headingPrefix}${snippetBody}`.trim(),
       rawSnippetBody: similarityText,
-      wholeSnippet: snippetBody !== block.body && !split ? `${prefix}${block.body}`.trim() : undefined,
-      part: split ? { span: win!.span!, chunk: false, prefix, leadEnd } : undefined,
+      wholeSnippet: snippetBody !== block.body && !split ? `${headingPrefix}${block.body}`.trim() : undefined,
+      part: split ? { span: win!.span!, chunk: false, prefix: headingPrefix, leadEnd } : undefined,
     });
     if (split) {
       const chunks = chunkSpans(block.body, SPLIT_CHUNK_CHARS).map(([a, b]) => {
@@ -413,7 +411,7 @@ export function extractQueryHighlightDetails(
       const maxRaw = Math.max(...chunks.map((c) => c.raw));
       for (const c of chunks) {
         if (c.raw <= 0 || c.text.length > 2 * SPLIT_CHUNK_CHARS) continue;
-        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${prefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix, leadEnd } });
+        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${headingPrefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix: headingPrefix, leadEnd } });
       }
     }
   }

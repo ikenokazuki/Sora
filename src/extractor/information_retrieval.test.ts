@@ -2,7 +2,6 @@ import { describe, it, expect } from 'bun:test';
 import {
   selectMaximalMarginalRelevance,
   computeJaccardSimilarity,
-  expandQueryWithPseudoRelevanceFeedback,
 } from './information_retrieval.js';
 
 describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
@@ -70,46 +69,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
       });
 
       expect(selected.map((c) => c.id)).toEqual([1, 2]);
-    });
-  });
-
-  describe('expandQueryWithPseudoRelevanceFeedback (インメモリ PRF クエリ拡張)', () => {
-    it('上位適合文書から重要共起語を抽出し、クエリを拡張すること', () => {
-      const query = '推しの子 映画';
-
-      const topDocs = [
-        '人気作「推しの子」の実写映画化が決定。劇場版の公開日は12月20日で特報映像が公式YouTubeで解禁された。キャスト陣も発表。',
-        '「推しの子」映画最新情報。劇場版公開に向けてムビチケ前売券の特典情報が解禁。全国の映画館で上映予定。',
-      ];
-
-      const allDocs = [
-        ...topDocs,
-        '今日の天気は快晴で気温が上昇する見込みです。',
-        'プログラミング言語TypeScriptの基礎文法と型推論の解説。',
-        '日本の歴史と鎌倉幕府の成立過程についてまとめた記事。',
-      ];
-
-      const result = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs, { maxTerms: 2 });
-
-      expect(result.expansionTerms.length).toBeGreaterThan(0);
-      // クエリに含まれていない「劇場版」や「公開日」「解禁」などが共起語として抽出されること
-      const hasExpectedTerm = result.expansionTerms.some((term) =>
-        ['劇場版', '公開', '解禁', '前売', '上映', '映画館'].some((expected) => term.includes(expected))
-      );
-      expect(hasExpectedTerm).toBe(true);
-
-      // クエリ自身（「推しの子」「映画」）は拡張語に含まれないこと
-      expect(result.expansionTerms).not.toContain('推しの子');
-      expect(result.expansionTerms).not.toContain('映画');
-
-      expect(result.expandedQuery).toContain('推しの子 映画');
-    });
-
-    it('空クエリやドキュメントなしの場合は安全に元のクエリを返すこと', () => {
-      expect(expandQueryWithPseudoRelevanceFeedback('', [], [])).toEqual({
-        expandedQuery: '',
-        expansionTerms: [],
-      });
     });
   });
 

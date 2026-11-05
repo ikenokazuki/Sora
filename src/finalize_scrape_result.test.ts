@@ -45,7 +45,7 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect(decodeURIComponent(result.textFragmentUrl as string)).not.toContain('2026-11-05');
   });
 
-  test('scrape 系の responseMode: evidence は、ハイライトがあれば content をハイライトに置き換える', async () => {
+  test('shouldOnlyHighlights（responseMode: evidence の内部の形）は、ハイライトがあれば content をハイライトに置き換える', async () => {
     const text = '## 当日の案内\n\n開場時間は 17:00、開演は 18:00 です。\n\n## ほか\n\n関係のない文。';
     const result = await finalizeScrapeResult(base(text), opts({ shouldOnlyHighlights: true }));
     expect(result.content).toContain('開場時間は 17:00');
