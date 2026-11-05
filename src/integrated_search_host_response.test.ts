@@ -216,6 +216,69 @@ describe('integrated search Host response', () => {
     }
   });
 
+  describe('X timeline page whose posts are already in realtime.items', () => {
+    const timelineUrl = 'https://x.com/TokyoSunrockers/all';
+    const timeline = () => ({ ...baseItem(), source: 'web', url: timelineUrl });
+    const withRealtime = (results: Record<string, any>[], items: Record<string, any>[], extra: Record<string, any> = {}) => ({
+      ...response(),
+      results,
+      realtime: { ...response().realtime, count: items.length, items },
+      ...extra,
+    });
+    const evidence = (input: Record<string, any>, options: Record<string, any> = {}) =>
+      formatIntegratedSearchHostResponse(input, { responseMode: 'evidence', ...options });
+
+    test('drops the markdown and keeps the highlights when realtime has a post by the same account (case-insensitive)', () => {
+      for (const url of [timelineUrl, 'https://twitter.com/tokyosunrockers', 'https://x.com/TOKYOSUNROCKERS/with_replies?lang=ja']) {
+        const input = withRealtime([{ ...timeline(), url }], [{ author_handle: 'tokyoSunrockers', text: 'post' }]);
+        const item = evidence(input).results[0];
+        expect(item.markdown).toBeUndefined();
+        expect(item.highlights).toEqual(timeline().highlights);
+      }
+    });
+
+    test('keeps the highlights even when they are nearly as long as the markdown', () => {
+      const short = { ...timeline(), markdown: '## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'] };
+      const item = evidence(withRealtime([short], [{ author_handle: 'TokyoSunrockers' }])).results[0];
+      expect(item.markdown).toBeUndefined();
+      expect(item.highlights).toEqual(short.highlights);
+    });
+
+    test('keeps the markdown for another account, a single post, no realtime items, or no highlights', () => {
+      const mine = { author_handle: 'TokyoSunrockers' };
+      const cases: [string, Record<string, any>][] = [
+        ['another account', withRealtime([timeline()], [{ author_handle: 'someone_else' }])],
+        ['a handle that only starts with the same letters', withRealtime([timeline()], [{ author_handle: 'TokyoSunrockers2' }])],
+        ['a single post URL', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/status/123' }], [mine])],
+        ['a legacy single post URL', withRealtime([{ ...timeline(), url: 'https://twitter.com/TokyoSunrockers/statuses/123' }], [mine])],
+        ['no realtime items', withRealtime([timeline()], [])],
+        ['realtime item without a handle', withRealtime([timeline()], [{ text: 'post' }])],
+        ['no realtime at all', { ...response(), results: [timeline()], realtime: undefined }],
+        ['no highlights', withRealtime([{ ...timeline(), highlights: [] }], [mine])],
+        ['a root URL', withRealtime([{ ...timeline(), url: 'https://x.com/' }], [mine])],
+      ];
+      for (const [name, input] of cases) {
+        expect([name, evidence(input).results[0].markdown]).toEqual([name, input.results[0].markdown]);
+      }
+    });
+
+    test('keeps the markdown when formats explicitly asks for markdown, and in full mode', () => {
+      const input = withRealtime([timeline()], [{ author_handle: 'TokyoSunrockers' }]);
+      expect(evidence(input, { explicitFormats: ['markdown'] }).results[0].markdown).toBe(timeline().markdown);
+      expect(formatIntegratedSearchHostResponse(input, { responseMode: 'full' }).results[0].markdown).toBe(timeline().markdown);
+    });
+
+    test('does not change non-timeline results or the source object', () => {
+      const web = baseItem();
+      const input = withRealtime([timeline(), web], [{ author_handle: 'TokyoSunrockers' }]);
+      const before = structuredClone(input);
+      const out = evidence(input);
+      expect(out.results[1].markdown).toBeUndefined();
+      expect(out.results[1].highlights).toEqual(web.highlights);
+      expect(input).toEqual(before);
+    });
+  });
+
   test('markdown is never overwritten with highlight text', () => {
     const item = baseItem();
     const output = projectIntegratedSearchEvidenceItem(item, {

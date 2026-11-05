@@ -39,29 +39,45 @@ function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
   return highlightChars >= item.markdown.length * MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO;
 }
 
+function itemUrl(item: Record<string, any>): URL | undefined {
+  const rawUrl = typeof item?.url === 'string' ? item.url : typeof item?.link === 'string' ? item.link : '';
+  try {
+    return rawUrl ? new URL(rawUrl) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isXHost(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return host === 'x.com' || host.endsWith('.x.com') || host === 'twitter.com' || host.endsWith('.twitter.com');
+}
+
 function isXItem(item: Record<string, any>): boolean {
   if (item?.source === 'x') return true;
+  const url = itemUrl(item);
+  return url !== undefined && isXHost(url);
+}
 
-  const rawUrl =
-    typeof item?.url === 'string'
-      ? item.url
-      : typeof item?.link === 'string'
-        ? item.link
-        : '';
-
-  if (!rawUrl) return false;
-
-  try {
-    const host = new URL(rawUrl).hostname.toLowerCase();
-    return (
-      host === 'x.com' ||
-      host.endsWith('.x.com') ||
-      host === 'twitter.com' ||
-      host.endsWith('.twitter.com')
-    );
-  } catch {
-    return false;
+/** 同じ応答の realtime.items にある投稿のアカウント（author_handle、小文字）。 */
+function realtimeHandles(result: Record<string, any>): Set<string> {
+  const handles = new Set<string>();
+  if (!Array.isArray(result?.realtime?.items)) return handles;
+  for (const post of result.realtime.items) {
+    if (typeof post?.author_handle === 'string' && post.author_handle) handles.add(post.author_handle.toLowerCase());
   }
+  return handles;
+}
+
+/**
+ * X のタイムライン・プロフィールのページ（`/<アカウント>` とその下。投稿 1 件の `/status/` は除く）で、
+ * 同じアカウントの投稿が同じ応答の realtime.items にあるか。ページの投稿はそちらと重なるので、本文を省ける。
+ */
+function isXTimelineCoveredByRealtime(item: Record<string, any>, handles: ReadonlySet<string>): boolean {
+  const url = itemUrl(item);
+  if (!url || !isXHost(url)) return false;
+  const [handle, ...rest] = url.pathname.split('/').filter(Boolean);
+  return handle !== undefined && handles.has(handle.toLowerCase()) && !rest.some((s) => s === 'status' || s === 'statuses');
 }
 
 /**
@@ -80,6 +96,7 @@ export function projectIntegratedSearchEvidenceItem(
   sourceItem: Record<string, any>,
   options: IntegratedSearchHostResponseOptions = {},
   highlightsReferenced = false,
+  realtimeAccounts: ReadonlySet<string> = new Set(),
 ): Record<string, any> {
   const item = { ...sourceItem };
 
@@ -89,16 +106,19 @@ export function projectIntegratedSearchEvidenceItem(
   const hasFallbackRisk =
     Boolean(item?.scrapeError) || item?.isSnippetFallback === true;
 
+  // X の投稿はそれ自体が根拠なので本文を残す。ただしタイムラインのページは、同じアカウントの投稿が realtime.items にあれば重なるので省く
+  const xTimelineCovered = isXTimelineCoveredByRealtime(item, realtimeAccounts);
+
   const mayElideMarkdown =
     !markdownWasExplicitlyRequested &&
     !hasFallbackRisk &&
-    !isXItem(item) &&
+    (!isXItem(item) || xTimelineCovered) &&
     // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる
     (hasCanonicalHighlights(item) || typeof item?.highlightsSameAs === 'string');
 
   // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無く、
   // 本文が maxChars で切れていない（isTruncated でない）ときだけ
-  if (mayElideMarkdown && !highlightsReferenced && options.maxTotalChars === undefined && item.isTruncated !== true && highlightsNearlyAsLongAsMarkdown(item)) {
+  if (mayElideMarkdown && !xTimelineCovered && !highlightsReferenced && options.maxTotalChars === undefined && item.isTruncated !== true && highlightsNearlyAsLongAsMarkdown(item)) {
     delete item.highlights;
   } else if (mayElideMarkdown) {
     delete item.markdown;
@@ -246,12 +266,13 @@ export function formatIntegratedSearchHostResponse(
   const referenced = new Set(
     Array.isArray(result?.results) ? result.results.map((item: Record<string, any>) => item?.highlightsSameAs).filter((u: unknown) => typeof u === 'string') : [],
   );
+  const accounts = realtimeHandles(result);
   return withBudget({
     ...result,
     responseMode: 'evidence',
     results: Array.isArray(result?.results)
       ? result.results.map((item: Record<string, any>) =>
-          projectIntegratedSearchEvidenceItem(item, options, referenced.has(item?.url || item?.link || '')),
+          projectIntegratedSearchEvidenceItem(item, options, referenced.has(item?.url || item?.link || ''), accounts),
         )
       : result?.results,
   });
