@@ -6,6 +6,7 @@ import { AreaInputError, resolveCityId, resolveMunicipality } from './services/l
 // city_map.ts（地名 → 予報区）が、気象庁の表（jma_areas.ts）と食い違わないことを確かめる
 const PREFECTURES = new Set(PREFECTURE_NAMES.flatMap((p) => [p, p.replace(/[都府県]$/, '')]));
 const CLASS10_OF = new Map(Object.values(JMA_CLASS20).flat().map((t) => [t.code, t.class10]));
+const POINTS = new Set(Object.values(JMA_CLASS10).map((v) => v.point));
 
 describe('city_map.ts と気象庁の表', () => {
   it('値はすべて気象庁の予報区の番号', () => {
@@ -17,10 +18,20 @@ describe('city_map.ts と気象庁の表', () => {
     expect(bad).toEqual([]);
   });
 
-  it('市町村に当たる地名はその予報区、複数の市町村に当たる地名は載せない（都道府県名は除く）', () => {
+  it('気象庁の気温の地点の名前は、その予報区への地名で、天気でもその予報区になる', () => {
+    const bad = Object.entries(JMA_CLASS10).filter(([code, v]) => MUNICIPALITY_CITY_MAP[v.point] !== code || resolveCityId(v.point) !== code);
+    expect(bad.map(([code, v]) => `${v.point}: ${code}`)).toEqual([]);
+  });
+
+  it('都道府県名は、市町村の表より先に city_map の予報区になる', () => {
+    const bad = [...PREFECTURES].filter((p) => MUNICIPALITY_CITY_MAP[p] && resolveCityId(p) !== MUNICIPALITY_CITY_MAP[p]);
+    expect(bad).toEqual([]);
+  });
+
+  it('市町村に当たる地名はその予報区、複数の市町村に当たる地名は載せない（都道府県名と気温の地点の名前は除く）', () => {
     const bad: string[] = [];
     for (const [key, value] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-      if (PREFECTURES.has(key)) continue;
+      if (PREFECTURES.has(key) || POINTS.has(key)) continue;
       try {
         const town = resolveMunicipality(key);
         if (town && !town.codes.some((c) => CLASS10_OF.get(c) === value)) bad.push(`${key}: ${value}`);
