@@ -17,12 +17,10 @@ import {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
   normalizeSafeNumeric,
   type ProvenanceBlock,
 } from './extractor/accessibility_compiler.js';
 import {
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
   expandQueryWithPseudoRelevanceFeedback,
 } from './extractor/information_retrieval.js';
@@ -36,8 +34,6 @@ export {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
   expandQueryWithPseudoRelevanceFeedback,
   extractTemporalAnchors,
@@ -51,7 +47,6 @@ import type {
   FieldEvidence,
   HighlightItem,
   EvidenceDiagnostics,
-  CandidateDiscrepancy,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
@@ -584,6 +579,8 @@ const LOW_SCORE_RATIO = 0.25;
 // 候補にする（長い段落は文でまとめる）。答えが窓の外の段落にあるのを拾う。選んだ窓と塊は節ごとに 1 つのハイライトにまとめる。
 // 文で切れずにこの 2 倍を超えた塊（. や ．で文を終える英語・論文の段落など）は候補にしない（先頭 3 件は字数を確かめないので、目安を大きく超える）
 const SPLIT_CHUNK_CHARS = 300;
+// MMR の重み λ（1 に近いほど関連度を重んじ、0 に近いほど重複を避ける）
+const MMR_LAMBDA = 0.7;
 
 export interface QueryHighlightDetailsOptions {
   sourceId?: string;
@@ -592,8 +589,6 @@ export interface QueryHighlightDetailsOptions {
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補い・長い節の塊をしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
 }
 
@@ -601,11 +596,10 @@ export interface QueryHighlightDetailsResult {
   highlights: string[];
   highlightItems: HighlightItem[];
   diagnostics: EvidenceDiagnostics;
-  discrepancies: CandidateDiscrepancy[];
   temporalAnchors: TemporalAnchor[];
 }
 
-/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・不一致候補・時間的文脈アンカーを統合) */
+/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・時間的文脈アンカーを統合) */
 export function extractQueryHighlightDetails(
   content: string,
   query: string,
@@ -622,7 +616,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content || '', query || '', 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -640,7 +633,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content, query, 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -746,7 +738,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics,
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -757,14 +748,13 @@ export function extractQueryHighlightDetails(
   const validCandidates = scoredCandidates.filter((c, idx) => idx === 0 || c.score >= topScore * 0.35);
 
   // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
-  const diversityWeight = options.diversityWeight ?? 0.7;
   // MMR の貪欲な順は上限に依らず、類似度は書き出しを付けない窓で測るので、件数を指定したときの節と、
-  // 指定しないときの先頭 3 件（U 字の並べ替えの前。目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
+  // 指定しないときの先頭 3 件（目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
   const mmrOrder = selectMaximalMarginalRelevance(validCandidates, {
     getScore: (c) => c.score,
     getText: (c) => c.rawSnippetBody,
     limit: extend ? BUDGET_MAX_HIGHLIGHTS : maxHighlights,
-    lambda: diversityWeight,
+    lambda: MMR_LAMBDA,
   });
   const mmrCandidates = mmrOrder.slice(0, maxHighlights);
   if (extend) {
@@ -823,17 +813,11 @@ export function extractQueryHighlightDetails(
     }
   }
 
-  // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
-  const merged = mergeSectionParts(mmrCandidates);
-  const finalCandidates = options.reorderUFlat
-    ? reorderLostInTheMiddle(merged)
-    : merged;
-
   const selectedHighlights: string[] = [];
   const selectedItems: HighlightItem[] = [];
   const allTemporalAnchors: TemporalAnchor[] = [];
 
-  for (const cand of finalCandidates) {
+  for (const cand of mergeSectionParts(mmrCandidates)) {
     let snippetText = cand.snippet;
     const itemAnchors = extractTemporalAnchors(snippetText, options.publishedTime);
     if (itemAnchors.length > 0) {
@@ -855,19 +839,10 @@ export function extractQueryHighlightDetails(
     });
   }
 
-  // 不一致候補 (Candidate Discrepancies) の検出
-  const discrepancyItems = selectedItems.map((item) => ({
-    text: item.text,
-    sourceId: item.ref?.sourceId,
-    blockId: item.ref?.blockId,
-  }));
-  const discrepancies = detectDiscrepancies(discrepancyItems);
-
   return {
     highlights: selectedHighlights,
     highlightItems: selectedItems,
     diagnostics,
-    discrepancies,
     temporalAnchors: allTemporalAnchors,
   };
 }

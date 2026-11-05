@@ -65,7 +65,7 @@ describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字
   const N = 200_000;
   const query = '検索語 テスト';
   const everything = {
-    shouldMaskPii: true, safeNormalize: true, annotateTemporal: true, includeDiscrepancies: true, includeDiagnostics: true, verbose: true, reorderUFlat: true,
+    shouldMaskPii: true, safeNormalize: true, annotateTemporal: true, verbose: true,
   };
   const code = (payload: string) => `# 記事\n\n本文です。\n\n## コード\n\n\`\`\`\n${query} ${payload}\n\`\`\`\n`;
   const prose = (payload: string) => `# 記事\n\n本文です。\n\n## 説明\n\n${query} ${payload}\n`;
@@ -282,7 +282,7 @@ describe('capHighlightItems: ふつうのハイライトを前から丸ごと確
     expect(capped[2]).toEqual({ text: 'c'.repeat(76), score: 2 });
   });
 
-  test('並びは変えない: U 字（1 位・3 位・2 位）に並んでいても、末尾（2 位）を落とさない', () => {
+  test('並びは変えない: 点数順でない並び（1 位・3 位・2 位）でも、末尾（2 位）を落とさない', () => {
     const capped = capHighlightItems([
       { text: 'a'.repeat(58), score: 3 },
       { text: 'c'.repeat(120_000), score: 1 },

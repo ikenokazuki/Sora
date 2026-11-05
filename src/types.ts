@@ -204,8 +204,6 @@ export interface ScrapeResult {
   socialLinks?: Record<string, string>;
   highlights?: string[];
   highlightItems?: HighlightItem[];
-  evidenceDiagnostics?: EvidenceDiagnostics;
-  discrepancies?: CandidateDiscrepancy[];
   derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
   highlightDiagnostics?: EvidenceDiagnostics;
@@ -358,12 +356,7 @@ export const ScrapeRequestSchema = z.object({
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-  includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
-  includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
   safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか (デフォルト: false)').meta({ default: false }),
   extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか (デフォルト: false)').meta({ default: false }),
@@ -414,36 +407,14 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .enum(['full', 'highlights', 'contextual_highlights'])
       .optional()
       .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-    includeDiagnostics: z
-      .boolean()
-      .optional()
-      .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
-    includeDiscrepancies: z
-      .boolean()
-      .optional()
-      .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
     safeNormalize: z
       .boolean()
       .optional()
       .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
-    reorderUFlat: z
-      .boolean()
-      .optional()
-      .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
-    diversityWeight: z
-      .number()
-      .min(0)
-      .max(1)
-      .optional()
-      .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
     annotateTemporal: z
       .boolean()
       .optional()
       .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
-    minimizeTables: z
-      .boolean()
-      .optional()
-      .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
     highlightMaxCount: z
       .number()
@@ -510,9 +481,6 @@ export const CrawlRequestSchema = z.object({
   extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 15000, 上限: 50000)').meta({ default: 15000 }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
@@ -666,10 +634,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
   dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
   enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
@@ -1322,8 +1287,6 @@ export const ScrapeResponseSchema = z.object({
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
-  evidenceDiagnostics: EvidenceDiagnosticsSchema.optional().describe('客観的な証拠充足性観測量'),
-  discrepancies: z.array(CandidateDiscrepancySchema).optional().describe('日付・金額・バージョンの不一致候補'),
   derivations: z.array(DerivationTraceSchema).optional().describe('決定論的な単位・漢数字変換導出履歴'),
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('相対日付表現の絶対日時解決結果一覧'),
   highlightDiagnostics: EvidenceDiagnosticsSchema.optional().describe('ハイライト選択の診断情報（verbose 時のみ）'),

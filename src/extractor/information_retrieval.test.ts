@@ -141,8 +141,8 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
     });
   });
 
-  describe('extractQueryHighlightDetails への統合 (MMR & U字型リオーダリング)', () => {
-    it('同一内容の言い換え重複を MMR で排除し、reorderUFlat で U字型配置されること', async () => {
+  describe('extractQueryHighlightDetails への統合 (MMR)', () => {
+    it('同一内容の言い換え重複を MMR で排除すること', async () => {
       const { extractQueryHighlightDetails } = await import('../enrichment.js');
 
       const markdown = `
@@ -164,8 +164,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
       const details = extractQueryHighlightDetails(markdown, 'グッズ先行販売 チケット抽選', {
         maxHighlights: 3,
         evidenceMode: 'highlights',
-        reorderUFlat: true,
-        diversityWeight: 0.7,
       });
 
       expect(details.highlightItems.length).toBeGreaterThanOrEqual(2);
@@ -175,29 +173,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
       const hasTicket = texts.some((t: string) => t.includes('チケット先行抽選'));
       expect(hasGoods).toBe(true);
       expect(hasTicket).toBe(true);
-    });
-
-    // 実際の Web 検索結果が無いと PRF を確かめられないため、実 API のテスト（SORA_LIVE_TESTS=1）でだけ実行する
-    it.skipIf(!process.env.SORA_LIVE_TESTS)('integratedSearch で enablePrf と reorderUFlat が正しく伝播・機能すること', async () => {
-      const { integratedSearch } = await import('../scraper.js');
-
-      const result = await integratedSearch({
-        query: 'TypeScript 5.5 新機能',
-        limit: 3,
-        scrapeContent: false, // 外部スクレイプをスキップして高速検証
-        includeRealtime: false,
-        reorderUFlat: true,
-        enablePrf: true,
-        noCache: true,
-      });
-
-      expect(result.source).toBe('integrated');
-      expect(result.results).toBeDefined();
-      // PRF が実行された場合、prf フィールドが存在するか、または配列が返却されること
-      if (result.prf) {
-        expect(result.prf.originalQuery).toBe('TypeScript 5.5 新機能');
-        expect(result.prf.expandedQuery).toBeDefined();
-      }
     });
   });
 });

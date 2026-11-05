@@ -26,7 +26,6 @@ import {
   extractCitationsFromMarkdown,
   normalizeSafeNumeric,
   rerankByDeepEvidence,
-  reorderLostInTheMiddle,
   expandQueryWithPseudoRelevanceFeedback,
   generateExtractiveSummary,
   generatePromptContext,
@@ -315,11 +314,7 @@ export async function finalizeScrapeResult(
     shouldExtractHighlights: boolean;
     shouldOnlyHighlights?: boolean;
     evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-    includeDiagnostics?: boolean;
-    includeDiscrepancies?: boolean;
     safeNormalize?: boolean;
-    reorderUFlat?: boolean;
-    diversityWeight?: number;
     annotateTemporal?: boolean;
     highlightMaxCount?: number;
     verbose?: boolean;
@@ -640,13 +635,8 @@ export function buildScrapeCacheKey(
     onlyHighlights: options.onlyHighlights === true,
     highlightMaxCount: options.highlightMaxCount ?? 'auto',
     evidenceMode: options.evidenceMode ?? 'full',
-    includeDiagnostics: options.includeDiagnostics !== false,
-    includeDiscrepancies: options.includeDiscrepancies === true,
     safeNormalize: options.safeNormalize === true,
-    reorderUFlat: options.reorderUFlat === true,
-    diversityWeight: options.diversityWeight ?? 0.7,
     annotateTemporal: options.annotateTemporal === true,
-    minimizeTables: options.minimizeTables !== false,
     extractSummary: options.extractSummary === true,
     extractCitations: options.extractCitations === true,
     chunkMarkdown: options.chunkMarkdown === true,
@@ -685,13 +675,8 @@ export async function scrapeUrl(options: {
   onlyHighlights?: boolean;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-  includeDiagnostics?: boolean;
-  includeDiscrepancies?: boolean;
   safeNormalize?: boolean;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
-  minimizeTables?: boolean;
   extractSummary?: boolean;
   extractCitations?: boolean;
   chunkMarkdown?: boolean;
@@ -759,11 +744,7 @@ export async function scrapeUrl(options: {
       highlightMaxCount: options.highlightMaxCount,
       verbose: options.verbose,
       evidenceMode: options.evidenceMode,
-      includeDiagnostics: options.includeDiagnostics,
-      includeDiscrepancies: options.includeDiscrepancies,
       safeNormalize: options.safeNormalize,
-      reorderUFlat: options.reorderUFlat,
-      diversityWeight: options.diversityWeight,
       annotateTemporal: options.annotateTemporal,
       shouldExtractSummary: options.extractSummary ?? false,
       shouldExtractCitations: options.extractCitations ?? false,
@@ -1169,13 +1150,8 @@ export async function scrapeBatchUrls(options: {
   onlyHighlights?: boolean;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-  includeDiagnostics?: boolean;
-  includeDiscrepancies?: boolean;
   safeNormalize?: boolean;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
-  minimizeTables?: boolean;
   extractSummary?: boolean;
   extractCitations?: boolean;
   chunkMarkdown?: boolean;
@@ -1446,10 +1422,7 @@ export async function crawlSiteUrl(options: {
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
   highlightMaxCount?: number;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
-  minimizeTables?: boolean;
   includeMedia?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
@@ -1475,10 +1448,7 @@ export async function crawlSiteUrl(options: {
     extractHighlights,
     onlyHighlights,
     highlightMaxCount,
-    reorderUFlat,
-    diversityWeight,
     annotateTemporal,
-    minimizeTables,
     includeMedia,
     noCache,
     webhookUrl,
@@ -1496,7 +1466,7 @@ export async function crawlSiteUrl(options: {
 
   const visited = new Set<string>();
   const queue: Array<{ url: string; depth: number }> = [{ url: initialUrl, depth: 0 }];
-  let pages: ScrapeResult[] = [];
+  const pages: ScrapeResult[] = [];
   let seedError: unknown;
 
   const visitKey = (u: string) => u.split('#')[0].replace(/\/+$/, '');
@@ -1534,10 +1504,7 @@ export async function crawlSiteUrl(options: {
             extractHighlights,
             onlyHighlights,
             highlightMaxCount,
-            reorderUFlat,
-            diversityWeight,
             annotateTemporal,
-            minimizeTables,
             includeMedia,
             noCache,
             ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
@@ -1582,10 +1549,6 @@ export async function crawlSiteUrl(options: {
 
   // 起点そのものが取得できなかった（SSRF 遮断・接続失敗など）場合は、0 件の成功として返さずエラーを伝える
   if (pages.length === 0 && seedError !== undefined) throw seedError;
-
-  if (reorderUFlat && pages.length > 2) {
-    pages = reorderLostInTheMiddle(pages);
-  }
 
   const result = {
     url: initialUrl,
@@ -1840,11 +1803,8 @@ export async function integratedSearch(options: {
   formats?: ScrapeFormat[];
   dedup?: boolean;
   verbose?: boolean;
-  reorderUFlat?: boolean;
   enablePrf?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
-  minimizeTables?: boolean;
   /** false なら、ページを取る scrapeUrl にも includeMedia: false を渡す（画像を戻す rs-trafilatura の 2 回目を走らせない）。応答から画像・動画を省くのは formatIntegratedSearchHostResponse */
   includeMedia?: boolean;
   highlightMaxCount?: number;
@@ -1879,11 +1839,8 @@ export async function integratedSearch(options: {
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const dedup = options.dedup ?? false;
-  const reorderUFlat = options.reorderUFlat ?? false;
   const enablePrf = !readQueryUrls && (options.enablePrf ?? false);
-  const diversityWeight = options.diversityWeight;
   const annotateTemporal = options.annotateTemporal;
-  const minimizeTables = options.minimizeTables;
   // 偽のときだけ scrapeUrl に渡す（真・未指定は今までどおり何も渡さない）。scrapeUrl のキャッシュのキーには includeMedia が入る
   const includeMedia = options.includeMedia !== false;
   const mediaOption = includeMedia ? {} : { includeMedia: false };
@@ -1917,11 +1874,8 @@ export async function integratedSearch(options: {
     formats: formats.slice().sort(),
     dedup,
     verbose: options.verbose === true,
-    reorderUFlat,
     enablePrf,
-    diversityWeight: diversityWeight ?? 'default',
     annotateTemporal: annotateTemporal === true,
-    minimizeTables: minimizeTables !== false,
     includeMedia,
     highlightMaxCount: highlightMaxCount ?? 'auto',
     adaptiveScrape,
@@ -1952,7 +1906,7 @@ export async function integratedSearch(options: {
           const read = await Promise.all(picked.map(async (item: any) => {
             const scrape = await scrapeUrl({
               url: item.url, tenantId: requestTenantId, contextTitle: item.title, snippet: item.summary, maxChars, timeoutMs: 12000,
-              query, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables,
+              query, extractHighlights, onlyMainContent, formats, annotateTemporal,
               highlightMaxCount,
             }).catch(() => null);
             // 取得できなかった動画は根拠に入れない（字幕の無い動画は、説明文だけの結果として入れる）
@@ -2188,10 +2142,7 @@ export async function integratedSearch(options: {
             extractHighlights,
             onlyMainContent,
             formats,
-            reorderUFlat,
-            diversityWeight,
             annotateTemporal,
-            minimizeTables,
             highlightMaxCount,
             ...mediaOption,
           });
@@ -2291,10 +2242,7 @@ export async function integratedSearch(options: {
               extractHighlights,
               onlyMainContent,
               formats,
-              reorderUFlat,
-              diversityWeight,
               annotateTemporal,
-              minimizeTables,
               highlightMaxCount,
               ...mediaOption,
             });
@@ -2360,7 +2308,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, reorderUFlat, diversityWeight, annotateTemporal, minimizeTables, highlightMaxCount, ...mediaOption });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: effectiveQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, ...mediaOption });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
@@ -2491,11 +2439,6 @@ export async function integratedSearch(options: {
         items: realtimeItems,
       };
     }
-  }
-
-  // Lost in the Middle 対策: 検索結果全体の U字型リオーダリング
-  if (reorderUFlat && enrichedResults.length > 2) {
-    enrichedResults = reorderLostInTheMiddle(enrichedResults);
   }
 
   // Host-facing output boundary only. Keep highlightItems internally until

@@ -11,6 +11,9 @@ import {
   SearchWebQuerySchema,
   IntegratedSearchRequestSchema,
   INTEGRATED_SEARCH_INPUT_SHAPE,
+  ScrapeRequestSchema,
+  BatchScrapeRequestSchema,
+  CrawlRequestSchema,
   generateOpenApiDocument,
 } from './types.js';
 import { SEARCH_WEB_INPUT_SHAPE } from './search_web_formats.js';
@@ -99,11 +102,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'onlyMainContent',
         'formats',
         'dedup',
-        'reorderUFlat',
         'enablePrf',
-        'diversityWeight',
         'annotateTemporal',
-        'minimizeTables',
         'highlightMaxCount',
         'verbose',
         'responseMode',
@@ -116,6 +116,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Forbidden stale fields
       expect((shape as any).fetchContent).toBeUndefined();
       expect((shape as any).maxCharsPerResult).toBeUndefined();
+      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables']) {
+        expect((shape as any)[field]).toBeUndefined();
+      }
     });
 
     it('MCP search_deep includes updated and noCache in schema', () => {
@@ -200,6 +203,30 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(schema.highlightAlgorithm).toBeUndefined();
         expect(schema.highlightOverheadTokens).toBeUndefined();
         expect(schema.highlightMaxCount).toBeDefined();
+      }
+    });
+  });
+
+  describe('C2. 効いていない引数が無い', () => {
+    const removed = ['includeDiagnostics', 'includeDiscrepancies', 'diversityWeight', 'minimizeTables', 'reorderUFlat'];
+
+    it('scrape・batch・crawl の REST の形に、効いていない引数が無い', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field]).toBeUndefined();
+        }
+      }
+    });
+
+    it('MCP の scrape・scrape_batch・crawl_site・search_deep にも無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of ['scrape', 'scrape_batch', 'crawl_site', 'search_deep']) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
       }
     });
   });

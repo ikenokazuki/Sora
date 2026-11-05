@@ -46,8 +46,6 @@ export function formatCompactScrapeResult(
   // オプション要求時や存在時のみ付与
   const canonicalHighlights = canonicalHighlightTexts(result.highlights, result.highlightItems);
   if (canonicalHighlights) clean.highlights = canonicalHighlights;
-  if (result.evidenceDiagnostics) clean.evidenceDiagnostics = result.evidenceDiagnostics;
-  if (result.discrepancies && result.discrepancies.length > 0) clean.discrepancies = result.discrepancies;
   if (result.derivations && result.derivations.length > 0) clean.derivations = result.derivations;
   if (result.summary && result.summary.length > 0) clean.summary = result.summary;
   if (result.textFragmentUrl) clean.textFragmentUrl = result.textFragmentUrl;
