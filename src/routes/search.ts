@@ -2,18 +2,8 @@ import { Hono, type Context } from 'hono';
 import type { z } from 'zod';
 import {
   DEFAULT_MAX_CHARS,
-  CACHE_TTL_TREND,
-  getFromCache,
-  searchCacheTtl,
-  setToCache,
   integratedSearch,
   fetchRealtimeTrends,
-  searchYahooRealtime,
-  searchYahooImage,
-  searchYahooVideo,
-  searchYahooNews,
-  searchYahooChiebukuro,
-  getSuggestedKeywords,
   searchTransitRoute,
   searchMusic,
   searchSong,
@@ -32,14 +22,14 @@ import {
   SuggestRequestSchema,
   TransitRouteRequestSchema,
 } from '../types.js';
-import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHints } from '../services/yahoo.js';
+import { buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
 import { formatError } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
 import { isModuleActive } from '../mcp/registry.js';
-import { attachVideoTranscripts } from '../services/youtube.js';
+import { searchChiebukuroCached, searchImageCached, searchNewsCached, searchRealtimeCached, searchVideoCached, suggestKeywordsCached } from '../yahoo_search_cache.js';
 
 export const searchRoutes = new Hono();
 
@@ -83,66 +73,19 @@ const handleRealtimeSearch = async (c: Context) => {
       ...(body.verbose === true ? { verbose: true } : {}),
     };
 
-    let cacheKey: string;
     try {
       if (!buildYahooRealtimeQuery(options)) {
         return c.json({ error: 'query, accountId, hashtags, or other search constraints are required' }, 400);
       }
-      cacheKey = `${buildRealtimeSearchCacheKey(options)}:${body.verbose === true ? 'verbose' : 'compact'}`;
     } catch (err) {
       return c.json({ error: errorMessage(err) || 'Invalid realtime request' }, 400);
     }
-    if (!body.noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
 
-    let realtimeRes: Awaited<ReturnType<typeof searchYahooRealtime>>;
     try {
-      realtimeRes = await searchYahooRealtime({ ...options, ...(query ? { anchorHints: createWebAnchorHints(query) } : {}) });
+      return c.json(await searchRealtimeCached({ ...options, noCache: body.noCache }));
     } catch (err) {
       return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 502);
     }
-
-    const responseData = {
-      query: realtimeRes.originalQuery,
-      effectiveQuery: realtimeRes.effectiveQuery,
-      isFallback: realtimeRes.isFallback,
-      ...(realtimeRes.partial === true
-        ? { partial: true, providerErrors: realtimeRes.providerErrors || [] }
-        : {}),
-      sort,
-      source: 'x',
-      type: 'realtime',
-      focus: realtimeRes.focus,
-      // 1件の投稿に揃わなかった語、検索に使った別名、上限で省いた件数は通常応答にも出す
-      ...(realtimeRes.missingTerms?.length ? { missingTerms: realtimeRes.missingTerms } : {}),
-      ...(realtimeRes.aliasTerms?.length ? { aliasTerms: realtimeRes.aliasTerms } : {}),
-      ...(realtimeRes.omittedCount ? { omittedCount: realtimeRes.omittedCount } : {}),
-      // Verbose-only provenance: compact by default, full diagnostics on demand.
-      ...(body.verbose === true
-        ? {
-            retrievalQueries: realtimeRes.retrievalQueries,
-            contributingQueries: realtimeRes.contributingQueries,
-            resultsMerged: realtimeRes.resultsMerged,
-            executedWaves: realtimeRes.executedWaves,
-            stopReason: realtimeRes.stopReason,
-            requiredTerms: realtimeRes.requiredTerms,
-            coveredTerms: realtimeRes.coveredTerms,
-            missingTerms: realtimeRes.missingTerms,
-            ...(realtimeRes.anchorTerm ? { anchorTerm: realtimeRes.anchorTerm } : {}),
-            ...(realtimeRes.anchorFiltered !== undefined ? { anchorFiltered: realtimeRes.anchorFiltered } : {}),
-          }
-        : {}),
-      data: {
-        count: realtimeRes.count,
-        items: realtimeRes.items,
-      },
-      cached: false,
-    };
-
-    if (!body.noCache && realtimeRes.partial !== true) setToCache(cacheKey, responseData, CACHE_TTL_TREND);
-    return c.json(responseData);
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Realtime search failed' }, 500);
   }
@@ -302,17 +245,7 @@ searchRoutes.post('/search/image', async (c) => {
   try {
     const parsed = ImageSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, page, noCache } = parsed.data;
-
-    const cacheKey = `search:image:${query}:${limit || ''}:${page || ''}`;
-    if (!noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    const result = await searchYahooImage({ query, limit, page });
-    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
-    return c.json(result);
+    return c.json(await searchImageCached(parsed.data));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Image search failed' }, 500);
   }
@@ -323,22 +256,9 @@ searchRoutes.post('/search/video', async (c) => {
   try {
     const parsed = VideoSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, page, noCache, updated, platform } = parsed.data;
     // ponytail: youtube モジュールが無効な設定では transcripts を無視する
     const transcripts = isModuleActive('youtube') ? parsed.data.transcripts ?? 0 : 0;
-    const transcriptChars = parsed.data.transcriptChars ?? 2000;
-
-    const filters = `${updated && updated !== 'all' ? `:u${updated}` : ''}${platform && platform !== 'all' ? `:p${platform}` : ''}`;
-    const cacheKey = `search:video:${query}:${limit || ''}:${page || ''}${transcripts ? `:t${transcripts}x${transcriptChars}` : ''}${filters}`;
-    if (!noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    let result = await searchYahooVideo({ query, limit, page, updated, platform });
-    if (transcripts) result = await attachVideoTranscripts(result, query, { count: transcripts, maxChars: transcriptChars });
-    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
-    return c.json(result);
+    return c.json(await searchVideoCached({ ...parsed.data, transcripts }));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Video search failed' }, 500);
   }
@@ -349,17 +269,7 @@ searchRoutes.post('/search/news', async (c) => {
   try {
     const parsed = NewsSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, noCache } = parsed.data;
-
-    const cacheKey = `search:news:${query}:${limit || ''}`;
-    if (!noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    const result = await searchYahooNews({ query, limit });
-    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
-    return c.json(result);
+    return c.json(await searchNewsCached(parsed.data));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'News search failed' }, 500);
   }
@@ -370,17 +280,7 @@ searchRoutes.post('/search/chiebukuro', async (c) => {
   try {
     const parsed = ChiebukuroSearchRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, page, status, noCache } = parsed.data;
-
-    const cacheKey = `search:chiebukuro:${query}:${limit || ''}:${page || ''}:${status || 'all'}`;
-    if (!noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    const result = await searchYahooChiebukuro({ query, limit, page, status });
-    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
-    return c.json(result);
+    return c.json(await searchChiebukuroCached(parsed.data));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Chiebukuro search failed' }, 500);
   }
@@ -391,17 +291,7 @@ searchRoutes.post('/search/suggest', async (c) => {
   try {
     const parsed = SuggestRequestSchema.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
-    const { query, limit, noCache } = parsed.data;
-
-    const cacheKey = `search:suggest:${query}:${limit || ''}`;
-    if (!noCache) {
-      const cached = getFromCache<unknown>(cacheKey);
-      if (cached) return c.json(cached);
-    }
-
-    const result = await getSuggestedKeywords({ query, limit });
-    if (!noCache) setToCache(cacheKey, result, searchCacheTtl(result));
-    return c.json(result);
+    return c.json(await suggestKeywordsCached(parsed.data));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Suggest keywords failed' }, 500);
   }
