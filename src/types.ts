@@ -640,7 +640,7 @@ export const SearchWebRequestSchema = SearchWebQuerySchema;
 export type SearchWebRequest = z.infer<typeof SearchWebRequestSchema>;
 
 export const INTEGRATED_SEARCH_INPUT_SHAPE = {
-  query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")'),
+  query: z.string().min(1, 'query は必須です').describe('検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")。対象の名前に加えて、知りたいことを表す語（出身大学・発売日・価格など）も入れる。evidence のハイライトはこの語で本文の根拠を選ぶため、名前だけでは答えの節を落としやすい'),
   limit: z.number().int().min(1).max(20).optional().describe('本文取得する上位結果件数 (デフォルト: 5, 最大: 20)。取得に失敗したページは次の候補で補うため results が limit を超えることがあり、adaptiveScrape:true では証拠不足の間 scrapeBudget まで増える。X 投稿は別枠 (realtimeLimit)').meta({ default: 5 }),
   scrapeContent: z.boolean().optional().describe('上位結果のページ本文を取得するか (デフォルト: true)').meta({ default: true }),
   adaptiveScrape: z.boolean().optional().describe('回答根拠が不足する場合に候補ページを追加取得するか (デフォルト: false、scrapeContent: true の場合のみ有効)').meta({ default: false }),
