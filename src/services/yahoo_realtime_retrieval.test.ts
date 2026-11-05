@@ -306,6 +306,26 @@ describe('Realtime Retrieval v1', () => {
     expect(req.protectedModifiers).toEqual(['id:kimisora_JPN']);
   });
 
+  test('helpers: OR groups and URL: are modifiers, not terms one post must contain', () => {
+    const req = extractRealtimeIntentRequirements('ポケモンGO (ハロウィン 色違い) URL:pokemongo.com -(古い 終了)');
+    expect(req.semanticRequirements).toEqual(['ポケモンGO']);
+    expect(req.protectedModifiers).toEqual(['(ハロウィン 色違い)', 'URL:pokemongo.com', '-(古い 終了)']);
+  });
+
+  test('missingTerms has no fragments of orWords or url', async () => {
+    const calls: string[] = [];
+    const res: any = await searchYahooRealtime({
+      query: 'ポケモンGO',
+      orWords: ['ハロウィン', '色違い'],
+      url: 'pokemongo.com',
+      detailEnrichment: false,
+      _callMcp: mockMcp(() => [post('1', 'ポケモンGO のハロウィン', 'fan')], calls),
+    } as any);
+    expect(calls).toEqual(['ポケモンGO (ハロウィン 色違い) URL:pokemongo.com']);
+    expect(res.requiredTerms).toEqual(['ポケモンGO']);
+    expect(res.missingTerms).toEqual([]);
+  });
+
   test('helpers: exact variants are syntax-only', () => {
     const variants = buildRealtimeExactQueryVariants('SPARK 出演 辞退 id:kimisora_JPN');
     expect(variants).toEqual(['SPARK 出演 辞退 id:kimisora_JPN', 'id:kimisora_JPN SPARK 出演 辞退']);

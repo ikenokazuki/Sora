@@ -1240,7 +1240,7 @@ export function requiresExactRealtimeQuery(query: string): boolean {
 /** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
 export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
   return JSON.stringify([
-    'search:realtime:json-v2',
+    'search:realtime:json-v3',
     buildYahooRealtimeQuery(options),
     options.sort ?? 'recent',
     options.limit ?? 20,
@@ -1375,6 +1375,11 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
   const normalized = (query || '').replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').normalize('NFKC');
   const modifiers: string[] = [];
   let remaining = ` ${normalized} `;
+  // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）
+  remaining = remaining.replace(/-?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, (m) => {
+    modifiers.push(m.trim());
+    return ' ';
+  });
   remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
     modifiers.push(`id:${id}`);
     return ' ';
