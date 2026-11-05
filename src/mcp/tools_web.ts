@@ -58,45 +58,10 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
-      extractSummary: z
-        .boolean()
-        .optional()
-        .describe('超高速な抽出型自動要約（TL;DR 上位重要文リスト）を生成して付与するか (デフォルト: false)').meta({ default: false }),
-      extractCitations: z
-        .boolean()
-        .optional()
-        .describe('本文内の出典・引用リンク一覧をコンテキスト付きで抽出するか (デフォルト: false)').meta({ default: false }),
-      chunkMarkdown: z
-        .boolean()
-        .optional()
-        .describe('RAG 用に見出しや段落単位でセマンティック・チャンキングした chunks を生成するか (デフォルト: false)').meta({ default: false }),
-      chunkSize: z
-        .number()
-        .int()
-        .min(1)
-        .max(100_000)
-        .optional()
-        .describe('チャンキング時の最大文字数目安 (デフォルト: 1000, 上限: 100000)').meta({ default: 1000 }),
-      validateLinks: z
-        .boolean()
-        .optional()
-        .describe('抽出されたリンクの到達性・HTTPステータスを並行検証するか (デフォルト: false)').meta({ default: false }),
-      formatAsPrompt: z
-        .boolean()
-        .optional()
-        .describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)').meta({ default: false }),
       stripLinks: z
         .boolean()
         .optional()
         .describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-      filterLinkDensity: z
-        .boolean()
-        .optional()
-        .describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
-      highlightMatches: z
-        .boolean()
-        .optional()
-        .describe('本文中の検索一致語句をハイライトするか (デフォルト: false)').meta({ default: false }),
       maskPii: z
         .boolean()
         .optional()
@@ -152,10 +117,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .enum(['full', 'highlights', 'contextual_highlights'])
         .optional()
         .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-      safeNormalize: z
-        .boolean()
-        .optional()
-        .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
       annotateTemporal: z
         .boolean()
         .optional()
@@ -168,9 +129,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
-    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
+    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -199,9 +160,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
     SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, retries, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, safeNormalize, extractSummary, extractCitations, chunkMarkdown, chunkSize, validateLinks, formatAsPrompt, stripLinks, filterLinkDensity, highlightMatches, maskPii, webhookUrl, retries, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, retries, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [

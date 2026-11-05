@@ -46,11 +46,7 @@ export function formatCompactScrapeResult(
   // オプション要求時や存在時のみ付与
   const canonicalHighlights = canonicalHighlightTexts(result.highlights, result.highlightItems);
   if (canonicalHighlights) clean.highlights = canonicalHighlights;
-  if (result.derivations && result.derivations.length > 0) clean.derivations = result.derivations;
-  if (result.summary && result.summary.length > 0) clean.summary = result.summary;
   if (result.textFragmentUrl) clean.textFragmentUrl = result.textFragmentUrl;
-  if (result.citations && result.citations.length > 0) clean.citations = result.citations;
-  if (result.chunks && result.chunks.length > 0) clean.chunks = result.chunks;
   if (result.media) clean.media = result.media;
 
   // EC系フィールド (値がある場合のみ)
@@ -68,7 +64,6 @@ export function formatCompactScrapeResult(
   // formats で明示指定された場合
   if (result.images && result.images.length > 0) clean.images = result.images;
   if (result.links && result.links.length > 0) clean.links = result.links;
-  if (result.linksWithStatus && result.linksWithStatus.length > 0) clean.linksWithStatus = result.linksWithStatus;
   if (result.tables && result.tables.length > 0) clean.tables = result.tables;
   if (result.events && result.events.length > 0) clean.events = result.events;
   if (result.breadcrumb && result.breadcrumb.length > 0) clean.breadcrumb = result.breadcrumb;
@@ -76,8 +71,6 @@ export function formatCompactScrapeResult(
   if (result.html) clean.html = result.html;
   if (result.rawHtml) clean.rawHtml = result.rawHtml;
   if (result.screenshot) clean.screenshot = result.screenshot;
-  if (result.promptContext) clean.promptContext = result.promptContext;
-  if (result.highlightedContent) clean.highlightedContent = result.highlightedContent;
   if (result.cached !== undefined) clean.cached = result.cached;
 
   return clean;

@@ -9,13 +9,6 @@ const base = (content: string, extra: Partial<ScrapeResult> = {}): ScrapeResult 
 const opts = (extra: Record<string, unknown> = {}) => ({
   query: '開場時間',
   shouldExtractHighlights: true,
-  shouldExtractSummary: false,
-  shouldExtractCitations: false,
-  shouldChunkMarkdown: false,
-  chunkSize: 1000,
-  shouldValidateLinks: false,
-  shouldFormatAsPrompt: false,
-  shouldHighlightMatches: false,
   shouldMaskPii: false,
   ...extra,
 });
@@ -65,7 +58,7 @@ describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字
   const N = 200_000;
   const query = '検索語 テスト';
   const everything = {
-    shouldMaskPii: true, safeNormalize: true, annotateTemporal: true, verbose: true,
+    shouldMaskPii: true, annotateTemporal: true, verbose: true,
   };
   const code = (payload: string) => `# 記事\n\n本文です。\n\n## コード\n\n\`\`\`\n${query} ${payload}\n\`\`\`\n`;
   const prose = (payload: string) => `# 記事\n\n本文です。\n\n## 説明\n\n${query} ${payload}\n`;

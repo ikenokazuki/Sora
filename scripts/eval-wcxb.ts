@@ -34,7 +34,7 @@ const toText = (md: string) => md
 const extract = async (html: string, url: string) => {
   try {
     const rsMain = await extractMainContentWithRs(html, url);
-    return toText(convertHtmlToMarkdown(html, url, 10_000_000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown);
+    return toText(convertHtmlToMarkdown(html, url, 10_000_000, false, true, undefined, undefined, undefined, false, rsMain).markdown);
   } catch {
     return '';
   }

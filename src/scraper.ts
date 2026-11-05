@@ -20,24 +20,17 @@ import {
 } from './cache.js';
 import {
   calculateContentStats,
-  chunkMarkdownContent,
   dedupSearchResults,
   estimateTokens,
-  extractCitationsFromMarkdown,
-  normalizeSafeNumeric,
   rerankByDeepEvidence,
   expandQueryWithPseudoRelevanceFeedback,
-  generateExtractiveSummary,
-  generatePromptContext,
   generateTextFragmentUrl,
-  highlightQueryMatchesInMarkdown,
   maskPiiInText,
   replaceMarkdownImages,
   safeTruncateMarkdown,
   truncateMarkdownWithin,
   HIGHLIGHT_CHAR_BUDGET,
   sendWebhookNotification,
-  validateExtractedLinks,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
   computeAnswerability,
@@ -314,17 +307,9 @@ export async function finalizeScrapeResult(
     shouldExtractHighlights: boolean;
     shouldOnlyHighlights?: boolean;
     evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-    safeNormalize?: boolean;
     annotateTemporal?: boolean;
     highlightMaxCount?: number;
     verbose?: boolean;
-    shouldExtractSummary: boolean;
-    shouldExtractCitations: boolean;
-    shouldChunkMarkdown: boolean;
-    chunkSize: number;
-    shouldValidateLinks: boolean;
-    shouldFormatAsPrompt: boolean;
-    shouldHighlightMatches: boolean;
     shouldMaskPii: boolean;
     webhookUrl?: string;
     snippet?: string;
@@ -339,26 +324,16 @@ export async function finalizeScrapeResult(
     result.content = maskPiiInText(result.content);
   }
 
-  // 決定論的安全正規化 (漢数字・全角数字・物理単位)
-  if (options.safeNormalize) {
-    const norm = normalizeSafeNumeric(result.content);
-    result.content = norm.normalizedText;
-    if (norm.derivations.length > 0) {
-      result.derivations = norm.derivations;
-    }
-  }
-
   const stats = calculateContentStats(result.content);
   result.characterCount = stats.characterCount;
   result.wordCount = stats.wordCount;
   result.readingTimeMin = stats.readingTimeMin;
 
   if (options.shouldExtractHighlights && options.query) {
-    // ハイライトの元。content と同じ加工（maskPii・safeNormalize）をする
+    // ハイライトの元。content と同じ加工（maskPii）をする
     let highlightSource = result.content;
     if (options.highlightSource !== undefined) {
       highlightSource = options.shouldMaskPii ? maskPiiInText(options.highlightSource) : options.highlightSource;
-      if (options.safeNormalize) highlightSource = normalizeSafeNumeric(highlightSource).normalizedText;
     }
 
     const supplemental: string[] = [];
@@ -423,24 +398,6 @@ export async function finalizeScrapeResult(
       result.readingTimeMin = updatedStats.readingTimeMin;
       result.estimatedTokens = estimateTokens(result.content);
     }
-  }
-  if (options.shouldExtractSummary) {
-    result.summary = generateExtractiveSummary(result.content, 4);
-  }
-  if (options.shouldExtractCitations) {
-    result.citations = extractCitationsFromMarkdown(result.content, result.url);
-  }
-  if (options.shouldChunkMarkdown) {
-    result.chunks = chunkMarkdownContent(result.content, options.chunkSize);
-  }
-  if (options.shouldValidateLinks && result.links && result.links.length > 0) {
-    result.linksWithStatus = await validateExtractedLinks(result.links);
-  }
-  if (options.shouldHighlightMatches && options.query) {
-    result.highlightedContent = highlightQueryMatchesInMarkdown(result.content, options.query);
-  }
-  if (options.shouldFormatAsPrompt) {
-    result.promptContext = generatePromptContext(result);
   }
   // includeMedia: false は search_deep と同じく、本文の画像を [画像: alt] にし、ogImage と media を省く（images・highlights は触らない）
   if (options.includeMedia === false) {
@@ -629,21 +586,12 @@ export function buildScrapeCacheKey(
     headers: headersForCacheKey(options.headers),
     removeSelectors: options.removeSelectors ?? [],
     stripLinks: options.stripLinks === true,
-    filterLinkDensity: options.filterLinkDensity === true,
     query: options.query ?? '',
     extractHighlights: resolved.shouldExtractHighlights,
     onlyHighlights: options.onlyHighlights === true,
     highlightMaxCount: options.highlightMaxCount ?? 'auto',
     evidenceMode: options.evidenceMode ?? 'full',
-    safeNormalize: options.safeNormalize === true,
     annotateTemporal: options.annotateTemporal === true,
-    extractSummary: options.extractSummary === true,
-    extractCitations: options.extractCitations === true,
-    chunkMarkdown: options.chunkMarkdown === true,
-    chunkSize: options.chunkSize || 1000,
-    validateLinks: options.validateLinks === true,
-    formatAsPrompt: options.formatAsPrompt === true,
-    highlightMatches: options.highlightMatches === true,
     maskPii: options.maskPii === true,
     verbose: options.verbose === true,
     keepDataImages: options.keepDataImages === true,
@@ -669,21 +617,12 @@ export async function scrapeUrl(options: {
   cookies?: CookieParam[];
   removeSelectors?: string[];
   stripLinks?: boolean;
-  filterLinkDensity?: boolean;
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-  safeNormalize?: boolean;
   annotateTemporal?: boolean;
-  extractSummary?: boolean;
-  extractCitations?: boolean;
-  chunkMarkdown?: boolean;
-  chunkSize?: number;
-  validateLinks?: boolean;
-  formatAsPrompt?: boolean;
-  highlightMatches?: boolean;
   maskPii?: boolean;
   webhookUrl?: string;
   retries?: number;
@@ -744,15 +683,7 @@ export async function scrapeUrl(options: {
       highlightMaxCount: options.highlightMaxCount,
       verbose: options.verbose,
       evidenceMode: options.evidenceMode,
-      safeNormalize: options.safeNormalize,
       annotateTemporal: options.annotateTemporal,
-      shouldExtractSummary: options.extractSummary ?? false,
-      shouldExtractCitations: options.extractCitations ?? false,
-      shouldChunkMarkdown: options.chunkMarkdown ?? false,
-      chunkSize: options.chunkSize ?? 1000,
-      shouldValidateLinks: options.validateLinks ?? false,
-      shouldFormatAsPrompt: options.formatAsPrompt ?? false,
-      shouldHighlightMatches: options.highlightMatches ?? false,
       shouldMaskPii: options.maskPii ?? false,
       webhookUrl: options.webhookUrl,
       snippet: options.snippet,
@@ -862,7 +793,6 @@ export async function scrapeUrl(options: {
             options.selectors,
             options.removeSelectors,
             options.stripLinks,
-            options.filterLinkDensity,
             options.keepDataImages,
             rsMain,
           );
@@ -1012,7 +942,7 @@ export async function scrapeUrl(options: {
             {
               isContentReady: (html, finalUrl) => {
                 const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
-                  options.selectors, options.removeSelectors, options.stripLinks, options.filterLinkDensity, options.keepDataImages);
+                  options.selectors, options.removeSelectors, options.stripLinks, options.keepDataImages);
                 return !isRenderStillBlockedOrBlank({
                   html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim(),
                 });
@@ -1053,7 +983,6 @@ export async function scrapeUrl(options: {
           options.selectors,
           options.removeSelectors,
           options.stripLinks,
-          options.filterLinkDensity,
           options.keepDataImages,
           onlyMainContent ? await extractMainContentWithRs(browserRes.html, browserRes.finalUrl, undefined, { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia }) : undefined,
         );
@@ -1144,21 +1073,12 @@ export async function scrapeBatchUrls(options: {
   cookies?: CookieParam[];
   removeSelectors?: string[];
   stripLinks?: boolean;
-  filterLinkDensity?: boolean;
   query?: string;
   extractHighlights?: boolean;
   onlyHighlights?: boolean;
   highlightMaxCount?: number;
   evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
-  safeNormalize?: boolean;
   annotateTemporal?: boolean;
-  extractSummary?: boolean;
-  extractCitations?: boolean;
-  chunkMarkdown?: boolean;
-  chunkSize?: number;
-  validateLinks?: boolean;
-  formatAsPrompt?: boolean;
-  highlightMatches?: boolean;
   maskPii?: boolean;
   webhookUrl?: string;
   retries?: number;

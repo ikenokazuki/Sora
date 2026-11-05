@@ -44,8 +44,8 @@ describe('scrape inputs reach the implementation', () => {
   });
 
   test('REST batch keeps every MCP batch option and enforces limits', () => {
-    const parsed = BatchScrapeRequestSchema.parse({ urls: ['https://example.com'], maskPii: true, retries: 1, headers: { a: 'b' }, chunkMarkdown: true, noCache: true });
-    expect(parsed).toMatchObject({ maskPii: true, retries: 1, headers: { a: 'b' }, chunkMarkdown: true, noCache: true });
+    const parsed = BatchScrapeRequestSchema.parse({ urls: ['https://example.com'], maskPii: true, retries: 1, headers: { a: 'b' }, noCache: true });
+    expect(parsed).toMatchObject({ maskPii: true, retries: 1, headers: { a: 'b' }, noCache: true });
     expect(BatchScrapeRequestSchema.safeParse({ urls: Array.from({ length: 21 }, (_, i) => `https://example.com/${i}`) }).success).toBe(false);
     expect(BatchScrapeRequestSchema.safeParse({ urls: ['https://example.com'], concurrency: 6 }).success).toBe(false);
   });

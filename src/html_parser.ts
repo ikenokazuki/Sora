@@ -1002,7 +1002,6 @@ export function convertHtmlToMarkdown(
   selectors?: Record<string, string>,
   removeSelectors?: string[],
   stripLinks?: boolean,
-  filterLinkDensity?: boolean,
   keepDataImages = false,
   // rs-trafilatura の本文（extractMainContentWithRs）。あれば、ページの種類で Readability と振り分ける
   rsMain?: RsMainContent,
@@ -1348,18 +1347,6 @@ export function convertHtmlToMarkdown(
 
   if (stripLinks) {
     markdown = markdown.replace(/(?<!!)\[([^\]]+)\]\([^)]+\)/g, '$1');
-  }
-
-  if (filterLinkDensity) {
-    const blocks = markdown.split(/\n{2,}/);
-    const filteredBlocks = blocks.filter((block) => {
-      const trimmed = block.trim();
-      if (trimmed.length === 0) return true;
-      const linkMatches = trimmed.match(/\[([^\]]+)\]\([^)]+\)/g) || [];
-      const linkLen = linkMatches.reduce((acc, m) => acc + m.length, 0);
-      return linkLen / trimmed.length < 0.75;
-    });
-    markdown = filteredBlocks.join('\n\n');
   }
 
   const isTruncated = markdown.length > maxChars;

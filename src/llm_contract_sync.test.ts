@@ -14,6 +14,7 @@ import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
   CrawlRequestSchema,
+  ScrapeResponseSchema,
   generateOpenApiDocument,
 } from './types.js';
 import { SEARCH_WEB_INPUT_SHAPE } from './search_web_formats.js';
@@ -227,6 +228,38 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         for (const field of removed) {
           expect(schema[field], `${toolName}.${field}`).toBeUndefined();
         }
+      }
+    });
+  });
+
+  describe('C3. 使われていない加工の引数と結果の項目が無い', () => {
+    // CrawlRequestSchema には元から無いので、scrape と batch だけを確かめる
+    const removed = ['extractSummary', 'extractCitations', 'chunkMarkdown', 'chunkSize', 'validateLinks', 'formatAsPrompt', 'highlightMatches', 'filterLinkDensity', 'safeNormalize'];
+    const removedResultFields = ['summary', 'citations', 'chunks', 'promptContext', 'highlightedContent', 'linksWithStatus', 'derivations'];
+
+    it('scrape・batch の REST の形に無い', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field], field).toBeUndefined();
+        }
+      }
+    });
+
+    it('MCP の scrape・scrape_batch にも無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of ['scrape', 'scrape_batch']) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
+      }
+    });
+
+    it('scrape の結果の形にも、その加工の結果の項目が無い', () => {
+      for (const field of removedResultFields) {
+        expect((ScrapeResponseSchema.shape as any)[field], field).toBeUndefined();
       }
     });
   });

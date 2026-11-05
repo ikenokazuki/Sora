@@ -44,12 +44,6 @@ export interface MediaInfo {
   chapters?: Array<{ title: string; time: string; seconds: number }>;
 }
 
-export interface Citation {
-  text: string;
-  url: string;
-  context?: string;
-}
-
 export interface ImageItem {
   url: string;
   alt?: string;
@@ -78,19 +72,6 @@ export interface EventItem {
     url?: string;
     availability?: string;
   };
-}
-
-export interface MarkdownChunk {
-  index: number;
-  heading?: string;
-  content: string;
-  estimatedTokens: number;
-}
-
-export interface LinkStatus {
-  url: string;
-  status: number;
-  ok: boolean;
 }
 
 export interface CookieParam {
@@ -165,13 +146,6 @@ export interface EvidenceDiagnostics {
   reasons: string[];           // weak判定の客観的理由 (例: ["low_query_coverage", "no_matching_blocks"])
 }
 
-/** 決定論的導出メタデータ (Derivation Trace) */
-export interface DerivationTrace {
-  operation: string; // 例: "kanji_num_to_digits", "km_to_m", "fullwidth_to_halfwidth"
-  input: string;
-  output: string;
-}
-
 export interface ScrapeResult {
   url: string;
   title: string;
@@ -191,21 +165,14 @@ export interface ScrapeResult {
   socialLinks?: Record<string, string>;
   highlights?: string[];
   highlightItems?: HighlightItem[];
-  derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
   highlightDiagnostics?: EvidenceDiagnostics;
   textFragmentUrl?: string;
-  summary?: string[];
-  citations?: Citation[];
-  chunks?: MarkdownChunk[];
   characterCount?: number;
   wordCount?: number;
   readingTimeMin?: number;
-  promptContext?: string;
-  highlightedContent?: string;
   media?: MediaInfo;
   links?: string[];
-  linksWithStatus?: LinkStatus[];
   images?: ImageItem[];
   jsonLd?: any[];
   availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
@@ -343,17 +310,8 @@ export const ScrapeRequestSchema = z.object({
   onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-  safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか (デフォルト: false)').meta({ default: false }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか (デフォルト: false)').meta({ default: false }),
-  extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか (デフォルト: false)').meta({ default: false }),
-  chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き) (デフォルト: false)').meta({ default: false }),
-  chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
-  validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか (デフォルト: false)').meta({ default: false }),
-  formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)').meta({ default: false }),
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
-  highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか (デフォルト: false)').meta({ default: false }),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
   webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
   retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
@@ -378,15 +336,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
     extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
     onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-    extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
-    extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
-    chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
-    chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンク文字数目安 (上限: 100000)'),
-    validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
-    formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
-    filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
-    highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
     maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
     webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
     retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
@@ -394,10 +344,6 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .enum(['full', 'highlights', 'contextual_highlights'])
       .optional()
       .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-    safeNormalize: z
-      .boolean()
-      .optional()
-      .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
     annotateTemporal: z
       .boolean()
       .optional()
@@ -1063,12 +1009,6 @@ export const MediaInfoSchema = z.object({
   })).optional().describe('動画チャプター情報'),
 });
 
-export const CitationSchema = z.object({
-  text: z.string().describe('引用テキスト'),
-  url: z.string().describe('引用元URL'),
-  context: z.string().optional().describe('周辺コンテキスト'),
-});
-
 export const ImageItemSchema = z.object({
   url: z.string().describe('画像URL'),
   alt: z.string().optional().describe('代替テキスト (alt)'),
@@ -1101,19 +1041,6 @@ export const EventItemSchema = z.object({
 
 export const ScheduleItemSchema = EventItemSchema.extend({
   sources: z.array(z.string()).describe('この予定を載せていたページの URL'),
-});
-
-export const MarkdownChunkSchema = z.object({
-  index: z.number().describe('チャンク番号 (0-based)'),
-  heading: z.string().optional().describe('所属する直近の見出し'),
-  content: z.string().describe('チャンク本文 Markdown'),
-  estimatedTokens: z.number().describe('推定トークン数'),
-});
-
-export const LinkStatusSchema = z.object({
-  url: z.string().describe('リンク先URL'),
-  status: z.number().describe('HTTPステータスコード'),
-  ok: z.boolean().describe('到達成功フラグ (2xx/3xx)'),
 });
 
 export const FieldEvidenceSchema = z.object({
@@ -1157,12 +1084,6 @@ export const EvidenceDiagnosticsSchema = z.object({
   topScore: z.number().describe('最高関連スコア'),
   weakEvidenceSignal: z.boolean().describe('根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0)'),
   reasons: z.array(z.string()).describe('判定理由 (例: ["low_query_coverage", "no_matching_blocks"])'),
-});
-
-export const DerivationTraceSchema = z.object({
-  operation: z.string().describe('適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m")'),
-  input: z.string().describe('変換前文字列'),
-  output: z.string().describe('変換後文字列'),
 });
 
 // --- 1. システム系 レスポンススキーマ ---
@@ -1262,21 +1183,14 @@ export const ScrapeResponseSchema = z.object({
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
-  derivations: z.array(DerivationTraceSchema).optional().describe('決定論的な単位・漢数字変換導出履歴'),
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('相対日付表現の絶対日時解決結果一覧'),
   highlightDiagnostics: EvidenceDiagnosticsSchema.optional().describe('ハイライト選択の診断情報（verbose 時のみ）'),
   textFragmentUrl: z.string().optional().describe('ハイライト該当箇所へジャンプする Chrome URL'),
-  summary: z.array(z.string()).optional().describe('抽出型自動要約 (TL;DR) 箇条書きリスト'),
-  citations: z.array(CitationSchema).optional().describe('本文中の引用・出典リンク一覧'),
-  chunks: z.array(MarkdownChunkSchema).optional().describe('RAG 用セマンティック・チャンク配列'),
   characterCount: z.number().optional().describe('本文の総文字数'),
   wordCount: z.number().optional().describe('単語数'),
   readingTimeMin: z.number().optional().describe('想定読了時間 (分)'),
-  promptContext: z.string().optional().describe('LLM 最適化済み XML プロンプト文字列'),
-  highlightedContent: z.string().optional().describe('<mark> で一致語句をハイライトした本文'),
   media: MediaInfoSchema.optional().describe('YouTube・動画・音声等のリッチメディア情報'),
   links: z.array(z.string()).optional().describe('ページ内抽出リンク URL 一覧'),
-  linksWithStatus: z.array(LinkStatusSchema).optional().describe('リンク健全性検証結果'),
   images: z.array(ImageItemSchema).optional().describe('抽出された重要画像一覧'),
   jsonLd: z.array(z.record(z.string(), z.any())).optional().describe('構造化データ (Schema.org JSON-LD)'),
   availability: z.string().optional().describe('EC 在庫状況 (InStock, OutOfStock 等)'),
@@ -2441,7 +2355,7 @@ export function generateOpenApiDocument() {
       },
       '/scrape': {
         post: {
-          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・RAGチャンキング・出典抽出・読了時間・PII保護対応)',
+          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・読了時間・PII保護対応)',
           requestBody: {
             content: {
               'application/json': {

@@ -372,8 +372,8 @@ describe('main content chosen between rs-trafilatura and Readability', () => {
   const article = Array.from({ length: 20 }, (_, i) => `<p>第${i + 1}段落。市議会は本日、新しい図書館の建設計画について審議し、開館時間の延長と駐車場の拡張を含む修正案を賛成多数で可決しました。</p>`).join('');
   const html = `<html><head><title>ニュース</title></head><body><div class="side">会員登録はこちらから。</div><article><h1>図書館の建設計画を可決</h1>${article}</article></body></html>`;
   const rsHtml = '<div><h2>今月の予定</h2><ul><li>10月1日 定期公演</li><li>10月8日 握手会</li></ul></div>';
-  const md = (rsMain?: Parameters<typeof convertHtmlToMarkdown>[10]) =>
-    convertHtmlToMarkdown(html, 'https://example.com/news/1', 100000, false, true, undefined, undefined, undefined, undefined, false, rsMain).markdown;
+  const md = (rsMain?: Parameters<typeof convertHtmlToMarkdown>[9]) =>
+    convertHtmlToMarkdown(html, 'https://example.com/news/1', 100000, false, true, undefined, undefined, undefined, false, rsMain).markdown;
 
   it('uses the rs-trafilatura content for pages it does not classify as articles', () => {
     const out = md({ pageType: 'listing', contentHtml: rsHtml });
@@ -389,7 +389,7 @@ describe('main content chosen between rs-trafilatura and Readability', () => {
 
   it('uses the rs-trafilatura content when Readability found only a short body', () => {
     const short = `<html><head><title>x</title></head><body><article><p>短い本文です。</p></article></body></html>`;
-    const out = convertHtmlToMarkdown(short, 'https://example.com/x', 100000, false, true, undefined, undefined, undefined, undefined, false, { pageType: 'article', contentHtml: rsHtml }).markdown;
+    const out = convertHtmlToMarkdown(short, 'https://example.com/x', 100000, false, true, undefined, undefined, undefined, false, { pageType: 'article', contentHtml: rsHtml }).markdown;
     expect(out).toContain('10月1日 定期公演');
   });
 });
@@ -496,7 +496,7 @@ describe('本文の URL', () => {
   it('rs-trafilatura の本文のリンクも絶対 URL にする', () => {
     const result = convertHtmlToMarkdown(
       '<html><body><ul><li><a href="/e/1">公演 1</a></li></ul></body></html>', 'https://example.com/live', 30000, false, true,
-      undefined, undefined, undefined, undefined, false, { pageType: 'listing', contentHtml: '<ul><li><a href="/e/1">公演 1</a></li></ul>' },
+      undefined, undefined, undefined, false, { pageType: 'listing', contentHtml: '<ul><li><a href="/e/1">公演 1</a></li></ul>' },
     );
     expect(result.markdown).toContain('[公演 1](https://example.com/e/1)');
   });

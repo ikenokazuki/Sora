@@ -3,7 +3,6 @@ import {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  normalizeSafeNumeric,
 } from './accessibility_compiler.js';
 import type { HeadingBlock } from './hierarchical_bm25.js';
 
@@ -83,31 +82,6 @@ describe('Accessibility Compiler (Evidence-Preserving Data Plane)', () => {
       const diag = computeEvidenceDiagnostics('本文', '');
       expect(diag.weakEvidenceSignal).toBe(true);
       expect(diag.reasons).toContain('empty_query');
-    });
-  });
-
-  describe('normalizeSafeNumeric', () => {
-    it('全角数字を半角数字に変換し DerivationTrace を生成すること', () => {
-      const result = normalizeSafeNumeric('価格は ３５００ 円です。');
-      expect(result.normalizedText).toContain('3500');
-      expect(result.derivations.some((d) => d.operation === 'fullwidth_digits_to_halfwidth')).toBe(true);
-    });
-
-    it('漢数字の「万」「億」を決定論的に数値展開すること', () => {
-      const result = normalizeSafeNumeric('予算は 3万5000 円、会員数は 120万 人です。');
-      expect(result.normalizedText).toContain('35000');
-      expect(result.normalizedText).toContain('1200000');
-      expect(result.derivations.some((d) => d.operation === 'kanji_man_to_digits')).toBe(true);
-    });
-
-    it('物理単位 km/ms を固定規則で正規化すること (外部推測が必要な為替等は変換しない)', () => {
-      const result = normalizeSafeNumeric('距離は 2.5 km、レイテンシは 400 ms、為替は 150 ドルです。');
-      expect(result.normalizedText).toContain('2500 m');
-      expect(result.normalizedText).toContain('0.4 s');
-      // 為替（150 ドル）は変換されずそのまま保持されること
-      expect(result.normalizedText).toContain('150 ドル');
-      expect(result.derivations.some((d) => d.operation === 'km_to_m')).toBe(true);
-      expect(result.derivations.some((d) => d.operation === 'ms_to_s')).toBe(true);
     });
   });
 });

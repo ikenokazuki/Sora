@@ -6,13 +6,11 @@
  * 責務:
  * 1. Block Provenance: ブロック単位の出所識別子 (sourceId, blockId, anchor) 付与
  * 2. Evidence Diagnostics: 意味的断定を行わない、決定論的観測量 (queryCoverage, weakEvidenceSignal)
- * 3. Safe Normalization: 外部知識を要しない固定規則による決定論的正規化と導出履歴
  */
 
 import type {
   EvidenceBlockRef,
   EvidenceDiagnostics,
-  DerivationTrace,
 } from '../types.js';
 import type { HeadingBlock } from './hierarchical_bm25.js';
 import { extractTermsWithBigrams } from './hierarchical_bm25.js';
@@ -148,93 +146,5 @@ export function computeEvidenceDiagnostics(
     topScore: Number(topScore.toFixed(4)),
     weakEvidenceSignal,
     reasons,
-  };
-}
-
-/**
- * 決定論的な安全正規化 (Safe Normalization)
- * 
- * 外部知識（為替レートやインフレ率等）を要する変換は一切行わず、
- * 固定規則による数学的・表記変換のみを実行し、DerivationTrace を生成する。
- */
-export function normalizeSafeNumeric(text: string): {
-  normalizedText: string;
-  derivations: DerivationTrace[];
-} {
-  if (!text) return { normalizedText: '', derivations: [] };
-
-  const derivations: DerivationTrace[] = [];
-  let current = text;
-
-  // 1. 全角英数字の半角化
-  const fullwidthDigits = /[０-９]/g;
-  if (fullwidthDigits.test(current)) {
-    const originalMatches = current.match(fullwidthDigits) || [];
-    current = current.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-    if (originalMatches.length > 0) {
-      derivations.push({
-        operation: 'fullwidth_digits_to_halfwidth',
-        input: Array.from(new Set(originalMatches)).join(', '),
-        output: 'halfwidth digits',
-      });
-    }
-  }
-
-  // 2. 漢数字「万」の展開 (例: 1万2000 -> 12000, 120万 -> 1200000)
-  // 後読みで数字の並びの先頭からだけ試す（途中の数字ごとに並びの最後まで読むと、長い数字の並びで二乗の時間になる。一致の結果は同じ）
-  const manRegex = /(?<!\d)(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g;
-  let manMatch: RegExpExecArray | null;
-  while ((manMatch = manRegex.exec(current)) !== null) {
-    const okuMan = parseInt(manMatch[1], 10);
-    const remainder = manMatch[2] ? parseInt(manMatch[2], 10) : 0;
-    const computed = okuMan * 10000 + remainder;
-    derivations.push({
-      operation: 'kanji_man_to_digits',
-      input: manMatch[0],
-      output: computed.toString(),
-    });
-  }
-  current = current.replace(/(?<!\d)(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g, (_, man, rem) => {
-    const okuMan = parseInt(man, 10);
-    const remainder = rem ? parseInt(rem, 10) : 0;
-    return (okuMan * 10000 + remainder).toString();
-  });
-
-  // 3. 物理単位変換 (km -> m, ms -> s)
-  // km -> m (例: 2.4 km -> 2400 m)
-  const kmRegex = /\b(\d+(?:\.\d+)?)\s*km\b/gi;
-  let kmMatch: RegExpExecArray | null;
-  while ((kmMatch = kmRegex.exec(current)) !== null) {
-    const val = parseFloat(kmMatch[1]);
-    const inMeters = Math.round(val * 1000);
-    derivations.push({
-      operation: 'km_to_m',
-      input: kmMatch[0],
-      output: `${inMeters} m`,
-    });
-  }
-  current = current.replace(/\b(\d+(?:\.\d+)?)\s*km\b/gi, (_, val) => {
-    return `${Math.round(parseFloat(val) * 1000)} m`;
-  });
-
-  // ms -> s (例: 500 ms -> 0.5 s, 1000 ms -> 1 s)
-  const msRegex = /\b(\d+(?:\.\d+)?)\s*ms\b/gi;
-  let msMatch: RegExpExecArray | null;
-  while ((msMatch = msRegex.exec(current)) !== null) {
-    const val = parseFloat(msMatch[1]);
-    const inSec = Number((val / 1000).toFixed(4));
-    derivations.push({
-      operation: 'ms_to_s',
-      input: kmMatch ? kmMatch[0] : `${val} ms`,
-      output: `${inSec} s`,
-    });
-  }
-  current = current.replace(/\b(\d+(?:\.\d+)?)\s*ms\b/gi, (_, val) => {
-    return `${Number((parseFloat(val) / 1000).toFixed(4))} s`;
-  });
-
-  return {
-    normalizedText: current,
-    derivations,
   };
 }
