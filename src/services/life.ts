@@ -235,26 +235,62 @@ const lookup = <T>(table: Record<string, T>, key: string): T | undefined => (Obj
 /** 番号の上 2 桁（都道府県コード）から都道府県名 */
 export const prefectureOf = (code: string): string => PREFECTURE_NAMES[Number(code.slice(0, 2)) - 1] ?? '';
 
+/** 市町村。codes は気象庁の市町村（class20）の番号、class10 は最初の区域の予報区 */
+export interface Municipality {
+  name: string;
+  codes: string[];
+  class10: string;
+}
+
 /**
- * 市町村（気象庁の class20）を名前から引く。市・区は省いてよい（"札幌" → 札幌市）。町・村は省けない
- * （気象庁は横浜市・大津市などを北部・南部に分けるので、"横浜" を青森県横浜町に当ててしまう）。
- * 先頭の都道府県名で同じ名前の候補を絞り（"北海道森町"）、政令指定都市の区は市が 1 つの区域なら市に当てる
- * （"札幌市中央区" → 札幌市。神戸市・広島市は区ごと、横浜市などは北部・南部で、区からは決められないので当てない）。
- * 当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ * 名前 → 市町村。class20 の番号ごとに 1 つ（同じ名前が別の都道府県にもあれば複数）。気象庁が区域に分けた市（"横浜市北部"・"横浜市南部"、区ごとの
+ * "神戸市中央区" など）は、区域を合わせた市全体（"横浜市"）も 1 つの市町村にする。市の名前そのままの区域が
+ * ある市（郡山市と郡山市湖南）は、その名前を市全体にする。
  */
-export function resolveMunicipality(query: string): { code: string; class10: string; name: string } | undefined {
+const MUNICIPALITIES = (() => {
+  const byName = new Map<string, Municipality[]>();
+  const add = (m: Municipality) => byName.set(m.name, [...(byName.get(m.name) ?? []), m]);
+  const cities = new Map<string, Municipality>(); // `${都道府県コード}${市の名前}` → 区域を合わせた市
+  for (const [name, towns] of Object.entries(JMA_CLASS20)) {
+    // 市の名前の後に続きがあれば、その市の区域（"余市町" などの町村と "四日市市" などの市は除く）
+    const city = /[市町村]$/.test(name) ? undefined : name.match(/^(.+?市)./)?.[1];
+    for (const t of towns) {
+      add({ name, codes: [t.code], class10: t.class10 });
+      if (!city) continue;
+      const key = t.code.slice(0, 2) + city;
+      const whole = cities.get(key) ?? { name: city, codes: [], class10: t.class10 };
+      whole.codes.push(t.code);
+      cities.set(key, whole);
+    }
+  }
+  for (const [key, whole] of cities) {
+    const same = byName.get(whole.name) ?? [];
+    const main = same.find((m) => m.codes[0].startsWith(key.slice(0, 2)));
+    if (main) {
+      whole.codes.unshift(...main.codes);
+      whole.class10 = main.class10;
+    }
+    byName.set(whole.name, [...same.filter((m) => m !== main), whole]);
+  }
+  return byName;
+})();
+
+/**
+ * 市町村を名前から引く。市・区・町・村は省いてよい（"札幌" → 札幌市）。先頭の都道府県名で同じ名前の候補を絞り
+ * （"北海道森町"）、政令指定都市の区は市全体に当てる（"横浜市中区" → 横浜市。区ごとの区域がある神戸市・広島市の
+ * 区と、東京の特別区はその区のまま）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ */
+export function resolveMunicipality(query: string): Municipality | undefined {
   const s = query.replace(/\s/g, '');
   const pref = PREFECTURE_NAMES.find((p) => s.startsWith(p) && s.length > p.length);
   let name = pref ? s.slice(pref.length) : s;
-  // 東京の特別区は前に「市」が無いので区のまま
   const city = name.match(/^(.+?市).+区$/)?.[1];
-  if (city && lookup(JMA_CLASS20, city)) name = city;
-  const hits = (lookup(JMA_CLASS20, name) ? [''] : ['市', '区'])
-    .flatMap((suffix) => (lookup(JMA_CLASS20, name + suffix) ?? []).map((t) => ({ ...t, name: name + suffix })))
-    .filter((t) => !pref || prefectureOf(t.code) === pref);
+  if (city && !MUNICIPALITIES.has(name) && MUNICIPALITIES.has(city)) name = city;
+  const hits = (MUNICIPALITIES.get(name) ?? ['市', '区', '町', '村'].flatMap((suffix) => MUNICIPALITIES.get(name + suffix) ?? []))
+    .filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
   if (hits.length > 1) {
-    const names = hits.map((t) => prefectureOf(t.code) + t.name);
-    throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名を付けてください（例: ${names[0]}）`);
+    const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
+    throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください（例: ${names[0]}）`);
   }
   return hits[0];
 }

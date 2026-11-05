@@ -90,12 +90,15 @@ const WARNING_CODE_MAP: Record<string, { name: string; level: 'special' | 'warni
   '38': { name: '高潮特別警報', level: 'special' },
 };
 
-/** 警報を返す範囲。town（市町村）・area（予報区）は同じ番号の欄、office（気象台）はその範囲の予報区の欄を合わせる */
+/**
+ * 警報を返す範囲。codes の欄（市町村・予報区）を合わせる。区域に分かれた市はその区域すべて、気象台はその範囲の予報区。
+ * code は応答の areaCode（区域に分かれた市は区域の番号をカンマでつなぐ）
+ */
 interface WarningTarget {
   code: string;
   name: string;
   office: string;
-  kind: 'town' | 'area' | 'office';
+  codes: string[];
 }
 
 const TOWN_BY_CODE = new Map(
@@ -106,7 +109,7 @@ const TOWN_BY_CODE = new Map(
 function warningTargetFromCode(input: string): WarningTarget {
   if (!/^(\d{2}|\d{6}|\d{7})$/.test(input)) throw new AreaInputError(`エリアコード「${input}」は 7 桁・6 桁・2 桁の数字で指定してください`);
   const town = TOWN_BY_CODE.get(input);
-  if (town) return { code: input, name: town.name, office: JMA_CLASS10[town.class10].office, kind: 'town' };
+  if (town) return { code: input, name: town.name, office: JMA_CLASS10[town.class10].office, codes: [input] };
   let code = input;
   if (code.length === 2) {
     // 北海道・鹿児島・沖縄は気象台が複数あり、XX0000 の気象台が無い
@@ -117,8 +120,11 @@ function warningTargetFromCode(input: string): WarningTarget {
     code = `${code}0000`;
   }
   const area = JMA_CLASS10[code];
-  if (area) return { code, name: area.name, office: area.office, kind: 'area' };
-  if (JMA_OFFICES[code]) return { code, name: JMA_OFFICES[code], office: code, kind: 'office' };
+  if (area) return { code, name: area.name, office: area.office, codes: [code] };
+  if (JMA_OFFICES[code]) {
+    const areas = Object.keys(JMA_CLASS10).filter((c) => JMA_CLASS10[c].office === code);
+    return { code, name: JMA_OFFICES[code], office: code, codes: areas };
+  }
   throw new AreaInputError(`エリアコード「${input}」が見つかりません`);
 }
 
@@ -127,7 +133,7 @@ function resolveWarningTarget(city?: string, areaCode?: string): WarningTarget {
   if (areaCode?.trim()) return warningTargetFromCode(areaCode.trim());
   const query = city?.trim() || '東京';
   const town = resolveMunicipality(query);
-  if (town) return { code: town.code, name: town.name, office: JMA_CLASS10[town.class10].office, kind: 'town' };
+  if (town) return { code: town.codes.join(','), name: town.name, office: JMA_CLASS10[town.class10].office, codes: town.codes };
   return warningTargetFromCode(resolveCityId(query));
 }
 
@@ -161,7 +167,7 @@ export async function fetchWeatherWarnings(options: {
   const reportTime = json?.reportDatetime || new Date().toISOString();
   // areaTypes[0] は予報区、[1] は市町村の欄（番号は桁数で重ならない）
   const areas: any[] = (json?.areaTypes || []).flatMap((at: any) => at?.areas || []);
-  const matched = areas.filter((a) => (target.kind === 'office' ? JMA_CLASS10[a.code]?.office === target.code : a.code === target.code));
+  const matched = areas.filter((a) => target.codes.includes(a.code));
   if (matched.length === 0) {
     throw new Error(`気象庁の警報データに ${target.name}（${target.code}）の欄がありません`);
   }

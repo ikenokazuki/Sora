@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { fetchWeatherForecast, resolveCityId } from './life.js';
+import { fetchWeatherForecast, resolveCityId, resolveMunicipality } from './life.js';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
@@ -93,6 +93,15 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     // 部分一致だと "森町"（city_map では北海道）に当たる
     expect(resolveCityId('静岡県森町')).toBe('220040');
     expect(resolveCityId('北海道森町')).toBe('017010');
+  });
+
+  it('区域に分かれた市は、区域を合わせた 1 つの市町村にする', () => {
+    expect(resolveMunicipality('横浜市中区')).toMatchObject({ name: '横浜市', codes: ['1410011', '1410012'], class10: '140010' });
+    // 市の名前そのままの区域（郡山市）と郡山市湖南
+    expect(resolveMunicipality('郡山市')?.codes).toEqual(['0720301', '0720302']);
+    expect(() => resolveMunicipality('伊達市')).toThrow(/福島県伊達市、北海道伊達市/);
+    expect(resolveMunicipality('北海道伊達市')?.codes).toEqual(['0123301', '0123302']);
+    expect(resolveCityId('仙台市青葉区')).toBe('040010');
   });
 
   it('気温は予報区と同じ位置の地点を使い、地点の名前を返す', async () => {

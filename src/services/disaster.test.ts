@@ -38,9 +38,9 @@ const WARNING_JSON: Record<string, { class10: Record<string, string[]>; towns: R
   },
   '016000': { class10: { '016010': ['14'] }, towns: { '0110000': ['03'] } },
   '017000': { class10: { '017010': ['20'] }, towns: { '0134500': ['21'] } },
-  '140000': { class10: { '140010': ['14'] }, towns: { '1410011': ['18'], '1410012': ['18'] } },
+  '140000': { class10: { '140010': ['14'] }, towns: { '1410011': ['18'], '1410012': ['19'] } },
   '230000': { class10: { '230010': ['14'] }, towns: { '2310000': ['15'] } },
-  '280000': { class10: { '280010': ['14'] }, towns: { '2811000': ['16'] } },
+  '280000': { class10: { '280010': ['14'] }, towns: { '2810100': ['14'], '2811000': ['16'] } },
   '270000': { class10: { '270000': ['14'] }, towns: { '2710000': ['10'] } },
 };
 function warningJson(url: URL) {
@@ -70,16 +70,24 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(names(r.warnings)).toEqual(['大雨警報']);
   });
 
-  it('政令指定都市の区は、市が 1 つの区域なら市に当てる', async () => {
-    stubFetch(warningJson);
+  it('政令指定都市の区は市全体に当て、区域に分かれた市は区域の欄を合わせる', async () => {
+    const calls = stubFetch(warningJson);
     expect(await fetchWeatherWarnings({ city: '札幌市中央区', noCache: true })).toMatchObject({ areaCode: '0110000', areaName: '札幌市' });
     expect(await fetchWeatherWarnings({ city: '名古屋市中区', noCache: true })).toMatchObject({ areaCode: '2310000', areaName: '名古屋市' });
-    // 神戸市・広島市は区ごとの区域
+    // 気象庁は横浜市を北部・南部に分ける。区からはどちらか決められないので、市全体（両方）を合わせる
+    const yokohama = await fetchWeatherWarnings({ city: '横浜市中区', noCache: true });
+    expect(yokohama).toMatchObject({ areaCode: '1410011,1410012', areaName: '横浜市', prefecture: '神奈川県' });
+    expect(names(yokohama.advisories)).toEqual(['洪水注意報', '高潮注意報']);
+    expect(await fetchWeatherWarnings({ city: '横浜市', noCache: true })).toMatchObject({ areaCode: '1410011,1410012', areaName: '横浜市' });
+    // 区ごとの区域の市（神戸市）: 区はその区、市は全部の区を合わせる
     expect(await fetchWeatherWarnings({ city: '神戸市中央区', noCache: true })).toMatchObject({ areaCode: '2811000', areaName: '神戸市中央区' });
-    // 横浜市は北部・南部に分かれ、区からは決められないので予報区（東部）の欄にする
-    expect(await fetchWeatherWarnings({ city: '横浜市中区', noCache: true })).toMatchObject({ areaCode: '140010', areaName: '東部', prefecture: '神奈川県' });
-    // 市を省いた "横浜" を青森県横浜町に当てない
-    expect(await fetchWeatherWarnings({ city: '横浜', noCache: true })).toMatchObject({ areaCode: '140010', prefecture: '神奈川県' });
+    const kobe = await fetchWeatherWarnings({ city: '神戸市', noCache: true });
+    expect(kobe).toMatchObject({ areaName: '神戸市', prefecture: '兵庫県' });
+    expect(kobe.areaCode.split(',')).toHaveLength(9);
+    expect(names(kobe.advisories).sort()).toEqual(['波浪注意報', '雷注意報'].sort());
+    // 市・町を省いた名前が市と町の両方に当たれば、候補を挙げる（青森県横浜町を黙って選ばない）
+    await expect(fetchWeatherWarnings({ city: '横浜', noCache: true })).rejects.toThrow(/神奈川県横浜市、青森県横浜町/);
+    expect(calls.some((u) => u.endsWith('/020000.json'))).toBe(false);
   });
 
   it('同じ名前の町は候補を挙げたエラーにし、都道府県名があれば絞る', async () => {
