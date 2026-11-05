@@ -666,7 +666,7 @@ describe('web-fetcher Core Functions', () => {
     expect(resolveCityId('箱根町')).toBe('140020');
     expect(resolveCityId('箱根')).toBe('140020');
     expect(resolveCityId('別府市')).toBe('440010');
-    expect(resolveCityId('石垣島')).toBe('473000');
+    expect(resolveCityId('石垣島')).toBe('474010');
   });
 });
 

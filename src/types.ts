@@ -520,7 +520,7 @@ export const TRANSIT_ROUTE_INPUT_SHAPE = {
 export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
 
 export const WeatherRequestSchema = z.object({
-  city: z.string().min(1, 'city は必須です').describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。見つからない地名はエラー'),
+  city: z.string().min(1, 'city は必須です').describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。見つからない地名と、複数の市町村に当たる名前（例: "府中"）はエラー'),
   days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -579,7 +579,7 @@ export const SuggestRequestSchema = z.object({
 });
 
 export const DisasterWarningsRequestSchema = z.object({
-  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。同じ名前の町村は都道府県名を付ける (例: "北海道森町")'),
+  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "横浜市")'),
   areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -1592,7 +1592,7 @@ export const WarningItemSchema = z.object({
 });
 
 export const AreaWarningsResponseSchema = z.object({
-  areaCode: z.string().describe('解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)'),
+  areaCode: z.string().describe('解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)。区域に分かれた市 (横浜市など) は区域の番号をカンマでつなぐ (例: "1410011,1410012")'),
   areaName: z.string().describe('解決した市町村・予報区・気象台の地域の名前 (例: "新宿区", "東京地方")'),
   prefecture: z.string().describe('都道府県名'),
   reportTime: z.string().describe('発表日時 (ISO 8601)'),
