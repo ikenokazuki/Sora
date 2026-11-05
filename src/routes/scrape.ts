@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import type { z } from 'zod';
 import {
   scrapeUrl,
   scrapeBatchUrls,
@@ -10,8 +11,9 @@ import { formatCompactScrapeResult } from '../response_cleaner.js';
 import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
+  CrawlRequestSchema,
 } from '../types.js';
-import { formatError } from './utils.js';
+import { dropNullFields, formatError } from './utils.js';
 import { errorMessage, ScrapeInputError } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
@@ -48,6 +50,21 @@ async function readUrlRequestBody(
     return { error: formatError(c, 'url must be a valid http(s) URL', 'INVALID_INPUT', 400, false) };
   }
   return { body };
+}
+
+/** /crawl・/crawl/stream の本文を読む。url の形に加え、CrawlRequestSchema の範囲（maxDepth 5・maxChars 50000 など）も確かめて 400 にする。null の項目は未指定として扱う */
+async function readCrawlRequestBody(
+  c: Context,
+): Promise<{ data: z.infer<typeof CrawlRequestSchema> } | { error: Response }> {
+  const input = await readUrlRequestBody(c);
+  if ('error' in input) return input;
+  const parsed = CrawlRequestSchema.safeParse(dropNullFields(input.body));
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'invalid request';
+    return { error: formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format()) };
+  }
+  return { data: parsed.data };
 }
 
 // 単一 URL / PDF スクレイプ (マルチフォーマット対応)
@@ -130,7 +147,9 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
   const parsed = BatchScrapeRequestSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return formatError(c, 'urls must be a non-empty array of URLs (max: 20)', 'INVALID_INPUT', 400, false, parsed.error.format());
+    const issue = parsed.error.issues[0];
+    const message = issue && issue.path[0] !== 'urls' ? `${issue.path.join('.')}: ${issue.message}` : 'urls must be a non-empty array of URLs (max: 20)';
+    return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
   }
 
   try {
@@ -175,32 +194,12 @@ scrapeRoutes.post('/map', async (c) => {
 
 // サブページ再帰的クロール (/crawl)
 scrapeRoutes.post('/crawl', async (c) => {
-  const input = await readUrlRequestBody(c);
+  const input = await readCrawlRequestBody(c);
   if ('error' in input) return input.error;
-  const { body } = input;
 
   try {
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await crawlSiteUrl({
-      url: body.url,
-      tenantId,
-      maxPages: body.maxPages,
-      maxDepth: body.maxDepth,
-      maxChars: body.maxChars,
-      timeoutMs: body.timeoutMs,
-      concurrency: body.concurrency,
-      onlyMainContent: body.onlyMainContent,
-      includePatterns: body.includePatterns,
-      excludePatterns: body.excludePatterns,
-      formats: body.formats,
-      webhookUrl: body.webhookUrl,
-      query: body.query,
-      responseMode: body.responseMode === 'evidence' ? 'evidence' : 'full',
-      annotateTemporal: body.annotateTemporal,
-      highlightMaxCount: body.highlightMaxCount,
-      includeMedia: body.includeMedia,
-      noCache: body.noCache,
-    });
+    const result = await crawlSiteUrl({ ...input.data, tenantId });
 
     return c.json(result);
   } catch (err) {
@@ -213,36 +212,21 @@ scrapeRoutes.post('/crawl', async (c) => {
 // サブページ再帰的クロール SSE ストリーミング (/crawl/stream)
 scrapeRoutes.post('/crawl/stream', async (c) => {
   // 入力の誤りは、ストリームを開く前に 400 で返す
-  const input = await readUrlRequestBody(c);
+  const input = await readCrawlRequestBody(c);
   if ('error' in input) return input.error;
-  const { body } = input;
+  const { data } = input;
 
   return streamSSE(c, async (stream) => {
     await stream.writeSSE({
       event: 'start',
-      data: JSON.stringify({ url: body.url, status: 'crawling' }),
+      data: JSON.stringify({ url: data.url, status: 'crawling' }),
     });
 
     try {
       const streamTenant = c.get('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
-        url: body.url,
+        ...data,
         tenantId: streamTenant,
-        maxPages: body.maxPages,
-        maxDepth: body.maxDepth,
-        maxChars: body.maxChars,
-        timeoutMs: body.timeoutMs,
-        concurrency: body.concurrency,
-        onlyMainContent: body.onlyMainContent,
-        includePatterns: body.includePatterns,
-        excludePatterns: body.excludePatterns,
-        formats: body.formats,
-        query: body.query,
-        responseMode: body.responseMode === 'evidence' ? 'evidence' : 'full',
-        annotateTemporal: body.annotateTemporal,
-        highlightMaxCount: body.highlightMaxCount,
-        includeMedia: body.includeMedia,
-        noCache: body.noCache,
         onPageCrawled: (page, count) => {
           stream.writeSSE({
             event: 'page',

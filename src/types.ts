@@ -354,7 +354,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     responseMode: SCRAPE_RESPONSE_MODE_FIELD,
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
     maskPii: SCRAPE_MASK_PII_FIELD,
-    webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
+    webhookUrl: z.string().url().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
     annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
     highlightMaxCount: z
@@ -434,12 +434,17 @@ export const CrawlRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
+/** map_site・REST の /map 共通の since / until */
+export const MAP_SINCE_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以降の URL に絞る (例: "2026-08-01", "2026-01-01T00:00:00Z")。lastmod の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない';
+export const MAP_UNTIL_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以前の URL に絞る。lastmod の無い URL は常に残り、リンクをたどる切り替えのときは効かない';
+
 export const MapRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('サイトマップ探索対象のベース URL (例: "https://example.com")'),
   limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
-  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)').meta({ default: false }),
-  since: z.string().optional().describe('指定日時以降に更新された URL のみ抽出するフィルタ (例: "2026-08-01")'),
-  until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
+  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)。サイトマップが無く、ページ内のリンクをたどる切り替えのときだけ効く').meta({ default: false }),
+  since: z.string().optional().describe(MAP_SINCE_DESCRIPTION),
+  until: z.string().optional().describe(MAP_UNTIL_DESCRIPTION),
+  timeoutMs: z.number().int().min(1).max(120_000).optional().describe('リンクをたどる切り替えのときの取得のタイムアウト (ミリ秒, デフォルト: 15000)。サイトマップ・robots.txt の取得は固定の 10 秒・5 秒').meta({ default: 15000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 

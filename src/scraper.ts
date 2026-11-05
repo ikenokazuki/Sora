@@ -38,6 +38,7 @@ import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './securit
 import { incrementSecurityCounter } from './security/metrics.js';
 import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
+import { formatCompactScrapeResult } from './response_cleaner.js';
 import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
@@ -1253,6 +1254,9 @@ export function isHostInSites(linkHost: string, sites: Iterable<string>, include
   return false;
 }
 
+/** map の since / until を指定したとき、日付で絞る前に読む sitemap の URL 数の上限 */
+const MAP_DATE_SCAN_LIMIT = 5000;
+
 export async function mapSiteUrl(options: {
   url: string;
   limit?: number;
@@ -1270,7 +1274,8 @@ export async function mapSiteUrl(options: {
 }> {
   const url = options.url;
   const limit = Math.min(options.limit ?? 200, 1000);
-  const cacheKey = `map:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
+  // v2: 日付で絞ってから件数で切るようにした（v1 は先に切っていたので、limit と since を併用した結果が違う）
+  const cacheKey = `map:v2:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
 
   if (!options.noCache) {
     const cached = getFromCache<any>(cacheKey);
@@ -1302,11 +1307,14 @@ export async function mapSiteUrl(options: {
     }
   } catch {}
 
+  // 日付で絞る前に limit 件で切ると、先頭の古い URL だけが残って新しい URL が落ちる。日付の指定があるときは多めに読み、絞ってから limit 件で切る
+  // 読むのは先頭 MAP_DATE_SCAN_LIMIT 件まで。それより後ろの URL は、日付を指定しても拾えない
+  const scanLimit = options.since || options.until ? MAP_DATE_SCAN_LIMIT : limit;
   for (const sitemapUrl of candidateSitemaps) {
-    const entries = await fetchSitemapEntries(sitemapUrl, limit);
+    const entries = await fetchSitemapEntries(sitemapUrl, scanLimit);
     if (entries.length > 0) {
       const filteredEntries = filterSitemapEntriesByDate(entries, options.since, options.until);
-      const links = filteredEntries.map((e) => e.url);
+      const links = filteredEntries.map((e) => e.url).slice(0, limit);
       const result = {
         url,
         links,
@@ -1353,6 +1361,9 @@ export async function mapSiteUrl(options: {
 // ==========================================
 // 8. 再帰クロール (crawlSiteUrl)
 // ==========================================
+/** crawl の pages の 1 項目。scrape の応答と同じ整形（formatCompactScrapeResult） */
+type CrawledPage = Record<string, any> & { url: string };
+
 export async function crawlSiteUrl(options: {
   url: string;
   maxPages?: number;
@@ -1373,13 +1384,14 @@ export async function crawlSiteUrl(options: {
   webhookUrl?: string;
   tenantId?: string;
   onPageScraped?: (page: ScrapeResult) => void;
-  onPageCrawled?: (page: ScrapeResult, count: number) => void;
+  /** 応答の pages と同じ整形をかけた 1 ページを渡す */
+  onPageCrawled?: (page: CrawledPage, count: number) => void;
 }): Promise<{
   url: string;
   baseUrl: string;
   count: number;
   totalPages: number;
-  pages: ScrapeResult[];
+  pages: CrawledPage[];
 }> {
   const {
     url: initialUrl,
@@ -1414,6 +1426,8 @@ export async function crawlSiteUrl(options: {
   let seedError: unknown;
 
   const visitKey = (u: string) => u.split('#')[0].replace(/\/+$/, '');
+  /** scrape と同じ整形。リンクをたどるために links を取っているので、formats で求められていなければ外す */
+  const shape = (p: ScrapeResult) => formatCompactScrapeResult(formats.includes('links') ? p : { ...p, links: undefined }) as CrawledPage;
   /** include/exclude は、リンクをたどって見つけた URL にだけ適用する。起点 URL は常に取得する。 */
   const passesPatterns = (item: { url: string; depth: number }): boolean => {
     if (item.depth === 0) return true;
@@ -1469,7 +1483,7 @@ export async function crawlSiteUrl(options: {
       const { item, scraped } = r;
       pages.push(scraped);
       try {
-        if (onPageCrawled) onPageCrawled(scraped, pages.length);
+        if (onPageCrawled) onPageCrawled(shape(scraped), pages.length);
         if (onPageScraped) onPageScraped(scraped);
       } catch {}
 
@@ -1498,7 +1512,7 @@ export async function crawlSiteUrl(options: {
     baseUrl: initialUrl,
     count: pages.length,
     totalPages: pages.length,
-    pages,
+    pages: pages.map(shape),
   };
 
   if (webhookUrl) {
