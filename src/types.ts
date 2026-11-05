@@ -299,6 +299,9 @@ export type IntegratedSearchResponseMode = z.infer<
 /** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える').meta({ default: 'full' });
 
+/** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
+export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
+
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
   maxChars: z.number().int().min(1).max(100_000).optional().describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
@@ -323,7 +326,7 @@ export const ScrapeRequestSchema = z.object({
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
-  includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
 });
 
 export const SCRAPE_BATCH_INPUT_SHAPE = {
@@ -350,7 +353,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .max(10)
       .optional()
       .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-    includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+    includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
     verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
 };
 
@@ -416,7 +419,7 @@ export const CrawlRequestSchema = z.object({
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3, 上限: 10)').meta({ default: 3 }),
   webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
-  includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 

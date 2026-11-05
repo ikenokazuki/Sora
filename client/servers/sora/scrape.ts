@@ -45,54 +45,16 @@ export type ScrapeInput = {
   removeSelectors?: string[];
   /** ハイライト抽出用キーワード */
   query?: string;
-  /** 指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse) */
-  extractHighlights?: boolean;
-  /** 抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false) */
-  onlyHighlights?: boolean;
+  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える */
+  responseMode?: "full" | "evidence";
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
-  /** 証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ) */
-  evidenceMode?: "full" | "highlights" | "contextual_highlights";
-  /** 決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか */
-  includeDiagnostics?: boolean;
-  /** 日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか */
-  includeDiscrepancies?: boolean;
-  /** 漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか (デフォルト: false) */
-  safeNormalize?: boolean;
-  /** Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false) */
-  reorderUFlat?: boolean;
-  /** MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除 */
-  diversityWeight?: number;
-  /** HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true) */
-  minimizeTables?: boolean;
   /** 相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false) */
   annotateTemporal?: boolean;
-  /** 超高速な抽出型自動要約 (TL;DR) を生成するか (デフォルト: false) */
-  extractSummary?: boolean;
-  /** 本文中の出典・外部引用リンク一覧を抽出するか (デフォルト: false) */
-  extractCitations?: boolean;
-  /** RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き) (デフォルト: false) */
-  chunkMarkdown?: boolean;
-  /** チャンクあたりの文字数目安 (デフォルト: 1000) */
-  chunkSize?: number;
-  /** 抽出されたページ内リンクの健全性・到達性を並行検証するか (デフォルト: false) */
-  validateLinks?: boolean;
-  /** LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false) */
-  formatAsPrompt?: boolean;
   /** Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false) */
   stripLinks?: boolean;
-  /** リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false) */
-  filterLinkDensity?: boolean;
-  /** 本文中の検索一致語句を <mark> でハイライトするか (デフォルト: false) */
-  highlightMatches?: boolean;
   /** メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false) */
   maskPii?: boolean;
-  /** スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期) */
-  webhookUrl?: string;
-  /** 接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0) */
-  retries?: number;
-  /** リトライ待機ディレイ (ミリ秒, 上限: 30000) */
-  retryDelayMs?: number;
   /** キャッシュをバイパスして強制再取得するか */
   noCache?: boolean;
   /** タイムアウト時間 (ミリ秒, デフォルト: 15000) */
@@ -101,7 +63,7 @@ export type ScrapeInput = {
   verbose?: boolean;
   /** base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化) */
   keepDataImages?: boolean;
-  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない */
+  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る */
   includeMedia?: boolean;
 };
 
@@ -179,52 +141,6 @@ export type ScrapeOutput = {
       confidence: "high" | "medium";
     }[];
   }[];
-  /** 客観的な証拠充足性観測量 */
-  evidenceDiagnostics?: {
-    /** クエリ語句網羅率 (0.0〜1.0) */
-    queryCoverage: number;
-    /** 本文中にマッチした検索語句リスト */
-    matchedTerms: string[];
-    /** マッチしなかった未充足語句リスト */
-    missingTerms: string[];
-    /** スコア > 0 の候補ブロック数 */
-    candidateCount: number;
-    /** 最高関連スコア */
-    topScore: number;
-    /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
-    weakEvidenceSignal: boolean;
-    /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
-    reasons: string[];
-  };
-  /** 日付・金額・バージョンの不一致候補 */
-  discrepancies?: {
-    /** 不一致種別 (日付、金額、バージョン、数値) */
-    kind: "date" | "money" | "version" | "number";
-    /** 競合している値のリスト */
-    values: {
-      /** 原文の表記 */
-      original: string;
-      /** 正規化後の値 */
-      normalized: string;
-      /** 出所ソースID */
-      sourceId?: string;
-      /** ブロックID */
-      blockId?: string;
-      /** 文脈スニペット */
-      context?: string;
-    }[];
-    /** 解決ステータス */
-    status: "needs_agent_resolution";
-  }[];
-  /** 決定論的な単位・漢数字変換導出履歴 */
-  derivations?: {
-    /** 適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m") */
-    operation: string;
-    /** 変換前文字列 */
-    input: string;
-    /** 変換後文字列 */
-    output: string;
-  }[];
   /** 相対日付表現の絶対日時解決結果一覧 */
   temporalAnchors?: {
     /** 検出された相対時間表現 (例: "明日", "来週金曜日") */
@@ -257,38 +173,12 @@ export type ScrapeOutput = {
   };
   /** ハイライト該当箇所へジャンプする Chrome URL */
   textFragmentUrl?: string;
-  /** 抽出型自動要約 (TL;DR) 箇条書きリスト */
-  summary?: string[];
-  /** 本文中の引用・出典リンク一覧 */
-  citations?: {
-    /** 引用テキスト */
-    text: string;
-    /** 引用元URL */
-    url: string;
-    /** 周辺コンテキスト */
-    context?: string;
-  }[];
-  /** RAG 用セマンティック・チャンク配列 */
-  chunks?: {
-    /** チャンク番号 (0-based) */
-    index: number;
-    /** 所属する直近の見出し */
-    heading?: string;
-    /** チャンク本文 Markdown */
-    content: string;
-    /** 推定トークン数 */
-    estimatedTokens: number;
-  }[];
   /** 本文の総文字数 */
   characterCount?: number;
   /** 単語数 */
   wordCount?: number;
   /** 想定読了時間 (分) */
   readingTimeMin?: number;
-  /** LLM 最適化済み XML プロンプト文字列 */
-  promptContext?: string;
-  /** <mark> で一致語句をハイライトした本文 */
-  highlightedContent?: string;
   /** YouTube・動画・音声等のリッチメディア情報 */
   media?: {
     /** メディア種別 */
@@ -311,15 +201,6 @@ export type ScrapeOutput = {
   };
   /** ページ内抽出リンク URL 一覧 */
   links?: string[];
-  /** リンク健全性検証結果 */
-  linksWithStatus?: {
-    /** リンク先URL */
-    url: string;
-    /** HTTPステータスコード */
-    status: number;
-    /** 到達成功フラグ (2xx/3xx) */
-    ok: boolean;
-  }[];
   /** 抽出された重要画像一覧 */
   images?: {
     /** 画像URL */

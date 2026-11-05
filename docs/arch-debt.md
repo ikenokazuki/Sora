@@ -25,7 +25,7 @@ src/extractor/markdown_sections.ts.
 ## 5. BM25 spread (LOW, scoped 2026-10-01)
 
 Mostly layered reuse: hierarchical_bm25.ts holds canonical primitives,
-information_retrieval.ts holds complementary MMR/PRF/Jaccard.
+information_retrieval.ts holds complementary MMR/Jaccard (the PRF query expansion was removed in v4.0.0).
 The inline BM25 variant in enrichment.ts (title/snippet) serves a
 different input and stays separate by design. Fixed the one real dupe:
 answerability.ts splitSentences now re-exports the canonical one.

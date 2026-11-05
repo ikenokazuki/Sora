@@ -126,7 +126,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 
 - ページの本文は、[rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura) と Readability で取り出します（`src/extractor/rs_trafilatura.ts`、`src/html_parser.ts`）。
   - rs-trafilatura のコマンドは `RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。
-  - コマンドには、取得した HTML を渡します。`removeSelectors` を指定したときだけ、その要素を消してから渡します（隠し要素は消しません。消すと本文の取り出しの精度が下がるため。`docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md`）。
+  - コマンドには、取得した HTML を渡します。`removeSelectors`（REST だけの引数。MCP には出しません）を指定したときだけ、その要素を消してから渡します（隠し要素は消しません。消すと本文の取り出しの精度が下がるため。`docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md`）。
   - 返るもの: 本文の HTML、ページの種類（article・listing・forum・product・collection・documentation・service）
   - `--markdown` を付けて呼びます。付けないと、本文の HTML からリンクが落ちます。
   - 本文の HTML は Sora の変換（turndown）に通します。rs-trafilatura 自身の Markdown は、一覧のページで字下げが残り、トークンが 15〜42% 多くなるためです。
@@ -165,7 +165,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
   省略時は、1,600 字を超える節の段落を 300 字までの塊に分けて候補にも入れ（点は節の点 × 節の中での比。文で切れずに 600 字を超える塊は入れない）、選んだ窓と塊は節ごとに 1 つのハイライトにまとめます。
   評価は `docs/evaluations/response-compression/results.md`。
 - `annotateTemporal` を指定すると、ハイライトにも相対日時の注記（`[YYYY-MM-DD]`）が付きます。注記は、リンクと画像の飛び先 `](…)` の中には入れません（リンクの文字と alt、地の文には入れます）。
-- 選んだハイライトの合計は、要求の `maxChars`（`onlyHighlights` では content）に収めます（区切りの分も、残す件数に合わせて数えます）。
+- 選んだハイライトの合計は、要求の `maxChars`（`responseMode: "evidence"` では content）に収めます（区切りの分も、残す件数に合わせて数えます）。
   ハイライトは `maxChars` で切る前の全文から選ぶため、窓で切らない表・コードの節や文が 1 つの節は、全文の字数で選ばれるからです。
   1,600 字（`HIGHLIGHT_CHAR_BUDGET`）以下のふつうのハイライトは、出力の順に丸ごと確保します。丸ごと入らないものが出たら、それを残りの字数で切り、
   その後ろのふつうのハイライトは外します。残りの予算は、1,600 字より長いもの（表・コード・1 文の節）に、短いものを先に確保する形

@@ -3,7 +3,7 @@ import { crawlSiteUrl, integratedSearch, mapSiteUrl, scrapeBatchUrls, scrapeUrl 
 import { formatCompactScrapeResult } from '../response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from '../search_web_formats.js';
 import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_response.js';
-import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
+import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
@@ -71,10 +71,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
-      includeMedia: z
-        .boolean()
-        .optional()
-        .describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+      includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
       annotateTemporal: z
         .boolean()
         .optional()
@@ -258,10 +255,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .max(10)
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-      includeMedia: z
-        .boolean()
-        .optional()
-        .describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+      includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
     },
     async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, responseMode, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {

@@ -111,6 +111,10 @@ describe('MCP tool', () => {
     expect(buildSoraMcpInstructions(['all'])).toContain('search_deep videos');
     expect(buildSoraMcpInstructions(['youtube'])).not.toContain('search_video');
     expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube_transcript');
+    // チャンネルの最新動画のツールも案内する
+    expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube_channel');
+    expect(buildSoraMcpInstructions(['youtube'])).toContain('get_youtube_channel');
+    expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube_channel');
   });
 });
 

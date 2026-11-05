@@ -79,7 +79,7 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 | 受け取り方 | モデルに入る文字数 |
 |---|---|
 | 直接（`limit: 3`） | 27,892 |
-| 引数で絞る（`includeRealtime: false`、`extractHighlights: true`、`maxChars: 1500`） | 12,273 |
+| 引数で絞る（`includeRealtime: false`、`maxChars: 1500`） | 12,273 |
 | クライアントでコードから絞る（題名・URL・要点 2 つだけを出力） | 934 |
 
 直接呼ぶ場合でも引数で大きさは減らせる。コードで絞る方法は、必要な項目が決まっているときに最も小さい。モデルが本文全体を読んで判断する必要がある場合は、直接呼ぶ（`responseMode: "full"` を付ける）。
