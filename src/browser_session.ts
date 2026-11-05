@@ -445,6 +445,7 @@ export async function handleBrowserSessionAction(
         // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
         const needScreenshot = Boolean(
           options.extract?.screenshot ||
+          options.extract?.clipSelector ||
           options.actions?.some((a) => a.type === 'screenshot')
         );
         context = await browserInstance.createBrowserContext();
@@ -483,6 +484,7 @@ export async function handleBrowserSessionAction(
     try {
       const needScreenshot = Boolean(
         options.extract?.screenshot ||
+        options.extract?.clipSelector ||
         options.actions?.some((a) => a.type === 'screenshot')
       );
       const browserRes = await getBrowser();

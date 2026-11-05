@@ -461,7 +461,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行・ページ遷移）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」や `sessionId` によるマルチターン対話セッション維持に対応。 | `source: "browser"` | - `url` (string, 任意): 開始/遷移 URL<br>- `sessionId` (string, 任意): 既存セッションID<br>- `createSession` (boolean, 任意): セッションを作成・維持するか<br>- `closeSession` (boolean, 任意): セッションを終了するか<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`, `navigate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): タイムアウト ms |
+| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行・ページ遷移）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」や `sessionId` によるマルチターン対話セッション維持に対応。 | `source: "browser"` | - `url` (string, 任意): 開始/遷移 URL<br>- `sessionId` (string, 任意): 既存セッションID<br>- `createSession` (boolean, 任意): セッションを作成・維持するか<br>- `closeSession` (boolean, 任意): セッションを終了するか<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`（`ALLOW_BROWSER_EVALUATE=true` のときだけ）, `navigate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): ページ遷移（最初の URL・`navigate`）の待ち時間 ms。全体の制限時間ではない |
 
 ---
 
@@ -1983,6 +1983,7 @@ WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが�
     }
   }
   ```
+- **エラー**: 画像でない応答（`Content-Type` が画像でなく、中身も画像と判断できない HTML など）は、画像として返さずエラー（`MEDIA_ERROR`）にします。
 
 ### 3.24 荷物追跡・配達状況照会 (`POST /tracking`, `GET /tracking/:carrier/:number`, `GET /tracking/:number`)
 日本の主要運送会社5社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）と国際配送の UPS・FedEx・DHL Express の配達状況を、各社の公式追跡ページ・API から取得し、共通の形式に揃えて返します。伝票番号（ハイフン有無・全角半角不問）の形式や Modulus 7 / Luhn チェックサムで運送会社を自動判別し、候補を 2 社ずつ照会して、配送の実績を確認できた時点で残りの候補は照会しません（最大 4 社）。UPS 認証情報未設定時の安全な `status: "unknown"` フォールバックを備えています。結果はメモリにキャッシュします（配達完了は 24 時間、それ以外は 5 分。`error` は保存しません）。
@@ -2294,7 +2295,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
   - SQLite 障害で degraded 判定時に、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
 - **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
-  - 環境変数 `ALLOW_BROWSER_EVALUATE=false` または `SAFE_BROWSER_MODE=true` により、`/browser/action` での `evaluate` スクリプト実行を即座に無効化・ロックダウン可能。
+  - `evaluate`（任意 JS 実行）は既定で遮断されます。環境変数 `ALLOW_BROWSER_EVALUATE=true` を指定したときだけ、`/browser/action` と MCP `browser_action` で動きます。
 - **📐 共通 Zod スキーマ & OpenAPI 3.0 自動生成**:
   - REST / MCP 双方で Zod スキーマによる入力検証を統一。
   - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **動的に自動生成** し、リクエスト・レスポンスのドキュメントがコードから乖離しないようにしています。
@@ -2335,7 +2336,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
 | `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
 | `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
-| `ALLOW_BROWSER_EVALUATE` | `true` | `false` 指定時に `/browser/action` での `evaluate`（任意JS実行）を完全遮断・ロックダウン |
+| `ALLOW_BROWSER_EVALUATE` | *(未設定 = 遮断)* | `true` を指定したときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意JS実行）が動きます。未設定やそれ以外の値は遮断 |
 | `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
 | `RS_TRAFILATURA_PATH` | *(未設定。イメージでは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |

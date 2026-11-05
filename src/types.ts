@@ -230,6 +230,9 @@ export interface BrowserActionOptions {
     markdown?: boolean;
     screenshot?: boolean;
     html?: boolean;
+    screenshotFullPage?: boolean;
+    clipSelector?: string;
+    maxChars?: number;
   };
   timeout?: number;
 }
@@ -382,7 +385,7 @@ export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press',
 
 /** 実装 (browser_session.ts runActionsOnPage) が解釈するアクション項目のみ。 */
 export const BrowserActionStepSchema = z.object({
-  type: BrowserActionTypeSchema.describe('アクション種別'),
+  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
   selector: z.string().optional().describe('操作対象の CSS セレクタ'),
   text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト'),
   value: z.string().optional().describe('select タグで選択する値'),
@@ -390,7 +393,7 @@ export const BrowserActionStepSchema = z.object({
   ms: z.number().optional().describe('wait 時の待機時間 (ミリ秒)'),
   script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
   url: z.string().optional().describe('navigate 時に遷移する URL'),
-  delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
+  delay: z.number().optional().describe('click は操作の後の待ち、fill・type は 1 文字ごとの間隔 (ミリ秒)。press・scroll・wait などでは読まれない'),
   clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)').meta({ default: true }),
   distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)').meta({ default: 800 }),
   direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")').meta({ default: 'down' }),
@@ -399,7 +402,6 @@ export const BrowserActionStepSchema = z.object({
 export const BrowserActionRequestSchema = z.object({
   url: z.string().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
   sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
-  ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
   createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)').meta({ default: false }),
   closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)').meta({ default: false }),
   actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
@@ -411,7 +413,7 @@ export const BrowserActionRequestSchema = z.object({
     clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
     maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   }).optional().describe('操作完了後に抽出するデータ指定'),
-  timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
+  timeout: z.number().optional().describe('ページ遷移 (最初の URL・navigate) の待ち時間 (ミリ秒, デフォルト: 30000)。全体の制限時間ではない').meta({ default: 30000 }),
 });
 
 export const CrawlRequestSchema = z.object({

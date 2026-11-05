@@ -34,7 +34,7 @@ export function registerBrowserTools(context: ToolRegistrationContext): void {
         })
         .optional()
         .describe('操作完了後に抽出するデータ指定'),
-      timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
+      timeout: z.number().optional().describe('ページ遷移 (最初の URL・navigate) の待ち時間 (ミリ秒, デフォルト: 30000)。全体の制限時間ではない').meta({ default: 30000 }),
     },
     async (opts) => {
       try {
