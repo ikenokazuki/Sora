@@ -33,7 +33,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       mode: SCRAPE_MODE_FIELD,
       formats: z.array(ScrapeFormatSchema)
         .optional()
-        .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く').meta({ default: ['markdown'] }),
+        .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
       fullPage: z
         .boolean()
         .optional()

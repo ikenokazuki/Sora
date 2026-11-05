@@ -994,6 +994,7 @@ const RS_ARTICLE_MIN_READ_CHARS = 200;
 
 /** CSS セレクタとして読めない最初のものを返す（無ければ undefined）。removeSelectors は変換のときに cheerio で読むので、取得の前に同じ読み方で確かめる */
 export function findInvalidCssSelector(selectors: string[]): { selector: string; reason: string } | undefined {
+  if (selectors.length === 0) return undefined;
   const $ = cheerio.load('');
   for (const selector of selectors) {
     try {

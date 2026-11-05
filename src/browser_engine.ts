@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { errorMessage } from './errors.js';
+import { isSensitiveHeaderName } from './security/credential_scope.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -652,18 +653,24 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
 export async function setupPageSecurity(
   page: Page,
   blockMedia = false,
-  /** 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求にだけ付ける（ほかのオリジンへの要求や、別のオリジンへの転送には付けない） */
+  /**
+   * 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求には全部付ける。
+   * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）
+   */
   scopedHeaders?: { origin: string; headers: Record<string, string> },
 ): Promise<void> {
-  const extraHeaders = scopedHeaders && Object.fromEntries(Object.entries(scopedHeaders.headers).map(([name, value]) => [name.toLowerCase(), value]));
+  const lowercased = (headers: [string, string][]) => Object.fromEntries(headers.map(([name, value]) => [name.toLowerCase(), value]));
+  const allHeaders = scopedHeaders && lowercased(Object.entries(scopedHeaders.headers));
+  const navigationHeaders = scopedHeaders && lowercased(Object.entries(scopedHeaders.headers).filter(([name]) => !isSensitiveHeaderName(name)));
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       try {
         const reqUrlStr = req.url();
         const resourceType = req.resourceType();
-        const carriesHeaders = scopedHeaders !== undefined && URL.canParse(reqUrlStr) && new URL(reqUrlStr).origin === scopedHeaders.origin;
-        const proceed = () => req.continue(carriesHeaders ? { headers: { ...req.headers(), ...extraHeaders } } : undefined);
+        const sameOrigin = scopedHeaders !== undefined && URL.canParse(reqUrlStr) && new URL(reqUrlStr).origin === scopedHeaders.origin;
+        const extra = sameOrigin ? allHeaders : req.isNavigationRequest() && req.frame() === page.mainFrame() ? navigationHeaders : undefined;
+        const proceed = () => req.continue(extra && Object.keys(extra).length > 0 ? { headers: { ...req.headers(), ...extra } } : undefined);
 
         // 動画・音声・3Dモデル・広告トラッカーは帯域・メモリ保護のため常時高速遮断
         if (

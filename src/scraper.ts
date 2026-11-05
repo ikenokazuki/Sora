@@ -302,11 +302,23 @@ export function capHighlightItems<T extends { text: string }>(items: T[], maxCha
 const SCREENSHOT_UNAVAILABLE_WARNING =
   'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
 
-/** maskPii: 本文だけでなく、応答に出る title・description・html・rawHtml・tables・extracted の文字列にも同じマスクをかける */
+/** 文字列を、入れ子の配列・オブジェクトの中までたどってマスクする（鍵は変えない） */
+function maskPiiDeep<T>(value: T): T {
+  if (typeof value === 'string') return maskPiiInText(value) as T;
+  if (Array.isArray(value)) return value.map(maskPiiDeep) as T;
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskPiiDeep(item)])) as T;
+  return value;
+}
+
+/**
+ * maskPii: 本文だけでなく、応答が文字を運ぶ項目（title・description・author・siteName・html・rawHtml・tables・extracted・jsonLd・events・
+ * breadcrumb・evidence、links の mailto:/tel:、images の alt・title・caption）にも同じマスクをかける。
+ * URL（links の http(s)、images の url など）は、数字の並びを電話番号と取り違えて壊さないよう、マスクしない
+ */
 function maskPiiInResult(result: ScrapeResult): void {
   result.content = maskPiiInText(result.content);
   result.title = maskPiiInText(result.title);
-  for (const key of ['description', 'html', 'rawHtml'] as const) {
+  for (const key of ['description', 'author', 'siteName', 'html', 'rawHtml'] as const) {
     const value = result[key];
     if (value) result[key] = maskPiiInText(value);
   }
@@ -319,8 +331,19 @@ function maskPiiInResult(result: ScrapeResult): void {
       rows: table.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [maskPiiInText(key), maskPiiInText(value)]))),
     }));
   }
-  if (result.extracted) {
-    result.extracted = Object.fromEntries(Object.entries(result.extracted).map(([key, value]) => [key, value === null ? null : maskPiiInText(value)]));
+  if (result.extracted) result.extracted = maskPiiDeep(result.extracted);
+  if (result.jsonLd) result.jsonLd = maskPiiDeep(result.jsonLd);
+  if (result.events) result.events = maskPiiDeep(result.events);
+  if (result.breadcrumb) result.breadcrumb = maskPiiDeep(result.breadcrumb);
+  if (result.evidence) result.evidence = maskPiiDeep(result.evidence);
+  if (result.links) result.links = result.links.map((link) => (/^(?:mailto|tel):/i.test(link) ? maskPiiInText(link) : link));
+  if (result.images) {
+    result.images = result.images.map((image) => ({
+      ...image,
+      ...(image.alt && { alt: maskPiiInText(image.alt) }),
+      ...(image.title && { title: maskPiiInText(image.title) }),
+      ...(image.caption && { caption: maskPiiInText(image.caption) }),
+    }));
   }
 }
 
@@ -751,10 +774,8 @@ export async function scrapeUrl(options: {
     const isFastMode = options.mode === 'fast' || options.fastOnly === true;
     // TikTok の動画は、静的な取得では WAF の確認画面しか返らないので、最初からブラウザで開く（ページそのものを求められたときは除く）
     const tiktokVideo = !wantsPage && parseTikTokVideoUrl(url) !== undefined;
-    // formats に screenshot があれば、mode が auto でも最初からブラウザで開く（fast を明示したときは切り替えない。finalizeScrapeResult が警告を付ける）
     const wantsScreenshot = formats.includes('screenshot');
-    const isForcedBrowser =
-      options.mode === 'browser' || options.renderJs === true || ((tiktokVideo || wantsScreenshot) && !isFastMode && Boolean(resolveChromiumPath()));
+    const isForcedBrowser = options.mode === 'browser' || options.renderJs === true || (tiktokVideo && !isFastMode && Boolean(resolveChromiumPath()));
 
     if (!isForcedBrowser) {
       onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
@@ -825,6 +846,9 @@ export async function scrapeUrl(options: {
           headers: Object.fromEntries(response.headers.entries()),
         }) || (parsed.quality !== undefined && parsed.quality < 45));
       if (isSpaOrBlank) botUpgradeCount++;
+      // formats に screenshot があれば、auto でもブラウザに切り替える（静的に取れた本文は、ブラウザが失敗したときの代わりに残す。
+      // fast を明示したとき、Chromium がないとき、PDF・画像などのファイルは切り替えず、finalizeScrapeResult が警告を付ける）
+      const screenshotNeedsBrowser = wantsScreenshot && !isFastMode && Boolean(chromePath);
 
       // Late escalation (spec section 52): recall extraction on the static
       // body can demonstrate answers and skip the browser launch.
@@ -843,7 +867,7 @@ export async function scrapeUrl(options: {
         try { incrementSecurityCounter('sora_browser_recall_saved_total'); } catch {}
       }
 
-      if (!isSpaOrBlank || recallSaved) {
+      if ((!isSpaOrBlank || recallSaved) && !screenshotNeedsBrowser) {
         result = {
           url: finalUrl,
           title: parsed.title,

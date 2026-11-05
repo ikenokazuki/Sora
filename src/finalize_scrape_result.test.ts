@@ -83,6 +83,30 @@ describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに�
     expect(result.extracted).toEqual({ mail: '[EMAIL]', none: null });
   });
 
+  test('jsonLd・events・links・author・images の alt・evidence・breadcrumb にもかける（URL や日付は変えない）', async () => {
+    const result = await finalizeScrapeResult(base('本文です。', {
+      author: `担当 ${mail}`,
+      siteName: `${mail} の店`,
+      jsonLd: [{ '@type': 'Organization', url: 'https://example.com/', contactPoint: { email: mail, telephone: tel, nested: [{ note: `連絡は ${mail}` }] } }],
+      events: [{ name: '公演', startDate: '2026-04-19T06:20:00Z', url: 'https://example.com/e/1', location: `会場 ${tel}`, performer: mail, offers: { price: '5000', url: 'https://example.com/t' } }],
+      links: ['https://example.com/a', `mailto:${mail}`, `tel:${tel.replaceAll('-', '')}`, 'https://example.com/items/42'],
+      images: [{ url: 'https://example.com/a.png', alt: `連絡先 ${mail}`, title: tel, caption: `電話 ${tel}`, width: 10 }],
+      breadcrumb: ['トップ', `店 ${tel}`],
+      evidence: { title: { value: `${mail} の案内`, source: 'meta' } },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    const json = JSON.stringify(result);
+    expect(json).not.toContain(mail);
+    expect(json).not.toContain(tel);
+    expect(json).not.toContain('0312345678');
+    expect(result.author).toBe('担当 [EMAIL]');
+    expect(result.jsonLd).toEqual([{ '@type': 'Organization', url: 'https://example.com/', contactPoint: { email: '[EMAIL]', telephone: '[PHONE]', nested: [{ note: '連絡は [EMAIL]' }] } }]);
+    expect(result.events).toEqual([{ name: '公演', startDate: '2026-04-19T06:20:00Z', url: 'https://example.com/e/1', location: '会場 [PHONE]', performer: '[EMAIL]', offers: { price: '5000', url: 'https://example.com/t' } }]);
+    expect(result.links).toEqual(['https://example.com/a', 'mailto:[EMAIL]', 'tel:[PHONE]', 'https://example.com/items/42']);
+    expect(result.images).toEqual([{ url: 'https://example.com/a.png', alt: '連絡先 [EMAIL]', title: '[PHONE]', caption: '電話 [PHONE]', width: 10 }]);
+    expect(result.breadcrumb).toEqual(['トップ', '店 [PHONE]']);
+    expect(result.evidence).toEqual({ title: { value: '[EMAIL] の案内', source: 'meta' } });
+  });
+
   test('maskPii でなければ、そのまま返す', async () => {
     const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: false }));
     expect(result.html).toBe(`<p>${mail}</p>`);

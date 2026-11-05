@@ -305,16 +305,16 @@ export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.opt
 export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
 
 /** scrape・scrape_batch 共通の mode */
-export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。静的に取得し、JS が要るページ・確認画面・取得を拒まれたときだけブラウザに切り替える。formats に screenshot があれば最初からブラウザ。接続できないときは切り替えない), "fast" (静的取得のみ。screenshot は取れず warnings が付く), "browser" (常に Stealth Chromium で JS を実行)').meta({ default: 'auto' });
+export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ)').meta({ default: 'auto' });
 
 /** scrape・scrape_batch 共通の headers */
-export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。ブラウザで取得するときは、取得先と同じオリジンへの要求にだけ付く');
+export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})');
 
 /** scrape・scrape_batch 共通の maskPii */
-export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を [EMAIL] などに置き換えるか (デフォルト: false)。本文とハイライトのほか、title・description・html・rawHtml・tables・extracted にもかける').meta({ default: false });
+export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false });
 
 /** scrape・scrape_batch・crawl_site・search_deep 共通の annotateTemporal */
-export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対的な日付の表現（明日・昨日・N 日前/後・来週＋曜日・来月など）に絶対日付の注記 [YYYY-MM-DD] を付けるか (デフォルト: false)。「来週」だけには付けない。基準は記事の公開日時で、無ければ今日').meta({ default: false });
+export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false)').meta({ default: false });
 
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
@@ -322,7 +322,7 @@ export const ScrapeRequestSchema = z.object({
   mode: SCRAPE_MODE_FIELD,
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
-  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く').meta({ default: ['markdown'] }),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
   fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
@@ -348,7 +348,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
     maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
     mode: SCRAPE_MODE_FIELD,
-    formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く'),
+    formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
     headers: SCRAPE_HEADERS_FIELD,
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
     responseMode: SCRAPE_RESPONSE_MODE_FIELD,

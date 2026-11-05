@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import { resolveChromiumPath } from './browser_engine.js';
+import * as browserStealth from './browser_stealth.js';
 import { scrapeBatchUrls, scrapeUrl } from './scraper.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
@@ -7,6 +8,31 @@ import { formatCompactScrapeResult } from './response_cleaner.js';
 // 手元のサーバーで、scrape・scrape_batch の入力が取得の経路ごとにどう効くかを確かめる（外へは出ない）
 const filler = '静的に取れる、十分に長い本文の文です。'.repeat(20);
 const mail = 'contact@example.com';
+const phone = '03-1234-5678';
+const pdfText = 'Sora PDF body text for screenshot test';
+
+/** 1 ページに英字を 1 行書いただけの、最小の PDF */
+function minimalPdf(text: string): string {
+  const stream = `BT /F1 18 Tf 20 80 Td (${text}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets = objects.map((body, i) => {
+    const at = out.length;
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    return at;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((at) => `${String(at).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return out;
+}
+const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 describe('scrape・scrape_batch の入力の経路（手元のサーバー）', () => {
   let server: ReturnType<typeof Bun.serve>;
@@ -22,7 +48,9 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       port: 0,
       hostname: '127.0.0.1',
       fetch: (req) => {
-        otherSeen.push({ path: new URL(req.url).pathname, headers: req.headers });
+        const path = new URL(req.url).pathname;
+        otherSeen.push({ path, headers: req.headers });
+        if (path === '/landing') return html(`${filler} 転送先のページです。`);
         return new Response('window.__other = 1;', { headers: { 'content-type': 'text/javascript' } });
       },
     });
@@ -32,6 +60,19 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       fetch: (req) => {
         const path = new URL(req.url).pathname;
         seen.push({ path, headers: req.headers });
+        if (path === '/redirect') return new Response(null, { status: 302, headers: { location: `http://127.0.0.1:${other.port}/landing` } });
+        if (path === '/pii') {
+          return new Response(
+            `<!doctype html><html><head><title>店の案内</title><meta name="author" content="${mail}">
+<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: '店', url: 'https://example.com/', email: mail, telephone: phone })}</script></head>
+<body><main><h1>案内</h1><p>${filler}</p>
+<p><a href="mailto:${mail}">メールで問い合わせ</a> <a href="tel:${phone}">電話で問い合わせ</a> <a href="https://example.com/items/42">商品</a></p>
+<p><img src="https://example.com/map.png" alt="連絡先 ${mail} ${phone}"></p></main></body></html>`,
+            { headers: { 'content-type': 'text/html; charset=utf-8' } },
+          );
+        }
+        if (path.endsWith('.pdf')) return new Response(minimalPdf(pdfText), { headers: { 'content-type': 'application/pdf' } });
+        if (path.endsWith('.png')) return new Response(PNG_1X1, { headers: { 'content-type': 'image/png' } });
         if (path === '/clip') {
           return new Response(`<!doctype html><html><body><p>${filler}</p><div id="box" style="width:200px;height:100px;background:#c00"></div></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
@@ -61,6 +102,29 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       expect(JSON.stringify(formatCompactScrapeResult(result))).not.toContain(mail);
     });
 
+    test('jsonLd・images の alt・author・evidence・mailto:/tel: のリンクにもかかる', async () => {
+      const options = { url: `${base()}/pii`, mode: 'fast' as const, formats: ['markdown', 'html', 'rawHtml', 'jsonLd', 'links', 'images'] as Array<'markdown' | 'html' | 'rawHtml' | 'jsonLd' | 'links' | 'images'>, verbose: true, noCache: true };
+      const plain = await scrapeUrl(options);
+      // 元のページには、どの項目にもメールと電話番号がある（マスクで消えたと言えるように）
+      expect(JSON.stringify(plain.jsonLd)).toContain(mail);
+      expect(plain.rawHtml).toContain(`mailto:${mail}`);
+      expect(plain.rawHtml).toContain(`tel:${phone}`);
+      expect(plain.images?.[0]?.alt).toContain(mail);
+      expect(plain.author).toContain(mail);
+
+      const masked = await scrapeUrl({ ...options, maskPii: true });
+      const json = JSON.stringify(masked);
+      expect(json).not.toContain(mail);
+      expect(json).not.toContain(phone);
+      expect(json).not.toContain('0312345678');
+      expect(JSON.stringify(masked.jsonLd)).toContain('[EMAIL]');
+      expect(JSON.stringify(masked.jsonLd)).toContain('[PHONE]');
+      expect(masked.rawHtml).toContain('mailto:[EMAIL]');
+      expect(masked.links).toContain('https://example.com/items/42');
+      expect(masked.images?.[0]?.alt).toBe('連絡先 [EMAIL] [PHONE]');
+      expect(masked.images?.[0]?.url).toBe('https://example.com/map.png');
+    });
+
     test('maskPii を付けなければ、そのまま返す', async () => {
       const result = await scrapeUrl({ url: `${base()}/mask`, mode: 'fast', formats: ['rawHtml'], noCache: true });
       expect(result.rawHtml).toContain(mail);
@@ -88,6 +152,39 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       const result = await scrapeUrl({ url: `${base()}/clip`, formats: ['screenshot'], clipSelector: '#box', noCache: true });
       const png = Buffer.from(result.screenshot ?? '', 'base64');
       expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([200, 100]);
+    }, 60_000);
+
+    test('PDF は、screenshot を求めても本文のまま（画像は付けず、警告を付ける）', async () => {
+      const plain = await scrapeUrl({ url: `${base()}/doc.pdf`, formats: ['markdown'], noCache: true });
+      expect(plain.content).toContain(pdfText);
+      const result = await scrapeUrl({ url: `${base()}/doc.pdf`, formats: ['markdown', 'screenshot'], noCache: true });
+      expect(result.content).toBe(plain.content);
+      expect(result.contentType).toBe('application/pdf');
+      expect(result.screenshot).toBeUndefined();
+      expect(result.warnings?.join('\n')).toContain('screenshot');
+    }, 60_000);
+
+    test('画像のファイルも、種類と大きさの本文のまま（画像は付けず、警告を付ける）', async () => {
+      const result = await scrapeUrl({ url: `${base()}/pic.png`, formats: ['markdown', 'screenshot'], noCache: true });
+      expect(result.contentType).toBe('image/png');
+      expect(result.content).toContain('種類: image/png');
+      expect(result.content).toContain('大きさ: 70 バイト');
+      expect(result.screenshot).toBeUndefined();
+      expect(result.warnings?.join('\n')).toContain('screenshot');
+    }, 60_000);
+
+    browserTest('ブラウザが失敗したときは、静的に取れた本文を警告つきで返す', async () => {
+      const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+      try {
+        const result = await scrapeUrl({ url: `${base()}/shot-fallback`, formats: ['markdown', 'screenshot'], noCache: true });
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(result.renderedWithBrowser).toBe(false);
+        expect(result.content).toContain('静的に取れる、十分に長い本文の文です。');
+        expect(result.screenshot).toBeUndefined();
+        expect(result.warnings?.join('\n')).toContain('screenshot');
+      } finally {
+        spy.mockRestore();
+      }
     }, 60_000);
 
     test('mode に fast を明示したときはブラウザに切り替えず、画像を取れない旨の警告を付ける', async () => {
@@ -134,6 +231,23 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
         expect(script?.headers.get('authorization')).toBeNull();
       }, 60_000);
     }
+
+    browserTest('別のオリジンへの転送には、資格情報でないヘッダーだけが付いてくる（Authorization は付かない）', async () => {
+      seen.length = 0;
+      otherSeen.length = 0;
+      const result = await scrapeUrl({ url: `${base()}/redirect`, mode: 'browser', headers: { ...headers, Authorization: 'Bearer secret-token', 'X-API-Key': 'k-1' }, noCache: true });
+      expect(result.content).toContain('転送先のページです。');
+      const landing = otherSeen.find((entry) => entry.path === '/landing');
+      expect(landing).toBeDefined();
+      expect(landing?.headers.get('accept-language')).toBe('fr');
+      expect(landing?.headers.get('x-test-header')).toBe('sora-1');
+      expect(landing?.headers.get('authorization')).toBeNull();
+      expect(landing?.headers.get('x-api-key')).toBeNull();
+      // 転送の前のオリジンには、全部付く
+      const first = seen.find((entry) => entry.path === '/redirect');
+      expect(first?.headers.get('authorization')).toBe('Bearer secret-token');
+      expect(first?.headers.get('x-api-key')).toBe('k-1');
+    }, 60_000);
 
     browserTest('headers を渡さない取得は、今までどおり（Accept-Language は日本語）', async () => {
       seen.length = 0;

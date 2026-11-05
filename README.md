@@ -786,7 +786,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 }
 ```
 - **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（`formats` に `screenshot` があるとき、ページ全体の代わりに要素だけの画像を返す。`mode: "fast"`・`fastOnly` では撮れない）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape` と `scrape_batch` には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
-- **`formats` の `screenshot`**: `mode` が `auto` でも、最初からブラウザで開いて撮ります。`mode: "fast"`（`fastOnly`）を明示したときは切り替えず、`warnings` に画像を取れなかった旨を付けます。
+- **`formats` の `screenshot`**: `mode` が `auto` でも、静的に取ったあとでブラウザに切り替えて撮ります（ブラウザが失敗したときは、静的に取れた本文を返します）。`mode: "fast"`（`fastOnly`）を明示したとき、Chromium がないとき、PDF・画像などのファイルのときは切り替えず、本文はそのままで、`warnings` に画像を取れなかった旨を付けます。
 - **入力の誤り**: `renderJs` と `fastOnly` の同時指定や、CSS セレクタとして読めない `removeSelectors` は、取得の前に 400（`INVALID_INPUT`、`retryable: false`）で断ります（`/scrape/batch` の `removeSelectors` も同じ）。
 - **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`・`scrape_batch`・`crawl_site` も同じ）。
 - **レスポンス例 (デフォルト: Compact Mode - LLMトークンを50%以上削減)**:
@@ -861,7 +861,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`）やサイト巡回（`/crawl`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。
 > 
-> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`html`・`rawHtml`・`tables`・`extracted` にもかけます。
+> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence` にもかけます。URL（`links`・`images` の `url` など）は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません。
 > 
 > **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。
 > 
@@ -887,7 +887,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **📸 要素指定スクリーンショット (`clipSelector`。REST のみ)**: 特定の要素（例: `clipSelector: "#stock-chart"`）を指定し、`formats` に `screenshot` を含めると、その要素のみを切り抜いた Base64 PNG を取得できます（ブラウザで撮るので、`mode: "fast"` では撮れません）。
 > 
-> **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。静的取得でもブラウザ描画でも届きます（ブラウザ描画では、`headers` は取得先と同じオリジンへの要求にだけ付き、広告・計測などほかのオリジンへの要求には付きません）。
+> **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。静的取得でもブラウザ描画でも届きます。ブラウザ描画では、取得先と同じオリジンへの要求には全部付き、別のオリジンへの転送（本体のページの移動）には資格情報でないもの（`Accept-Language` など）だけが付きます。`Authorization`・`Cookie`・`X-API-Key` などの資格情報と、広告・計測などの副要求には付きません。
 > 
 > **🎛️ MMR 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を排除し、多角的な重要パッセージを採択します（多様性の重みは 0.7 固定）。
 > 
@@ -2277,7 +2277,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）、CGNAT（`100.64.0.0/10`）、IPv6 特殊アドレス、クラウドメタデータ IP（`169.254.169.254`）への内部アクセスを遮断。
   - `dns.promises.lookup` による事前名前解決を行い、ドメイン偽装による **DNS Rebinding 攻撃** も接続前に即時ブロック。
 - **📸 フルページスクリーンショット & Lazy-load 自動スクロール (`fullPage: true`)**:
-  - `formats: ['screenshot']` 時（`mode: "auto"` でもブラウザで開く。`mode: "fast"` では撮れず `warnings` が付く）にページ最下部まで 1 枚の縦長画像として丸ごと撮影。自動スクロールにより遅延読み込み画像や動的要素を確実に描画させてから撮影（最大高さ 15,000px 安全ガード付き）。
+  - `formats: ['screenshot']` 時（`mode: "auto"` でもブラウザに切り替える。`mode: "fast"` では撮れず `warnings` が付く）にページ最下部まで 1 枚の縦長画像として丸ごと撮影。自動スクロールにより遅延読み込み画像や動的要素を確実に描画させてから撮影（最大高さ 15,000px 安全ガード付き）。
 - **🛍️ EC/Shopify DOM 剪定 & JSON-LD 在庫・価格メタデータ抽出**:
   - Shopify 等の EC サイトで隠し「売り切れ」バッジやカートモーダルを誤認して抽出するのを防止し、JSON-LD の `InStock` / `OutOfStock`、価格、ブランド、SKU を正確に抽出。
 - **⚡ Single-Flight Cache (In-flight Deduplication)**:
