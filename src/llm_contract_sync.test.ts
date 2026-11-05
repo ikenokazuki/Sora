@@ -102,8 +102,6 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'extractHighlights',
         'onlyMainContent',
         'formats',
-        'dedup',
-        'enablePrf',
         'annotateTemporal',
         'highlightMaxCount',
         'verbose',
@@ -117,7 +115,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Forbidden stale fields
       expect((shape as any).fetchContent).toBeUndefined();
       expect((shape as any).maxCharsPerResult).toBeUndefined();
-      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables']) {
+      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables', 'dedup', 'enablePrf']) {
         expect((shape as any)[field]).toBeUndefined();
       }
     });
@@ -261,6 +259,45 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       for (const field of removedResultFields) {
         expect((ScrapeResponseSchema.shape as any)[field], field).toBeUndefined();
       }
+    });
+  });
+
+  describe('C4. dedup・enablePrf・webhookUrl・retries・retryDelayMs が無い', () => {
+    it('search_deep の REST の形と MCP の入力に、dedup・enablePrf が無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['search_deep'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['dedup', 'enablePrf']) {
+        expect((IntegratedSearchRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect((INTEGRATED_SEARCH_INPUT_SHAPE as any)[field], `shape.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+    });
+
+    it('scrape の REST の形と MCP の入力に、webhookUrl・retries・retryDelayMs が無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['scrape'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['webhookUrl', 'retries', 'retryDelayMs']) {
+        expect((ScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+    });
+
+    it('scrape_batch は retries・retryDelayMs が無く、完了の通知先 webhookUrl は残る', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['scrape_batch'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['retries', 'retryDelayMs']) {
+        expect((BatchScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+      expect((BatchScrapeRequestSchema.shape as any).webhookUrl).toBeDefined();
+      expect(mcpShape.webhookUrl).toBeDefined();
+    });
+
+    it('crawl の webhookUrl は残る', () => {
+      expect((CrawlRequestSchema.shape as any).webhookUrl).toBeDefined();
     });
   });
 

@@ -19,10 +19,7 @@ import {
   computeEvidenceDiagnostics,
   type ProvenanceBlock,
 } from './extractor/accessibility_compiler.js';
-import {
-  selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
-} from './extractor/information_retrieval.js';
+import { selectMaximalMarginalRelevance } from './extractor/information_retrieval.js';
 import {
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
@@ -33,7 +30,6 @@ export {
   formatBlockAnchor,
   computeEvidenceDiagnostics,
   selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
 };
@@ -138,57 +134,6 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
 /** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
 export function replaceMarkdownImages(markdown: string): string {
   return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
-}
-
-/** N-gram Jaccard 類似度による検索結果の重複排除 */
-export function dedupSearchResults<T>(
-  items: T[],
-  getText: (item: T) => string,
-  threshold = 0.65,
-): T[] {
-  if (!items || items.length <= 1) return items;
-
-  const getBigrams = (str: string): Set<string> => {
-    const s = str.toLowerCase().replace(/\s+/g, '');
-    const grams = new Set<string>();
-    for (let i = 0; i < s.length - 1; i++) {
-      grams.add(s.slice(i, i + 2));
-    }
-    return grams;
-  };
-
-  const jaccard = (a: Set<string>, b: Set<string>): number => {
-    if (a.size === 0 || b.size === 0) return 0;
-    let intersection = 0;
-    for (const g of a) {
-      if (b.has(g)) intersection++;
-    }
-    const union = a.size + b.size - intersection;
-    return union > 0 ? intersection / union : 0;
-  };
-
-  const result: T[] = [];
-  const gramList: Array<Set<string>> = [];
-
-  for (const item of items) {
-    const text = getText(item);
-    const itemGrams = getBigrams(text);
-    let isDuplicate = false;
-
-    for (const existingGrams of gramList) {
-      if (jaccard(itemGrams, existingGrams) >= threshold) {
-        isDuplicate = true;
-        break;
-      }
-    }
-
-    if (!isDuplicate) {
-      result.push(item);
-      gramList.push(itemGrams);
-    }
-  }
-
-  return result;
 }
 
 /** Luhn アルゴリズムによるクレジットカード番号チェック */

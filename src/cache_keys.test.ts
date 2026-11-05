@@ -93,10 +93,7 @@ describe('buildScrapeCacheKey', () => {
     const same: Array<[string, Partial<ScrapeOptions>]> = [
       ['noCache', { noCache: true }],
       ['timeoutMs', { timeoutMs: 1000 }],
-      ['retries', { retries: 2 }],
-      ['retryDelayMs', { retryDelayMs: 10 }],
       ['tenantId', { tenantId: 'key:abc' }],
-      ['webhookUrl', { webhookUrl: 'https://hooks.example.com/x' }],
       ['onProgress', { onProgress: () => {} }],
       ['fullPage の既定値', { fullPage: true }],
       ['mode の既定値', { mode: 'auto' }],

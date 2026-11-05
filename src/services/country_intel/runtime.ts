@@ -66,7 +66,7 @@ export function createScrapeArticleAdapter(): (url: string, signal: AbortSignal)
     if (signal.aborted) throw signal.reason;
     const { scrapeUrl } = await import('../../scraper.js');
     const result = await scrapeUrl({
-      url, mode: 'fast', maxChars: 12000, timeoutMs: 4000, retries: 0,
+      url, mode: 'fast', maxChars: 12000, timeoutMs: 4000,
       onlyMainContent: true, extractHighlights: false, noCache: true,
     });
     if (signal.aborted) throw signal.reason;

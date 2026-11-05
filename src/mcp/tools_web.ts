@@ -66,10 +66,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
-      webhookUrl: z
-        .string()
-        .optional()
-        .describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
       query: z
         .string()
         .optional()
@@ -94,13 +90,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .array(z.string())
         .optional()
         .describe('Markdown 変換前に除去したいノイズ要素の CSS セレクタ配列 (例: [".ad-banner", ".comments", "#related"])'),
-      retries: z
-        .number()
-        .int()
-        .min(0)
-        .max(3)
-        .optional()
-        .describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
       verbose: z
         .boolean()
         .optional()
@@ -129,9 +118,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
-    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
+    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, retries, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -160,9 +149,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
     SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, retries, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, retries, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [
@@ -191,7 +180,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（既定 evidence / full）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
     INTEGRATED_SEARCH_INPUT_SHAPE,
-    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, dedup, onlyMainContent, verbose, enablePrf, annotateTemporal, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
+    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
       try {
         const result = await integratedSearch({
           query,
@@ -215,10 +204,8 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           updated,
           formats,
           extractHighlights,
-          dedup,
           onlyMainContent,
           verbose,
-          enablePrf,
           annotateTemporal,
           highlightMaxCount,
           includeMedia,

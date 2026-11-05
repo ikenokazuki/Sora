@@ -313,9 +313,6 @@ export const ScrapeRequestSchema = z.object({
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
-  webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-  retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
-  retryDelayMs: z.number().int().min(1).max(30_000).optional().describe('リトライ待機ディレイ (ミリ秒, 上限: 30000)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか').meta({ default: false }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
@@ -339,7 +336,6 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
     maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
     webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-    retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
     evidenceMode: z
       .enum(['full', 'highlights', 'contextual_highlights'])
       .optional()
@@ -566,8 +562,6 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
-  dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)').meta({ default: false }),
-  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)').meta({ default: false }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
@@ -1392,7 +1386,6 @@ export const IntegratedSearchResponseSchema = z.object({
     omittedCount: z.number().int().optional().describe(REALTIME_OMITTED_DESCRIPTION),
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
-  prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
   responseMode: z.literal('evidence').optional().describe('evidence（既定）のとき返す。full および verbose 時は省略'),
   contextSufficiency: z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),

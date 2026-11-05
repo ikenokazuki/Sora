@@ -68,7 +68,6 @@ import {
   cleanMarkdownTokens,
   normalizeRealtimeItem,
   extractTablesFromHtml,
-  dedupSearchResults,
   maskPiiInText,
   calculateContentStats,
   calculateContentQuality,
@@ -2483,17 +2482,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.tables?.[0].headers).toEqual(['モデル', 'メモリ', '価格']);
     expect(res.tables?.[0].rows[0]['モデル']).toBe('Sora Pro');
     expect(res.tables?.[0].rows[1]['価格']).toBe('¥128,000');
-  });
-
-  it('dedupSearchResults should filter out duplicate and highly similar items', () => {
-    const rawItems = [
-      { id: 1, title: '【速報】東京で大雨警報が発令されました', snippet: '気象庁発表' },
-      { id: 2, title: '【速報】東京で大雨警報が発令されました！', snippet: '気象庁発表' },
-      { id: 3, title: '明日の全国の天気予報と気温の推移', snippet: '全国的に晴れ' },
-    ];
-    const deduped = dedupSearchResults(rawItems, (item) => `${item.title} ${item.snippet}`);
-    expect(deduped.length).toBe(2);
-    expect(deduped.map((i) => i.id)).toEqual([1, 3]);
   });
 
   it('maskPiiInText should automatically mask emails, phone numbers, and credit cards', () => {

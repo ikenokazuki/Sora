@@ -265,8 +265,6 @@ const handleIntegratedSearch = async (c: Context) => {
       extractHighlights,
       onlyMainContent,
       formats,
-      dedup: body?.dedup,
-      enablePrf: body?.enablePrf,
       annotateTemporal: body?.annotateTemporal,
       highlightMaxCount: body?.highlightMaxCount,
       includeMedia: includeMediaParsed.data,
