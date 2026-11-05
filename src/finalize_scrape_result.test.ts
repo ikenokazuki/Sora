@@ -58,6 +58,47 @@ describe('finalizeScrapeResult のハイライト', () => {
   });
 });
 
+describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに当てる', () => {
+  const mail = 'info@example.com';
+  const tel = '03-1234-5678';
+  const page = () => base(`連絡先は ${mail} です。`, {
+    title: `問い合わせ ${mail}`,
+    description: `電話 ${tel}`,
+    html: `<p>${mail}</p>`,
+    rawHtml: `<a href="mailto:${mail}">${tel}</a>`,
+    tables: [{ caption: `担当 ${mail}`, headers: ['名前', `連絡先 ${tel}`], rows: [{ 名前: '田中', [`連絡先 ${tel}`]: tel }] }],
+    extracted: { mail, none: null },
+  });
+
+  test('html・rawHtml・title・description・tables・extracted もマスクする', async () => {
+    const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    const json = JSON.stringify(result);
+    expect(json).not.toContain(mail);
+    expect(json).not.toContain(tel);
+    expect(result.title).toBe('問い合わせ [EMAIL]');
+    expect(result.description).toBe('電話 [PHONE]');
+    expect(result.html).toBe('<p>[EMAIL]</p>');
+    expect(result.rawHtml).toBe('<a href="mailto:[EMAIL]">[PHONE]</a>');
+    expect(result.tables).toEqual([{ caption: '担当 [EMAIL]', headers: ['名前', '連絡先 [PHONE]'], rows: [{ 名前: '田中', '連絡先 [PHONE]': '[PHONE]' }] }]);
+    expect(result.extracted).toEqual({ mail: '[EMAIL]', none: null });
+  });
+
+  test('maskPii でなければ、そのまま返す', async () => {
+    const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: false }));
+    expect(result.html).toBe(`<p>${mail}</p>`);
+    expect(result.rawHtml).toContain(mail);
+    expect(result.extracted?.mail).toBe(mail);
+  });
+
+  test('description を補完証拠のハイライトにする場合も、マスクのあとの値を使う', async () => {
+    const result = await finalizeScrapeResult(
+      base('関係のない本文です。', { description: `開場時間の問い合わせは ${mail}` }),
+      opts({ shouldMaskPii: true, query: '開場時間 問い合わせ' }),
+    );
+    expect(JSON.stringify(result.highlights)).not.toContain(mail);
+  });
+});
+
 describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字まで）止まらない', () => {
   // 値の種類・N 日前（annotateTemporal）・メール（maskPii）の正規表現が、数字・英字が長く続くと、並びの途中のすべての位置から並びの最後まで読んで、
   // 長さの二乗の時間になっていた（20 万桁の数字で数分、20 万字の英字で十数秒）。作った入力で、抽出全体が数秒で終わることを確かめる。

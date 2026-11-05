@@ -71,6 +71,7 @@ export function formatCompactScrapeResult(
   if (result.html) clean.html = result.html;
   if (result.rawHtml) clean.rawHtml = result.rawHtml;
   if (result.screenshot) clean.screenshot = result.screenshot;
+  if (result.warnings && result.warnings.length > 0) clean.warnings = result.warnings;
   if (result.cached !== undefined) clean.cached = result.cached;
 
   return clean;

@@ -376,7 +376,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。アイテム間動的コーパスIDF付きBM25+リランキングにより適合度の高い情報を上位表示。ドメイン絞り込み・除外・期間指定に対応。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/web`）は `data` で包みます。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
 | `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。MMR 多様性選択、Temporal Context Anchor、Smart Table Minimizer、深層エビデンス駆動リランキング（`rerankByDeepEvidence`）対応。返却量は `responseMode` で選択可能。既定は `evidence`（ハイライト中心。局所的事実の確認はこれで足りる）。全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は `full` を指定（MCP・REST 共通）。`evidence` で根拠が不足・曖昧な場合は `full` または `formats: ["markdown"]` で再取得できます。根拠が足りているかは、応答の `contextSufficiency` で確認できます。 | Web: `source: "web"`<br>X: `source: "x"`<br>YouTube: `source: "youtube"` | - `query` (string, 必須): 検索キーワード。http(s) の URL を入れると、検索せずにその URL（最大 `limit` 件）を `scrape` と同じ方法で読んで返す（Web・X・動画の検索はしない。URL 以外の語はハイライトの選択に使う。v2.48.0）<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `responseMode` (string, 任意): `"evidence"` (デフォルト: 局所事実・ハイライト優先) または `"full"` (全文・網羅調査重視)<br>- `formats` (string[], 任意): 出力フォーマット（responseMode と直交して指定可能）<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `realtimeFocus` (string, 任意): X 投稿で優先する発信者。`"official"`=本人・公式（予定・告知・事実確認）、`"public"`=本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミなどがあれば public）<br>- `realtimeAnchor` (string, 任意, 100字まで): X 検索で守る固有名詞（クエリ中の人名・グループ名・作品名・会場名など）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない。対応する語が無ければ無視して推定する<br>- `realtimeLimit` (number, 任意, 1〜100, デフォルト: 20): 返す X 投稿の上限（公式の投稿は別枠）。省いた件数は `realtime.omittedCount`。20 より大きくすると取得も増やす（Yahoo の1回の取得は最大40件）<br>- `officialAccountId` (string, 任意): 公式XアカウントID<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`。`videos` の動画検索にも使う)<br>- `noCache` (boolean, 任意): キャッシュ迂回・強制最新取得<br>- `maxChars` (number, 任意): 各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。`html` には効かない)<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で画像・動画の URL（X 投稿の `media`、各ページの `ogImage` と `media`、本文（Markdown）中の画像）を省く（`formats` の `rawHtml` の `<img>` は消さない。`html` は、記事以外のページでは画像が入らない）。ページを取るときにも false を渡すので、rs-trafilatura が画像を戻す 2 回目の取り出しは走らせない。画像の内容が必要な質問では省かない<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `adaptiveScrape` (boolean, 任意, デフォルト: false): 証拠不足時の追加取得を許可<br>- `scrapeBudget` (number, 任意, デフォルト: 8, 最大: 20): adaptive時の取得上限<br>- `scrapeDeadlineMs` (number, 任意, 0〜120,000, デフォルト: 0=無効): 本文取得の打ち切り上限（opt-in。遅いが本文のあるページも落ちるため、待ち時間を優先する場合のみ指定）。半数のページが揃ってから5秒待っても終わらないページ、または上限に達したページは打ち切り、`deadlineExceeded: true` とスニペット代替で返す（打ち切りを発動した応答はキャッシュせず、補充取得も `adaptiveScrape` の追加取得も行わない。打ち切った取得自体は継続しキャッシュに残る）<br>- `videos` (number, 任意, 0〜5, デフォルト: 0): 動画の中身が要るとき、Yahoo! 動画検索の上位の YouTube 動画の字幕を何本読んで `results` に足すか（`source: "youtube"`。動画検索は YouTube に絞る。Web 検索と並行して取得し、検索語に関係する部分が選ばれる。0 なら動画は検索しない。検索語に URL があるときは使わない）<br>- `maxTotalChars` (number, 任意, 1,000〜500,000): 全結果の本文 Markdown 合計の上限。上位ほど多く配分し、超過分は段落境界で切り詰めて `markdownTruncated: {totalChars, keptChars}` を付与（`highlights` は削らない。切り詰めのとき本文の塊を先に残し、ナビの塊（短いラベルのリンクだけの塊）を先に落とす。未指定なら制限なし） |
 | `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) 任意引数 `detail`（`names` / `summary` / `schema`）で返す詳しさを、`activate:false` で有効化せずに調べるだけにできます。 |
-| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
+| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します（`results` は入力の順ではなく、取得が終わった順）。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000) |
 | `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 ---
@@ -785,7 +785,9 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "query": "新機能 リリース"
 }
 ```
-- **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（要素指定のスクリーンショット）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape` と `scrape_batch` には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
+- **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（`formats` に `screenshot` があるとき、ページ全体の代わりに要素だけの画像を返す。`mode: "fast"`・`fastOnly` では撮れない）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape` と `scrape_batch` には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
+- **`formats` の `screenshot`**: `mode` が `auto` でも、最初からブラウザで開いて撮ります。`mode: "fast"`（`fastOnly`）を明示したときは切り替えず、`warnings` に画像を取れなかった旨を付けます。
+- **入力の誤り**: `renderJs` と `fastOnly` の同時指定や、CSS セレクタとして読めない `removeSelectors` は、取得の前に 400（`INVALID_INPUT`、`retryable: false`）で断ります（`/scrape/batch` の `removeSelectors` も同じ）。
 - **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`・`scrape_batch`・`crawl_site` も同じ）。
 - **レスポンス例 (デフォルト: Compact Mode - LLMトークンを50%以上削減)**:
 ```json
@@ -859,7 +861,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`）やサイト巡回（`/crawl`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。
 > 
-> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。
+> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`html`・`rawHtml`・`tables`・`extracted` にもかけます。
 > 
 > **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。
 > 
@@ -883,13 +885,13 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🔍 出処根拠追跡 & クロスバリデーション (`evidence` / ※ `verbose: true` 指定時)**: 抽出された価格・在庫・著者・公開日時などの各フィールドがどこから抽出されたか（`jsonld`, `meta`, `dom`）の出処根拠（Provenance）を `evidence` マップとして返却し、ハルシネーション検出や検証を容易にします。
 > 
-> **📸 要素指定スクリーンショット (`clipSelector`。REST のみ)**: 特定の要素（例: `clipSelector: "#stock-chart"`）を指定することで、その要素のみを切り抜いた Base64 PNG を取得できます。
+> **📸 要素指定スクリーンショット (`clipSelector`。REST のみ)**: 特定の要素（例: `clipSelector: "#stock-chart"`）を指定し、`formats` に `screenshot` を含めると、その要素のみを切り抜いた Base64 PNG を取得できます（ブラウザで撮るので、`mode: "fast"` では撮れません）。
 > 
-> **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。
+> **🍪 カスタムヘッダー & Cookie 注入 (`headers` / `cookies`)**: 会員サイトや言語指定（`Accept-Language`）、年齢認証 Cookie などを透過的に送信可能です。静的取得でもブラウザ描画でも届きます（ブラウザ描画では、`headers` は取得先と同じオリジンへの要求にだけ付き、広告・計測などほかのオリジンへの要求には付きません）。
 > 
 > **🎛️ MMR 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を排除し、多角的な重要パッセージを採択します（多様性の重みは 0.7 固定）。
 > 
-> **⏳ 時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 配列を返却します。
+> **⏳ 時間的文脈アンカー (`annotateTemporal: true`)**: 記事の公開日時（`publishedTime`）を基準日とし、「明日」「来週金曜」「3日前」「来月」などの相対日時表現を決定論的にパースして `[YYYY-MM-DD]` 注記を自動埋め込み＆`temporalAnchors` 配列を返却します（「来週」だけの表現には付けません。公開日時が無い記事は、今日が基準です）。
 > 
 > **🗜️ スマート表トークン圧縮 (常に有効)**: Web 上の表から全行空欄列、同一プレースホルダー列（`-`, `—`, `N/A`, `なし` 等）、および空行を $O(R \times C)$ で自動パージし、表のトークン消費を 30〜70% 削減します。
 > 
@@ -940,6 +942,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "errors": []
 }
 ```
+`results` は入力の順ではなく、取得が終わった順に並びます（どの URL の結果かは各項目の `url` で見分けます）。
 
 ---
 
@@ -2113,7 +2116,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 - `adaptiveScrape`: 根拠不足時の追加取得を許可します。既定は `false`、`scrapeContent: true` の場合に有効です。
 - `scrapeBudget`: 適応取得の上限。1〜20の整数、既定8、`limit` 未満の指定は `limit` まで引き上げます。
 - 日付: 年付きの日付は指定年と照合します。年なしの月日はサーバー日時から次に到来する年を仮定します。過去の出来事は年を明示してください。`updated` はページの更新期間指定で、イベント開催日の指定ではありません。
-- 時間表現: クエリの「明日」などはサーバー日時、本文への `annotateTemporal` 注記は記事の公開日時が基準です。すべての検索を新着順にはしません。
+- 時間表現: クエリの「明日」などはサーバー日時、本文への `annotateTemporal` 注記は記事の公開日時（無ければ今日）が基準です。すべての検索を新着順にはしません。
 - 根拠の充足信号: `scrapeContent: true` の応答に `contextSufficiency: { level, reasons }` を付けます（応答内容は変えません。本文もハイライトも取得しない指定では付けません）。`level` は `no_gap_detected`（欠落を検出しなかった）/ `partial`（不足の根拠あり）/ `insufficient`（本文を取得できたページも投稿も無い）。`reasons` は `few-success`（取得成功が3件未満）、`unmentioned:語`（クエリの entity・intent 語がどの証拠にも出てこない）、`unanswered:語`（時刻・金額・日付など回答値を求める語に対して値が見つからない。「■料金」の次の行に金額が来る形は2文先まで探します）。要件語は verbose 診断の `webRequirements` と同じ `extractQueryRequirements`、証拠は各ページのハイライト（`highlights`。無ければ本文）とXの投稿本文、判定は `computeEvidenceCoverage` です。スニペット代替・取得失敗・締切超過は証拠に数えません。語彙ベースの検出なので、`partial` / `insufficient` は不足の根拠になりますが、`no_gap_detected` は十分の保証ではありません（実測: 18クエリで誤検出0件、存在しない語・年の欠落など対照5件中3件を検出）。不足が示された場合は、`responseMode: "full"` での再取得や追加調査を検討してください。
 - 診断: `verbose: true` で取得・証拠評価の診断を表示します。`verbose` は `responseMode: "evidence"` より優先し、全文も返します。
 
@@ -2274,7 +2277,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - プライベート IP（`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8` 等）、CGNAT（`100.64.0.0/10`）、IPv6 特殊アドレス、クラウドメタデータ IP（`169.254.169.254`）への内部アクセスを遮断。
   - `dns.promises.lookup` による事前名前解決を行い、ドメイン偽装による **DNS Rebinding 攻撃** も接続前に即時ブロック。
 - **📸 フルページスクリーンショット & Lazy-load 自動スクロール (`fullPage: true`)**:
-  - `formats: ['screenshot']` 時にページ最下部まで 1 枚の縦長画像として丸ごと撮影。自動スクロールにより遅延読み込み画像や動的要素を確実に描画させてから撮影（最大高さ 15,000px 安全ガード付き）。
+  - `formats: ['screenshot']` 時（`mode: "auto"` でもブラウザで開く。`mode: "fast"` では撮れず `warnings` が付く）にページ最下部まで 1 枚の縦長画像として丸ごと撮影。自動スクロールにより遅延読み込み画像や動的要素を確実に描画させてから撮影（最大高さ 15,000px 安全ガード付き）。
 - **🛍️ EC/Shopify DOM 剪定 & JSON-LD 在庫・価格メタデータ抽出**:
   - Shopify 等の EC サイトで隠し「売り切れ」バッジやカートモーダルを誤認して抽出するのを防止し、JSON-LD の `InStock` / `OutOfStock`、価格、ブランド、SKU を正確に抽出。
 - **⚡ Single-Flight Cache (In-flight Deduplication)**:

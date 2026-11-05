@@ -12,7 +12,7 @@ import {
   BatchScrapeRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
-import { errorMessage } from '../errors.js';
+import { errorMessage, ScrapeInputError } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
 
@@ -73,6 +73,7 @@ scrapeRoutes.post('/scrape', async (c) => {
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
     const msg = errorMessage(err) || 'Scrape failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'SCRAPE_ERROR');
     return formatError(c, msg, code, status, retryable);
   }
@@ -140,6 +141,7 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
     return c.json({ ...result, results: formattedResults });
   } catch (err) {
     const msg = errorMessage(err) || 'Batch scrape failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const code = isSecurity ? 'SSRF_BLOCKED' : 'BATCH_SCRAPE_ERROR';
     return formatError(c, msg, code, isSecurity ? 403 : 500, !isSecurity);

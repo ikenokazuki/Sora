@@ -119,6 +119,7 @@ import { isUnusableIntegratedSearch, summarizeContextSufficiency } from './conte
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
   convertHtmlToMarkdown,
+  findInvalidCssSelector,
   matchUrlPattern,
   parseYouTubeUrl,
   splitQueryUrls,
@@ -129,7 +130,7 @@ import { getYoutubePage } from './services/youtube.js';
 import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ScrapeInputError } from './errors.js';
 
 // ==========================================
 // 2. ブラウザ自動操作 (browser_action)
@@ -298,6 +299,31 @@ export function capHighlightItems<T extends { text: string }>(items: T[], maxCha
   return kept.filter((item): item is T => item !== undefined);
 }
 
+const SCREENSHOT_UNAVAILABLE_WARNING =
+  'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
+
+/** maskPii: 本文だけでなく、応答に出る title・description・html・rawHtml・tables・extracted の文字列にも同じマスクをかける */
+function maskPiiInResult(result: ScrapeResult): void {
+  result.content = maskPiiInText(result.content);
+  result.title = maskPiiInText(result.title);
+  for (const key of ['description', 'html', 'rawHtml'] as const) {
+    const value = result[key];
+    if (value) result[key] = maskPiiInText(value);
+  }
+  if (result.tables) {
+    result.tables = result.tables.map((table) => ({
+      ...table,
+      caption: table.caption && maskPiiInText(table.caption),
+      headers: table.headers.map(maskPiiInText),
+      // 行の鍵は見出しの文字なので、見出しと同じ変換をかける
+      rows: table.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [maskPiiInText(key), maskPiiInText(value)]))),
+    }));
+  }
+  if (result.extracted) {
+    result.extracted = Object.fromEntries(Object.entries(result.extracted).map(([key, value]) => [key, value === null ? null : maskPiiInText(value)]));
+  }
+}
+
 export async function finalizeScrapeResult(
   result: ScrapeResult,
   options: {
@@ -308,6 +334,8 @@ export async function finalizeScrapeResult(
     highlightMaxCount?: number;
     verbose?: boolean;
     shouldMaskPii: boolean;
+    /** formats に screenshot がある。画像が付いていなければ、取れなかった旨の警告を付ける */
+    screenshotRequested?: boolean;
     snippet?: string;
     includeMedia?: boolean;
     /** ハイライトを選ぶ元（maxChars で切る前の全文。HTML・PDF の経路が渡す。無ければ content） */
@@ -316,8 +344,9 @@ export async function finalizeScrapeResult(
     maxChars?: number;
   },
 ): Promise<ScrapeResult> {
-  if (options.shouldMaskPii) {
-    result.content = maskPiiInText(result.content);
+  if (options.shouldMaskPii) maskPiiInResult(result);
+  if (options.screenshotRequested && !result.screenshot) {
+    result.warnings = [...(result.warnings ?? []), SCREENSHOT_UNAVAILABLE_WARNING];
   }
 
   const stats = calculateContentStats(result.content);
@@ -587,7 +616,14 @@ export function buildScrapeCacheKey(
     contextTitle: options.contextTitle ?? '',
     snippet: options.snippet ?? '',
   });
-  return `scrape:v9:${options.url}:${digest}`;
+  return `scrape:v10:${options.url}:${digest}`;
+}
+
+/** 入力の誤りは、取得の前に断る（REST では 400） */
+function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boolean; removeSelectors?: string[] }): void {
+  if (options.fastOnly && options.renderJs) throw new ScrapeInputError('fastOnly と renderJs は同時に指定できません');
+  const invalid = findInvalidCssSelector(options.removeSelectors ?? []);
+  if (invalid) throw new ScrapeInputError(`removeSelectors の "${invalid.selector}" は CSS セレクタとして読めません: ${invalid.reason}`);
 }
 
 export async function scrapeUrl(options: {
@@ -634,9 +670,7 @@ export async function scrapeUrl(options: {
 
   onProgress?.({ stage: 'start', message: `Starting scrape for ${url}` });
 
-  if (options.fastOnly && options.renderJs) {
-    throw new Error('fastOnly と renderJs は同時に指定できません');
-  }
+  assertScrapeInputs(options);
 
   const cacheKey = buildScrapeCacheKey(options, { maxChars, formats, onlyMainContent, shouldExtractHighlights });
 
@@ -665,6 +699,7 @@ export async function scrapeUrl(options: {
       verbose: options.verbose,
       annotateTemporal: options.annotateTemporal,
       shouldMaskPii: options.maskPii ?? false,
+      screenshotRequested: formats.includes('screenshot'),
       snippet: options.snippet,
       includeMedia: options.includeMedia,
       maxChars,
@@ -716,7 +751,10 @@ export async function scrapeUrl(options: {
     const isFastMode = options.mode === 'fast' || options.fastOnly === true;
     // TikTok の動画は、静的な取得では WAF の確認画面しか返らないので、最初からブラウザで開く（ページそのものを求められたときは除く）
     const tiktokVideo = !wantsPage && parseTikTokVideoUrl(url) !== undefined;
-    const isForcedBrowser = options.mode === 'browser' || options.renderJs === true || (tiktokVideo && !isFastMode && Boolean(resolveChromiumPath()));
+    // formats に screenshot があれば、mode が auto でも最初からブラウザで開く（fast を明示したときは切り替えない。finalizeScrapeResult が警告を付ける）
+    const wantsScreenshot = formats.includes('screenshot');
+    const isForcedBrowser =
+      options.mode === 'browser' || options.renderJs === true || ((tiktokVideo || wantsScreenshot) && !isFastMode && Boolean(resolveChromiumPath()));
 
     if (!isForcedBrowser) {
       onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
@@ -902,7 +940,6 @@ export async function scrapeUrl(options: {
 
     try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
     onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
-    const needScreenshot = formats.includes('screenshot');
     const fullPage = options.fullPage ?? true;
     let browserRes: { html: string; title: string; screenshot?: string; finalUrl: string; status?: number };
 
@@ -913,7 +950,7 @@ export async function scrapeUrl(options: {
         options.clipSelector,
         options.cookies,
         'networkidle2',
-        needScreenshot,
+        wantsScreenshot,
         fullPage,
         options.tenantId ?? 'legacy',
         {
@@ -929,6 +966,7 @@ export async function scrapeUrl(options: {
             onProgress?.({ stage: 'render', message: 'Waiting for content on the current browser page' });
           },
         },
+        options.headers,
       );
     } catch (browserErr) {
       // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
@@ -985,7 +1023,7 @@ export async function scrapeUrl(options: {
       priceCurrency: parsed.priceCurrency,
       brand: parsed.brand,
       sku: parsed.sku,
-      screenshot: formats.includes('screenshot') ? browserRes.screenshot : undefined,
+      screenshot: wantsScreenshot ? browserRes.screenshot : undefined,
       links: formats.includes('links') ? parsed.links : undefined,
       images: formats.includes('images') ? parsed.images : undefined,
       jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
@@ -1049,8 +1087,10 @@ export async function scrapeBatchUrls(options: {
   noCache?: boolean;
   tenantId?: string;
   includeMedia?: boolean;
+  verbose?: boolean;
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, webhookUrl, ...scrapeOpts } = options;
+  assertScrapeInputs(scrapeOpts);
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
 
   const results: ScrapeResult[] = [];

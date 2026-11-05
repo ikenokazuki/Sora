@@ -3,7 +3,7 @@ import { crawlSiteUrl, integratedSearch, mapSiteUrl, scrapeBatchUrls, scrapeUrl 
 import { formatCompactScrapeResult } from '../response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from '../search_web_formats.js';
 import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_response.js';
-import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
+import { ANNOTATE_TEMPORAL_FIELD, INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_HEADERS_FIELD, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_MASK_PII_FIELD, SCRAPE_MODE_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
@@ -30,13 +30,10 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .max(100_000)
         .optional()
         .describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-      mode: z
-        .enum(['auto', 'fast', 'browser'])
-        .optional()
-        .describe('スクレイプ動作モード: "auto" (スマート自動判定, デフォルト), "fast" (静的フェッチ最速限定), "browser" (Stealth Chromium JS完全実行)').meta({ default: 'auto' }),
+      mode: SCRAPE_MODE_FIELD,
       formats: z.array(ScrapeFormatSchema)
         .optional()
-        .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
+        .describe('取得するコンテンツ形式: "markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables" (デフォルト: ["markdown"])。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く').meta({ default: ['markdown'] }),
       fullPage: z
         .boolean()
         .optional()
@@ -47,10 +44,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-      maskPii: z
-        .boolean()
-        .optional()
-        .describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
+      maskPii: SCRAPE_MASK_PII_FIELD,
       query: z
         .string()
         .optional()
@@ -59,10 +53,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('記事本文のみを抽出するか (デフォルト: true)。false にするとナビゲーションやヘッダー/フッターも含めて抽出').meta({ default: true }),
-      headers: z
-        .record(z.string(), z.string())
-        .optional()
-        .describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})'),
+      headers: SCRAPE_HEADERS_FIELD,
       verbose: z
         .boolean()
         .optional()
@@ -72,10 +63,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
       includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
-      annotateTemporal: z
-        .boolean()
-        .optional()
-        .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
+      annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
       highlightMaxCount: z
         .number()
         .int()
@@ -86,7 +74,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     },
     async ({ url, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -113,11 +101,11 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'scrape_batch',
     'web',
-    '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
+    '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }。results は入力の順ではなく、取得が終わった順',
     SCRAPE_BATCH_INPUT_SHAPE,
     async ({ urls, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [
@@ -244,10 +232,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
       query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
       responseMode: SCRAPE_RESPONSE_MODE_FIELD,
-      annotateTemporal: z
-        .boolean()
-        .optional()
-        .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
+      annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
       highlightMaxCount: z
         .number()
         .int()

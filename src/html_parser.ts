@@ -992,6 +992,19 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
  */
 const RS_ARTICLE_MIN_READ_CHARS = 200;
 
+/** CSS セレクタとして読めない最初のものを返す（無ければ undefined）。removeSelectors は変換のときに cheerio で読むので、取得の前に同じ読み方で確かめる */
+export function findInvalidCssSelector(selectors: string[]): { selector: string; reason: string } | undefined {
+  const $ = cheerio.load('');
+  for (const selector of selectors) {
+    try {
+      $(selector);
+    } catch (err) {
+      return { selector, reason: (err as Error).message };
+    }
+  }
+  return undefined;
+}
+
 export function convertHtmlToMarkdown(
   rawHtml: string,
   targetUrl: string,

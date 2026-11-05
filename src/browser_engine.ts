@@ -649,13 +649,21 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
 }
 
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
-export async function setupPageSecurity(page: Page, blockMedia = false): Promise<void> {
+export async function setupPageSecurity(
+  page: Page,
+  blockMedia = false,
+  /** 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求にだけ付ける（ほかのオリジンへの要求や、別のオリジンへの転送には付けない） */
+  scopedHeaders?: { origin: string; headers: Record<string, string> },
+): Promise<void> {
+  const extraHeaders = scopedHeaders && Object.fromEntries(Object.entries(scopedHeaders.headers).map(([name, value]) => [name.toLowerCase(), value]));
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       try {
         const reqUrlStr = req.url();
         const resourceType = req.resourceType();
+        const carriesHeaders = scopedHeaders !== undefined && URL.canParse(reqUrlStr) && new URL(reqUrlStr).origin === scopedHeaders.origin;
+        const proceed = () => req.continue(carriesHeaders ? { headers: { ...req.headers(), ...extraHeaders } } : undefined);
 
         // 動画・音声・3Dモデル・広告トラッカーは帯域・メモリ保護のため常時高速遮断
         if (
@@ -672,11 +680,11 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
         }
 
         if (process.env.ALLOW_LOCAL_FETCH === 'true') {
-          return req.continue();
+          return proceed();
         }
 
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
-          return req.continue();
+          return proceed();
         }
         let reqUrl: URL;
         try {
@@ -696,7 +704,7 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
         const now = Date.now();
         const cached = dnsValidationCache.get(host);
         if (cached && cached.expiresAt > now) {
-          return req.continue();
+          return proceed();
         }
 
         try {
@@ -711,7 +719,7 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
             expiresAt: now + DNS_CACHE_TTL_MS,
           });
         } catch {}
-        req.continue();
+        proceed();
       } catch {
         req.abort('failed');
       }

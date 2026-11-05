@@ -189,6 +189,8 @@ export interface ScrapeResult {
   html?: string;
   rawHtml?: string;
   screenshot?: string; // base64 PNG
+  /** 求めた形式を満たせなかった旨（例: formats に screenshot があるのに、ブラウザで描画しなかった） */
+  warnings?: string[];
   quality?: number;
   completeness?: number;
   pageType?: 'article' | 'product' | 'qa' | 'generic';
@@ -302,26 +304,38 @@ export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.opt
 /** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
 
+/** scrape・scrape_batch 共通の mode */
+export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。静的に取得し、JS が要るページ・確認画面・取得を拒まれたときだけブラウザに切り替える。formats に screenshot があれば最初からブラウザ。接続できないときは切り替えない), "fast" (静的取得のみ。screenshot は取れず warnings が付く), "browser" (常に Stealth Chromium で JS を実行)').meta({ default: 'auto' });
+
+/** scrape・scrape_batch 共通の headers */
+export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。ブラウザで取得するときは、取得先と同じオリジンへの要求にだけ付く');
+
+/** scrape・scrape_batch 共通の maskPii */
+export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を [EMAIL] などに置き換えるか (デフォルト: false)。本文とハイライトのほか、title・description・html・rawHtml・tables・extracted にもかける').meta({ default: false });
+
+/** scrape・scrape_batch・crawl_site・search_deep 共通の annotateTemporal */
+export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対的な日付の表現（明日・昨日・N 日前/後・来週＋曜日・来月など）に絶対日付の注記 [YYYY-MM-DD] を付けるか (デフォルト: false)。「来週」だけには付けない。基準は記事の公開日時で、無ければ今日').meta({ default: false });
+
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
   maxChars: z.number().int().min(1).max(100_000).optional().describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-  mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)').meta({ default: 'auto' }),
+  mode: SCRAPE_MODE_FIELD,
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
-  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
+  formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く').meta({ default: ['markdown'] }),
   fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
-  clipSelector: z.string().optional().describe('特定要素のみを切り抜いてスクリーンショット撮影する CSS セレクタ (例: "#chart")'),
-  headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
+  clipSelector: z.string().optional().describe('formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ (例: "#chart")。ブラウザで撮るので、mode "fast"・fastOnly では撮れない'),
+  headers: SCRAPE_HEADERS_FIELD,
   cookies: z.array(CookieParamSchema).optional().describe('リクエスト時に送信するカスタム Cookie 配列'),
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
   responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-  maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
+  maskPii: SCRAPE_MASK_PII_FIELD,
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか').meta({ default: false }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
@@ -333,18 +347,15 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
     concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
     maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-    mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
-    formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
-    headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
+    mode: SCRAPE_MODE_FIELD,
+    formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット。screenshot はブラウザで撮り、mode "fast" では撮れずに warnings が付く'),
+    headers: SCRAPE_HEADERS_FIELD,
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
     responseMode: SCRAPE_RESPONSE_MODE_FIELD,
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
-    maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
+    maskPii: SCRAPE_MASK_PII_FIELD,
     webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-    annotateTemporal: z
-      .boolean()
-      .optional()
-      .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
+    annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
     highlightMaxCount: z
       .number()
@@ -361,7 +372,7 @@ export const BatchScrapeRequestSchema = z.object({
   ...SCRAPE_BATCH_INPUT_SHAPE,
   // CSS セレクタは MCP には出さず（LLM はページの HTML を見ずに呼ぶので正しく書けない）、REST にだけ残す
   selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
-  clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
+  clipSelector: z.string().optional().describe('formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ。ブラウザで撮るので、mode "fast" では撮れない'),
   removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
@@ -414,7 +425,7 @@ export const CrawlRequestSchema = z.object({
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
   responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 15000, 上限: 50000)').meta({ default: 15000 }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3, 上限: 10)').meta({ default: 3 }),
@@ -568,7 +579,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します。X の投稿の結果は指定しなくても本文を残す。タイムラインのページは、realtime に同じアカウントの投稿があるときは本文を省く'),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
@@ -1207,6 +1218,7 @@ export const ScrapeResponseSchema = z.object({
   html: z.string().optional().describe('クリーン整形済み HTML 本文'),
   rawHtml: z.string().optional().describe('取得時の完全な生 HTML'),
   screenshot: z.string().optional().describe('スクリーンショット画像 (Base64 PNG)'),
+  warnings: z.array(z.string()).optional().describe('求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった)'),
   quality: z.number().optional().describe('ページ品質スコア (0〜100)'),
   completeness: z.number().optional().describe('必須フィールド充足度 (0〜100)'),
   pageType: z.enum(['article', 'product', 'qa', 'generic']).optional().describe('自動判定されたページ種別'),
@@ -1222,7 +1234,7 @@ export const BatchScrapeResponseSchema = z.object({
   total: z.number().describe('一括リクエスト URL 総数'),
   successful: z.number().describe('スクレイピング成功件数'),
   failed: z.number().describe('失敗件数'),
-  results: z.array(ScrapeResponseSchema).describe('成功したページのスクレイピング結果一覧'),
+  results: z.array(ScrapeResponseSchema).describe('成功したページのスクレイピング結果一覧。入力の順ではなく、取得が終わった順'),
   errors: z.array(z.object({
     url: z.string().describe('失敗した URL'),
     error: z.string().describe('エラー原因説明'),
