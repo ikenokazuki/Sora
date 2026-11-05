@@ -102,21 +102,21 @@ describe('POST /search/trend', () => {
     return { status: res.status, json: (await res.json()) as { count: number; items: unknown[] } };
   };
 
-  test('limit に負数や文字列を渡しても 200 で、キャッシュを汚さない', async () => {
-    stubTrends(60);
+  test('limit は 1〜50 の整数だけを受け、ほかは 400（取りに行かない）', async () => {
+    const spy = stubTrends(60);
 
-    const negative = await post({ limit: -5 });
-    const garbage = await post({ limit: 'abc' });
+    for (const limit of [-5, 0, 51, 1.5, 'abc', '4']) {
+      const bad = await post({ limit });
+      expect(bad.status).toBe(400);
+      expect((bad.json as unknown as { error: string }).error).toStartWith('limit:');
+    }
+    expect(spy).not.toHaveBeenCalled();
+
     const three = await post({ limit: 3 });
-    const numericString = await post({ limit: '4' });
     const none = await post({});
-
-    expect(negative.status).toBe(200);
-    expect(negative.json.count).toBe(20);
-    expect(garbage.json.count).toBe(20);
+    expect(three.status).toBe(200);
     expect(three.json.count).toBe(3);
     expect(three.json.items).toHaveLength(3);
-    expect(numericString.json.count).toBe(4);
     expect(none.json.count).toBe(20);
   });
 });

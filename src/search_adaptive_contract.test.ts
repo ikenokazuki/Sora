@@ -45,6 +45,29 @@ describe('adaptive deep search public contract', () => {
     expect(IntegratedSearchRequestSchema.safeParse({ query: 'fixture', ...options }).success).toBe(false);
   });
 
+  test.each([
+    { limit: -3 }, { limit: 0 }, { limit: 21 }, { highlightMaxCount: 99 }, { formats: ['bogus'] },
+    { updated: 'month' }, { maxChars: 999999 }, { realtimeSort: 'old' }, { includeDomains: 'a.example' },
+  ])('REST validates %j with the shared schema before searching', async (options) => {
+    const response = await searchRoutes.request('/search/deep', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'fixture', ...options }),
+    });
+    expect(response.status).toBe(400);
+    expect(searchSpy).not.toHaveBeenCalled();
+  });
+
+  test('REST keeps the earlier error messages', async () => {
+    const error = async (body: unknown) => ((await (await searchRoutes.request('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })).json()) as { error: string }).error;
+    expect(await error({})).toBe('query is required');
+    expect(await error({ query: 'fixture', responseMode: 'short' })).toBe('responseMode must be "full" or "evidence"');
+    expect(await error({ query: 'fixture', realtimeLimit: 0 })).toBe('realtimeLimit must be an integer between 1 and 100');
+    expect(await error({ query: 'fixture', maxTotalChars: 10 })).toBe('maxTotalChars must be an integer between 1000 and 500000');
+    expect(await error({ query: 'fixture', limit: 50 })).toStartWith('limit:');
+  });
+
   test('MCP search_deep forwards opt-in settings to retrieval', async () => {
     const server = createMcpServer();
     try {

@@ -1,7 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { z } from 'zod';
 import {
-  DEFAULT_MAX_CHARS,
   integratedSearch,
   fetchRealtimeTrends,
   searchTransitRoute,
@@ -21,6 +20,7 @@ import {
   ChiebukuroSearchRequestSchema,
   SuggestRequestSchema,
   TransitRouteRequestSchema,
+  TrendSearchRequestSchema,
 } from '../types.js';
 import { buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
@@ -114,9 +114,9 @@ searchRoutes.post('/realtime/post', async (c) => {
 // Yahoo リアルタイム急上昇トレンド
 searchRoutes.post('/search/trend', async (c) => {
   try {
-    const body = (await c.req.json().catch(() => ({}))) || {};
-    const result = await fetchRealtimeTrends(body?.limit);
-    return c.json(result);
+    const parsed = TrendSearchRequestSchema.safeParse((await c.req.json().catch(() => ({}))) || {});
+    if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
+    return c.json(await fetchRealtimeTrends(parsed.data.limit));
   } catch (err) {
     return c.json({ error: errorMessage(err) || 'Search trend failed' }, 500);
   }
@@ -133,93 +133,38 @@ searchRoutes.post('/search/web', async (c) => {
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
-const adaptiveSearchOptionsSchema = IntegratedSearchRequestSchema.pick({ adaptiveScrape: true, scrapeBudget: true, scrapeDeadlineMs: true, videos: true });
+// 項目ごとの入力エラーの文言（前からの文言）。ほかの項目は「項目名: 理由」
+const DEEP_FIELD_ERRORS: Record<string, string> = {
+  query: 'query is required',
+  responseMode: 'responseMode must be "full" or "evidence"',
+  maxTotalChars: 'maxTotalChars must be an integer between 1000 and 500000',
+  realtimeFocus: 'realtimeFocus must be "official" or "public"',
+  realtimeAnchor: 'realtimeAnchor must be a string of at most 100 characters',
+  realtimeLimit: 'realtimeLimit must be an integer between 1 and 100',
+  includeMedia: 'includeMedia must be a boolean',
+};
 const handleIntegratedSearch = async (c: Context) => {
   try {
     const body = await c.req.json();
-    const query = body?.query;
-    const limit = Math.min(body?.limit || 5, 20);
-    const scrapeContent = body?.scrapeContent !== false;
-    const includeRealtime = body?.includeRealtime !== false;
-    const realtimeSort = body?.realtimeSort === 'popular' ? 'popular' : 'recent';
-    const officialAccountId = body?.officialAccountId;
-    const maxChars = body?.maxChars || DEFAULT_MAX_CHARS;
-    const noCache = body?.noCache ?? false;
-    const includeDomains = body?.includeDomains;
-    const excludeDomains = body?.excludeDomains;
-    const updated = body?.updated;
-    const onlyMainContent = body?.onlyMainContent;
-    const formats = body?.formats;
-    // 既定（evidence）は共有スキーマの default から取る。null も省略と同じ扱い
-    const responseModeParsed = IntegratedSearchRequestSchema.shape.responseMode.safeParse(body?.responseMode ?? undefined);
-    if (!responseModeParsed.success) {
-      return c.json({ error: 'responseMode must be "full" or "evidence"' }, 400);
+    // MCP の search_deep と同じスキーマで確かめる。responseMode の既定（evidence）はスキーマの default から取り、null も省略と同じ扱い
+    const parsed = IntegratedSearchRequestSchema.safeParse({ ...body, responseMode: body?.responseMode ?? undefined });
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const field = String(issue?.path[0] ?? '');
+      return c.json({ error: DEEP_FIELD_ERRORS[field] ?? `${field || 'body'}: ${issue?.message ?? 'invalid value'}`, details: parsed.error.format() }, 400);
     }
-    const responseMode = responseModeParsed.data;
-
-    if (!query || typeof query !== 'string') {
-      return c.json({ error: 'query is required' }, 400);
-    }
-
-    const maxTotalCharsParsed = IntegratedSearchRequestSchema.shape.maxTotalChars.safeParse(body?.maxTotalChars);
-    if (!maxTotalCharsParsed.success) {
-      return c.json({ error: 'maxTotalChars must be an integer between 1000 and 500000' }, 400);
-    }
-    const realtimeFocusParsed = IntegratedSearchRequestSchema.shape.realtimeFocus.safeParse(body?.realtimeFocus);
-    if (!realtimeFocusParsed.success) {
-      return c.json({ error: 'realtimeFocus must be "official" or "public"' }, 400);
-    }
-    const realtimeAnchorParsed = IntegratedSearchRequestSchema.shape.realtimeAnchor.safeParse(body?.realtimeAnchor);
-    if (!realtimeAnchorParsed.success) {
-      return c.json({ error: 'realtimeAnchor must be a string of at most 100 characters' }, 400);
-    }
-    const realtimeLimitParsed = IntegratedSearchRequestSchema.shape.realtimeLimit.safeParse(body?.realtimeLimit);
-    if (!realtimeLimitParsed.success) {
-      return c.json({ error: 'realtimeLimit must be an integer between 1 and 100' }, 400);
-    }
-    const includeMediaParsed = IntegratedSearchRequestSchema.shape.includeMedia.safeParse(body?.includeMedia);
-    if (!includeMediaParsed.success) {
-      return c.json({ error: 'includeMedia must be a boolean' }, 400);
-    }
-
-    const adaptiveOptions = adaptiveSearchOptionsSchema.safeParse(body);
-    if (!adaptiveOptions.success) {
-      return c.json({ error: 'invalid adaptive search options', details: adaptiveOptions.error.format() }, 400);
-    }
-
+    const { responseMode, maxTotalChars, ...options } = parsed.data;
+    const verbose = options.verbose ?? c.req.query('verbose') === 'true';
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const finalResponse = await integratedSearch({
-      query,
-      tenantId,
-      limit,
-      scrapeContent,
-      ...adaptiveOptions.data,
-      includeRealtime,
-      realtimeSort,
-      realtimeFocus: realtimeFocusParsed.data,
-      realtimeAnchor: realtimeAnchorParsed.data,
-      realtimeLimit: realtimeLimitParsed.data,
-      officialAccountId,
-      maxChars,
-      noCache,
-      includeDomains,
-      excludeDomains,
-      updated,
-      onlyMainContent,
-      formats,
-      annotateTemporal: body?.annotateTemporal,
-      highlightMaxCount: body?.highlightMaxCount,
-      includeMedia: includeMediaParsed.data,
-      verbose: body?.verbose ?? c.req.query('verbose') === 'true',
-    });
+    const finalResponse = await integratedSearch({ ...options, tenantId, verbose });
 
     return c.json(
       formatIntegratedSearchHostResponse(finalResponse, {
         responseMode,
-        explicitFormats: formats,
-        verbose: body?.verbose ?? c.req.query('verbose') === 'true',
-        maxTotalChars: maxTotalCharsParsed.data,
-        includeMedia: includeMediaParsed.data,
+        explicitFormats: options.formats,
+        verbose,
+        maxTotalChars,
+        includeMedia: options.includeMedia,
       }),
     );
   } catch (err) {

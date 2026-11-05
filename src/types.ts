@@ -456,7 +456,6 @@ export const VideoSearchRequestSchema = z.object({
 export const NewsSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }).meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 

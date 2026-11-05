@@ -1,6 +1,7 @@
 // 検索系 REST の入口が、リクエストスキーマに合わない入力を外部へ問い合わせる前に 400 で返すことを確かめる。
 import { describe, expect, test } from 'bun:test';
 import { app } from '../index.js';
+import { generateOpenApiDocument } from '../types.js';
 
 async function post(path: string, body: unknown): Promise<{ status: number; error?: string }> {
   const res = await app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -23,6 +24,11 @@ describe('search route input validation', () => {
 
   test('realtime still requires at least one search constraint', async () => {
     expect(await post('/search/realtime', {})).toEqual({ status: 400, error: 'query, accountId, hashtags, or other search constraints are required' });
+  });
+
+  test('/search/news has no page (the bundled news search has none)', () => {
+    const body = (generateOpenApiDocument() as any).paths['/search/news'].post.requestBody.content['application/json'].schema;
+    expect(body.properties.page).toBeUndefined();
   });
 
   for (const path of ['/search/image', '/search/video', '/search/news', '/search/chiebukuro', '/search/suggest']) {
