@@ -204,7 +204,6 @@ const handleIntegratedSearch = async (c: Context) => {
     const includeDomains = body?.includeDomains;
     const excludeDomains = body?.excludeDomains;
     const updated = body?.updated;
-    const extractHighlights = body?.extractHighlights;
     const onlyMainContent = body?.onlyMainContent;
     const formats = body?.formats;
     // 既定（evidence）は共有スキーマの default から取る。null も省略と同じ扱い
@@ -262,7 +261,6 @@ const handleIntegratedSearch = async (c: Context) => {
       includeDomains,
       excludeDomains,
       updated,
-      extractHighlights,
       onlyMainContent,
       formats,
       annotateTemporal: body?.annotateTemporal,
@@ -275,7 +273,6 @@ const handleIntegratedSearch = async (c: Context) => {
       formatIntegratedSearchHostResponse(finalResponse, {
         responseMode,
         explicitFormats: formats,
-        extractHighlights,
         verbose: body?.verbose ?? c.req.query('verbose') === 'true',
         maxTotalChars: maxTotalCharsParsed.data,
         includeMedia: includeMediaParsed.data,

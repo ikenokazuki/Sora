@@ -3,7 +3,7 @@ import { crawlSiteUrl, integratedSearch, mapSiteUrl, scrapeBatchUrls, scrapeUrl 
 import { formatCompactScrapeResult } from '../response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from '../search_web_formats.js';
 import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_response.js';
-import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, ScrapeFormatSchema } from '../types.js';
+import { INTEGRATED_SEARCH_INPUT_SHAPE, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
@@ -50,14 +50,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('【互換用】Stealth Chromium で JS 完全実行するか (mode: "browser" と同等)'),
-      extractHighlights: z
-        .boolean()
-        .optional()
-        .describe('クエリに関連する重要文（ハイライト）を自動抽出して付与するか (省略時: query指定時はtrue、未指定時はfalse)'),
-      onlyHighlights: z
-        .boolean()
-        .optional()
-        .describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
+      responseMode: SCRAPE_RESPONSE_MODE_FIELD,
       stripLinks: z
         .boolean()
         .optional()
@@ -102,10 +95,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
-      evidenceMode: z
-        .enum(['full', 'highlights', 'contextual_highlights'])
-        .optional()
-        .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
       annotateTemporal: z
         .boolean()
         .optional()
@@ -118,9 +107,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
-    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
+    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, responseMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, responseMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -149,9 +138,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
     SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, extractHighlights, onlyHighlights, evidenceMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [
@@ -180,7 +169,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（既定 evidence / full）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
     INTEGRATED_SEARCH_INPUT_SHAPE,
-    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, extractHighlights, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
+    async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
       try {
         const result = await integratedSearch({
           query,
@@ -203,7 +192,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           excludeDomains,
           updated,
           formats,
-          extractHighlights,
           onlyMainContent,
           verbose,
           annotateTemporal,
@@ -216,7 +204,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
             text: serializeIntegratedSearchMcpResponse(result, {
               responseMode,
               explicitFormats: formats,
-              extractHighlights,
               verbose,
               maxTotalChars,
               includeMedia,
@@ -279,8 +266,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       excludePatterns: z.array(z.string()).optional().describe('クロールから除外するワイルドカードパターン一覧 (例: ["/tag/**", "*.pdf"])'),
       formats: z.array(ScrapeFormatSchema).optional().describe('取得するコンテンツ形式 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
       query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
-      extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
-      onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+      responseMode: SCRAPE_RESPONSE_MODE_FIELD,
       annotateTemporal: z
         .boolean()
         .optional()
@@ -297,9 +283,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
     },
-    async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, responseMode, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, extractHighlights, onlyHighlights, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, responseMode, annotateTemporal, highlightMaxCount, includeMedia });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };

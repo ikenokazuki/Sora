@@ -245,7 +245,7 @@ function markHttpError(result: ScrapeResult, status: number | undefined): Scrape
 // ==========================================
 // 3. スクレイピング完了処理 & オプション統合
 // ==========================================
-/** ハイライトを（onlyHighlights では）つなぐ区切り */
+/** ハイライトを（responseMode: 'evidence' では）つなぐ区切り */
 const HIGHLIGHT_SEPARATOR = '\n\n---\n\n';
 
 /**
@@ -304,7 +304,6 @@ export async function finalizeScrapeResult(
     query?: string;
     shouldExtractHighlights: boolean;
     shouldOnlyHighlights?: boolean;
-    evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
     annotateTemporal?: boolean;
     highlightMaxCount?: number;
     verbose?: boolean;
@@ -313,7 +312,7 @@ export async function finalizeScrapeResult(
     includeMedia?: boolean;
     /** ハイライトを選ぶ元（maxChars で切る前の全文。HTML・PDF の経路が渡す。無ければ content） */
     highlightSource?: string;
-    /** 要求の maxChars。ハイライトの合計（onlyHighlights では content）をこの字数に収める。無ければ切らない */
+    /** 要求の maxChars。ハイライトの合計（responseMode: 'evidence' では content）をこの字数に収める。無ければ切らない */
     maxChars?: number;
   },
 ): Promise<ScrapeResult> {
@@ -366,10 +365,7 @@ export async function finalizeScrapeResult(
       result.textFragmentUrl = generateTextFragmentUrl(result.url, result.highlights[0].replace(/ \[\d{4}-\d{2}-\d{2}\]/g, ''));
     }
   }
-  const isHighlightOnlyMode =
-    options.shouldOnlyHighlights ||
-    options.evidenceMode === 'highlights' ||
-    options.evidenceMode === 'contextual_highlights';
+  const isHighlightOnlyMode = options.shouldOnlyHighlights === true;
 
   if (isHighlightOnlyMode && result.highlights && result.highlights.length > 0) {
     result.content = result.highlights.join(HIGHLIGHT_SEPARATOR);
@@ -581,9 +577,8 @@ export function buildScrapeCacheKey(
     stripLinks: options.stripLinks === true,
     query: options.query ?? '',
     extractHighlights: resolved.shouldExtractHighlights,
-    onlyHighlights: options.onlyHighlights === true,
+    responseMode: options.responseMode ?? 'full',
     highlightMaxCount: options.highlightMaxCount ?? 'auto',
-    evidenceMode: options.evidenceMode ?? 'full',
     annotateTemporal: options.annotateTemporal === true,
     maskPii: options.maskPii === true,
     verbose: options.verbose === true,
@@ -611,10 +606,11 @@ export async function scrapeUrl(options: {
   removeSelectors?: string[];
   stripLinks?: boolean;
   query?: string;
+  /** 内部用（search_web の formats・国の情報）。公開の引数ではない */
   extractHighlights?: boolean;
-  onlyHighlights?: boolean;
+  /** 'evidence': ハイライトがあれば、content をハイライトに置き換える */
+  responseMode?: 'full' | 'evidence';
   highlightMaxCount?: number;
-  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   annotateTemporal?: boolean;
   maskPii?: boolean;
   noCache?: boolean;
@@ -663,11 +659,10 @@ export async function scrapeUrl(options: {
   const scrapeTask = async () => {
     const finalizeOpts = {
       query: options.query,
-      shouldExtractHighlights: shouldExtractHighlights ?? (!!options.onlyHighlights),
-      shouldOnlyHighlights: options.onlyHighlights ?? false,
+      shouldExtractHighlights,
+      shouldOnlyHighlights: options.responseMode === 'evidence',
       highlightMaxCount: options.highlightMaxCount,
       verbose: options.verbose,
-      evidenceMode: options.evidenceMode,
       annotateTemporal: options.annotateTemporal,
       shouldMaskPii: options.maskPii ?? false,
       snippet: options.snippet,
@@ -1045,10 +1040,8 @@ export async function scrapeBatchUrls(options: {
   removeSelectors?: string[];
   stripLinks?: boolean;
   query?: string;
-  extractHighlights?: boolean;
-  onlyHighlights?: boolean;
+  responseMode?: 'full' | 'evidence';
   highlightMaxCount?: number;
-  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   annotateTemporal?: boolean;
   maskPii?: boolean;
   webhookUrl?: string;
@@ -1308,8 +1301,7 @@ export async function crawlSiteUrl(options: {
   includePatterns?: string[];
   excludePatterns?: string[];
   query?: string;
-  extractHighlights?: boolean;
-  onlyHighlights?: boolean;
+  responseMode?: 'full' | 'evidence';
   highlightMaxCount?: number;
   annotateTemporal?: boolean;
   includeMedia?: boolean;
@@ -1334,8 +1326,7 @@ export async function crawlSiteUrl(options: {
     includePatterns,
     excludePatterns,
     query,
-    extractHighlights,
-    onlyHighlights,
+    responseMode,
     highlightMaxCount,
     annotateTemporal,
     includeMedia,
@@ -1390,8 +1381,7 @@ export async function crawlSiteUrl(options: {
             maxChars,
             formats: Array.from(new Set([...formats, 'links'])),
             query,
-            extractHighlights,
-            onlyHighlights,
+            responseMode,
             highlightMaxCount,
             annotateTemporal,
             includeMedia,
@@ -1687,7 +1677,6 @@ export async function integratedSearch(options: {
   includeDomains?: string[];
   excludeDomains?: string[];
   updated?: 'all' | 'day' | 'week' | 'year';
-  extractHighlights?: boolean;
   onlyMainContent?: boolean;
   formats?: ScrapeFormat[];
   verbose?: boolean;
@@ -1722,7 +1711,7 @@ export async function integratedSearch(options: {
   const includeDomains = normalizeDomainList(options.includeDomains);
   const excludeDomains = normalizeDomainList(options.excludeDomains);
   const updated = options.updated;
-  const extractHighlights = options.extractHighlights ?? Boolean(evidenceQuery.trim());
+  const extractHighlights = Boolean(evidenceQuery.trim());
   const onlyMainContent = options.onlyMainContent !== false;
   const formats = options.formats ?? ['markdown'];
   const annotateTemporal = options.annotateTemporal;
@@ -1754,7 +1743,6 @@ export async function integratedSearch(options: {
     includeDomains: includeDomains ?? [],
     excludeDomains: excludeDomains ?? [],
     updated: updated ?? 'all',
-    extractHighlights,
     onlyMainContent,
     formats: formats.slice().sort(),
     verbose: options.verbose === true,

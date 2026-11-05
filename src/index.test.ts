@@ -625,11 +625,11 @@ describe('web-fetcher Core Functions', () => {
     expect(result.source).toBe('web');
   });
 
-  it('scrapeUrl with onlyHighlights: true should replace full content with only matched highlights', async () => {
+  it('scrapeUrl with responseMode: evidence should replace full content with only matched highlights', async () => {
     const result = await withExamplePage((url) => scrapeUrl({
       url,
       query: 'Domain',
-      onlyHighlights: true,
+      responseMode: 'evidence',
       fastOnly: true,
       noCache: true,
     }));

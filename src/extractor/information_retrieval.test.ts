@@ -135,7 +135,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
 
       const details = extractQueryHighlightDetails(markdown, 'グッズ先行販売 チケット抽選', {
         maxHighlights: 3,
-        evidenceMode: 'highlights',
       });
 
       expect(details.highlightItems.length).toBeGreaterThanOrEqual(2);

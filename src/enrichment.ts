@@ -288,7 +288,6 @@ export interface QueryHighlightDetailsOptions {
   sourceId?: string;
   url?: string;
   publishedTime?: string;
-  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補い・長い節の塊をしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
   annotateTemporal?: boolean;
@@ -311,7 +310,6 @@ export function extractQueryHighlightDetails(
   const extend = options.maxHighlights == null;
   const maxHighlights = extend ? 3 : Math.max(1, Math.ceil(options.maxHighlights as number)) || 1;
   const sourceId = options.sourceId || 'S1';
-  const evidenceMode = options.evidenceMode || 'highlights';
 
   if (!query || !content) {
     return {
@@ -394,11 +392,7 @@ export function extractQueryHighlightDetails(
       ? `## ${block.headingPath.join(' > ')}\n\n`
       : '';
 
-    // contextual_highlights モードの場合はアンカーヘッダーを付与
-    const anchorHeader = evidenceMode === 'contextual_highlights'
-      ? `${formatBlockAnchor(block.ref)}\n`
-      : '';
-    const prefix = `${anchorHeader}${headingPrefix}`;
+    const prefix = headingPrefix;
 
     // 目安より長い節は塊も候補にする（件数を指定しないときだけ）。窓は節の点のまま、塊は節の点 × 節の中での点の比
     const split = extend && win?.span && block.body.length > HIGHLIGHT_CHAR_BUDGET;
@@ -495,8 +489,7 @@ export function extractQueryHighlightDetails(
           : b.body;
         if (body.length > cap) continue;
         const headingPrefix = b.headingPath.length > 0 ? `## ${b.headingPath.join(' > ')}\n\n` : '';
-        const anchorHeader = evidenceMode === 'contextual_highlights' ? `${formatBlockAnchor(b.ref)}\n` : '';
-        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body };
+        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${headingPrefix}${body}`.trim(), rawSnippetBody: body };
         mmrCandidates.push(fill);
         used += fill.snippet.length;
         break;

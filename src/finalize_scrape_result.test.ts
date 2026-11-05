@@ -45,6 +45,13 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect(decodeURIComponent(result.textFragmentUrl as string)).not.toContain('2026-11-05');
   });
 
+  test('scrape 系の responseMode: evidence は、ハイライトがあれば content をハイライトに置き換える', async () => {
+    const text = '## 当日の案内\n\n開場時間は 17:00、開演は 18:00 です。\n\n## ほか\n\n関係のない文。';
+    const result = await finalizeScrapeResult(base(text), opts({ shouldOnlyHighlights: true }));
+    expect(result.content).toContain('開場時間は 17:00');
+    expect(result.content).not.toContain('関係のない文');
+  });
+
   test('description はハイライトで置き換えない', async () => {
     expect((await finalizeScrapeResult(base(tail, { description: 'サイトの説明' }), opts())).description).toBe('サイトの説明');
     expect((await finalizeScrapeResult(base(tail), opts())).description).toBeUndefined();
@@ -200,7 +207,7 @@ describe('finalizeScrapeResult: ハイライトの合計は maxChars に収ま�
     expect(sum(one.highlights)).toBe(oneMax);
   }, 30_000);
 
-  test('onlyHighlights の content（ハイライトを区切りでつないだもの）も maxChars を超えない', async () => {
+  test('responseMode: evidence の content（ハイライトを区切りでつないだもの）も maxChars を超えない', async () => {
     const doc = huge[0][1];
     const result = await finalizeScrapeResult(base(doc.slice(0, 15_000)), opts({ query, highlightSource: doc, shouldOnlyHighlights: true, maxChars: 15_000 }));
     expect(result.content.length).toBeLessThanOrEqual(15_000);

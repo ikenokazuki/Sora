@@ -99,7 +99,6 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'includeDomains',
         'excludeDomains',
         'updated',
-        'extractHighlights',
         'onlyMainContent',
         'formats',
         'annotateTemporal',
@@ -115,7 +114,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Forbidden stale fields
       expect((shape as any).fetchContent).toBeUndefined();
       expect((shape as any).maxCharsPerResult).toBeUndefined();
-      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables', 'dedup', 'enablePrf']) {
+      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables', 'dedup', 'enablePrf', 'extractHighlights']) {
         expect((shape as any)[field]).toBeUndefined();
       }
     });
@@ -298,6 +297,61 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
     it('crawl の webhookUrl は残る', () => {
       expect((CrawlRequestSchema.shape as any).webhookUrl).toBeDefined();
+    });
+  });
+
+  describe('C5. onlyHighlights・evidenceMode・extractHighlights は responseMode にまとまった', () => {
+    const removed = ['onlyHighlights', 'evidenceMode', 'extractHighlights'];
+    // CrawlRequestSchema に evidenceMode は元から無いが、無いことは同じに確かめる
+    const scrapeTools = ['scrape', 'scrape_batch', 'crawl_site'];
+
+    it('scrape・batch・crawl の REST の形に古い 3 項目が無く、responseMode がある', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field], field).toBeUndefined();
+        }
+        const responseMode = (schema.shape as any).responseMode as z.ZodTypeAny;
+        expect(responseMode).toBeDefined();
+        expect(responseMode.safeParse(undefined).success).toBe(true);
+        expect(responseMode.safeParse('full').success).toBe(true);
+        expect(responseMode.safeParse('evidence').success).toBe(true);
+        expect(responseMode.safeParse('highlights').success).toBe(false);
+      }
+    });
+
+    it('MCP の scrape・scrape_batch・crawl_site に古い 3 項目が無く、responseMode がある', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of scrapeTools) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
+        expect(schema.responseMode, `${toolName}.responseMode`).toBeDefined();
+      }
+    });
+
+    it('search_deep の extractHighlights は、REST の形にも MCP の入力にも無い（responseMode は元からある）', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['search_deep'];
+      const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      expect((IntegratedSearchRequestSchema.shape as any).extractHighlights).toBeUndefined();
+      expect((INTEGRATED_SEARCH_INPUT_SHAPE as any).extractHighlights).toBeUndefined();
+      expect(schema.extractHighlights).toBeUndefined();
+      expect(schema.responseMode).toBeDefined();
+    });
+
+    it('OpenAPI の /scrape・/scrape/batch・/crawl の入力に responseMode があり、古い 3 項目は無い', () => {
+      const spec = generateOpenApiDocument();
+      for (const path of ['/scrape', '/scrape/batch', '/crawl']) {
+        const properties = (spec.paths as any)?.[path]?.post?.requestBody?.content?.['application/json']?.schema?.properties || {};
+        expect(properties.responseMode, path).toBeDefined();
+        expect(properties.responseMode.enum, path).toEqual(['full', 'evidence']);
+        for (const field of removed) {
+          expect(properties[field], `${path} ${field}`).toBeUndefined();
+        }
+      }
     });
   });
 
