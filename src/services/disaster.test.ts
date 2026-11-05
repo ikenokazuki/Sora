@@ -274,6 +274,30 @@ describe('search_disaster_warnings は気象庁の新しいデータ（r8）を�
     expect((await fetchWeatherWarnings({ areaCode: '130000', noCache: true })).reportTime).toBe('2026-11-05T21:10:00+09:00');
   });
 
+  it('読める reportDatetime が無ければ reportTime は今の時刻、status が無ければ「発表」（前と同じ）', async () => {
+    const before = Date.now();
+    const report = (reportDatetime: unknown, kinds: unknown[]) => ({ reportDatetime, warning: { class10Items: [], class20Items: [{ areaCode: '1310400', kinds }] } });
+    stubFetch(tokyoR8([report(undefined, [{ code: '14' }]), report('不明', [])]));
+    const r = await fetchWeatherWarnings({ city: '新宿区', noCache: true });
+    expect(Date.parse(r.reportTime)).toBeGreaterThanOrEqual(before);
+    expect(r.advisories).toEqual([advisory('14', '雷注意報', '発表')]);
+  });
+
+  it('MCP の説明に、河川の氾濫を含まないことを書く（警報なしと読まれないように）', async () => {
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'warning-description', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'search_disaster_warnings');
+      expect(tool?.description).toContain('河川の氾濫は含まない');
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it('気象庁のデータにその地域の欄が無ければ、警報なしとせずエラー（REST は 500）', async () => {
     stubFetch(tokyoR8([]));
     await expect(fetchWeatherWarnings({ city: '新宿区', noCache: true })).rejects.toThrow('新宿区（1310400）の欄がありません');

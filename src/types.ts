@@ -1600,7 +1600,7 @@ export const AreaWarningsResponseSchema = z.object({
   specialWarnings: z.array(WarningItemSchema).describe('発表中の特別警報一覧'),
   warnings: z.array(WarningItemSchema).describe('発表中の警報・危険警報一覧'),
   advisories: z.array(WarningItemSchema).describe('発表中の注意報一覧'),
-  hasActiveAlerts: z.boolean().describe('現在発令中の特別警報または警報が存在するか'),
+  hasActiveAlerts: z.boolean().describe('発表中の特別警報・警報・注意報が1つでもあるか'),
   ...CACHE_META_SHAPE,
 });
 

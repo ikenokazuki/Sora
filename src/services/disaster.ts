@@ -176,7 +176,9 @@ export async function fetchWeatherWarnings(options: {
   if (used.length === 0) {
     throw new Error(`気象庁の警報データに ${target.name}（${target.code}）の欄がありません`);
   }
-  const reportTime: string = used.reduce((latest, r) => (Date.parse(r.time) > Date.parse(latest) ? r.time : latest), used[0].time);
+  // 読める発表日時が無ければ、前と同じく今の時刻
+  const times: string[] = used.map((r) => r.time).filter((t) => typeof t === 'string' && !Number.isNaN(Date.parse(t)));
+  const reportTime = times.length > 0 ? times.reduce((latest, t) => (Date.parse(t) > Date.parse(latest) ? t : latest)) : new Date().toISOString();
 
   const specialWarnings: WarningItem[] = [];
   const warnings: WarningItem[] = [];
@@ -186,8 +188,9 @@ export async function fetchWeatherWarnings(options: {
 
   for (const kind of used.flatMap((r) => r.items).flatMap((i: any) => i.kinds || [])) {
     const meta = WARNING_KINDS[kind?.code];
-    const key = `${kind?.code}:${kind?.status}`;
-    if (!meta || INACTIVE_STATUSES.has(kind.status) || seen.has(key)) continue;
+    const status = kind?.status || '発表';
+    const key = `${kind?.code}:${status}`;
+    if (!meta || INACTIVE_STATUSES.has(status) || seen.has(key)) continue;
     seen.add(key);
     const [kindName, level] = meta;
     const item: WarningItem = {
@@ -195,7 +198,7 @@ export async function fetchWeatherWarnings(options: {
       name: kindName + LEVEL_NAMES[level],
       level: level === 50 ? 'special' : level === 20 ? 'advisory' : 'warning',
       ...(LEVELED_KINDS.has(kindName) ? { alertLevel: level / 10 } : {}),
-      status: kind.status,
+      status,
     };
     (level === 50 ? specialWarnings : level === 20 ? advisories : warnings).push(item);
   }
