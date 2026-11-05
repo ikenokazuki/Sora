@@ -1778,7 +1778,7 @@ export async function integratedSearch(options: {
             const scrape = await scrapeUrl({
               url: item.url, tenantId: requestTenantId, contextTitle: item.title, snippet: item.summary, maxChars, timeoutMs: 12000,
               query, extractHighlights, onlyMainContent, formats, annotateTemporal,
-              highlightMaxCount,
+              highlightMaxCount, noCache,
             }).catch(() => null);
             // 取得できなかった動画は根拠に入れない（字幕の無い動画は、説明文だけの結果として入れる）
             if (!scrape || scrape.contentStatus === 'unavailable') return null;
@@ -1973,6 +1973,7 @@ export async function integratedSearch(options: {
             formats,
             annotateTemporal,
             highlightMaxCount,
+            noCache,
             ...mediaOption,
           });
 
@@ -2073,6 +2074,7 @@ export async function integratedSearch(options: {
               formats,
               annotateTemporal,
               highlightMaxCount,
+              noCache,
               ...mediaOption,
             });
             const enrichedSpare: Record<string, any> = {
@@ -2137,7 +2139,7 @@ export async function integratedSearch(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: evidenceQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, ...mediaOption });
+              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: evidenceQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, noCache, ...mediaOption });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
