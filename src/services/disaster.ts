@@ -1,7 +1,7 @@
-import { AreaInputError, prefectureOf, resolveCityId, resolveMunicipality } from './life.js';
+import { AreaInputError, TOWN_BY_CODE, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './life.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
-import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES } from '../jma_areas.js';
+import { JMA_CLASS10, JMA_OFFICES } from '../jma_areas.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
 export const CACHE_TTL_EARTHQUAKE = 60 * 1000;     // 1分
@@ -101,12 +101,20 @@ interface WarningTarget {
   codes: string[];
 }
 
-const TOWN_BY_CODE = new Map(
-  Object.entries(JMA_CLASS20).flatMap(([name, towns]) => towns.map((t) => [t.code, { name, class10: t.class10 }] as const)),
-);
+const townTarget = (town: Municipality): WarningTarget => ({
+  code: town.codes.join(','), name: town.name, office: JMA_CLASS10[town.class10].office, codes: town.codes,
+});
 
-/** 7 桁（市町村）・6 桁（予報区・気象台）・2 桁（都道府県）の番号を、警報を返す範囲にする */
+/** 7 桁（市町村）・6 桁（予報区・気象台）・2 桁（都道府県）の番号、または同じ市の区域の 7 桁をカンマでつないだものを、警報を返す範囲にする */
 function warningTargetFromCode(input: string): WarningTarget {
+  if (input.includes(',')) {
+    const codes = [...new Set(input.split(',').map((c) => c.trim()))];
+    const city = codes.every((c) => /^\d{7}$/.test(c)) ? wholeCityOf(codes) : undefined;
+    if (!city) throw new AreaInputError(`エリアコード「${input}」: カンマでつなげるのは、同じ市の区域の 7 桁の番号だけです`);
+    const parts = city.codes.filter((c) => codes.includes(c));
+    if (parts.length === city.codes.length) return townTarget(city);
+    return { code: parts.join(','), name: parts.map((c) => TOWN_BY_CODE.get(c)?.name).join('・'), office: JMA_CLASS10[city.class10].office, codes: parts };
+  }
   if (!/^(\d{2}|\d{6}|\d{7})$/.test(input)) throw new AreaInputError(`エリアコード「${input}」は 7 桁・6 桁・2 桁の数字で指定してください`);
   const town = TOWN_BY_CODE.get(input);
   if (town) return { code: input, name: town.name, office: JMA_CLASS10[town.class10].office, codes: [input] };
@@ -128,13 +136,13 @@ function warningTargetFromCode(input: string): WarningTarget {
   throw new AreaInputError(`エリアコード「${input}」が見つかりません`);
 }
 
-/** areaCode、市町村、予報区（city_map）の順に解決する。city も areaCode も無ければ東京 */
+/** areaCode があればそれ、無ければ city を天気と同じ順で解決する（市町村に当たれば市町村）。どちらも無ければ東京 */
 function resolveWarningTarget(city?: string, areaCode?: string): WarningTarget {
   if (areaCode?.trim()) return warningTargetFromCode(areaCode.trim());
   const query = city?.trim() || '東京';
-  const town = resolveMunicipality(query);
-  if (town) return { code: town.codes.join(','), name: town.name, office: JMA_CLASS10[town.class10].office, codes: town.codes };
-  return warningTargetFromCode(resolveCityId(query));
+  if (/^\d{6}$/.test(query)) return warningTargetFromCode(query);
+  const place = resolvePlace(query, { town: true });
+  return place.town ? townTarget(place.town) : warningTargetFromCode(place.class10);
 }
 
 /** 気象庁 防災気象警報・注意報取得 */
@@ -175,17 +183,21 @@ export async function fetchWeatherWarnings(options: {
   const specialWarnings: WarningItem[] = [];
   const warnings: WarningItem[] = [];
   const advisories: WarningItem[] = [];
+  // 区域や予報区を合わせるとき、同じ警報（番号と状態が同じ）は 1 つにする
+  const seen = new Set<string>();
 
   for (const a of matched) {
     for (const w of a.warnings || []) {
       const wCode = String(w.code || '').padStart(2, '0');
       const meta = WARNING_CODE_MAP[wCode];
-      if (meta) {
+      const status = w.status || '発表';
+      if (meta && !seen.has(`${wCode}:${status}`)) {
+        seen.add(`${wCode}:${status}`);
         const item: WarningItem = {
           code: wCode,
           name: meta.name,
           level: meta.level,
-          status: w.status || '発表',
+          status,
         };
         if (meta.level === 'special') specialWarnings.push(item);
         else if (meta.level === 'warning') warnings.push(item);

@@ -295,38 +295,71 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   return hits[0];
 }
 
-/** 都市名または都道府県名から 6 桁の予報区の番号を解決する。見つからなければエラー */
-export function resolveCityId(query: string): string {
+/** 市町村の番号（class20）→ 名前と予報区 */
+export const TOWN_BY_CODE = new Map(
+  Object.entries(JMA_CLASS20).flatMap(([name, towns]) => towns.map((t) => [t.code, { name, class10: t.class10 }] as const)),
+);
+
+/** 区域の番号 → その区域を含む市全体（区域に分かれた市だけ） */
+const WHOLE_CITY_BY_CODE = new Map(
+  [...MUNICIPALITIES.values()].flat().filter((m) => m.codes.length > 1).flatMap((m) => m.codes.map((c) => [c, m] as const)),
+);
+
+/** 番号がすべて同じ市の区域なら、その市全体 */
+export function wholeCityOf(codes: string[]): Municipality | undefined {
+  const city = WHOLE_CITY_BY_CODE.get(codes[0]);
+  return city && codes.every((c) => city.codes.includes(c)) ? city : undefined;
+}
+
+/** 地名の解決の結果。class10 は予報区、town は市町村（区域に分かれた市は市全体）に当たったとき */
+export interface Place {
+  class10: string;
+  town?: Municipality;
+}
+
+/**
+ * 天気と警報で共通の地名の解決。
+ * 1. 市町村の名前そのまま（候補が 1 つ。"横浜市" などの市全体を含む）
+ * 2. city_map の地名（都道府県名・気温の地点の名前を含む）→ その予報区。town: true（警報）では、地名に「市」「区」を
+ *    足した市町村が同じ予報区にあればその市町村（"横浜" → 横浜市。"八幡" は京都府八幡市が別の予報区なので北九州地方のまま）
+ * 3. 市町村の表（都道府県名の付いた名前・政令指定都市の区・市区町村の省略）。候補が複数なら候補を挙げたエラー
+ * 4. city_map の部分一致。どれにも当たらなければエラー
+ */
+export function resolvePlace(query: string, { town: preferTown = false } = {}): Place {
   const clean = query.trim();
-  if (/^\d{6}$/.test(clean)) {
-    return clean;
+  const exact = MUNICIPALITIES.get(clean);
+  if (exact?.length === 1) return { class10: exact[0].class10, town: exact[0] };
+
+  const mapped = lookup(MUNICIPALITY_CITY_MAP, clean);
+  if (mapped) {
+    const towns = preferTown
+      ? [`${clean}市`, `${clean}区`].flatMap((n) => MUNICIPALITIES.get(n) ?? []).filter((m) => m.codes.some((c) => TOWN_BY_CODE.get(c)?.class10 === mapped))
+      : [];
+    return towns.length === 1 ? { class10: mapped, town: towns[0] } : { class10: mapped };
   }
 
-  // 1. 気象庁公式自治体マップによる完全一致
-  const exact = lookup(MUNICIPALITY_CITY_MAP, clean);
-  if (exact) return exact;
-
-  // 2. 接尾辞を除去して再試行（例: "東京都" -> "東京", "天童市" -> "天童", "軽井沢町" -> "軽井沢"）
-  const stripped = lookup(MUNICIPALITY_CITY_MAP, clean.replace(/(?:都|府|県|市|区|町|村)$/, ''));
-  if (stripped) return stripped;
-
-  // 3. 市町村の表（例: "静岡県森町"。部分一致より先に引かないと、"森町" に当たって北海道になる）
   const town = resolveMunicipality(clean);
-  if (town) return town.class10;
+  if (town) return { class10: town.class10, town };
 
-  // 4. 部分一致
   for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-    if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) {
-      return id;
-    }
+    if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) return { class10: id };
   }
-
   throw new AreaInputError(`地名「${clean}」が見つかりません`);
 }
 
-/** 予報区（または気象台）の番号から、予報を発表する気象台の番号。北海道・鹿児島・沖縄は XX0000 ではない */
+/** 都市名または都道府県名から 6 桁の予報区の番号を解決する（6 桁の数字はそのまま）。見つからなければエラー */
+export function resolveCityId(query: string): string {
+  const clean = query.trim();
+  return /^\d{6}$/.test(clean) ? clean : resolvePlace(clean).class10;
+}
+
+/**
+ * 予報区（または気象台）の番号から、予報の JSON を出す気象台の番号。北海道・鹿児島・沖縄は XX0000 ではなく、
+ * 十勝・奄美の予報は別の気象台（014100・460100）の JSON に入る
+ */
 function weatherOfficeOf(cityId: string): string {
-  const office = JMA_CLASS10[cityId]?.office ?? (JMA_OFFICES[cityId] ? cityId : undefined);
+  const area = JMA_CLASS10[cityId];
+  const office = area ? (area.forecastOffice ?? area.office) : JMA_OFFICES[cityId] ? cityId : undefined;
   if (!office) throw new AreaInputError(`地点ID「${cityId}」が見つかりません`);
   return office;
 }
@@ -392,11 +425,10 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
   const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
 
-  const areaIndex = weatherAreas.findIndex((a: any) => a.area?.code === cityId);
-  const targetArea = weatherAreas[areaIndex] ?? weatherAreas[0];
+  const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
   const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-  // 気温の地点は予報区と同じ順に並ぶ（同じ位置に無ければ最初の地点）
-  const targetTemp = tempAreas[areaIndex] ?? tempAreas[0];
+  // 気温の地点は予報区の表の地点の名前で選ぶ（JSON の地点の並びは予報区の並びと同じとは限らない）。無ければ最初の地点
+  const targetTemp = tempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.point) ?? tempAreas[0];
 
   const dateLabels = ['今日', '明日', '明後日'];
   const forecasts = [];

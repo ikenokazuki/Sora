@@ -95,6 +95,30 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(resolveCityId('北海道森町')).toBe('017010');
   });
 
+  it('都道府県名と気温の地点の名前は、市町村の表より先に city_map の予報区になる', () => {
+    expect(resolveCityId('石川')).toBe('170010');
+    expect(resolveCityId('岩手')).toBe('030010');
+    expect(resolveCityId('茨城')).toBe('080010');
+    expect(resolveCityId('八幡')).toBe('400020');
+    expect(resolveCityId('西郷')).toBe('320030');
+    expect(resolveCityId('横浜')).toBe('140010');
+    // 地点でも都道府県でもない名前が複数の市町村に当たれば、候補を挙げる
+    expect(() => resolveCityId('川崎')).toThrow(/神奈川県川崎市、宮城県川崎町、福岡県川崎町/);
+  });
+
+  it('気温は予報区の表の地点の名前で選ぶ（並びが予報区と違う気象台がある）', async () => {
+    const yonezawa = await fetchWeatherForecast({ city: '米沢', days: 1, noCache: true });
+    expect(yonezawa.cityId).toBe('060020');
+    expect(yonezawa.temperatureArea).toBe('米沢');
+  });
+
+  it('十勝地方は予報の JSON を出す釧路地方気象台（014100）から引く', async () => {
+    const obihiro = await fetchWeatherForecast({ city: '帯広', days: 1, noCache: true });
+    expect(obihiro.cityId).toBe('014030');
+    expect(obihiro.publishingOffice).toBe('釧路地方気象台');
+    expect(obihiro.temperatureArea).toBe('帯広');
+  });
+
   it('区域に分かれた市は、区域を合わせた 1 つの市町村にする', () => {
     expect(resolveMunicipality('横浜市中区')).toMatchObject({ name: '横浜市', codes: ['1410011', '1410012'], class10: '140010' });
     // 市の名前そのままの区域（郡山市）と郡山市湖南

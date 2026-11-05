@@ -579,8 +579,8 @@ export const SuggestRequestSchema = z.object({
 });
 
 export const DisasterWarningsRequestSchema = z.object({
-  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "横浜市")'),
-  areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定'),
+  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")'),
+  areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 

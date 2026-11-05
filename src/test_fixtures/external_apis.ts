@@ -71,10 +71,24 @@ const JMA_OFFICES: Record<string, { office: string; areas: Array<{ code: string;
   },
   '471000': { office: '沖縄気象台', areas: [{ code: '471010', name: '本島中南部' }, { code: '471020', name: '本島北部' }] },
   '016000': { office: '札幌管区気象台', areas: [{ code: '016010', name: '石狩地方' }, { code: '016020', name: '空知地方' }] },
+  // 実際の JSON と同じく、地点の並び（山形・酒田・新庄・米沢）が予報区の並び（村山・置賜・庄内・最上）と違う
+  '060000': {
+    office: '山形地方気象台',
+    areas: [{ code: '060010', name: '村山' }, { code: '060020', name: '置賜' }, { code: '060030', name: '庄内' }, { code: '060040', name: '最上' }],
+    points: [{ code: '35426', name: '山形' }, { code: '35136', name: '酒田' }, { code: '35172', name: '新庄' }, { code: '35571', name: '米沢' }],
+  },
+  // 十勝地方（014030）の予報は釧路地方気象台の JSON に入る
+  '014100': {
+    office: '釧路地方気象台',
+    areas: [{ code: '014020', name: '釧路地方' }, { code: '014010', name: '根室地方' }, { code: '014030', name: '十勝地方' }],
+    points: [{ code: '19432', name: '釧路' }, { code: '18273', name: '根室' }, { code: '20432', name: '帯広' }],
+  },
 };
 
 /** 気象庁に無い気象台の番号（例: 北海道の 010000）は、実際と同じく 404 を返す。 */
 const isJmaOffice = (code: string) => code in JMA_OFFICE_NAMES;
+/** 予報の JSON を自分では出さない気象台（十勝・奄美。予報は別の気象台の JSON に入る） */
+const NO_FORECAST = new Set(Object.values(JMA_CLASS10).filter((c) => c.forecastOffice).map((c) => c.office));
 
 const jstDate = (offsetDays: number): string => {
   const d = new Date(Date.now() + 9 * 3600_000 + offsetDays * 86400_000);
@@ -206,7 +220,7 @@ export function externalApiFixtureResponse(url: URL): Response | undefined {
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
     const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d+)\.json$/);
-    if (m && !isJmaOffice(m[2])) return new Response('Not Found', { status: 404 });
+    if (m && (!isJmaOffice(m[2]) || (m[1] !== 'warning/data/warning' && NO_FORECAST.has(m[2])))) return new Response('Not Found', { status: 404 });
     if (m?.[1] === 'forecast/data/forecast') return json(jmaForecast(m[2]));
     if (m?.[1] === 'forecast/data/overview_forecast') return json(jmaOverview(m[2]));
     if (m?.[1] === 'warning/data/warning') return json(jmaWarning(m[2]));
