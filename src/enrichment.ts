@@ -628,7 +628,7 @@ export function extractQueryHighlightDetails(
   }
 
   const terms = extractTermsWithBigrams(query);
-  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンクだけのナビの塊を外し、
+  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンク先のホストが多いリンクだけの段落（言語の一覧など）を外し、
   // リストの中の見出しも見出しとして扱う）
   const sections = parseMarkdownSections(content);
   const rawBlocks: HeadingBlock[] = sections.map((sec) => {

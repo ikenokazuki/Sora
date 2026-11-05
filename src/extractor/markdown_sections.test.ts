@@ -1,14 +1,64 @@
 import { describe, expect, test } from 'bun:test';
 import { extractQueryHighlightDetails } from '../enrichment.js';
-import { isNavBlock, parseMarkdownSections } from './markdown_sections.js';
+import { NAV_MIN_DISTINCT_HOSTS, isNavBlock, parseMarkdownSections } from './markdown_sections.js';
 
-const langs = ['English', 'Français', 'Deutsch', '中文', '한국어'].map((l) => `- [${l}](https://${encodeURIComponent(l)}.example.org/wiki/Tokyo_Dome)`).join('\n');
+// 言語ごとに別のホスト（Wikipedia の言語の一覧と同じ形）
+const langs = ['English', 'Français', 'Deutsch', '中文', '한국어', 'Español'].map((l) => `- [${l}](https://${encodeURIComponent(l)}.example.org/wiki/Tokyo_Dome)`).join('\n');
+// SNS の行（別々のホストへのリンク）。n 個ぶん
+const snsAll: Array<[string, string]> = [
+  ['X', 'https://x.com/artist'],
+  ['Instagram', 'https://www.instagram.com/artist'],
+  ['YouTube', 'https://www.youtube.com/@artist'],
+  ['TikTok', 'https://www.tiktok.com/@artist'],
+  ['Facebook', 'https://www.facebook.com/artist'],
+  ['LINE', 'https://line.me/R/ti/p/@artist'],
+  ['note', 'https://note.com/artist'],
+  ['Threads', 'https://www.threads.net/@artist'],
+];
+const sns = (n: number) => snsAll.slice(0, n).map(([label, url]) => `- [${label}](${url})`).join('\n');
 
 describe('parseMarkdownSections のナビの段落', () => {
-  test('節の中の、短いラベルのリンクだけの段落（2 行以上）を外す', () => {
+  test('節の中の、短いラベルのリンクだけの段落（2 行以上。言語ごとに別のホストの一覧）を外す', () => {
+    expect(langs.split('\n').length).toBeGreaterThanOrEqual(NAV_MIN_DISTINCT_HOSTS);
     const [sec] = parseMarkdownSections(`# 東京ドーム\n\n${langs}\n\n東京ドームは東京都文京区にある球場です。収容人数は約 5 万人です。`);
     expect(sec.fullText).not.toContain('English');
     expect(sec.fullText).toContain('収容人数は約 5 万人');
+  });
+
+  test('リンク先のホストが下限以上あるときだけ外す（SNS の行）', () => {
+    expect(snsAll.length).toBeGreaterThanOrEqual(NAV_MIN_DISTINCT_HOSTS);
+    const doc = (links: string) => `# 歌手A\n\n## 公式リンク\n\n${links}\n\n## 概要\n\n歌手Aは日本のシンガーソングライターです。`;
+    // 下限と同じ数のホスト: 外れる（SNS の行だけの節は無くなる）
+    expect(parseMarkdownSections(doc(sns(NAV_MIN_DISTINCT_HOSTS))).map((s) => s.heading)).toEqual(['歌手A > 概要']);
+    // 下限より 1 つ少ない: 残る
+    const kept = parseMarkdownSections(doc(sns(NAV_MIN_DISTINCT_HOSTS - 1)));
+    expect(kept.map((s) => s.heading)).toEqual(['歌手A > 公式リンク', '歌手A > 概要']);
+    expect(kept[0].fullText).toContain('[X](https://x.com/artist)');
+  });
+
+  test('同じホストへのリンクだけの一覧（曲名・作品名・カテゴリ）は、行がいくつあっても外さない', () => {
+    const songs = Array.from({ length: Math.max(8, NAV_MIN_DISTINCT_HOSTS * 2) }, (_, i) => `- [曲${i}](https://example.com/songs/${i})`).join('\n');
+    const md = `# 歌手A\n\n歌手Aは日本のシンガーソングライターです。2015 年にデビューしました。\n\n## シングル\n\n${songs}\n\n## 受賞歴\n\n2020 年に新人賞を受賞しました。`;
+    const single = parseMarkdownSections(md).find((s) => s.heading === '歌手A > シングル');
+    expect(single?.fullText).toContain('[曲0](https://example.com/songs/0)');
+    expect(single?.fullText).toContain('[曲7](https://example.com/songs/7)');
+    // 検索語に合うその節が、1 番目のハイライトに選ばれる
+    const { highlights } = extractQueryHighlightDetails(md, 'シングル 曲');
+    expect(highlights[0]).toContain('## 歌手A > シングル');
+    expect(highlights[0]).toContain('[曲0](https://example.com/songs/0)');
+  });
+
+  test('ホストに数えないもの（相対のリンク・メール・電話・読めない URL）と、同じホストの重なり', () => {
+    // 絶対 URL のホストは下限より 1 つ少ない。各ホストに 2 行ずつ書く（パスが違っても同じホスト）
+    const absolute = Array.from({ length: NAV_MIN_DISTINCT_HOSTS - 1 }, (_, i) => [
+      `- [サイト${i}の料金](https://site${i}.example.com/price)`,
+      `- [サイト${i}の採用](https://site${i}.example.com/recruit)`,
+    ]).flat();
+    const others = ['- [ホーム](/)', '- [会社概要](../about)', '- [お問い合わせ](mailto:info@example.com)', '- [電話](tel:0312345678)', '- [壊れた](http://:80)'];
+    const [sec] = parseMarkdownSections(`# 会社\n\n${[...absolute, ...others].join('\n')}\n\n本文です。`);
+    // どれも数えないので下限に届かず、段落は残る
+    expect(sec.fullText).toContain('[ホーム](/)');
+    expect(sec.fullText).toContain('[サイト0の料金](https://site0.example.com/price)');
   });
 
   test('長いラベルのリンクの一覧・1 行だけのリンク・コードブロックは外さない', () => {
@@ -45,6 +95,16 @@ test('細工した入力でも、リンク行と前置きのパンくずの判�
   expect(performance.now() - t).toBeLessThan(500);
   // 「x」があるのでリンクの並びだけではなく、前置きは節に残る
   expect(sections.map((s) => s.fullText)).toEqual([`${'[a](b)'.repeat(20)}x`, '本文です。']);
+});
+
+test('リンク先のホストを数える処理も、長い段落で時間がかからない', () => {
+  // 同じホストへのリンクだけの 200,000 字の段落（下限に届かないので最後まで数える）と、読めない絶対 URL だけの段落（new URL が毎回例外を投げる）
+  for (const row of ['- [a](https://example.com/x)', '[a](http://:80)']) {
+    const doc = `# 見出し\n\n${`${row}\n`.repeat(Math.floor(200_000 / (row.length + 1)))}`;
+    const t = performance.now();
+    parseMarkdownSections(doc);
+    expect(performance.now() - t).toBeLessThan(500);
+  }
 });
 
 test('前置きのパンくず（リンクの並び）は、区切りがあってもなくても節にしない', () => {

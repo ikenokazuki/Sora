@@ -7,6 +7,18 @@
 const NAV_LABEL_MAX_CHARS = 16;
 
 /**
+ * 節の中でリンクだけの段落を外す（dropNavParagraphs）のは、リンク先の異なるホストがこの数以上あるときだけ。
+ * 言語の一覧（Wikipedia は言語ごとに別のホスト）や SNS の行は、他のサイトへのリンクの並びで、ホストが多い。
+ * 同じサイトの一覧（曲名・作品名・カテゴリ）はホストが 1 つで、検索語に合う本文になりうるので残す。
+ * 保存した本文（日本語のページ、Wikipedia の長い記事、検索結果の本文、英語中心のページ。合わせて約 1,800 ページ）で、
+ * リンクだけと判定された段落のホストの数は、同じサイトの一覧が 1、サブドメインをまたぐナビが 2〜3、SNS の行が 2〜5、言語の一覧が 10 以上だった。
+ * 5 ホストの段落 6 件のうち 3 件は、おすすめのアプリ・空港・参考サイトの内容のある一覧だったので、6 にした。
+ * 言語の一覧は余裕をもって外れ、X・Instagram・YouTube・TikTok・Facebook・LINE の 6 つの行にも届く。
+ * ホストが 6 に届かない SNS の行は残る。6 ホスト以上のリンク集は、ラベルが 1 つでも 16 字以下なら外れる。
+ */
+export const NAV_MIN_DISTINCT_HOSTS = 6;
+
+/**
  * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
  * ラベルがテキストなら返し、画像だけ `[![alt](src)](url)`（SNS アイコン・バナー等）や空のラベルなら、
  * 「リンク行だがナビの候補ではない」として null を返す。リンクですらない行は undefined。
@@ -31,8 +43,10 @@ function isLabelLinkLine(line: string): LabelLinkVerdict {
 /** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
  * 空のラベル行（取り除けなかった SNS アイコン列など）と画像だけのリンク行は、テキストラベルとは数えないが、ナビであることは妨げない。
  * テキストラベルの行が 1 つも無い塊（画像だけのリンクの列など）は、ナビとみなさない。
- * ナビの塊は、節の中では dropNavParagraphs が（2 行以上のとき）節の本文とハイライトの候補から外し、
- * search_deep の本文の配分（integrated_search_host_response の dropNavBlocksFirst）では本文の後ろへ回す。 */
+ * ラベルの短さは「1 つでも 16 字以下」で見る。Wikipedia の言語の一覧も、Srpskohrvatski / српскохрватски のように 16 字を超える項目を混ぜるので、「すべて」にすると外せなくなる。
+ * ここで決まるのは「リンクだけの塊か」まで。節の中では dropNavParagraphs が、2 行以上で、リンク先のホストが NAV_MIN_DISTINCT_HOSTS 以上のものだけを
+ * 節の本文とハイライトの候補から外す（同じサイトの一覧は残す）。search_deep の本文の配分
+ * （integrated_search_host_response の dropNavBlocksFirst）では、ホストの数によらず本文の後ろへ回す。 */
 export function isNavBlock(block: string): boolean {
   const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
   // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
@@ -53,8 +67,27 @@ export interface ParsedSection {
   startIndex: number;
 }
 
+// リンクの飛び先 `](URL "title")` の URL のうち、http(s) の絶対 URL。相対のもの・mailto: などはホストを持たないので読まない。
+// ホストは URL の先頭にあって括弧の前に終わるので、URL の中の括弧は読まない（括弧まで読む形は、閉じていないときの戻りが増える）
+const LINK_ABS_URL_RE = /\]\((https?:\/\/[^()\s]+)/gi;
+
+/** 塊のリンクの飛び先に、異なるホストが NAV_MIN_DISTINCT_HOSTS 以上あるか。new URL で読めないものは数えない（画像の src も `](…)` なので数える）。下限に届けば数え終わる前に止める */
+function linksToManyHosts(block: string): boolean {
+  const hosts = new Set<string>();
+  for (const m of block.matchAll(LINK_ABS_URL_RE)) {
+    try {
+      hosts.add(new URL(m[1]).hostname);
+    } catch {
+      // 読めない URL は数えない
+    }
+    if (hosts.size >= NAV_MIN_DISTINCT_HOSTS) return true;
+  }
+  return false;
+}
+
 /**
- * 空行で区切った段落のうち、短いラベルのリンクだけの段落（2 行以上。グローバルナビ・言語の一覧など）を外す。
+ * 空行で区切った段落のうち、短いラベルのリンクだけの段落（isNavBlock。2 行以上）で、リンク先のホストが NAV_MIN_DISTINCT_HOSTS 以上あるものを外す
+ * （言語の一覧・SNS の行など、他のサイトへのリンクの並び）。同じサイトへのリンクだけの一覧（曲名・作品名・カテゴリ）は、ホストが少ない本文なので残す。
  * 1 行だけのリンク（「申し込み」など）は外さない。コードブロックの中は区切らない。
  */
 function dropNavParagraphs(lines: string[]): string[] {
@@ -62,8 +95,11 @@ function dropNavParagraphs(lines: string[]): string[] {
   let block: string[] = [];
   let inCode = false;
   const end = () => {
-    const nonEmpty = block.filter((l) => l.trim() !== '').length;
-    if (block.length > 0 && !(nonEmpty >= 2 && isNavBlock(block.join('\n')))) out.push(...block);
+    if (block.length > 0) {
+      const nonEmpty = block.filter((l) => l.trim() !== '').length;
+      const text = block.join('\n');
+      if (!(nonEmpty >= 2 && isNavBlock(text) && linksToManyHosts(text))) out.push(...block);
+    }
     block = [];
   };
   for (const line of lines) {
@@ -116,7 +152,7 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   const headingStack: { level: number; heading: string }[] = [];
 
   const flush = () => {
-    // 節の中の、短いラベルのリンクだけの段落は、ハイライトの候補にも書き出しにもしない
+    // 節の中の、リンク先のホストが多い、短いラベルのリンクだけの段落（言語の一覧など）は、ハイライトの候補にも書き出しにもしない
     const keptLines = dropNavParagraphs(currentParagraphs);
     const fullText = keptLines.join('\n').trim();
     if (fullText.length > 0) {
