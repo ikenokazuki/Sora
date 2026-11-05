@@ -224,3 +224,18 @@ Task 1 の作業中に見つかった。気象庁は 2026 年 5 月下旬に新�
 テスト: 実際の r8 の JSON から削った偽物で、市町村・予報区・気象台の 3 つの解決、解除となしの除外、段階の振り分け、reportTime。
 
 外への要求: 気象庁に 10 回まで。
+
+### Task 11: search_deep の X のタイムラインの本文の重複
+
+対象のファイル: `src/integrated_search_host_response.ts`（とテスト）、`src/types.ts`（search_deep の formats の説明、types.ts:563 付近）。
+
+evidence の応答では、ハイライトで足りる結果の markdown を省くが、X の結果は省かない（`isXItem`、evidence を入れたコミット 9779cce から意図的。投稿はそれ自体が根拠で、ハイライトだと文の途中で切れることがあるため）。ところが X のタイムライン・プロフィールのページ（例 `https://x.com/<アカウント>/all`）の markdown は、同じ応答の `realtime.items` にある投稿と重なる（実例: 818 字の markdown の 3 件が realtime.items の先頭 3 件と同じだった）。
+
+1. X のタイムライン・プロフィールのページ（`x.com`・`twitter.com` の `/<アカウント>` とその下。`/status/` を含む投稿 1 件の URL は除く）の結果は、同じ応答の `realtime.items` に同じアカウント（`author_handle`、大文字小文字を区別しない）の投稿があるときだけ、markdown を省く。ハイライトは残す。
+2. 次のときは今のまま（markdown を残す）: 投稿 1 件の URL、realtime の結果が無いか同じアカウントの投稿が無いとき、formats に markdown を明示したとき。
+3. search_deep の formats の説明に、X の扱いを 1 文で足す（例「X の投稿の結果は指定しなくても本文を残す。タイムラインのページは、realtime に同じアカウントの投稿があるときは本文を省く」）。
+4. キャッシュに入る応答が変わるなら、`search:integrated` の版を上げる（Task 3 で上げていればそのまま）。
+
+テスト: 同じアカウント・別のアカウント・投稿 1 件・realtime 無し・markdown の明示。
+
+外への要求: なし。
