@@ -42,14 +42,6 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .default(true)
         .describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
-      fastOnly: z
-        .boolean()
-        .optional()
-        .describe('【互換用】静的フェッチのみに限定するか (mode: "fast" と同等)'),
-      renderJs: z
-        .boolean()
-        .optional()
-        .describe('【互換用】Stealth Chromium で JS 完全実行するか (mode: "browser" と同等)'),
       responseMode: SCRAPE_RESPONSE_MODE_FIELD,
       stripLinks: z
         .boolean()
@@ -67,22 +59,10 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .boolean()
         .optional()
         .describe('記事本文のみを抽出するか (デフォルト: true)。false にするとナビゲーションやヘッダー/フッターも含めて抽出').meta({ default: true }),
-      selectors: z
-        .record(z.string(), z.string())
-        .optional()
-        .describe('特定要素のみをピンポイント抽出する CSS セレクタまたは属性指定の連想配列 (例: {"price": ".product-price", "link": "a.btn@href"})'),
-      clipSelector: z
-        .string()
-        .optional()
-        .describe('指定した要素のみを切り抜いてスクリーンショットを撮影する CSS セレクタ (例: "#chart", ".pricing-table")'),
       headers: z
         .record(z.string(), z.string())
         .optional()
         .describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})'),
-      removeSelectors: z
-        .array(z.string())
-        .optional()
-        .describe('Markdown 変換前に除去したいノイズ要素の CSS セレクタ配列 (例: [".ad-banner", ".comments", "#related"])'),
       verbose: z
         .boolean()
         .optional()
@@ -107,9 +87,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
-    async ({ url, maxChars, mode, formats, fullPage, fastOnly, renderJs, responseMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
+    async ({ url, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, fastOnly, renderJs, responseMode, stripLinks, maskPii, query, onlyMainContent, selectors, clipSelector, headers, removeSelectors, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
         const formatted = formatCompactScrapeResult(result, { verbose });
         return {
           content: [
@@ -138,9 +118,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }',
     SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async ({ urls, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
       try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, selectors, clipSelector, headers, removeSelectors, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
+        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, annotateTemporal, highlightMaxCount, includeMedia });
         const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
         return {
           content: [

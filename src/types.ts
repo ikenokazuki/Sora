@@ -332,10 +332,7 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
     mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
     formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
-    selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
-    clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
     headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
-    removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
     responseMode: SCRAPE_RESPONSE_MODE_FIELD,
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
@@ -359,6 +356,10 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
 
 export const BatchScrapeRequestSchema = z.object({
   ...SCRAPE_BATCH_INPUT_SHAPE,
+  // CSS セレクタは MCP には出さず（LLM はページの HTML を見ずに呼ぶので正しく書けない）、REST にだけ残す
+  selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
+  clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
+  removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
 });
