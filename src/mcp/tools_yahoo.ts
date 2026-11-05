@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { fetchRealtimeTrends } from '../scraper.js';
 import { formatCompactRealtimeResponse } from '../search_compact.js';
 import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
-import { ChiebukuroSearchRequestSchema, ChiebukuroStatusSchema, ImageSearchRequestSchema, VideoSearchRequestSchema } from '../types.js';
+import { ChiebukuroSearchRequestSchema, ChiebukuroStatusSchema, ImageSearchRequestSchema, TrendSearchRequestSchema, VideoSearchRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { searchChiebukuroCached, searchImageCached, searchNewsCached, searchRealtimeCached, searchVideoCached, suggestKeywordsCached } from '../yahoo_search_cache.js';
 import { isModuleActive, registerTool, toolJson } from './registry.js';
@@ -267,7 +267,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     'yahoo',
     '【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }',
     {
-      limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)').meta({ default: 20 }),
+      limit: TrendSearchRequestSchema.shape.limit,
     },
     async ({ limit }) => {
       try {

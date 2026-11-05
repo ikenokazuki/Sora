@@ -472,7 +472,7 @@ export const ChiebukuroSearchRequestSchema = z.object({
 });
 
 export const TrendSearchRequestSchema = z.object({
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50。返るのはページに載っている件数まで)').meta({ default: 20 }),
 });
 
 export const RealtimeSearchRequestSchema = z.object({
@@ -558,10 +558,10 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
   realtimeAnchor: z.string().max(100).optional().describe('X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
-  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
+  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす（1 回の取得は 40 件まで）。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   includeMedia: z.boolean().optional().describe('画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない').meta({ default: true }),
-  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。html には効かない)').meta({ default: 30000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),

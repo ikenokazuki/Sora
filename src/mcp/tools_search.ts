@@ -18,7 +18,7 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
       '見つからない場合は該当モジュールが無効か利用不可です。返却: 有効化したツールの一覧（テキスト）',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
-      detail: z.enum(['names', 'summary', 'schema']).optional().describe('names=名前とカテゴリのみ / summary=説明の要約（既定） / schema=入力スキーマ付き（最大8件）'),
+      detail: z.enum(['names', 'summary', 'schema']).optional().describe('names=名前とカテゴリのみ / summary=説明の要約（既定） / schema=入力スキーマ付き（最大8件）。activate:false を付けないと、見つけたツールを有効にもする'),
       activate: z.boolean().optional().describe('false なら有効化せずに調べるだけ（既定 true）'),
     },
     async ({ query, detail, activate }) => {
