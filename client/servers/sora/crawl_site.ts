@@ -40,6 +40,8 @@ export type CrawlSiteInput = {
   concurrency?: number;
   /** クロール完了通知用 Webhook URL */
   webhookUrl?: string;
+  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない */
+  includeMedia?: boolean;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
 };

@@ -200,6 +200,7 @@ scrapeRoutes.post('/crawl', async (c) => {
       annotateTemporal: body.annotateTemporal,
       minimizeTables: body.minimizeTables,
       highlightMaxCount: body.highlightMaxCount,
+      includeMedia: body.includeMedia,
       noCache: body.noCache,
     });
 
@@ -246,6 +247,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
         annotateTemporal: body.annotateTemporal,
         minimizeTables: body.minimizeTables,
         highlightMaxCount: body.highlightMaxCount,
+        includeMedia: body.includeMedia,
         noCache: body.noCache,
         onPageCrawled: (page, count) => {
           stream.writeSSE({

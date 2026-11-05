@@ -6,8 +6,11 @@ import { INTENT_ATTRIBUTE_TERMS } from './requirements.js';
 import { CURRENT_INTENT_TERMS, CURRENT_MARKERS, FACET_KIND_TERMS, OLD_MARKERS, RELATIVE_DAY_OFFSETS } from './lexicons/temporal.js';
 import { EVIDENCE_WEIGHTS } from './evidence_weights.js';
 export type ValueKind = 'price' | 'weight' | 'date' | 'time' | 'version' | 'wifi';
-const PRICE_PATTERN = /[¥￥$＄]|\d[\d,]*\s*円/;
-const WEIGHT_PATTERN = /\d[\d,.]*\s*(kg|g|グラム|キロ)/i;
+// PRICE・WEIGHT は test にだけ使う。後読みで「数字・カンマ（重さは . も）の並びの先頭」からだけ試す: 並びの途中の数字ごとに並びの最後まで読むと、
+// 長い数字の並びで長さの二乗の時間になる（20 万桁で数分）。判定は前の `\d[\d,]*\s*円` と同じ（数字を含む並びの直後に、空白をはさんでよく、円・単位が続く）。
+// 数字のあとの長さを 20 字までに縛る形（`\d[\d,]{0,20}`）は、カンマだけが 21 字以上続く入力で判定が変わるうえ、20 万桁の入力では Bun 1.4.2 で後読みより 6〜16 倍遅い
+const PRICE_PATTERN = /[¥￥$＄]|(?<![\d,]),*\d[\d,]*\s*円/;
+const WEIGHT_PATTERN = /(?<![\d,.])[,.]*\d[\d,.]*\s*(kg|g|グラム|キロ)/i;
 const DATE_PATTERN = /\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s*月\s*\d{1,2}\s*日/;
 const TIME_PATTERN = /\d{1,2}\s*時(\s*\d{1,2}\s*分)?|\d{1,2}:\d{2}/;
 const VERSION_PATTERN = /v\d+(\.\d+)+|version\s*\d+|バージョン\s*\d+/i;

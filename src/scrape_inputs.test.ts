@@ -26,6 +26,23 @@ describe('scrape inputs reach the implementation', () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ fullPage: false });
   });
 
+  test('MCP scrape forwards includeMedia', async () => {
+    const spy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url: 'https://example.com', title: 't', content: 'c', isTruncated: false, contentType: 'text/html', source: 'web' } as any);
+    restore.push(() => spy.mockRestore());
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'scrape-inputs', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      await client.callTool({ name: 'scrape', arguments: { url: 'https://example.com', includeMedia: false } });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+    expect(spy.mock.calls[0][0]).toMatchObject({ includeMedia: false });
+  });
+
   test('REST batch keeps every MCP batch option and enforces limits', () => {
     const parsed = BatchScrapeRequestSchema.parse({ urls: ['https://example.com'], maskPii: true, retries: 1, headers: { a: 'b' }, chunkMarkdown: true, noCache: true });
     expect(parsed).toMatchObject({ maskPii: true, retries: 1, headers: { a: 'b' }, chunkMarkdown: true, noCache: true });

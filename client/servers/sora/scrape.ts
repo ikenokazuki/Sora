@@ -101,6 +101,8 @@ export type ScrapeInput = {
   verbose?: boolean;
   /** base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化) */
   keepDataImages?: boolean;
+  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない */
+  includeMedia?: boolean;
 };
 
 export type ScrapeOutput = {

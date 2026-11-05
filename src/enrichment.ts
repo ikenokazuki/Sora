@@ -83,21 +83,46 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
+/** safeTruncateMarkdown は、開いたコードブロックを閉じる 4 字のぶん maxChars をはみ出しうる。その分だけ手前で切り直して、maxChars 字以内にする */
+export function truncateMarkdownWithin(markdown: string, maxChars: number): string {
+  const kept = safeTruncateMarkdown(markdown, maxChars);
+  return kept.length > maxChars ? safeTruncateMarkdown(markdown, Math.max(0, 2 * maxChars - kept.length)) : kept;
+}
+
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
+// どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
+const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
+const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
+const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
+const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
+// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [。直前の `\` が奇数個）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる。
+// 直前の `\` が偶数個なら、`\\` が字の `\` で、続く `[a](javascript:x)` は生きたリンクなので外す。
+// 先頭の (?=\[) は、後読みを `[` の位置でだけ評価するため。無いと、`\` の長い並びで JSC が途中で諦めて（外すべきリンクが残り、0.7〜1 秒かかる）
+const JS_LINK_RE = new RegExp(String.raw`(?=\[)(?<!(?<!\\)(?:\\\\)*\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
+const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
+
 /** 不要な空リンク、無効な JavaScript リンク、連続空行、巨大な base64 インライン画像をパージしてトークンを削減 */
 export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
   let cleaned = markdown
-    // 1. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
-    .replace(/\[(?:\s|&nbsp;)*\]\([^)]*\)/g, '')
-    // 2. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
-    .replace(/\[([^\]]+)\]\(javascript:[^)]*\)/gi, '$1')
-    // 3. 空の画像タグの除去: ![](url), ![] (url)
-    .replace(/!\[(?:\s|&nbsp;)*\]\s*\([^)]*\)/g, '');
+    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）。
+    // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）。
+    // 前が `[`、または後ろが `]` のとき（リンクの文字の端）は足さない（[![](url)Text](url) が [ Text](url) にならないように）
+    .replace(EMPTY_IMAGE_RE, (m, offset: number, whole: string) => {
+      const before = whole[offset - 1] ?? ' ';
+      const after = whole[offset + m.length] ?? ' ';
+      return /\S/.test(before) && /\S/.test(after) && before !== '[' && after !== ']' ? ' ' : '';
+    })
+    // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
+    .replace(EMPTY_LINK_RE, '')
+    // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
+    .replace(JS_LINK_RE, '$1');
 
   // 3.1. 巨大な base64 インライン画像の置換・パージ (LLM トークン浪費防止)
   // keepDataImages が false の場合、data:image/... を [画像: alt] に置換、alt が空なら完全除去
   if (!keepDataImages) {
-    cleaned = cleaned.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_, alt) => {
+    cleaned = cleaned.replace(DATA_IMAGE_RE, (_, alt) => {
       const trimmedAlt = alt.trim();
       return trimmedAlt ? `[画像: ${trimmedAlt}]` : '';
     });
@@ -108,8 +133,8 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/^[ \t]+$/gm, '')
     // 5. 3連続以上の空行を2行に圧縮
     .replace(/\n{3,}/g, '\n\n')
-    // 6. 行末の不要な半角スペースを除去
-    .replace(/[ \t]+$/gm, '')
+    // 6. 行末の不要な半角スペースを除去。(?<![ \t]) は空白の並びの先頭からだけ試すため（無いと、行の途中の長い空白で、並びの途中のすべての位置から読んで二乗の時間になる）
+    .replace(/(?<![ \t])[ \t]+$/gm, '')
     // 7. ゼロ幅文字・不可視制御文字の除去 (間接プロンプトインジェクション緩和)
     .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
     // 8. LLM 特殊制御トークン・擬似システム命令タグの無害化 (間接プロンプトインジェクション防御)
@@ -119,6 +144,11 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/\[(?:SYSTEM|SYSTEM[ _]MESSAGE|INSTRUCTION|DEVELOPER[ _]INSTRUCTION|PROMPT):/gi, (m) => `\\[${m.slice(1)}`)
     .replace(/<\/?(?:system|instruction|developer_instruction)>/gi, (m) => `\\<${m.slice(1, -1)}\\>`)
     .trim();
+}
+
+/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
+export function replaceMarkdownImages(markdown: string): string {
+  return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
 }
 
 /** 超高速 抽出型自動要約 (重要文抽出 / TL;DR) */
@@ -230,8 +260,9 @@ export function maskPiiInText(text: string): string {
   if (!text) return text;
   let masked = text;
 
-  // 1. メールアドレス
-  masked = masked.replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
+  // 1. メールアドレス。後読みで、ローカル部の字の並びの先頭からだけ試す（途中の字ごとに並びの最後まで読むと、長い英数字の並びで二乗の時間になる）。
+  //    後ろの枝は、前の一致が `_` `+` の手前で終わり、そこから次のメールが続く形（a@b.c_d@e.f）も前と同じに読むため
+  masked = masked.replace(/(?:(?<![a-zA-Z0-9_.+-])|(?=[_+])(?<=@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+))[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
 
   // 2. クレジットカード番号 (13〜19桁, Luhn 検証または一般的な4桁x4ブロック)
   masked = masked.replace(/\b(?:\d{4}[ -]?){3}\d{4}\b|\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g, (match) => {
@@ -541,7 +572,7 @@ export interface ParsedSection {
 
 // maxHighlights を指定しないときの足し方: 上位 3 件の後、合計がこの字数に収まる限り、窓で切った節を丸ごとに戻し、
 // さらに後ろの候補を足す（最大 8 件）。語を並べた検索語で答えの節が 4 位以下・窓の外になるのを拾う
-const HIGHLIGHT_CHAR_BUDGET = 1600;
+export const HIGHLIGHT_CHAR_BUDGET = 1600;
 const BUDGET_MAX_HIGHLIGHTS = 8;
 // 長い節を窓で切るとき、前に付ける節の書き出しの字数（返す文だけに付け、MMR の類似度には使わない）
 const WINDOW_LEAD_CHARS = 350;
@@ -597,7 +628,7 @@ export function extractQueryHighlightDetails(
   }
 
   const terms = extractTermsWithBigrams(query);
-  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンクだけのナビの塊を外し、
+  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンク先のホストが多いリンクだけの段落（言語の一覧など）を外し、
   // リストの中の見出しも見出しとして扱う）
   const sections = parseMarkdownSections(content);
   const rawBlocks: HeadingBlock[] = sections.map((sec) => {
@@ -1441,54 +1472,6 @@ export function generateTextFragmentUrl(baseUrl: string, snippet: string): strin
   } catch {
     return baseUrl;
   }
-}
-
-/**
- * Meta Description vs Dynamic Snippet Arbiter (Google 流 最適説明文選定)
- * meta.description がクエリ主要語を含まない固定定型文である場合、本文から抽出した動的ハイライトを優先
- */
-export function chooseBestDescription(
-  metaDesc: string | undefined,
-  dynamicSnippet: string | undefined,
-  query: string,
-): string | undefined {
-  if (!metaDesc && !dynamicSnippet) return undefined;
-  if (!dynamicSnippet) return metaDesc;
-  // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
-  const cleanSnippet = dynamicSnippet
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
-    .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 250)
-    .trim();
-
-  // サニタイズ後にスニペットが空または極小になった場合は metaDesc を使用
-  if (!cleanSnippet || cleanSnippet.length < 10) return metaDesc;
-
-  if (!metaDesc) {
-    return cleanSnippet;
-  }
-  if (!query) return metaDesc;
-
-  const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return metaDesc;
-  const lowerMeta = metaDesc.toLowerCase();
-
-  // Meta Description 内のクエリ単語カバー率を計算
-  let metaMatchedCount = 0;
-  for (const term of terms) {
-    if (lowerMeta.includes(term)) metaMatchedCount++;
-  }
-
-  // Meta Description がクエリの半分以上の単語をカバーしており、かつ適正長の場合は著者の Meta を尊重
-  const coverage = metaMatchedCount / terms.length;
-  if (coverage >= 0.5 && metaDesc.length >= 40 && metaDesc.length <= 300) {
-    return metaDesc;
-  }
-
-  // クエリ単語が不足している、またはサイト共通ボイラープレートの疑いがある場合は本文動的スニペットを採用
-  return cleanSnippet;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
+import { absolutizeContentUrls, convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
 
 describe('event details and publication dates', () => {
   const event = {
@@ -406,5 +406,139 @@ describe('table rows', () => {
     const html = '<html><head><title>t</title></head><body><table><tr></tr><tr><th>項目</th><th>値</th></tr><tr><td>重量</td><td>199g</td></tr></table></body></html>';
     const result = convertHtmlToMarkdown(html, 'https://example.com/t', 100000);
     expect(result.tables?.[0]?.rows).toEqual([{ 項目: '重量', 値: '199g' }]);
+  });
+});
+
+describe('本文の URL', () => {
+  it('本文のリンクと画像を絶対 URL にし、# と javascript: のリンクを外す', () => {
+    const html = '<html><head><title>t</title></head><body><p>Read <a href="/docs/a">docs</a>, <a href="#top">top</a>, <a href="javascript:void(0)">js</a> and <a href="mailto:a@example.com">mail</a>.</p><img src="img/b.png" alt="b"></body></html>';
+    const result = convertHtmlToMarkdown(html, 'https://example.com/dir/page', 30000, false, false);
+    expect(result.markdown).toContain('[docs](https://example.com/docs/a)');
+    expect(result.markdown).toContain(' top,');
+    expect(result.markdown).not.toContain('(#top)');
+    expect(result.markdown).not.toContain('javascript:');
+    expect(result.markdown).toContain('[mail](mailto:a@example.com)');
+    expect(result.markdown).toContain('![b](https://example.com/dir/img/b.png)');
+  });
+
+  it('並んだ # と javascript: のリンクを外すとき、隣の要素の文字とくっつけない', () => {
+    // 外すリンクは要素を動かさずに目印の名前にして、直列化のあとにタグだけを消す。出る HTML は、要素ごと外していた前と同じ
+    const html = '<p>年: <a href="javascript:void(0)">1990</a><a href="javascript:void(0)">1991</a><a href="#x">1992</a><a href="/y">1993</a></p><p>見出し<a href="#">リンク</a>です</p><p><a href="/z">Z</a><a href="#">B</a></p>';
+    expect(absolutizeContentUrls(html, 'https://example.com/dir/page')).toBe(
+      '<p>年: 1990 1991 1992 <a href="https://example.com/y">1993</a></p><p>見出しリンクです</p><p><a href="https://example.com/z">Z</a> B</p>',
+    );
+    // Markdown にしたときの文字も前と同じ（くっつかない・リンクだけが残る）
+    const md = convertHtmlToMarkdown(`<html><head><title>t</title></head><body>${html}</body></html>`, 'https://example.com/dir/page', 30000, false, false).markdown;
+    expect(md).toContain('年: 1990 1991 1992 [1993](https://example.com/y)');
+    expect(md).toContain('見出しリンクです');
+    expect(md).toContain('[Z](https://example.com/z) B');
+    expect(md).not.toContain('](#');
+    expect(md).not.toContain('javascript:');
+  });
+
+  it('外したリンクの跡に、中身の無い見出し・リストの項目が出ず、数字と点の逃がし方も変わらない', () => {
+    // href を外しただけの a を残すと、Turndown は a を「空でも意味のある要素」として扱い、中身が空の見出し（######）やリストの項目（-）を出した。
+    // a の中の先頭に空白を足すと、「1.」の逃がし（1\.）も外れた
+    const html = '<h2>見出し</h2><h6><a href="#"></a></h6><ul><li><a href="javascript:void(0)"> </a></li><li>項目</li></ul><dl><dt><a href="#c1">1.</a> 山田 - 2026年</dt></dl><p>本文です。<a href="#"></a></p>';
+    const md = convertHtmlToMarkdown(`<html><head><title>t</title></head><body>${html}</body></html>`, 'https://example.com/', 30000, false, false).markdown;
+    expect(md).toContain('## 見出し');
+    expect(md).not.toMatch(/^#{3,6}\s*$/m);
+    expect(md).not.toMatch(/^\s*-\s*$/m);
+    expect(md).toContain('1\\. 山田 - 2026年');
+  });
+
+  it('文字参照で崩した javascript:（java&#9;script: など）のリンクも外す', () => {
+    // cheerio は文字参照を字に戻し、new URL はタブ・改行・先頭の制御文字を取り除くので、そのままだと生きた javascript:alert(1) が残る
+    const html = '<p><a href="java&#9;script:alert(1)">a</a> <a href="&#10;javascript:alert(2)">b</a> <a href="jav&Tab;ascript:alert(3)">c</a> <a href="&#1;JavaScript:alert(4)">d</a> <a href="/ok">e</a></p>';
+    const out = absolutizeContentUrls(html, 'https://example.com/dir/page');
+    expect(out).toBe('<p>a b c d <a href="https://example.com/ok">e</a></p>');
+    expect(out).not.toContain('javascript:');
+  });
+
+  it('# だけのリンクは外し、#/route・#!/route のようなハッシュの経路のリンクは絶対 URL にして残す', () => {
+    const html = '<p><a href="#">a</a><a href="#top">b</a><a href="#/route/1">c</a><a href="#!/route/2">d</a><a href="#!">e</a><a href="  #/route/3 ">f</a></p>';
+    expect(absolutizeContentUrls(html, 'https://example.com/dir/page')).toBe(
+      '<p>a b <a href="https://example.com/dir/page#/route/1">c</a><a href="https://example.com/dir/page#!/route/2">d</a> e <a href="https://example.com/dir/page#/route/3">f</a></p>',
+    );
+    const md = convertHtmlToMarkdown(`<html><head><title>t</title></head><body>${html}</body></html>`, 'https://example.com/dir/page', 30000, false, false).markdown;
+    expect(md).toContain('[c](https://example.com/dir/page#/route/1)');
+    expect(md).toContain('[d](https://example.com/dir/page#!/route/2)');
+  });
+
+  it('# のリンクが 12 万個並んでも、リンクを外す処理は線形の時間で終わる', () => {
+    // 前は、外すたびに親の子の配列で探して切り貼りしたので、長さの二乗以上の時間だった（4 万個で 1.1〜1.7 秒、10 万個で 5.6〜9.2 秒、12 万個は 280 秒でも終わらなかった）。
+    // 今の形は 12 万個で 1.1〜1.4 秒（Bun 1.4.2 と 1.3.3）。上限の 6 秒は、その 4 倍以上
+    const html = `<p>${'<a href="#">x</a>'.repeat(120_000)}</p>`;
+    const t0 = performance.now();
+    const out = absolutizeContentUrls(html, 'https://example.com/dir/page');
+    const ms = performance.now() - t0;
+    expect(ms).toBeLessThan(6000);
+    expect(out).toBe(`<p>${'x '.repeat(119_999)}x</p>`);
+  });
+
+  it('script・style・コメントの中に目印のタグに見える字を書いておいても、リンクを外したあとにその字が変わらない', () => {
+    // 外すリンクの目印のタグは、直列化した文字列から消す。script・style・コメントの中の字は、直列化でエスケープされずにそのまま出るので、
+    // 目印の名前が決まっていると、ページが `</scr<sora-unlinked>ipt>` のような字を書いておき、タグを消したあとに `</script>` ができて、
+    // 要素が早く閉じ、隠れていた字が本文に出た（間接プロンプトインジェクション）。名前を呼び出しごとの乱数にして、ページが前もって書けないようにした
+    const hidden = [
+      '<script>var a = "</scr<sora-unlinked>ipt><p>隠れた字 1</p>"; var b = "<sora-unlinked>";</script>',
+      '<style>.a::after { content: "</sty<sora-unlinked>le><p>隠れた字 2</p>"; }</style>',
+      '<!-- --<sora-unlinked>> <p>隠れた字 3</p> -->',
+    ].join('');
+    const out = absolutizeContentUrls(`<p>前<a href="#">リンク</a>後</p>${hidden}`, 'https://example.com/');
+    expect(out).toBe(`<p>前リンク後</p>${hidden}`);
+    // 目印の名前は、呼び出しごとに違う（消したあとに残らない）
+    expect(out).not.toMatch(/sora-unlinked-[0-9a-f]/);
+    const mdOut = convertHtmlToMarkdown(`<html><head><title>t</title></head><body><p>前<a href="#">リンク</a>後</p>${hidden}</body></html>`, 'https://example.com/', 30000, false, false).markdown;
+    expect(mdOut).not.toContain('隠れた字');
+  });
+
+  it('rs-trafilatura の本文のリンクも絶対 URL にする', () => {
+    const result = convertHtmlToMarkdown(
+      '<html><body><ul><li><a href="/e/1">公演 1</a></li></ul></body></html>', 'https://example.com/live', 30000, false, true,
+      undefined, undefined, undefined, undefined, false, { pageType: 'listing', contentHtml: '<ul><li><a href="/e/1">公演 1</a></li></ul>' },
+    );
+    expect(result.markdown).toContain('[公演 1](https://example.com/e/1)');
+  });
+
+  it('formats の html は、ページ全体ではなく本文の HTML（URL は絶対）を返す', () => {
+    const result = convertHtmlToMarkdown('<html><head><title>t</title><script>x()</script></head><body><p><a href="/a">a</a></p></body></html>', 'https://example.com/', 30000, false, false);
+    expect(result.html).toContain('href="https://example.com/a"');
+    expect(result.html).not.toContain('<script');
+    expect(result.html).not.toContain('<head');
+  });
+
+  it('本文のリンクと画像の URL は、日本語などの字をパーセントエンコードせずに書く', () => {
+    const html = '<p><a href="/wiki/%E5%A4%A7%E9%98%AA%E5%BA%9C">大阪府</a> <a href="/wiki/東京都">東京都</a> <a href="/s?q=%93%8C%8B%9E">sjis</a> <a href="/a%20b%E3%80%80c">space</a> <a href="/z%E2%80%8Bw">zw</a> <a href="/p%25E5">pct</a></p><img src="/img/%E5%9B%B3.png" alt="図">';
+    expect(absolutizeContentUrls(html, 'https://ja.wikipedia.org/wiki/x')).toBe(
+      '<p><a href="https://ja.wikipedia.org/wiki/大阪府">大阪府</a> <a href="https://ja.wikipedia.org/wiki/東京都">東京都</a> <a href="https://ja.wikipedia.org/s?q=%93%8C%8B%9E">sjis</a> <a href="https://ja.wikipedia.org/a%20b%E3%80%80c">space</a> <a href="https://ja.wikipedia.org/z%E2%80%8Bw">zw</a> <a href="https://ja.wikipedia.org/p%25E5">pct</a></p><img src="https://ja.wikipedia.org/img/図.png" alt="図">',
+    );
+  });
+});
+
+describe('本文の URL: 見えない字', () => {
+  it('見えない字（ハングルの空白字・結合解除字・異体字セレクタ）になる並びは、エンコードのまま残す', () => {
+    // U+3164・U+FFA0（ハングルの空白字）、U+034F（CGJ）、U+FE0F（異体字セレクタ）、U+E0100（異体字セレクタ補助）は、字に戻すと見えないまま本文に出る
+    const html = '<p><a href="/a%E3%85%A4b">1</a> <a href="/a%EF%BE%A0b">2</a> <a href="/a%CD%8Fb">3</a> <a href="/a%EF%B8%8Fb">4</a> <a href="/a%F3%A0%84%80b">5</a> <a href="/%E6%BC%A2%E3%85%A4">6</a></p>';
+    expect(absolutizeContentUrls(html, 'https://ja.wikipedia.org/wiki/x')).toBe(
+      '<p><a href="https://ja.wikipedia.org/a%E3%85%A4b">1</a> <a href="https://ja.wikipedia.org/a%EF%BE%A0b">2</a> <a href="https://ja.wikipedia.org/a%CD%8Fb">3</a> <a href="https://ja.wikipedia.org/a%EF%B8%8Fb">4</a> <a href="https://ja.wikipedia.org/a%F3%A0%84%80b">5</a> <a href="https://ja.wikipedia.org/%E6%BC%A2%E3%85%A4">6</a></p>',
+    );
+  });
+
+  it('漢字・絵文字・全角の括弧は、今までどおり字に戻す', () => {
+    const html = '<p><a href="/%E6%BC%A2%E5%AD%97">1</a> <a href="/%F0%9F%98%80">2</a> <a href="/%EF%BC%88%E7%AC%AC%EF%BC%89">3</a></p><img src="/%E5%9B%B3%EF%BC%88%E5%A4%A7%EF%BC%89.png">';
+    expect(absolutizeContentUrls(html, 'https://ja.wikipedia.org/wiki/x')).toBe(
+      '<p><a href="https://ja.wikipedia.org/漢字">1</a> <a href="https://ja.wikipedia.org/😀">2</a> <a href="https://ja.wikipedia.org/（第）">3</a></p><img src="https://ja.wikipedia.org/図（大）.png">',
+    );
+  });
+});
+
+describe('切る前の全文', () => {
+  it('maxChars で切る前の全文を fullMarkdown で返す', () => {
+    const tail = '最後の段落に答えがある。';
+    const html = `<html><body><p>${'前の段落。'.repeat(200)}</p><p>${tail}</p></body></html>`;
+    const result = convertHtmlToMarkdown(html, 'https://example.com/', 100, false, false);
+    expect(result.markdown).not.toContain(tail);
+    expect(result.fullMarkdown).toContain(tail);
   });
 });

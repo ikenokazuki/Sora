@@ -22,10 +22,12 @@ function decode(buf: Uint8Array): string {
   if (cs && cs !== 'utf-8' && cs !== 'utf8') { try { return new TextDecoder(cs).decode(buf); } catch {} }
   return new TextDecoder('utf-8').decode(buf);
 }
-/** frontmatter・Markdown の記号・URL を外す（採点は \w+ の語で数えるので、URL の語を残さない）。 */
+/** frontmatter・Markdown の記号・URL を外す（採点は \w+ の語で数えるので、URL の語を残さない）。
+ * 画像は alt ごと外し、data URI の画像の置き換え「[画像: alt]」も外す。alt の \] のような逃がした字と、URL の中の 1 段の括弧（format(webp) など）を読む。 */
 const toText = (md: string) => md
   .replace(/^---\n[\s\S]*?\n---\n/, '')
-  .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
+  .replace(/!\[[^\]\\]*(?:\\.[^\]\\]*)*\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, ' ').replace(/\[画像: [^\]\\]*(?:\\.[^\]\\]*)*\]/g, ' ')
+  .replace(/\[([^\]\\]*(?:\\.[^\]\\]*)*)\]\([^()]*(?:\([^()]*\)[^()]*)*\)/g, '$1').replace(/https?:\/\/\S+/g, ' ')
   .replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
   .replace(/^\|?[\s:|-]+\|[\s:|-]*$/gm, '').replace(/\|/g, ' ').replace(/[*_`~]{1,3}/g, '');
 

@@ -64,7 +64,7 @@ export type SearchDeepInput = {
   videos?: number;
   /** 本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限 */
   maxTotalChars?: number;
-  /** 返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。 */
+  /** 返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す。ただし本文が maxChars で切れた結果は、highlights を切る前の全文から選ぶので、入れ替えずに highlights を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。 */
   responseMode?: "full" | "evidence";
 };
 

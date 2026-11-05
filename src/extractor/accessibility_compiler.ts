@@ -205,7 +205,8 @@ export function detectDiscrepancies(
 
   // 2. 金額の不一致検出
   // 例: ¥1,200, 1200円, 1,500円
-  const moneyRegex = /(?:¥|￥)\s*([\d,]+)|([\d,]+)\s*(?:円)/g;
+  // 2 つ目の後読みは、数字・カンマの並びの先頭からだけ試す（途中から読むと長い数字の並びで二乗の時間になる。一致の結果は同じ）
+  const moneyRegex = /(?:¥|￥)\s*([\d,]+)|(?<![\d,])([\d,]+)\s*(?:円)/g;
   const moneyMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
 
   for (const item of items) {
@@ -305,7 +306,8 @@ export function normalizeSafeNumeric(text: string): {
   }
 
   // 2. 漢数字「万」の展開 (例: 1万2000 -> 12000, 120万 -> 1200000)
-  const manRegex = /(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g;
+  // 後読みで数字の並びの先頭からだけ試す（途中の数字ごとに並びの最後まで読むと、長い数字の並びで二乗の時間になる。一致の結果は同じ）
+  const manRegex = /(?<!\d)(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g;
   let manMatch: RegExpExecArray | null;
   while ((manMatch = manRegex.exec(current)) !== null) {
     const okuMan = parseInt(manMatch[1], 10);
@@ -317,7 +319,7 @@ export function normalizeSafeNumeric(text: string): {
       output: computed.toString(),
     });
   }
-  current = current.replace(/(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g, (_, man, rem) => {
+  current = current.replace(/(?<!\d)(\d+)\s*万(?:\s*(\d{1,4}))?(?!\d)/g, (_, man, rem) => {
     const okuMan = parseInt(man, 10);
     const remainder = rem ? parseInt(rem, 10) : 0;
     return (okuMan * 10000 + remainder).toString();

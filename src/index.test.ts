@@ -46,7 +46,7 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
   }
 }
 import * as cheerio from 'cheerio';
-import { extractQueryHighlightDetails } from './enrichment.js';
+import { extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -94,7 +94,6 @@ import {
   mergeRealtimeItemsWithDedup,
   extractQueryHighlights,
   generateTextFragmentUrl,
-  chooseBestDescription,
   resolveCityId,
   executeBrowserActions,
   resolveChromiumPath,
@@ -246,6 +245,67 @@ describe('web-fetcher Core Functions', () => {
 
     const preserved = cleanMarkdownTokens(mdWithBase64, true);
     expect(preserved).toContain('data:image/png;base64');
+  });
+
+  it('cleanMarkdownTokens は alt の無い画像を ! を残さずに消し、URL の中の括弧も読む', () => {
+    expect(cleanMarkdownTokens('商品 ![](https://example.com/a.png) 説明')).toBe('商品  説明');
+    expect(cleanMarkdownTokens('- ![](https://example.com/a.png) [名前](https://example.com/p)')).toBe('-  [名前](https://example.com/p)');
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)](https://example.com/p)')).toBe('');
+    expect(cleanMarkdownTokens('![](https://example.com/i/filters:format(webp)/a.jpg) 本文')).toBe('本文');
+    expect(cleanMarkdownTokens('![](https://example.com/a.png "Skill verified")本文')).toBe('本文');
+    // 前後がどちらも空白でないときは、語がくっつかないように空白 1 字にする（前は、残った ! が区切っていた）
+    expect(cleanMarkdownTokens('Cocktail![](https://example.com/a.png)Friendsgiving')).toBe('Cocktail Friendsgiving');
+    expect(cleanMarkdownTokens('[A](https://example.com/a)![](https://example.com/logo.png)[\n\nB は取引所\n\n](https://example.com/b)'))
+      .toBe('[A](https://example.com/a) [\n\nB は取引所\n\n](https://example.com/b)');
+    // 片方が空白・行頭・行末なら、空白は足さない
+    expect(cleanMarkdownTokens('行末![](https://example.com/a.png)\n次の行')).toBe('行末\n次の行');
+    expect(cleanMarkdownTokens('前の行\n![](https://example.com/a.png)行頭')).toBe('前の行\n行頭');
+    // リンクの文字の端（前が [、または後ろが ]）にも足さない（語がくっつく心配が無く、[ Text] のように文字が増えるだけ）
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)Text](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[Text![](https://example.com/a.png)](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[A![](https://example.com/a.png)B](https://example.com/)')).toBe('[A B](https://example.com/)');
+    expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
+    expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+    // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）
+    expect(cleanMarkdownTokens('前 ![図](data:image/png;base64,' + 'A'.repeat(2_000_000) + ') 後')).toBe('前 [画像: 図] 後');
+  });
+
+  it('cleanMarkdownTokens は、逃がした \\[ が並んでも止まらず、逃がした \\[ から始まる字は javascript: のリンクとして読まない', () => {
+    const t0 = performance.now();
+    cleanMarkdownTokens('\\['.repeat(100_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(cleanMarkdownTokens('前 [Click](javascript:void(0)) 後')).toBe('前 Click 後');
+    // 地の文の「[text](javascript:…)」を Turndown が逃がした形は、字を壊さずそのまま残す
+    expect(cleanMarkdownTokens('\\[text\\](javascript:void(0))')).toBe('\\[text\\](javascript:void(0))');
+  });
+
+  it('cleanMarkdownTokens は、直前の \\ が奇数個の [ だけをリンクとして読まない（偶数個なら \\ が字で、続くリンクは生きている）', () => {
+    // \[a](javascript:x) は逃がした [ （残す）。\\[a](javascript:x) は字の \ のあとの本物のリンク（外す）
+    expect(cleanMarkdownTokens('\\[a](javascript:x)')).toBe('\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\[a](javascript:x)')).toBe('\\\\a');
+    expect(cleanMarkdownTokens('\\\\\\[a](javascript:x)')).toBe('\\\\\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\\\\\[a](javascript:x)')).toBe('\\\\\\\\a');
+    expect(cleanMarkdownTokens('前 \\\\[a](javascript:x) 中 \\[b](javascript:y) 中 [c](javascript:z) 後')).toBe('前 \\\\a 中 \\[b](javascript:y) 中 c 後');
+    // \ の長い並びのあとでも、偶数個なら外し、奇数個なら残す（後読みを [ の位置でだけ評価しないと、JSC が途中で諦めて外すべきリンクが残り、1 秒ほどかかる）
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens('\\'.repeat(200_000) + '[a](javascript:x)')).toBe('\\'.repeat(200_000) + 'a');
+    expect(cleanMarkdownTokens('\\'.repeat(200_001) + '[a](javascript:x)')).toBe('\\'.repeat(200_001) + '[a](javascript:x)');
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it('cleanMarkdownTokens は、行の途中の長い空白で止まらない（行末の空白だけを消す）', () => {
+    // 行末の空白を消す正規表現は、空白の並びの途中のすべての位置から並びの最後まで読んで、長さの二乗の時間だった（16 万字で 27 秒）
+    const middle = 'a' + ' '.repeat(160_000) + 'b';
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens(middle)).toBe(middle);
+    expect(cleanMarkdownTokens(`${middle}${' \t'.repeat(80_000)}\n次の行`)).toBe(`${middle}\n次の行`);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
+    expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
+      .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
+    expect(replaceMarkdownImages('前 ![図](https://example.com/' + 'a'.repeat(2_000_000) + '.png) 後')).toBe('前 [画像: 図] 後');
   });
 
   it('convertHtmlToMarkdown should purge cookie banners, extract metadata (publishedTime, author, siteName), format GFM tables and preserve codeblock languages', () => {
@@ -565,28 +625,6 @@ describe('web-fetcher Core Functions', () => {
     const fragmentUrl = generateTextFragmentUrl(baseUrl, snippet);
     expect(fragmentUrl).toContain('https://note.com/kimisora_mix/n/nd94f3a06fe8f#:~:text=');
     expect(fragmentUrl).toContain(encodeURIComponent('スタンダード'));
-  });
-
-  it('chooseBestDescription should replace generic boilerplate meta with dynamic query snippet', () => {
-    const genericMeta = 'noteは、クリエイターが文章や画像、音声を投稿し、ユーザーがコンテンツを楽しんで応援できるプラットフォームです。';
-    const query = '君と見るそら ソライロ コール';
-    const dynamicSnippet = '## ・ソライロ\n\n〈イントロ〉スタンダード\nうりゃおい ×4 👏 ×5 しゃーいくぞ\nタイガー ファイヤー サイバー';
-
-    // 1. クエリ主要語を含まない定型文メタは動的スニペットに置き換えられる
-    const selected = chooseBestDescription(genericMeta, dynamicSnippet, query);
-    expect(selected).toBeDefined();
-    expect(selected).not.toContain('プラットフォーム');
-    expect(selected).toContain('ソライロ');
-
-    // 2. クエリ単語を十分に含む適切な Meta Description は尊重される
-    const relevantMeta = 'アイドルグループ「君と見るそら」の代表曲「ソライロ」のライブコール・MIX・口上まとめです。';
-    const selectedRelevant = chooseBestDescription(relevantMeta, dynamicSnippet, query);
-    expect(selectedRelevant).toBe(relevantMeta);
-
-    // 3. スペースなし日本語クエリでも形態素カバー率で判定できる
-    const nonSpacedQuery = 'ソライロコールまとめ';
-    const selectedNonSpaced = chooseBestDescription(relevantMeta, dynamicSnippet, nonSpacedQuery);
-    expect(selectedNonSpaced).toBe(relevantMeta);
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
@@ -2485,6 +2523,13 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(masked).toContain('[CREDIT_CARD]');
     expect(masked).not.toContain('info@example.com');
     expect(masked).not.toContain('090-1234-5678');
+  });
+
+  it('maskPiiInText は、メールの直後に _ や + でつながった次のメールも隠し、20 万字の英字の並びでも止まらない', () => {
+    expect(maskPiiInText('a@b.co_c@d.org と x@y.jp+z@w.net')).toBe('[EMAIL][EMAIL] と [EMAIL][EMAIL]');
+    const t0 = performance.now();
+    maskPiiInText('a'.repeat(200_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('convertHtmlToMarkdown should extract YouTube media info and chapters', () => {

@@ -77,6 +77,7 @@ export function parseBlocks(markdown: string): HeadingBlock[] {
 }
 
 const idfMemo = new WeakMap<HeadingBlock[], Map<string, number>>();
+const avgLenMemo = new WeakMap<HeadingBlock[], number>();
 
 /**
  * 全ブロック中、その語を body (または headingPath のいずれか) に含むブロック数から標準的な BM25 IDF を計算
@@ -129,8 +130,12 @@ export function bm25BodyScore(
   b = 0.75
 ): number {
   if (allBlocks.length === 0 || terms.length === 0) return 0;
-  const avgLen =
-    allBlocks.reduce((acc, blk) => acc + blk.body.length, 0) / allBlocks.length || 1;
+  // 平均の長さも、同じブロックの集合では 1 回だけ数える（ブロックごとに全ブロックを数えると、ブロック数の二乗の時間になる。idf と同じく、集合は作った後に変えない前提）
+  let avgLen = avgLenMemo.get(allBlocks);
+  if (avgLen === undefined) {
+    avgLen = allBlocks.reduce((acc, blk) => acc + blk.body.length, 0) / allBlocks.length || 1;
+    avgLenMemo.set(allBlocks, avgLen);
+  }
   const lowerBody = block.body.toLowerCase();
   let score = 0;
 

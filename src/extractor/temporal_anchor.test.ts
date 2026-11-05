@@ -46,6 +46,24 @@ describe('Temporal Context Anchor', () => {
     expect(annotated).toContain('来週金曜日 [2026-09-11]に開演');
   });
 
+  it('リンクと画像の飛び先 ](…) には注記を入れず、リンクの文字・alt・地の文には入れること', () => {
+    const text = [
+      '[明日があるさ](https://ja.wikipedia.org/wiki/明日があるさ)',
+      '![明日の図](https://example.com/明日.png)',
+      '[明日](https://ja.wikipedia.org/wiki/明日_(曖昧さ回避) "明日の題")',
+      '明日は晴れ。',
+    ].join('\n');
+    expect(annotateTextWithTemporalAnchors(text, referenceDate)).toBe([
+      '[明日 [2026-09-02]があるさ](https://ja.wikipedia.org/wiki/明日があるさ)',
+      '![明日 [2026-09-02]の図](https://example.com/明日.png)',
+      '[明日 [2026-09-02]](https://ja.wikipedia.org/wiki/明日_(曖昧さ回避) "明日の題")',
+      '明日 [2026-09-02]は晴れ。',
+    ].join('\n'));
+    // 飛び先の中だけにある表現には、注記が付かない（元の文字列のまま）
+    const onlyInDestination = '[記事](https://example.com/3日前の記事)';
+    expect(annotateTextWithTemporalAnchors(onlyInDestination, referenceDate)).toBe(onlyInDestination);
+  });
+
   it('相対時間表現がない場合は元のテキストをそのまま返すこと', () => {
     const text = '2026年9月15日に正式リリースされます。';
     const anchors = extractTemporalAnchors(text, referenceDate);

@@ -10,6 +10,7 @@ import type {
   ScrapeContentStatus,
   TableData,
 } from './types.js';
+import { HIGHLIGHT_SOURCE_MAX_CHARS } from './types.js';
 import {
   calculateContentQuality,
   calculateExtractionCompleteness,
@@ -830,12 +831,68 @@ export function resolveImageUrl(
   return undefined;
 }
 
+/** 絶対 URL のうち、非 ASCII の字（日本語のパスなど）のパーセントエンコードを字に戻す。本文の字数を URL に取られないように。
+ * 空白・制御文字・書式文字・見えない字（ハングルの空白字 U+3164・U+FFA0、CGJ U+034F、異体字セレクタなど）になる並びと、
+ * UTF-8 として読めない並び（Shift_JIS など）はエンコードのまま。ASCII の %XX は触らない */
+function readableUrl(url: string): string {
+  return url.replace(/(?:%[89a-f][0-9a-f])+/gi, (m) => {
+    try {
+      const s = decodeURIComponent(m);
+      return /[\p{C}\p{Z}\p{Default_Ignorable_Code_Point}]/u.test(s) ? m : s;
+    } catch {
+      return m;
+    }
+  });
+}
+
+/**
+ * 本文の HTML の a[href]・img[src] を、ページの URL を基準に絶対 URL にする（links の一覧と同じ基準）。日本語などの字はパーセントエンコードせずに書く（links の一覧はエンコードした形）。
+ * # だけのリンク（#/route・#!/route のようなハッシュの経路は除く）と javascript: のリンクは、飛び先が無いので、リンクを外して文字だけにする（隣が要素なら空白を挟む）。mailto:・tel: はそのまま。
+ * 外すリンクは、要素を動かさずに目印の名前にし、直列化のあとでそのタグだけを消す。要素ごと外すと、並んだリンクで親の子の配列の切り貼りが長さの二乗の時間になる。
+ * href を外しただけの a や span にすると、Turndown が空の見出し・リストの項目を出したり、数字と点の逃がし方が変わったりして、Markdown が前と変わる。
+ */
+export function absolutizeContentUrls(contentHtml: string, baseUrl: string): string {
+  if (!contentHtml) return contentHtml;
+  const $ = cheerio.load(contentHtml, null, false);
+  // 目印の要素名（属性は付けない）は、呼び出しごとの乱数にする。script・style・コメントなどの中の字は、直列化でエスケープされずにそのまま出るので、
+  // 名前が決まっていると、ページがその中に `</scr<sora-unlinked>ipt>` のような字を書いておき、タグを消したあとに `</script>` ができて、
+  // 要素を早く閉じさせ、隠れていた字を本文に出せる（間接プロンプトインジェクション）。ページは乱数の名前を前もって書けない
+  const unlinkedTag = `sora-unlinked-${crypto.randomUUID()}`;
+  const unlinked = new Set<unknown>();
+  $('a[href]').each((_, el) => {
+    const $a = $(el);
+    const href = ($a.attr('href') ?? '').trim();
+    let abs: URL | undefined;
+    try { abs = new URL(href, baseUrl); } catch {}
+    // new URL はタブ・改行・先頭の制御文字を取り除くので、文字参照で崩した java&#9;script: は protocol で見る
+    if (!href || (href.startsWith('#') && !/^#!?\//.test(href)) || /^javascript:/i.test(href) || abs?.protocol === 'javascript:') {
+      el.attribs = {};
+      el.name = unlinkedTag;
+      unlinked.add(el);
+      // 隣が要素（並んだリンクなど）のときは空白を挟み、外した文字が隣の文字とくっつかないようにする。
+      // 前が外したリンクなら、そのリンクが後ろに空白を足してある
+      if (el.prev?.type === 'tag' && !unlinked.has(el.prev)) $a.prepend(' ');
+      if (el.next?.type === 'tag') $a.append(' ');
+    } else if (abs) {
+      $a.attr('href', readableUrl(abs.href));
+    }
+  });
+  $('img[src]').each((_, el) => {
+    const $img = $(el);
+    const src = ($img.attr('src') ?? '').trim();
+    if (!src || src.startsWith('data:')) return;
+    try { $img.attr('src', readableUrl(new URL(src, baseUrl).href)); } catch {}
+  });
+  const html = $.html();
+  return unlinked.size > 0 ? html.replace(new RegExp(`</?${unlinkedTag}>`, 'g'), '') : html;
+}
+
 const STRUCTURED_CONTENT_SELECTOR =
   'table, [role="grid"], [role="gridcell"], [class*="calendar"], [id*="calendar"], [data-test-id*="calendar"]';
 
 /** 本文の候補にしない領域（ナビ・ヘッダー・フッター・補助）。 */
 const NON_CONTENT_SELECTOR = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"]';
-/** これ以下の長さの項目はナビのラベルとみなす（integrated_search_host_response の NAV_LABEL_MAX_CHARS と同じ考え）。 */
+/** これ以下の長さの項目はナビのラベルとみなす（extractor/markdown_sections の NAV_LABEL_MAX_CHARS と同じ考え）。 */
 const ITEM_LABEL_MAX_CHARS = 16;
 /** Readability の本文がこれより短いときだけ、項目の並びへの差し替えを考える。
  * 上限が無いと、知恵袋の質問と回答（約 740 字）のように正しく取れた本文が、横の関連の並びに替わった。 */
@@ -952,6 +1009,7 @@ export function convertHtmlToMarkdown(
 ): {
   title: string;
   markdown: string;
+  fullMarkdown: string;
   contentStatus: ScrapeContentStatus;
   ogImage?: string;
   description?: string;
@@ -1226,6 +1284,8 @@ export function convertHtmlToMarkdown(
   } else {
     contentHtml = $('body').html() || $.html() || '';
   }
+  // 本文の a・img の URL を絶対にし、飛び先の無いリンクを外す（formats の html もこの HTML を返す）
+  contentHtml = absolutizeContentUrls(contentHtml, targetUrl);
 
   // 10. Frontmatter の組み立て
   const frontmatterLines: string[] = [];
@@ -1304,6 +1364,8 @@ export function convertHtmlToMarkdown(
 
   const isTruncated = markdown.length > maxChars;
   const truncatedMarkdown = safeTruncateMarkdown(markdown, maxChars);
+  // ハイライトは、切る前の全文（上限まで）から選ぶ（finalizeScrapeResult）
+  const fullMarkdown = safeTruncateMarkdown(markdown, HIGHLIGHT_SOURCE_MAX_CHARS);
   const estimatedTokens = estimateTokens(truncatedMarkdown);
 
   // 品質・ページ種別・充足度・Evidence の算出
@@ -1366,6 +1428,7 @@ export function convertHtmlToMarkdown(
   return {
     title,
     markdown: truncatedMarkdown,
+    fullMarkdown,
     contentStatus,
     ogImage,
     description,
@@ -1388,7 +1451,7 @@ export function convertHtmlToMarkdown(
     breadcrumb: breadcrumb.length > 0 ? breadcrumb : undefined,
     extracted,
     media,
-    html: rawHtml,
+    html: contentHtml,
     estimatedTokens,
     quality: qualityRes.score,
     completeness: completenessRes.completeness,

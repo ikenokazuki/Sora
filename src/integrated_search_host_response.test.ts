@@ -126,6 +126,27 @@ describe('integrated search Host response', () => {
     expect(kept.markdown).toBeUndefined();
   });
 
+  test('a truncated page keeps its highlights even when they are longer than the markdown (they come from beyond the cut)', () => {
+    // 本文は maxChars で切れて答えが無く、ハイライトは切れたところより後ろの節から選んでいる（答えは 17:00）
+    const markdown = `# 前書き\n\n${'関係のない文が続きます。'.repeat(200)}`.slice(0, 2000);
+    const highlight = `## 当日の案内\n\n開場時間は 17:00、開演は 18:00 です。${'補足の説明です。'.repeat(400)}`.slice(0, 2500);
+    const truncated = { ...baseItem(), markdown, highlights: [highlight], isTruncated: true };
+
+    const kept = projectIntegratedSearchEvidenceItem(truncated, { responseMode: 'evidence' });
+    expect(kept.highlights).toEqual([highlight]);
+    expect(kept.markdown).toBeUndefined();
+    expect(JSON.stringify(kept)).toContain('17:00');
+    const evidence = formatIntegratedSearchHostResponse({ ...response(), results: [truncated] }, { responseMode: 'evidence' });
+    expect(JSON.stringify(evidence.results[0])).toContain('17:00');
+
+    // 切れていない結果は今のまま: ハイライトが本文の 0.85 倍以上なら、本文を返してハイライトを消す
+    for (const isTruncated of [false, undefined]) {
+      const whole = projectIntegratedSearchEvidenceItem({ ...truncated, isTruncated }, { responseMode: 'evidence' });
+      expect(whole.markdown).toBe(markdown);
+      expect(whole.highlights).toBeUndefined();
+    }
+  });
+
   test('highlights nearly as long as markdown but pointed to by highlightsSameAs: highlights kept for the duplicate', () => {
     const shortPage = { ...baseItem(), markdown: '## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'] };
     const compact: Record<string, any> = formatCompactIntegratedSearchResponse({

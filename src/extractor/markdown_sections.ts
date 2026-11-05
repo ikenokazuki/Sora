@@ -4,6 +4,59 @@
  * X の投稿の要件の確かめ（services/x_detail）が使う。もとは rho-select（廃止）の一部。
  */
 
+const NAV_LABEL_MAX_CHARS = 16;
+
+/**
+ * 節の中でリンクだけの段落を外す（dropNavParagraphs）のは、リンク先の異なるホストがこの数以上あるときだけ。
+ * 言語の一覧（Wikipedia は言語ごとに別のホスト）は、他のサイトへのリンクの並びで、ホストが多い。
+ * 同じサイトの一覧（曲名・作品名・カテゴリ）はホストが 1 つで、検索語に合う本文になりうるので残す。
+ * 保存した本文（日本語のページ、Wikipedia の長い記事、検索結果の本文、英語中心のページ。合わせて約 1,800 ページ）で、
+ * リンクだけと判定された段落のホストの数は、同じサイトの一覧が 1、サブドメインをまたぐナビが 2〜3、SNS の行が 2〜5、言語の一覧が 10 以上だった。
+ * 5 ホストの段落 6 件のうち 3 件は、おすすめのアプリ・空港・参考サイトの内容のある一覧だったので、6 にした。
+ * 言語の一覧は余裕をもって外れ、X・Instagram・YouTube・TikTok・Facebook・LINE の 6 つの行にも届く。
+ * ホストが 6 に届かない SNS の行は残る。6 ホスト以上のリンク集は、ラベルが 1 つでも 16 字以下なら外れる。
+ */
+export const NAV_MIN_DISTINCT_HOSTS = 6;
+
+/**
+ * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
+ * ラベルがテキストなら返し、画像だけ `[![alt](src)](url)`（SNS アイコン・バナー等）や空のラベルなら、
+ * 「リンク行だがナビの候補ではない」として null を返す。リンクですらない行は undefined。
+ */
+type LabelLinkVerdict = { label: string } | null | undefined;
+function isLabelLinkLine(line: string): LabelLinkVerdict {
+  const trimmed = line.trim();
+  const last = trimmed.lastIndexOf('](');
+  if (last < 0 || !trimmed.endsWith(')')) return undefined;
+  const before = trimmed.slice(0, last);
+  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない:
+  // 行全体が 1 つのリンクとして読めるのは、最後の `](` の後ろの最初の `)` が行の末尾のとき（行は改行を含まない）。
+  // 正規表現 /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/ と同じ判定だが、正規表現は `](` の多い行で長さの二乗の時間がかかった
+  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
+  if (stripped === before || trimmed.indexOf(')', last + 2) !== trimmed.length - 1) return undefined;
+  const label = stripped.trim();
+  if (!label || label === '-') return null;
+  if (label.startsWith('!')) return null;
+  return { label };
+}
+
+/** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
+ * 空のラベル行（取り除けなかった SNS アイコン列など）と画像だけのリンク行は、テキストラベルとは数えないが、ナビであることは妨げない。
+ * テキストラベルの行が 1 つも無い塊（画像だけのリンクの列など）は、ナビとみなさない。
+ * ラベルの短さは「1 つでも 16 字以下」で見る。Wikipedia の言語の一覧も、Srpskohrvatski / српскохрватски のように 16 字を超える項目を混ぜるので、「すべて」にすると外せなくなる。
+ * ここで決まるのは「リンクだけの塊か」まで。節の中では dropNavParagraphs が、2 行以上で、リンク先のホストが NAV_MIN_DISTINCT_HOSTS 以上のものだけを
+ * 節の本文とハイライトの候補から外す（同じサイトの一覧は残す）。search_deep の本文の配分
+ * （integrated_search_host_response の dropNavBlocksFirst）では、ホストの数によらず本文の後ろへ回す。 */
+export function isNavBlock(block: string): boolean {
+  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+  // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
+  const labels = lines.filter((l) => !/^[-*+]\s*$/.test(l)).map((l) => isLabelLinkLine(l));
+  // 全行がリンク行で、かつテキストラベルが1つ以上ある塊をナビとして扱う。
+  // 画像だけの行（バナー・SNS アイコン）はテキストラベルとみなさないが、ナビ扱いも妨げない
+  // （グローバルナビの途中に SNS アイコンが混じる equal-love.jp のような実データに対応）。
+  return labels.every((l) => l !== undefined) && labels.some((l) => l !== null && l.label.length <= NAV_LABEL_MAX_CHARS);
+}
+
 export interface ParsedSection {
   rawHeading: string;
   heading: string;
@@ -12,6 +65,54 @@ export interface ParsedSection {
   fullText: string;
   charLength: number;
   startIndex: number;
+}
+
+// リンクの飛び先 `](URL "title")` の URL のうち、http(s) の絶対 URL。相対のもの・mailto: などはホストを持たないので読まない。
+// ホストは URL の先頭にあって括弧の前に終わるので、URL の中の括弧は読まない（括弧まで読む形は、閉じていないときの戻りが増える）
+const LINK_ABS_URL_RE = /\]\((https?:\/\/[^()\s]+)/gi;
+
+/** 塊のリンクの飛び先に、異なるホストが NAV_MIN_DISTINCT_HOSTS 以上あるか。new URL で読めないものは数えない（画像の src も `](…)` なので数える）。下限に届けば数え終わる前に止める */
+function linksToManyHosts(block: string): boolean {
+  const hosts = new Set<string>();
+  for (const m of block.matchAll(LINK_ABS_URL_RE)) {
+    try {
+      hosts.add(new URL(m[1]).hostname);
+    } catch {
+      // 読めない URL は数えない
+    }
+    if (hosts.size >= NAV_MIN_DISTINCT_HOSTS) return true;
+  }
+  return false;
+}
+
+/**
+ * 空行で区切った段落のうち、短いラベルのリンクだけの段落（isNavBlock。2 行以上）で、リンク先のホストが NAV_MIN_DISTINCT_HOSTS 以上あるものを外す
+ * （言語の一覧のような、他のサイトへのリンクの並び。ふつうの SNS の行は 2〜5 ホストなので残る）。同じサイトへのリンクだけの一覧（曲名・作品名・カテゴリ）は、ホストが少ない本文なので残す。
+ * 1 行だけのリンク（「申し込み」など）は外さない。コードブロックの中は区切らない。
+ */
+function dropNavParagraphs(lines: string[]): string[] {
+  const out: string[] = [];
+  let block: string[] = [];
+  let inCode = false;
+  const end = () => {
+    if (block.length > 0) {
+      const nonEmpty = block.filter((l) => l.trim() !== '').length;
+      const text = block.join('\n');
+      if (!(nonEmpty >= 2 && isNavBlock(text) && linksToManyHosts(text))) out.push(...block);
+    }
+    block = [];
+  };
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) inCode = !inCode;
+    if (!inCode && line.trim() === '') {
+      end();
+      out.push(line);
+    } else {
+      block.push(line);
+    }
+  }
+  end();
+  return out;
 }
 
 /**
@@ -24,10 +125,18 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   // 1. YAML Frontmatter (--- ... ---) を本文ハイライト候補から除外
   let cleaned = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '');
   // 2. システム付与のパンくず・イベント階層行 (> 📍 **階層**: ... 等) からルートタイトルを抽出
+  // 行ごとに読み、最後の区切り（> › \）の後ろの字を取る（最後の区間が空の行は飛ばす）。
+  // 正規表現で読むと、区切りの多い行や、失敗する行の並びで組み合わせが増えて長く止まった。前の正規表現は、行が区切りで終わると
+  // 改行をまたいで次の行の字を取った（本文の 1 行目を見出しにした）が、それはしない
   let rootContext = '';
-  const breadcrumbMatch = cleaned.match(/^>\s*📍\s*\*\*階層\*\*:\s*(?:.*?[>›\\]\s*)*([^\r\n>›\\]+)$/m);
-  if (breadcrumbMatch) {
-    rootContext = breadcrumbMatch[1].trim();
+  // 行は、正規表現の ^ と $（m フラグ）が行の区切りにする \r\n・\n・\r・U+2028・U+2029 で分ける（JSON-LD の BreadcrumbList の名前に \r や U+2028 が入りうる）
+  for (const line of cleaned.split(/\r\n|[\n\r\u2028\u2029]/)) {
+    const m = /^>[^\S\r\n]*📍[^\S\r\n]*\*\*階層\*\*:(.*)$/.exec(line);
+    const last = m?.[1].split(/[>›\\]/).pop()?.trim();
+    if (last) {
+      rootContext = last;
+      break;
+    }
   }
   cleaned = cleaned.replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '');
 
@@ -43,7 +152,9 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
   const headingStack: { level: number; heading: string }[] = [];
 
   const flush = () => {
-    const fullText = currentParagraphs.join('\n').trim();
+    // 節の中の、リンク先のホストが多い、短いラベルのリンクだけの段落（言語の一覧など）は、ハイライトの候補にも書き出しにもしない
+    const keptLines = dropNavParagraphs(currentParagraphs);
+    const fullText = keptLines.join('\n').trim();
     if (fullText.length > 0) {
       // プリアンブル（見出し未設定の先頭テキスト）のノイズ判定
       // リンク密度が極端に高い、または純粋な矢印/パンくず記号（[リンク] > [リンク] 等）のみの場合はハイライト候補から除外
@@ -51,7 +162,9 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
         const isNavOnly =
           fullText.length < 250 &&
           (/^(?:.*?[>›\\]\s*)+.*$/s.test(fullText) ||
-            /^(?:\[.+?\]\(.+?\)\s*(?:\\?>|›|>)?\s*)+$/s.test(fullText)) &&
+            // 「[リンク](URL)」の並びだけか。.+ が間のリンクも区切りも飲み込めるので、繰り返しの形 (?:\[.+?\]\(.+?\)…)+ と同じものに当たる
+            // （繰り返しの形は、当たらない入力で組み合わせが指数で増え、121 字で 2 秒かかった）
+            /^\[.+\]\(.+\)\s*(?:\\?>|›|>)?\s*$/s.test(fullText)) &&
           (fullText.includes('](') || fullText.includes('>') || fullText.includes('\\>'));
         if (isNavOnly) {
           currentParagraphs = [];
@@ -70,7 +183,7 @@ export function parseMarkdownSections(markdown: string): ParsedSection[] {
         rawHeading: currentRawHeading,
         heading: finalHeading,
         headingLevel: currentLevel,
-        paragraphs: currentParagraphs.slice(),
+        paragraphs: keptLines,
         fullText,
         charLength: fullText.length,
         startIndex: sectionStartIndex,
