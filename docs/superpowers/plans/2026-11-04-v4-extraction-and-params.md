@@ -8,6 +8,8 @@
 
 **Tech Stack:** Bun（CI は 1.4.2）・TypeScript・zod 4・cheerio・linkedom・@mozilla/readability・Turndown・bun:test・rs-trafilatura（rev 2a4f56e の `extract_stdin`、イメージでは `/usr/local/bin/rs-trafilatura`）
 
+**この計画の置き換えの記号:** 手元の場所は記号で書きます。`<REPO>` は main の作業コピー、`<WORKTREE>` は直す PR（パート A）の worktree、`<BASE_WORKTREE>` は比べる相手（origin/main）の worktree、`<REMOVE_WORKTREE>` は消す PR（パート B）の worktree、`<DATA>` は評価のデータの置き場所、`<OUT>` は測った結果とスクリプトの置き場所、`<BUN142>` は Bun 1.4.2 の実行ファイル（Task A11 の Step 1 で `<OUT>/bun142/node_modules/.bin/bun` に入れる）、`<Chromium の実行ファイル>` は Chromium の実行ファイルのパスです。
+
 ## Global Constraints
 
 - 設計書は `docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md`。この計画と食い違ったら、設計書に従う。
@@ -25,7 +27,7 @@
 
 ## ファイルの構成
 
-### パート A（直す PR。ブランチ `fix/v4-extraction-and-params`、worktree `~/.worktrees/Sora/v4-extraction`）
+### パート A（直す PR。ブランチ `fix/v4-extraction-and-params`、worktree `<WORKTREE>`）
 
 | ファイル | 役割 |
 |---|---|
@@ -50,7 +52,7 @@
 | Modify `README.md`・`docs/search-scrape-mechanics.md`・`docs/evaluations/main-content/results.md` | 説明と評価の記録 |
 | Create `docs/evaluations/v4-highlights/results.md` | ハイライトの評価の記録 |
 
-### パート B（消す PR。ブランチ `chore/v4-remove-params`、worktree `~/.worktrees/Sora/v4-remove-params`、パート A のブランチから作る）
+### パート B（消す PR。ブランチ `chore/v4-remove-params`、worktree `<REMOVE_WORKTREE>`、パート A のブランチから作る）
 
 `src/types.ts`・`src/mcp/tools_web.ts`・`src/routes/scrape.ts`・`src/routes/search.ts`・`src/scraper.ts`・`src/enrichment.ts`・`src/html_parser.ts`・`src/response_cleaner.ts`・`src/integrated_search_host_response.ts`・`scripts/eval-wcxb.ts` と、引数を使っているテスト・`client/`・`README.md`・`RELEASE_NOTES.md`・`package.json`。
 
@@ -1129,11 +1131,11 @@ Run:
 ```bash
 unset HTTPS_PROXY HTTP_PROXY
 bun run typecheck && bun run lint && bun run schema:notation
-export CHROME_PATH=$(ls -d /nix/store/*-chromium-*/bin/chromium | head -1)
-setsid bun test --timeout 60000 > /tmp/v4-a9-test.log 2>&1
+export CHROME_PATH=<Chromium の実行ファイル>
+setsid bun test --timeout 60000 > <OUT>/a9-test.log 2>&1
 ```
 
-`ps -eo pid,etimes,cmd | grep "[b]un test"` が空になってから `tail -6 /tmp/v4-a9-test.log` を見る。
+`ps -eo pid,etimes,cmd | grep "[b]un test"` が空になってから `tail -6 <OUT>/a9-test.log` を見る。
 Expected: typecheck・lint・schema:notation が通り、テストは `0 fail`（作業前は 2,333 pass・29 skip・0 fail）
 
 - [ ] **Step 5: Commit**
@@ -1290,16 +1292,16 @@ git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.gi
 **Files:**
 - Modify: `docs/evaluations/main-content/results.md`（節を足す）
 
-データ（リポジトリの外）: WCXB（https://github.com/Murrough-Foley/web-content-extraction-benchmark を clone した場所）、Bevendorff らの評価集（`combined/`）、日本語の 72 ページ（`results.md` の 38 + 34 ページを保存した JSON。`{url, query, html}`）、JQaRA の JSONL。下では、データの場所を `<DATA>`、測った結果を置く場所を `<OUT>` と書く。比べる相手（今の origin/main）は、別の worktree `~/.worktrees/Sora/v4-base` に置く。
+データ（リポジトリの外）: WCXB（https://github.com/Murrough-Foley/web-content-extraction-benchmark を clone した場所）、Bevendorff らの評価集（`combined/`）、日本語の 72 ページ（`results.md` の 38 + 34 ページを保存した JSON。`{url, query, html}`）、JQaRA の JSONL。下では、データの場所を `<DATA>`、測った結果を置く場所を `<OUT>` と書く。比べる相手（今の origin/main）は、別の worktree `<BASE_WORKTREE>` に置く。
 
 - [ ] **Step 1: 比べる相手を用意する**
 
 ```bash
-git -C ~/Sora worktree add --detach ~/.worktrees/Sora/v4-base origin/main
-cd ~/.worktrees/Sora/v4-base && unset HTTPS_PROXY HTTP_PROXY && bun install --frozen-lockfile
+git -C <REPO> worktree add --detach <BASE_WORKTREE> origin/main
+cd <BASE_WORKTREE> && unset HTTPS_PROXY HTTP_PROXY && bun install --frozen-lockfile
 ```
 
-（Task A12 の後に `git -C ~/Sora worktree remove ~/.worktrees/Sora/v4-base` で消す）
+（Task A12 の後に `git -C <REPO> worktree remove <BASE_WORKTREE>` で消す）
 
 - [ ] **Step 2: WCXB と Bevendorff らの評価集を、両方で測る**
 
@@ -1308,9 +1310,9 @@ rs-trafilatura の入ったイメージ（`localhost/sora-rs-test:dev`、`/usr/l
 採点（`scripts/eval-wcxb.ts` の `toText`）は、base でも branch のもの（A10a で画像を外し切るようにした）を重ねて使う:
 
 ```bash
-scorer="-v $HOME/.worktrees/Sora/v4-extraction/scripts/eval-wcxb.ts:/work/scripts/eval-wcxb.ts:ro"
+scorer="-v <WORKTREE>/scripts/eval-wcxb.ts:/work/scripts/eval-wcxb.ts:ro"
 for side in base branch; do
-  src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
+  src=$([ $side = base ] && echo <BASE_WORKTREE> || echo <WORKTREE>)
   for split in dev test; do
     podman run --rm --name v4eval-$side-$split --network none --entrypoint /usr/local/bin/bun \
       -v $src:/work:ro $scorer -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
@@ -1360,7 +1362,7 @@ base と branch の両方で走らせ、ページごとに比べる:
 
 ```bash
 for side in base branch; do
-  src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
+  src=$([ $side = base ] && echo <BASE_WORKTREE> || echo <WORKTREE>)
   podman run --rm --name v4eval-$side-ja --network none --entrypoint /usr/local/bin/bun \
     -v $src:/work:ro -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
     localhost/sora-rs-test:dev /out/ja-compare.ts /data $side > <OUT>/$side-ja.json
@@ -1405,8 +1407,8 @@ readdirSync(`${dataDir}/wcxb/dev/ground-truth`).filter((x) => x.endsWith('.json'
   pages.push({ id: `wcxb/${id}`, url, html: new TextDecoder().decode(gunzipSync(readFileSync(`${dataDir}/wcxb/dev/html/${id}.html.gz`))) });
 });
 async function peakMb(html: string, url: string): Promise<number> {
-  await Bun.write('/tmp/in.html', html);
-  const p = Bun.spawn([process.env.RS_TRAFILATURA_PATH!, '--url', url, '--hybrid', '--markdown'], { stdin: Bun.file('/tmp/in.html'), stdout: Bun.file('/tmp/out.json'), stderr: 'ignore' });
+  await Bun.write('/out/in.html', html);
+  const p = Bun.spawn([process.env.RS_TRAFILATURA_PATH!, '--url', url, '--hybrid', '--markdown'], { stdin: Bun.file('/out/in.html'), stdout: Bun.file('/out/out.json'), stderr: 'ignore' });
   let peak = 0;
   for (;;) {
     let s: string;
@@ -1431,7 +1433,7 @@ console.log(JSON.stringify(rows));
 
 ```bash
 for side in base branch; do
-  src=$([ $side = base ] && echo ~/.worktrees/Sora/v4-base || echo ~/.worktrees/Sora/v4-extraction)
+  src=$([ $side = base ] && echo <BASE_WORKTREE> || echo <WORKTREE>)
   podman run --rm --name v4eval-$side-cost --network none --entrypoint /usr/local/bin/bun \
     -v $src:/work:ro -v <DATA>:/data:ro -v <OUT>:/out -e RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura -w /work \
     localhost/sora-rs-test:dev /out/rs-cost.ts /data $side > <OUT>/$side-cost.json
@@ -1468,7 +1470,7 @@ git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.gi
 
 ```bash
 npm install --no-save --prefix <OUT>/bun142 bun@1.4.2
-<OUT>/bun142/node_modules/.bin/bun --version
+<BUN142> --version
 ```
 
 Expected: `1.4.2`
@@ -1476,10 +1478,10 @@ Expected: `1.4.2`
 - [ ] **Step 2: JQaRA で、選んだ段落の精度を比べる**
 
 ```bash
-cd ~/.worktrees/Sora/v4-base
-<OUT>/bun142/node_modules/.bin/bun scripts/eval-jqara.ts --data <DATA>/jqara --split dev --select > <OUT>/base-jqara-dev.txt
-cd ~/.worktrees/Sora/v4-extraction
-<OUT>/bun142/node_modules/.bin/bun scripts/eval-jqara.ts --data <DATA>/jqara --split dev --select > <OUT>/branch-jqara-dev.txt
+cd <BASE_WORKTREE>
+<BUN142> scripts/eval-jqara.ts --data <DATA>/jqara --split dev --select > <OUT>/base-jqara-dev.txt
+cd <WORKTREE>
+<BUN142> scripts/eval-jqara.ts --data <DATA>/jqara --split dev --select > <OUT>/branch-jqara-dev.txt
 ```
 
 （`--data` に渡す形は `scripts/eval-jqara.ts` の先頭の説明に従う）
@@ -1493,7 +1495,7 @@ Expected: 選んだ段落の精度が下がらない（JQaRA の候補は Wikipe
 ```ts
 // 200,000 字の Markdown で、extractQueryHighlightDetails の時間を測る（同じ文書で 10 回の中央値）
 import { readFileSync } from 'node:fs';
-import { extractQueryHighlightDetails } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/enrichment.ts';
+import { extractQueryHighlightDetails } from '<WORKTREE>/src/enrichment.ts';
 const md = readFileSync(process.argv[2], 'utf8').slice(0, 200_000);
 for (const q of ['開場時間 チケット', '収容人数 球場', 'release date version']) {
   const times: number[] = [];
@@ -1508,7 +1510,7 @@ for (const q of ['開場時間 チケット', '収容人数 球場', 'release da
 ```ts
 // 日本語の 72 ページを Markdown にしてつなげ、200,000 字の文書を作る
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { convertHtmlToMarkdown } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/html_parser.ts';
+import { convertHtmlToMarkdown } from '<WORKTREE>/src/html_parser.ts';
 const parts: string[] = [];
 let total = 0;
 for (const set of ['ja-pages', 'ja-news']) for (const f of readdirSync(`${process.argv[2]}/${set}`).filter((x) => x.endsWith('.json')).sort()) {
@@ -1522,9 +1524,9 @@ writeFileSync(process.argv[3], parts.join('\n\n').slice(0, 200_000));
 ```
 
 ```bash
-cd ~/.worktrees/Sora/v4-extraction
-<OUT>/bun142/node_modules/.bin/bun <OUT>/make-200k.ts <DATA> <OUT>/200k.md
-<OUT>/bun142/node_modules/.bin/bun <OUT>/highlight-time.ts <OUT>/200k.md
+cd <WORKTREE>
+<BUN142> <OUT>/make-200k.ts <DATA> <OUT>/200k.md
+<BUN142> <OUT>/highlight-time.ts <OUT>/200k.md
 ```
 
 Expected: 中央値 200 ms 以下。超えたら `HIGHLIGHT_SOURCE_MAX_CHARS` を 100,000 にして測り直し、設計書と計画の値を直す。
@@ -1780,8 +1782,8 @@ git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.gi
 // 問い文の内容語（最大 5 つ）の検索語で、実際の integratedSearch に 1 回ずつ渡す。X の速報なし。問いの間は 15 秒あける（4 回目と同じ）。
 // 同じ結果を full と evidence で直列化し、答えが残るかを、問いごとと結果のページごとに数える。
 import { readFileSync, writeFileSync } from 'node:fs';
-import { integratedSearch } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/scraper.ts';
-import { serializeIntegratedSearchMcpResponse } from '/home/ikeno/.worktrees/Sora/v4-extraction/src/integrated_search_host_response.ts';
+import { integratedSearch } from '<WORKTREE>/src/scraper.ts';
+import { serializeIntegratedSearchMcpResponse } from '<WORKTREE>/src/integrated_search_host_response.ts';
 const rows = readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const byQ = new Map<string, any>();
 for (const r of rows) if (!byQ.has(r.q_id)) byQ.set(r.q_id, r);
@@ -1808,8 +1810,8 @@ writeFileSync(process.argv[3], JSON.stringify(out, null, 1));
 - [ ] **Step 2: 1 回だけ走らせる**
 
 ```bash
-cd ~/.worktrees/Sora/v4-extraction && unset HTTPS_PROXY HTTP_PROXY
-<OUT>/bun142/node_modules/.bin/bun <OUT>/live40.ts <DATA>/jqara/test.jsonl <OUT>/live40.json
+cd <WORKTREE> && unset HTTPS_PROXY HTTP_PROXY
+<BUN142> <OUT>/live40.ts <DATA>/jqara/test.jsonl <OUT>/live40.json
 ```
 
 Expected: 40 問を約 10 分で終える。Yahoo の 429（取得の拒否）が 1 回でも出たら、すぐ止めて報告する（手元からの検索は本番と同じ IP を使う。取り直さない）。`full` に答えがあった問いとページのうち `evidence` にも残った割合が、今の main の最新の記録（`docs/evaluations/response-compression/results.md` の 4 回目: 問い 29 問中 25 問・86%、ページ 92 ページ中 79 ページ・86%）から大きく下がらない。問いで 2 問分・ページで 5 ポイント以上下がったら、落ちた問いとページごとに、答えが本文のどこにあり、`evidence` がどの段落を選んだかを調べて報告に書き、原因が v4.0.0 の変更なら BLOCKED で止める（取り直しはしない）。
@@ -1825,7 +1827,7 @@ git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.gi
 
 - [ ] **Step 4: 比べる相手の worktree を消す**
 
-Run: `git -C ~/Sora worktree remove ~/.worktrees/Sora/v4-base`
+Run: `git -C <REPO> worktree remove <BASE_WORKTREE>`
 
 ### Task A13: 直す PR を出す
 
@@ -1854,9 +1856,9 @@ Expected: すべて成功。マージはユーザーの許可を待つ。
 パート B は、パート A のブランチから作る:
 
 ```bash
-git -C ~/Sora worktree add -b chore/v4-remove-params ~/.worktrees/Sora/v4-remove-params fix/v4-extraction-and-params
-git -C ~/.worktrees/Sora/v4-remove-params branch --unset-upstream
-cd ~/.worktrees/Sora/v4-remove-params && unset HTTPS_PROXY HTTP_PROXY && bun install --frozen-lockfile
+git -C <REPO> worktree add -b chore/v4-remove-params <REMOVE_WORKTREE> fix/v4-extraction-and-params
+git -C <REMOVE_WORKTREE> branch --unset-upstream
+cd <REMOVE_WORKTREE> && unset HTTPS_PROXY HTTP_PROXY && bun install --frozen-lockfile
 ```
 
 パート A がマージされたら、`git rebase origin/main` してから PR を出す。

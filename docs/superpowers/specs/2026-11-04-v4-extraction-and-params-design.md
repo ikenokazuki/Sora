@@ -38,7 +38,7 @@ v3.0.0 の scrape・search_deep で見つかった不具合を直し、効いて
 
 ## 調べたこと（2026-11-04）
 
-測り方: rs-trafilatura は本番と同じビルドのコマンド（rev 2a4f56e、`--hybrid --markdown`）を使った。データは WCXB（dev 1,497 ページ・test 511 ページ）と、`docs/evaluations/main-content/results.md` の日本語の 72 ページ。下の F1 は、rs-trafilatura の本文の文字だけを WCXB の正解と比べたもの（Sora の振り分けの前）。
+測り方: rs-trafilatura は、Containerfile が固定している版（rev 2a4f56e）を、そのビルド段でビルドしたコマンド（`--hybrid --markdown`）を使った。データは WCXB（dev 1,497 ページ・test 511 ページ）と、`docs/evaluations/main-content/results.md` の日本語の 72 ページ。下の F1 は、rs-trafilatura の本文の文字だけを WCXB の正解と比べたもの（Sora の振り分けの前）。
 
 ### rs-trafilatura の本文の HTML
 
@@ -103,9 +103,9 @@ Readability の経路と同じ隠し要素（hidden・aria-hidden・display:none
 
 ### 3. 変換と出力
 
-- 本文の URL: どちらの経路でも、Turndown に渡す前に、本文の `a[href]` と `img[src]` を、ページの URL を基準に絶対 URL にする（基準は links の一覧と同じ。日本語などの字はエンコードせずに書き、links の一覧はエンコードした形のまま。下の「実装中に足したこと」）。`#` だけのリンクと `javascript:` のリンクは、リンクを外して文字だけにする。`mailto:` と `tel:` はそのまま。
+- 本文の URL: どちらの経路でも、Turndown に渡す前に、本文の `a[href]` と `img[src]` を、ページの URL を基準に絶対 URL にする（基準は links の一覧と同じ。日本語などの字はエンコードせずに書き、links の一覧はエンコードした形のまま。下の「実装中に足したこと」）。`#` だけのリンクと `javascript:` のリンク（字を逃がして書いたものも）は、リンクを外して文字だけにする。`#/route`・`#!/route` のようなハッシュの経路のリンクは外さず、絶対 URL にする。`mailto:` と `tel:` はそのまま。
 - formats の `html`: 本文の HTML（Markdown の元にしたもので、URL を絶対にし、画像を戻したもの）を返す。onlyMainContent が false のときは body の HTML。`rawHtml` は今と同じく、取得したそのままの HTML。
-- includeMedia（scrape・scrape_batch・crawl_site。既定 true）: false のとき、search_deep と同じく、本文の画像を「[画像: alt]」に置き換え（alt が無ければ消し）、ogImage と media を省く。formats で求めた images の一覧と highlights は触らない。rs-trafilatura の 2 回目も走らせない。search_deep の `stripMedia` の画像の置き換えを共通の関数にして、両方から使う。
+- includeMedia（scrape・scrape_batch・crawl_site。既定 true）: false のとき、search_deep と同じく、本文の画像を「[画像: alt]」に置き換え（alt が無ければ消し）、ogImage と media を省く。formats で求めた images の一覧と highlights は触らない。rs-trafilatura の 2 回目も走らせない。search_deep の `stripMedia` の画像の置き換えを共通の関数にして、両方から使う。search_deep の includeMedia（既定 true。省くと true として扱う）は、false のとき、ページを取る scrape にも false を渡す（下の「実装中に足したこと」）。
 
 ### 4. ハイライト
 
@@ -114,7 +114,7 @@ Readability の経路と同じ隠し要素（hidden・aria-hidden・display:none
   - 全文は内部の項目にして、応答とキャッシュには入れない（使った後に消す）。
   - maskPii が有効なときは、全文にも同じ置き換えをしてからハイライトを選ぶ。
   - 上限の 200,000 字は、ハイライトを選ぶ時間を測って決める。200,000 字のページで 200 ms を超えるなら下げる。
-- リンクだけの段落: `parseMarkdownSections` が、節の中の段落（空行で区切った塊）のうち、短いラベルのリンクだけでできたものを外す。判定は `isNavBlock`（今は integrated_search_host_response.ts にある）を `extractor/markdown_sections.ts` に移して共通にする。見出しの無い先頭の塊を外す今の規則は残す。
+- リンクだけの段落: `parseMarkdownSections` が、節の中の段落（空行で区切った塊）のうち、短いラベルのリンクだけでできた（2 行以上の）もので、リンク先の異なるホストが 6 つ以上あるものを外す（`dropNavParagraphs`。下限は `NAV_MIN_DISTINCT_HOSTS`）。Wikipedia の言語の一覧や SNS の行のような、他のサイトへのリンクの並びを外し、同じサイトへのリンクだけの一覧（曲名・作品名・カテゴリ）は残す。判定は `isNavBlock`（今は integrated_search_host_response.ts にある）を `extractor/markdown_sections.ts` に移して共通にする。search_deep の本文の配分（`dropNavBlocksFirst`）は、ホストの数によらず今のまま。見出しの無い先頭の塊を外す今の規則は残す。
 - description: `chooseBestDescription` での置き換えをやめ、meta の説明文（og:description・meta description・JSON-LD）だけにする。meta の説明文が無いページでは description を返さない。
 - annotateTemporal: `finalizeScrapeResult` から `extractQueryHighlightDetails` に渡して、ハイライトにも注記を付ける。search_deep の evidence でも、ハイライトに注記が残る。
 - ハイライトは、search_deep の並べ替え（`rerankByDeepEvidence`）と contextSufficiency にも使われるので、検索の評価でも確かめる（7 の節）。
@@ -174,7 +174,7 @@ MCP の引数の数: scrape 38 → 16、scrape_batch 35 → 16、crawl_site 14 �
 ### 8. リリース
 
 - 直す PR、消す PR の順にマージし、v4.0.0 を出す。
-- リリースノートに、破壊的な変更（消した引数、responseMode へのまとめ、formats の html の意味、description がハイライトで置き換わらなくなること、MCP から外した引数、本文のリンクと画像の URL が絶対になること（日本語などの字はエンコードしない））を書く。
+- リリースノートに、破壊的な変更（消した引数、responseMode へのまとめ、formats の html の意味、description がハイライトで置き換わらなくなること、MCP から外した引数、本文のリンクと画像の URL が絶対になること（日本語などの字はエンコードしない）、ハイライトの合計が maxChars に収まること、本文が maxChars で切れた結果では evidence が入れ替えずにハイライトを返すこと、リンク先のホストが 6 つ以上のリンクだけの段落（言語の一覧など）がハイライトの候補から外れること、search_deep の includeMedia: false がページを取る scrape にも渡り、画像を戻す 2 回目を走らせないこと（結果のキャッシュのキーに入るので、反映の直後の最初の要求は取り直しになる））を書く。
 - scrape のキャッシュのキーの版を上げる（`scrape:v8` → `scrape:v9`）。includeMedia をキーに入れる。
 - MCP の説明文（`src/mcp/instructions.ts` と各ツールの説明）と、引数を挙げている docs を直す。
 
@@ -182,10 +182,20 @@ MCP の引数の数: scrape 38 → 16、scrape_batch 35 → 16、crawl_site 14 �
 
 評価とレビューで見つかった不具合を、同じ PR で直した。
 - 画像の記法の掃除: `cleanMarkdownTokens` は、空の画像を空のリンクより先に消す。前は `![](url)` の `[](url)` だけが消えて `!` が残り、後ろのリンクが画像の記法になっていた（base にもあり、画像を戻すと多く出た）。画像とリンクの飛び先の正規表現は、URL の中の 1 段の括弧（`format(webp)` など）と alt の逃がした字（`\]`）を読む。100 万字を超える data URI でも止まらない書き方にした。`replaceMarkdownImages` も同じ。
-- `#`・`javascript:` のリンクを外すときは、隣が要素なら空白を挟む（並んだリンクの文字がくっつかないように）。
+- `#`・`javascript:` のリンクを外すときは、隣が要素なら空白を挟む（並んだリンクの文字がくっつかないように）。外す処理は、要素を動かさずに外すリンクを目印の要素名（呼び出しごとの乱数）にして、直列化のあとにそのタグだけを消す形にした（要素ごと外すと、並んだリンクで親の子の配列の切り貼りが長さの二乗の時間になる）。出力は前と同じ。字を逃がして書いた `javascript:`（`java&#9;script:` など）も外す。`#/route`・`#!/route` のハッシュの経路のリンクは外さず、絶対 URL にする。
 - 本文の URL: 絶対 URL のうち、非 ASCII の字（日本語のパスなど）のパーセントエンコードは字に戻す。エンコードのままだと、リンクの多い日本語のページで、同じ maxChars に入る本文が半分ほどに減った。空白・制御文字・書式文字になる並びと、UTF-8 として読めない並びはエンコードのまま。links の一覧はエンコードした形のまま。
 - 節の分け方（`extractor/markdown_sections.ts`）の 3 つの処理を、細工した入力で止まらない形にした。リンク行の判定（長さの二乗）と前置きのパンくずの判定（指数）は、同じ判定になる形に替えた。パンくずの行から最後の節を取る処理（指数）は、行ごとに読む形にした（前の正規表現は、行が区切りで終わると改行をまたいで次の行の字を取ったが、それはしない）。
 - 採点: `scripts/eval-wcxb.ts` の `toText` は、画像を alt ごと（`[画像: alt]` も）外し切る。base も同じ採点で測り直した。
+- ハイライトの合計は maxChars に収める。ハイライトは全文から選ぶので、窓で切らない表・コードの節や、文が 1 つしかない節は maxChars より大きくなりうる（表の節に検索語が合う 12 万字の文書で、maxChars 15,000 のとき、base のハイライトは 14,979 字、全文から選ぶ形は 119,994 字だった）。`finalizeScrapeResult` に maxChars を渡し、ハイライトの合計（`onlyHighlights` では content。区切りの分も、残す件数に合わせて数える）を maxChars に収める。1,600 字（`HIGHLIGHT_CHAR_BUDGET`）以下のふつうのハイライトを出力の順に丸ごと確保し、残りの字数を、表・コード・1 文の節などの大きなものに、短いものを先に確保する形で分ける。maxChars がふつうのハイライトの合計より小さいと、大きなものは外れる。maxChars が区切りの分も入らないほど小さいときは、先頭の 1 件だけを切る。
+- evidence の入れ替え: search_deep の evidence は、ハイライトが本文の 0.85 倍以上のとき、本文を返してハイライトを消す。この規則は、ハイライトが本文の一部であることが前提なので、本文が maxChars で切れた結果（`isTruncated`）には当てない。ハイライトは切る前の全文から選ぶので、切れた本文に無い答えを持つことがある。adaptiveScrape の追加取得で足した結果にも `isTruncated` を付ける。
+- ナビの段落: 節の中のリンクだけの段落を外す規則は、最初は、リンク先によらずすべて外すものだった。それでは、同じサイトへのリンクだけの一覧（曲名 3 つの「シングル」の節など）が節ごと消えるので、リンク先の異なるホストが 6 つ以上あるものだけを外す形に狭めた。保存した本文 1,791 ページで、言語の一覧（10 ホスト以上）は外れ、同じサイトの一覧は残る。SNS の行（2〜5 ホスト）は、6 ホストに届かないので残る。
+- search_deep の includeMedia: false のとき、ページを取る scrapeUrl にも includeMedia: false を渡す（最初の取得・失敗分の補充・adaptiveScrape の追加取得。動画の字幕を読む取得には渡さない）。rs-trafilatura が画像を戻す 2 回目を走らせず、scrapeUrl のキャッシュのキー（真と偽は別）にも入る。REST と MCP から integratedSearch へも渡し、結果のキャッシュのキーにも入れる。省いたときは true として扱う。
+- 画像の目印を置く処理（`rs_images.ts`）は、画像の多いページで止まらないようにした（1 つの図に画像が 6,400 枚あるページで、数分かかっていた）。図の説明文は図ごとに 1 回、祖先は親ごとに 1 回たどる。属性の値の私用領域の字も消す。
+- ハイライトの経路の正規表現（価格・重量・「N 日前」・金額・メール・「万」の正規化）のうち、長い数字・英字の並びで長さの二乗の時間になるものを、同じ意味で並びの途中から始めない形（後読み）に直した。全文から選ぶ形にしたことで、これらが 20 万字に当たるようになっていた（20 万桁の数字の並びで約 10 分）。
+- 注記（`annotateTemporal`）は、リンクと画像の飛び先 `](…)` の中には入れない（入れるとリンクが壊れる）。リンクの文字と alt、地の文には入れる。
+- 本文の URL を字に戻すとき、見えない字になる並び（ハングルの空白字 U+3164・CGJ U+034F・異体字セレクタなど）もエンコードのまま残す。
+- 空の画像を消すとき、前後の字がどちらも空白でなければ空白 1 字を残す（`Cocktail![](url)Friendsgiving` の語がくっつかないように）。前の字が `[`、後ろの字が `]` のとき（リンクの文字の端）は残さない。
+- パンくずの行は、`\r\n`・`\n`・`\r`・U+2028・U+2029 で分けて読む。
 
 ## 入れないもの
 
