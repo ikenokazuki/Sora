@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
@@ -2775,15 +2775,46 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/search/music']).toBeDefined();
   });
 
-  it('sendWebhookNotification should block SSRF to internal destinations without throwing', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-    try {
-      await expect(sendWebhookNotification('http://127.0.0.1:8000/hook', { data: 'test' })).resolves.toBeUndefined();
-      await expect(sendWebhookNotification('http://169.254.169.254/hook', { data: 'test' })).resolves.toBeUndefined();
-    } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
-    }
+  describe('sendWebhookNotification の SSRF 対策', () => {
+    // 止めずに fetch すると、接続の失敗が catch されて resolves だけでは見分けられない。差し替えた fetch が呼ばれたかで確かめる
+    // （公開側の比べは IP リテラルなので、名前解決もしない。差し替えた fetch は何もしないで返す）
+    let realFetch: typeof fetch;
+    let fetched: string[];
+    let prevEnv: string | undefined;
+    beforeEach(() => {
+      realFetch = globalThis.fetch;
+      fetched = [];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        fetched.push(String(input));
+        return new Response(null, { status: 200 });
+      }) as typeof fetch;
+      prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      delete process.env.ALLOW_LOCAL_FETCH;
+    });
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+      if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+      else process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    });
+
+    it('does not fetch loopback, private, link-local and localhost destinations', async () => {
+      const blocked = [
+        'http://127.0.0.1:8000/hook',
+        'http://10.0.2.2:3000/admin',
+        'http://169.254.169.254/latest/meta-data',
+        'http://169.254.169.254/hook',
+        'http://localhost:8080/hook',
+      ];
+      for (const url of blocked) {
+        await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
+      }
+      expect(fetched).toEqual([]);
+    });
+
+    it('fetches a public destination (control for the blocked cases)', async () => {
+      await expect(sendWebhookNotification('https://93.184.216.34/hook', { data: 'test' })).resolves.toBeUndefined();
+      expect(fetched).toEqual(['https://93.184.216.34/hook']);
+    });
   });
 
   it('convertHtmlToMarkdown and cleanMarkdownTokens should purge hidden elements and zero-width characters', () => {
