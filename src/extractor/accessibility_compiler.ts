@@ -6,14 +6,12 @@
  * 責務:
  * 1. Block Provenance: ブロック単位の出所識別子 (sourceId, blockId, anchor) 付与
  * 2. Evidence Diagnostics: 意味的断定を行わない、決定論的観測量 (queryCoverage, weakEvidenceSignal)
- * 3. Candidate Discrepancies: 日付・金額・バージョンの不一致候補の可視化 (勝手に解消しない)
- * 4. Safe Normalization: 外部知識を要しない固定規則による決定論的正規化と導出履歴
+ * 3. Safe Normalization: 外部知識を要しない固定規則による決定論的正規化と導出履歴
  */
 
 import type {
   EvidenceBlockRef,
   EvidenceDiagnostics,
-  CandidateDiscrepancy,
   DerivationTrace,
 } from '../types.js';
 import type { HeadingBlock } from './hierarchical_bm25.js';
@@ -151,129 +149,6 @@ export function computeEvidenceDiagnostics(
     weakEvidenceSignal,
     reasons,
   };
-}
-
-/**
- * テキスト群から日付・金額・バージョンの不一致候補 (Candidate Discrepancies) を検出
- * 
- * 重要: Sora はどちらが正しいか解消（Silent Resolve）せず、
- * 上位エージェントに対比情報として提示する。
- */
-export function detectDiscrepancies(
-  items: Array<{ text: string; sourceId?: string; blockId?: string }>,
-): CandidateDiscrepancy[] {
-  if (!items || items.length === 0) return [];
-
-  const discrepancies: CandidateDiscrepancy[] = [];
-
-  // 1. 日付の不一致検出
-  // 例: 2026-09-01, 2026/09/01, 2026年9月1日
-  const dateRegex = /\b(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})日?\b/g;
-  const dateMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
-
-  for (const item of items) {
-    let match: RegExpExecArray | null;
-    dateRegex.lastIndex = 0;
-    while ((match = dateRegex.exec(item.text)) !== null) {
-      const year = match[1];
-      const month = match[2].padStart(2, '0');
-      const day = match[3].padStart(2, '0');
-      const normalized = `${year}-${month}-${day}`;
-      if (!dateMap.has(normalized)) {
-        // 前後 30 文字をコンテキストとして保持
-        const start = Math.max(0, match.index - 20);
-        const end = Math.min(item.text.length, match.index + match[0].length + 20);
-        const context = item.text.slice(start, end).replace(/\s+/g, ' ').trim();
-        dateMap.set(normalized, {
-          original: match[0],
-          normalized,
-          sourceId: item.sourceId,
-          blockId: item.blockId,
-          context,
-        });
-      }
-    }
-  }
-
-  if (dateMap.size >= 2) {
-    discrepancies.push({
-      kind: 'date',
-      values: Array.from(dateMap.values()),
-      status: 'needs_agent_resolution',
-    });
-  }
-
-  // 2. 金額の不一致検出
-  // 例: ¥1,200, 1200円, 1,500円
-  // 2 つ目の後読みは、数字・カンマの並びの先頭からだけ試す（途中から読むと長い数字の並びで二乗の時間になる。一致の結果は同じ）
-  const moneyRegex = /(?:¥|￥)\s*([\d,]+)|(?<![\d,])([\d,]+)\s*(?:円)/g;
-  const moneyMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
-
-  for (const item of items) {
-    let match: RegExpExecArray | null;
-    moneyRegex.lastIndex = 0;
-    while ((match = moneyRegex.exec(item.text)) !== null) {
-      const numStr = (match[1] || match[2]).replace(/,/g, '');
-      const num = parseInt(numStr, 10);
-      if (Number.isNaN(num) || num <= 0) continue;
-      const normalized = `${num}円`;
-      if (!moneyMap.has(normalized)) {
-        const start = Math.max(0, match.index - 20);
-        const end = Math.min(item.text.length, match.index + match[0].length + 20);
-        const context = item.text.slice(start, end).replace(/\s+/g, ' ').trim();
-        moneyMap.set(normalized, {
-          original: match[0],
-          normalized,
-          sourceId: item.sourceId,
-          blockId: item.blockId,
-          context,
-        });
-      }
-    }
-  }
-
-  if (moneyMap.size >= 2) {
-    discrepancies.push({
-      kind: 'money',
-      values: Array.from(moneyMap.values()),
-      status: 'needs_agent_resolution',
-    });
-  }
-
-  // 3. バージョン番号の不一致検出
-  // 例: v2.13.0, 2.14.0
-  const versionRegex = /\bv?(\d+\.\d+(?:\.\d+)?)\b/g;
-  const versionMap = new Map<string, { original: string; normalized: string; sourceId?: string; blockId?: string; context?: string }>();
-
-  for (const item of items) {
-    let match: RegExpExecArray | null;
-    versionRegex.lastIndex = 0;
-    while ((match = versionRegex.exec(item.text)) !== null) {
-      const normalized = match[1];
-      if (!versionMap.has(normalized)) {
-        const start = Math.max(0, match.index - 20);
-        const end = Math.min(item.text.length, match.index + match[0].length + 20);
-        const context = item.text.slice(start, end).replace(/\s+/g, ' ').trim();
-        versionMap.set(normalized, {
-          original: match[0],
-          normalized,
-          sourceId: item.sourceId,
-          blockId: item.blockId,
-          context,
-        });
-      }
-    }
-  }
-
-  if (versionMap.size >= 2) {
-    discrepancies.push({
-      kind: 'version',
-      values: Array.from(versionMap.values()),
-      status: 'needs_agent_resolution',
-    });
-  }
-
-  return discrepancies;
 }
 
 /**

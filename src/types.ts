@@ -165,19 +165,6 @@ export interface EvidenceDiagnostics {
   reasons: string[];           // weak判定の客観的理由 (例: ["low_query_coverage", "no_matching_blocks"])
 }
 
-/** 不一致候補 (Candidate Discrepancy) - 勝手に解消せず上位エージェントに対比提示 */
-export interface CandidateDiscrepancy {
-  kind: 'date' | 'money' | 'version' | 'number';
-  values: Array<{
-    original: string;
-    normalized: string;
-    sourceId?: string;
-    blockId?: string;
-    context?: string;
-  }>;
-  status: 'needs_agent_resolution';
-}
-
 /** 決定論的導出メタデータ (Derivation Trace) */
 export interface DerivationTrace {
   operation: string; // 例: "kanji_num_to_digits", "km_to_m", "fullwidth_to_halfwidth"
@@ -1170,18 +1157,6 @@ export const EvidenceDiagnosticsSchema = z.object({
   topScore: z.number().describe('最高関連スコア'),
   weakEvidenceSignal: z.boolean().describe('根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0)'),
   reasons: z.array(z.string()).describe('判定理由 (例: ["low_query_coverage", "no_matching_blocks"])'),
-});
-
-export const CandidateDiscrepancySchema = z.object({
-  kind: z.enum(['date', 'money', 'version', 'number']).describe('不一致種別 (日付、金額、バージョン、数値)'),
-  values: z.array(z.object({
-    original: z.string().describe('原文の表記'),
-    normalized: z.string().describe('正規化後の値'),
-    sourceId: z.string().optional().describe('出所ソースID'),
-    blockId: z.string().optional().describe('ブロックID'),
-    context: z.string().optional().describe('文脈スニペット'),
-  })).describe('競合している値のリスト'),
-  status: z.literal('needs_agent_resolution').describe('解決ステータス'),
 });
 
 export const DerivationTraceSchema = z.object({

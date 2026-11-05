@@ -2,51 +2,16 @@
  * 情報検索理論 (IR) & 先端 RAG アルゴリズムモジュール
  * 
  * 外部ベクトルDBや巨大モデルに依存せず、決定論的かつインメモリ超高速 (<0.05ms) で
- * LLM の想起率・トークン効率・語彙カバレッジを最大化する 3 大アルゴリズム群：
+ * LLM の想起率・トークン効率・語彙カバレッジを最大化する 2 大アルゴリズム群：
  * 
- * 1. U字型リオーダリング (Lost in the Middle 対策 / Primacy-Recency Boustrophedon Layout)
- * 2. MMR (Maximal Marginal Relevance / 貪欲多様性最大化による冗長性根絶)
- * 3. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバックによる語彙拡張)
+ * 1. MMR (Maximal Marginal Relevance / 貪欲多様性最大化による冗長性根絶)
+ * 2. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバックによる語彙拡張)
  */
 
 import { extractTermsWithBigrams } from './hierarchical_bm25.js';
 
 // =========================================================================
-// 1. U字型リオーダリング (Lost in the Middle 対策)
-// =========================================================================
-
-/**
- * スコア降順配列 [1位, 2位, 3位, 4位, 5位, ...] を
- * LLM のアテンションが最も高まる先頭と末尾に最重要アイテムを配置する U字型 (Boustrophedon) に並べ替える。
- * 
- * 出力例: [1位, 3位, 5位, ..., 4位, 2位]
- * (1位がプロンプト冒頭、2位がプロンプト末尾、低スコアのものが中央に配置される)
- * 
- * 計算量: O(N)
- */
-export function reorderLostInTheMiddle<T>(items: T[]): T[] {
-  if (!items || items.length <= 2) {
-    return items ? [...items] : [];
-  }
-
-  const head: T[] = [];
-  const tail: T[] = [];
-  let toHead = true;
-
-  for (let i = 0; i < items.length; i++) {
-    if (toHead) {
-      head.push(items[i]);
-    } else {
-      tail.unshift(items[i]);
-    }
-    toHead = !toHead;
-  }
-
-  return [...head, ...tail];
-}
-
-// =========================================================================
-// 2. MMR (Maximal Marginal Relevance / 最大限界関連度)
+// 1. MMR (Maximal Marginal Relevance / 最大限界関連度)
 // =========================================================================
 
 export interface MmrOptions<T> {
@@ -197,7 +162,7 @@ export function selectMaximalMarginalRelevance<T>(
 }
 
 // =========================================================================
-// 3. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバック)
+// 2. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバック)
 // =========================================================================
 
 export interface PrfResult {

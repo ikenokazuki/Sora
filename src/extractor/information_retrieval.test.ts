@@ -1,39 +1,11 @@
 import { describe, it, expect } from 'bun:test';
 import {
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
   computeJaccardSimilarity,
   expandQueryWithPseudoRelevanceFeedback,
 } from './information_retrieval.js';
 
 describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
-  describe('reorderLostInTheMiddle (Lost in the Middle 対策 / U字型配置)', () => {
-    it('要素数が2以下の場合は元の配列のコピーを返すこと', () => {
-      expect(reorderLostInTheMiddle([])).toEqual([]);
-      expect(reorderLostInTheMiddle([1])).toEqual([1]);
-      expect(reorderLostInTheMiddle([1, 2])).toEqual([1, 2]);
-    });
-
-    it('要素数3の場合、1位を先頭、2位を末尾、3位を中央に配置すること', () => {
-      // 1位: A, 2位: B, 3位: C -> [A, C, B]
-      const items = ['A', 'B', 'C'];
-      expect(reorderLostInTheMiddle(items)).toEqual(['A', 'C', 'B']);
-    });
-
-    it('要素数5の場合、奇数偶数交互に両端から詰め [1, 3, 5, 4, 2] になること', () => {
-      const items = [1, 2, 3, 4, 5];
-      const reordered = reorderLostInTheMiddle(items);
-      // 1位(1)が先頭、2位(2)が末尾、3位(3)が先頭寄り、4位(4)が末尾寄り、5位(5)が中央
-      expect(reordered).toEqual([1, 3, 5, 4, 2]);
-    });
-
-    it('要素数6の場合、[1, 3, 5, 6, 4, 2] になること', () => {
-      const items = [1, 2, 3, 4, 5, 6];
-      const reordered = reorderLostInTheMiddle(items);
-      expect(reordered).toEqual([1, 3, 5, 6, 4, 2]);
-    });
-  });
-
   describe('selectMaximalMarginalRelevance (MMR 多様性最大化 & 重複排除)', () => {
     it('Jaccard類似度が同一文で1.0、無関係文で0.0になること', () => {
       const textA = '公式ストアでは先行販売を実施中。東京と大阪で店頭販売します。';
