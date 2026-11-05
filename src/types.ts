@@ -487,7 +487,7 @@ export const RealtimeSearchRequestSchema = z.object({
   url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)').meta({ default: 'recent' }),
   limit: z.number().int().min(1).max(40).optional().describe('返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。limit 件ずつ進む)').meta({ default: 1 }),
   focus: z.enum(['official', 'public']).optional().describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
   anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   verbose: z.boolean().optional().describe('検索診断（retrievalQueries など）を含めるか').meta({ default: false }),

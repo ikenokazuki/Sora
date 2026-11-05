@@ -209,7 +209,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
         .min(1)
         .max(100)
         .optional()
-        .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100)').meta({ default: 1 }),
+        .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。limit 件ずつ進む)').meta({ default: 1 }),
       focus: z
         .enum(['official', 'public'])
         .optional()
