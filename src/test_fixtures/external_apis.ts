@@ -157,18 +157,19 @@ function jmaOverview(officeCode: string): unknown {
 }
 
 /**
- * 気象庁 warning/{office}.json。実際と同じく areaTypes[0] は一次細分区域、areaTypes[1] はその気象台の市町村で、
- * 欄には番号と警報だけがある（名前は無い）。どの欄にも雷注意報を1つ置く。
+ * 気象庁 warning/data/r8/{office}.json。実際と同じく報（種類ごとの dataTypeCode）の配列で、どの報にもその気象台の
+ * すべての予報区（class10Items）と市町村（class20Items）の欄があり、欄には番号と警報だけがある（名前は無い）。
+ * どの欄にも、大雨の報で大雨注意報（レベル２）、雷などの報で雷注意報を置く。
  */
 function jmaWarning(officeCode: string): unknown {
-  const info = JMA_OFFICES[officeCode] ?? { office: '気象庁', areas: [{ code: `${officeCode.slice(0, 2)}0010`, name: '地方' }] };
+  const areas = Object.keys(JMA_CLASS10).filter((c) => JMA_CLASS10[c].office === officeCode);
   const towns = Object.values(JMA_CLASS20).flat().filter((t) => JMA_CLASS10[t.class10]?.office === officeCode);
-  const warnings = [{ code: '14', status: '発表' }];
-  return {
-    reportDatetime: jstDate(0).replace('T00:00:00', 'T05:00:00'),
-    publishingOffice: info.office,
-    areaTypes: [{ areas: info.areas.map((a) => ({ code: a.code, warnings })) }, { areas: towns.map((t) => ({ code: t.code, warnings })) }],
-  };
+  const report = (dataTypeCode: string, time: string, kinds: unknown[]) => ({
+    reportDatetime: jstDate(0).replace('T00:00:00', time),
+    dataTypeCode,
+    warning: { class10Items: areas.map((areaCode) => ({ areaCode, kinds })), class20Items: towns.map((t) => ({ areaCode: t.code, kinds })) },
+  });
+  return [report('VPWW55', 'T05:00:00', [{ code: '10', status: '発表' }]), report('VPWW61', 'T04:00:00', [{ code: '14', status: '継続' }])];
 }
 
 /** P2P地震情報 history（code 551 の地震情報）。 */
@@ -219,11 +220,11 @@ export function externalApiFixtureResponse(url: URL): Response | undefined {
   if (url.hostname === 'rulings.cbp.gov' && url.pathname === '/api/search') return json(crossSearchResponse(url.searchParams.get('term') || ''));
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
-    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d+)\.json$/);
-    if (m && (!isJmaOffice(m[2]) || (m[1] !== 'warning/data/warning' && NO_FORECAST.has(m[2])))) return new Response('Not Found', { status: 404 });
+    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/r8)\/(\d+)\.json$/);
+    if (m && (!isJmaOffice(m[2]) || (m[1] !== 'warning/data/r8' && NO_FORECAST.has(m[2])))) return new Response('Not Found', { status: 404 });
     if (m?.[1] === 'forecast/data/forecast') return json(jmaForecast(m[2]));
     if (m?.[1] === 'forecast/data/overview_forecast') return json(jmaOverview(m[2]));
-    if (m?.[1] === 'warning/data/warning') return json(jmaWarning(m[2]));
+    if (m?.[1] === 'warning/data/r8') return json(jmaWarning(m[2]));
   }
   if (url.hostname === 'api.p2pquake.net' && url.pathname === '/v2/history') return json(p2pHistory());
   if (url.hostname === 'roadway.yahoo.co.jp') return new Response(roadwayHtml(url), { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });

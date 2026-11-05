@@ -10,6 +10,8 @@ export interface WarningItem {
   code: string;
   name: string;
   level: 'special' | 'warning' | 'advisory';
+  /** 段階（レベル２〜５）。大雨・土砂災害・高潮だけ */
+  alertLevel?: number;
   status?: string;
 }
 
@@ -57,38 +59,28 @@ export function formatScale(scale: number): string {
   }
 }
 
-/** 気象庁 警報コード -> 警報名・種別マッピング */
-const WARNING_CODE_MAP: Record<string, { name: string; level: 'special' | 'warning' | 'advisory' }> = {
-  '02': { name: '暴風雪警報', level: 'warning' },
-  '03': { name: '大雨警報', level: 'warning' },
-  '04': { name: '洪水警報', level: 'warning' },
-  '05': { name: '暴風警報', level: 'warning' },
-  '06': { name: '大雪警報', level: 'warning' },
-  '07': { name: '波浪警報', level: 'warning' },
-  '08': { name: '高潮警報', level: 'warning' },
-  '10': { name: '大雨注意報', level: 'advisory' },
-  '12': { name: '大雪注意報', level: 'advisory' },
-  '13': { name: '風雪注意報', level: 'advisory' },
-  '14': { name: '雷注意報', level: 'advisory' },
-  '15': { name: '強風注意報', level: 'advisory' },
-  '16': { name: '波浪注意報', level: 'advisory' },
-  '17': { name: '融雪注意報', level: 'advisory' },
-  '18': { name: '洪水注意報', level: 'advisory' },
-  '19': { name: '高潮注意報', level: 'advisory' },
-  '20': { name: '濃霧注意報', level: 'advisory' },
-  '21': { name: '乾燥注意報', level: 'advisory' },
-  '22': { name: 'なだれ注意報', level: 'advisory' },
-  '23': { name: '低温注意報', level: 'advisory' },
-  '24': { name: '霜注意報', level: 'advisory' },
-  '25': { name: '着氷注意報', level: 'advisory' },
-  '26': { name: '着雪注意報', level: 'advisory' },
-  '32': { name: '暴風雪特別警報', level: 'special' },
-  '33': { name: '大雨特別警報', level: 'special' },
-  '35': { name: '暴風特別警報', level: 'special' },
-  '36': { name: '大雪特別警報', level: 'special' },
-  '37': { name: '波浪特別警報', level: 'special' },
-  '38': { name: '高潮特別警報', level: 'special' },
+/**
+ * 気象庁 警報・注意報の番号 → 種類の名前と段階（20 注意報・30 警報・40 危険警報・50 特別警報）。
+ * 気象庁の警報のページ（https://www.jma.go.jp/bosai/warning/、2026-11-06）のスクリプトの code2WarningInfo の表から。
+ * 氾濫の警報は別のデータ（flood）にあり、ここには無い
+ */
+const WARNING_KINDS: Record<string, [string, number]> = {
+  '33': ['大雨', 50], '43': ['大雨', 40], '03': ['大雨', 30], '10': ['大雨', 20],
+  '39': ['土砂災害', 50], '49': ['土砂災害', 40], '09': ['土砂災害', 30], '29': ['土砂災害', 20],
+  '38': ['高潮', 50], '48': ['高潮', 40], '08': ['高潮', 30], '19': ['高潮', 20],
+  '35': ['暴風', 50], '05': ['暴風', 30], '15': ['強風', 20],
+  '32': ['暴風雪', 50], '02': ['暴風雪', 30], '13': ['風雪', 20],
+  '36': ['大雪', 50], '06': ['大雪', 30], '12': ['大雪', 20],
+  '37': ['波浪', 50], '07': ['波浪', 30], '16': ['波浪', 20],
+  '14': ['雷', 20], '17': ['融雪', 20], '20': ['濃霧', 20], '21': ['乾燥', 20], '22': ['なだれ', 20],
+  '23': ['低温', 20], '24': ['霜', 20], '25': ['着氷', 20], '26': ['着雪', 20],
 };
+/** 名前は気象庁のページと同じく、種類の名前に段階の名前をつなぐ（例: 大雨危険警報） */
+const LEVEL_NAMES: Record<number, string> = { 20: '注意報', 30: '警報', 40: '危険警報', 50: '特別警報' };
+/** 気象庁のページが「レベル２」〜「レベル５」を付ける種類 */
+const LEVELED_KINDS = new Set(['大雨', '土砂災害', '高潮']);
+/** 今出ていない状態（「発表警報・注意報はなし」は番号も無い） */
+const INACTIVE_STATUSES = new Set(['解除', '発表警報・注意報はなし']);
 
 /**
  * 警報を返す範囲。codes の欄（市町村・予報区）を合わせる。区域に分かれた市はその区域すべて、気象台はその範囲の予報区。
@@ -154,14 +146,14 @@ export async function fetchWeatherWarnings(options: {
   const target = resolveWarningTarget(options.city, options.areaCode);
   // キャッシュには入力に依らない中身だけを入れ、ラベルは解決した番号から付ける
   const labels = { areaCode: target.code, areaName: target.name, prefecture: prefectureOf(target.code) };
-  const cacheKey = `disaster:warning:v2:${target.code}`;
+  const cacheKey = `disaster:warning:v3:${target.code}`;
 
   if (!options.noCache) {
     const cached = getFromCache<Omit<AreaWarnings, keyof typeof labels>>(cacheKey);
     if (cached) return { ...labels, ...cached };
   }
 
-  const jmaUrl = `https://www.jma.go.jp/bosai/warning/data/warning/${target.office}.json`;
+  const jmaUrl = `https://www.jma.go.jp/bosai/warning/data/r8/${target.office}.json`;
   const res = await fetch(jmaUrl, {
     headers: { 'User-Agent': 'Sora-Disaster-Fetcher/1.0' },
     signal: AbortSignal.timeout(8000),
@@ -172,13 +164,19 @@ export async function fetchWeatherWarnings(options: {
   }
 
   const json = await res.json() as any;
-  const reportTime = json?.reportDatetime || new Date().toISOString();
-  // areaTypes[0] は予報区、[1] は市町村の欄（番号は桁数で重ならない）
-  const areas: any[] = (json?.areaTypes || []).flatMap((at: any) => at?.areas || []);
-  const matched = areas.filter((a) => target.codes.includes(a.code));
-  if (matched.length === 0) {
+  // 報は種類（大雨・土砂災害・風など）ごとに分かれ、どの報にも気象台のすべての予報区（class10Items）と市町村（class20Items）の欄がある。
+  // 番号は桁数で重ならない。その地域の欄が無い報は使わない
+  const used = (Array.isArray(json) ? json : [])
+    .map((r: any) => ({
+      time: r?.reportDatetime,
+      items: [...(r?.warning?.class10Items || []), ...(r?.warning?.class20Items || [])].filter((i: any) => target.codes.includes(i?.areaCode)),
+    }))
+    .filter((r) => r.items.length > 0);
+  // 欄が無いのは表と気象庁のデータが食い違うときなので、警報なしとせずエラーにする
+  if (used.length === 0) {
     throw new Error(`気象庁の警報データに ${target.name}（${target.code}）の欄がありません`);
   }
+  const reportTime: string = used.reduce((latest, r) => (Date.parse(r.time) > Date.parse(latest) ? r.time : latest), used[0].time);
 
   const specialWarnings: WarningItem[] = [];
   const warnings: WarningItem[] = [];
@@ -186,24 +184,20 @@ export async function fetchWeatherWarnings(options: {
   // 区域や予報区を合わせるとき、同じ警報（番号と状態が同じ）は 1 つにする
   const seen = new Set<string>();
 
-  for (const a of matched) {
-    for (const w of a.warnings || []) {
-      const wCode = String(w.code || '').padStart(2, '0');
-      const meta = WARNING_CODE_MAP[wCode];
-      const status = w.status || '発表';
-      if (meta && !seen.has(`${wCode}:${status}`)) {
-        seen.add(`${wCode}:${status}`);
-        const item: WarningItem = {
-          code: wCode,
-          name: meta.name,
-          level: meta.level,
-          status,
-        };
-        if (meta.level === 'special') specialWarnings.push(item);
-        else if (meta.level === 'warning') warnings.push(item);
-        else advisories.push(item);
-      }
-    }
+  for (const kind of used.flatMap((r) => r.items).flatMap((i: any) => i.kinds || [])) {
+    const meta = WARNING_KINDS[kind?.code];
+    const key = `${kind?.code}:${kind?.status}`;
+    if (!meta || INACTIVE_STATUSES.has(kind.status) || seen.has(key)) continue;
+    seen.add(key);
+    const [kindName, level] = meta;
+    const item: WarningItem = {
+      code: kind.code,
+      name: kindName + LEVEL_NAMES[level],
+      level: level === 50 ? 'special' : level === 20 ? 'advisory' : 'warning',
+      ...(LEVELED_KINDS.has(kindName) ? { alertLevel: level / 10 } : {}),
+      status: kind.status,
+    };
+    (level === 50 ? specialWarnings : level === 20 ? advisories : warnings).push(item);
   }
 
   const content = {

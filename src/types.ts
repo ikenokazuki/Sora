@@ -1586,18 +1586,19 @@ export const WeatherResponseSchema = z.object({
 
 export const WarningItemSchema = z.object({
   code: z.string().describe('警報・注意報コード (例: "03")'),
-  name: z.string().describe('警報・注意報名称 (例: "大雨警報", "雷注意報")'),
-  level: z.enum(['special', 'warning', 'advisory']).describe('警報レベル: "special"(特別警報), "warning"(警報), "advisory"(注意報)'),
-  status: z.string().optional().describe('発令ステータス (発表、継続、解除等)'),
+  name: z.string().describe('警報・注意報名称 (例: "大雨危険警報", "雷注意報")'),
+  level: z.enum(['special', 'warning', 'advisory']).describe('警報レベル: "special"(特別警報), "warning"(警報・危険警報), "advisory"(注意報)'),
+  alertLevel: z.number().int().min(2).max(5).optional().describe('段階 (レベル2〜5: 注意報・警報・危険警報・特別警報)。大雨・土砂災害・高潮だけ'),
+  status: z.string().optional().describe('発令ステータス (発表、継続等。解除は含まない)'),
 });
 
 export const AreaWarningsResponseSchema = z.object({
   areaCode: z.string().describe('解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)。区域に分かれた市 (横浜市など) は区域の番号をカンマでつなぐ (例: "1410011,1410012")'),
   areaName: z.string().describe('解決した市町村・予報区・気象台の地域の名前 (例: "新宿区", "東京地方")'),
   prefecture: z.string().describe('都道府県名'),
-  reportTime: z.string().describe('発表日時 (ISO 8601)'),
+  reportTime: z.string().describe('使った報のうち最も新しい発表日時 (ISO 8601)'),
   specialWarnings: z.array(WarningItemSchema).describe('発表中の特別警報一覧'),
-  warnings: z.array(WarningItemSchema).describe('発表中の警報一覧'),
+  warnings: z.array(WarningItemSchema).describe('発表中の警報・危険警報一覧'),
   advisories: z.array(WarningItemSchema).describe('発表中の注意報一覧'),
   hasActiveAlerts: z.boolean().describe('現在発令中の特別警報または警報が存在するか'),
   ...CACHE_META_SHAPE,

@@ -6,6 +6,7 @@ import { clearCache } from '../cache.js';
 import { app } from '../index.js';
 import { createMcpServer } from '../mcp.js';
 import { ElevationRequestSchema } from '../types.js';
+import R8_TOKYO from '../test_fixtures/jma_warning_r8_excerpt.json';
 
 // 送り先を差し替え、要求した URL を記録する。handler が undefined を返したら 404。
 let restore: (() => void) | undefined;
@@ -30,7 +31,7 @@ function stubFetch(handler: (url: URL) => unknown): string[] {
 }
 
 const w = (...codes: string[]) => codes.map((code) => ({ code, status: '発表' }));
-/** 気象台ごとの警報の JSON（実際と同じく areaTypes[0] は一次細分区域、[1] は市町村。欄に名前は無い）。 */
+/** 気象台ごとの警報（予報区の欄と市町村の欄に置く警報の番号）。warningJson が r8 の形にする */
 const WARNING_JSON: Record<string, { class10: Record<string, string[]>; towns: Record<string, string[]> }> = {
   '130000': {
     class10: { '130010': ['14'], '130020': ['15', '16'], '130030': ['07'] },
@@ -38,7 +39,7 @@ const WARNING_JSON: Record<string, { class10: Record<string, string[]>; towns: R
   },
   '016000': { class10: { '016010': ['14'] }, towns: { '0110000': ['03'] } },
   '017000': { class10: { '017010': ['20'] }, towns: { '0134500': ['21'] } },
-  '140000': { class10: { '140010': ['14'] }, towns: { '1410011': ['18', '14'], '1410012': ['19', '14'] } },
+  '140000': { class10: { '140010': ['14'] }, towns: { '1410011': ['10', '14'], '1410012': ['19', '14'] } },
   '170000': { class10: { '170010': ['14'] }, towns: { '1720100': ['15'] } },
   '030000': { class10: { '030010': ['14'] }, towns: { '0320100': ['15'] } },
   '080000': { class10: { '080010': ['14'] }, towns: { '0820100': ['15'] } },
@@ -48,12 +49,13 @@ const WARNING_JSON: Record<string, { class10: Record<string, string[]>; towns: R
   '280000': { class10: { '280010': ['14'] }, towns: { '2810100': ['14'], '2811000': ['16'] } },
   '270000': { class10: { '270000': ['14'] }, towns: { '2710000': ['10'] } },
 };
+/** 気象台ごとの警報の JSON（r8）。実際と同じく報の配列で、欄は予報区（class10Items）と市町村（class20Items）。欄に名前は無い */
 function warningJson(url: URL) {
-  const office = url.pathname.match(/\/warning\/data\/warning\/(\d+)\.json$/)?.[1];
+  const office = url.pathname.match(/\/warning\/data\/r8\/(\d+)\.json$/)?.[1];
   const data = office ? WARNING_JSON[office] : undefined;
   if (!data) return undefined;
-  const areas = (m: Record<string, string[]>) => Object.entries(m).map(([code, codes]) => ({ code, warnings: w(...codes) }));
-  return { reportDatetime: '2026-11-06T05:00:00+09:00', areaTypes: [{ areas: areas(data.class10) }, { areas: areas(data.towns) }] };
+  const items = (m: Record<string, string[]>) => Object.entries(m).map(([areaCode, codes]) => ({ areaCode, kinds: w(...codes) }));
+  return [{ reportDatetime: '2026-11-06T05:00:00+09:00', dataTypeCode: 'VPWW61', warning: { class10Items: items(data.class10), class20Items: items(data.towns) } }];
 }
 const names = (items: Array<{ name: string }>) => items.map((i) => i.name);
 
@@ -61,7 +63,7 @@ describe('search_disaster_warnings の地名の解決', () => {
   it('市区町村はその市町村の欄だけを返す（新宿区に伊豆諸島の注意報を混ぜない）', async () => {
     const calls = stubFetch(warningJson);
     const r = await fetchWeatherWarnings({ city: '新宿区', noCache: true });
-    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/warning/130000.json']);
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/130000.json']);
     expect(r).toMatchObject({ areaCode: '1310400', areaName: '新宿区', prefecture: '東京都' });
     expect(names(r.advisories)).toEqual(['大雨注意報']);
     expect(r.warnings).toEqual([]);
@@ -70,7 +72,7 @@ describe('search_disaster_warnings の地名の解決', () => {
   it('札幌は市町村 0110000 を、気象台 016000 の JSON から引く', async () => {
     const calls = stubFetch(warningJson);
     const r = await fetchWeatherWarnings({ city: '札幌', noCache: true });
-    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/warning/016000.json']);
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/016000.json']);
     expect(r).toMatchObject({ areaCode: '0110000', areaName: '札幌市', prefecture: '北海道' });
     expect(names(r.warnings)).toEqual(['大雨警報']);
   });
@@ -83,7 +85,7 @@ describe('search_disaster_warnings の地名の解決', () => {
     const yokohama = await fetchWeatherWarnings({ city: '横浜市中区', noCache: true });
     expect(yokohama).toMatchObject({ areaCode: '1410011,1410012', areaName: '横浜市', prefecture: '神奈川県' });
     // 両方の区域にある雷注意報は 1 つにまとめる
-    expect(names(yokohama.advisories)).toEqual(['洪水注意報', '雷注意報', '高潮注意報']);
+    expect(names(yokohama.advisories)).toEqual(['大雨注意報', '雷注意報', '高潮注意報']);
     expect(await fetchWeatherWarnings({ city: '横浜市', noCache: true })).toMatchObject({ areaCode: '1410011,1410012', areaName: '横浜市' });
     // 区ごとの区域の市（神戸市）: 区はその区、市は全部の区を合わせる
     expect(await fetchWeatherWarnings({ city: '神戸市中央区', noCache: true })).toMatchObject({ areaCode: '2811000', areaName: '神戸市中央区' });
@@ -114,7 +116,7 @@ describe('search_disaster_warnings の地名の解決', () => {
     await expect(fetchWeatherWarnings({ city: '森町', noCache: true })).rejects.toThrow(/北海道森町.*静岡県森町/);
     expect(calls).toEqual([]);
     const r = await fetchWeatherWarnings({ city: '北海道森町', noCache: true });
-    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/warning/017000.json']);
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/017000.json']);
     expect(r).toMatchObject({ areaCode: '0134500', areaName: '森町', prefecture: '北海道' });
     expect(names(r.advisories)).toEqual(['乾燥注意報']);
   });
@@ -147,7 +149,7 @@ describe('search_disaster_warnings の areaCode', () => {
   it('2 桁は XX0000 の気象台に補い、その範囲を合わせて返す', async () => {
     const calls = stubFetch(warningJson);
     const osaka = await fetchWeatherWarnings({ areaCode: '27', noCache: true });
-    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/warning/270000.json']);
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/270000.json']);
     expect(osaka).toMatchObject({ areaCode: '270000', areaName: '大阪府', prefecture: '大阪府' });
     const tokyo = await fetchWeatherWarnings({ areaCode: '13', noCache: true });
     expect(tokyo).toMatchObject({ areaCode: '130000', areaName: '東京都', prefecture: '東京都' });
@@ -176,7 +178,7 @@ describe('search_disaster_warnings の areaCode', () => {
 
   it('気象台の範囲を合わせるときも、同じ警報は 1 つにまとめる', async () => {
     stubFetch((url) => url.pathname.endsWith('/130000.json')
-      ? { reportDatetime: '2026-11-06T05:00:00+09:00', areaTypes: [{ areas: [{ code: '130010', warnings: w('14') }, { code: '130020', warnings: w('14', '16') }] }, { areas: [] }] }
+      ? [{ reportDatetime: '2026-11-06T05:00:00+09:00', warning: { class10Items: [{ areaCode: '130010', kinds: w('14') }, { areaCode: '130020', kinds: w('14', '16') }], class20Items: [] } }]
       : undefined);
     expect(names((await fetchWeatherWarnings({ areaCode: '130000', noCache: true })).advisories)).toEqual(['雷注意報', '波浪注意報']);
   });
@@ -197,6 +199,89 @@ describe('search_disaster_warnings の areaCode', () => {
     });
     expect(res.status).toBe(400);
     expect(((await res.json()) as any).code).toBe('INVALID_INPUT');
+  });
+});
+
+/**
+ * 気象庁 warning/data/r8/130000.json（2026-11-06 取得）から削った偽物。報は種類（dataTypeCode）ごとで、
+ * 予報区の欄は 4 つとも、市町村の欄は新宿区・新島村・八丈町・小笠原村だけを残した（ほかはそのまま）
+ */
+const tokyoR8 = (reports: unknown[] = R8_TOKYO) => (url: URL) => (url.pathname === '/bosai/warning/data/r8/130000.json' ? reports : undefined);
+
+describe('search_disaster_warnings は気象庁の新しいデータ（r8）を読む', () => {
+  const advisory = (code: string, name: string, status = '継続') => ({ code, name, level: 'advisory' as const, status });
+
+  it('市町村は市町村の欄、予報区は予報区の欄、気象台はその範囲の予報区の欄を、すべての報から合わせる', async () => {
+    const calls = stubFetch(tokyoR8());
+    // 八丈町: 大雨・土砂災害の報では解除、風・波・雷の報では継続
+    const town = await fetchWeatherWarnings({ city: '八丈町', noCache: true });
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/130000.json']);
+    expect(town).toMatchObject({ areaCode: '1340100', areaName: '八丈町', specialWarnings: [], warnings: [], hasActiveAlerts: true });
+    expect(town.advisories).toEqual([advisory('15', '強風注意報'), advisory('16', '波浪注意報'), advisory('14', '雷注意報')]);
+    // 伊豆諸島南部（八丈町を含む予報区）の欄は、ほかの町村の土砂災害注意報も入る
+    const area = await fetchWeatherWarnings({ areaCode: '130030', noCache: true });
+    expect(area.advisories).toEqual([
+      { ...advisory('29', '土砂災害注意報'), alertLevel: 2 }, advisory('15', '強風注意報'), advisory('16', '波浪注意報'), advisory('14', '雷注意報'),
+    ]);
+    // 気象台は 4 つの予報区を合わせる。伊豆諸島北部にない雷注意報も、小笠原諸島の解除と重ならずに残る
+    const office = await fetchWeatherWarnings({ areaCode: '130000', noCache: true });
+    expect(office).toMatchObject({ areaCode: '130000', areaName: '東京都' });
+    expect(office.advisories).toEqual(area.advisories);
+    expect(names((await fetchWeatherWarnings({ areaCode: '130020', noCache: true })).advisories)).toEqual(['土砂災害注意報', '強風注意報', '波浪注意報']);
+  });
+
+  it('「解除」と「発表警報・注意報はなし」は返さない', async () => {
+    stubFetch(tokyoR8());
+    // 新宿区・東京地方は全部の報で「発表警報・注意報はなし」
+    for (const city of ['新宿区', '東京']) {
+      expect(await fetchWeatherWarnings({ city, noCache: true })).toMatchObject({ specialWarnings: [], warnings: [], advisories: [], hasActiveAlerts: false });
+    }
+    // 小笠原村: 強風・雷は解除、波浪だけ継続
+    expect((await fetchWeatherWarnings({ city: '小笠原村', noCache: true })).advisories).toEqual([advisory('16', '波浪注意報')]);
+  });
+
+  it('レベル５と特別警報は specialWarnings、警報と危険警報は warnings、注意報は advisories。段階のある種類は alertLevel を付ける', async () => {
+    // 八丈町の欄を報の種類ごとに替える。高潮の報（VPWW57）は東京の抜粋に無いので、大雨の報を写して作る
+    const reports = structuredClone(R8_TOKYO) as any[];
+    reports.push({ ...structuredClone(reports[0]), dataTypeCode: 'VPWW57' });
+    const kinds: Record<string, unknown[]> = {
+      VPWW55: [{ code: '33', status: '発表' }], VPWW56: [{ code: '49', status: '発表' }], VPWW57: [{ code: '08', status: '発表' }],
+      VPWW58: [{ code: '05', status: '継続' }], VPWW59: [{ code: '37', status: '発表' }],
+    };
+    for (const r of reports) {
+      if (kinds[r.dataTypeCode]) r.warning.class20Items.find((i: any) => i.areaCode === '1340100').kinds = kinds[r.dataTypeCode];
+    }
+    stubFetch(tokyoR8(reports));
+    const r = await fetchWeatherWarnings({ city: '八丈町', noCache: true });
+    expect(r.specialWarnings).toEqual([
+      { code: '33', name: '大雨特別警報', level: 'special', alertLevel: 5, status: '発表' },
+      { code: '37', name: '波浪特別警報', level: 'special', status: '発表' },
+    ]);
+    expect(r.warnings).toEqual([
+      { code: '49', name: '土砂災害危険警報', level: 'warning', alertLevel: 4, status: '発表' },
+      { code: '05', name: '暴風警報', level: 'warning', status: '継続' },
+      { code: '08', name: '高潮警報', level: 'warning', alertLevel: 3, status: '発表' },
+    ]);
+    expect(r.advisories).toEqual([advisory('14', '雷注意報')]);
+    expect(r.specialWarnings.concat(r.warnings, r.advisories).filter((i) => 'alertLevel' in i).map((i) => i.code)).toEqual(['33', '49', '08']);
+  });
+
+  it('reportTime は、使った報のうち最も新しい reportDatetime', async () => {
+    // 抜粋の報は 13:45・21:10・19:02・16:11・19:02。その地域の欄が無い報は使わない
+    const other = { ...structuredClone(R8_TOKYO[0]), reportDatetime: '2026-11-06T09:00:00+09:00', warning: { class10Items: [], class20Items: [] } };
+    stubFetch(tokyoR8([...R8_TOKYO, other]));
+    expect((await fetchWeatherWarnings({ city: '新宿区', noCache: true })).reportTime).toBe('2026-11-05T21:10:00+09:00');
+    expect((await fetchWeatherWarnings({ areaCode: '130000', noCache: true })).reportTime).toBe('2026-11-05T21:10:00+09:00');
+  });
+
+  it('気象庁のデータにその地域の欄が無ければ、警報なしとせずエラー（REST は 500）', async () => {
+    stubFetch(tokyoR8([]));
+    await expect(fetchWeatherWarnings({ city: '新宿区', noCache: true })).rejects.toThrow('新宿区（1310400）の欄がありません');
+    const res = await app.request('/disaster/warnings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: '新宿区', noCache: true }),
+    });
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as any).code).toBe('DISASTER_ERROR');
   });
 });
 
