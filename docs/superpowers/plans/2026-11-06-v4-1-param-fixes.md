@@ -203,3 +203,24 @@
 6. MCP の定義の大きさ（全ツールの定義の合計の字数、最初から見えるツールの字数、instructions の字数）を、origin/main と比べて report に書く。
 
 外への要求: なし。
+
+### Task 10: 警報を気象庁の新しいデータ（r8）に移す
+
+Task 1 の作業中に見つかった。気象庁は 2026 年 5 月下旬に新しい防災気象情報に移り、今のコードが読む `https://www.jma.go.jp/bosai/warning/data/warning/{気象台}.json` は、その頃の発表のまま止まっている（2026-11-06 に 130000 が 2026-05-28、270000 が 2026-05-26 であることを確かめた）。search_disaster_warnings は、数か月前の警報を今の警報として返している。気象庁の警報のページは `https://www.jma.go.jp/bosai/warning/data/r8/{気象台}.json` を読み、こちらは今の発表になっている。
+
+対象のファイル: `src/services/disaster.ts`（警報の部分）、`src/test_fixtures/external_apis.ts`（警報の偽物）、ほかに旧い URL を使う所（`src/services/health.ts` など、grep で確かめる）、`src/mcp/tools_disaster.ts`・`src/types.ts`・README（説明）。Task 1 の地名・番号の解決（市町村・予報区・気象台）はそのまま使う。
+
+**新しい形:** 応答は報の配列で、報ごとに `dataTypeCode`（VPWW55・56・58・59・61 など、種類ごとに分かれている）・`reportDatetime`・`headlineText`・`warning.class10Items`・`warning.class20Items` を持つ。各 item は `areaCode` と `kinds`（`code`・`status`・`additions` など）を持つ。status には「発表」「継続」「解除」「発表警報・注意報はなし」などがある。
+
+**名前と段階:** 気象庁の警報のページ（`https://www.jma.go.jp/bosai/warning/`）のスクリプトは、種類（大雨・土砂災害・氾濫・高潮・暴風・暴風雪・大雪・波浪・雷・融雪・濃霧・乾燥・なだれ・低温・霜・着氷・着雪など）と段階（レベル２ 注意報・レベル３ 警報・レベル４ 危険警報・レベル５ 特別警報。段階が付くのは大雨・土砂災害・氾濫・高潮）を組み合わせて名前を作っている。`code` と種類・段階の対応は、推測せず、このページのスクリプトから取る（取った所を report に書く）。
+
+1. 解決した市町村（class20Items）または予報区（class10Items）の、すべての報の kinds を合わせる。「解除」と「発表警報・注意報はなし」は除き、今出ているもの（発表・継続など）だけを返す。気象台の番号を渡したときは、今の動きと同じく、その気象台の範囲を合わせる。
+2. 応答の形は変えない（`specialWarnings`・`warnings`・`advisories`）。レベル５と特別警報は specialWarnings、警報と危険警報は warnings、注意報は advisories に入れる。各項目に、段階のあるものは数字の段階（例 `alertLevel: 4`）を足す。名前は気象庁のページと同じ組み立て（例「大雨危険警報」）にする。
+3. `reportTime` は、使った報のうち最も新しい `reportDatetime` にする。
+4. 旧い番号の表（`WARNING_CODE_MAP`）は、使われなくなるなら消す。
+5. 旧い URL を使う所を、すべて新しい URL に替える。
+6. 説明・README に、新しい段階（危険警報・レベル）を書く。
+
+テスト: 実際の r8 の JSON から削った偽物で、市町村・予報区・気象台の 3 つの解決、解除となしの除外、段階の振り分け、reportTime。
+
+外への要求: 気象庁に 10 回まで。
