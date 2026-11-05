@@ -4,7 +4,7 @@ import { callSora } from '../../runtime.js';
 export type SearchImageInput = {
   /** 画像検索キーワード */
   query: string;
-  /** 取得件数 (デフォルト: 20, 最大: 50) */
+  /** 取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件) */
   limit?: number;
   /** ページ番号 (1-based, 上限: 100) */
   page?: number;

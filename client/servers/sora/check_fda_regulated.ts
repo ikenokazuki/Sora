@@ -4,9 +4,7 @@ import { callSora } from '../../runtime.js';
 export type CheckFdaRegulatedInput = {
   /** HTSコード（例: "3004.90.0000", "2106.90.9998"） */
   htsCode: string;
-  /** 製品の自由記述説明（用途・素材等の補助情報） */
-  productDescription?: string;
-  /** 食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFD1適用分岐に使用。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します */
+  /** 食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します */
   foodContact?: boolean;
 };
 

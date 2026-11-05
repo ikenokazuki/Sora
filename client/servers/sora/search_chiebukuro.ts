@@ -4,7 +4,7 @@ import { callSora } from '../../runtime.js';
 export type SearchChiebukuroInput = {
   /** 知恵袋 Q&A 検索キーワード */
   query: string;
-  /** 取得件数 (デフォルト: 10, 最大: 50) */
+  /** 取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件) */
   limit?: number;
   /** ページ番号 (1-based, 上限: 100) */
   page?: number;

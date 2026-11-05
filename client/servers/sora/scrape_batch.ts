@@ -8,11 +8,11 @@ export type ScrapeBatchInput = {
   concurrency?: number;
   /** 各ページの最大文字数 (デフォルト: 30000) */
   maxChars?: number;
-  /** 動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium) */
+  /** 動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ) */
   mode?: "auto" | "fast" | "browser";
   /** 取得フォーマット */
   formats?: ("markdown" | "html" | "rawHtml" | "links" | "screenshot" | "jsonLd" | "images" | "tables")[];
-  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 */
+  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."}) */
   headers?: Record<string, string>;
   /** ハイライト抽出用キーワード */
   query?: string;
@@ -20,11 +20,11 @@ export type ScrapeBatchInput = {
   responseMode?: "full" | "evidence";
   /** Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか */
   stripLinks?: boolean;
-  /** 個人情報・機密情報を自動マスキングするか */
+  /** メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false) */
   maskPii?: boolean;
   /** 一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期) */
   webhookUrl?: string;
-  /** 相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false) */
+  /** 相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false) */
   annotateTemporal?: boolean;
   /** 記事本文のみを抽出するか (デフォルト: true) */
   onlyMainContent?: boolean;
@@ -36,7 +36,7 @@ export type ScrapeBatchInput = {
   verbose?: boolean;
   /** 特定要素のみをピンポイント抽出する CSS セレクタ連想配列 */
   selectors?: Record<string, string>;
-  /** 指定した要素のみを切り抜く CSS セレクタ */
+  /** formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ。ブラウザで撮るので、mode "fast" では撮れない */
   clipSelector?: string;
   /** 除去したいノイズ要素の CSS セレクタ配列 */
   removeSelectors?: string[];
@@ -51,7 +51,7 @@ export type ScrapeBatchOutput = {
   successful: number;
   /** 失敗件数 */
   failed: number;
-  /** 成功したページのスクレイピング結果一覧 */
+  /** 成功したページのスクレイピング結果一覧。入力の順ではなく、取得が終わった順 */
   results: {
     /** 取得した完全な URL */
     url: string;
@@ -276,6 +276,8 @@ export type ScrapeBatchOutput = {
     rawHtml?: string;
     /** スクリーンショット画像 (Base64 PNG) */
     screenshot?: string;
+    /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+    warnings?: string[];
     /** ページ品質スコア (0〜100) */
     quality?: number;
     /** 必須フィールド充足度 (0〜100) */
@@ -313,7 +315,7 @@ export type ScrapeBatchOutput = {
   }[];
 };
 
-/** 【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] } */
+/** 【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }。results は入力の順ではなく、取得が終わった順 */
 export function scrapeBatch(input: ScrapeBatchInput): Promise<ScrapeBatchOutput> {
   return callSora<ScrapeBatchOutput>({ method: 'POST', path: '/scrape/batch' }, input);
 }

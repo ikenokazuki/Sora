@@ -25,7 +25,7 @@ export type WatchCheckOutput = {
     snapshotSnippet?: string;
     /** チェック実行日時 (ISO 8601) */
     checkedAt: string;
-    /** Webhook 通知が送信されたか */
+    /** Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略 */
     webhookSent?: boolean;
     /** 失敗コード (WATCH_SELECTOR_NOT_FOUND 等) */
     errorCode?: string;
@@ -48,7 +48,7 @@ export type WatchCheckOutput = {
     snapshotSnippet?: string;
     /** チェック実行日時 (ISO 8601) */
     checkedAt: string;
-    /** Webhook 通知が送信されたか */
+    /** Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略 */
     webhookSent?: boolean;
     /** 失敗コード (WATCH_SELECTOR_NOT_FOUND 等) */
     errorCode?: string;

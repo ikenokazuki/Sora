@@ -2,57 +2,63 @@
 import { callSora } from '../../runtime.js';
 
 export type SearchDisasterWarningsInput = {
-  /** 市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡") */
+  /** 市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市") */
   city?: string;
-  /** 気象庁エリアコード (6桁または2桁, 例: "130000", "130010") */
+  /** 気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可 */
   areaCode?: string;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
 };
 
 export type SearchDisasterWarningsOutput = {
-  /** 気象庁エリアコード (6桁) */
+  /** 解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)。区域に分かれた市 (横浜市など) は区域の番号をカンマでつなぐ (例: "1410011,1410012") */
   areaCode: string;
-  /** 対象地域名 (例: "東京都") */
+  /** 解決した市町村・予報区・気象台の地域の名前 (例: "新宿区", "東京地方") */
   areaName: string;
   /** 都道府県名 */
   prefecture: string;
-  /** 発表日時 (ISO 8601) */
+  /** 使った報のうち最も新しい発表日時 (ISO 8601) */
   reportTime: string;
   /** 発表中の特別警報一覧 */
   specialWarnings: {
     /** 警報・注意報コード (例: "03") */
     code: string;
-    /** 警報・注意報名称 (例: "大雨警報", "雷注意報") */
+    /** 警報・注意報名称 (例: "大雨危険警報", "雷注意報") */
     name: string;
-    /** 警報レベル: "special"(特別警報), "warning"(警報), "advisory"(注意報) */
+    /** 警報レベル: "special"(特別警報), "warning"(警報・危険警報), "advisory"(注意報) */
     level: "special" | "warning" | "advisory";
-    /** 発令ステータス (発表、継続、解除等) */
+    /** 段階 (レベル2〜5: 注意報・警報・危険警報・特別警報)。大雨・土砂災害・高潮だけ */
+    alertLevel?: number;
+    /** 発令ステータス (発表、継続等。解除は含まない) */
     status?: string;
   }[];
-  /** 発表中の警報一覧 */
+  /** 発表中の警報・危険警報一覧 */
   warnings: {
     /** 警報・注意報コード (例: "03") */
     code: string;
-    /** 警報・注意報名称 (例: "大雨警報", "雷注意報") */
+    /** 警報・注意報名称 (例: "大雨危険警報", "雷注意報") */
     name: string;
-    /** 警報レベル: "special"(特別警報), "warning"(警報), "advisory"(注意報) */
+    /** 警報レベル: "special"(特別警報), "warning"(警報・危険警報), "advisory"(注意報) */
     level: "special" | "warning" | "advisory";
-    /** 発令ステータス (発表、継続、解除等) */
+    /** 段階 (レベル2〜5: 注意報・警報・危険警報・特別警報)。大雨・土砂災害・高潮だけ */
+    alertLevel?: number;
+    /** 発令ステータス (発表、継続等。解除は含まない) */
     status?: string;
   }[];
   /** 発表中の注意報一覧 */
   advisories: {
     /** 警報・注意報コード (例: "03") */
     code: string;
-    /** 警報・注意報名称 (例: "大雨警報", "雷注意報") */
+    /** 警報・注意報名称 (例: "大雨危険警報", "雷注意報") */
     name: string;
-    /** 警報レベル: "special"(特別警報), "warning"(警報), "advisory"(注意報) */
+    /** 警報レベル: "special"(特別警報), "warning"(警報・危険警報), "advisory"(注意報) */
     level: "special" | "warning" | "advisory";
-    /** 発令ステータス (発表、継続、解除等) */
+    /** 段階 (レベル2〜5: 注意報・警報・危険警報・特別警報)。大雨・土砂災害・高潮だけ */
+    alertLevel?: number;
+    /** 発令ステータス (発表、継続等。解除は含まない) */
     status?: string;
   }[];
-  /** 現在発令中の特別警報または警報が存在するか */
+  /** 発表中の特別警報・警報・注意報が1つでもあるか */
   hasActiveAlerts: boolean;
   /** キャッシュから返したか（キャッシュから返した時だけ true） */
   cached?: boolean;
@@ -62,7 +68,7 @@ export type SearchDisasterWarningsOutput = {
   ageSeconds?: number;
 };
 
-/** 【気象庁公式防災直結】大雨・洪水・暴風・大雪・波浪等の特別警報・気象警報・注意報は、一般Web検索の古い情報に頼らず必ず気象庁公式データ直結の本ツールで市区町村単位でリアルタイム取得してください。返却: { areaName, warnings: [{ name, level, status }] } */
+/** 【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、一般Web検索の古い情報に頼らず必ず本ツールで市区町村単位でリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] } */
 export function searchDisasterWarnings(input: SearchDisasterWarningsInput): Promise<SearchDisasterWarningsOutput> {
   return callSora<SearchDisasterWarningsOutput>({ method: 'POST', path: '/disaster/warnings' }, input);
 }
