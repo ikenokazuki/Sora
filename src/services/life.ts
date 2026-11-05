@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES, PREFECTURE_NAMES } from '../jma_areas.js';
 import { getFromCache, setToCache, CACHE_TTL_WEATHER } from '../cache.js';
 import type { TransitSearchOptions, WeatherForecastOptions } from '../types.js';
 
@@ -225,7 +226,40 @@ export async function searchTransitRoute(input: TransitSearchOptions): Promise<a
   return result;
 }
 
-/** 都市名または都道府県名から 6 桁の地点 ID を解決 */
+/** 地名・番号が見つからない、または 1 つに決まらない（入力の誤り。REST は 400） */
+export class AreaInputError extends Error {}
+
+/** 入力の文字列で表を引く（"constructor" などで Object の既定のプロパティを拾わない） */
+const lookup = <T>(table: Record<string, T>, key: string): T | undefined => (Object.hasOwn(table, key) ? table[key] : undefined);
+
+/** 番号の上 2 桁（都道府県コード）から都道府県名 */
+export const prefectureOf = (code: string): string => PREFECTURE_NAMES[Number(code.slice(0, 2)) - 1] ?? '';
+
+/**
+ * 市町村（気象庁の class20）を名前から引く。市・区は省いてよい（"札幌" → 札幌市）。町・村は省けない
+ * （気象庁は横浜市・大津市などを北部・南部に分けるので、"横浜" を青森県横浜町に当ててしまう）。
+ * 先頭の都道府県名で同じ名前の候補を絞り（"北海道森町"）、政令指定都市の区は市が 1 つの区域なら市に当てる
+ * （"札幌市中央区" → 札幌市。神戸市・広島市は区ごと、横浜市などは北部・南部で、区からは決められないので当てない）。
+ * 当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ */
+export function resolveMunicipality(query: string): { code: string; class10: string; name: string } | undefined {
+  const s = query.replace(/\s/g, '');
+  const pref = PREFECTURE_NAMES.find((p) => s.startsWith(p) && s.length > p.length);
+  let name = pref ? s.slice(pref.length) : s;
+  // 東京の特別区は前に「市」が無いので区のまま
+  const city = name.match(/^(.+?市).+区$/)?.[1];
+  if (city && lookup(JMA_CLASS20, city)) name = city;
+  const hits = (lookup(JMA_CLASS20, name) ? [''] : ['市', '区'])
+    .flatMap((suffix) => (lookup(JMA_CLASS20, name + suffix) ?? []).map((t) => ({ ...t, name: name + suffix })))
+    .filter((t) => !pref || prefectureOf(t.code) === pref);
+  if (hits.length > 1) {
+    const names = hits.map((t) => prefectureOf(t.code) + t.name);
+    throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名を付けてください（例: ${names[0]}）`);
+  }
+  return hits[0];
+}
+
+/** 都市名または都道府県名から 6 桁の予報区の番号を解決する。見つからなければエラー */
 export function resolveCityId(query: string): string {
   const clean = query.trim();
   if (/^\d{6}$/.test(clean)) {
@@ -233,25 +267,32 @@ export function resolveCityId(query: string): string {
   }
 
   // 1. 気象庁公式自治体マップによる完全一致
-  if (MUNICIPALITY_CITY_MAP[clean]) {
-    return MUNICIPALITY_CITY_MAP[clean];
-  }
+  const exact = lookup(MUNICIPALITY_CITY_MAP, clean);
+  if (exact) return exact;
 
   // 2. 接尾辞を除去して再試行（例: "東京都" -> "東京", "天童市" -> "天童", "軽井沢町" -> "軽井沢"）
-  const stripped = clean.replace(/(?:都|府|県|市|区|町|村)$/, '');
-  if (MUNICIPALITY_CITY_MAP[stripped]) {
-    return MUNICIPALITY_CITY_MAP[stripped];
-  }
+  const stripped = lookup(MUNICIPALITY_CITY_MAP, clean.replace(/(?:都|府|県|市|区|町|村)$/, ''));
+  if (stripped) return stripped;
 
-  // 3. 部分一致
+  // 3. 市町村の表（例: "静岡県森町"。部分一致より先に引かないと、"森町" に当たって北海道になる）
+  const town = resolveMunicipality(clean);
+  if (town) return town.class10;
+
+  // 4. 部分一致
   for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
     if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) {
       return id;
     }
   }
 
-  // 見つからない場合はデフォルトで東京 (130010)
-  return '130010';
+  throw new AreaInputError(`地名「${clean}」が見つかりません`);
+}
+
+/** 予報区（または気象台）の番号から、予報を発表する気象台の番号。北海道・鹿児島・沖縄は XX0000 ではない */
+function weatherOfficeOf(cityId: string): string {
+  const office = JMA_CLASS10[cityId]?.office ?? (JMA_OFFICES[cityId] ? cityId : undefined);
+  if (!office) throw new AreaInputError(`地点ID「${cityId}」が見つかりません`);
+  return office;
 }
 
 const WEATHER_CODE_TELOP: Record<string, string> = {
@@ -279,16 +320,18 @@ function getTelopFromCode(code: string, weatherText?: string): string {
 /** 天気予報を取得 (気象庁公式オープンデータ API 直接通信 / 完全自律型) */
 export async function fetchWeatherForecast(options: WeatherForecastOptions): Promise<any> {
   const cityId = resolveCityId(options.city);
+  const officeCode = weatherOfficeOf(cityId);
   const days = Math.min(Math.max(options.days ?? 7, 1), 8);
-  const cacheKey = `weather:${cityId}:${days}`;
+  const cacheKey = `weather:v2:${cityId}:${days}`;
+  // キャッシュには入力に依らない中身だけを入れ、返すときに今の入力の地名を付ける
+  const withCity = (result: any) => ({ ...result, location: { ...result.location, city: options.city } });
 
   if (!options.noCache) {
     const cached = getFromCache<any>(cacheKey);
-    if (cached) return cached;
+    if (cached) return withCity(cached);
   }
 
   // 気象庁（JMA）公式 API 直接通信（一次ソース一本化）
-  const officeCode = cityId.substring(0, 2) + '0000';
   const [forecastRes, overviewRes] = await Promise.all([
     fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
       headers: { 'User-Agent': 'Sora/2.0' },
@@ -313,9 +356,11 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const popAreas: any[] = shortForecast?.timeSeries?.[1]?.areas || [];
   const tempAreas: any[] = shortForecast?.timeSeries?.[2]?.areas || [];
 
-  const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
+  const areaIndex = weatherAreas.findIndex((a: any) => a.area?.code === cityId);
+  const targetArea = weatherAreas[areaIndex] ?? weatherAreas[0];
   const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-  const targetTemp = tempAreas?.[0];
+  // 気温の地点は予報区と同じ順に並ぶ（同じ位置に無ければ最初の地点）
+  const targetTemp = tempAreas[areaIndex] ?? tempAreas[0];
 
   const dateLabels = ['今日', '明日', '明後日'];
   const forecasts = [];
@@ -408,15 +453,15 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const formatted = {
     source: 'weather',
     cityId,
-    title: `${targetArea?.area?.name || options.city} の天気`,
+    title: `${targetArea?.area?.name || JMA_CLASS10[cityId]?.name || cityId} の天気`,
     publishedTime: shortForecast?.reportDatetime,
     publicTime: shortForecast?.reportDatetime,
     publishingOffice: shortForecast?.publishingOffice || '気象庁',
     location: {
       area: targetArea?.area?.name,
       prefecture: targetArea?.area?.name,
-      city: options.city,
     },
+    temperatureArea: targetTemp?.area?.name,
     overview: overviewData?.text || overviewData?.headlineText || '',
     description: {
       headline: overviewData?.headlineText || '',
@@ -430,5 +475,5 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   };
 
   if (!options.noCache) setToCache(cacheKey, formatted, CACHE_TTL_WEATHER);
-  return formatted;
+  return withCity(formatted);
 }

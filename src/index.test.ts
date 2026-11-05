@@ -2961,7 +2961,8 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resWarn.status).toBe(200);
     const warnJson = (await resWarn.json()) as any;
-    expect(warnJson.areaCode).toBe('270000');
+    // 市町村の表に当たる名前は市町村（大阪市）の欄を返す
+    expect(warnJson.areaCode).toBe('2710000');
 
     const resEq = await app.request('/disaster/earthquake', {
       method: 'POST',

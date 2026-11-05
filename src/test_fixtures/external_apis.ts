@@ -3,6 +3,7 @@
 // 形は各 API の実際の応答に合わせ、中身はテストに必要な最小限にしている。
 import crossExcerpt from './cross_search_excerpt.json';
 import usitcExcerpt from './usitc_export_excerpt.json';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES as JMA_OFFICE_NAMES } from '../jma_areas.js';
 
 /**
  * USITC HTS 全件の export（/reststop/exportList）の抜粋。実際の関税率表の行（中間行を含む）を、
@@ -55,12 +56,25 @@ function itunesSearch(url: URL): unknown {
   return { resultCount: results.length, results: results.slice(0, limit) };
 }
 
-/** 気象庁の府県予報区（府県予報の office と、その中の一次細分区域）。 */
-const JMA_OFFICES: Record<string, { office: string; areas: Array<{ code: string; name: string }> }> = {
+/**
+ * 気象庁の府県予報区（府県予報の office と、その中の一次細分区域）。points は短期予報の気温の地点で、
+ * 実際の JSON と同じく一次細分区域と同じ順に並ぶ（省くと地点は 1 つ）。
+ */
+const JMA_OFFICES: Record<string, { office: string; areas: Array<{ code: string; name: string }>; points?: Array<{ code: string; name: string }> }> = {
   '130000': { office: '気象庁', areas: [{ code: '130010', name: '東京地方' }, { code: '130020', name: '伊豆諸島北部' }] },
   '190000': { office: '甲府地方気象台', areas: [{ code: '190010', name: '中・西部' }, { code: '190020', name: '東部・富士五湖' }] },
   '270000': { office: '大阪管区気象台', areas: [{ code: '270000', name: '大阪府' }] },
+  '400000': {
+    office: '福岡管区気象台',
+    areas: [{ code: '400010', name: '福岡地方' }, { code: '400020', name: '北九州地方' }],
+    points: [{ code: '82182', name: '福岡' }, { code: '82056', name: '八幡' }],
+  },
+  '471000': { office: '沖縄気象台', areas: [{ code: '471010', name: '本島中南部' }, { code: '471020', name: '本島北部' }] },
+  '016000': { office: '札幌管区気象台', areas: [{ code: '016010', name: '石狩地方' }, { code: '016020', name: '空知地方' }] },
 };
+
+/** 気象庁に無い気象台の番号（例: 北海道の 010000）は、実際と同じく 404 を返す。 */
+const isJmaOffice = (code: string) => code in JMA_OFFICE_NAMES;
 
 const jstDate = (offsetDays: number): string => {
   const d = new Date(Date.now() + 9 * 3600_000 + offsetDays * 86400_000);
@@ -88,7 +102,11 @@ function jmaForecast(officeCode: string): unknown {
           })),
         },
         { timeDefines: shortDays, areas: info.areas.map((area) => ({ area, pops: ['0', '10', '20', '30'] })) },
-        { timeDefines: shortDays, areas: [{ area: { code: `${officeCode.slice(0, 2)}000`, name: '代表地点' }, temps: ['18', '27', '19', '26', '20', '25'] }] },
+        {
+          timeDefines: shortDays,
+          areas: (info.points ?? [{ code: `${officeCode.slice(0, 2)}000`, name: '代表地点' }])
+            .map((area, i) => ({ area, temps: ['18', '27', '19', '26', '20', '25'].map((t) => String(Number(t) - i)) })),
+        },
       ],
     },
     {
@@ -124,13 +142,18 @@ function jmaOverview(officeCode: string): unknown {
   };
 }
 
-/** 気象庁 warning/{office}.json（一次細分区域に注意報を1つ）。 */
+/**
+ * 気象庁 warning/{office}.json。実際と同じく areaTypes[0] は一次細分区域、areaTypes[1] はその気象台の市町村で、
+ * 欄には番号と警報だけがある（名前は無い）。どの欄にも雷注意報を1つ置く。
+ */
 function jmaWarning(officeCode: string): unknown {
   const info = JMA_OFFICES[officeCode] ?? { office: '気象庁', areas: [{ code: `${officeCode.slice(0, 2)}0010`, name: '地方' }] };
+  const towns = Object.values(JMA_CLASS20).flat().filter((t) => JMA_CLASS10[t.class10]?.office === officeCode);
+  const warnings = [{ code: '14', status: '発表' }];
   return {
     reportDatetime: jstDate(0).replace('T00:00:00', 'T05:00:00'),
     publishingOffice: info.office,
-    areaTypes: [{ areas: info.areas.map((a) => ({ code: a.code, name: a.name, warnings: [{ code: '14', status: '発表' }] })) }],
+    areaTypes: [{ areas: info.areas.map((a) => ({ code: a.code, warnings })) }, { areas: towns.map((t) => ({ code: t.code, warnings })) }],
   };
 }
 
@@ -182,7 +205,8 @@ export function externalApiFixtureResponse(url: URL): Response | undefined {
   if (url.hostname === 'rulings.cbp.gov' && url.pathname === '/api/search') return json(crossSearchResponse(url.searchParams.get('term') || ''));
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
-    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d{6})\.json$/);
+    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d+)\.json$/);
+    if (m && !isJmaOffice(m[2])) return new Response('Not Found', { status: 404 });
     if (m?.[1] === 'forecast/data/forecast') return json(jmaForecast(m[2]));
     if (m?.[1] === 'forecast/data/overview_forecast') return json(jmaOverview(m[2]));
     if (m?.[1] === 'warning/data/warning') return json(jmaWarning(m[2]));

@@ -11,7 +11,9 @@ import {
   fetchFlightStatus,
 } from '../scraper.js';
 import { searchOpenPoi } from '../services/poi.js';
+import { AreaInputError } from '../services/life.js';
 import {
+  WeatherRequestSchema,
   DisasterWarningsRequestSchema,
   EarthquakeRequestSchema,
   RoadTrafficRequestSchema,
@@ -30,51 +32,36 @@ import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
 
-// 天気予報 (POST /weather)
-publicDataRoutes.post('/weather', async (c) => {
-  try {
-    const body = await c.req.json();
-    const city = body?.city;
-    if (!city || typeof city !== 'string') {
-      return c.json({ error: 'city is required' }, 400);
-    }
+/** クエリの数。空なら省略、数でなければ NaN にしてスキーマで 400 にする */
+const strictQueryNumber = (v: string | undefined): number | undefined => (v === undefined || v === '' ? undefined : Number(v));
 
-    const days = body?.days ? parseInt(body.days, 10) : undefined;
-    const result = await fetchWeatherForecast({ city, days, noCache: body?.noCache });
-    return c.json(result);
+// 天気予報。POST・GET とも MCP と同じスキーマで確かめる
+async function weatherResponse(c: Context, input: unknown) {
+  const parsed = WeatherRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid weather parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+  try {
+    return c.json(await fetchWeatherForecast(parsed.data));
   } catch (err) {
+    if (err instanceof AreaInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
   }
+}
+
+const weatherQuery = (c: Context, city: string | undefined) => ({
+  city,
+  days: strictQueryNumber(c.req.query('days')),
+  noCache: c.req.query('noCache') === 'true',
 });
+
+// 天気予報 (POST /weather)
+publicDataRoutes.post('/weather', async (c) => weatherResponse(c, await readJsonBody(c)));
 
 // 天気予報 (GET /weather & GET /weather/:city)
-publicDataRoutes.get('/weather/:city', async (c) => {
-  try {
-    const city = c.req.param('city');
-    const daysParam = c.req.query('days');
-    const days = daysParam ? parseInt(daysParam, 10) : undefined;
-    const noCache = c.req.query('noCache') === 'true';
+publicDataRoutes.get('/weather/:city', (c) => weatherResponse(c, weatherQuery(c, c.req.param('city'))));
 
-    const result = await fetchWeatherForecast({ city, days, noCache });
-    return c.json(result);
-  } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
-  }
-});
-
-publicDataRoutes.get('/weather', async (c) => {
-  try {
-    const city = c.req.query('city') || '東京';
-    const daysParam = c.req.query('days');
-    const days = daysParam ? parseInt(daysParam, 10) : undefined;
-    const noCache = c.req.query('noCache') === 'true';
-
-    const result = await fetchWeatherForecast({ city, days, noCache });
-    return c.json(result);
-  } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
-  }
-});
+publicDataRoutes.get('/weather', (c) => weatherResponse(c, weatherQuery(c, c.req.query('city') || '東京')));
 
 // 気象警報・注意報 (POST /disaster/warnings)
 publicDataRoutes.post('/disaster/warnings', async (c) => {
@@ -94,6 +81,7 @@ publicDataRoutes.post('/disaster/warnings', async (c) => {
     const result = await fetchWeatherWarnings(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof AreaInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
   }
 });
@@ -286,20 +274,18 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
 });
 
 publicDataRoutes.get('/geo/elevation', async (c) => {
-  const address = c.req.query('address') || c.req.query('q');
-  const latStr = c.req.query('lat');
-  const lonStr = c.req.query('lon');
-  const lat = latStr ? parseFloat(latStr) : undefined;
-  const lon = lonStr ? parseFloat(lonStr) : undefined;
-  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+  const parsed = ElevationRequestSchema.safeParse({
+    address: c.req.query('address') || c.req.query('q'),
+    lat: strictQueryNumber(c.req.query('lat')),
+    lon: strictQueryNumber(c.req.query('lon')),
+    noCache: c.req.query('noCache') === 'true' || c.req.query('noCache') === '1',
+  });
+  if (!parsed.success) {
+    return formatError(c, 'Invalid elevation parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
 
   try {
-    const result = await fetchElevationAndCoordinates({
-      address,
-      lat,
-      lon,
-      noCache,
-    });
+    const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
   } catch (err) {
     return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);

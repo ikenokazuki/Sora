@@ -520,7 +520,7 @@ export const TRANSIT_ROUTE_INPUT_SHAPE = {
 export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
 
 export const WeatherRequestSchema = z.object({
-  city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
+  city: z.string().min(1, 'city は必須です').describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。見つからない地名はエラー'),
   days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -579,8 +579,8 @@ export const SuggestRequestSchema = z.object({
 });
 
 export const DisasterWarningsRequestSchema = z.object({
-  city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
-  areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
+  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。予報区の名前も可 (例: "東京", "大阪府")。同じ名前の町村は都道府県名を付ける (例: "北海道森町")'),
+  areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -701,8 +701,8 @@ export const PredictHtsCodeRequestSchema = z.object({
 });
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
-  lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
-  lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+  lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
+  lon: z.number().min(-180).max(180).optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
   noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
 });
 // 住所データ（ABR）: 郵便番号・正規化・逆ジオコーディング。結果は内部の型をそのまま返すので、主要項目だけを定義する。
@@ -1571,6 +1571,7 @@ export const WeatherResponseSchema = z.object({
     prefecture: z.string().optional().describe('予報区名（livedoor 天気互換。都道府県名とは限らない）'),
     city: z.string().optional().describe('指定した地名'),
   }).optional().describe('対象地域（livedoor 天気互換）'),
+  temperatureArea: z.string().optional().describe('今日・明日・明後日の気温の地点名 (例: "八幡")'),
   overview: z.string().optional().describe('気象概況テキスト'),
   description: z.object({
     headline: z.string().optional().describe('概況の見出し'),
@@ -1591,8 +1592,8 @@ export const WarningItemSchema = z.object({
 });
 
 export const AreaWarningsResponseSchema = z.object({
-  areaCode: z.string().describe('気象庁エリアコード (6桁)'),
-  areaName: z.string().describe('対象地域名 (例: "東京都")'),
+  areaCode: z.string().describe('解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)'),
+  areaName: z.string().describe('解決した市町村・予報区・気象台の地域の名前 (例: "新宿区", "東京地方")'),
   prefecture: z.string().describe('都道府県名'),
   reportTime: z.string().describe('発表日時 (ISO 8601)'),
   specialWarnings: z.array(WarningItemSchema).describe('発表中の特別警報一覧'),

@@ -1,7 +1,7 @@
-import { resolveCityId } from './life.js';
+import { AreaInputError, prefectureOf, resolveCityId, resolveMunicipality } from './life.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
-import { errorMessage } from '../errors.js';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES } from '../jma_areas.js';
 
 export const CACHE_TTL_DISASTER = 5 * 60 * 1000;   // 5分
 export const CACHE_TTL_EARTHQUAKE = 60 * 1000;     // 1分
@@ -90,80 +90,105 @@ const WARNING_CODE_MAP: Record<string, { name: string; level: 'special' | 'warni
   '38': { name: '高潮特別警報', level: 'special' },
 };
 
+/** 警報を返す範囲。town（市町村）・area（予報区）は同じ番号の欄、office（気象台）はその範囲の予報区の欄を合わせる */
+interface WarningTarget {
+  code: string;
+  name: string;
+  office: string;
+  kind: 'town' | 'area' | 'office';
+}
+
+const TOWN_BY_CODE = new Map(
+  Object.entries(JMA_CLASS20).flatMap(([name, towns]) => towns.map((t) => [t.code, { name, class10: t.class10 }] as const)),
+);
+
+/** 7 桁（市町村）・6 桁（予報区・気象台）・2 桁（都道府県）の番号を、警報を返す範囲にする */
+function warningTargetFromCode(input: string): WarningTarget {
+  if (!/^(\d{2}|\d{6}|\d{7})$/.test(input)) throw new AreaInputError(`エリアコード「${input}」は 7 桁・6 桁・2 桁の数字で指定してください`);
+  const town = TOWN_BY_CODE.get(input);
+  if (town) return { code: input, name: town.name, office: JMA_CLASS10[town.class10].office, kind: 'town' };
+  let code = input;
+  if (code.length === 2) {
+    // 北海道・鹿児島・沖縄は気象台が複数あり、XX0000 の気象台が無い
+    const offices = Object.entries(JMA_OFFICES).filter(([c]) => c.startsWith(code));
+    if (offices.length > 1) {
+      throw new AreaInputError(`都道府県コード「${code}」には気象台が複数あります。6 桁の気象台の番号を指定してください: ${offices.map(([c, n]) => `${c}（${n}）`).join('、')}`);
+    }
+    code = `${code}0000`;
+  }
+  const area = JMA_CLASS10[code];
+  if (area) return { code, name: area.name, office: area.office, kind: 'area' };
+  if (JMA_OFFICES[code]) return { code, name: JMA_OFFICES[code], office: code, kind: 'office' };
+  throw new AreaInputError(`エリアコード「${input}」が見つかりません`);
+}
+
+/** areaCode、市町村、予報区（city_map）の順に解決する。city も areaCode も無ければ東京 */
+function resolveWarningTarget(city?: string, areaCode?: string): WarningTarget {
+  if (areaCode?.trim()) return warningTargetFromCode(areaCode.trim());
+  const query = city?.trim() || '東京';
+  const town = resolveMunicipality(query);
+  if (town) return { code: town.code, name: town.name, office: JMA_CLASS10[town.class10].office, kind: 'town' };
+  return warningTargetFromCode(resolveCityId(query));
+}
+
 /** 気象庁 防災気象警報・注意報取得 */
 export async function fetchWeatherWarnings(options: {
   city?: string;
   areaCode?: string;
   noCache?: boolean;
 }): Promise<AreaWarnings> {
-  const rawCity = options.city || '東京';
-  let targetAreaCode: string = options.areaCode || '';
-
-  if (!targetAreaCode) {
-    const resolved = resolveCityId(rawCity);
-    // 気象庁 warning エンドポイント用 6桁/2桁コード (例: 130000 / 130010)
-    targetAreaCode = resolved || '130000';
-  }
-
-  // 都道府県2桁プレフィックスを取得 (例: "130010" -> "130000")
-  const prefCode = targetAreaCode.length >= 6 ? `${targetAreaCode.slice(0, 2)}0000` : targetAreaCode;
-  const cacheKey = `disaster:warning:${targetAreaCode}`;
+  const target = resolveWarningTarget(options.city, options.areaCode);
+  // キャッシュには入力に依らない中身だけを入れ、ラベルは解決した番号から付ける
+  const labels = { areaCode: target.code, areaName: target.name, prefecture: prefectureOf(target.code) };
+  const cacheKey = `disaster:warning:v2:${target.code}`;
 
   if (!options.noCache) {
-    const cached = getFromCache<AreaWarnings>(cacheKey);
-    if (cached) return cached;
+    const cached = getFromCache<Omit<AreaWarnings, keyof typeof labels>>(cacheKey);
+    if (cached) return { ...labels, ...cached };
   }
 
-  const jmaUrl = `https://www.jma.go.jp/bosai/warning/data/warning/${prefCode}.json`;
+  const jmaUrl = `https://www.jma.go.jp/bosai/warning/data/warning/${target.office}.json`;
   const res = await fetch(jmaUrl, {
     headers: { 'User-Agent': 'Sora-Disaster-Fetcher/1.0' },
     signal: AbortSignal.timeout(8000),
   });
 
   if (!res.ok) {
-    throw new Error(`気象庁 防災情報APIへの接続に失敗しました (HTTP ${res.status}): ${prefCode}`);
+    throw new Error(`気象庁 防災情報APIへの接続に失敗しました (HTTP ${res.status}): ${target.office}`);
   }
 
   const json = await res.json() as any;
   const reportTime = json?.reportDatetime || new Date().toISOString();
-  const areaTypes = json?.areaTypes || [];
+  // areaTypes[0] は予報区、[1] は市町村の欄（番号は桁数で重ならない）
+  const areas: any[] = (json?.areaTypes || []).flatMap((at: any) => at?.areas || []);
+  const matched = areas.filter((a) => (target.kind === 'office' ? JMA_CLASS10[a.code]?.office === target.code : a.code === target.code));
+  if (matched.length === 0) {
+    throw new Error(`気象庁の警報データに ${target.name}（${target.code}）の欄がありません`);
+  }
 
   const specialWarnings: WarningItem[] = [];
   const warnings: WarningItem[] = [];
   const advisories: WarningItem[] = [];
 
-  let matchedAreaName = rawCity;
-
-  // 地域警告リストの走査
-  for (const at of areaTypes) {
-    const areas = at?.areas || [];
-    for (const a of areas) {
-      if (a.code === targetAreaCode || a.code === prefCode || targetAreaCode.startsWith(a.code.slice(0, 4))) {
-        matchedAreaName = a.name || matchedAreaName;
-        const wList = a.warnings || [];
-        for (const w of wList) {
-          const wCode = String(w.code || '').padStart(2, '0');
-          const meta = WARNING_CODE_MAP[wCode];
-          if (meta) {
-            const item: WarningItem = {
-              code: wCode,
-              name: meta.name,
-              level: meta.level,
-              status: w.status || '発表',
-            };
-            if (meta.level === 'special') specialWarnings.push(item);
-            else if (meta.level === 'warning') warnings.push(item);
-            else advisories.push(item);
-          }
-        }
+  for (const a of matched) {
+    for (const w of a.warnings || []) {
+      const wCode = String(w.code || '').padStart(2, '0');
+      const meta = WARNING_CODE_MAP[wCode];
+      if (meta) {
+        const item: WarningItem = {
+          code: wCode,
+          name: meta.name,
+          level: meta.level,
+          status: w.status || '発表',
+        };
+        if (meta.level === 'special') specialWarnings.push(item);
+        else if (meta.level === 'warning') warnings.push(item);
+        else advisories.push(item);
       }
     }
   }
 
-  const result: AreaWarnings = {
-    areaCode: targetAreaCode,
-    areaName: matchedAreaName,
-    prefecture: rawCity,
+  const content = {
     reportTime,
     specialWarnings,
     warnings,
@@ -172,10 +197,10 @@ export async function fetchWeatherWarnings(options: {
   };
 
   if (!options.noCache) {
-    setToCache(cacheKey, result, CACHE_TTL_DISASTER);
+    setToCache(cacheKey, content, CACHE_TTL_DISASTER);
   }
 
-  return result;
+  return { ...labels, ...content };
 }
 
 /** P2PQuake & 気象庁 リアルタイム地震履歴取得 */
@@ -186,88 +211,81 @@ export async function fetchRecentEarthquakes(options?: {
 }): Promise<{ count: number; earthquakes: EarthquakeItem[] }> {
   const limit = Math.min(Math.max(options?.limit ?? 5, 1), 20);
   const minScaleRaw = options?.minIntensity ?? 10; // デフォルト震度1以上
-  const cacheKey = `disaster:earthquake:${limit}:${minScaleRaw}`;
+  const cacheKey = `disaster:earthquake:v2:${limit}:${minScaleRaw}`;
 
   if (!options?.noCache) {
     const cached = getFromCache<{ count: number; earthquakes: EarthquakeItem[] }>(cacheKey);
     if (cached) return cached;
   }
 
-  try {
-    const p2pUrl = `https://api.p2pquake.net/v2/history?codes=551&limit=${Math.min(limit * 2, 40)}`;
-    const res = await fetch(p2pUrl, {
-      headers: { 'User-Agent': 'Sora-Disaster-Fetcher/1.0' },
-      signal: AbortSignal.timeout(6000),
+  // 震度で絞るときは、絞ってから limit 件に切れるよう上限の 100 件を取る。失敗は 0 件にせずエラーにする
+  const p2pUrl = `https://api.p2pquake.net/v2/history?codes=551&limit=${minScaleRaw > 10 ? 100 : Math.min(limit * 2, 40)}`;
+  const res = await fetch(p2pUrl, {
+    headers: { 'User-Agent': 'Sora-Disaster-Fetcher/1.0' },
+    signal: AbortSignal.timeout(6000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`P2PQuake API HTTP ${res.status}`);
+  }
+
+  const data = await res.json() as any[];
+  const items: EarthquakeItem[] = [];
+
+  for (const d of data) {
+    if (d.code !== 551 || !d.earthquake) continue;
+    const eq = d.earthquake;
+    const maxScaleNum = eq.maxScale || 0;
+    if (maxScaleNum < minScaleRaw) continue;
+
+    const tsunamiMap: Record<string, string> = {
+      None: '津波の心配なし',
+      Unknown: '津波の有無は調査中',
+      Checking: '津波の影響を調査中',
+      NonEffective: '若干の海面変動の可能性あり',
+      Watch: '津波注意報発表中',
+      Warning: '津波警報・大津波警報発表中',
+    };
+
+    const points = (d.points || [])
+      .filter((p: any) => p.scale >= 30)
+      .slice(0, 10)
+      .map((p: any) => ({
+        pref: p.pref || '',
+        addr: p.addr || '',
+        scale: formatScale(p.scale),
+      }));
+
+    items.push({
+      id: d.id || d._id || String(d.time),
+      time: eq.time || d.time,
+      hypocenter: {
+        name: eq.hypocenter?.name || '震源地不明',
+        magnitude: eq.hypocenter?.magnitude >= 0 ? eq.hypocenter.magnitude : -1,
+        depthKm: eq.hypocenter?.depth >= 0 ? eq.hypocenter.depth : undefined,
+        latitude: eq.hypocenter?.latitude,
+        longitude: eq.hypocenter?.longitude,
+      },
+      maxScale: formatScale(maxScaleNum),
+      maxScaleRaw: maxScaleNum,
+      tsunami: tsunamiMap[eq.domesticTsunami] || '津波の心配なし',
+      source: 'p2pquake',
+      points: points.length > 0 ? points : undefined,
     });
 
-    if (!res.ok) {
-      throw new Error(`P2PQuake API HTTP ${res.status}`);
-    }
-
-    const data = await res.json() as any[];
-    const items: EarthquakeItem[] = [];
-
-    for (const d of data) {
-      if (d.code !== 551 || !d.earthquake) continue;
-      const eq = d.earthquake;
-      const maxScaleNum = eq.maxScale || 0;
-      if (maxScaleNum < minScaleRaw) continue;
-
-      const tsunamiMap: Record<string, string> = {
-        None: '津波の心配なし',
-        Unknown: '津波の有無は調査中',
-        Checking: '津波の影響を調査中',
-        NonEffective: '若干の海面変動の可能性あり',
-        Watch: '津波注意報発表中',
-        Warning: '津波警報・大津波警報発表中',
-      };
-
-      const points = (d.points || [])
-        .filter((p: any) => p.scale >= 30)
-        .slice(0, 10)
-        .map((p: any) => ({
-          pref: p.pref || '',
-          addr: p.addr || '',
-          scale: formatScale(p.scale),
-        }));
-
-      items.push({
-        id: d.id || d._id || String(d.time),
-        time: eq.time || d.time,
-        hypocenter: {
-          name: eq.hypocenter?.name || '震源地不明',
-          magnitude: eq.hypocenter?.magnitude >= 0 ? eq.hypocenter.magnitude : -1,
-          depthKm: eq.hypocenter?.depth >= 0 ? eq.hypocenter.depth : undefined,
-          latitude: eq.hypocenter?.latitude,
-          longitude: eq.hypocenter?.longitude,
-        },
-        maxScale: formatScale(maxScaleNum),
-        maxScaleRaw: maxScaleNum,
-        tsunami: tsunamiMap[eq.domesticTsunami] || '津波の心配なし',
-        source: 'p2pquake',
-        points: points.length > 0 ? points : undefined,
-      });
-
-      if (items.length >= limit) break;
-    }
-
-    const result = {
-      count: items.length,
-      earthquakes: items,
-    };
-
-    if (!options?.noCache) {
-      setToCache(cacheKey, result, CACHE_TTL_EARTHQUAKE);
-    }
-
-    return result;
-  } catch (err) {
-    console.warn('[Sora/Disaster] P2PQuake fetch failed, returning fallback empty set:', errorMessage(err));
-    return {
-      count: 0,
-      earthquakes: [],
-    };
+    if (items.length >= limit) break;
   }
+
+  const result = {
+    count: items.length,
+    earthquakes: items,
+  };
+
+  if (!options?.noCache) {
+    setToCache(cacheKey, result, CACHE_TTL_EARTHQUAKE);
+  }
+
+  return result;
 }
 
 export const CACHE_TTL_ELEVATION = 24 * 60 * 60 * 1000; // 標高・ジオコーディングは24時間キャッシュ
