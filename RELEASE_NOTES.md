@@ -1,3 +1,55 @@
+# Sora v4.0.0 — 本文の画像とハイライトの選び方を直し、効いていない引数を消して responseMode にまとめた
+
+## 破壊的な変更（引数）
+
+- **効いていない引数・使われていない引数を消しました。** 消した引数を送っても、REST も MCP もエラーにはならず、黙って無視します。そのため、`onlyHighlights: true` などを明示していた呼び出しは、エラーにならないまま全文が返り、応答が大きくなります。下の表の移行先に替えてください。型付きのクライアント（`client/`）の型からも消したので、TypeScript ではコンパイルエラーになります。
+- **`onlyHighlights`・`evidenceMode`・`extractHighlights` を、`responseMode`（`"full"` / `"evidence"`）にまとめました。** `scrape`・`scrape_batch`・`crawl_site` と REST の `/scrape`・`/scrape/batch`・`/crawl` の既定は `"full"`、`search_deep` と `POST /search` は今までどおり `"evidence"` です。scrape 系の `"evidence"` は、検索語に合うハイライトがあれば `content` をハイライトに置き換えます（本文に合う節が無いときは、ページの説明文を補完の証拠として返します）。`query` があれば必ずハイライトを作るので、ハイライトが要らないときは `query` を渡さないでください。`/scrape` と `/scrape/batch` は正しくない値を 400 にし、`/crawl` は `"full"` として扱います。
+- **`search_deep`・`POST /search` で `extractHighlights: false` を使って本文を残していた呼び出しは、`responseMode: "full"` か `formats: ["markdown"]` に替えてください。** v3.0.0 のリリースノートで案内していた方法ですが、v4.0.0 では効かず、本文が省かれます。`formats` に `markdown` が無くても `contextSufficiency` が付くようになります。
+- **`reorderUFlat` を消しました。** scrape のハイライトには効いていませんでした。`search_deep`・`crawl_site`・`POST /search`・`POST /crawl` では、`true` のとき結果を U 字に並べ替えていました。v4.0.0 では点数順のまま返します。
+- **`scrape_batch`・`POST /scrape/batch` の `webhookUrl` の通知は、一括の完了時の 1 回だけになりました**（payload は一括の結果）。今まではページごとの通知もありました。`scrape`・`POST /scrape`・`POST /scrape/stream` の `webhookUrl` は消しました。
+- **MCP の `scrape`・`scrape_batch` から `renderJs`・`fastOnly`・`selectors`・`clipSelector`・`removeSelectors` を外しました。** REST と型付きのクライアントには残ります。`renderJs`・`fastOnly` の代わりは `mode` です。MCP からは、`selectors` の結果の `extracted` と、要素のスクリーンショットは得られなくなります。
+
+| 消した引数 | 対象 | 移行先・扱い |
+|---|---|---|
+| `onlyHighlights: true`・`evidenceMode: "highlights"`・`"contextual_highlights"` | scrape・scrape_batch・crawl_site | `responseMode: "evidence"` |
+| `extractHighlights` | scrape 系・search_deep・POST /search | scrape 系: 不要（`query` があればハイライトを作る）。search_deep で本文を残すには `responseMode: "full"` か `formats: ["markdown"]` |
+| `includeDiagnostics`・`includeDiscrepancies`・`diversityWeight`・`minimizeTables` | 全ツール | 不要（効いていなかった。MMR の重みは 0.7、表はいつも縮める） |
+| `reorderUFlat` | 全ツール | 不要（点数順のまま返す） |
+| `extractSummary`・`extractCitations`・`chunkMarkdown`・`chunkSize`・`validateLinks`・`formatAsPrompt`・`highlightMatches`・`filterLinkDensity`・`safeNormalize` | scrape・scrape_batch | 不要（応答の `summary`・`citations`・`chunks`・`promptContext`・`highlightedContent`・`linksWithStatus`・`derivations` も無くなる） |
+| `dedup`・`enablePrf` | search_deep・POST /search | 不要（既定はどちらも無効だった。応答の `prf` も無くなる） |
+| `webhookUrl`・`retries`・`retryDelayMs` | scrape・POST /scrape・POST /scrape/stream | 再試行は呼び出し側で。通知が要るときは `scrape_batch` の `webhookUrl` |
+| `retries` | scrape_batch・POST /scrape/batch | 再試行は呼び出し側で |
+| `renderJs`・`fastOnly`・`selectors`・`clipSelector`・`removeSelectors` | MCP の scrape・scrape_batch だけ | `mode`。CSS セレクタは REST か型付きのクライアントで |
+
+MCP の引数は、`scrape` が 38 → 16、`scrape_batch` が 35 → 16、`crawl_site` が 14 → 11、`search_deep` が 32 → 26 になりました。MCP の `tools/list` の JSON で、最初から見える 14 ツールの定義は 24,884 → 21,587 字（−13%）、`scrape` は 5,680 → 3,029 字、`scrape_batch` は 4,449 → 2,622 字です（v3.0.0 のあとの main との比べ）。
+
+## 本文の取り出し
+
+- **rs-trafilatura の経路で、本文の画像が戻るようになりました。** rs-trafilatura が返す本文には img が入らないため、v3.0.0 では、記事以外の種類のページの本文から画像がすべて消えていました。画像があるときだけ、目印を置いた HTML で rs-trafilatura をもう一度走らせ、本文の文字が 1 回目と同じときだけ画像に戻します（6,400 枚まで）。WCXB の F1 は変わりません（dev +0.0001、test −0.00001、Bevendorff らの評価集 −0.00002）。画像が戻る分、一覧のページのトークンは増えます（日本語の 72 ページで推定 +9%、記事以外の 33 ページで +19%、最大 +718%）。画像が要らないときは `includeMedia: false` を使ってください。
+- **`removeSelectors` が、rs-trafilatura の経路でも効くようになりました**（REST と型付きのクライアント）。
+- **本文のリンクと画像の URL を絶対 URL にしました。** 日本語などの字は、パーセントエンコードせずにそのまま書きます。空白・制御文字・見えない字になる並びと、UTF-8 として読めない並びは、エンコードのまま残します。`#` だけのリンクと `javascript:` のリンクは文字だけにし、`#/`・`#!/` のハッシュの経路のリンクは残します。
+- **formats の `html` は、本文の HTML になりました。** 取得したそのままの HTML は `rawHtml` です。`includeMedia: false` のとき、`rawHtml` には img が残り、`html` は rs-trafilatura の本文を使うページ（記事以外）では画像が入りません。
+- `search_deep` の `includeMedia: false` を、ページを取る段階にも渡すようにしました（画像を戻すための 2 回目を走らせません）。
+
+## ハイライト
+
+- **ハイライトを、maxChars で切る前の全文（200,000 字まで）から選ぶようになりました。** 本文の後ろのほうにある答えも選べます。Wikipedia の長い記事 10 件で、先頭の 30,000 字より後ろにある事実がハイライトに入ったのは、0 件 → 10 件です。ハイライトの合計は maxChars に収めます（通常のハイライトを順に残し、残りの字数を表・コードなどの大きな節に分けます）。
+- `search_deep` の `evidence` は、本文が maxChars で切れた結果では、ハイライトを本文に入れ替えません（本文の外から選んだ答えを捨てないため）。
+- 節の中の、リンク先のホストが 6 つ以上あるリンクだけの段落（言語の一覧など）は、ハイライトの候補から外します。同じサイトへのリンクだけの一覧（曲名・作品名など）と、ふつうの SNS の行は残します。
+- 日付の注記（`annotateTemporal`）は、ハイライトにも付きます。リンクの飛び先には入れません。ページの description を、ハイライトで置き換えなくなりました。
+- 実際の `search_deep` の 40 問で、`full` に答えがあったもののうち `evidence` にも答えが残った割合は、問いが 89.3%（25/28）、ページが 88.9%（80/90）でした（前の測定は 86.2%・85.9%）。本番と同じ rs-trafilatura の経路で測り直すと、ページが 88.8%（79/89）、問いが 85.7%（24/28）でした（新しく落ちた 1 問は、rs-trafilatura が掲示板と判定したページの本文によるものです）。日本語の評価集 JQaRA の dev・test では、選ぶハイライトは v3.0.0 と同じです。
+
+## そのほか
+
+- 長い入力で止まっていた処理を、結果の変わらない形に直しました（200,000 字の数字の並びでハイライトを選ぶ処理 約 10 分 → 35 ms、1 つの図に画像 6,400 枚 267 秒 → 74 ms、並んだ `#` のリンク 16 万個 600 秒超 → 5.9 秒 など）。
+- `search_earthquake` の `minIntensity` を、数の enum ではなく範囲で受け取るようにしました。関数の宣言で enum を文字列にしか許さないモデル（Gemini など）で、ツールの一覧ごと 400 になっていました。
+- Yahoo の検索の実行ファイルを、`YAHOO_MCP_PATH`・`/usr/local/bin`・リポジトリの `bin/`・`PATH` の順で探すようにしました。
+- MCP の instructions に `get_youtube_channel` の案内を足しました。
+- キャッシュのキーの版を上げました（`scrape:v8` → `v9`、`search:integrated:v11` → `v12`）。入れ替えた直後は、同じ取得・検索でも取り直します。
+- ソースから動かすときは Bun 1.4 以上を使ってください。1.3 系では後読みのある正規表現が遅く、ハイライトを選ぶ処理に約 5 倍の時間がかかります（イメージは影響を受けません）。
+
+評価の詳しい記録は `docs/evaluations/main-content/results.md`（「rs-trafilatura の経路の画像（v4.0.0）」）と `docs/evaluations/v4-highlights/results.md` にあります。
+
 # Sora v3.0.0 — rho-select を廃止し、search_deep の既定を evidence にし、本文の取り出しに rs-trafilatura を使うようにした
 
 - **破壊的変更: rho-select を廃止し、引数 `highlightAlgorithm` と `highlightOverheadTokens` を消しました。** MCP の `scrape`・`scrape_batch`・`search_deep`・`crawl_site` と、REST の `/scrape`・`/scrape/stream`・`/scrape/batch`・`/crawl`・`/crawl/stream`・`POST /search`（`/search/deep`・`/search/integrated`・`/deep-search` も）が対象です。今も送ってくる呼び出し側は、検証エラーにはならず、黙って無視されます（MCP と `/scrape`・`/scrape/stream`・`/scrape/batch` はスキーマが知らない欄を落とし、`/crawl`・`/crawl/stream`・`/search` はその欄を読みません）。`"rho-select"`・`"legacy"` など、どの値を指定していても、新しい選び方になります。`highlightMaxCount`（1〜10）は残っています。verbose の `highlightDiagnostics` は、rho-select の診断（`certificate` など）から、ハイライト選択の診断（`queryCoverage` などの `EvidenceDiagnostics`）に替わりました。型付きのクライアント（`client/`）の型からも、2 つの引数を消しました。

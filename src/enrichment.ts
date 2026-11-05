@@ -17,41 +17,26 @@ import {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  normalizeSafeNumeric,
   type ProvenanceBlock,
 } from './extractor/accessibility_compiler.js';
-import {
-  reorderLostInTheMiddle,
-  selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
-} from './extractor/information_retrieval.js';
+import { selectMaximalMarginalRelevance } from './extractor/information_retrieval.js';
 import {
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
   type TemporalAnchor,
 } from './extractor/temporal_anchor.js';
 export {
-  normalizeSafeNumeric,
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
 };
 import type {
-  Citation,
-  MarkdownChunk,
-  LinkStatus,
-  ScrapeResult,
   FieldEvidence,
   HighlightItem,
   EvidenceDiagnostics,
-  CandidateDiscrepancy,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
@@ -151,92 +136,6 @@ export function replaceMarkdownImages(markdown: string): string {
   return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
 }
 
-/** 超高速 抽出型自動要約 (重要文抽出 / TL;DR) */
-export function generateExtractiveSummary(text: string, maxSentences = 4): string[] {
-  if (!text || text.trim().length === 0) return [];
-  const rawSentences = text
-    .replace(/\r\n/g, '\n')
-    .split(/(?<=[。！？\n])|(?<=\.\s+)/)
-    .map((s) => s.replace(/\s+/g, ' ').trim())
-    .filter((s) => s.length >= 15 && s.length <= 250 && !s.startsWith('#') && !s.startsWith('|') && !s.startsWith('```'));
-
-  if (rawSentences.length <= maxSentences) return rawSentences;
-
-  const wordFreq = new Map<string, number>();
-  const words = text.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || [];
-  for (const w of words) {
-    wordFreq.set(w, (wordFreq.get(w) || 0) + 1);
-  }
-
-  const scored = rawSentences.map((sentence, idx) => {
-    const sWords = sentence.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || [];
-    let score = 0;
-    for (const w of sWords) {
-      score += wordFreq.get(w) || 0;
-    }
-    const positionBoost = idx < 3 ? 1.5 : idx > rawSentences.length - 3 ? 1.2 : 1.0;
-    const finalScore = (score / Math.max(sWords.length, 1)) * positionBoost;
-    return { sentence, idx, score: finalScore };
-  });
-
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxSentences)
-    .sort((a, b) => a.idx - b.idx)
-    .map((item) => item.sentence);
-}
-
-/** N-gram Jaccard 類似度による検索結果の重複排除 */
-export function dedupSearchResults<T>(
-  items: T[],
-  getText: (item: T) => string,
-  threshold = 0.65,
-): T[] {
-  if (!items || items.length <= 1) return items;
-
-  const getBigrams = (str: string): Set<string> => {
-    const s = str.toLowerCase().replace(/\s+/g, '');
-    const grams = new Set<string>();
-    for (let i = 0; i < s.length - 1; i++) {
-      grams.add(s.slice(i, i + 2));
-    }
-    return grams;
-  };
-
-  const jaccard = (a: Set<string>, b: Set<string>): number => {
-    if (a.size === 0 || b.size === 0) return 0;
-    let intersection = 0;
-    for (const g of a) {
-      if (b.has(g)) intersection++;
-    }
-    const union = a.size + b.size - intersection;
-    return union > 0 ? intersection / union : 0;
-  };
-
-  const result: T[] = [];
-  const gramList: Array<Set<string>> = [];
-
-  for (const item of items) {
-    const text = getText(item);
-    const itemGrams = getBigrams(text);
-    let isDuplicate = false;
-
-    for (const existingGrams of gramList) {
-      if (jaccard(itemGrams, existingGrams) >= threshold) {
-        isDuplicate = true;
-        break;
-      }
-    }
-
-    if (!isDuplicate) {
-      result.push(item);
-      gramList.push(itemGrams);
-    }
-  }
-
-  return result;
-}
-
 /** Luhn アルゴリズムによるクレジットカード番号チェック */
 function isValidCreditCardNumber(numStr: string): boolean {
   const digits = numStr.replace(/\D/g, '');
@@ -275,58 +174,6 @@ export function maskPiiInText(text: string): string {
   return masked;
 }
 
-/** LLM 最適化プロンプトコンテキスト XML 生成 */
-export function generatePromptContext(result: ScrapeResult): string {
-  const attrs: string[] = [
-    `url="${result.url}"`,
-    `title="${result.title.replace(/"/g, '&quot;')}"`,
-  ];
-  if (result.siteName) attrs.push(`site_name="${result.siteName.replace(/"/g, '&quot;')}"`);
-  if (result.publishedTime) attrs.push(`published_time="${result.publishedTime}"`);
-  if (result.author) attrs.push(`author="${result.author.replace(/"/g, '&quot;')}"`);
-
-  let context = `<web_page ${attrs.join(' ')}>\n`;
-  if (result.summary && result.summary.length > 0) {
-    context += `<summary>\n${result.summary.map((s) => `- ${s}`).join('\n')}\n</summary>\n\n`;
-  }
-  context += `${result.content}\n</web_page>`;
-  return context;
-}
-
-/** 検索キーワードの Markdown 本文自動強調 (<mark>単語</mark>) */
-export function highlightQueryMatchesInMarkdown(markdown: string, query: string): string {
-  if (!markdown || !query) return markdown;
-  const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return markdown;
-
-  // 長い term から先に置換して部分一致の崩れを防ぐ（降順ソート）
-  const sortedTerms = terms.slice().sort((a, b) => b.length - a.length);
-
-  let inCodeBlock = false;
-  const lines = markdown.split('\n');
-
-  const highlightedLines = lines.map((line) => {
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      return line;
-    }
-    if (inCodeBlock || line.trim().startsWith('---') || line.trim().startsWith('http')) {
-      return line;
-    }
-
-    let modified = line;
-    for (const term of sortedTerms) {
-      if (term.length < 2) continue;
-      const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(?<!<[^>]*)(?<!\\[[^\\]]*)(?<!\\([^\\)]*)(${esc})(?![^<]*>)(?![^\\[]*\\])(?![^\\(]*\\))`, 'gi');
-      modified = modified.replace(regex, '<mark>$1</mark>');
-    }
-    return modified;
-  });
-
-  return highlightedLines.join('\n');
-}
-
 /** 本文の文字数・単語数・推定読了時間 (分) の算出 */
 export function calculateContentStats(text: string): {
   characterCount: number;
@@ -351,55 +198,6 @@ export function calculateContentStats(text: string): {
     wordCount,
     readingTimeMin: Math.max(1, estimatedMin),
   };
-}
-
-/**
- * 出典リンクの URL を返す。絶対 URL はそのまま、相対 URL は baseUrl で解決する。
- * ページ内アンカー（#...）、解決できないもの、http(s) 以外（mailto: など）は undefined。
- */
-function resolveCitationUrl(raw: string, baseUrl?: string): string | undefined {
-  if (!raw || raw.startsWith('#')) return undefined;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (!baseUrl) return undefined;
-  try {
-    const resolved = new URL(raw, baseUrl);
-    return resolved.protocol === 'http:' || resolved.protocol === 'https:' ? resolved.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** 本文内 出典・引用リンク (Citations) の構造化抽出 */
-export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string): Citation[] {
-  if (!markdown) return [];
-  const citations: Citation[] = [];
-  const linkRegex = /\[([^\]]+)\]\(([^\s)]+)\)/g;
-  const seenUrls = new Set<string>();
-
-  // 段落単位で走査し、コンテキスト文を取得
-  const paragraphs = markdown.split(/\n\s*\n/);
-
-  for (const para of paragraphs) {
-    let match: RegExpExecArray | null;
-    while ((match = linkRegex.exec(para)) !== null) {
-      const text = match[1].trim();
-      const url = resolveCitationUrl(match[2].trim(), baseUrl);
-
-      // 画像リンク・ページ内アンカー・http(s) 以外のリンクを除外
-      if (!url || text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
-
-      seenUrls.add(url);
-      const context = para.replace(/\s+/g, ' ').trim().slice(0, 150);
-
-      citations.push({
-        text,
-        url,
-        context: context.length > 0 ? context : undefined,
-      });
-    }
-  }
-
-  return citations;
 }
 
 /** Webhook URL の SSRF 安全性検証 (ホスト名 & DNS 解決後 IP の二重チェック) */
@@ -459,107 +257,6 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
   }
 }
 
-/** RAG 最適化セマンティック・チャンキング */
-export function chunkMarkdownContent(markdown: string, maxChunkChars = 1000): MarkdownChunk[] {
-  if (!markdown) return [];
-  const lines = markdown.split('\n');
-  const chunks: MarkdownChunk[] = [];
-
-  let chunkHeading: string | undefined = undefined;
-  let activeHeading: string | undefined = undefined;
-  let currentChunkLines: string[] = [];
-  let currentChunkLen = 0;
-
-  const flushChunk = () => {
-    if (currentChunkLines.length === 0) return;
-    const content = currentChunkLines.join('\n').trim();
-    if (content.length > 0) {
-      chunks.push({
-        index: chunks.length,
-        heading: chunkHeading,
-        content,
-        estimatedTokens: estimateTokens(content),
-      });
-    }
-    currentChunkLines = [];
-    currentChunkLen = 0;
-    chunkHeading = activeHeading;
-  };
-
-  let inCodeBlock = false;
-
-  for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-    }
-
-    const headingMatch = !inCodeBlock ? line.match(/^(#{1,4})\s+(.+)/) : null;
-    if (headingMatch) {
-      if (currentChunkLines.length > 0) {
-        flushChunk();
-      }
-      activeHeading = headingMatch[2].trim();
-      chunkHeading = activeHeading;
-    }
-
-    currentChunkLines.push(line);
-    currentChunkLen += line.length + 1;
-
-    if (currentChunkLen >= maxChunkChars && !inCodeBlock && line.trim() === '') {
-      flushChunk();
-    }
-  }
-
-  flushChunk();
-  return chunks;
-}
-
-/** リンクの健全性・到達性並行検証 (HEAD / GET & SSRF Protected) */
-export async function validateExtractedLinks(links: string[], timeoutMs = 3000, limit = 15): Promise<LinkStatus[]> {
-  if (!links || links.length === 0) return [];
-  const targetLinks = links.slice(0, limit);
-
-  const results = await Promise.all(
-    targetLinks.map(async (url) => {
-      try {
-        const isSafe = await isSafeWebhookUrl(url);
-        if (!isSafe) {
-          return {
-            url,
-            status: 403,
-            ok: false,
-          };
-        }
-        let res = await fetch(url, {
-          method: 'HEAD',
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Sora-LinkValidator/1.0)' },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (res.status === 405 || res.status === 501) {
-          res = await fetch(url, {
-            method: 'GET',
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Sora-LinkValidator/1.0)' },
-            signal: AbortSignal.timeout(timeoutMs),
-          });
-        }
-        return {
-          url,
-          status: res.status,
-          ok: res.ok,
-        };
-      } catch {
-        return {
-          url,
-          status: 0,
-          ok: false,
-        };
-      }
-    }),
-  );
-
-  return results;
-}
-
 export interface ParsedSection {
   rawHeading: string;
   heading: string;
@@ -584,16 +281,15 @@ const LOW_SCORE_RATIO = 0.25;
 // 候補にする（長い段落は文でまとめる）。答えが窓の外の段落にあるのを拾う。選んだ窓と塊は節ごとに 1 つのハイライトにまとめる。
 // 文で切れずにこの 2 倍を超えた塊（. や ．で文を終える英語・論文の段落など）は候補にしない（先頭 3 件は字数を確かめないので、目安を大きく超える）
 const SPLIT_CHUNK_CHARS = 300;
+// MMR の重み λ（1 に近いほど関連度を重んじ、0 に近いほど重複を避ける）
+const MMR_LAMBDA = 0.7;
 
 export interface QueryHighlightDetailsOptions {
   sourceId?: string;
   url?: string;
   publishedTime?: string;
-  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補い・長い節の塊をしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
 }
 
@@ -601,11 +297,10 @@ export interface QueryHighlightDetailsResult {
   highlights: string[];
   highlightItems: HighlightItem[];
   diagnostics: EvidenceDiagnostics;
-  discrepancies: CandidateDiscrepancy[];
   temporalAnchors: TemporalAnchor[];
 }
 
-/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・不一致候補・時間的文脈アンカーを統合) */
+/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・時間的文脈アンカーを統合) */
 export function extractQueryHighlightDetails(
   content: string,
   query: string,
@@ -615,14 +310,12 @@ export function extractQueryHighlightDetails(
   const extend = options.maxHighlights == null;
   const maxHighlights = extend ? 3 : Math.max(1, Math.ceil(options.maxHighlights as number)) || 1;
   const sourceId = options.sourceId || 'S1';
-  const evidenceMode = options.evidenceMode || 'highlights';
 
   if (!query || !content) {
     return {
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content || '', query || '', 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -640,7 +333,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content, query, 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -700,22 +392,16 @@ export function extractQueryHighlightDetails(
       ? `## ${block.headingPath.join(' > ')}\n\n`
       : '';
 
-    // contextual_highlights モードの場合はアンカーヘッダーを付与
-    const anchorHeader = evidenceMode === 'contextual_highlights'
-      ? `${formatBlockAnchor(block.ref)}\n`
-      : '';
-    const prefix = `${anchorHeader}${headingPrefix}`;
-
     // 目安より長い節は塊も候補にする（件数を指定しないときだけ）。窓は節の点のまま、塊は節の点 × 節の中での点の比
     const split = extend && win?.span && block.body.length > HIGHLIGHT_CHAR_BUDGET;
     const leadEnd = win?.leadEnd ?? 0;
     scoredCandidates.push({
       block,
       score,
-      snippet: `${prefix}${snippetBody}`.trim(),
+      snippet: `${headingPrefix}${snippetBody}`.trim(),
       rawSnippetBody: similarityText,
-      wholeSnippet: snippetBody !== block.body && !split ? `${prefix}${block.body}`.trim() : undefined,
-      part: split ? { span: win!.span!, chunk: false, prefix, leadEnd } : undefined,
+      wholeSnippet: snippetBody !== block.body && !split ? `${headingPrefix}${block.body}`.trim() : undefined,
+      part: split ? { span: win!.span!, chunk: false, prefix: headingPrefix, leadEnd } : undefined,
     });
     if (split) {
       const chunks = chunkSpans(block.body, SPLIT_CHUNK_CHARS).map(([a, b]) => {
@@ -725,7 +411,7 @@ export function extractQueryHighlightDetails(
       const maxRaw = Math.max(...chunks.map((c) => c.raw));
       for (const c of chunks) {
         if (c.raw <= 0 || c.text.length > 2 * SPLIT_CHUNK_CHARS) continue;
-        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${prefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix, leadEnd } });
+        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${headingPrefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix: headingPrefix, leadEnd } });
       }
     }
   }
@@ -746,7 +432,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics,
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -757,14 +442,13 @@ export function extractQueryHighlightDetails(
   const validCandidates = scoredCandidates.filter((c, idx) => idx === 0 || c.score >= topScore * 0.35);
 
   // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
-  const diversityWeight = options.diversityWeight ?? 0.7;
   // MMR の貪欲な順は上限に依らず、類似度は書き出しを付けない窓で測るので、件数を指定したときの節と、
-  // 指定しないときの先頭 3 件（U 字の並べ替えの前。目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
+  // 指定しないときの先頭 3 件（目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
   const mmrOrder = selectMaximalMarginalRelevance(validCandidates, {
     getScore: (c) => c.score,
     getText: (c) => c.rawSnippetBody,
     limit: extend ? BUDGET_MAX_HIGHLIGHTS : maxHighlights,
-    lambda: diversityWeight,
+    lambda: MMR_LAMBDA,
   });
   const mmrCandidates = mmrOrder.slice(0, maxHighlights);
   if (extend) {
@@ -803,8 +487,7 @@ export function extractQueryHighlightDetails(
           : b.body;
         if (body.length > cap) continue;
         const headingPrefix = b.headingPath.length > 0 ? `## ${b.headingPath.join(' > ')}\n\n` : '';
-        const anchorHeader = evidenceMode === 'contextual_highlights' ? `${formatBlockAnchor(b.ref)}\n` : '';
-        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body };
+        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${headingPrefix}${body}`.trim(), rawSnippetBody: body };
         mmrCandidates.push(fill);
         used += fill.snippet.length;
         break;
@@ -823,17 +506,11 @@ export function extractQueryHighlightDetails(
     }
   }
 
-  // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
-  const merged = mergeSectionParts(mmrCandidates);
-  const finalCandidates = options.reorderUFlat
-    ? reorderLostInTheMiddle(merged)
-    : merged;
-
   const selectedHighlights: string[] = [];
   const selectedItems: HighlightItem[] = [];
   const allTemporalAnchors: TemporalAnchor[] = [];
 
-  for (const cand of finalCandidates) {
+  for (const cand of mergeSectionParts(mmrCandidates)) {
     let snippetText = cand.snippet;
     const itemAnchors = extractTemporalAnchors(snippetText, options.publishedTime);
     if (itemAnchors.length > 0) {
@@ -855,19 +532,10 @@ export function extractQueryHighlightDetails(
     });
   }
 
-  // 不一致候補 (Candidate Discrepancies) の検出
-  const discrepancyItems = selectedItems.map((item) => ({
-    text: item.text,
-    sourceId: item.ref?.sourceId,
-    blockId: item.ref?.blockId,
-  }));
-  const discrepancies = detectDiscrepancies(discrepancyItems);
-
   return {
     highlights: selectedHighlights,
     highlightItems: selectedItems,
     diagnostics,
-    discrepancies,
     temporalAnchors: allTemporalAnchors,
   };
 }

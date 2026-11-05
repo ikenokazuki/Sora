@@ -48,7 +48,7 @@ function stubWebSearch(path: string) {
 }
 
 const search = (query: string, extra: Record<string, unknown> = {}) =>
-  integratedSearch({ query, limit: 1, includeRealtime: false, scrapeContent: true, extractHighlights: false, ...extra }) as Promise<any>;
+  integratedSearch({ query, limit: 1, includeRealtime: false, scrapeContent: true, ...extra }) as Promise<any>;
 
 test('maxChars が違う要求は別の結果として取得する（小さい指定の結果を、大きい指定に返さない）', async () => {
   const spy = stubWebSearch('maxchars-small-first');

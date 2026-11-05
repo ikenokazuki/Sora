@@ -62,24 +62,28 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## 実測
 
-2026-10-26 に実際の通信で測った（`get_youtube_channel` を足した後）。文字数は、クライアントが受け取る HTTP 本文の長さ。
+文字数は、クライアントが受け取る HTTP 本文の長さ。
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
+2026-11-05 に測り直した（v4.0.0 の引数の整理の後。前の値は 2026-10-26、`get_youtube_channel` を足した後の既定 24,861・全ツール 63,342・`instructions` 8,750）。
+
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 24,861 |
-| 全ツール（52 ツール） | 63,342 |
-| `instructions` | 8,750 |
+| 既定（14 ツール） | 20,903 |
+| 全ツール（52 ツール） | 56,848 |
+| `instructions` | 8,881 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,477 文字。
+`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,477 文字（2026-11-05 の測り直しでも同じ）。
+
+以下の `search_deep` の表は、2026-10-26 に実際の通信で測った値（測り直していない）。
 
 **`search_deep`（「TypeScript 5.5 新機能」、上位 3 件）**
 
 | 受け取り方 | モデルに入る文字数 |
 |---|---|
 | 直接（`limit: 3`） | 27,892 |
-| 引数で絞る（`includeRealtime: false`、`extractHighlights: true`、`maxChars: 1500`） | 12,273 |
+| 引数で絞る（`includeRealtime: false`、`maxChars: 1500`） | 12,273 |
 | クライアントでコードから絞る（題名・URL・要点 2 つだけを出力） | 934 |
 
 直接呼ぶ場合でも引数で大きさは減らせる。コードで絞る方法は、必要な項目が決まっているときに最も小さい。モデルが本文全体を読んで判断する必要がある場合は、直接呼ぶ（`responseMode: "full"` を付ける）。

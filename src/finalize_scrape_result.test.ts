@@ -9,13 +9,6 @@ const base = (content: string, extra: Partial<ScrapeResult> = {}): ScrapeResult 
 const opts = (extra: Record<string, unknown> = {}) => ({
   query: '開場時間',
   shouldExtractHighlights: true,
-  shouldExtractSummary: false,
-  shouldExtractCitations: false,
-  shouldChunkMarkdown: false,
-  chunkSize: 1000,
-  shouldValidateLinks: false,
-  shouldFormatAsPrompt: false,
-  shouldHighlightMatches: false,
   shouldMaskPii: false,
   ...extra,
 });
@@ -52,6 +45,13 @@ describe('finalizeScrapeResult のハイライト', () => {
     expect(decodeURIComponent(result.textFragmentUrl as string)).not.toContain('2026-11-05');
   });
 
+  test('shouldOnlyHighlights（responseMode: evidence の内部の形）は、ハイライトがあれば content をハイライトに置き換える', async () => {
+    const text = '## 当日の案内\n\n開場時間は 17:00、開演は 18:00 です。\n\n## ほか\n\n関係のない文。';
+    const result = await finalizeScrapeResult(base(text), opts({ shouldOnlyHighlights: true }));
+    expect(result.content).toContain('開場時間は 17:00');
+    expect(result.content).not.toContain('関係のない文');
+  });
+
   test('description はハイライトで置き換えない', async () => {
     expect((await finalizeScrapeResult(base(tail, { description: 'サイトの説明' }), opts())).description).toBe('サイトの説明');
     expect((await finalizeScrapeResult(base(tail), opts())).description).toBeUndefined();
@@ -59,13 +59,14 @@ describe('finalizeScrapeResult のハイライト', () => {
 });
 
 describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字まで）止まらない', () => {
-  // 値の種類・金額・N 日前・「万」・メールの正規表現が、数字・英字が長く続くと、並びの途中のすべての位置から並びの最後まで読んで、
+  // 値の種類・N 日前（annotateTemporal）・メール（maskPii）の正規表現が、数字・英字が長く続くと、並びの途中のすべての位置から並びの最後まで読んで、
   // 長さの二乗の時間になっていた（20 万桁の数字で数分、20 万字の英字で十数秒）。作った入力で、抽出全体が数秒で終わることを確かめる。
   // 上限の 3 秒は、直した形の単体の時間（Bun 1.4.2 で 0.02〜0.11 秒、1.3.3 で 0.4〜0.7 秒）の 4 倍以上で、前の形（14 秒以上）よりは十分に短い
   const N = 200_000;
   const query = '検索語 テスト';
-  const everything = {
-    shouldMaskPii: true, safeNormalize: true, annotateTemporal: true, includeDiscrepancies: true, includeDiagnostics: true, verbose: true, reorderUFlat: true,
+  // maskPii・annotateTemporal・verbose を同時に付けた形
+  const withOptions = {
+    shouldMaskPii: true, annotateTemporal: true, verbose: true,
   };
   const code = (payload: string) => `# 記事\n\n本文です。\n\n## コード\n\n\`\`\`\n${query} ${payload}\n\`\`\`\n`;
   const prose = (payload: string) => `# 記事\n\n本文です。\n\n## 説明\n\n${query} ${payload}\n`;
@@ -75,10 +76,10 @@ describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字
     ['maskPii: 20 万字の英字', prose('a'.repeat(N)), { shouldMaskPii: true }],
     ['maskPii: 10 万字の英字のあとに @ と 10 万字のドメイン', prose(`${'a'.repeat(N / 2)}@${'b'.repeat(N / 2)}`), { shouldMaskPii: true }],
     ['maskPii: a_a_a_…（メールの直後の _ + も読む枝）', prose('a_'.repeat(N / 2)), { shouldMaskPii: true }],
-    ['全部の引数あり: 20 万桁の数字', prose('1'.repeat(N)), everything],
-    ['全部の引数あり: 20 万桁の全角数字', prose('１'.repeat(N)), everything],
-    ['全部の引数あり: カンマ区切りの数字が 20 万字', prose('1,'.repeat(N / 2)), everything],
-    ['全部の引数あり: 10 万桁の数字のあとに 10 万字の空白', prose(`${'1'.repeat(N / 2)}${' '.repeat(N / 2)}x`), everything],
+    ['maskPii・annotateTemporal・verbose あり: 20 万桁の数字', prose('1'.repeat(N)), withOptions],
+    ['maskPii・annotateTemporal・verbose あり: 20 万桁の全角数字', prose('１'.repeat(N)), withOptions],
+    ['maskPii・annotateTemporal・verbose あり: カンマ区切りの数字が 20 万字', prose('1,'.repeat(N / 2)), withOptions],
+    ['maskPii・annotateTemporal・verbose あり: 10 万桁の数字のあとに 10 万字の空白', prose(`${'1'.repeat(N / 2)}${' '.repeat(N / 2)}x`), withOptions],
   ];
   for (const [name, doc, extra] of cases) {
     test(name, async () => {
@@ -206,7 +207,7 @@ describe('finalizeScrapeResult: ハイライトの合計は maxChars に収ま�
     expect(sum(one.highlights)).toBe(oneMax);
   }, 30_000);
 
-  test('onlyHighlights の content（ハイライトを区切りでつないだもの）も maxChars を超えない', async () => {
+  test('responseMode: evidence の content（ハイライトを区切りでつないだもの）も maxChars を超えない', async () => {
     const doc = huge[0][1];
     const result = await finalizeScrapeResult(base(doc.slice(0, 15_000)), opts({ query, highlightSource: doc, shouldOnlyHighlights: true, maxChars: 15_000 }));
     expect(result.content.length).toBeLessThanOrEqual(15_000);
@@ -282,7 +283,7 @@ describe('capHighlightItems: ふつうのハイライトを前から丸ごと確
     expect(capped[2]).toEqual({ text: 'c'.repeat(76), score: 2 });
   });
 
-  test('並びは変えない: U 字（1 位・3 位・2 位）に並んでいても、末尾（2 位）を落とさない', () => {
+  test('並びは変えない: 点数順でない並び（1 位・3 位・2 位）でも、末尾（2 位）を落とさない', () => {
     const capped = capHighlightItems([
       { text: 'a'.repeat(58), score: 3 },
       { text: 'c'.repeat(120_000), score: 1 },

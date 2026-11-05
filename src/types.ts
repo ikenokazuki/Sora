@@ -8,7 +8,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '3.0.0';
+export const SORA_VERSION = '4.0.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 /** ハイライトを選ぶ全文（maxChars で切る前の本文）の上限。docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 4 */
 export const HIGHLIGHT_SOURCE_MAX_CHARS = 200_000;
@@ -44,12 +44,6 @@ export interface MediaInfo {
   chapters?: Array<{ title: string; time: string; seconds: number }>;
 }
 
-export interface Citation {
-  text: string;
-  url: string;
-  context?: string;
-}
-
 export interface ImageItem {
   url: string;
   alt?: string;
@@ -78,19 +72,6 @@ export interface EventItem {
     url?: string;
     availability?: string;
   };
-}
-
-export interface MarkdownChunk {
-  index: number;
-  heading?: string;
-  content: string;
-  estimatedTokens: number;
-}
-
-export interface LinkStatus {
-  url: string;
-  status: number;
-  ok: boolean;
 }
 
 export interface CookieParam {
@@ -165,26 +146,6 @@ export interface EvidenceDiagnostics {
   reasons: string[];           // weak判定の客観的理由 (例: ["low_query_coverage", "no_matching_blocks"])
 }
 
-/** 不一致候補 (Candidate Discrepancy) - 勝手に解消せず上位エージェントに対比提示 */
-export interface CandidateDiscrepancy {
-  kind: 'date' | 'money' | 'version' | 'number';
-  values: Array<{
-    original: string;
-    normalized: string;
-    sourceId?: string;
-    blockId?: string;
-    context?: string;
-  }>;
-  status: 'needs_agent_resolution';
-}
-
-/** 決定論的導出メタデータ (Derivation Trace) */
-export interface DerivationTrace {
-  operation: string; // 例: "kanji_num_to_digits", "km_to_m", "fullwidth_to_halfwidth"
-  input: string;
-  output: string;
-}
-
 export interface ScrapeResult {
   url: string;
   title: string;
@@ -204,23 +165,14 @@ export interface ScrapeResult {
   socialLinks?: Record<string, string>;
   highlights?: string[];
   highlightItems?: HighlightItem[];
-  evidenceDiagnostics?: EvidenceDiagnostics;
-  discrepancies?: CandidateDiscrepancy[];
-  derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
   highlightDiagnostics?: EvidenceDiagnostics;
   textFragmentUrl?: string;
-  summary?: string[];
-  citations?: Citation[];
-  chunks?: MarkdownChunk[];
   characterCount?: number;
   wordCount?: number;
   readingTimeMin?: number;
-  promptContext?: string;
-  highlightedContent?: string;
   media?: MediaInfo;
   links?: string[];
-  linksWithStatus?: LinkStatus[];
   images?: ImageItem[];
   jsonLd?: any[];
   availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
@@ -339,6 +291,17 @@ export const CookieParamSchema = z.object({
   sameSite: z.enum(['Strict', 'Lax', 'None']).optional().describe('SameSite ポリシー'),
 });
 
+export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
+export type IntegratedSearchResponseMode = z.infer<
+  typeof IntegratedSearchResponseModeSchema
+>;
+
+/** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
+export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す').meta({ default: 'full' });
+
+/** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
+export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
+
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
   maxChars: z.number().int().min(1).max(100_000).optional().describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
@@ -354,35 +317,16 @@ export const ScrapeRequestSchema = z.object({
   cookies: z.array(CookieParamSchema).optional().describe('リクエスト時に送信するカスタム Cookie 配列'),
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
-  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
+  responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-  includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
-  includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
-  safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか (デフォルト: false)').meta({ default: false }),
-  extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか (デフォルト: false)').meta({ default: false }),
-  chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き) (デフォルト: false)').meta({ default: false }),
-  chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
-  validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか (デフォルト: false)').meta({ default: false }),
-  formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)').meta({ default: false }),
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
-  highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか (デフォルト: false)').meta({ default: false }),
   maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
-  webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-  retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
-  retryDelayMs: z.number().int().min(1).max(30_000).optional().describe('リトライ待機ディレイ (ミリ秒, 上限: 30000)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか').meta({ default: false }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
-  includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
 });
 
 export const SCRAPE_BATCH_INPUT_SHAPE = {
@@ -391,59 +335,16 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
     maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
     mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
     formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
-    selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
-    clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
     headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
-    removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
-    extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
-    onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-    extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
-    extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
-    chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
-    chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンク文字数目安 (上限: 100000)'),
-    validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
-    formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+    responseMode: SCRAPE_RESPONSE_MODE_FIELD,
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
-    filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
-    highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
     maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
     webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-    retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
-    evidenceMode: z
-      .enum(['full', 'highlights', 'contextual_highlights'])
-      .optional()
-      .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-    includeDiagnostics: z
-      .boolean()
-      .optional()
-      .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
-    includeDiscrepancies: z
-      .boolean()
-      .optional()
-      .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
-    safeNormalize: z
-      .boolean()
-      .optional()
-      .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
-    reorderUFlat: z
-      .boolean()
-      .optional()
-      .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
-    diversityWeight: z
-      .number()
-      .min(0)
-      .max(1)
-      .optional()
-      .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
     annotateTemporal: z
       .boolean()
       .optional()
       .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
-    minimizeTables: z
-      .boolean()
-      .optional()
-      .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
     highlightMaxCount: z
       .number()
@@ -452,12 +353,16 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .max(10)
       .optional()
       .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-    includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+    includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
     verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
 };
 
 export const BatchScrapeRequestSchema = z.object({
   ...SCRAPE_BATCH_INPUT_SHAPE,
+  // CSS セレクタは MCP には出さず（LLM はページの HTML を見ずに呼ぶので正しく書けない）、REST にだけ残す
+  selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
+  clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
+  removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
 });
@@ -507,18 +412,14 @@ export const CrawlRequestSchema = z.object({
   formats: z.array(ScrapeFormatSchema).optional().describe('取得する形式配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
   onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)').meta({ default: true }),
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
-  extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+  responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 15000, 上限: 50000)').meta({ default: 15000 }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3, 上限: 10)').meta({ default: 3 }),
   webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
-  includeMedia: z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない').meta({ default: true }),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -624,10 +525,6 @@ export const WeatherRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
-export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
-export type IntegratedSearchResponseMode = z.infer<
-  typeof IntegratedSearchResponseModeSchema
->;
 export const SEARCH_WEB_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('Web 検索キーワード'),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列 (例: ["natalie.mu"])'),
@@ -662,14 +559,8 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
-  extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
-  dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
   annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
@@ -1111,12 +1002,6 @@ export const MediaInfoSchema = z.object({
   })).optional().describe('動画チャプター情報'),
 });
 
-export const CitationSchema = z.object({
-  text: z.string().describe('引用テキスト'),
-  url: z.string().describe('引用元URL'),
-  context: z.string().optional().describe('周辺コンテキスト'),
-});
-
 export const ImageItemSchema = z.object({
   url: z.string().describe('画像URL'),
   alt: z.string().optional().describe('代替テキスト (alt)'),
@@ -1149,19 +1034,6 @@ export const EventItemSchema = z.object({
 
 export const ScheduleItemSchema = EventItemSchema.extend({
   sources: z.array(z.string()).describe('この予定を載せていたページの URL'),
-});
-
-export const MarkdownChunkSchema = z.object({
-  index: z.number().describe('チャンク番号 (0-based)'),
-  heading: z.string().optional().describe('所属する直近の見出し'),
-  content: z.string().describe('チャンク本文 Markdown'),
-  estimatedTokens: z.number().describe('推定トークン数'),
-});
-
-export const LinkStatusSchema = z.object({
-  url: z.string().describe('リンク先URL'),
-  status: z.number().describe('HTTPステータスコード'),
-  ok: z.boolean().describe('到達成功フラグ (2xx/3xx)'),
 });
 
 export const FieldEvidenceSchema = z.object({
@@ -1205,24 +1077,6 @@ export const EvidenceDiagnosticsSchema = z.object({
   topScore: z.number().describe('最高関連スコア'),
   weakEvidenceSignal: z.boolean().describe('根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0)'),
   reasons: z.array(z.string()).describe('判定理由 (例: ["low_query_coverage", "no_matching_blocks"])'),
-});
-
-export const CandidateDiscrepancySchema = z.object({
-  kind: z.enum(['date', 'money', 'version', 'number']).describe('不一致種別 (日付、金額、バージョン、数値)'),
-  values: z.array(z.object({
-    original: z.string().describe('原文の表記'),
-    normalized: z.string().describe('正規化後の値'),
-    sourceId: z.string().optional().describe('出所ソースID'),
-    blockId: z.string().optional().describe('ブロックID'),
-    context: z.string().optional().describe('文脈スニペット'),
-  })).describe('競合している値のリスト'),
-  status: z.literal('needs_agent_resolution').describe('解決ステータス'),
-});
-
-export const DerivationTraceSchema = z.object({
-  operation: z.string().describe('適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m")'),
-  input: z.string().describe('変換前文字列'),
-  output: z.string().describe('変換後文字列'),
 });
 
 // --- 1. システム系 レスポンススキーマ ---
@@ -1322,23 +1176,14 @@ export const ScrapeResponseSchema = z.object({
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
-  evidenceDiagnostics: EvidenceDiagnosticsSchema.optional().describe('客観的な証拠充足性観測量'),
-  discrepancies: z.array(CandidateDiscrepancySchema).optional().describe('日付・金額・バージョンの不一致候補'),
-  derivations: z.array(DerivationTraceSchema).optional().describe('決定論的な単位・漢数字変換導出履歴'),
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('相対日付表現の絶対日時解決結果一覧'),
   highlightDiagnostics: EvidenceDiagnosticsSchema.optional().describe('ハイライト選択の診断情報（verbose 時のみ）'),
   textFragmentUrl: z.string().optional().describe('ハイライト該当箇所へジャンプする Chrome URL'),
-  summary: z.array(z.string()).optional().describe('抽出型自動要約 (TL;DR) 箇条書きリスト'),
-  citations: z.array(CitationSchema).optional().describe('本文中の引用・出典リンク一覧'),
-  chunks: z.array(MarkdownChunkSchema).optional().describe('RAG 用セマンティック・チャンク配列'),
   characterCount: z.number().optional().describe('本文の総文字数'),
   wordCount: z.number().optional().describe('単語数'),
   readingTimeMin: z.number().optional().describe('想定読了時間 (分)'),
-  promptContext: z.string().optional().describe('LLM 最適化済み XML プロンプト文字列'),
-  highlightedContent: z.string().optional().describe('<mark> で一致語句をハイライトした本文'),
   media: MediaInfoSchema.optional().describe('YouTube・動画・音声等のリッチメディア情報'),
   links: z.array(z.string()).optional().describe('ページ内抽出リンク URL 一覧'),
-  linksWithStatus: z.array(LinkStatusSchema).optional().describe('リンク健全性検証結果'),
   images: z.array(ImageItemSchema).optional().describe('抽出された重要画像一覧'),
   jsonLd: z.array(z.record(z.string(), z.any())).optional().describe('構造化データ (Schema.org JSON-LD)'),
   availability: z.string().optional().describe('EC 在庫状況 (InStock, OutOfStock 等)'),
@@ -1540,7 +1385,6 @@ export const IntegratedSearchResponseSchema = z.object({
     omittedCount: z.number().int().optional().describe(REALTIME_OMITTED_DESCRIPTION),
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
-  prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
   responseMode: z.literal('evidence').optional().describe('evidence（既定）のとき返す。full および verbose 時は省略'),
   contextSufficiency: z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
@@ -2503,7 +2347,7 @@ export function generateOpenApiDocument() {
       },
       '/scrape': {
         post: {
-          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・RAGチャンキング・出典抽出・読了時間・PII保護対応)',
+          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・読了時間・PII保護対応)',
           requestBody: {
             content: {
               'application/json': {
@@ -2685,7 +2529,7 @@ export function generateOpenApiDocument() {
       },
       '/search': {
         post: {
-          summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
+          summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・最新事実/スケジュール調査)',
           description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。realtimeAnchor で X 検索で守る固有名詞（クエリ中の語）を指定できます（省略時は推定）。',
           requestBody: {
             content: {

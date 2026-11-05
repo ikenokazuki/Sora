@@ -101,13 +101,11 @@ describe('integrated search Host response', () => {
     expect(output.highlights).toEqual(item.highlights);
   });
 
-  test('extractHighlights:false preserves markdown', () => {
-    const item = baseItem();
-    const output = projectIntegratedSearchEvidenceItem(item, {
-      responseMode: 'evidence',
-      extractHighlights: false,
-    });
-    expect(output.markdown).toBe(item.markdown);
+  test('responseMode: full preserves markdown', () => {
+    const input = response();
+    const output = formatIntegratedSearchHostResponse(input, { responseMode: 'full' });
+    expect(output.results[0].markdown).toBe(input.results[0].markdown);
+    expect(output.results[0].highlights).toEqual(input.results[0].highlights);
   });
 
   test('highlights nearly as long as markdown: markdown kept instead of highlights', () => {

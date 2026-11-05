@@ -12,68 +12,34 @@ export type ScrapeBatchInput = {
   mode?: "auto" | "fast" | "browser";
   /** 取得フォーマット */
   formats?: ("markdown" | "html" | "rawHtml" | "links" | "screenshot" | "jsonLd" | "images" | "tables")[];
-  /** 特定要素のみをピンポイント抽出する CSS セレクタ連想配列 */
-  selectors?: Record<string, string>;
-  /** 指定した要素のみを切り抜く CSS セレクタ */
-  clipSelector?: string;
   /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 */
   headers?: Record<string, string>;
-  /** 除去したいノイズ要素の CSS セレクタ配列 */
-  removeSelectors?: string[];
   /** ハイライト抽出用キーワード */
   query?: string;
-  /** 各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse) */
-  extractHighlights?: boolean;
-  /** 抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか */
-  onlyHighlights?: boolean;
-  /** 超高速な抽出型自動要約（TL;DR）を生成するか */
-  extractSummary?: boolean;
-  /** 本文内の出典・引用リンク一覧を抽出するか */
-  extractCitations?: boolean;
-  /** RAG 用セマンティック・チャンキングを行うか */
-  chunkMarkdown?: boolean;
-  /** チャンク文字数目安 (上限: 100000) */
-  chunkSize?: number;
-  /** 抽出リンクの健全性を検証するか */
-  validateLinks?: boolean;
-  /** LLM に最適化された標準 XML プロンプトラッパー形式を生成するか */
-  formatAsPrompt?: boolean;
+  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す */
+  responseMode?: "full" | "evidence";
   /** Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか */
   stripLinks?: boolean;
-  /** リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか */
-  filterLinkDensity?: boolean;
-  /** 本文中の検索一致語句をハイライトするか */
-  highlightMatches?: boolean;
   /** 個人情報・機密情報を自動マスキングするか */
   maskPii?: boolean;
   /** 一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期) */
   webhookUrl?: string;
-  /** 接続失敗時の自動リトライ回数 (0〜3) */
-  retries?: number;
-  /** 証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ) */
-  evidenceMode?: "full" | "highlights" | "contextual_highlights";
-  /** クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない) */
-  includeDiagnostics?: boolean;
-  /** 日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない) */
-  includeDiscrepancies?: boolean;
-  /** 漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false) */
-  safeNormalize?: boolean;
-  /** Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false) */
-  reorderUFlat?: boolean;
-  /** MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7) */
-  diversityWeight?: number;
   /** 相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false) */
   annotateTemporal?: boolean;
-  /** HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true) */
-  minimizeTables?: boolean;
   /** 記事本文のみを抽出するか (デフォルト: true) */
   onlyMainContent?: boolean;
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
-  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない */
+  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る */
   includeMedia?: boolean;
   /** デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false) */
   verbose?: boolean;
+  /** 特定要素のみをピンポイント抽出する CSS セレクタ連想配列 */
+  selectors?: Record<string, string>;
+  /** 指定した要素のみを切り抜く CSS セレクタ */
+  clipSelector?: string;
+  /** 除去したいノイズ要素の CSS セレクタ配列 */
+  removeSelectors?: string[];
   /** キャッシュをバイパスするか (デフォルト: false) */
   noCache?: boolean;
 };
@@ -160,52 +126,6 @@ export type ScrapeBatchOutput = {
         confidence: "high" | "medium";
       }[];
     }[];
-    /** 客観的な証拠充足性観測量 */
-    evidenceDiagnostics?: {
-      /** クエリ語句網羅率 (0.0〜1.0) */
-      queryCoverage: number;
-      /** 本文中にマッチした検索語句リスト */
-      matchedTerms: string[];
-      /** マッチしなかった未充足語句リスト */
-      missingTerms: string[];
-      /** スコア > 0 の候補ブロック数 */
-      candidateCount: number;
-      /** 最高関連スコア */
-      topScore: number;
-      /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
-      weakEvidenceSignal: boolean;
-      /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
-      reasons: string[];
-    };
-    /** 日付・金額・バージョンの不一致候補 */
-    discrepancies?: {
-      /** 不一致種別 (日付、金額、バージョン、数値) */
-      kind: "date" | "money" | "version" | "number";
-      /** 競合している値のリスト */
-      values: {
-        /** 原文の表記 */
-        original: string;
-        /** 正規化後の値 */
-        normalized: string;
-        /** 出所ソースID */
-        sourceId?: string;
-        /** ブロックID */
-        blockId?: string;
-        /** 文脈スニペット */
-        context?: string;
-      }[];
-      /** 解決ステータス */
-      status: "needs_agent_resolution";
-    }[];
-    /** 決定論的な単位・漢数字変換導出履歴 */
-    derivations?: {
-      /** 適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m") */
-      operation: string;
-      /** 変換前文字列 */
-      input: string;
-      /** 変換後文字列 */
-      output: string;
-    }[];
     /** 相対日付表現の絶対日時解決結果一覧 */
     temporalAnchors?: {
       /** 検出された相対時間表現 (例: "明日", "来週金曜日") */
@@ -238,38 +158,12 @@ export type ScrapeBatchOutput = {
     };
     /** ハイライト該当箇所へジャンプする Chrome URL */
     textFragmentUrl?: string;
-    /** 抽出型自動要約 (TL;DR) 箇条書きリスト */
-    summary?: string[];
-    /** 本文中の引用・出典リンク一覧 */
-    citations?: {
-      /** 引用テキスト */
-      text: string;
-      /** 引用元URL */
-      url: string;
-      /** 周辺コンテキスト */
-      context?: string;
-    }[];
-    /** RAG 用セマンティック・チャンク配列 */
-    chunks?: {
-      /** チャンク番号 (0-based) */
-      index: number;
-      /** 所属する直近の見出し */
-      heading?: string;
-      /** チャンク本文 Markdown */
-      content: string;
-      /** 推定トークン数 */
-      estimatedTokens: number;
-    }[];
     /** 本文の総文字数 */
     characterCount?: number;
     /** 単語数 */
     wordCount?: number;
     /** 想定読了時間 (分) */
     readingTimeMin?: number;
-    /** LLM 最適化済み XML プロンプト文字列 */
-    promptContext?: string;
-    /** <mark> で一致語句をハイライトした本文 */
-    highlightedContent?: string;
     /** YouTube・動画・音声等のリッチメディア情報 */
     media?: {
       /** メディア種別 */
@@ -292,15 +186,6 @@ export type ScrapeBatchOutput = {
     };
     /** ページ内抽出リンク URL 一覧 */
     links?: string[];
-    /** リンク健全性検証結果 */
-    linksWithStatus?: {
-      /** リンク先URL */
-      url: string;
-      /** HTTPステータスコード */
-      status: number;
-      /** 到達成功フラグ (2xx/3xx) */
-      ok: boolean;
-    }[];
     /** 抽出された重要画像一覧 */
     images?: {
       /** 画像URL */

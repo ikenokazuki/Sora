@@ -1,39 +1,10 @@
 import { describe, it, expect } from 'bun:test';
 import {
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
   computeJaccardSimilarity,
-  expandQueryWithPseudoRelevanceFeedback,
 } from './information_retrieval.js';
 
 describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
-  describe('reorderLostInTheMiddle (Lost in the Middle 対策 / U字型配置)', () => {
-    it('要素数が2以下の場合は元の配列のコピーを返すこと', () => {
-      expect(reorderLostInTheMiddle([])).toEqual([]);
-      expect(reorderLostInTheMiddle([1])).toEqual([1]);
-      expect(reorderLostInTheMiddle([1, 2])).toEqual([1, 2]);
-    });
-
-    it('要素数3の場合、1位を先頭、2位を末尾、3位を中央に配置すること', () => {
-      // 1位: A, 2位: B, 3位: C -> [A, C, B]
-      const items = ['A', 'B', 'C'];
-      expect(reorderLostInTheMiddle(items)).toEqual(['A', 'C', 'B']);
-    });
-
-    it('要素数5の場合、奇数偶数交互に両端から詰め [1, 3, 5, 4, 2] になること', () => {
-      const items = [1, 2, 3, 4, 5];
-      const reordered = reorderLostInTheMiddle(items);
-      // 1位(1)が先頭、2位(2)が末尾、3位(3)が先頭寄り、4位(4)が末尾寄り、5位(5)が中央
-      expect(reordered).toEqual([1, 3, 5, 4, 2]);
-    });
-
-    it('要素数6の場合、[1, 3, 5, 6, 4, 2] になること', () => {
-      const items = [1, 2, 3, 4, 5, 6];
-      const reordered = reorderLostInTheMiddle(items);
-      expect(reordered).toEqual([1, 3, 5, 6, 4, 2]);
-    });
-  });
-
   describe('selectMaximalMarginalRelevance (MMR 多様性最大化 & 重複排除)', () => {
     it('Jaccard類似度が同一文で1.0、無関係文で0.0になること', () => {
       const textA = '公式ストアでは先行販売を実施中。東京と大阪で店頭販売します。';
@@ -101,48 +72,8 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
     });
   });
 
-  describe('expandQueryWithPseudoRelevanceFeedback (インメモリ PRF クエリ拡張)', () => {
-    it('上位適合文書から重要共起語を抽出し、クエリを拡張すること', () => {
-      const query = '推しの子 映画';
-
-      const topDocs = [
-        '人気作「推しの子」の実写映画化が決定。劇場版の公開日は12月20日で特報映像が公式YouTubeで解禁された。キャスト陣も発表。',
-        '「推しの子」映画最新情報。劇場版公開に向けてムビチケ前売券の特典情報が解禁。全国の映画館で上映予定。',
-      ];
-
-      const allDocs = [
-        ...topDocs,
-        '今日の天気は快晴で気温が上昇する見込みです。',
-        'プログラミング言語TypeScriptの基礎文法と型推論の解説。',
-        '日本の歴史と鎌倉幕府の成立過程についてまとめた記事。',
-      ];
-
-      const result = expandQueryWithPseudoRelevanceFeedback(query, topDocs, allDocs, { maxTerms: 2 });
-
-      expect(result.expansionTerms.length).toBeGreaterThan(0);
-      // クエリに含まれていない「劇場版」や「公開日」「解禁」などが共起語として抽出されること
-      const hasExpectedTerm = result.expansionTerms.some((term) =>
-        ['劇場版', '公開', '解禁', '前売', '上映', '映画館'].some((expected) => term.includes(expected))
-      );
-      expect(hasExpectedTerm).toBe(true);
-
-      // クエリ自身（「推しの子」「映画」）は拡張語に含まれないこと
-      expect(result.expansionTerms).not.toContain('推しの子');
-      expect(result.expansionTerms).not.toContain('映画');
-
-      expect(result.expandedQuery).toContain('推しの子 映画');
-    });
-
-    it('空クエリやドキュメントなしの場合は安全に元のクエリを返すこと', () => {
-      expect(expandQueryWithPseudoRelevanceFeedback('', [], [])).toEqual({
-        expandedQuery: '',
-        expansionTerms: [],
-      });
-    });
-  });
-
-  describe('extractQueryHighlightDetails への統合 (MMR & U字型リオーダリング)', () => {
-    it('同一内容の言い換え重複を MMR で排除し、reorderUFlat で U字型配置されること', async () => {
+  describe('extractQueryHighlightDetails への統合 (MMR)', () => {
+    it('同一内容の言い換え重複を MMR で排除すること', async () => {
       const { extractQueryHighlightDetails } = await import('../enrichment.js');
 
       const markdown = `
@@ -163,9 +94,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
 
       const details = extractQueryHighlightDetails(markdown, 'グッズ先行販売 チケット抽選', {
         maxHighlights: 3,
-        evidenceMode: 'highlights',
-        reorderUFlat: true,
-        diversityWeight: 0.7,
       });
 
       expect(details.highlightItems.length).toBeGreaterThanOrEqual(2);
@@ -175,29 +103,6 @@ describe('Information Retrieval (IR) & Advanced RAG Algorithms', () => {
       const hasTicket = texts.some((t: string) => t.includes('チケット先行抽選'));
       expect(hasGoods).toBe(true);
       expect(hasTicket).toBe(true);
-    });
-
-    // 実際の Web 検索結果が無いと PRF を確かめられないため、実 API のテスト（SORA_LIVE_TESTS=1）でだけ実行する
-    it.skipIf(!process.env.SORA_LIVE_TESTS)('integratedSearch で enablePrf と reorderUFlat が正しく伝播・機能すること', async () => {
-      const { integratedSearch } = await import('../scraper.js');
-
-      const result = await integratedSearch({
-        query: 'TypeScript 5.5 新機能',
-        limit: 3,
-        scrapeContent: false, // 外部スクレイプをスキップして高速検証
-        includeRealtime: false,
-        reorderUFlat: true,
-        enablePrf: true,
-        noCache: true,
-      });
-
-      expect(result.source).toBe('integrated');
-      expect(result.results).toBeDefined();
-      // PRF が実行された場合、prf フィールドが存在するか、または配列が返却されること
-      if (result.prf) {
-        expect(result.prf.originalQuery).toBe('TypeScript 5.5 新機能');
-        expect(result.prf.expandedQuery).toBeDefined();
-      }
     });
   });
 });

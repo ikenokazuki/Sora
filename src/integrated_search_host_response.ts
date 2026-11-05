@@ -11,7 +11,6 @@ export { IntegratedSearchResponseModeSchema, type IntegratedSearchResponseMode }
 export interface IntegratedSearchHostResponseOptions {
   responseMode?: IntegratedSearchResponseMode;
   explicitFormats?: readonly ScrapeFormat[];
-  extractHighlights?: boolean;
   verbose?: boolean;
   /** 全結果の markdown 合計文字数の上限。未指定なら制限しない。 */
   maxTotalChars?: number;
@@ -87,15 +86,11 @@ export function projectIntegratedSearchEvidenceItem(
   const markdownWasExplicitlyRequested =
     options.explicitFormats?.includes('markdown') === true;
 
-  const highlightExtractionWasExplicitlyDisabled =
-    options.extractHighlights === false;
-
   const hasFallbackRisk =
     Boolean(item?.scrapeError) || item?.isSnippetFallback === true;
 
   const mayElideMarkdown =
     !markdownWasExplicitlyRequested &&
-    !highlightExtractionWasExplicitlyDisabled &&
     !hasFallbackRisk &&
     !isXItem(item) &&
     // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる

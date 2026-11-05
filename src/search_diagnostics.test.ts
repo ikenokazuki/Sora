@@ -101,10 +101,10 @@ describe('Phase 1 verbose-only search diagnostics', () => {
   });
   test('Phase 1 diagnostics are guarded by verbose and added after output ordering', () => {
     const source = readFileSync(new URL('./scraper.ts', import.meta.url), 'utf8');
-    const reorder = source.indexOf('reorderLostInTheMiddle(enrichedResults)');
+    const rerank = source.indexOf('rerankByDeepEvidence(enrichedResults, query)');
     const diagnostics = source.indexOf('finalResponse.searchDiagnostics = buildSearchDiagnostics');
-    expect(reorder).toBeGreaterThan(-1);
-    expect(diagnostics).toBeGreaterThan(reorder);
+    expect(rerank).toBeGreaterThan(-1);
+    expect(diagnostics).toBeGreaterThan(rerank);
 
     const guarded = source.indexOf('if (options.verbose) {', source.indexOf('const finalResponse'));
     expect(guarded).toBeGreaterThan(-1);

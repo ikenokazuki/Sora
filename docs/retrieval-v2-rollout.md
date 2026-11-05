@@ -11,15 +11,15 @@
 | `SORA_ALLOW_ANONYMOUS` | false (closed) | Anonymous requests rejected on keyed deployments |
 | `TRUST_PROXY` | unset | X-Forwarded-For ignored for local checks |
 
-Adaptive scrape and PRF retrieval are per-request options
-(`adaptiveScrape`, `scrapeBudget`, `enablePrf`), default off.
+Adaptive scrape is a per-request option
+(`adaptiveScrape`, `scrapeBudget`), default off. PRF retrieval (`enablePrf`) was removed in v4.0.0.
 
 ## Suggested stages
 
 1. Ship with flags at defaults; watch `sora_*` counters and latency.
 2. Compare shadow fields (`providerRank` vs reranked order) on live traffic.
 3. Expand the golden set (`eval/search_retrieval_cases.json`) toward 100 with human labels.
-4. Flip adaptive/PRF defaults only after A/B evidence (arms A-E in `scripts/eval-search-retrieval.ts`).
+4. Flip the adaptive default only after A/B evidence (arms A-E in `scripts/eval-search-retrieval.ts`).
 
 ## Live evidence (2026-09-27 sample, eval/results/live-sample-20260927.json)
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
@@ -68,19 +68,12 @@ import {
   cleanMarkdownTokens,
   normalizeRealtimeItem,
   extractTablesFromHtml,
-  generateExtractiveSummary,
-  dedupSearchResults,
   maskPiiInText,
-  generatePromptContext,
-  highlightQueryMatchesInMarkdown,
   calculateContentStats,
   calculateContentQuality,
   detectPageType,
   calculateExtractionCompleteness,
   collectFieldEvidence,
-  extractCitationsFromMarkdown,
-  chunkMarkdownContent,
-  validateExtractedLinks,
   sendWebhookNotification,
   scrapeUrl,
   integratedSearch,
@@ -632,11 +625,11 @@ describe('web-fetcher Core Functions', () => {
     expect(result.source).toBe('web');
   });
 
-  it('scrapeUrl with onlyHighlights: true should replace full content with only matched highlights', async () => {
+  it('scrapeUrl with responseMode: evidence should replace full content with only matched highlights', async () => {
     const result = await withExamplePage((url) => scrapeUrl({
       url,
       query: 'Domain',
-      onlyHighlights: true,
+      responseMode: 'evidence',
       fastOnly: true,
       noCache: true,
     }));
@@ -2491,30 +2484,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.tables?.[0].rows[1]['価格']).toBe('¥128,000');
   });
 
-  it('generateExtractiveSummary should extract top key sentences from article text', () => {
-    const longArticle = `
-      本日は新しい Web スクレイピングサービス Sora 2.0 のリリース日です。
-      このシステムは圧倒的な高速性と高い耐障害性を兼ね備えています。
-      特にリアルタイム情報と深層検索の統合は大きな特徴です。
-      開発チームは数ヶ月にわたり性能改善を行ってきました。
-      今後のロードマップにもご期待ください。
-    `;
-    const summary = generateExtractiveSummary(longArticle, 2);
-    expect(summary.length).toBeGreaterThanOrEqual(1);
-    expect(summary.length).toBeLessThanOrEqual(2);
-  });
-
-  it('dedupSearchResults should filter out duplicate and highly similar items', () => {
-    const rawItems = [
-      { id: 1, title: '【速報】東京で大雨警報が発令されました', snippet: '気象庁発表' },
-      { id: 2, title: '【速報】東京で大雨警報が発令されました！', snippet: '気象庁発表' },
-      { id: 3, title: '明日の全国の天気予報と気温の推移', snippet: '全国的に晴れ' },
-    ];
-    const deduped = dedupSearchResults(rawItems, (item) => `${item.title} ${item.snippet}`);
-    expect(deduped.length).toBe(2);
-    expect(deduped.map((i) => i.id)).toEqual([1, 3]);
-  });
-
   it('maskPiiInText should automatically mask emails, phone numbers, and credit cards', () => {
     const raw = '連絡先: info@example.com / TEL: 090-1234-5678 / カード番号: 4532-0150-1234-5671 です。';
     const masked = maskPiiInText(raw);
@@ -2557,36 +2526,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.media?.chapters?.[1].seconds).toBe(150);
   });
 
-  it('generatePromptContext should build standard XML context wrapper for LLMs', () => {
-    const promptXml = generatePromptContext({
-      url: 'https://example.com/ai-news',
-      title: '最新の AI ニュース',
-      content: '# 本文\nここが記事の内容です。',
-      siteName: 'AI Watch',
-      publishedTime: '2026-08-22T10:00:00Z',
-      summary: ['AI Watch の最新記事です', '大幅な高速化が達成されました'],
-      isTruncated: false,
-      contentType: 'text/html',
-      source: 'web',
-    });
-
-    expect(promptXml).toContain('<web_page url="https://example.com/ai-news"');
-    expect(promptXml).toContain('site_name="AI Watch"');
-    expect(promptXml).toContain('<summary>');
-    expect(promptXml).toContain('- AI Watch の最新記事です');
-    expect(promptXml).toContain('</web_page>');
-  });
-
-  it('highlightQueryMatchesInMarkdown should emphasize matched keywords with <mark>', () => {
-    const markdown = '# タイトル\nSora は超高速なスクレイピングツールです。\n```ts\nconst sora = "fast";\n```';
-    const highlighted = highlightQueryMatchesInMarkdown(markdown, 'スクレイピング');
-    expect(highlighted).toContain('<mark>スクレイピング</mark>');
-
-    // スペースなし日本語クエリでも形態素・バイグラムで適切にマークされる
-    const highlightedMulti = highlightQueryMatchesInMarkdown(markdown, '高速スクレイピング');
-    expect(highlightedMulti).toContain('<mark>');
-  });
-
   it('calculateContentStats should accurately calculate characterCount, wordCount, and readingTimeMin', () => {
     const japaneseText = 'あ'.repeat(1200); // 1200文字 -> 約3分
     const statsJa = calculateContentStats(japaneseText);
@@ -2599,41 +2538,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(statsEn.readingTimeMin).toBe(3);
   });
 
-  it('extractCitationsFromMarkdown should extract external links and their surrounding context', () => {
-    const markdown = `
-      政府の最新統計によると、IT市場は急拡大しています。
-      詳細なデータは [総務省統計局レポート](https://www.stat.go.jp/data/it-report.html) をご参照ください。
-      また、海外市場については [Gartner Market Report](https://www.gartner.com/en/reports/123) でも言及されています。
-    `;
-    const citations = extractCitationsFromMarkdown(markdown);
-    expect(citations.length).toBe(2);
-    expect(citations[0].text).toBe('総務省統計局レポート');
-    expect(citations[0].url).toBe('https://www.stat.go.jp/data/it-report.html');
-    expect(citations[0].context).toContain('総務省統計局レポート');
-    expect(citations[1].text).toBe('Gartner Market Report');
-    expect(citations[1].url).toBe('https://www.gartner.com/en/reports/123');
-  });
-
-  it('extractCitationsFromMarkdown resolves relative links against baseUrl and skips anchors and non-http links', () => {
-    const markdown = '出典は[こちらの記事](/news/1)、[同じ記事](https://site.example/news/1)、[外部記事](https://other.example/x)、'
-      + '[節](#sec)、[メール](mailto:a@example.com)、[スクリプト](javascript:void(0))、[相対](../about) です。';
-    const urls = extractCitationsFromMarkdown(markdown, 'https://site.example/blog/page').map((c) => c.url);
-    expect(urls).toEqual(['https://site.example/news/1', 'https://other.example/x', 'https://site.example/about']);
-    // baseUrl が無い場合、相対リンクは解決できないので入らない
-    expect(extractCitationsFromMarkdown(markdown).map((c) => c.url)).toEqual(['https://site.example/news/1', 'https://other.example/x']);
-  });
-
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
     await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
-  });
-
-  it('chunkMarkdownContent should split markdown into semantic chunks with headings and tokens', () => {
-    const markdown = `# 主要見出し\nこれは最初のセクションです。\n\n## サブセクション\nこれは 2 番目のセクションです。\n\`\`\`ts\nconst a = 1;\n\`\`\`\n\n## 最後のセクション\n最後のまとめです。`;
-    const chunks = chunkMarkdownContent(markdown, 100);
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0].index).toBe(0);
-    expect(chunks[0].heading).toBe('主要見出し');
-    expect(chunks[0].estimatedTokens).toBeGreaterThan(0);
   });
 
   it('convertHtmlToMarkdown should extract image metadata, caption, and dimensions', () => {
@@ -2656,14 +2562,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(result.images?.[0].width).toBe(800);
     expect(result.images?.[0].height).toBe(600);
     expect(result.images?.[0].isMainImage).toBe(true);
-  });
-
-  it('validateExtractedLinks should validate link status without breaking', async () => {
-    const links = ['https://example.com/valid', 'http://127.0.0.1:59998/broken'];
-    const statuses = await validateExtractedLinks(links, 500, 2);
-    expect(statuses.length).toBe(2);
-    expect(statuses[0].url).toBe('https://example.com/valid');
-    expect(typeof statuses[0].ok).toBe('boolean');
   });
 
   it('isSecureEqual should correctly compare strings in constant time', () => {
@@ -2845,7 +2743,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/scrape'].post.requestBody.content['application/json'].schema.type).toBe('object');
     const scrapeProps = doc.paths['/scrape'].post.requestBody.content['application/json'].schema.properties;
     expect(scrapeProps.stripLinks).toBeDefined();
-    expect(scrapeProps.filterLinkDensity).toBeDefined();
     expect(doc.paths['/scrape/stream']).toBeDefined();
     expect(doc.paths['/scrape/batch']).toBeDefined();
     expect(doc.paths['/weather']).toBeDefined();
@@ -2866,32 +2763,46 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/search/music']).toBeDefined();
   });
 
-  it('validateExtractedLinks should block private and loopback IPs', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-    try {
-      const results = await validateExtractedLinks([
-        'http://127.0.0.1:8000/test',
+  describe('sendWebhookNotification の SSRF 対策', () => {
+    // 止めずに fetch すると、接続の失敗が catch されて resolves だけでは見分けられない。差し替えた fetch が呼ばれたかで確かめる
+    // （公開側の比べは IP リテラルなので、名前解決もしない。差し替えた fetch は何もしないで返す）
+    let realFetch: typeof fetch;
+    let fetched: string[];
+    let prevEnv: string | undefined;
+    beforeEach(() => {
+      realFetch = globalThis.fetch;
+      fetched = [];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        fetched.push(String(input));
+        return new Response(null, { status: 200 });
+      }) as typeof fetch;
+      prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      delete process.env.ALLOW_LOCAL_FETCH;
+    });
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+      if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+      else process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    });
+
+    it('does not fetch loopback, private, link-local and localhost destinations', async () => {
+      const blocked = [
+        'http://127.0.0.1:8000/hook',
         'http://10.0.2.2:3000/admin',
         'http://169.254.169.254/latest/meta-data',
-        'http://localhost:8080',
-      ]);
-      expect(results.length).toBe(4);
-      expect(results.every((r) => r.ok === false && r.status === 403)).toBe(true);
-    } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
-    }
-  });
+        'http://169.254.169.254/hook',
+        'http://localhost:8080/hook',
+      ];
+      for (const url of blocked) {
+        await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
+      }
+      expect(fetched).toEqual([]);
+    });
 
-  it('sendWebhookNotification should block SSRF to internal destinations without throwing', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-    try {
-      await expect(sendWebhookNotification('http://127.0.0.1:8000/hook', { data: 'test' })).resolves.toBeUndefined();
-      await expect(sendWebhookNotification('http://169.254.169.254/hook', { data: 'test' })).resolves.toBeUndefined();
-    } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
-    }
+    it('fetches a public destination (control for the blocked cases)', async () => {
+      await expect(sendWebhookNotification('https://93.184.216.34/hook', { data: 'test' })).resolves.toBeUndefined();
+      expect(fetched).toEqual(['https://93.184.216.34/hook']);
+    });
   });
 
   it('convertHtmlToMarkdown and cleanMarkdownTokens should purge hidden elements and zero-width characters', () => {
@@ -4806,7 +4717,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(evidence.siteName?.source).toBe('dom');
     });
 
-    it('convertHtmlToMarkdown should support stripLinks and filterLinkDensity options', () => {
+    it('convertHtmlToMarkdown should support the stripLinks option', () => {
       const html = '<html><body><h1>テスト</h1><p>詳細は<a href="https://example.com/doc">こちらのドキュメント</a>と<img src="https://example.com/pic.png" alt="画像">をご覧ください。</p></body></html>';
       
       const normal = convertHtmlToMarkdown(html, 'https://example.com', 5000);

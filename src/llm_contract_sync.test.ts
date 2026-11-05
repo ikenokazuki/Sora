@@ -11,6 +11,10 @@ import {
   SearchWebQuerySchema,
   IntegratedSearchRequestSchema,
   INTEGRATED_SEARCH_INPUT_SHAPE,
+  ScrapeRequestSchema,
+  BatchScrapeRequestSchema,
+  CrawlRequestSchema,
+  ScrapeResponseSchema,
   generateOpenApiDocument,
 } from './types.js';
 import { SEARCH_WEB_INPUT_SHAPE } from './search_web_formats.js';
@@ -95,15 +99,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'includeDomains',
         'excludeDomains',
         'updated',
-        'extractHighlights',
         'onlyMainContent',
         'formats',
-        'dedup',
-        'reorderUFlat',
-        'enablePrf',
-        'diversityWeight',
         'annotateTemporal',
-        'minimizeTables',
         'highlightMaxCount',
         'verbose',
         'responseMode',
@@ -116,6 +114,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Forbidden stale fields
       expect((shape as any).fetchContent).toBeUndefined();
       expect((shape as any).maxCharsPerResult).toBeUndefined();
+      for (const field of ['reorderUFlat', 'diversityWeight', 'minimizeTables', 'dedup', 'enablePrf', 'extractHighlights']) {
+        expect((shape as any)[field]).toBeUndefined();
+      }
     });
 
     it('MCP search_deep includes updated and noCache in schema', () => {
@@ -200,6 +201,156 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         expect(schema.highlightAlgorithm).toBeUndefined();
         expect(schema.highlightOverheadTokens).toBeUndefined();
         expect(schema.highlightMaxCount).toBeDefined();
+      }
+    });
+  });
+
+  describe('C2. 効いていない引数が無い', () => {
+    const removed = ['includeDiagnostics', 'includeDiscrepancies', 'diversityWeight', 'minimizeTables', 'reorderUFlat'];
+
+    it('scrape・batch・crawl の REST の形に、効いていない引数が無い', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field]).toBeUndefined();
+        }
+      }
+    });
+
+    it('MCP の scrape・scrape_batch・crawl_site・search_deep にも無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of ['scrape', 'scrape_batch', 'crawl_site', 'search_deep']) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
+      }
+    });
+  });
+
+  describe('C3. 使われていない加工の引数と結果の項目が無い', () => {
+    // CrawlRequestSchema には元から無いので、scrape と batch だけを確かめる
+    const removed = ['extractSummary', 'extractCitations', 'chunkMarkdown', 'chunkSize', 'validateLinks', 'formatAsPrompt', 'highlightMatches', 'filterLinkDensity', 'safeNormalize'];
+    const removedResultFields = ['summary', 'citations', 'chunks', 'promptContext', 'highlightedContent', 'linksWithStatus', 'derivations', 'evidenceDiagnostics', 'discrepancies'];
+
+    it('scrape・batch の REST の形に無い', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field], field).toBeUndefined();
+        }
+      }
+    });
+
+    it('MCP の scrape・scrape_batch にも無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of ['scrape', 'scrape_batch']) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
+      }
+    });
+
+    it('scrape の結果の形にも、その加工の結果の項目が無い', () => {
+      for (const field of removedResultFields) {
+        expect((ScrapeResponseSchema.shape as any)[field], field).toBeUndefined();
+      }
+    });
+  });
+
+  describe('C4. dedup・enablePrf・webhookUrl・retries・retryDelayMs が無い', () => {
+    it('search_deep の REST の形と MCP の入力に、dedup・enablePrf が無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['search_deep'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['dedup', 'enablePrf']) {
+        expect((IntegratedSearchRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect((INTEGRATED_SEARCH_INPUT_SHAPE as any)[field], `shape.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+    });
+
+    it('scrape の REST の形と MCP の入力に、webhookUrl・retries・retryDelayMs が無い', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['scrape'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['webhookUrl', 'retries', 'retryDelayMs']) {
+        expect((ScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+    });
+
+    it('scrape_batch は retries・retryDelayMs が無く、完了の通知先 webhookUrl は残る', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['scrape_batch'];
+      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of ['retries', 'retryDelayMs']) {
+        expect((BatchScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
+        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
+      }
+      expect((BatchScrapeRequestSchema.shape as any).webhookUrl).toBeDefined();
+      expect(mcpShape.webhookUrl).toBeDefined();
+    });
+
+    it('crawl の webhookUrl は残る', () => {
+      expect((CrawlRequestSchema.shape as any).webhookUrl).toBeDefined();
+    });
+  });
+
+  describe('C5. onlyHighlights・evidenceMode・extractHighlights は responseMode にまとまった', () => {
+    const removed = ['onlyHighlights', 'evidenceMode', 'extractHighlights'];
+    // CrawlRequestSchema に evidenceMode は元から無いが、無いことは同じに確かめる
+    const scrapeTools = ['scrape', 'scrape_batch', 'crawl_site'];
+
+    it('scrape・batch・crawl の REST の形に古い 3 項目が無く、responseMode がある', () => {
+      for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
+        for (const field of removed) {
+          expect((schema.shape as any)[field], field).toBeUndefined();
+        }
+        const responseMode = (schema.shape as any).responseMode as z.ZodTypeAny;
+        expect(responseMode).toBeDefined();
+        expect(responseMode.safeParse(undefined).success).toBe(true);
+        expect(responseMode.safeParse('full').success).toBe(true);
+        expect(responseMode.safeParse('evidence').success).toBe(true);
+        expect(responseMode.safeParse('highlights').success).toBe(false);
+      }
+    });
+
+    it('MCP の scrape・scrape_batch・crawl_site に古い 3 項目が無く、responseMode がある', () => {
+      const server = createMcpServer({ deferTools: false });
+      for (const toolName of scrapeTools) {
+        const tool = (server as any)._registeredTools[toolName];
+        expect(tool).toBeDefined();
+        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+        for (const field of removed) {
+          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
+        }
+        expect(schema.responseMode, `${toolName}.responseMode`).toBeDefined();
+      }
+    });
+
+    it('search_deep の extractHighlights は、REST の形にも MCP の入力にも無い（responseMode は元からある）', () => {
+      const server = createMcpServer({ deferTools: false });
+      const tool = (server as any)._registeredTools['search_deep'];
+      const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      expect((IntegratedSearchRequestSchema.shape as any).extractHighlights).toBeUndefined();
+      expect((INTEGRATED_SEARCH_INPUT_SHAPE as any).extractHighlights).toBeUndefined();
+      expect(schema.extractHighlights).toBeUndefined();
+      expect(schema.responseMode).toBeDefined();
+    });
+
+    it('OpenAPI の /scrape・/scrape/batch・/crawl の入力に responseMode があり、古い 3 項目は無い', () => {
+      const spec = generateOpenApiDocument();
+      for (const path of ['/scrape', '/scrape/batch', '/crawl']) {
+        const properties = (spec.paths as any)?.[path]?.post?.requestBody?.content?.['application/json']?.schema?.properties || {};
+        expect(properties.responseMode, path).toBeDefined();
+        expect(properties.responseMode.enum, path).toEqual(['full', 'evidence']);
+        for (const field of removed) {
+          expect(properties[field], `${path} ${field}`).toBeUndefined();
+        }
       }
     });
   });
@@ -334,7 +485,8 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Regression guards with healthy safety margin
       expect(toolChars).toBeLessThan(30000);
       // 2026-10-25 に YouTube の指示（10 番目）を足して 8,443 → 8,706 字になり、上限を 8,500 から 8,800 に上げた
-      expect(instructionChars).toBeLessThan(8800);
+      // v4.0.0 で get_youtube_channel の案内を 10 番目に足して 8,756 → 8,881 字になり、上限を 8,800 から 9,000 に上げた（instructions の見直しは別の PR）
+      expect(instructionChars).toBeLessThan(9000);
       expect(estimatedTokens).toBeLessThan(10000);
 
       await client.close();

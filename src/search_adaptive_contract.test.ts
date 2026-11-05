@@ -21,7 +21,6 @@ describe('adaptive deep search public contract', () => {
     expect(properties.scrapeBudget.type).toBe('integer');
     expect(properties.scrapeBudget.minimum).toBe(1);
     expect(properties.scrapeBudget.maximum).toBe(20);
-    expect(properties.diversityWeight.type).toBe('number');
   });
 
   test.each(['/search', '/search/integrated'])('%s forwards the validated adaptive options', async (path) => {
