@@ -65,3 +65,25 @@ test('recognizes country-code headlines without matching ordinary words', () => 
   expect(textMentionsRegion('business outlook improves', us)).toBe(false);
   expect(textMentionsRegion('日本の観光動向', resolveRegion('JP'))).toBe(true);
 });
+
+test('resolves Japanese country names built from the ISO codes', () => {
+  expect(resolveRegion('台湾')).toMatchObject({ id: 'country:TW', countryCode: 'TW', name: 'Taiwan', confidence: 'high' });
+  expect(resolveRegion('日本').countryCode).toBe('JP');
+  expect(resolveRegion('韓国').countryCode).toBe('KR');
+  expect(resolveRegion('アメリカ合衆国').countryCode).toBe('US');
+  expect(resolveRegion('ジョージア').countryCode).toBe('GE');
+  expect(resolveRegion(' 日本 ').countryCode).toBe('JP');
+});
+
+test('accepts the start of a Japanese name only when it picks exactly one country', () => {
+  expect(resolveRegion('アメリカ')).toMatchObject({ countryCode: 'US', confidence: 'medium' });
+  expect(resolveRegion('ミャンマー').countryCode).toBe('MM');
+  // a full name wins over being the start of a longer one
+  expect(resolveRegion('インド').countryCode).toBe('IN');
+  expect(resolveRegion('ギニア').countryCode).toBe('GN');
+  expect(resolveRegion('インドネシア').countryCode).toBe('ID');
+  // the start of several names, or too short, stays unresolved
+  for (const input of ['コンゴ', 'ドミニカ', '中華人民共和国', '東', '西', '北朝', 'ア']) {
+    expect(resolveRegion(input)).toMatchObject({ id: 'unresolved:' + input, confidence: 'low' });
+  }
+});

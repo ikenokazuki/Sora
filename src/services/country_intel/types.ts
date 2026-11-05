@@ -17,7 +17,7 @@ export const SocialPlatformSchema = z.enum(['weibo', 'threads', 'instagram', 'fa
 export type IntelSocialPlatform = z.infer<typeof SocialPlatformSchema>;
 
 export const IntelSocialInputSchema = z.object({
-  platforms: z.array(SocialPlatformSchema).optional().describe('検索する SNS (省略時は weibo, threads, instagram, facebook のすべて)。queries で語を指定しない SNS は query か地域名で検索する'),
+  platforms: z.array(SocialPlatformSchema).optional().describe('検索する SNS (省略時は weibo, threads, instagram, facebook のすべて)。指定すると queries の SNS もこの中に絞る。queries の無い SNS は query か地域名で検索する'),
   queries: z.array(z.object({
     platform: SocialPlatformSchema.describe('検索する SNS'),
     query: z.string().trim().min(1).max(500).describe('検索語 (現地語推奨)'),

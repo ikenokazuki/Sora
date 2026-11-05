@@ -88,7 +88,7 @@ export function getPersistedCountryContext(contextId: string): CountryContextRep
   return getCountryContext(contextId);
 }
 
-/** 空文字の query / topics は未指定とみなす (空値を送るクライアントの許容)。 */
+/** 空文字の query / topics は未指定とみなす (空値を送るクライアントの許容)。social を渡したら includeSocial は true とみなす。 */
 export function normalizeCountryRequest(rawRequest: CountryContextRequest): CountryContextRequest {
   const raw = rawRequest as unknown as Record<string, unknown>;
   const query = typeof raw.query === 'string' && raw.query.trim().length === 0 ? undefined : raw.query;
@@ -97,7 +97,8 @@ export function normalizeCountryRequest(rawRequest: CountryContextRequest): Coun
     const kept = topics.filter((topic) => typeof topic === 'string' && topic.trim().length > 0);
     topics = kept.length > 0 ? kept : undefined;
   }
-  return { ...(raw as object), query, topics } as CountryContextRequest;
+  const includeSocial = raw.social !== undefined && raw.social !== null ? true : raw.includeSocial;
+  return { ...(raw as object), query, topics, includeSocial } as CountryContextRequest;
 }
 
 function indicatorsFromStructuredData(data: Record<string, unknown> | undefined): { label: string; value: string }[] {
@@ -301,7 +302,6 @@ export async function researchCountryContext(
   dependencies: ResearchDependencies = {},
 ): Promise<CountryContextReport> {
   const request = CountryContextRequestSchema.parse(normalizeCountryRequest(rawRequest));
-  if (request.social && !request.includeSocial) throw new Error('social input requires includeSocial=true');
   const nowDate = dependencies.now?.() ?? new Date();
   const region = resolveRegion(request.region);
   const providers = dependencies.providers ?? [];

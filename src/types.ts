@@ -3759,7 +3759,7 @@ export function generateOpenApiDocument() {
           summary: '根拠原文・構造化データのページ取得',
           parameters: [
             { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
-            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (省略時はページ走査)' },
+            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (MCP の evidenceIds に当たる。省略時はページ走査)' },
             { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '次ページカーソル' },
             { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 40 }, description: '取得件数 (1〜100, デフォルト: 40)' },
           ],

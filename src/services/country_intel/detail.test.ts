@@ -61,4 +61,42 @@ describe('evidence pages', () => {
     const first = getEvidencePage('ctx-page-1', { limit: 40 });
     expect(() => getEvidencePage('ctx-other', { cursor: first.nextCursor ?? 'x' })).toThrow(RangeError);
   });
+
+  test('ids that do not belong to the report come back as missingIds', () => {
+    saveEvidenceDetails('ctx-page-1', Array.from({ length: 3 }, (_, i) => makeDetail(i)));
+    saveEvidenceDetails('ctx-other', [makeDetail(9)]);
+    const page = getEvidencePage('ctx-page-1', { ids: ['e-001', 'e-bogus', 'e-009', 'e-000', 'e-001'] });
+    expect(page.items.map((item) => item.evidenceId)).toEqual(['e-001', 'e-000']);
+    expect(page.missingIds).toEqual(['e-bogus', 'e-009']);
+    expect(page.nextCursor).toBeUndefined();
+    expect(page.totalStored).toBe(3);
+    // 全部見つかれば missingIds は付けない
+    expect(getEvidencePage('ctx-page-1', { ids: ['e-000'] }).missingIds).toBeUndefined();
+  });
+
+  test('ids beyond limit continue through nextCursor and cursor', () => {
+    saveEvidenceDetails('ctx-page-1', Array.from({ length: 10 }, (_, i) => makeDetail(i)));
+    const ids = ['e-000', 'e-001', 'e-nope', 'e-002', 'e-003', 'e-004', 'e-005'];
+    const first = getEvidencePage('ctx-page-1', { ids, limit: 3 });
+    expect(first.items.map((item) => item.evidenceId)).toEqual(['e-000', 'e-001']);
+    expect(first.missingIds).toEqual(['e-nope']);
+    expect(first.nextCursor).toBeDefined();
+    const second = getEvidencePage('ctx-page-1', { ids, limit: 3, cursor: first.nextCursor });
+    expect(second.items.map((item) => item.evidenceId)).toEqual(['e-002', 'e-003', 'e-004']);
+    expect(second.missingIds).toBeUndefined();
+    const third = getEvidencePage('ctx-page-1', { ids, limit: 3, cursor: second.nextCursor });
+    expect(third.items.map((item) => item.evidenceId)).toEqual(['e-005']);
+    expect(third.nextCursor).toBeUndefined();
+  });
+
+  test('an ids cursor is bound to its ids and cannot be mixed with page scanning', () => {
+    saveEvidenceDetails('ctx-page-1', Array.from({ length: 10 }, (_, i) => makeDetail(i)));
+    const ids = ['e-000', 'e-001', 'e-002', 'e-003'];
+    const cursor = getEvidencePage('ctx-page-1', { ids, limit: 2 }).nextCursor;
+    expect(cursor).toBeDefined();
+    expect(() => getEvidencePage('ctx-page-1', { ids: ['e-005', 'e-006', 'e-007', 'e-008'], limit: 2, cursor })).toThrow(RangeError);
+    expect(() => getEvidencePage('ctx-page-1', { limit: 2, cursor })).toThrow(RangeError);
+    const scanCursor = getEvidencePage('ctx-page-1', { limit: 2 }).nextCursor;
+    expect(() => getEvidencePage('ctx-page-1', { ids, limit: 2, cursor: scanCursor })).toThrow(RangeError);
+  });
 });
