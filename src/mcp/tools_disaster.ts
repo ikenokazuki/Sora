@@ -20,8 +20,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     'disaster',
     '【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] }',
     {
-      pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")'),
-      road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速", "阪神高速", "東北道")'),
+      pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")。解決できない値はエラー。road と併せるとその都道府県のページを road で絞る'),
+      road: z.string().optional().describe('道路名 (例: "東名高速", "中央道", "名神高速", "東北道", "圏央道")。該当する道路の情報が無ければ、その旨を返す'),
     },
     async (opts) => {
       try {

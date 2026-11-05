@@ -34,7 +34,7 @@ export function resolveTransitDateTime(opts: TransitSearchOptions, now = new Dat
 
 export function transitCacheKey(opts: TransitSearchOptions): string {
   const dt = resolveTransitDateTime(opts);
-  return `transit:${JSON.stringify([
+  return `transit:v2:${JSON.stringify([
     opts.from, opts.to, opts.via ?? [], dt.year, dt.month, dt.day, dt.hour, dt.minute,
     opts.timeType ?? 'departure', opts.ticket ?? 'ic', opts.seatPreference ?? '', opts.walkSpeed ?? '', opts.sortBy ?? 'time',
     opts.useAirline !== false, opts.useShinkansen !== false, opts.useExpress !== false,
@@ -81,16 +81,16 @@ export function buildTransitUrl(opts: TransitSearchOptions): string {
   // 運賃タイプ
   params.set('ticket', opts.ticket === 'cash' ? 'normal' : 'ic');
 
-  // 座席指定
-  const seatMap: Record<string, string> = { non_reserved: '0', reserved: '1', green: '2' };
-  params.set('shin', seatMap[opts.seatPreference || 'non_reserved'] || '0');
+  // 座席指定（expkind。shin は新幹線を使うかどうかのフラグ）
+  const seatMap: Record<string, string> = { non_reserved: '1', reserved: '2', green: '3' };
+  params.set('expkind', seatMap[opts.seatPreference || 'non_reserved'] || '1');
 
   // 歩く速度
   const walkMap: Record<string, string> = { fast: '1', slightly_fast: '2', slightly_slow: '3', slow: '4' };
   params.set('ws', walkMap[opts.walkSpeed || 'slightly_slow'] || '3');
 
-  // 並び順
-  const sortMap: Record<string, string> = { time: '0', transfer: '1', fare: '2' };
+  // 並び順（0: 到着が早い順、1: 料金が安い順、2: 乗り換え回数順）
+  const sortMap: Record<string, string> = { time: '0', fare: '1', transfer: '2' };
   params.set('s', sortMap[opts.sortBy || 'time'] || '0');
 
   // 交通手段フラグ

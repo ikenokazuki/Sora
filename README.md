@@ -326,7 +326,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
   - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
-  - `get_flight_status`: 羽田・成田・関空・福岡等 主要空港フライト運航状況・遅延・欠航
+  - `get_flight_status`: 羽田・成田・伊丹・関西・中部の 5 空港のフライト運航状況・遅延・欠航
   - `get_elevation`: Nominatim 住所・地名の座標解決 & 国土地理院の標高（海抜）取得
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
   - `search_postal_code`: デジタル庁 ABR / 日本郵便 郵便番号から住所候補検索・住所から郵便番号逆引き
@@ -491,8 +491,8 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 |---|---|---|---|
 | `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日および週間（最大8日間）の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名・地名または都道府県名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 6桁の予報区の番号 (例「130010」)。見つからない地名と、複数の市町村に当たる名前 (例「府中」) はエラー<br>- `days` (number, 任意): 予報日数 (1〜8日, デフォルト: 7) |
-| `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)<br>- `road` (string, 任意): 道路名 (例「東名高速」「首都高」「中央道」「名神高速」) |
-| `get_flight_status` | 主要空港（羽田・成田・伊丹・関空・中部・新千歳・福岡・那覇等）の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 行先・航空会社名絞り込み |
+| `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)。解決できない値はエラー<br>- `road` (string, 任意): 道路名 (例「東名高速」「中央道」「名神高速」「東北道」)。`pref` と併せるとその都道府県のページを絞る。該当する道路の情報が無ければ、その旨を返す |
+| `get_flight_status` | 羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (5 空港だけ。他の空港はエラー。例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 出発地・行先・航空会社名絞り込み |
 | `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）と国際配送（UPS、FedEx、DHL Express）の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）と、公式追跡ページの URL（`trackingUrl`。佐川急便は番号を渡せないため入力ページ）を返す。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukutsu"`, `"ups"`, `"fedex"`, `"dhl"`) |
 
 
@@ -1125,6 +1125,8 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ---
 
 ### 3.6 電車乗換案内 (`POST /transit/route`)
+引数は MCP の `search_route` と同じで、入力は検証されます（`via` は最大 3 駅。誤りは HTTP 400）。REST だけ、日時を `year`・`month`・`day`・`hour`・`minute` の数値でも指定できます（`date`・`time` より優先）。
+
 - **リクエスト**:
 ```json
 {
@@ -1314,6 +1316,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 
 ### 3.11 道路交通情報 (`POST /traffic/road`, `GET /traffic/road/:pref?`)
 JARTIC（日本道路交通情報センター）連携データに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します。
+`pref` と `road` を両方指定すると、その都道府県のページを道路名で絞ります。該当する道路が無いときは「この道路の情報は見つかりませんでした」と返し（順調とは言いません）、解決できない `pref` は HTTP 400 です。
 
 - **リクエスト (`POST /traffic/road`)**:
   ```json
@@ -1580,7 +1583,7 @@ OpenPOIの複数語検索はORのため、場所を`query`へ混ぜず`center`�
 ---
 
 ### 3.17 主要空港フライト運航状況・欠航・遅延リアルタイム検索 (`POST /traffic/flight` / `GET /traffic/flight/:airport?`)
-羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等の主要空港における国内線・国際線、出発・到着便のリアルタイム運航ステータスを取得します。
+羽田・成田・伊丹・関西・中部の 5 空港における国内線・国際線、出発・到着便のリアルタイム運航ステータスを取得します。他の空港を指定するとエラー（HTTP 400）になります。
 
 - **リクエスト (POST)**:
   ```json

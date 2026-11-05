@@ -30,6 +30,7 @@ import {
   NewsSearchRequestSchema,
   ChiebukuroSearchRequestSchema,
   SuggestRequestSchema,
+  TransitRouteRequestSchema,
 } from '../types.js';
 import { buildRealtimeSearchCacheKey, buildYahooRealtimeQuery, createWebAnchorHints } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
@@ -408,38 +409,22 @@ searchRoutes.post('/search/suggest', async (c) => {
 
 // 乗換案内
 searchRoutes.post('/transit/route', async (c) => {
+  let rawBody: unknown;
   try {
-    const body = await c.req.json();
-    if (!body?.from || !body?.to) {
-      return c.json({ error: 'from and to are required' }, 400);
-    }
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
 
-    const result = await searchTransitRoute({
-      from: body.from,
-      to: body.to,
-      via: body.via,
-      year: body.year,
-      month: body.month,
-      day: body.day,
-      hour: body.hour,
-      minute: body.minute,
-      date: body.date,
-      time: body.time,
-      timeType: body.timeType,
-      ticket: body.ticket,
-      seatPreference: body.seatPreference,
-      walkSpeed: body.walkSpeed,
-      sortBy: body.sortBy,
-      useAirline: body.useAirline,
-      useShinkansen: body.useShinkansen,
-      useExpress: body.useExpress,
-      useHighwayBus: body.useHighwayBus,
-      useLocalBus: body.useLocalBus,
-      useFerry: body.useFerry,
-    });
-    return c.json(result);
+  const parsed = TransitRouteRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid transit route parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    return c.json(await searchTransitRoute(parsed.data));
   } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Transit route search failed' }, 500);
+    return formatError(c, errorMessage(err) || 'Transit route search failed', 'TRANSIT_ERROR', 500);
   }
 });
 

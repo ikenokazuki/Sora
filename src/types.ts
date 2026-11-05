@@ -517,7 +517,15 @@ export const TRANSIT_ROUTE_INPUT_SHAPE = {
   useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)').meta({ default: true }),
 };
 
-export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
+// REST だけが受ける日時の指定。date・time より優先される
+export const TransitRouteRequestSchema = z.object({
+  ...TRANSIT_ROUTE_INPUT_SHAPE,
+  year: z.number().int().min(2000).max(2100).optional().describe('年 (date より優先)'),
+  month: z.number().int().min(1).max(12).optional().describe('月 (date より優先)'),
+  day: z.number().int().min(1).max(31).optional().describe('日 (date より優先)'),
+  hour: z.number().int().min(0).max(23).optional().describe('時 (time より優先)'),
+  minute: z.number().int().min(0).max(59).optional().describe('分 (time より優先)'),
+});
 
 export const WeatherRequestSchema = z.object({
   city: z.string().min(1, 'city は必須です').describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。見つからない地名と、複数の市町村に当たる名前（例: "府中"）はエラー'),
@@ -597,8 +605,8 @@ export const EarthquakeRequestSchema = z.object({
 });
 
 export const RoadTrafficRequestSchema = z.object({
-  pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)'),
-  road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速")'),
+  pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)。解決できない値はエラー。road と併せるとその都道府県のページを road で絞る'),
+  road: z.string().optional().describe('道路名 (例: "東名高速", "中央道", "名神高速", "東北道", "圏央道")。該当する道路の情報が無ければ、その旨を返す'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -868,11 +876,11 @@ export const PoiSearchResultSchema = z.object({
 });
 
 export const FlightStatusRequestSchema = z.object({
-  airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")').meta({ default: '羽田' }),
+  airport: z.string().optional().describe('対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
   type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")').meta({ default: 'departure' }),
   category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
   flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
-  keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
+  keyword: z.string().optional().describe('出発地・目的地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 export const InspectImageRequestSchema = z.object({
@@ -2980,7 +2988,7 @@ export function generateOpenApiDocument() {
           summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (GET クエリ指定)',
           parameters: [
             { name: 'pref', in: 'query', schema: { type: 'string' }, description: '都道府県名 (例: "東京都", "神奈川県")' },
-            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3000,7 +3008,7 @@ export function generateOpenApiDocument() {
           summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (都道府県パス指定)',
           parameters: [
             { name: 'pref', in: 'path', required: true, schema: { type: 'string' }, description: '都道府県名 (例: "東京", "神奈川")' },
-            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3534,7 +3542,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
           parameters: [
-            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "NRT", "成田", "KIX", "関空", "FUK", "福岡")' },
+            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "NRT", "成田", "KIX", "関空")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み (例: "NH241", "JL516")' },

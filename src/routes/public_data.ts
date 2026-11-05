@@ -12,6 +12,7 @@ import {
 } from '../scraper.js';
 import { searchOpenPoi } from '../services/poi.js';
 import { AreaInputError } from '../services/life.js';
+import { TrafficInputError } from '../services/traffic.js';
 import {
   WeatherRequestSchema,
   DisasterWarningsRequestSchema,
@@ -126,6 +127,7 @@ publicDataRoutes.post('/traffic/road', async (c) => {
     const result = await fetchRoadTraffic(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -140,6 +142,7 @@ publicDataRoutes.get('/traffic/road', async (c) => {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -153,6 +156,7 @@ publicDataRoutes.get('/traffic/road/:pref', async (c) => {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -464,6 +468,7 @@ publicDataRoutes.post('/traffic/flight', async (c) => {
     const result = await fetchFlightStatus(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -487,6 +492,7 @@ publicDataRoutes.get('/traffic/flight', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -510,6 +516,7 @@ publicDataRoutes.get('/traffic/flight/:airport', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
