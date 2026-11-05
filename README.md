@@ -1040,7 +1040,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   | X なし | 軽量に `includeRealtime: false` を加える | 約9,300字・4,100トークン |
 
   表の量は v2.36.1 での実測です。いまは `responseMode` の既定が `evidence` なので、軽量・最小の `responseMode: "evidence"` は省いても同じです（既定のままの量は測り直していません）。さらに、画像・動画の URL は `includeMedia: false` で省けます（既定は従来どおり残します。画像の内容が必要な質問では省かないでください）。予定は `schedule` に統合されて重複が減ります（v2.37.3）。`evidence` は本文を省いてハイライトを残すモードで、予定（`schedule`）と X 投稿の画像 URL は減らしません。待ち時間とメモリだけを減らすなら `scrape` の `mode: "fast"`（静的取得のみ）がありますが、LLM に渡る量は変わりません。根拠が足りないときは `contextSufficiency` を見て `responseMode: "full"` や `adaptiveScrape` で取り直せます。
-- **入力の検証 (`POST /search`)**: MCP の `search_deep` と同じスキーマで確かめ、範囲外や型の違う値（例: `limit: 0`、`formats: ["bogus"]`、`updated: "month"`）は HTTP 400 を返します。
+- **入力の検証 (`POST /search`)**: MCP の `search_deep` と同じスキーマで確かめ、範囲外や型の違う値（例: `limit: 0`、`formats: ["bogus"]`、`updated: "month"`）は HTTP 400 を返します。値が `null` の項目は指定なしとして扱います（`query: null` は 400）。
 - **深層検索リクエスト (`POST /search` / `/search/deep` / `/search/integrated` / `/deep-search`)**:
 ```json
 {
@@ -1126,7 +1126,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ---
 
 ### 3.6 電車乗換案内 (`POST /transit/route`)
-引数は MCP の `search_route` と同じで、入力は検証されます（`via` は最大 3 駅。誤りは HTTP 400）。REST だけ、日時を `year`・`month`・`day`・`hour`・`minute` の数値でも指定できます（`date`・`time` より優先）。
+引数は MCP の `search_route` と同じで、入力は検証されます（`via` は最大 3 駅。誤りは HTTP 400。値が `null` の項目は指定なし）。REST だけ、日時を `year`・`month`・`day`・`hour`・`minute` の数値でも指定できます（`date`・`time` より優先）。
 
 - **リクエスト**:
 ```json
@@ -1183,7 +1183,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 }
 ```
 - **GET リクエスト**: `GET /weather?city=軽井沢&days=2` または `GET /weather/箱根`
-- POST・GET とも MCP と同じ範囲で確かめ、`days` が 1〜8 の整数でないときや、見つからない地名は 400 を返します。気温（今日・明日・明後日）は予報区の地点のもので、地点の名前を `temperatureArea` で返します。
+- POST・GET とも MCP と同じ範囲で確かめ、`days` が 1〜8 の整数でないときや、見つからない地名は 400 を返します（POST の値が `null` の項目は指定なし）。気温（今日・明日・明後日）は予報区の地点のもので、地点の名前を `temperatureArea` で返します。
 - **レスポンス例**:
 ```json
 {
@@ -1252,7 +1252,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - 投稿の `like_count`・`reply_count`・`repost_count` は 0 のとき、`isOfficial` は公式のとき以外は省略します（`verbose: true` では常に返します）。
   - `page` は1始まりで `limit` 件ずつ進む (`limit: 20` の `page=2` は 21〜40 件目)。`limit` は1〜40 (デフォルト20)。
   - provider障害時は成功扱いの0件ではなくエラー (HTTP 502 / MCP `isError`) を返します。一部失敗時は `partial: true` と `providerErrors` を付けて成功分を返します。
-- **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`（`limit` は 1〜50 の整数。範囲外は HTTP 400）
+- **急上昇トレンド (`POST /search/trend`)**: `{ "limit": 20 }`（`limit` は 1〜50 の整数。範囲外は HTTP 400。`null` は指定なし）
 
 ---
 

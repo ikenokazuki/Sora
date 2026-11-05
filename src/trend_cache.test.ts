@@ -102,6 +102,13 @@ describe('POST /search/trend', () => {
     return { status: res.status, json: (await res.json()) as { count: number; items: unknown[] } };
   };
 
+  test('null の limit は指定なし（既定の 20 件）として扱う', async () => {
+    stubTrends(60);
+    const res = await post({ limit: null });
+    expect(res.status).toBe(200);
+    expect(res.json.count).toBe(20);
+  });
+
   test('limit は 1〜50 の整数だけを受け、ほかは 400（取りに行かない）', async () => {
     const spy = stubTrends(60);
 

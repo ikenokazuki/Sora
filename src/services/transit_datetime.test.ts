@@ -81,6 +81,16 @@ describe('POST /transit/route の検証', () => {
     expect(calls).toBe(0);
   });
 
+  test('null の項目は指定なしとして扱い、null の from は欠けとして 400 にする', async () => {
+    const requested: string[] = [];
+    globalThis.fetch = (async (input: string | URL) => { requested.push(String(input)); return new Response('<html></html>'); }) as unknown as typeof fetch;
+    const res = await post({ from: '東京', to: '新宿', via: null, date: null, time: null, sortBy: null, useShinkansen: null });
+    expect(res.status).toBe(200);
+    expect(new URL(requested[0]).searchParams.get('from')).toBe('東京');
+    expect((await post({ from: null, to: '新宿' })).status).toBe(400);
+    expect(requested).toHaveLength(1);
+  });
+
   test('REST だけが受けていた year・month・day・hour・minute は残り、日時として使われる', async () => {
     let requested = '';
     globalThis.fetch = (async (input: string | URL) => { requested = String(input); return new Response('<html></html>'); }) as unknown as typeof fetch;

@@ -28,7 +28,7 @@ import {
   NormalizeAddressRequestSchema,
   ReverseGeocodeRequestSchema,
 } from '../types.js';
-import { formatError } from './utils.js';
+import { dropNullFields, formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
@@ -57,7 +57,7 @@ const weatherQuery = (c: Context, city: string | undefined) => ({
 });
 
 // 天気予報 (POST /weather)
-publicDataRoutes.post('/weather', async (c) => weatherResponse(c, await readJsonBody(c)));
+publicDataRoutes.post('/weather', async (c) => weatherResponse(c, dropNullFields(await readJsonBody(c))));
 
 // 天気予報 (GET /weather & GET /weather/:city)
 publicDataRoutes.get('/weather/:city', (c) => weatherResponse(c, weatherQuery(c, c.req.param('city'))));

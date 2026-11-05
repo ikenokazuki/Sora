@@ -24,7 +24,7 @@ import {
 } from '../types.js';
 import { buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
-import { formatError } from './utils.js';
+import { dropNullFields, formatError } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
@@ -114,7 +114,7 @@ searchRoutes.post('/realtime/post', async (c) => {
 // Yahoo リアルタイム急上昇トレンド
 searchRoutes.post('/search/trend', async (c) => {
   try {
-    const parsed = TrendSearchRequestSchema.safeParse((await c.req.json().catch(() => ({}))) || {});
+    const parsed = TrendSearchRequestSchema.safeParse(dropNullFields((await c.req.json().catch(() => ({}))) || {}));
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     return c.json(await fetchRealtimeTrends(parsed.data.limit));
   } catch (err) {
@@ -146,8 +146,8 @@ const DEEP_FIELD_ERRORS: Record<string, string> = {
 const handleIntegratedSearch = async (c: Context) => {
   try {
     const body = await c.req.json();
-    // MCP の search_deep と同じスキーマで確かめる。responseMode の既定（evidence）はスキーマの default から取り、null も省略と同じ扱い
-    const parsed = IntegratedSearchRequestSchema.safeParse({ ...body, responseMode: body?.responseMode ?? undefined });
+    // MCP の search_deep と同じスキーマで確かめる。null の項目は指定なし。responseMode の既定（evidence）はスキーマの default から取る
+    const parsed = IntegratedSearchRequestSchema.safeParse(dropNullFields(body));
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const field = String(issue?.path[0] ?? '');
@@ -251,7 +251,7 @@ searchRoutes.post('/transit/route', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = TransitRouteRequestSchema.safeParse(rawBody);
+  const parsed = TransitRouteRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     return formatError(c, 'Invalid transit route parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
   }

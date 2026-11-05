@@ -169,6 +169,13 @@ describe('REST /weather の入力の検証', () => {
     expect(((await ok.json()) as any).forecasts.length).toBe(2);
   });
 
+  it('POST の null の項目は指定なしとして扱い、null の city は欠けとして 400 にする', async () => {
+    const ok = await post({ city: '東京', days: null, noCache: null });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as any).forecasts.length).toBe(7);
+    expect((await post({ city: null, days: 2 })).status).toBe(400);
+  });
+
   it('GET の days も同じ範囲で確かめる', async () => {
     expect((await app.request('/weather?city=%E6%9D%B1%E4%BA%AC&days=0')).status).toBe(400);
     expect((await app.request('/weather/%E6%9D%B1%E4%BA%AC?days=abc')).status).toBe(400);
