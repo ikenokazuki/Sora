@@ -2485,6 +2485,8 @@ Copyright (c) 2026 ikeno
 
 ## 8. 開発時の検証 (Development & Testing)
 
+Bun は 1.4 以上を使います（CI は 1.4.2）。1.3 系では後読みのある正規表現が遅く、ハイライトを選ぶ処理に、実際のページで 1.4.2 の約 5 倍の時間がかかります。
+
 ```bash
 bun install --frozen-lockfile
 bun run typecheck

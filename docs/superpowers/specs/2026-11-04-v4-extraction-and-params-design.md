@@ -114,7 +114,7 @@ Readability の経路と同じ隠し要素（hidden・aria-hidden・display:none
   - 全文は内部の項目にして、応答とキャッシュには入れない（使った後に消す）。
   - maskPii が有効なときは、全文にも同じ置き換えをしてからハイライトを選ぶ。
   - 上限の 200,000 字は、ハイライトを選ぶ時間を測って決める。200,000 字のページで 200 ms を超えるなら下げる。
-- リンクだけの段落: `parseMarkdownSections` が、節の中の段落（空行で区切った塊）のうち、短いラベルのリンクだけでできた（2 行以上の）もので、リンク先の異なるホストが 6 つ以上あるものを外す（`dropNavParagraphs`。下限は `NAV_MIN_DISTINCT_HOSTS`）。Wikipedia の言語の一覧や SNS の行のような、他のサイトへのリンクの並びを外し、同じサイトへのリンクだけの一覧（曲名・作品名・カテゴリ）は残す。判定は `isNavBlock`（今は integrated_search_host_response.ts にある）を `extractor/markdown_sections.ts` に移して共通にする。search_deep の本文の配分（`dropNavBlocksFirst`）は、ホストの数によらず今のまま。見出しの無い先頭の塊を外す今の規則は残す。
+- リンクだけの段落: `parseMarkdownSections` が、節の中の段落（空行で区切った塊）のうち、短いラベルのリンクだけでできた（2 行以上の）もので、リンク先の異なるホストが 6 つ以上あるものを外す（`dropNavParagraphs`。下限は `NAV_MIN_DISTINCT_HOSTS`）。Wikipedia の言語の一覧のような、他のサイトへのリンクの並びを外し（ふつうの SNS の行は 2〜5 ホストなので残る）、同じサイトへのリンクだけの一覧（曲名・作品名・カテゴリ）は残す。判定は `isNavBlock`（今は integrated_search_host_response.ts にある）を `extractor/markdown_sections.ts` に移して共通にする。search_deep の本文の配分（`dropNavBlocksFirst`）は、ホストの数によらず今のまま。見出しの無い先頭の塊を外す今の規則は残す。
 - description: `chooseBestDescription` での置き換えをやめ、meta の説明文（og:description・meta description・JSON-LD）だけにする。meta の説明文が無いページでは description を返さない。
 - annotateTemporal: `finalizeScrapeResult` から `extractQueryHighlightDetails` に渡して、ハイライトにも注記を付ける。search_deep の evidence でも、ハイライトに注記が残る。
 - ハイライトは、search_deep の並べ替え（`rerankByDeepEvidence`）と contextSufficiency にも使われるので、検索の評価でも確かめる（7 の節）。

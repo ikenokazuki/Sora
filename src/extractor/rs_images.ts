@@ -35,7 +35,7 @@ export function markImagesForRs(html: string, pageUrl: string): { html: string; 
   const captionByFigure = new Map<unknown, string>();
   const aboveByParent = new Map<unknown, { figure: unknown; wrap: unknown }>();
   // 図の中で文書の順に最初の figcaption の文字（空白はまとめる）。途中で止めて探す（cheerio の find は図の中を全部数えて並べ直すので、図が深く入れ子だと時間がかかった）
-  // ponytail: 説明文の無い図が深く入れ子だと、図の中をたどる分だけ時間がかかる（深さ 3,000 で約 0.3 秒）。上げるなら、figcaption から上へ 1 回ずつたどる
+  // ponytail: 説明文の無い図が深く入れ子だと、図の中をたどる分だけ時間がかかる（深さ 3,000 で約 0.3 秒、上限の 6,400 段で 1.2〜1.6 秒）。上げるなら、figcaption から上へ 1 回ずつたどる
   const captionOf = (figure: any): string => {
     const stack = [...figure.children].reverse();
     while (stack.length > 0) {
