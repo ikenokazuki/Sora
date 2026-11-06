@@ -107,6 +107,15 @@ describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに�
     expect(result.evidence).toEqual({ title: { value: '[EMAIL] の案内', source: 'meta' } });
   });
 
+  test('PDF のメタデータと、動画のチャプターの題にもかける（時刻・秒・作成日時は変えない）', async () => {
+    const result = await finalizeScrapeResult(base('本文です。', {
+      metadata: { Author: `田中 ${mail}`, Producer: 'Writer', CreationDate: 'D:20260105120000+09\'00\'', totalPages: 3 },
+      media: { type: 'youtube', videoId: 'v1', chapters: [{ title: `問い合わせ ${tel}`, time: '1:23', seconds: 83 }] },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.metadata).toEqual({ Author: '田中 [EMAIL]', Producer: 'Writer', CreationDate: 'D:20260105120000+09\'00\'', totalPages: 3 });
+    expect(result.media).toEqual({ type: 'youtube', videoId: 'v1', chapters: [{ title: '問い合わせ [PHONE]', time: '1:23', seconds: 83 }] });
+  });
+
   test('maskPii でなければ、そのまま返す', async () => {
     const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: false }));
     expect(result.html).toBe(`<p>${mail}</p>`);

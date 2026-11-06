@@ -338,6 +338,9 @@ function maskPiiInResult(result: ScrapeResult): void {
   if (result.events) result.events = maskPiiDeep(result.events);
   if (result.breadcrumb) result.breadcrumb = maskPiiDeep(result.breadcrumb);
   if (result.evidence) result.evidence = maskPiiDeep(result.evidence);
+  // PDF のメタデータ（verbose で返る Author など）と、動画のチャプターの題
+  if (result.metadata) result.metadata = maskPiiDeep(result.metadata);
+  if (result.media?.chapters) result.media = { ...result.media, chapters: result.media.chapters.map((c) => ({ ...c, title: maskPiiInText(c.title) })) };
   if (result.links) result.links = result.links.map((link) => (/^(?:mailto|tel):/i.test(link) ? maskPiiInText(link) : link));
   if (result.images) {
     result.images = result.images.map((image) => ({
