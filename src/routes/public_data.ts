@@ -35,7 +35,7 @@ import { errorMessage } from '../errors.js';
 export const publicDataRoutes = new Hono();
 
 /** クエリの数。空なら省略。数でないものは、strict なら NaN にしてスキーマで 400 にし、そうでなければ省略にする */
-const queryNumber = (c: Context, key: string, strict = false): number | undefined => {
+const queryNumber = (c: Context, key: string, { strict = false } = {}): number | undefined => {
   const v = c.req.query(key);
   if (v === undefined || v === '') return undefined;
   const n = Number(v);
@@ -58,7 +58,7 @@ async function weatherResponse(c: Context, input: unknown) {
 
 const weatherQuery = (c: Context, city: string | undefined) => ({
   city,
-  days: queryNumber(c, 'days', true),
+  days: queryNumber(c, 'days', { strict: true }),
   noCache: c.req.query('noCache') === 'true',
 });
 
@@ -288,8 +288,8 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
 publicDataRoutes.get('/geo/elevation', async (c) => {
   const parsed = ElevationRequestSchema.safeParse({
     address: c.req.query('address') || c.req.query('q'),
-    lat: queryNumber(c, 'lat', true),
-    lon: queryNumber(c, 'lon', true),
+    lat: queryNumber(c, 'lat', { strict: true }),
+    lon: queryNumber(c, 'lon', { strict: true }),
     noCache: c.req.query('noCache') === 'true' || c.req.query('noCache') === '1',
   });
   if (!parsed.success) {
