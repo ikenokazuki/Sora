@@ -118,6 +118,8 @@ Task 8 のあとに行う。
 6. この計画の作業のレビューで出た小さな残り:
    - 住所のテスト（annotatePoiAddresses・lookupZip・searchPostalCode・normalizeAddressTool・reverseGeocodeTool・`address_checks.test.ts` の checkCoordinates）が、CPU が重いときに固定の時間の待ちで落ちる。決まった時間ではなく、データの用意ができたことを待つ形にする（本体の振る舞いは変えない）。同じく、map_site の子のサイトマップの並びのテストが負荷の重いときに時間で落ちるので、時間ではなく順番と同時の数で確かめる形にする。
    - 全件のテストの記録に「UPS browser tracking failed … https://www.ups.com/track」が出る。テストが本物の ups.com にブラウザで繋ぎに行っているので、どのテストかを突き止め、偽物の送り先に差し替える（本体の振る舞いは変えない）。
+   - 地名: 入力の先頭が市・区の名前のとき、その後ろの「郡」は郡の名前として読まない（「山口市小郡栄町1丁目」が千葉県の栄町、「山口市小郡昭和町1丁目」が山梨県の昭和町になる。`src/services/jma_area.ts` の郡の後ろの市町村を引く処理と、4 段目の郡を外して引き直す処理）。郡の付いた住所の今のテストは、そのまま通ること。
+   - `src/city_map.test.ts` の長い入力の時間のテストの上限（200 ms）を 1,000 ms にする（負荷が重いと余裕が 2.5 倍ほどしかない。2 乗で遅くなる誤りは 1,000 ms でも見つかる）。
    - browser_action: `reloadBlockedImages` が evaluate の失敗を握りつぶしても目印（imagesStale）を消すので、読み直しに成功したときだけ消す。
    - README の MCP の crawl_site の行に、`maxChars`・`includePatterns`・`excludePatterns`・`highlightMaxCount` を書く。
    - `src/services/traffic.ts` の `EXACT_ONLY_ALIASES` の後の空行の重なりを直す（lint・整形）。
