@@ -6,7 +6,9 @@ import { AreaInputError, resolveCityId, resolveMunicipality } from './services/j
 // city_map.ts（地名 → 予報区）が、気象庁の表（jma_areas.ts）と食い違わないことを確かめる
 const PREFECTURES = new Set(PREFECTURE_NAMES.flatMap((p) => [p, p.replace(/[都府県]$/, '')]));
 const CLASS10_OF = new Map(Object.values(JMA_CLASS20).flat().map((t) => [t.code, t.class10]));
-const POINTS = new Set(Object.values(JMA_CLASS10).map((v) => v.point));
+/** 気象庁の気温の地点（短期予報・週間予報）の [予報区, 地点の名前] */
+const POINT_AREAS = Object.entries(JMA_CLASS10).flatMap(([code, v]) => v.points.map((p) => [code, p] as const));
+const POINTS = new Set(POINT_AREAS.map(([, p]) => p));
 
 describe('city_map.ts と気象庁の表', () => {
   it('値はすべて気象庁の予報区の番号', () => {
@@ -18,9 +20,12 @@ describe('city_map.ts と気象庁の表', () => {
     expect(bad).toEqual([]);
   });
 
-  it('気象庁の気温の地点の名前は、その予報区への地名で、天気でもその予報区になる', () => {
-    const bad = Object.entries(JMA_CLASS10).filter(([code, v]) => MUNICIPALITY_CITY_MAP[v.point] !== code || resolveCityId(v.point) !== code);
-    expect(bad.map(([code, v]) => `${v.point}: ${code}`)).toEqual([]);
+  it('気象庁の気温の地点の名前は、予報区ごとの全部の地点が、その予報区への地名で、天気でもその予報区になる', () => {
+    const bad = POINT_AREAS.filter(([code, p]) => MUNICIPALITY_CITY_MAP[p] !== code || resolveCityId(p) !== code);
+    expect(bad.map(([code, p]) => `${p}: ${code}`)).toEqual([]);
+    // 予報区の 2 つ目以降の地点（前は候補のエラー・別の県・部分一致になっていた）
+    const second: Array<[string, string]> = [['大野', '180010'], ['湯沢', '150020'], ['池田', '360010'], ['上野', '240010'], ['津川', '150010'], ['田島', '070030'], ['古川', '040010']];
+    expect(second.filter(([p, code]) => !JMA_CLASS10[code].points.slice(1).includes(p) || resolveCityId(p) !== code)).toEqual([]);
   });
 
   it('都道府県名は、市町村の表より先に city_map の予報区になる', () => {

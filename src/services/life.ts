@@ -298,8 +298,8 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
 
   const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
   const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-  // 気温の地点は予報区の表の地点の名前で選ぶ（JSON の地点の並びは予報区の並びと同じとは限らない）。無ければ最初の地点
-  const targetTemp = tempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.point) ?? tempAreas[0];
+  // 気温の地点は予報区の表の先頭の地点の名前で選ぶ（JSON の地点の並びは予報区の並びと同じとは限らない）。無ければ最初の地点
+  const targetTemp = tempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.points[0]) ?? tempAreas[0];
 
   const dateLabels = ['今日', '明日', '明後日'];
   const forecasts = [];
@@ -354,10 +354,10 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
       weeklyWeatherAreas.find((a: any) => a.area?.code === officeCode) ??
       weeklyWeatherAreas.find((a: any) => areaName && a.area?.name && (a.area.name.split('・').includes(areaName) || areaName.startsWith(a.area.name))) ??
       weeklyWeatherAreas[0];
-    // 気温の地点は、短期予報と同じく予報区の表の地点の名前で選ぶ。週間予報に無い地点（飯田・むつなど）は、
+    // 気温の地点は、短期予報と同じく予報区の表の先頭の地点の名前で選ぶ。週間予報に無い地点（飯田・むつなど）は、
     // 選んだ地域と同じ位置の地点（気温の地点は地域と同じ並び）
     const targetWeeklyTemp =
-      weeklyTempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.point) ??
+      weeklyTempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.points[0]) ??
       weeklyTempAreas[weeklyWeatherAreas.indexOf(targetWeeklyWeather)] ??
       weeklyTempAreas[0];
 
