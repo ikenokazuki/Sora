@@ -177,6 +177,29 @@ describe('search_diet_minutes は keyword・speaker・nameOfMeeting のどれか
     expect(state.calls).toBe(3);
   });
 
+  test('引数の説明と OpenAPI の 400 にも、どれか 1 つが要ることを書く', async () => {
+    const rule = 'keyword・speaker・nameOfMeeting のどれか 1 つは必須';
+    const spec = (await (await app.request('/openapi.json')).json()) as any;
+    const path = spec.paths['/gov/diet-minutes'];
+    for (const method of ['post', 'get']) {
+      const description = path[method].responses['400']?.description as string;
+      expect(description, method).toContain('INVALID_INPUT');
+      expect(description, method).toContain(rule);
+    }
+    const bodyProps = path.post.requestBody.content['application/json'].schema.properties;
+    const queryParams = new Map<string, string>(path.get.parameters.map((p: any) => [p.name, p.description]));
+    for (const name of ['keyword', 'speaker', 'nameOfMeeting']) {
+      expect(bodyProps[name].description, `POST ${name}`).toContain(rule);
+      expect(queryParams.get(name), `GET ${name}`).toContain(rule);
+    }
+    await withClient(async (client) => {
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'search_diet_minutes');
+      const props = (tool?.inputSchema as any).properties;
+      for (const name of ['keyword', 'speaker', 'nameOfMeeting']) expect(props[name].description, `MCP ${name}`).toContain(rule);
+      for (const name of ['nameOfHouse', 'from', 'until', 'limit']) expect(props[name].description, `MCP ${name}`).not.toContain(rule);
+    });
+  });
+
   test('MCP は、どれも無いときはエラーの応答を返す', async () => {
     const state = fetchSpy();
     await withClient(async (client) => {

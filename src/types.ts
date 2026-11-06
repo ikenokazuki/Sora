@@ -673,11 +673,14 @@ export const LawDataRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
+/** search_diet_minutes の入力の決まり。引数の説明と OpenAPI の 400 に使う */
+export const DIET_MINUTES_INPUT_RULE = 'keyword・speaker・nameOfMeeting のどれか 1 つは必須';
+
 export const DietMinutesSearchRequestSchema = z.object({
-  keyword: z.string().optional().describe('国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
-  speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
+  keyword: z.string().optional().describe(`国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")。${DIET_MINUTES_INPUT_RULE}`),
+  speaker: z.string().optional().describe(`発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")。${DIET_MINUTES_INPUT_RULE}`),
   nameOfHouse: z.enum(['衆議院', '参議院']).optional().describe('院名 ("衆議院" または "参議院")'),
-  nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
+  nameOfMeeting: z.string().optional().describe(`委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")。${DIET_MINUTES_INPUT_RULE}`),
   from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
   until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
   limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
@@ -3409,15 +3412,16 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '400': { description: `入力の誤り (INVALID_INPUT): ${DIET_MINUTES_INPUT_RULE}` },
           },
         },
         get: {
           summary: '国会会議録検索 API (GET クエリ指定)',
           parameters: [
-            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '検索キーワード' },
-            { name: 'speaker', in: 'query', schema: { type: 'string' }, description: '発言者名 (例: "総理大臣", "大臣")' },
+            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: `検索キーワード。${DIET_MINUTES_INPUT_RULE}` },
+            { name: 'speaker', in: 'query', schema: { type: 'string' }, description: `発言者名 (例: "総理大臣", "大臣")。${DIET_MINUTES_INPUT_RULE}` },
             { name: 'nameOfHouse', in: 'query', schema: { type: 'string', enum: ['衆議院', '参議院'] }, description: '議院区分' },
-            { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: '会議・委員会名' },
+            { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: `会議・委員会名。${DIET_MINUTES_INPUT_RULE}` },
             { name: 'from', in: 'query', schema: { type: 'string' }, description: '期間開始日 (YYYY-MM-DD)' },
             { name: 'until', in: 'query', schema: { type: 'string' }, description: '期間終了日 (YYYY-MM-DD)' },
             { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 30, default: 10 }, description: '取得件数 (1〜30, デフォルト: 10)' },
@@ -3432,6 +3436,7 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '400': { description: `入力の誤り (INVALID_INPUT): ${DIET_MINUTES_INPUT_RULE}` },
           },
         },
       },
