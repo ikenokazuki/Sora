@@ -111,12 +111,13 @@ Task 1 のレビューで見つかった。対象: `src/services/jma_area.ts`、
 Task 8 のあとに行う。
 
 1. `bun run gen:client` で `client/` を作り直す。
-2. `bun run typecheck`・`bun run lint`・`bun run schema:notation` を通す。
+2. `bun run typecheck`・`bun run lint`・`bun run schema:notation` を通す（`src/trade_tracking_watch_params.test.ts:197` の lint の誤り（noUnsafeOptionalChaining）も直す）。
 3. 全件のテストを、手元の Bun と Bun 1.4.2 の両方で通す（プロキシの変数を外す）。
-4. `RELEASE_NOTES.md` の v4.1.0 の節に、この計画で変わった呼び出し側から見える点を足す（短く）。
+4. `RELEASE_NOTES.md` の v4.1.0 の節に、この計画で変わった呼び出し側から見える点を足す（短く。Task 8 の地名の引き方の変更と、警報で「日光市」全体に今市の区域が入るようになったことを含める）。
 5. MCP の定義の大きさを測り直し、`RELEASE_NOTES.md` と `docs/code-execution.md` の数を更新する。
 6. この計画の作業のレビューで出た小さな残り:
-   - 住所のテスト（annotatePoiAddresses・lookupZip・searchPostalCode・normalizeAddressTool・reverseGeocodeTool）が、CPU が重いときに 300 ms の固定の待ちで落ちる。決まった時間ではなく、データの用意ができたことを待つ形にする（本体の振る舞いは変えない）。同じく、map_site の子のサイトマップの並びのテストが負荷の重いときに時間で落ちるので、時間ではなく順番と同時の数で確かめる形にする。
+   - 住所のテスト（annotatePoiAddresses・lookupZip・searchPostalCode・normalizeAddressTool・reverseGeocodeTool・`address_checks.test.ts` の checkCoordinates）が、CPU が重いときに固定の時間の待ちで落ちる。決まった時間ではなく、データの用意ができたことを待つ形にする（本体の振る舞いは変えない）。同じく、map_site の子のサイトマップの並びのテストが負荷の重いときに時間で落ちるので、時間ではなく順番と同時の数で確かめる形にする。
+   - 全件のテストの記録に「UPS browser tracking failed … https://www.ups.com/track」が出る。テストが本物の ups.com にブラウザで繋ぎに行っているので、どのテストかを突き止め、偽物の送り先に差し替える（本体の振る舞いは変えない）。
    - browser_action: `reloadBlockedImages` が evaluate の失敗を握りつぶしても目印（imagesStale）を消すので、読み直しに成功したときだけ消す。
    - README の MCP の crawl_site の行に、`maxChars`・`includePatterns`・`excludePatterns`・`highlightMaxCount` を書く。
    - `src/services/traffic.ts` の `EXACT_ONLY_ALIASES` の後の空行の重なりを直す（lint・整形）。
