@@ -115,6 +115,12 @@ Task 8 のあとに行う。
 3. 全件のテストを、手元の Bun と Bun 1.4.2 の両方で通す（プロキシの変数を外す）。
 4. `RELEASE_NOTES.md` の v4.1.0 の節に、この計画で変わった呼び出し側から見える点を足す（短く）。
 5. MCP の定義の大きさを測り直し、`RELEASE_NOTES.md` と `docs/code-execution.md` の数を更新する。
+6. この計画の作業のレビューで出た小さな残り:
+   - 住所のテスト（annotatePoiAddresses・lookupZip・searchPostalCode・normalizeAddressTool・reverseGeocodeTool）が、CPU が重いときに 300 ms の固定の待ちで落ちる。決まった時間ではなく、データの用意ができたことを待つ形にする（本体の振る舞いは変えない）。
+   - browser_action: `reloadBlockedImages` が evaluate の失敗を握りつぶしても目印（imagesStale）を消すので、読み直しに成功したときだけ消す。
+   - README の MCP の crawl_site の行に、`maxChars`・`includePatterns`・`excludePatterns`・`highlightMaxCount` を書く。
+   - `src/services/traffic.ts` の `EXACT_ONLY_ALIASES` の後の空行の重なりを直す（lint・整形）。
+   - 秋田県内陸の気温の地点が、気象庁の並びに合わせて横手から鷹巣に変わったことを、リリースノートに書く。
 
 外への要求: なし。
 
