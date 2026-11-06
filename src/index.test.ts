@@ -2936,7 +2936,8 @@ describe('Sora REST & MCP Endpoints', () => {
   // ==========================================
   it('fetchWeatherWarnings should parse JMA warning structure and handle city names', async () => {
     const warnings = await fetchWeatherWarnings({ city: '東京' });
-    expect(warnings.areaCode).toBe('130010');
+    // 都道府県名（略称を含む）は県全体
+    expect(warnings.areaCode).toBe('130000');
     expect(warnings.reportTime).toBeDefined();
     expect(Array.isArray(warnings.warnings)).toBe(true);
     expect(Array.isArray(warnings.advisories)).toBe(true);
@@ -2961,8 +2962,8 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resWarn.status).toBe(200);
     const warnJson = (await resWarn.json()) as any;
-    // 市町村の表に当たる名前は市町村（大阪市）の欄を返す
-    expect(warnJson.areaCode).toBe('2710000');
+    // 都道府県名（略称を含む）は県全体の欄を返す（大阪市にしない）
+    expect(warnJson.areaCode).toBe('270000');
 
     const resEq = await app.request('/disaster/earthquake', {
       method: 'POST',

@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { fetchWeatherForecast, resolveCityId, resolveMunicipality } from './life.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { AreaInputError, fetchWeatherForecast, prefectureOf, resolveCityId, resolveMunicipality } from './life.js';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
+import { JMA_CLASS20 } from '../jma_areas.js';
+import { createMcpServer } from '../mcp.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 
 describe('Weather Forecast Service (JMA Weekly Integration)', () => {
@@ -95,6 +99,48 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(resolveCityId('北海道森町')).toBe('017010');
   });
 
+  it('郡の付いた住所は郡を外した町村で引き、小郡市・郡山市・郡上市はそのまま', () => {
+    const cases: Array<[string, string]> = [
+      ['北海道上川郡上川町', '012010'], ['北海道上川郡清水町', '014030'], ['北海道樺戸郡新十津川町', '016020'], ['北海道檜山郡上ノ国町', '017020'],
+      ['沖縄県八重山郡竹富町', '474010'], ['静岡県周智郡森町', '220040'], ['北海道茅部郡森町', '017010'], ['静岡県駿東郡清水町', '220030'],
+      ['長野県北佐久郡軽井沢町', '200020'], ['群馬県吾妻郡草津町', '100020'], ['神奈川県足柄下郡箱根町', '140020'],
+    ];
+    expect(cases.filter(([q, want]) => resolveCityId(q) !== want)).toEqual([]);
+    expect(resolveMunicipality('福岡県小郡市')?.name).toBe('小郡市');
+    expect(resolveMunicipality('郡山市')?.name).toBe('郡山市');
+    expect(resolveMunicipality('岐阜県郡上市')?.name).toBe('郡上市');
+  });
+
+  it('気象庁のすべての町村を「都道府県名+郡+町村名」で引くと、その町村の予報区になる（決まらないものは候補を挙げる）', () => {
+    const wrong: string[] = [];
+    let n = 0;
+    for (const [name, towns] of Object.entries(JMA_CLASS20)) {
+      if (!/[町村]$/.test(name)) continue;
+      for (const t of towns) {
+        n++;
+        const q = `${prefectureOf(t.code)}某郡${name}`;
+        try {
+          if (resolveCityId(q) !== t.class10) wrong.push(`${q} → ${resolveCityId(q)}（正しくは ${t.class10}）`);
+        } catch (err) {
+          if (!(err instanceof AreaInputError)) throw err;
+        }
+      }
+    }
+    expect(n).toBeGreaterThan(900);
+    expect(wrong).toEqual([]);
+  });
+
+  it('先頭が都道府県名なら、部分一致もその都道府県の地名に限る', () => {
+    expect(prefectureOf(resolveCityId('沖縄県ほげほげ清水'))).toBe('沖縄県');
+  });
+
+  it('北海道（気象台が複数あり city_map に無い）は、予報区の番号と名前を挙げたエラー', async () => {
+    expect(() => resolveCityId('北海道')).toThrow(/014030（十勝地方）.*016010（石狩地方）/);
+    const res = await app.request('/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: '北海道' }) });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error).toContain('016010（石狩地方）');
+  });
+
   it('都道府県名と気温の地点の名前は、市町村の表より先に city_map の予報区になる', () => {
     expect(resolveCityId('石川')).toBe('170010');
     expect(resolveCityId('岩手')).toBe('030010');
@@ -186,5 +232,22 @@ describe('REST /weather の入力の検証', () => {
     const res = await post({ city: 'ほげほげ' });
     expect(res.status).toBe(400);
     expect(((await res.json()) as any).error).toContain('地名「ほげほげ」が見つかりません');
+  });
+
+  it('空白だけの city は 400（部分一致で別の地域にしない）。MCP も検証エラー', async () => {
+    expect((await post({ city: ' ' })).status).toBe(400);
+    expect((await app.request('/weather/%20')).status).toBe(400);
+    expect((await app.request('/weather?city=%20')).status).toBe(400);
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'weather-blank-city', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      expect((await client.callTool({ name: 'get_weather', arguments: { city: ' ' } })).isError).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });

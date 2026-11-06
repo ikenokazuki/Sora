@@ -40,7 +40,8 @@ const WARNING_JSON: Record<string, { class10: Record<string, string[]>; towns: R
   '016000': { class10: { '016010': ['14'] }, towns: { '0110000': ['03'] } },
   '017000': { class10: { '017010': ['20'] }, towns: { '0134500': ['21'] } },
   '140000': { class10: { '140010': ['14'] }, towns: { '1410011': ['10', '14'], '1410012': ['19', '14'] } },
-  '170000': { class10: { '170010': ['14'] }, towns: { '1720100': ['15'] } },
+  '170000': { class10: { '170010': ['14'], '170020': ['07'] }, towns: { '1720100': ['15'] } },
+  '220000': { class10: { '220010': ['14'], '220020': ['16'], '220030': ['15'], '220040': ['07'] }, towns: {} },
   '030000': { class10: { '030010': ['14'] }, towns: { '0320100': ['15'] } },
   '080000': { class10: { '080010': ['14'] }, towns: { '0820100': ['15'] } },
   '060000': { class10: { '060010': ['14'] }, towns: { '0620100': ['15'] } },
@@ -96,15 +97,43 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(calls.some((u) => u.endsWith('/020000.json'))).toBe(false);
   });
 
-  it('city_map の地名は、同じ予報区の「地名+市・区」の市町村ならその市町村、ほかは予報区', async () => {
+  it('都道府県名（正式名・略称）は、予報区の 1 つにせず県全体の予報区を合わせる（ほかの予報区の警報を落とさない）', async () => {
+    const calls = stubFetch(warningJson);
+    const shizuoka = await fetchWeatherWarnings({ city: '静岡県', noCache: true });
+    expect(calls).toEqual(['https://www.jma.go.jp/bosai/warning/data/r8/220000.json']);
+    expect(shizuoka).toMatchObject({ areaCode: '220000', areaName: '静岡県', prefecture: '静岡県' });
+    // 中部・伊豆・東部・西部の 4 つの予報区の警報が入る
+    expect(names(shizuoka.warnings)).toEqual(['波浪警報']);
+    expect(names(shizuoka.advisories).sort()).toEqual(['強風注意報', '波浪注意報', '雷注意報'].sort());
+    // 石川県は加賀と能登。能登の波浪警報も落とさない
+    const ishikawa = await fetchWeatherWarnings({ city: '石川', noCache: true });
+    expect(ishikawa).toMatchObject({ areaCode: '170000', areaName: '石川県', prefecture: '石川県' });
+    expect(names(ishikawa.warnings)).toEqual(['波浪警報']);
+    expect(names(ishikawa.advisories)).toEqual(['雷注意報']);
+    // 略称が同じ予報区の市と同じ名前でも、市ではなく県全体（山形 → 山形市にしない）
+    expect(await fetchWeatherWarnings({ city: '山形', noCache: true })).toMatchObject({ areaCode: '060000', areaName: '山形県', prefecture: '山形県' });
+    expect(await fetchWeatherWarnings({ city: '岩手', noCache: true })).toMatchObject({ areaCode: '030000', areaName: '岩手県' });
+    expect(await fetchWeatherWarnings({ city: '茨城', noCache: true })).toMatchObject({ areaCode: '080000', areaName: '茨城県' });
+    for (const city of ['東京', '東京都']) expect(await fetchWeatherWarnings({ city, noCache: true })).toMatchObject({ areaCode: '130000', areaName: '東京都' });
+    expect(await fetchWeatherWarnings({ city: '大阪', noCache: true })).toMatchObject({ areaCode: '270000', areaName: '大阪府' });
+  });
+
+  it('気象台が複数ある北海道・鹿児島・沖縄の都道府県名は、気象台を挙げたエラー', async () => {
+    const calls = stubFetch(warningJson);
+    await expect(fetchWeatherWarnings({ city: '北海道', noCache: true })).rejects.toThrow(/016000（石狩・空知・後志地方）/);
+    await expect(fetchWeatherWarnings({ city: '鹿児島', noCache: true })).rejects.toThrow(/460040（奄美地方）/);
+    await expect(fetchWeatherWarnings({ city: '沖縄県', noCache: true })).rejects.toThrow(/471000（沖縄本島地方）/);
+    expect(calls).toEqual([]);
+    const res = await app.request('/disaster/warnings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: '北海道' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('都道府県名でない city_map の地名は、同じ予報区の「地名+市・区」の市町村ならその市町村、ほかは予報区', async () => {
     stubFetch(warningJson);
-    // 気温の地点の名前（横浜）と都道府県名（山形）
+    // 気温の地点の名前
     expect(await fetchWeatherWarnings({ city: '横浜', noCache: true })).toMatchObject({ areaCode: '1410011,1410012', areaName: '横浜市' });
-    expect(await fetchWeatherWarnings({ city: '山形', noCache: true })).toMatchObject({ areaCode: '0620100', areaName: '山形市', prefecture: '山形県' });
-    // 石川市・岩手市・茨城市は無いので、町（福島県石川町・岩手町・茨城町）にせず予報区
-    expect(await fetchWeatherWarnings({ city: '石川', noCache: true })).toMatchObject({ areaCode: '170010', areaName: '加賀', prefecture: '石川県' });
-    expect(await fetchWeatherWarnings({ city: '岩手', noCache: true })).toMatchObject({ areaCode: '030010', areaName: '内陸', prefecture: '岩手県' });
-    expect(await fetchWeatherWarnings({ city: '茨城', noCache: true })).toMatchObject({ areaCode: '080010', areaName: '北部', prefecture: '茨城県' });
     // 八幡市（京都府）は別の予報区なので、気温の地点の八幡は北九州地方のまま
     expect(await fetchWeatherWarnings({ city: '八幡', noCache: true })).toMatchObject({ areaCode: '400020', areaName: '北九州地方' });
     // 地点でも都道府県でもなく、複数の市町村に当たる名前は候補を挙げる
@@ -121,11 +150,36 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(names(r.advisories)).toEqual(['乾燥注意報']);
   });
 
-  it('市町村で無い名前は予報区の欄を返す', async () => {
+  it('市町村でも都道府県でもない名前は予報区の欄を返す', async () => {
     stubFetch(warningJson);
-    const r = await fetchWeatherWarnings({ city: '東京', noCache: true });
-    expect(r).toMatchObject({ areaCode: '130010', areaName: '東京地方', prefecture: '東京都' });
-    expect(names(r.advisories)).toEqual(['雷注意報']);
+    const r = await fetchWeatherWarnings({ city: '八丈島', noCache: true });
+    expect(r).toMatchObject({ areaCode: '130030', areaName: '伊豆諸島南部', prefecture: '東京都' });
+    expect(names(r.warnings)).toEqual(['波浪警報']);
+  });
+
+  it('郡の付いた住所は、郡を外した町村で引く', async () => {
+    stubFetch(warningJson);
+    expect(await fetchWeatherWarnings({ city: '北海道茅部郡森町', noCache: true })).toMatchObject({ areaCode: '0134500', areaName: '森町', prefecture: '北海道' });
+  });
+
+  it('空白だけの city は、東京にせず入力の誤り（REST は 400、MCP は検証エラー）', async () => {
+    const calls = stubFetch(warningJson);
+    const res = await app.request('/disaster/warnings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: ' ' }),
+    });
+    expect(res.status).toBe(400);
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'warning-blank-city', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      expect((await client.callTool({ name: 'search_disaster_warnings', arguments: { city: ' ' } })).isError).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+    expect(calls).toEqual([]);
   });
 
   it('知らない地名は東京にせずエラー。city も areaCode も無ければ東京', async () => {
@@ -138,10 +192,10 @@ describe('search_disaster_warnings の地名の解決', () => {
   it('キャッシュから返しても、ラベルは今の解決結果から作る', async () => {
     clearCache();
     stubFetch(warningJson);
-    const first = await fetchWeatherWarnings({ city: '東京' });
-    const second = await fetchWeatherWarnings({ city: '東京都' });
-    expect(second).toMatchObject({ cached: true, areaCode: '130010', areaName: '東京地方', prefecture: '東京都' });
-    expect(first.prefecture).toBe('東京都');
+    const first = await fetchWeatherWarnings({ city: '横浜市中区' });
+    const second = await fetchWeatherWarnings({ city: '横浜' });
+    expect(second).toMatchObject({ cached: true, areaCode: '1410011,1410012', areaName: '横浜市', prefecture: '神奈川県' });
+    expect(first.areaName).toBe('横浜市');
   });
 });
 
@@ -233,8 +287,8 @@ describe('search_disaster_warnings は気象庁の新しいデータ（r8）を�
   it('「解除」と「発表警報・注意報はなし」は返さない', async () => {
     stubFetch(tokyoR8());
     // 新宿区・東京地方は全部の報で「発表警報・注意報はなし」
-    for (const city of ['新宿区', '東京']) {
-      expect(await fetchWeatherWarnings({ city, noCache: true })).toMatchObject({ specialWarnings: [], warnings: [], advisories: [], hasActiveAlerts: false });
+    for (const input of [{ city: '新宿区' }, { areaCode: '130010' }]) {
+      expect(await fetchWeatherWarnings({ ...input, noCache: true })).toMatchObject({ specialWarnings: [], warnings: [], advisories: [], hasActiveAlerts: false });
     }
     // 小笠原村: 強風・雷は解除、波浪だけ継続
     expect((await fetchWeatherWarnings({ city: '小笠原村', noCache: true })).advisories).toEqual([advisory('16', '波浪注意報')]);

@@ -1,4 +1,4 @@
-import { AreaInputError, TOWN_BY_CODE, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './life.js';
+import { AreaInputError, TOWN_BY_CODE, prefectureCodeOf, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './life.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 import { JMA_CLASS10, JMA_OFFICES } from '../jma_areas.js';
@@ -128,11 +128,17 @@ function warningTargetFromCode(input: string): WarningTarget {
   throw new AreaInputError(`エリアコード「${input}」が見つかりません`);
 }
 
-/** areaCode があればそれ、無ければ city を天気と同じ順で解決する（市町村に当たれば市町村）。どちらも無ければ東京 */
+/**
+ * areaCode があればそれ、無ければ city を天気と同じ順で解決する（市町村に当たれば市町村）。どちらも無ければ東京地方。
+ * 都道府県名（略称も）は、予報区の 1 つにすると県のほかの予報区の警報を落とすので、県全体にする（気象台が複数ある県はエラー）
+ */
 function resolveWarningTarget(city?: string, areaCode?: string): WarningTarget {
   if (areaCode?.trim()) return warningTargetFromCode(areaCode.trim());
-  const query = city?.trim() || '東京';
+  const query = city?.trim();
+  if (!query) return warningTargetFromCode('130010');
   if (/^\d{6}$/.test(query)) return warningTargetFromCode(query);
+  const pref = prefectureCodeOf(query);
+  if (pref) return warningTargetFromCode(pref);
   const place = resolvePlace(query, { town: true });
   return place.town ? townTarget(place.town) : warningTargetFromCode(place.class10);
 }

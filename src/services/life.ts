@@ -235,6 +235,12 @@ const lookup = <T>(table: Record<string, T>, key: string): T | undefined => (Obj
 /** 番号の上 2 桁（都道府県コード）から都道府県名 */
 export const prefectureOf = (code: string): string => PREFECTURE_NAMES[Number(code.slice(0, 2)) - 1] ?? '';
 
+/** 都道府県名（"静岡県"・略称の "静岡"・"北海道"）なら 2 桁の都道府県コード */
+export function prefectureCodeOf(name: string): string | undefined {
+  const i = PREFECTURE_NAMES.findIndex((p) => name === p || name === p.replace(/[都府県]$/, ''));
+  return i < 0 ? undefined : String(i + 1).padStart(2, '0');
+}
+
 /** 市町村。codes は気象庁の市町村（class20）の番号、class10 は最初の区域の予報区 */
 export interface Municipality {
   name: string;
@@ -278,7 +284,8 @@ const MUNICIPALITIES = (() => {
 /**
  * 市町村を名前から引く。市・区・町・村は省いてよい（"札幌" → 札幌市）。先頭の都道府県名で同じ名前の候補を絞り
  * （"北海道森町"）、政令指定都市の区は市全体に当てる（"横浜市中区" → 横浜市。区ごとの区域がある神戸市・広島市の
- * 区と、東京の特別区はその区のまま）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ * 区と、東京の特別区はその区のまま）。郡の付いた住所は、当たらなければ郡を外して引き直す（"北海道上川郡上川町" → 上川町。
+ * 小郡市・郡山市などは先に当たるので外さない）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
  */
 export function resolveMunicipality(query: string): Municipality | undefined {
   const s = query.replace(/\s/g, '');
@@ -288,6 +295,8 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   if (city && !MUNICIPALITIES.has(name) && MUNICIPALITIES.has(city)) name = city;
   const hits = (MUNICIPALITIES.get(name) ?? ['市', '区', '町', '村'].flatMap((suffix) => MUNICIPALITIES.get(name + suffix) ?? []))
     .filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
+  const town = name.replace(/^[^郡]+郡/, '');
+  if (hits.length === 0 && town && town !== name) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
     throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください（例: ${names[0]}）`);
@@ -322,8 +331,10 @@ export interface Place {
  * 1. 市町村の名前そのまま（候補が 1 つ。"横浜市" などの市全体を含む）
  * 2. city_map の地名（都道府県名・気温の地点の名前を含む）→ その予報区。town: true（警報）では、地名に「市」「区」を
  *    足した市町村が同じ予報区にあればその市町村（"横浜" → 横浜市。"八幡" は京都府八幡市が別の予報区なので北九州地方のまま）
- * 3. 市町村の表（都道府県名の付いた名前・政令指定都市の区・市区町村の省略）。候補が複数なら候補を挙げたエラー
- * 4. city_map の部分一致。どれにも当たらなければエラー
+ * 3. 市町村の表（都道府県名の付いた名前・政令指定都市の区・市区町村の省略・郡の付いた住所）。候補が複数なら候補を挙げたエラー
+ * 4. city_map の部分一致（先頭が都道府県名なら、その都道府県の地名だけ）。どれにも当たらなければエラー
+ * 警報は、都道府県名をこの前に県全体にする（disaster.ts）。天気では、city_map に無い都道府県名（気象台が複数ある北海道）は、
+ * 予報区の番号と名前を挙げたエラー
  */
 export function resolvePlace(query: string, { town: preferTown = false } = {}): Place {
   const clean = query.trim();
@@ -341,8 +352,14 @@ export function resolvePlace(query: string, { town: preferTown = false } = {}): 
   const town = resolveMunicipality(clean);
   if (town) return { class10: town.class10, town };
 
+  const prefCode = prefectureCodeOf(clean);
+  if (prefCode) {
+    const areas = Object.entries(JMA_CLASS10).filter(([c]) => c.startsWith(prefCode)).map(([c, a]) => `${c}（${a.name}）`);
+    throw new AreaInputError(`都道府県名「${clean}」からは予報区が 1 つに決まりません。予報区の番号か市町村の名前で指定してください: ${areas.join('、')}`);
+  }
+  const pref = PREFECTURE_NAMES.find((p) => clean.startsWith(p));
   for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-    if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) return { class10: id };
+    if (key.length >= 2 && (!pref || prefectureOf(id) === pref) && (clean.includes(key) || key.includes(clean))) return { class10: id };
   }
   throw new AreaInputError(`地名「${clean}」が見つかりません`);
 }
