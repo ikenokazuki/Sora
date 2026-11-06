@@ -408,7 +408,7 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const cityId = resolveCityId(options.city);
   const officeCode = weatherOfficeOf(cityId);
   const days = Math.min(Math.max(options.days ?? 7, 1), 8);
-  const cacheKey = `weather:v2:${cityId}:${days}`;
+  const cacheKey = `weather:v3:${cityId}:${days}`;
   // キャッシュには入力に依らない中身だけを入れ、返すときに今の入力の地名を付ける
   const withCity = (result: any) => ({ ...result, location: { ...result.location, city: options.city } });
 
@@ -492,11 +492,20 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
     const weeklyWeatherAreas: any[] = weeklyForecast.timeSeries?.[0]?.areas || [];
     const weeklyTempAreas: any[] = weeklyForecast.timeSeries?.[1]?.areas || [];
 
+    // 週間予報の地域は予報区をまとめたもの（"中部・南部"・"下北・三八上北"）や気象台の範囲（"鹿児島県（奄美地方除く）"）。
+    // 予報区の番号、気象台の番号、名前（"中部" は "中部・南部"、"沿岸北部" は "沿岸"）の順で選ぶ
+    const areaName: string = JMA_CLASS10[cityId]?.name ?? '';
     const targetWeeklyWeather =
-      weeklyWeatherAreas.find((a: any) => a.area?.code === cityId || a.area?.code === officeCode) ||
+      weeklyWeatherAreas.find((a: any) => a.area?.code === cityId) ??
+      weeklyWeatherAreas.find((a: any) => a.area?.code === officeCode) ??
+      weeklyWeatherAreas.find((a: any) => areaName && a.area?.name && (a.area.name.split('・').includes(areaName) || areaName.startsWith(a.area.name))) ??
       weeklyWeatherAreas[0];
+    // 気温の地点は、短期予報と同じく予報区の表の地点の名前で選ぶ。週間予報に無い地点（飯田・むつなど）は、
+    // 選んだ地域と同じ位置の地点（気温の地点は地域と同じ並び）
     const targetWeeklyTemp =
-      weeklyTempAreas.find((a: any) => a.area?.code === cityId) || weeklyTempAreas[0];
+      weeklyTempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.point) ??
+      weeklyTempAreas[weeklyWeatherAreas.indexOf(targetWeeklyWeather)] ??
+      weeklyTempAreas[0];
 
     for (let j = 0; j < weeklyTimeDefines.length; j++) {
       const rawDate = weeklyTimeDefines[j];

@@ -7,6 +7,7 @@ import { app } from '../index.js';
 import { JMA_CLASS20 } from '../jma_areas.js';
 import { createMcpServer } from '../mcp.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
+import JMA_FORECASTS from '../test_fixtures/jma_forecast_excerpt.json';
 
 describe('Weather Forecast Service (JMA Weekly Integration)', () => {
   // 気象庁の応答は固定データ（SORA_LIVE_TESTS=1 では本物の API）
@@ -195,6 +196,62 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(second.cached).toBe(true);
     expect(second.cityId).toBe(first.cityId);
     expect(second.location.city).toBe('東京都');
+  });
+});
+
+/**
+ * 気象庁 forecast/{気象台}.json（2026-11-05 19 時の発表をそのまま）。週間予報（[1]）の地域は、予報区をまとめたもの（"中部・南部"・
+ * "下北・三八上北"）や気象台の範囲（"鹿児島県（奄美地方除く）"）で、気温の地点は地域ごとに 1 つ（地域と同じ並び）
+ */
+describe('get_weather の週間予報は、その予報区を含む地域の天気と地点の気温を使う', () => {
+  let original: typeof fetch;
+  beforeAll(() => {
+    original = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const office = url.pathname.match(/^\/bosai\/forecast\/data\/forecast\/(\d+)\.json$/)?.[1];
+      const body = office ? (JMA_FORECASTS as Record<string, unknown>)[office] : undefined;
+      return body ? Response.json(body) : new Response('Not Found', { status: 404 });
+    }) as typeof fetch;
+  });
+  afterAll(() => {
+    globalThis.fetch = original;
+  });
+  /** 3 日目以降（週間予報から足した日）の [日付, 天気の番号, 降水確率, 最低, 最高] */
+  const week = async (city: string) =>
+    (await fetchWeatherForecast({ city, days: 8, noCache: true })).forecasts
+      .slice(3)
+      .map((f: any) => [f.date, f.image.match(/(\d+)\.svg$/)?.[1], f.chanceOfRain.allDay, f.temperature.min, f.temperature.max]);
+
+  it('長野県中部（松本）は「中部・南部」の天気と松本の気温（北部・長野のものにしない）。地点が週間予報に無い南部（飯田）も同じ地域の松本', async () => {
+    const matsumoto = [
+      ['2026-11-08', '101', '20%', '2℃', '12℃'], ['2026-11-09', '201', '40%', '5℃', '14℃'], ['2026-11-10', '201', '30%', '1℃', '10℃'],
+      ['2026-11-11', '101', '20%', '1℃', '13℃'], ['2026-11-12', '101', '20%', '3℃', '14℃'],
+    ];
+    expect(await week('松本')).toEqual(matsumoto);
+    expect(await week('軽井沢')).toEqual(matsumoto);
+    expect(await week('飯田')).toEqual(matsumoto);
+  });
+
+  it('青森県下北（むつ）は「下北・三八上北」の天気と、その地域の地点（八戸）の気温（津軽・青森のものにしない）', async () => {
+    const shimokita = [
+      ['2026-11-08', '260', '50%', '2℃', '8℃'], ['2026-11-09', '260', '50%', '2℃', '8℃'], ['2026-11-10', '200', '40%', '1℃', '8℃'],
+      ['2026-11-11', '200', '40%', '2℃', '12℃'], ['2026-11-12', '101', '20%', '4℃', '12℃'],
+    ];
+    expect(await week('むつ')).toEqual(shimokita);
+    expect(await week('八戸')).toEqual(shimokita);
+  });
+
+  it('伊豆諸島・小笠原は東京の気温にせず、それぞれの地点（大島・父島）の気温', async () => {
+    expect((await week('大島')).map((d: unknown[]) => d.slice(3))).toEqual([['12℃', '17℃'], ['12℃', '16℃'], ['11℃', '15℃'], ['10℃', '17℃'], ['11℃', '19℃']]);
+    expect((await week('父島')).map((d: unknown[]) => d.slice(3))).toEqual([['23℃', '27℃'], ['23℃', '27℃'], ['22℃', '27℃'], ['22℃', '25℃'], ['23℃', '26℃']]);
+  });
+
+  it('奄美地方は「鹿児島県（奄美地方除く）」ではなく奄美地方の天気と名瀬の気温', async () => {
+    expect(await week('名瀬')).toEqual([
+      ['2026-11-08', '201', '20%', '19℃', '25℃'], ['2026-11-09', '200', '40%', '19℃', '25℃'], ['2026-11-10', '200', '40%', '19℃', '23℃'],
+      ['2026-11-11', '201', '30%', '18℃', '23℃'], ['2026-11-12', '201', '30%', '18℃', '24℃'],
+    ]);
   });
 });
 
