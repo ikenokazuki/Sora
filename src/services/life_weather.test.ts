@@ -113,6 +113,8 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(resolveMunicipality('岐阜県郡上市')?.name).toBe('郡上市');
     // 蒲郡市・小郡市の後ろに町名などが続いても、郡を外して残り（"市原" "市川"）をほかの県の市町村にしない
     expect([resolveCityId('蒲郡市原'), resolveCityId('小郡市原'), resolveCityId('蒲郡市川')]).toEqual(['230020', '400040', '230020']);
+    // 郡上市・郡山市の郡も外さない（"岐阜郡上市" を富山県の上市町にしない）
+    expect([resolveCityId('岐阜郡上市'), resolveCityId('福島郡山市')]).toEqual(['210010', '070010']);
   });
 
   it('気象庁のすべての町村を「都道府県名+郡+町村名」で引くと、その町村の予報区になる（決まらないものは候補を挙げる）', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { MUNICIPALITY_CITY_MAP } from './city_map.js';
 import { JMA_CLASS10, JMA_CLASS20, PREFECTURE_NAMES } from './jma_areas.js';
-import { AreaInputError, resolveCityId, resolveMunicipality } from './services/jma_area.js';
+import { AreaInputError, prefectureOf, resolveCityId, resolveMunicipality, resolvePlace } from './services/jma_area.js';
 
 // city_map.ts（地名 → 予報区）が、気象庁の表（jma_areas.ts）と食い違わないことを確かめる
 const PREFECTURES = new Set(PREFECTURE_NAMES.flatMap((p) => [p, p.replace(/[都府県]$/, '')]));
@@ -18,10 +18,10 @@ const townAreas = (p: string): Set<string>[] => {
   }
   return [...towns.values()];
 };
-/** 1〜4 の段（名前そのまま）で引ける名前: city_map の地名、市町村の名前と市区町村を省いた形、予報区の名前と「地方」を除いた形、気温の地点 */
+/** 1〜4 の段（名前そのまま）で引ける名前: city_map の地名、市町村の名前と市区町村を省いた形、区域に分かれた市の名前、予報区の名前と「地方」を除いた形、気温の地点 */
 const EXACT = new Set([
   ...Object.keys(MUNICIPALITY_CITY_MAP),
-  ...Object.keys(JMA_CLASS20).flatMap((n) => [n, n.replace(/[市区町村]$/, '')]),
+  ...Object.keys(JMA_CLASS20).flatMap((n) => [n, n.replace(/[市区町村]$/, ''), ...(/[市町村]$/.test(n) ? [] : [n.match(/^(.+?市)./)?.[1] ?? n])]),
   ...Object.values(JMA_CLASS10).flatMap((a) => [a.name, a.name.replace(/地方$/, '')]),
   ...POINTS,
 ]);
@@ -29,14 +29,20 @@ const EXACT = new Set([
 const KEY_PREFIXES = new Set(Object.keys(MUNICIPALITY_CITY_MAP).flatMap((k) => [...k].map((_, i) => k.slice(0, i + 1))));
 /** 一部の一致を確かめる元の名前: 市町村の名前と市区町村を省いた形（2 文字以上）、予報区の名前 */
 const BASE_NAMES = [...new Set([...Object.keys(JMA_CLASS20).flatMap((n) => [n, n.replace(/[市区町村]$/, '')]), ...Object.values(JMA_CLASS10).map((a) => a.name)])].filter((n) => n.length >= 2);
-/** 天気の解決の結果（入力の誤りはその文） */
+/** 天気の解決の結果（入力の誤りはその文）。表から作る入力は数が多いので、同じ入力は覚えておく */
+const RESOLVED = new Map<string, string>();
 const resolved = (name: string): string => {
+  const hit = RESOLVED.get(name);
+  if (hit !== undefined) return hit;
+  let result: string;
   try {
-    return resolveCityId(name);
+    result = resolveCityId(name);
   } catch (err) {
     if (!(err instanceof AreaInputError)) throw err;
-    return `error: ${err.message}`;
+    result = `error: ${err.message}`;
   }
+  RESOLVED.set(name, result);
+  return result;
 };
 
 describe('city_map.ts と気象庁の表', () => {
@@ -99,15 +105,71 @@ describe('city_map.ts と気象庁の表', () => {
     expect(() => resolveCityId('千代田')).toThrow(/東京都千代田区、群馬県千代田町/);
   });
 
-  it('「〜島」は、一部の一致で「〜島」で終わらない地名に当てず、見つからないエラー（小浜島を福井県の小浜市にしない）', () => {
-    for (const n of ['小浜島', '沖縄県小浜島', '伊豆諸島', '宮古列島', '気仙沼大島', '志賀島']) expect(resolved(n)).toBe(`error: 地名「${n}」が見つかりません`);
-    // 「〜島」の地名に当たるもの、「〜島」の名前そのもの、島ではない「〜半島」は今のまま
-    const keep: Array<[string, string]> = [['五島列島', '420040'], ['石垣島', '474010'], ['宮古島', '473000'], ['東京都八丈島', '130030'], ['知床半島', '013010'], ['伊豆半島', '220020']];
-    expect(keep.filter(([n, code]) => resolved(n) !== code)).toEqual([]);
-    // 市町村・予報区の名前 +「島」（その名前の地名が無いもの）は、どれも見つからない
-    const island = BASE_NAMES.filter((n) => !n.endsWith('島') && !EXACT.has(`${n}島`));
-    expect(island.length).toBeGreaterThan(3000);
+  it('「〜島」で終わる入力は、都道府県名・市区町村の名前・「〜島」の地名で始まるときだけ一部の一致を使う（"小浜" + 島 を福井県の小浜市にしない）', () => {
+    // 名前に「島」が付いて別の地名になる形は、見つからないエラー
+    for (const n of ['伊豆諸島', '宮古列島', '宮城島', '石川島', '能美島', '若松島', '大津島', '佐久島', '男鹿島', '大三島']) expect(resolved(n)).toBe(`error: 地名「${n}」が見つかりません`);
+    // 市区町村の名前の後ろの島、都道府県名で始まる入力、「〜島」の地名で始まる入力は当てる（島ではない「〜半島」もそのまま）
+    const ok: Array<[string, string]> = [
+      ['江東区大島', '130010'], ['東京都江東区大島', '130010'], ['鹿児島市桜島', '460010'], ['鹿児島県鹿児島市桜島', '460010'], ['鹿児島県桜島', '460010'],
+      ['福岡市東区志賀島', '400010'], ['福岡県福岡市東区志賀島', '400010'], ['宮城県気仙沼市大島', '040010'], ['気仙沼市大島', '040010'], ['竹富町小浜島', '474010'],
+      ['沖縄県竹富町小浜島', '474010'], ['廿日市市宮島', '340010'], ['尾道市因島', '340010'], ['藤沢市江の島', '140010'], ['上天草市松島', '430030'],
+      ['横浜市金沢区八景島', '140010'], ['新潟市中央区万代島', '150010'], ['大阪福島', '270000'], ['沖縄宮古島', '473000'], ['沖縄 宮古島', '473000'],
+      ['沖縄 石垣島', '474010'], ['東京 大島', '130020'], ['新潟県佐渡島', '150040'], ['宮古島伊良部島', '473000'], ['五島列島', '420040'],
+      ['石垣島', '474010'], ['東京都八丈島', '130030'], ['知床半島', '013010'], ['伊豆半島', '220020'], ['広島市中島', '340010'],
+    ];
+    expect(ok.filter(([n, code]) => resolved(n) !== code).map(([n, code]) => `${n}: ${resolved(n)}（${code}）`)).toEqual([]);
+    expect(resolved('今治市大三島')).toBe(resolved('今治市'));
+    // 市区町村を省いた名前・予報区の名前 +「島」（その名前の地名が無いもの）は、どれも見つからない
+    // （区域の名前とその省いた形、"日光市今" "神戸市東灘" などは市区町村の名前で始まるので除く。"東村山" は東村で始まるが、予報区が違うので含む）
+    const startsWithTown = (n: string) => [...n].some((_, i) => i >= 2 && /[市区町村]$/.test(n.slice(0, i)) && EXACT.has(n.slice(0, i)) && resolved(n.slice(0, i)) === resolved(n));
+    const island = BASE_NAMES.filter((n) => !/[市区町村島]$/.test(n) && !startsWithTown(n) && !EXACT.has(`${n}島`) && !KEY_PREFIXES.has(`${n}島`));
+    expect(island.length).toBeGreaterThan(1500);
     expect(island.filter((n) => !resolved(`${n}島`).startsWith('error: ')).map((n) => `${n}島: ${resolved(`${n}島`)}`)).toEqual([]);
+    // 市区町村の名前 + 大島・桜島（区域の名前）は、市区町村の名前だけのときと同じ（1 つに決まらない名前はどちらもエラー。都道府県名を付けても同じ）
+    const district = Object.entries(JMA_CLASS20)
+      .filter(([n]) => /[市区町村]$/.test(n))
+      .flatMap(([n, towns]) => [n, ...towns.map((t) => prefectureOf(t.code) + n)])
+      .flatMap((n) => ['大島', '桜島'].map((s) => [n, n + s] as const));
+    const sameAs = (n: string, q: string) => resolved(q) === resolved(n) || (resolved(q).startsWith('error: ') && resolved(n).startsWith('error: '));
+    expect(district.length).toBeGreaterThan(6000);
+    expect(district.filter(([n, q]) => !sameAs(n, q)).map(([n, q]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
+  });
+
+  it('主な島の名前は、その島の市町村（気象庁の市町村の表）の予報区。天気・警報とも', () => {
+    // [島, 都道府県, 島の市町村]
+    const islands: Array<[string, string, string[]]> = [
+      ['伊豆大島', '東京都', ['大島町']], ['三宅島', '東京都', ['三宅村']], ['母島', '東京都', ['小笠原村']], ['佐渡島', '新潟県', ['佐渡市']],
+      ['淡路島', '兵庫県', ['淡路市', '洲本市', '南あわじ市']], ['利尻島', '北海道', ['利尻町', '利尻富士町']], ['礼文島', '北海道', ['礼文町']], ['奥尻島', '北海道', ['奥尻町']],
+      ['喜界島', '鹿児島県', ['喜界町']], ['与論島', '鹿児島県', ['与論町']], ['沖永良部島', '鹿児島県', ['和泊町', '知名町']],
+      ['奄美群島', '鹿児島県', ['奄美市', '大和村', '宇検村', '瀬戸内町', '龍郷町', '喜界町', '徳之島町', '天城町', '伊仙町', '和泊町', '知名町', '与論町']],
+      ['桜島', '鹿児島県', ['鹿児島市']], ['多良間島', '沖縄県', ['多良間村']], ['伊江島', '沖縄県', ['伊江村']], ['伊是名島', '沖縄県', ['伊是名村']],
+      ['伊平屋島', '沖縄県', ['伊平屋村']], ['粟国島', '沖縄県', ['粟国村']], ['渡名喜島', '沖縄県', ['渡名喜村']], ['渡嘉敷島', '沖縄県', ['渡嘉敷村']],
+      ['小浜島', '沖縄県', ['竹富町']], ['福江島', '長崎県', ['五島市']], ['平戸島', '長崎県', ['平戸市']], ['壱岐島', '長崎県', ['壱岐市']],
+      ['志賀島', '福岡県', ['福岡市']], ['筑前大島', '福岡県', ['宗像市']], ['気仙沼大島', '宮城県', ['気仙沼市']], ['紀伊大島', '和歌山県', ['串本町']],
+      ['江の島', '神奈川県', ['藤沢市']],
+    ];
+    const place = (n: string) => {
+      try {
+        return resolvePlace(n, { town: true }).class10;
+      } catch (err) {
+        if (!(err instanceof AreaInputError)) throw err;
+        return `error: ${err.message}`;
+      }
+    };
+    const bad = islands.flatMap(([island, pref, towns]) => {
+      const areas = new Set(towns.flatMap((t) => (JMA_CLASS20[t] ?? []).filter((x) => prefectureOf(x.code) === pref).map((x) => x.class10)));
+      const want = areas.size === 1 ? [...areas][0] : `市町村の予報区が ${areas.size} つ`;
+      return resolved(island) === want && place(island) === want ? [] : [`${island}: ${resolved(island)} / ${place(island)}（${want}）`];
+    });
+    expect(bad).toEqual([]);
+  });
+
+  it('高原（宮崎県高原町の名前）は一部の一致に使わない。知らない名前 + 高原は見つからない', () => {
+    for (const n of ['美ヶ原高原', '菅平高原', '霧ヶ峰高原', '蒜山高原', '安比高原', '野辺山高原', '八ヶ岳高原']) expect(resolved(n)).toBe(`error: 地名「${n}」が見つかりません`);
+    expect([resolved('高原'), resolved('高原町')]).toEqual(['450030', '450030']);
+    // 前の地名で引けるものはそのまま（乗鞍高原は松本市乗鞍上高地の区域）
+    const keep: Array<[string, string]> = [['那須高原', '090020'], ['妙高高原', '150030'], ['伊豆高原', '220020'], ['えびの高原', resolved('えびの市')], ['乗鞍高原', JMA_CLASS20['松本市乗鞍上高地'][0].class10]];
+    expect(keep.filter(([n, code]) => resolved(n) !== code)).toEqual([]);
   });
 
   it('一部の一致は、入力の中でいちばん前から始まる地名で引く（ほかの地名の途中や重なりを拾って別の県にしない）', () => {
@@ -121,7 +183,8 @@ describe('city_map.ts と気象庁の表', () => {
     const same = (n: string, q: string) => resolved(q) === resolved(n) || (resolved(q).startsWith('error: ') && resolved(n).startsWith('error: '));
     const towns = Object.keys(JMA_CLASS20).filter((n) => !same(n, `${n}本町`)).map((n) => `${n}本町: ${resolved(`${n}本町`)}（${resolved(n)}）`);
     expect(towns).toEqual([]);
-    const forms = BASE_NAMES.flatMap((n) => ['山', '川', '温泉'].map((s) => [n, n + s])).filter(([, q]) => !EXACT.has(q) && !KEY_PREFIXES.has(q));
+    // 高原（宮崎県高原町）は一部の一致に使わないので除く（"高原山" は見つからない）
+    const forms = BASE_NAMES.filter((n) => n !== '高原').flatMap((n) => ['山', '川', '温泉'].map((s) => [n, n + s])).filter(([, q]) => !EXACT.has(q) && !KEY_PREFIXES.has(q));
     expect(forms.length).toBeGreaterThan(9000);
     expect(forms.filter(([n, q]) => !same(n, q)).map(([n, q]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
   });
@@ -144,6 +207,23 @@ describe('city_map.ts と気象庁の表', () => {
     // いくつもの地名に当たる名前、ほかの地名の途中、1 文字は、どこにも当てない（"北部" を横浜市北部、"九州" を北九州、"島" を鶴ヶ島市にしない）
     for (const n of ['北部', '東部', '西部', '九州', '島', '山']) expect(resolved(n)).toBe(`error: 地名「${n}」が見つかりません`);
     expect(resolved('津市北')).toBe('240010');
+  });
+
+  it('先頭の都道府県名（短い形も）は、いちばん長い地名のときだけ外し、その都道府県で後ろの名前を引く', () => {
+    const cases: Array<[string, string]> = [
+      ['長崎佐世保', '420020'], ['長崎 佐世保', '420020'], ['福島郡山', '070010'], ['福岡筑前', resolved('筑前町')], ['岐阜羽島', '210010'], ['東京八丈島', '130030'],
+      ['京都嵐山', '260010'], ['大阪福島', '270000'], ['沖縄市胡屋', resolved('沖縄市')], ['鹿児島市桜島', '460010'], ['広島市南区宇品', '340010'],
+    ];
+    expect(cases.filter(([q, code]) => resolved(q) !== code).map(([q, code]) => `${q}: ${resolved(q)}（${code}）`)).toEqual([]);
+    // 都道府県の中で 1 つに決まらない名前はエラー（長野県の松川町・松川村）
+    for (const q of ['長野松川', '岐阜白川']) expect(resolved(q)).toStartWith('error: ');
+    // 短い形 + その都道府県の市町村の名前は、正式名を付けたときと同じ。先頭からほかの地名とも読める形（"山形村山市" は長野県の山形村、
+    // "長野原村" は群馬県の長野原町と読める）は除く
+    const towns = Object.entries(JMA_CLASS20)
+      .flatMap(([n, ts]) => ts.map((t) => [prefectureOf(t.code), n] as const))
+      .filter(([p, n]) => /[都府県]$/.test(p) && ![...EXACT].some((k) => k.length > p.length - 1 && (p.slice(0, -1) + n).startsWith(k)));
+    const bad = towns.filter(([p, n]) => resolved(p.slice(0, -1) + n) !== resolved(p + n)).map(([p, n]) => `${p.slice(0, -1)}${n}: ${resolved(p.slice(0, -1) + n)}（${resolved(p + n)}）`);
+    expect(bad).toEqual([]);
   });
 
   it('入力の中の空白は、どの段でも無視する（"上 野" も候補のエラー）', () => {

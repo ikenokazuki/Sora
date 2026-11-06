@@ -172,9 +172,12 @@ describe('search_disaster_warnings の地名の解決', () => {
 
   it('一部の一致でほかの県にしない（「〜島」・ほかの地名の途中）。入力の中の空白は都道府県名・候補のエラーでも無視する', async () => {
     const calls = stubFetch(anyOfficeWarningJson);
-    await expect(fetchWeatherWarnings({ city: '小浜島', noCache: true })).rejects.toThrow('地名「小浜島」が見つかりません');
+    await expect(fetchWeatherWarnings({ city: '能美島', noCache: true })).rejects.toThrow('地名「能美島」が見つかりません');
     await expect(fetchWeatherWarnings({ city: '上 野', noCache: true })).rejects.toThrow('地名「上野」は、市町村（群馬県上野村）と気象庁の予報区（240010');
     expect(calls).toEqual([]);
+    expect(await fetchWeatherWarnings({ city: '小浜島', noCache: true })).toMatchObject({ areaCode: '474010', prefecture: '沖縄県' });
+    expect(await fetchWeatherWarnings({ city: '江東区大島', noCache: true })).toMatchObject({ areaCode: '130010', prefecture: '東京都' });
+    expect(await fetchWeatherWarnings({ city: '沖縄 石垣島', noCache: true })).toMatchObject({ areaCode: '474010', prefecture: '沖縄県' });
     expect(await fetchWeatherWarnings({ city: '日光市中宮祠', noCache: true })).toMatchObject({ areaCode: '090020', prefecture: '栃木県' });
     expect(await fetchWeatherWarnings({ city: '静岡 県', noCache: true })).toMatchObject({ areaCode: '220000', areaName: '静岡県' });
     expect(await fetchWeatherWarnings({ city: '上川・留萌 地方', noCache: true })).toMatchObject({ areaCode: '012000' });
