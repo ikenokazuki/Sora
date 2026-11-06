@@ -75,6 +75,16 @@ export async function registerWatchTarget(options: {
 
 /** 単一ターゲットの差分スキャン & Webhook 通知 */
 export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult> {
+  const { result, sendWebhook } = await checkAndStore(targetId, scrapeImpl);
+  if (sendWebhook) result.webhookSent = await sendWebhook();
+  return result;
+}
+
+/** 差分の検出と保存まで行い、Webhook は送らずに送る関数として返す (保存してから送る順を守る) */
+async function checkAndStore(
+  targetId: string,
+  scrapeImpl: typeof scrapeUrl,
+): Promise<{ result: WatchCheckResult; sendWebhook?: () => Promise<boolean> }> {
   const target = dbGetWatchTarget(targetId);
   if (!target) {
     throw new Error(`Watch target not found: ${targetId}`);
@@ -103,7 +113,7 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
   const isChanged = !isFirstCheck && target.last_hash !== currentHash;
 
   let diffSummary: string | undefined = undefined;
-  let webhookSent: boolean | undefined;
+  let sendWebhook: (() => Promise<boolean>) | undefined;
 
   if (isFirstCheck) {
     diffSummary = `Initial baseline established (${cleanText.length} characters)`;
@@ -122,9 +132,10 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
     // ターゲットの最新状態更新
     dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000));
 
-    // Webhook 通知送信 (SSRF 保護済み)。送った結果を待ち、2xx で受け取られたときだけ true
+    // Webhook 通知 (SSRF 保護済み)。呼んだ側が送り、2xx で受け取られたときだけ true
     if (target.webhook_url) {
-      webhookSent = await deliverWebhook(target.webhook_url, {
+      const webhookUrl = target.webhook_url;
+      const payload = {
         event: 'watch.diff_detected',
         targetId: target.id,
         url: target.url,
@@ -132,7 +143,8 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
         diffSummary,
         currentHash,
         timestamp: checkedAt,
-      });
+      };
+      sendWebhook = () => deliverWebhook(webhookUrl, payload);
     }
   } else {
     // 差分なし: チェック時刻のみ更新
@@ -140,15 +152,17 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
   }
 
   return {
-    targetId: target.id,
-    url: target.url,
-    changed: isChanged,
-    previousHash: target.last_hash || undefined,
-    currentHash,
-    diffSummary,
-    snapshotSnippet: cleanText.slice(0, 300),
-    checkedAt,
-    webhookSent,
+    result: {
+      targetId: target.id,
+      url: target.url,
+      changed: isChanged,
+      previousHash: target.last_hash || undefined,
+      currentHash,
+      diffSummary,
+      snapshotSnippet: cleanText.slice(0, 300),
+      checkedAt,
+    },
+    sendWebhook,
   };
 }
 
@@ -156,11 +170,14 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
 export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult[]> {
   const targets = dbListWatchTargets();
   const results: WatchCheckResult[] = [];
+  const deliveries: Promise<void>[] = [];
 
   for (const t of targets) {
     try {
-      const res = await checkWatchTarget(t.id, scrapeImpl);
-      results.push(res);
+      const { result, sendWebhook } = await checkAndStore(t.id, scrapeImpl);
+      results.push(result);
+      // 保存したらすぐ送り始め、次の確認を待たせない。全部の返事は最後にまとめて待つ
+      if (sendWebhook) deliveries.push(sendWebhook().then((sent) => { result.webhookSent = sent; }));
     } catch (err) {
       results.push({
         targetId: t.id,
@@ -174,6 +191,7 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
     }
   }
 
+  await Promise.all(deliveries);
   return results;
 }
 

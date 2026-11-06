@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,8 +52,12 @@ describe('F7 selector presence', () => {
     expect(typeof r.currentHash).toBe('string');
   });
   test('initial selector miss returns initialError with no baseline', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
     const { target, initialResult, initialError } = await registerWatchTarget(
       { url: 'https://example.com/gone', selector: '#nope' }, missScrape('full page') as never);
+    const warned = warn.mock.calls.map((c) => String(c[0]));
+    warn.mockRestore();
+    expect(warned).toEqual([expect.stringContaining('Initial fetch for watch target')]);
     expect(initialResult).toBeUndefined();
     expect(initialError?.code).toBe('WATCH_SELECTOR_NOT_FOUND');
     expect(dbGetWatchTarget(target.id)?.last_hash ?? undefined).toBeUndefined();
@@ -71,7 +75,14 @@ describe('F7 selector presence', () => {
 
 describe('webhookSent は送信の成否を表す', () => {
   const previousLocal = process.env.ALLOW_LOCAL_FETCH;
+  // 失敗の経路は想定どおり console.warn を出す。テストの出力に混ぜず、ここで受けて確かめる
+  let warn: ReturnType<typeof spyOn<Console, 'warn'>>;
+  const warned = () => warn.mock.calls.map((c) => c.map(String).join(' '));
+  beforeEach(() => {
+    warn = spyOn(console, 'warn').mockImplementation(() => {});
+  });
   afterEach(() => {
+    warn.mockRestore();
     if (previousLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
     else process.env.ALLOW_LOCAL_FETCH = previousLocal;
   });
@@ -103,6 +114,7 @@ describe('webhookSent は送信の成否を表す', () => {
       const res = await changeOnce(hook.url);
       expect(res.changed).toBe(true);
       expect(res.webhookSent).toBe(true);
+      expect(warned()).toEqual([]);
       expect(hook.bodies).toHaveLength(1);
       expect((hook.bodies[0] as { data: { event: string } }).data.event).toBe('watch.diff_detected');
     } finally {
@@ -117,6 +129,7 @@ describe('webhookSent は送信の成否を表す', () => {
       const res = await changeOnce(hook.url);
       expect(res.changed).toBe(true);
       expect(res.webhookSent).toBe(false);
+      expect(warned()).toEqual([expect.stringContaining('HTTP 500')]);
       expect(hook.bodies).toHaveLength(1);
     } finally {
       hook.stop();
@@ -128,6 +141,7 @@ describe('webhookSent は送信の成否を表す', () => {
     const res = await changeOnce('http://127.0.0.1:1/hook');
     expect(res.changed).toBe(true);
     expect(res.webhookSent).toBe(false);
+    expect(warned()).toEqual([expect.stringContaining('Error sending webhook')]);
   });
 
   test('SSRF の判定で止められた先は false（送っていない）', async () => {
@@ -137,6 +151,7 @@ describe('webhookSent は送信の成否を表す', () => {
       const res = await changeOnce(hook.url);
       expect(res.changed).toBe(true);
       expect(res.webhookSent).toBe(false);
+      expect(warned()).toEqual([expect.stringContaining('Blocked SSRF')]);
       expect(hook.bodies).toHaveLength(0);
     } finally {
       hook.stop();
@@ -149,5 +164,43 @@ describe('webhookSent は送信の成否を表す', () => {
     const changed = await checkWatchTarget(target.id, matchScrape('version two text here') as never);
     expect(changed.changed).toBe(true);
     expect(changed.webhookSent).toBeUndefined();
+  });
+
+  test('watch_check (全件) は変化のあった対象の Webhook をまとめて送り、結果は対象ごと', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    // 受け口は 200ms かけて応答する。同時に何件が来ているかを数える
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const storedBeforeSend: boolean[] = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const { data } = (await req.json()) as { data: { targetId: string } };
+        storedBeforeSend.push(dbListWatchHistory(data.targetId).length === 1);
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await Bun.sleep(200);
+        inFlight -= 1;
+        return new Response('ok', { status: new URL(req.url).pathname === '/bad' ? 500 : 200 });
+      },
+    });
+    try {
+      const base = `http://127.0.0.1:${server.port}`;
+      const a = await registerWatchTarget({ url: 'https://example.com/a', webhookUrl: `${base}/ok`, initialFetch: false });
+      const b = await registerWatchTarget({ url: 'https://example.com/b', webhookUrl: `${base}/bad`, initialFetch: false });
+      const c = await registerWatchTarget({ url: 'https://example.com/c', webhookUrl: `${base}/ok`, initialFetch: false });
+      await checkAllWatchTargets(matchScrape('version one text here') as never);
+      const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(warned()).toEqual([expect.stringContaining('/bad: HTTP 500')]);
+      expect(storedBeforeSend).toEqual([true, true, true]);
+      const sent = new Map(results.map((r) => [r.targetId, r.webhookSent]));
+      expect(sent.get(a.target.id)).toBe(true);
+      expect(sent.get(b.target.id)).toBe(false);
+      expect(sent.get(c.target.id)).toBe(true);
+      expect(results.map((r) => r.targetId)).toEqual([a.target.id, b.target.id, c.target.id]);
+    } finally {
+      server.stop(true);
+    }
   });
 });
