@@ -171,6 +171,11 @@ describe('map_site: サイトマップの読み方', () => {
   });
 
   test('子のサイトマップは、先頭の 1 つだけを先に取り、まだ足りなければ残りを 3 つずつ並べて取る。並びと件数の上限は、1 つずつ取るときと同じ', async () => {
+    // 子の応答は、同じ組（先頭の 1 つ、そのあとは 3 つずつ）の要求がそろうまで返さず、そろったら組の後ろの子から返す。時間に頼らず、
+    // 同時に来た要求の数と順番で確かめる（組の大きさが違う作りは、応答を待ったまま止まり、テストの時間切れで落ちる）
+    const group = (i: number) => (i === 0 ? 0 : 1 + Math.floor((i - 1) / 3));
+    const groupSize = (g: number) => Array.from({ length: 8 }, (_, i) => i).filter((i) => group(i) === g).length;
+    let waiting = new Map<number, Array<[number, () => void]>>();
     let inFlight = 0;
     let maxInFlight = 0;
     let events: string[] = [];
@@ -185,19 +190,25 @@ describe('map_site: サイトマップの読み方', () => {
         }
         const child = path.match(/^\/child(\d)\.xml$/);
         if (!child) return new Response('not found', { status: 404 });
-        events.push(`start ${child[1]}`);
+        const i = Number(child[1]);
+        events.push(`start ${i}`);
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
-        // 先頭の子ほど遅く返す（並べて取っても、結果の並びは子の並びのまま）
-        await Bun.sleep(150 - Number(child[1]) * 15);
+        const held = waiting.get(group(i)) ?? [];
+        waiting.set(group(i), held);
+        const released = new Promise<void>((resolve) => held.push([i, resolve]));
+        // 組の全員が待ちに入ってから、後ろの子から放す（放した順に end が並ぶ）
+        if (held.length === groupSize(group(i))) queueMicrotask(() => { for (const [, release] of held.sort(([a], [b]) => b - a)) release(); });
+        await released;
         inFlight--;
-        events.push(`end ${child[1]}`);
-        return xml(urlset(`<url><loc>${base}/c${child[1]}a</loc></url><url><loc>${base}/c${child[1]}b</loc></url>`));
+        events.push(`end ${i}`);
+        return xml(urlset(`<url><loc>${base}/c${i}a</loc></url><url><loc>${base}/c${i}b</loc></url>`));
       },
     });
     /** 取った子の番号（取った順）。mapSiteUrl を呼ぶたびに数え直す */
     const run = async (limit: number) => {
       events = [];
+      waiting = new Map();
       maxInFlight = 0;
       const base = `http://127.0.0.1:${server.port}`;
       const r = await mapSiteUrl({ url: base + '/', limit, noCache: true });
@@ -206,9 +217,10 @@ describe('map_site: サイトマップの読み方', () => {
     try {
       const all = await run(100);
       expect(all.links).toEqual(Array.from({ length: 8 }, (_, i) => [`${all.base}/c${i}a`, `${all.base}/c${i}b`]).flat());
-      // 先頭の 1 つは単独で取り終えてから、残りを同時に最大 3 つずつ取る
+      // 先頭の 1 つは単独で取り終えてから、残りを同時に最大 3 つずつ取る。組の後ろの子から返っても、結果は子の並び
       expect(events.indexOf('end 0')).toBeLessThan(events.indexOf('start 1'));
       expect(maxInFlight).toBe(3);
+      expect(events.filter((e) => e.startsWith('end ')).slice(1, 4)).toEqual(['end 3', 'end 2', 'end 1']);
       expect(all.fetched.slice().sort()).toEqual(['0', '1', '2', '3', '4', '5', '6', '7']);
 
       // 先頭の 1 つで足りるときは、ほかの子を取らない

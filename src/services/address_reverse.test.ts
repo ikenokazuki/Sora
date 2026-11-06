@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { AddressInputError, AddressUnavailableError } from './address_errors.js';
@@ -127,6 +127,7 @@ describe('reverseGeocode', () => {
   test('番地・号のデータが間に合わなければ、町字の答えに incomplete と pending を付ける。揃ったあとは level 8 になる', async () => {
     let gated!: GatedBuilder;
     const { ctx, data } = setup({ wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'num')), waitMs: 400, concurrency: 2 });
+    await prebuild(data, { kind: 'index' }, { kind: 'master' }, { kind: 'postal' }, { kind: 'city', lgCode: CHIYODA_LG });
     const partial = await reverseGeocode(ctx, { lat: 35.675915, lon: 139.745515 });
     expect(partial).toMatchObject({ found: true, level: 3, incomplete: true, pending: [`num:${CHIYODA_LG}`], normalized: '東京都千代田区永田町一丁目' });
     gated.release();

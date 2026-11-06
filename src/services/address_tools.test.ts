@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, abrUrl, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { addressAttribution } from './address_attribution.js';
 import { createAddressContext, setAddressContextForTest } from './address_context.js';
@@ -69,7 +69,8 @@ describe('searchPostalCode', () => {
   });
 
   test('市区町村のデータが間に合わなければ incomplete と pending を付ける', async () => {
-    const { ctx } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300 });
+    const { ctx, data } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300 });
+    await prebuild(data, { kind: 'postal' }, { kind: 'master' });
     const result = (await searchPostalCode({ zipcode: '1000014' }, ctx)) as SearchPostalCodeByZip;
     expect(result).toMatchObject({ incomplete: true, pending: [`city:${CHIYODA_LG}`] });
     expect(result.candidates[0]?.locationLevel).toBe(2);
@@ -143,6 +144,7 @@ describe('normalizeAddressTool', () => {
       waitMs: 300, concurrency: 2,
     });
     const ctx = createAddressContext(built.data);
+    await prebuild(built.data, { kind: 'master' }, { kind: 'postal' }, { kind: 'index' }, { kind: 'city', lgCode: CHIYODA_LG });
     // level 3 までの正規化は段A だけで揃う。座標の突き合わせ（逆ジオコーディング）だけが段B を待つ
     const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', level: 3, lat: 35.675915, lon: 139.745515 }, ctx);
     expect(result.checks?.coordinates?.nearest).toMatchObject({ level: 3 });
@@ -208,7 +210,8 @@ describe('normalizeAddressTool', () => {
   });
 
   test('市区町村のデータが間に合わなければ incomplete と pending を付ける', async () => {
-    const { ctx } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300, concurrency: 2 });
+    const { ctx, data } = setup({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city'), waitMs: 300, concurrency: 2 });
+    await prebuild(data, { kind: 'master' }, { kind: 'postal' });
     const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1' }, ctx);
     expect(result).toMatchObject({ level: 2, incomplete: true, pending: [`city:${CHIYODA_LG}`], postalCodes: [{ zipcode: '1000000', fallback: true }] });
   });
@@ -287,6 +290,7 @@ describe('reverseGeocodeTool', () => {
       waitMs: 400, concurrency: 2,
     });
     const ctxGated = createAddressContext(built.data);
+    await prebuild(built.data, { kind: 'index' }, { kind: 'master' }, { kind: 'postal' }, { kind: 'city', lgCode: CHIYODA_LG });
     const partial = await reverseGeocodeTool({ lat: 35.675915, lon: 139.745515 }, ctxGated);
     expect(partial).toMatchObject({ found: true, level: 3, incomplete: true, pending: [`num:${CHIYODA_LG}`] });
   });

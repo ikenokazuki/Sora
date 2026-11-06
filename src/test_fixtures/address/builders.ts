@@ -117,5 +117,13 @@ export async function waitFor(condition: () => boolean, timeoutMs = 3000): Promi
   }
 }
 
+/**
+ * 止めていないデータを、決まった時間ではなく、できあがるまで待って先に作る。待ち時間の短いテスト（waitMs: 300 など）で、止めたデータだけが
+ * 時間切れになるようにする（CPU が重いと、止めていないデータの構築も待ち時間を超える）。
+ */
+export async function prebuild(data: AddressData, ...jobs: BuildJob[]): Promise<void> {
+  await Promise.all(jobs.map((job) => data.request(job)));
+}
+
 /** 待機中の非同期処理が進むのを待つ。 */
 export const tick = (ms = 20): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));

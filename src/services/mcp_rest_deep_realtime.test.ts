@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { app } from '../index.js';
 import * as yahooService from './yahoo.js';
 import { defaultXDetailProvider } from './x_detail.js';
+import * as browserTrack from './tracking/carriers/browser_track.js';
 
 describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integration Tests', () => {
   let originalFetch: typeof globalThis.fetch;
+  const restore: Array<() => void> = [];
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
@@ -12,6 +14,7 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    while (restore.length) restore.pop()!();
   });
 
   // =========================================================================
@@ -540,6 +543,10 @@ describe('MCP & REST Deep / Realtime / Scrape / Tracking Multi-surface Integrati
     });
 
     it('MCP track_package and REST /tracking handle fail-fast and safe UPS fallback', async () => {
+      // UPS の公式の追跡ページはブラウザで描画せず、無効な番号の偽のページを返す（本物の ups.com に繋がない）
+      const text = 'トラッキングナンバーが無効です。';
+      const upsPage = spyOn(browserTrack, 'renderTrackingPage').mockImplementation(async (url) => ({ title: 'UPS', finalUrl: url, bodyText: text, html: `<html><body><main>${text}</main></body></html>` }));
+      restore.push(() => upsPage.mockRestore());
       // 1. REST /tracking with auto carrier on 1Z... (UPS fallback when uncredentialed)
       const restTrackingRes = await app.request('/tracking', {
         method: 'POST',

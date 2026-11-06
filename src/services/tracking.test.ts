@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { afterAll, beforeAll, describe, it, expect, spyOn } from 'bun:test';
 import {
   cleanTrackingNumber,
   getCarrierTrackingUrl,
@@ -14,10 +14,21 @@ import {
   trackPackage,
 } from './tracking.js';
 import { app } from '../index.js';
-import { resolveChromiumPath } from '../browser_engine.js';
+import * as browserTrack from './tracking/carriers/browser_track.js';
 
 // Real carrier availability is checked explicitly, outside the default CI suite.
 const itLive = it.skipIf(process.env.SORA_LIVE_TESTS !== '1');
+
+// UPS の公式の追跡ページはブラウザで描画せず、無効な番号の偽のページを返す（本物の ups.com に繋がない。実際のページは
+// carriers/intl_scrape.test.ts の SORA_LIVE_TESTS で確かめる）
+const INVALID_UPS_PAGE = 'トラッキングナンバーが無効です。';
+let upsPage: ReturnType<typeof spyOn<typeof browserTrack, 'renderTrackingPage'>>;
+beforeAll(() => {
+  upsPage = spyOn(browserTrack, 'renderTrackingPage').mockImplementation(async (url) => ({
+    title: 'UPS', finalUrl: url, bodyText: INVALID_UPS_PAGE, html: `<html><body><main>${INVALID_UPS_PAGE}</main></body></html>`,
+  }));
+});
+afterAll(() => upsPage.mockRestore());
 
 describe('Tracking Service Unit Tests', () => {
   describe('cleanTrackingNumber', () => {
@@ -126,22 +137,20 @@ describe('Tracking Service Unit Tests', () => {
   });
 
   describe('UPS Tracking', () => {
-    it('UPS番号に対して公式URLと案内を正しく返却する (T-B3: credential未設定時はunknown)', async () => {
+    it('UPS番号に対して公式URLを返し、credential未設定時は公式の追跡ページをブラウザで読んで、無効な番号を not_found にする', async () => {
       const res = await trackUps('1Z9999999999999999');
-      expect(res.carrier).toBe('ups');
-      expect(res.carrierName).toBe('UPS');
-      expect(res.trackingNumber).toBe('1Z9999999999999999');
+      expect(upsPage).toHaveBeenCalledWith('https://www.ups.com/track?loc=ja_JP&tracknum=1Z9999999999999999', expect.anything());
+      expect(res).toMatchObject({ carrier: 'ups', carrierName: 'UPS', trackingNumber: '1Z9999999999999999', status: 'not_found', events: [] });
       expect(res.trackingUrl).toContain('https://www.ups.com/track?loc=ja_JP&tracknum=1Z9999999999999999');
-      expect(res.events.length).toBe(0);
-      if (resolveChromiumPath()) {
-        // Chromiumあり: ブラウザ取得がbogus番号をnot_foundに分類する
-        expect(['not_found', 'unknown']).toContain(res.status);
-      } else {
-        // T-B3: credentials未設定時は status: 'unknown' かつ events: []
-        expect(res.status).toBe('unknown');
-        expect(res.statusText).toContain('UPS API credentials are not configured');
-      }
-    }, 110000);
+    });
+
+    it('T-B3: credential未設定でページを描画できない（Chromium なし）ときは、unknown と公式ページの案内を返す', async () => {
+      upsPage.mockResolvedValueOnce(undefined);
+      const res = await trackUps('1Z9999999999999999');
+      expect(res).toMatchObject({ carrier: 'ups', trackingNumber: '1Z9999999999999999', status: 'unknown', events: [] });
+      expect(res.statusText).toContain('UPS API credentials are not configured');
+      expect(res.trackingUrl).toContain('https://www.ups.com/track?loc=ja_JP&tracknum=1Z9999999999999999');
+    });
   });
 
   describe('Track B Verification Tests (T-B1 to T-B7)', () => {
