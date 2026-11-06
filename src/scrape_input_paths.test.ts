@@ -236,8 +236,11 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
         expect(result.title).toBe('アプリ');
         expect(result.screenshot).toBeUndefined();
         expect(result.warnings?.join('\n')).toContain('screenshot');
-        // screenshot を求めていない SPA の失敗は、今までどおり例外
-        await expect(scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown'], noCache: true })).rejects.toThrow('browser down');
+        // screenshot を求めていない SPA の失敗は、今までどおり例外。expect(...).rejects には渡さずに待つ（Bun 1.4.2 では、渡した処理の中の
+        // 同じ送り先への 2 回目の取得で本文の読み出しが進まず、取得の時間切れになる。ふつうに待てば進む）
+        const error = await scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown'], noCache: true }).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('browser down');
       } finally {
         spy.mockRestore();
       }
