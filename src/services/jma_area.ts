@@ -75,12 +75,17 @@ const townsNamed = (name: string): Municipality[] =>
 const GUN_TOWNS = [...MUNICIPALITIES.keys()].filter((n) => n.indexOf('郡') > 0);
 /** s の k 文字目の郡が、その前から始まる市町村の名前の中か（"蒲郡市川町" "上郡町上郡" の郡。郡の名前の終わりではない） */
 const inGunTown = (s: string, k: number): boolean => GUN_TOWNS.some((n) => k >= n.indexOf('郡') && s.startsWith(n, k - n.indexOf('郡')));
+/** 市・区の名前（市町村の名前で、市か区で終わるもの） */
+const CITY_NAMES = new Set([...MUNICIPALITIES.keys()].filter((n) => /[市区]$/.test(n)));
+/** s の k 文字目の郡が、s の先頭の市・区の名前の後ろか（市・区は郡の中に無いので、郡の名前ではなく町名の一部。"山口市小郡栄町" の小郡） */
+const afterCity = (s: string, k: number): boolean => k >= (placeNameAt(s, 0, CITY_NAMES)?.length ?? Number.POSITIVE_INFINITY);
 
 /**
  * 市町村を名前から引く。市・区・町・村は省いてよい（"札幌" → 札幌市）。先頭の都道府県名で同じ名前の候補を絞り
  * （"北海道森町"）、政令指定都市の区は市全体に当てる（"横浜市中区" → 横浜市。区ごとの区域がある神戸市・広島市の
  * 区と、東京の特別区はその区のまま）。郡の付いた住所は、当たらず郡の後ろが市町村の名前そのままなら、その名前で引き直す（"北海道上川郡上川町" →
- * 上川町。"交野市郡津" の津は市町村の名前でないので引き直さない。郡が市町村の名前の中の "蒲郡市川町" も）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ * 上川町。"交野市郡津" の津は市町村の名前でないので引き直さない。郡が市町村の名前の中の "蒲郡市川町" と、先頭の市・区の後ろの "山口市小郡栄町" も）。
+ * 当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
  */
 export function resolveMunicipality(query: string): Municipality | undefined {
   const s = query.replace(/\s/g, '');
@@ -91,7 +96,8 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   const hits = townsNamed(name).filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
   const gun = name.match(/^[^郡]+郡/)?.[0] ?? '';
   const town = name.slice(gun.length);
-  if (hits.length === 0 && gun && MUNICIPALITIES.has(town) && !inGunTown(name, gun.length - 1)) return resolveMunicipality((pref ?? '') + town);
+  const k = gun.length - 1;
+  if (hits.length === 0 && gun && MUNICIPALITIES.has(town) && !inGunTown(name, k) && !afterCity(name, k)) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
     throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください`);
@@ -266,10 +272,10 @@ function firstPlaceName(s: string): [string, number] | undefined {
 
 /**
  * 郡の後ろから始まる市町村の名前（いちばん長いもの。"足柄上郡中井町比奈窪" の中井町、"中新川郡上市町" は郡上市でなく上市町）。郡が市町村の名前の中
- * （"蒲郡市原" "上郡町上郡"）のときと、郡の前が市町村の名前（"交野市郡津市"。郡〜は町名）のときは除く
+ * （"蒲郡市原" "上郡町上郡"）のときと、郡の前が市町村の名前（"交野市郡津市"。郡〜は町名）のとき、郡が先頭の市・区の名前の後ろ（"山口市小郡栄町"）のときは除く
  */
 function townAfterGun(s: string): string | undefined {
-  for (let k = s.indexOf('郡'); k >= 0; k = s.indexOf('郡', k + 1)) {
+  for (let k = s.indexOf('郡'); k >= 0 && !afterCity(s, k); k = s.indexOf('郡', k + 1)) {
     const town = placeNameAt(s, k + 1, MUNICIPALITIES);
     if (town && !inGunTown(s, k) && !MUNICIPALITIES.has(s.slice(0, k))) return town;
   }

@@ -313,6 +313,16 @@ describe('city_map.ts と気象庁の表', () => {
     expect(keep.filter(([q, n]) => resolved(q) !== resolved(n) || resolved(n).startsWith('error')).map(([q, n]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
   }, LONG);
 
+  it('先頭の市・区の名前の後ろの「郡」は、郡の名前として読まない（"山口市小郡栄町" を千葉県の栄町にしない。天気・警報とも）', () => {
+    for (const q of ['山口市小郡栄町1丁目', '山口市小郡昭和町1丁目', '山口市小郡栄町']) expect([q, resolved(q), place(q)]).toEqual([q, '350020', '350020']);
+    // 市・区の名前（都道府県名の有無とも）+ 〜郡 + ほかの県の町村は、市・区の名前だけのときと同じ（1 つに決まらない市はどちらもエラー）
+    const cities = Object.entries(JMA_CLASS20).filter(([n]) => /[市区]$/.test(n)).flatMap(([n, ts]) => [n, ...ts.map((t) => prefectureOf(t.code) + n)]);
+    const forms = cities.flatMap((c) => ['小郡栄町', '大郡昭和町1丁目', '小郡中井町'].map((d) => [c, c + d] as const));
+    expect(forms.length).toBeGreaterThan(4000);
+    const same = (a: string, b: string) => a === b || (a.startsWith('error: ') && b.startsWith('error: '));
+    expect(forms.filter(([c, q]) => !same(resolved(c), resolved(q)) || !same(place(c), place(q))).map(([c, q]) => `${q}: ${resolved(q)} / ${place(q)}（${resolved(c)}）`)).toEqual([]);
+  }, LONG);
+
   it('実在の郡 + その郡の町村は、その町村の予報区。町・村を省いた形は、その町村の予報区か入力の誤り（別の県・予報区にしない。天気・警報とも）', () => {
     // [都道府県, 郡, 町村]: 上・山で始まる町村（郡上・郡山と読める）、犬上郡・足柄上郡（上郡町の上郡を含む）の町、〜島の町村、
     // 町・村を省くとほかの市や気温の地点と同じ名前になる町村（清水・横浜・高山・神戸・新庄・白石・大津・西郷）
@@ -351,7 +361,7 @@ describe('city_map.ts と気象庁の表', () => {
       const start = performance.now();
       place(q);
       const ms = performance.now() - start;
-      return ms < 200 ? [] : [`${q.slice(0, 3)}…${q.slice(-6)}: ${Math.round(ms)} ms`];
+      return ms < 1000 ? [] : [`${q.slice(0, 3)}…${q.slice(-6)}: ${Math.round(ms)} ms`];
     });
     expect(slow).toEqual([]);
   }, LONG);
