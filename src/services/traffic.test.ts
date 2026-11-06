@@ -77,24 +77,51 @@ describe('get_flight_status の空港', () => {
 
   test('表の別名・コード・空港名、それを含む入力は解決する', () => {
     const table: Record<string, string[]> = {
-      HND: ['羽田', '羽田空港', '東京国際空港', 'hnd', 'tokyo', '東京国際空港(羽田空港)', '羽田空港国際線ターミナル', 'HND airport', ' Tokyo '],
-      NRT: ['成田', '成田空港', '成田国際空港', 'nrt', '成田空港 第2ターミナル', 'NRT/成田'],
-      ITM: ['伊丹', '伊丹空港', '大阪国際空港', 'itm', '大阪国際空港(伊丹空港)'],
-      KIX: ['関西', '関西空港', '関西国際空港', '関空', 'kix', 'Kix'],
-      NGO: ['中部', '中部空港', 'セントレア', '中部国際空港', 'ngo', '中部国際空港(セントレア)'],
+      HND: [
+        '羽田', '羽田空港', '東京国際空港', 'hnd', 'tokyo', '東京', '東京国際空港(羽田空港)', '羽田空港国際線ターミナル', 'HND airport', ' Tokyo ',
+        'haneda', 'Haneda Airport', 'Tokyo Haneda', 'Tokyo International Airport', 'Ｈｎｄ', 'ＨＮＤ', 'ＴＯＫＹＯ',
+      ],
+      NRT: [
+        '成田', '成田空港', '成田国際空港', 'nrt', '成田空港 第2ターミナル', 'NRT/成田',
+        'narita', 'Narita Airport', 'Narita International Airport', 'tokyo narita', 'Tokyo-Narita', 'ＮＲＴ',
+      ],
+      ITM: [
+        '伊丹', '伊丹空港', '大阪国際空港', 'itm', '大阪国際空港(伊丹空港)',
+        'itami', 'Osaka Itami', 'Osaka International Airport', 'Itami Airport',
+      ],
+      KIX: [
+        '関西', '関西空港', '関西国際空港', '関空', 'kix', 'Kix',
+        'kansai', 'Kansai Airport', 'Kansai International Airport', 'ｋｉｘ',
+      ],
+      NGO: [
+        '中部', '中部空港', 'セントレア', '中部国際空港', 'ngo', '中部国際空港(セントレア)',
+        'centrair', 'chubu', 'Chubu Centrair International Airport', 'ｾﾝﾄﾚｱ',
+      ],
     };
     for (const [code, inputs] of Object.entries(table)) {
       for (const input of inputs) expect(resolveAirport(input).code, input).toBe(code);
     }
   });
 
-  test('短い入力・部分の文字・英単語の中の綴り・複数の空港にまたがる入力はエラー（別の空港にしない）', () => {
+  test('短い入力・部分の文字・英単語の中の綴り・東京を含む別の語はエラー（別の空港にしない）', () => {
     const inputs = [
-      'o', 'h', 'hn', 'ng', 'ab', '羽', '成', '田', '部', '空', '空港', '国際空港', '国際', '大阪', '東京', '千歳',
-      'tokyo narita', 'tokyo haneda', 'mango', 'bingo', 'prefix', 'hndx', '羽田と成田', 'HND to NRT', '羽田から関空',
+      'o', 'h', 'hn', 'ng', 'ab', '羽', '成', '田', '部', '空', '空港', '国際空港', '国際', '大阪', '千歳',
+      'mango', 'bingo', 'prefix', 'hndx', 'itamix', 'kansaix', 'narita2x', 'airport', 'international airport', 'osaka', 'tokyo station', '東京駅',
     ];
     for (const input of inputs) {
       expect(() => resolveAirport(input), input).toThrow(TrafficInputError);
+    }
+  });
+
+  test('複数の空港を指定した入力は、1 つだけ指定するよう伝えるエラーにする', () => {
+    for (const input of ['羽田と成田', 'HND to NRT', '羽田から関空', 'Tokyo Haneda Narita', 'Narita to Kansai']) {
+      let err: unknown;
+      try { resolveAirport(input); } catch (e) { err = e; }
+      expect(err, input).toBeInstanceOf(TrafficInputError);
+      const message = (err as Error).message;
+      expect(message, input).toContain('1 つだけ');
+      expect(message, input).not.toContain('対応していません');
+      for (const name of ['羽田', '成田', '伊丹', '関西', '中部']) expect(message, input).toContain(name);
     }
   });
 });
@@ -201,11 +228,14 @@ describe('表の引き方', () => {
 describe('get_flight_status の OpenAPI', () => {
   test('空港の引数はどの書き方（本文・クエリ・パス）でも、対応が 5 空港だけと書く', () => {
     const paths = (generateOpenApiDocument() as any).paths;
-    const note = '羽田・成田・伊丹・関西・中部の 5 空港だけ';
-    expect(paths['/traffic/flight'].post.requestBody.content['application/json'].schema.properties.airport.description).toContain(note);
-    for (const op of [paths['/traffic/flight'].get, paths['/traffic/flight/{airport}'].get]) {
-      expect(op.parameters.find((p: { name: string }) => p.name === 'airport').description).toContain(note);
-    }
+    const notes = ['羽田・成田・伊丹・関西・中部の 5 空港だけ', '「東京」「tokyo」は羽田', '成田は名前で指定'];
+    const descriptions = [
+      paths['/traffic/flight'].post.requestBody.content['application/json'].schema.properties.airport.description,
+      ...[paths['/traffic/flight'].get, paths['/traffic/flight/{airport}'].get].map(
+        (op) => op.parameters.find((p: { name: string }) => p.name === 'airport').description,
+      ),
+    ];
+    for (const description of descriptions) for (const note of notes) expect(description).toContain(note);
   });
 
   test('要約と応答の説明は「主要空港」とせず、5 空港と書く', () => {

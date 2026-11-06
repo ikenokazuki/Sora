@@ -71,7 +71,7 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     'life',
     '【公式運航情報直結】羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }',
     {
-      airport: z.string().optional().describe('対象空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
+      airport: z.string().optional().describe('対象空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
       type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure"(出発) または "arrival"(到着) (デフォルト: "departure")').meta({ default: 'departure' }),
       category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic"(国内線) または "international"(国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
       flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),

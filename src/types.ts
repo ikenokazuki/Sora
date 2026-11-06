@@ -889,7 +889,7 @@ export const PoiSearchResultSchema = z.object({
 });
 
 export const FlightStatusRequestSchema = z.object({
-  airport: z.string().optional().describe('対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
+  airport: z.string().optional().describe('対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
   type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")').meta({ default: 'departure' }),
   category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
   flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
@@ -3550,7 +3550,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
           parameters: [
-            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "NRT", "成田", "KIX", "関空")' },
+            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "HND", "羽田", "NRT", "成田", "KIX", "関空")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み (例: "NH241", "JL516")' },
@@ -3573,7 +3573,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
           parameters: [
-            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "成田")' },
+            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "HND", "羽田", "成田")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み' },

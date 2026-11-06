@@ -324,44 +324,64 @@ const AIRPORT_MAP: Record<string, { id: number; name: string; code: string }> = 
   '羽田空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   '東京国際空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   'hnd': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'haneda': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'tokyo international airport': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  '東京': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   'tokyo': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   '成田': { id: 1, name: '成田国際空港', code: 'NRT' },
   '成田空港': { id: 1, name: '成田国際空港', code: 'NRT' },
   '成田国際空港': { id: 1, name: '成田国際空港', code: 'NRT' },
   'nrt': { id: 1, name: '成田国際空港', code: 'NRT' },
+  'narita': { id: 1, name: '成田国際空港', code: 'NRT' },
+  'narita international airport': { id: 1, name: '成田国際空港', code: 'NRT' },
   '伊丹': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '伊丹空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '大阪国際空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   'itm': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  'itami': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  'osaka international airport': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '関西': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関西空港': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関西国際空港': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関空': { id: 4, name: '関西国際空港', code: 'KIX' },
   'kix': { id: 4, name: '関西国際空港', code: 'KIX' },
+  'kansai': { id: 4, name: '関西国際空港', code: 'KIX' },
+  'kansai international airport': { id: 4, name: '関西国際空港', code: 'KIX' },
   '中部': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   '中部空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   'セントレア': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   '中部国際空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   'ngo': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'centrair': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'chubu': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'chubu centrair international airport': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
 };
+
+// 入力が丸ごとこれと同じときだけ当てる別名。東京は羽田（省いたときの既定）で、成田は名前で指定してもらう。長い入力の中の「東京」「tokyo」（"tokyo narita"・東京駅）では当てない
+const EXACT_ONLY_ALIASES = new Set(['東京', 'tokyo']);
+
 
 /** 空港名またはコードから空港情報を解決 */
 export function resolveAirport(airportInput?: string): { id: number; name: string; code: string } {
-  const key = airportInput?.trim().toLowerCase();
+  // 全角の英数字・半角のカナもそろえる（"ＨＮＤ"・"ｾﾝﾄﾚｱ"）
+  const key = airportInput?.normalize('NFKC').trim().toLowerCase();
   if (!key) return DEFAULT_AIRPORT;
   if (Object.hasOwn(AIRPORT_MAP, key)) return AIRPORT_MAP[key];
 
-  // 表の別名を含む入力（「羽田空港国際線ターミナル」「HND airport」）だけを受ける。入力の一部が別名に含まれるだけの断片（「羽」「o」）は受けない。
-  // 日本語の別名は含んでいればよい。英字は 3 字のコードが単語として入っているときだけ（"tokyo" は羽田・成田で共有する市名なので完全一致のみ。"mango" の "ngo" も拾わない）。
-  const words = key.split(/[^a-z0-9]+/);
+  // 表の別名を含む入力（「羽田空港国際線ターミナル」「Tokyo Haneda」）だけを受ける。入力の一部が別名に含まれるだけの断片（「羽」「o」）は受けない。
+  // 日本語の別名は含んでいればよい。英字の別名は単語（複数語の名前は語の並び）として入っているときだけ（"mango" の "ngo"・"hndx" は拾わない）。
+  const words = ` ${key.split(/[^a-z0-9]+/).filter(Boolean).join(' ')} `;
   const hits = new Map<string, { id: number; name: string; code: string }>();
   for (const [k, v] of Object.entries(AIRPORT_MAP)) {
-    if (/^[a-z]/.test(k) ? k.length === 3 && words.includes(k) : key.includes(k)) hits.set(v.code, v);
+    if (EXACT_ONLY_ALIASES.has(k)) continue;
+    if (/^[a-z]/.test(k) ? words.includes(` ${k} `) : key.includes(k)) hits.set(v.code, v);
   }
-  // 複数の空港の別名が入っていたら（「羽田と成田」）どれとも決められないのでエラー
   if (hits.size === 1) return [...hits.values()][0];
 
-  throw new TrafficInputError(`空港「${airportInput}」には対応していません。対応は羽田・成田・伊丹・関西・中部の 5 空港です`);
+  const supported = '対応は羽田・成田・伊丹・関西・中部の 5 空港です';
+  // 複数の空港の別名が入っていたら（「羽田と成田」）どれとも決められないので、1 つにするよう伝える
+  if (hits.size > 1) throw new TrafficInputError(`空港を 1 つだけ指定してください（「${airportInput}」には複数の空港が含まれています）。${supported}`);
+  throw new TrafficInputError(`空港「${airportInput}」には対応していません。${supported}`);
 }
 
 /** フライト運航状況・欠航・遅延情報取得 (Yahoo! 路線情報) */

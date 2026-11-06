@@ -445,7 +445,7 @@ publicDataRoutes.get('/geo/reverse', async (c) => {
   }
 });
 
-// 主要空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
+// 5 空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
 publicDataRoutes.post('/traffic/flight', async (c) => {
   let rawBody: unknown;
   try {
