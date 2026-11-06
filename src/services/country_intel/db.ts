@@ -580,18 +580,19 @@ export function getEvidenceDetails(contextId: string, ids: readonly string[]): E
 
 const PAGE_CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 
-function encodePageCursor(contextId: string, offset: number, now: number): string {
-  return Buffer.from(JSON.stringify({ v: 1, contextId, offset, exp: now + PAGE_CURSOR_TTL_MS }), 'utf8').toString('base64url');
+/** ids 指定の続きは ids の指紋 (k) を持ち、別の ids や通常の走査には使えない。 */
+function encodePageCursor(contextId: string, offset: number, now: number, k?: string): string {
+  return Buffer.from(JSON.stringify({ v: 1, contextId, offset, exp: now + PAGE_CURSOR_TTL_MS, ...(k ? { k } : {}) }), 'utf8').toString('base64url');
 }
 
-function decodePageCursor(contextId: string, cursor: string, now: number): number {
-  let payload: { v?: unknown; contextId?: unknown; offset?: unknown; exp?: unknown };
+function decodePageCursor(contextId: string, cursor: string, now: number, k?: string): number {
+  let payload: { v?: unknown; contextId?: unknown; offset?: unknown; exp?: unknown; k?: unknown };
   try {
     payload = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
   } catch {
     throw new RangeError('Invalid evidence page cursor');
   }
-  if (payload.v !== 1 || payload.contextId !== contextId || typeof payload.offset !== 'number' || payload.offset < 0 || !(typeof payload.exp === 'number' && payload.exp > now)) {
+  if (payload.v !== 1 || payload.contextId !== contextId || payload.k !== k || typeof payload.offset !== 'number' || payload.offset < 0 || !(typeof payload.exp === 'number' && payload.exp > now)) {
     throw new RangeError('Invalid evidence page cursor');
   }
   return Math.floor(payload.offset);
@@ -606,7 +607,19 @@ export function getEvidencePage(contextId: string, options: { ids?: readonly str
   const limit = Math.min(Math.max(options.limit ?? 40, 1), 100);
   const totalStored = countContextEvidence(contextId);
   if (options.ids) {
-    return { contextId, items: getEvidenceDetails(contextId, options.ids).slice(0, limit), totalStored };
+    // limit 件ずつ ids の窓を進める。窓の中でこの報告に無い ID は missingIds で返す。
+    const ids = [...new Set(options.ids)];
+    const k = Bun.hash(ids.join('\n')).toString(36);
+    const offset = options.cursor ? decodePageCursor(contextId, options.cursor, Date.now(), k) : 0;
+    const batch = ids.slice(offset, offset + limit);
+    const items = getEvidenceDetails(contextId, batch);
+    const found = new Set(items.map((detail) => detail.evidenceId));
+    const missingIds = batch.filter((id) => !found.has(id));
+    return {
+      contextId, items, totalStored,
+      ...(missingIds.length > 0 ? { missingIds } : {}),
+      ...(offset + limit < ids.length ? { nextCursor: encodePageCursor(contextId, offset + limit, Date.now(), k) } : {}),
+    };
   }
   const offset = options.cursor ? decodePageCursor(contextId, options.cursor, Date.now()) : 0;
   const rows = getDb().query<{ evidence_id: string }, [string, number, number]>('SELECT evidence_id FROM intel_context_evidence WHERE context_id = ? ORDER BY sort_key ASC, evidence_id ASC LIMIT ? OFFSET ?').all(contextId, limit + 1, offset);

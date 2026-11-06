@@ -6,7 +6,7 @@ export type ScrapeInput = {
   url: string;
   /** 抽出する最大文字数 (デフォルト: 30000) */
   maxChars?: number;
-  /** 動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium) */
+  /** 動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ) */
   mode?: "auto" | "fast" | "browser";
   /** 常にブラウザ描画を強制するか (mode="browser" と同等) */
   renderJs?: boolean;
@@ -20,9 +20,9 @@ export type ScrapeInput = {
   onlyMainContent?: boolean;
   /** ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"}) */
   selectors?: Record<string, string>;
-  /** 特定要素のみを切り抜いてスクリーンショット撮影する CSS セレクタ (例: "#chart") */
+  /** formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ (例: "#chart")。ブラウザで撮るので、mode "fast"・fastOnly では撮れない */
   clipSelector?: string;
-  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 */
+  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない */
   headers?: Record<string, string>;
   /** リクエスト時に送信するカスタム Cookie 配列 */
   cookies?: {
@@ -49,11 +49,11 @@ export type ScrapeInput = {
   responseMode?: "full" | "evidence";
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
-  /** 相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false) */
+  /** 相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false) */
   annotateTemporal?: boolean;
   /** Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false) */
   stripLinks?: boolean;
-  /** メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false) */
+  /** メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false) */
   maskPii?: boolean;
   /** キャッシュをバイパスして強制再取得するか */
   noCache?: boolean;
@@ -291,6 +291,8 @@ export type ScrapeOutput = {
   rawHtml?: string;
   /** スクリーンショット画像 (Base64 PNG) */
   screenshot?: string;
+  /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+  warnings?: string[];
   /** ページ品質スコア (0〜100) */
   quality?: number;
   /** 必須フィールド充足度 (0〜100) */

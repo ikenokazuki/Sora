@@ -134,11 +134,12 @@ describe('キャッシュが意図した時間のあいだ効く', () => {
       const cached = await inspectImage({ url });
       expect(cached.cached).toBe(true);
       expect(hits - before).toBe(1);
+      expect(getFromCache(`img_inspect:v2:${url}`)).not.toBeNull();
 
       // 期限後の取り直しは、時計を進めたまま取得させない。ドメインごとの間隔制御は最終アクセス時刻を Date.now() で
       // 覚えるため、進めた時刻で取得すると、時計を戻したあとの別のテストが進めた分だけ待たされる。ここでは期限切れだけを見る
       at(61 * MINUTE);
-      expect(getFromCache(`img_inspect:${url}`)).toBeNull();
+      expect(getFromCache(`img_inspect:v2:${url}`)).toBeNull();
       expect(hits - before).toBe(1);
     });
   });

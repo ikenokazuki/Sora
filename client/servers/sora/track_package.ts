@@ -6,16 +6,10 @@ export type TrackPackageInput = {
   trackingNumber: string;
   /** 運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl, auto)。未指定または "auto" の場合は自動判別 */
   carrier?: "yamato" | "sagawa" | "japanpost" | "seino" | "fukutsu" | "ups" | "fedex" | "dhl" | "auto";
-  /** 優先的に検証する運送会社候補のヒント配列 */
+  /** 優先的に検証する運送会社候補のヒント配列。自動判別（carrier を省く・auto）のときだけ効く */
   preferredCarriers?: ("yamato" | "sagawa" | "japanpost" | "seino" | "fukutsu" | "ups" | "fedex" | "dhl")[];
-  /** 差出元の国コード（ISO 2文字） */
-  originCountry?: string;
-  /** お届け先の国コード（ISO 2文字） */
-  destinationCountry?: string;
   /** キャッシュをバイパスして最新情報を強制取得するか */
   noCache?: boolean;
-  /** 詳細な detection 判定情報をレスポンスに含めるか */
-  verbose?: boolean;
 };
 
 export type TrackPackageOutput = {
@@ -70,7 +64,7 @@ export type TrackPackageOutput = {
     /** UPU S10 サービス識別子 (例: "EE", "CP", "RA") */
     serviceIndicator?: string;
   };
-  /** 自動判別・検証診断情報 (verbose: true 時) */
+  /** 自動判別・検証診断情報 */
   detection?: {
     /** 検出モード */
     mode?: "auto" | "explicit";

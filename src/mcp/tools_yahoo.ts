@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { createWebAnchorHints, fetchRealtimeTrends, getSuggestedKeywords, searchYahooChiebukuro, searchYahooImage, searchYahooNews, searchYahooRealtime, searchYahooVideo } from '../scraper.js';
+import { fetchRealtimeTrends } from '../scraper.js';
 import { formatCompactRealtimeResponse } from '../search_compact.js';
 import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
-import { ChiebukuroStatusSchema, VideoSearchRequestSchema } from '../types.js';
+import { ChiebukuroSearchRequestSchema, ChiebukuroStatusSchema, ImageSearchRequestSchema, TrendSearchRequestSchema, VideoSearchRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
-import { attachVideoTranscripts } from '../services/youtube.js';
+import { searchChiebukuroCached, searchImageCached, searchNewsCached, searchRealtimeCached, searchVideoCached, suggestKeywordsCached } from '../yahoo_search_cache.js';
 import { isModuleActive, registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
@@ -22,11 +22,12 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     '【Yahoo 画像検索】キーワードで画像を検索し、元画像の URL と寸法・サムネイル・掲載元ページを取得します。画像の中身を読むときは inspect_image を使ってください。返却: { query, count, items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }] }',
     {
       query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
+      limit: ImageSearchRequestSchema.shape.limit,
+      page: ImageSearchRequestSchema.shape.page,
     },
-    async ({ query, limit }) => {
+    async ({ query, limit, page }) => {
       try {
-        const result = await searchYahooImage({ query, limit });
+        const result = await searchImageCached({ query, limit, page });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
@@ -50,19 +51,20 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     '【Yahoo 動画検索】キーワードで YouTube・TikTok 等の動画を検索します。transcripts を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }] }',
     {
       query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
+      limit: VideoSearchRequestSchema.shape.limit,
+      page: VideoSearchRequestSchema.shape.page,
       transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
       transcriptChars: z.number().int().min(500).max(10_000).optional().describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)').meta({ default: 2000 }),
       updated: VideoSearchRequestSchema.shape.updated,
       platform: VideoSearchRequestSchema.shape.platform,
     },
-    async ({ query, limit, transcripts, transcriptChars, updated, platform }) => {
+    async ({ query, limit, page, transcripts, transcriptChars, updated, platform }) => {
       try {
-        let result = await searchYahooVideo({ query, limit, updated, platform });
         // ponytail: youtube モジュールが無効な設定では transcripts を無視する
-        if (transcripts && isModuleActive('youtube', context.options?.modules)) {
-          result = await attachVideoTranscripts(result, query, { count: transcripts, maxChars: transcriptChars ?? 2000 });
-        }
+        const result = await searchVideoCached({
+          query, limit, page, updated, platform, transcriptChars,
+          transcripts: isModuleActive('youtube', context.options?.modules) ? transcripts : 0,
+        });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
@@ -90,7 +92,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     },
     async ({ query, limit }) => {
       try {
-        const result = await searchYahooNews({ query, limit });
+        const result = await searchNewsCached({ query, limit });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
@@ -114,14 +116,15 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     '【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }',
     {
       query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10)').meta({ default: 10 }),
+      limit: ChiebukuroSearchRequestSchema.shape.limit,
+      page: ChiebukuroSearchRequestSchema.shape.page,
       status: ChiebukuroStatusSchema.optional()
         .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
         .meta({ default: 'all' }),
     },
-    async ({ query, limit, status }) => {
+    async ({ query, limit, page, status }) => {
       try {
-        const result = await searchYahooChiebukuro({ query, limit, status });
+        const result = await searchChiebukuroCached({ query, limit, page, status });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
@@ -149,7 +152,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     },
     async ({ query, limit }) => {
       try {
-        const result = await getSuggestedKeywords({ query, limit });
+        const result = await suggestKeywordsCached({ query, limit });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
@@ -209,7 +212,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
         .min(1)
         .max(100)
         .optional()
-        .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100)').meta({ default: 1 }),
+        .describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。limit 件ずつ進む)').meta({ default: 1 }),
       focus: z
         .enum(['official', 'public'])
         .optional()
@@ -222,7 +225,8 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     },
     async ({ query, accountId, fromUser, toAccount, hashtags, excludeWords, orWords, url, sort, limit, page, focus, anchor, verbose }) => {
       try {
-        const result = await searchYahooRealtime({
+        // REST と同じ応答（同じキャッシュ）を使い、data を開いて count・items を最上位に置く
+        const { data, type: _type, ...result } = await searchRealtimeCached({
           query,
           accountId,
           fromUser,
@@ -237,33 +241,8 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
           ...(verbose === true ? { verbose: true } : {}),
           ...(focus ? { focus } : {}),
           ...(anchor ? { anchor } : {}),
-          ...(query ? { anchorHints: createWebAnchorHints(query) } : {}),
         });
-
-        const responsePayload = formatCompactRealtimeResponse(
-          {
-            source: 'x',
-            query: result.originalQuery,
-            effectiveQuery: result.effectiveQuery,
-            isFallback: result.isFallback,
-            ...(result.partial === true
-              ? { partial: true, providerErrors: result.providerErrors || [] }
-              : {}),
-            retrievalQueries: result.retrievalQueries || [],
-            contributingQueries: result.contributingQueries || [],
-            resultsMerged: result.resultsMerged || false,
-            focus: result.focus,
-            missingTerms: result.missingTerms,
-            ...(result.aliasTerms ? { aliasTerms: result.aliasTerms } : {}),
-            ...(result.omittedCount ? { omittedCount: result.omittedCount } : {}),
-            ...(result.anchorTerm ? { anchorTerm: result.anchorTerm } : {}),
-            ...(result.anchorFiltered !== undefined ? { anchorFiltered: result.anchorFiltered } : {}),
-            sort: sort || 'recent',
-            count: result.count,
-            items: result.items,
-          },
-          { verbose },
-        );
+        const responsePayload = formatCompactRealtimeResponse({ ...result, count: data.count, items: data.items }, { verbose });
 
         return {
           // 整形なしの JSON（verbose は人が読む診断用なので整形する）
@@ -288,7 +267,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     'yahoo',
     '【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }',
     {
-      limit: z.number().int().min(1).max(50).optional().describe('取得するトレンド件数 (デフォルト: 20)').meta({ default: 20 }),
+      limit: TrendSearchRequestSchema.shape.limit,
     },
     async ({ limit }) => {
       try {

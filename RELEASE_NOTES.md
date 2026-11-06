@@ -1,3 +1,70 @@
+# Sora v4.1.0 — 引数の監査で見つかった食い違いを直し、警報を気象庁の新しいデータ（r8）に移した
+
+全ツール・約 260 の引数を、説明と実際の動きが合っているかで調べ、食い違いを直しました。既定の値は変えていません。REST の応答の形は、項目を足したものと、`crawl_site` の各ページから内部の項目を外したもの以外は変えていません。
+
+## 先に気づく変更（呼び出し側）
+
+- **知らない地名・空港・都道府県で、東京・羽田の答えを返さず、エラーにしました。** `get_weather` の `city`、`search_disaster_warnings` の `city`・`areaCode` は東京に、`get_flight_status` の `airport` は羽田に、`search_road_traffic` の `pref` は東京都に、黙って替えていました。今は見つからない旨のエラー（REST は 400）です。空白だけの `city` も入力の誤りです（今までは天気・警報とも群馬県南部の答えでした）。省いたときの既定は東京で、警報は東京地方です（v4.0.0 は伊豆諸島・小笠原を含む東京都全体でした。`city: "東京"` と指定したときは東京都全体です）。`get_flight_status` が答えるのは羽田・成田・伊丹・関西・中部の 5 空港だけです（Yahoo の運航情報がこの 5 つだけのため。新千歳・福岡・那覇などは以前も羽田の答えでした）。
+- **同じ名前の町村が複数ある地名は、候補を挙げたエラーにしました。** 「森町」「府中」「川崎」「中野」「草津」「千代田」などは、`get_weather` と `search_disaster_warnings` で「北海道森町、静岡県森町」のように挙げて聞き返します。都道府県名か「市」「町」まで付ければ解決します。都道府県名でない天気の地名で、同じ予報区に「市」「区」を足した市区があるもの（「横浜」「神戸」「札幌」など）は、警報ではその市区（横浜市など）、天気ではその予報区です。郡の付いた住所（「北海道上川郡上川町」）は郡を外して町村を引きます（今までは別の県の地名に当たることがあった）。地名の表 `city_map.ts` は、気象庁の市町村の表と突き合わせて直しました（96 件を外し、7 件を直した。例: 石垣島・竹富島・西表島は石垣島地方、小樽は後志地方、日光・鬼怒川は栃木県北部）。
+- **今まで通っていた不正な入力が、REST では 400、MCP では検証エラーになります。** 対象は `POST /search`（`/search/deep` などの別名も）、`/search/trend`、`/transit/route`、`/weather`（GET も）、`GET /geo/elevation`、`/crawl`・`/crawl/stream`、`/scrape`・`/scrape/batch`、`/gov/diet-minutes`、`/search/music` です。主なものは次のとおりです。`/search` の `limit` が 21 以上（今までは 20 に丸めていた）と、`formats`・`updated`・`highlightMaxCount`・`maxChars` の不正な値。`/search/trend` の `limit` が 1〜50 の整数でないもの。`/weather` の `days` が 1〜8 の整数でないもの（文字列の `"3"` も不可）。標高の `lat`・`lon` の範囲外（lat は -90〜90、lon は -180〜180。MCP の `get_elevation` も同じ）。`/transit/route` の `via` が 4 つ以上。`GET /geo/elevation` の数でない `lat`・`lon`（`35.6abc` など。今までは先頭の数だけを読んだ）。`/crawl` の `maxDepth`（0 と 6 以上）・`maxPages`（51 以上）・`concurrency`（11 以上）・`maxChars`・`timeoutMs` の範囲外（`/crawl/stream` は、ストリームを開く前に 400）。`/scrape` 系で `renderJs` と `fastOnly` の同時指定や壊れた `removeSelectors`（今までは 500 や、`/scrape/batch` では 200）、`scrape_batch` の `webhookUrl` が URL でないもの。`search_diet_minutes` で `keyword`・`speaker`・`nameOfMeeting` のどれも無いもの（今までは REST が 500）。`search_music` の `attribute` が 3 つの値以外のもの。`search_road_traffic` の `pref` の数字以外の混じったコード（`"13abc"`。今までは 13）。`/search`・`/search/trend`・`/crawl`・`/scrape` などのスキーマの誤りは「項目名: 理由」の文で返します（`/weather`・`/transit/route`・`/search/music` などは今までの文と `details`）。JSON として読めない本文は、`/search`（別名も）・`/search/web`・`/search/image` などの Yahoo の検索・`/search/realtime` でも 400 `INVALID_JSON` です（今までは 500）。新しく検証するルート（`/search`・`/search/trend`・`/transit/route`・`/weather`・`/crawl`）では、トップレベルの `null` を「指定なし」として扱います（必須の項目が `null` なら 400）。
+- **消した引数があります。** 送っても、エラーにはならず、黙って無視します。型付きのクライアント（`client/`）の型からは消えました。
+
+| 消した引数 | 対象 | 扱い |
+|---|---|---|
+| `productCategory`・`description` | check_cpsc_certificate | どこからも読まれていなかった。判定は変わらない。リストに無い HTS コードの案内から、カテゴリを聞く質問を外した（`inputCompleteness` は `complete`） |
+| `productDescription` | check_fda_regulated | どこからも読まれていなかった |
+| `originCountry`・`destinationCountry` | track_package | 自動判別に使われていなかった（絞り込みは `preferredCarriers`） |
+| `verbose` | REST `POST /tracking` | 読まれていなかった |
+| `intervalSeconds` | watch_register | 自動で巡回する処理は無い。差分は `watch_check` を呼んだときに前回と比べる。応答の `interval_seconds` は保存した値として残る |
+| `page` | REST `POST /search/news` | 同梱の検索処理が `page` に対応していなかった |
+| 本文の `ownerToken` | REST `POST /browser/action` | REST は `Authorization` ヘッダーで持ち主を確かめる。MCP の `browser_action` の `ownerToken` は残る |
+
+## 天気・警報・地震・標高
+
+- **`search_disaster_warnings` の警報を、気象庁の新しいデータ（`warning/data/r8/`）から読みます。** 気象庁は 2026 年 5 月下旬に新しい防災気象情報に移り、今まで読んでいた `warning/data/warning/` は 5 月の発表のまま止まっていて、数か月前の警報を今の警報として返していました。すべての報の「発表」「継続」だけを合わせ（「解除」「発表警報・注意報はなし」は除く）、`reportTime` は使った報のうち最も新しい発表日時です。応答の形は同じで、レベル 5・特別警報は `specialWarnings`、警報・危険警報（レベル 4）は `warnings`、注意報は `advisories` です。大雨・土砂災害・高潮には段階 `alertLevel`（2〜5）が付き、名前は気象庁のページと同じ（「大雨危険警報」など）です。旧い洪水警報・注意報（コード 04・18）は返りません。**河川の氾濫（氾濫危険情報など）は対象外です**（気象庁のページは別のデータ `flood/data/r8/flood_xml.json` から読んでおり、Sora は読んでいません）。
+- **警報の地名を、市町村の単位で解決します。** 今までは都道府県の予報区をすべて合わせて返していました（新宿区に小笠原・伊豆諸島の警報が混ざっていた）。今は、市町村 → 予報区 → エラーの順に解決し、その範囲の警報だけを返します。都道府県名（「静岡県」と、「静岡」「石川」「東京」などの略称）は、今までどおり県全体です。`areaCode` は 7 桁（市町村）・6 桁（予報区または気象台）・2 桁（都道府県）を受けます。都道府県名と 2 桁の番号は、気象台が複数ある北海道・鹿児島・沖縄では気象台の番号を挙げたエラーです。応答の `areaCode`・`areaName`・`prefecture` は解決した値になりました（今までは入力のまま、または「東京」）。気象庁が区域に分けている市（横浜・神戸など）は、区域の番号をカンマでつないだ `areaCode`（例 `1410011,1410012`）で返し、その形を渡すこともできます。気象庁のデータに解決した番号の欄が無いときは、「警報なし」ではなくエラーです。天気・警報のキャッシュには、最初に引いた入力の地名が残らなくなりました。
+- **`get_weather` の気温と週間予報を、その予報区のものにしました。** 今までは気象台の最初の地点・地域で、北九州が福岡の気温、長野県中部・南部が北部の週間予報、青森県下北が津軽の週間予報、伊豆諸島・小笠原が東京の週間の気温でした。今日〜明後日の気温は予報区の地点（応答の `temperatureArea`）、3 日目以降は予報区を含む週間予報の地域（「中部・南部」など）の天気と、予報区の地点（週間予報に無い地点は、その地域の地点）の気温です。北海道・鹿児島・沖縄（27 予報区で 404 だった）と、十勝・奄美も引けるようになりました。都道府県名は県の代表の予報区で、`"北海道"` だけは予報区の番号と名前を挙げたエラーです。
+- **`search_earthquake` の失敗をエラーにしました**（今までは 0 件の結果で、「地震が無い」と区別できなかった。MCP はエラーの応答、REST は 500。キャッシュしません）。`minIntensity` が既定より大きいときは 100 件取ってから震度で絞るので、`limit` が小さくて 0 件になることがなくなりました。
+
+## 検索
+
+- **`search_realtime` の `page` が `limit` 件ずつ進みます。** 今までは 40 件ずつ進んだため、`limit` 20（既定）の 2 ページ目は 41 件目から始まり、21〜40 件目が抜けていました。今は `(page-1) × limit` 件目から取ります（Yahoo が 40 の倍数でない開始位置を受けることを確かめてあります）。`missingTerms` に、括弧と `URL:` の断片（`(ハロウィン`・`URL:example.com` など）も入らなくなりました。
+- **MCP の `search_image`・`search_video`・`search_chiebukuro` に `page` を足しました**（REST と同じ）。`page` は `limit` によらず Yahoo のページの大きさ（20 件、知恵袋は 10 件）ずつ進むので、漏れなく続けるには `limit` を省いてください。`limit` の説明は「最大 20 件（知恵袋は 10 件）。大きい値を指定しても 20 件（10 件）」になりました（スキーマの上限は 50 のままで、エラーにはしません）。
+- **MCP の Yahoo の 6 ツール（image・video・news・chiebukuro・suggest_keywords・realtime）に、REST と同じキー・時間のキャッシュをかけました。** 同じ検索は REST と MCP で答えを共有し、MCP の応答にもキャッシュに当たったときは `cached`・`cachedAt`・`ageSeconds` が付きます（`search_realtime` は当たらないときも `cached: false`。`verbose` では `executedWaves`・`stopReason`・`requiredTerms`・`coveredTerms` も付きます）。同梱の検索処理が返したエラーの文（Yahoo の 503 など）は、30 分でなく 1 分だけ残します。
+- **`search_deep` の `noCache` が、ページ本文の取得にも届くようになりました**（今までは統合検索のキャッシュだけを迂回していた）。X のタイムライン・プロフィールのページの本文（markdown）は、同じ応答の `realtime.items` に同じアカウントの投稿があるときは省きます（同じ投稿が 2 回入っていた。ハイライトは残す。投稿 1 件の URL、`realtime` が無いとき、`formats` に `markdown` を明示したときは今までどおり）。
+- **`search_route` の `sortBy` と `seatPreference` が効くようになりました。** `transfer`（乗換回数順）と `fare`（料金順）が逆に Yahoo へ送られていて、座席の指定は送られていませんでした（省いたときは Yahoo の既定の自由席優先）。`POST /transit/route` は `year`・`month`・`day`・`hour`・`minute` を受ける（日時の解決に使われている）ので、スキーマに足して残しました。
+- **`get_flight_status` の行き先・出発地が正しくなりました**（到着の一覧に出発地、出発の一覧に到着地の空港が入っていた。`keyword` の絞り込みも当たらなかった）。
+- **`search_road_traffic` が、情報が無いときに「順調」と言わなくなりました**（道路名で絞って 0 件、表に無い道路名、都道府県のページから 1 件も読めない、のとき「この道路の情報は見つかりませんでした」）。`pref` と `road` を両方指定したときは、その都道府県のページを道路名で絞ります（今までは `road` が表に当たると `pref` を無視した）。
+
+## 取得（scrape・crawl・map・browser）
+
+- **`maskPii: true` が、本文とハイライトのほかの文字列にも効きます。** 今までは `content` とハイライトだけで、`html`・`rawHtml`・`title`・`description`・`tables`・`extracted`・`jsonLd`・`events`・`author`・`images` の `alt` など・PDF の `metadata`・動画のチャプターの題は元のままでした。`links` と `images` の `url` は、パスの数字を電話番号と取り違えて壊すため、マスクしません（`jsonLd`・`events`・`extracted` の中の URL の文字列は、ほかの文字列と同じくマスクの対象）。`screenshot` の画像はマスクしません。
+- **`formats` に `screenshot` があれば、`mode` が `auto`（既定）でもブラウザで画像を撮ります**（`scrape`・`scrape_batch`・`crawl_site`・`search_deep` の本文の取得など）。今までは、静的な取得が通ると画像も警告も付きませんでした。静的に取ったあとでブラウザを使うので、その HTML のページは 2 回取りに行きます。静的に取れたページは、本文と HTTP の状態を静的な取得のまま返し、ブラウザからは画像だけを使います（ボット対策でブラウザだけが 403 の画面に飛ばされても、本文を替えない）。`mode: "fast"`（`fastOnly`）や、ブラウザで撮れなかったときは、静的に取れた結果に、画像を取れなかった旨の `warnings`（新しい項目）を付けて返し、その結果は 1 分だけキャッシュします。PDF・画像・音声・動画のファイルも、本文を残したまま `warnings` を付けます。`search_web`・`search_deep` の結果にも `warnings` が残ります。
+- **`headers` が、ブラウザの経路（`mode: "browser"`・SPA への切り替え・REST の `renderJs`）でも届きます**（今までは静的な取得だけ）。最初のページと同じ送り先には全部、別のオリジンへのページ遷移（リダイレクトなど）には認証用のヘッダー（`Authorization`・`Cookie`・`X-Api-Key` など）を除いて付けます。画像やスクリプトなどの別オリジンへの要求には付けません。`User-Agent` はブラウザでは送りません（`navigator.userAgent` と食い違うため。静的な取得では今までどおり送る）。
+- **MCP の `scrape`・`scrape_batch` の `verbose` が `highlightDiagnostics` に届きます**（今までは REST だけ）。
+- **`crawl_site`・`POST /crawl` の各ページを、`scrape` と同じ形に整えました。** `formats` に `links` が無ければ `links` を付けず、`quality`・`evidence`・`qualityReasons`・`missingFields` などの内部の項目も付きません。`webhookUrl` の通知の payload は、この整えた結果です（`/crawl/stream` は今まで送られていなかった。`scrape_batch` の通知は変えていません）。
+- **`map_site` の `since`・`until` を、日付で絞ってから `limit` で切ります**（今までは先に件数で切るため、`limit` が小さいと 0 件になった）。日付で絞るときは、サイトマップの先頭 5,000 件まで読みます。`lastmod` の無い URL は常に残り、リンクをたどる切り替えのときは効きません。
+- **`browser_action` の `extract.clipSelector` だけを指定すると画像が空白になる不具合を直しました。** `inspect_image` は、画像でない応答（HTML など）を `image/jpeg` の成功として返さず、エラーにします（Content-Type が不正でも中身が画像のものは今までどおり）。
+
+## 貿易・荷物・監視・国会・音楽
+
+- **`watch_check` の `webhookSent` が、通知先が 2xx で受け取ったときだけ `true` になります**（今までは送る前に `true`）。応答を待つので、応答しない通知先があると、1 件あたり最大約 5 秒長くかかります。
+- **`verify_hts_code` の `productDescription` は必須のままですが、判定には使いません**（根拠の記録として応答に返すだけ）。
+- **引数の説明を、実際の動きに合わせて直しました。** 例: `foodContact` は HTS の 4 桁が FCS の表の品目（3924・4419・6911・6912・7013・7323）のときだけ、`hasBattery` は `true` のときだけ検索語に battery を足す、`preferredCarriers` は自動判別のときだけ、`annotateTemporal` は「来週」だけでは注記しない、`browser_action` の `timeout` はページ遷移の待ちだけ、`evaluate` は `ALLOW_BROWSER_EVALUATE=true` のときだけ動く、など。README だけの訂正もあります（`search_news` の既定は 20 件、`suggest_keywords` の最大は 20 件、`ALLOW_BROWSER_EVALUATE` の既定は止める側、コードに無い `SAFE_BROWSER_MODE` の記述を削除）。
+
+## 国の情報
+
+- **`research_country_context` の `region` が、日本語の国名を解決します**（「台湾」「日本」「韓国」「アメリカ合衆国」など。ICU の国名から作り、表は持たない）。正式名の先頭だけの入力（「アメリカ」）は、3 文字以上で 1 か国だけに当たるときに `confidence: "medium"` で解決します。複数に当たるもの（「コンゴ」「ドミニカ」）は解決しません。
+- **`social.platforms` を指定すると、`social.queries` の別の SNS も `platforms` の中に絞ります**（今までは `queries` の SNS をすべて検索した）。**`social` を渡したら `includeSocial` を `true` とみなします**（今までは別に渡さないと失敗した。MCP は明示の `false` と既定の `false` を区別できないため、`false` でも `true` になります）。
+- **`get_country_context_evidence` の `evidenceIds`（REST は `ids`）で、その報告に無い ID を `missingIds` で返し、`limit` を超える分を `nextCursor` で続け、`cursor` を読みます**（今までは無い ID を黙って落とし、超えた分を `nextCursor` 無しで切り、`cursor` を読まなかった）。古い・別の問い合わせの `cursor` は、REST では 500 でなく 400 です（`/updates` の `cursor` も）。
+
+## そのほか
+
+- キャッシュのキーの版を上げました。入れ替えた直後は、同じ取得・検索でも取り直します: `scrape:v9` → `v10`、`search:integrated:v12` → `v13`、`search:realtime:json-v2` → `json-v3`、`traffic:v2` → `traffic:v3`、`country-intel:provider:v1` → `v2`、版の無かった `map:`・`weather:`・`disaster:warning:`・`disaster:earthquake:`・`transit:`・`traffic:flight:`・`img_inspect:`・`search:web:` は、それぞれ `v2`（`weather:` と `disaster:warning:` は `v3`）を付けた形になりました。
+- MCP の定義の大きさを、`createMcpServer` の `tools/list` の JSON で測ると（v4.0.0 → v4.1.0）、最初から見える 14 ツールは 21,587 → 22,462 字（+4%）、全 52 ツールは 209,156 → 210,917 字、`instructions` は 8,881 → 8,922 字です。最初から見える 14 ツールの説明文（`description`）の合計は 3,490 → 3,495 字（上限 3,500 字）です。HTTP の経路で測る `scripts/measure-context.ts` の値は測り方が違うので、これらと一致しません（`docs/code-execution.md` を参照）。
+- 天気・警報の地名の表 `src/jma_areas.ts` を作り直すスクリプトを `scripts/jma-areas/` に入れました（手順は README の「開発時の検証」）。
+- 型付きのクライアント（`client/`）を作り直しました。`search_deep` の `realtimeFocus` の説明から「(default)」を外し（省くと検索語から決まる）、`search_trend` の `limit`・`search_deep` の `maxChars`・`realtimeLimit`・`search_tools` の `detail` の説明も実際の動きに合わせました。
+
 # Sora v4.0.0 — 本文の画像とハイライトの選び方を直し、効いていない引数を消して responseMode にまとめた
 
 ## 破壊的な変更（引数）

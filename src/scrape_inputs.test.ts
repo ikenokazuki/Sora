@@ -60,6 +60,26 @@ describe('scrape inputs reach the implementation', () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ responseMode: 'evidence' });
   });
 
+  test('MCP scrape と scrape_batch は verbose を scrapeUrl・scrapeBatchUrls にも渡す（highlightDiagnostics が付く）', async () => {
+    const scrapeSpy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url: 'https://example.com', title: 't', content: 'c', isTruncated: false, contentType: 'text/html', source: 'web' } as any);
+    const batchSpy = spyOn(scraper, 'scrapeBatchUrls').mockResolvedValue({ total: 0, successful: 0, failed: 0, results: [], errors: [] } as any);
+    restore.push(() => scrapeSpy.mockRestore(), () => batchSpy.mockRestore());
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'scrape-inputs', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      await client.callTool({ name: 'scrape', arguments: { url: 'https://example.com', query: '開場時間', verbose: true } });
+      await client.callTool({ name: 'scrape_batch', arguments: { urls: ['https://example.com'], query: '開場時間', verbose: true } });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+    expect(scrapeSpy.mock.calls[0][0]).toMatchObject({ verbose: true });
+    expect(batchSpy.mock.calls[0][0]).toMatchObject({ verbose: true });
+  });
+
   test('MCP scrape_batch と crawl_site も responseMode を渡す', async () => {
     const batchSpy = spyOn(scraper, 'scrapeBatchUrls').mockResolvedValue({ total: 0, successful: 0, failed: 0, results: [], errors: [] } as any);
     const crawlSpy = spyOn(scraper, 'crawlSiteUrl').mockResolvedValue({ baseUrl: 'https://example.com', total: 0, results: [], errors: [] } as any);

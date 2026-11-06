@@ -14,13 +14,16 @@ test('retains the official withdrawal as the first provider item', () => {
   expect(items).toHaveLength(7);
 });
 
-test('uses zero-based Yahoo offset with a fixed 40-item page width', () => {
+// Yahoo は 40 の倍数でない start も受ける（2026-11-06 に results=20・start=20 が results=40・start=0 の 21〜40 件目と一致）
+test('pages by limit with a zero-based Yahoo offset', () => {
   const first = buildYahooRealtimeApiUrl({ query: 'SPARK id:kimisora_JPN', limit: 1 });
   const second = buildYahooRealtimeApiUrl({ query: 'SPARK id:kimisora_JPN', limit: 5, page: 2 });
   expect(first.searchParams.get('start')).toBe('0');
   expect(first.searchParams.get('results')).toBe('1');
   expect(first.searchParams.has('mtype')).toBe(false);
-  expect(second.searchParams.get('start')).toBe('40');
+  expect(second.searchParams.get('start')).toBe('5');
+  expect(buildYahooRealtimeApiUrl({ query: 'SPARK', page: 2 }).searchParams.get('start')).toBe('20');
+  expect(buildYahooRealtimeApiUrl({ query: 'SPARK', limit: 40, page: 3 }).searchParams.get('start')).toBe('80');
 });
 
 describe('provider url contract', () => {

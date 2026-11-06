@@ -43,7 +43,7 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     'life',
     '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }',
     {
-      city: z.string().min(1).describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID（例: "130010"）'),
+      city: z.string().trim().min(1).describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。都道府県名は県の代表の予報区。気象台が複数ある北海道・鹿児島・沖縄は予報区か市町村の名前で（"北海道" だけはエラー）。見つからない地名と、複数の市町村に当たる名前（例: "府中"）はエラー'),
       days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
     },
     async ({ city, days }) => {
@@ -69,13 +69,13 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'get_flight_status',
     'life',
-    '【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }',
+    '【公式運航情報直結】羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }',
     {
-      airport: z.string().optional().describe('対象空港名またはコード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", デフォルト: "羽田")').meta({ default: '羽田' }),
+      airport: z.string().optional().describe('対象空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
       type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure"(出発) または "arrival"(到着) (デフォルト: "departure")').meta({ default: 'departure' }),
       category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic"(国内線) または "international"(国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
       flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
-      keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
+      keyword: z.string().optional().describe('出発地・目的地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
     },
     async (opts) => {
       try {
@@ -106,19 +106,15 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
       carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional()
         .describe('運送会社コード: "yamato"(ヤマト運輸), "sagawa"(佐川急便), "japanpost"(日本郵便 国内+国際), "seino"(西濃運輸), "fukutsu"(福山通運), "ups"(UPS), "fedex"(FedEx), "dhl"(DHL Express)。省略または "auto" で自動判別'),
       preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional()
-        .describe('優先的に検証する運送会社候補のヒント配列'),
-      originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
-      destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
+        .describe('優先的に検証する運送会社候補のヒント配列。自動判別（carrier を省く・auto）のときだけ効く'),
       noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制再取得するか').meta({ default: false }),
     },
-    async ({ trackingNumber, carrier, preferredCarriers, originCountry, destinationCountry, noCache }) => {
+    async ({ trackingNumber, carrier, preferredCarriers, noCache }) => {
       try {
         const result = await trackPackage({
           trackingNumber,
           carrier: carrier ?? 'auto',
           preferredCarriers,
-          originCountry,
-          destinationCountry,
           noCache: noCache ?? false,
         });
         return {

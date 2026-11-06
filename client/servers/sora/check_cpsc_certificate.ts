@@ -4,14 +4,10 @@ import { callSora } from '../../runtime.js';
 export type CheckCpscCertificateInput = {
   /** HTSコード（例: "9503.00.0073"）。判定の主軸キー */
   htsCode: string;
-  /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します */
+  /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します */
   targetAge: "adult" | "child" | "unknown";
-  /** 主な素材（鉛・フタル酸エステル規制関連で重要）。【推測値の入力厳禁】不明な場合は省略すること */
+  /** 主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること */
   material?: string;
-  /** 製品カテゴリの補足（HTSコードのみで対応表がヒットしない場合の補助情報）。【推測値の入力厳禁】不明な場合は省略すること */
-  productCategory?: string;
-  /** 自由記述の補足説明 */
-  description?: string;
 };
 
 export type CheckCpscCertificateOutput = {

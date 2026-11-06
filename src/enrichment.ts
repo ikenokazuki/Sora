@@ -223,14 +223,14 @@ async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
   }
 }
 
-/** 長時間ジョブ完了時の Webhook コールバック非同期送信 (Fire-and-forget & SSRF Protected) */
-export async function sendWebhookNotification(webhookUrl?: string, payload?: any): Promise<void> {
-  if (!webhookUrl || typeof webhookUrl !== 'string') return;
+/** Webhook を送り、2xx で受け取られたときだけ true を返す (SSRF Protected)。失敗は例外にせず false */
+export async function deliverWebhook(webhookUrl?: string, payload?: any): Promise<boolean> {
+  if (!webhookUrl || typeof webhookUrl !== 'string') return false;
 
   const isSafe = await isSafeWebhookUrl(webhookUrl);
   if (!isSafe) {
     console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookUrl}`);
-    return;
+    return false;
   }
 
   try {
@@ -252,9 +252,16 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
     if (!res.ok) {
       console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
     }
+    return res.ok;
   } catch (err) {
     console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
+    return false;
   }
+}
+
+/** 長時間ジョブ完了時の Webhook コールバック非同期送信 (Fire-and-forget & SSRF Protected) */
+export async function sendWebhookNotification(webhookUrl?: string, payload?: any): Promise<void> {
+  await deliverWebhook(webhookUrl, payload);
 }
 
 export interface ParsedSection {

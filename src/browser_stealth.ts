@@ -15,6 +15,7 @@ import {
   dbSaveTenantStorage,
 } from './db.js';
 import { groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
+import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
 import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
 
 export const PORT = parseInt(process.env.PORT || '8000', 10);
@@ -344,9 +345,11 @@ export async function fetchWithStealthBrowser(
   fullPage = true,
   tenantId = 'legacy',
   readiness?: StealthReadiness,
+  /** 呼び出し側が指定した HTTP ヘッダー。取得先と同じオリジンへの要求にだけ付ける */
+  headers?: Record<string, string>,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number }> {
   const render = (useStoredSession: boolean) =>
-    renderWithStealthBrowser(url, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, useStoredSession);
+    renderWithStealthBrowser(url, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, headers, useStoredSession);
   const { restoredSession, blocked, ...first } = await render(true);
   // 保存していた Cookie・localStorage を戻して開いたページが、エラーか、待っても確認の画面のままなら（保存分は消してある）、
   // 戻さずに 1 回だけ開き直す。エラーや確認の画面（TikTok の "Please wait..."）から保存した札を戻し続けて、毎回 403 か
@@ -366,6 +369,7 @@ async function renderWithStealthBrowser(
   fullPage: boolean,
   tenantId: string,
   readiness: StealthReadiness | undefined,
+  headers: Record<string, string> | undefined,
   useStoredSession: boolean,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number; restoredSession: boolean; blocked: boolean }> {
   const chromePath = resolveChromiumPath();
@@ -383,13 +387,14 @@ async function renderWithStealthBrowser(
 
     try {
       const page: Page = await context.newPage();
-      await setupPageSecurity(page, !needScreenshot && !clipSelector);
+      const scopedHeaders = headers && Object.keys(headers).length > 0 ? { origin: new URL(url).origin, headers } : undefined;
+      await setupPageSecurity(page, !needScreenshot && !clipSelector, scopedHeaders);
       await applyStealthEvasions(page);
 
       const domain = new URL(url).hostname;
-      // 呼び出し側が Cookie（ログイン状態）を渡した取得では、そこで得た Cookie・localStorage を保存しない。
+      // 呼び出し側が Cookie か認証系のヘッダー（Authorization など。ログイン状態）を渡した取得では、そこで得た Cookie・localStorage を保存しない。
       // 保存すると、後続の「資格情報なし」リクエストへ引き継がれ、ログイン済みの内容が共有キャッシュに入る。
-      const carriesCredentials = Boolean(customCookies && customCookies.length > 0);
+      const carriesCredentials = hasSensitiveRequestCredentials({ headers, cookies: customCookies });
       // ログイン状態を渡された取得では、保存分を消して開き直すことはしない（エラーの原因が渡された Cookie のこともある）
       let restoredSession = false;
       const persistedCookies = useStoredSession ? dbGetTenantCookies(tenantId, domain) : undefined;

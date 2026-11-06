@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type GetFlightStatusInput = {
-  /** 対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田") */
+  /** 対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー */
   airport?: string;
   /** 発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure") */
   type?: "departure" | "arrival";
@@ -10,7 +10,7 @@ export type GetFlightStatusInput = {
   category?: "domestic" | "international";
   /** 特定の便名で絞り込む場合 (例: "ANA2421", "JAL505") */
   flightNumber?: string;
-  /** 目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸") */
+  /** 出発地・目的地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸") */
   keyword?: string;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
@@ -62,7 +62,7 @@ export type GetFlightStatusOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] } */
+/** 【公式運航情報直結】羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] } */
 export function getFlightStatus(input: GetFlightStatusInput): Promise<GetFlightStatusOutput> {
   return callSora<GetFlightStatusOutput>({ method: 'POST', path: '/traffic/flight' }, input);
 }

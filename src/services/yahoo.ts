@@ -1240,7 +1240,7 @@ export function requiresExactRealtimeQuery(query: string): boolean {
 /** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
 export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
   return JSON.stringify([
-    'search:realtime:json-v2',
+    'search:realtime:json-v3',
     buildYahooRealtimeQuery(options),
     options.sort ?? 'recent',
     options.limit ?? 20,
@@ -1375,6 +1375,19 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
   const normalized = (query || '').replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').normalize('NFKC');
   const modifiers: string[] = [];
   let remaining = ` ${normalized} `;
+  const addModifier = (m: string) => {
+    modifiers.push(m.replace(/\s+/g, ' ').trim());
+    return ' ';
+  };
+  // `(` の直前の - は、語頭に 1 つだけのときに限り除外の記号（-(A B)）。それ以外（foo-(bar)・(a)-(b)・--(a)）は語の一部でも
+  // 記号でもないので外す。直前が - でない位置から始めて走査を線形に保つ
+  remaining = remaining.replace(/(?<!-)-+(?=\()/g, (m, offset: number, str: string) => (m === '-' && /\s/.test(str[offset - 1]) ? m : ' '));
+  // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）。
+  // 入れ子は内側から外す（深さ 16 まで。それより深い残りは下の断片として 1 つにする）
+  for (let prev = '', depth = 0; prev !== remaining && depth < 16; depth++) {
+    prev = remaining;
+    remaining = remaining.replace(/-?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, addModifier);
+  }
   remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
     modifiers.push(`id:${id}`);
     return ' ';
@@ -1387,6 +1400,8 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
     modifiers.push(`#${tag}`);
     return ' ';
   });
+  // 括弧が閉じていない断片（A (B・A B)）も語にしない。閉じていない ( は末尾まで、対のない ) はその語だけ
+  remaining = remaining.replace(/-?\([\s\S]*$|(?<![^\s(])[^\s(]*\)[^\s(]*/g, addModifier);
   remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
     modifiers.push(`-${ex}`);
     return ' ';

@@ -3,7 +3,7 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { TradeInputError, checkProductCompliance, crossQueriesFor, detectProductAgeGender, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
+import { TradeInputError, checkCpscCertificate, checkProductCompliance, crossQueriesFor, detectProductAgeGender, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
 
 // HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
@@ -411,5 +411,37 @@ describe('HTS prediction and product compliance', () => {
       expect(res.htsVerification?.verified).toBe(true);
       expect(res.fda?.fdFlag).toBe('FD1');
     });
+  });
+});
+
+describe('checkCpscCertificate on a code the CPSC list does not carry', () => {
+  it('does not ask for a productCategory, which no input could use', async () => {
+    const res = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
+    expect(res.certificateRequired).toBe('unknown');
+    expect(res.missingInputs).toBeUndefined();
+    expect(res.clarifyingQuestions).toBeUndefined();
+    expect(JSON.stringify(res)).not.toContain('productCategory');
+    // 案内は CPSC への個別確認と免責コードの申告に向かう
+    expect(res.nextActions.join('')).toContain('CPSC公式に個別確認');
+    expect(res.disclaimerCodeHint).toContain('A');
+  });
+
+  it('says "CPSC公式に個別確認" once, in nextActions, and keeps the other fields to their own point', async () => {
+    const res = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
+    expect(JSON.stringify(res).split('個別確認').length - 1).toBe(1);
+    expect(res.nextActions.join('')).toContain('CPSC公式に個別確認');
+    expect(res.missingInfo.join('')).toContain('証明書不要を意味しません');
+    expect(res.impactExplanation).toContain('12歳以下');
+  });
+
+  it('gives the same answer when the removed productCategory and description are sent anyway', async () => {
+    const plain = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
+    const extra = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult', productCategory: 'toy', description: 'a toy' } as never);
+    expect(extra).toEqual(plain);
+  });
+
+  it('keeps asking for targetAge and material on a listed code', async () => {
+    const res = await checkCpscCertificate({ htsCode: '9503.00.0073', targetAge: 'unknown' });
+    expect(res.missingInputs).toEqual(['targetAge', 'material']);
   });
 });

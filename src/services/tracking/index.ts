@@ -63,11 +63,8 @@ export async function trackPackageAuto(
   trackingNumber: string,
   hints?: {
     preferredCarriers?: CarrierCode[];
-    originCountry?: string;
-    destinationCountry?: string;
     signal?: AbortSignal;
     noCache?: boolean;
-    verbose?: boolean;
     candidatesOverride?: RankedCandidate[];
   },
 ): Promise<TrackingResult> {
@@ -227,19 +224,14 @@ export async function trackPackageAuto(
 }
 
 /**
- * 追跡結果のキャッシュキー。自動判別の結果は、判別に渡すヒント（優先キャリア・差出元／お届け先の国）で変わる。
+ * 追跡結果のキャッシュキー。自動判別の結果は、判別に渡すヒント（優先キャリア）で変わる。
  * キャリアを明示した照会はヒントを使わないので、キーに入れない。
  */
-export function trackingCacheKey(
-  req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers' | 'originCountry' | 'destinationCountry'>,
-  num: string,
-): string {
+export function trackingCacheKey(req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers'>, num: string): string {
   if (req.carrier && req.carrier !== 'auto') return `tracking:v3:${req.carrier}:${num}`;
   const preferred = [...new Set(req.preferredCarriers ?? [])].sort();
-  const origin = req.originCountry?.trim() ?? '';
-  const destination = req.destinationCountry?.trim() ?? '';
-  if (preferred.length === 0 && !origin && !destination) return `tracking:v3:auto:${num}`;
-  return `tracking:v3:auto:${num}:${JSON.stringify({ preferred, origin, destination })}`;
+  if (preferred.length === 0) return `tracking:v3:auto:${num}`;
+  return `tracking:v3:auto:${num}:${preferred.join(',')}`;
 }
 
 /**
@@ -265,10 +257,7 @@ export async function trackPackage(req: TrackingRequest): Promise<TrackingResult
   if (isAuto) {
     result = await trackPackageAuto(num, {
       preferredCarriers: req.preferredCarriers,
-      originCountry: req.originCountry,
-      destinationCountry: req.destinationCountry,
       noCache: req.noCache,
-      verbose: req.verbose,
     });
   } else {
     result = await trackByCarrier(req.carrier as CarrierCode, num, {

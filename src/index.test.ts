@@ -666,7 +666,7 @@ describe('web-fetcher Core Functions', () => {
     expect(resolveCityId('箱根町')).toBe('140020');
     expect(resolveCityId('箱根')).toBe('140020');
     expect(resolveCityId('別府市')).toBe('440010');
-    expect(resolveCityId('石垣島')).toBe('473000');
+    expect(resolveCityId('石垣島')).toBe('474010');
   });
 });
 
@@ -2936,7 +2936,8 @@ describe('Sora REST & MCP Endpoints', () => {
   // ==========================================
   it('fetchWeatherWarnings should parse JMA warning structure and handle city names', async () => {
     const warnings = await fetchWeatherWarnings({ city: '東京' });
-    expect(warnings.areaCode).toBe('130010');
+    // 都道府県名（略称を含む）は県全体
+    expect(warnings.areaCode).toBe('130000');
     expect(warnings.reportTime).toBeDefined();
     expect(Array.isArray(warnings.warnings)).toBe(true);
     expect(Array.isArray(warnings.advisories)).toBe(true);
@@ -2961,6 +2962,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resWarn.status).toBe(200);
     const warnJson = (await resWarn.json()) as any;
+    // 都道府県名（略称を含む）は県全体の欄を返す（大阪市にしない）
     expect(warnJson.areaCode).toBe('270000');
 
     const resEq = await app.request('/disaster/earthquake', {
@@ -4322,7 +4324,6 @@ describe('Sora REST & MCP Endpoints', () => {
   it('checkFdaRegulated should return clarifyingQuestions and impactExplanation when foodContact is undefined for FD1 tableware', () => {
     const res = checkFdaRegulated({
       htsCode: '6912.00.4100',
-      productDescription: 'Ceramic coffee mugs',
     });
 
     expect(res.inputCompleteness).toBe('partial');
@@ -4461,7 +4462,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Ceramic coffee mugs',
         foodContact: true,
       }),
     });
@@ -4478,7 +4478,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Decorative display ceramic plate',
         foodContact: false,
       }),
     });

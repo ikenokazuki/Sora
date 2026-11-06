@@ -10,8 +10,6 @@ export type WatchRegisterInput = {
   selector?: string;
   /** 差分検知時に通知を送信する Webhook URL */
   webhookUrl?: string;
-  /** 監視インターバル目安 (秒, デフォルト: 3600, 上限: 604800) */
-  intervalSeconds?: number;
 };
 
 export type WatchRegisterOutput = {
@@ -31,7 +29,7 @@ export type WatchRegisterOutput = {
     last_content?: string | null;
     /** 差分検知通知先 Webhook URL */
     webhook_url?: string | null;
-    /** 監視間隔 (秒) */
+    /** 保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる */
     interval_seconds: number;
     /** 最終チェック日時 (Unixミリ秒) */
     last_checked_at?: number | null;
@@ -56,7 +54,7 @@ export type WatchRegisterOutput = {
     snapshotSnippet?: string;
     /** チェック実行日時 (ISO 8601) */
     checkedAt: string;
-    /** Webhook 通知が送信されたか */
+    /** Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略 */
     webhookSent?: boolean;
     /** 失敗コード (WATCH_SELECTOR_NOT_FOUND 等) */
     errorCode?: string;
@@ -68,7 +66,7 @@ export type WatchRegisterOutput = {
   };
 };
 
-/** 【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector, interval_seconds }, initialResult?, initialError? } */
+/** 【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector }, initialResult?, initialError? } */
 export function watchRegister(input: WatchRegisterInput): Promise<WatchRegisterOutput> {
   return callSora<WatchRegisterOutput>({ method: 'POST', path: '/watch/register' }, input);
 }

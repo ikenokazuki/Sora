@@ -15,13 +15,12 @@ export function registerWatchTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'watch_register',
     'watch',
-    '【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector, interval_seconds }, initialResult?, initialError? }',
+    '【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector }, initialResult?, initialError? }',
     {
       url: z.string().url().describe('監視対象の Web ページ URL (例: "https://example.com/status")'),
       title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表")'),
       selector: z.string().optional().describe('ピンポイントで監視する CSS セレクタ (例: "#status")'),
       webhookUrl: z.string().url().optional().describe('差分検知時に通知する Webhook URL'),
-      intervalSeconds: z.number().int().min(1).max(604_800).optional().describe('監視インターバル目安 (秒, デフォルト: 3600, 上限: 604800)').meta({ default: 3600 }),
     },
     async (opts) => {
       try {
@@ -73,7 +72,7 @@ export function registerWatchTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'watch_list',
     'watch',
-    '【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, interval_seconds, last_checked_at?, last_hash? }]',
+    '【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, last_checked_at?, last_hash? }]',
     {},
     async () => {
       try {

@@ -6,8 +6,6 @@ export type SearchNewsInput = {
   query: string;
   /** 取得件数 (デフォルト: 20, 最大: 50) */
   limit?: number;
-  /** ページ番号 (1-based, 上限: 100) */
-  page?: number;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
 };

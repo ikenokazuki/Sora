@@ -58,6 +58,107 @@ describe('finalizeScrapeResult のハイライト', () => {
   });
 });
 
+describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに当てる', () => {
+  const mail = 'info@example.com';
+  const tel = '03-1234-5678';
+  const page = () => base(`連絡先は ${mail} です。`, {
+    title: `問い合わせ ${mail}`,
+    description: `電話 ${tel}`,
+    html: `<p>${mail}</p>`,
+    rawHtml: `<a href="mailto:${mail}">${tel}</a>`,
+    tables: [{ caption: `担当 ${mail}`, headers: ['名前', `連絡先 ${tel}`], rows: [{ 名前: '田中', [`連絡先 ${tel}`]: tel }] }],
+    extracted: { mail, none: null },
+  });
+
+  test('html・rawHtml・title・description・tables・extracted もマスクする', async () => {
+    const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    const json = JSON.stringify(result);
+    expect(json).not.toContain(mail);
+    expect(json).not.toContain(tel);
+    expect(result.title).toBe('問い合わせ [EMAIL]');
+    expect(result.description).toBe('電話 [PHONE]');
+    expect(result.html).toBe('<p>[EMAIL]</p>');
+    expect(result.rawHtml).toBe('<a href="mailto:[EMAIL]">[PHONE]</a>');
+    expect(result.tables).toEqual([{ caption: '担当 [EMAIL]', headers: ['名前', '連絡先 [PHONE]'], rows: [{ 名前: '田中', '連絡先 [PHONE]': '[PHONE]' }] }]);
+    expect(result.extracted).toEqual({ mail: '[EMAIL]', none: null });
+  });
+
+  test('jsonLd・events・links・author・images の alt・evidence・breadcrumb にもかける（URL や日付は変えない）', async () => {
+    const result = await finalizeScrapeResult(base('本文です。', {
+      author: `担当 ${mail}`,
+      siteName: `${mail} の店`,
+      jsonLd: [{ '@type': 'Organization', url: 'https://example.com/', contactPoint: { email: mail, telephone: tel, nested: [{ note: `連絡は ${mail}` }] } }],
+      events: [{ name: '公演', startDate: '2026-04-19T06:20:00Z', url: 'https://example.com/e/1', location: `会場 ${tel}`, performer: mail, offers: { price: '5000', url: 'https://example.com/t' } }],
+      links: ['https://example.com/a', `mailto:${mail}`, `tel:${tel.replaceAll('-', '')}`, 'https://example.com/items/42'],
+      images: [{ url: 'https://example.com/a.png', alt: `連絡先 ${mail}`, title: tel, caption: `電話 ${tel}`, width: 10 }],
+      breadcrumb: ['トップ', `店 ${tel}`],
+      evidence: { title: { value: `${mail} の案内`, source: 'meta' } },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    const json = JSON.stringify(result);
+    expect(json).not.toContain(mail);
+    expect(json).not.toContain(tel);
+    expect(json).not.toContain('0312345678');
+    expect(result.author).toBe('担当 [EMAIL]');
+    expect(result.jsonLd).toEqual([{ '@type': 'Organization', url: 'https://example.com/', contactPoint: { email: '[EMAIL]', telephone: '[PHONE]', nested: [{ note: '連絡は [EMAIL]' }] } }]);
+    expect(result.events).toEqual([{ name: '公演', startDate: '2026-04-19T06:20:00Z', url: 'https://example.com/e/1', location: '会場 [PHONE]', performer: '[EMAIL]', offers: { price: '5000', url: 'https://example.com/t' } }]);
+    expect(result.links).toEqual(['https://example.com/a', 'mailto:[EMAIL]', 'tel:[PHONE]', 'https://example.com/items/42']);
+    expect(result.images).toEqual([{ url: 'https://example.com/a.png', alt: '連絡先 [EMAIL]', title: '[PHONE]', caption: '電話 [PHONE]', width: 10 }]);
+    expect(result.breadcrumb).toEqual(['トップ', '店 [PHONE]']);
+    expect(result.evidence).toEqual({ title: { value: '[EMAIL] の案内', source: 'meta' } });
+  });
+
+  test('隠したあとの見出しがぶつかっても、列をまとめない（_2 を付けて残す）', async () => {
+    const tel2 = '090-1111-2222';
+    const result = await finalizeScrapeResult(base('本文です。', {
+      tables: [{
+        headers: [`連絡先 ${tel}`, `連絡先 ${tel2}`, '名前'],
+        rows: [{ [`連絡先 ${tel}`]: tel, [`連絡先 ${tel2}`]: tel2, 名前: '田中' }],
+      }],
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.tables).toEqual([{
+      headers: ['連絡先 [PHONE]', '連絡先 [PHONE]_2', '名前'],
+      rows: [{ '連絡先 [PHONE]': '[PHONE]', '連絡先 [PHONE]_2': '[PHONE]', 名前: '田中' }],
+    }]);
+  });
+
+  test('jsonLd・events の URL の文字列は隠さない（0 から始まる 10〜11 桁の ID があっても）。メールや URL でない文字列は隠す', async () => {
+    const url = 'https://example.com/items/0312345678';
+    const result = await finalizeScrapeResult(base('本文です。', {
+      jsonLd: [{ '@type': 'Product', url, sameAs: [url, `連絡は ${tel}`], contactPoint: { telephone: tel, mail: `https://${mail}` } }],
+      events: [{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, location: `tel ${url} ${tel}` }],
+      extracted: { url },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.jsonLd).toEqual([{ '@type': 'Product', url, sameAs: [url, '連絡は [PHONE]'], contactPoint: { telephone: '[PHONE]', mail: 'https://[EMAIL]' } }]);
+    expect(result.events).toEqual([{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, location: 'tel https://example.com/items/[PHONE] [PHONE]' }]);  // 文の中の URL は、文の一部として隠す
+    // extracted は今までどおり、すべての文字列をマスクする
+    expect(result.extracted).toEqual({ url: 'https://example.com/items/[PHONE]' });
+  });
+
+  test('PDF のメタデータと、動画のチャプターの題にもかける（時刻・秒・作成日時は変えない）', async () => {
+    const result = await finalizeScrapeResult(base('本文です。', {
+      metadata: { Author: `田中 ${mail}`, Producer: 'Writer', CreationDate: 'D:20260105120000+09\'00\'', totalPages: 3 },
+      media: { type: 'youtube', videoId: 'v1', chapters: [{ title: `問い合わせ ${tel}`, time: '1:23', seconds: 83 }] },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.metadata).toEqual({ Author: '田中 [EMAIL]', Producer: 'Writer', CreationDate: 'D:20260105120000+09\'00\'', totalPages: 3 });
+    expect(result.media).toEqual({ type: 'youtube', videoId: 'v1', chapters: [{ title: '問い合わせ [PHONE]', time: '1:23', seconds: 83 }] });
+  });
+
+  test('maskPii でなければ、そのまま返す', async () => {
+    const result = await finalizeScrapeResult(page(), opts({ shouldExtractHighlights: false, shouldMaskPii: false }));
+    expect(result.html).toBe(`<p>${mail}</p>`);
+    expect(result.rawHtml).toContain(mail);
+    expect(result.extracted?.mail).toBe(mail);
+  });
+
+  test('description を補完証拠のハイライトにする場合も、マスクのあとの値を使う', async () => {
+    const result = await finalizeScrapeResult(
+      base('関係のない本文です。', { description: `開場時間の問い合わせは ${mail}` }),
+      opts({ shouldMaskPii: true, query: '開場時間 問い合わせ' }),
+    );
+    expect(JSON.stringify(result.highlights)).not.toContain(mail);
+  });
+});
+
 describe('finalizeScrapeResult: ハイライトの元が長くても（20 万字まで）止まらない', () => {
   // 値の種類・N 日前（annotateTemporal）・メール（maskPii）の正規表現が、数字・英字が長く続くと、並びの途中のすべての位置から並びの最後まで読んで、
   // 長さの二乗の時間になっていた（20 万桁の数字で数分、20 万字の英字で十数秒）。作った入力で、抽出全体が数秒で終わることを確かめる。

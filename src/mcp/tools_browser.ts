@@ -27,14 +27,14 @@ export function registerBrowserTools(context: ToolRegistrationContext): void {
         .object({
           markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)').meta({ default: true }),
           html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)').meta({ default: false }),
-          screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)').meta({ default: false }),
+          screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る').meta({ default: false }),
           screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)').meta({ default: true }),
-          clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
+          clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る'),
           maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)').meta({ default: 30000 }),
         })
         .optional()
         .describe('操作完了後に抽出するデータ指定'),
-      timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
+      timeout: z.number().optional().describe('ページ遷移 (最初の URL・navigate) の待ち時間 (ミリ秒, デフォルト: 30000)。全体の制限時間ではない').meta({ default: 30000 }),
     },
     async (opts) => {
       try {

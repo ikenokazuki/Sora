@@ -55,6 +55,35 @@ describe('social_posts provider', () => {
     expect(searched.map((s) => s.query).sort()).toEqual(['a', 'b']);
     expect(r.items).toEqual([]);
   });
+  test('platforms narrows the SNS named in queries as well', async () => {
+    const searched: Array<{ platform: string; query: string }> = [];
+    const service = {
+      search: async (q: any) => { searched.push({ platform: q.platform, query: q.query }); return { status: 'empty', platform: q.platform, query: q.query, searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: [], warnings: [] }; },
+      fetch: async () => { throw new Error('unused'); },
+      enrichWeiboTop: async (x: SocialPost[]) => x,
+    };
+    const provider = createSocialPostsProvider({ service: service as never });
+    await provider.run(inputFor({
+      region: 'China', includeSocial: true,
+      social: { platforms: ['weibo'], queries: [{ platform: 'threads', query: 't' }, { platform: 'weibo', query: 'w' }] },
+    } as never), AbortSignal.timeout(10000));
+    expect(searched).toEqual([{ platform: 'weibo', query: 'w' }]);
+    searched.length = 0;
+    // 指定した SNS に queries が無ければ、地域名で補う (queries の別の SNS は使わない)
+    await provider.run(inputFor({
+      region: 'China', includeSocial: true,
+      social: { platforms: ['weibo'], queries: [{ platform: 'threads', query: 't' }] },
+    } as never), AbortSignal.timeout(10000));
+    expect(searched).toEqual([{ platform: 'weibo', query: '中国' }]);
+    searched.length = 0;
+    // platforms を省くと、queries の SNS も他の SNS もこれまでどおり検索する
+    await provider.run(inputFor({
+      region: 'China', includeSocial: true,
+      social: { queries: [{ platform: 'threads', query: 't' }] },
+    } as never), AbortSignal.timeout(10000));
+    expect(searched.map((s) => s.platform).sort()).toEqual(['facebook', 'instagram', 'threads', 'weibo']);
+    expect(searched.find((s) => s.platform === 'threads')?.query).toBe('t');
+  });
   test('records failures as gaps, never as evidence', async () => {
     const service = {
       search: async () => ({ status: 'unavailable', platform: 'weibo', query: 'q', searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: ['rate limited (429)'], warnings: [] }),

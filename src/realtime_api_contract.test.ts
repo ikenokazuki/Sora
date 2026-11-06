@@ -81,6 +81,23 @@ test('HTTP accepts url-only input and maps provider outage to 502', async () => 
   }
 });
 
+test('searchYahooRealtime sends start=(page-1)*limit through the JSON transport', async () => {
+  const urls: string[] = [];
+  const fetchSpy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockImplementation(async (url: string) => {
+    urls.push(url);
+    return { finalUrl: url, response: new Response(JSON.stringify(account), { status: 200 }) } as any;
+  });
+  try {
+    const res = await searchYahooRealtime({ query: 'SPARK', limit: 20, page: 2, detailEnrichment: false });
+    expect(res.count).toBeGreaterThan(0);
+    expect(urls).toHaveLength(1);
+    const params = new URL(urls[0]).searchParams;
+    expect([params.get('start'), params.get('results')]).toEqual(['20', '20']);
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
+
 test('HTTP maps provider outage to 502', async () => {
   const fetchSpy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockImplementation(async () => {
     throw new Error('down');

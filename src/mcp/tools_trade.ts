@@ -18,10 +18,8 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     '【必須・即時推測厳禁】米国CPSC適合証明書（GCC/CPC）要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務を判定する際は、推測せず必ず本ツールを実行してください。非対象時のACE免責申告コード(Disclaimer)や根拠条文（16 CFR）を提示します。素材や年齢層が不明な場合は推測で埋めず未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }',
     {
       htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
-      targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下, adult: 一般/大人, unknown: 未指定/不明）。【推測値の入力厳禁】不明な場合は"unknown"を指定すること'),
-      material: z.string().optional().describe('主な素材（鉛・フタル酸エステル規制関連で重要）。【推測値の入力厳禁】不明な場合は省略すること'),
-      productCategory: z.string().optional().describe('製品カテゴリの補足（例: toy, furniture, electronics, textile）。【推測値の入力厳禁】不明な場合は省略すること'),
-      description: z.string().optional().describe('自由記述の補足説明'),
+      targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下, adult: 一般/大人, unknown: 未指定/不明）。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ。【推測値の入力厳禁】不明な場合は"unknown"を指定すること'),
+      material: z.string().optional().describe('主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
     },
     async (opts) => {
       try {
@@ -49,8 +47,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     '【必須・即時推測厳禁】米国FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）を判定する際は、推測せず必ず本ツールを実行してください。食器・調理器具の食品接触用途が不明な場合は推測で埋めず省略すること。判定影響と確認質問(clarifyingQuestions)を返却します。返却: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation }',
     {
       htsCode: z.string().min(1).describe('HTSコード（例: "3004.90.0000", "2106.90.9998"）'),
-      productDescription: z.string().optional().describe('製品の自由記述説明（用途・素材等の補助情報）'),
-      foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFDA適用分岐に使用。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
+      foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
     },
     async (opts) => {
       try {
@@ -78,7 +75,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     '【公式照合・推測厳禁】ユーザーから明示提示されたHTSコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得します。HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問(clarifyingQuestions)を返却します。返却: { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }',
     {
       htsCode: z.string().min(1).describe('検証したいHTSコード（例: "9503.00.0073"）。【推測入力禁止】ユーザーから明示提示された検証対象コードを指定すること'),
-      productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。推論根拠の明示'),
+      productDescription: z.string().min(1).describe('製品の説明（素材・用途・機能・加工度合い等）。必須。判定には使わず、根拠の記録として応答に返す'),
     },
     async (opts) => {
       try {
@@ -108,10 +105,10 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       productName: z.string().min(1).describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Ceramic Coffee Mug", "Green Tea"）。日本語の商品は英訳して渡す'),
       description: z.string().optional().describe('商品の詳細説明、機能、用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
       material: z.string().optional().describe('主な素材（例: wood, ceramic, cotton, stainless steel, plastic）。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
-      productCategory: z.string().optional().describe('製品カテゴリ（例: Toys, Tableware, Apparel, Cosmetics, Food, Electronics）。【推測値の入力厳禁】不明な場合は省略すること'),
+      productCategory: z.string().optional().describe('製品カテゴリ（例: Toys, Tableware, Apparel, Cosmetics, Food, Electronics）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
       targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下, adult: 大人/一般, unknown: 不明）。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
-      foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true/false）。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
-      hasBattery: z.boolean().optional().describe('電池・バッテリーを搭載しているか（true/false）。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
+      foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true/false）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
+      hasBattery: z.boolean().optional().describe('電池・バッテリーを搭載しているか（true/false）。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
     },
     async (opts) => {
       try {
@@ -144,9 +141,9 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       htsCode: z.string().optional().describe('ユーザーからプロンプト内で明示的に提示された既知のHTSコード（指定時は最優先で検証）。【LLM自身の推測・候補値の入力厳禁！】HTSコードを推測・特定したい場合は必ず省略（未指定）にすること。未指定時にSoraが公式データと判例から特定します'),
       targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
-      productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）'),
-      foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
-      hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+      productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない'),
+      foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+      hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足し、batteryTypeがあれば注意書きを1行足す。falseでは何もしない。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
     },
     async (opts) => {
