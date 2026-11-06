@@ -179,6 +179,8 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(await fetchWeatherWarnings({ city: '江東区大島', noCache: true })).toMatchObject({ areaCode: '130010', prefecture: '東京都' });
     expect(await fetchWeatherWarnings({ city: '沖縄 石垣島', noCache: true })).toMatchObject({ areaCode: '474010', prefecture: '沖縄県' });
     expect(await fetchWeatherWarnings({ city: '日光市中宮祠', noCache: true })).toMatchObject({ areaCode: '090020', prefecture: '栃木県' });
+    // 区域に分かれた日光市は、今市を含むすべての区域
+    expect((await fetchWeatherWarnings({ city: '日光市', noCache: true })).areaCode.split(',').sort()).toEqual(['0920601', '0920602', '0920603', '0920604', '0920605']);
     expect(await fetchWeatherWarnings({ city: '静岡 県', noCache: true })).toMatchObject({ areaCode: '220000', areaName: '静岡県' });
     expect(await fetchWeatherWarnings({ city: '上川・留萌 地方', noCache: true })).toMatchObject({ areaCode: '012000' });
   });

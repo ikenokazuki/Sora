@@ -3450,5 +3450,6 @@ export const MUNICIPALITY_CITY_MAP: Record<string, string> = {
   "隠岐諸島": "320030",
   "宮古諸島": "473000",
   "宮古列島": "473000",
+  "伊予三島": "380020",
   "乗鞍高原": "200020"
 };

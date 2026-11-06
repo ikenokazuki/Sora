@@ -36,12 +36,19 @@ const MUNICIPALITIES = (() => {
   const byName = new Map<string, Municipality[]>();
   const add = (m: Municipality) => byName.set(m.name, [...(byName.get(m.name) ?? []), m]);
   const cities = new Map<string, Municipality>(); // `${都道府県コード}${市の名前}` → 区域を合わせた市
+  // 区域に分かれた市: 市の名前の後に続きがある名前の市（"余市町" などの町村と "四日市市" などの市は除く）
+  const split = new Set(
+    Object.entries(JMA_CLASS20).flatMap(([name, towns]) => {
+      const city = /[市町村]$/.test(name) ? undefined : name.match(/^(.+?市)./)?.[1];
+      return city ? towns.map((t) => t.code.slice(0, 2) + city) : [];
+    }),
+  );
   for (const [name, towns] of Object.entries(JMA_CLASS20)) {
-    // 市の名前の後に続きがあれば、その市の区域（"余市町" などの町村と "四日市市" などの市は除く）
-    const city = /[市町村]$/.test(name) ? undefined : name.match(/^(.+?市)./)?.[1];
+    // その市の名前で始まる名前は、続きが市で終わっても区域（"日光市今市"）
+    const city = name.match(/^(.+?市)./)?.[1];
     for (const t of towns) {
       add({ name, codes: [t.code], class10: t.class10 });
-      if (!city) continue;
+      if (!city || !split.has(t.code.slice(0, 2) + city)) continue;
       const key = t.code.slice(0, 2) + city;
       const whole = cities.get(key) ?? { name: city, codes: [], class10: t.class10 };
       whole.codes.push(t.code);

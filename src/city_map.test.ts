@@ -156,8 +156,8 @@ describe('city_map.ts と気象庁の表', () => {
     expect(district.filter(([n, q]) => !sameAs(n, q)).map(([n, q]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
   }, LONG);
 
-  it('主な島の名前は、その島の市町村（気象庁の市町村の表）の予報区。天気・警報とも', () => {
-    // [島, 都道府県, 島の市町村]
+  it('city_map に足した島などの名前は、その市町村（気象庁の市町村の表）の予報区。天気・警報とも', () => {
+    // [名前, 都道府県, その市町村]
     const islands: Array<[string, string, string[]]> = [
       ['伊豆大島', '東京都', ['大島町']], ['三宅島', '東京都', ['三宅村']], ['母島', '東京都', ['小笠原村']], ['佐渡島', '新潟県', ['佐渡市']],
       ['淡路島', '兵庫県', ['淡路市', '洲本市', '南あわじ市']], ['利尻島', '北海道', ['利尻町', '利尻富士町']], ['礼文島', '北海道', ['礼文町']], ['奥尻島', '北海道', ['奥尻町']],
@@ -172,6 +172,7 @@ describe('city_map.ts と気象庁の表', () => {
       ['天草諸島', '熊本県', ['天草市', '上天草市', '苓北町']], ['天草上島', '熊本県', ['天草市', '上天草市', '苓北町']], ['天草下島', '熊本県', ['天草市', '上天草市', '苓北町']],
       ['小値賀島', '長崎県', ['小値賀町']], ['上五島', '長崎県', ['新上五島町']], ['笠岡諸島', '岡山県', ['笠岡市']],
       ['隠岐諸島', '島根県', ['隠岐の島町', '西ノ島町', '海士町', '知夫村']], ['宮古諸島', '沖縄県', ['宮古島市', '多良間村']], ['宮古列島', '沖縄県', ['宮古島市', '多良間村']],
+      ['伊予三島', '愛媛県', ['四国中央市']],
     ];
     const bad = islands.flatMap(([island, pref, towns]) => {
       const areas = new Set(towns.flatMap((t) => (JMA_CLASS20[t] ?? []).filter((x) => prefectureOf(x.code) === pref).map((x) => x.class10)));
@@ -266,6 +267,26 @@ describe('city_map.ts と気象庁の表', () => {
     for (const n of ['上 野', '上　野', ' 上野 ']) expect(resolved(n)).toBe(resolved('上野'));
     expect(resolved('上野')).toStartWith('error: 地名「上野」は、市町村（群馬県上野村）');
     expect([resolved('東京都 新宿区'), resolved('北海道 上川郡 上川町'), resolved('富士 河口')]).toEqual(['130010', '012010', '190020']);
+  });
+
+  it('区域に分かれた市の全体は、ちょうどその市の区域（"日光市今市" のように市で終わる区域も含む）。区域だけでも引ける', () => {
+    // `${都道府県}${市}` → 気象庁の市町村の表で、その都道府県でその市の名前で始まる名前の番号
+    const cities = new Map<string, Set<string>>();
+    for (const [name, list] of Object.entries(JMA_CLASS20)) {
+      const city = /[市町村]$/.test(name) ? undefined : name.match(/^(.+?市)./)?.[1];
+      for (const t of list) if (city) cities.set(prefectureOf(t.code) + city, new Set());
+    }
+    for (const [name, list] of Object.entries(JMA_CLASS20)) {
+      for (const t of list) {
+        const pref = prefectureOf(t.code);
+        for (const [key, codes] of cities) if (key.startsWith(pref) && name.startsWith(key.slice(pref.length))) codes.add(t.code);
+      }
+    }
+    expect(cities.size).toBeGreaterThan(30);
+    const bad = [...cities].filter(([key, codes]) => [...(resolveMunicipality(key)?.codes ?? [])].sort().join() !== [...codes].sort().join()).map(([key, codes]) => `${key}: ${resolveMunicipality(key)?.codes.join(',')}（${[...codes].sort().join(',')}）`);
+    expect(bad).toEqual([]);
+    expect(resolvePlace('日光市', { town: true }).town?.codes).toContain('0920601');
+    expect(resolvePlace('日光市今市', { town: true }).town?.codes).toEqual(['0920601']);
   });
 
   it('区域に分かれた市は、どの区域も同じ気象台の範囲（1 回の取得で足りる）', () => {
