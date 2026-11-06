@@ -1,4 +1,4 @@
-import { AreaInputError, TOWN_BY_CODE, prefectureCodeOf, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './life.js';
+import { AreaInputError, TOWN_BY_CODE, prefectureCodeOf, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './jma_area.js';
 import { getFromCache, setToCache } from '../cache.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 import { JMA_CLASS10, JMA_OFFICES } from '../jma_areas.js';

@@ -12,7 +12,7 @@ import {
   fetchFlightStatus,
 } from '../scraper.js';
 import { searchOpenPoi } from '../services/poi.js';
-import { AreaInputError } from '../services/life.js';
+import { AreaInputError } from '../services/jma_area.js';
 import { TrafficInputError } from '../services/traffic.js';
 import {
   WeatherRequestSchema,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { MUNICIPALITY_CITY_MAP } from './city_map.js';
 import { JMA_CLASS10, JMA_CLASS20, PREFECTURE_NAMES } from './jma_areas.js';
-import { AreaInputError, resolveCityId, resolveMunicipality } from './services/life.js';
+import { AreaInputError, resolveCityId, resolveMunicipality } from './services/jma_area.js';
 
 // city_map.ts（地名 → 予報区）が、気象庁の表（jma_areas.ts）と食い違わないことを確かめる
 const PREFECTURES = new Set(PREFECTURE_NAMES.flatMap((p) => [p, p.replace(/[都府県]$/, '')]));

@@ -96,6 +96,7 @@ export * from './browser_engine.js';
 export * from './pdf.js';
 export * from './services/yahoo.js';
 export * from './services/life.js';
+export * from './services/jma_area.js';
 export * from './services/disaster.js';
 export * from './services/traffic.js';
 export * from './services/watch.js';

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { AreaInputError, fetchWeatherForecast, prefectureOf, resolveCityId, resolveMunicipality } from './life.js';
+import { AreaInputError, prefectureOf, resolveCityId, resolveMunicipality } from './jma_area.js';
+import { fetchWeatherForecast } from './life.js';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
 import { JMA_CLASS20 } from '../jma_areas.js';
@@ -175,7 +176,7 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(resolveCityId('仙台市青葉区')).toBe('040010');
   });
 
-  it('気温は予報区と同じ位置の地点を使い、地点の名前を返す', async () => {
+  it('気温は表の地点を名前で選び、その地点の名前を返す（合う地点が無ければ最初の地点）', async () => {
     const kitakyushu = await fetchWeatherForecast({ city: '北九州', days: 2, noCache: true });
     expect(kitakyushu.cityId).toBe('400020');
     expect(kitakyushu.temperatureArea).toBe('八幡');
