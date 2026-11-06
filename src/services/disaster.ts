@@ -116,7 +116,7 @@ function warningTargetFromCode(input: string): WarningTarget {
     // 北海道・鹿児島・沖縄は気象台が複数あり、XX0000 の気象台が無い
     const offices = Object.entries(JMA_OFFICES).filter(([c]) => c.startsWith(code));
     if (offices.length > 1) {
-      throw new AreaInputError(`都道府県コード「${code}」には気象台が複数あります。6 桁の気象台の番号を指定してください: ${offices.map(([c, n]) => `${c}（${n}）`).join('、')}`);
+      throw new AreaInputError(`都道府県コード「${code}」には気象台が複数あります。6 桁の気象台の番号か、市町村名・地方名で指定してください: ${offices.map(([c, n]) => `${c}（${n}）`).join('、')}`);
     }
     code = `${code}0000`;
   }
@@ -130,12 +130,13 @@ function warningTargetFromCode(input: string): WarningTarget {
 }
 
 /**
- * areaCode があればそれ、無ければ city を天気と同じ順で解決する（市町村に当たれば市町村）。どちらも無ければ東京地方。
- * 都道府県名（略称も）は、予報区の 1 つにすると県のほかの予報区の警報を落とすので、県全体にする（気象台が複数ある県はエラー）
+ * areaCode があればそれ（city は見ない）、無ければ city を天気と同じ順で解決する（市町村に当たれば市町村）。どちらも無ければ東京地方で、
+ * 空白だけの city は誤り。都道府県名（略称も）は、予報区の 1 つにすると県のほかの予報区の警報を落とすので、県全体にする（気象台が複数ある県はエラー）
  */
 function resolveWarningTarget(city?: string, areaCode?: string): WarningTarget {
   if (areaCode?.trim()) return warningTargetFromCode(areaCode.trim());
   const query = city?.trim();
+  if (query === '') throw new AreaInputError('city が空白です。地名か areaCode を指定してください');
   if (!query) return warningTargetFromCode('130010');
   if (/^\d{6}$/.test(query)) return warningTargetFromCode(query);
   const pref = prefectureCodeOf(query);
@@ -188,18 +189,23 @@ export async function fetchWeatherWarnings(options: {
   const reportTime = times.length > 0 ? times.reduce((latest, t) => (Date.parse(t) > Date.parse(latest) ? t : latest)) : new Date().toISOString();
 
   const lists: Record<WarningItem['level'], WarningItem[]> = { special: [], warning: [], advisory: [] };
-  // 区域や予報区を合わせるとき、同じ警報（番号と状態が同じ）は 1 つにする
-  const seen = new Set<string>();
+  // 区域や予報区を合わせるとき、同じ種類（番号）の警報は 1 つにし、状態は発表を継続より先にする
+  const seen = new Map<string, WarningItem>();
 
   for (const kind of used.flatMap((r) => r.items).flatMap((i: any) => i.kinds || [])) {
     const meta = WARNING_KINDS[kind?.code];
     const status = kind?.status || '発表';
-    const key = `${kind?.code}:${status}`;
-    if (!meta || INACTIVE_STATUSES.has(status) || seen.has(key)) continue;
-    seen.add(key);
+    if (!meta || INACTIVE_STATUSES.has(status)) continue;
+    const same = seen.get(kind.code);
+    if (same) {
+      if (status === '発表') same.status = status;
+      continue;
+    }
     const [kindName, grade, alertLevel] = meta;
     const [suffix, level] = GRADES[grade];
-    lists[level].push({ code: kind.code, name: kindName + suffix, level, ...(alertLevel ? { alertLevel } : {}), status });
+    const item: WarningItem = { code: kind.code, name: kindName + suffix, level, ...(alertLevel ? { alertLevel } : {}), status };
+    seen.set(kind.code, item);
+    lists[level].push(item);
   }
 
   const { special: specialWarnings, warning: warnings, advisory: advisories } = lists;

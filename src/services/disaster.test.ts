@@ -130,6 +130,15 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(res.status).toBe(400);
   });
 
+  it('気象台が複数ある県のエラーは、気象台の番号のほか市町村名・地方名でも引けることを書く', async () => {
+    const calls = stubFetch(warningJson);
+    for (const input of [{ city: '北海道' }, { areaCode: '01' }, { city: '鹿児島県' }, { areaCode: '47' }]) {
+      await expect(fetchWeatherWarnings({ ...input, noCache: true })).rejects.toThrow('6 桁の気象台の番号か、市町村名・地方名で指定してください');
+    }
+    expect(calls).toEqual([]);
+    expect(await fetchWeatherWarnings({ city: '石狩地方', noCache: true })).toMatchObject({ areaCode: '016010', areaName: '石狩地方', prefecture: '北海道' });
+  });
+
   it('都道府県名でない city_map の地名は、同じ予報区の「地名+市・区」の市町村ならその市町村、ほかは予報区', async () => {
     stubFetch(warningJson);
     // 気温の地点の名前
@@ -162,12 +171,14 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(await fetchWeatherWarnings({ city: '北海道茅部郡森町', noCache: true })).toMatchObject({ areaCode: '0134500', areaName: '森町', prefecture: '北海道' });
   });
 
-  it('空白だけの city は、東京にせず入力の誤り（REST は 400、MCP は検証エラー）', async () => {
+  it('空白だけの city は、areaCode が無ければ東京にせず入力の誤り（REST は 400、MCP はエラー）', async () => {
     const calls = stubFetch(warningJson);
+    await expect(fetchWeatherWarnings({ city: ' ', noCache: true })).rejects.toThrow('city が空白です');
     const res = await app.request('/disaster/warnings', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: ' ' }),
     });
     expect(res.status).toBe(400);
+    expect(((await res.json()) as any).code).toBe('INVALID_INPUT');
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'warning-blank-city', version: '1.0.0' });
@@ -180,6 +191,30 @@ describe('search_disaster_warnings の地名の解決', () => {
       await server.close();
     }
     expect(calls).toEqual([]);
+  });
+
+  it('areaCode があれば、空白だけの city は誤りにしない（areaCode が先。REST・MCP とも）', async () => {
+    clearCache();
+    stubFetch(warningJson);
+    expect(await fetchWeatherWarnings({ city: ' ', areaCode: '13', noCache: true })).toMatchObject({ areaCode: '130000' });
+    const res = await app.request('/disaster/warnings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: ' ', areaCode: '13', noCache: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).areaCode).toBe('130000');
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'warning-blank-city-area-code', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      const out = await client.callTool({ name: 'search_disaster_warnings', arguments: { city: '', areaCode: '1310400' } });
+      expect(out.isError).toBeFalsy();
+      expect(JSON.parse((out.content as Array<{ text: string }>)[0].text)).toMatchObject({ areaCode: '1310400', areaName: '新宿区' });
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it('知らない地名は東京にせずエラー。city も areaCode も無ければ東京', async () => {
@@ -235,6 +270,17 @@ describe('search_disaster_warnings の areaCode', () => {
       ? [{ reportDatetime: '2026-11-06T05:00:00+09:00', warning: { class10Items: [{ areaCode: '130010', kinds: w('14') }, { areaCode: '130020', kinds: w('14', '16') }], class20Items: [] } }]
       : undefined);
     expect(names((await fetchWeatherWarnings({ areaCode: '130000', noCache: true })).advisories)).toEqual(['雷注意報', '波浪注意報']);
+  });
+
+  it('合わせた警報は種類（code）ごとに 1 つにし、状態は発表を継続より先にする', async () => {
+    const kinds = (status: string) => [{ code: '14', status }];
+    stubFetch((url) => url.pathname.endsWith('/130000.json')
+      ? [{
+        reportDatetime: '2026-11-06T05:00:00+09:00',
+        warning: { class10Items: [{ areaCode: '130010', kinds: kinds('継続') }, { areaCode: '130020', kinds: kinds('発表') }, { areaCode: '130030', kinds: kinds('継続') }], class20Items: [] },
+      }]
+      : undefined);
+    expect((await fetchWeatherWarnings({ areaCode: '130000', noCache: true })).advisories).toEqual([{ code: '14', name: '雷注意報', level: 'advisory', status: '発表' }]);
   });
 
   it('7 桁は市町村、6 桁は予報区。city が無くてもラベルは表から作る', async () => {
