@@ -341,16 +341,57 @@ describe('Realtime Retrieval v1', () => {
   });
 
   test('helpers: a hyphen is an exclusion mark only at the start of a word (foo-(bar))', () => {
-    const r = extractRealtimeIntentRequirements('foo-(bar) baz');
-    expect(r.semanticRequirements).toEqual(['foo-', 'baz']);
-    expect(r.protectedModifiers).toEqual(['(bar)']);
-    const ex = extractRealtimeIntentRequirements('foo -(bar baz)');
-    expect(ex.semanticRequirements).toEqual(['foo']);
-    expect(ex.protectedModifiers).toEqual(['-(bar baz)']);
+    const parts = (q: string) => {
+      const r = extractRealtimeIntentRequirements(q);
+      return [r.semanticRequirements, r.protectedModifiers];
+    };
+    // 語の途中の - は除外の記号ではなく、語にも残さない（foo- や単独の - を必須語にしない）
+    expect(parts('foo-(bar) baz')).toEqual([['foo', 'baz'], ['(bar)']]);
+    expect(parts('(a)-(b)')).toEqual([[], ['(a)', '(b)']]);
+    expect(parts('x --(a)')).toEqual([['x'], ['(a)']]);
+    expect(parts('foo -(bar baz)')).toEqual([['foo'], ['-(bar baz)']]);
+    expect(parts('foo -bar')).toEqual([['foo'], ['-bar']]);
+  });
+
+  test('helpers: queries without parentheses are split as before', () => {
+    const parts = (q: string) => {
+      const r = extractRealtimeIntentRequirements(q);
+      return [r.semanticRequirements, r.protectedModifiers];
+    };
+    expect(parts('foo -bar "quoted phrase" id:x URL:example.com')).toEqual([
+      ['foo', '"quoted', 'phrase"'],
+      ['URL:example.com', 'id:x', '-bar'],
+    ]);
+    expect(parts('A - B #tag @user from:abc -xy 日本語-英語')).toEqual([
+      ['A', '-', 'B', '日本語-英語'],
+      ['id:abc', '@user', '#tag', '-xy'],
+    ]);
+  });
+
+  test('helpers: long or deeply nested input is split in linear time', () => {
+    const long = 'a'.repeat(50_000);
+    expect(extractRealtimeIntentRequirements(long).semanticRequirements).toEqual([long]);
+    const shapes = [
+      `https://example.com/${long}`,
+      '-'.repeat(50_000),
+      'a-'.repeat(25_000),
+      '('.repeat(50_000),
+      ')'.repeat(50_000),
+      '(a'.repeat(25_000),
+      'a)'.repeat(25_000),
+      '-('.repeat(25_000),
+      '( '.repeat(25_000),
+      `${'('.repeat(5_000)}a${')'.repeat(5_000)} z`,
+      `${'(a '.repeat(5_000)}${')'.repeat(5_000)}`,
+    ];
+    const start = performance.now();
+    for (const q of shapes) extractRealtimeIntentRequirements(q);
+    // 二次になると 1 つの形で数十秒かかる。実測は全体で数十ミリ秒
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 
   test('unbalanced parentheses: the query sent is unchanged and missingTerms has no fragments', async () => {
-    for (const [query, required] of [['A (B', ['A']], ['A B)', ['A']], ['foo-(bar) baz', ['foo-', 'baz']]] as const) {
+    for (const [query, required] of [['A (B', ['A']], ['A B)', ['A']], ['foo-(bar) baz', ['foo', 'baz']]] as const) {
       const calls: string[] = [];
       const res: any = await searchYahooRealtime({
         query,

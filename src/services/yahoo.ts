@@ -1379,11 +1379,14 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
     modifiers.push(m.replace(/\s+/g, ' ').trim());
     return ' ';
   };
+  // `(` の直前の - は、語頭に 1 つだけのときに限り除外の記号（-(A B)）。それ以外（foo-(bar)・(a)-(b)・--(a)）は語の一部でも
+  // 記号でもないので外す。直前が - でない位置から始めて走査を線形に保つ
+  remaining = remaining.replace(/(?<!-)-+(?=\()/g, (m, offset: number, str: string) => (m === '-' && /\s/.test(str[offset - 1]) ? m : ' '));
   // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）。
-  // 入れ子は内側から外す。`-` は語頭のときだけ除外の記号（foo-(bar) の - は語の一部）
-  for (let prev = ''; prev !== remaining; ) {
+  // 入れ子は内側から外す（深さ 16 まで。それより深い残りは下の断片として 1 つにする）
+  for (let prev = '', depth = 0; prev !== remaining && depth < 16; depth++) {
     prev = remaining;
-    remaining = remaining.replace(/(?:(?<=\s)-)?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, addModifier);
+    remaining = remaining.replace(/-?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, addModifier);
   }
   remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
     modifiers.push(`id:${id}`);
@@ -1398,7 +1401,7 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
     return ' ';
   });
   // 括弧が閉じていない断片（A (B・A B)）も語にしない。閉じていない ( は末尾まで、対のない ) はその語だけ
-  remaining = remaining.replace(/(?:(?<=\s)-)?\([\s\S]*$|[^\s(]*\)[^\s(]*/g, addModifier);
+  remaining = remaining.replace(/-?\([\s\S]*$|(?<![^\s(])[^\s(]*\)[^\s(]*/g, addModifier);
   remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
     modifiers.push(`-${ex}`);
     return ' ';
