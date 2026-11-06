@@ -64,9 +64,8 @@ function matchKeys(region: RegionRecord, alpha3: string | undefined): string[] {
     region.name,
     region.nativeName,
     region.subdivisionCode || !region.countryCode ? undefined : JA_NAME_BY_ALPHA2.get(region.countryCode),
-    // Subdivision は親国コード単体で解決しない (US が US-GA にも一致するのを防ぐ)。
-    ...(region.subdivisionCode ? [region.subdivisionCode] : [region.countryCode]),
-    alpha3,
+    // Subdivision は親国の alpha-2/alpha-3 では解決しない (US・USA が US-GA にも一致するのを防ぐ)。
+    ...(region.subdivisionCode ? [region.subdivisionCode] : [region.countryCode, alpha3]),
     ...region.aliases,
   ].filter((value): value is string => Boolean(value));
 }

@@ -110,3 +110,16 @@ test('ignores spaces and full-width / half-width differences in a country name',
   // an unresolved name keeps the input as it was written
   expect(resolveRegion('No Such  Land')).toMatchObject({ id: 'unresolved:no such  land', name: 'No Such  Land', confidence: 'low' });
 });
+
+test('a subdivision does not claim the codes of its parent country', () => {
+  // USA is the alpha-3 of the United States, not of Georgia (US-GA)
+  for (const input of ['USA', 'usa', 'US', 'United States']) {
+    expect(resolveRegion(input), input).toMatchObject({ id: 'country:US', confidence: 'high' });
+  }
+  expect(resolveRegion('US-GA')).toMatchObject({ id: 'subdivision:US-GA', confidence: 'high' });
+  expect(resolveRegion('State of Georgia')).toMatchObject({ id: 'subdivision:US-GA', confidence: 'high' });
+  // the country and the state share the English name, so it stays ambiguous; the Japanese name is the country
+  expect(resolveRegion('Georgia')).toMatchObject({ id: 'unresolved:georgia', confidence: 'low' });
+  expect(resolveRegion('ジョージア')).toMatchObject({ id: 'country:GE', confidence: 'high' });
+  expect(resolveRegion('GEO')).toMatchObject({ id: 'country:GE', confidence: 'high' });
+});
