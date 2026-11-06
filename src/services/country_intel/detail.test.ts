@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { closeDb } from '../../db.js';
 import { getEvidenceDetails, getEvidencePage, saveEvidenceDetails } from './db.js';
 import type { EvidenceDetail } from './detail.js';
+import { createIntelligenceRoutes } from '../../routes/intelligence.js';
 
 let directory: string;
 let previousPath: string | undefined;
@@ -87,6 +88,26 @@ describe('evidence pages', () => {
     const third = getEvidencePage('ctx-page-1', { ids, limit: 3, cursor: second.nextCursor });
     expect(third.items.map((item) => item.evidenceId)).toEqual(['e-005']);
     expect(third.nextCursor).toBeUndefined();
+  });
+
+  test('REST answers a stale or mismatched cursor (ids, page scan, updates) with 400, not 500', async () => {
+    saveEvidenceDetails('ctx-page-1', Array.from({ length: 10 }, (_, i) => makeDetail(i)));
+    const routes = createIntelligenceRoutes();
+    const ids = ['e-000', 'e-001', 'e-002', 'e-003'];
+    const idsCursor = getEvidencePage('ctx-page-1', { ids, limit: 2 }).nextCursor;
+    const scanCursor = getEvidencePage('ctx-page-1', { limit: 2 }).nextCursor;
+    const get = (query: string) => routes.request(`/intelligence/context/ctx-page-1/evidence?${query}`);
+    for (const res of [
+      await get(`ids=e-005,e-006,e-007,e-008&limit=2&cursor=${idsCursor}`),
+      await get(`limit=2&cursor=${idsCursor}`),
+      await get(`ids=${ids.join(',')}&limit=2&cursor=${scanCursor}`),
+      await get('cursor=broken'),
+      await routes.request('/intelligence/context/ctx-page-1/updates?cursor=not-a-date'),
+    ]) {
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { code: string }).code).toBe('INVALID_INPUT');
+    }
+    expect((await get(`ids=${ids.join(',')}&limit=2&cursor=${idsCursor}`)).status).toBe(200);
   });
 
   test('an ids cursor is bound to its ids and cannot be mixed with page scanning', () => {

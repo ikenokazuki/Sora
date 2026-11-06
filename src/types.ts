@@ -3573,7 +3573,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
           parameters: [
-            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "成田")' },
+            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "成田")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み' },

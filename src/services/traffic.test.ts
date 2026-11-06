@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
-import { fetchFlightStatus, fetchRoadTraffic, resolveAirport, TrafficInputError } from './traffic.js';
+import { generateOpenApiDocument } from '../types.js';
+import { fetchFlightStatus, fetchRoadTraffic, resolveAirport, resolvePrefecture, resolveRoadCode, TrafficInputError } from './traffic.js';
 
 const realFetch = globalThis.fetch;
 let requested: string[] = [];
@@ -153,6 +154,38 @@ describe('search_road_traffic', () => {
   });
 });
 
+describe('表の引き方', () => {
+  test('Object の既定のプロパティの名前（constructor・__proto__ など）は、都道府県・道路・空港として当たらない', async () => {
+    stubPage(prefPage);
+    for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(resolvePrefecture(name)).toBeNull();
+      expect(resolveRoadCode(name)).toBeNull();
+      expect(() => resolveAirport(name)).toThrow(TrafficInputError);
+      await expect(fetchRoadTraffic({ pref: name, noCache: true })).rejects.toThrow(TrafficInputError);
+    }
+    expect(requested).toEqual([]);
+  });
+
+  test('都道府県コードは数字だけを受ける（"13abc" を 13 にしない）', () => {
+    expect(resolvePrefecture('13abc')).toBeNull();
+    expect(resolvePrefecture('1.5')).toBeNull();
+    expect(resolvePrefecture('13')?.code).toBe(13);
+    expect(resolvePrefecture(' 13 ')?.code).toBe(13);
+    expect(resolvePrefecture(13)?.code).toBe(13);
+  });
+});
+
+describe('get_flight_status の OpenAPI', () => {
+  test('空港の引数はどの書き方（本文・クエリ・パス）でも、対応が 5 空港だけと書く', () => {
+    const paths = (generateOpenApiDocument() as any).paths;
+    const note = '羽田・成田・伊丹・関西・中部の 5 空港だけ';
+    expect(paths['/traffic/flight'].post.requestBody.content['application/json'].schema.properties.airport.description).toContain(note);
+    for (const op of [paths['/traffic/flight'].get, paths['/traffic/flight/{airport}'].get]) {
+      expect(op.parameters.find((p: { name: string }) => p.name === 'airport').description).toContain(note);
+    }
+  });
+});
+
 describe('REST は入力の誤りを 400 で返す', () => {
   test('不明な pref・空港', async () => {
     stubPage(prefPage);
@@ -165,6 +198,11 @@ describe('REST は入力の誤りを 400 で返す', () => {
       await post('/traffic/flight', { airport: '福岡' }),
       await app.request('/traffic/flight?airport=%E7%A6%8F%E5%B2%A1'),
       await app.request('/traffic/flight/%E6%96%B0%E5%8D%83%E6%AD%B3'),
+      await post('/traffic/road', { pref: 'constructor' }),
+      await post('/traffic/road', { pref: '13abc' }),
+      await app.request('/traffic/road/__proto__'),
+      await post('/traffic/flight', { airport: 'constructor' }),
+      await app.request('/traffic/flight/__proto__'),
     ]) {
       expect(res.status).toBe(400);
       expect(((await res.json()) as { code: string }).code).toBe('INVALID_INPUT');

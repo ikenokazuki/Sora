@@ -100,19 +100,21 @@ const NO_ROAD_INFO = 'この道路の情報は見つかりませんでした。'
 export function resolvePrefecture(prefInput?: string | number): { code: number; name: string } | null {
   if (!prefInput) return null;
   const str = String(prefInput).trim().toLowerCase();
-  const num = parseInt(str, 10);
-  if (!Number.isNaN(num) && num >= 1 && num <= 47) {
+  // 数字だけをコードにする（parseInt は "13abc" を 13 にする）
+  const num = /^\d+$/.test(str) ? Number(str) : Number.NaN;
+  if (num >= 1 && num <= 47) {
     const entry = Object.values(PREF_MAP).find(p => p.code === num);
     return entry || { code: num, name: `都道府県コード ${num}` };
   }
-  return PREF_MAP[str] || null;
+  // 入力の文字列で表を引く（"constructor" などで Object の既定のプロパティを拾わない）
+  return Object.hasOwn(PREF_MAP, str) ? PREF_MAP[str] : null;
 }
 
 /** 道路名から主要高速道路コードを解決 */
 export function resolveRoadCode(roadInput?: string): string | null {
   if (!roadInput) return null;
   const clean = roadInput.trim().replace(/\s+/g, '');
-  return ROAD_CODE_MAP[clean] || null;
+  return Object.hasOwn(ROAD_CODE_MAP, clean) ? ROAD_CODE_MAP[clean] : null;
 }
 
 /** 道路交通情報（JARTIC/Yahoo! 道路交通情報）を取得 */
@@ -347,8 +349,7 @@ const AIRPORT_MAP: Record<string, { id: number; name: string; code: string }> = 
 export function resolveAirport(airportInput?: string): { id: number; name: string; code: string } {
   const key = airportInput?.trim().toLowerCase();
   if (!key) return DEFAULT_AIRPORT;
-  const direct = AIRPORT_MAP[key];
-  if (direct) return direct;
+  if (Object.hasOwn(AIRPORT_MAP, key)) return AIRPORT_MAP[key];
 
   for (const [k, v] of Object.entries(AIRPORT_MAP)) {
     if (key.includes(k) || k.includes(key)) return v;
