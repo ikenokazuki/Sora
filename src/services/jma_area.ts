@@ -288,7 +288,7 @@ function townAfterGun(s: string): string | undefined {
  *   名前の後ろに「〜島」の別の語が続く形（"安芸江田島" "金沢八景島"。先頭の名前はほかの県の地名と同じことが多い）は当てない。地名の書き出しに
  *   当たる形（"粟島" → 粟島浦村）はそのまま
  * - 郡の後ろに市町村の名前があれば、その市町村（"足柄上郡中井町比奈窪" は中井町。上郡町の上郡や久慈市の久慈にしない）。いちばん前の地名では、郡の名前に
- *   当たる名前（"安芸郡江田島町" の安芸、"犬上郡多賀" の上郡）を飛ばし、郡のすぐ後ろの都道府県名は市町村の名前としてだけ引く（firstPlaceName・townAfterGun）
+ *   当たる名前（"安芸郡江田島町" の安芸、"犬上郡多賀" の上郡）を飛ばし、郡のすぐ後ろの都道府県名と市町村の名前は市町村の名前としてだけ引く（firstPlaceName・townAfterGun）
  */
 function partialPlace(clean: string): string | undefined {
   const lead = placeNameAt(clean, 0);
@@ -334,8 +334,9 @@ function partialPlace(clean: string): string | undefined {
   const first = firstPlaceName(rest);
   if (!first) return fallback();
   const [name, at] = first;
-  // 郡のすぐ後ろの都道府県名は、市町村の名前（市区町村を省いた形）としてだけ引く。郡の後ろに都道府県は来ない（"東筑摩郡山形" を山形県にしない）
-  const townOnly = rest[at - 1] === '郡' && !!prefectureCodeOf(name);
+  // 郡のすぐ後ろの都道府県名と市町村の名前（市区町村を省いた形）は、市町村の名前としてだけ引く。郡の後ろには町村が来る（"東筑摩郡山形" を山形県、
+  // "上川郡清水" を高知県の清水の地点にしない。1 つに決まらなければ候補のエラー）
+  const townOnly = rest[at - 1] === '郡' && (!!prefectureCodeOf(name) || townsNamed(name).length > 0);
   let id: string | undefined;
   let ambiguous: AreaInputError | undefined;
   try {
