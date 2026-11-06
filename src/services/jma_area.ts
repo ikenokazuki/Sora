@@ -201,14 +201,22 @@ function exactPlace(clean: string, preferTown: boolean): Place | undefined {
 /** 2 文字以上の city_map の地名（一部の一致に使う） */
 const CITY_KEYS = Object.keys(MUNICIPALITY_CITY_MAP).filter((k) => k.length >= 2);
 
+/** 区域に分かれた市町村の名前（"釧路市" "八雲町"。区域の名前 "釧路市阿寒" "八雲町熊石" の前の部分） */
+const SPLIT_TOWNS = new Set(
+  Object.keys(JMA_CLASS20).flatMap((n) => (/[市町村]$/.test(n) ? [] : (n.match(/^(.+?[市町村])./)?.[1] ?? []))),
+);
+/** 区域の名前から市町村の名前を除いた部分（"釧路市阿寒" の阿寒、"日光市今市" の今市。"東村山市" は区域ではない） */
+const AREA_PARTS = Object.keys(JMA_CLASS20).flatMap((n) => [...SPLIT_TOWNS].filter((t) => n.startsWith(t) && n.length > t.length).map((t) => n.slice(t.length)));
+
 /**
- * 地名として読む 2 文字以上の名前: city_map の地名、市町村の名前と市区町村を省いた形、区域の名前（"釧路市阿寒" の阿寒）、予報区・気象台の名前、
+ * 地名として読む 2 文字以上の名前: city_map の地名、市町村の名前と市区町村を省いた形、区域の名前の部分（"釧路市阿寒" の阿寒）、予報区・気象台の名前、
  * 気温の地点、都道府県名
  */
 const PLACE_NAMES = new Set(
   [
     ...CITY_KEYS,
-    ...[...MUNICIPALITIES.keys()].flatMap((n) => [n, n.replace(/[市区町村]$/, ''), n.match(/^.+?[市町村](.+)$/)?.[1] ?? n]),
+    ...[...MUNICIPALITIES.keys()].flatMap((n) => [n, n.replace(/[市区町村]$/, '')]),
+    ...AREA_PARTS,
     ...Object.values(JMA_CLASS10).flatMap((a) => [a.name, a.name.replace(/地方$/, ''), ...a.points]),
     ...Object.values(JMA_OFFICES),
     ...PREFECTURE_NAMES.flatMap((p) => [p, p.replace(/[都府県]$/, '')]),
@@ -235,14 +243,15 @@ function firstPlaceName(s: string): string | undefined {
 
 /**
  * resolvePlace の 5（一部の一致）の予報区。先頭の都道府県名（正式名か短い形）は、先頭でいちばん長い地名で、後ろに 2 文字以上続くときだけ外し
- * （"鹿児島市桜島" は鹿児島市、"宮城島" は外さない）、その後ろをその都道府県の地名だけで引く。何も当たらなければ都道府県の予報区。
- * - 入力（2 文字以上）が city_map の地名の書き出しか、地名の中の市区町村の名前の後ろ（"富士河口" → 富士河口湖町、"乗鞍" → 松本市乗鞍上高地、
- *   "垂水区" → 神戸市垂水区）なら、そう当たる地名がすべて同じ予報区のときだけ。地名の途中（"九州" と北九州）は当てない
+ * （"鹿児島市桜島" は鹿児島市、"宮城島" は外さない）、その後ろをその都道府県の地名だけで引く（そのまま地名ならそれ。何も当たらなければ都道府県の予報区）。
+ * - 入力（2 文字以上）が city_map の地名の書き出しか、区域に分かれた市町村の名前の後ろ（"富士河口" → 富士河口湖町、"乗鞍" → 松本市乗鞍上高地、
+ *   "垂水区" → 神戸市垂水区）なら、そう当たる地名がすべて同じ予報区のときだけ。地名の途中（"九州" と北九州、"山市" と東村山市）は当てない
  * - それ以外は、入力の中でいちばん前から始まる地名を 1〜4 と上の決まりで引く。ほかの地名の途中や重なりは拾わない（"日光市中宮祠" は光市でなく
- *   日光市、"函館山" は館山でなく函館）。その地名が 1 つに決まらなければ当てない
- * - 「〜島」（「〜半島」は除く）で終わる入力のいちばん前の地名は、都道府県名で始まるとき、市区町村の名前のとき（"江東区大島"）、「〜島」の
- *   名前が先頭のとき（"宮古島伊良部島"）だけ使う。名前に「島」が付いて別の地名になる形（"小浜島" を福井県の小浜市にしない）は当てない。
- *   地名の書き出しに当たる形（"粟島" → 粟島浦村）はそのまま
+ *   日光市、"函館山" は館山でなく函館）。その地名が 1 つに決まらなければ、入力を挙げた候補のエラー
+ * - 「〜島」（「〜半島」は除く）で終わる入力は、いちばん前の地名を次のときだけ使う。都道府県名で始まるとき。市区町村の名前のとき（"江東区大島"）。
+ *   「〜島」の名前が先頭のとき（"宮古島伊良部島"）。先頭の名前の後ろに「〜島」の別の語が続き（"江東大島" "尾道因島"）、その名前で始まる city_map の
+ *   「〜島」の地名がほかの県に無いとき（"宮古伊良部島" は宮古島が沖縄県、宮古が岩手県なので当てない）。名前に「島」が付いて別の地名になる形
+ *   （"小浜島" を福井県の小浜市にする形）は当てない。地名の書き出しに当たる形（"粟島" → 粟島浦村）はそのまま
  */
 function partialPlace(clean: string): string | undefined {
   const lead = placeNameAt(clean, 0);
@@ -250,37 +259,76 @@ function partialPlace(clean: string): string | undefined {
   const pref = prefCode ? PREFECTURE_NAMES[Number(prefCode) - 1] : undefined;
   const rest = pref && lead ? clean.slice(lead.length) : clean;
   const inPref = (id?: string) => (id && (!pref || prefectureOf(id) === pref) ? id : undefined);
-  // part が書き出しか、市区町村の名前の後ろに当たる city_map の地名。当たらなければ undefined、1 つに決まらなければ null。
+  // part が書き出しか、区域に分かれた市町村の名前の後ろに当たる city_map の地名。当たらなければ undefined、1 つに決まらなければ null。
   // 区域に分かれた町の区域どうし（"八雲町八雲" と "八雲町熊石"）は、予報区が違っても最初の区域
   const fragment = (part: string): string | null | undefined => {
-    const at = (k: string, i = k.indexOf(part)) => i === 0 || (i >= 2 && /[市区町村]$/.test(k.slice(0, i)));
+    const at = (k: string, i = k.indexOf(part)) => i === 0 || (i > 0 && SPLIT_TOWNS.has(k.slice(0, i)));
     const keys = part.length >= 2 ? CITY_KEYS.filter((k) => at(k) && inPref(MUNICIPALITY_CITY_MAP[k])) : [];
     const townOf = (k: string) => k.match(/^.+?[市町村](?=.)/)?.[0] ?? k;
     if (keys.length === 0) return undefined;
     return new Set(keys.map((k) => MUNICIPALITY_CITY_MAP[k])).size === 1 || new Set(keys.map(townOf)).size === 1 ? MUNICIPALITY_CITY_MAP[keys[0]] : null;
   };
-  // いちばん前の地名の予報区。1〜4 で 1 つに決まらない名前（"伊達市" "上野"）は当てない
-  const placeOf = (name: string): string | undefined => {
+  // 名前そのまま（city_map と 1〜4）の予報区。1 つに決まらなければ、入力を挙げた候補のエラー。都道府県名を外したときは、その都道府県のものだけを見る
+  const exactOf = (name: string): string | undefined => {
     try {
-      return inPref(lookup(MUNICIPALITY_CITY_MAP, name)) ?? exactPlace((pref ?? '') + name, false)?.class10 ?? inPref(exactPlace(name, false)?.class10) ?? fragment(name) ?? undefined;
+      const id = inPref(lookup(MUNICIPALITY_CITY_MAP, name)) ?? exactPlace((pref ?? '') + name, false)?.class10;
+      if (id || !pref) return id;
+    } catch (err) {
+      if (err instanceof AreaInputError) throw new AreaInputError(err.message.replace(/「[^」]*」/, `「${clean}」`));
+      throw err;
+    }
+    try {
+      return inPref(exactPlace(name, false)?.class10);
     } catch (err) {
       if (err instanceof AreaInputError) return undefined;
       throw err;
     }
   };
-  // 都道府県名を外した残りが、そのまま地名なら（"長崎佐世保" の佐世保）
-  const whole = pref ? placeOf(rest) : undefined;
+  const fallback = () => (pref ? inPref(lookup(MUNICIPALITY_CITY_MAP, pref)) : undefined);
+  const whole = pref ? exactOf(rest) : undefined;
   if (whole) return whole;
   const hit = fragment(rest);
   if (hit !== undefined) return hit ?? undefined;
   const name = firstPlaceName(rest);
-  const id = name && placeOf(name);
-  if (/[^半]島$/.test(clean) && !pref && !(name && (/[市区町村]$/.test(name) || (name.endsWith('島') && clean.startsWith(name))))) {
-    // 残りが市区町村の名前で始まり、いちばん前の地名がその予報区のときも当てる（"広島市中島" は広島市中区の中島。"東村山島" は沖縄県の東村にしない）
-    const town = [...rest].map((_, n) => rest.slice(0, n)).find((s) => s.length >= 2 && /[市区町村]$/.test(s) && PLACE_NAMES.has(s));
-    if (!town || !id || placeOf(town) !== id) return undefined;
+  if (!name) return fallback();
+  let id: string | undefined;
+  let ambiguous: AreaInputError | undefined;
+  try {
+    id = exactOf(name) ?? fragment(name) ?? undefined;
+  } catch (err) {
+    if (!(err instanceof AreaInputError)) throw err;
+    ambiguous = err;
   }
-  return id || (pref ? inPref(lookup(MUNICIPALITY_CITY_MAP, pref)) : undefined);
+  if (/[^半]島$/.test(clean) && !pref && !islandHead(rest, name, id, ambiguous !== undefined)) return undefined;
+  if (ambiguous) throw ambiguous;
+  return id ?? fallback();
+}
+
+/**
+ * 「〜島」で終わる入力（都道府県名なし）で、いちばん前の地名 name を使ってよいか（partialPlace の「〜島」の決まり）。id は name の予報区、
+ * ambiguous は name が 1 つに決まらない（候補のエラーにする）とき
+ */
+function islandHead(rest: string, name: string, id: string | undefined, ambiguous: boolean): boolean {
+  if (/[市区町村]$/.test(name) || (name.endsWith('島') && rest.startsWith(name))) return true;
+  // 残りが市区町村の名前で始まり、いちばん前の地名がその予報区（"広島市中島" は広島市中区の中島。"東村山島" は沖縄県の東村にしない）
+  const town = [...rest].map((_, n) => rest.slice(0, n)).find((s) => s.length >= 2 && /[市区町村]$/.test(s) && PLACE_NAMES.has(s));
+  if (town && id && placeAreaOf(town) === id) return true;
+  // 先頭の名前の後ろに「〜島」の別の語（"江東大島"。"佐久島" や "八雲町島" のように名前（+ 市区町村）+「島」だけの形は除く）
+  const tail = rest.startsWith(name) ? rest.slice(name.length).replace(/^[市区町村]/, '') : '';
+  if (tail.length < 2 || ['諸島', '列島', '群島'].includes(tail)) return false;
+  // その名前で始まる「〜島」の地名がほかの県にあれば、名前の読み違いかもしれないので当てない（"宮古伊良部島" "伊豆新島"）。
+  // 名前が 1 つに決まらなければ確かめられないので当てない（"大崎下島" を大崎市・大崎町の候補にしない）
+  return !ambiguous && !!id && CITY_KEYS.every((k) => !(k.startsWith(name) && k.endsWith('島')) || prefectureOf(MUNICIPALITY_CITY_MAP[k]) === prefectureOf(id));
+}
+
+/** 市区町村の名前の予報区（1 つに決まらなければ undefined） */
+function placeAreaOf(town: string): string | undefined {
+  try {
+    return lookup(MUNICIPALITY_CITY_MAP, town) ?? exactPlace(town, false)?.class10;
+  } catch (err) {
+    if (err instanceof AreaInputError) return undefined;
+    throw err;
+  }
 }
 
 /** 都市名または都道府県名から 6 桁の予報区の番号を解決する（6 桁の数字はそのまま）。見つからなければエラー */
