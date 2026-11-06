@@ -2474,6 +2474,8 @@ NODE_ENV=test SORA_DB_PATH=:memory: bun test --timeout 60000
 
 通常スイートは外部ネットワークに出ません。`src/test_preload.ts` がテストの開始時にプロキシの環境変数を閉じたポートに向け（手元のテスト用サーバーは `NO_PROXY` で除外）、外部への接続をすぐ失敗させます。USITC・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報は、`src/test_fixtures/external_apis.ts` の固定応答で確かめます。
 
+天気・警報の地名の表 `src/jma_areas.ts`（予報区・気象台・市町村と、予報区ごとの気温の地点）は、`scripts/jma-areas/` の 2 つのスクリプトで作ります。気象庁の `area.json` と、各気象台の予報の JSON（`forecast/data/forecast/{気象台}.json`、58 件）を取り、`assign_points.ts` で地点を予報区に当て（同じ都道府県の市町村の名前で当て、決まらない地点だけ並びの位置）、`gen_jma_areas.ts` で表を書き出します。手順は `gen_jma_areas.ts` の先頭にあります。
+
 実サイト・実 API の応答に依存するテストは `SORA_LIVE_TESTS=1` で明示的に有効化します（このときは外部への接続も固定応答も使わず、本物に問い合わせます）。
 
 ```bash

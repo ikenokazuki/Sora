@@ -1,4 +1,4 @@
-// 気象庁（JMA）公式エリア定義 (https://www.jma.go.jp/bosai/common/const/area.json、2026-11-06 取得) から生成した表
+// 気象庁（JMA）公式エリア定義 (https://www.jma.go.jp/bosai/common/const/area.json、2026-11-06 取得) から生成した表。作り直しは scripts/jma-areas/gen_jma_areas.ts
 // 予報区（class10）142 件・気象台（offices）58 件・市町村（class20）1805 件（名前は 1775 種類）
 // 予報区の point（気温の地点）と forecastOffice は、各気象台の予報 (https://www.jma.go.jp/bosai/forecast/data/forecast/{気象台}.json、2026-11-06 取得) の
 // timeSeries[0]（予報区）と timeSeries[2]（地点）から。地点は名前で予報区に当てた（同じ都道府県の市町村の名前。決まらない地点だけ並びの位置）
