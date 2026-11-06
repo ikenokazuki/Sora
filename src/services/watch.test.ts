@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeDb, dbGetWatchTarget, dbListWatchHistory } from '../db.js';
+import { closeDb, dbGetWatchTarget, dbListWatchHistory, dbListWatchTargets } from '../db.js';
 import { checkAllWatchTargets, checkWatchTarget, registerWatchTarget, WatchSelectorNotFoundError } from './watch.js';
 
 let directory: string;
@@ -198,7 +198,8 @@ describe('webhookSent は送信の成否を表す', () => {
       expect(sent.get(a.target.id)).toBe(true);
       expect(sent.get(b.target.id)).toBe(false);
       expect(sent.get(c.target.id)).toBe(true);
-      expect(results.map((r) => r.targetId)).toEqual([a.target.id, b.target.id, c.target.id]);
+      // 結果の並びは、一覧 (DB) の並びのまま
+      expect(results.map((r) => r.targetId)).toEqual(dbListWatchTargets().map((t) => t.id));
     } finally {
       server.stop(true);
     }
