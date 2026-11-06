@@ -6,7 +6,7 @@ export type SearchChiebukuroInput = {
   query: string;
   /** 取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件) */
   limit?: number;
-  /** ページ番号 (1-based, 上限: 100) */
+  /** ページ番号 (1-based, 上限: 100)。limit によらず 10 件ずつ進む。漏れなく続けるには limit を省く */
   page?: number;
   /** 回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み) */
   status?: "all" | "open" | "vote" | "solved";

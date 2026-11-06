@@ -12,7 +12,7 @@ export type ScrapeBatchInput = {
   mode?: "auto" | "fast" | "browser";
   /** 取得フォーマット */
   formats?: ("markdown" | "html" | "rawHtml" | "links" | "screenshot" | "jsonLd" | "images" | "tables")[];
-  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."}) */
+  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない */
   headers?: Record<string, string>;
   /** ハイライト抽出用キーワード */
   query?: string;

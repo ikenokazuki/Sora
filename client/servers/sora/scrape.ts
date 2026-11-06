@@ -22,7 +22,7 @@ export type ScrapeInput = {
   selectors?: Record<string, string>;
   /** formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ (例: "#chart")。ブラウザで撮るので、mode "fast"・fastOnly では撮れない */
   clipSelector?: string;
-  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."}) */
+  /** リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない */
   headers?: Record<string, string>;
   /** リクエスト時に送信するカスタム Cookie 配列 */
   cookies?: {
