@@ -84,6 +84,10 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
         if (path === '/blocked') {
           return new Response('<!doctype html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1><p>You do not have permission to access this page.</p></body></html>', { status: 403, headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
+        // 本文が 50 字未満の SPA の殻（静的な取得では本文が取れず、ブラウザで描画する形）
+        if (path === '/spa-shell') {
+          return new Response('<!doctype html><html><head><title>アプリ</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
+        }
         if (path === '/with-script') {
           return new Response(`<!doctype html><html><head><title>t</title></head><body><main><p>${filler}</p><script src="http://127.0.0.1:${other.port}/other.js"></script></main></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
@@ -217,6 +221,22 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
         expect(result.content).toContain('静的に取れる、十分に長い本文の文です。');
         expect(result.screenshot).toBeUndefined();
         expect(result.warnings?.join('\n')).toContain('screenshot');
+      } finally {
+        spy.mockRestore();
+      }
+    }, 60_000);
+
+    browserTest('本文が 50 字未満の SPA でブラウザが失敗しても、screenshot を求めていれば静的な結果に警告を付けて返す', async () => {
+      const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+      try {
+        const result = await scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown', 'screenshot'], noCache: true });
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(result.renderedWithBrowser).toBe(false);
+        expect(result.title).toBe('アプリ');
+        expect(result.screenshot).toBeUndefined();
+        expect(result.warnings?.join('\n')).toContain('screenshot');
+        // screenshot を求めていない SPA の失敗は、今までどおり例外
+        await expect(scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown'], noCache: true })).rejects.toThrow('browser down');
       } finally {
         spy.mockRestore();
       }

@@ -966,8 +966,9 @@ export async function scrapeUrl(options: {
         return result;
       }
 
-      // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）
-      if (parsed.markdown && parsed.markdown.trim().length >= 50) {
+      // ブラウザレンダリングに進む場合でも、初期HTTPで取得できたコンテンツがあれば保持（フォールバック用）。
+      // screenshot を求めているときは、本文が 50 字未満でも保持する（ブラウザが失敗したら、画像を取れない警告つきで静的な結果を返す）
+      if ((parsed.markdown && parsed.markdown.trim().length >= 50) || wantsScreenshot) {
         initialHttpStatus = response.status;
         initialHttpFull = parsed.fullMarkdown;
         initialHttpResult = staticResult;
