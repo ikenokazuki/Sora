@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type GetFlightStatusInput = {
-  /** 対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー */
+  /** 対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー */
   airport?: string;
   /** 発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure") */
   type?: "departure" | "arrival";

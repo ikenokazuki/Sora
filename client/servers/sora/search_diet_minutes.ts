@@ -2,13 +2,13 @@
 import { callSora } from '../../runtime.js';
 
 export type SearchDietMinutesInput = {
-  /** 国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策") */
+  /** 国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   keyword?: string;
-  /** 発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎") */
+  /** 発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   speaker?: string;
   /** 院名 ("衆議院" または "参議院") */
   nameOfHouse?: "衆議院" | "参議院";
-  /** 委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会") */
+  /** 委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   nameOfMeeting?: string;
   /** 開会日付範囲 開始 (YYYY-MM-DD) */
   from?: string;

@@ -43,11 +43,11 @@ export type BrowserActionInput = {
     markdown?: boolean;
     /** 操作後の生 HTML を抽出するか (デフォルト: false) */
     html?: boolean;
-    /** 操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false) */
+    /** 操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る */
     screenshot?: boolean;
     /** フルページスクリーンショットにするか (デフォルト: true) */
     screenshotFullPage?: boolean;
-    /** 特定要素のみを切り抜く CSS セレクタ */
+    /** 特定要素のみを切り抜く CSS セレクタ。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る */
     clipSelector?: string;
     /** 最大抽出文字数 (デフォルト: 30000) */
     maxChars?: number;
