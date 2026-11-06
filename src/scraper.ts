@@ -1188,12 +1188,13 @@ export async function fetchSitemapEntries(
         ? parsed.sitemapindex.sitemap
         : [parsed.sitemapindex.sitemap];
 
-      // 子のサイトマップは SITEMAP_CHILD_CONCURRENCY 個ずつ並べて取る。結果は子の並びのまま足し、limit 件で切る（1 つずつ取るときと同じ結果）
+      // 先頭の子を 1 つだけ先に取る（limit が小さければ、それで足りて残りは取らない）。まだ足りなければ、残りを SITEMAP_CHILD_CONCURRENCY 個ずつ並べて取る。
+      // 結果は子の並びのまま足し、limit 件で切る（1 つずつ取るときと同じ結果）
       const childUrls = sitemaps.filter((sm: { loc?: unknown }) => sm.loc).map((sm: { loc?: unknown }) => String(sm.loc).trim());
-      for (let i = 0; i < childUrls.length; i += SITEMAP_CHILD_CONCURRENCY) {
+      for (let i = 0, size = 1; i < childUrls.length; i += size, size = SITEMAP_CHILD_CONCURRENCY) {
         const remaining = limit - entries.length;
         const batch = await Promise.all(
-          childUrls.slice(i, i + SITEMAP_CHILD_CONCURRENCY).map((loc: string) => fetchSitemapEntries(loc, remaining, maxDepth, currentDepth + 1)),
+          childUrls.slice(i, i + size).map((loc: string) => fetchSitemapEntries(loc, remaining, maxDepth, currentDepth + 1)),
         );
         for (const subEntries of batch) entries.push(...subEntries);
         if (entries.length >= limit) return entries.slice(0, limit);

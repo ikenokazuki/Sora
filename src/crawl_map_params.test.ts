@@ -170,9 +170,10 @@ describe('map_site: サイトマップの読み方', () => {
     }
   });
 
-  test('子のサイトマップは、数を限って（3 つずつ）並べて取る。並びと件数の上限は、1 つずつ取るときと同じ', async () => {
+  test('子のサイトマップは、先頭の 1 つだけを先に取り、まだ足りなければ残りを 3 つずつ並べて取る。並びと件数の上限は、1 つずつ取るときと同じ', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
+    let events: string[] = [];
     const server: ReturnType<typeof Bun.serve> = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -184,21 +185,41 @@ describe('map_site: サイトマップの読み方', () => {
         }
         const child = path.match(/^\/child(\d)\.xml$/);
         if (!child) return new Response('not found', { status: 404 });
+        events.push(`start ${child[1]}`);
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
         // 先頭の子ほど遅く返す（並べて取っても、結果の並びは子の並びのまま）
         await Bun.sleep(150 - Number(child[1]) * 15);
         inFlight--;
+        events.push(`end ${child[1]}`);
         return xml(urlset(`<url><loc>${base}/c${child[1]}a</loc></url><url><loc>${base}/c${child[1]}b</loc></url>`));
       },
     });
-    try {
+    /** 取った子の番号（取った順）。mapSiteUrl を呼ぶたびに数え直す */
+    const run = async (limit: number) => {
+      events = [];
+      maxInFlight = 0;
       const base = `http://127.0.0.1:${server.port}`;
-      const all = await mapSiteUrl({ url: base + '/', limit: 100, noCache: true });
-      expect(all.links).toEqual(Array.from({ length: 8 }, (_, i) => [`${base}/c${i}a`, `${base}/c${i}b`]).flat());
+      const r = await mapSiteUrl({ url: base + '/', limit, noCache: true });
+      return { links: r.links, fetched: events.filter((e) => e.startsWith('start ')).map((e) => e.slice(6)), base };
+    };
+    try {
+      const all = await run(100);
+      expect(all.links).toEqual(Array.from({ length: 8 }, (_, i) => [`${all.base}/c${i}a`, `${all.base}/c${i}b`]).flat());
+      // 先頭の 1 つは単独で取り終えてから、残りを同時に最大 3 つずつ取る
+      expect(events.indexOf('end 0')).toBeLessThan(events.indexOf('start 1'));
       expect(maxInFlight).toBe(3);
-      const few = await mapSiteUrl({ url: base + '/', limit: 5, noCache: true });
-      expect(few.links).toEqual([`${base}/c0a`, `${base}/c0b`, `${base}/c1a`, `${base}/c1b`, `${base}/c2a`]);
+      expect(all.fetched.slice().sort()).toEqual(['0', '1', '2', '3', '4', '5', '6', '7']);
+
+      // 先頭の 1 つで足りるときは、ほかの子を取らない
+      const one = await run(2);
+      expect(one.links).toEqual([`${one.base}/c0a`, `${one.base}/c0b`]);
+      expect(one.fetched).toEqual(['0']);
+
+      // 足りないときは、先頭のあとの 3 つ（1〜3）を取ったところで足りて、4 つ目以降は取らない
+      const few = await run(5);
+      expect(few.links).toEqual([`${few.base}/c0a`, `${few.base}/c0b`, `${few.base}/c1a`, `${few.base}/c1b`, `${few.base}/c2a`]);
+      expect(few.fetched.slice().sort()).toEqual(['0', '1', '2', '3']);
     } finally {
       server.stop(true);
     }
