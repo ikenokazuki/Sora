@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as enrichment from '../enrichment.js';
 import { closeDb, dbGetWatchTarget, dbListWatchHistory, dbListWatchTargets } from '../db.js';
 import { checkAllWatchTargets, checkWatchTarget, registerWatchTarget, WatchSelectorNotFoundError } from './watch.js';
 
@@ -53,10 +54,16 @@ describe('F7 selector presence', () => {
   });
   test('initial selector miss returns initialError with no baseline', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
-    const { target, initialResult, initialError } = await registerWatchTarget(
-      { url: 'https://example.com/gone', selector: '#nope' }, missScrape('full page') as never);
-    const warned = warn.mock.calls.map((c) => String(c[0]));
-    warn.mockRestore();
+    let warned: string[];
+    let registered: Awaited<ReturnType<typeof registerWatchTarget>>;
+    try {
+      registered = await registerWatchTarget(
+        { url: 'https://example.com/gone', selector: '#nope' }, missScrape('full page') as never);
+      warned = warn.mock.calls.map((c) => String(c[0]));
+    } finally {
+      warn.mockRestore();
+    }
+    const { target, initialResult, initialError } = registered;
     expect(warned).toEqual([expect.stringContaining('Initial fetch for watch target')]);
     expect(initialResult).toBeUndefined();
     expect(initialError?.code).toBe('WATCH_SELECTOR_NOT_FOUND');
@@ -202,6 +209,65 @@ describe('webhookSent は送信の成否を表す', () => {
       expect(results.map((r) => r.targetId)).toEqual(dbListWatchTargets().map((t) => t.id));
     } finally {
       server.stop(true);
+    }
+  });
+
+  // 受け口は delayMs かけて応答する。同時に何件が来ているかを数える
+  const slowReceiver = (delayMs: number) => {
+    const state = { inFlight: 0, maxInFlight: 0, storedBeforeSend: [] as boolean[] };
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const { data } = (await req.json()) as { data: { targetId: string } };
+        state.storedBeforeSend.push(dbListWatchHistory(data.targetId).length === 1);
+        state.inFlight += 1;
+        state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+        await Bun.sleep(delayMs);
+        state.inFlight -= 1;
+        return new Response('ok');
+      },
+    });
+    return { state, url: `http://127.0.0.1:${server.port}/hook`, stop: () => server.stop(true) };
+  };
+
+  test('同時に送る Webhook は 5 件まで。残りは空きを待ち、保存・結果の並び・対象ごとの webhookSent は変わらない', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const hook = slowReceiver(400);
+    try {
+      for (let i = 0; i < 8; i += 1) {
+        await registerWatchTarget({ url: `https://example.com/t${i}`, webhookUrl: hook.url, initialFetch: false });
+      }
+      await checkAllWatchTargets(matchScrape('version one text here') as never);
+      const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
+      expect(hook.state.maxInFlight).toBe(5);
+      expect(hook.state.storedBeforeSend).toEqual(Array(8).fill(true));
+      expect(results.map((r) => r.webhookSent)).toEqual(Array(8).fill(true));
+      expect(results.map((r) => r.targetId)).toEqual(dbListWatchTargets().map((t) => t.id));
+    } finally {
+      hook.stop();
+    }
+  });
+
+  test('送信が例外を投げても、全件の結果は返り、その対象だけ webhookSent が false', async () => {
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const targets = [] as string[];
+    for (const name of ['a', 'b', 'c']) {
+      const { target } = await registerWatchTarget({ url: `https://example.com/${name}`, webhookUrl: `http://127.0.0.1:1/${name}`, initialFetch: false });
+      targets.push(target.id);
+    }
+    await checkAllWatchTargets(matchScrape('version one text here') as never);
+    const deliver = spyOn(enrichment, 'deliverWebhook').mockImplementation(async (url?: string) => {
+      if (url?.endsWith('/b')) throw new Error('boom');
+      return true;
+    });
+    try {
+      const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
+      expect(results).toHaveLength(3);
+      expect(new Map(results.map((r) => [r.url.slice(-1), r.webhookSent]))).toEqual(new Map([['a', true], ['b', false], ['c', true]]));
+      expect(results.every((r) => r.changed)).toBe(true);
+      expect(warned()).toEqual([expect.stringContaining('boom')]);
+    } finally {
+      deliver.mockRestore();
     }
   });
 });

@@ -166,18 +166,41 @@ async function checkAndStore(
   };
 }
 
+/** 一括チェックで同時に送る Webhook の上限 */
+const WEBHOOK_CONCURRENCY = 5;
+
 /** 全登録ターゲットの一括差分チェック */
 export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult[]> {
   const targets = dbListWatchTargets();
   const results: WatchCheckResult[] = [];
   const deliveries: Promise<void>[] = [];
+  // 送信は同時に WEBHOOK_CONCURRENCY 件まで。空きを渡す順 (queue) は先に待った順
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const limited = async (send: () => Promise<boolean>): Promise<boolean> => {
+    if (active >= WEBHOOK_CONCURRENCY) await new Promise<void>((resolve) => queue.push(resolve));
+    else active += 1;
+    try {
+      return await send();
+    } finally {
+      const next = queue.shift();
+      if (next) next(); // 空きをそのまま次に渡す
+      else active -= 1;
+    }
+  };
 
   for (const t of targets) {
     try {
       const { result, sendWebhook } = await checkAndStore(t.id, scrapeImpl);
       results.push(result);
-      // 保存したらすぐ送り始め、次の確認を待たせない。全部の返事は最後にまとめて待つ
-      if (sendWebhook) deliveries.push(sendWebhook().then((sent) => { result.webhookSent = sent; }));
+      // 保存したらすぐ送り始め、次の確認を待たせない。全部の返事は最後にまとめて待つ。
+      // 送信が例外を投げても、ほかの対象の結果を失わない (その対象だけ false)
+      if (sendWebhook) {
+        deliveries.push(limited(sendWebhook).catch((err) => {
+          console.warn(`[Sora/Watch] Webhook delivery for watch target ${t.id} threw:`, errorMessage(err));
+          return false;
+        }).then((sent) => { result.webhookSent = sent; }));
+      }
     } catch (err) {
       results.push({
         targetId: t.id,
