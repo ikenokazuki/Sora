@@ -84,16 +84,30 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   const city = name.match(/^(.+?市).+区$/)?.[1];
   if (city && !MUNICIPALITIES.has(name) && MUNICIPALITIES.has(city)) name = city;
   const hits = townsNamed(name).filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
-  // 蒲郡市・小郡市・郡上市・郡山市の郡は市の名前の一部なので外さない（"蒲郡市原" を千葉県の市原市、"岐阜郡上市" を富山県の上市町にしない）
-  const gun = name.match(/^[^郡]+郡/)?.[0];
-  const inName = gun && (MUNICIPALITIES.has(`${gun}市`) || [...MUNICIPALITIES.keys()].some((m) => m.startsWith('郡') && name.startsWith(m, gun.length - 1)));
-  const town = gun && !inName ? name.slice(gun.length) : name;
-  if (hits.length === 0 && town && town !== name) return resolveMunicipality((pref ?? '') + town);
+  const town = withoutGun(name);
+  if (hits.length === 0 && town !== name) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
-    throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください（例: ${names[0]}）`);
+    throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください`);
   }
   return hits[0];
+}
+
+/**
+ * 先頭の「〜郡」を外した名前（"上川郡上川町" → 上川町、"中新川郡上市町" → 上市町）。郡が市町村の名前の一部のとき（蒲郡市・小郡市・上郡町・大和郡山市、
+ * 都道府県名に続く郡上市・郡山市）は外さない（"蒲郡市原" を千葉県の市原市、"岐阜郡上市" を富山県の上市町にしない）。外せなければそのまま
+ */
+function withoutGun(name: string): string {
+  const gun = name.match(/^[^郡]+郡/)?.[0];
+  if (!gun || name.length === gun.length) return name;
+  const at = gun.length - 1; // 郡の位置
+  // 郡より前から始まる市町村の名前（市区町村を省いた形も）が郡を含むか、都道府県名の後ろの郡から郡上市・郡山市が始まる
+  const inName = [...MUNICIPALITIES.keys()].some((m) =>
+    m.startsWith('郡')
+      ? name.startsWith(m, at) && !!prefectureCodeOf(name.slice(0, at))
+      : [m, m.replace(/[市区町村]$/, '')].some((x) => [...Array(at).keys()].some((i) => i + x.length > at && name.startsWith(x, i))),
+  );
+  return inName ? name : name.slice(gun.length);
 }
 
 /** 市町村の番号（class20）→ 名前と予報区 */
@@ -161,7 +175,7 @@ export function resolvePlace(query: string, { town: preferTown = false } = {}): 
   if (place) return place;
   const id = partialPlace(clean);
   if (id) return { class10: id };
-  throw new AreaInputError(`地名「${clean}」が見つかりません`);
+  throw new AreaInputError(`地名「${clean}」が見つかりません。市区町村の名前（〜市・〜区・〜町・〜村）か、都道府県名を付けた名前で指定してください`);
 }
 
 /** resolvePlace の 1〜4（名前そのまま）。当たらなければ undefined、1 つに決まらなければ候補を挙げたエラー */
@@ -256,15 +270,18 @@ function firstPlaceName(s: string): string | undefined {
  * - それ以外は、入力の中でいちばん前から始まる地名を 1〜4 と上の決まりで引く。ほかの地名の途中や重なりは拾わない（"日光市中宮祠" は光市でなく
  *   日光市、"函館山" は館山でなく函館）。その地名が 1 つに決まらなければ、入力を挙げた候補のエラー
  * - 「〜島」（「〜半島」は除く）で終わる入力は、いちばん前の地名を次のときだけ使う。都道府県名で始まるとき。市区町村の名前のとき（"江東区大島"）。
- *   「〜島」の名前が先頭のとき（"宮古島伊良部島"）。先頭の名前の後ろに「〜島」の別の語が続き（"江東大島" "尾道因島"）、その名前で始まる city_map の
- *   「〜島」の地名がほかの県に無いとき（"宮古伊良部島" は宮古島が沖縄県、宮古が岩手県なので当てない）。名前に「島」が付いて別の地名になる形
- *   （"小浜島" を福井県の小浜市にする形）は当てない。地名の書き出しに当たる形（"粟島" → 粟島浦村）はそのまま
+ *   「〜島」の名前が先頭のとき（"宮古島伊良部島"）。名前に「島」が付いて別の地名になる形（"小浜島" を福井県の小浜市にする形）と、市区町村を省いた
+ *   名前の後ろに「〜島」の別の語が続く形（"安芸江田島" "金沢八景島"。先頭の名前はほかの県の地名と同じことが多い）は当てない。地名の書き出しに
+ *   当たる形（"粟島" → 粟島浦村）はそのまま
+ * - 先頭の「〜郡」は外して引く（"久慈郡大子町池田" の久慈を岩手県の久慈市にしない）
  */
 function partialPlace(clean: string): string | undefined {
   const lead = placeNameAt(clean, 0);
-  const prefCode = lead && clean.length - lead.length >= 2 ? prefectureCodeOf(lead) : undefined;
+  // 都道府県名のすぐ後ろの郡が地名の始まりでなければ、郡の名前の一部（"愛知郡愛荘町" は滋賀県。"福島郡山" は福島県の郡山）
+  const gunName = lead && clean[lead.length] === '郡' && !placeNameAt(clean, lead.length);
+  const prefCode = lead && clean.length - lead.length >= 2 && !gunName ? prefectureCodeOf(lead) : undefined;
   const pref = prefCode ? PREFECTURE_NAMES[Number(prefCode) - 1] : undefined;
-  const rest = pref && lead ? clean.slice(lead.length) : clean;
+  const rest = withoutGun(pref && lead ? clean.slice(lead.length) : clean);
   const inPref = (id?: string) => (id && (!pref || prefectureOf(id) === pref) ? id : undefined);
   // part が書き出しか、区域に分かれた市町村の名前の後ろに当たる city_map の地名。当たらなければ undefined、1 つに決まらなければ null。
   // 区域に分かれた町の区域どうし（"八雲町八雲" と "八雲町熊石"）は、予報区が違っても最初の区域
@@ -281,7 +298,7 @@ function partialPlace(clean: string): string | undefined {
       const id = inPref(lookup(MUNICIPALITY_CITY_MAP, name)) ?? exactPlace((pref ?? '') + name, false)?.class10;
       if (id || !pref) return id;
     } catch (err) {
-      if (err instanceof AreaInputError) throw new AreaInputError(err.message.replace(/「[^」]*」/, `「${clean}」`));
+      if (err instanceof AreaInputError) throw new AreaInputError(err.message.replace(/「[^」]*」/, () => `「${clean}」`));
       throw err;
     }
     try {
@@ -306,26 +323,17 @@ function partialPlace(clean: string): string | undefined {
     if (!(err instanceof AreaInputError)) throw err;
     ambiguous = err;
   }
-  if (/[^半]島$/.test(clean) && !pref && !islandHead(rest, name, id, ambiguous !== undefined)) return undefined;
+  if (/[^半]島$/.test(clean) && !pref && !islandHead(rest, name, id)) return undefined;
   if (ambiguous) throw ambiguous;
   return id ?? fallback();
 }
 
-/**
- * 「〜島」で終わる入力（都道府県名なし）で、いちばん前の地名 name を使ってよいか（partialPlace の「〜島」の決まり）。id は name の予報区、
- * ambiguous は name が 1 つに決まらない（候補のエラーにする）とき
- */
-function islandHead(rest: string, name: string, id: string | undefined, ambiguous: boolean): boolean {
+/** 「〜島」で終わる入力（都道府県名なし）で、いちばん前の地名 name を使ってよいか（partialPlace の「〜島」の決まり）。id は name の予報区 */
+function islandHead(rest: string, name: string, id: string | undefined): boolean {
   if (/[市区町村]$/.test(name) || (name.endsWith('島') && rest.startsWith(name))) return true;
   // 残りが市区町村の名前で始まり、いちばん前の地名がその予報区（"広島市中島" は広島市中区の中島。"東村山島" は沖縄県の東村にしない）
   const town = [...rest].map((_, n) => rest.slice(0, n)).find((s) => s.length >= 2 && /[市区町村]$/.test(s) && PLACE_NAMES.has(s));
-  if (town && id && placeAreaOf(town) === id) return true;
-  // 先頭の名前の後ろに「〜島」の別の語（"江東大島"。"佐久島" や "八雲町島" のように名前（+ 市区町村）+「島」だけの形は除く）
-  const tail = rest.startsWith(name) ? rest.slice(name.length).replace(/^[市区町村]/, '') : '';
-  if (tail.length < 2 || ['諸島', '列島', '群島'].includes(tail)) return false;
-  // その名前で始まる「〜島」の地名がほかの県にあれば、名前の読み違いかもしれないので当てない（"宮古伊良部島" "伊豆新島"）。
-  // 名前が 1 つに決まらなければ確かめられないので当てない（"大崎下島" を大崎市・大崎町の候補にしない）
-  return !ambiguous && !!id && CITY_KEYS.every((k) => !(k.startsWith(name) && k.endsWith('島')) || prefectureOf(MUNICIPALITY_CITY_MAP[k]) === prefectureOf(id));
+  return !!town && !!id && placeAreaOf(town) === id;
 }
 
 /** 市区町村の名前の予報区（1 つに決まらなければ undefined） */
