@@ -243,15 +243,22 @@ function placeNameAt(s: string, i: number, names: { has(name: string): boolean }
 }
 
 /**
- * 入力の中でいちばん前から始まる地名（同じ位置なら長い方）。すぐ後ろに郡が続く名前は郡の名前（"安芸郡江田島町" の安芸）なので飛ばし、郡の後ろから探す。
- * 市区町村の名前（"鹿児島市郡元" の郡元は町名）と、郡から地名が始まるとき（"美濃郡上八幡" の郡上）は飛ばさない
+ * 入力の中でいちばん前から始まる地名（同じ位置なら長い方）とその位置。郡の名前に当たる名前は飛ばし、郡の後ろから探す:
+ * - すぐ後ろに郡が続く名前（"安芸郡江田島町" の安芸）。市区町村の名前（"鹿児島市郡元" の郡元は町名）と、郡から始まる地名が郡の後ろの地名より長いとき
+ *   （"美濃郡上八幡" の郡上、"美濃郡上市" の郡上市）は飛ばさない
+ * - 入力の先頭に無い、郡で終わるか郡で始まる名前で、郡の後ろに地名が続くもの（"犬上郡多賀" の上郡、"中新川郡上市" の郡上市）
  */
-function firstPlaceName(s: string): string | undefined {
+function firstPlaceName(s: string): [string, number] | undefined {
   for (let i = 0; i < s.length - 1; i++) {
     const name = placeNameAt(s, i);
     if (!name) continue;
-    const k = i + name.length;
-    if (s[k] !== '郡' || /[市区町村]$/.test(name) || placeNameAt(s, k)) return name;
+    const straddle = i > 0 && name.endsWith('郡');
+    const lead = i > 0 && name.startsWith('郡');
+    const k = straddle ? i + name.length - 1 : lead ? i : i + name.length;
+    const len = (n?: string) => n?.length ?? 0;
+    const after = len(placeNameAt(s, k + 1));
+    const skip = straddle || lead ? after > 0 : s[k] === '郡' && !/[市区町村]$/.test(name) && len(placeNameAt(s, k)) <= after;
+    if (!skip) return [name, i];
     i = k;
   }
   return undefined;
@@ -280,8 +287,8 @@ function townAfterGun(s: string): string | undefined {
  *   「〜島」の名前が先頭のとき（"宮古島伊良部島"）。名前に「島」が付いて別の地名になる形（"小浜島" を福井県の小浜市にする形）と、市区町村を省いた
  *   名前の後ろに「〜島」の別の語が続く形（"安芸江田島" "金沢八景島"。先頭の名前はほかの県の地名と同じことが多い）は当てない。地名の書き出しに
  *   当たる形（"粟島" → 粟島浦村）はそのまま
- * - 郡の後ろに市町村の名前があれば、その市町村（"足柄上郡中井町比奈窪" は中井町。上郡町の上郡や久慈市の久慈にしない）。いちばん前の地名では、すぐ後ろに
- *   郡が続く名前（郡の名前。"安芸郡江田島町" の安芸）を飛ばす（firstPlaceName・townAfterGun）
+ * - 郡の後ろに市町村の名前があれば、その市町村（"足柄上郡中井町比奈窪" は中井町。上郡町の上郡や久慈市の久慈にしない）。いちばん前の地名では、郡の名前に
+ *   当たる名前（"安芸郡江田島町" の安芸、"犬上郡多賀" の上郡）を飛ばし、郡のすぐ後ろの都道府県名は市町村の名前としてだけ引く（firstPlaceName・townAfterGun）
  */
 function partialPlace(clean: string): string | undefined {
   const lead = placeNameAt(clean, 0);
@@ -324,15 +331,18 @@ function partialPlace(clean: string): string | undefined {
   const town = townAfterGun(rest);
   const townId = town && exactOf(town);
   if (townId) return townId;
-  const name = firstPlaceName(rest);
-  if (!name) return fallback();
+  const first = firstPlaceName(rest);
+  if (!first) return fallback();
+  const [name, at] = first;
+  // 郡のすぐ後ろの都道府県名は、市町村の名前（市区町村を省いた形）としてだけ引く。郡の後ろに都道府県は来ない（"東筑摩郡山形" を山形県にしない）
+  const townOnly = rest[at - 1] === '郡' && !!prefectureCodeOf(name);
   let id: string | undefined;
   let ambiguous: AreaInputError | undefined;
   try {
-    id = exactOf(name) ?? fragment(name) ?? undefined;
+    id = townOnly ? resolveMunicipality((pref ?? '') + name)?.class10 : (exactOf(name) ?? fragment(name) ?? undefined);
   } catch (err) {
     if (!(err instanceof AreaInputError)) throw err;
-    ambiguous = err;
+    ambiguous = townOnly ? new AreaInputError(err.message.replace(/「[^」]*」/, () => `「${clean}」`)) : err;
   }
   if (/[^半]島$/.test(clean) && !pref && !islandHead(rest, name, id)) return undefined;
   if (ambiguous) throw ambiguous;
