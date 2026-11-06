@@ -74,6 +74,29 @@ describe('get_flight_status の空港', () => {
     expect(resolveAirport('セントレア').code).toBe('NGO');
     expect(resolveAirport('成田空港').code).toBe('NRT');
   });
+
+  test('表の別名・コード・空港名、それを含む入力は解決する', () => {
+    const table: Record<string, string[]> = {
+      HND: ['羽田', '羽田空港', '東京国際空港', 'hnd', 'tokyo', '東京国際空港(羽田空港)', '羽田空港国際線ターミナル', 'HND airport', ' Tokyo '],
+      NRT: ['成田', '成田空港', '成田国際空港', 'nrt', '成田空港 第2ターミナル', 'NRT/成田'],
+      ITM: ['伊丹', '伊丹空港', '大阪国際空港', 'itm', '大阪国際空港(伊丹空港)'],
+      KIX: ['関西', '関西空港', '関西国際空港', '関空', 'kix', 'Kix'],
+      NGO: ['中部', '中部空港', 'セントレア', '中部国際空港', 'ngo', '中部国際空港(セントレア)'],
+    };
+    for (const [code, inputs] of Object.entries(table)) {
+      for (const input of inputs) expect(resolveAirport(input).code, input).toBe(code);
+    }
+  });
+
+  test('短い入力・部分の文字・英単語の中の綴り・複数の空港にまたがる入力はエラー（別の空港にしない）', () => {
+    const inputs = [
+      'o', 'h', 'hn', 'ng', 'ab', '羽', '成', '田', '部', '空', '空港', '国際空港', '国際', '大阪', '東京', '千歳',
+      'tokyo narita', 'tokyo haneda', 'mango', 'bingo', 'prefix', 'hndx', '羽田と成田', 'HND to NRT', '羽田から関空',
+    ];
+    for (const input of inputs) {
+      expect(() => resolveAirport(input), input).toThrow(TrafficInputError);
+    }
+  });
 });
 
 // Yahoo の都道府県ページ（道路名・方向・状況。2 行目からは方向と状況だけ）
@@ -182,6 +205,16 @@ describe('get_flight_status の OpenAPI', () => {
     expect(paths['/traffic/flight'].post.requestBody.content['application/json'].schema.properties.airport.description).toContain(note);
     for (const op of [paths['/traffic/flight'].get, paths['/traffic/flight/{airport}'].get]) {
       expect(op.parameters.find((p: { name: string }) => p.name === 'airport').description).toContain(note);
+    }
+  });
+
+  test('要約と応答の説明は「主要空港」とせず、5 空港と書く', () => {
+    const paths = (generateOpenApiDocument() as any).paths;
+    for (const op of [paths['/traffic/flight'].post, paths['/traffic/flight'].get, paths['/traffic/flight/{airport}'].get]) {
+      expect(op.summary).toContain('5 空港');
+      expect(op.summary).not.toContain('主要空港');
+      expect(op.responses['200'].description).toContain('5 空港');
+      expect(op.responses['200'].description).not.toContain('主要空港');
     }
   });
 });

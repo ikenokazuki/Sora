@@ -351,9 +351,15 @@ export function resolveAirport(airportInput?: string): { id: number; name: strin
   if (!key) return DEFAULT_AIRPORT;
   if (Object.hasOwn(AIRPORT_MAP, key)) return AIRPORT_MAP[key];
 
+  // 表の別名を含む入力（「羽田空港国際線ターミナル」「HND airport」）だけを受ける。入力の一部が別名に含まれるだけの断片（「羽」「o」）は受けない。
+  // 日本語の別名は含んでいればよい。英字は 3 字のコードが単語として入っているときだけ（"tokyo" は羽田・成田で共有する市名なので完全一致のみ。"mango" の "ngo" も拾わない）。
+  const words = key.split(/[^a-z0-9]+/);
+  const hits = new Map<string, { id: number; name: string; code: string }>();
   for (const [k, v] of Object.entries(AIRPORT_MAP)) {
-    if (key.includes(k) || k.includes(key)) return v;
+    if (/^[a-z]/.test(k) ? k.length === 3 && words.includes(k) : key.includes(k)) hits.set(v.code, v);
   }
+  // 複数の空港の別名が入っていたら（「羽田と成田」）どれとも決められないのでエラー
+  if (hits.size === 1) return [...hits.values()][0];
 
   throw new TrafficInputError(`空港「${airportInput}」には対応していません。対応は羽田・成田・伊丹・関西・中部の 5 空港です`);
 }

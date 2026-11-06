@@ -3528,7 +3528,7 @@ export function generateOpenApiDocument() {
       ...addressOpenApiPaths(),
       '/traffic/flight': {
         post: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API',
           requestBody: {
             content: {
               'application/json': {
@@ -3538,7 +3538,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
@@ -3548,7 +3548,7 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
           parameters: [
             { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "NRT", "成田", "KIX", "関空")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
@@ -3559,7 +3559,7 @@ export function generateOpenApiDocument() {
           ],
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
@@ -3571,7 +3571,7 @@ export function generateOpenApiDocument() {
       },
       '/traffic/flight/{airport}': {
         get: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
           parameters: [
             { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。例: "HND", "羽田", "成田")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
@@ -3582,7 +3582,7 @@ export function generateOpenApiDocument() {
           ],
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
