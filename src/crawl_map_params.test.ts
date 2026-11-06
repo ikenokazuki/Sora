@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { app } from './index.js';
 import { createMcpServer } from './mcp.js';
+import * as browserStealth from './browser_stealth.js';
 import * as scraper from './scraper.js';
 import { crawlSiteUrl, mapSiteUrl } from './scraper.js';
 
@@ -287,6 +288,45 @@ describe('crawl_site: pages は scrape と同じ整形（links は formats で�
         expect(e.page.links).toBeUndefined();
         expect(e.page.quality).toBeUndefined();
       }
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe('crawl_site: 各ページの warnings は応答に残る', () => {
+  test('screenshot を求めて画像を取れなかったページには、warnings が付く（/crawl の応答と、/crawl/stream の page イベントも）', async () => {
+    const { server, base } = startSite();
+    // 画像を撮るブラウザを失敗させる（取れなかった旨の warnings が、ページごとに付く）
+    const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+    try {
+      const r = await crawlSiteUrl({ url: base + '/', maxPages: 3, maxDepth: 1, formats: ['markdown', 'screenshot'], noCache: true });
+      expect(r.pages.length).toBe(3);
+      for (const p of r.pages) {
+        expect(p.screenshot).toBeUndefined();
+        expect(p.warnings?.join('\n')).toContain('screenshot');
+      }
+
+      const res = await post('/crawl', { url: base + '/', maxPages: 2, maxDepth: 1, formats: ['markdown', 'screenshot'], noCache: true });
+      const json = (await res.json()) as any;
+      expect(json.pages.length).toBe(2);
+      for (const p of json.pages) expect(p.warnings?.join('\n')).toContain('screenshot');
+
+      const stream = await post('/crawl/stream', { url: base + '/', maxPages: 2, maxDepth: 1, formats: ['markdown', 'screenshot'], noCache: true });
+      const events = [...(await stream.text()).matchAll(/event: page\ndata: (.*)\n/g)].map((m) => JSON.parse(m[1]));
+      expect(events.length).toBe(2);
+      for (const e of events) expect(e.page.warnings?.join('\n')).toContain('screenshot');
+    } finally {
+      spy.mockRestore();
+      server.stop(true);
+    }
+  });
+
+  test('screenshot を求めなければ、warnings は付かない', async () => {
+    const { server, base } = startSite();
+    try {
+      const r = await crawlSiteUrl({ url: base + '/', maxPages: 2, maxDepth: 1, noCache: true });
+      for (const p of r.pages) expect(p.warnings).toBeUndefined();
     } finally {
       server.stop(true);
     }

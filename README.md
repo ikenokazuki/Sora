@@ -1124,7 +1124,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 }
 ```
 - **REST だけの引数**: `maxDepth`（最大リンク深度。デフォルト: 2、上限: 5）、`concurrency`・`timeoutMs`・`onlyMainContent`・`noCache`・`webhookUrl`。MCP の `crawl_site` にはありません。範囲外の値（`maxDepth` 100 など）や URL でない `webhookUrl` は 400 です。
-- **返却**: `pages` の各項目は `scrape` と同じ整形（`url`・`title`・`content` と、あるものだけ `highlights` など）です。`links` は `formats` に `links` を指定したときだけ付き、`quality`・`evidence` などの内部の項目は付きません。
+- **返却**: `pages` の各項目は `scrape` と同じ整形（`url`・`title`・`content` と、あるものだけ `highlights` など）です。`links` は `formats` に `links` を指定したときだけ付き、`quality`・`evidence` などの内部の項目は付きません。`formats` に `screenshot` を指定すると、各ページ（最大 50）に全画面の画像（Base64 PNG）が付き、応答が大きくなります（画像を取れなかったページには `warnings` が付きます）。
 - **SSE ストリーミング (`POST /crawl/stream`)**: ページが取得されるたびにリアルタイムで Server-Sent Events（`start` -> `page` -> `done`）を配信（`page` の中身は上の整形）。`webhookUrl` を指定すると、完了時に 1 回だけ通知します（`/crawl` と同じ）。
 
 ---
