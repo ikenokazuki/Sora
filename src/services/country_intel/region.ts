@@ -48,13 +48,15 @@ const REGION_IDENTITIES: readonly RegionRecord[] = Object.freeze([
 
 const jaNames = new Intl.DisplayNames(['ja'], { type: 'region' });
 const normalizeKey = (value: string): string => value.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+/** 照合用の形。全角・半角と空白の違いを無視する (ICU は「ミャンマー (ビルマ)」と空白を入れる)。 */
+const compactKey = (value: string): string => normalizeKey(value).replace(/\s+/g, '');
 /** ISO alpha-2 → 日本語の国名 (ICU の地域名から作る。表は持たない)。データが無い地域は含めない。 */
 const JA_NAME_BY_ALPHA2: ReadonlyMap<string, string> = new Map(ISO_COUNTRIES.flatMap(([alpha2]) => {
   const name = jaNames.of(alpha2);
-  return name && name !== alpha2 ? [[alpha2, normalizeKey(name)] as const] : [];
+  return name && name !== alpha2 ? [[alpha2, compactKey(name)] as const] : [];
 }));
-/** 先頭だけの入力 (例: アメリカ → アメリカ合衆国) は短すぎる語を除く。 */
-const JA_PREFIX_MIN_LENGTH = 3;
+/** 先頭だけの入力 (例: アメリカ → アメリカ合衆国) は短すぎる語を除く。3 字だと「アラブ」がアラブ首長国連邦になる。 */
+const JA_PREFIX_MIN_LENGTH = 4;
 
 function matchKeys(region: RegionRecord, alpha3: string | undefined): string[] {
   return [
@@ -71,10 +73,11 @@ function matchKeys(region: RegionRecord, alpha3: string | undefined): string[] {
 
 export function resolveRegion(input: string): RegionIdentity {
   const normalized = normalizeKey(input);
+  const compact = compactKey(input);
   const alpha3ByAlpha2 = new Map(ISO_COUNTRIES.map(([alpha2, alpha3]) => [alpha2, alpha3]));
   const matches = REGION_IDENTITIES.filter((region) =>
     matchKeys(region, region.countryCode ? alpha3ByAlpha2.get(region.countryCode) : undefined)
-      .some((value) => value.toLocaleLowerCase('en-US') === normalized));
+      .some((value) => compactKey(value) === compact));
 
   const found = (region: RegionRecord, confidence: RegionIdentity['confidence']): RegionIdentity => ({
     ...region,
@@ -85,9 +88,9 @@ export function resolveRegion(input: string): RegionIdentity {
   if (matches.length === 1) return found(matches[0], 'high');
 
   // 完全一致が無いときだけ、日本語名の先頭一致を見る。候補が1か国に決まるときだけ採る。
-  if (matches.length === 0 && normalized.length >= JA_PREFIX_MIN_LENGTH) {
+  if (matches.length === 0 && compact.length >= JA_PREFIX_MIN_LENGTH) {
     const prefixed = REGION_IDENTITIES.filter((region) =>
-      !region.subdivisionCode && region.countryCode && JA_NAME_BY_ALPHA2.get(region.countryCode)?.startsWith(normalized));
+      !region.subdivisionCode && region.countryCode && JA_NAME_BY_ALPHA2.get(region.countryCode)?.startsWith(compact));
     if (prefixed.length === 1) return found(prefixed[0], 'medium');
   }
 

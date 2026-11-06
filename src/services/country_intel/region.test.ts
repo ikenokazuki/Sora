@@ -87,3 +87,26 @@ test('accepts the start of a Japanese name only when it picks exactly one countr
     expect(resolveRegion(input)).toMatchObject({ id: 'unresolved:' + input, confidence: 'low' });
   }
 });
+
+test('needs four characters of a Japanese name before taking it as the start of one', () => {
+  // 3 characters: アラブ would otherwise pick the United Arab Emirates, サウジ is not worth the guess
+  for (const input of ['アラブ', 'サウジ']) {
+    expect(resolveRegion(input)).toMatchObject({ id: 'unresolved:' + input, confidence: 'low' });
+  }
+  expect(resolveRegion('アラブ首長')).toMatchObject({ countryCode: 'AE', confidence: 'medium' });
+  expect(resolveRegion('サウジアラ')).toMatchObject({ countryCode: 'SA', confidence: 'medium' });
+  expect(resolveRegion('アメリカ')).toMatchObject({ countryCode: 'US', confidence: 'medium' });
+});
+
+test('ignores spaces and full-width / half-width differences in a country name', () => {
+  // ICU writes Myanmar as 「ミャンマー (ビルマ)」 with a space
+  for (const input of ['ミャンマー(ビルマ)', 'ミャンマー（ビルマ）', 'ミャンマー (ビルマ)', ' ミャンマー ( ビルマ ) ']) {
+    expect(resolveRegion(input), input).toMatchObject({ countryCode: 'MM', confidence: 'high' });
+  }
+  expect(resolveRegion('アメリカ 合衆国')).toMatchObject({ countryCode: 'US', confidence: 'high' });
+  expect(resolveRegion('ｱﾒﾘｶ合衆国')).toMatchObject({ countryCode: 'US', confidence: 'high' });
+  expect(resolveRegion('United  States of America')).toMatchObject({ countryCode: 'US', confidence: 'high' });
+  expect(resolveRegion('ＵＳ')).toMatchObject({ countryCode: 'US', confidence: 'high' });
+  // an unresolved name keeps the input as it was written
+  expect(resolveRegion('No Such  Land')).toMatchObject({ id: 'unresolved:no such  land', name: 'No Such  Land', confidence: 'low' });
+});
