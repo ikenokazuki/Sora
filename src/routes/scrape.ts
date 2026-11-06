@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type { z } from 'zod';
 import {
+  assertScrapeInputs,
   scrapeUrl,
   scrapeBatchUrls,
   mapSiteUrl,
@@ -110,6 +111,13 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
     return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+  // 入力の誤りは、ストリームを開く前に 400 で返す（/scrape と同じ）
+  try {
+    assertScrapeInputs(parsed.data);
+  } catch (err) {
+    if (err instanceof ScrapeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    throw err;
   }
 
   return streamSSE(c, async (stream) => {

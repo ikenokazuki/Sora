@@ -126,6 +126,7 @@ import {
   matchUrlPattern,
   parseYouTubeUrl,
   splitQueryUrls,
+  uniqueTableHeaders,
 } from './html_parser.js';
 import { isModuleActive } from './mcp/registry.js';
 import { getTiktokPage, parseTikTokVideoUrl } from './services/tiktok.js';
@@ -305,18 +306,22 @@ export function capHighlightItems<T extends { text: string }>(items: T[], maxCha
 const SCREENSHOT_UNAVAILABLE_WARNING =
   'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
 
-/** 文字列を、入れ子の配列・オブジェクトの中までたどってマスクする（鍵は変えない） */
-function maskPiiDeep<T>(value: T): T {
-  if (typeof value === 'string') return maskPiiInText(value) as T;
-  if (Array.isArray(value)) return value.map(maskPiiDeep) as T;
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskPiiDeep(item)])) as T;
+/** URL の文字列（http(s):// で始まり、空白と @ を含まない）。数字の並びを電話番号と取り違えて壊さないよう、jsonLd・events ではマスクしない */
+const PLAIN_URL = /^https?:\/\/[^\s@]*$/i;
+
+/** 文字列を、入れ子の配列・オブジェクトの中までたどってマスクする（鍵は変えない）。keepUrls のときは URL の文字列を残す */
+function maskPiiDeep<T>(value: T, keepUrls = false): T {
+  if (typeof value === 'string') return (keepUrls && PLAIN_URL.test(value) ? value : maskPiiInText(value)) as T;
+  if (Array.isArray(value)) return value.map((item) => maskPiiDeep(item, keepUrls)) as T;
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskPiiDeep(item, keepUrls)])) as T;
   return value;
 }
 
 /**
  * maskPii: 本文だけでなく、応答が文字を運ぶ項目（title・description・author・siteName・html・rawHtml・tables・extracted・jsonLd・events・
  * breadcrumb・evidence、links の mailto:/tel:、images の alt・title・caption）にも同じマスクをかける。
- * URL（links の http(s)、images の url など）は、数字の並びを電話番号と取り違えて壊さないよう、マスクしない
+ * URL（links の http(s)、images の url、jsonLd・events の中の URL の文字列など）は、数字の並びを電話番号と取り違えて壊さないよう、マスクしない
+ * （socialLinks・ogImage・twitterHandle も、元からマスクの対象にしていない）
  */
 function maskPiiInResult(result: ScrapeResult): void {
   result.content = maskPiiInText(result.content);
@@ -326,17 +331,22 @@ function maskPiiInResult(result: ScrapeResult): void {
     if (value) result[key] = maskPiiInText(value);
   }
   if (result.tables) {
-    result.tables = result.tables.map((table) => ({
-      ...table,
-      caption: table.caption && maskPiiInText(table.caption),
-      headers: table.headers.map(maskPiiInText),
-      // 行の鍵は見出しの文字なので、見出しと同じ変換をかける
-      rows: table.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [maskPiiInText(key), maskPiiInText(value)]))),
-    }));
+    result.tables = result.tables.map((table) => {
+      // 隠した見出しがぶつかっても列をまとめない（html_parser と同じく 2 列目以降に _2, _3 を付ける）
+      const headers = uniqueTableHeaders(table.headers.map(maskPiiInText));
+      const renamed = new Map(table.headers.map((header, i) => [header, headers[i]]));
+      return {
+        ...table,
+        caption: table.caption && maskPiiInText(table.caption),
+        headers,
+        // 行の鍵は見出しの文字なので、見出しと同じ変換をかける
+        rows: table.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [renamed.get(key) ?? maskPiiInText(key), maskPiiInText(value)]))),
+      };
+    });
   }
   if (result.extracted) result.extracted = maskPiiDeep(result.extracted);
-  if (result.jsonLd) result.jsonLd = maskPiiDeep(result.jsonLd);
-  if (result.events) result.events = maskPiiDeep(result.events);
+  if (result.jsonLd) result.jsonLd = maskPiiDeep(result.jsonLd, true);
+  if (result.events) result.events = maskPiiDeep(result.events, true);
   if (result.breadcrumb) result.breadcrumb = maskPiiDeep(result.breadcrumb);
   if (result.evidence) result.evidence = maskPiiDeep(result.evidence);
   // PDF のメタデータ（verbose で返る Author など）と、動画のチャプターの題
@@ -648,8 +658,8 @@ export function buildScrapeCacheKey(
   return `scrape:v10:${options.url}:${digest}`;
 }
 
-/** 入力の誤りは、取得の前に断る（REST では 400） */
-function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boolean; removeSelectors?: string[] }): void {
+/** 入力の誤りは、取得の前に断る（REST では 400。/scrape/stream はストリームを開く前にここで確かめる） */
+export function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boolean; removeSelectors?: string[] }): void {
   if (options.fastOnly && options.renderJs) throw new ScrapeInputError('fastOnly と renderJs は同時に指定できません');
   const invalid = findInvalidCssSelector(options.removeSelectors ?? []);
   if (invalid) throw new ScrapeInputError(`removeSelectors の "${invalid.selector}" は CSS セレクタとして読めません: ${invalid.reason}`);

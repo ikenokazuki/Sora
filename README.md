@@ -861,9 +861,9 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`、MCP の `scrape_batch`）やサイト巡回（`/crawl`・`/crawl/stream`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。`webhookUrl` は URL の形でなければ 400 です。
 > 
-> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`jsonLd`・`events`・`extracted` の中の URL の文字列は、ほかの文字列と同じくマスクの対象です）。`screenshot` の画像はマスクしません。
+> **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列（`http(s)://` で始まり、空白と `@` を含まないもの）、`socialLinks`・`ogImage`・`twitterHandle` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`extracted` の中の文字列は、URL もほかの文字列と同じくマスクの対象です）。表の見出しが隠したあとにぶつかるときは、2 列目以降に `_2`・`_3` を付けて列を残します。`screenshot` の画像はマスクしません。
 > 
-> **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。
+> **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。入力の誤り（`renderJs` と `fastOnly` の同時指定、壊れた `removeSelectors`）は、ストリームを開く前に 400 `INVALID_INPUT` で返します。
 > 
 > **🎬 YouTube / 動画メディアメタデータ & チャプター抽出 (`media`)**: 動画ページから再生時間、サムネイル、チャプター一覧（タイムスタンプ付き目次）を自動構造化抽出します。
 > 

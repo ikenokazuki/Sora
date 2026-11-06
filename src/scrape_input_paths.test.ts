@@ -320,6 +320,19 @@ describe('REST: 入力の誤りは 400 と retryable:false', () => {
     expect(await res.json()).toMatchObject({ code: 'INVALID_INPUT', status: 400, retryable: false, error: expect.stringContaining('div[') });
   });
 
+  test('/scrape/stream: renderJs と fastOnly の同時指定は、ストリームを開く前に 400（SCRAPE_ERROR のイベントにしない）', async () => {
+    const res = await post('/scrape/stream', { url: 'https://example.com/', renderJs: true, fastOnly: true });
+    expect(res.status).toBe(400);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(await res.json()).toMatchObject({ code: 'INVALID_INPUT', status: 400, retryable: false, error: expect.stringContaining('同時に指定できません') });
+  });
+
+  test('/scrape/stream: 壊れた removeSelectors も 400', async () => {
+    const res = await post('/scrape/stream', { url: 'https://example.com/', removeSelectors: ['.ad', 'div['] });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'INVALID_INPUT', status: 400, retryable: false, error: expect.stringContaining('div[') });
+  });
+
   test('/scrape/batch: 壊れた removeSelectors', async () => {
     const res = await post('/scrape/batch', { urls: ['https://example.com/'], removeSelectors: ['div['] });
     expect(res.status).toBe(400);

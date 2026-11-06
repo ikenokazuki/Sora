@@ -107,6 +107,33 @@ describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに�
     expect(result.evidence).toEqual({ title: { value: '[EMAIL] の案内', source: 'meta' } });
   });
 
+  test('隠したあとの見出しがぶつかっても、列をまとめない（_2 を付けて残す）', async () => {
+    const tel2 = '090-1111-2222';
+    const result = await finalizeScrapeResult(base('本文です。', {
+      tables: [{
+        headers: [`連絡先 ${tel}`, `連絡先 ${tel2}`, '名前'],
+        rows: [{ [`連絡先 ${tel}`]: tel, [`連絡先 ${tel2}`]: tel2, 名前: '田中' }],
+      }],
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.tables).toEqual([{
+      headers: ['連絡先 [PHONE]', '連絡先 [PHONE]_2', '名前'],
+      rows: [{ '連絡先 [PHONE]': '[PHONE]', '連絡先 [PHONE]_2': '[PHONE]', 名前: '田中' }],
+    }]);
+  });
+
+  test('jsonLd・events の URL の文字列は隠さない（0 から始まる 10〜11 桁の ID があっても）。メールや URL でない文字列は隠す', async () => {
+    const url = 'https://example.com/items/0312345678';
+    const result = await finalizeScrapeResult(base('本文です。', {
+      jsonLd: [{ '@type': 'Product', url, sameAs: [url, `連絡は ${tel}`], contactPoint: { telephone: tel, mail: `https://${mail}` } }],
+      events: [{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, note: `tel ${url} ${tel}` }],
+      extracted: { url },
+    }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
+    expect(result.jsonLd).toEqual([{ '@type': 'Product', url, sameAs: [url, '連絡は [PHONE]'], contactPoint: { telephone: '[PHONE]', mail: 'https://[EMAIL]' } }]);
+    expect(result.events).toEqual([{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, note: 'tel https://example.com/items/[PHONE] [PHONE]' }]);  // 文の中の URL は、文の一部として隠す
+    // extracted は今までどおり、すべての文字列をマスクする
+    expect(result.extracted).toEqual({ url: 'https://example.com/items/[PHONE]' });
+  });
+
   test('PDF のメタデータと、動画のチャプターの題にもかける（時刻・秒・作成日時は変えない）', async () => {
     const result = await finalizeScrapeResult(base('本文です。', {
       metadata: { Author: `田中 ${mail}`, Producer: 'Writer', CreationDate: 'D:20260105120000+09\'00\'', totalPages: 3 },
