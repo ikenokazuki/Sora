@@ -170,6 +170,16 @@ describe('search_disaster_warnings の地名の解決', () => {
     expect(await fetchWeatherWarnings({ city: '大東', noCache: true })).toMatchObject({ areaName: '大東市', prefecture: '大阪府' });
   });
 
+  it('一部の一致でほかの県にしない（「〜島」・ほかの地名の途中）。入力の中の空白は都道府県名・候補のエラーでも無視する', async () => {
+    const calls = stubFetch(anyOfficeWarningJson);
+    await expect(fetchWeatherWarnings({ city: '小浜島', noCache: true })).rejects.toThrow('地名「小浜島」が見つかりません');
+    await expect(fetchWeatherWarnings({ city: '上 野', noCache: true })).rejects.toThrow('地名「上野」は、市町村（群馬県上野村）と気象庁の予報区（240010');
+    expect(calls).toEqual([]);
+    expect(await fetchWeatherWarnings({ city: '日光市中宮祠', noCache: true })).toMatchObject({ areaCode: '090020', prefecture: '栃木県' });
+    expect(await fetchWeatherWarnings({ city: '静岡 県', noCache: true })).toMatchObject({ areaCode: '220000', areaName: '静岡県' });
+    expect(await fetchWeatherWarnings({ city: '上川・留萌 地方', noCache: true })).toMatchObject({ areaCode: '012000' });
+  });
+
   it('予報区の 2 つ目以降の気温の地点で、ほかの予報区の市町村の名前にも当たるものは、市町村と予報区を挙げたエラー', async () => {
     const calls = stubFetch(anyOfficeWarningJson);
     await expect(fetchWeatherWarnings({ city: '上野', noCache: true })).rejects.toThrow('地名「上野」は、市町村（群馬県上野村）と気象庁の予報区（240010: 三重県北中部の気温の地点）に当たります');

@@ -111,6 +111,8 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     expect(resolveMunicipality('福岡県小郡市')?.name).toBe('小郡市');
     expect(resolveMunicipality('郡山市')?.name).toBe('郡山市');
     expect(resolveMunicipality('岐阜県郡上市')?.name).toBe('郡上市');
+    // 蒲郡市・小郡市の後ろに町名などが続いても、郡を外して残り（"市原" "市川"）をほかの県の市町村にしない
+    expect([resolveCityId('蒲郡市原'), resolveCityId('小郡市原'), resolveCityId('蒲郡市川')]).toEqual(['230020', '400040', '230020']);
   });
 
   it('気象庁のすべての町村を「都道府県名+郡+町村名」で引くと、その町村の予報区になる（決まらないものは候補を挙げる）', () => {
@@ -154,6 +156,9 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     for (const [n, code] of [['伊豆諸島北部', '130020'], ['下北', '020020'], ['東部・富士五湖', '190020'], ['宗谷', '011000'], ['十勝', '014030']]) expect(resolveCityId(n)).toBe(code);
     // 「地方」を除くとほかの予報区の市町村にも当たる名前は、市町村と予報区を挙げる
     expect(() => resolveCityId('日高')).toThrow(/埼玉県日高市.*015020: 北海道日高地方/);
+    // 都道府県名を付けた予報区の名前（"神奈川県東部" "静岡県西部"。"東部" だけではいくつもの県にある）は、その予報区
+    const withPref = Object.entries(JMA_CLASS10).filter(([code, a]) => resolveCityId(prefectureOf(code) + a.name) !== code).map(([code, a]) => `${prefectureOf(code)}${a.name}: ${resolveCityId(prefectureOf(code) + a.name)}（${code}）`);
+    expect(withPref).toEqual([]);
   });
 
   it('警報のエラーが挙げる気象台の名前（北海道・鹿児島・沖縄の 14 件）は、予報区が 1 つならその予報区、複数なら予報区の番号と名前を挙げたエラー', () => {

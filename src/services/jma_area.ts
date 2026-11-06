@@ -13,9 +13,10 @@ const lookup = <T>(table: Record<string, T>, key: string): T | undefined => (Obj
 /** 番号の上 2 桁（都道府県コード）から都道府県名 */
 export const prefectureOf = (code: string): string => PREFECTURE_NAMES[Number(code.slice(0, 2)) - 1] ?? '';
 
-/** 都道府県名（"静岡県"・略称の "静岡"・"北海道"）なら 2 桁の都道府県コード */
+/** 都道府県名（"静岡県"・略称の "静岡"・"北海道"。空白は無視する）なら 2 桁の都道府県コード */
 export function prefectureCodeOf(name: string): string | undefined {
-  const i = PREFECTURE_NAMES.findIndex((p) => name === p || name === p.replace(/[都府県]$/, ''));
+  const s = name.replace(/\s/g, '');
+  const i = PREFECTURE_NAMES.findIndex((p) => s === p || s === p.replace(/[都府県]$/, ''));
   return i < 0 ? undefined : String(i + 1).padStart(2, '0');
 }
 
@@ -76,7 +77,9 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   const city = name.match(/^(.+?市).+区$/)?.[1];
   if (city && !MUNICIPALITIES.has(name) && MUNICIPALITIES.has(city)) name = city;
   const hits = townsNamed(name).filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
-  const town = name.replace(/^[^郡]+郡/, '');
+  // 蒲郡市・小郡市の郡は市の名前の一部なので外さない（"蒲郡市原" を千葉県の市原市にしない）
+  const gun = name.match(/^[^郡]+郡/)?.[0];
+  const town = gun && !MUNICIPALITIES.has(`${gun}市`) ? name.slice(gun.length) : name;
   if (hits.length === 0 && town && town !== name) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
@@ -103,7 +106,8 @@ export function wholeCityOf(codes: string[]): Municipality | undefined {
 
 /**
  * 気象庁の予報区の名前 → 予報区の番号。同じ名前の予報区が無い名前（"十勝地方" "下北"）、末尾の「地方」を除いた形（"宗谷" "大東島"）と、
- * 予報区の 2 つ目以降の気温の地点の名前（最初の地点は city_map にある）。2 つの予報区に当たる名前（"東部" など）は除く
+ * 予報区の 2 つ目以降の気温の地点の名前（最初の地点は city_map にある）。2 つの予報区に当たる名前（"東部" など）は、都道府県名を付けた形
+ * （"神奈川県東部"）だけ
  */
 const AREA_NAMES = (() => {
   const codes = new Map<string, Set<string>>();
@@ -113,6 +117,7 @@ const AREA_NAMES = (() => {
     if (/.地方$/.test(area.name)) add(area.name.slice(0, -2), code);
     for (const point of area.points.slice(1)) add(point, code);
   }
+  for (const [name, c] of [...codes]) if (c.size > 1) for (const code of c) add(prefectureOf(code) + name, code);
   return new Map([...codes].filter(([, c]) => c.size === 1).map(([name, c]) => [name, [...c][0]]));
 })();
 
@@ -121,8 +126,8 @@ const OFFICE_NAMES = new Map(
   Object.entries(JMA_OFFICES).filter(([, name]) => !AREA_NAMES.has(name) && !PREFECTURE_NAMES.includes(name)).map(([code, name]) => [name, code]),
 );
 
-/** 気象台の名前なら気象台の番号（警報はその範囲を合わせる。天気では予報区を挙げたエラー） */
-export const officeCodeOf = (name: string): string | undefined => OFFICE_NAMES.get(name);
+/** 気象台の名前（空白は無視する）なら気象台の番号（警報はその範囲を合わせる。天気では予報区を挙げたエラー） */
+export const officeCodeOf = (name: string): string | undefined => OFFICE_NAMES.get(name.replace(/\s/g, ''));
 
 /** 地名の解決の結果。class10 は予報区、town は市町村（区域に分かれた市は市全体）に当たったとき */
 export interface Place {
@@ -138,12 +143,21 @@ export interface Place {
  * 3. 気象庁の予報区の名前（AREA_NAMES。「地方」を除いた形と 2 つ目以降の気温の地点を含む）→ その予報区。ほかの予報区の市町村にも
  *    当たる名前（"上野" "池田" "日高"）は、市町村と予報区を挙げたエラー。気象台の名前は、その予報区の番号と名前を挙げたエラー
  * 4. 市町村の表（都道府県名の付いた名前・政令指定都市の区・市区町村の省略・郡の付いた住所）。候補が複数なら候補を挙げたエラー
- * 5. city_map の部分一致（先頭が都道府県名なら、その都道府県の地名だけ）。どれにも当たらなければエラー
- * 警報は、都道府県名と気象台の名前をこの前に県全体・気象台の範囲にする（disaster.ts）。天気では、city_map に無い都道府県名
- * （気象台が複数ある北海道）は、予報区の番号と名前を挙げたエラー
+ * 5. 一部の一致（partialPlace）。どれにも当たらなければエラー
+ * 入力の中の空白はどの段でも無視する。警報は、都道府県名と気象台の名前をこの前に県全体・気象台の範囲にする（disaster.ts）。天気では、
+ * city_map に無い都道府県名（気象台が複数ある北海道）は、予報区の番号と名前を挙げたエラー
  */
 export function resolvePlace(query: string, { town: preferTown = false } = {}): Place {
-  const clean = query.trim();
+  const clean = query.replace(/\s/g, '');
+  const place = exactPlace(clean, preferTown);
+  if (place) return place;
+  const id = partialPlace(clean);
+  if (id) return { class10: id };
+  throw new AreaInputError(`地名「${clean}」が見つかりません`);
+}
+
+/** resolvePlace の 1〜4（名前そのまま）。当たらなければ undefined、1 つに決まらなければ候補を挙げたエラー */
+function exactPlace(clean: string, preferTown: boolean): Place | undefined {
   const exact = MUNICIPALITIES.get(clean);
   if (exact?.length === 1) return { class10: exact[0].class10, town: exact[0] };
 
@@ -180,11 +194,72 @@ export function resolvePlace(query: string, { town: preferTown = false } = {}): 
     const areas = Object.entries(JMA_CLASS10).filter(([c]) => c.startsWith(prefCode)).map(([c, a]) => `${c}（${a.name}）`);
     throw new AreaInputError(`都道府県名「${clean}」からは予報区が 1 つに決まりません。予報区の番号か市町村の名前で指定してください: ${areas.join('、')}`);
   }
-  const pref = PREFECTURE_NAMES.find((p) => clean.startsWith(p));
-  for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-    if (key.length >= 2 && (!pref || prefectureOf(id) === pref) && (clean.includes(key) || key.includes(clean))) return { class10: id };
+  return undefined;
+}
+
+/** 2 文字以上の city_map の地名（一部の一致に使う） */
+const CITY_KEYS = Object.keys(MUNICIPALITY_CITY_MAP).filter((k) => k.length >= 2);
+
+/**
+ * 地名として読む 2 文字以上の名前: city_map の地名、市町村の名前と市区町村を省いた形、区域の名前（"釧路市阿寒" の阿寒）、予報区・気象台の名前、
+ * 気温の地点、都道府県名
+ */
+const PLACE_NAMES = new Set(
+  [
+    ...CITY_KEYS,
+    ...[...MUNICIPALITIES.keys()].flatMap((n) => [n, n.replace(/[市区町村]$/, ''), n.match(/^.+?[市町村](.+)$/)?.[1] ?? n]),
+    ...Object.values(JMA_CLASS10).flatMap((a) => [a.name, a.name.replace(/地方$/, ''), ...a.points]),
+    ...Object.values(JMA_OFFICES),
+    ...PREFECTURE_NAMES,
+  ].filter((n) => n.length >= 2),
+);
+const LONGEST_NAME = Math.max(...[...PLACE_NAMES].map((n) => n.length));
+
+/** 入力の中でいちばん前から始まる地名（同じ位置なら長い方） */
+function firstPlaceName(s: string): string | undefined {
+  for (let i = 0; i < s.length - 1; i++) {
+    for (let n = Math.min(LONGEST_NAME, s.length - i); n >= 2; n--) if (PLACE_NAMES.has(s.slice(i, i + n))) return s.slice(i, i + n);
   }
-  throw new AreaInputError(`地名「${clean}」が見つかりません`);
+  return undefined;
+}
+
+/**
+ * resolvePlace の 5（一部の一致）の予報区。先頭が都道府県名なら、その後ろで引いてその都道府県の地名だけにし、何も当たらなければ都道府県の予報区。
+ * - 入力（2 文字以上）が city_map の地名の書き出しか、地名の中の市区町村の名前の後ろ（"富士河口" → 富士河口湖町、"乗鞍" → 松本市乗鞍上高地、
+ *   "垂水区" → 神戸市垂水区）なら、そう当たる地名がすべて同じ予報区のときだけ。地名の途中（"九州" と北九州）は当てない
+ * - それ以外は、入力の中でいちばん前から始まる地名を 1〜4 と上の決まりで引く。ほかの地名の途中や重なりは拾わない（"日光市中宮祠" は光市でなく
+ *   日光市、"函館山" は館山でなく函館）。その地名が 1 つに決まらなければ当てない
+ * - 「〜島」（「〜半島」は除く）は、当たった名前も「〜島」のときだけ（"小浜島" を福井県の小浜市にしない）
+ */
+function partialPlace(clean: string): string | undefined {
+  const pref = PREFECTURE_NAMES.find((p) => clean.startsWith(p) && clean.length > p.length);
+  const rest = pref ? clean.slice(pref.length) : clean;
+  const inPref = (id?: string) => (id && (!pref || prefectureOf(id) === pref) ? id : undefined);
+  // part が書き出しか、市区町村の名前の後ろに当たる city_map の地名。当たらなければ undefined、1 つに決まらなければ null。
+  // 区域に分かれた町の区域どうし（"八雲町八雲" と "八雲町熊石"）は、予報区が違っても最初の区域
+  const fragment = (part: string): [string, string] | null | undefined => {
+    const at = (k: string, i = k.indexOf(part)) => i === 0 || (i >= 2 && /[市区町村]$/.test(k.slice(0, i)));
+    const keys = part.length >= 2 ? CITY_KEYS.filter((k) => at(k) && inPref(MUNICIPALITY_CITY_MAP[k])) : [];
+    const townOf = (k: string) => k.match(/^.+?[市町村](?=.)/)?.[0] ?? k;
+    if (keys.length === 0) return undefined;
+    return new Set(keys.map((k) => MUNICIPALITY_CITY_MAP[k])).size === 1 || new Set(keys.map(townOf)).size === 1 ? [keys[0], MUNICIPALITY_CITY_MAP[keys[0]]] : null;
+  };
+  // いちばん前の地名の予報区。1〜4 で 1 つに決まらない名前（"伊達市" "上野"）は当てない
+  const placeOf = (name: string): string | undefined => {
+    try {
+      return inPref(lookup(MUNICIPALITY_CITY_MAP, name)) ?? exactPlace((pref ?? '') + name, false)?.class10 ?? inPref(exactPlace(name, false)?.class10) ?? fragment(name)?.[1];
+    } catch (err) {
+      if (err instanceof AreaInputError) return undefined;
+      throw err;
+    }
+  };
+  let hit = fragment(rest);
+  if (hit === undefined) {
+    const name = firstPlaceName(rest);
+    const id = name && placeOf(name);
+    hit = name && id ? [name, id] : pref && inPref(lookup(MUNICIPALITY_CITY_MAP, pref)) ? [pref, MUNICIPALITY_CITY_MAP[pref]] : undefined;
+  }
+  return hit && !(/[^半]島$/.test(clean) && !hit[0].endsWith('島')) ? hit[1] : undefined;
 }
 
 /** 都市名または都道府県名から 6 桁の予報区の番号を解決する（6 桁の数字はそのまま）。見つからなければエラー */
