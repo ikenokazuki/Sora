@@ -1375,11 +1375,16 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
   const normalized = (query || '').replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').normalize('NFKC');
   const modifiers: string[] = [];
   let remaining = ` ${normalized} `;
-  // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）
-  remaining = remaining.replace(/-?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, (m) => {
-    modifiers.push(m.trim());
+  const addModifier = (m: string) => {
+    modifiers.push(m.replace(/\s+/g, ' ').trim());
     return ' ';
-  });
+  };
+  // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）。
+  // 入れ子は内側から外す。`-` は語頭のときだけ除外の記号（foo-(bar) の - は語の一部）
+  for (let prev = ''; prev !== remaining; ) {
+    prev = remaining;
+    remaining = remaining.replace(/(?:(?<=\s)-)?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, addModifier);
+  }
   remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
     modifiers.push(`id:${id}`);
     return ' ';
@@ -1392,6 +1397,8 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
     modifiers.push(`#${tag}`);
     return ' ';
   });
+  // 括弧が閉じていない断片（A (B・A B)）も語にしない。閉じていない ( は末尾まで、対のない ) はその語だけ
+  remaining = remaining.replace(/(?:(?<=\s)-)?\([\s\S]*$|[^\s(]*\)[^\s(]*/g, addModifier);
   remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
     modifiers.push(`-${ex}`);
     return ' ';

@@ -326,6 +326,44 @@ describe('Realtime Retrieval v1', () => {
     expect(res.missingTerms).toEqual([]);
   });
 
+  test('helpers: unbalanced parentheses are fragments (modifiers), not terms; a nested group is one group', () => {
+    const parts = (q: string) => {
+      const r = extractRealtimeIntentRequirements(q);
+      return [r.semanticRequirements, r.protectedModifiers];
+    };
+    expect(parts('A (B')).toEqual([['A'], ['(B']]);
+    expect(parts('A B)')).toEqual([['A'], ['B)']]);
+    // 閉じていない ( は末尾までが 1 つの断片。そのあとの id: は修飾子のまま残る
+    expect(parts('A (B C id:xyz')).toEqual([['A'], ['id:xyz', '(B C']]);
+    expect(parts('A -(B C')).toEqual([['A'], ['-(B C']]);
+    expect(parts('A) B (C D) E')).toEqual([['B', 'E'], ['(C D)', 'A)']]);
+    expect(parts('X (A (B C)) Y')).toEqual([['X', 'Y'], ['(B C)', '(A )']]);
+  });
+
+  test('helpers: a hyphen is an exclusion mark only at the start of a word (foo-(bar))', () => {
+    const r = extractRealtimeIntentRequirements('foo-(bar) baz');
+    expect(r.semanticRequirements).toEqual(['foo-', 'baz']);
+    expect(r.protectedModifiers).toEqual(['(bar)']);
+    const ex = extractRealtimeIntentRequirements('foo -(bar baz)');
+    expect(ex.semanticRequirements).toEqual(['foo']);
+    expect(ex.protectedModifiers).toEqual(['-(bar baz)']);
+  });
+
+  test('unbalanced parentheses: the query sent is unchanged and missingTerms has no fragments', async () => {
+    for (const [query, required] of [['A (B', ['A']], ['A B)', ['A']], ['foo-(bar) baz', ['foo-', 'baz']]] as const) {
+      const calls: string[] = [];
+      const res: any = await searchYahooRealtime({
+        query,
+        detailEnrichment: false,
+        _callMcp: mockMcp(() => [post('1', 'zzz', 'qqq')], calls),
+      } as any);
+      expect(calls).toEqual([query]);
+      expect(res.retrievalQueries).toEqual([query]);
+      expect(res.requiredTerms).toEqual(required);
+      expect(res.missingTerms).toEqual(required);
+    }
+  });
+
   test('helpers: exact variants are syntax-only', () => {
     const variants = buildRealtimeExactQueryVariants('SPARK 出演 辞退 id:kimisora_JPN');
     expect(variants).toEqual(['SPARK 出演 辞退 id:kimisora_JPN', 'id:kimisora_JPN SPARK 出演 辞退']);

@@ -229,7 +229,14 @@ describe('integrated search Host response', () => {
       formatIntegratedSearchHostResponse(input, { responseMode: 'evidence', ...options });
 
     test('drops the markdown and keeps the highlights when realtime has a post by the same account (case-insensitive)', () => {
-      for (const url of [timelineUrl, 'https://twitter.com/tokyosunrockers', 'https://x.com/TOKYOSUNROCKERS/with_replies?lang=ja']) {
+      for (const url of [
+        timelineUrl,
+        'https://twitter.com/tokyosunrockers',
+        'https://x.com/TOKYOSUNROCKERS/with_replies?lang=ja',
+        'https://x.com/TokyoSunrockers/',
+        'https://mobile.twitter.com/TokyoSunrockers',
+        'https://mobile.twitter.com/TokyoSunrockers/',
+      ]) {
         const input = withRealtime([{ ...timeline(), url }], [{ author_handle: 'tokyoSunrockers', text: 'post' }]);
         const item = evidence(input).results[0];
         expect(item.markdown).toBeUndefined();
@@ -253,6 +260,8 @@ describe('integrated search Host response', () => {
         ['a legacy single post URL', withRealtime([{ ...timeline(), url: 'https://twitter.com/TokyoSunrockers/statuses/123' }], [mine])],
         ['a single post URL with a capitalized segment', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/Status/123' }], [mine])],
         ['a legacy single post URL in capitals', withRealtime([{ ...timeline(), url: 'https://mobile.twitter.com/TokyoSunrockers/STATUSES/123' }], [mine])],
+        ['a trailing-slash timeline of another account', withRealtime([{ ...timeline(), url: 'https://x.com/someone_else/' }], [mine])],
+        ['a mobile timeline of another account', withRealtime([{ ...timeline(), url: 'https://mobile.twitter.com/someone_else' }], [mine])],
         ['no realtime items', withRealtime([timeline()], [])],
         ['realtime item without a handle', withRealtime([timeline()], [{ text: 'post' }])],
         ['no realtime at all', { ...response(), results: [timeline()], realtime: undefined }],
