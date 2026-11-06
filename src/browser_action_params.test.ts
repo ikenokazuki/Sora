@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from 'b
 import { inflateSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Page } from 'puppeteer-core';
 import { clearCache, setToCache } from './cache.js';
 import { getBrowser, resolveChromiumPath, setupPageSecurity } from './browser_engine.js';
 import { createMcpServer } from './mcp.js';
@@ -132,6 +133,31 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       expect(redPixels(clip.screenshot!)).toBeGreaterThan(2000);
     } finally {
       process.env.ALLOW_LOCAL_FETCH = prevAllow;
+      await closeBrowserSession(sessionId);
+    }
+  }, 60_000);
+
+  browserTest('開いたままのページの画像の読み直しが失敗したら、次の呼び出しでもう一度読み直して撮る', async () => {
+    const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/clip`, extract: { markdown: false } });
+    const sessionId = opened.sessionId as string;
+    // 読み直し（読み込めていない img を探すページ内の処理）を 1 回だけ失敗させる
+    let failed = 0;
+    const evaluate = Page.prototype.evaluate;
+    const spy = spyOn(Page.prototype, 'evaluate').mockImplementation(function (this: Page, fn: unknown, ...args: unknown[]) {
+      if (failed === 0 && String(fn).includes('naturalWidth')) {
+        failed++;
+        return Promise.reject(new Error('evaluate failed'));
+      }
+      return (evaluate as (...a: unknown[]) => Promise<unknown>).call(this, fn, ...args);
+    } as never);
+    restore.push(() => spy.mockRestore());
+    try {
+      const first = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
+      expect(failed).toBe(1);
+      expect(redPixels(first.screenshot!)).toBe(0);
+      const second = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
+      expect(redPixels(second.screenshot!)).toBeGreaterThan(2000);
+    } finally {
       await closeBrowserSession(sessionId);
     }
   }, 60_000);

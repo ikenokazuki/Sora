@@ -47,15 +47,21 @@ export function verifySessionAccess(
   return true;
 }
 
-/** 画像を読まずに開いたままのページで、読み込めていない <img> を読み直す（ページの状態は保つ。CSS の背景画像・Web フォントは次の遷移から） */
-async function reloadBlockedImages(page: Page): Promise<void> {
-  await page
+/**
+ * 画像を読まずに開いたままのページで、読み込めていない <img> を読み直す（ページの状態は保つ。CSS の背景画像・Web フォントは次の遷移から）。
+ * 読み直せたら true（ページ内の処理が失敗したら false。呼び出し側は次の呼び出しでもう一度読み直す）
+ */
+async function reloadBlockedImages(page: Page): Promise<boolean> {
+  return page
     .evaluate(async () => {
       const broken = [...document.images].filter((img) => img.src && img.complete && img.naturalWidth === 0);
       for (const img of broken) img.setAttribute('src', img.src);
       await Promise.race([Promise.all(broken.map((img) => img.decode().catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]);
     })
-    .catch(() => {});
+    .then(
+      () => true,
+      () => false,
+    );
 }
 
 // ==========================================
@@ -558,10 +564,7 @@ export async function handleBrowserSessionAction(
       };
     }
 
-    if (session?.imagesStale) {
-      await reloadBlockedImages(page);
-      session.imagesStale = false;
-    }
+    if (session?.imagesStale && (await reloadBlockedImages(page))) session.imagesStale = false;
 
     // データの抽出
     let content: string | undefined;
