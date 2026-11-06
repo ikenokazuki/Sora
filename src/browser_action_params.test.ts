@@ -3,7 +3,7 @@ import { inflateSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { clearCache, setToCache } from './cache.js';
-import { resolveChromiumPath } from './browser_engine.js';
+import { getBrowser, resolveChromiumPath, setupPageSecurity } from './browser_engine.js';
 import { createMcpServer } from './mcp.js';
 import { browserRoutes } from './routes/browser.js';
 import { mediaRoutes } from './routes/media.js';
@@ -62,8 +62,10 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       hostname: '127.0.0.1',
       fetch: (req) => {
         const path = new URL(req.url).pathname;
-        if (path === '/red.svg') svgHits++;
-        if (path === '/red.svg') return new Response(RED_SVG, { headers: { 'content-type': 'image/svg+xml' } });
+        if (path === '/red.svg') {
+          svgHits++;
+          return new Response(RED_SVG, { headers: { 'content-type': 'image/svg+xml' } });
+        }
         if (path === '/clip') {
           return new Response('<!doctype html><html><body style="margin:0"><img id="pic" src="/red.svg" width="60" height="40"></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
@@ -96,14 +98,59 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       // 画像の指定が無い間は、画像を読まない（帯域を使わない）
       await scraper.executeBrowserActions({ sessionId, extract: { markdown: true } });
       expect(svgHits).toBe(0);
-      // 開いたままのページを、あとの呼び出しで撮る（clipSelector・screenshot）
+      // 開いたままのページを、あとの呼び出しで撮る（clipSelector）
       const clip = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
       expect(clip.screenshot).toBeDefined();
       expect(redPixels(clip.screenshot!)).toBeGreaterThan(2000);
+    } finally {
+      await closeBrowserSession(sessionId);
+    }
+  }, 60_000);
+
+  browserTest('スクリーンショットの指定なしで作ったセッションは、あとの呼び出しの screenshot:true だけでも画像を読み込んで撮る', async () => {
+    const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/clip`, extract: { markdown: false } });
+    const sessionId = opened.sessionId as string;
+    try {
       const shot = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, screenshot: true, screenshotFullPage: false } });
+      expect(shot.screenshot).toBeDefined();
       expect(redPixels(shot.screenshot!)).toBeGreaterThan(2000);
     } finally {
       await closeBrowserSession(sessionId);
+    }
+  }, 60_000);
+
+  browserTest('画像が要る呼び出しが途中で失敗しても、次の呼び出しで開いたままのページの画像を読み直して撮る', async () => {
+    const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/clip`, extract: { markdown: false } });
+    const sessionId = opened.sessionId as string;
+    const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+    try {
+      // 手元のサーバーへの移動を拒んで、読み直しの前に呼び出しを失敗させる
+      process.env.ALLOW_LOCAL_FETCH = 'false';
+      await expect(scraper.executeBrowserActions({ sessionId, url: `${base()}/article`, extract: { markdown: false, clipSelector: '#pic' } })).rejects.toThrow();
+      process.env.ALLOW_LOCAL_FETCH = prevAllow;
+      const clip = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
+      expect(redPixels(clip.screenshot!)).toBeGreaterThan(2000);
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = prevAllow;
+      await closeBrowserSession(sessionId);
+    }
+  }, 60_000);
+
+  browserTest('setupPageSecurity の blockMedia は関数でも渡せ、要求のたびに呼ばれる', async () => {
+    const { browser } = await getBrowser();
+    const context = await browser.createBrowserContext();
+    try {
+      const page = await context.newPage();
+      let block = true;
+      await setupPageSecurity(page, () => block);
+      svgHits = 0;
+      await page.goto(`${base()}/clip`, { waitUntil: 'load' });
+      expect(svgHits).toBe(0);
+      block = false;
+      await page.goto(`${base()}/clip?again`, { waitUntil: 'load' });
+      expect(svgHits).toBe(1);
+    } finally {
+      await context.close();
     }
   }, 60_000);
 

@@ -70,6 +70,8 @@ export interface BrowserSession {
   tenantId?: string;
   /** 画像・Web フォントを読み込まない設定のまま。あとの呼び出しで画像が要るようになったら false にする */
   blockMedia: boolean;
+  /** blockMedia を外したあと、開いたままのページの画像をまだ読み直していない（読み直しが済むまで true。失敗した呼び出しをまたいで残る） */
+  imagesStale?: boolean;
   lastActive: number;
   timer: any;
 }
@@ -434,7 +436,6 @@ export async function handleBrowserSessionAction(
     options.actions?.some((a) => a.type === 'screenshot')
   );
   const isStateful = Boolean(options.sessionId || options.createSession);
-  let reloadImages = false;
   let session: BrowserSession | undefined;
   let isDedicated = false;
   let page: Page;
@@ -454,7 +455,7 @@ export async function handleBrowserSessionAction(
       // 画像の指定なしで作ったセッションに、あとから画像が要るとき: 読み込みを有効にし、開いたままのページの画像は撮る前に読み直す
       if (needScreenshot && session.blockMedia) {
         session.blockMedia = false;
-        reloadImages = true;
+        session.imagesStale = true;
       }
     } else {
       // 新規セッションの初期化 (上限超過時は最古セッションを退避)
@@ -557,7 +558,10 @@ export async function handleBrowserSessionAction(
       };
     }
 
-    if (reloadImages) await reloadBlockedImages(page);
+    if (session?.imagesStale) {
+      await reloadBlockedImages(page);
+      session.imagesStale = false;
+    }
 
     // データの抽出
     let content: string | undefined;
