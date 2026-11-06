@@ -453,7 +453,7 @@ export const MapRequestSchema = z.object({
 export const ImageSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 20 件ずつ進む。漏れなく続けるには limit を省く'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -463,7 +463,7 @@ export const VideoPlatformSchema = z.enum(['all', 'youtube', 'tiktok', 'x', 'ins
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 20 件ずつ進む。漏れなく続けるには limit を省く'),
   updated: VideoSearchUpdatedSchema.optional().describe('投稿日の期間 (デフォルト: "all")').meta({ default: 'all' }),
   platform: VideoPlatformSchema.optional().describe('動画サイト (デフォルト: "all")').meta({ default: 'all' }),
   transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
@@ -482,7 +482,7 @@ export const ChiebukuroStatusSchema = z.enum(['all', 'open', 'vote', 'solved']);
 export const ChiebukuroSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件)').meta({ default: 10 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 10 件ずつ進む。漏れなく続けるには limit を省く'),
   status: ChiebukuroStatusSchema.optional()
     .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
     .meta({ default: 'all' }),

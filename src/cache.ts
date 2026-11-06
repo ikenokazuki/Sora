@@ -30,9 +30,14 @@ export function isEmptySearchResult(result: unknown): boolean {
   return r.count === 0;
 }
 
-/** 検索系の応答を残す期間。空なら短く、そうでなければ既定。 */
+/**
+ * 検索系の応答を残す期間。空なら短く、そうでなければ既定。同梱のバイナリが返したエラーの文（JSON でない応答。
+ * items が無く raw に入る）も一時的な不調なので短くする
+ */
 export function searchCacheTtl(result: unknown): number {
-  return isEmptySearchResult(result) ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT;
+  const r = result as { raw?: unknown; items?: unknown } | null | undefined;
+  const upstreamError = Boolean(r) && typeof r === 'object' && 'raw' in (r as object) && !('items' in (r as object));
+  return isEmptySearchResult(result) || upstreamError ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT;
 }
 /**
  * キャッシュキーの本体を、結果に影響する入力から作る。

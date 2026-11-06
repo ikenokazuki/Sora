@@ -1,6 +1,6 @@
 // MCP の Yahoo の 6 ツール（画像・動画・ニュース・知恵袋・サジェスト・リアルタイム）は、REST と同じキー・同じ時間のキャッシュを共有する。
 // Yahoo は送り先（同梱のバイナリの呼び出しと、リアルタイムの JSON の取得）を偽物にする。
-import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import * as cache from './cache.js';
@@ -94,6 +94,29 @@ describe('MCP の Yahoo の検索のキャッシュ', () => {
     expect(((await (await rest({ limit: 5, page: 2, noCache: true })).json()) as any).cached).toBeUndefined();
     expect(sent).toHaveLength(2);
     expect(ttlOf(`search:image:${query}:5:2`)).toHaveLength(1);
+  });
+
+  test('同梱のバイナリが返したエラーの文（JSON でない isError）は 1 分だけ残し、次は取り直す', async () => {
+    let calls = 0;
+    spies.push(spyOn(yahoo, 'callYahooMcp').mockImplementation(async () => {
+      calls++;
+      return calls === 1
+        ? { content: [{ type: 'text', text: 'Error: HTTP 503 Service Unavailable for url (https://search.yahoo.co.jp/image/search?p=x)' }], isError: true }
+        : { content: [{ type: 'text', text: JSON.stringify({ items: [{ title: 'ok', url: 'https://e/1.jpg' }] }) }] };
+    }));
+    setSpy = spyOn(cache, 'setToCache');
+    spies.push(setSpy);
+    const query = 'yahoo cache raw error';
+    const first = await callMcp('search_image', { query });
+    expect(first.raw).toContain('HTTP 503');
+    expect(ttlOf(`search:image:${query}::`)).toEqual([cache.CACHE_TTL_EMPTY]);
+    setSystemTime(new Date(Date.now() + 61_000));
+    try {
+      expect((await callMcp('search_image', { query })).items).toHaveLength(1);
+    } finally {
+      setSystemTime();
+    }
+    expect(calls).toBe(2);
   });
 
   test('search_realtime は 2 回目がキャッシュから返り、REST と同じキーで 2 分だけ残す', async () => {

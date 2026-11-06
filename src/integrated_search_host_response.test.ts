@@ -251,6 +251,8 @@ describe('integrated search Host response', () => {
         ['a handle that only starts with the same letters', withRealtime([timeline()], [{ author_handle: 'TokyoSunrockers2' }])],
         ['a single post URL', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/status/123' }], [mine])],
         ['a legacy single post URL', withRealtime([{ ...timeline(), url: 'https://twitter.com/TokyoSunrockers/statuses/123' }], [mine])],
+        ['a single post URL with a capitalized segment', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/Status/123' }], [mine])],
+        ['a legacy single post URL in capitals', withRealtime([{ ...timeline(), url: 'https://mobile.twitter.com/TokyoSunrockers/STATUSES/123' }], [mine])],
         ['no realtime items', withRealtime([timeline()], [])],
         ['realtime item without a handle', withRealtime([timeline()], [{ text: 'post' }])],
         ['no realtime at all', { ...response(), results: [timeline()], realtime: undefined }],

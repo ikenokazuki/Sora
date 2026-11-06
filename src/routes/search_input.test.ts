@@ -31,6 +31,13 @@ describe('search route input validation', () => {
     expect(body.properties.page).toBeUndefined();
   });
 
+  test('a body that is not JSON is 400 INVALID_JSON on every search route (not 500)', async () => {
+    for (const path of ['/search', '/search/deep', '/search/integrated', '/deep-search', '/search/web', '/search/image', '/search/video', '/search/news', '/search/chiebukuro', '/search/suggest', '/search/realtime', '/realtime']) {
+      const res = await app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json' });
+      expect([path, res.status, ((await res.json()) as { code?: string }).code]).toEqual([path, 400, 'INVALID_JSON']);
+    }
+  });
+
   for (const path of ['/search/image', '/search/video', '/search/news', '/search/chiebukuro', '/search/suggest']) {
     test(`${path} validates query and limit`, async () => {
       expect(await post(path, {})).toEqual({ status: 400, error: 'query is required' });

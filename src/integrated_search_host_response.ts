@@ -77,14 +77,16 @@ function isXTimelineCoveredByRealtime(item: Record<string, any>, handles: Readon
   const url = itemUrl(item);
   if (!url || !isXHost(url)) return false;
   const [handle, ...rest] = url.pathname.split('/').filter(Boolean);
-  return handle !== undefined && handles.has(handle.toLowerCase()) && !rest.some((s) => s === 'status' || s === 'statuses');
+  return handle !== undefined && handles.has(handle.toLowerCase()) && !rest.some((s) => /^status(?:es)?$/i.test(s));
 }
 
 /**
  * A conservative, Host-facing evidence projection for one integrated-search item.
  *
  * This function deliberately preserves the existing JSON properties and only
- * considers removing `markdown`.
+ * considers removing `markdown` (or, in the case below, `highlights`).
+ * X posts keep their markdown (a post is its own evidence), except X timeline/profile pages
+ * whose account has posts in the same response's realtime.items: those drop the markdown and keep the highlights.
  *
  * `markdown` is NEVER overwritten with highlights.
  * `highlights` is removed only when it is nearly as long as `markdown` (the markdown is kept instead),

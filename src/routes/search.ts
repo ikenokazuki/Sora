@@ -24,7 +24,7 @@ import {
 } from '../types.js';
 import { buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
-import { dropNullFields, formatError } from './utils.js';
+import { dropNullFields, formatError, jsonBodyOr400 } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
@@ -45,7 +45,9 @@ const REALTIME_FIELD_ERRORS: Record<string, string> = {
 
 const handleRealtimeSearch = async (c: Context) => {
   try {
-    const parsed = RealtimeSearchRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = RealtimeSearchRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const field = String(issue?.path[0] ?? '');
@@ -125,7 +127,8 @@ searchRoutes.post('/search/trend', async (c) => {
 // Yahoo Web 検索（formats 未指定は従来どおり軽量、指定時のみ追加スクレイプ）
 searchRoutes.post('/search/web', async (c) => {
   try {
-    const rawBody = await c.req.json();
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
     const parsed = SearchWebRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: 'invalid search_web request', details: parsed.error.format() }, 400);
     return c.json(await searchWebForRest(parsed.data));
@@ -145,7 +148,8 @@ const DEEP_FIELD_ERRORS: Record<string, string> = {
 };
 const handleIntegratedSearch = async (c: Context) => {
   try {
-    const body = await c.req.json();
+    const body = await jsonBodyOr400(c);
+    if (body instanceof Response) return body;
     // MCP の search_deep と同じスキーマで確かめる。null の項目は指定なし。responseMode の既定（evidence）はスキーマの default から取る
     const parsed = IntegratedSearchRequestSchema.safeParse(dropNullFields(body));
     if (!parsed.success) {
@@ -188,7 +192,9 @@ function inputErrorMessage(error: z.ZodError): string {
 // Yahoo 画像検索
 searchRoutes.post('/search/image', async (c) => {
   try {
-    const parsed = ImageSearchRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = ImageSearchRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     return c.json(await searchImageCached(parsed.data));
   } catch (err) {
@@ -199,7 +205,9 @@ searchRoutes.post('/search/image', async (c) => {
 // Yahoo 動画検索
 searchRoutes.post('/search/video', async (c) => {
   try {
-    const parsed = VideoSearchRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = VideoSearchRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     // ponytail: youtube モジュールが無効な設定では transcripts を無視する
     const transcripts = isModuleActive('youtube') ? parsed.data.transcripts ?? 0 : 0;
@@ -212,7 +220,9 @@ searchRoutes.post('/search/video', async (c) => {
 // Yahoo ニュース検索
 searchRoutes.post('/search/news', async (c) => {
   try {
-    const parsed = NewsSearchRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = NewsSearchRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     return c.json(await searchNewsCached(parsed.data));
   } catch (err) {
@@ -223,7 +233,9 @@ searchRoutes.post('/search/news', async (c) => {
 // Yahoo 知恵袋検索
 searchRoutes.post('/search/chiebukuro', async (c) => {
   try {
-    const parsed = ChiebukuroSearchRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = ChiebukuroSearchRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     return c.json(await searchChiebukuroCached(parsed.data));
   } catch (err) {
@@ -234,7 +246,9 @@ searchRoutes.post('/search/chiebukuro', async (c) => {
 // Yahoo サジェスト（キーワード補完）
 searchRoutes.post('/search/suggest', async (c) => {
   try {
-    const parsed = SuggestRequestSchema.safeParse(await c.req.json());
+    const rawBody = await jsonBodyOr400(c);
+    if (rawBody instanceof Response) return rawBody;
+    const parsed = SuggestRequestSchema.safeParse(rawBody);
     if (!parsed.success) return c.json({ error: inputErrorMessage(parsed.error) }, 400);
     return c.json(await suggestKeywordsCached(parsed.data));
   } catch (err) {

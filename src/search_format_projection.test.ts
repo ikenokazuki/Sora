@@ -12,6 +12,11 @@ describe('shared search format contract', () => {
     const p=projectRequestedScrapeFormats(x,['markdown','tables']);
     expect(p.markdown).toContain('Body'); expect(p.tables).toEqual(x.tables); expect(p.html).toBeUndefined(); expect(p.images).toBeUndefined();
   });
+  test('warnings (e.g. a screenshot that could not be taken) are kept, so search_deep and search_web show them too', () => {
+    const warnings=['formats に screenshot がありますが、画像を取れませんでした'];
+    expect(projectRequestedScrapeFormats({content:'# Hello\n\nBody',warnings},['markdown','screenshot']).warnings).toEqual(warnings);
+    expect('warnings' in projectRequestedScrapeFormats({content:'# Hello\n\nBody'},['markdown'])).toBe(false);
+  });
   test('snippet fallback semantics remain explicit', () => {
     const p=projectRequestedScrapeFormats({content:'tiny'},['markdown'],{minMarkdownChars:50,markdownFallback:'# Result\n\nfallback'});
     expect(p.markdown).toContain('fallback'); expect(p.isSnippetFallback).toBe(true);

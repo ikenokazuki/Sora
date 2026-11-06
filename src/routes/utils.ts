@@ -9,6 +9,15 @@ export function dropNullFields(body: unknown): unknown {
   return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== null));
 }
 
+/** JSON の本文を読む。JSON として読めなければ 400 INVALID_JSON の応答を返す（呼び出し側は Response かどうかで分ける） */
+export async function jsonBodyOr400(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+}
+
 /**
  * 構造化エラーレスポンス ヘルパー
  */
