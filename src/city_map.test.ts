@@ -269,20 +269,60 @@ describe('city_map.ts と気象庁の表', () => {
     expect(resolved('ほげほげ')).toBe('error: 地名「ほげほげ」が見つかりません。市区町村の名前（〜市・〜区・〜町・〜村）か、都道府県名を付けた名前で指定してください');
   });
 
-  it('郡の付いた住所は、都道府県名が無くても郡を外して引く（郡の名前をほかの県の市にしない。天気・警報とも）', () => {
+  it('郡の付いた住所は、都道府県名が無くても郡の後ろの市町村で引く（郡の名前をほかの県の市にしない。天気・警報とも）', () => {
     const cases: Array<[string, string]> = [
       ['久慈郡大子町池田', resolved('茨城県大子町')], ['安芸郡府中町鹿籠', resolved('広島県府中町')], ['西臼杵郡高千穂町三田井', resolved('宮崎県高千穂町')],
       ['愛知郡愛荘町愛知川', resolved('滋賀県愛荘町')], ['山県郡北広島町有田', resolved('広島県北広島町')], ['安芸郡江田島町', resolved('江田島市')],
       ['茨城県久慈郡大子町池田', resolved('茨城県大子町')], ['北海道上川郡上川町', '012010'], ['北海道上川郡上川町中央', '012010'], ['中新川郡上市町本町', resolved('上市町')],
+      // 郡の名前の中に上郡町の上郡がある郡（足柄上郡・犬上郡・川上郡）。"中新川郡上市町" は郡上市でなく上市町
+      ...['中井町', '大井町', '松田町', '山北町', '開成町', '中井町比奈窪'].map((t): [string, string] => [`足柄上郡${t}`, '140020']),
+      ...['豊郷町', '甲良町', '多賀町', '多賀町多賀'].map((t): [string, string] => [`犬上郡${t}`, '250020']),
+      ['神奈川県足柄上郡中井町', '140020'], ['滋賀県犬上郡多賀町', '250020'], ['川上郡標茶町', '014020'], ['北海道川上郡標茶町', '014020'], ['川上郡標茶町開運', '014020'],
+      ['中新川郡上市町', resolved('上市町')],
+      // 郡から始まる地名（郡上・郡山）の前の名前は郡の名前ではない。市区町村の名前の後ろの「郡〜」は町名（"交野市郡津" を三重県の津市にしない）
+      ['美濃郡上八幡', '210010'], ['長良川鉄道郡上八幡', '210010'], ['美濃郡上市', '210010'], ['美濃郡上', '210010'], ['中通り郡山', '070010'], ['仙台郡山', '040010'],
+      ['鹿児島市郡元', '460010'], ['伊予市郡中', '380010'], ['八頭町郡家', '310010'], ['福島市郡山', '070010'], ['高槻市郡家新町', '270000'], ['丸亀市郡家町', '370000'],
+      ['淡路市郡家', '280010'], ['宮崎市郡司分', '450010'], ['茨木市郡山', '270000'], ['羽曳野市郡戸', '270000'], ['仙台市太白区郡山', '040010'], ['交野市郡津', '270000'],
+      // 市町村の名前の中の郡
+      ['上郡町上郡', '280010'], ['蒲郡市原', '230020'], ['小郡市原', '400040'],
     ];
     expect(cases.filter(([q, code]) => code.startsWith('error') || resolved(q) !== code || place(q) !== code).map(([q, code]) => `${q}: ${resolved(q)} / ${place(q)}（${code}）`)).toEqual([]);
-    // 郡の名前（ほかの県の市と同じ名前も）+ 町村 + 町名は、町村だけのときと同じ（1 つに決まらない町村はどちらもエラー）
-    const forms = Object.keys(JMA_CLASS20).filter((n) => /[町村]$/.test(n)).flatMap((t) => ['某', '久慈', '安芸'].map((g) => [t, `${g}郡${t}本町`] as const));
-    expect(forms.length).toBeGreaterThan(2500);
+    // 郡の後ろの町村が 1 つに決まらなければ、入力を挙げた候補のエラー。"会津郡山" は会津（同じ県）
+    expect(resolved('三重郡朝日町柿')).toStartWith('error: 地名「三重郡朝日町柿」に当たる市町村が複数あります（');
+    expect(resolved('三重郡朝日町柿')).toContain('三重県朝日町');
+    expect(prefectureOf(resolved('会津郡山'))).toBe('福島県');
+    // 町村 × 郡の名前（ほかの県の市町村と同じ名前や、上郡町の上郡を含む名前）は、都道府県名の有無とも町村だけのときと同じ（1 つに決まらない町村は同じ候補のエラー）
+    const towns = new Map(Object.entries(JMA_CLASS20).filter(([n]) => /[町村]$/.test(n)).flatMap(([n, ts]) => [['', n], ...ts.map((t) => [prefectureOf(t.code), n])]).map(([p, n]) => [p + n, p]));
+    const guns = ['犬上', '足柄上', '川上', '最上', '築上', '久慈', '安芸', '中新川'];
+    const full = [...towns].flatMap(([n, p]) => guns.map((g) => [n, `${p}${g}郡${n.slice(p.length)}`] as const));
+    expect(full.length).toBeGreaterThan(14000);
+    expect(full.filter(([n, q]) => resolved(q) !== resolved(n)).map(([n, q]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
+    // 郡の名前 + 町村 + 町名は、町村だけのときと同じ（1 つに決まらない町村はどちらもエラー）
+    const forms = Object.keys(JMA_CLASS20).filter((n) => /[町村]$/.test(n)).flatMap((t) => ['某', ...guns].map((g) => [t, `${g}郡${t}本町`] as const));
+    expect(forms.length).toBeGreaterThan(7500);
     expect(forms.filter(([t, q]) => !sameAs(t, q)).map(([t, q]) => `${q}: ${resolved(q)}（${resolved(t)}）`)).toEqual([]);
+    // 市区町村の名前 + 郡元・郡中・郡家・郡山・郡津（町名）は、市区町村の名前だけのときと同じ（都道府県名を付けても同じ）
+    const districts = Object.entries(JMA_CLASS20)
+      .filter(([n]) => /[市区町村]$/.test(n))
+      .flatMap(([n, ts]) => [n, ...ts.map((t) => prefectureOf(t.code) + n)])
+      .flatMap((n) => ['郡元', '郡中', '郡家', '郡山', '郡津'].map((d) => [n, n + d] as const));
+    expect(districts.length).toBeGreaterThan(15000);
+    expect(districts.filter(([n, q]) => !sameAs(n, q)).map(([n, q]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
     // 市町村の名前の中の郡（蒲郡市・小郡市・上郡町・郡上市・大和郡山市）は外さない。都道府県の短い形と同じ名前の郡（福島県の石川郡）も郡
     const keep: Array<[string, string]> = [['蒲郡市本町', '蒲郡市'], ['小郡市本町', '小郡市'], ['上郡町大島', '上郡町'], ['岐阜郡上市本町', '郡上市'], ['大和郡山市本町', '大和郡山市'], ['石川郡石川町本町', '福島県石川町']];
     expect(keep.filter(([q, n]) => resolved(q) !== resolved(n) || resolved(n).startsWith('error')).map(([q, n]) => `${q}: ${resolved(q)}（${resolved(n)}）`)).toEqual([]);
+  }, LONG);
+
+  it('長い入力（2 万字）も、かかる時間は入力の長さに比例する', () => {
+    const long = 'あ'.repeat(20_000);
+    const inputs = [`${long}郡上川町`, `${long}郡上川町中央`, `${long}大島`, '安芸郡'.repeat(6_667), '交野市郡津市'.repeat(3_334), '上郡町'.repeat(6_667), '郡'.repeat(20_000), '市'.repeat(20_000)];
+    const slow = inputs.flatMap((q) => {
+      const start = performance.now();
+      place(q);
+      const ms = performance.now() - start;
+      return ms < 200 ? [] : [`${q.slice(0, 3)}…${q.slice(-6)}: ${Math.round(ms)} ms`];
+    });
+    expect(slow).toEqual([]);
   }, LONG);
 
   it('入力の中の空白は、どの段でも無視する（"上 野" も候補のエラー）', () => {

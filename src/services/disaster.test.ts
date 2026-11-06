@@ -222,8 +222,11 @@ describe('search_disaster_warnings の地名の解決', () => {
   });
 
   it('郡の付いた住所は、郡を外した町村で引く', async () => {
-    stubFetch(warningJson);
+    stubFetch(anyOfficeWarningJson);
     expect(await fetchWeatherWarnings({ city: '北海道茅部郡森町', noCache: true })).toMatchObject({ areaCode: '0134500', areaName: '森町', prefecture: '北海道' });
+    // 郡の名前の中の上郡（足柄上郡）を兵庫県の上郡町にしない。市の名前の後ろの郡元は町名
+    expect(await fetchWeatherWarnings({ city: '足柄上郡中井町', noCache: true })).toMatchObject({ areaCode: '1436100', areaName: '中井町', prefecture: '神奈川県' });
+    expect(await fetchWeatherWarnings({ city: '鹿児島市郡元', noCache: true })).toMatchObject({ areaCode: '460010', prefecture: '鹿児島県' });
   });
 
   it('空白だけの city は、areaCode が無ければ東京にせず入力の誤り（REST は 400、MCP はエラー）', async () => {

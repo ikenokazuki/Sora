@@ -71,43 +71,32 @@ const MUNICIPALITIES = (() => {
 const townsNamed = (name: string): Municipality[] =>
   MUNICIPALITIES.get(name) ?? ['市', '区', '町', '村'].flatMap((suffix) => MUNICIPALITIES.get(name + suffix) ?? []);
 
+/** 途中に郡を含む市町村の名前（蒲郡市・小郡市・上郡町・大和郡山市。郡で始まる郡上市・郡山市は除く） */
+const GUN_TOWNS = [...MUNICIPALITIES.keys()].filter((n) => n.indexOf('郡') > 0);
+/** s の k 文字目の郡が、その前から始まる市町村の名前の中か（"蒲郡市川町" "上郡町上郡" の郡。郡の名前の終わりではない） */
+const inGunTown = (s: string, k: number): boolean => GUN_TOWNS.some((n) => k >= n.indexOf('郡') && s.startsWith(n, k - n.indexOf('郡')));
+
 /**
  * 市町村を名前から引く。市・区・町・村は省いてよい（"札幌" → 札幌市）。先頭の都道府県名で同じ名前の候補を絞り
  * （"北海道森町"）、政令指定都市の区は市全体に当てる（"横浜市中区" → 横浜市。区ごとの区域がある神戸市・広島市の
- * 区と、東京の特別区はその区のまま）。郡の付いた住所は、当たらなければ郡を外して引き直す（"北海道上川郡上川町" → 上川町。
- * 小郡市・郡山市などは先に当たるので外さない）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
+ * 区と、東京の特別区はその区のまま）。郡の付いた住所は、当たらず郡の後ろが市町村の名前そのままなら、その名前で引き直す（"北海道上川郡上川町" →
+ * 上川町。"交野市郡津" の津は市町村の名前でないので引き直さない。郡が市町村の名前の中の "蒲郡市川町" も）。当たらなければ undefined。候補が複数残れば候補を挙げたエラー。
  */
 export function resolveMunicipality(query: string): Municipality | undefined {
   const s = query.replace(/\s/g, '');
   const pref = PREFECTURE_NAMES.find((p) => s.startsWith(p) && s.length > p.length);
   let name = pref ? s.slice(pref.length) : s;
-  const city = name.match(/^(.+?市).+区$/)?.[1];
+  const city = name.match(/^(.[^市]*市).+区$/)?.[1];
   if (city && !MUNICIPALITIES.has(name) && MUNICIPALITIES.has(city)) name = city;
   const hits = townsNamed(name).filter((m) => !pref || prefectureOf(m.codes[0]) === pref);
-  const town = withoutGun(name);
-  if (hits.length === 0 && town !== name) return resolveMunicipality((pref ?? '') + town);
+  const gun = name.match(/^[^郡]+郡/)?.[0] ?? '';
+  const town = name.slice(gun.length);
+  if (hits.length === 0 && gun && MUNICIPALITIES.has(town) && !inGunTown(name, gun.length - 1)) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
     throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください`);
   }
   return hits[0];
-}
-
-/**
- * 先頭の「〜郡」を外した名前（"上川郡上川町" → 上川町、"中新川郡上市町" → 上市町）。郡が市町村の名前の一部のとき（蒲郡市・小郡市・上郡町・大和郡山市、
- * 都道府県名に続く郡上市・郡山市）は外さない（"蒲郡市原" を千葉県の市原市、"岐阜郡上市" を富山県の上市町にしない）。外せなければそのまま
- */
-function withoutGun(name: string): string {
-  const gun = name.match(/^[^郡]+郡/)?.[0];
-  if (!gun || name.length === gun.length) return name;
-  const at = gun.length - 1; // 郡の位置
-  // 郡より前から始まる市町村の名前（市区町村を省いた形も）が郡を含むか、都道府県名の後ろの郡から郡上市・郡山市が始まる
-  const inName = [...MUNICIPALITIES.keys()].some((m) =>
-    m.startsWith('郡')
-      ? name.startsWith(m, at) && !!prefectureCodeOf(name.slice(0, at))
-      : [m, m.replace(/[市区町村]$/, '')].some((x) => [...Array(at).keys()].some((i) => i + x.length > at && name.startsWith(x, i))),
-  );
-  return inName ? name : name.slice(gun.length);
 }
 
 /** 市町村の番号（class20）→ 名前と予報区 */
@@ -247,17 +236,35 @@ const PLACE_NAMES = new Set(
 PLACE_NAMES.delete('高原');
 const LONGEST_NAME = Math.max(...[...PLACE_NAMES].map((n) => n.length));
 
-/** s の i 文字目から始まる、いちばん長い地名 */
-function placeNameAt(s: string, i: number): string | undefined {
-  for (let n = Math.min(LONGEST_NAME, s.length - i); n >= 2; n--) if (PLACE_NAMES.has(s.slice(i, i + n))) return s.slice(i, i + n);
+/** s の i 文字目から始まる、いちばん長い地名（names は市町村の名前だけで探すとき） */
+function placeNameAt(s: string, i: number, names: { has(name: string): boolean } = PLACE_NAMES): string | undefined {
+  for (let n = Math.min(LONGEST_NAME, s.length - i); n >= 2; n--) if (names.has(s.slice(i, i + n))) return s.slice(i, i + n);
   return undefined;
 }
 
-/** 入力の中でいちばん前から始まる地名（同じ位置なら長い方） */
+/**
+ * 入力の中でいちばん前から始まる地名（同じ位置なら長い方）。すぐ後ろに郡が続く名前は郡の名前（"安芸郡江田島町" の安芸）なので飛ばし、郡の後ろから探す。
+ * 市区町村の名前（"鹿児島市郡元" の郡元は町名）と、郡から地名が始まるとき（"美濃郡上八幡" の郡上）は飛ばさない
+ */
 function firstPlaceName(s: string): string | undefined {
   for (let i = 0; i < s.length - 1; i++) {
     const name = placeNameAt(s, i);
-    if (name) return name;
+    if (!name) continue;
+    const k = i + name.length;
+    if (s[k] !== '郡' || /[市区町村]$/.test(name) || placeNameAt(s, k)) return name;
+    i = k;
+  }
+  return undefined;
+}
+
+/**
+ * 郡の後ろから始まる市町村の名前（いちばん長いもの。"足柄上郡中井町比奈窪" の中井町、"中新川郡上市町" は郡上市でなく上市町）。郡が市町村の名前の中
+ * （"蒲郡市原" "上郡町上郡"）のときと、郡の前が市町村の名前（"交野市郡津市"。郡〜は町名）のときは除く
+ */
+function townAfterGun(s: string): string | undefined {
+  for (let k = s.indexOf('郡'); k >= 0; k = s.indexOf('郡', k + 1)) {
+    const town = placeNameAt(s, k + 1, MUNICIPALITIES);
+    if (town && !inGunTown(s, k) && !MUNICIPALITIES.has(s.slice(0, k))) return town;
   }
   return undefined;
 }
@@ -273,7 +280,8 @@ function firstPlaceName(s: string): string | undefined {
  *   「〜島」の名前が先頭のとき（"宮古島伊良部島"）。名前に「島」が付いて別の地名になる形（"小浜島" を福井県の小浜市にする形）と、市区町村を省いた
  *   名前の後ろに「〜島」の別の語が続く形（"安芸江田島" "金沢八景島"。先頭の名前はほかの県の地名と同じことが多い）は当てない。地名の書き出しに
  *   当たる形（"粟島" → 粟島浦村）はそのまま
- * - 先頭の「〜郡」は外して引く（"久慈郡大子町池田" の久慈を岩手県の久慈市にしない）
+ * - 郡の後ろに市町村の名前があれば、その市町村（"足柄上郡中井町比奈窪" は中井町。上郡町の上郡や久慈市の久慈にしない）。いちばん前の地名では、すぐ後ろに
+ *   郡が続く名前（郡の名前。"安芸郡江田島町" の安芸）を飛ばす（firstPlaceName・townAfterGun）
  */
 function partialPlace(clean: string): string | undefined {
   const lead = placeNameAt(clean, 0);
@@ -281,7 +289,7 @@ function partialPlace(clean: string): string | undefined {
   const gunName = lead && clean[lead.length] === '郡' && !placeNameAt(clean, lead.length);
   const prefCode = lead && clean.length - lead.length >= 2 && !gunName ? prefectureCodeOf(lead) : undefined;
   const pref = prefCode ? PREFECTURE_NAMES[Number(prefCode) - 1] : undefined;
-  const rest = withoutGun(pref && lead ? clean.slice(lead.length) : clean);
+  const rest = pref && lead ? clean.slice(lead.length) : clean;
   const inPref = (id?: string) => (id && (!pref || prefectureOf(id) === pref) ? id : undefined);
   // part が書き出しか、区域に分かれた市町村の名前の後ろに当たる city_map の地名。当たらなければ undefined、1 つに決まらなければ null。
   // 区域に分かれた町の区域どうし（"八雲町八雲" と "八雲町熊石"）は、予報区が違っても最初の区域
@@ -313,6 +321,9 @@ function partialPlace(clean: string): string | undefined {
   if (whole) return whole;
   const hit = fragment(rest);
   if (hit !== undefined) return hit ?? undefined;
+  const town = townAfterGun(rest);
+  const townId = town && exactOf(town);
+  if (townId) return townId;
   const name = firstPlaceName(rest);
   if (!name) return fallback();
   let id: string | undefined;
@@ -332,7 +343,8 @@ function partialPlace(clean: string): string | undefined {
 function islandHead(rest: string, name: string, id: string | undefined): boolean {
   if (/[市区町村]$/.test(name) || (name.endsWith('島') && rest.startsWith(name))) return true;
   // 残りが市区町村の名前で始まり、いちばん前の地名がその予報区（"広島市中島" は広島市中区の中島。"東村山島" は沖縄県の東村にしない）
-  const town = [...rest].map((_, n) => rest.slice(0, n)).find((s) => s.length >= 2 && /[市区町村]$/.test(s) && PLACE_NAMES.has(s));
+  const head = rest.slice(0, LONGEST_NAME + 1);
+  const town = [...head].map((_, n) => head.slice(0, n)).find((s) => s.length >= 2 && /[市区町村]$/.test(s) && PLACE_NAMES.has(s));
   return !!town && !!id && placeAreaOf(town) === id;
 }
 
