@@ -47,6 +47,17 @@ export function verifySessionAccess(
   return true;
 }
 
+/** 画像を読まずに開いたままのページで、読み込めていない <img> を読み直す（ページの状態は保つ。CSS の背景画像・Web フォントは次の遷移から） */
+async function reloadBlockedImages(page: Page): Promise<void> {
+  await page
+    .evaluate(async () => {
+      const broken = [...document.images].filter((img) => img.src && img.complete && img.naturalWidth === 0);
+      for (const img of broken) img.setAttribute('src', img.src);
+      await Promise.race([Promise.all(broken.map((img) => img.decode().catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]);
+    })
+    .catch(() => {});
+}
+
 // ==========================================
 // 1. ステートフル ブラウザセッション管理
 // ==========================================
@@ -57,6 +68,8 @@ export interface BrowserSession {
   dedicatedBrowser?: Browser;
   ownerTokenHash?: string;
   tenantId?: string;
+  /** 画像・Web フォントを読み込まない設定のまま。あとの呼び出しで画像が要るようになったら false にする */
+  blockMedia: boolean;
   lastActive: number;
   timer: any;
 }
@@ -415,7 +428,13 @@ export async function handleBrowserSessionAction(
     };
   }
 
+  const needScreenshot = Boolean(
+    options.extract?.screenshot ||
+    options.extract?.clipSelector ||
+    options.actions?.some((a) => a.type === 'screenshot')
+  );
   const isStateful = Boolean(options.sessionId || options.createSession);
+  let reloadImages = false;
   let session: BrowserSession | undefined;
   let isDedicated = false;
   let page: Page;
@@ -432,6 +451,11 @@ export async function handleBrowserSessionAction(
         throw new Error('Forbidden: You do not have permission to access this browser session');
       }
       page = session.page;
+      // 画像の指定なしで作ったセッションに、あとから画像が要るとき: 読み込みを有効にし、開いたままのページの画像は撮る前に読み直す
+      if (needScreenshot && session.blockMedia) {
+        session.blockMedia = false;
+        reloadImages = true;
+      }
     } else {
       // 新規セッションの初期化 (上限超過時は最古セッションを退避)
       await evictOldestSessionIfNeeded();
@@ -443,14 +467,20 @@ export async function handleBrowserSessionAction(
         browserInstance = browserRes.browser;
         isDedicated = browserRes.isDedicated;
         // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
-        const needScreenshot = Boolean(
-          options.extract?.screenshot ||
-          options.extract?.clipSelector ||
-          options.actions?.some((a) => a.type === 'screenshot')
-        );
         context = await browserInstance.createBrowserContext();
         page = await context.newPage();
-        await setupPageSecurity(page, !needScreenshot);
+        const created: BrowserSession = {
+          id: requestedId,
+          page,
+          context,
+          dedicatedBrowser: isDedicated ? browserInstance : undefined,
+          ownerTokenHash: hashToken(options.ownerToken),
+          tenantId: options.tenantId,
+          blockMedia: !needScreenshot,
+          lastActive: Date.now(),
+          timer: null,
+        };
+        await setupPageSecurity(page, () => created.blockMedia);
 
         // ダイアログ (alert / confirm / prompt) の自動承認
         page.on('dialog', async (dialog) => {
@@ -461,16 +491,7 @@ export async function handleBrowserSessionAction(
 
         await applyStealthEvasions(page);
 
-        session = {
-          id: requestedId,
-          page,
-          context,
-          dedicatedBrowser: isDedicated ? browserInstance : undefined,
-          ownerTokenHash: hashToken(options.ownerToken),
-          tenantId: options.tenantId,
-          lastActive: Date.now(),
-          timer: null,
-        };
+        session = created;
         activeSessions.set(requestedId, session);
       } finally {
         browserSemaphore.release();
@@ -482,11 +503,6 @@ export async function handleBrowserSessionAction(
     await browserSemaphore.acquire();
     recordBrowserUsage();
     try {
-      const needScreenshot = Boolean(
-        options.extract?.screenshot ||
-        options.extract?.clipSelector ||
-        options.actions?.some((a) => a.type === 'screenshot')
-      );
       const browserRes = await getBrowser();
       browserInstance = browserRes.browser;
       isDedicated = browserRes.isDedicated;
@@ -540,6 +556,8 @@ export async function handleBrowserSessionAction(
         renderedWithBrowser: true,
       };
     }
+
+    if (reloadImages) await reloadBlockedImages(page);
 
     // データの抽出
     let content: string | undefined;

@@ -6,7 +6,9 @@ import { clearCache, setToCache } from './cache.js';
 import { resolveChromiumPath } from './browser_engine.js';
 import { createMcpServer } from './mcp.js';
 import { browserRoutes } from './routes/browser.js';
+import { mediaRoutes } from './routes/media.js';
 import * as scraper from './scraper.js';
+import { closeBrowserSession } from './browser_session.js';
 import { BrowserActionRequestSchema, BrowserActionStepSchema, generateOpenApiDocument } from './types.js';
 
 // browser_action・inspect_image の引数が、手元のサーバーで説明どおりに働くことを確かめる（外へは出ない）
@@ -51,6 +53,7 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
   const prevAllow = process.env.ALLOW_LOCAL_FETCH;
   const base = () => `http://127.0.0.1:${server.port}`;
   const restore: Array<() => void> = [];
+  let svgHits = 0;
 
   beforeAll(() => {
     process.env.ALLOW_LOCAL_FETCH = 'true';
@@ -59,6 +62,7 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       hostname: '127.0.0.1',
       fetch: (req) => {
         const path = new URL(req.url).pathname;
+        if (path === '/red.svg') svgHits++;
         if (path === '/red.svg') return new Response(RED_SVG, { headers: { 'content-type': 'image/svg+xml' } });
         if (path === '/clip') {
           return new Response('<!doctype html><html><body style="margin:0"><img id="pic" src="/red.svg" width="60" height="40"></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } });
@@ -82,6 +86,36 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
     expect(redPixels(clipOnly.screenshot!)).toBeGreaterThan(2000);
     const withScreenshot = await scraper.executeBrowserActions({ url: `${base()}/clip`, extract: { markdown: false, screenshot: true, clipSelector: '#pic' } });
     expect(redPixels(withScreenshot.screenshot!)).toBe(redPixels(clipOnly.screenshot!));
+  }, 60_000);
+
+  browserTest('スクリーンショットの指定なしで作ったセッションも、あとの呼び出しで画像が要るときは画像を読み込んで撮る', async () => {
+    svgHits = 0;
+    const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/clip`, extract: { markdown: false } });
+    const sessionId = opened.sessionId as string;
+    try {
+      // 画像の指定が無い間は、画像を読まない（帯域を使わない）
+      await scraper.executeBrowserActions({ sessionId, extract: { markdown: true } });
+      expect(svgHits).toBe(0);
+      // 開いたままのページを、あとの呼び出しで撮る（clipSelector・screenshot）
+      const clip = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
+      expect(clip.screenshot).toBeDefined();
+      expect(redPixels(clip.screenshot!)).toBeGreaterThan(2000);
+      const shot = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, screenshot: true, screenshotFullPage: false } });
+      expect(redPixels(shot.screenshot!)).toBeGreaterThan(2000);
+    } finally {
+      await closeBrowserSession(sessionId);
+    }
+  }, 60_000);
+
+  browserTest('スクリーンショットの指定なしで作ったセッションは、あとの呼び出しで別のページへ移っても、画像が要るなら画像を読み込む', async () => {
+    const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/article`, extract: { markdown: false } });
+    const sessionId = opened.sessionId as string;
+    try {
+      const shot = await scraper.executeBrowserActions({ sessionId, url: `${base()}/clip`, extract: { markdown: false, clipSelector: '#pic' } });
+      expect(redPixels(shot.screenshot!)).toBeGreaterThan(2000);
+    } finally {
+      await closeBrowserSession(sessionId);
+    }
   }, 60_000);
 
   test('REST の本文の ownerToken はスキーマにも OpenAPI にも無く、持ち主の確認には Authorization ヘッダーの値だけを使う', async () => {
@@ -112,7 +146,7 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       const { tools } = await client.listTools();
       const props = (tools.find((t) => t.name === 'browser_action')!.inputSchema as any).properties;
       expect(props.ownerToken).toBeDefined();
-      expect(props.timeout.description).toContain('ページ遷移');
+      expect(props.timeout.description).toContain('navigate');
     } finally {
       await client.close();
       await mcp.close();
@@ -121,12 +155,10 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
 
   test('timeout・actions の evaluate・delay・screenshot の説明が、実際の働きと合っている', () => {
     const request = (BrowserActionRequestSchema.shape as any);
-    expect(request.timeout.description).toContain('ページ遷移');
-    expect(request.timeout.description).toContain('全体');
+    expect(request.timeout.description).toContain('navigate');
     const step = BrowserActionStepSchema.shape as any;
     expect(step.type.description).toContain('ALLOW_BROWSER_EVALUATE=true');
-    expect(step.delay.description).toContain('click');
-    expect(step.delay.description).toContain('1 文字');
+    for (const action of ['click', 'fill', 'type']) expect(step.delay.description).toContain(action);
     expect(step.type.description).toContain('extract.screenshot');
   });
 
@@ -141,6 +173,34 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
       await expect(scraper.inspectImage({ url })).rejects.toThrow(/画像ではありません/);
     } finally {
       clearCache();
+    }
+  });
+
+  test('inspect_image は、画像でない応答を REST では MEDIA_ERROR、MCP では isError で返す', async () => {
+    const url = `${base()}/article`;
+    const res = await mediaRoutes.request('/media/inspect-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    expect(res.status).toBe(500);
+    const body: any = await res.json();
+    expect(body.code).toBe('MEDIA_ERROR');
+    expect(body.error).toMatch(/画像ではありません.*text\/html/);
+
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const mcp = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'inspect-image-error', version: '1.0.0' });
+    await mcp.connect(st);
+    await client.connect(ct);
+    try {
+      const out: any = await client.callTool({ name: 'inspect_image', arguments: { url } });
+      expect(out.isError).toBe(true);
+      expect(out.content[0].type).toBe('text');
+      expect(out.content[0].text).toMatch(/画像ではありません.*text\/html/);
+    } finally {
+      await client.close();
+      await mcp.close();
     }
   });
 

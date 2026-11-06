@@ -652,7 +652,8 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
 export async function setupPageSecurity(
   page: Page,
-  blockMedia = false,
+  /** true なら画像・Web フォントも遮断する。関数なら要求のたびに呼ぶ（セッションで、あとから画像が要るようになる場合） */
+  blockMedia: boolean | (() => boolean) = false,
   /**
    * 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求には全部付ける。
    * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）。
@@ -684,7 +685,7 @@ export async function setupPageSecurity(
         }
 
         // スクリーンショット非要求時 (blockMedia=true) は画像・Webフォントも追加遮断
-        if (blockMedia && ['image', 'font'].includes(resourceType)) {
+        if ((typeof blockMedia === 'function' ? blockMedia() : blockMedia) && ['image', 'font'].includes(resourceType)) {
           return req.abort('blockedbyclient');
         }
 

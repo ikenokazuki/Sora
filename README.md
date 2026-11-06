@@ -362,6 +362,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
 ★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 38ツール)
 図は 8 列の簡略表示です。Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
+`browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
