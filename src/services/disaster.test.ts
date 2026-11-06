@@ -5,6 +5,7 @@ import { fetchRecentEarthquakes, fetchWeatherWarnings } from './disaster.js';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
 import { createMcpServer } from '../mcp.js';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES } from '../jma_areas.js';
 import { ElevationRequestSchema } from '../types.js';
 import R8_TOKYO from '../test_fixtures/jma_warning_r8_excerpt.json';
 
@@ -59,6 +60,17 @@ function warningJson(url: URL) {
   return [{ reportDatetime: '2026-11-06T05:00:00+09:00', dataTypeCode: 'VPWW61', warning: { class10Items: items(data.class10), class20Items: items(data.towns) } }];
 }
 const names = (items: Array<{ name: string }>) => items.map((i) => i.name);
+/** どの気象台の JSON（r8）にも、その気象台のすべての予報区と市町村の欄に雷注意報を置く */
+function anyOfficeWarningJson(url: URL) {
+  const office = url.pathname.match(/\/warning\/data\/r8\/(\d+)\.json$/)?.[1];
+  const areas = Object.keys(JMA_CLASS10).filter((c) => JMA_CLASS10[c].office === office);
+  if (areas.length === 0) return undefined;
+  const towns = Object.values(JMA_CLASS20).flat().filter((t) => JMA_CLASS10[t.class10].office === office);
+  return [{
+    reportDatetime: '2026-11-06T05:00:00+09:00',
+    warning: { class10Items: areas.map((areaCode) => ({ areaCode, kinds: w('14') })), class20Items: towns.map((t) => ({ areaCode: t.code, kinds: w('14') })) },
+  }];
+}
 
 describe('search_disaster_warnings の地名の解決', () => {
   it('市区町村はその市町村の欄だけを返す（新宿区に伊豆諸島の注意報を混ぜない）', async () => {
@@ -137,6 +149,34 @@ describe('search_disaster_warnings の地名の解決', () => {
     }
     expect(calls).toEqual([]);
     expect(await fetchWeatherWarnings({ city: '石狩地方', noCache: true })).toMatchObject({ areaCode: '016010', areaName: '石狩地方', prefecture: '北海道' });
+  });
+
+  it('エラーが挙げる気象台の名前（北海道・鹿児島・沖縄の 14 件）は、その気象台の範囲を返す', async () => {
+    const calls = stubFetch(anyOfficeWarningJson);
+    const offices = Object.entries(JMA_OFFICES).filter(([c]) => /^(01|46|47)/.test(c));
+    expect(offices).toHaveLength(14);
+    for (const [office, name] of offices) {
+      expect(await fetchWeatherWarnings({ city: name, noCache: true })).toMatchObject({ areaCode: office, areaName: name });
+      expect(calls.at(-1)).toBe(`https://www.jma.go.jp/bosai/warning/data/r8/${office}.json`);
+    }
+    expect(calls).toHaveLength(14);
+    // 予報区が複数の気象台は、そのすべての予報区の欄を合わせる
+    expect(names((await fetchWeatherWarnings({ city: '上川・留萌地方', noCache: true })).advisories)).toEqual(['雷注意報']);
+  });
+
+  it('大東島地方・大東島は大東島地方の予報区（大阪府の大東市にしない）。大東は大東市のまま', async () => {
+    stubFetch(anyOfficeWarningJson);
+    for (const city of ['大東島地方', '大東島']) expect(await fetchWeatherWarnings({ city, noCache: true })).toMatchObject({ areaCode: '472000', areaName: '大東島地方', prefecture: '沖縄県' });
+    expect(await fetchWeatherWarnings({ city: '大東', noCache: true })).toMatchObject({ areaName: '大東市', prefecture: '大阪府' });
+  });
+
+  it('予報区の 2 つ目以降の気温の地点で、ほかの予報区の市町村の名前にも当たるものは、市町村と予報区を挙げたエラー', async () => {
+    const calls = stubFetch(anyOfficeWarningJson);
+    await expect(fetchWeatherWarnings({ city: '上野', noCache: true })).rejects.toThrow('地名「上野」は、市町村（群馬県上野村）と気象庁の予報区（240010: 三重県北中部の気温の地点）に当たります');
+    await expect(fetchWeatherWarnings({ city: '池田', noCache: true })).rejects.toThrow(/大阪府池田市.*360010: 徳島県北部の気温の地点/);
+    expect(calls).toEqual([]);
+    // 都道府県名を付ければ引ける
+    expect(await fetchWeatherWarnings({ city: '群馬県上野', noCache: true })).toMatchObject({ areaName: '上野村', prefecture: '群馬県' });
   });
 
   it('都道府県名でない city_map の地名は、同じ予報区の「地名+市・区」の市町村ならその市町村、ほかは予報区', async () => {

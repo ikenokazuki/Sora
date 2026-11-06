@@ -5,7 +5,7 @@ import { AreaInputError, prefectureOf, resolveCityId, resolveMunicipality } from
 import { fetchWeatherForecast } from './life.js';
 import { clearCache } from '../cache.js';
 import { app } from '../index.js';
-import { JMA_CLASS20 } from '../jma_areas.js';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES } from '../jma_areas.js';
 import { createMcpServer } from '../mcp.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import JMA_FORECASTS from '../test_fixtures/jma_forecast_excerpt.json';
@@ -141,6 +141,29 @@ describe('get_weather: 気象台・地名・気温の地点・キャッシュ', 
     const res = await app.request('/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ city: '北海道' }) });
     expect(res.status).toBe(400);
     expect(((await res.json()) as any).error).toContain('016010（石狩地方）');
+  });
+
+  it('気象庁の予報区の名前（末尾の「地方」を除いた形も）は、その予報区（部分一致で別の県にしない）', () => {
+    const bad = Object.entries(JMA_CLASS10)
+      .filter(([, a]) => Object.values(JMA_CLASS10).filter((o) => o.name === a.name).length === 1)
+      .flatMap(([code, a]) => [a.name, ...(/.地方$/.test(a.name) && a.name !== '日高地方' ? [a.name.slice(0, -2)] : [])].map((n) => [n, code]))
+      .filter(([n, code]) => resolveCityId(n) !== code);
+    expect(bad).toEqual([]);
+    for (const n of ['大東島地方', '大東島']) expect(resolveCityId(n)).toBe('472000');
+    expect(resolveCityId('大東')).toBe('270000');
+    for (const [n, code] of [['伊豆諸島北部', '130020'], ['下北', '020020'], ['東部・富士五湖', '190020'], ['宗谷', '011000'], ['十勝', '014030']]) expect(resolveCityId(n)).toBe(code);
+    // 「地方」を除くとほかの予報区の市町村にも当たる名前は、市町村と予報区を挙げる
+    expect(() => resolveCityId('日高')).toThrow(/埼玉県日高市.*015020: 北海道日高地方/);
+  });
+
+  it('警報のエラーが挙げる気象台の名前（北海道・鹿児島・沖縄の 14 件）は、予報区が 1 つならその予報区、複数なら予報区の番号と名前を挙げたエラー', () => {
+    const offices = Object.entries(JMA_OFFICES).filter(([c]) => /^(01|46|47)/.test(c));
+    expect(offices).toHaveLength(14);
+    for (const [office, name] of offices) {
+      const areas = Object.keys(JMA_CLASS10).filter((c) => JMA_CLASS10[c].office === office);
+      if (areas.length === 1) expect([name, resolveCityId(name)]).toEqual([name, areas[0]]);
+      else expect(() => resolveCityId(name)).toThrow(`気象台の範囲「${name}」からは予報区が 1 つに決まりません。予報区の番号か名前で指定してください: ${areas.map((c) => `${c}（${JMA_CLASS10[c].name}）`).join('、')}`);
+    }
   });
 
   it('都道府県名と気温の地点の名前は、市町村の表より先に city_map の予報区になる', () => {
