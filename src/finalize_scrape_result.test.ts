@@ -125,11 +125,11 @@ describe('finalizeScrapeResult: maskPii は応答に出る文字列すべてに�
     const url = 'https://example.com/items/0312345678';
     const result = await finalizeScrapeResult(base('本文です。', {
       jsonLd: [{ '@type': 'Product', url, sameAs: [url, `連絡は ${tel}`], contactPoint: { telephone: tel, mail: `https://${mail}` } }],
-      events: [{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, note: `tel ${url} ${tel}` }],
+      events: [{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, location: `tel ${url} ${tel}` }],
       extracted: { url },
     }), opts({ shouldExtractHighlights: false, shouldMaskPii: true }));
     expect(result.jsonLd).toEqual([{ '@type': 'Product', url, sameAs: [url, '連絡は [PHONE]'], contactPoint: { telephone: '[PHONE]', mail: 'https://[EMAIL]' } }]);
-    expect(result.events).toEqual([{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, note: 'tel https://example.com/items/[PHONE] [PHONE]' }]);  // 文の中の URL は、文の一部として隠す
+    expect(result.events).toEqual([{ name: '公演', url, offers: { url: 'http://example.com/t/09012345678' }, location: 'tel https://example.com/items/[PHONE] [PHONE]' }]);  // 文の中の URL は、文の一部として隠す
     // extracted は今までどおり、すべての文字列をマスクする
     expect(result.extracted).toEqual({ url: 'https://example.com/items/[PHONE]' });
   });

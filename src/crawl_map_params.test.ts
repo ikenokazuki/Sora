@@ -139,6 +139,104 @@ describe('map_site: 日付で絞ってから件数で切る', () => {
   });
 });
 
+describe('map_site: サイトマップの読み方', () => {
+  const xml = (body: string) => new Response(`<?xml version="1.0"?>${body}`, { headers: { 'content-type': 'application/xml' } });
+  const urlset = (items: string) => `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${items}</urlset>`;
+
+  test('日付で絞るとき読むのは先頭 5,000 件まで（5,001 件目以降は、日付が合っても拾わない）', async () => {
+    const server: ReturnType<typeof Bun.serve> = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        if (path !== '/sitemap.xml') return new Response('not found', { status: 404 });
+        const base = `http://127.0.0.1:${server.port}`;
+        // 0〜4998 番は古い、4999 番（5,000 件目）と 5000 番（5,001 件目）と 5001 番は新しい
+        const items = Array.from({ length: 5002 }, (_, i) => `<url><loc>${base}/p${i}</loc><lastmod>${i < 4999 ? '2026-01-01' : '2026-10-01'}</lastmod></url>`).join('');
+        return xml(urlset(items));
+      },
+    });
+    try {
+      const base = `http://127.0.0.1:${server.port}`;
+      const r = await mapSiteUrl({ url: base + '/', limit: 1000, since: '2026-05-01', noCache: true });
+      expect(r.source).toBe('sitemap');
+      expect(r.links).toEqual([`${base}/p4999`]);
+      // 日付を指定しなければ、limit 件までを先頭から
+      const plain = await mapSiteUrl({ url: base + '/', limit: 3, noCache: true });
+      expect(plain.links).toEqual([`${base}/p0`, `${base}/p1`, `${base}/p2`]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test('子のサイトマップは、数を限って（3 つずつ）並べて取る。並びと件数の上限は、1 つずつ取るときと同じ', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const server: ReturnType<typeof Bun.serve> = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      async fetch(req) {
+        const path = new URL(req.url).pathname;
+        const base = `http://127.0.0.1:${server.port}`;
+        if (path === '/sitemap.xml') {
+          return xml(`<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${Array.from({ length: 8 }, (_, i) => `<sitemap><loc>${base}/child${i}.xml</loc></sitemap>`).join('')}</sitemapindex>`);
+        }
+        const child = path.match(/^\/child(\d)\.xml$/);
+        if (!child) return new Response('not found', { status: 404 });
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        // 先頭の子ほど遅く返す（並べて取っても、結果の並びは子の並びのまま）
+        await Bun.sleep(150 - Number(child[1]) * 15);
+        inFlight--;
+        return xml(urlset(`<url><loc>${base}/c${child[1]}a</loc></url><url><loc>${base}/c${child[1]}b</loc></url>`));
+      },
+    });
+    try {
+      const base = `http://127.0.0.1:${server.port}`;
+      const all = await mapSiteUrl({ url: base + '/', limit: 100, noCache: true });
+      expect(all.links).toEqual(Array.from({ length: 8 }, (_, i) => [`${base}/c${i}a`, `${base}/c${i}b`]).flat());
+      expect(maxInFlight).toBe(3);
+      const few = await mapSiteUrl({ url: base + '/', limit: 5, noCache: true });
+      expect(few.links).toEqual([`${base}/c0a`, `${base}/c0b`, `${base}/c1a`, `${base}/c1b`, `${base}/c2a`]);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+describe('POST /map: MapRequestSchema の範囲を 400 にする', () => {
+  test('limit・timeoutMs の範囲外と不正な形は 400 INVALID_INPUT（取得もしない）', async () => {
+    const spy = spyOn(scraper, 'mapSiteUrl');
+    try {
+      for (const extra of [{ limit: 0 }, { limit: 1001 }, { limit: 1.5 }, { limit: '10' }, { timeoutMs: 0 }, { timeoutMs: 120_001 }, { includeSubdomains: 'yes' }, { since: 5 }, { noCache: 1 }]) {
+        const res = await post('/map', { url: 'https://example.com/', ...extra });
+        expect(res.status, JSON.stringify(extra)).toBe(400);
+        const json = (await res.json()) as any;
+        expect(json.code).toBe('INVALID_INPUT');
+        expect(json.retryable).toBe(false);
+        expect(json.error).toContain(Object.keys(extra)[0]);
+      }
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('範囲の端（limit 1・1000、timeoutMs 120000）は通り、null の項目は未指定として扱う（必須の url が null なら 400）', async () => {
+    const { server, base } = startSite({ sitemap: true });
+    try {
+      for (const extra of [{ limit: 1 }, { limit: 1000 }, { timeoutMs: 120_000 }, { limit: null, timeoutMs: null, since: null, until: null, includeSubdomains: null, noCache: null }]) {
+        const res = await post('/map', { url: base + '/', noCache: true, ...extra });
+        expect(res.status, JSON.stringify(extra)).toBe(200);
+      }
+      const bad = await post('/map', { url: null });
+      expect(bad.status).toBe(400);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe('crawl_site: pages は scrape と同じ整形（links は formats で求めたときだけ）', () => {
   const internal = ['quality', 'evidence', 'qualityReasons', 'missingFields', 'completeness', 'contentType', 'source', 'renderedWithBrowser', 'estimatedTokens'];
 

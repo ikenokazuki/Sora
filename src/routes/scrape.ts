@@ -13,6 +13,7 @@ import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
   CrawlRequestSchema,
+  MapRequestSchema,
 } from '../types.js';
 import { dropNullFields, formatError } from './utils.js';
 import { errorMessage, ScrapeInputError } from '../errors.js';
@@ -53,13 +54,14 @@ async function readUrlRequestBody(
   return { body };
 }
 
-/** /crawl・/crawl/stream の本文を読む。url の形に加え、CrawlRequestSchema の範囲（maxDepth 5・maxChars 50000 など）も確かめて 400 にする。null の項目は未指定として扱う */
-async function readCrawlRequestBody(
+/** url を必須とする本文を読み、スキーマの範囲（/crawl の maxDepth 5・/map の limit 1000 など）も確かめて 400 にする。null の項目は未指定として扱う */
+async function readValidatedRequestBody<S extends z.ZodType>(
   c: Context,
-): Promise<{ data: z.infer<typeof CrawlRequestSchema> } | { error: Response }> {
+  schema: S,
+): Promise<{ data: z.infer<S> } | { error: Response }> {
   const input = await readUrlRequestBody(c);
   if ('error' in input) return input;
-  const parsed = CrawlRequestSchema.safeParse(dropNullFields(input.body));
+  const parsed = schema.safeParse(dropNullFields(input.body));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'invalid request';
@@ -178,20 +180,11 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
 // サイトマップ URL マッピング (/map)
 scrapeRoutes.post('/map', async (c) => {
-  const input = await readUrlRequestBody(c);
+  const input = await readValidatedRequestBody(c, MapRequestSchema);
   if ('error' in input) return input.error;
-  const { body } = input;
 
   try {
-    const result = await mapSiteUrl({
-      url: body.url,
-      limit: body.limit,
-      includeSubdomains: body.includeSubdomains,
-      timeoutMs: body.timeoutMs,
-      since: body.since,
-      until: body.until,
-      noCache: body.noCache,
-    });
+    const result = await mapSiteUrl(input.data);
 
     return c.json(result);
   } catch (err) {
@@ -203,7 +196,7 @@ scrapeRoutes.post('/map', async (c) => {
 
 // サブページ再帰的クロール (/crawl)
 scrapeRoutes.post('/crawl', async (c) => {
-  const input = await readCrawlRequestBody(c);
+  const input = await readValidatedRequestBody(c, CrawlRequestSchema);
   if ('error' in input) return input.error;
 
   try {
@@ -221,7 +214,7 @@ scrapeRoutes.post('/crawl', async (c) => {
 // サブページ再帰的クロール SSE ストリーミング (/crawl/stream)
 scrapeRoutes.post('/crawl/stream', async (c) => {
   // 入力の誤りは、ストリームを開く前に 400 で返す
-  const input = await readCrawlRequestBody(c);
+  const input = await readValidatedRequestBody(c, CrawlRequestSchema);
   if ('error' in input) return input.error;
   const { data } = input;
 

@@ -1146,6 +1146,9 @@ export async function scrapeBatchUrls(options: {
 // ==========================================
 // 6. sitemap.xml の探索 & 再帰パース
 // ==========================================
+/** サイトマップインデックスの子を、同時に取る数 */
+const SITEMAP_CHILD_CONCURRENCY = 3;
+
 export async function fetchSitemapEntries(
   sitemapUrl: string,
   limit = 200,
@@ -1185,17 +1188,15 @@ export async function fetchSitemapEntries(
         ? parsed.sitemapindex.sitemap
         : [parsed.sitemapindex.sitemap];
 
-      for (const sm of sitemaps) {
-        if (sm.loc) {
-          const subEntries = await fetchSitemapEntries(
-            String(sm.loc).trim(),
-            limit - entries.length,
-            maxDepth,
-            currentDepth + 1,
-          );
-          entries.push(...subEntries);
-          if (entries.length >= limit) return entries.slice(0, limit);
-        }
+      // 子のサイトマップは SITEMAP_CHILD_CONCURRENCY 個ずつ並べて取る。結果は子の並びのまま足し、limit 件で切る（1 つずつ取るときと同じ結果）
+      const childUrls = sitemaps.filter((sm: { loc?: unknown }) => sm.loc).map((sm: { loc?: unknown }) => String(sm.loc).trim());
+      for (let i = 0; i < childUrls.length; i += SITEMAP_CHILD_CONCURRENCY) {
+        const remaining = limit - entries.length;
+        const batch = await Promise.all(
+          childUrls.slice(i, i + SITEMAP_CHILD_CONCURRENCY).map((loc: string) => fetchSitemapEntries(loc, remaining, maxDepth, currentDepth + 1)),
+        );
+        for (const subEntries of batch) entries.push(...subEntries);
+        if (entries.length >= limit) return entries.slice(0, limit);
       }
     }
 
