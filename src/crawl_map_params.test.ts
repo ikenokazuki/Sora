@@ -68,7 +68,13 @@ function startReceiver() {
     while (received.length < n && Date.now() < end) await Bun.sleep(20);
     return received;
   };
-  return { server, url: `http://127.0.0.1:${server.port}/hook`, received, waitFor };
+  /** 最初の 1 件を待ったあと、少し待ってから返す（2 回目以降が遅れて届いても件数に出る） */
+  const waitForOnly = async (settleMs = 500) => {
+    await waitFor();
+    await Bun.sleep(settleMs);
+    return received;
+  };
+  return { server, url: `http://127.0.0.1:${server.port}/hook`, received, waitFor, waitForOnly };
 }
 
 const post = (path: string, payload: unknown) =>
@@ -238,7 +244,7 @@ describe('webhook', () => {
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain('event: done');
-      const got = await receiver.waitFor();
+      const got = await receiver.waitForOnly();
       expect(got.length).toBe(1);
       expect(got[0].event).toBe('scrape.completed');
       expect(got[0].data.count).toBe(2);
@@ -258,10 +264,73 @@ describe('webhook', () => {
     try {
       const res = await post('/crawl', { url: base + '/', maxPages: 2, maxDepth: 1, webhookUrl: receiver.url, noCache: true });
       expect(res.status).toBe(200);
-      const got = await receiver.waitFor();
+      const got = await receiver.waitForOnly();
       expect(got.length).toBe(1);
       expect(got[0].data.count).toBe(2);
     } finally {
+      server.stop(true);
+      receiver.server.stop(true);
+    }
+  });
+});
+
+describe('scrape_batch: webhook の中身は応答と同じ整形後の結果', () => {
+  test('REST の /scrape/batch: 1 回だけ届き、data は応答と同じ（内部の項目は付かない）', async () => {
+    const { server, base } = startSite();
+    const receiver = startReceiver();
+    try {
+      const res = await post('/scrape/batch', { urls: [base + '/a', base + '/b'], webhookUrl: receiver.url, noCache: true });
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as any;
+      expect(json.results[0].quality).toBeUndefined();
+      const got = await receiver.waitForOnly();
+      expect(got.length).toBe(1);
+      expect(got[0].event).toBe('scrape.completed');
+      expect(got[0].data.total).toBe(2);
+      expect(got[0].data.results.map((r: any) => r.url).sort()).toEqual([base + '/a', base + '/b']);
+      // 応答の並びは取得の完了順なので、url で並べてから比べる
+      const byUrl = (a: any, b: any) => a.url.localeCompare(b.url);
+      expect({ ...got[0].data, results: got[0].data.results.sort(byUrl) }).toEqual({ ...json, results: json.results.sort(byUrl) });
+    } finally {
+      server.stop(true);
+      receiver.server.stop(true);
+    }
+  });
+
+  test('verbose: true のときは、応答と同じく整形しない', async () => {
+    const { server, base } = startSite();
+    const receiver = startReceiver();
+    try {
+      const res = await post('/scrape/batch', { urls: [base + '/a'], webhookUrl: receiver.url, verbose: true, noCache: true });
+      const json = (await res.json()) as any;
+      expect(json.results[0].quality).toBeDefined();
+      const got = await receiver.waitForOnly();
+      expect(got.length).toBe(1);
+      expect(got[0].data.results[0].quality).toBe(json.results[0].quality);
+    } finally {
+      server.stop(true);
+      receiver.server.stop(true);
+    }
+  });
+
+  test('MCP の scrape_batch も同じ（1 回だけ、応答と同じ整形後）', async () => {
+    const { server, base } = startSite();
+    const receiver = startReceiver();
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const mcp = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'crawl-map-params', version: '1.0.0' });
+    await mcp.connect(st);
+    await client.connect(ct);
+    try {
+      const out: any = await client.callTool({ name: 'scrape_batch', arguments: { urls: [base + '/a'], webhookUrl: receiver.url, noCache: true } });
+      const json = JSON.parse(out.content[0].text);
+      expect(json.results[0].quality).toBeUndefined();
+      const got = await receiver.waitForOnly();
+      expect(got.length).toBe(1);
+      expect(got[0].data).toEqual(json);
+    } finally {
+      await client.close();
+      await mcp.close();
       server.stop(true);
       receiver.server.stop(true);
     }

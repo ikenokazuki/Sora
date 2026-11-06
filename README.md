@@ -861,6 +861,12 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`、MCP の `scrape_batch`）やサイト巡回（`/crawl`・`/crawl/stream`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。`webhookUrl` は URL の形でなければ 400 です。
 > 
+> 中身はどの Webhook も `{ "event": "scrape.completed", "timestamp": "<ISO 8601>", "data": <下の形> }` で、外側の `event` はどの通知でも `scrape.completed` で、`data` が通知ごとに違います。
+> - `scrape_batch`・`/scrape/batch`: 応答と同じ整形後の結果 `{ total, successful, failed, results: [...], errors: [{ url, error }] }`（`results` の各項目は `/scrape` と同じ整形。`verbose: true` のときは整形しません）。
+> - `/crawl`・`/crawl/stream`: 応答と同じ `{ url, baseUrl, count, totalPages, pages: [...] }`（`pages` の各項目は `/scrape` と同じ整形。`links` は `formats` に `links` を指定したときだけ付きます）。
+> - 差分監視（`watch_check`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
+> - 管理者アラート（`ADMIN_ALERT_WEBHOOK_URL`）: `{ event: "sora.alert.health.degraded", service: "sora", level: "warning", timestamp, details }`。
+> 
 > **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列（`http(s)://` で始まり、空白と `@` を含まないもの）、`socialLinks`・`ogImage`・`twitterHandle` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`extracted` の中の文字列は、URL もほかの文字列と同じくマスクの対象です）。表の見出しが隠したあとにぶつかるときは、2 列目以降に `_2`・`_3` を付けて列を残します。`screenshot` の画像はマスクしません。
 > 
 > **📡 進行状況リアルタイム SSE ストリーミング (`POST /scrape/stream`)**: `start` → `fetch` → `render` → `enrich` → `done` の各ステージ進行イベントをリアルタイムに Server-Sent Events で受信可能です。入力の誤り（`renderJs` と `fastOnly` の同時指定、壊れた `removeSelectors`）は、ストリームを開く前に 400 `INVALID_INPUT` で返します。

@@ -163,7 +163,8 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
   try {
     const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
+    // ?verbose=true も scrapeBatchUrls に渡し、webhook の中身を応答と同じ整形にする
+    const result = await scrapeBatchUrls({ ...parsed.data, verbose, tenantId });
     const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
   } catch (err) {

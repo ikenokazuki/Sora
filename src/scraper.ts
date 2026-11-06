@@ -1136,7 +1136,8 @@ export async function scrapeBatchUrls(options: {
   };
 
   if (webhookUrl) {
-    sendWebhookNotification(webhookUrl, batchResult);
+    // webhook の中身は、応答（REST・MCP）と同じ整形後の結果にする
+    sendWebhookNotification(webhookUrl, { ...batchResult, results: results.map((r) => formatCompactScrapeResult(r, { verbose: scrapeOpts.verbose })) });
   }
 
   return batchResult;
