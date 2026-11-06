@@ -87,8 +87,9 @@ export * from './cache.js';
 
 /** 何も取れなかった統合検索（結果 0 件・no-usable-content）は、取り直せるように短くだけキャッシュする。 */
 const integratedSearchCacheTtl = (response: unknown) => (isUnusableIntegratedSearch(response) ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
-/** 本文を読み取れなかった scrape（contentStatus が unavailable）も、短くだけキャッシュする。 */
-const scrapeCacheTtl = (result: { contentStatus?: string } | null | undefined) => (result?.contentStatus === 'unavailable' ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
+/** 本文を読み取れなかった scrape（contentStatus が unavailable）と、警告の付いた scrape（画像を撮れなかったなど。一時的な失敗のことがある）も、短くだけキャッシュする。 */
+const scrapeCacheTtl = (result: { contentStatus?: string; warnings?: string[] } | null | undefined) =>
+  result?.contentStatus === 'unavailable' || (result?.warnings?.length ?? 0) > 0 ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT;
 export * from './db.js';
 export * from './enrichment.js';
 export * from './browser_engine.js';
@@ -777,6 +778,35 @@ export async function scrapeUrl(options: {
     const tiktokVideo = !wantsPage && parseTikTokVideoUrl(url) !== undefined;
     const wantsScreenshot = formats.includes('screenshot');
     const isForcedBrowser = options.mode === 'browser' || options.renderJs === true || (tiktokVideo && !isFastMode && Boolean(resolveChromiumPath()));
+    const fullPage = options.fullPage ?? true;
+    const renderInBrowser = (message: string) => {
+      try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
+      onProgress?.({ stage: 'render', message });
+      return fetchWithStealthBrowser(
+        url,
+        timeoutMs,
+        options.clipSelector,
+        options.cookies,
+        'networkidle2',
+        wantsScreenshot,
+        fullPage,
+        options.tenantId ?? 'legacy',
+        {
+          isContentReady: (html, finalUrl) => {
+            const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
+              options.selectors, options.removeSelectors, options.stripLinks, options.keepDataImages);
+            return !isRenderStillBlockedOrBlank({
+              html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim(),
+            });
+          },
+          onWait: () => {
+            botRetryCount++;
+            onProgress?.({ stage: 'render', message: 'Waiting for content on the current browser page' });
+          },
+        },
+        options.headers,
+      );
+    };
 
     if (!isForcedBrowser) {
       onProgress?.({ stage: 'fetch', message: 'Fetching via safe HTTP client' });
@@ -847,8 +877,8 @@ export async function scrapeUrl(options: {
           headers: Object.fromEntries(response.headers.entries()),
         }) || (parsed.quality !== undefined && parsed.quality < 45));
       if (isSpaOrBlank) botUpgradeCount++;
-      // formats に screenshot があれば、auto でもブラウザに切り替える（静的に取れた本文は、ブラウザが失敗したときの代わりに残す。
-      // fast を明示したとき、Chromium がないとき、PDF・画像などのファイルは切り替えず、finalizeScrapeResult が警告を付ける）
+      // formats に screenshot があれば、auto でもブラウザで画像を撮る（fast を明示したとき、Chromium がないとき、
+      // PDF・画像などのファイルは撮らず、finalizeScrapeResult が警告を付ける）
       const screenshotNeedsBrowser = wantsScreenshot && !isFastMode && Boolean(chromePath);
 
       // Late escalation (spec section 52): recall extraction on the static
@@ -868,49 +898,54 @@ export async function scrapeUrl(options: {
         try { incrementSecurityCounter('sora_browser_recall_saved_total'); } catch {}
       }
 
-      if ((!isSpaOrBlank || recallSaved) && !screenshotNeedsBrowser) {
-        result = {
-          url: finalUrl,
-          title: parsed.title,
-          content: parsed.markdown,
-          contentStatus: parsed.contentStatus,
-          isTruncated: parsed.isTruncated,
-          contentType: 'text/html',
-          source: 'web',
-          renderedWithBrowser: false,
-          ogImage: parsed.ogImage,
-          description: parsed.description,
-          publishedTime: parsed.publishedTime,
-          author: parsed.author,
-          siteName: parsed.siteName,
-          twitterHandle: parsed.twitterHandle,
-          socialLinks: parsed.socialLinks,
-          availability: parsed.availability,
-          price: parsed.price,
-          priceCurrency: parsed.priceCurrency,
-          brand: parsed.brand,
-          sku: parsed.sku,
-          links: formats.includes('links') ? parsed.links : undefined,
-          images: formats.includes('images') ? parsed.images : undefined,
-          jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
-          tables: formats.includes('tables') ? parsed.tables : undefined,
-          events: parsed.events,
-          breadcrumb: parsed.breadcrumb,
-          extracted: parsed.extracted,
-          media: parsed.media,
-          html: formats.includes('html') ? parsed.html : undefined,
-          rawHtml: formats.includes('rawHtml') ? html : undefined,
-          estimatedTokens: parsed.estimatedTokens,
-          quality: parsed.quality,
-          completeness: parsed.completeness,
-          pageType: parsed.pageType,
-          qualityReasons: parsed.qualityReasons,
-          missingFields: parsed.missingFields,
-          evidence: parsed.evidence,
-        };
+      const staticResult: ScrapeResult = {
+        url: finalUrl,
+        title: parsed.title,
+        content: parsed.markdown,
+        contentStatus: parsed.contentStatus,
+        isTruncated: parsed.isTruncated,
+        contentType: 'text/html',
+        source: 'web',
+        renderedWithBrowser: false,
+        ogImage: parsed.ogImage,
+        description: parsed.description,
+        publishedTime: parsed.publishedTime,
+        author: parsed.author,
+        siteName: parsed.siteName,
+        twitterHandle: parsed.twitterHandle,
+        socialLinks: parsed.socialLinks,
+        availability: parsed.availability,
+        price: parsed.price,
+        priceCurrency: parsed.priceCurrency,
+        brand: parsed.brand,
+        sku: parsed.sku,
+        links: formats.includes('links') ? parsed.links : undefined,
+        images: formats.includes('images') ? parsed.images : undefined,
+        jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
+        tables: formats.includes('tables') ? parsed.tables : undefined,
+        events: parsed.events,
+        breadcrumb: parsed.breadcrumb,
+        extracted: parsed.extracted,
+        media: parsed.media,
+        html: formats.includes('html') ? parsed.html : undefined,
+        rawHtml: formats.includes('rawHtml') ? html : undefined,
+        estimatedTokens: parsed.estimatedTokens,
+        quality: parsed.quality,
+        completeness: parsed.completeness,
+        pageType: parsed.pageType,
+        qualityReasons: parsed.qualityReasons,
+        missingFields: parsed.missingFields,
+        evidence: parsed.evidence,
+      };
 
+      if (!isSpaOrBlank || recallSaved) {
+        // 本文は静的な取得で足りる。画像のためだけにブラウザを使うときも、本文と HTTP の状態は静的な取得のまま、ブラウザからは画像だけを取る
+        // （ボット対策のページでは、ブラウザだけが 403 の画面に飛ばされ、取れた本文が「Access Denied」に替わる）。撮れなければ警告が付く
+        if (screenshotNeedsBrowser) {
+          staticResult.screenshot = (await renderInBrowser('Taking a screenshot via Stealth Chromium').catch(() => undefined))?.screenshot;
+        }
         onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
-        result = markHttpError(await finalizeScrapeResult(result, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
+        result = markHttpError(await finalizeScrapeResult(staticResult, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
 
         if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
@@ -921,78 +956,14 @@ export async function scrapeUrl(options: {
       if (parsed.markdown && parsed.markdown.trim().length >= 50) {
         initialHttpStatus = response.status;
         initialHttpFull = parsed.fullMarkdown;
-        initialHttpResult = {
-          url: finalUrl,
-          title: parsed.title,
-          content: parsed.markdown,
-          contentStatus: parsed.contentStatus,
-          isTruncated: parsed.isTruncated,
-          contentType: 'text/html',
-          source: 'web',
-          renderedWithBrowser: false,
-          ogImage: parsed.ogImage,
-          description: parsed.description,
-          publishedTime: parsed.publishedTime,
-          author: parsed.author,
-          siteName: parsed.siteName,
-          twitterHandle: parsed.twitterHandle,
-          socialLinks: parsed.socialLinks,
-          availability: parsed.availability,
-          price: parsed.price,
-          priceCurrency: parsed.priceCurrency,
-          brand: parsed.brand,
-          sku: parsed.sku,
-          links: formats.includes('links') ? parsed.links : undefined,
-          images: formats.includes('images') ? parsed.images : undefined,
-          jsonLd: formats.includes('jsonLd') ? parsed.jsonLd : undefined,
-          tables: formats.includes('tables') ? parsed.tables : undefined,
-          events: parsed.events,
-          breadcrumb: parsed.breadcrumb,
-          extracted: parsed.extracted,
-          media: parsed.media,
-          html: formats.includes('html') ? parsed.html : undefined,
-          rawHtml: formats.includes('rawHtml') ? html : undefined,
-          estimatedTokens: parsed.estimatedTokens,
-          quality: parsed.quality,
-          completeness: parsed.completeness,
-          pageType: parsed.pageType,
-          qualityReasons: parsed.qualityReasons,
-          missingFields: parsed.missingFields,
-          evidence: parsed.evidence,
-        };
+        initialHttpResult = staticResult;
       }
     }
 
-    try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
-    onProgress?.({ stage: 'render', message: 'Rendering SPA via Stealth Chromium' });
-    const fullPage = options.fullPage ?? true;
-    let browserRes: { html: string; title: string; screenshot?: string; finalUrl: string; status?: number };
+    let browserRes: Awaited<ReturnType<typeof renderInBrowser>>;
 
     try {
-      browserRes = await fetchWithStealthBrowser(
-        url,
-        timeoutMs,
-        options.clipSelector,
-        options.cookies,
-        'networkidle2',
-        wantsScreenshot,
-        fullPage,
-        options.tenantId ?? 'legacy',
-        {
-          isContentReady: (html, finalUrl) => {
-            const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
-              options.selectors, options.removeSelectors, options.stripLinks, options.keepDataImages);
-            return !isRenderStillBlockedOrBlank({
-              html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim(),
-            });
-          },
-          onWait: () => {
-            botRetryCount++;
-            onProgress?.({ stage: 'render', message: 'Waiting for content on the current browser page' });
-          },
-        },
-        options.headers,
-      );
+      browserRes = await renderInBrowser('Rendering SPA via Stealth Chromium');
     } catch (browserErr) {
       // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
       if (initialHttpResult) {

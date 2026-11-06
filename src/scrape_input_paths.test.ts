@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import { resolveChromiumPath } from './browser_engine.js';
 import * as browserStealth from './browser_stealth.js';
+import * as cache from './cache.js';
 import { scrapeBatchUrls, scrapeUrl } from './scraper.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
@@ -76,6 +77,13 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
         if (path === '/clip') {
           return new Response(`<!doctype html><html><body><p>${filler}</p><div id="box" style="width:200px;height:100px;background:#c00"></div></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
+        // 静的な取得では本文が取れ、ブラウザでは JavaScript で 403 の画面に飛ばされる（ボット対策のページの形）
+        if (path === '/bounce') {
+          return new Response(`<!doctype html><html><head><title>案内</title><script>location.replace('/blocked')</script></head><body><main><h1>案内</h1><p>${filler}</p></main></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+        }
+        if (path === '/blocked') {
+          return new Response('<!doctype html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1><p>You do not have permission to access this page.</p></body></html>', { status: 403, headers: { 'content-type': 'text/html; charset=utf-8' } });
+        }
         if (path === '/with-script') {
           return new Response(`<!doctype html><html><head><title>t</title></head><body><main><p>${filler}</p><script src="http://127.0.0.1:${other.port}/other.js"></script></main></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
         }
@@ -135,17 +143,44 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
     const chromium = resolveChromiumPath();
     const browserTest = chromium ? test : test.skip;
 
-    browserTest('既定の auto で静的に取れるページでも、ブラウザで画像を取る', async () => {
+    browserTest('既定の auto で静的に取れるページでも、ブラウザで画像を取る（本文は静的な取得のまま）', async () => {
       const result = await scrapeUrl({ url: `${base()}/shot`, formats: ['markdown', 'screenshot'], noCache: true });
-      expect(result.renderedWithBrowser).toBe(true);
+      expect(result.renderedWithBrowser).toBe(false);
+      expect(result.content).toContain('静的に取れる、十分に長い本文の文です。');
       expect(result.screenshot?.length).toBeGreaterThan(100);
       expect(result.warnings).toBeUndefined();
     }, 60_000);
 
     browserTest('scrape_batch も同じ', async () => {
       const batch = await scrapeBatchUrls({ urls: [`${base()}/shot-batch`], formats: ['screenshot'], noCache: true });
-      expect(batch.results[0].renderedWithBrowser).toBe(true);
       expect(batch.results[0].screenshot?.length).toBeGreaterThan(100);
+    }, 60_000);
+
+    browserTest('ブラウザだけが 403 の画面に飛ばされても、本文と HTTP の状態は静的な取得のまま（ブラウザからは画像だけ）', async () => {
+      const plain = await scrapeUrl({ url: `${base()}/bounce`, formats: ['markdown'], noCache: true });
+      expect(plain.content).toContain('静的に取れる、十分に長い本文の文です。');
+      const shot = await scrapeUrl({ url: `${base()}/bounce`, formats: ['markdown', 'screenshot'], noCache: true });
+      expect(shot.content).toBe(plain.content);
+      expect(shot.title).toBe(plain.title);
+      expect(shot.contentStatus).toBe(plain.contentStatus);
+      expect(shot.contentStatus).not.toBe('unavailable');
+      expect(shot.renderedWithBrowser).toBe(false);
+      expect(shot.screenshot?.length).toBeGreaterThan(100);
+      expect(shot.warnings).toBeUndefined();
+    }, 60_000);
+
+    browserTest('画像を撮れず警告が付いた結果は、短い時間だけキャッシュする（一時的な失敗を 30 分残さない）', async () => {
+      const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+      const setSpy = spyOn(cache, 'setToCache');
+      try {
+        const url = `${base()}/shot-ttl-${Date.now()}`;
+        const result = await scrapeUrl({ url, formats: ['markdown', 'screenshot'] });
+        expect(result.warnings?.join('\n')).toContain('screenshot');
+        expect(setSpy.mock.calls.filter(([key]) => String(key).startsWith(`scrape:v10:${url}:`)).map(([, , ttl]) => ttl)).toEqual([cache.CACHE_TTL_EMPTY]);
+      } finally {
+        spy.mockRestore();
+        setSpy.mockRestore();
+      }
     }, 60_000);
 
     browserTest('clipSelector は、screenshot があるとき要素だけの画像を返す（auto でもブラウザで撮る）', async () => {
@@ -247,6 +282,17 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       const first = seen.find((entry) => entry.path === '/redirect');
       expect(first?.headers.get('authorization')).toBe('Bearer secret-token');
       expect(first?.headers.get('x-api-key')).toBe('k-1');
+    }, 60_000);
+
+    browserTest('User-Agent はブラウザでは送らない（navigator.userAgent と食い違うため）。静的な取得では送る', async () => {
+      seen.length = 0;
+      const ua = { 'User-Agent': 'caller-agent/1.0', 'X-Test-Header': 'sora-1' };
+      await scrapeUrl({ url: `${base()}/ua-browser`, mode: 'browser', headers: ua, noCache: true });
+      const page = seen.find((entry) => entry.path === '/ua-browser');
+      expect(page?.headers.get('x-test-header')).toBe('sora-1');
+      expect(page?.headers.get('user-agent')).not.toBe('caller-agent/1.0');
+      await scrapeUrl({ url: `${base()}/ua-static`, mode: 'fast', headers: ua, noCache: true });
+      expect(seen.find((entry) => entry.path === '/ua-static')?.headers.get('user-agent')).toBe('caller-agent/1.0');
     }, 60_000);
 
     browserTest('headers を渡さない取得は、今までどおり（Accept-Language は日本語）', async () => {

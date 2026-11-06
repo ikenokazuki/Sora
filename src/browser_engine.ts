@@ -655,13 +655,15 @@ export async function setupPageSecurity(
   blockMedia = false,
   /**
    * 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求には全部付ける。
-   * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）
+   * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）。
+   * User-Agent は付けない（navigator.userAgent と sec-ch-ua はステルスの値のままなので、要求のヘッダーだけ替えると食い違い、ボット対策に見分けられる）
    */
   scopedHeaders?: { origin: string; headers: Record<string, string> },
 ): Promise<void> {
   const lowercased = (headers: [string, string][]) => Object.fromEntries(headers.map(([name, value]) => [name.toLowerCase(), value]));
-  const allHeaders = scopedHeaders && lowercased(Object.entries(scopedHeaders.headers));
-  const navigationHeaders = scopedHeaders && lowercased(Object.entries(scopedHeaders.headers).filter(([name]) => !isSensitiveHeaderName(name)));
+  const callerHeaders = Object.entries(scopedHeaders?.headers ?? {}).filter(([name]) => name.toLowerCase() !== 'user-agent');
+  const allHeaders = scopedHeaders && lowercased(callerHeaders);
+  const navigationHeaders = scopedHeaders && lowercased(callerHeaders.filter(([name]) => !isSensitiveHeaderName(name)));
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
