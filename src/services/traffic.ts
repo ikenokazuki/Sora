@@ -360,7 +360,6 @@ const AIRPORT_MAP: Record<string, { id: number; name: string; code: string }> = 
 // 入力が丸ごとこれと同じときだけ当てる別名。東京は羽田（省いたときの既定）で、成田は名前で指定してもらう。長い入力の中の「東京」「tokyo」（"tokyo narita"・東京駅）では当てない
 const EXACT_ONLY_ALIASES = new Set(['東京', 'tokyo']);
 
-
 /** 空港名またはコードから空港情報を解決 */
 export function resolveAirport(airportInput?: string): { id: number; name: string; code: string } {
   // 全角の英数字・半角のカナもそろえる（"ＨＮＤ"・"ｾﾝﾄﾚｱ"）

@@ -194,7 +194,7 @@ describe('search_diet_minutes は keyword・speaker・nameOfMeeting のどれか
     }
     await withClient(async (client) => {
       const tool = (await client.listTools()).tools.find((t) => t.name === 'search_diet_minutes');
-      const props = (tool?.inputSchema as any).properties;
+      const props = (tool?.inputSchema as any)?.properties;
       for (const name of ['keyword', 'speaker', 'nameOfMeeting']) expect(props[name].description, `MCP ${name}`).toContain(rule);
       for (const name of ['nameOfHouse', 'from', 'until', 'limit']) expect(props[name].description, `MCP ${name}`).not.toContain(rule);
     });
