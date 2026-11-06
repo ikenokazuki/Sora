@@ -60,14 +60,15 @@ export function formatScale(scale: number): string {
 }
 
 /**
- * 気象庁 警報・注意報の番号 → 種類の名前と段階（20 注意報・30 警報・40 危険警報・50 特別警報）。
+ * 気象庁 警報・注意報の番号 → 種類の名前、段階（20 注意報・30 警報・40 危険警報・50 特別警報）と、気象庁のページが付ける
+ * 「レベル２」〜「レベル５」の数（大雨・土砂災害・高潮だけ）。
  * 気象庁の警報のページ（https://www.jma.go.jp/bosai/warning/、2026-11-06）のスクリプトの code2WarningInfo の表から。
  * 氾濫の警報は別のデータ（flood）にあり、ここには無い
  */
-const WARNING_KINDS: Record<string, [string, number]> = {
-  '33': ['大雨', 50], '43': ['大雨', 40], '03': ['大雨', 30], '10': ['大雨', 20],
-  '39': ['土砂災害', 50], '49': ['土砂災害', 40], '09': ['土砂災害', 30], '29': ['土砂災害', 20],
-  '38': ['高潮', 50], '48': ['高潮', 40], '08': ['高潮', 30], '19': ['高潮', 20],
+const WARNING_KINDS: Record<string, [name: string, grade: number, alertLevel?: number]> = {
+  '33': ['大雨', 50, 5], '43': ['大雨', 40, 4], '03': ['大雨', 30, 3], '10': ['大雨', 20, 2],
+  '39': ['土砂災害', 50, 5], '49': ['土砂災害', 40, 4], '09': ['土砂災害', 30, 3], '29': ['土砂災害', 20, 2],
+  '38': ['高潮', 50, 5], '48': ['高潮', 40, 4], '08': ['高潮', 30, 3], '19': ['高潮', 20, 2],
   '35': ['暴風', 50], '05': ['暴風', 30], '15': ['強風', 20],
   '32': ['暴風雪', 50], '02': ['暴風雪', 30], '13': ['風雪', 20],
   '36': ['大雪', 50], '06': ['大雪', 30], '12': ['大雪', 20],
@@ -75,10 +76,10 @@ const WARNING_KINDS: Record<string, [string, number]> = {
   '14': ['雷', 20], '17': ['融雪', 20], '20': ['濃霧', 20], '21': ['乾燥', 20], '22': ['なだれ', 20],
   '23': ['低温', 20], '24': ['霜', 20], '25': ['着氷', 20], '26': ['着雪', 20],
 };
-/** 名前は気象庁のページと同じく、種類の名前に段階の名前をつなぐ（例: 大雨危険警報） */
-const LEVEL_NAMES: Record<number, string> = { 20: '注意報', 30: '警報', 40: '危険警報', 50: '特別警報' };
-/** 気象庁のページが「レベル２」〜「レベル５」を付ける種類 */
-const LEVELED_KINDS = new Set(['大雨', '土砂災害', '高潮']);
+/** 段階 → 名前に足す段階の名前（気象庁のページと同じく種類の名前につなぐ。例: 大雨危険警報）と、入れる欄 */
+const GRADES: Record<number, [suffix: string, level: WarningItem['level']]> = {
+  20: ['注意報', 'advisory'], 30: ['警報', 'warning'], 40: ['危険警報', 'warning'], 50: ['特別警報', 'special'],
+};
 /** 今出ていない状態（「発表警報・注意報はなし」は番号も無い） */
 const INACTIVE_STATUSES = new Set(['解除', '発表警報・注意報はなし']);
 
@@ -186,9 +187,7 @@ export async function fetchWeatherWarnings(options: {
   const times: string[] = used.map((r) => r.time).filter((t) => typeof t === 'string' && !Number.isNaN(Date.parse(t)));
   const reportTime = times.length > 0 ? times.reduce((latest, t) => (Date.parse(t) > Date.parse(latest) ? t : latest)) : new Date().toISOString();
 
-  const specialWarnings: WarningItem[] = [];
-  const warnings: WarningItem[] = [];
-  const advisories: WarningItem[] = [];
+  const lists: Record<WarningItem['level'], WarningItem[]> = { special: [], warning: [], advisory: [] };
   // 区域や予報区を合わせるとき、同じ警報（番号と状態が同じ）は 1 つにする
   const seen = new Set<string>();
 
@@ -198,17 +197,12 @@ export async function fetchWeatherWarnings(options: {
     const key = `${kind?.code}:${status}`;
     if (!meta || INACTIVE_STATUSES.has(status) || seen.has(key)) continue;
     seen.add(key);
-    const [kindName, level] = meta;
-    const item: WarningItem = {
-      code: kind.code,
-      name: kindName + LEVEL_NAMES[level],
-      level: level === 50 ? 'special' : level === 20 ? 'advisory' : 'warning',
-      ...(LEVELED_KINDS.has(kindName) ? { alertLevel: level / 10 } : {}),
-      status,
-    };
-    (level === 50 ? specialWarnings : level === 20 ? advisories : warnings).push(item);
+    const [kindName, grade, alertLevel] = meta;
+    const [suffix, level] = GRADES[grade];
+    lists[level].push({ code: kind.code, name: kindName + suffix, level, ...(alertLevel ? { alertLevel } : {}), status });
   }
 
+  const { special: specialWarnings, warning: warnings, advisory: advisories } = lists;
   const content = {
     reportTime,
     specialWarnings,
