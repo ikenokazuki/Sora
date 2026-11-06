@@ -426,6 +426,14 @@ describe('checkCpscCertificate on a code the CPSC list does not carry', () => {
     expect(res.disclaimerCodeHint).toContain('A');
   });
 
+  it('says "CPSC公式に個別確認" once, in nextActions, and keeps the other fields to their own point', async () => {
+    const res = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
+    expect(JSON.stringify(res).split('個別確認').length - 1).toBe(1);
+    expect(res.nextActions.join('')).toContain('CPSC公式に個別確認');
+    expect(res.missingInfo.join('')).toContain('証明書不要を意味しません');
+    expect(res.impactExplanation).toContain('12歳以下');
+  });
+
   it('gives the same answer when the removed productCategory and description are sent anyway', async () => {
     const plain = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
     const extra = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult', productCategory: 'toy', description: 'a toy' } as never);

@@ -218,7 +218,7 @@ export async function checkCpscCertificate(options: {
     applicableRegulations: [],
     disclaimerCodeHint: 'A (Not Regulated by CPSC)',
     missingInfo: [
-      `HTSコード "${htsCode}" はCPSC公式HTSリストに掲載がありません。ただしこのリストは非網羅的であり、掲載が無いことは証明書不要を意味しません。CPSC公式に個別確認してください。`,
+      `HTSコード "${htsCode}" はCPSC公式HTSリストに掲載がありません。ただしこのリストは非網羅的であり、掲載が無いことは証明書不要を意味しません。`,
     ],
     nextActions: [
       'CPSC公式に個別確認してください。非規制品目であれば、ACE通関エラー防止のため免責コード（Disclaimer）での申告を通関業者へ指示してください。',
@@ -226,7 +226,7 @@ export async function checkCpscCertificate(options: {
     disclaimer: DISCLAIMER,
     inputCompleteness: 'complete',
     impactExplanation:
-      'CPSCのeFiling重点リストには掲載がありませんが、12歳以下の子供向け製品全般や特定安全基準品目はCPSC証明書が必要です。このリストだけでは判定できないため、CPSC公式または専門家に個別確認してください。',
+      'CPSCのeFiling重点リストには掲載がありませんが、12歳以下の子供向け製品全般や特定安全基準品目はCPSC証明書が必要です。このリストだけでは判定できません。',
   };
 }
 
