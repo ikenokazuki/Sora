@@ -378,7 +378,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 | `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) 任意引数 `detail`（`names` / `summary` / `schema`）で返す詳しさを、`activate:false` で有効化せずに調べるだけにできます。 |
 | `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します（`results` は入力の順ではなく、取得が終わった順）。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 | `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000)。`since`・`until` で絞ってから件数で切る<br>- `since` / `until` (string, 任意): サイトマップの `lastmod` で絞る日付・日時。`lastmod` の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない |
-| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
+| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `formats` (string[], 任意): 取得する形式 (デフォルト: `["markdown"]`)。`screenshot` を指定すると各ページ（最大 50）に全画面の画像が付き、応答が大きくなります<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 ---
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
@@ -842,7 +842,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > [!NOTE]
 > **🪶 Compact Response Mode & `verbose: true`**:
 > v2.9.0 より、LLM のコンテキスト窓を節約するため、デフォルトでは内部評価メトリクス（`quality`, `completeness`, `qualityReasons`, `missingFields`, `evidence`, `renderedWithBrowser` 等）を自動パージした軽量レスポンスを返します。
-> デバッグや品質検証などで全内部メトリクスが必要な場合は、リクエストに `"verbose": true`（または `/search?verbose=true`）を指定してください。
+> デバッグや品質検証などで全内部メトリクスが必要な場合は、リクエストに `"verbose": true`（または `/search?verbose=true`。`/scrape`・`/scrape/stream`・`/scrape/batch` も `?verbose=true` に対応し、本文の `verbose` があればそちらが優先）を指定してください。`/scrape`・`/scrape/stream`・`/scrape/batch` の本文で `null` の項目は未指定として扱います（必須の `url`・`urls` が `null` なら 400）。
 
 > [!NOTE]
 > **🧹 Base64 インライン画像の自動置換・パージ & `keepDataImages: true`**:
@@ -1104,7 +1104,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   "includeSubdomains": false
 }
 ```
-- `since` / `until`: サイトマップの `lastmod` で絞ります（`lastmod` の無い URL は常に残る。サイトマップが無く、リンクをたどる切り替えのときは効かない）。日付で絞ってから `limit` 件で切ります（日付を指定したときに読むサイトマップは先頭 5,000 件まで）。サイトマップインデックスの子は 3 つずつ並べて取ります。
+- `since` / `until`: サイトマップの `lastmod` で絞ります（`lastmod` の無い URL は常に残る。サイトマップが無く、リンクをたどる切り替えのときは効かない）。日付で絞ってから `limit` 件で切ります（日付を指定したときに読むサイトマップは先頭 5,000 件まで）。サイトマップインデックスの子は、先頭の 1 つを先に取り、足りなければ残りを 3 つずつ並べて取ります。
 - `includeSubdomains`・`timeoutMs`: サイトマップが無く、ページ内のリンクをたどる切り替えのときだけ効きます（サイトマップ・robots.txt の取得は固定の 10 秒・5 秒）。
 - 範囲外の値（`limit` 0・1001、`timeoutMs` 0・120001 など）や型の違うものは 400 `INVALID_INPUT` です。`null` の項目は未指定として扱います。
 
