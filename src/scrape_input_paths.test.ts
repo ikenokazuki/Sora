@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import { resolveChromiumPath } from './browser_engine.js';
 import * as browserStealth from './browser_stealth.js';
 import * as cache from './cache.js';
+import * as scraper from './scraper.js';
 import { scrapeBatchUrls, scrapeUrl } from './scraper.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
@@ -256,6 +257,60 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       const result = await scrapeUrl({ url: `${base()}/shot-fast`, mode: 'fast', noCache: true });
       expect(result.warnings).toBeUndefined();
       expect('warnings' in formatCompactScrapeResult(result)).toBe(false);
+    });
+  });
+
+  describe('REST: ?verbose=true と null の項目（/scrape・/scrape/stream・/scrape/batch で同じ扱い）', () => {
+    const post = (path: string, body: unknown) => scrapeRoutes.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+    test('?verbose=true は、本文の verbose が無いとき scrapeUrl・scrapeBatchUrls に verbose: true で渡る（本文の verbose が優先）', async () => {
+      const urlSpy = spyOn(scraper, 'scrapeUrl');
+      const batchSpy = spyOn(scraper, 'scrapeBatchUrls');
+      try {
+        const url = `${base()}/verbose-query`;
+        for (const path of ['/scrape', '/scrape/stream']) {
+          urlSpy.mockClear();
+          const res = await post(`${path}?verbose=true`, { url, mode: 'fast', noCache: true });
+          expect(res.status, path).toBe(200);
+          await res.text();
+          expect(urlSpy.mock.calls[0][0].verbose, path).toBe(true);
+
+          urlSpy.mockClear();
+          await (await post(path, { url, mode: 'fast', noCache: true })).text();
+          expect(urlSpy.mock.calls[0][0].verbose, `${path} クエリなし`).toBeFalsy();
+
+          urlSpy.mockClear();
+          await (await post(`${path}?verbose=true`, { url, mode: 'fast', verbose: false, noCache: true })).text();
+          expect(urlSpy.mock.calls[0][0].verbose, `${path} 本文が優先`).toBe(false);
+        }
+        const batch = await post('/scrape/batch?verbose=true', { urls: [url], mode: 'fast', noCache: true });
+        expect(batch.status).toBe(200);
+        expect(batchSpy.mock.calls[0][0].verbose).toBe(true);
+      } finally {
+        urlSpy.mockRestore();
+        batchSpy.mockRestore();
+      }
+    });
+
+    test('/scrape: null の項目は未指定として扱う（必須の url が null なら 400）', async () => {
+      const ok = await post('/scrape', { url: `${base()}/null-scrape`, mode: 'fast', maxChars: null, query: null, formats: null, headers: null, noCache: null });
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as any).content).toContain('静的に取れる');
+      expect((await post('/scrape', { url: null })).status).toBe(400);
+    });
+
+    test('/scrape/stream: null の項目は未指定として扱う（必須の url が null なら 400）', async () => {
+      const ok = await post('/scrape/stream', { url: `${base()}/null-stream`, mode: 'fast', maxChars: null, query: null, formats: null, noCache: null });
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toContain('event: done');
+      expect((await post('/scrape/stream', { url: null })).status).toBe(400);
+    });
+
+    test('/scrape/batch: null の項目は未指定として扱う（必須の urls が null なら 400）', async () => {
+      const ok = await post('/scrape/batch', { urls: [`${base()}/null-batch`], mode: 'fast', maxChars: null, concurrency: null, webhookUrl: null, formats: null, noCache: null });
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as any).successful).toBe(1);
+      expect((await post('/scrape/batch', { urls: null })).status).toBe(400);
     });
   });
 

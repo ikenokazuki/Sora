@@ -29,6 +29,11 @@ function classifyFetchError(msg: string, fallbackCode: string) {
   return { code, status: status as 403 | 408 | 500, retryable: !isSecurity };
 }
 
+/** verbose は、本文の指定を優先し、無ければ ?verbose=true を使う（/scrape・/scrape/stream・/scrape/batch で同じ） */
+function resolveVerbose(c: Context, bodyVerbose: boolean | undefined): boolean {
+  return bodyVerbose ?? c.req.query('verbose') === 'true';
+}
+
 /** url を必須とする JSON ボディを読む。JSON が不正、または url が http(s) の URL として読めなければ 400 を返す。 */
 async function readUrlRequestBody(
   c: Context,
@@ -79,7 +84,7 @@ scrapeRoutes.post('/scrape', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  const parsed = ScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
@@ -87,9 +92,9 @@ scrapeRoutes.post('/scrape', async (c) => {
   }
 
   try {
-    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
+    const verbose = resolveVerbose(c, parsed.data.verbose);
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await scrapeUrl({ ...parsed.data, tenantId });
+    const result = await scrapeUrl({ ...parsed.data, verbose, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
     const msg = errorMessage(err) || 'Scrape failed';
@@ -108,7 +113,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  const parsed = ScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
@@ -126,6 +131,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     try {
       await scrapeUrl({
         ...parsed.data,
+        verbose: resolveVerbose(c, parsed.data.verbose),
         tenantId: c.get('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
           await stream.writeSSE({
@@ -155,7 +161,7 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = BatchScrapeRequestSchema.safeParse(rawBody);
+  const parsed = BatchScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue && issue.path[0] !== 'urls' ? `${issue.path.join('.')}: ${issue.message}` : 'urls must be a non-empty array of URLs (max: 20)';
@@ -163,7 +169,7 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
   }
 
   try {
-    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
+    const verbose = resolveVerbose(c, parsed.data.verbose);
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
     // ?verbose=true も scrapeBatchUrls に渡し、webhook の中身を応答と同じ整形にする
     const result = await scrapeBatchUrls({ ...parsed.data, verbose, tenantId });
