@@ -503,4 +503,24 @@ describe('get_elevation の緯度・経度の範囲', () => {
       await server.close();
     }
   });
+
+  it('MCP で範囲外を渡して呼ぶと拒まれ、標高の取得に進まない', async () => {
+    const calls = stubFetch(() => undefined);
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'elevation-range-call', version: '1.0.0' });
+    await server.connect(st);
+    await client.connect(ct);
+    try {
+      for (const args of [{ lat: 999, lon: 999 }, { lat: 35.68, lon: 999 }, { lat: -91, lon: 139.76 }]) {
+        const out = await client.callTool({ name: 'get_elevation', arguments: args });
+        expect(out.isError).toBe(true);
+        expect((out.content as Array<{ text: string }>)[0].text).toMatch(/Input validation error/);
+      }
+      expect(calls).toEqual([]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });

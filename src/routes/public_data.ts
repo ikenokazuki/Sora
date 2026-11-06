@@ -34,8 +34,13 @@ import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
 
-/** クエリの数。空なら省略、数でなければ NaN にしてスキーマで 400 にする */
-const strictQueryNumber = (v: string | undefined): number | undefined => (v === undefined || v === '' ? undefined : Number(v));
+/** クエリの数。空なら省略。数でないものは、strict なら NaN にしてスキーマで 400 にし、そうでなければ省略にする */
+const queryNumber = (c: Context, key: string, strict = false): number | undefined => {
+  const v = c.req.query(key);
+  if (v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return strict || Number.isFinite(n) ? n : undefined;
+};
 
 // 天気予報。POST・GET とも MCP と同じスキーマで確かめる
 async function weatherResponse(c: Context, input: unknown) {
@@ -47,13 +52,13 @@ async function weatherResponse(c: Context, input: unknown) {
     return c.json(await fetchWeatherForecast(parsed.data));
   } catch (err) {
     if (err instanceof AreaInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
+    return formatError(c, errorMessage(err) || 'Weather forecast failed', 'WEATHER_ERROR', 500);
   }
 }
 
 const weatherQuery = (c: Context, city: string | undefined) => ({
   city,
-  days: strictQueryNumber(c.req.query('days')),
+  days: queryNumber(c, 'days', true),
   noCache: c.req.query('noCache') === 'true',
 });
 
@@ -283,8 +288,8 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
 publicDataRoutes.get('/geo/elevation', async (c) => {
   const parsed = ElevationRequestSchema.safeParse({
     address: c.req.query('address') || c.req.query('q'),
-    lat: strictQueryNumber(c.req.query('lat')),
-    lon: strictQueryNumber(c.req.query('lon')),
+    lat: queryNumber(c, 'lat', true),
+    lon: queryNumber(c, 'lon', true),
     noCache: c.req.query('noCache') === 'true' || c.req.query('noCache') === '1',
   });
   if (!parsed.success) {
@@ -322,20 +327,14 @@ publicDataRoutes.post('/geo/poi', async (c) => {
 });
 
 publicDataRoutes.get('/geo/poi', async (c) => {
-  const num = (key: string): number | undefined => {
-    const v = c.req.query(key);
-    if (v === undefined || v === '') return undefined;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
-  };
   const parsed = PoiSearchRequestSchema.safeParse({
     query: c.req.query('query') ?? c.req.query('q'),
-    lat: num('lat'),
-    lon: num('lon'),
-    radiusMeters: num('radiusMeters') ?? num('radius'),
+    lat: queryNumber(c, 'lat'),
+    lon: queryNumber(c, 'lon'),
+    radiusMeters: queryNumber(c, 'radiusMeters') ?? queryNumber(c, 'radius'),
     center: c.req.query('center'),
     bbox: c.req.query('bbox'),
-    limit: num('limit'),
+    limit: queryNumber(c, 'limit'),
     noCache: c.req.query('noCache') === 'true',
     withAddress: c.req.query('withAddress') === 'true' ? true : undefined,
   });
@@ -362,13 +361,6 @@ async function addressErrorResponse(c: Context, err: unknown) {
   if (err instanceof AddressUnavailableError) return formatError(c, message, 'ADDRESS_DATA_UNAVAILABLE', 502, !err.blocked);
   return formatError(c, message, 'GEO_ERROR', 500);
 }
-
-const queryNumber = (c: Context, key: string): number | undefined => {
-  const v = c.req.query(key);
-  if (v === undefined || v === '') return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-};
 
 async function readJsonBody(c: Context): Promise<unknown> {
   try {

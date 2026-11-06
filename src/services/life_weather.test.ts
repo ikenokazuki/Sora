@@ -286,6 +286,19 @@ describe('REST /weather の入力の検証', () => {
     expect((await app.request('/weather/%E6%9D%B1%E4%BA%AC?days=2&noCache=true')).status).toBe(200);
   });
 
+  it('気象庁の取得に失敗したら、ほかのルートと同じエラーの形の 500（POST・GET）', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('unavailable', { status: 503 })) as unknown as typeof fetch;
+    try {
+      for (const res of [await post({ city: '東京', noCache: true }), await app.request('/weather/%E6%9D%B1%E4%BA%AC?noCache=true')]) {
+        expect(res.status).toBe(500);
+        expect(await res.json()).toEqual({ error: 'JMA Weather API returned HTTP 503', code: 'WEATHER_ERROR', status: 500, retryable: false });
+      }
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('知らない地名は 400 で返す', async () => {
     const res = await post({ city: 'ほげほげ' });
     expect(res.status).toBe(400);
