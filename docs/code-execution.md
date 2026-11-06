@@ -21,7 +21,7 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
   - 生成クライアントの `client/SKILL.md`（取得した環境で認識される）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
-どれも `tools/list` を増やさない（既定 24,728 文字のまま）。
+どれも `tools/list` を増やさない。
 
 ## クライアントを取得する
 
@@ -70,8 +70,8 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 21,575 |
-| 全ツール（52 ツール） | 58,210 |
+| 既定（14 ツール） | 21,778 |
+| 全ツール（52 ツール） | 58,516 |
 | `instructions` | 8,922 |
 
 `search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,574 文字（`schema` 以外は 2026-11-05 の測り直しと同じ）。
