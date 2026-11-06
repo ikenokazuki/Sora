@@ -33,6 +33,13 @@ describe('city_map.ts と気象庁の表', () => {
     expect(bad).toEqual([]);
   });
 
+  it('都道府県の正式名（○○県・都・府）と短い形は、天気で同じ予報区になる', () => {
+    const bad = PREFECTURE_NAMES.map((p) => [p, p.replace(/[都府県]$/, '')])
+      .filter(([full, short]) => full !== short && MUNICIPALITY_CITY_MAP[full] !== MUNICIPALITY_CITY_MAP[short])
+      .map(([full, short]) => `${full} ${MUNICIPALITY_CITY_MAP[full]} / ${short} ${MUNICIPALITY_CITY_MAP[short]}`);
+    expect(bad).toEqual([]);
+  });
+
   it('市町村に当たる地名はその予報区、複数の市町村に当たる地名は載せない（都道府県名と気温の地点の名前は除く）', () => {
     const bad: string[] = [];
     for (const [key, value] of Object.entries(MUNICIPALITY_CITY_MAP)) {
