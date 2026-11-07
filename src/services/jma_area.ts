@@ -77,8 +77,8 @@ const GUN_TOWNS = [...MUNICIPALITIES.keys()].filter((n) => n.indexOf('郡') > 0)
 const inGunTown = (s: string, k: number): boolean => GUN_TOWNS.some((n) => k >= n.indexOf('郡') && s.startsWith(n, k - n.indexOf('郡')));
 /** 市・区の名前（市町村の名前で、市か区で終わるもの） */
 const CITY_NAMES = new Set([...MUNICIPALITIES.keys()].filter((n) => /[市区]$/.test(n)));
-/** s の k 文字目の郡が、s の先頭の市・区の名前の後ろか（市・区は郡の中に無いので、郡の名前ではなく町名の一部。"山口市小郡栄町" の小郡） */
-const afterCity = (s: string, k: number): boolean => k >= (placeNameAt(s, 0, CITY_NAMES)?.length ?? Number.POSITIVE_INFINITY);
+/** s の先頭の市・区の名前の長さ（無ければ無限大）。それより後ろの郡は、市・区が郡の中に無いので、郡の名前ではなく町名の一部（"山口市小郡栄町" の小郡） */
+const cityEnd = (s: string): number => placeNameAt(s, 0, CITY_NAMES)?.length ?? Number.POSITIVE_INFINITY;
 
 /**
  * 市町村を名前から引く。市・区・町・村は省いてよい（"札幌" → 札幌市）。先頭の都道府県名で同じ名前の候補を絞り
@@ -97,7 +97,7 @@ export function resolveMunicipality(query: string): Municipality | undefined {
   const gun = name.match(/^[^郡]+郡/)?.[0] ?? '';
   const town = name.slice(gun.length);
   const k = gun.length - 1;
-  if (hits.length === 0 && gun && MUNICIPALITIES.has(town) && !inGunTown(name, k) && !afterCity(name, k)) return resolveMunicipality((pref ?? '') + town);
+  if (hits.length === 0 && gun && MUNICIPALITIES.has(town) && !inGunTown(name, k) && k < cityEnd(name)) return resolveMunicipality((pref ?? '') + town);
   if (hits.length > 1) {
     const names = hits.map((m) => prefectureOf(m.codes[0]) + m.name);
     throw new AreaInputError(`地名「${query}」に当たる市町村が複数あります（${names.join('、')}）。都道府県名や市・区・町・村まで付けてください`);
@@ -275,7 +275,8 @@ function firstPlaceName(s: string): [string, number] | undefined {
  * （"蒲郡市原" "上郡町上郡"）のときと、郡の前が市町村の名前（"交野市郡津市"。郡〜は町名）のとき、郡が先頭の市・区の名前の後ろ（"山口市小郡栄町"）のときは除く
  */
 function townAfterGun(s: string): string | undefined {
-  for (let k = s.indexOf('郡'); k >= 0 && !afterCity(s, k); k = s.indexOf('郡', k + 1)) {
+  const end = cityEnd(s);
+  for (let k = s.indexOf('郡'); k >= 0 && k < end; k = s.indexOf('郡', k + 1)) {
     const town = placeNameAt(s, k + 1, MUNICIPALITIES);
     if (town && !inGunTown(s, k) && !MUNICIPALITIES.has(s.slice(0, k))) return town;
   }
