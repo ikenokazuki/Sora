@@ -12,7 +12,7 @@ export type CheckProductComplianceInput = {
   htsCode?: string;
   /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   targetAge?: "adult" | "child" | "unknown";
-  /** 主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
+  /** 主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること。衣料は "100% polyester" の形（16 CFR 1610.1(d)(2)） */
   material?: string;
   /** 製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること */
   productCategory?: string;
@@ -22,12 +22,10 @@ export type CheckProductComplianceInput = {
   hasBattery?: boolean;
   /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   batteryType?: "button_coin" | "other";
-  /** 衣料品の生地表面（plain: 平織り・天竺等の平滑表面, raised: 裏起毛・フリース等の起毛表面）。不明時は省略 */
+  /** 衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略 */
   fabricSurface?: "plain" | "raised";
-  /** 衣料品の生地目付重量 (oz/sq yd)。plain かつ 2.6 以上で大人服試験・GCC免除。不明時は省略 */
+  /** 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除。不明なら省略 */
   fabricWeightOzPerSqYd?: number;
-  /** 衣料品の生地目付重量 (g/m²、1〜3000)。plain かつ 88.2 以上で大人服試験・GCC免除。不明時は省略 */
-  fabricWeightGsm?: number;
 };
 
 export type CheckProductComplianceOutput = {
@@ -153,11 +151,11 @@ export type CheckProductComplianceOutput = {
         }[];
         /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
         disclaimerCodeHint?: string;
-        /** 16 CFR 1610.1(c)/(d) 等の法定試験免除・執行裁量免除の詳細 */
+        /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
         testingExemption?: {
           /** 可燃性等の実試験が法定免除されるか */
           exempt: boolean;
-          /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)", "16 CFR 1610.1(c)") */
+          /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
           citation?: string;
           /** 試験免除または適用除外の理由説明 */
           reason: string;
@@ -335,11 +333,11 @@ export type CheckProductComplianceOutput = {
     }[];
     /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
     disclaimerCodeHint?: string;
-    /** 16 CFR 1610.1(c)/(d) 等の法定試験免除・執行裁量免除の詳細 */
+    /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
     testingExemption?: {
       /** 可燃性等の実試験が法定免除されるか */
       exempt: boolean;
-      /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)", "16 CFR 1610.1(c)") */
+      /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
       citation?: string;
       /** 試験免除または適用除外の理由説明 */
       reason: string;

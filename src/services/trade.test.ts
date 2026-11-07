@@ -12,7 +12,9 @@ import {
   crossQueriesFor,
   detectProductAgeGender,
   generateGccCertificate,
+  parseFiberContent,
   predictHtsCode,
+  section1610cExclusionFor,
   stripNegations,
   verifyHtsCode,
 } from './trade.js';
@@ -432,7 +434,7 @@ describe('HTS prediction and product compliance', () => {
       expect(res.fda?.fdFlag).toBe('FD1');
     });
 
-    it('ignores GCC arguments: no gcc field and no scraped sku or brand', async () => {
+    it('ignores GCC arguments: no gcc field and no sku or brand on product', async () => {
       const res = await checkProductCompliance({
         productName: 'Adult Bicycle Helmet', htsCode: '6506.10.60.45', targetAge: 'adult',
         generateGcc: true, sku: 'HLM-001', certifier: { name: 'Acme Imports LLC' },
@@ -466,13 +468,13 @@ describe('HTS prediction and product compliance', () => {
       expect(poly.testingExemption?.enforcementDiscretion).toBe(true);
     });
 
-    it('exempts adult plain-surface apparel >= 2.6 oz/sq yd (88.2 g/m²) under 16 CFR 1610.1(d)(1) & Enforcement Discretion', async () => {
+    it('exempts adult plain-surface apparel >= 2.6 oz/sq yd under 16 CFR 1610.1(d)(1) & Enforcement Discretion', async () => {
       const heavyCottonTee = await checkCpscCertificate({
         htsCode: '6109.10.00.12',
         targetAge: 'adult',
         material: '100% cotton',
         fabricSurface: 'plain',
-        fabricWeightGsm: 180,
+        fabricWeightOzPerSqYd: 5.3,
       });
       expect(heavyCottonTee.certificateRequired).toBe(false);
       expect(heavyCottonTee.certificateType).toBe('none');
@@ -484,13 +486,13 @@ describe('HTS prediction and product compliance', () => {
       expect(heavyCottonTee.testingExemption?.enforcementDiscretion).toBe(true);
     });
 
-    it('requires GCC and eFiling for non-exempt adult apparel (cotton-blend raised-fiber fleece or lightweight plain cotton < 88.2 g/m²)', async () => {
+    it('requires GCC and eFiling for non-exempt adult apparel (cotton-blend raised-fiber fleece or lightweight plain fabric < 2.6 oz/sq yd)', async () => {
       const raisedHoodie = await checkCpscCertificate({
         htsCode: '6110.20.20.79',
         targetAge: 'adult',
         material: '80% cotton 20% polyester',
         fabricSurface: 'raised',
-        fabricWeightGsm: 320,
+        fabricWeightOzPerSqYd: 9.4,
       });
       expect(raisedHoodie.certificateRequired).toBe(true);
       expect(raisedHoodie.certificateType).toBe('GCC');
@@ -510,20 +512,6 @@ describe('HTS prediction and product compliance', () => {
       expect(sheerCotton.testingExemption?.exempt).toBe(false);
     });
 
-    it('excludes standalone adult hats, gloves, and footwear under 16 CFR 1610.1(c) (ACE Disclaim A)', async () => {
-      const cap = await checkCpscCertificate({
-        htsCode: '6505.00.80.90',
-        targetAge: 'adult',
-        material: '100% cotton',
-        productCategory: 'Clothing',
-        description: 'Adult embroidered baseball cap hat',
-      });
-      expect(cap.certificateRequired).toBe(false);
-      expect(cap.certificateType).toBe('none');
-      expect(cap.eFilingRequired).toBe(false);
-      expect(cap.disclaimerCodeHint).toContain('A');
-    });
-
     it('still requires CPC (CCC) and eFiling for children’s apparel even when fabric meets 16 CFR 1610.1(d)', async () => {
       const kidsPolyTee = await checkCpscCertificate({
         htsCode: '6109.90.10.47',
@@ -537,26 +525,16 @@ describe('HTS prediction and product compliance', () => {
       expect(kidsPolyTee.testingExemption?.enforcementDiscretion).toBe(false);
     });
 
-    it('returns ACE Disclaim A (certificateRequired: false) for adult items in children-only CPSC categories (collectibles, jewelry, shoes)', async () => {
+    it('returns ACE Disclaim A (certificateRequired: false) for adult items in children-only CPSC categories (collectibles)', async () => {
       const adultFigure = await checkCpscCertificate({
         htsCode: '9503.00.00.90',
         targetAge: 'adult',
         material: 'PVC plastic',
-        description: 'Adult collector scale statue figure (ages 15+)',
       });
       expect(adultFigure.certificateRequired).toBe(false);
       expect(adultFigure.certificateType).toBe('none');
       expect(adultFigure.eFilingRequired).toBe(false);
       expect(adultFigure.disclaimerCodeHint).toContain('A');
-
-      const adultShoes = await checkCpscCertificate({
-        htsCode: '6402.99.31.65',
-        targetAge: 'adult',
-        material: 'rubber and synthetic upper',
-      });
-      expect(adultShoes.certificateRequired).toBe(false);
-      expect(adultShoes.certificateType).toBe('none');
-      expect(adultShoes.eFilingRequired).toBe(false);
     });
 
     it('applies cross-cutting 16 CFR Part 1263 (Reese’s Law / ANSI UL 4200A) GCC + eFiling to button/coin-cell consumer products without overwriting HTS to 8506', async () => {
@@ -610,6 +588,91 @@ describe('HTS prediction and product compliance', () => {
       expect(childMug.cpsc?.certificateRequired).toBe(true);
       expect(childMug.cpsc?.certificateType).toBe('CCC');
       expect(childMug.cpsc?.eFilingRequired).toBe(true);
+    });
+  });
+
+  describe('16 CFR 1610 for apparel (official text and HTS headings, no word lists)', () => {
+    it('reads fiber content only in the "N% fiber" form', () => {
+      expect(parseFiberContent('100% polyester')).toEqual([{ percent: 100, fiber: 'polyester' }]);
+      expect(parseFiberContent('60% Wool, 40% Nylon')).toEqual([{ percent: 60, fiber: 'wool' }, { percent: 40, fiber: 'nylon' }]);
+      expect(parseFiberContent('80% cotton 20% polyester')).toHaveLength(2);
+      expect(parseFiberContent('60% wool / 40% nylon')).toHaveLength(2);
+      for (const s of ['100% recycled polyester', 'polyester', 'ポリエステル100%', '50% cotton 40% polyester', '100% polyester (lining 100% cotton)', '']) {
+        expect(parseFiberContent(s), s).toBeUndefined();
+      }
+    });
+
+    it('does not exclude a cap sleeve blouse (review probe for I1): 1610.1(c) comes from the HTS heading, not from words', async () => {
+      const blouse = await checkCpscCertificate({ htsCode: '6106.10.00.10', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain', fabricWeightOzPerSqYd: 2.0 });
+      expect(blouse.certificateRequired).toBe(true);
+      expect(blouse.certificateType).toBe('GCC');
+      const withWords = await checkCpscCertificate({ htsCode: '6106.10.00.10', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain', fabricWeightOzPerSqYd: 2.0, description: "Women's cap sleeve knit blouse", productCategory: 'gloves' } as never);
+      expect(withWords).toEqual(blouse);
+    });
+
+    it('explains the 16 CFR 1610.1(c) condition for hat, glove and footwear headings instead of deciding', async () => {
+      for (const [htsCode, citation] of [['6505.00.80.90', '16 CFR 1610.1(c)(1)'], ['6116.10.17.40', '16 CFR 1610.1(c)(2)'], ['6402.99.31.65', '16 CFR 1610.1(c)(3)']] as const) {
+        const res = await checkCpscCertificate({ htsCode, targetAge: 'adult' });
+        expect(res.certificateRequired, htsCode).toBe('unknown');
+        expect(res.missingInfo.join(''), htsCode).toContain(citation);
+        expect(res.disclaimerCodeHint, htsCode).toBeUndefined();
+      }
+      expect(section1610cExclusionFor('6406.10.05.00')).toBeUndefined(); // 履物の部分品・ゲートル
+      expect(section1610cExclusionFor('6506.10.60.45')?.citation).toBe('16 CFR 1610.1(c)(1)');
+    });
+
+    it('keeps bicycle helmets (CPSC list: Bicycle Helmets) on the GCC path although 6506 is a hat heading', async () => {
+      const res = await checkCpscCertificate({ htsCode: '6506.10.60.45', targetAge: 'adult' });
+      expect(res.certificateRequired).toBe(true);
+      expect(res.certificateType).toBe('GCC');
+    });
+
+    it('exempts adult apparel under 16 CFR 1610.1(d)(2) and (d)(1) at exactly 2.6 oz/sq yd and points to Disclaim B / IUC 130.006', async () => {
+      const poly = await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material: '100% polyester' });
+      expect(poly.certificateRequired).toBe(false);
+      expect(poly.testingExemption).toMatchObject({ exempt: true, citation: '16 CFR 1610.1(d)(2)', enforcementDiscretion: true });
+      expect(poly.disclaimerCodeHint).toContain('130.006');
+      expect(poly.nextActions.join('')).toContain('81 FR 12587');
+      const plain = await checkCpscCertificate({ htsCode: '6109.10.00.12', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain', fabricWeightOzPerSqYd: 2.6 });
+      expect(plain.testingExemption).toMatchObject({ exempt: true, citation: '16 CFR 1610.1(d)(1)' });
+      const light = await checkCpscCertificate({ htsCode: '6109.10.00.12', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain', fabricWeightOzPerSqYd: 2.59 });
+      expect(light.certificateRequired).toBe(true);
+    });
+
+    it('requires a GCC for raised or light fabrics that are not made only of the six fibers', async () => {
+      const fleece = await checkCpscCertificate({ htsCode: '6110.20.20.41', targetAge: 'adult', material: '80% cotton 20% polyester', fabricSurface: 'raised' });
+      expect(fleece.certificateRequired).toBe(true);
+      expect(fleece.testingExemption?.exempt).toBe(false);
+      const stretch = await checkCpscCertificate({ htsCode: '6109.10.00.12', targetAge: 'adult', material: '95% polyester 5% spandex', fabricSurface: 'plain', fabricWeightOzPerSqYd: 2.1 });
+      expect(stretch.certificateRequired).toBe(true);
+    });
+
+    it('asks for the fiber content in the "N% fiber" form when it cannot read it', async () => {
+      const res = await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material: '100% recycled polyester', fabricSurface: 'raised' });
+      expect(res.certificateRequired).toBe('unknown');
+      expect(res.missingInputs).toEqual(['material']);
+      expect(res.clarifyingQuestions?.[0]).toContain('100% polyester');
+    });
+
+    it('cites the CPSC list only for codes on it (M7)', async () => {
+      const unlisted = await checkCpscCertificate({ htsCode: '6106.10.00.10', targetAge: 'adult', material: '100% cotton', fabricSurface: 'raised' });
+      expect(unlisted.applicableRegulations.map((r) => r.cfr).join('|')).not.toContain('CPSC HTS Guidance List');
+      const listed = await checkCpscCertificate({ htsCode: '6109.90.10.09', targetAge: 'child', material: '100% polyester' });
+      expect(listed.applicableRegulations[0].cfr).toContain('CPSC HTS Guidance List');
+    });
+
+    it('does not ask fabric questions from predict_hts_code, which has no fabric arguments', async () => {
+      const res = await predictHtsCode({ productName: "Men's Thermal Undershirt", description: 'cotton knit thermal undershirt', material: 'cotton', targetAge: 'adult' });
+      for (const k of ['fabricSurface', 'fabricWeightOzPerSqYd', 'material']) expect(res.missingInputs ?? [], k).not.toContain(k);
+    });
+
+    it('asks check_product_compliance callers for the fabric facts it now takes', async () => {
+      const base = { productName: "Men's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee', htsCode: '6109.10.00.12', targetAge: 'adult' as const, material: '100% cotton' };
+      const asked = await checkProductCompliance(base);
+      expect(asked.missingInputs).toContain('fabricSurface');
+      const done = await checkProductCompliance({ ...base, fabricSurface: 'plain', fabricWeightOzPerSqYd: 5.3 });
+      expect(done.cpsc?.certificateRequired).toBe(false);
+      expect(done.actionPlan.join('')).toContain('130.006');
     });
   });
 
@@ -689,7 +752,7 @@ describe('HTS prediction and product compliance', () => {
         targetAge: 'adult' as const,
         material: '80% cotton 20% polyester',
         fabricSurface: 'raised' as const,
-        fabricWeightGsm: 310,
+        fabricWeightOzPerSqYd: 9.1,
       };
 
       let caught: unknown;
@@ -739,7 +802,7 @@ describe('HTS prediction and product compliance', () => {
           targetAge: 'adult',
           material: '100% cotton',
           fabricSurface: 'raised',
-          fabricWeightGsm: 320,
+          fabricWeightOzPerSqYd: 9.4,
           allowDraft: true,
           certifier: {
             name: 'Sample Exporter Inc.',
@@ -859,7 +922,7 @@ describe('HTS prediction and product compliance', () => {
             targetAge: 'adult',
             material: '100% cotton',
             fabricSurface: 'plain',
-            fabricWeightGsm: 190,
+            fabricWeightOzPerSqYd: 5.6,
             manufacture: { date: '2026-08', city: 'Osaka', country: 'Japan' },
           },
           {
@@ -870,7 +933,7 @@ describe('HTS prediction and product compliance', () => {
             targetAge: 'adult',
             material: '80% cotton 20% polyester',
             fabricSurface: 'raised',
-            fabricWeightGsm: 320,
+            fabricWeightOzPerSqYd: 9.4,
             manufacture: { date: '2026-08', city: 'Suzhou, Jiangsu', country: 'China' },
             testing: {
               date: '2026-08-20',

@@ -64,11 +64,11 @@ export type PredictHtsCodeOutput = {
       }[];
       /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
       disclaimerCodeHint?: string;
-      /** 16 CFR 1610.1(c)/(d) 等の法定試験免除・執行裁量免除の詳細 */
+      /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
       testingExemption?: {
         /** 可燃性等の実試験が法定免除されるか */
         exempt: boolean;
-        /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)", "16 CFR 1610.1(c)") */
+        /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
         citation?: string;
         /** 試験免除または適用除外の理由説明 */
         reason: string;

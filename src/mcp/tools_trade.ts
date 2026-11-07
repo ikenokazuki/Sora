@@ -9,7 +9,7 @@ import {
   TradeInputError,
   verifyHtsCode,
 } from '../scraper.js';
-import { GenerateGccCertificateRequestSchema } from '../types.js';
+import { CpscCertificateCheckRequestSchema, GenerateGccCertificateRequestSchema, ProductComplianceRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
 
@@ -29,7 +29,9 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     {
       htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
       targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下, adult: 一般/大人, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値の入力厳禁】不明な場合は"unknown"を指定すること'),
-      material: z.string().optional().describe('主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
+      material: z.string().optional().describe('主な素材。衣料では繊維の組成（"100% polyester" の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
+      fabricSurface: CpscCertificateCheckRequestSchema.shape.fabricSurface,
+      fabricWeightOzPerSqYd: CpscCertificateCheckRequestSchema.shape.fabricWeightOzPerSqYd,
     },
     async (opts) => {
       try {
@@ -151,11 +153,13 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
       htsCode: z.string().optional().describe('ユーザーからプロンプト内で明示的に提示された既知のHTSコード（指定時は最優先で検証）。【LLM自身の推測・候補値の入力厳禁！】HTSコードを推測・特定したい場合は必ず省略（未指定）にすること。未指定時にSoraが公式データと判例から特定します'),
       targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
-      material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+      material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと。衣料は "100% polyester" の形（16 CFR 1610.1(d)(2)）'),
       productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない'),
       foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+      fabricSurface: ProductComplianceRequestSchema.shape.fabricSurface,
+      fabricWeightOzPerSqYd: ProductComplianceRequestSchema.shape.fabricWeightOzPerSqYd,
     },
     async (opts) => {
       try {
