@@ -128,18 +128,27 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
+    let doneSent = false;
     try {
-      await scrapeUrl({
+      const result = await scrapeUrl({
         ...parsed.data,
         verbose: resolveVerbose(c, parsed.data.verbose),
         tenantId: c.get('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
+          if (evt.stage === 'done') doneSent = true;
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',
             data: JSON.stringify(evt),
           });
         },
       });
+      // PDF・画像・動画のページ・ブラウザの失敗からの切り替えなど、done を送らずに返す経路でも、結果の done で終える
+      if (!doneSent) {
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ stage: 'done', message: 'Scraping completed successfully', data: result }),
+        });
+      }
     } catch (err) {
       await stream.writeSSE({
         event: 'error',

@@ -309,6 +309,32 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       expect((await post('/scrape/stream', { url: null })).status).toBe(400);
     });
 
+    // scrapeUrl が done を送らずに返す経路（PDF・画像・動画のページ・ブラウザの失敗からの切り替え）でも、ストリームは結果の done で終える
+    const sseEvents = (text: string) => [...text.matchAll(/^event: (\w+)\ndata: (.*)$/gm)].map(([, event, data]) => ({ event, data: JSON.parse(data) }));
+    const browserTest = resolveChromiumPath() ? test : test.skip;
+
+    test('/scrape/stream: PDF も結果の done で終える。scrapeUrl が done を送る経路でも done は 1 回だけ', async () => {
+      for (const [path, text] of [['/stream-doc.pdf', pdfText], ['/stream-page', '静的に取れる']] as const) {
+        const events = sseEvents(await (await post('/scrape/stream', { url: `${base()}${path}`, mode: 'fast', noCache: true })).text());
+        expect(events.filter((e) => e.event !== 'progress').map((e) => e.event), path).toEqual(['done']);
+        expect(events.at(-1)?.event, path).toBe('done');
+        expect(events.at(-1)?.data.data.content, path).toContain(text);
+      }
+    });
+
+    browserTest('/scrape/stream: 本文が 50 字未満の SPA でブラウザが失敗しても、screenshot を求めていれば警告つきの結果を done で送る', async () => {
+      const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+      try {
+        const events = sseEvents(await (await post('/scrape/stream', { url: `${base()}/spa-shell`, formats: ['markdown', 'screenshot'], noCache: true })).text());
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(events.filter((e) => e.event !== 'progress').map((e) => e.event)).toEqual(['done']);
+        expect(events.at(-1)?.data.data.title).toBe('アプリ');
+        expect(events.at(-1)?.data.data.warnings.join('\n')).toContain('screenshot');
+      } finally {
+        spy.mockRestore();
+      }
+    }, 60_000);
+
     test('/scrape/batch: null の項目は未指定として扱う（必須の urls が null なら 400）', async () => {
       const ok = await post('/scrape/batch', { urls: [`${base()}/null-batch`], mode: 'fast', maxChars: null, concurrency: null, webhookUrl: null, formats: null, noCache: null });
       expect(ok.status).toBe(200);
