@@ -281,16 +281,19 @@ const EXEMPT_1610_D2_FIBERS = new Set(['acrylic', 'modacrylic', 'nylon', 'olefin
 /** 16 CFR § 1610.1(d)(1) の重さ。oz/sq yd のまま丸めずに比べる */
 const MIN_EXEMPT_OZ_PER_SQ_YD = 2.6;
 const FIBER_ITEM_RE = /(\d{1,3}(?:\.\d+)?)\s*%\s*([a-z]+)/g;
-/** 「N% fiber」を区切り（空白・, / + & and）でつないだだけの文 */
-const FIBER_LIST_RE = /^\d{1,3}(?:\.\d+)?\s*%\s*[a-z]+(?:(?:\s*(?:[,/+&]|and)\s*|\s+)\d{1,3}(?:\.\d+)?\s*%\s*[a-z]+)*$/;
+/** 「N% fiber」を区切り（前後に空白があってよい , / + &、前後に空白のある and、空白）でつないだだけの文 */
+const FIBER_LIST_RE = /^\d{1,3}(?:\.\d+)?\s*%\s*[a-z]+(?:(?:\s*[,/+&]\s*|\s+and\s+|\s+)\d{1,3}(?:\.\d+)?\s*%\s*[a-z]+)*$/;
 
-/** 繊維の組成を「N% fiber」の形でだけ読む。読み切れない・空・合計が 100 から 0.5 より離れるときは undefined */
+/**
+ * 繊維の組成を「N% fiber」の形でだけ読む。読み切れない・空のとき、繊維が 1 つで 100 ちょうどでないとき（made entirely）、
+ * 2 つ以上で合計が 100 から 0.5 より離れるとき（丸め）は undefined
+ */
 export function parseFiberContent(material?: string): Array<{ percent: number; fiber: string }> | undefined {
   const text = material?.toLowerCase().trim() ?? '';
   if (!FIBER_LIST_RE.test(text)) return undefined;
   const parts = [...text.matchAll(FIBER_ITEM_RE)].map((m) => ({ percent: Number(m[1]), fiber: m[2] }));
   const total = parts.reduce((sum, p) => sum + p.percent, 0);
-  return Math.abs(total - 100) <= 0.5 ? parts : undefined;
+  return (parts.length === 1 ? total === 100 : Math.abs(total - 100) <= 0.5) ? parts : undefined;
 }
 
 /** HTS の見出し（先頭 4 桁）が 16 CFR 1610.1(c) の帽子（6504〜6506）・手袋（6116・6216）・履物（6401〜6405。6406 は部分品・ゲートル）なら、その条文 */
@@ -315,6 +318,10 @@ function evaluate1610d(options: CpscCertificateCheckOptions): {
   exemption?: CpscTestingExemption;
   missingInputs: string[];
   clarifyingQuestions: string[];
+  /** 足りない生地の事実の名前（missingInputs と同じ順） */
+  missingFacts: string[];
+  /** 免除に当たらないとき（(d)(2) が no）: 6 つの名前と同じ名前のときだけ免除と判定している旨（語の表は持たない） */
+  nameNote?: string;
 } {
   const material = options.material?.trim();
   const fibers = parseFiberContent(material);
@@ -326,7 +333,13 @@ function evaluate1610d(options: CpscCertificateCheckOptions): {
       : options.fabricSurface === 'plain' && oz !== undefined
         ? true
         : undefined;
-  const decided = (exemption: CpscTestingExemption) => ({ exemption, missingInputs: [], clarifyingQuestions: [] });
+  const decided = (exemption: CpscTestingExemption, nameNote?: string) => ({
+    exemption,
+    missingInputs: [],
+    clarifyingQuestions: [],
+    missingFacts: [],
+    nameNote,
+  });
   if (d2) {
     return decided({
       exempt: true,
@@ -342,20 +355,22 @@ function evaluate1610d(options: CpscCertificateCheckOptions): {
     });
   }
   if (d2 === false && d1 === false) {
-    const reasonDetail =
-      options.fabricSurface === 'raised'
-        ? '裏起毛・フリース・パイル等の起毛表面生地（raised-fiber surface）であり免除6繊維100%ではないため'
-        : '生地重量が 2.6 oz/sq yd 未満であり免除6繊維100%ではないため';
-    return decided({
-      exempt: false,
-      citation: '16 CFR 1610',
-      reason: `${reasonDetail}、16 CFR § 1610.1(d) の試験免除対象外です。16 CFR Part 1610 可燃性試験（Class 1 Normal Flammability 確認）の実施と適合証明書（大人用はGCC / 子供用はCCC）の発行・ACE eFilingが必須です。`,
-    });
+    const fabric = options.fabricSurface === 'raised' ? '起毛の生地' : `${oz} oz/sq yd（2.6 未満）の生地`;
+    return decided(
+      {
+        exempt: false,
+        citation: '16 CFR 1610',
+        reason: `繊維の組成（${material}）に 16 CFR 1610.1(d)(2) の 6 つの名前と違う繊維があり、${fabric}なので、16 CFR § 1610.1(d) の試験免除対象外です。16 CFR Part 1610 可燃性試験（Class 1 Normal Flammability 確認）の実施と適合証明書（大人用はGCC / 子供用はCCC）の発行・ACE eFilingが必須です。`,
+      },
+      '16 CFR 1610.1(d)(2) の 6 つの繊維の名前（acrylic・modacrylic・nylon・olefin・polyester・wool）と同じ名前のときだけ免除と判定しています。別の名前（例: polyamide は nylon、polypropylene は olefin）なら、その名前に書き直して確かめてください。',
+    );
   }
   const missingInputs: string[] = [];
   const clarifyingQuestions: string[] = [];
+  const missingFacts: string[] = [];
   if (d2 === undefined) {
     missingInputs.push('material');
+    missingFacts.push('繊維の組成（6 つの繊維だけか）');
     clarifyingQuestions.push(
       '衣料の繊維の組成を「100% polyester」「60% wool 40% nylon」の形で material に入れてください（16 CFR 1610.1(d)(2) の 6 つの繊維 acrylic・modacrylic・nylon・olefin・polyester・wool だけなら試験は要りません。繊維は一般名で書きます。例: polyamide は nylon、polypropylene は olefin）。',
     );
@@ -363,15 +378,17 @@ function evaluate1610d(options: CpscCertificateCheckOptions): {
   // (d)(1) がまだ決まらないときだけ、生地の表面と重さを聞く（2.6 未満・起毛なら (d)(1) は当たらないと決まっている）
   if (d1 === undefined && !options.fabricSurface) {
     missingInputs.push('fabricSurface');
+    missingFacts.push('生地の表面（plain / raised）');
     clarifyingQuestions.push('生地の表面は平ら（plain）ですか、起毛（raised: フリース・パイル・裏起毛など）ですか？');
   }
   if (d1 === undefined && oz === undefined) {
     missingInputs.push('fabricWeightOzPerSqYd');
+    missingFacts.push('生地の重さ（2.6 oz/sq yd 以上か）');
     clarifyingQuestions.push(
       '生地の重さは何 oz/sq yd ですか（g/m² なら 33.906 で割ります。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) により試験は要りません）？',
     );
   }
-  return { missingInputs, clarifyingQuestions };
+  return { missingInputs, clarifyingQuestions, missingFacts };
 }
 
 function normalizeHtsCode(htsCode: string): string {
@@ -400,6 +417,16 @@ function findNearMatch(normalized: string): { category: string; similarCode: str
 function isWearingApparelChapter(normalized: string): boolean {
   const ch = normalized.slice(0, 2);
   return ch === '61' || ch === '62';
+}
+
+/** CPSC の一覧の項目。一覧に載っているコード（完全一致）にだけ付ける */
+function cpscListRegulation(htsCode: string, category: string): CpscApplicableRegulation {
+  return {
+    cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
+    summary: `HTSコード "${htsCode}" は "${category}" カテゴリとしてCPSC eFiling対象HTSリストに掲載（2026年7月8日よりCBP ACEでの電子申告が完全義務化）`,
+    excerpt: CPSC_PDF_EXCERPT,
+    sourceUrl: CPSC_PDF_SOURCE_URL,
+  };
 }
 
 function toPublicReg(entry: CpscCategoryRegulationEntry): CpscApplicableRegulation {
@@ -474,48 +501,45 @@ export async function checkCpscCertificate(
   if (isApparel) {
     const clothingReg = toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing);
     // CPSC の一覧は、一覧に載っているコードにだけ出典として付ける
-    const listedRegs: CpscApplicableRegulation[] = exactCategory
-      ? [
-          {
-            cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
-            summary: `HTSコード "${htsCode}" は "${exactCategory}" カテゴリとしてCPSC eFiling対象HTSリストに掲載（2026年7月8日よりCBP ACEでの電子申告が完全義務化）`,
-            excerpt: CPSC_PDF_EXCERPT,
-            sourceUrl: CPSC_PDF_SOURCE_URL,
-          },
-        ]
-      : [];
+    const listedRegs = exactCategory ? [cpscListRegulation(htsCode, exactCategory)] : [];
     const d = evaluate1610d(options);
     const askFabric = options.askFabricSpec !== false;
-    const testingExemption = d.exemption && {
-      ...d.exemption,
-      enforcementDiscretion: options.targetAge === 'adult' && d.exemption.exempt,
-    };
+    const nameNotes = d.nameNote ? [d.nameNote] : [];
+    // 16 CFR 1610.1(c) は年齢によらない。(c) の見出しの (d) の答えは条件に当たらないときだけのものなので、testingExemption には載せない
+    const testingExemption = section1610c
+      ? undefined
+      : d.exemption && { ...d.exemption, enforcementDiscretion: options.targetAge === 'adult' && d.exemption.exempt };
+    const cCondition = section1610c && `${section1610c.citation} の条件（${section1610c.text}）`;
 
     if (options.targetAge === 'unknown') {
-      // 帽子・手袋・履物の見出しは、大人なら 16 CFR 1610.1(c) の条件の説明、子供なら CPC で、生地では答えが変わらない
-      const fabric = askFabric && !section1610c ? d : { missingInputs: [], clarifyingQuestions: [] };
-      const asksFabric = fabric.missingInputs.length > 0;
+      // (c) の見出しは、大人なら (c) の条件、子供なら CPC で決まり、生地では答えが変わらない
+      const fabric = askFabric && !section1610c ? d : undefined;
+      const facts = fabric?.missingFacts.length ? `および${fabric.missingFacts.join('・')}` : '';
       return {
         certificateRequired: 'unknown',
         certificateType: 'unknown',
         eFilingRequired: false,
-        applicableRegulations: [clothingReg],
+        applicableRegulations: [...listedRegs, clothingReg],
         testingExemption,
-        missingInfo: [`対象年齢（大人用か12歳以下子供用か）${asksFabric ? 'および生地仕様' : ''}の確認が必要です。`],
-        nextActions: [`対象年齢層${asksFabric ? 'および繊維組成・生地表面・目付重量' : ''}を確認して再判定してください。`],
+        missingInfo: [`対象年齢（大人用か12歳以下子供用か）${facts}の確認が必要です。`],
+        nextActions: [`対象年齢層${facts}を確認して再判定してください。`, ...(section1610c ? [] : nameNotes)],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'partial',
-        missingInputs: ['targetAge', ...fabric.missingInputs],
+        missingInputs: ['targetAge', ...(fabric?.missingInputs ?? [])],
         clarifyingQuestions: [
-          'この衣料品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？（子供服はCPC＆eFiling必須、大人服は 16 CFR 1610.1(d) 免除該当ならGCC不要・ACE Disclaim Bとなります）',
-          ...fabric.clarifyingQuestions,
+          section1610c
+            ? `この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？（子供用はCPC＆eFiling必須、大人用は ${section1610c.citation} の条件に当たるかで決まります）`
+            : 'この衣料品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？（子供服はCPC＆eFiling必須、大人服は 16 CFR 1610.1(d) 免除該当ならGCC不要・ACE Disclaim Bとなります）',
+          ...(fabric?.clarifyingQuestions ?? []),
         ],
-        impactExplanation:
-          '衣料品（16 CFR 1610）は、12歳以下向けなら第三者試験とCPC（CCC）・eFilingが必須ですが、大人向けで 16 CFR § 1610.1(d)（平織り2.6 oz/sq yd 以上、またはポリエステル等指定6繊維100%）に該当する場合は2016年CPSC執行裁量によりGCC発行・eFilingが免除されます。',
+        impactExplanation: cCondition
+          ? `12歳以下向けならCPC（CCC）・eFilingが必須です。大人向けなら ${cCondition}に当たるかで決まります（当たれば 16 CFR 1610 の対象外）。`
+          : '衣料品（16 CFR 1610）は、12歳以下向けなら第三者試験とCPC（CCC）・eFilingが必須ですが、大人向けで 16 CFR § 1610.1(d)（平織り2.6 oz/sq yd 以上、またはポリエステル等指定6繊維100%）に該当する場合は2016年CPSC執行裁量によりGCC発行・eFilingが免除されます。',
       };
     }
 
-    // 2a. 子供服（12歳以下）: 1610.1(d) 試験免除の有無に関わらず、2016年執行裁量は不適用 -> CPC (CCC) & eFiling 必須
+    // 2a. 子供服（12歳以下）: 1610.1(d) 試験免除の有無に関わらず、2016年執行裁量は不適用 -> CPC (CCC) & eFiling 必須。
+    //     (c) の見出しでは 16 CFR 1610 が要るかが (c) の条件で決まるので、16 CFR 1610 の項目を載せず条件を書く
     if (options.targetAge === 'child') {
       const missingInputs = options.material ? [] : ['material'];
       const clarifyingQuestions = options.material
@@ -525,12 +549,18 @@ export async function checkCpscCertificate(
         certificateRequired: true,
         certificateType: 'CCC',
         eFilingRequired: true,
-        applicableRegulations: [...listedRegs, clothingReg, CPSIA_CHILDREN_GENERAL_REGULATION],
+        applicableRegulations: [...listedRegs, ...(section1610c ? [] : [clothingReg]), CPSIA_CHILDREN_GENERAL_REGULATION],
         testingExemption,
-        missingInfo: [],
-        nextActions: [
-          '12歳以下の子供用衣料品として、CPSC認定第三者試験機関での試験（16 CFR 1610.1(d) 免除該当生地でもCPSIA鉛・小部品等、寝間着なら 16 CFR 1615/1616）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
-        ],
+        missingInfo: cCondition ? [`${cCondition}に当たるかで、16 CFR 1610 が要るかが決まります。`] : [],
+        nextActions: section1610c
+          ? [
+              '12歳以下の子供向け製品として、CPSC認定第三者試験機関での試験（CPSIAの鉛・小部品等）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
+              '条件に当たれば CPC に 16 CFR 1610 は要りません。当たらなければ 16 CFR 1610 も要ります。',
+            ]
+          : [
+              '12歳以下の子供用衣料品として、CPSC認定第三者試験機関での試験（16 CFR 1610.1(d) 免除該当生地でもCPSIA鉛・小部品等、寝間着なら 16 CFR 1615/1616）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
+              ...nameNotes,
+            ],
         disclaimer: DISCLAIMER,
         inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
         missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
@@ -542,16 +572,33 @@ export async function checkCpscCertificate(
       };
     }
 
-    // 2b. 大人の帽子・手袋・履物の見出し: 16 CFR 1610.1(c) の条件に当たるかは HTS でもこの道具の引数でも分からないので、条件を返す
+    // 2b. 大人の帽子・手袋・履物の見出し: 16 CFR 1610.1(c) の条件に当たるかは HTS でもこの道具の引数でも分からないので、条件と、
+    //     条件に当たらないときの (d) の答えを返す。近いコードの区分（例: 6506.10 の Bicycle Helmets）の案内も残す
     if (section1610c) {
+      const ifNot = d.exemption?.exempt
+        ? `条件に当たらないときは、${d.exemption.reason}81 FR 12587 の執行裁量で GCC と eFiling は要りません（ACE Disclaim B / Intended Use Code 130.006）。`
+        : d.exemption
+          ? '条件に当たらないときは、16 CFR 1610.1(d) の試験の免除に当たらないので、16 CFR 1610 の試験と GCC・eFiling が要ります。'
+          : `条件に当たらないときは、16 CFR 1610.1(d) の試験の免除に当たるかで決まります。${
+              askFabric ? d.clarifyingQuestions.join('') : 'check_cpsc_certificate に繊維の組成・生地の表面・重さを渡すと決まります。'
+            }`;
+      const nearCategory = nearMatch?.category === 'Clothing' || nearMatch?.category === 'Shoes' ? undefined : nearMatch;
+      const nearCfr = nearCategory && CPSC_CATEGORY_REGULATIONS[nearCategory.category]?.cfr;
       return {
         certificateRequired: 'unknown',
         certificateType: 'unknown',
         eFilingRequired: false,
         applicableRegulations: [...listedRegs, clothingReg],
-        missingInfo: [`${section1610c.citation} の条件（${section1610c.text}）に当たるかで決まります。`],
+        missingInfo: [`${cCondition}に当たるかで決まります。`],
         nextActions: [
           '条件に当たれば 16 CFR 1610 の対象外です。ほかに当てはまる規則が無ければ GCC は要りません（CPSC の一覧のコードなら ACE で Disclaim A を送れます。Intended Use Code も要ります）。当たらなければ 16 CFR 1610 の対象です。',
+          ifNot,
+          ...nameNotes,
+          ...(nearCategory
+            ? [
+                `同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearCategory.category}" カテゴリ${nearCfr ? `（${nearCfr}）` : ''}に CPSC の一覧のコード "${nearCategory.similarCode}" があります。この区分に当たるかも確かめてください。`,
+              ]
+            : []),
         ],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'complete',
@@ -587,13 +634,15 @@ export async function checkCpscCertificate(
         missingInfo: [],
         nextActions: [
           '16 CFR § 1610.1(d) の試験免除対象外（起毛表面生地または 2.6 oz/sq yd 未満）のため、16 CFR Part 1610 可燃性試験（Class 1 適合確認）を実施し、実試験データに基づく GCC を発行して CBP ACE へ eFiling してください。',
+          ...nameNotes,
         ],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'complete',
       };
     }
 
-    // 2e. 大人服だが繊維組成・表面種別・重量が足りず免除可否が未確定
+    // 2e. 大人服だが繊維組成・表面種別・重量が足りず免除可否が未確定（足りないものだけを挙げる）
+    const facts = d.missingFacts.join('・');
     return {
       certificateRequired: 'unknown',
       certificateType: 'unknown',
@@ -602,11 +651,9 @@ export async function checkCpscCertificate(
       disclaimerCodeHint:
         'B (16 CFR 1610.1(d) 免除該当時は Intended Use Code 130.006 / 免除対象外時は GCC & eFiling 必須)',
       missingInfo: [
-        '大人用衣料品（16 CFR 1610）の試験・GCC免除（16 CFR § 1610.1(d) / 2016年CPSC執行裁量）に該当するか判定するため、繊維組成・生地表面（plain/raised）・目付重量（oz/sq yd）の確認が必要です。',
+        `大人用衣料品（16 CFR 1610）の試験・GCC免除（16 CFR § 1610.1(d) / 2016年CPSC執行裁量）に該当するか判定するため、${facts}の確認が必要です。`,
       ],
-      nextActions: [
-        '繊維組成（ポリエステル等6繊維100%か綿等を含むか）、生地表面（平織り・天竺 plain / 裏起毛・フリース raised）、および目付重量（2.6 oz/sq yd 以上か）を確認して再判定してください。',
-      ],
+      nextActions: [`${facts}を確認して再判定してください。`],
       disclaimer: DISCLAIMER,
       inputCompleteness: 'partial',
       missingInputs: askFabric ? d.missingInputs : undefined,
@@ -669,12 +716,7 @@ export async function checkCpscCertificate(
       certificateType,
       eFilingRequired: options.targetAge !== 'unknown',
       applicableRegulations: [
-        {
-          cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
-          summary: `HTSコード "${htsCode}" は "${exactCategory}" カテゴリとしてCPSC eFiling対象HTSリストに掲載（2026年7月8日よりCBP ACEでの電子申告が完全義務化）`,
-          excerpt: CPSC_PDF_EXCERPT,
-          sourceUrl: CPSC_PDF_SOURCE_URL,
-        },
+        cpscListRegulation(htsCode, exactCategory),
         catReg
           ? toPublicReg(catReg)
           : {
@@ -2069,7 +2111,13 @@ function buildIntegratedActionPlan(
     actionPlan.push(...cpscResult.nextActions);
   } else if (cpscResult.certificateRequired === 'unknown' && cpscResult.missingInfo.length > 0) {
     isPotentialAction = true;
-    summaryParts.push('CPSC個別確認推奨（類似コード・生地仕様または対象年齢の確定が必要）');
+    // 大人の帽子・手袋・履物の見出し（聞ける引数が無い）は 16 CFR 1610.1(c) の条件の確認
+    const section1610c = cpscResult.missingInputs?.length ? undefined : section1610cExclusionFor(htsResult.htsCode);
+    summaryParts.push(
+      section1610c
+        ? `CPSC個別確認推奨（${section1610c.citation} の条件の確認が必要）`
+        : 'CPSC個別確認推奨（類似コード・生地仕様または対象年齢の確定が必要）',
+    );
     actionPlan.push(...cpscResult.nextActions);
   }
 

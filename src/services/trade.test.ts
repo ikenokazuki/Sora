@@ -674,6 +674,105 @@ describe('HTS prediction and product compliance', () => {
       expect(done.cpsc?.certificateRequired).toBe(false);
       expect(done.actionPlan.join('')).toContain('130.006');
     });
+
+    // 以下は task review（2307e18）の指摘の固定
+    const NAME_NOTE =
+      '16 CFR 1610.1(d)(2) の 6 つの繊維の名前（acrylic・modacrylic・nylon・olefin・polyester・wool）と同じ名前のときだけ免除と判定しています。別の名前（例: polyamide は nylon、polypropylene は olefin）なら、その名前に書き直して確かめてください。';
+
+    it('reads one fiber only at exactly 100% (made entirely) and "and" only between spaces', () => {
+      expect(parseFiberContent('99.6% polyester')).toBeUndefined();
+      expect(parseFiberContent('60% wooland40% nylon')).toBeUndefined();
+      expect(parseFiberContent('60% wool and 40% nylon')).toEqual([{ percent: 60, fiber: 'wool' }, { percent: 40, fiber: 'nylon' }]);
+      expect(parseFiberContent('50.3% wool 49.9% nylon')).toHaveLength(2); // 2 つ以上は丸めの ±0.5 まで
+    });
+
+    it('says it matches only the six (d)(2) names when a fiber name differs, without claiming the fabric is not of the six', async () => {
+      for (const material of ['100% polyamide', '100% poly']) {
+        const res = await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material, fabricSurface: 'raised' });
+        expect(res.certificateRequired, material).toBe(true);
+        expect(res.nextActions, material).toContain(NAME_NOTE);
+        expect(res.testingExemption?.reason, material).not.toContain('免除6繊維100%ではない');
+      }
+      const nylon = await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material: '100% nylon', fabricSurface: 'raised' });
+      expect(nylon.certificateRequired).toBe(false);
+      expect(nylon.disclaimerCodeHint).toBe('B (Intended Use Code 130.006)');
+      expect(nylon.nextActions).not.toContain(NAME_NOTE);
+    });
+
+    it('applies the 16 CFR 1610.1(c) condition to children too: CPC without 16 CFR 1610, the condition in missingInfo and nextActions', async () => {
+      for (const htsCode of ['6402.99.31.73', '6404.11.90.20']) {
+        const res = await checkCpscCertificate({ htsCode, targetAge: 'child', material: 'rubber sole, textile upper' });
+        expect(res.certificateType, htsCode).toBe('CCC');
+        expect(res.applicableRegulations.map((r) => r.cfr), htsCode).not.toContain('16 CFR 1610');
+        expect(res.missingInfo.join(''), htsCode).toContain('16 CFR 1610.1(c)(3) の条件');
+        expect(res.nextActions.join(''), htsCode).toContain('条件に当たれば CPC に 16 CFR 1610 は要りません');
+        expect(res.nextActions.join(''), htsCode).not.toContain('1610.1(d)');
+        expect(res.testingExemption, htsCode).toBeUndefined();
+      }
+    });
+
+    it('asks only the age on a 16 CFR 1610.1(c) heading and names the (c) condition instead of the (d) / Disclaim B text', async () => {
+      const res = await checkCpscCertificate({ htsCode: '6505.00.80.90', targetAge: 'unknown', material: '100% polyester' });
+      expect(res.missingInputs).toEqual(['targetAge']);
+      expect(res.clarifyingQuestions).toHaveLength(1);
+      for (const text of [res.clarifyingQuestions?.[0], res.impactExplanation]) {
+        expect(text).toContain('16 CFR 1610.1(c)(1)');
+        expect(text).not.toContain('Disclaim B');
+      }
+      expect(res.testingExemption).toBeUndefined();
+    });
+
+    it('keeps the CPSC list item for a listed code when the age is unknown', async () => {
+      const res = await checkCpscCertificate({ htsCode: '6109.90.10.09', targetAge: 'unknown' });
+      expect(res.applicableRegulations[0].cfr).toContain('CPSC HTS Guidance List');
+    });
+
+    it('also gives the 16 CFR 1610.1(d) answer for an adult hat, glove or shoe that fails the (c) condition', async () => {
+      const acrylic = await checkCpscCertificate({ htsCode: '6116.10.17.40', targetAge: 'adult', material: '100% acrylic' });
+      expect(acrylic.certificateRequired).toBe('unknown');
+      expect(acrylic.nextActions.join('')).toContain('条件に当たらないときは、繊維の組成（100% acrylic）が 16 CFR 1610.1(d)(2)');
+      expect(acrylic.nextActions.join('')).toContain('Disclaim B');
+      const cotton = await checkCpscCertificate({ htsCode: '6116.10.17.40', targetAge: 'adult', material: '100% cotton', fabricSurface: 'raised' });
+      expect(cotton.nextActions.join('')).toContain('16 CFR 1610 の試験と GCC・eFiling が要ります');
+      expect(cotton.nextActions).toContain(NAME_NOTE);
+      const plain = await checkCpscCertificate({ htsCode: '6116.10.17.40', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain' });
+      expect(plain.nextActions.join('')).toContain('生地の重さは何 oz/sq yd ですか');
+      expect(plain.nextActions.join('')).not.toContain('生地の表面は平ら');
+      expect(plain.missingInputs).toBeUndefined();
+      expect(plain.inputCompleteness).toBe('complete');
+    });
+
+    it('keeps the near-code category hint (Bicycle Helmets, 16 CFR 1203) with the (c)(1) text on unlisted 6506.10 headgear', async () => {
+      const res = await checkCpscCertificate({ htsCode: '6506.10.60.30', targetAge: 'adult' });
+      expect(res.missingInfo.join('')).toContain('16 CFR 1610.1(c)(1)');
+      expect(res.nextActions.join('')).toContain('"Bicycle Helmets"');
+      expect(res.nextActions.join('')).toContain('16 CFR 1203');
+    });
+
+    it('asks and names only the missing fabric facts', async () => {
+      const plain = await checkCpscCertificate({ htsCode: '6109.10.00.12', targetAge: 'adult', material: '100% cotton', fabricSurface: 'plain' });
+      expect(plain.missingInputs).toEqual(['fabricWeightOzPerSqYd']);
+      expect(`${plain.missingInfo.join('')}${plain.nextActions.join('')}`).not.toMatch(/繊維の?組成|生地の?表面/);
+      expect(plain.nextActions.join('')).toContain('生地の重さ');
+      expect(plain.nextActions).not.toContain(NAME_NOTE); // 決まる前（重さ次第で (d)(1) の免除）には出さない
+      // 2.6 未満なら (d)(1) は当たらないと決まっているので、表面は聞かない
+      const light = await checkCpscCertificate({ htsCode: '6109.10.00.12', targetAge: 'adult', material: 'cotton', fabricWeightOzPerSqYd: 2.0 });
+      expect(light.missingInputs).toEqual(['material']);
+    });
+
+    it('decides the 16 CFR 1610.1(c) headings at the heading edges', () => {
+      for (const [code, citation] of [['6216.00.08.00', '16 CFR 1610.1(c)(2)'], ['6401.10.00.00', '16 CFR 1610.1(c)(3)'], ['6405.90.90.00', '16 CFR 1610.1(c)(3)'], ['6504.00.90.15', '16 CFR 1610.1(c)(1)']] as const) {
+        expect(section1610cExclusionFor(code)?.citation, code).toBe(citation);
+      }
+      for (const code of ['6406.10.05.00', '6507.00.00.00']) expect(section1610cExclusionFor(code), code).toBeUndefined();
+    });
+
+    it('summarises an adult (c) result as needing the 16 CFR 1610.1(c) condition', async () => {
+      const res = await checkProductCompliance({ productName: 'Adult Safety Helmet', description: 'Protective headgear for adults', htsCode: '6506.10.60.30', targetAge: 'adult', material: 'polycarbonate shell' });
+      expect(res.cpsc?.certificateRequired).toBe('unknown');
+      expect(res.summary).toContain('16 CFR 1610.1(c)(1) の条件');
+      expect(res.summary).not.toContain('類似コード');
+    });
   });
 
   describe('generateGccCertificate & checkProductCompliance GCC integration', () => {
