@@ -3,7 +3,20 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { TradeInputError, checkCpscCertificate, checkProductCompliance, crossQueriesFor, detectProductAgeGender, predictHtsCode, stripNegations, verifyHtsCode } from './trade.js';
+import { extractMetadataFromJsonLd } from '../html_parser.js';
+import {
+  TradeGccIncompleteError,
+  TradeInputError,
+  checkCpscCertificate,
+  checkFdaRegulated,
+  checkProductCompliance,
+  crossQueriesFor,
+  detectProductAgeGender,
+  generateGccCertificate,
+  predictHtsCode,
+  stripNegations,
+  verifyHtsCode,
+} from './trade.js';
 
 // HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
@@ -228,6 +241,14 @@ describe('HTS prediction and product compliance', () => {
       const women = await predictHtsCode({ productName: "Women's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee for women, 100% cotton', targetAge: 'adult' });
       expect(women.bestMatch.description).toMatch(/Women's/);
     });
+
+    it('keeps the adult apparel line when targetAge is adult (the age/gender change is not part of v4.1)', async () => {
+      const input = { productName: "Men's Thermal Undershirt", description: 'cotton knit thermal undershirt', material: 'cotton' };
+      const adult = await predictHtsCode({ ...input, targetAge: 'adult' });
+      const plain = await predictHtsCode(input);
+      expect(adult.bestMatch.htsCode).toBe('6109.10.00.11');
+      expect(plain.bestMatch.htsCode).toBe('6109.10.00.11');
+    });
   });
 
   describe('verifyHtsCode', () => {
@@ -410,6 +431,745 @@ describe('HTS prediction and product compliance', () => {
       expect(res.overallStatus).not.toBe('needs_more_info');
       expect(res.htsVerification?.verified).toBe(true);
       expect(res.fda?.fdFlag).toBe('FD1');
+    });
+  });
+
+  describe('Schema.org Product JSON-LD variant SKU extraction', () => {
+    it('extracts fallback variant SKU from Product.offers[].sku when Product.sku is absent (Shopify pattern)', () => {
+      const meta = extractMetadataFromJsonLd([
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: 'Official Tour Brushed Fleece Hoodie',
+          brand: { '@type': 'Brand', name: 'Acme' },
+          offers: [
+            {
+              '@type': 'Offer',
+              sku: 'HOODIE-BLK-L',
+              price: '68.00',
+              priceCurrency: 'USD',
+              availability: 'https://schema.org/InStock',
+            },
+            {
+              '@type': 'Offer',
+              sku: 'HOODIE-BLK-XL',
+              price: '68.00',
+              priceCurrency: 'USD',
+              availability: 'https://schema.org/InStock',
+            },
+          ],
+        },
+      ]);
+      expect(meta.productName).toBe('Official Tour Brushed Fleece Hoodie');
+      expect(meta.brand).toBe('Acme');
+      expect(meta.sku).toBe('HOODIE-BLK-L');
+    });
+
+    it('extracts variant SKU from Shopify Online Store 2.0 ProductGroup.hasVariant[] and matches ?variant= query param', () => {
+      const productGroupJsonLd = [
+        {
+          '@context': 'http://schema.org/',
+          '@type': 'ProductGroup',
+          name: '【テスト】刺繍Tシャツ（キッズ）',
+          brand: { '@type': 'Brand', name: 'Acme' },
+          hasVariant: [
+            {
+              '@id': '/products/kids-tee?variant=1001#variant',
+              '@type': 'Product',
+              name: '【テスト】刺繍Tシャツ - 青 / 90',
+              sku: 'SKU-A1',
+              offers: {
+                '@type': 'Offer',
+                url: 'https://example.com/products/kids-tee?variant=1001',
+                price: '3500',
+                priceCurrency: 'JPY',
+                availability: 'http://schema.org/OutOfStock',
+              },
+            },
+            {
+              '@id': '/products/kids-tee?variant=1002#variant',
+              '@type': 'Product',
+              name: '【テスト】刺繍Tシャツ - 桃 / 100',
+              sku: 'SKU-A2',
+              offers: {
+                '@type': 'Offer',
+                url: 'https://example.com/products/kids-tee?variant=1002',
+                price: '3500',
+                priceCurrency: 'JPY',
+                availability: 'http://schema.org/InStock',
+              },
+            },
+          ],
+        },
+      ];
+
+      // Default (no ?variant=): prefers InStock variant or first variant
+      const defaultMeta = extractMetadataFromJsonLd(productGroupJsonLd, 'https://example.com/products/kids-tee');
+      expect(defaultMeta.brand).toBe('Acme');
+      expect(defaultMeta.sku).toBe('SKU-A2');
+      expect(defaultMeta.availability).toBe('InStock');
+
+      // Explicit ?variant=1001: selects exact variant SKU and name even when OutOfStock
+      const specificMeta = extractMetadataFromJsonLd(productGroupJsonLd, 'https://example.com/products/kids-tee?variant=1001');
+      expect(specificMeta.sku).toBe('SKU-A1');
+      expect(specificMeta.productName).toBe('【テスト】刺繍Tシャツ - 青 / 90');
+      expect(specificMeta.availability).toBe('OutOfStock');
+    });
+
+    it('prefers top-level Product.sku over Offer.sku and extracts standalone Offer.sku', () => {
+      const withTopSku = extractMetadataFromJsonLd([
+        {
+          '@type': 'Product',
+          name: 'LED Concert Penlight',
+          sku: 'PENLIGHT-TOP-01',
+          offers: { '@type': 'Offer', sku: 'PENLIGHT-VAR-01', price: '35.00', priceCurrency: 'USD' },
+        },
+      ]);
+      expect(withTopSku.sku).toBe('PENLIGHT-TOP-01');
+
+      const offerOnly = extractMetadataFromJsonLd([
+        { '@type': 'Offer', sku: 'OFFER-ONLY-99', price: '15.00', priceCurrency: 'USD' },
+      ]);
+      expect(offerOnly.sku).toBe('OFFER-ONLY-99');
+    });
+  });
+
+  describe('Practical CPSC & FDA regulatory rules (2016 Enforcement Discretion, Reese’s Law, Disclaim A/B, FCS)', () => {
+    it('exempts adult apparel made solely of 16 CFR 1610.1(d)(2) fibers from GCC & eFiling (ACE Disclaim B / IUC 130.006)', async () => {
+      const poly = await checkCpscCertificate({
+        htsCode: '6109.90.10.07',
+        targetAge: 'adult',
+        material: '100% polyester',
+      });
+      expect(poly.certificateRequired).toBe(false);
+      expect(poly.certificateType).toBe('none');
+      expect(poly.eFilingRequired).toBe(false);
+      expect(poly.disclaimerCodeHint).toContain('B');
+      expect(poly.disclaimerCodeHint).toContain('130.006');
+      expect(poly.testingExemption?.exempt).toBe(true);
+      expect(poly.testingExemption?.citation).toBe('16 CFR 1610.1(d)(2)');
+      expect(poly.testingExemption?.enforcementDiscretion).toBe(true);
+    });
+
+    it('exempts adult plain-surface apparel >= 2.6 oz/sq yd (88.2 g/m²) under 16 CFR 1610.1(d)(1) & Enforcement Discretion', async () => {
+      const heavyCottonTee = await checkCpscCertificate({
+        htsCode: '6109.10.00.12',
+        targetAge: 'adult',
+        material: '100% cotton',
+        fabricSurface: 'plain',
+        fabricWeightGsm: 180,
+      });
+      expect(heavyCottonTee.certificateRequired).toBe(false);
+      expect(heavyCottonTee.certificateType).toBe('none');
+      expect(heavyCottonTee.eFilingRequired).toBe(false);
+      expect(heavyCottonTee.disclaimerCodeHint).toContain('B');
+      expect(heavyCottonTee.disclaimerCodeHint).toContain('130.006');
+      expect(heavyCottonTee.testingExemption?.exempt).toBe(true);
+      expect(heavyCottonTee.testingExemption?.citation).toBe('16 CFR 1610.1(d)(1)');
+      expect(heavyCottonTee.testingExemption?.enforcementDiscretion).toBe(true);
+    });
+
+    it('requires GCC and eFiling for non-exempt adult apparel (cotton-blend raised-fiber fleece or lightweight plain cotton < 88.2 g/m²)', async () => {
+      const raisedHoodie = await checkCpscCertificate({
+        htsCode: '6110.20.20.79',
+        targetAge: 'adult',
+        material: '80% cotton 20% polyester',
+        fabricSurface: 'raised',
+        fabricWeightGsm: 320,
+      });
+      expect(raisedHoodie.certificateRequired).toBe(true);
+      expect(raisedHoodie.certificateType).toBe('GCC');
+      expect(raisedHoodie.eFilingRequired).toBe(true);
+      expect(raisedHoodie.testingExemption?.exempt).toBe(false);
+
+      const sheerCotton = await checkCpscCertificate({
+        htsCode: '6109.10.00.12',
+        targetAge: 'adult',
+        material: '95% polyester 5% spandex', // spandex disqualifies (d)(2), < 2.6 oz disqualifies (d)(1)
+        fabricSurface: 'plain',
+        fabricWeightOzPerSqYd: 2.1,
+      });
+      expect(sheerCotton.certificateRequired).toBe(true);
+      expect(sheerCotton.certificateType).toBe('GCC');
+      expect(sheerCotton.eFilingRequired).toBe(true);
+      expect(sheerCotton.testingExemption?.exempt).toBe(false);
+    });
+
+    it('excludes standalone adult hats, gloves, and footwear under 16 CFR 1610.1(c) (ACE Disclaim A)', async () => {
+      const cap = await checkCpscCertificate({
+        htsCode: '6505.00.80.90',
+        targetAge: 'adult',
+        material: '100% cotton',
+        productCategory: 'Clothing',
+        description: 'Adult embroidered baseball cap hat',
+      });
+      expect(cap.certificateRequired).toBe(false);
+      expect(cap.certificateType).toBe('none');
+      expect(cap.eFilingRequired).toBe(false);
+      expect(cap.disclaimerCodeHint).toContain('A');
+    });
+
+    it('still requires CPC (CCC) and eFiling for children’s apparel even when fabric meets 16 CFR 1610.1(d)', async () => {
+      const kidsPolyTee = await checkCpscCertificate({
+        htsCode: '6109.90.10.47',
+        targetAge: 'child',
+        material: '100% polyester',
+      });
+      expect(kidsPolyTee.certificateRequired).toBe(true);
+      expect(kidsPolyTee.certificateType).toBe('CCC');
+      expect(kidsPolyTee.eFilingRequired).toBe(true);
+      expect(kidsPolyTee.testingExemption?.exempt).toBe(true);
+      expect(kidsPolyTee.testingExemption?.enforcementDiscretion).toBe(false);
+    });
+
+    it('returns ACE Disclaim A (certificateRequired: false) for adult items in children-only CPSC categories (collectibles, jewelry, shoes)', async () => {
+      const adultFigure = await checkCpscCertificate({
+        htsCode: '9503.00.00.90',
+        targetAge: 'adult',
+        material: 'PVC plastic',
+        description: 'Adult collector scale statue figure (ages 15+)',
+      });
+      expect(adultFigure.certificateRequired).toBe(false);
+      expect(adultFigure.certificateType).toBe('none');
+      expect(adultFigure.eFilingRequired).toBe(false);
+      expect(adultFigure.disclaimerCodeHint).toContain('A');
+
+      const adultShoes = await checkCpscCertificate({
+        htsCode: '6402.99.31.65',
+        targetAge: 'adult',
+        material: 'rubber and synthetic upper',
+      });
+      expect(adultShoes.certificateRequired).toBe(false);
+      expect(adultShoes.certificateType).toBe('none');
+      expect(adultShoes.eFilingRequired).toBe(false);
+    });
+
+    it('applies cross-cutting 16 CFR Part 1263 (Reese’s Law / ANSI UL 4200A) GCC + eFiling to button/coin-cell consumer products without overwriting HTS to 8506', async () => {
+      const penlight = await checkProductCompliance({
+        htsCode: '9405.42.84.40', // portable LED lamp / light stick in fixture chapter 9405
+        productName: 'Official Concert LED Penlight',
+        description: 'Handheld LED concert light stick powered by 3x LR44 button cell batteries',
+        targetAge: 'adult',
+        material: 'ABS plastic',
+        hasBattery: true,
+        batteryType: 'button_coin',
+      });
+      expect(penlight.product.htsCode).toBe('9405.42.84.40');
+      expect(penlight.cpsc?.certificateRequired).toBe(true);
+      expect(penlight.cpsc?.certificateType).toBe('GCC');
+      expect(penlight.cpsc?.eFilingRequired).toBe(true);
+      expect(penlight.cpsc?.applicableRegulations.some((r) => r.cfr.includes('16 CFR 1263'))).toBe(true);
+
+      // Children's toy (9503, child) with button cell remains CCC under ASTM F963 (16 CFR 1263.1(d) toy exemption)
+      const childToy = await checkCpscCertificate({
+        htsCode: '9503.00.00.73',
+        targetAge: 'child',
+        material: 'plastic',
+        hasBattery: true,
+        batteryType: 'button_coin',
+      });
+      expect(childToy.certificateType).toBe('CCC');
+      expect(childToy.eFilingRequired).toBe(true);
+    });
+
+    it('clarifies FDA FCS tableware is exempt from Prior Notice under 21 CFR 1.276(b)(5) while flagging dual FDA + CPSC CCC for children’s mugs', async () => {
+      const adultMugFda = checkFdaRegulated({
+        htsCode: '6912.00.44.00',
+        foodContact: true,
+      });
+      expect(adultMugFda.fdFlag).toBe('FD1');
+      expect(adultMugFda.priorNoticeMayApply).toBe(false);
+      expect(adultMugFda.requiredActions?.[0]).toContain('21 CFR');
+      expect(adultMugFda.requiredActions?.[0]).toContain('Prior Notice');
+
+      const childMug = await checkProductCompliance({
+        htsCode: '6912.00.44.00',
+        productName: 'Kids Cartoon Ceramic Mug',
+        description: 'Small stoneware drinking mug designed for children aged 4+',
+        targetAge: 'child',
+        material: 'ceramic',
+        foodContact: true,
+      });
+      expect(childMug.fda?.fdaRegulatedLikely).toBe(true);
+      expect(childMug.fda?.fdFlag).toBe('FD1');
+      expect(childMug.cpsc?.certificateRequired).toBe(true);
+      expect(childMug.cpsc?.certificateType).toBe('CCC');
+      expect(childMug.cpsc?.eFilingRequired).toBe(true);
+    });
+  });
+
+  describe('generateGccCertificate & checkProductCompliance GCC integration', () => {
+    const sampleCertifier = {
+      name: 'Acme Imports LLC',
+      address: '100 Example Street, Anytown, CA, United States',
+      email: 'compliance@acme-imports.test',
+      phone: '+1-213-555-0199',
+    };
+    const sampleCustodian = {
+      name: 'Compliance Manager',
+      address: '100 Example Street, Anytown, CA, United States',
+      email: 'qa-records@acme-imports.test',
+      phone: '+1-202-555-0103',
+    };
+
+    it('generates a complete 7-element 16 CFR 1110.11 GCC (JSON, Markdown, print HTML) for a regulated SKU', async () => {
+      const res = await generateGccCertificate({
+        productName: 'Official Concert LED Penlight',
+        sku: 'PEN-2026-TOUR',
+        brand: 'Acme',
+        modelOrBatch: 'LOT-2026-09A',
+        description: 'Handheld LED concert penlight using LR44 button cells',
+        htsCode: '9405.42.84.40',
+        targetAge: 'adult',
+        material: 'ABS plastic',
+        hasBattery: true,
+        batteryType: 'button_coin',
+        certifier: sampleCertifier,
+        recordCustodian: sampleCustodian,
+        manufacture: {
+          date: '2026-09',
+          city: 'Shenzhen, Guangdong',
+          country: 'China',
+          manufacturerName: 'Acme Electronics Factory',
+        },
+        testing: {
+          date: '2026-09-18',
+          location: 'Shenzhen, China',
+          laboratoryName: 'Acme Test Lab',
+          laboratoryAddress: '2 Example Road, Shenzhen, Guangdong, China',
+          laboratoryPhone: '+1-202-555-0104',
+          reportNumber: 'TR-0001',
+        },
+      });
+
+      expect(res.mode).toBe('single_product');
+      expect(res.overallStatus).toBe('ready');
+      expect(res.counts.gccGenerated).toBe(1);
+      const item = res.items[0];
+      expect(item.status).toBe('generated');
+      expect(item.missingFields).toEqual([]);
+      expect(item.aceFilingGuidance.eFilingRequired).toBe(true);
+      expect(item.statutoryFields?.productIdentification.sku).toBe('PEN-2026-TOUR');
+      expect(item.statutoryFields?.citations.some((c) => c.includes('16 CFR 1263'))).toBe(true);
+      expect(item.statutoryFields?.certifier?.name).toBe('Acme Imports LLC');
+      expect(item.statutoryFields?.recordCustodian?.email).toBe('qa-records@acme-imports.test');
+      expect(item.statutoryFields?.manufactureDateAndPlace).toMatchObject({
+        date: '2026-09',
+        city: 'Shenzhen, Guangdong',
+        country: 'China',
+      });
+      expect(item.statutoryFields?.testingLaboratory.name).toContain('Acme Test Lab');
+      expect(item.certificateMarkdown).toContain('General Certificate of Conformity');
+      expect(item.certificateMarkdown).toContain('PEN-2026-TOUR');
+      expect(item.certificateMarkdown).toContain('16 CFR 1263');
+      expect(res.packageHtml).toContain('<!DOCTYPE html>');
+      expect(res.packageHtml).toContain('@media print');
+    });
+
+    it('fails closed with TradeGccIncompleteError by default when statutory fields are missing, and returns draft_needs_info only with allowDraft: true', async () => {
+      const incompleteInput = {
+        productName: 'Tour Brushed Fleece Pullover Hoodie',
+        sku: 'HD-COT-BLK-M',
+        htsCode: '6109.10.00.12',
+        targetAge: 'adult' as const,
+        material: '80% cotton 20% polyester',
+        fabricSurface: 'raised' as const,
+        fabricWeightGsm: 310,
+      };
+
+      let caught: unknown;
+      try {
+        await generateGccCertificate(incompleteInput);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(TradeGccIncompleteError);
+      const incompleteErr = caught as TradeGccIncompleteError;
+      expect(incompleteErr.code).toBe('MISSING_REQUIRED_GCC_FIELDS');
+      expect(incompleteErr.missingFields).toContain('certifier.name');
+      expect(incompleteErr.missingFields).toContain('certifier.email');
+      expect(incompleteErr.missingFields).toContain('recordCustodian.email');
+      expect(incompleteErr.missingFields).toContain('manufacture.date');
+      expect(incompleteErr.missingFields).toContain('testing.laboratoryName');
+
+      const res = await generateGccCertificate({
+        ...incompleteInput,
+        allowDraft: true,
+      });
+
+      expect(res.overallStatus).toBe('partial_or_draft');
+      const item = res.items[0];
+      expect(item.status).toBe('draft_needs_info');
+      expect(item.missingFields).toContain('certifier.name');
+      expect(item.missingFields).toContain('certifier.address');
+      expect(item.missingFields).toContain('certifier.email');
+      expect(item.missingFields).toContain('certifier.phone');
+      expect(item.missingFields).toContain('recordCustodian.name');
+      expect(item.missingFields).toContain('recordCustodian.email');
+      expect(item.missingFields).toContain('manufacture.date');
+      expect(item.missingFields).toContain('manufacture.city');
+      expect(item.missingFields).toContain('manufacture.country');
+      expect(item.missingFields).toContain('testing.date');
+      expect(item.missingFields).toContain('testing.laboratoryName');
+      expect(item.certificateMarkdown).toContain('DRAFT');
+    });
+
+    it('rejects sample, placeholder, or uncertain values in statutory GCC fields even when allowDraft is true', async () => {
+      let caught: unknown;
+      try {
+        await generateGccCertificate({
+          productName: 'Tour Brushed Fleece Pullover Hoodie',
+          sku: 'HD-COT-BLK-M',
+          htsCode: '6109.10.00.12',
+          targetAge: 'adult',
+          material: '100% cotton',
+          fabricSurface: 'raised',
+          fabricWeightGsm: 320,
+          allowDraft: true,
+          certifier: {
+            name: 'Sample Exporter Inc.',
+            address: '100 Example Street, Anytown, CA',
+            email: 'compliance@acme-imports.example.com',
+            phone: '+81-3-0000-0000',
+          },
+          manufacture: {
+            date: 'TBD',
+            city: '仮置き工場',
+            country: 'Unknown',
+          },
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(TradeInputError);
+      const inputErr = caught as TradeInputError;
+      expect(inputErr.code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
+      expect(inputErr.message).toContain('certifier.name');
+      expect(inputErr.message).toContain('certifier.email');
+      expect(inputErr.message).toContain('certifier.phone');
+      expect(inputErr.message).toContain('manufacture.date');
+      expect(inputErr.message).toContain('manufacture.city');
+      expect(inputErr.message).toContain('manufacture.country');
+    });
+
+    it('uses pre-configured SORA_GCC_CERTIFIER_* and SORA_GCC_CUSTODIAN_* environment defaults without requiring LLM lookup', async () => {
+      const envKeys = [
+        'SORA_GCC_CERTIFIER_NAME',
+        'SORA_GCC_CERTIFIER_ADDRESS',
+        'SORA_GCC_CERTIFIER_EMAIL',
+        'SORA_GCC_CERTIFIER_PHONE',
+        'SORA_GCC_CUSTODIAN_NAME',
+      ] as const;
+      const prev: Record<string, string | undefined> = {};
+      for (const k of envKeys) prev[k] = process.env[k];
+
+      process.env.SORA_GCC_CERTIFIER_NAME = 'Acme Imports LLC';
+      process.env.SORA_GCC_CERTIFIER_ADDRESS = '100 Example Street, Anytown, CA, United States';
+      process.env.SORA_GCC_CERTIFIER_EMAIL = 'compliance@acme-imports.test';
+      process.env.SORA_GCC_CERTIFIER_PHONE = '+1-202-555-0101';
+      process.env.SORA_GCC_CUSTODIAN_NAME = 'Compliance Manager, Acme Imports LLC';
+
+      try {
+        const res = await generateGccCertificate({
+          productName: 'Adult Road Bicycle Helmet',
+          sku: 'HLM-ENV-01',
+          htsCode: '6506.10.60.45',
+          targetAge: 'adult',
+          material: 'polycarbonate',
+          manufacture: { date: '2026-10', city: 'Taichung', country: 'Taiwan' },
+          testing: {
+            date: '2026-10-12',
+            location: 'Osaka, Japan',
+            laboratoryName: 'Acme Test Lab Osaka',
+            reportNumber: 'TR-0004',
+          },
+        });
+        expect(res.overallStatus).toBe('ready');
+        expect(res.items[0].status).toBe('generated');
+        expect(res.items[0].statutoryFields?.certifier).toEqual({
+          name: 'Acme Imports LLC',
+          address: '100 Example Street, Anytown, CA, United States',
+          email: 'compliance@acme-imports.test',
+          phone: '+1-202-555-0101',
+        });
+        expect(res.items[0].statutoryFields?.recordCustodian).toEqual({
+          name: 'Compliance Manager, Acme Imports LLC',
+          address: '100 Example Street, Anytown, CA, United States',
+          email: 'compliance@acme-imports.test',
+          phone: '+1-202-555-0101',
+        });
+      } finally {
+        for (const k of envKeys) {
+          if (prev[k] === undefined) delete process.env[k];
+          else process.env[k] = prev[k];
+        }
+      }
+    });
+
+    it('refuses to issue a GCC when a product is for children <= 12 (returns cpc_required_instead)', async () => {
+      const res = await generateGccCertificate({
+        productName: 'Kids Plush Mascot Doll',
+        sku: 'PLUSH-KIDS-01',
+        htsCode: '9503.00.00.73',
+        targetAge: 'child',
+        material: 'polyester plush',
+        certifier: sampleCertifier,
+        recordCustodian: sampleCustodian,
+      });
+
+      expect(res.overallStatus).toBe('cpc_required');
+      expect(res.warnings?.length).toBe(1);
+      expect(res.warnings?.[0]).toContain('CPC');
+      expect(res.warnings?.[0]).toContain('非対応');
+      expect(res.items[0].status).toBe('cpc_required_instead');
+      expect(res.items[0].warnings?.length).toBe(1);
+      expect(res.items[0].aceFilingGuidance.certificateType).toBe('CCC');
+      expect(res.items[0].aceFilingGuidance.eFilingRequired).toBe(true);
+    });
+
+    it('does not misclassify Japanese product pages that contain English shipping disclaimers when called with url alone', async () => {
+      const server = Bun.serve({
+        port: 0,
+        fetch() {
+          const html = `<!doctype html><html><head>
+            <title>【テスト】刺繍Tシャツ（キッズ）</title>
+            <meta name="description" content="This product cannot be shipped to the United States. This is because we are currently making adjustments to comply with CPSC mandatory e-filing requirements.">
+            <script type="application/ld+json">${JSON.stringify({
+              '@context': 'http://schema.org/',
+              '@type': 'ProductGroup',
+              name: '【テスト】刺繍Tシャツ（キッズ）',
+              brand: { '@type': 'Brand', name: 'Acme' },
+              hasVariant: [
+                {
+                  '@type': 'Product',
+                  name: '【テスト】刺繍Tシャツ - 青 / 90',
+                  sku: 'SKU-A1',
+                  offers: { '@type': 'Offer', price: '3500', priceCurrency: 'JPY', availability: 'http://schema.org/OutOfStock' },
+                },
+              ],
+            })}</script>
+          </head><body><main><h1>【テスト】刺繍Tシャツ（キッズ）</h1><p>綿100% 4.2 oz/yd2</p></main></body></html>`;
+          return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        },
+      });
+      const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+      try {
+        const res = await checkProductCompliance({
+          url: `http://127.0.0.1:${server.port}/products/kids-tee`,
+          generateGcc: true,
+        });
+        expect(res.overallStatus).toBe('needs_more_info');
+        expect(res.product.sku).toBe('SKU-A1');
+        expect(res.product.brand).toBe('Acme');
+        expect(res.product.htsCode).toBeUndefined();
+        expect(res.clarifyingQuestions?.[0]).toContain('日本語');
+      } finally {
+        if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+        else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+        server.stop();
+      }
+    }, 15_000);
+
+    it('generates a multi-SKU post-shipment Courier / Customs Clearance Package (Page 1 Cover Sheet + per-SKU GCCs & Fabric Exemption Statement)', async () => {
+      const pkg = await generateGccCertificate({
+        orderNumber: 'SHOP-ORD-10492',
+        awbNumber: 'TEST-AWB-0003',
+        carrier: 'FedEx',
+        invoiceNumber: 'INV-2026-10492',
+        certifier: sampleCertifier,
+        recordCustodian: sampleCustodian,
+        items: [
+          {
+            sku: 'TEE-WHT-L',
+            productName: "Men's Heavyweight Plain Cotton T-Shirt",
+            description: 'Short sleeve crew neck plain jersey t-shirt',
+            htsCode: '6109.10.00.12',
+            targetAge: 'adult',
+            material: '100% cotton',
+            fabricSurface: 'plain',
+            fabricWeightGsm: 190,
+            manufacture: { date: '2026-08', city: 'Osaka', country: 'Japan' },
+          },
+          {
+            sku: 'HD-FLC-XL',
+            productName: 'Unisex Cotton-Blend Brushed Fleece Hoodie',
+            description: 'Pullover sweatshirt hoodie with brushed fleece interior',
+            htsCode: '6109.10.00.12',
+            targetAge: 'adult',
+            material: '80% cotton 20% polyester',
+            fabricSurface: 'raised',
+            fabricWeightGsm: 320,
+            manufacture: { date: '2026-08', city: 'Suzhou, Jiangsu', country: 'China' },
+            testing: {
+              date: '2026-08-20',
+              location: 'Shanghai, China',
+              laboratoryName: 'Acme Test Lab Shanghai',
+              reportNumber: 'TR-0002',
+            },
+          },
+          {
+            sku: 'PEN-LED-02',
+            productName: 'LED Concert Penlight Stick',
+            description: 'Portable LED light stick powered by coin cell battery',
+            htsCode: '9405.42.84.40',
+            targetAge: 'adult',
+            material: 'ABS plastic',
+            hasBattery: true,
+            batteryType: 'button_coin',
+            manufacture: { date: '2026-09', city: 'Shenzhen', country: 'China' },
+            testing: {
+              date: '2026-09-10',
+              location: 'Shenzhen, China',
+              laboratoryName: 'Acme Test Lab Shenzhen',
+              reportNumber: 'TR-0003',
+            },
+          },
+          {
+            sku: 'ACR-STD-05',
+            productName: 'Character Acrylic Stand Figure (Adult Collector)',
+            description: 'Decorative desktop acrylic stand for adult collectors aged 15+',
+            htsCode: '9503.00.00.90',
+            targetAge: 'adult',
+            material: 'PMMA acrylic plastic',
+          },
+          {
+            sku: 'MUG-CER-01',
+            productName: 'Logo Stoneware Coffee Mug',
+            description: 'Ceramic coffee mug for hot beverages',
+            htsCode: '6912.00.44.00',
+            targetAge: 'adult',
+            material: 'ceramic',
+            foodContact: true,
+            manufacture: {
+              date: '2026-07',
+              city: 'Tajimi, Gifu',
+              country: 'Japan',
+              manufacturerName: 'Acme Ceramics Factory',
+            },
+          },
+        ],
+      });
+
+      expect(pkg.mode).toBe('order_package');
+      expect(pkg.overallStatus).toBe('ready');
+      expect(pkg.counts).toEqual({
+        totalItems: 5,
+        gccGenerated: 2,
+        draftNeedsInfo: 0,
+        disclaimBExempt: 1,
+        disclaimAExempt: 2,
+        cpcRequired: 0,
+      });
+
+      expect(pkg.items[0].status).toBe('exempt_disclaim_b');
+      expect(pkg.items[0].aceFilingGuidance.disclaimCode).toBe('B');
+      expect(pkg.items[0].aceFilingGuidance.intendedUseCode).toBe('130.006');
+      expect(pkg.items[1].status).toBe('generated');
+      expect(pkg.items[2].status).toBe('generated');
+      expect(pkg.items[3].status).toBe('exempt_no_gcc_needed');
+      expect(pkg.items[3].aceFilingGuidance.disclaimCode).toBe('A');
+      expect(pkg.items[4].status).toBe('exempt_no_gcc_needed');
+      expect(pkg.items[4].aceFilingGuidance.fdaNote).toContain('21 CFR');
+
+      // Cover sheet + individual SKU documents + print page breaks
+      expect(pkg.packageMarkdown).toContain('SHOP-ORD-10492');
+      expect(pkg.packageMarkdown).toContain('TEST-AWB-0003');
+      expect(pkg.packageMarkdown).toContain('130.006');
+      expect(pkg.packageHtml).toContain('page-break-before: always');
+      expect(pkg.packageHtml).toContain('HD-FLC-XL');
+      expect(pkg.packageHtml).toContain('PEN-LED-02');
+    });
+
+    it('integrates generateGcc: true directly into checkProductCompliance with scraped Shopify JSON-LD SKU & brand', async () => {
+      const server = Bun.serve({
+        hostname: '127.0.0.1',
+        port: 0,
+        fetch() {
+          return new Response(
+            `<!DOCTYPE html><html><head><title>Pro Road Cycling Helmet</title>
+            <script type="application/ld+json">${JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Product',
+              name: 'Adult Road Bicycle Helmet',
+              description: 'Protective adult road cycling helmet with EPS liner',
+              brand: { '@type': 'Brand', name: 'Acme' },
+              offers: [{ '@type': 'Offer', sku: 'VELO-HLM-BLK-M', price: '89.00', priceCurrency: 'USD' }],
+            })}</script></head><body><main><h1>Adult Road Bicycle Helmet</h1><p>${'Protective cycling headgear for adult riders with impact-absorbing EPS foam shell. '.repeat(6)}</p></main></body></html>`,
+            { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+          );
+        },
+      });
+      const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+
+      try {
+        const res = await checkProductCompliance({
+          url: `http://127.0.0.1:${server.port}/products/cycling-helmet`,
+          htsCode: '6506.10.60.45',
+          targetAge: 'adult',
+          material: 'polycarbonate and EPS foam',
+          generateGcc: true,
+          certifier: sampleCertifier,
+          recordCustodian: sampleCustodian,
+          manufacture: { date: '2026-06', city: 'Taichung', country: 'Taiwan' },
+          testing: {
+            date: '2026-06-15',
+            location: 'Taipei, Taiwan',
+            laboratoryName: 'Acme Test Lab Taipei',
+            reportNumber: 'TR-0005',
+          },
+        });
+
+        expect(res.product.sku).toBe('VELO-HLM-BLK-M');
+        expect(res.product.brand).toBe('Acme');
+        expect(res.gcc?.status).toBe('generated');
+        expect(res.gcc?.statutoryFields?.productIdentification.sku).toBe('VELO-HLM-BLK-M');
+        expect(res.gcc?.statutoryFields?.citations.some((c) => c.includes('16 CFR 1203'))).toBe(true);
+        expect(() => JSON.stringify(res)).not.toThrow();
+      } finally {
+        if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+        else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+        server.stop();
+      }
+    });
+
+    it('strictly HTML-escapes all untrusted product, order, and party strings in certificateHtml and packageHtml (XSS prevention)', async () => {
+      const xss = `<script>alert("xss")</script><img src=x onerror=alert('1')>&"`;
+      const res = await generateGccCertificate({
+        orderNumber: `ORD-${xss}`,
+        awbNumber: `AWB-${xss}`,
+        certifier: {
+          name: `Certifier ${xss}`,
+          address: `Addr ${xss}`,
+          email: 'sec@acme-imports.test',
+          phone: '+1-213-555-0144',
+        },
+        recordCustodian: {
+          name: `Custodian ${xss}`,
+          address: `CustAddr ${xss}`,
+          email: 'rec@acme-imports.test',
+          phone: '+1-213-555-0145',
+        },
+        items: [
+          {
+            sku: `SKU-${xss}`,
+            productName: `Helmet ${xss}`,
+            description: `Adult cycling helmet ${xss}`,
+            htsCode: '6506.10.60.45',
+            targetAge: 'adult',
+            material: 'polycarbonate',
+            manufacture: { date: '2026-05', city: `City ${xss}`, country: 'Japan' },
+            testing: { date: '2026-05-10', location: `LabLoc ${xss}`, laboratoryName: `Lab ${xss}` },
+          },
+        ],
+      });
+
+      expect(res.packageHtml).not.toContain('<script>');
+      expect(res.packageHtml).not.toContain('<img src=x');
+      expect(res.packageHtml).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+      expect(res.items[0].certificateHtml).not.toContain('<script>');
+      expect(res.items[0].certificateHtml).toContain('&amp;&quot;');
     });
   });
 });

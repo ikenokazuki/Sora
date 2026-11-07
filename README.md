@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (38ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 38 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 52 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (39ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 39 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 53 ツール）。
 
 ```json
 {
@@ -102,7 +102,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 【Sora ツール利用規約】
 > 1. 専用ツールがないことを理由に回答を拒否してはならない（ライブ日程・営業時間・発売日・最新動向等は必ず search_deep または search_web でWebから能動調査すること）。
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
->    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate
+>    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate, generate_gcc_certificate
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status, search_postal_code, normalize_address, reverse_geocode
 >    - 国内交通乗換・運賃: search_route
@@ -299,9 +299,9 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 52 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 53 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 52 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 53 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
 Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (38ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 38 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
@@ -557,7 +557,8 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品や類似コード品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint: A または B`）を案内します。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ<br>- `material` (string, 任意): 主な素材。判定は変えず、確認の質問を出すか消すかだけ |
 | `check_fda_regulated` | HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "0902.10.10.15", "3304.99.5000")<br>- `foodContact` (boolean, 任意): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ |
 | `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。判定には使わず、根拠の記録として応答に返す |
-| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足し、`batteryType` があれば注意書きを 1 行足す。`false` では何もしない |
+| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。`generateGcc: true` 指定時はGCC・免除根拠シートも同時出力。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"` (16 CFR 1610 衣料品表面)<br>- `fabricWeightGsm` (number, 任意): 衣料品目付重量 (g/m²)<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足し、`batteryType` があれば注意書きを 1 行足す。`false` では何もしない<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`<br>- `generateGcc` (boolean, 任意): GCC・免除シート同時生成 |
+| `generate_gcc_certificate` | 米国CPSC一般適合証明書（GCC: `16 CFR Part 1110` 法定7項目）の自動生成、および発送後のFedEx/DHL等の米国税関保留（CBP PGA Hold）に対する注文・AWB単位の通関パッケージ（Page 1 通関・PGA総括カバーシート＋SKU別GCC・`16 CFR § 1610.1(d)` 大人服免除根拠シート）を構造化JSON・英語Markdown・印刷/PDF保存対応HTMLで一括出力します。事業者連絡先はサーバー環境変数 `SORA_GCC_CERTIFIER_*` / `SORA_GCC_CUSTODIAN_*` で事前固定でき、未指定の法定必須項目がある場合は既定でエラー停止（`MISSING_REQUIRED_GCC_FIELDS`、ドラフト確認時のみ `allowDraft: true`）、サンプル・仮置き値は即時エラー拒否（`UNVERIFIED_PLACEHOLDER_INPUT`）、12歳以下の子供向け製品は `cpc_required_instead` で警告します。 | `certificateId`, `mode`, `items`, `packageHtml` | - `url` / `productName` / `sku` / `htsCode` / `material` / `targetAge` 等（単一SKU指定）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 注文・運送状番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 不足項目がある場合にドラフト出力を許可するか<br>- `items` (array, 任意, 最大50件): 複数SKU注文一括処理<br>- `certifier` / `recordCustodian` / `manufacture` / `testing`: 16 CFR 1110.11 法定証明者・製造所・試験記録 |
 
 ---
 
@@ -1963,6 +1964,91 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 
 ---
 
+### 3.22b 米国CPSC 一般適合証明書 (GCC) 自動生成 & 発送後通関保留パッケージ出力 (`POST /trade/gcc-generate`)
+単一商品の事前GCC（`16 CFR Part 1110` 法定7項目）発行と、発送後にFedEx / DHL / UPS等の通関部門から米国CBP PGA Hold照会を受けた際の**注文・AWB単位の通関提出パッケージ一括生成**の両方に対応します。
+
+- **ECプラットフォーム非依存**: Shopify・自社EC等の商品URL（`url`）を渡せば Schema.org `Product` / `Offer` JSON-LD から商品名・ブランド・バリアントSKUを自動抽出し、任意の受注管理・Webhook基盤から直接パラメータを渡すことも可能です。
+- **実務規制ロジック内蔵**:
+  - 大人用衣料品で `16 CFR § 1610.1(d)(1)`（平織り・天竺等の平滑表面かつ `>= 2.6 oz/sq yd` / `>= 88.2 g/m²`）または `§ 1610.1(d)(2)`（特定6繊維のみ）を満たす場合は、2016年CPSC執行裁量ポリシーに基づき `exempt_disclaim_b`（`ACE Disclaim B` / `Intended Use Code 130.006`）と判定し、クーリエ提出用の英語免除根拠シートを出力します。
+  - ボタン電池・コイン電池搭載製品（`hasBattery: true, batteryType: "button_coin"`）は本来のHTSを維持したまま横断的に `16 CFR Part 1263`（Reese's Law / `ANSI/UL 4200A`）GCC対象とします。
+  - 事業者固定の証明者・記録保管責任者連絡先は、環境変数 `SORA_GCC_CERTIFIER_NAME` / `SORA_GCC_CERTIFIER_ADDRESS` / `SORA_GCC_CERTIFIER_EMAIL` / `SORA_GCC_CERTIFIER_PHONE` および `SORA_GCC_CUSTODIAN_NAME`（住所・電話・メールは未指定時に `CERTIFIER` から自動継承、個別指定も可）でサーバー側に事前設定できるため、都度LLMにWeb探索させたり翻訳ゆれが混入するのを防ぎます。
+  - 試験日・製造年月・連絡先等の法定必須項目が不足している場合は、既定（`allowDraft: false`）で HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）エラーとして即時停止し、サンプル・仮置き値（`example.com`, `Sample`, `TBD`, `0000-0000` 等）は HTTP `400`（`UNVERIFIED_PLACEHOLDER_INPUT`）で厳格に拒否します（12歳以下の子供向け製品は `cpc_required_instead` と `warnings` でGCC誤発行をブロック）。
+
+- **リクエスト**:
+  ```bash
+  curl -X POST http://localhost:3016/trade/gcc-generate \
+    -H "Content-Type: application/json" \
+    -d '{
+      "orderNumber": "#10492",
+      "awbNumber": "TEST-AWB-0001",
+      "carrier": "FedEx",
+      "certifier": {
+        "name": "Acme Imports LLC",
+        "address": "100 Example Street, Anytown, CA, United States",
+        "email": "compliance@acme-imports.test",
+        "phone": "+1-202-555-0102"
+      },
+      "recordCustodian": {
+        "name": "Compliance Manager",
+        "address": "100 Example Street, Anytown, CA, United States",
+        "email": "records@acme-imports.test",
+        "phone": "+1-202-555-0102"
+      },
+      "items": [
+        {
+          "sku": "PENLIGHT-01",
+          "productName": "LED Concert Penlight",
+          "htsCode": "8513.10.2000",
+          "targetAge": "adult",
+          "hasBattery": true,
+          "batteryType": "button_coin",
+          "manufacture": { "date": "2026-04", "city": "Shenzhen, Guangdong", "country": "China" },
+          "testing": {
+            "date": "2026-05-12",
+            "location": "Shenzhen, China",
+            "laboratoryName": "Acme Test Lab"
+          }
+        },
+        {
+          "sku": "TEE-POLY-02",
+          "productName": "Adult Graphic T-Shirt",
+          "htsCode": "6109.90.1007",
+          "targetAge": "adult",
+          "material": "100% polyester"
+        }
+      ]
+    }'
+  ```
+- **レスポンス例**:
+  ```json
+  {
+    "certificateId": "GCC-20261107-9F2A1C",
+    "generatedAt": "2026-11-07T10:30:00.000Z",
+    "mode": "order_package",
+    "orderContext": {
+      "orderNumber": "#10492",
+      "awbNumber": "TEST-AWB-0001",
+      "carrier": "FedEx"
+    },
+    "overallStatus": "ready",
+    "summary": "全2明細を判定 / GCC発行完了: 1件 / 16 CFR 1610.1(d) 大人服免除 (ACE Disclaim B / 130.006): 1件",
+    "counts": {
+      "totalItems": 2,
+      "gccGenerated": 1,
+      "draftNeedsInfo": 0,
+      "disclaimBExempt": 1,
+      "disclaimAExempt": 0,
+      "cpcRequired": 0
+    },
+    "items": [],
+    "packageMarkdown": "# US Customs & CPSC PGA Clearance Summary Cover Sheet...",
+    "packageHtml": "<!DOCTYPE html><html lang=\"en\">...",
+    "disclaimer": "本証明書データおよび通関カバーシートは米国 16 CFR Part 1110..."
+  }
+  ```
+
+---
+
 ### 3.23 画像取得 & マルチモーダル視覚入力 (`POST /media/inspect-image`)
 WebページやX(Twitter)の投稿に含まれる画像URLを取得し、AIが視覚的に直接読み取れる形式（MCP `ImageContent` / Base64）に変換して返却します。タイムテーブル、告知チラシ、図表、領収書、スクリーンショットなどの画像内詳細情報をマルチモーダルAIが100%の精度で解読可能にします。
 
@@ -2323,7 +2409,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 52 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 53 ツール静的一括ロード |
 | `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: 3 ツールが呼ばれたときだけ必要な市区町村を取得する（`get_elevation` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: 3 ツールを登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |

@@ -1,5 +1,15 @@
 import { z } from 'zod';
-import { checkCpscCertificate, checkFdaRegulated, checkProductCompliance, predictHtsCode, verifyHtsCode } from '../scraper.js';
+import {
+  checkCpscCertificate,
+  checkFdaRegulated,
+  checkProductCompliance,
+  generateGccCertificate,
+  predictHtsCode,
+  TradeGccIncompleteError,
+  TradeInputError,
+  verifyHtsCode,
+} from '../scraper.js';
+import { GenerateGccCertificateRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
 
@@ -18,7 +28,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     '【必須・即時推測厳禁】米国CPSC適合証明書（GCC/CPC）要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務を判定する際は、推測せず必ず本ツールを実行してください。非対象時のACE免責申告コード(Disclaimer)や根拠条文（16 CFR）を提示します。素材や年齢層が不明な場合は推測で埋めず未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }',
     {
       htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
-      targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下, adult: 一般/大人, unknown: 未指定/不明）。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ。【推測値の入力厳禁】不明な場合は"unknown"を指定すること'),
+      targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下, adult: 一般/大人, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値の入力厳禁】不明な場合は"unknown"を指定すること'),
       material: z.string().optional().describe('主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
     },
     async (opts) => {
@@ -127,6 +137,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
   );
 
   // Tool: check_product_compliance (商品統合コンプライアンス一括判定) - CORE (defaultEnabled: true)
+  // CORE コンテキスト予算を守るため、GCC の当事者・試験機関明細付き一括発行は generate_gcc_certificate に分離し、ここでは主要商品属性のみ公開
   registerTool(
     mcpServer,
     toolCatalog,
@@ -143,7 +154,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない'),
       foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
-      hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足し、batteryTypeがあれば注意書きを1行足す。falseでは何もしない。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
+      hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
     },
     async (opts) => {
@@ -160,5 +171,69 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       }
     },
     { defaultEnabled: true, keywords: ['商品判定', 'コンプライアンス', 'FDA', 'CPSC', 'eFiling', 'GCC', 'CCC', 'HTS', '貿易一括判定', '輸出', '輸入'] },
+  );
+
+  // Tool: generate_gcc_certificate (米国CPSC GCC適合証明書・発送後通関保留パッケージ一括生成) - DEFERRED
+  registerTool(
+    mcpServer,
+    toolCatalog,
+    sessionActivated,
+    'generate_gcc_certificate',
+    'trade',
+    '【必須・推測/サンプル厳禁】米国CPSC一般適合証明書（GCC: 16 CFR Part 1110）および発送後通関パッケージ（カバーシート＋SKU別GCC・16 CFR 1610.1(d)免除シート）出力。URL指定時はJSON-LDからSKU等を自動抽出。certifier/recordCustodian省略時は環境変数 SORA_GCC_* を使用するためLLMでWeb探索しないこと。不足時は既定でエラー停止し、仮置き値は即時拒否。子供用はcpc_required_insteadで警告。返却: { certificateId, mode, overallStatus, summary, counts, items, packageMarkdown, packageHtml }',
+    GenerateGccCertificateRequestSchema.shape,
+    async (opts) => {
+      try {
+        const result = await generateGccCertificate(opts);
+        return {
+          content: [{ type: 'text', text: toolJson(result) }],
+        };
+      } catch (err) {
+        if (err instanceof TradeGccIncompleteError) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: toolJson({
+                  error: err.message,
+                  code: err.code,
+                  missingFields: err.missingFields,
+                  items: err.items,
+                }),
+              },
+            ],
+          };
+        }
+        if (err instanceof TradeInputError) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: toolJson({ error: err.message, code: err.code }) }],
+          };
+        }
+        return {
+          isError: true,
+          content: [{ type: 'text', text: `GCC certificate generation error: ${errorMessage(err) || err}` }],
+        };
+      }
+    },
+    {
+      defaultEnabled: deferredDefault,
+      keywords: [
+        'GCC',
+        'General Certificate of Conformity',
+        '一般適合証明書',
+        '適合証明書生成',
+        '16 CFR 1110',
+        '通関保留',
+        '税関保留',
+        'FedEx',
+        'DHL',
+        'AWB',
+        'CPSC',
+        'eFiling',
+        'Shopify',
+      ],
+    },
   );
 }

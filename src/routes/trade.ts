@@ -5,7 +5,9 @@ import {
   verifyHtsCode,
   predictHtsCode,
   checkProductCompliance,
+  generateGccCertificate,
   TradeInputError,
+  TradeGccIncompleteError,
 } from '../scraper.js';
 import {
   CpscCertificateCheckRequestSchema,
@@ -13,6 +15,7 @@ import {
   VerifyHtsCodeRequestSchema,
   PredictHtsCodeRequestSchema,
   ProductComplianceRequestSchema,
+  GenerateGccCertificateRequestSchema,
 } from '../types.js';
 import { formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
@@ -126,6 +129,36 @@ tradeRoutes.post('/trade/compliance', async (c) => {
     const result = await checkProductCompliance(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TradeInputError) return formatError(c, err.message, err.code, 400, false);
     return formatError(c, errorMessage(err) || 'Product compliance check failed', 'TRADE_ERROR', 500);
+  }
+});
+
+// 米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) 自動生成 & 通関保留パッケージ出力 (POST /trade/gcc-generate)
+tradeRoutes.post('/trade/gcc-generate', async (c) => {
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+
+  const parsed = GenerateGccCertificateRequestSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid GCC generation parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
+
+  try {
+    const result = await generateGccCertificate(parsed.data);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof TradeGccIncompleteError) {
+      return formatError(c, err.message, err.code, 422, false, {
+        missingFields: err.missingFields,
+        items: err.items,
+      });
+    }
+    if (err instanceof TradeInputError) return formatError(c, err.message, err.code, 400, false);
+    return formatError(c, errorMessage(err) || 'GCC certificate generation failed', 'TRADE_ERROR', 500);
   }
 });

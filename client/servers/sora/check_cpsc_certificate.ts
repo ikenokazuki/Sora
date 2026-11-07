@@ -4,10 +4,20 @@ import { callSora } from '../../runtime.js';
 export type CheckCpscCertificateInput = {
   /** HTSコード（例: "9503.00.0073"）。判定の主軸キー */
   htsCode: string;
-  /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。証明書の種類を決めるのは、リストの10桁と完全に一致したときだけ。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します */
+  /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します */
   targetAge: "adult" | "child" | "unknown";
-  /** 主な素材。判定は変えず、確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること */
+  /** 主な素材。衣料では繊維の組成（"100% polyester" の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること */
   material?: string;
+  /** 電池・バッテリーを使用するか。不明時は省略 */
+  hasBattery?: boolean;
+  /** 電池種別（button_coin: ボタン・コイン電池, other: リチウムイオン等）。16 CFR 1263 横断規制判定に使用 */
+  batteryType?: "button_coin" | "other";
+  /** 衣料品の生地表面（plain: 平織り・天竺等の平滑表面, raised: 裏起毛・フリース等の起毛表面）。不明時は省略 */
+  fabricSurface?: "plain" | "raised";
+  /** 衣料品の生地目付重量 (oz/sq yd)。plain かつ 2.6 以上で大人服試験・GCC免除。不明時は省略 */
+  fabricWeightOzPerSqYd?: number;
+  /** 衣料品の生地目付重量 (g/m²、1〜3000)。plain かつ 88.2 以上で大人服試験・GCC免除。不明時は省略 */
+  fabricWeightGsm?: number;
 };
 
 export type CheckCpscCertificateOutput = {
@@ -28,8 +38,19 @@ export type CheckCpscCertificateOutput = {
     /** 規制条項の公式参照先 URL */
     sourceUrl: string;
   }[];
-  /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A") */
+  /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
   disclaimerCodeHint?: string;
+  /** 16 CFR 1610.1(c)/(d) 等の法定試験免除・執行裁量免除の詳細 */
+  testingExemption?: {
+    /** 可燃性等の実試験が法定免除されるか */
+    exempt: boolean;
+    /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)", "16 CFR 1610.1(c)") */
+    citation?: string;
+    /** 試験免除または適用除外の理由説明 */
+    reason: string;
+    /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
+    enforcementDiscretion?: boolean;
+  };
   /** 判定に必要な不足情報項目 */
   missingInfo: string[];
   /** 輸入者・輸出者が次に取るべき実務アクションリスト */

@@ -44,7 +44,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
-  'check_product_compliance', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
+  'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
 
@@ -94,6 +94,7 @@ export const REST_MAP: Record<string, RestRoute | null> = {
   verify_hts_code: { method: 'POST', path: '/trade/hts-verify' },
   predict_hts_code: { method: 'POST', path: '/trade/hts-predict' },
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
+  generate_gcc_certificate: { method: 'POST', path: '/trade/gcc-generate' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
   get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
   get_youtube_channel: { method: 'POST', path: '/youtube/channel' },
@@ -968,6 +969,22 @@ export const TOOL_CASES: HealthCase[] = [
     const { text: rawJsonText } = await mcpJson(ctx, 'check_product_compliance', { productName: 'toy', htsCode: '9503.00.0073' }, 60000);
     const raw = toolPayload(rawJsonText, 'check_product_compliance');
     return mustContain(raw, ['actionPlan'], 'usitc-compliance');
+  }),
+  toolCase('trade.gcc', ['generate_gcc_certificate'], ['usitc'], true, 90000, async (ctx) => {
+    await ensureEnabled(ctx, 'GCC', 30000);
+    const { text: rawJsonText } = await mcpJson(
+      ctx,
+      'generate_gcc_certificate',
+      {
+        productName: 'Adult Polyester T-Shirt',
+        htsCode: '6109.90.1007',
+        targetAge: 'adult',
+        material: '100% polyester',
+      },
+      60000,
+    );
+    const raw = toolPayload(rawJsonText, 'generate_gcc_certificate');
+    return mustContain(raw, ['130.006', 'packageHtml'], 'usitc-gcc');
   }),
   toolCase('media.inspect', ['inspect_image'], ['web:image'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, '画像', 30000);

@@ -12,6 +12,7 @@
     "servers/sora/crawl_site.ts",
     "servers/sora/fetch_social_post.ts",
     "servers/sora/fetch_x_post.ts",
+    "servers/sora/generate_gcc_certificate.ts",
     "servers/sora/get_country_context.ts",
     "servers/sora/get_country_context_evidence.ts",
     "servers/sora/get_country_context_updates.ts",

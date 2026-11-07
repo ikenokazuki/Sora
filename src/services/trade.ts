@@ -19,12 +19,37 @@ export interface CpscApplicableRegulation {
   sourceUrl: string;
 }
 
+export interface CpscTestingExemption {
+  exempt: boolean;
+  citation?: string;
+  reason: string;
+  /** 2016年CPSC執行裁量ポリシー（大人用衣料品の16 CFR 1610.1(d)試験免除品に対するGCC発行・eFiling免除）の対象か */
+  enforcementDiscretion?: boolean;
+}
+
+export interface CpscCertificateCheckOptions {
+  htsCode: string;
+  targetAge: 'adult' | 'child' | 'unknown';
+  material?: string;
+  productCategory?: string;
+  description?: string;
+  hasBattery?: boolean;
+  batteryType?: 'button_coin' | 'other';
+  /** 衣料品（16 CFR 1610）の生地表面区分: plain=平織り・天竺等の平滑表面 / raised=裏起毛・フリース・パイル等の起毛表面 */
+  fabricSurface?: 'plain' | 'raised';
+  /** 衣料品の生地目付重量 (oz/sq yd)。16 CFR § 1610.1(d)(1) の免除閾値は 2.6 oz/sq yd 以上 */
+  fabricWeightOzPerSqYd?: number;
+  /** 衣料品の生地目付重量 (g/m², GSM)。2.6 oz/sq yd ≒ 88.2 g/m² 以上でプレーン表面は試験免除 */
+  fabricWeightGsm?: number;
+}
+
 export interface CpscCertificateCheckResult {
   certificateRequired: boolean | 'unknown';
   certificateType: 'GCC' | 'CCC' | 'none' | 'unknown';
   eFilingRequired: boolean;
   applicableRegulations: CpscApplicableRegulation[];
   disclaimerCodeHint?: string;
+  testingExemption?: CpscTestingExemption;
   missingInfo: string[];
   nextActions: string[];
   disclaimer: string;
@@ -42,35 +67,359 @@ const CPSC_PDF_SOURCE_URL =
 const CPSC_PDF_EXCERPT =
   'CPSC believes this HTS code is likely to include a product subject to a mandatory standard or is otherwise deemed high-risk. (2026年7月8日よりCBP ACEでの電子申告eFilingが完全義務化。非対象品はACE Disclaimerが必要。)';
 
+interface CpscCategoryRegulationEntry extends CpscApplicableRegulation {
+  /** all_ages: 大人向けはGCC・子供向けはCCC必須 / children_only: 12歳以下の子供向けのみCCC必須（大人向けは強制規格なし・ACE Disclaim A） */
+  regulatedScope: 'all_ages' | 'children_only';
+}
+
 /**
- * CPSC_HTS_LIST の category 名をキーとした、CFR上の具体的な安全規格の対応表。
- * 実在確認済みの3カテゴリのみ収録。それ以外はCPSC_CATEGORY_FALLBACK_EXCERPTの
- * 汎用フォールバックを使用する（存在しない規格を捏造しないため）。
+ * CPSC_HTS_LIST 全22カテゴリの米国連邦規則（16 CFR / CPSIA）対応表と年齢適用範囲（regulatedScope）。
  */
-const CPSC_CATEGORY_REGULATIONS: Record<string, CpscApplicableRegulation> = {
+const CPSC_CATEGORY_REGULATIONS: Record<string, CpscCategoryRegulationEntry> = {
+  'All-Terrain Vehicles (ATVs)': {
+    cfr: '16 CFR 1420',
+    summary: '全地形対応車（ATV）の安全基準（ANSI/SVIA 1準拠およびATVアクションプラン適合）。',
+    excerpt: 'Requirements for All-Terrain Vehicles (16 CFR Part 1420). Requires GCC for general/adult ATVs or CPC for youth ATVs.',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1420',
+    regulatedScope: 'all_ages',
+  },
+  'Bicycle Helmets': {
+    cfr: '16 CFR 1203',
+    summary: '自転車用ヘルメットの安全基準（衝撃吸収・保持ストラップ強度・視野・表示要件）。全年齢対象（大人用はGCC、12歳以下用はCCC）。',
+    excerpt: 'Safety Standard for Bicycle Helmets (16 CFR Part 1203). Applies to all bicycle helmets for adults and children.',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1203',
+    regulatedScope: 'all_ages',
+  },
+  Bicycles: {
+    cfr: '16 CFR 1512',
+    summary: '自転車の機械的安全基準（ブレーキ・ステアリング・反射材・突起物制限等）。大人用はGCC、子供用はCCCが必要。',
+    excerpt: 'Requirements for Bicycles (16 CFR Part 1512). General-use bicycles require GCC; children’s bicycles require CPC.',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1512',
+    regulatedScope: 'all_ages',
+  },
+  'Button Cell & Coin Batteries': {
+    cfr: '16 CFR 1263 (ANSI/UL 4200A)',
+    summary: 'ボタン電池・コイン電池および同電池を使用する消費者製品の安全基準（Reese’s Law: 誤飲防止構造・子供安全包装・警告表示）。',
+    excerpt: 'Safety Standard for Button Cell or Coin Batteries and Consumer Products Containing Such Batteries (16 CFR Part 1263, incorporating ANSI/UL 4200A).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1263',
+    regulatedScope: 'all_ages',
+  },
+  'CB Antennae': {
+    cfr: '16 CFR 1204',
+    summary: '市民バンド（CB）基地局用無指向性アンテナの感電防止絶縁安全基準。',
+    excerpt: 'Safety Standard for Omnidirectional Citizens Band Base Station Antennas (16 CFR Part 1204).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1204',
+    regulatedScope: 'all_ages',
+  },
+  'Carpets and Rugs': {
+    cfr: '16 CFR 1630 / 1631',
+    summary: 'カーペットおよびラグの表面可燃性基準（16 CFR 1630: 大型カーペット / 16 CFR 1631: 小型カーペット・ラグ）。',
+    excerpt: 'Standard for the Surface Flammability of Carpets and Rugs (16 CFR Part 1630) and Small Carpets and Rugs (16 CFR Part 1631).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1630',
+    regulatedScope: 'all_ages',
+  },
+  'Carriages and Strollers': {
+    cfr: '16 CFR 1227',
+    summary: 'ベビーカー・乳母車の安全基準（ASTM F833準拠）。12歳以下の乳幼児向け製品としてCPC（CCC）が必須。',
+    excerpt: 'Safety Standard for Carriages and Strollers (16 CFR Part 1227).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1227',
+    regulatedScope: 'children_only',
+  },
+  'Child Chairs': {
+    cfr: '16 CFR 1231 / 1232',
+    summary: '乳幼児用ハイチェア（16 CFR 1231）および子供用折りたたみ椅子・スツール（16 CFR 1232）の安全基準。',
+    excerpt: 'Safety Standard for High Chairs (16 CFR Part 1231) and Children’s Folding Chairs and Stools (16 CFR Part 1232).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1231',
+    regulatedScope: 'children_only',
+  },
+  'Cigarette & Multipurpose Lighters': {
+    cfr: '16 CFR 1210 / 1212',
+    summary: '使い捨て・ノベルティライター（16 CFR 1210）および多目的ライター（16 CFR 1212）のチャイルドレジスタンス安全基準。',
+    excerpt: 'Safety Standard for Cigarette Lighters (16 CFR Part 1210) and Multi-Purpose Lighters (16 CFR Part 1212).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1210',
+    regulatedScope: 'all_ages',
+  },
   Clothing: {
     cfr: '16 CFR 1610',
-    summary: '衣料品の可燃性基準（一般衣料品）。子供用寝間着に該当する場合は16 CFR 1615/1616（子供用睡眠衣の可燃性基準）も適用される可能性があります。',
-    excerpt: "Standard for the Flammability of Clothing Textiles (16 CFR Part 1610). Children's sleepwear may additionally be subject to 16 CFR 1615/1616.",
+    summary:
+      '衣料品の可燃性基準（一般衣料品）。大人服で 16 CFR § 1610.1(d) の試験免除要件を満たす場合は2016年CPSC執行裁量によりGCC・eFiling免除（ACE Disclaim B / IUC 130.006）。子供用寝間着は 16 CFR 1615/1616 も適用。',
+    excerpt:
+      "Standard for the Flammability of Clothing Textiles (16 CFR Part 1610). Adult apparel exempt under § 1610.1(d) is subject to CPSC's 2016 Statement of Policy on Enforcement Discretion (no GCC required). Children's sleepwear may additionally be subject to 16 CFR 1615/1616.",
     sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1610',
+    regulatedScope: 'all_ages',
+  },
+  Drywall: {
+    cfr: '16 CFR 1460 / Drywall Safety Act',
+    summary: '石膏ボード（ドライウォール）の硫黄含有量基準（ASTM C1396準拠、GCC必須）。',
+    excerpt: 'Definition of Drywall and Certification Requirements under the Drywall Safety Act of 2012 (16 CFR Part 1460).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1460',
+    regulatedScope: 'all_ages',
+  },
+  Fireworks: {
+    cfr: '16 CFR 1500.17 / 1507',
+    summary: '消費者向け花火の火薬量制限・導火線・安定性・表示安全基準（GCC必須）。',
+    excerpt: 'Fireworks Devices (16 CFR Part 1507) and Banned Hazardous Substances Regulations (16 CFR § 1500.17(a)(3), (8), (9)).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1507',
+    regulatedScope: 'all_ages',
+  },
+  'Gates and Enclosures': {
+    cfr: '16 CFR 1239',
+    summary: '乳幼児用安全ゲートおよび囲い（Expansion Gates and Expandable Enclosures）の安全基準。',
+    excerpt: 'Safety Standard for Gates and Enclosures (16 CFR Part 1239).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1239',
+    regulatedScope: 'children_only',
+  },
+  'Imitation Jewelry': {
+    cfr: '15 U.S.C. 1278a / 16 CFR 1303 / 1501',
+    summary: '子供用ジュエリーの総鉛含有量（100ppm以下）・表面塗装鉛（90ppm以下）・小部品誤飲防止規制。大人用アクセサリーはCPSC強制規格外（ACE Disclaim A）。',
+    excerpt: 'CPSIA Total Lead Content (15 U.S.C. § 1278a), Lead-Containing Paint (16 CFR Part 1303), and Small Parts (16 CFR Part 1501) for children’s jewelry.',
+    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
+    regulatedScope: 'children_only',
   },
   'Infant Sleep Products': {
+    cfr: '16 CFR 1236 / 1218 / 1241',
+    summary: '乳幼児用睡眠製品（16 CFR 1236）・バシネット（16 CFR 1218）・ベビーベッド用マットレス（16 CFR 1241）の安全基準。',
+    excerpt: 'Safety Standard for Infant Sleep Products (16 CFR Part 1236), Bassinets and Cradles (16 CFR Part 1218), and Crib Mattresses (16 CFR Part 1241).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1236',
+    regulatedScope: 'children_only',
+  },
+  'Lawn Mowers': {
+    cfr: '16 CFR 1205',
+    summary: '歩行型動力芝刈り機のブレード接触防止・安全停止基準（GCC必須）。',
+    excerpt: 'Safety Standard for Walk-Behind Power Lawn Mowers (16 CFR Part 1205).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1205',
+    regulatedScope: 'all_ages',
+  },
+  Matchbooks: {
+    cfr: '16 CFR 1202',
+    summary: '紙マッチ（ブックマッチ）の発火部配置・着火安全性基準（GCC必須）。',
+    excerpt: 'Safety Standard for Matchbooks (16 CFR Part 1202).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1202',
+    regulatedScope: 'all_ages',
+  },
+  Mattresses: {
     cfr: '16 CFR 1632 / 1633',
-    summary: 'マットレス・寝具の可燃性基準（16 CFR 1632: マットレス／1633: オープンフレーム着火試験）。',
-    excerpt: 'Standard for the Flammability of Mattresses and Mattress Pads (16 CFR Part 1632) and Standard for the Flammability (Open Flame) of Mattress Sets (16 CFR Part 1633).',
+    summary: 'マットレス・マットレスパッドの可燃性基準（16 CFR 1632: たばこ着火試験 / 16 CFR 1633: オープンフレーム着火試験）。',
+    excerpt: 'Standard for the Flammability of Mattresses and Mattress Pads (16 CFR Part 1632) and Mattress Sets (16 CFR Part 1633).',
     sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1632',
+    regulatedScope: 'all_ages',
+  },
+  'Other Children’s Furniture': {
+    cfr: '15 U.S.C. 1278a / 16 CFR 1303 / 1261',
+    summary: '子供用家具の鉛含有量・表面塗装鉛（16 CFR 1303）規制（衣類収納家具は全年齢で転倒防止基準 16 CFR 1261 の対象となる場合あり）。一般の大人用ダイニング・オフィス家具はCPSC対象外（ACE Disclaim A）。',
+    excerpt: 'CPSIA Lead and Surface Coating Standards (15 U.S.C. § 1278a; 16 CFR Part 1303) for children’s furniture.',
+    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
+    regulatedScope: 'children_only',
+  },
+  Pacifiers: {
+    cfr: '16 CFR 1511',
+    summary: '乳幼児用おしゃぶりの構造強度・通気孔・窒息防止・フタル酸エステル規制（CPC必須）。',
+    excerpt: 'Requirements for Pacifiers (16 CFR Part 1511).',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1511',
+    regulatedScope: 'children_only',
+  },
+  'Poison Prevention Packaging': {
+    cfr: '16 CFR 1700',
+    summary: '毒物予防包装法（PPPA）に基づくチャイルドレジスタント特殊包装基準（ニコチン液・特定医薬品・家庭化学製品等、GCC必須）。',
+    excerpt: 'Poison Prevention Packaging Standards (16 CFR Part 1700) under the Poison Prevention Packaging Act.',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-E/part-1700',
+    regulatedScope: 'all_ages',
+  },
+  Shoes: {
+    cfr: '15 U.S.C. 1278a / 16 CFR 1303',
+    summary: '12歳以下の子供靴に対するCPSIA総鉛・表面塗装鉛規制（CPC必須）。大人靴は 16 CFR § 1610.1(c) により衣料可燃性基準からも除外されておりGCC不要（ACE Disclaim A）。',
+    excerpt: 'CPSIA Total Lead and Surface Coating Rules (15 U.S.C. § 1278a; 16 CFR Part 1303) for children’s footwear; adult footwear is excluded under 16 CFR § 1610.1(c).',
+    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
+    regulatedScope: 'children_only',
   },
   Toys: {
     cfr: 'ASTM F963 / 16 CFR 1501',
-    summary: '玩具安全規格 ASTM F963（CPSIAにより強制規格化）および小部品誤飲防止基準（16 CFR 1501）。',
-    excerpt: 'Consumer product safety standard for toys (ASTM F963, incorporated by reference under CPSIA) and 16 CFR Part 1501 (small parts choking hazard).',
+    summary: '玩具安全規格 ASTM F963（16 CFR 1250により強制規格化）および小部品誤飲防止基準（16 CFR 1501）。12歳以下の子供向け玩具のみ対象（15歳以上向けコレクターズフィギュア・アクリルスタンド等はACE Disclaim A）。',
+    excerpt: 'Consumer product safety standard for toys (16 CFR Part 1250 / ASTM F963) and 16 CFR Part 1501 (small parts choking hazard) for children 12 years and younger.',
     sourceUrl: 'https://www.cpsc.gov/Regulations-Laws--Standards/Statutes/ASTM-F963',
+    regulatedScope: 'children_only',
   },
+};
+
+const REESES_LAW_REGULATION: CpscApplicableRegulation = {
+  cfr: '16 CFR 1263 (ANSI/UL 4200A-2023)',
+  summary:
+    'ボタン電池・コイン電池を内蔵・使用する消費者製品の誤飲防止基準（Reese’s Law: 工具または二重独立動作による電池室ロック構造・耐久性試験・本体/外装の警告ラベル表示）。製品本来のHTSコードを維持したままGCC（子供用はCPC）とACE eFilingが必須。',
+  excerpt:
+    'Safety Standard for Button Cell or Coin Batteries and Consumer Products Containing Such Batteries (16 CFR Part 1263, incorporating ANSI/UL 4200A-2023). Mandatory GCC/CPC and CBP ACE eFiling.',
+  sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1263',
+};
+
+const CPSIA_CHILDREN_GENERAL_REGULATION: CpscApplicableRegulation = {
+  cfr: '15 U.S.C. 1278a / 16 CFR 1303 / 16 CFR 1107',
+  summary:
+    '12歳以下の子供向け製品（Children’s Product）に対するCPSIA総鉛含有量（100ppm以下）・表面塗装鉛（16 CFR 1303: 90ppm以下）・トラッキングラベル（CPSIA Sec. 103）規制。CPSC認定第三者試験機関での試験とCPC（CCC）のACE eFilingが必須。',
+  excerpt:
+    'CPSIA Total Lead Content (15 U.S.C. § 1278a), Lead in Paint/Surface Coatings (16 CFR Part 1303), and Third-Party Testing & Children’s Product Certification (16 CFR Part 1107).',
+  sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Testing-Certification/Childrens-Product-Certificate',
 };
 
 const CPSC_GUIDANCE_SOURCE_URL = 'https://www.cpsc.gov/Regulations-Laws--Standards';
 const CPSC_CATEGORY_FALLBACK_EXCERPT =
   'This CPSC HTS category has no product-specific CFR citation curated in this tool yet. Confirm applicable mandatory standards (flammability, small parts, magnets, lead/phthalates, etc.) against official CPSC guidance.';
+
+/** 16 CFR § 1610.1(d)(2) で可燃性試験が無条件免除される6種の法定繊維 */
+const EXEMPT_1610_D2_FIBERS = new Set(['acrylic', 'modacrylic', 'nylon', 'olefin', 'polyester', 'wool']);
+/** 素材記述に含まれる非繊維の構成語（%・織り方・修飾語など。スパンデックスや綿等の他繊維は含めない） */
+const MATERIAL_MODIFIER_WORDS = new Set([
+  'and', 'or', 'of', 'from', 'made', 'with', 'in', 'the', 'all', 'pure', 'only', 'solely', 'entirely',
+  'fabric', 'textile', 'fiber', 'fibers', 'fibre', 'fibres', 'yarn', 'yarns', 'shell', 'body', 'lining',
+  'knit', 'knitted', 'woven', 'jersey', 'fleece', 'brushed', 'plain', 'raised', 'pile', 'tricots',
+  'recycled', 'organic', 'virgin', 'blend', 'blended', 'percent', 'pct', 'wt', 'weight',
+]);
+const APPAREL_1610_C_EXCLUSION_RE =
+  /\b(hats?|caps?|beanies?|berets?|visors?|gloves?|mittens?|footwear|shoes?|boots?|sandals?|slippers?)\b/i;
+const APPAREL_1610_C_DISQUALIFIER_RE =
+  /\b(balaclavas?|hoods?|hoodies?|neck\s*gaiters?|scarf|scarves|shawls?|attached|affixed|covering\s+the\s+neck)\b/i;
+
+/**
+ * 素材表記が 16 CFR § 1610.1(d)(2) の6種免除繊維（acrylic, modacrylic, nylon, olefin, polyester, wool）のみで構成されているか判定。
+ * 綿（cotton）やポリウレタン（spandex/elastane）、レーヨン（rayon）等が1%でも混紡されている場合は false を返す。
+ */
+function isSolely1610d2ExemptFiber(material?: string): boolean {
+  if (!material?.trim()) return false;
+  const cleaned = stripNegations(material)
+    .toLowerCase()
+    .replace(/\d+(?:\.\d+)?\s*%?/g, ' ')
+    .replace(/[^a-z]+/g, ' ')
+    .trim();
+  if (!cleaned) return false;
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0 && !MATERIAL_MODIFIER_WORDS.has(t));
+  if (tokens.length === 0) return false;
+  return tokens.every((t) => EXEMPT_1610_D2_FIBERS.has(t));
+}
+
+/** 1 oz/sq yd = 33.905747 g/m² (16 CFR § 1610.1(d)(1) の 2.6 oz/sq yd ≒ 88.155 g/m²) */
+const OZ_PER_SQ_YD_TO_GSM = 33.905747;
+const MIN_EXEMPT_OZ_PER_SQ_YD = 2.6;
+const MIN_EXEMPT_GSM = 88.2;
+
+function evaluateApparel1610Exemption(options: CpscCertificateCheckOptions): {
+  status: 'excluded_1610c' | 'exempt_d2' | 'exempt_d1' | 'non_exempt' | 'needs_fabric_spec';
+  exemption?: CpscTestingExemption;
+  missingInputs: string[];
+  clarifyingQuestions: string[];
+} {
+  const contextText = `${options.productCategory || ''} ${options.description || ''}`.trim();
+  if (
+    options.targetAge === 'adult' &&
+    APPAREL_1610_C_EXCLUSION_RE.test(contextText) &&
+    !APPAREL_1610_C_DISQUALIFIER_RE.test(contextText)
+  ) {
+    return {
+      status: 'excluded_1610c',
+      exemption: {
+        exempt: true,
+        citation: '16 CFR 1610.1(c)',
+        reason:
+          '単独の帽子・手袋・履物（首・顔・肩を覆わず他の衣類に固定されていないもの）は 16 CFR § 1610.1(c) により一般衣料可燃性基準の対象外です。',
+        enforcementDiscretion: false,
+      },
+      missingInputs: [],
+      clarifyingQuestions: [],
+    };
+  }
+
+  if (isSolely1610d2ExemptFiber(options.material)) {
+    const isAdult = options.targetAge === 'adult';
+    return {
+      status: 'exempt_d2',
+      exemption: {
+        exempt: true,
+        citation: '16 CFR 1610.1(d)(2)',
+        reason: isAdult
+          ? `繊維組成（${options.material?.trim()}）が 16 CFR § 1610.1(d)(2) の免除指定6繊維（acrylic, modacrylic, nylon, olefin, polyester, wool）のみで構成されているため可燃性試験は免除され、2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行およびACE eFilingも免除されます（ACE Disclaim B / Intended Use Code 130.006）。`
+          : `繊維組成（${options.material?.trim()}）により 16 CFR § 1610.1(d)(2) の一般衣料可燃性試験自体は免除されますが、12歳以下の子供服には2016年CPSC執行裁量は適用されないため、CPSIA（鉛・小部品等、寝間着は 16 CFR 1615/1616）に基づく CPC (CCC) 発行と ACE eFiling が必須です。`,
+        enforcementDiscretion: isAdult,
+      },
+      missingInputs: [],
+      clarifyingQuestions: [],
+    };
+  }
+
+  const oz = options.fabricWeightOzPerSqYd;
+  const gsm = options.fabricWeightGsm;
+  const hasWeight = oz !== undefined || gsm !== undefined;
+  const meetsWeightThreshold =
+    (oz !== undefined && oz >= MIN_EXEMPT_OZ_PER_SQ_YD) ||
+    (oz === undefined && gsm !== undefined && gsm >= MIN_EXEMPT_GSM);
+
+  if (options.fabricSurface === 'plain' && hasWeight && meetsWeightThreshold) {
+    const isAdult = options.targetAge === 'adult';
+    const weightLabel =
+      oz !== undefined
+        ? `${oz} oz/sq yd (${Math.round(oz * OZ_PER_SQ_YD_TO_GSM * 10) / 10} g/m²)`
+        : `${gsm} g/m² (${Math.round(((gsm ?? 0) / OZ_PER_SQ_YD_TO_GSM) * 100) / 100} oz/sq yd)`;
+    return {
+      status: 'exempt_d1',
+      exemption: {
+        exempt: true,
+        citation: '16 CFR 1610.1(d)(1)',
+        reason: isAdult
+          ? `プレーン表面（plain surface）かつ生地重量 ${weightLabel} が 2.6 oz/sq yd（88.2 g/m²）以上のため 16 CFR § 1610.1(d)(1) により可燃性試験は免除され、2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行およびACE eFilingも免除されます（ACE Disclaim B / Intended Use Code 130.006）。`
+          : `プレーン表面かつ生地重量 ${weightLabel} により 16 CFR § 1610.1(d)(1) の一般衣料可燃性試験自体は免除されますが、12歳以下の子供服には2016年CPSC執行裁量は適用されないため、CPSIAに基づく CPC (CCC) 発行と ACE eFiling が必須です。`,
+        enforcementDiscretion: isAdult,
+      },
+      missingInputs: [],
+      clarifyingQuestions: [],
+    };
+  }
+
+  // 免除繊維100%でないことが分かっており、起毛生地(raised)または2.6 oz/sq yd未満であることが確定している場合は試験＆GCC必須
+  const hasKnownMaterial = Boolean(options.material?.trim());
+  const isConfirmedNonExempt =
+    hasKnownMaterial &&
+    (options.fabricSurface === 'raised' || (hasWeight && !meetsWeightThreshold));
+
+  if (isConfirmedNonExempt) {
+    const reasonDetail =
+      options.fabricSurface === 'raised'
+        ? '裏起毛・フリース・パイル等の起毛表面生地（raised-fiber surface）であり免除6繊維100%ではないため'
+        : '生地重量が 2.6 oz/sq yd（88.2 g/m²）未満であり免除6繊維100%ではないため';
+    return {
+      status: 'non_exempt',
+      exemption: {
+        exempt: false,
+        citation: '16 CFR 1610',
+        reason: `${reasonDetail}、16 CFR § 1610.1(d) の試験免除対象外です。16 CFR Part 1610 可燃性試験（Class 1 Normal Flammability 確認）の実施と適合証明書（大人用はGCC / 子供用はCCC）の発行・ACE eFilingが必須です。`,
+        enforcementDiscretion: false,
+      },
+      missingInputs: [],
+      clarifyingQuestions: [],
+    };
+  }
+
+  const missingInputs: string[] = [];
+  const clarifyingQuestions: string[] = [];
+  if (!hasKnownMaterial) {
+    missingInputs.push('material');
+    clarifyingQuestions.push(
+      '衣料品の混率を含む繊維組成は何ですか？（例: "100% polyester", "100% cotton", "80% cotton 20% polyester"。ポリエステル・ナイロン・アクリル・ウール等6種繊維100%なら 16 CFR 1610.1(d)(2) により試験・大人用GCCが免除されます）',
+    );
+  }
+  if (!options.fabricSurface) {
+    missingInputs.push('fabricSurface');
+    clarifyingQuestions.push(
+      '生地の表面は平織り・天竺等の平滑な表面（plain）ですか？それとも裏起毛パーカー・フリース・パイル等の起毛表面（raised）ですか？',
+    );
+  }
+  if (options.fabricSurface !== 'raised' && !hasWeight) {
+    missingInputs.push('fabricWeightGsm');
+    clarifyingQuestions.push(
+      '生地の目付重量（g/m² [GSM] または oz/sq yd）はいくつですか？（plain表面で 88.2 g/m² [2.6 oz/sq yd] 以上なら 16 CFR 1610.1(d)(1) 免除・ACE Disclaim B 対象、未満または綿混の起毛生地なら試験＋GCC必須となります）',
+    );
+  }
+  return {
+    status: 'needs_fabric_spec',
+    missingInputs,
+    clarifyingQuestions,
+  };
+}
 
 function normalizeHtsCode(htsCode: string): string {
   return htsCode.replace(/\./g, '').trim();
@@ -94,24 +443,247 @@ function findNearMatch(normalized: string): { category: string; similarCode: str
   return undefined;
 }
 
-/** HTSコードからCPSC適合証明書(GCC/CCC)のeFiling義務要否を判定 */
-export async function checkCpscCertificate(options: {
-  htsCode: string;
-  targetAge: 'adult' | 'child' | 'unknown';
-  material?: string;
-}): Promise<CpscCertificateCheckResult> {
+/** 衣料品章（Chapter 61 編物衣類・Chapter 62 織物衣類）の着用衣類判定（1610.1(c) 手袋 6116/6216 等は evaluateApparel1610Exemption で除外判定） */
+function isWearingApparelChapter(normalized: string): boolean {
+  const ch = normalized.slice(0, 2);
+  return ch === '61' || ch === '62';
+}
+
+function toPublicReg(entry: CpscCategoryRegulationEntry): CpscApplicableRegulation {
+  return {
+    cfr: entry.cfr,
+    summary: entry.summary,
+    excerpt: entry.excerpt,
+    sourceUrl: entry.sourceUrl,
+  };
+}
+
+/** HTSコードおよび横断製品属性（電池・年齢・生地仕様）からCPSC適合証明書(GCC/CCC)の要否とeFiling義務を判定 */
+export async function checkCpscCertificate(
+  options: CpscCertificateCheckOptions,
+): Promise<CpscCertificateCheckResult> {
   const htsCode = options.htsCode?.trim();
   if (!htsCode) {
     throw new Error('htsCode is required for CPSC certificate check');
   }
   const normalized = normalizeHtsCode(htsCode);
-
   const exactCategory = findExactMatch(normalized);
+  const nearMatch = exactCategory ? undefined : findNearMatch(normalized);
+  const matchedCategory = exactCategory ?? nearMatch?.category;
+
+  // 1. 横断規制: ボタン電池・コイン電池内蔵または使用製品 (Reese's Law, 16 CFR Part 1263 / ANSI UL 4200A)
+  //    ※ 16 CFR § 1263.1(d) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
+  const isChildToy = (exactCategory === 'Toys' || nearMatch?.category === 'Toys') && options.targetAge === 'child';
+  if (options.hasBattery === true && options.batteryType === 'button_coin' && !isChildToy) {
+    const missingInfo: string[] = [];
+    const missingInputs: string[] = [];
+    const clarifyingQuestions: string[] = [];
+    if (options.targetAge === 'unknown') {
+      missingInfo.push('targetAge（対象年齢層）が不明です。大人・一般向けならGCC、12歳以下の子供向けならCPC（CCC）が必要です。');
+      missingInputs.push('targetAge');
+      clarifyingQuestions.push('この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？');
+    }
+    const certType: CpscCertificateCheckResult['certificateType'] =
+      options.targetAge === 'unknown' ? 'unknown' : options.targetAge === 'child' ? 'CCC' : 'GCC';
+    const regs: CpscApplicableRegulation[] = [REESES_LAW_REGULATION];
+    if (exactCategory && exactCategory !== 'Button Cell & Coin Batteries' && CPSC_CATEGORY_REGULATIONS[exactCategory]) {
+      const catReg = CPSC_CATEGORY_REGULATIONS[exactCategory];
+      if (catReg.regulatedScope === 'all_ages' || options.targetAge !== 'adult') {
+        regs.push(toPublicReg(catReg));
+      }
+    }
+    return {
+      certificateRequired: true,
+      certificateType: certType,
+      eFilingRequired: true,
+      applicableRegulations: regs,
+      missingInfo,
+      nextActions: [
+        `Reese’s Law（16 CFR Part 1263 / ANSI/UL 4200A-2023）への適合試験結果に基づき、製品本来のHTSコード（"${htsCode}"）のまま ${certType === 'unknown' ? 'GCC（大人用）またはCCC（子供用）' : certType} を発行し、CBP ACEシステムへeFilingしてください（※単体電池コード 8506 への書き換えは関税分類違反となるため不要です）。`,
+      ],
+      disclaimer: DISCLAIMER,
+      inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
+      missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+      clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+      impactExplanation:
+        missingInputs.length > 0
+          ? 'ボタン電池・コイン電池使用製品のため 16 CFR Part 1263 適合証明と ACE eFiling が必須ですが、対象年齢により証明書種別（GCC vs CCC）が分かれます。'
+          : undefined,
+    };
+  }
+
+  // 2. 衣料品（Clothing カテゴリ または HTS Chapter 61/62）の 16 CFR Part 1610 実務判定
+  if (matchedCategory === 'Clothing' || isWearingApparelChapter(normalized)) {
+    if (options.targetAge === 'unknown') {
+      const apparelEval = evaluateApparel1610Exemption(options);
+      const missingInputs = ['targetAge', ...apparelEval.missingInputs];
+      const clarifyingQuestions = [
+        'この衣料品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？（子供服はCPC＆eFiling必須、大人服は 16 CFR 1610.1(d) 免除該当ならGCC不要・ACE Disclaim Bとなります）',
+        ...apparelEval.clarifyingQuestions,
+      ];
+      return {
+        certificateRequired: 'unknown',
+        certificateType: 'unknown',
+        eFilingRequired: false,
+        applicableRegulations: [toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing)],
+        testingExemption: apparelEval.exemption,
+        missingInfo: ['対象年齢（大人用か12歳以下子供用か）および生地仕様の確認が必要です。'],
+        nextActions: ['対象年齢層および繊維組成・生地表面・目付重量を確認して再判定してください。'],
+        disclaimer: DISCLAIMER,
+        inputCompleteness: 'partial',
+        missingInputs,
+        clarifyingQuestions,
+        impactExplanation:
+          '衣料品（16 CFR 1610）は、12歳以下向けなら第三者試験とCPC（CCC）・eFilingが必須ですが、大人向けで 16 CFR § 1610.1(d)（平織り2.6 oz/sq yd [88.2 g/m²] 以上、またはポリエステル等指定6繊維100%）に該当する場合は2016年CPSC執行裁量によりGCC発行・eFilingが免除されます。',
+      };
+    }
+
+    const apparelEval = evaluateApparel1610Exemption(options);
+
+    // 2a. 大人用の帽子・手袋・履物（16 CFR § 1610.1(c) 適用除外 -> ACE Disclaim A）
+    if (options.targetAge === 'adult' && apparelEval.status === 'excluded_1610c') {
+      return {
+        certificateRequired: false,
+        certificateType: 'none',
+        eFilingRequired: false,
+        applicableRegulations: [],
+        disclaimerCodeHint: 'A (Excluded under 16 CFR 1610.1(c) - Standalone Hats/Gloves/Footwear)',
+        testingExemption: apparelEval.exemption,
+        missingInfo: [],
+        nextActions: [
+          '16 CFR § 1610.1(c) により一般衣料可燃性基準の対象外のため、GCCの作成およびeFilingは不要です。CBP ACE通関時は Disclaimer Code A を通関業者へ指示してください。',
+        ],
+        disclaimer: DISCLAIMER,
+        inputCompleteness: 'complete',
+      };
+    }
+
+    // 2b. 子供服（12歳以下）: 1610.1(d) 試験免除の有無に関わらず、2016年執行裁量は不適用 -> CPC (CCC) & eFiling 必須
+    if (options.targetAge === 'child') {
+      const missingInputs = options.material ? [] : ['material'];
+      const clarifyingQuestions = options.material
+        ? []
+        : ['製品の主要素材・繊維組成は何ですか？（鉛・フタル酸エステル・子供用寝間着 16 CFR 1615/1616 等の確認に必要です）'];
+      return {
+        certificateRequired: true,
+        certificateType: 'CCC',
+        eFilingRequired: true,
+        applicableRegulations: [
+          {
+            cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
+            summary: `HTSコード "${htsCode}" の子供用衣料品はCPC（CCC）およびCBP ACEでの電子申告（eFiling）が必須です。`,
+            excerpt: CPSC_PDF_EXCERPT,
+            sourceUrl: CPSC_PDF_SOURCE_URL,
+          },
+          toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing),
+          CPSIA_CHILDREN_GENERAL_REGULATION,
+        ],
+        testingExemption: apparelEval.exemption,
+        missingInfo: [],
+        nextActions: [
+          '12歳以下の子供用衣料品として、CPSC認定第三者試験機関での試験（16 CFR 1610.1(d) 免除該当生地でもCPSIA鉛・小部品等、寝間着なら 16 CFR 1615/1616）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
+        ],
+        disclaimer: DISCLAIMER,
+        inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
+        missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+        clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+        impactExplanation:
+          missingInputs.length > 0
+            ? '繊維組成および付属品（ボタン・ファスナー・プリント塗装等）により適用されるCPSIA試験項目が追加されます。'
+            : undefined,
+      };
+    }
+
+    // 2c. 大人服で 16 CFR § 1610.1(d)(1) または (d)(2) 試験免除該当 -> 2016年CPSC執行裁量により GCC & eFiling 免除 (ACE Disclaim B / IUC 130.006)
+    if (apparelEval.status === 'exempt_d1' || apparelEval.status === 'exempt_d2') {
+      return {
+        certificateRequired: false,
+        certificateType: 'none',
+        eFilingRequired: false,
+        applicableRegulations: [toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing)],
+        disclaimerCodeHint:
+          'B (CPSC Enforcement Discretion - 16 CFR 1610.1(d) Exempt Adult Apparel, Intended Use Code 130.006)',
+        testingExemption: apparelEval.exemption,
+        missingInfo: [],
+        nextActions: [
+          `16 CFR § 1610.1(d) の可燃性試験免除要件を満たす大人用衣料品のため、2016年CPSC執行裁量ポリシー（Enforcement Discretion）によりGCCの発行およびACE eFilingは免除されます。`,
+          '通関ブローカー・配送会社（FedEx/DHL等）へは「ACE Disclaimer Code B（Intended Use Code: 130.006）」での申告を指示し、保留照会時は繊維組成・目付重量・生地表面を記載した 16 CFR 1610.1(d) 免除根拠シート（generate_gcc_certificate で出力可能）を提出してください。',
+        ],
+        disclaimer: DISCLAIMER,
+        inputCompleteness: 'complete',
+      };
+    }
+
+    // 2d. 大人服で免除対象外が確定（綿混の裏起毛パーカー / 2.6 oz/sq yd 未満の薄手生地等）-> 試験 + GCC + ACE eFiling 必須
+    if (apparelEval.status === 'non_exempt') {
+      return {
+        certificateRequired: true,
+        certificateType: 'GCC',
+        eFilingRequired: true,
+        applicableRegulations: [
+          {
+            cfr: 'CPSC HTS Guidance List (2026年完全義務化施行)',
+            summary: `HTSコード "${htsCode}" の大人用衣料品（16 CFR 1610.1(d) 免除対象外）はGCC作成およびCBP ACEでの電子申告（eFiling）が必須です。`,
+            excerpt: CPSC_PDF_EXCERPT,
+            sourceUrl: CPSC_PDF_SOURCE_URL,
+          },
+          toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing),
+        ],
+        testingExemption: apparelEval.exemption,
+        missingInfo: [],
+        nextActions: [
+          '16 CFR § 1610.1(d) の試験免除対象外（起毛表面生地または 2.6 oz/sq yd [88.2 g/m²] 未満）のため、16 CFR Part 1610 可燃性試験（Class 1 適合確認）を実施し、実試験データに基づく GCC を発行して CBP ACE へ eFiling してください。',
+        ],
+        disclaimer: DISCLAIMER,
+        inputCompleteness: 'complete',
+      };
+    }
+
+    // 2e. 大人服だが繊維組成・表面種別・重量が未入力で免除可否が未確定
+    return {
+      certificateRequired: 'unknown',
+      certificateType: 'unknown',
+      eFilingRequired: false,
+      applicableRegulations: [toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing)],
+      disclaimerCodeHint:
+        'B (16 CFR 1610.1(d) 免除該当時は Intended Use Code 130.006 / 免除対象外時は GCC & eFiling 必須)',
+      missingInfo: [
+        '大人用衣料品（16 CFR 1610）の試験・GCC免除（16 CFR § 1610.1(d) / 2016年CPSC執行裁量）に該当するか判定するため、繊維組成・生地表面（plain/raised）・目付重量（g/m² または oz/sq yd）の確認が必要です。',
+      ],
+      nextActions: [
+        '繊維組成（ポリエステル等6繊維100%か綿等を含むか）、生地表面（平織り・天竺 plain / 裏起毛・フリース raised）、および目付重量（88.2 g/m² [2.6 oz/sq yd] 以上か）を確認して再判定してください。',
+      ],
+      disclaimer: DISCLAIMER,
+      inputCompleteness: 'partial',
+      missingInputs: apparelEval.missingInputs,
+      clarifyingQuestions: apparelEval.clarifyingQuestions,
+      impactExplanation:
+        '大人用衣料品は ①ポリエステル・ナイロン・アクリル・ウール等6種繊維100%（§ 1610.1(d)(2)）または ②平滑表面かつ 2.6 oz/sq yd（88.2 g/m²）以上（§ 1610.1(d)(1)）であればGCC発行・eFiling免除（ACE Disclaim B）となりますが、綿混の裏起毛パーカー等や薄手綿生地は実試験＋GCC＋eFilingが必須となります。',
+    };
+  }
+
+  // 3. 子供専用規制カテゴリ（Toys, Shoes, Imitation Jewelry, Other Children's Furniture 等）で大人向け（adult）が確定している場合 -> GCC不要・ACE Disclaim A
+  if (matchedCategory && CPSC_CATEGORY_REGULATIONS[matchedCategory]?.regulatedScope === 'children_only' && options.targetAge === 'adult') {
+    return {
+      certificateRequired: false,
+      certificateType: 'none',
+      eFilingRequired: false,
+      applicableRegulations: [],
+      disclaimerCodeHint: 'A (Not Regulated - Adult Product Outside Children’s Standard)',
+      missingInfo: [],
+      nextActions: [
+        `カテゴリ "${matchedCategory}" のCPSC安全規格（${CPSC_CATEGORY_REGULATIONS[matchedCategory].cfr}）は12歳以下の子供向け製品専用であり、大人・一般向け製品にはCPSC強制規格が存在しないためGCCの発行は不要（不可）です。CBP ACE通関時は Disclaimer Code A（規制対象外）を通関業者へ指示してください。`,
+      ],
+      disclaimer: DISCLAIMER,
+      inputCompleteness: 'complete',
+    };
+  }
 
   if (exactCategory) {
     const missingInfo: string[] = [];
     const missingInputs: string[] = [];
     const clarifyingQuestions: string[] = [];
+    const catReg = CPSC_CATEGORY_REGULATIONS[exactCategory];
 
     if (options.targetAge === 'unknown') {
       missingInfo.push('targetAge（対象年齢層）が不明です。子供向け製品か否かで適用される安全基準・証明書種別が変わります。');
@@ -130,7 +702,9 @@ export async function checkCpscCertificate(options: {
     const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
     const impactExplanation =
       options.targetAge === 'unknown'
-        ? '対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。'
+        ? catReg?.regulatedScope === 'children_only'
+          ? `対象年齢が未確定のため証明書要否を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成・2026年7月完全義務化のeFilingが必須ですが、大人・15歳以上コレクター向け等の場合はCPSC規制対象外（GCC不要・ACE Disclaimer A）となります。`
+          : '対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。'
         : missingInputs.length > 0
           ? '主要素材が未指定のため、鉛・フタル酸エステル含有量規制や可燃性試験などの個別安全規格への該当性を精緻に特定できていません。'
           : undefined;
@@ -146,12 +720,14 @@ export async function checkCpscCertificate(options: {
           excerpt: CPSC_PDF_EXCERPT,
           sourceUrl: CPSC_PDF_SOURCE_URL,
         },
-        CPSC_CATEGORY_REGULATIONS[exactCategory] ?? {
-          cfr: '個別規格要確認',
-          summary: `"${exactCategory}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
-          excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
-          sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
-        },
+        catReg
+          ? toPublicReg(catReg)
+          : {
+              cfr: '個別規格要確認',
+              summary: `"${exactCategory}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
+              excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
+              sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
+            },
       ],
       missingInfo,
       nextActions:
@@ -168,7 +744,6 @@ export async function checkCpscCertificate(options: {
     };
   }
 
-  const nearMatch = findNearMatch(normalized);
   if (nearMatch) {
     const missingInputs: string[] = [];
     const clarifyingQuestions: string[] = [];
@@ -208,6 +783,32 @@ export async function checkCpscCertificate(options: {
       ],
       impactExplanation:
         'HTSコードが完全一致せず類似カテゴリに位置しているため、CPSC規制対象か免責(Disclaimer)申告可能かの切り分けが必要です。非対象品であればACEでの免責コード申告を通関業者に指示してください。',
+    };
+  }
+
+  // 4. 横断規制: CPSC重点HTSリスト外の一般品目（子供用食器 6912・子供用バッグ 4202・子供用文具等）でも 12歳以下の子供向け製品なら CPSIA (鉛・塗装等) の CPC (CCC) & eFiling 必須
+  if (options.targetAge === 'child' && !/^0+$/.test(normalized)) {
+    const missingInputs = options.material ? [] : ['material'];
+    const clarifyingQuestions = options.material
+      ? []
+      : ['製品の主要素材・表面塗装の有無を教えてください（CPSIA総鉛・塗装鉛・フタル酸エステル規制の試験項目特定に必要です）。'];
+    return {
+      certificateRequired: true,
+      certificateType: 'CCC',
+      eFilingRequired: true,
+      applicableRegulations: [CPSIA_CHILDREN_GENERAL_REGULATION],
+      missingInfo: [],
+      nextActions: [
+        `HTSコード "${htsCode}" はCPSC重点HTSリスト外ですが、12歳以下の子供向け製品（Children’s Product）であるため CPSIA（総鉛含有量 15 U.S.C. § 1278a・表面塗装鉛 16 CFR 1303・トラッキングラベル等）が適用されます。CPSC認定第三者試験機関での試験に基づき CPC（CCC）を発行し、CBP ACE へ eFiling してください。`,
+      ],
+      disclaimer: DISCLAIMER,
+      inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
+      missingInputs: missingInputs.length > 0 ? missingInputs : undefined,
+      clarifyingQuestions: clarifyingQuestions.length > 0 ? clarifyingQuestions : undefined,
+      impactExplanation:
+        missingInputs.length > 0
+          ? '素材・塗装仕様により追加のCPSIA試験項目（フタル酸エステル 16 CFR 1307 等）が適用される場合があります。'
+          : undefined,
     };
   }
 
@@ -299,7 +900,8 @@ const FDA_SUBHEADING_RULES: FdaSubheadingRule[] = [
     programs: ['FCS'],
     fdFlag: 'FD1',
     priorNotice: false,
-    actionNote: '【FDA食品接触物質 (FCS)】食品・飲料用容器・食器の場合、FDA食品接触安全基準（溶出試験・鉛・カドミウム・BPA等）適合確認が必要です。非食品接触用途の場合はACE Disclaimerを申告してください。',
+    actionNote:
+      '【FDA食品接触物質 (FCS / FD1)】完成品の食器・飲料用容器等は 21 CFR § 1.276(b)(5) により FDA Prior Notice（事前通知）は不要です。FDA食品接触安全基準（溶出試験・鉛・カドミウム CPG Sec. 545.400/545.450・21 CFR 175-177・BPA等）への適合確認と、ACE通関時の製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合はACE Disclaimerを申告してください。',
   },
   // 香料・食品添加物原料
   {
@@ -651,11 +1253,35 @@ export async function verifyHtsCode(options: {
 //   (2) CBP の分類判例（CROSS）。普段の言葉と法令の用語をつなぐ
 // 判例が使えないとき（通信失敗・該当なし）は (1) だけで答える。
 
-/** 入力の誤り（英語の語が無い、該当する品目が見つからない）。REST では 400 にする。 */
+/** 入力の誤り（英語の語が無い、該当する品目が見つからない、または仮置き・不確定データの混入）。REST では 400 にする。 */
 export class TradeInputError extends Error {
-  constructor(message: string) {
+  readonly code: string;
+  constructor(message: string, code = 'INVALID_INPUT') {
     super(message);
     this.name = 'TradeInputError';
+    this.code = code;
+  }
+}
+
+export interface GccIncompleteItemSummary {
+  lineNumber: number;
+  sku?: string;
+  productName?: string;
+  htsCode?: string;
+  citations: string[];
+  missingFields: string[];
+}
+
+/** GCC発行対象の明細に法定必須項目が不足している場合のエラー（allowDraft: false 既定時）。REST では 422 にする。 */
+export class TradeGccIncompleteError extends Error {
+  readonly code = 'MISSING_REQUIRED_GCC_FIELDS';
+  readonly missingFields: string[];
+  readonly items: GccIncompleteItemSummary[];
+  constructor(message: string, missingFields: string[], items: GccIncompleteItemSummary[]) {
+    super(message);
+    this.name = 'TradeGccIncompleteError';
+    this.missingFields = missingFields;
+    this.items = items;
   }
 }
 
@@ -667,6 +1293,10 @@ export interface PredictHtsOptions {
   targetAge?: 'adult' | 'child' | 'unknown';
   foodContact?: boolean;
   hasBattery?: boolean;
+  batteryType?: 'button_coin' | 'other';
+  fabricSurface?: 'plain' | 'raised';
+  fabricWeightOzPerSqYd?: number;
+  fabricWeightGsm?: number;
 }
 
 export type PredictHtsSource = 'hts-text' | 'cbp-ruling';
@@ -1300,9 +1930,124 @@ const DISCLAIMER_COMPLIANCE =
   '本判定結果は参考情報を提供するものであり、法的助言・通関確定情報ではありません。正式な判断は米国CBP、FDA、CPSC公式情報および通関士・弁護士等の専門家にご確認ください。' +
   '原産国に応じた追加関税（Section 301追加関税、アンチダンピング税/相殺関税等）は本ツールの対象外であり、別途個別に確認が必要です。';
 
+export interface GccPartyContact {
+  name?: string;
+  address?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface GccResolvedPartyContact {
+  name: string;
+  address: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface GccManufactureInfo {
+  /** 製造年月 (YYYY-MM または YYYY-MM-DD, 16 CFR § 1110.11(a)(5)) */
+  date?: string;
+  /** 製造都市・省州名 (City / State or Province, 16 CFR § 1110.11(a)(5)) */
+  city?: string;
+  /** 製造国 (Country, 例: "Japan", "China", "Vietnam", 16 CFR § 1110.11(a)(5)) */
+  country?: string;
+  /** 製造工場名（ACE eFiling / FDA MID でも利用される実務項目） */
+  manufacturerName?: string;
+}
+
+export interface GccTestingRecord {
+  /** 試験実施日または期間 (YYYY-MM-DD / YYYY-MM, 16 CFR § 1110.11(a)(6)) */
+  date?: string;
+  /** 試験実施場所（都市・国, 16 CFR § 1110.11(a)(6)） */
+  location?: string;
+  /** 試験機関名（第三者試験機関または合理的試験プログラム実施機関, 16 CFR § 1110.11(a)(7)） */
+  laboratoryName?: string;
+  laboratoryAddress?: string;
+  laboratoryPhone?: string;
+  reportNumber?: string;
+}
+
+export interface GccStatutoryFields {
+  /** (1) Identification of the product covered by this certificate */
+  productIdentification: {
+    productName: string;
+    sku?: string;
+    brand?: string;
+    modelOrBatch?: string;
+    description?: string;
+    htsCode?: string;
+  };
+  /** (2) Citation to each CPSC product safety regulation to which this product is being certified */
+  citations: string[];
+  /** (3) Identification of the domestic manufacturer, importer, or foreign direct-to-consumer certifier (16 CFR § 1110.7 / § 1110.11(a)(3)) */
+  certifier: GccResolvedPartyContact | null;
+  /** (4) Contact information for the individual maintaining records of test results */
+  recordCustodian: GccResolvedPartyContact | null;
+  /** (5) Date and place (city and country / administrative region) where this product was manufactured */
+  manufactureDateAndPlace: {
+    date: string | null;
+    city: string | null;
+    country: string | null;
+    manufacturerName?: string;
+  };
+  /** (6) Date and place where this product was tested for compliance with the regulation(s) cited above */
+  testingDateAndPlace: {
+    exemptFromTesting: boolean;
+    exemptionCitation?: string;
+    exemptionReason?: string;
+    date: string | null;
+    location: string | null;
+    reportNumber?: string;
+  };
+  /** (7) Identification of any third-party laboratory or testing entity on whose testing the certificate depends */
+  testingLaboratory: {
+    notApplicableReason?: string;
+    name: string | null;
+    address?: string;
+    phone?: string;
+  };
+}
+
+export interface GccAceFilingGuidance {
+  eFilingRequired: boolean;
+  certificateType: 'GCC' | 'CCC' | 'none' | 'unknown';
+  pgaAgency: 'CPSC';
+  disclaimCode?: 'A' | 'B';
+  intendedUseCode?: string;
+  filingInstruction: string;
+  fdaNote?: string;
+}
+
+export type GccItemStatus =
+  | 'generated'
+  | 'draft_needs_info'
+  | 'exempt_disclaim_b'
+  | 'exempt_no_gcc_needed'
+  | 'cpc_required_instead';
+
+export interface GccCertificateItemResult {
+  lineNumber: number;
+  sku?: string;
+  productName?: string;
+  htsCode?: string;
+  status: GccItemStatus;
+  aceFilingGuidance: GccAceFilingGuidance;
+  statutoryFields?: GccStatutoryFields;
+  warnings?: string[];
+  missingFields: string[];
+  clarifyingQuestions?: string[];
+  compliance: CheckProductComplianceResult;
+  documentTitle?: string;
+  certificateMarkdown?: string;
+  certificateHtml?: string;
+}
+
 export interface CheckProductComplianceOptions {
   url?: string;
   productName?: string;
+  sku?: string;
+  brand?: string;
+  modelOrBatch?: string;
   description?: string;
   htsCode?: string;
   targetAge?: 'adult' | 'child' | 'unknown';
@@ -1311,11 +2056,22 @@ export interface CheckProductComplianceOptions {
   foodContact?: boolean;
   hasBattery?: boolean;
   batteryType?: 'button_coin' | 'other';
+  fabricSurface?: 'plain' | 'raised';
+  fabricWeightOzPerSqYd?: number;
+  fabricWeightGsm?: number;
+  /** true の場合、コンプライアンス判定とあわせて 16 CFR Part 1110 の GCC 証明書（または免除根拠シート）を同時生成する */
+  generateGcc?: boolean;
+  certifier?: GccPartyContact;
+  recordCustodian?: GccPartyContact;
+  manufacture?: GccManufactureInfo;
+  testing?: GccTestingRecord;
 }
 
 export interface CheckProductComplianceResult {
   product: {
     name?: string;
+    sku?: string;
+    brand?: string;
     description?: string;
     url?: string;
     detectedCategory?: string;
@@ -1334,6 +2090,7 @@ export interface CheckProductComplianceResult {
   htsPrediction?: PredictHtsResult;
   fda?: CheckFdaRegulatedResult;
   cpsc?: CpscCertificateCheckResult;
+  gcc?: GccCertificateItemResult;
   actionPlan: string[];
   disclaimer: string;
 }
@@ -1357,8 +2114,16 @@ function buildIntegratedActionPlan(
     isActionRequired = true;
     summaryParts.push(`CPSC規制対象 (${cpscResult.certificateType}証明書作成 & eFiling電子申告が完全義務化)`);
     if (cpscResult.certificateType === 'CCC') {
-      actionPlan.push('【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください（小部品誤飲・窒息ハザード試験 16 CFR 1501 を含む）。');
-      actionPlan.push('【CPSC CCC】試験結果に基づき Children’s Product Certificate (CCC) を作成・発行してください。');
+      if (cpscResult.testingExemption?.exempt) {
+        actionPlan.push(
+          '【CPSC CCC（警告: GCC不可）】12歳以下の子供向け製品です。一般衣料可燃性試験（16 CFR 1610）自体は免除要件に該当しますが、CPSIA（総鉛 15 U.S.C. 1278a・表面プリント塗装鉛 16 CFR 1303 等 ※無塗装の天然/合成繊維・刺繍糸のみなら 16 CFR 1500.91 鉛試験免除決定の対象）の適合確認と、製品本体への恒久トラッキングラベル表示（CPSIA Sec. 103）が必須です。',
+        );
+      } else {
+        actionPlan.push(
+          '【CPSC CCC（警告: GCC不可）】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験（鉛・フタル酸エステル・3歳未満対象時は小部品 16 CFR 1501 等）および製品本体への恒久トラッキングラベル表示（CPSIA Sec. 103）を実施してください。',
+        );
+      }
+      actionPlan.push('【CPSC CCC】本システムのGCC自動生成は大人・一般向け製品専用でありCCCには非対応です。別途 Children’s Product Certificate (CPC / CCC) を作成・発行してください。');
     } else if (cpscResult.certificateType === 'GCC') {
       actionPlan.push('【CPSC GCC】一般製品安全基準への適合性を確認し、General Certificate of Conformity (GCC) を作成・発行してください。');
     }
@@ -1368,9 +2133,12 @@ function buildIntegratedActionPlan(
     for (const reg of cpscResult.applicableRegulations) {
       actionPlan.push(`【適用規格】${reg.cfr}: ${reg.summary}`);
     }
+  } else if (cpscResult.certificateRequired === false && cpscResult.testingExemption?.enforcementDiscretion) {
+    summaryParts.push('CPSC大人服試験・GCC免除対象 (16 CFR 1610.1(d) / ACE Disclaim B: 130.006)');
+    actionPlan.push(...cpscResult.nextActions);
   } else if (cpscResult.certificateRequired === 'unknown' && cpscResult.missingInfo.length > 0) {
     isPotentialAction = true;
-    summaryParts.push('CPSC個別確認推奨（類似コードまたは対象年齢の確定が必要）');
+    summaryParts.push('CPSC個別確認推奨（類似コード・生地仕様または対象年齢の確定が必要）');
     actionPlan.push(...cpscResult.nextActions);
   }
 
@@ -1396,7 +2164,9 @@ function buildIntegratedActionPlan(
       actionPlan.push('【FDA 医薬品】NDCコードの取得、製造所登録、新薬/OTCモノグラフ適合性を確認してください。');
     }
     if (fdaResult.possiblePrograms.includes('FCS') || fdaResult.fdFlag === 'FD1') {
-      actionPlan.push('【FDA 食品接触物質 (FCS)】食器・調理器具等の場合、FDA食品接触安全基準（溶出試験等）への適合証明が必要です。非食品接触用途の場合は通関業者へACE免責（Disclaimer）申告を指示してください。');
+      actionPlan.push(
+        '【FDA 食品接触物質 (FCS)】完成品の食器・調理器具等は 21 CFR § 1.276(b)(5) により Prior Notice は不要ですが、FDA食品接触安全基準（溶出試験等）への適合確認と製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合は通関業者へACE免責（Disclaimer）申告を指示してください。',
+      );
     }
 
     actionPlan.push(...fdaResult.nextActions);
@@ -1438,13 +2208,15 @@ export async function checkProductCompliance(
   options: CheckProductComplianceOptions,
 ): Promise<CheckProductComplianceResult> {
   let productName = options.productName?.trim();
+  let sku = options.sku?.trim() || undefined;
+  let brand = options.brand?.trim() || undefined;
   let description = options.description?.trim();
   const targetAge = options.targetAge ?? 'unknown';
   const material = options.material?.trim();
   const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
 
-  // 1. URL が指定されている場合はスクレイピングして商品情報を取得
+  // 1. URL が指定されている場合はスクレイピングして商品情報を取得（Shopify等のSchema.org Product JSON-LDからSKU・ブランドも取得）
   if (options.url) {
     try {
       const { scrapeUrl } = await import('../scraper.js');
@@ -1456,6 +2228,12 @@ export async function checkProductCompliance(
 
       if (!productName && scrapeRes.title) {
         productName = scrapeRes.title;
+      }
+      if (!sku && scrapeRes.sku) {
+        sku = scrapeRes.sku;
+      }
+      if (!brand && scrapeRes.brand) {
+        brand = scrapeRes.brand;
       }
       if (!description) {
         description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
@@ -1474,6 +2252,8 @@ export async function checkProductCompliance(
   ): CheckProductComplianceResult => ({
     product: {
       name: productName,
+      ...(sku ? { sku } : {}),
+      ...(brand ? { brand } : {}),
       description: combinedText || undefined,
       url: options.url,
       detectedCategory: htsPrediction?.category || productCategory,
@@ -1493,7 +2273,29 @@ export async function checkProductCompliance(
   });
 
   if (!combinedText) {
-    return needsMoreInfo(['商品名または商品説明を教えてください。'], ['productDetails']);
+    const baseMissing = needsMoreInfo(['商品名または商品説明を教えてください。'], ['productDetails']);
+    if (options.generateGcc) {
+      baseMissing.gcc = buildSingleGccItemResult(1, options, { ...baseMissing });
+    }
+    return baseMissing;
+  }
+
+  // URLスクレイピングのみで呼び出され、かつページタイトルが日本語（呼び出し側から英語の品名・説明の明示指定なし）の場合、
+  // meta description 内の英語定型文（"This product cannot be shipped to the United States..." 等）だけで誤ったHTS分類に進むのを防止する
+  const callerProvidedEnglish = hasEnglishWords(
+    [options.productName, options.description, options.productCategory, options.material].filter(Boolean).join(' '),
+  );
+  if (!htsCode && !callerProvidedEnglish && productName && /[\u3040-\u30ff\u3400-\u9fff]/.test(productName)) {
+    const jpNeeds = needsMoreInfo(
+      [
+        '商品ページのタイトル・仕様が日本語です（ページ内の英語の注意書き等だけでは正確なHTS分類ができません）。scrape ツール等で取得した商品仕様をもとに、商品の一般名・素材・用途を英語にして productName / description / material（衣料品は targetAge / fabricSurface / fabricWeightOzPerSqYd も）に渡して再実行してください。',
+      ],
+      ['productDetails'],
+    );
+    if (options.generateGcc) {
+      jpNeeds.gcc = buildSingleGccItemResult(1, { ...options, sku, brand, productName }, { ...jpNeeds });
+    }
+    return jpNeeds;
   }
 
   // 2. HTSコードの確定: 指定が無ければ推測する。指定があっても、章の食い違いの検知のために推測を試みる
@@ -1508,6 +2310,10 @@ export async function checkProductCompliance(
       targetAge,
       foodContact: options.foodContact,
       hasBattery: options.hasBattery,
+      batteryType: options.batteryType,
+      fabricSurface: options.fabricSurface,
+      fabricWeightOzPerSqYd: options.fabricWeightOzPerSqYd,
+      fabricWeightGsm: options.fabricWeightGsm,
     });
   } catch (e) {
     if (!(e instanceof TradeInputError)) console.warn('[TradeCompliance] predictHtsCode failed:', errorMessage(e));
@@ -1528,7 +2334,11 @@ export async function checkProductCompliance(
               predictionNote ??
                 '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
             ];
-      return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
+      const baseNeeds = needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
+      if (options.generateGcc) {
+        baseNeeds.gcc = buildSingleGccItemResult(1, options, { ...baseNeeds });
+      }
+      return baseNeeds;
     }
     htsCode = htsPrediction.bestMatch.htsCode;
   }
@@ -1549,6 +2359,11 @@ export async function checkProductCompliance(
       htsCode,
       targetAge,
       material,
+      hasBattery: options.hasBattery,
+      batteryType: options.batteryType,
+      fabricSurface: options.fabricSurface,
+      fabricWeightOzPerSqYd: options.fabricWeightOzPerSqYd,
+      fabricWeightGsm: options.fabricWeightGsm,
     }),
   ]);
 
@@ -1612,12 +2427,19 @@ export async function checkProductCompliance(
     impactExplanation = `${mismatchWarning} ${impactExplanation}`;
   }
 
-  return {
+  const resolvedDetectedCategory =
+    options.htsCode && htsVerification.verified && htsVerification.officialPath?.[0]
+      ? htsVerification.officialPath[0]
+      : detectedCategory || productCategory;
+
+  const result: CheckProductComplianceResult = {
     product: {
       name: productName,
+      ...(sku ? { sku } : {}),
+      ...(brand ? { brand } : {}),
       description: effectiveDescription,
       url: options.url,
-      detectedCategory: detectedCategory || productCategory,
+      detectedCategory: resolvedDetectedCategory,
       targetAge,
       material,
       htsCode,
@@ -1634,5 +2456,1217 @@ export async function checkProductCompliance(
     cpsc: cpscResult,
     actionPlan,
     disclaimer: DISCLAIMER_COMPLIANCE,
+  };
+
+  if (options.generateGcc) {
+    result.gcc = buildSingleGccItemResult(1, { ...options, sku, brand, productName }, { ...result });
+  }
+
+  return result;
+}
+
+// ==========================================
+// 5. 米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) 自動生成 & 通関保留パッケージ出力
+// ==========================================
+
+export interface GccOrderItemInput {
+  url?: string;
+  productName?: string;
+  sku?: string;
+  brand?: string;
+  modelOrBatch?: string;
+  description?: string;
+  htsCode?: string;
+  targetAge?: 'adult' | 'child' | 'unknown';
+  material?: string;
+  productCategory?: string;
+  foodContact?: boolean;
+  hasBattery?: boolean;
+  batteryType?: 'button_coin' | 'other';
+  fabricSurface?: 'plain' | 'raised';
+  fabricWeightOzPerSqYd?: number;
+  fabricWeightGsm?: number;
+  certifier?: GccPartyContact;
+  recordCustodian?: GccPartyContact;
+  manufacture?: GccManufactureInfo;
+  testing?: GccTestingRecord;
+}
+
+export interface GenerateGccCertificateOptions extends GccOrderItemInput {
+  /** EC注文番号（例: Shopify注文番号 "#10492"）。発送後の配送会社保留（AWB照会）パッケージ出力時に使用 */
+  orderNumber?: string;
+  /** 航空貨物運送状番号・追跡番号（FedEx / DHL / UPS 等の AWB 番号） */
+  awbNumber?: string;
+  /** 配送会社名（例: "FedEx", "DHL Express", "UPS"） */
+  carrier?: string;
+  /** コマーシャルインボイス番号 */
+  invoiceNumber?: string;
+  /** 法定必須レコード不足時にエラー停止せず未完成ドラフト出力を許可するか（デフォルト: false＝不足時は TradeGccIncompleteError） */
+  allowDraft?: boolean;
+  /** 複数SKU注文・インボイス一括作成時の明細配列（1〜50件）。省略時はトップレベルの単一商品情報を処理 */
+  items?: GccOrderItemInput[];
+}
+
+export interface GenerateGccCertificateResult {
+  certificateId: string;
+  generatedAt: string;
+  mode: 'single_product' | 'order_package';
+  orderContext?: {
+    orderNumber?: string;
+    awbNumber?: string;
+    carrier?: string;
+    invoiceNumber?: string;
+  };
+  overallStatus: 'ready' | 'exempt' | 'partial_or_draft' | 'cpc_required';
+  summary: string;
+  warnings?: string[];
+  counts: {
+    totalItems: number;
+    gccGenerated: number;
+    draftNeedsInfo: number;
+    disclaimBExempt: number;
+    disclaimAExempt: number;
+    cpcRequired: number;
+  };
+  items: GccCertificateItemResult[];
+  /** 単一商品または注文パッケージ全体の英語版 Markdown（注文時は Page 1 通関カバーシート + 個別SKU証明書） */
+  packageMarkdown: string;
+  /** そのまま印刷・PDF保存（@media print & SKUごとの改ページ対応）してFedEx/DHL・通関業者へ提出可能なスタンドアロンHTML */
+  packageHtml: string;
+  disclaimer: string;
+}
+
+const DISCLAIMER_GCC =
+  '本証明書データおよび通関カバーシートは米国 16 CFR Part 1110（Certificates of Compliance）および CBP ACE CPSC PGA 申告実務に基づく出力です。' +
+  '虚偽の試験日・製造所情報の記載は米国消費者製品安全法（CPSA Sec. 19）違反となります。必ず実在の試験報告書・工場情報をご確認の上で提出・電子申告してください。';
+
+/** HTMLテンプレートへの埋め込み時に信頼できない全文字列を厳格にエスケープ（XSS防止） */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeParty(party?: GccPartyContact): GccResolvedPartyContact | null {
+  if (!party) return null;
+  const name = party.name?.trim();
+  const address = party.address?.trim();
+  const email = party.email?.trim();
+  const phone = party.phone?.trim();
+  if (!name && !address && !email && !phone) return null;
+  return {
+    name: name || '',
+    address: address || '',
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+  };
+}
+
+/**
+ * サーバー環境変数（SORA_GCC_CERTIFIER_* / SORA_GCC_CUSTODIAN_*）からの事業者固定連絡先デフォルト解決。
+ * 都度LLMにWeb上の特商法表記を探させたり翻訳ゆれ・推測値を混入させないためのマスタ設定機構。
+ */
+function resolveEnvGccPartyDefaults(): { certifier?: GccPartyContact; recordCustodian?: GccPartyContact } {
+  const certName = process.env.SORA_GCC_CERTIFIER_NAME?.trim();
+  const certAddr = process.env.SORA_GCC_CERTIFIER_ADDRESS?.trim();
+  const certEmail = process.env.SORA_GCC_CERTIFIER_EMAIL?.trim();
+  const certPhone = process.env.SORA_GCC_CERTIFIER_PHONE?.trim();
+  const certifier =
+    certName || certAddr || certEmail || certPhone
+      ? {
+          ...(certName ? { name: certName } : {}),
+          ...(certAddr ? { address: certAddr } : {}),
+          ...(certEmail ? { email: certEmail } : {}),
+          ...(certPhone ? { phone: certPhone } : {}),
+        }
+      : undefined;
+
+  const custName = process.env.SORA_GCC_CUSTODIAN_NAME?.trim();
+  const rawCustAddr = process.env.SORA_GCC_CUSTODIAN_ADDRESS?.trim();
+  const rawCustEmail = process.env.SORA_GCC_CUSTODIAN_EMAIL?.trim();
+  const rawCustPhone = process.env.SORA_GCC_CUSTODIAN_PHONE?.trim();
+  // 同一事業者の担当者（SORA_GCC_CUSTODIAN_NAME）が設定されている場合、住所・電話・メールは未指定分のみ CERTIFIER から継承可能
+  const custAddr = rawCustAddr || (custName ? certAddr : undefined);
+  const custEmail = rawCustEmail || (custName ? certEmail : undefined);
+  const custPhone = rawCustPhone || (custName ? certPhone : undefined);
+  const recordCustodian =
+    custName || rawCustAddr || rawCustEmail || rawCustPhone
+      ? {
+          ...(custName ? { name: custName } : {}),
+          ...(custAddr ? { address: custAddr } : {}),
+          ...(custEmail ? { email: custEmail } : {}),
+          ...(custPhone ? { phone: custPhone } : {}),
+        }
+      : undefined;
+
+  return { certifier, recordCustodian };
+}
+
+function mergePartyContacts(...sources: Array<GccPartyContact | undefined>): GccPartyContact | undefined {
+  let name: string | undefined;
+  let address: string | undefined;
+  let email: string | undefined;
+  let phone: string | undefined;
+  for (const s of sources) {
+    if (!s) continue;
+    if (!name && s.name?.trim()) name = s.name.trim();
+    if (!address && s.address?.trim()) address = s.address.trim();
+    if (!email && s.email?.trim()) email = s.email.trim();
+    if (!phone && s.phone?.trim()) phone = s.phone.trim();
+  }
+  if (!name && !address && !email && !phone) return undefined;
+  return {
+    ...(name ? { name } : {}),
+    ...(address ? { address } : {}),
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+  };
+}
+
+const GCC_PLACEHOLDER_PATTERNS: RegExp[] = [
+  /@example\.|\.example\b/i,
+  /\b(?:sample|dummy|placeholder|tbd|todo|unknown|unverified|fictional|mock|fake|probably|estimated?|approx(?:imately)?)\b/i,
+  /^(?:n\/?a|none|null|undefined|-+|\?+|xxx+)$/i,
+  /0000-0000|\b000-0000\b/,
+  /\[(?:missing|required|insert|tbd|todo)\b/i,
+  /(?:サンプル|ダミー|仮置き|仮入力|未定|不明|架空)/,
+];
+
+function isPlaceholderGccValue(val?: string): boolean {
+  const trimmed = val?.trim();
+  if (!trimmed) return false;
+  return GCC_PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed));
+}
+
+function assertNoPlaceholderGccFields(input: GccOrderItemInput, linePrefix = ''): void {
+  const checks: Array<[string, string | undefined]> = [
+    ['modelOrBatch', input.modelOrBatch],
+    ['certifier.name', input.certifier?.name],
+    ['certifier.address', input.certifier?.address],
+    ['certifier.email', input.certifier?.email],
+    ['certifier.phone', input.certifier?.phone],
+    ['recordCustodian.name', input.recordCustodian?.name],
+    ['recordCustodian.address', input.recordCustodian?.address],
+    ['recordCustodian.email', input.recordCustodian?.email],
+    ['recordCustodian.phone', input.recordCustodian?.phone],
+    ['manufacture.date', input.manufacture?.date],
+    ['manufacture.city', input.manufacture?.city],
+    ['manufacture.country', input.manufacture?.country],
+    ['manufacture.manufacturerName', input.manufacture?.manufacturerName],
+    ['testing.date', input.testing?.date],
+    ['testing.location', input.testing?.location],
+    ['testing.laboratoryName', input.testing?.laboratoryName],
+    ['testing.laboratoryAddress', input.testing?.laboratoryAddress],
+    ['testing.laboratoryPhone', input.testing?.laboratoryPhone],
+    ['testing.reportNumber', input.testing?.reportNumber],
+  ];
+  const bad = checks
+    .filter(([, v]) => isPlaceholderGccValue(v))
+    .map(([k]) => `${linePrefix}${k}`);
+  if (bad.length > 0) {
+    throw new TradeInputError(
+      `GCC法定項目にサンプル・仮置き・不確定な値が含まれているため拒否しました (${bad.join(', ')})。15 U.S.C. § 2068(a)(6) により推測値や仮置きデータでの証明書生成は厳禁です。実在の確定レコードのみを指定してください。`,
+      'UNVERIFIED_PLACEHOLDER_INPUT',
+    );
+  }
+}
+
+function formatPartyText(party: GccPartyContact | null, missingPlaceholder: string): string {
+  if (!party || (!party.name && !party.address)) return missingPlaceholder;
+  const lines = [
+    party.name || '[MISSING NAME]',
+    party.address || '[MISSING ADDRESS]',
+    party.email ? `Email: ${party.email}` : undefined,
+    party.phone ? `Phone: ${party.phone}` : undefined,
+  ].filter(Boolean);
+  return lines.join(' | ');
+}
+
+function extractCitationList(cpsc?: CpscCertificateCheckResult): string[] {
+  if (!cpsc) return [];
+  const citations = cpsc.applicableRegulations
+    .map((r) => r.cfr)
+    .filter((c) => !c.startsWith('CPSC HTS Guidance List') && c !== '個別規格要確認');
+  return citations.length > 0 ? Array.from(new Set(citations)) : [];
+}
+
+function buildFdaShortNote(fda?: CheckFdaRegulatedResult, manufacture?: GccManufactureInfo): string | undefined {
+  if (!fda) return undefined;
+  if (fda.possiblePrograms.includes('FCS') || fda.fdFlag === 'FD1') {
+    if (fda.fdaRegulatedLikely === false) {
+      return 'FDA FD1 Disclaim A (Non-food-contact decorative article)';
+    }
+    const midReady = manufacture?.manufacturerName && manufacture?.country
+      ? `Manufacturer for FDA MID: ${manufacture.manufacturerName} (${[manufacture.city, manufacture.country].filter(Boolean).join(', ')})`
+      : 'Provide manufacturer full name & address on Commercial Invoice for FDA MID';
+    return `FDA FCS (FD1): Exempt from Prior Notice per 21 CFR 1.276(b)(5); complies with FDA leachable lead/cadmium/FCS safety standards. ${midReady}.`;
+  }
+  if (fda.fdaRegulatedLikely === true) {
+    return `FDA Regulated (${fda.fdFlag} - ${fda.possiblePrograms.join('/')})${fda.priorNoticeRequired ? ' — Prior Notice Required before arrival' : ''}`;
+  }
+  return undefined;
+}
+
+function renderGccSectionHtml(options: {
+  badgeText: string;
+  badgeKind: 'ready' | 'draft' | 'exempt-b' | 'exempt-a' | 'cpc';
+  title: string;
+  subtitle: string;
+  rows: Array<{ num: string; label: string; valueHtml: string }>;
+  footerNote?: string;
+}): string {
+  const rowsHtml = options.rows
+    .map(
+      (r) => `      <tr>
+        <td class="col-num">${escapeHtml(r.num)}</td>
+        <th scope="row" class="col-label">${escapeHtml(r.label)}</th>
+        <td class="col-val">${r.valueHtml}</td>
+      </tr>`,
+    )
+    .join('\n');
+
+  return `<section class="cert-card">
+  <header class="cert-header">
+    <div>
+      <div class="cert-kicker">U.S. Consumer Product Safety Commission — 16 CFR Part 1110</div>
+      <h1 class="cert-title">${escapeHtml(options.title)}</h1>
+      <p class="cert-subtitle">${escapeHtml(options.subtitle)}</p>
+    </div>
+    <span class="badge badge-${options.badgeKind}">${escapeHtml(options.badgeText)}</span>
+  </header>
+  <table class="cert-table">
+    <tbody>
+${rowsHtml}
+    </tbody>
+  </table>
+  ${options.footerNote ? `<p class="cert-footer">${escapeHtml(options.footerNote)}</p>` : ''}
+</section>`;
+}
+
+function buildSingleGccItemResult(
+  lineNumber: number,
+  rawInput: GccOrderItemInput,
+  compliance: CheckProductComplianceResult,
+): GccCertificateItemResult {
+  const envParties = resolveEnvGccPartyDefaults();
+  const input: GccOrderItemInput = {
+    ...rawInput,
+    certifier: mergePartyContacts(rawInput.certifier, envParties.certifier),
+    recordCustodian: mergePartyContacts(rawInput.recordCustodian, envParties.recordCustodian),
+  };
+  assertNoPlaceholderGccFields(input, lineNumber > 1 ? `items[${lineNumber - 1}].` : '');
+
+  const productName = compliance.product.name || input.productName?.trim() || undefined;
+  const sku = compliance.product.sku || input.sku?.trim() || undefined;
+  const brand = compliance.product.brand || input.brand?.trim() || undefined;
+  const htsCode = compliance.product.htsCode || input.htsCode?.trim() || undefined;
+  const cpsc = compliance.cpsc;
+  const fdaNote = buildFdaShortNote(compliance.fda, input.manufacture);
+
+  // Case 1: 12歳以下の子供向け製品 -> 法的にGCCは発行不可、CPC (CCC) が必要（本システムはCCC非対応のため明確な警告を返す）
+  if (compliance.product.targetAge === 'child' || cpsc?.certificateType === 'CCC') {
+    const cpcWarning =
+      `【重要警告: 子供向け製品のためGCC発行不可（CPC / CCC 必須・本ツール非対応）】` +
+      `明細 #${lineNumber}${productName ? `「${productName}」` : ''}${sku ? ` (SKU: ${sku})` : ''} は12歳以下の子供向け製品（Children’s Product）に該当するため、` +
+      `一般適合証明書（GCC: 16 CFR Part 1110）の発行は法的に認められません。本ツールは大人・一般向け製品の GCC 専用であり、CPC（Children’s Product Certificate / ACEコード: CCC）の生成には対応していません。` +
+      `米国へ出荷する場合は、CPSC認定第三者試験機関での試験（または 16 CFR 1610.1(d) / 1500.91 等の免除決定確認）、製品本体への恒久トラッキングラベル表示（CPSIA Sec. 103）、および別途 CPC（CCC）の発行・ACE eFiling を行ってください。`;
+    const filingInstruction =
+      'WARNING — DO NOT FILE A GCC (OUT OF SCOPE): Product is for children 12 years of age or younger. This system only generates adult/general-use GCCs and does NOT issue Children’s Product Certificates (CPC / CCC). You must separately obtain CPSC-accepted third-party accredited laboratory testing (or verify statutory CPSC component determinations), affix a permanent CPSIA Sec. 103 tracking label, and eFile a CPC (CCC) via CBP ACE.';
+    const title = 'WARNING: Children’s Product — CPC (CCC) Required (GCC Cannot Be Issued)';
+    const md = [
+      `# ${title}`,
+      '',
+      `> **WARNING**: ${cpcWarning}`,
+      '',
+      `- **Line / SKU**: Line ${lineNumber}${sku ? ` / SKU: \`${sku}\`` : ''}`,
+      `- **Product**: ${productName || '[Unnamed Product]'}`,
+      `- **HTS Code**: ${htsCode || '[Pending]'}`,
+      `- **Disposition**: **CPC (CCC) Required — GCC Cannot Be Issued (CPC Generation Not Supported)**`,
+      `- **Applicable Standards**: ${extractCitationList(cpsc).join('; ') || 'CPSIA Children’s Product Rules (15 U.S.C. 1278a / 16 CFR 1107)'}`,
+      `- **Instruction**: ${filingInstruction}`,
+      ...(fdaNote ? [`- **FDA PGA Note**: ${fdaNote}`] : []),
+    ].join('\n');
+
+    const html = renderGccSectionHtml({
+      badgeText: 'WARNING: CPC REQUIRED (NO GCC)',
+      badgeKind: 'cpc',
+      title,
+      subtitle: `Line ${lineNumber}${sku ? ` • SKU: ${sku}` : ''}${htsCode ? ` • HTS: ${htsCode}` : ''}`,
+      rows: [
+        { num: '!', label: 'Compliance Warning (JP)', valueHtml: `<strong>${escapeHtml(cpcWarning)}</strong>` },
+        { num: '1', label: 'Product', valueHtml: escapeHtml(productName || '[Unnamed Product]') },
+        {
+          num: '2',
+          label: 'Applicable CPSC Children’s Rules',
+          valueHtml: escapeHtml(extractCitationList(cpsc).join('; ') || 'CPSIA 15 U.S.C. § 1278a / 16 CFR Part 1107'),
+        },
+        { num: '3', label: 'ACE Filing Requirement', valueHtml: escapeHtml(filingInstruction) },
+        ...(fdaNote ? [{ num: '4', label: 'FDA PGA Note', valueHtml: escapeHtml(fdaNote) }] : []),
+      ],
+    });
+
+    return {
+      lineNumber,
+      sku,
+      productName,
+      htsCode,
+      status: 'cpc_required_instead',
+      aceFilingGuidance: {
+        eFilingRequired: true,
+        certificateType: 'CCC',
+        pgaAgency: 'CPSC',
+        filingInstruction,
+        ...(fdaNote ? { fdaNote } : {}),
+      },
+      warnings: [cpcWarning],
+      missingFields: [],
+      compliance,
+      documentTitle: title,
+      certificateMarkdown: md,
+      certificateHtml: html,
+    };
+  }
+
+  // Case 2: 大人服で 16 CFR § 1610.1(d)(1)/(2) 試験免除 & 2016年CPSC執行裁量該当 -> ACE Disclaim B (IUC 130.006) + クーリエ提出用免除根拠シート生成
+  if (cpsc?.certificateRequired === false && cpsc.testingExemption?.enforcementDiscretion) {
+    const exemptionCitation = cpsc.testingExemption.citation || '16 CFR 1610.1(d)';
+    const certifier = normalizeParty(input.certifier);
+    const custodian = normalizeParty(input.recordCustodian) ?? certifier;
+    const mfg = input.manufacture;
+    const fabricDetails = [
+      compliance.product.material ? `Fiber Content: ${compliance.product.material}` : undefined,
+      input.fabricSurface ? `Fabric Surface: ${input.fabricSurface === 'plain' ? 'Plain surface' : 'Raised-fiber surface'}` : undefined,
+      input.fabricWeightGsm !== undefined
+        ? `Fabric Weight: ${input.fabricWeightGsm} g/m² (${Math.round((input.fabricWeightGsm / OZ_PER_SQ_YD_TO_GSM) * 100) / 100} oz/sq yd)`
+        : input.fabricWeightOzPerSqYd !== undefined
+          ? `Fabric Weight: ${input.fabricWeightOzPerSqYd} oz/sq yd (${Math.round(input.fabricWeightOzPerSqYd * OZ_PER_SQ_YD_TO_GSM * 10) / 10} g/m²)`
+          : undefined,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    const filingInstruction =
+      `Exempt from flammability testing under ${exemptionCitation} and exempt from GCC issuance / CBP ACE eFiling under the CPSC Statement of Policy on Enforcement Discretion Regarding General Conformity Certificates for Adult Wearing Apparel (effective April 25, 2016). File CBP ACE CPSC PGA Disclaimer Code 'B' with Intended Use Code '130.006'.`;
+
+    const statutoryFields: GccStatutoryFields = {
+      productIdentification: {
+        productName: productName || 'Adult Wearing Apparel',
+        ...(sku ? { sku } : {}),
+        ...(brand ? { brand } : {}),
+        ...(input.modelOrBatch ? { modelOrBatch: input.modelOrBatch } : {}),
+        ...(compliance.product.description ? { description: compliance.product.description } : {}),
+        ...(htsCode ? { htsCode } : {}),
+      },
+      citations: [`16 CFR Part 1610 (Exempt from testing under ${exemptionCitation})`],
+      certifier,
+      recordCustodian: custodian,
+      manufactureDateAndPlace: {
+        date: mfg?.date?.trim() || null,
+        city: mfg?.city?.trim() || null,
+        country: mfg?.country?.trim() || null,
+        ...(mfg?.manufacturerName?.trim() ? { manufacturerName: mfg.manufacturerName.trim() } : {}),
+      },
+      testingDateAndPlace: {
+        exemptFromTesting: true,
+        exemptionCitation,
+        exemptionReason: `Exempt from flammability testing pursuant to ${exemptionCitation} (${fabricDetails || ' qualifying adult apparel fabric'}).`,
+        date: null,
+        location: null,
+      },
+      testingLaboratory: {
+        notApplicableReason: `Not applicable — exempt from testing under ${exemptionCitation} and CPSC Enforcement Discretion Policy (March 24, 2016).`,
+        name: null,
+      },
+    };
+
+    const title = 'Statement of Flammability Testing & GCC Exemption — Adult Wearing Apparel (16 CFR § 1610.1(d))';
+    const md = [
+      `# ${title}`,
+      '',
+      `- **1. Product Identification**: ${productName || 'Adult Wearing Apparel'}${sku ? ` (SKU: \`${sku}\`)` : ''}${brand ? ` — Brand: ${brand}` : ''}${htsCode ? ` — HTS: \`${htsCode}\`` : ''}`,
+      `- **2. Applicable Standard & Exemption Citation**: 16 CFR Part 1610 — **Exempt from testing under \`${exemptionCitation}\`**`,
+      `- **3. Fabric Specification**: ${fabricDetails || 'Exempt fiber / weight per 16 CFR § 1610.1(d)'}`,
+      `- **4. CPSC Enforcement Discretion & CBP ACE Instruction**: ${filingInstruction}`,
+      ...(certifier ? [`- **5. Exporter / Importer Statement Party**: ${formatPartyText(certifier, 'N/A')}`] : []),
+      ...(mfg?.country || mfg?.city || mfg?.date
+        ? [`- **6. Manufacture Origin**: ${[mfg?.date, mfg?.manufacturerName, mfg?.city, mfg?.country].filter(Boolean).join(', ')}`]
+        : []),
+    ].join('\n');
+
+    const html = renderGccSectionHtml({
+      badgeText: 'ACE DISCLAIM B (IUC 130.006)',
+      badgeKind: 'exempt-b',
+      title,
+      subtitle: `Line ${lineNumber}${sku ? ` • SKU: ${sku}` : ''}${htsCode ? ` • HTS: ${htsCode}` : ''}`,
+      rows: [
+        {
+          num: '1',
+          label: 'Product Identification',
+          valueHtml: `${escapeHtml(productName || 'Adult Wearing Apparel')}${sku ? ` <br><small>SKU: ${escapeHtml(sku)}</small>` : ''}${htsCode ? ` <br><small>HTS: ${escapeHtml(htsCode)}</small>` : ''}`,
+        },
+        {
+          num: '2',
+          label: 'Exemption Citation',
+          valueHtml: `16 CFR Part 1610 — <strong>Exempt under ${escapeHtml(exemptionCitation)}</strong>`,
+        },
+        {
+          num: '3',
+          label: 'Qualifying Fabric Specification',
+          valueHtml: escapeHtml(fabricDetails || 'Exempt fiber / plain-surface weight per 16 CFR § 1610.1(d)'),
+        },
+        {
+          num: '4',
+          label: 'CBP ACE PGA Filing Instruction',
+          valueHtml: escapeHtml(filingInstruction),
+        },
+        ...(certifier
+          ? [{ num: '5', label: 'Declaring Party', valueHtml: escapeHtml(formatPartyText(certifier, 'N/A')) }]
+          : []),
+        ...(mfg?.country || mfg?.city || mfg?.date
+          ? [
+              {
+                num: '6',
+                label: 'Place / Date of Manufacture',
+                valueHtml: escapeHtml([mfg?.date, mfg?.manufacturerName, mfg?.city, mfg?.country].filter(Boolean).join(', ')),
+              },
+            ]
+          : []),
+      ],
+    });
+
+    return {
+      lineNumber,
+      sku,
+      productName,
+      htsCode,
+      status: 'exempt_disclaim_b',
+      aceFilingGuidance: {
+        eFilingRequired: false,
+        certificateType: 'none',
+        pgaAgency: 'CPSC',
+        disclaimCode: 'B',
+        intendedUseCode: '130.006',
+        filingInstruction,
+        ...(fdaNote ? { fdaNote } : {}),
+      },
+      statutoryFields,
+      missingFields: [],
+      compliance,
+      documentTitle: title,
+      certificateMarkdown: md,
+      certificateHtml: html,
+    };
+  }
+
+  // Case 3: 大人向けでCPSC強制安全基準の非対象品（大人コレクター向けフィギュア/アクスタ、大人用靴/帽子、一般食器 6912 等）-> ACE Disclaim A
+  const isUnlistedAdultNonRegulated =
+    compliance.product.targetAge === 'adult' &&
+    cpsc?.eFilingRequired === false &&
+    (cpsc.certificateRequired === false || cpsc.applicableRegulations.length === 0);
+
+  if (isUnlistedAdultNonRegulated) {
+    const filingInstruction =
+      'Product is an adult/general-use article NOT subject to any mandatory CPSC consumer product safety rule under 16 CFR. A GCC is NOT required (and should not be filed). Transmit CBP ACE CPSC PGA Disclaimer Code \'A\' (product is not regulated by CPSC or not subject to a mandatory CPSC standard) if HTS triggers a CPSC PGA flag.';
+    const title = 'CPSC Non-Regulated Product Declaration (ACE Disclaim A)';
+    const md = [
+      `# ${title}`,
+      '',
+      `- **Line / SKU**: Line ${lineNumber}${sku ? ` / SKU: \`${sku}\`` : ''}`,
+      `- **Product**: ${productName || '[Unnamed Product]'}${htsCode ? ` (HTS: \`${htsCode}\`)` : ''}`,
+      `- **CPSC Status**: **No GCC Required — CBP ACE Disclaimer Code \`A\`**`,
+      `- **Instruction**: ${filingInstruction}`,
+      ...(fdaNote ? [`- **FDA PGA Compliance Note**: ${fdaNote}`] : []),
+    ].join('\n');
+
+    const html = renderGccSectionHtml({
+      badgeText: 'NO GCC NEEDED (DISCLAIM A)',
+      badgeKind: 'exempt-a',
+      title,
+      subtitle: `Line ${lineNumber}${sku ? ` • SKU: ${sku}` : ''}${htsCode ? ` • HTS: ${htsCode}` : ''}`,
+      rows: [
+        { num: '1', label: 'Product', valueHtml: `${escapeHtml(productName || '[Unnamed Product]')}${sku ? ` (SKU: ${escapeHtml(sku)})` : ''}` },
+        { num: '2', label: 'HTS Code', valueHtml: escapeHtml(htsCode || 'N/A') },
+        { num: '3', label: 'CPSC PGA Disposition', valueHtml: escapeHtml(filingInstruction) },
+        ...(fdaNote ? [{ num: '4', label: 'FDA PGA Disposition', valueHtml: escapeHtml(fdaNote) }] : []),
+      ],
+    });
+
+    return {
+      lineNumber,
+      sku,
+      productName,
+      htsCode,
+      status: 'exempt_no_gcc_needed',
+      aceFilingGuidance: {
+        eFilingRequired: false,
+        certificateType: 'none',
+        pgaAgency: 'CPSC',
+        disclaimCode: 'A',
+        filingInstruction,
+        ...(fdaNote ? { fdaNote } : {}),
+      },
+      missingFields: [],
+      compliance,
+      documentTitle: title,
+      certificateMarkdown: md,
+      certificateHtml: html,
+    };
+  }
+
+  // Case 4: GCC作成対象（または判定情報不足・法定7項目の一部未入力によるドラフト）
+  //   ※ 推測値のでっち上げは一切行わず、未入力の法定必須項目をすべて missingFields に列挙する
+  const missingFields: string[] = [];
+  if (compliance.overallStatus === 'needs_more_info' || !htsCode) {
+    for (const m of compliance.missingInputs ?? ['productDetails']) {
+      if (!missingFields.includes(m)) missingFields.push(m);
+    }
+  }
+  if (cpsc?.certificateRequired === 'unknown') {
+    for (const m of cpsc.missingInputs ?? []) {
+      // 大人服であっても実試験レコードが提出されている場合は自発的/実測GCCを発行できるため fabric 質問は必須ブロックにしない
+      const hasExplicitTest = Boolean(input.testing?.date?.trim() && input.testing?.laboratoryName?.trim());
+      if (hasExplicitTest && (m === 'fabricSurface' || m === 'fabricWeightGsm')) continue;
+      if (!missingFields.includes(m)) missingFields.push(m);
+    }
+  }
+
+  if (!productName) missingFields.push('productName');
+
+  const citations = extractCitationList(cpsc);
+  if (citations.length === 0) missingFields.push('citations');
+
+  const certifier = normalizeParty(input.certifier);
+  if (!certifier?.name) missingFields.push('certifier.name');
+  if (!certifier?.address) missingFields.push('certifier.address');
+  if (!certifier?.email) missingFields.push('certifier.email');
+  if (!certifier?.phone) missingFields.push('certifier.phone');
+
+  const recordCustodian = normalizeParty(input.recordCustodian);
+  if (!recordCustodian?.name) missingFields.push('recordCustodian.name');
+  if (!recordCustodian?.address) missingFields.push('recordCustodian.address');
+  if (!recordCustodian?.email) missingFields.push('recordCustodian.email');
+  if (!recordCustodian?.phone) missingFields.push('recordCustodian.phone');
+
+  const mfgDate = input.manufacture?.date?.trim() || null;
+  const mfgCity = input.manufacture?.city?.trim() || null;
+  const mfgCountry = input.manufacture?.country?.trim() || null;
+  if (!mfgDate) missingFields.push('manufacture.date');
+  if (!mfgCity) missingFields.push('manufacture.city');
+  if (!mfgCountry) missingFields.push('manufacture.country');
+
+  const testDate = input.testing?.date?.trim() || null;
+  const testLocation = input.testing?.location?.trim() || null;
+  const testLabName = input.testing?.laboratoryName?.trim() || null;
+  if (!testDate) missingFields.push('testing.date');
+  if (!testLocation) missingFields.push('testing.location');
+  if (!testLabName) missingFields.push('testing.laboratoryName');
+
+  const isComplete = missingFields.length === 0;
+  const status: GccItemStatus = isComplete ? 'generated' : 'draft_needs_info';
+
+  const statutoryFields: GccStatutoryFields = {
+    productIdentification: {
+      productName: productName || '[MISSING PRODUCT NAME]',
+      ...(sku ? { sku } : {}),
+      ...(brand ? { brand } : {}),
+      ...(input.modelOrBatch ? { modelOrBatch: input.modelOrBatch } : {}),
+      ...(compliance.product.description ? { description: compliance.product.description } : {}),
+      ...(htsCode ? { htsCode } : {}),
+    },
+    citations,
+    certifier,
+    recordCustodian,
+    manufactureDateAndPlace: {
+      date: mfgDate,
+      city: mfgCity,
+      country: mfgCountry,
+      ...(input.manufacture?.manufacturerName?.trim()
+        ? { manufacturerName: input.manufacture.manufacturerName.trim() }
+        : {}),
+    },
+    testingDateAndPlace: {
+      exemptFromTesting: false,
+      date: testDate,
+      location: testLocation,
+      ...(input.testing?.reportNumber?.trim() ? { reportNumber: input.testing.reportNumber.trim() } : {}),
+    },
+    testingLaboratory: {
+      name: testLabName,
+      ...(input.testing?.laboratoryAddress?.trim() ? { address: input.testing.laboratoryAddress.trim() } : {}),
+      ...(input.testing?.laboratoryPhone?.trim() ? { phone: input.testing.laboratoryPhone.trim() } : {}),
+    },
+  };
+
+  const filingInstruction = isComplete
+    ? 'GCC complete per 16 CFR § 1110.11. Transmit certificate data elements electronically via CBP ACE eFiling (Full PGA Message Set or CPSC Product Registry Reference) and furnish this certificate to distributor/courier upon request.'
+    : `INCOMPLETE DRAFT — Do NOT file until missing statutory fields (${missingFields.join(', ')}) are verified from actual manufacturing and test records.`;
+
+  const docTitle = isComplete
+    ? 'General Certificate of Conformity (GCC)'
+    : 'DRAFT General Certificate of Conformity (GCC) — INCOMPLETE';
+
+  const prodDescParts = [
+    statutoryFields.productIdentification.productName,
+    sku ? `SKU: ${sku}` : undefined,
+    brand ? `Brand: ${brand}` : undefined,
+    input.modelOrBatch ? `Batch/Lot: ${input.modelOrBatch}` : undefined,
+    htsCode ? `HTS: ${htsCode}` : undefined,
+  ].filter(Boolean);
+
+  const mfgText = [
+    mfgDate || '[MISSING MANUFACTURE DATE (YYYY-MM)]',
+    input.manufacture?.manufacturerName?.trim(),
+    mfgCity || '[MISSING CITY]',
+    mfgCountry || '[MISSING COUNTRY]',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  const testDatePlaceText = [
+    testDate || '[MISSING TEST DATE]',
+    testLocation || '[MISSING TEST LOCATION]',
+    input.testing?.reportNumber?.trim() ? `Report #: ${input.testing.reportNumber.trim()}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
+  const testLabText = [
+    testLabName || '[MISSING TESTING LABORATORY / ENTITY]',
+    input.testing?.laboratoryAddress?.trim(),
+    input.testing?.laboratoryPhone?.trim() ? `Phone: ${input.testing.laboratoryPhone.trim()}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
+  const citationsText = citations.length > 0 ? citations.join('; ') : '[MISSING APPLICABLE CPSC SAFETY STANDARD CITATION]';
+
+  const mdLines = [
+    `# ${docTitle}`,
+    '*Pursuant to 15 U.S.C. § 2063(a)(1) (CPSIA § 102) and 16 CFR Part 1110*',
+    '',
+    ...(isComplete
+      ? []
+      : [
+          `> **WARNING — DRAFT ONLY (DO NOT SUBMIT TO CBP ACE)**: Missing mandatory fields: \`${missingFields.join('`, `')}\`.`,
+          '',
+        ]),
+    `1. **Identification of the product covered by this certificate (16 CFR § 1110.11(a)(1))**:  `,
+    `   ${prodDescParts.join(' — ')}${compliance.product.description ? ` (${compliance.product.description})` : ''}`,
+    `2. **Citation to each CPSC product safety regulation to which this product is being certified (16 CFR § 1110.11(a)(2))**:  `,
+    `   ${citationsText}`,
+    `3. **Identification of the domestic manufacturer, importer, or foreign direct-to-consumer certifier certifying compliance (16 CFR § 1110.11(a)(3))**:  `,
+    `   ${formatPartyText(certifier, '[MISSING CERTIFIER NAME, FULL MAILING ADDRESS & PHONE/EMAIL]')}`,
+    `4. **Contact information for the individual maintaining records of test results (16 CFR § 1110.11(a)(4))**:  `,
+    `   ${formatPartyText(recordCustodian, '[MISSING RECORD CUSTODIAN NAME, ADDRESS, EMAIL & PHONE]')}`,
+    `5. **Date and place where this product was manufactured (16 CFR § 1110.11(a)(5))**:  `,
+    `   ${mfgText}`,
+    `6. **Date(s) and place(s) where this product was tested for compliance with the regulation(s) cited above (16 CFR § 1110.11(a)(6))**:  `,
+    `   ${testDatePlaceText}`,
+    `7. **Identification of any third-party laboratory or testing entity on whose testing the certificate depends (16 CFR § 1110.11(a)(7))**:  `,
+    `   ${testLabText}`,
+  ];
+
+  const html = renderGccSectionHtml({
+    badgeText: isComplete ? 'GCC READY (16 CFR 1110)' : 'DRAFT — MISSING INFO',
+    badgeKind: isComplete ? 'ready' : 'draft',
+    title: docTitle,
+    subtitle: `Line ${lineNumber}${sku ? ` • SKU: ${sku}` : ''}${htsCode ? ` • HTS: ${htsCode}` : ''}`,
+    rows: [
+      {
+        num: '1',
+        label: 'Identification of the product covered by this certificate (16 CFR § 1110.11(a)(1))',
+        valueHtml: `<strong>${escapeHtml(statutoryFields.productIdentification.productName)}</strong>${
+          sku ? `<br>SKU: <code>${escapeHtml(sku)}</code>` : ''
+        }${brand ? ` • Brand: ${escapeHtml(brand)}` : ''}${
+          input.modelOrBatch ? ` • Batch/Lot: ${escapeHtml(input.modelOrBatch)}` : ''
+        }${htsCode ? ` • HTS: <code>${escapeHtml(htsCode)}</code>` : ''}${
+          compliance.product.description ? `<br><small>${escapeHtml(compliance.product.description)}</small>` : ''
+        }`,
+      },
+      {
+        num: '2',
+        label: 'Citation to each CPSC product safety regulation (16 CFR § 1110.11(a)(2))',
+        valueHtml: escapeHtml(citationsText),
+      },
+      {
+        num: '3',
+        label: 'Certifying Importer / Domestic Manufacturer / Foreign Shipper (16 CFR § 1110.11(a)(3))',
+        valueHtml: escapeHtml(formatPartyText(certifier, '[MISSING CERTIFIER NAME, FULL MAILING ADDRESS & PHONE/EMAIL]')),
+      },
+      {
+        num: '4',
+        label: 'Individual Maintaining Records of Test Results (16 CFR § 1110.11(a)(4))',
+        valueHtml: escapeHtml(formatPartyText(recordCustodian, '[MISSING RECORD CUSTODIAN NAME, ADDRESS, EMAIL & PHONE]')),
+      },
+      {
+        num: '5',
+        label: 'Date and Place (City & Country) of Manufacture (16 CFR § 1110.11(a)(5))',
+        valueHtml: escapeHtml(mfgText),
+      },
+      {
+        num: '6',
+        label: 'Date(s) and Place(s) of Compliance Testing (16 CFR § 1110.11(a)(6))',
+        valueHtml: escapeHtml(testDatePlaceText),
+      },
+      {
+        num: '7',
+        label: 'Testing Laboratory / Entity (16 CFR § 1110.11(a)(7))',
+        valueHtml: escapeHtml(testLabText),
+      },
+    ],
+    footerNote: isComplete
+      ? 'Electronic Filing Ready (16 CFR § 1110.13): Must be electronically filed via CBP ACE upon entry.'
+      : `DRAFT WARNING: Missing required fields (${missingFields.join(', ')}). Complete all 7 statutory elements before CBP ACE submission.`,
+  });
+
+  return {
+    lineNumber,
+    sku,
+    productName,
+    htsCode,
+    status,
+    aceFilingGuidance: {
+      eFilingRequired: true,
+      certificateType: 'GCC',
+      pgaAgency: 'CPSC',
+      filingInstruction,
+      ...(fdaNote ? { fdaNote } : {}),
+    },
+    statutoryFields,
+    missingFields,
+    ...(compliance.clarifyingQuestions?.length ? { clarifyingQuestions: compliance.clarifyingQuestions } : {}),
+    compliance,
+    documentTitle: docTitle,
+    certificateMarkdown: mdLines.join('\n'),
+    certificateHtml: html,
+  };
+}
+
+function wrapStandalonePrintHtml(title: string, sectionsHtml: string[]): string {
+  const body = sectionsHtml
+    .map((sec, idx) => (idx === 0 ? sec : `<div class="page-break"></div>\n${sec}`))
+    .join('\n\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #111827;
+      background: #f9fafb;
+      margin: 0;
+      padding: 24px;
+      line-height: 1.45;
+      font-size: 13px;
+    }
+    .cert-card {
+      max-width: 900px;
+      margin: 0 auto 24px auto;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 24px 28px;
+    }
+    .cert-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      border-bottom: 2px solid #111827;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .cert-kicker {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #4b5563;
+    }
+    .cert-title {
+      font-size: 19px;
+      margin: 4px 0;
+      color: #111827;
+    }
+    .cert-subtitle {
+      font-size: 12px;
+      color: #4b5563;
+      margin: 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid currentColor;
+    }
+    .badge-ready { color: #065f46; background: #ecfdf5; }
+    .badge-draft { color: #92400e; background: #fffbeb; }
+    .badge-exempt-b { color: #1e40af; background: #eff6ff; }
+    .badge-exempt-a { color: #374151; background: #f3f4f6; }
+    .badge-cpc { color: #991b1b; background: #fef2f2; }
+    .cert-table, .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .cert-table th, .cert-table td, .summary-table th, .summary-table td {
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+    .cert-table th, .summary-table th {
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    .col-num { width: 34px; text-align: center; font-weight: 700; color: #374151; }
+    .col-label { width: 34%; }
+    .cert-footer {
+      margin: 12px 0 0 0;
+      font-size: 11.5px;
+      color: #4b5563;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 16px;
+      margin-bottom: 16px;
+      font-size: 12.5px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .cert-card { border: 1px solid #9ca3af; border-radius: 0; margin: 0; max-width: none; box-shadow: none; }
+      .page-break { page-break-before: always; break-before: page; }
+    }
+  </style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
+}
+
+function buildOrderCoverSheet(options: {
+  certificateId: string;
+  generatedAt: string;
+  orderContext?: GenerateGccCertificateResult['orderContext'];
+  certifier: GccPartyContact | null;
+  items: GccCertificateItemResult[];
+}): { markdown: string; html: string } {
+  const { orderContext, certifier, items, certificateId, generatedAt } = options;
+  const statusLabel = (item: GccCertificateItemResult): string => {
+    switch (item.status) {
+      case 'generated':
+        return 'GCC Attached (eFiling Required)';
+      case 'draft_needs_info':
+        return `DRAFT — Missing: ${item.missingFields.join(', ')}`;
+      case 'exempt_disclaim_b':
+        return 'ACE Disclaim B (IUC 130.006 — 16 CFR 1610.1(d) Exempt)';
+      case 'exempt_no_gcc_needed':
+        return 'ACE Disclaim A (Not Subject to CPSC Rule)';
+      case 'cpc_required_instead':
+        return 'HOLD — CPC (CCC) Required (Child <=12)';
+    }
+  };
+
+  const mdHeader = [
+    '# U.S. Customs / Courier Clearance & PGA Summary Cover Sheet',
+    `- **Package Reference**: \`${certificateId}\` (Generated: ${generatedAt})`,
+    ...(orderContext?.awbNumber ? [`- **AWB / Tracking Number**: \`${orderContext.awbNumber}\`${orderContext.carrier ? ` (${orderContext.carrier})` : ''}`] : []),
+    ...(orderContext?.orderNumber ? [`- **Order Number**: \`${orderContext.orderNumber}\``] : []),
+    ...(orderContext?.invoiceNumber ? [`- **Commercial Invoice Number**: \`${orderContext.invoiceNumber}\``] : []),
+    ...(certifier ? [`- **Certifier / Importer / Shipper**: ${formatPartyText(certifier, 'N/A')}`] : []),
+    '',
+    '| Line | SKU | Product Description | HTS Code | CPSC PGA Disposition | Notes / FDA / Fabric Spec |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- |',
+    ...items.map((it) => {
+      const extraNotes = [
+        it.statutoryFields?.testingDateAndPlace.exemptionReason,
+        it.aceFilingGuidance.fdaNote,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return `| ${it.lineNumber} | ${it.sku || '-'} | ${it.productName || '-'} | ${it.htsCode || '-'} | ${statusLabel(it)} | ${extraNotes || '-'} |`;
+    }),
+  ].join('\n');
+
+  const tableRowsHtml = items
+    .map((it) => {
+      const extraNotes = [
+        it.statutoryFields?.testingDateAndPlace.exemptionReason,
+        it.aceFilingGuidance.fdaNote,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return `      <tr>
+        <td class="col-num">${escapeHtml(it.lineNumber)}</td>
+        <td><code>${escapeHtml(it.sku || '-')}</code></td>
+        <td>${escapeHtml(it.productName || '-')}</td>
+        <td><code>${escapeHtml(it.htsCode || '-')}</code></td>
+        <td><strong>${escapeHtml(statusLabel(it))}</strong></td>
+        <td>${escapeHtml(extraNotes || '-')}</td>
+      </tr>`;
+    })
+    .join('\n');
+
+  const html = `<section class="cert-card">
+  <header class="cert-header">
+    <div>
+      <div class="cert-kicker">Customs Broker & Express Courier Clearance Package</div>
+      <h1 class="cert-title">U.S. CPSC & FDA PGA Entry Line Summary Cover Sheet</h1>
+      <p class="cert-subtitle">Reference: ${escapeHtml(certificateId)} • Generated: ${escapeHtml(generatedAt)}</p>
+    </div>
+    <span class="badge badge-ready">${escapeHtml(`${items.length} SKU LINE(S)`)}</span>
+  </header>
+  <div class="meta-grid">
+    <div><strong>AWB / Tracking #:</strong> ${escapeHtml(orderContext?.awbNumber ? `${orderContext.awbNumber}${orderContext.carrier ? ` (${orderContext.carrier})` : ''}` : 'N/A')}</div>
+    <div><strong>Order #:</strong> ${escapeHtml(orderContext?.orderNumber || 'N/A')}</div>
+    <div><strong>Commercial Invoice #:</strong> ${escapeHtml(orderContext?.invoiceNumber || 'N/A')}</div>
+    <div><strong>Certifying Party:</strong> ${escapeHtml(formatPartyText(certifier, 'See individual SKU certificates'))}</div>
+  </div>
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>Line</th>
+        <th>SKU</th>
+        <th>Product</th>
+        <th>HTS Code</th>
+        <th>CPSC PGA Filing Action</th>
+        <th>Exemption / FDA / Broker Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+${tableRowsHtml}
+    </tbody>
+  </table>
+  <p class="cert-footer">Per 16 CFR Part 1110, individual General Certificates of Conformity (GCC) and 16 CFR § 1610.1(d) Fabric Exemption Statements are attached on the following pages per regulated SKU.</p>
+</section>`;
+
+  return { markdown: mdHeader, html };
+}
+
+/**
+ * 単一商品（URL / パラメータ）または発送後・通関保留時の複数明細注文（items[] + AWB/注文番号）から、
+ * 16 CFR § 1110.11 法定7項目準拠の GCC 証明書（JSON / 英語Markdown / 印刷・PDF保存用HTML）を一括生成する。
+ */
+export async function generateGccCertificate(
+  options: GenerateGccCertificateOptions,
+): Promise<GenerateGccCertificateResult> {
+  const hasSingleProductInput = Boolean(
+    options.url?.trim() ||
+      options.productName?.trim() ||
+      options.htsCode?.trim() ||
+      options.sku?.trim() ||
+      options.description?.trim(),
+  );
+  if ((!options.items || options.items.length === 0) && !hasSingleProductInput) {
+    throw new TradeInputError(
+      'At least one product identifier (url, productName, htsCode, sku) or items[] is required for GCC generation.',
+    );
+  }
+  const hasOrderMeta = Boolean(
+    options.orderNumber?.trim() || options.awbNumber?.trim() || options.invoiceNumber?.trim() || options.carrier?.trim(),
+  );
+  const rawItems: GccOrderItemInput[] =
+    options.items && options.items.length > 0
+      ? options.items
+      : [
+          {
+            url: options.url,
+            productName: options.productName,
+            sku: options.sku,
+            brand: options.brand,
+            modelOrBatch: options.modelOrBatch,
+            description: options.description,
+            htsCode: options.htsCode,
+            targetAge: options.targetAge,
+            material: options.material,
+            productCategory: options.productCategory,
+            foodContact: options.foodContact,
+            hasBattery: options.hasBattery,
+            batteryType: options.batteryType,
+            fabricSurface: options.fabricSurface,
+            fabricWeightOzPerSqYd: options.fabricWeightOzPerSqYd,
+            fabricWeightGsm: options.fabricWeightGsm,
+            certifier: options.certifier,
+            recordCustodian: options.recordCustodian,
+            manufacture: options.manufacture,
+            testing: options.testing,
+          },
+        ];
+
+  const mode: 'single_product' | 'order_package' =
+    rawItems.length > 1 || hasOrderMeta ? 'order_package' : 'single_product';
+
+  const generatedAt = new Date().toISOString();
+  const dateCompact = generatedAt.slice(0, 10).replace(/-/g, '');
+
+  const envParties = resolveEnvGccPartyDefaults();
+  const itemResults: GccCertificateItemResult[] = [];
+  for (let i = 0; i < rawItems.length; i++) {
+    const raw = rawItems[i];
+    const mergedItem: GccOrderItemInput = {
+      ...raw,
+      certifier: mergePartyContacts(raw.certifier, options.certifier, envParties.certifier),
+      recordCustodian: mergePartyContacts(raw.recordCustodian, options.recordCustodian, envParties.recordCustodian),
+      manufacture: raw.manufacture ?? (rawItems.length === 1 ? options.manufacture : undefined),
+      testing: raw.testing ?? (rawItems.length === 1 ? options.testing : undefined),
+    };
+    // スクレイピングや外部通信を行う前に、サンプル・仮置き・不確定データの混入を即時ブロック
+    assertNoPlaceholderGccFields(mergedItem, rawItems.length > 1 ? `items[${i}].` : '');
+    const compliance = await checkProductCompliance({
+      url: mergedItem.url,
+      productName: mergedItem.productName,
+      sku: mergedItem.sku,
+      brand: mergedItem.brand,
+      description: mergedItem.description,
+      htsCode: mergedItem.htsCode,
+      targetAge: mergedItem.targetAge,
+      material: mergedItem.material,
+      productCategory: mergedItem.productCategory,
+      foodContact: mergedItem.foodContact,
+      hasBattery: mergedItem.hasBattery,
+      batteryType: mergedItem.batteryType,
+      fabricSurface: mergedItem.fabricSurface,
+      fabricWeightOzPerSqYd: mergedItem.fabricWeightOzPerSqYd,
+      fabricWeightGsm: mergedItem.fabricWeightGsm,
+      generateGcc: false,
+    });
+    itemResults.push(buildSingleGccItemResult(i + 1, mergedItem, compliance));
+  }
+
+  const refSuffix = (
+    options.orderNumber ||
+    options.awbNumber ||
+    options.sku ||
+    rawItems[0]?.sku ||
+    itemResults[0]?.sku ||
+    'SINGLE'
+  )
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 20)
+    .toUpperCase();
+  const certificateId = `GCC-${dateCompact}-${refSuffix || 'PKG'}`;
+
+  const counts = {
+    totalItems: itemResults.length,
+    gccGenerated: itemResults.filter((x) => x.status === 'generated').length,
+    draftNeedsInfo: itemResults.filter((x) => x.status === 'draft_needs_info').length,
+    disclaimBExempt: itemResults.filter((x) => x.status === 'exempt_disclaim_b').length,
+    disclaimAExempt: itemResults.filter((x) => x.status === 'exempt_no_gcc_needed').length,
+    cpcRequired: itemResults.filter((x) => x.status === 'cpc_required_instead').length,
+  };
+
+  if (!options.allowDraft && counts.draftNeedsInfo > 0) {
+    const incompleteItems: GccIncompleteItemSummary[] = itemResults
+      .filter((x) => x.status === 'draft_needs_info')
+      .map((x) => ({
+        lineNumber: x.lineNumber,
+        ...(x.sku ? { sku: x.sku } : {}),
+        ...(x.productName ? { productName: x.productName } : {}),
+        ...(x.htsCode ? { htsCode: x.htsCode } : {}),
+        citations: extractCitationList(x.compliance.cpsc),
+        missingFields: x.missingFields,
+      }));
+    const allMissing = Array.from(new Set(incompleteItems.flatMap((x) => x.missingFields)));
+    throw new TradeGccIncompleteError(
+      `GCC発行に必要な確定レコードが不足しています (${allMissing.join(', ')})。LLMによるWeb探索や推測値・仮置き値の補完は厳禁です。事業者連絡先は環境変数 SORA_GCC_CERTIFIER_* / SORA_GCC_CUSTODIAN_* または引数 certifier / recordCustodian で指定し、製造所(manufacture)・試験成績書(testing)等の商品固有項目は実在の確定レコードを指定してください（未確定項目の確認用ドラフトのみ出力する場合は allowDraft: true を指定）。`,
+      allMissing,
+      incompleteItems,
+    );
+  }
+
+  let overallStatus: GenerateGccCertificateResult['overallStatus'];
+  if (counts.cpcRequired > 0) {
+    overallStatus = 'cpc_required';
+  } else if (counts.draftNeedsInfo > 0) {
+    overallStatus = 'partial_or_draft';
+  } else if (counts.gccGenerated > 0) {
+    overallStatus = 'ready';
+  } else {
+    overallStatus = 'exempt';
+  }
+
+  const orderContext = hasOrderMeta
+    ? {
+        ...(options.orderNumber?.trim() ? { orderNumber: options.orderNumber.trim() } : {}),
+        ...(options.awbNumber?.trim() ? { awbNumber: options.awbNumber.trim() } : {}),
+        ...(options.carrier?.trim() ? { carrier: options.carrier.trim() } : {}),
+        ...(options.invoiceNumber?.trim() ? { invoiceNumber: options.invoiceNumber.trim() } : {}),
+      }
+    : undefined;
+
+  const mdSections: string[] = [];
+  const htmlSections: string[] = [];
+
+  if (mode === 'order_package') {
+    const cover = buildOrderCoverSheet({
+      certificateId,
+      generatedAt,
+      orderContext,
+      certifier: normalizeParty(mergePartyContacts(options.certifier, envParties.certifier)),
+      items: itemResults,
+    });
+    mdSections.push(cover.markdown);
+    htmlSections.push(cover.html);
+    // 注文パッケージの2ページ目以降には、実際に添付提出が必要な証明書・免除シート・ドラフト・警告シートを含める
+    for (const item of itemResults) {
+      if (item.status === 'exempt_no_gcc_needed') continue;
+      if (item.certificateMarkdown) mdSections.push(item.certificateMarkdown);
+      if (item.certificateHtml) htmlSections.push(item.certificateHtml);
+    }
+  } else {
+    const single = itemResults[0];
+    if (single?.certificateMarkdown) mdSections.push(single.certificateMarkdown);
+    if (single?.certificateHtml) htmlSections.push(single.certificateHtml);
+  }
+
+  const summaryParts = [
+    `全${counts.totalItems}明細を判定`,
+    counts.gccGenerated > 0 ? `GCC発行完了: ${counts.gccGenerated}件` : undefined,
+    counts.disclaimBExempt > 0 ? `16 CFR 1610.1(d) 大人服免除 (ACE Disclaim B / 130.006): ${counts.disclaimBExempt}件` : undefined,
+    counts.disclaimAExempt > 0 ? `GCC不要 (ACE Disclaim A): ${counts.disclaimAExempt}件` : undefined,
+    counts.draftNeedsInfo > 0 ? `情報不足ドラフト: ${counts.draftNeedsInfo}件` : undefined,
+    counts.cpcRequired > 0 ? `【警告】子供向けCPC必須 (GCC発行不可・本ツール非対応): ${counts.cpcRequired}件` : undefined,
+  ].filter(Boolean);
+
+  const packageWarnings = itemResults.flatMap((x) => x.warnings ?? []);
+
+  return {
+    certificateId,
+    generatedAt,
+    mode,
+    ...(orderContext ? { orderContext } : {}),
+    overallStatus,
+    summary: summaryParts.join(' / '),
+    ...(packageWarnings.length > 0 ? { warnings: packageWarnings } : {}),
+    counts,
+    items: itemResults,
+    packageMarkdown: mdSections.join('\n\n---\n\n'),
+    packageHtml: wrapStandalonePrintHtml(
+      mode === 'order_package'
+        ? `US Customs & CPSC GCC Clearance Package — ${orderContext?.orderNumber || orderContext?.awbNumber || certificateId}`
+        : itemResults[0]?.documentTitle || certificateId,
+      htmlSections,
+    ),
+    disclaimer: DISCLAIMER_GCC,
   };
 }
