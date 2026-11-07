@@ -8,6 +8,7 @@ import {
   CpscCertificateCheckRequestSchema,
   FdaRegulatedCheckRequestSchema,
   MusicSearchRequestSchema,
+  ProductComplianceRequestSchema,
   TrackingRequestSchema,
   WatchRegisterRequestSchema,
 } from './types.js';
@@ -36,6 +37,7 @@ const post = (path: string, body: unknown) =>
 const expectedProps: Record<string, string[]> = {
   check_cpsc_certificate: ['htsCode', 'targetAge', 'material'],
   check_fda_regulated: ['htsCode', 'foodContact'],
+  check_product_compliance: ['url', 'productName', 'description', 'htsCode', 'targetAge', 'material', 'productCategory', 'foodContact', 'hasBattery', 'batteryType'],
   verify_hts_code: ['htsCode', 'productDescription'],
   track_package: ['trackingNumber', 'carrier', 'preferredCarriers', 'noCache'],
   watch_register: ['url', 'title', 'selector', 'webhookUrl'],
@@ -93,6 +95,11 @@ describe('貿易・荷物・監視の REST の引数', () => {
     for (const field of ['originCountry', 'destinationCountry', 'verbose']) expect(tracking[field], field).toBeUndefined();
     const watch = WatchRegisterRequestSchema.parse({ url: 'https://example.com/', intervalSeconds: 60 }) as Record<string, unknown>;
     expect(watch.intervalSeconds).toBeUndefined();
+  });
+
+  test('ProductComplianceRequestSchema drops the GCC fields', () => {
+    const parsed = ProductComplianceRequestSchema.parse({ productName: 'x', generateGcc: true, sku: 'S', certifier: { name: 'n' } }) as Record<string, unknown>;
+    for (const field of ['generateGcc', 'sku', 'certifier']) expect(parsed[field], field).toBeUndefined();
   });
 
   test('POST /trade/cpsc-check と /trade/fda-check は、消した引数を送ってもエラーにならない', async () => {

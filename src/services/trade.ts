@@ -1293,10 +1293,6 @@ export interface PredictHtsOptions {
   targetAge?: 'adult' | 'child' | 'unknown';
   foodContact?: boolean;
   hasBattery?: boolean;
-  batteryType?: 'button_coin' | 'other';
-  fabricSurface?: 'plain' | 'raised';
-  fabricWeightOzPerSqYd?: number;
-  fabricWeightGsm?: number;
 }
 
 export type PredictHtsSource = 'hts-text' | 'cbp-ruling';
@@ -2045,9 +2041,6 @@ export interface GccCertificateItemResult {
 export interface CheckProductComplianceOptions {
   url?: string;
   productName?: string;
-  sku?: string;
-  brand?: string;
-  modelOrBatch?: string;
   description?: string;
   htsCode?: string;
   targetAge?: 'adult' | 'child' | 'unknown';
@@ -2059,19 +2052,11 @@ export interface CheckProductComplianceOptions {
   fabricSurface?: 'plain' | 'raised';
   fabricWeightOzPerSqYd?: number;
   fabricWeightGsm?: number;
-  /** true の場合、コンプライアンス判定とあわせて 16 CFR Part 1110 の GCC 証明書（または免除根拠シート）を同時生成する */
-  generateGcc?: boolean;
-  certifier?: GccPartyContact;
-  recordCustodian?: GccPartyContact;
-  manufacture?: GccManufactureInfo;
-  testing?: GccTestingRecord;
 }
 
 export interface CheckProductComplianceResult {
   product: {
     name?: string;
-    sku?: string;
-    brand?: string;
     description?: string;
     url?: string;
     detectedCategory?: string;
@@ -2090,7 +2075,6 @@ export interface CheckProductComplianceResult {
   htsPrediction?: PredictHtsResult;
   fda?: CheckFdaRegulatedResult;
   cpsc?: CpscCertificateCheckResult;
-  gcc?: GccCertificateItemResult;
   actionPlan: string[];
   disclaimer: string;
 }
@@ -2114,16 +2098,8 @@ function buildIntegratedActionPlan(
     isActionRequired = true;
     summaryParts.push(`CPSC規制対象 (${cpscResult.certificateType}証明書作成 & eFiling電子申告が完全義務化)`);
     if (cpscResult.certificateType === 'CCC') {
-      if (cpscResult.testingExemption?.exempt) {
-        actionPlan.push(
-          '【CPSC CCC（警告: GCC不可）】12歳以下の子供向け製品です。一般衣料可燃性試験（16 CFR 1610）自体は免除要件に該当しますが、CPSIA（総鉛 15 U.S.C. 1278a・表面プリント塗装鉛 16 CFR 1303 等 ※無塗装の天然/合成繊維・刺繍糸のみなら 16 CFR 1500.91 鉛試験免除決定の対象）の適合確認と、製品本体への恒久トラッキングラベル表示（CPSIA Sec. 103）が必須です。',
-        );
-      } else {
-        actionPlan.push(
-          '【CPSC CCC（警告: GCC不可）】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験（鉛・フタル酸エステル・3歳未満対象時は小部品 16 CFR 1501 等）および製品本体への恒久トラッキングラベル表示（CPSIA Sec. 103）を実施してください。',
-        );
-      }
-      actionPlan.push('【CPSC CCC】本システムのGCC自動生成は大人・一般向け製品専用でありCCCには非対応です。別途 Children’s Product Certificate (CPC / CCC) を作成・発行してください。');
+      actionPlan.push('【CPSC CCC】12歳以下の子供向け製品として、CPSC認定の第三者試験機関による適合性試験を実施してください（小部品誤飲・窒息ハザード試験 16 CFR 1501 を含む）。');
+      actionPlan.push('【CPSC CCC】試験結果に基づき Children’s Product Certificate (CCC) を作成・発行してください。');
     } else if (cpscResult.certificateType === 'GCC') {
       actionPlan.push('【CPSC GCC】一般製品安全基準への適合性を確認し、General Certificate of Conformity (GCC) を作成・発行してください。');
     }
@@ -2208,15 +2184,13 @@ export async function checkProductCompliance(
   options: CheckProductComplianceOptions,
 ): Promise<CheckProductComplianceResult> {
   let productName = options.productName?.trim();
-  let sku = options.sku?.trim() || undefined;
-  let brand = options.brand?.trim() || undefined;
   let description = options.description?.trim();
   const targetAge = options.targetAge ?? 'unknown';
   const material = options.material?.trim();
   const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
 
-  // 1. URL が指定されている場合はスクレイピングして商品情報を取得（Shopify等のSchema.org Product JSON-LDからSKU・ブランドも取得）
+  // 1. URL が指定されている場合はスクレイピングして商品情報を取得
   if (options.url) {
     try {
       const { scrapeUrl } = await import('../scraper.js');
@@ -2228,12 +2202,6 @@ export async function checkProductCompliance(
 
       if (!productName && scrapeRes.title) {
         productName = scrapeRes.title;
-      }
-      if (!sku && scrapeRes.sku) {
-        sku = scrapeRes.sku;
-      }
-      if (!brand && scrapeRes.brand) {
-        brand = scrapeRes.brand;
       }
       if (!description) {
         description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
@@ -2252,8 +2220,6 @@ export async function checkProductCompliance(
   ): CheckProductComplianceResult => ({
     product: {
       name: productName,
-      ...(sku ? { sku } : {}),
-      ...(brand ? { brand } : {}),
       description: combinedText || undefined,
       url: options.url,
       detectedCategory: htsPrediction?.category || productCategory,
@@ -2273,29 +2239,7 @@ export async function checkProductCompliance(
   });
 
   if (!combinedText) {
-    const baseMissing = needsMoreInfo(['商品名または商品説明を教えてください。'], ['productDetails']);
-    if (options.generateGcc) {
-      baseMissing.gcc = buildSingleGccItemResult(1, options, { ...baseMissing });
-    }
-    return baseMissing;
-  }
-
-  // URLスクレイピングのみで呼び出され、かつページタイトルが日本語（呼び出し側から英語の品名・説明の明示指定なし）の場合、
-  // meta description 内の英語定型文（"This product cannot be shipped to the United States..." 等）だけで誤ったHTS分類に進むのを防止する
-  const callerProvidedEnglish = hasEnglishWords(
-    [options.productName, options.description, options.productCategory, options.material].filter(Boolean).join(' '),
-  );
-  if (!htsCode && !callerProvidedEnglish && productName && /[\u3040-\u30ff\u3400-\u9fff]/.test(productName)) {
-    const jpNeeds = needsMoreInfo(
-      [
-        '商品ページのタイトル・仕様が日本語です（ページ内の英語の注意書き等だけでは正確なHTS分類ができません）。scrape ツール等で取得した商品仕様をもとに、商品の一般名・素材・用途を英語にして productName / description / material（衣料品は targetAge / fabricSurface / fabricWeightOzPerSqYd も）に渡して再実行してください。',
-      ],
-      ['productDetails'],
-    );
-    if (options.generateGcc) {
-      jpNeeds.gcc = buildSingleGccItemResult(1, { ...options, sku, brand, productName }, { ...jpNeeds });
-    }
-    return jpNeeds;
+    return needsMoreInfo(['商品名または商品説明を教えてください。'], ['productDetails']);
   }
 
   // 2. HTSコードの確定: 指定が無ければ推測する。指定があっても、章の食い違いの検知のために推測を試みる
@@ -2310,10 +2254,6 @@ export async function checkProductCompliance(
       targetAge,
       foodContact: options.foodContact,
       hasBattery: options.hasBattery,
-      batteryType: options.batteryType,
-      fabricSurface: options.fabricSurface,
-      fabricWeightOzPerSqYd: options.fabricWeightOzPerSqYd,
-      fabricWeightGsm: options.fabricWeightGsm,
     });
   } catch (e) {
     if (!(e instanceof TradeInputError)) console.warn('[TradeCompliance] predictHtsCode failed:', errorMessage(e));
@@ -2334,11 +2274,7 @@ export async function checkProductCompliance(
               predictionNote ??
                 '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
             ];
-      const baseNeeds = needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
-      if (options.generateGcc) {
-        baseNeeds.gcc = buildSingleGccItemResult(1, options, { ...baseNeeds });
-      }
-      return baseNeeds;
+      return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
     }
     htsCode = htsPrediction.bestMatch.htsCode;
   }
@@ -2427,19 +2363,12 @@ export async function checkProductCompliance(
     impactExplanation = `${mismatchWarning} ${impactExplanation}`;
   }
 
-  const resolvedDetectedCategory =
-    options.htsCode && htsVerification.verified && htsVerification.officialPath?.[0]
-      ? htsVerification.officialPath[0]
-      : detectedCategory || productCategory;
-
-  const result: CheckProductComplianceResult = {
+  return {
     product: {
       name: productName,
-      ...(sku ? { sku } : {}),
-      ...(brand ? { brand } : {}),
       description: effectiveDescription,
       url: options.url,
-      detectedCategory: resolvedDetectedCategory,
+      detectedCategory: detectedCategory || productCategory,
       targetAge,
       material,
       htsCode,
@@ -2457,12 +2386,6 @@ export async function checkProductCompliance(
     actionPlan,
     disclaimer: DISCLAIMER_COMPLIANCE,
   };
-
-  if (options.generateGcc) {
-    result.gcc = buildSingleGccItemResult(1, { ...options, sku, brand, productName }, { ...result });
-  }
-
-  return result;
 }
 
 // ==========================================
@@ -2760,8 +2683,8 @@ function buildSingleGccItemResult(
   assertNoPlaceholderGccFields(input, lineNumber > 1 ? `items[${lineNumber - 1}].` : '');
 
   const productName = compliance.product.name || input.productName?.trim() || undefined;
-  const sku = compliance.product.sku || input.sku?.trim() || undefined;
-  const brand = compliance.product.brand || input.brand?.trim() || undefined;
+  const sku = input.sku?.trim() || undefined;
+  const brand = input.brand?.trim() || undefined;
   const htsCode = compliance.product.htsCode || input.htsCode?.trim() || undefined;
   const cpsc = compliance.cpsc;
   const fdaNote = buildFdaShortNote(compliance.fda, input.manufacture);
@@ -3535,8 +3458,6 @@ export async function generateGccCertificate(
     const compliance = await checkProductCompliance({
       url: mergedItem.url,
       productName: mergedItem.productName,
-      sku: mergedItem.sku,
-      brand: mergedItem.brand,
       description: mergedItem.description,
       htsCode: mergedItem.htsCode,
       targetAge: mergedItem.targetAge,
@@ -3548,7 +3469,6 @@ export async function generateGccCertificate(
       fabricSurface: mergedItem.fabricSurface,
       fabricWeightOzPerSqYd: mergedItem.fabricWeightOzPerSqYd,
       fabricWeightGsm: mergedItem.fabricWeightGsm,
-      generateGcc: false,
     });
     itemResults.push(buildSingleGccItemResult(i + 1, mergedItem, compliance));
   }

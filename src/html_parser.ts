@@ -154,43 +154,9 @@ function normalizeAvailability(val: any): string | undefined {
   return val.replace(/^https?:\/\/schema\.org\//i, '');
 }
 
-/** JSON-LD からのメタデータ（Schema.org）抽出（再帰深度ガード・ProductGroup hasVariant 対応） */
-export function extractMetadataFromJsonLd(items: any[], targetUrl?: string): JsonLdMetadata {
+/** JSON-LD からのメタデータ（Schema.org）抽出（再帰深度ガード付き） */
+export function extractMetadataFromJsonLd(items: any[]): JsonLdMetadata {
   const result: JsonLdMetadata = {};
-  let requestedVariantId: string | undefined;
-  if (targetUrl) {
-    try {
-      requestedVariantId = new URL(targetUrl).searchParams.get('variant')?.trim() || undefined;
-    } catch {}
-  }
-
-  const applyOffers = (offersRaw: any, overwrite = false) => {
-    if (!offersRaw) return;
-    const offersList = Array.isArray(offersRaw) ? offersRaw : [offersRaw];
-    for (const offer of offersList) {
-      if (!offer || typeof offer !== 'object') continue;
-      if ((overwrite || !result.sku) && typeof offer.sku === 'string' && offer.sku.trim()) {
-        result.sku = offer.sku.trim();
-      }
-      if ((overwrite || !result.availability) && offer.availability) {
-        result.availability = normalizeAvailability(offer.availability);
-      }
-      if ((overwrite || !result.price) && (offer.price !== undefined || offer.lowPrice !== undefined)) {
-        result.price = String(offer.price ?? offer.lowPrice);
-      }
-      if ((overwrite || !result.priceCurrency) && typeof offer.priceCurrency === 'string') {
-        result.priceCurrency = offer.priceCurrency;
-      }
-    }
-  };
-
-  const variantMatchesId = (v: any, variantId: string): boolean => {
-    const needle = `variant=${variantId}`;
-    if (typeof v?.['@id'] === 'string' && v['@id'].includes(needle)) return true;
-    if (typeof v?.url === 'string' && v.url.includes(needle)) return true;
-    const offersList = Array.isArray(v?.offers) ? v.offers : v?.offers ? [v.offers] : [];
-    return offersList.some((o: any) => typeof o?.url === 'string' && o.url.includes(needle));
-  };
 
   const flatObjects: any[] = [];
   function flatten(obj: any, depth = 0) {
@@ -253,7 +219,7 @@ export function extractMetadataFromJsonLd(items: any[], targetUrl?: string): Jso
       }
     }
 
-    // 商品 (Schema.org Product / ProductGroup / Offer) の解析
+    // 商品 (Schema.org Product / Offer) の解析
     const typeStr = Array.isArray(item['@type']) ? item['@type'].join(' ') : String(item['@type'] || '');
     const isProduct = /Product/i.test(typeStr);
     const isOffer = /Offer/i.test(typeStr);
@@ -266,41 +232,35 @@ export function extractMetadataFromJsonLd(items: any[], targetUrl?: string): Jso
         if (typeof item.brand === 'string') result.brand = item.brand;
         else if (item.brand && typeof item.brand.name === 'string') result.brand = item.brand.name;
       }
-      if (!result.sku && typeof item.sku === 'string' && item.sku.trim()) {
-        result.sku = item.sku.trim();
+      if (!result.sku && typeof item.sku === 'string') {
+        result.sku = item.sku;
       }
-      applyOffers(item.offers);
-
-      // Shopify Online Store 2.0 等の Schema.org ProductGroup.hasVariant 対応
-      if (Array.isArray(item.hasVariant) && item.hasVariant.length > 0) {
-        const variants = item.hasVariant.filter((v: any) => v && typeof v === 'object');
-        const matchedVariant = requestedVariantId
-          ? variants.find((v: any) => variantMatchesId(v, requestedVariantId))
-          : undefined;
-        const inStockVariant = variants.find((v: any) => {
-          const offs = Array.isArray(v.offers) ? v.offers : v.offers ? [v.offers] : [];
-          return offs.some((o: any) => normalizeAvailability(o?.availability) === 'InStock');
-        });
-        const chosen = matchedVariant ?? inStockVariant ?? variants[0];
-        if (chosen) {
-          const overwrite = Boolean(matchedVariant);
-          if (overwrite && typeof chosen.name === 'string' && chosen.name.trim()) {
-            result.productName = chosen.name.trim();
+      if (item.offers) {
+        const offersList = Array.isArray(item.offers) ? item.offers : [item.offers];
+        for (const offer of offersList) {
+          if (!result.availability && offer.availability) {
+            result.availability = normalizeAvailability(offer.availability);
           }
-          if ((overwrite || !result.sku) && typeof chosen.sku === 'string' && chosen.sku.trim()) {
-            result.sku = chosen.sku.trim();
+          if (!result.price && (offer.price !== undefined || offer.lowPrice !== undefined)) {
+            result.price = String(offer.price ?? offer.lowPrice);
           }
-          applyOffers(chosen.offers, overwrite);
-        }
-        if (!result.sku) {
-          const firstWithSku = variants.find((v: any) => typeof v.sku === 'string' && v.sku.trim());
-          if (firstWithSku) result.sku = firstWithSku.sku.trim();
+          if (!result.priceCurrency && typeof offer.priceCurrency === 'string') {
+            result.priceCurrency = offer.priceCurrency;
+          }
         }
       }
     }
 
     if (isOffer) {
-      applyOffers(item);
+      if (!result.availability && item.availability) {
+        result.availability = normalizeAvailability(item.availability);
+      }
+      if (!result.price && (item.price !== undefined || item.lowPrice !== undefined)) {
+        result.price = String(item.price ?? item.lowPrice);
+      }
+      if (!result.priceCurrency && typeof item.priceCurrency === 'string') {
+        result.priceCurrency = item.priceCurrency;
+      }
     }
   }
 
@@ -1115,7 +1075,7 @@ export function convertHtmlToMarkdown(
   });
 
   // JSON-LD からのメタデータ（Schema.org）抽出
-  const jsonLdMeta = extractMetadataFromJsonLd(jsonLd, targetUrl);
+  const jsonLdMeta = extractMetadataFromJsonLd(jsonLd);
   const events = extractEventsFromJsonLd(jsonLd);
   const breadcrumb = extractBreadcrumbs($, jsonLd);
 

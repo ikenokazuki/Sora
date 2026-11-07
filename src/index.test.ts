@@ -4458,6 +4458,26 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.disclaimer).toBeTruthy();
   });
 
+  it('POST /trade/compliance ignores generateGcc and sku: 200 without a gcc field', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/trade/compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: 'Adult Bicycle Helmet',
+          htsCode: '6506.10.60.45',
+          targetAge: 'adult',
+          generateGcc: true,
+          sku: 'HLM-001',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json).not.toHaveProperty('gcc');
+    expect(json.product).not.toHaveProperty('sku');
+  });
+
   it('POST /trade/fda-check should parse foodContact and evaluate FD1 status', async () => {
     // 飲食用途の陶磁器食器 (Chapter 69) -> FD1, FDA対象
     const reqFoodContact = new Request('http://localhost/trade/fda-check', {
@@ -4492,8 +4512,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(jsonNonFood.nextActions.some((a: string) => a.includes('免責') || a.includes('Disclaimer'))).toBe(true);
   });
 
-  it('POST /trade/gcc-generate and POST /trade/compliance (generateGcc) should return schema-valid GCC & order clearance packages', async () => {
-    const { CheckProductComplianceResultSchema, GenerateGccCertificateResultSchema } = await import('./types.js');
+  it('POST /trade/gcc-generate should return schema-valid GCC & order clearance packages', async () => {
+    const { GenerateGccCertificateResultSchema } = await import('./types.js');
 
     // 1. 入力空オブジェクト -> 400 INVALID_INPUT
     const badRes = await app.fetch(
@@ -4608,30 +4628,6 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(pkgJson.packageHtml).toContain('@media print');
     expect(pkgJson.packageHtml).toContain('TEST-AWB-0002');
-
-    // 3. POST /trade/compliance (generateGcc: true) 統合出力のスキーマ整合性確認
-    const compRes = await app.fetch(
-      new Request('http://localhost/trade/compliance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productName: 'Adult Heavyweight Cotton T-Shirt',
-          htsCode: '6109.10.0012',
-          targetAge: 'adult',
-          material: '100% cotton',
-          fabricSurface: 'plain',
-          fabricWeightGsm: 190,
-          generateGcc: true,
-        }),
-      }),
-    );
-    expect(compRes.status).toBe(200);
-    const compJson = (await compRes.json()) as any;
-    expect(CheckProductComplianceResultSchema.safeParse(compJson).success).toBe(true);
-    expect(compJson.cpsc.certificateRequired).toBe(false);
-    expect(compJson.cpsc.disclaimerCodeHint).toContain('B (CPSC Enforcement Discretion');
-    expect(compJson.gcc.status).toBe('exempt_disclaim_b');
-    expect(compJson.gcc.aceFilingGuidance.intendedUseCode).toBe('130.006');
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {

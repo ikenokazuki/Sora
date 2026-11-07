@@ -758,9 +758,6 @@ const GccOrderItemFieldsShape = {
 export const ProductComplianceRequestSchema = z.object({
   url: z.string().url('有効なURLを指定してください').optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
   productName: z.string().optional().describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。HTS と判例は英語なので、日本語の商品は英訳して渡す。英語の語が無く htsCode も無いときは、英訳を促す needs_more_info を返す'),
-  sku: z.string().optional().describe('商品SKU・品番（URLのJSON-LDからも自動抽出）'),
-  brand: z.string().optional().describe('ブランド名'),
-  modelOrBatch: z.string().optional().describe('モデル番号・ロット番号'),
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
   htsCode: z.string().optional().describe('ユーザーから明示された既知のHTSコード（指定時は最優先で検証）。推測・候補値は入れず、分類したいときは省略する（Sora が公式データと判例から特定する）'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
@@ -770,11 +767,6 @@ export const ProductComplianceRequestSchema = z.object({
   hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   ...TradeFabricFieldsShape,
-  certifier: GccPartyContactInputSchema.optional().describe('証明者連絡先 (16 CFR 1110.11(a)(3))。省略時は SORA_GCC_CERTIFIER_* を使用。推測・仮置き厳禁'),
-  recordCustodian: GccPartyContactInputSchema.optional().describe('記録保管者連絡先 (16 CFR 1110.11(a)(4))。省略時は SORA_GCC_CUSTODIAN_* を使用。推測・仮置き厳禁'),
-  manufacture: GccManufactureInfoSchema.optional().describe('製造年月・都市・国の実レコード (16 CFR 1110.11(a)(5))。推測・仮置き厳禁'),
-  testing: GccTestingRecordSchema.optional().describe('試験日・場所・試験機関の実レコード (16 CFR 1110.11(a)(6)-(7))。推測・仮置き厳禁'),
-  generateGcc: z.boolean().optional().describe('true 指定時は 16 CFR Part 1110 の GCC 証明書または免除根拠シートを同時生成し gcc に返す'),
 });
 
 // items[] 要素スキーマ: トップレベルと同型（ツール定義の重複肥大化を防ぐため要素内の説明は省略）
@@ -2284,11 +2276,9 @@ export const PredictHtsCodeResultSchema = z.object({
   impactExplanation: z.string().optional().describe('関税・規制への影響説明'),
 });
 
-const CheckProductComplianceBaseResultSchema = z.object({
+export const CheckProductComplianceResultSchema = z.object({
   product: z.object({
     name: z.string().optional().describe('商品名'),
-    sku: z.string().optional().describe('商品 SKU・品番'),
-    brand: z.string().optional().describe('ブランド名'),
     description: z.string().optional().describe('商品説明'),
     url: z.string().optional().describe('商品ページ URL'),
     detectedCategory: z.string().optional().describe('検出カテゴリ'),
@@ -2378,14 +2368,10 @@ export const GccCertificateItemResultSchema = z.object({
   warnings: z.array(z.string()).optional().describe('重要警告リスト（12歳以下の子供向け製品でCPC/CCCが必須かつ本ツールのGCC発行対象外である旨の警告等）'),
   missingFields: z.array(z.string()).describe('GCC完成に不足している必須項目リスト（推測補完せず明示）'),
   clarifyingQuestions: z.array(z.string()).optional().describe('確認質問リスト'),
-  compliance: CheckProductComplianceBaseResultSchema.describe('当該SKUの統合コンプライアンス判定結果'),
+  compliance: CheckProductComplianceResultSchema.describe('当該SKUの統合コンプライアンス判定結果'),
   documentTitle: z.string().optional().describe('出力ドキュメントの英語タイトル'),
   certificateMarkdown: z.string().optional().describe('当該SKUの英語版GCCまたは免除申告書 Markdown'),
   certificateHtml: z.string().optional().describe('当該SKUの英語版GCCまたは免除申告書 HTMLセクション'),
-});
-
-export const CheckProductComplianceResultSchema = CheckProductComplianceBaseResultSchema.extend({
-  gcc: GccCertificateItemResultSchema.optional().describe('generateGcc: true 指定時に同時生成される GCC 証明書・免除シート出力'),
 });
 
 export const GenerateGccCertificateResultSchema = z.object({

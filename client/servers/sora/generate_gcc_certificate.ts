@@ -298,10 +298,6 @@ export type GenerateGccCertificateOutput = {
       product: {
         /** 商品名 */
         name?: string;
-        /** 商品 SKU・品番 */
-        sku?: string;
-        /** ブランド名 */
-        brand?: string;
         /** 商品説明 */
         description?: string;
         /** 商品ページ URL */

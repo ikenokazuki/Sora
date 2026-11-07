@@ -129,7 +129,6 @@ tradeRoutes.post('/trade/compliance', async (c) => {
     const result = await checkProductCompliance(parsed.data);
     return c.json(result);
   } catch (err) {
-    if (err instanceof TradeInputError) return formatError(c, err.message, err.code, 400, false);
     return formatError(c, errorMessage(err) || 'Product compliance check failed', 'TRADE_ERROR', 500);
   }
 });

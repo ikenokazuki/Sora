@@ -3,7 +3,6 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { resetHtsDataForTest } from './hts_data.js';
-import { extractMetadataFromJsonLd } from '../html_parser.js';
 import {
   TradeGccIncompleteError,
   TradeInputError,
@@ -432,105 +431,21 @@ describe('HTS prediction and product compliance', () => {
       expect(res.htsVerification?.verified).toBe(true);
       expect(res.fda?.fdFlag).toBe('FD1');
     });
-  });
 
-  describe('Schema.org Product JSON-LD variant SKU extraction', () => {
-    it('extracts fallback variant SKU from Product.offers[].sku when Product.sku is absent (Shopify pattern)', () => {
-      const meta = extractMetadataFromJsonLd([
-        {
-          '@context': 'https://schema.org',
-          '@type': 'Product',
-          name: 'Official Tour Brushed Fleece Hoodie',
-          brand: { '@type': 'Brand', name: 'Acme' },
-          offers: [
-            {
-              '@type': 'Offer',
-              sku: 'HOODIE-BLK-L',
-              price: '68.00',
-              priceCurrency: 'USD',
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              sku: 'HOODIE-BLK-XL',
-              price: '68.00',
-              priceCurrency: 'USD',
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-      ]);
-      expect(meta.productName).toBe('Official Tour Brushed Fleece Hoodie');
-      expect(meta.brand).toBe('Acme');
-      expect(meta.sku).toBe('HOODIE-BLK-L');
+    it('ignores GCC arguments: no gcc field and no scraped sku or brand', async () => {
+      const res = await checkProductCompliance({
+        productName: 'Adult Bicycle Helmet', htsCode: '6506.10.60.45', targetAge: 'adult',
+        generateGcc: true, sku: 'HLM-001', certifier: { name: 'Acme Imports LLC' },
+      } as never);
+      expect(res).not.toHaveProperty('gcc');
+      expect(res.product).not.toHaveProperty('sku');
+      expect(res.product).not.toHaveProperty('brand');
     });
 
-    it('extracts variant SKU from Shopify Online Store 2.0 ProductGroup.hasVariant[] and matches ?variant= query param', () => {
-      const productGroupJsonLd = [
-        {
-          '@context': 'http://schema.org/',
-          '@type': 'ProductGroup',
-          name: '【テスト】刺繍Tシャツ（キッズ）',
-          brand: { '@type': 'Brand', name: 'Acme' },
-          hasVariant: [
-            {
-              '@id': '/products/kids-tee?variant=1001#variant',
-              '@type': 'Product',
-              name: '【テスト】刺繍Tシャツ - 青 / 90',
-              sku: 'SKU-A1',
-              offers: {
-                '@type': 'Offer',
-                url: 'https://example.com/products/kids-tee?variant=1001',
-                price: '3500',
-                priceCurrency: 'JPY',
-                availability: 'http://schema.org/OutOfStock',
-              },
-            },
-            {
-              '@id': '/products/kids-tee?variant=1002#variant',
-              '@type': 'Product',
-              name: '【テスト】刺繍Tシャツ - 桃 / 100',
-              sku: 'SKU-A2',
-              offers: {
-                '@type': 'Offer',
-                url: 'https://example.com/products/kids-tee?variant=1002',
-                price: '3500',
-                priceCurrency: 'JPY',
-                availability: 'http://schema.org/InStock',
-              },
-            },
-          ],
-        },
-      ];
-
-      // Default (no ?variant=): prefers InStock variant or first variant
-      const defaultMeta = extractMetadataFromJsonLd(productGroupJsonLd, 'https://example.com/products/kids-tee');
-      expect(defaultMeta.brand).toBe('Acme');
-      expect(defaultMeta.sku).toBe('SKU-A2');
-      expect(defaultMeta.availability).toBe('InStock');
-
-      // Explicit ?variant=1001: selects exact variant SKU and name even when OutOfStock
-      const specificMeta = extractMetadataFromJsonLd(productGroupJsonLd, 'https://example.com/products/kids-tee?variant=1001');
-      expect(specificMeta.sku).toBe('SKU-A1');
-      expect(specificMeta.productName).toBe('【テスト】刺繍Tシャツ - 青 / 90');
-      expect(specificMeta.availability).toBe('OutOfStock');
-    });
-
-    it('prefers top-level Product.sku over Offer.sku and extracts standalone Offer.sku', () => {
-      const withTopSku = extractMetadataFromJsonLd([
-        {
-          '@type': 'Product',
-          name: 'LED Concert Penlight',
-          sku: 'PENLIGHT-TOP-01',
-          offers: { '@type': 'Offer', sku: 'PENLIGHT-VAR-01', price: '35.00', priceCurrency: 'USD' },
-        },
-      ]);
-      expect(withTopSku.sku).toBe('PENLIGHT-TOP-01');
-
-      const offerOnly = extractMetadataFromJsonLd([
-        { '@type': 'Offer', sku: 'OFFER-ONLY-99', price: '15.00', priceCurrency: 'USD' },
-      ]);
-      expect(offerOnly.sku).toBe('OFFER-ONLY-99');
+    it('reports the predicted category as detectedCategory even when the given code is another heading (as in v4.1)', async () => {
+      const res = await checkProductCompliance({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', htsCode: '9503.00.00.73' });
+      expect(res.product.detectedCategory).toBe(res.htsPrediction?.category);
+      expect(res.product.detectedCategory).toContain('Ceramic');
     });
   });
 
@@ -927,50 +842,6 @@ describe('HTS prediction and product compliance', () => {
       expect(res.items[0].aceFilingGuidance.eFilingRequired).toBe(true);
     });
 
-    it('does not misclassify Japanese product pages that contain English shipping disclaimers when called with url alone', async () => {
-      const server = Bun.serve({
-        port: 0,
-        fetch() {
-          const html = `<!doctype html><html><head>
-            <title>【テスト】刺繍Tシャツ（キッズ）</title>
-            <meta name="description" content="This product cannot be shipped to the United States. This is because we are currently making adjustments to comply with CPSC mandatory e-filing requirements.">
-            <script type="application/ld+json">${JSON.stringify({
-              '@context': 'http://schema.org/',
-              '@type': 'ProductGroup',
-              name: '【テスト】刺繍Tシャツ（キッズ）',
-              brand: { '@type': 'Brand', name: 'Acme' },
-              hasVariant: [
-                {
-                  '@type': 'Product',
-                  name: '【テスト】刺繍Tシャツ - 青 / 90',
-                  sku: 'SKU-A1',
-                  offers: { '@type': 'Offer', price: '3500', priceCurrency: 'JPY', availability: 'http://schema.org/OutOfStock' },
-                },
-              ],
-            })}</script>
-          </head><body><main><h1>【テスト】刺繍Tシャツ（キッズ）</h1><p>綿100% 4.2 oz/yd2</p></main></body></html>`;
-          return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-        },
-      });
-      const prevAllow = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-      try {
-        const res = await checkProductCompliance({
-          url: `http://127.0.0.1:${server.port}/products/kids-tee`,
-          generateGcc: true,
-        });
-        expect(res.overallStatus).toBe('needs_more_info');
-        expect(res.product.sku).toBe('SKU-A1');
-        expect(res.product.brand).toBe('Acme');
-        expect(res.product.htsCode).toBeUndefined();
-        expect(res.clarifyingQuestions?.[0]).toContain('日本語');
-      } finally {
-        if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-        else process.env.ALLOW_LOCAL_FETCH = prevAllow;
-        server.stop();
-      }
-    }, 15_000);
-
     it('generates a multi-SKU post-shipment Courier / Customs Clearance Package (Page 1 Cover Sheet + per-SKU GCCs & Fabric Exemption Statement)', async () => {
       const pkg = await generateGccCertificate({
         orderNumber: 'SHOP-ORD-10492',
@@ -1079,59 +950,6 @@ describe('HTS prediction and product compliance', () => {
       expect(pkg.packageHtml).toContain('page-break-before: always');
       expect(pkg.packageHtml).toContain('HD-FLC-XL');
       expect(pkg.packageHtml).toContain('PEN-LED-02');
-    });
-
-    it('integrates generateGcc: true directly into checkProductCompliance with scraped Shopify JSON-LD SKU & brand', async () => {
-      const server = Bun.serve({
-        hostname: '127.0.0.1',
-        port: 0,
-        fetch() {
-          return new Response(
-            `<!DOCTYPE html><html><head><title>Pro Road Cycling Helmet</title>
-            <script type="application/ld+json">${JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'Product',
-              name: 'Adult Road Bicycle Helmet',
-              description: 'Protective adult road cycling helmet with EPS liner',
-              brand: { '@type': 'Brand', name: 'Acme' },
-              offers: [{ '@type': 'Offer', sku: 'VELO-HLM-BLK-M', price: '89.00', priceCurrency: 'USD' }],
-            })}</script></head><body><main><h1>Adult Road Bicycle Helmet</h1><p>${'Protective cycling headgear for adult riders with impact-absorbing EPS foam shell. '.repeat(6)}</p></main></body></html>`,
-            { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-          );
-        },
-      });
-      const prevAllow = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
-      try {
-        const res = await checkProductCompliance({
-          url: `http://127.0.0.1:${server.port}/products/cycling-helmet`,
-          htsCode: '6506.10.60.45',
-          targetAge: 'adult',
-          material: 'polycarbonate and EPS foam',
-          generateGcc: true,
-          certifier: sampleCertifier,
-          recordCustodian: sampleCustodian,
-          manufacture: { date: '2026-06', city: 'Taichung', country: 'Taiwan' },
-          testing: {
-            date: '2026-06-15',
-            location: 'Taipei, Taiwan',
-            laboratoryName: 'Acme Test Lab Taipei',
-            reportNumber: 'TR-0005',
-          },
-        });
-
-        expect(res.product.sku).toBe('VELO-HLM-BLK-M');
-        expect(res.product.brand).toBe('Acme');
-        expect(res.gcc?.status).toBe('generated');
-        expect(res.gcc?.statutoryFields?.productIdentification.sku).toBe('VELO-HLM-BLK-M');
-        expect(res.gcc?.statutoryFields?.citations.some((c) => c.includes('16 CFR 1203'))).toBe(true);
-        expect(() => JSON.stringify(res)).not.toThrow();
-      } finally {
-        if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-        else process.env.ALLOW_LOCAL_FETCH = prevAllow;
-        server.stop();
-      }
     });
 
     it('strictly HTML-escapes all untrusted product, order, and party strings in certificateHtml and packageHtml (XSS prevention)', async () => {
