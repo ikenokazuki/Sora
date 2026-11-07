@@ -175,10 +175,11 @@ describe('webhookSent は送信の成否を表す', () => {
 
   test('watch_check (全件) は変化のあった対象の Webhook をまとめて送り、結果は対象ごと', async () => {
     process.env.ALLOW_LOCAL_FETCH = 'true';
-    // 受け口は 200ms かけて応答する。同時に何件が来ているかを数える
+    // 受け口は、3 件の通知がそろうまでどれにも応答しない。時間に頼らず、同時に来た数で確かめる（1 件ずつ送る作りは止まり、テストの時間切れで落ちる）
     let inFlight = 0;
     let maxInFlight = 0;
     const storedBeforeSend: boolean[] = [];
+    const held: Array<() => void> = [];
     const server = Bun.serve({
       port: 0,
       async fetch(req) {
@@ -186,7 +187,9 @@ describe('webhookSent は送信の成否を表す', () => {
         storedBeforeSend.push(dbListWatchHistory(data.targetId).length === 1);
         inFlight += 1;
         maxInFlight = Math.max(maxInFlight, inFlight);
-        await Bun.sleep(200);
+        const released = new Promise<void>((resolve) => held.push(resolve));
+        if (held.length === 3) for (const release of held) release();
+        await released;
         inFlight -= 1;
         return new Response('ok', { status: new URL(req.url).pathname === '/bad' ? 500 : 200 });
       },
@@ -198,7 +201,7 @@ describe('webhookSent は送信の成否を表す', () => {
       const c = await registerWatchTarget({ url: 'https://example.com/c', webhookUrl: `${base}/ok`, initialFetch: false });
       await checkAllWatchTargets(matchScrape('version one text here') as never);
       const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
-      expect(maxInFlight).toBeGreaterThan(1);
+      expect(maxInFlight).toBe(3);
       expect(warned()).toEqual([expect.stringContaining('/bad: HTTP 500')]);
       expect(storedBeforeSend).toEqual([true, true, true]);
       const sent = new Map(results.map((r) => [r.targetId, r.webhookSent]));
@@ -212,39 +215,44 @@ describe('webhookSent は送信の成否を表す', () => {
     }
   });
 
-  // 受け口は delayMs かけて応答する。同時に何件が来ているかを数える
-  const slowReceiver = (delayMs: number) => {
-    const state = { inFlight: 0, maxInFlight: 0, storedBeforeSend: [] as boolean[] };
-    const server = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const { data } = (await req.json()) as { data: { targetId: string } };
-        state.storedBeforeSend.push(dbListWatchHistory(data.targetId).length === 1);
-        state.inFlight += 1;
-        state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
-        await Bun.sleep(delayMs);
-        state.inFlight -= 1;
-        return new Response('ok');
-      },
-    });
-    return { state, url: `http://127.0.0.1:${server.port}/hook`, stop: () => server.stop(true) };
-  };
-
   test('同時に送る Webhook は 5 件まで。残りは空きを待ち、保存・結果の並び・対象ごとの webhookSent は変わらない', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
-    const hook = slowReceiver(400);
+    for (let i = 0; i < 8; i += 1) {
+      await registerWatchTarget({ url: `https://example.com/t${i}`, webhookUrl: `http://127.0.0.1:1/t${i}`, initialFetch: false });
+    }
+    await checkAllWatchTargets(matchScrape('version one text here') as never);
+    // 送信はすべて門で止める。8 件目の対象を確かめ始めたとき、前の 7 件の通知は、送っているか空きを待っているかが決まっているので、
+    // 送っている数を数えてから門を開ける。時間に頼らない（1 件ずつ送る作りは門が開かずに止まり、テストの時間切れで落ちる）
+    let open = () => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const state = { inFlight: 0, maxInFlight: 0, atLast: -1, storedBeforeSend: [] as boolean[] };
+    const deliver = spyOn(enrichment, 'deliverWebhook').mockImplementation(async (_url?: string, payload?: { targetId: string }) => {
+      state.storedBeforeSend.push(dbListWatchHistory(payload?.targetId ?? '').length === 1);
+      state.inFlight += 1;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      await gate;
+      state.inFlight -= 1;
+      return true;
+    });
+    const second = matchScrape('version two text here');
+    let scrapes = 0;
     try {
-      for (let i = 0; i < 8; i += 1) {
-        await registerWatchTarget({ url: `https://example.com/t${i}`, webhookUrl: hook.url, initialFetch: false });
-      }
-      await checkAllWatchTargets(matchScrape('version one text here') as never);
-      const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
-      expect(hook.state.maxInFlight).toBe(5);
-      expect(hook.state.storedBeforeSend).toEqual(Array(8).fill(true));
+      const results = await checkAllWatchTargets((async (opts?: unknown) => {
+        scrapes += 1;
+        if (scrapes === 8) {
+          state.atLast = state.inFlight;
+          open();
+        }
+        return second(opts);
+      }) as never);
+      expect(state.atLast).toBe(5);
+      expect(state.maxInFlight).toBe(5);
+      expect(state.storedBeforeSend).toEqual(Array(8).fill(true));
       expect(results.map((r) => r.webhookSent)).toEqual(Array(8).fill(true));
       expect(results.map((r) => r.targetId)).toEqual(dbListWatchTargets().map((t) => t.id));
     } finally {
-      hook.stop();
+      deliver.mockRestore();
     }
   });
 
