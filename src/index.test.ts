@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, spyOn } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
@@ -2539,7 +2539,19 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
-    await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
+    // 手元の宛先には送らず（ALLOW_LOCAL_FETCH が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.ALLOW_LOCAL_FETCH;
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
+      expect(warn.mock.calls.map((c) => c.map(String).join(' '))).toEqual([
+        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: http://127.0.0.1:59999/invalid-webhook',
+      ]);
+    } finally {
+      warn.mockRestore();
+      if (prevEnv !== undefined) process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    }
   });
 
   it('convertHtmlToMarkdown should extract image metadata, caption, and dimensions', () => {
@@ -2769,7 +2781,11 @@ describe('Sora REST & MCP Endpoints', () => {
     let realFetch: typeof fetch;
     let fetched: string[];
     let prevEnv: string | undefined;
+    // 止めた宛先は console.warn に出る。テストの出力に混ぜず、ここで受けて確かめる
+    let warn: ReturnType<typeof spyOn<Console, 'warn'>>;
+    const warned = () => warn.mock.calls.map((c) => c.map(String).join(' '));
     beforeEach(() => {
+      warn = spyOn(console, 'warn').mockImplementation(() => {});
       realFetch = globalThis.fetch;
       fetched = [];
       globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -2780,6 +2796,7 @@ describe('Sora REST & MCP Endpoints', () => {
       delete process.env.ALLOW_LOCAL_FETCH;
     });
     afterEach(() => {
+      warn.mockRestore();
       globalThis.fetch = realFetch;
       if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
       else process.env.ALLOW_LOCAL_FETCH = prevEnv;
@@ -2797,11 +2814,13 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
       }
       expect(fetched).toEqual([]);
+      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${url}`));
     });
 
     it('fetches a public destination (control for the blocked cases)', async () => {
       await expect(sendWebhookNotification('https://93.184.216.34/hook', { data: 'test' })).resolves.toBeUndefined();
       expect(fetched).toEqual(['https://93.184.216.34/hook']);
+      expect(warned()).toEqual([]);
     });
   });
 
