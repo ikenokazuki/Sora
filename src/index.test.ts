@@ -14,6 +14,26 @@ beforeAll(() => {
 });
 afterAll(() => restoreExternalFetch?.());
 
+/** ALLOW_LOCAL_FETCH を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
+function setLocalFetch(value: string | undefined): () => void {
+  const prev = process.env.ALLOW_LOCAL_FETCH;
+  if (value === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+  else process.env.ALLOW_LOCAL_FETCH = value;
+  return () => {
+    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prev;
+  };
+}
+
+/** このファイルのテストが ALLOW_LOCAL_FETCH を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
+let allowLocalFetchAtStart: string | undefined;
+beforeAll(() => {
+  allowLocalFetchAtStart = process.env.ALLOW_LOCAL_FETCH;
+});
+afterAll(() => {
+  expect(process.env.ALLOW_LOCAL_FETCH).toBe(allowLocalFetchAtStart);
+});
+
 /** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
 async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
   const html = '<!doctype html><html><head><title>Example Domain</title></head><body><div><h1>Example Domain</h1>'
@@ -815,10 +835,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/scrape', {
           method: 'POST',
@@ -839,9 +857,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(data.links).toContain('https://example.com/about');
       expect(data.links).toContain('https://example.com/contact');
       expect(data.rawHtml).toContain('Format Test');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -864,10 +881,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/crawl/stream', {
           method: 'POST',
@@ -885,9 +900,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('event: start');
       expect(text).toContain('event: page');
       expect(text).toContain('event: done');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1474,10 +1488,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/test`,
         actions: [
@@ -1494,8 +1506,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.actionOutputs.every((o: any) => o.result === 'ok')).toBe(true);
       expect(result.markdown).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1526,9 +1538,7 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
-
+    const restoreLocalFetch = setLocalFetch('true');
     try {
       const res = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/long-page`,
@@ -1541,7 +1551,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(typeof res.screenshot).toBe('string');
       expect((res.screenshot || '').length).toBeGreaterThan(1000);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1575,10 +1585,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/mouse-trail`,
         actions: [{ type: 'click', selector: '#btn' }, { type: 'wait', ms: 100 }],
@@ -1589,8 +1597,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.markdown.match(/clicked: (\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(5);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1886,9 +1894,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/cookie-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainCookies(domain, []); // 他テストの残留Cookieをクリア（DBはテスト間で共有）
@@ -1909,9 +1916,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // 2回目: 保存済みCookieが復元され、サーバーへ送り返されるはず
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toContain('seen-cookie:true');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1936,10 +1942,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/lang-consistency`,
         renderJs: true,
@@ -1948,9 +1952,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
       expect(seenAcceptLanguage.startsWith('ja')).toBe(true);
       expect(result.content).toContain('languages:ja-JP');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1973,18 +1976,16 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const before = getBotDetectionMetrics().upgradeCount;
 
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
 
       expect(result.renderedWithBrowser).toBe(true);
       expect(getBotDetectionMetrics().upgradeCount).toBe(before + 1);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2017,9 +2018,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/storage-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
@@ -2034,9 +2034,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // (markdown変換で "_" が "\_" にエスケープされることがあるため正規表現で許容する)
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toMatch(/seen-storage:persisted\\?_value/);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2078,10 +2077,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
 
       expect(res.content).toContain('TOP-CONTENT-VISIBLE');
@@ -2091,9 +2088,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.content).toContain('SHADOW-DOM-CONTENT');
       // networkidle 成立後にクライアント側が描画するケース
       expect(res.content).toContain('LATE-CONTENT-RENDERED');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2129,10 +2125,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/passive-mouse-trail`,
         renderJs: true,
@@ -2142,8 +2136,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.content.match(/count=(\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(3);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2172,10 +2166,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       // Turn 1: 新規セッション作成 & 画面オープン (所有者トークン付き)
       const turn1 = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/session-test`,
@@ -2220,8 +2212,8 @@ describe('Sora REST & MCP Endpoints', () => {
       });
 
       expect(turn3.sessionClosed).toBe(true);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2638,14 +2630,14 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('validateHostIpDns should block private IPs and throw appropriate security error', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-
-    await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
-
-    process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    const restoreLocalFetch = setLocalFetch(undefined);
+    try {
+      await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
+    } finally {
+      restoreLocalFetch();
+    }
   });
 
   it('SimpleSemaphore should limit concurrency correctly', async () => {
@@ -3724,9 +3716,8 @@ describe('Sora REST & MCP Endpoints', () => {
         return new Response('<html><body>ok</body></html>', { headers: { 'Content-Type': 'text/html' } });
       },
     });
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1'); // 既存プールセッションの影響を排除
       await fetchWithSafeRedirects(`http://127.0.0.1:${server.port}/ua-check`);
 
@@ -3734,9 +3725,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(seenUa).toContain('Chrome/');
       expect(seenUa).not.toContain('Macintosh');
       expect(seenUa).not.toContain('Firefox');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3766,9 +3756,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1');
 
       const base = `http://127.0.0.1:${server.port}`;
@@ -3788,9 +3777,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const browserAl = seen['/browser-path']?.al ?? '';
       expect(browserAl.startsWith('ja-JP')).toBe(true);
       expect(staticAl.startsWith(browserAl)).toBe(true);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3892,9 +3880,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       dbSaveDomainCookies('127.0.0.1', []); // 他テストのDB永続化分をクリア
 
       await scrapeUrl({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
@@ -3904,9 +3891,8 @@ describe('Sora REST & MCP Endpoints', () => {
       dbSaveDomainCookies('127.0.0.1', []);
       const result = await scrapeUrl({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
       expect(result.content).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
@@ -3940,16 +3926,13 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       await executeBrowserActions({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, actions: [], extract: { markdown: true } });
       const result = await executeBrowserActions({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, actions: [], extract: { markdown: true } });
       expect(result.markdown).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
