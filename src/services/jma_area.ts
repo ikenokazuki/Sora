@@ -275,6 +275,7 @@ function firstPlaceName(s: string): [string, number] | undefined {
  * （"蒲郡市原" "上郡町上郡"）のときと、郡の前が市町村の名前（"交野市郡津市"。郡〜は町名）のとき、郡が先頭の市・区の名前の後ろ（"山口市小郡栄町"）のときは除く
  */
 function townAfterGun(s: string): string | undefined {
+  if (s.indexOf('郡') < 0) return undefined;
   const end = cityEnd(s);
   for (let k = s.indexOf('郡'); k >= 0 && k < end; k = s.indexOf('郡', k + 1)) {
     const town = placeNameAt(s, k + 1, MUNICIPALITIES);
