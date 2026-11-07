@@ -16,19 +16,29 @@ import {
 import { app } from '../index.js';
 import * as browserTrack from './tracking/carriers/browser_track.js';
 
-// Real carrier availability is checked explicitly, outside the default CI suite.
-const itLive = it.skipIf(process.env.SORA_LIVE_TESTS !== '1');
-
 // UPS の公式の追跡ページはブラウザで描画せず、無効な番号の偽のページを返す（本物の ups.com に繋がない。実際のページは
 // carriers/intl_scrape.test.ts の SORA_LIVE_TESTS で確かめる）
 const INVALID_UPS_PAGE = 'トラッキングナンバーが無効です。';
-let upsPage: ReturnType<typeof spyOn<typeof browserTrack, 'renderTrackingPage'>>;
-beforeAll(() => {
-  upsPage = spyOn(browserTrack, 'renderTrackingPage').mockImplementation(async (url) => ({
+const fakeTrackingPage = () =>
+  spyOn(browserTrack, 'renderTrackingPage').mockImplementation(async (url) => ({
     title: 'UPS', finalUrl: url, bodyText: INVALID_UPS_PAGE, html: `<html><body><main>${INVALID_UPS_PAGE}</main></body></html>`,
   }));
+let upsPage: ReturnType<typeof fakeTrackingPage>;
+beforeAll(() => {
+  upsPage = fakeTrackingPage();
 });
 afterAll(() => upsPage.mockRestore());
+
+// Real carrier availability is checked explicitly, outside the default CI suite. その間は偽の追跡ページを外し、本物のページを読む
+const itLive = (name: string, fn: () => Promise<void>, timeout?: number) =>
+  it.skipIf(process.env.SORA_LIVE_TESTS !== '1')(name, async () => {
+    upsPage.mockRestore();
+    try {
+      await fn();
+    } finally {
+      upsPage = fakeTrackingPage();
+    }
+  }, timeout);
 
 describe('Tracking Service Unit Tests', () => {
   describe('cleanTrackingNumber', () => {
@@ -212,8 +222,8 @@ describe('Tracking Service Unit Tests', () => {
       });
       expect(res.carrier).toBe('ups');
       expect(res.trackingUrl).toContain('ups.com');
-      expect(['not_found', 'unknown']).toContain(res.status);
-    }, 110000);
+      expect(res.status).toBe('not_found');
+    });
   });
 
   describe('Live Carrier Query with Test Number', () => {
@@ -259,7 +269,8 @@ describe('Tracking Service Unit Tests', () => {
       });
       expect(res.carrier).toBe('ups');
       expect(res.trackingUrl).toContain('ups.com');
-    }, 110000);
+      expect(res.status).toBe('not_found');
+    });
   });
 });
 
