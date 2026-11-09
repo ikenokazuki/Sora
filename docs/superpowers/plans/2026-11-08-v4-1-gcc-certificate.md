@@ -1019,7 +1019,7 @@ Expected: FAIL
 
 - [ ] **Step 2: 直す。** 作業ツリーの `GCC_PLACEHOLDER_PATTERNS`・`isPlaceholderGccValue`・`assertNoPlaceholderGccFields` を消し、`assertGccInputs` にする。確かめるのは呼び出し側の文字列だけ: 品ごとの `productName`・`identifier`・`brand`・`description`・`material`・`citations[k]`・`manufacture.*`・`testing.date`・`testing.reportNumber`・`testing.parties[j].*`、と `certifier.*`・`recordCustodian.*`（注文の番号と環境変数の値は確かめない）。
   1. 値全体が見本の語（前後の空白を除き、大文字小文字を区別しない）: `/^(?:n\/a|none|null|nil|undefined|unknown|tbd|tba|todo|sample|dummy|placeholder|test|example|x+|-+|\?+|\.{2,}|…+)$/i` と `/^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し)$/`。語が値の一部にあるだけ（「Unknown Pleasures Records Inc.」「Sample & Co. GmbH」）は通す。
-  2. 型の差し込み口: `/\[(?:missing|insert|required|tbd|todo|your)\b/i` と `/\{\{[^}]*\}\}/`。
+  2. 型の差し込み口: `/\[(?:missing|insert|required|tbd|todo|your)\b/i` と `/\{\{[^{}]*\}\}/`（`[^}]` は `{{` の繰り返しで二乗の時間になる）。`state` の `N/A`・`-`・`None` は「州・県が無い」の答えとして通す（シンガポールなど。印刷では州の欄を省く）。
   3. メール（`email` の項目だけ）: `@` の後ろを小文字にして、`example.com`・`example.net`・`example.org`（とその下）、`.example`・`.invalid`・`.localhost` で終わるもの（RFC 2606・6761 の、例と使えない名前）。`@` の前と、後ろの最初の区切りまでが、どちらも `test`・`sample`・`dummy`・`fake`・`example` のどれか（例 `test@test.com`）。`.test` は通す（文書とテストが使う）。
   4. 電話（`phone` の項目だけ）: 数字だけにして 7 桁未満、または同じ数字が 7 つ以上続くもの（`+1-555-555-5555`・`000-0000`・`+81-3-0000-0000`）。`+1-202-555-0100`〜`0199` は通す。報告書の番号などの、電話でない項目には当てない（`TR-2026-0000-0000` を通す）。
   5. 1〜4 に当たる項目を全部集め、1 つでもあれば `new TradeInputError(\`GCC の項目に見本・仮置きに見える値があります（${項目のパスをカンマでつないだもの}）。記録の値だけを渡してください。\`, 'UNVERIFIED_PLACEHOLDER_INPUT')`。パスは `items[0].manufacture.name`・`certifier.email` の形。
