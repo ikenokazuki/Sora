@@ -36,9 +36,9 @@ function formatDateIso(date: Date): string {
 }
 
 // 別の語の一部として現れたときは、その日付を指さない表現の条件。検出（extractTemporalAnchors）と注記（annotate…）で同じものを使う。
-// 「一昨日」の中の「昨日」は 2 日前（1 日前ではない）。「当日券」「当日精算」「当日受付」「当日払い」の「当日」は日付ではない。
+// 「一昨日」の中の「昨日」は 2 日前（1 日前ではない）。「当日券」「当日精算」「当日受付」「当日払い」「当日料金」の「当日」は日付ではない。
 const NOT_AFTER_ICHI = '(?<!一)';
-const NOT_COMPOUND = '(?![券精受払])';
+const NOT_COMPOUND = '(?![券精受払料])';
 const EXPRESSION_GUARDS: Record<string, [before: string, after: string]> = {
   '昨日': [NOT_AFTER_ICHI, ''],
   '当日': ['', NOT_COMPOUND],

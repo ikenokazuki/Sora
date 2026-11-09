@@ -94,8 +94,8 @@ describe('Temporal Context Anchor', () => {
     expect(annotateTextWithTemporalAnchors('おとといと一昨日と昨日。', referenceDate)).toBe('おととい [2026-08-30]と一昨日と昨日 [2026-08-31]。');
   });
 
-  it('「当日券」「当日精算」「当日受付」「当日払い」の「当日」は日付ではない。単独の「当日」は今まで通り基準の日', () => {
-    for (const compound of ['当日券', '当日精算', '当日受付', '当日払い']) {
+  it('「当日券」「当日精算」「当日受付」「当日払い」「当日料金」の「当日」は日付ではない。単独の「当日」は今まで通り基準の日', () => {
+    for (const compound of ['当日券', '当日精算', '当日受付', '当日払い', '当日料金']) {
       expect(extractTemporalAnchors(`${compound}あり。`, referenceDate)).toEqual([]);
       expect(annotateTextWithTemporalAnchors(`${compound}あり。`, referenceDate)).toBe(`${compound}あり。`);
     }
