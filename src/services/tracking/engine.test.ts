@@ -280,6 +280,24 @@ describe('自動判別: 照会に失敗した会社があるとき、「見つ�
     expect(res.statusText).toContain('佐川急便');
   });
 
+  it('「該当なし」と答えた会社と、確認できなかった会社（unknown）が混ざるときは not_found のまま、確認できなかった会社の名前を文に入れる', async () => {
+    const res = await run([
+      candidate('yamato', 'ヤマト運輸', async () => reply('yamato', 'ヤマト運輸', 'not_found')),
+      candidate('dhl', 'DHL Express', async () => reply('dhl', 'DHL Express', 'unknown')),
+      candidate('fedex', 'FedEx', async () => reply('fedex', 'FedEx', 'unknown')),
+    ]);
+    expect(res.status).toBe('not_found');
+    expect(res.statusText).toContain('照会対象: ヤマト運輸, DHL Express, FedEx');
+    expect(res.statusText).toContain('確認できなかった会社: DHL Express, FedEx');
+    expect(res.statusText).not.toMatch(/確認できなかった会社:[^)]*ヤマト運輸/);
+  });
+
+  it('確認できなかった会社が無ければ、その節は付かない（全社が「該当なし」）', async () => {
+    const res = await run([candidate('yamato', 'ヤマト運輸', async () => reply('yamato', 'ヤマト運輸', 'not_found'))]);
+    expect(res.status).toBe('not_found');
+    expect(res.statusText).not.toContain('確認できなかった会社');
+  });
+
   it('error はキャッシュしない: 失敗のあとに同じ番号で尋ねると、もう一度照会する', async () => {
     clearCache();
     const adapters = (['yamato', 'sagawa', 'japanpost', 'fukutsu'] as const).map((code) => getCarrierAdapter(code)!);

@@ -230,12 +230,15 @@ export async function trackPackageAuto(
 
   const primaryCandidate = candidates[0];
   const attemptedNames = targetCandidates.map((c) => c.adapter.name).join(', ');
+  // 公式ページの URL だけを返した会社（unknown。資格情報なし、ブラウザで読めなかった UPS・FedEx・DHL など）は、実際には確かめていない。not_found のままにするが、名前を挙げる
+  const unchecked = allAttemptedResults.filter((a) => a.result.status === 'unknown').map((a) => a.candidate.adapter.name);
+  const uncheckedNote = unchecked.length > 0 ? `、確認できなかった会社: ${unchecked.join(', ')}` : '';
   return {
     carrier: primaryCandidate.carrier,
     carrierName: primaryCandidate.adapter.name,
     trackingNumber: num,
     status: 'not_found',
-    statusText: `該当するお荷物情報が見つかりませんでした (照会対象: ${attemptedNames})`,
+    statusText: `該当するお荷物情報が見つかりませんでした (照会対象: ${attemptedNames}${uncheckedNote})`,
     events: [],
     trackingUrl: primaryCandidate.adapter.trackingUrl(num),
     verification: {
