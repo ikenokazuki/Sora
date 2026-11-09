@@ -70,11 +70,11 @@ describe('キャッシュが意図した時間のあいだ効く', () => {
 
   const at = (offsetMs: number) => setSystemTime(new Date(origin + offsetMs));
 
-  function stubYahooPages() {
+  function stubYahooPages(html = '<html><head><title>交通情報</title></head><body></body></html>') {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls++;
-      return new Response('<html><head><title>交通情報</title></head><body></body></html>');
+      return new Response(html);
     }) as unknown as typeof fetch;
     return () => calls;
   }
@@ -95,7 +95,13 @@ describe('キャッシュが意図した時間のあいだ効く', () => {
   });
 
   test('フライト運航状況は 3 分保持する', async () => {
-    const calls = stubYahooPages();
+    // 便が 1 件以上読めた結果だけを保持する。0 件の結果はキャッシュしない（traffic.test.ts）
+    const flightPage = `<html><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+      props: { pageProps: { updateTimeText: '11月6日 12時00分 時点', diainfoAirportParam: { domesticDepature: { diainfo: [
+        { diaTime: '10:00', changeTime: '', letterCode: 'JL', flightNumber: '33', airlineName: '日本航空', depatureName: '那覇', arrivalName: '羽田', displayStatus: '定刻', message: '' },
+      ] } } } },
+    })}</script></body></html>`;
+    const calls = stubYahooPages(flightPage);
     await fetchFlightStatus({ airport: '羽田' });
     at(2 * MINUTE);
     await fetchFlightStatus({ airport: '羽田' });
