@@ -49,7 +49,8 @@ Sora は、番号の形で会社に順位を付け、上位の少数にだけ問
 7. 採る会社を決めます。
    - `strong` が 1 社なら、その会社です（`resolvedCarrier.method` は `network_verified`）。
    - `strong` が 2 社以上なら、どれも採らず競合として返します（`ambiguous_conflict`）。
-   - `strong` が 0 社なら、見つからなかったとして返します（`unverified_fallback`）。
+   - `strong` が 0 社で、問い合わせた会社のどれかが失敗していたら（例外・時間切れ、または会社の側が `error` を返した）、`status: "error"` で返します。荷物が無いとは言えないからです（`unverified_fallback`）。
+   - `strong` が 0 社で、失敗した会社がなければ、見つからなかったとして返します（`unverified_fallback`）。
 
 例（番号は架空です）。入力が `1234-5678-9012` なら、正規化して `123456789012` になります。点数は、ヤマト 75、佐川 75、日本郵便 70、福山 65、FedEx 60、UPS 50 です。問い合わせるのは上位 4 社で、1 波目がヤマトと佐川、どちらも `strong` でなければ 2 波目が日本郵便と福山です。FedEx と UPS は問い合わせません。
 
@@ -57,7 +58,8 @@ Sora は、番号の形で会社に順位を付け、上位の少数にだけ問
 
 - どの会社の形にも当たらないとき（候補が 0 社）は、`carrier: "unknown"`、`status: "not_found"`、「該当する配送会社を特定できませんでした」を返します。`trackingUrl` は番号を検索サイトで調べる URL で、Sora は開きません。
 - 複数の会社で証拠が出たときは、`status: "unknown"` で「複数の配送会社（…）で該当する荷物情報が確認されました。配送会社を明示して照会してください。」と返します。呼び出し側は `carrier` を指定してもう一度尋ねます。
-- 証拠のある会社が無いときは、`status: "not_found"` で、問い合わせた会社の名前を文に入れて返します。`trackingUrl` は先頭候補の公式ページです。`resolvedCarrier.confidence` は `weak` です。
+- 証拠のある会社が無く、問い合わせた会社のどれかが失敗したときは、`status: "error"` で、失敗した会社の名前を文に入れて返します。`error` に会社ごとの理由が入り、`trackingUrl` は最初に失敗した会社の公式ページです。ほかの会社が「該当なし」と答えていても、同じです。`error` はキャッシュしないので、尋ね直せば照会し直します。他の会社が証拠を返していれば、失敗した会社があっても、その会社が採られます。
+- 証拠のある会社が無く、問い合わせた会社がすべて「該当なし」と答えたときだけ、`status: "not_found"` で、問い合わせた会社の名前を文に入れて返します。`trackingUrl` は先頭候補の公式ページです。`resolvedCarrier.confidence` は `weak` です。
 - 公式ページの URL だけを返した結果は `none` なので、自動判別では勝てません。資格情報がなく、ブラウザでも読めない UPS・FedEx・DHL がこれに当たります。
 - 返却の `verification`（`level` と `reasons`）で、証拠の強さを確かめられます。
 
@@ -66,7 +68,8 @@ Sora は、番号の形で会社に順位を付け、上位の少数にだけ問
 - 番号の形の規則は、各社の番号の形から書いた手書きの経験則です。各社が公式に定めた仕様ではありません。
 - 10〜12 桁の国内の番号は、形だけでは決まりません。通信で確かめて初めて決まります。
 - 問い合わせるのは上位 4 社までです。たとえば 12 桁の番号では、ヒントがなければ FedEx と UPS は問い合わせません。その会社の荷物だと分かっているなら、`carrier` で指定するか `preferredCarriers` に挙げてください。
-- 自動判別では、会社側の障害（時間切れ・保守ページなど）も、証拠がなければ「見つかりませんでした」にまとまります。会社ごとのエラーは返しません。会社を指定したときは、エラーをそのまま返します。
+- 公式ページの URL だけを返した会社（`unknown`。資格情報がなく、ブラウザでも読めない UPS・FedEx・DHL）は、失敗には数えません。ほかの会社がすべて「該当なし」なら `not_found` になります。その会社が問い合わせに入っていたかは、文の「照会対象」で確かめてください。
+- 自動判別の `error` は、失敗した会社の名前と理由を返すだけで、その会社に荷物があるかどうかは分かりません。会社を指定して尋ね直してください。
 - 外国発行の S10 番号も、日本郵便の国際追跡で引きます。外国の郵便会社そのものの追跡は持ちません。
 - 各社のページの作りが変わると読めなくなります（佐川急便は 2026 年 10 月に問い合わせサービスが変わりました）。
 - 配達状況の正しさは、各社のページに従います。
@@ -74,6 +77,6 @@ Sora は、番号の形で会社に順位を付け、上位の少数にだけ問
 ## 実装とテスト
 
 - 実装: `src/services/tracking/detector.ts`（順位付け）、`index.ts`（波の問い合わせと採用の判断）、`verification.ts`（証拠の強さ）、`postal.ts`（S10 の検査数字）、`normalization.ts`、`registry.ts`、`carriers/`（各社の形の規則と取得）、`page.ts`（表示ページ）。入口は `src/mcp/tools_life.ts` と `src/routes/tracking.ts` です。
-- テスト: `src/services/tracking/detector.test.ts`、`engine.test.ts`、`page.test.ts`、`carriers/sagawa.test.ts`、`carriers/intl_scrape.test.ts`、`src/services/tracking.test.ts`。
+- テスト: `src/services/tracking/detector.test.ts`、`engine.test.ts`（失敗した会社があるときの判断を含みます）、`page.test.ts`、`carriers/sagawa.test.ts`、`carriers/intl_scrape.test.ts`、`src/services/tracking.test.ts`。
 
 [判断エンジンの一覧に戻る](README.md)

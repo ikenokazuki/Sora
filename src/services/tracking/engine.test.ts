@@ -2,9 +2,12 @@ import { describe, it, expect, spyOn } from 'bun:test';
 import type {
   TrackingCarrierAdapter,
 } from './types.js';
-import { trackByCarrier, trackPackageAuto } from './index.js';
+import { trackByCarrier, trackPackage, trackPackageAuto } from './index.js';
 import type { RankedCandidate } from './detector.js';
 import { getCarrierAdapter } from './registry.js';
+import { evaluateTrackingVerification } from './verification.js';
+import { clearCache } from '../../cache.js';
+import type { TrackingResult } from './types.js';
 
 describe('Tracking v2 Auto Engine & Verification Rules', () => {
   it('Fastest Is Not Winner: 最速の weak 応答ではなく、80ms 後に返った strong 応答が勝者となる', async () => {
@@ -200,6 +203,101 @@ describe('Tracking v2 Auto Engine & Verification Rules', () => {
     } finally {
       yamatoTrack.mockRestore();
       for (const spy of otherTracks) spy.mockRestore();
+    }
+  });
+});
+
+describe('自動判別: 照会に失敗した会社があるとき、「見つからなかった」と言わない', () => {
+  const NUM = '123456789012';
+  const reply = (code: string, name: string, status: TrackingResult['status'], extra: Partial<TrackingResult> = {}): TrackingResult => ({
+    carrier: code as TrackingResult['carrier'], carrierName: name, trackingNumber: NUM, status, statusText: `${name}: ${status}`, events: [], trackingUrl: `https://example.com/${code}`, ...extra,
+  });
+  const found = (code: string, name: string) => reply(code, name, 'in_transit', { events: [{ date: '2026-09-19', status: '輸送中', location: '東京' }] });
+  const candidate = (code: string, name: string, track: () => Promise<TrackingResult>): RankedCandidate => ({
+    carrier: code as RankedCandidate['carrier'],
+    adapter: {
+      code: code as TrackingCarrierAdapter['code'], name,
+      trackingUrl: () => `https://example.com/${code}`,
+      detect: () => ({ candidate: true, score: 70, strength: 'strong', reasons: [] }),
+      track,
+      verify: (res, num) => evaluateTrackingVerification(res, num),
+    },
+    score: 70, strength: 'strong', reasons: [],
+  });
+  const timeout = () => Promise.reject(new Error('The operation timed out.'));
+  const run = (candidatesOverride: RankedCandidate[]) => trackPackageAuto(NUM, { noCache: true, candidatesOverride });
+
+  it('全社が失敗（例外・error の返却・時間切れ）したら、status は error。失敗した会社の名前を挙げ、見つからなかったとは言わない', async () => {
+    const res = await run([
+      candidate('yamato', 'ヤマト運輸', timeout),
+      candidate('sagawa', '佐川急便', async () => reply('sagawa', '佐川急便', 'error', { error: 'HTTP 503' })),
+    ]);
+    expect(res.status).toBe('error');
+    expect(res.statusText).toContain('ヤマト運輸');
+    expect(res.statusText).toContain('佐川急便');
+    expect(res.statusText).not.toContain('見つかりませんでした');
+    expect(res.error).toContain('The operation timed out.');
+    expect(res.verification?.level).toBe('none');
+  });
+
+  it('1 社が失敗し、もう 1 社が「該当なし」と答えたら、status は error。失敗した会社だけを挙げる', async () => {
+    const res = await run([
+      candidate('yamato', 'ヤマト運輸', timeout),
+      candidate('sagawa', '佐川急便', async () => reply('sagawa', '佐川急便', 'not_found')),
+    ]);
+    expect(res.status).toBe('error');
+    expect(res.statusText).toContain('ヤマト運輸');
+    expect(res.statusText).not.toContain('佐川急便');
+    expect(res.statusText).not.toContain('見つかりませんでした');
+  });
+
+  it('失敗した会社が後の波にいても、前の波が全部「該当なし」なら error', async () => {
+    const nf = (code: string, name: string) => candidate(code, name, async () => reply(code, name, 'not_found'));
+    const res = await run([nf('yamato', 'ヤマト運輸'), nf('sagawa', '佐川急便'), candidate('japanpost', '日本郵便', timeout), nf('fukutsu', '福山通運')]);
+    expect(res.status).toBe('error');
+    expect(res.statusText).toContain('日本郵便');
+    expect(res.statusText).not.toContain('福山通運');
+  });
+
+  it('1 社が荷物を見つけ、もう 1 社が失敗したら、見つけた会社が勝つ（失敗に引きずられない）', async () => {
+    const res = await run([
+      candidate('yamato', 'ヤマト運輸', timeout),
+      candidate('sagawa', '佐川急便', async () => found('sagawa', '佐川急便')),
+    ]);
+    expect(res.status).toBe('in_transit');
+    expect(res.carrier).toBe('sagawa');
+    expect(res.resolvedCarrier?.method).toBe('network_verified');
+  });
+
+  it('全社が「該当なし」と答えたときだけ not_found（今まで通り）', async () => {
+    const res = await run([
+      candidate('yamato', 'ヤマト運輸', async () => reply('yamato', 'ヤマト運輸', 'not_found')),
+      candidate('sagawa', '佐川急便', async () => reply('sagawa', '佐川急便', 'not_found')),
+    ]);
+    expect(res.status).toBe('not_found');
+    expect(res.statusText).toContain('見つかりませんでした');
+    expect(res.statusText).toContain('ヤマト運輸');
+    expect(res.statusText).toContain('佐川急便');
+  });
+
+  it('error はキャッシュしない: 失敗のあとに同じ番号で尋ねると、もう一度照会する', async () => {
+    clearCache();
+    const adapters = (['yamato', 'sagawa', 'japanpost', 'fukutsu'] as const).map((code) => getCarrierAdapter(code)!);
+    let yamatoFails = true;
+    const spies = adapters.map((a) => spyOn(a, 'track').mockImplementation(async (num: string) => {
+      if (a.code === 'yamato' && yamatoFails) throw new Error('timeout');
+      return reply(a.code, a.name, 'not_found', { trackingNumber: num });
+    }));
+    try {
+      const first = await trackPackage({ trackingNumber: NUM, carrier: 'auto' });
+      expect(first.status).toBe('error');
+      yamatoFails = false;
+      const second = await trackPackage({ trackingNumber: NUM, carrier: 'auto' });
+      expect(second.status).toBe('not_found');
+      expect(second.cached).not.toBe(true);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      clearCache();
     }
   });
 });

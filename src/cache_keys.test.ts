@@ -209,6 +209,12 @@ describe('trackingCacheKey', () => {
     expect(trackingCacheKey({ carrier: 'sagawa' }, num)).not.toBe(plain);
   });
 
+  test('自動判別のキーは tracking:v4（v3 は、失敗した会社があっても not_found として保存していた）。会社を指定したキーは v3 のまま', () => {
+    expect(trackingCacheKey({}, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ carrier: 'yamato' }, num)).toStartWith('tracking:v3:yamato:');
+  });
+
   test('自動判別は、判別に渡すヒントが違えば別のキーになる', () => {
     const plain = trackingCacheKey({}, num);
     expect(trackingCacheKey({ carrier: 'auto' }, num)).toBe(plain);

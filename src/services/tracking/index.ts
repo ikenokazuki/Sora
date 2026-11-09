@@ -199,6 +199,35 @@ export async function trackPackageAuto(
   }
 
   // 3. 検証成功キャリアなし（URL-only は auto winner になれない）
+  // 照会に失敗した会社があれば、「見つからなかった」とは言えない（その会社には荷物があるかもしれない）。error はキャッシュしない。
+  // 「該当なし」と答えた会社だけなら not_found。例外も、会社のアダプターが error を返したものも失敗として数える
+  const failed = allAttemptedResults.filter((a) => a.result.status === 'error');
+  if (failed.length > 0) {
+    const first = failed[0];
+    const failedNames = failed.map((f) => f.candidate.adapter.name).join(', ');
+    return {
+      carrier: first.candidate.carrier,
+      carrierName: first.candidate.adapter.name,
+      trackingNumber: num,
+      status: 'error',
+      statusText: `照会できなかった配送会社があるため、荷物の有無は確認できませんでした (照会できなかった会社: ${failedNames})`,
+      events: [],
+      trackingUrl: first.candidate.adapter.trackingUrl(num),
+      error: failed.map((f) => `${f.candidate.adapter.name}: ${f.result.error || f.result.statusText}`).join('; '),
+      verification: {
+        level: 'none',
+        reasons: [`Carrier lookup failed (${failedNames}); no carrier returned strong verified shipment evidence`],
+      },
+      resolvedCarrier: {
+        code: first.candidate.carrier,
+        name: first.candidate.adapter.name,
+        confidence: 'weak',
+        verification: 'none',
+        method: 'unverified_fallback',
+      },
+    };
+  }
+
   const primaryCandidate = candidates[0];
   const attemptedNames = targetCandidates.map((c) => c.adapter.name).join(', ');
   return {
@@ -230,8 +259,9 @@ export async function trackPackageAuto(
 export function trackingCacheKey(req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers'>, num: string): string {
   if (req.carrier && req.carrier !== 'auto') return `tracking:v3:${req.carrier}:${num}`;
   const preferred = [...new Set(req.preferredCarriers ?? [])].sort();
-  if (preferred.length === 0) return `tracking:v3:auto:${num}`;
-  return `tracking:v3:auto:${num}:${preferred.join(',')}`;
+  // v4: 自動判別で失敗した会社があるとき、v3 は not_found をキャッシュしていた
+  if (preferred.length === 0) return `tracking:v4:auto:${num}`;
+  return `tracking:v4:auto:${num}:${preferred.join(',')}`;
 }
 
 /**
