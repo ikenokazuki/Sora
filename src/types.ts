@@ -718,8 +718,8 @@ export const CpscCertificateCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
   targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
   material: z.string().optional().describe('主な素材。衣料では繊維の組成（"100% polyester" の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
-  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用するか。不明時は省略'),
-  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池種別（button_coin: ボタン・コイン電池, other: リチウムイオン等）。16 CFR 1263 横断規制判定に使用'),
+  hasBattery: z.boolean().optional().describe('電池を使う製品か。true で batteryType が button_coin なら 16 CFR 1263 を当てる。不明なら省略'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。hasBattery=trueの場合のみ意味を持つ。不明なら省略'),
   ...TradeFabricFieldsShape,
 });
 
@@ -734,9 +734,9 @@ export const VerifyHtsCodeRequestSchema = z.object({
 });
 
 const GccOrderItemFieldsShape = {
-  url: z.string().url('有効なURLを指定してください').optional().describe('商品ページURL（指定時は品名・説明・ブランド・SKUを自動抽出）'),
+  url: z.string().url('有効なURLを指定してください').optional().describe('商品ページURL'),
   productName: z.string().optional().describe('商品の英語一般名（宣伝文句・ブランド名は除く。日本語は英訳して渡す）'),
-  sku: z.string().optional().describe('商品SKU・品番（URLのJSON-LDからも自動抽出）'),
+  sku: z.string().optional().describe('商品SKU・品番'),
   brand: z.string().optional().describe('ブランド名'),
   modelOrBatch: z.string().optional().describe('モデル番号・ロット番号'),
   description: z.string().optional().describe('商品の英語仕様説明（事実のみ記載）'),
@@ -746,7 +746,7 @@ const GccOrderItemFieldsShape = {
   productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, tableware, electronics）。不明時は省略'),
   foodContact: z.boolean().optional().describe('食品・飲料接触用途か（食器等のFDA FD1分岐に必要）。推測禁止、不明時は省略'),
   hasBattery: z.boolean().optional().describe('電池搭載の有無。推測禁止、不明時は省略'),
-  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池種別（button_coin: ボタン・コイン電池, other: リチウムイオン等）。不明時は省略'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。不明時は省略'),
   ...TradeFabricFieldsShape,
   certifier: GccPartyContactInputSchema.optional().describe('証明者連絡先 (16 CFR 1110.11(a)(3))。省略時は SORA_GCC_CERTIFIER_* を使用。推測・仮置き厳禁'),
   recordCustodian: GccPartyContactInputSchema.optional().describe('記録保管者連絡先 (16 CFR 1110.11(a)(4))。省略時は SORA_GCC_CUSTODIAN_* を使用。推測・仮置き厳禁'),
@@ -764,7 +764,7 @@ export const ProductComplianceRequestSchema = z.object({
   productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
   foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
-  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
   ...TradeFabricFieldsShape,
 });
 
@@ -817,7 +817,7 @@ export const GenerateGccCertificateRequestSchema = z.object({
   awbNumber: z.string().optional().describe('航空貨物運送状・追跡番号（例: "TEST-AWB-0001"）'),
   carrier: z.string().optional().describe('配送会社名（例: "FedEx"）'),
   invoiceNumber: z.string().optional().describe('インボイス番号（例: "INV-2026-10492"）'),
-  allowDraft: z.boolean().optional().describe('必須項目不足時にエラー停止せずドラフト出力を許可するか（既定: false＝エラー停止）').meta({ default: false }),
+  allowDraft: z.boolean().optional().describe('不足があっても下書きを返す（既定: false）').meta({ default: false }),
   items: z.array(GccOrderItemInputSchema).min(1).max(50).optional().describe('複数SKU一括作成時の明細配列（最大50件、トップレベルと同型）'),
 });
 

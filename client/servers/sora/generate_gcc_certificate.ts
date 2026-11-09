@@ -2,11 +2,11 @@
 import { callSora } from '../../runtime.js';
 
 export type GenerateGccCertificateInput = {
-  /** 商品ページURL（指定時は品名・説明・ブランド・SKUを自動抽出） */
+  /** 商品ページURL */
   url?: string;
   /** 商品の英語一般名（宣伝文句・ブランド名は除く。日本語は英訳して渡す） */
   productName?: string;
-  /** 商品SKU・品番（URLのJSON-LDからも自動抽出） */
+  /** 商品SKU・品番 */
   sku?: string;
   /** ブランド名 */
   brand?: string;
@@ -26,7 +26,7 @@ export type GenerateGccCertificateInput = {
   foodContact?: boolean;
   /** 電池搭載の有無。推測禁止、不明時は省略 */
   hasBattery?: boolean;
-  /** 電池種別（button_coin: ボタン・コイン電池, other: リチウムイオン等）。不明時は省略 */
+  /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。不明時は省略 */
   batteryType?: "button_coin" | "other";
   /** 衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略 */
   fabricSurface?: "plain" | "raised";
@@ -88,7 +88,7 @@ export type GenerateGccCertificateInput = {
   carrier?: string;
   /** インボイス番号（例: "INV-2026-10492"） */
   invoiceNumber?: string;
-  /** 必須項目不足時にエラー停止せずドラフト出力を許可するか（既定: false＝エラー停止） */
+  /** 不足があっても下書きを返す（既定: false） */
   allowDraft?: boolean;
   /** 複数SKU一括作成時の明細配列（最大50件、トップレベルと同型） */
   items?: {
@@ -641,7 +641,7 @@ export type GenerateGccCertificateOutput = {
   disclaimer: string;
 };
 
-/** 【必須・推測/サンプル厳禁】米国CPSC一般適合証明書（GCC: 16 CFR Part 1110）および発送後通関パッケージ（カバーシート＋SKU別GCC・16 CFR 1610.1(d)免除シート）出力。URL指定時はJSON-LDからSKU等を自動抽出。certifier/recordCustodian省略時は環境変数 SORA_GCC_* を使用するためLLMでWeb探索しないこと。不足時は既定でエラー停止し、仮置き値は即時拒否。子供用はcpc_required_insteadで警告。返却: { certificateId, mode, overallStatus, summary, counts, items, packageMarkdown, packageHtml } */
+/** 【必須・推測厳禁】米国CPSCのGCCと通関書類を作る。返却: { overallStatus, items } */
 export function generateGccCertificate(input: GenerateGccCertificateInput): Promise<GenerateGccCertificateOutput> {
   return callSora<GenerateGccCertificateOutput>({ method: 'POST', path: '/trade/gcc-generate' }, input);
 }

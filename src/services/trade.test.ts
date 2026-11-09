@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
+import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
 import { resetHtsDataForTest } from './hts_data.js';
 import {
   TradeGccIncompleteError,
@@ -11,6 +12,7 @@ import {
   checkProductCompliance,
   crossQueriesFor,
   detectProductAgeGender,
+  findCpscListCategory,
   generateGccCertificate,
   parseFiberContent,
   predictHtsCode,
@@ -525,16 +527,57 @@ describe('HTS prediction and product compliance', () => {
       expect(kidsPolyTee.testingExemption?.enforcementDiscretion).toBe(false);
     });
 
-    it('returns ACE Disclaim A (certificateRequired: false) for adult items in children-only CPSC categories (collectibles)', async () => {
-      const adultFigure = await checkCpscCertificate({
-        htsCode: '9503.00.00.90',
-        targetAge: 'adult',
-        material: 'PVC plastic',
+    describe('CPSC list categories and button cells (no age table)', () => {
+      it('requires a GCC for adult items on children’s and mattress codes instead of Disclaim A (review probes for C3 and M13)', async () => {
+        for (const [htsCode, material] of [['9403.50.90.80', 'wood'], ['9503.00.00.90', 'plastic'], ['9404.29.90.95', 'polyurethane foam']] as const) {
+          const res = await checkCpscCertificate({ htsCode, targetAge: 'adult', material });
+          expect(res.certificateRequired, htsCode).toBe(true);
+          expect(res.certificateType, htsCode).toBe('GCC');
+          expect(res.disclaimerCodeHint, htsCode).toBeUndefined();
+        }
       });
-      expect(adultFigure.certificateRequired).toBe(false);
-      expect(adultFigure.certificateType).toBe('none');
-      expect(adultFigure.eFilingRequired).toBe(false);
-      expect(adultFigure.disclaimerCodeHint).toContain('A');
+
+      it('does not cite 16 CFR 1460 for drywall or a partial list for children’s furniture (C4, I7)', async () => {
+        const drywall = await checkCpscCertificate({ htsCode: '6809.11.00.10', targetAge: 'adult', material: 'gypsum' });
+        expect(JSON.stringify(drywall)).not.toContain('1460');
+        expect(drywall.applicableRegulations.map((r) => r.cfr)).toContain('個別規格要確認');
+        const crib = await checkCpscCertificate({ htsCode: '9403.50.90.41', targetAge: 'child', material: 'wood' });
+        expect(crib.applicableRegulations.map((r) => r.cfr)).toContain('個別規格要確認');
+      });
+
+      it('cites infant sleep products as 16 CFR 1236 / 1218 / 1241', async () => {
+        const res = await checkCpscCertificate({ htsCode: '9404.90.96.22', targetAge: 'child', material: 'polyester' });
+        expect(res.applicableRegulations.map((r) => r.cfr)).toContain('16 CFR 1236 / 1218 / 1241');
+      });
+
+      it('carries the five codes the January 2026 list wraps onto a second line (M13)', () => {
+        expect(findCpscListCategory('6402.91.40.63')).toBe('Shoes');
+        expect(findCpscListCategory('8506.80.00.10')).toBe('Button Cell & Coin Batteries');
+        expect(findCpscListCategory('9401.80.20.01')).toBe('Child Chairs');
+        expect(findCpscListCategory('9404.29.90.95')).toBe('Mattresses');
+        expect(findCpscListCategory('9503.00.00.11')).toBe('Toys');
+        expect(CPSC_HTS_LIST.reduce((n, c) => n + c.htsCodes.length, 0)).toBe(591);
+      });
+
+      it('does not offer Disclaim B for a near match (B is only for enforcement discretion)', async () => {
+        const res = await checkCpscCertificate({ htsCode: '9403.60.80.40', targetAge: 'adult', material: 'wood' });
+        expect(res.disclaimerCodeHint ?? '').not.toContain('B');
+        expect(res.nextActions.join('')).not.toContain('A または B');
+      });
+
+      it('applies 16 CFR 1263 to button cells, notes the § 1263.1(c) toy exemption for children under 14, and leaves other batteries out (M5)', async () => {
+        const penlight = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin' });
+        expect(penlight.certificateRequired).toBe(true);
+        expect(penlight.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(true);
+        const teenToy = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge: 'adult', material: 'plastic', hasBattery: true, batteryType: 'button_coin' });
+        expect(teenToy.nextActions.join('')).toContain('16 CFR 1263.1(c)');
+        expect(teenToy.nextActions.join('')).toContain('14 歳未満');
+        const childToy = await checkCpscCertificate({ htsCode: '9503.00.00.73', targetAge: 'child', material: 'plastic', hasBattery: true, batteryType: 'button_coin' });
+        expect(childToy.certificateType).toBe('CCC');
+        expect(childToy.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(false);
+        const zincAir = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: true, batteryType: 'other' });
+        expect(zincAir.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(false);
+      });
     });
 
     it('applies cross-cutting 16 CFR Part 1263 (Reese’s Law / ANSI UL 4200A) GCC + eFiling to button/coin-cell consumer products without overwriting HTS to 8506', async () => {
@@ -553,7 +596,7 @@ describe('HTS prediction and product compliance', () => {
       expect(penlight.cpsc?.eFilingRequired).toBe(true);
       expect(penlight.cpsc?.applicableRegulations.some((r) => r.cfr.includes('16 CFR 1263'))).toBe(true);
 
-      // Children's toy (9503, child) with button cell remains CCC under ASTM F963 (16 CFR 1263.1(d) toy exemption)
+      // Children's toy (9503, child) with button cell remains CCC under ASTM F963 (16 CFR 1263.1(c))
       const childToy = await checkCpscCertificate({
         htsCode: '9503.00.00.73',
         targetAge: 'child',
@@ -742,11 +785,13 @@ describe('HTS prediction and product compliance', () => {
       expect(plain.inputCompleteness).toBe('complete');
     });
 
-    it('keeps the near-code category hint (Bicycle Helmets, 16 CFR 1203) with the (c)(1) text on unlisted 6506.10 headgear', async () => {
-      const res = await checkCpscCertificate({ htsCode: '6506.10.60.30', targetAge: 'adult' });
-      expect(res.missingInfo.join('')).toContain('16 CFR 1610.1(c)(1)');
-      expect(res.nextActions.join('')).toContain('"Bicycle Helmets"');
-      expect(res.nextActions.join('')).toContain('16 CFR 1203');
+    it('keeps the near-code category hint (Bicycle Helmets) with the (c)(1) text on unlisted 6506.10 headgear at every age', async () => {
+      for (const targetAge of ['adult', 'child', 'unknown'] as const) {
+        const res = await checkCpscCertificate({ htsCode: '6506.10.60.30', targetAge });
+        expect(`${res.missingInfo.join('')}${res.impactExplanation ?? ''}`, targetAge).toContain('16 CFR 1610.1(c)(1)');
+        expect(res.nextActions.join(''), targetAge).toContain('"Bicycle Helmets"');
+        expect(res.nextActions.join(''), targetAge).toContain('"6506103045"');
+      }
     });
 
     it('asks and names only the missing fabric facts', async () => {
@@ -771,6 +816,14 @@ describe('HTS prediction and product compliance', () => {
       const res = await checkProductCompliance({ productName: 'Adult Safety Helmet', description: 'Protective headgear for adults', htsCode: '6506.10.60.30', targetAge: 'adult', material: 'polycarbonate shell' });
       expect(res.cpsc?.certificateRequired).toBe('unknown');
       expect(res.summary).toContain('16 CFR 1610.1(c)(1) の条件');
+      expect(res.summary).not.toContain('類似コード');
+    });
+
+    it('summarises an unknown-age (c) result as needing only the age, the one thing it asks', async () => {
+      const res = await checkProductCompliance({ productName: 'Safety Helmet', description: 'Protective headgear', htsCode: '6506.10.60.30', targetAge: 'unknown', material: 'polycarbonate shell' });
+      expect(res.cpsc?.missingInputs).toEqual(['targetAge']);
+      expect(res.summary).toContain('対象年齢の確定が必要');
+      expect(res.summary).not.toContain('生地仕様');
       expect(res.summary).not.toContain('類似コード');
     });
   });
@@ -953,6 +1006,8 @@ describe('HTS prediction and product compliance', () => {
           htsCode: '6506.10.60.45',
           targetAge: 'adult',
           material: 'polycarbonate',
+          hasBattery: true,
+          batteryType: 'button_coin',
           manufacture: { date: '2026-10', city: 'Taichung', country: 'Taiwan' },
           testing: {
             date: '2026-10-12',
@@ -1059,14 +1114,6 @@ describe('HTS prediction and product compliance', () => {
             },
           },
           {
-            sku: 'ACR-STD-05',
-            productName: 'Character Acrylic Stand Figure (Adult Collector)',
-            description: 'Decorative desktop acrylic stand for adult collectors aged 15+',
-            htsCode: '9503.00.00.90',
-            targetAge: 'adult',
-            material: 'PMMA acrylic plastic',
-          },
-          {
             sku: 'MUG-CER-01',
             productName: 'Logo Stoneware Coffee Mug',
             description: 'Ceramic coffee mug for hot beverages',
@@ -1087,11 +1134,11 @@ describe('HTS prediction and product compliance', () => {
       expect(pkg.mode).toBe('order_package');
       expect(pkg.overallStatus).toBe('ready');
       expect(pkg.counts).toEqual({
-        totalItems: 5,
+        totalItems: 4,
         gccGenerated: 2,
         draftNeedsInfo: 0,
         disclaimBExempt: 1,
-        disclaimAExempt: 2,
+        disclaimAExempt: 1,
         cpcRequired: 0,
       });
 
@@ -1102,8 +1149,7 @@ describe('HTS prediction and product compliance', () => {
       expect(pkg.items[2].status).toBe('generated');
       expect(pkg.items[3].status).toBe('exempt_no_gcc_needed');
       expect(pkg.items[3].aceFilingGuidance.disclaimCode).toBe('A');
-      expect(pkg.items[4].status).toBe('exempt_no_gcc_needed');
-      expect(pkg.items[4].aceFilingGuidance.fdaNote).toContain('21 CFR');
+      expect(pkg.items[3].aceFilingGuidance.fdaNote).toContain('21 CFR');
 
       // Cover sheet + individual SKU documents + print page breaks
       expect(pkg.packageMarkdown).toContain('SHOP-ORD-10492');
@@ -1139,6 +1185,8 @@ describe('HTS prediction and product compliance', () => {
             htsCode: '6506.10.60.45',
             targetAge: 'adult',
             material: 'polycarbonate',
+            hasBattery: true,
+            batteryType: 'button_coin',
             manufacture: { date: '2026-05', city: `City ${xss}`, country: 'Japan' },
             testing: { date: '2026-05-10', location: `LabLoc ${xss}`, laboratoryName: `Lab ${xss}` },
           },

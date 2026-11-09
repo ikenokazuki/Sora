@@ -35,7 +35,7 @@ const post = (path: string, body: unknown) =>
 
 // 消した引数: ここに無い引数は MCP のスキーマに出ない
 const expectedProps: Record<string, string[]> = {
-  check_cpsc_certificate: ['htsCode', 'targetAge', 'material', 'fabricSurface', 'fabricWeightOzPerSqYd'],
+  check_cpsc_certificate: ['htsCode', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
   check_fda_regulated: ['htsCode', 'foodContact'],
   check_product_compliance: ['url', 'productName', 'description', 'htsCode', 'targetAge', 'material', 'productCategory', 'foodContact', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
   verify_hts_code: ['htsCode', 'productDescription'],

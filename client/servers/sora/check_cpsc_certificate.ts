@@ -8,9 +8,9 @@ export type CheckCpscCertificateInput = {
   targetAge: "adult" | "child" | "unknown";
   /** 主な素材。衣料では繊維の組成（"100% polyester" の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること */
   material?: string;
-  /** 電池・バッテリーを使用するか。不明時は省略 */
+  /** 電池を使う製品か。true で batteryType が button_coin なら 16 CFR 1263 を当てる。不明なら省略 */
   hasBattery?: boolean;
-  /** 電池種別（button_coin: ボタン・コイン電池, other: リチウムイオン等）。16 CFR 1263 横断規制判定に使用 */
+  /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。hasBattery=trueの場合のみ意味を持つ。不明なら省略 */
   batteryType?: "button_coin" | "other";
   /** 衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略 */
   fabricSurface?: "plain" | "raised";

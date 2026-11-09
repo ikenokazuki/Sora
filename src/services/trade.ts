@@ -80,78 +80,12 @@ const CPSC_PDF_SOURCE_URL =
 const CPSC_PDF_EXCERPT =
   'CPSC believes this HTS code is likely to include a product subject to a mandatory standard or is otherwise deemed high-risk. (2026年7月8日よりCBP ACEでの電子申告eFilingが完全義務化。非対象品はACE Disclaimerが必要。)';
 
-interface CpscCategoryRegulationEntry extends CpscApplicableRegulation {
-  /** all_ages: 大人向けはGCC・子供向けはCCC必須 / children_only: 12歳以下の子供向けのみCCC必須（大人向けは強制規格なし・ACE Disclaim A） */
-  regulatedScope: 'all_ages' | 'children_only';
-}
-
 /**
- * CPSC_HTS_LIST 全22カテゴリの米国連邦規則（16 CFR / CPSIA）対応表と年齢適用範囲（regulatedScope）。
+ * CPSC_HTS_LIST の category 名をキーとした、CFR上の具体的な安全規格の対応表。
+ * 実在確認済みの3カテゴリのみ収録。それ以外はCPSC_CATEGORY_FALLBACK_EXCERPTの
+ * 汎用フォールバックを使用する（存在しない規格を捏造しないため）。
  */
-const CPSC_CATEGORY_REGULATIONS: Record<string, CpscCategoryRegulationEntry> = {
-  'All-Terrain Vehicles (ATVs)': {
-    cfr: '16 CFR 1420',
-    summary: '全地形対応車（ATV）の安全基準（ANSI/SVIA 1準拠およびATVアクションプラン適合）。',
-    excerpt: 'Requirements for All-Terrain Vehicles (16 CFR Part 1420). Requires GCC for general/adult ATVs or CPC for youth ATVs.',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1420',
-    regulatedScope: 'all_ages',
-  },
-  'Bicycle Helmets': {
-    cfr: '16 CFR 1203',
-    summary: '自転車用ヘルメットの安全基準（衝撃吸収・保持ストラップ強度・視野・表示要件）。全年齢対象（大人用はGCC、12歳以下用はCCC）。',
-    excerpt: 'Safety Standard for Bicycle Helmets (16 CFR Part 1203). Applies to all bicycle helmets for adults and children.',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1203',
-    regulatedScope: 'all_ages',
-  },
-  Bicycles: {
-    cfr: '16 CFR 1512',
-    summary: '自転車の機械的安全基準（ブレーキ・ステアリング・反射材・突起物制限等）。大人用はGCC、子供用はCCCが必要。',
-    excerpt: 'Requirements for Bicycles (16 CFR Part 1512). General-use bicycles require GCC; children’s bicycles require CPC.',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1512',
-    regulatedScope: 'all_ages',
-  },
-  'Button Cell & Coin Batteries': {
-    cfr: '16 CFR 1263 (ANSI/UL 4200A)',
-    summary: 'ボタン電池・コイン電池および同電池を使用する消費者製品の安全基準（Reese’s Law: 誤飲防止構造・子供安全包装・警告表示）。',
-    excerpt: 'Safety Standard for Button Cell or Coin Batteries and Consumer Products Containing Such Batteries (16 CFR Part 1263, incorporating ANSI/UL 4200A).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1263',
-    regulatedScope: 'all_ages',
-  },
-  'CB Antennae': {
-    cfr: '16 CFR 1204',
-    summary: '市民バンド（CB）基地局用無指向性アンテナの感電防止絶縁安全基準。',
-    excerpt: 'Safety Standard for Omnidirectional Citizens Band Base Station Antennas (16 CFR Part 1204).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1204',
-    regulatedScope: 'all_ages',
-  },
-  'Carpets and Rugs': {
-    cfr: '16 CFR 1630 / 1631',
-    summary: 'カーペットおよびラグの表面可燃性基準（16 CFR 1630: 大型カーペット / 16 CFR 1631: 小型カーペット・ラグ）。',
-    excerpt: 'Standard for the Surface Flammability of Carpets and Rugs (16 CFR Part 1630) and Small Carpets and Rugs (16 CFR Part 1631).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1630',
-    regulatedScope: 'all_ages',
-  },
-  'Carriages and Strollers': {
-    cfr: '16 CFR 1227',
-    summary: 'ベビーカー・乳母車の安全基準（ASTM F833準拠）。12歳以下の乳幼児向け製品としてCPC（CCC）が必須。',
-    excerpt: 'Safety Standard for Carriages and Strollers (16 CFR Part 1227).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1227',
-    regulatedScope: 'children_only',
-  },
-  'Child Chairs': {
-    cfr: '16 CFR 1231 / 1232',
-    summary: '乳幼児用ハイチェア（16 CFR 1231）および子供用折りたたみ椅子・スツール（16 CFR 1232）の安全基準。',
-    excerpt: 'Safety Standard for High Chairs (16 CFR Part 1231) and Children’s Folding Chairs and Stools (16 CFR Part 1232).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1231',
-    regulatedScope: 'children_only',
-  },
-  'Cigarette & Multipurpose Lighters': {
-    cfr: '16 CFR 1210 / 1212',
-    summary: '使い捨て・ノベルティライター（16 CFR 1210）および多目的ライター（16 CFR 1212）のチャイルドレジスタンス安全基準。',
-    excerpt: 'Safety Standard for Cigarette Lighters (16 CFR Part 1210) and Multi-Purpose Lighters (16 CFR Part 1212).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1210',
-    regulatedScope: 'all_ages',
-  },
+const CPSC_CATEGORY_REGULATIONS: Record<string, CpscApplicableRegulation> = {
   Clothing: {
     cfr: '16 CFR 1610',
     summary:
@@ -159,98 +93,18 @@ const CPSC_CATEGORY_REGULATIONS: Record<string, CpscCategoryRegulationEntry> = {
     excerpt:
       "Standard for the Flammability of Clothing Textiles (16 CFR Part 1610). Adult apparel exempt under § 1610.1(d) is subject to CPSC's 2016 Statement of Policy on Enforcement Discretion (no GCC required). Children's sleepwear may additionally be subject to 16 CFR 1615/1616.",
     sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1610',
-    regulatedScope: 'all_ages',
-  },
-  Drywall: {
-    cfr: '16 CFR 1460 / Drywall Safety Act',
-    summary: '石膏ボード（ドライウォール）の硫黄含有量基準（ASTM C1396準拠、GCC必須）。',
-    excerpt: 'Definition of Drywall and Certification Requirements under the Drywall Safety Act of 2012 (16 CFR Part 1460).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1460',
-    regulatedScope: 'all_ages',
-  },
-  Fireworks: {
-    cfr: '16 CFR 1500.17 / 1507',
-    summary: '消費者向け花火の火薬量制限・導火線・安定性・表示安全基準（GCC必須）。',
-    excerpt: 'Fireworks Devices (16 CFR Part 1507) and Banned Hazardous Substances Regulations (16 CFR § 1500.17(a)(3), (8), (9)).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1507',
-    regulatedScope: 'all_ages',
-  },
-  'Gates and Enclosures': {
-    cfr: '16 CFR 1239',
-    summary: '乳幼児用安全ゲートおよび囲い（Expansion Gates and Expandable Enclosures）の安全基準。',
-    excerpt: 'Safety Standard for Gates and Enclosures (16 CFR Part 1239).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1239',
-    regulatedScope: 'children_only',
-  },
-  'Imitation Jewelry': {
-    cfr: '15 U.S.C. 1278a / 16 CFR 1303 / 1501',
-    summary: '子供用ジュエリーの総鉛含有量（100ppm以下）・表面塗装鉛（90ppm以下）・小部品誤飲防止規制。大人用アクセサリーはCPSC強制規格外（ACE Disclaim A）。',
-    excerpt: 'CPSIA Total Lead Content (15 U.S.C. § 1278a), Lead-Containing Paint (16 CFR Part 1303), and Small Parts (16 CFR Part 1501) for children’s jewelry.',
-    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
-    regulatedScope: 'children_only',
   },
   'Infant Sleep Products': {
     cfr: '16 CFR 1236 / 1218 / 1241',
     summary: '乳幼児用睡眠製品（16 CFR 1236）・バシネット（16 CFR 1218）・ベビーベッド用マットレス（16 CFR 1241）の安全基準。',
     excerpt: 'Safety Standard for Infant Sleep Products (16 CFR Part 1236), Bassinets and Cradles (16 CFR Part 1218), and Crib Mattresses (16 CFR Part 1241).',
     sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1236',
-    regulatedScope: 'children_only',
-  },
-  'Lawn Mowers': {
-    cfr: '16 CFR 1205',
-    summary: '歩行型動力芝刈り機のブレード接触防止・安全停止基準（GCC必須）。',
-    excerpt: 'Safety Standard for Walk-Behind Power Lawn Mowers (16 CFR Part 1205).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1205',
-    regulatedScope: 'all_ages',
-  },
-  Matchbooks: {
-    cfr: '16 CFR 1202',
-    summary: '紙マッチ（ブックマッチ）の発火部配置・着火安全性基準（GCC必須）。',
-    excerpt: 'Safety Standard for Matchbooks (16 CFR Part 1202).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1202',
-    regulatedScope: 'all_ages',
-  },
-  Mattresses: {
-    cfr: '16 CFR 1632 / 1633',
-    summary: 'マットレス・マットレスパッドの可燃性基準（16 CFR 1632: たばこ着火試験 / 16 CFR 1633: オープンフレーム着火試験）。',
-    excerpt: 'Standard for the Flammability of Mattresses and Mattress Pads (16 CFR Part 1632) and Mattress Sets (16 CFR Part 1633).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1632',
-    regulatedScope: 'all_ages',
-  },
-  'Other Children’s Furniture': {
-    cfr: '15 U.S.C. 1278a / 16 CFR 1303 / 1261',
-    summary: '子供用家具の鉛含有量・表面塗装鉛（16 CFR 1303）規制（衣類収納家具は全年齢で転倒防止基準 16 CFR 1261 の対象となる場合あり）。一般の大人用ダイニング・オフィス家具はCPSC対象外（ACE Disclaim A）。',
-    excerpt: 'CPSIA Lead and Surface Coating Standards (15 U.S.C. § 1278a; 16 CFR Part 1303) for children’s furniture.',
-    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
-    regulatedScope: 'children_only',
-  },
-  Pacifiers: {
-    cfr: '16 CFR 1511',
-    summary: '乳幼児用おしゃぶりの構造強度・通気孔・窒息防止・フタル酸エステル規制（CPC必須）。',
-    excerpt: 'Requirements for Pacifiers (16 CFR Part 1511).',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-C/part-1511',
-    regulatedScope: 'children_only',
-  },
-  'Poison Prevention Packaging': {
-    cfr: '16 CFR 1700',
-    summary: '毒物予防包装法（PPPA）に基づくチャイルドレジスタント特殊包装基準（ニコチン液・特定医薬品・家庭化学製品等、GCC必須）。',
-    excerpt: 'Poison Prevention Packaging Standards (16 CFR Part 1700) under the Poison Prevention Packaging Act.',
-    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-E/part-1700',
-    regulatedScope: 'all_ages',
-  },
-  Shoes: {
-    cfr: '15 U.S.C. 1278a / 16 CFR 1303',
-    summary: '12歳以下の子供靴に対するCPSIA総鉛・表面塗装鉛規制（CPC必須）。大人靴は 16 CFR § 1610.1(c) により衣料可燃性基準からも除外されておりGCC不要（ACE Disclaim A）。',
-    excerpt: 'CPSIA Total Lead and Surface Coating Rules (15 U.S.C. § 1278a; 16 CFR Part 1303) for children’s footwear; adult footwear is excluded under 16 CFR § 1610.1(c).',
-    sourceUrl: 'https://www.cpsc.gov/Business--Manufacturing/Business-Education/Lead',
-    regulatedScope: 'children_only',
   },
   Toys: {
     cfr: 'ASTM F963 / 16 CFR 1501',
-    summary: '玩具安全規格 ASTM F963（16 CFR 1250により強制規格化）および小部品誤飲防止基準（16 CFR 1501）。12歳以下の子供向け玩具のみ対象（15歳以上向けコレクターズフィギュア・アクリルスタンド等はACE Disclaim A）。',
-    excerpt: 'Consumer product safety standard for toys (16 CFR Part 1250 / ASTM F963) and 16 CFR Part 1501 (small parts choking hazard) for children 12 years and younger.',
+    summary: '玩具安全規格 ASTM F963（CPSIAにより強制規格化）および小部品誤飲防止基準（16 CFR 1501）。',
+    excerpt: 'Consumer product safety standard for toys (ASTM F963, incorporated by reference under CPSIA) and 16 CFR Part 1501 (small parts choking hazard).',
     sourceUrl: 'https://www.cpsc.gov/Regulations-Laws--Standards/Statutes/ASTM-F963',
-    regulatedScope: 'children_only',
   },
 };
 
@@ -403,6 +257,11 @@ function findExactMatch(normalized: string): string | undefined {
   return undefined;
 }
 
+/** CPSC の一覧の区分（数字だけにして 10 桁の完全一致で引く） */
+export function findCpscListCategory(htsCode: string): string | undefined {
+  return findExactMatch(htsCode.replace(/\D/g, ''));
+}
+
 /** 先頭6桁(HS Subheadingレベル)一致で近似カテゴリ・類似コードを検索 */
 function findNearMatch(normalized: string): { category: string; similarCode: string } | undefined {
   const prefix6 = normalized.slice(0, 6);
@@ -429,15 +288,6 @@ function cpscListRegulation(htsCode: string, category: string): CpscApplicableRe
   };
 }
 
-function toPublicReg(entry: CpscCategoryRegulationEntry): CpscApplicableRegulation {
-  return {
-    cfr: entry.cfr,
-    summary: entry.summary,
-    excerpt: entry.excerpt,
-    sourceUrl: entry.sourceUrl,
-  };
-}
-
 /** HTSコードおよび横断製品属性（電池・年齢・生地仕様）からCPSC適合証明書(GCC/CCC)の要否とeFiling義務を判定 */
 export async function checkCpscCertificate(
   options: CpscCertificateCheckOptions,
@@ -449,11 +299,11 @@ export async function checkCpscCertificate(
   const normalized = normalizeHtsCode(htsCode);
   const exactCategory = findExactMatch(normalized);
   const nearMatch = exactCategory ? undefined : findNearMatch(normalized);
-  const matchedCategory = exactCategory ?? nearMatch?.category;
+  const isToy = (exactCategory ?? nearMatch?.category) === 'Toys';
 
   // 1. 横断規制: ボタン電池・コイン電池内蔵または使用製品 (Reese's Law, 16 CFR Part 1263 / ANSI UL 4200A)
-  //    ※ 16 CFR § 1263.1(d) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
-  const isChildToy = (exactCategory === 'Toys' || nearMatch?.category === 'Toys') && options.targetAge === 'child';
+  //    ※ 16 CFR § 1263.1(c) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
+  const isChildToy = isToy && options.targetAge === 'child';
   if (options.hasBattery === true && options.batteryType === 'button_coin' && !isChildToy) {
     const missingInfo: string[] = [];
     const missingInputs: string[] = [];
@@ -466,12 +316,7 @@ export async function checkCpscCertificate(
     const certType: CpscCertificateCheckResult['certificateType'] =
       options.targetAge === 'unknown' ? 'unknown' : options.targetAge === 'child' ? 'CCC' : 'GCC';
     const regs: CpscApplicableRegulation[] = [REESES_LAW_REGULATION];
-    if (exactCategory && exactCategory !== 'Button Cell & Coin Batteries' && CPSC_CATEGORY_REGULATIONS[exactCategory]) {
-      const catReg = CPSC_CATEGORY_REGULATIONS[exactCategory];
-      if (catReg.regulatedScope === 'all_ages' || options.targetAge !== 'adult') {
-        regs.push(toPublicReg(catReg));
-      }
-    }
+    if (exactCategory && CPSC_CATEGORY_REGULATIONS[exactCategory]) regs.push(CPSC_CATEGORY_REGULATIONS[exactCategory]);
     return {
       certificateRequired: true,
       certificateType: certType,
@@ -480,6 +325,9 @@ export async function checkCpscCertificate(
       missingInfo,
       nextActions: [
         `Reese’s Law（16 CFR Part 1263 / ANSI/UL 4200A-2023）への適合試験結果に基づき、製品本来のHTSコード（"${htsCode}"）のまま ${certType === 'unknown' ? 'GCC（大人用）またはCCC（子供用）' : certType} を発行し、CBP ACEシステムへeFilingしてください（※単体電池コード 8506 への書き換えは関税分類違反となるため不要です）。`,
+        ...(isToy && options.targetAge === 'adult'
+          ? ['14 歳未満の子供の遊び道具で 16 CFR 1250 の電池の要件に合うものは、16 CFR 1263.1(c) により part 1263 の対象外です（その場合は 16 CFR 1250 を当てます）。']
+          : []),
       ],
       disclaimer: DISCLAIMER,
       inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
@@ -499,7 +347,7 @@ export async function checkCpscCertificate(
     ? exactCategory === 'Clothing' || exactCategory === 'Shoes'
     : isWearingApparelChapter(normalized) || section1610c !== undefined;
   if (isApparel) {
-    const clothingReg = toPublicReg(CPSC_CATEGORY_REGULATIONS.Clothing);
+    const clothingReg = CPSC_CATEGORY_REGULATIONS.Clothing;
     // CPSC の一覧は、一覧に載っているコードにだけ出典として付ける
     const listedRegs = exactCategory ? [cpscListRegulation(htsCode, exactCategory)] : [];
     const d = evaluate1610d(options);
@@ -510,6 +358,11 @@ export async function checkCpscCertificate(
       ? undefined
       : d.exemption && { ...d.exemption, enforcementDiscretion: options.targetAge === 'adult' && d.exemption.exempt };
     const cCondition = section1610c && `${section1610c.citation} の条件（${section1610c.text}）`;
+    // 一覧に無いコードの、同じ 6 桁の区分（衣料・履物の区分は 16 CFR 1610 の答えそのものなので除く。例: 6506.10 の Bicycle Helmets）
+    const nearCategoryHint =
+      nearMatch && nearMatch.category !== 'Clothing' && nearMatch.category !== 'Shoes'
+        ? [`同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearMatch.category}" カテゴリに CPSC の一覧のコード "${nearMatch.similarCode}" があります。この区分に当たるかも確かめてください。`]
+        : [];
 
     if (options.targetAge === 'unknown') {
       // (c) の見出しは、大人なら (c) の条件、子供なら CPC で決まり、生地では答えが変わらない
@@ -522,7 +375,7 @@ export async function checkCpscCertificate(
         applicableRegulations: [...listedRegs, clothingReg],
         testingExemption,
         missingInfo: [`対象年齢（大人用か12歳以下子供用か）${facts}の確認が必要です。`],
-        nextActions: [`対象年齢層${facts}を確認して再判定してください。`, ...(section1610c ? [] : nameNotes)],
+        nextActions: [`対象年齢層${facts}を確認して再判定してください。`, ...(section1610c ? [] : nameNotes), ...nearCategoryHint],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'partial',
         missingInputs: ['targetAge', ...(fabric?.missingInputs ?? [])],
@@ -556,6 +409,7 @@ export async function checkCpscCertificate(
           ? [
               '12歳以下の子供向け製品として、CPSC認定第三者試験機関での試験（CPSIAの鉛・小部品等）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
               '条件に当たれば CPC に 16 CFR 1610 は要りません。当たらなければ 16 CFR 1610 も要ります。',
+              ...nearCategoryHint,
             ]
           : [
               '12歳以下の子供用衣料品として、CPSC認定第三者試験機関での試験（16 CFR 1610.1(d) 免除該当生地でもCPSIA鉛・小部品等、寝間着なら 16 CFR 1615/1616）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
@@ -573,7 +427,7 @@ export async function checkCpscCertificate(
     }
 
     // 2b. 大人の帽子・手袋・履物の見出し: 16 CFR 1610.1(c) の条件に当たるかは HTS でもこの道具の引数でも分からないので、条件と、
-    //     条件に当たらないときの (d) の答えを返す。近いコードの区分（例: 6506.10 の Bicycle Helmets）の案内も残す
+    //     条件に当たらないときの (d) の答えを返す
     if (section1610c) {
       const ifNot = d.exemption?.exempt
         ? `条件に当たらないときは、${d.exemption.reason}81 FR 12587 の執行裁量で GCC と eFiling は要りません（ACE Disclaim B / Intended Use Code 130.006）。`
@@ -582,8 +436,6 @@ export async function checkCpscCertificate(
           : `条件に当たらないときは、16 CFR 1610.1(d) の試験の免除に当たるかで決まります。${
               askFabric ? d.clarifyingQuestions.join('') : 'check_cpsc_certificate に繊維の組成・生地の表面・重さを渡すと決まります。'
             }`;
-      const nearCategory = nearMatch?.category === 'Clothing' || nearMatch?.category === 'Shoes' ? undefined : nearMatch;
-      const nearCfr = nearCategory && CPSC_CATEGORY_REGULATIONS[nearCategory.category]?.cfr;
       return {
         certificateRequired: 'unknown',
         certificateType: 'unknown',
@@ -594,11 +446,7 @@ export async function checkCpscCertificate(
           '条件に当たれば 16 CFR 1610 の対象外です。ほかに当てはまる規則が無ければ GCC は要りません（CPSC の一覧のコードなら ACE で Disclaim A を送れます。Intended Use Code も要ります）。当たらなければ 16 CFR 1610 の対象です。',
           ifNot,
           ...nameNotes,
-          ...(nearCategory
-            ? [
-                `同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearCategory.category}" カテゴリ${nearCfr ? `（${nearCfr}）` : ''}に CPSC の一覧のコード "${nearCategory.similarCode}" があります。この区分に当たるかも確かめてください。`,
-              ]
-            : []),
+          ...nearCategoryHint,
         ],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'complete',
@@ -664,28 +512,10 @@ export async function checkCpscCertificate(
     };
   }
 
-  // 3. 子供専用規制カテゴリ（Toys, Shoes, Imitation Jewelry, Other Children's Furniture 等）で大人向け（adult）が確定している場合 -> GCC不要・ACE Disclaim A
-  if (matchedCategory && CPSC_CATEGORY_REGULATIONS[matchedCategory]?.regulatedScope === 'children_only' && options.targetAge === 'adult') {
-    return {
-      certificateRequired: false,
-      certificateType: 'none',
-      eFilingRequired: false,
-      applicableRegulations: [],
-      disclaimerCodeHint: 'A (Not Regulated - Adult Product Outside Children’s Standard)',
-      missingInfo: [],
-      nextActions: [
-        `カテゴリ "${matchedCategory}" のCPSC安全規格（${CPSC_CATEGORY_REGULATIONS[matchedCategory].cfr}）は12歳以下の子供向け製品専用であり、大人・一般向け製品にはCPSC強制規格が存在しないためGCCの発行は不要（不可）です。CBP ACE通関時は Disclaimer Code A（規制対象外）を通関業者へ指示してください。`,
-      ],
-      disclaimer: DISCLAIMER,
-      inputCompleteness: 'complete',
-    };
-  }
-
   if (exactCategory) {
     const missingInfo: string[] = [];
     const missingInputs: string[] = [];
     const clarifyingQuestions: string[] = [];
-    const catReg = CPSC_CATEGORY_REGULATIONS[exactCategory];
 
     if (options.targetAge === 'unknown') {
       missingInfo.push('targetAge（対象年齢層）が不明です。子供向け製品か否かで適用される安全基準・証明書種別が変わります。');
@@ -704,9 +534,7 @@ export async function checkCpscCertificate(
     const inputCompleteness: 'complete' | 'partial' = missingInputs.length > 0 ? 'partial' : 'complete';
     const impactExplanation =
       options.targetAge === 'unknown'
-        ? catReg?.regulatedScope === 'children_only'
-          ? `対象年齢が未確定のため証明書要否を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成・2026年7月完全義務化のeFilingが必須ですが、大人・15歳以上コレクター向け等の場合はCPSC規制対象外（GCC不要・ACE Disclaimer A）となります。`
-          : '対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。'
+        ? '対象年齢が未確定のため証明書種別を確定できません。12歳以下の子供向け製品の場合はCPSC認定第三者試験機関による適合性試験とCPC（Children’s Product Certificate）作成、および2026年7月完全義務化のeFilingが必要です。大人向けの場合は一般適合証明書(GCC)となります。'
         : missingInputs.length > 0
           ? '主要素材が未指定のため、鉛・フタル酸エステル含有量規制や可燃性試験などの個別安全規格への該当性を精緻に特定できていません。'
           : undefined;
@@ -717,14 +545,12 @@ export async function checkCpscCertificate(
       eFilingRequired: options.targetAge !== 'unknown',
       applicableRegulations: [
         cpscListRegulation(htsCode, exactCategory),
-        catReg
-          ? toPublicReg(catReg)
-          : {
-              cfr: '個別規格要確認',
-              summary: `"${exactCategory}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
-              excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
-              sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
-            },
+        CPSC_CATEGORY_REGULATIONS[exactCategory] ?? {
+          cfr: '個別規格要確認',
+          summary: `"${exactCategory}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
+          excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
+          sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
+        },
       ],
       missingInfo,
       nextActions:
@@ -765,12 +591,11 @@ export async function checkCpscCertificate(
           sourceUrl: CPSC_PDF_SOURCE_URL,
         },
       ],
-      disclaimerCodeHint: 'A (Not Regulated) または B (Not Subject to Mandatory Standard)',
       missingInfo: [
         `HTSコード "${htsCode}" は完全一致しないが、同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearMatch.category}" カテゴリにCPSC対象コード "${nearMatch.similarCode}" が存在する。個別確認を推奨。`,
       ],
       nextActions: [
-        `類似カテゴリ "${nearMatch.category}" の証明書要否をCPSC公式または専門家に個別確認してください。規制対象外であることが確認できた場合は、通関ブローカーへACE免責申告（Disclaimerコード A または B）を指示してください。`,
+        `類似カテゴリ "${nearMatch.category}" の証明書要否をCPSC公式または専門家に個別確認してください。規制対象外であることが確認できた場合は、通関ブローカーへACE免責申告（Disclaim A。Disclaimer には Intended Use Code も要ります）を指示してください。`,
       ],
       disclaimer: DISCLAIMER,
       inputCompleteness: 'partial',
@@ -2111,12 +1936,14 @@ function buildIntegratedActionPlan(
     actionPlan.push(...cpscResult.nextActions);
   } else if (cpscResult.certificateRequired === 'unknown' && cpscResult.missingInfo.length > 0) {
     isPotentialAction = true;
-    // 大人の帽子・手袋・履物の見出し（聞ける引数が無い）は 16 CFR 1610.1(c) の条件の確認
-    const section1610c = cpscResult.missingInputs?.length ? undefined : section1610cExclusionFor(htsResult.htsCode);
+    // 帽子・手袋・履物の見出しで確かめるのは、大人なら 16 CFR 1610.1(c) の条件（聞ける引数が無い）、年齢が不明なら年齢だけ
+    const section1610c = section1610cExclusionFor(htsResult.htsCode);
     summaryParts.push(
-      section1610c
-        ? `CPSC個別確認推奨（${section1610c.citation} の条件の確認が必要）`
-        : 'CPSC個別確認推奨（類似コード・生地仕様または対象年齢の確定が必要）',
+      !section1610c
+        ? 'CPSC個別確認推奨（類似コード・生地仕様または対象年齢の確定が必要）'
+        : cpscResult.missingInputs?.length
+          ? 'CPSC個別確認推奨（対象年齢の確定が必要）'
+          : `CPSC個別確認推奨（${section1610c.citation} の条件の確認が必要）`,
     );
     actionPlan.push(...cpscResult.nextActions);
   }

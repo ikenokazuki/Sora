@@ -139,7 +139,7 @@
     "name": "generate_gcc_certificate",
     "fn": "generateGccCertificate",
     "category": "trade",
-    "description": "【必須・推測/サンプル厳禁】米国CPSC一般適合証明書（GCC: 16 CFR Part 1110）および発送後通関パッケージ（カバーシート＋SKU別GCC・16 CFR 1610.1(d)免除シート）出力。URL指定時はJSON-LDからSKU等を自動抽出。certifier/recordCustodian省略時は環境変数 SORA_GCC_* を使用するためLLMでWeb探索しないこと。不足時は既定でエラー停止し、仮置き値は即時拒否。子供用はcpc_required_insteadで警告。返却: { certificateId, mode, overallStatus, summary, counts, items, packageMarkdown, packageHtml }",
+    "description": "【必須・推測厳禁】米国CPSCのGCCと通関書類を作る。返却: { overallStatus, items }",
     "keywords": [
       "GCC",
       "General Certificate of Conformity",
