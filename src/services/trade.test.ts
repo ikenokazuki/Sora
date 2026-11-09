@@ -653,7 +653,7 @@ describe('HTS prediction and product compliance', () => {
       expect(childToy.eFilingRequired).toBe(true);
     });
 
-    it('clarifies FDA FCS tableware is exempt from Prior Notice under 21 CFR 1.276(b)(5) while flagging dual FDA + CPSC CCC for children’s mugs', async () => {
+    it('clarifies FDA FCS tableware is exempt from Prior Notice under 21 CFR 1.276(b)(5)(i)(A) while flagging dual FDA + CPSC CCC for children’s mugs', async () => {
       const adultMugFda = checkFdaRegulated({
         htsCode: '6912.00.44.00',
         foodContact: true,

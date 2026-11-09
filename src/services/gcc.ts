@@ -63,7 +63,7 @@ export interface GccItemSummary {
   /** B のとき '130.006' */
   intendedUseCode?: string;
   filingNote: string;
-  /** FDA の注記（英語。表紙と同じ文）。FDA が関わるときだけ。適合したとは書かない */
+  /** FDA の注記（英語。表紙は同じ文を表の下に 1 回だけ出す）。FDA が関わるときだけ。適合したとは書かない */
   fdaNote?: string;
   missingFields?: string[];
   clarifyingQuestions?: string[];
@@ -104,7 +104,7 @@ const FILING_NOTE = {
   generated: 'ACE の CPSC の PGA Message Set で GCC のデータを送ります（Full PGA Message Set か Product Registry の参照。16 CFR 1110.13(a)(1)）。郵便（EMS など）で送る品は、着く前に Product Registry に入れます。',
   draft: '下書きです。missingFields を記録から埋めるまで ACE に送らないでください。',
   disclaimB: 'ACE で Disclaim B と Intended Use Code 130.006 を送ります（16 CFR 1610.1(d) の免除の大人の衣料。81 FR 12587）。',
-  disclaimA: 'ACE で Disclaim A を送れます（任意）。Disclaimer には Intended Use Code が要ります（CBP の Appendix R から選ぶ。例 130.XXX）。',
+  disclaimA: 'ACE で Disclaim A を送れます（任意）。Disclaimer には Intended Use Code が要ります（CATAIR の Disclaimer PG01 の Note 1。CBP の Appendix R から選ぶ。例 130.XXX の Consumer Use as a Non-Food Product、ただし 130.001-005 は除く）。',
   notListed: 'CPSC の一覧に無い HTS コードで、証明者は当てはまる規則が無いとしています。CPSC のデータは送りません（規則が当てはまるなら GCC が要ります）。',
   cpc: '12 歳以下の子供用なので CPC が要ります（このツールは CPC を作りません）。',
 };
@@ -182,14 +182,22 @@ function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER'
   }
 }
 
-/** FDA の注記。HTS と foodContact から言えること（Prior Notice の要否・FD フラグ）だけを書き、FDA への適合は書かない */
+/**
+ * FDA の注記（英語）。HTS と foodContact から言えることだけを書き、FDA への適合は書かない。
+ * 食品接触の用途が未指定の食器コードと、章からの推定は、そう書く。表紙は同じ文を表の下に 1 回だけ出す
+ */
 function fdaNoteFor(htsCode: string, foodContact?: boolean): string | undefined {
   const fda = checkFdaRegulated({ htsCode, foodContact });
-  const fcs = fda.possiblePrograms.includes('FCS') || fda.fdFlag === 'FD1';
   if (fda.fdaRegulatedLikely === true) {
-    if (fcs)
-      return 'FDA FD1 (food contact article): no Prior Notice — food contact substances are not food for Prior Notice (21 CFR 1.276(b)(5)(i)(A)). Give the manufacturer’s name and address for the MID on the invoice.';
-    return `FDA ${fda.fdFlag} (${fda.possiblePrograms.join(', ')})${fda.priorNoticeRequired ? ' — Prior Notice is required before arrival.' : ''}`;
+    if (fda.possiblePrograms.includes('FCS') || fda.fdFlag === 'FD1') {
+      return foodContact === undefined
+        ? 'FDA FD1: food contact use not stated — if it touches food, no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); if not, file the FDA disclaimer.'
+        : 'FDA FD1: no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); the MID needs the manufacturer’s name and address.';
+    }
+    const flag = `FDA ${fda.fdFlag} (${fda.possiblePrograms.join(', ')})`;
+    return fda.confidence === 'chapter-level-estimate'
+      ? `${flag}: estimated from the HTS chapter, confirm the item.${fda.priorNoticeRequired ? ' If it is food, Prior Notice is required before arrival.' : ''}`
+      : `${flag}${fda.priorNoticeRequired ? ' — Prior Notice is required before arrival.' : ''}`;
   }
   if (fda.fdaRegulatedLikely === false && fda.fdFlag === 'FD1') return 'FDA FD1: not for food contact — file the FDA disclaimer.';
 }

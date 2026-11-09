@@ -381,7 +381,10 @@ describe('exemption statements, cover sheet and FDA note', () => {
   /** 表紙（最初の節） */
   const cover = (html: string) => html.split('<section')[1] ?? '';
   const MUG: GccItemInput = { htsCode: '6912.00.44.00', productName: 'Stoneware Coffee Mug', identifier: 'MUG-1', targetAge: 'adult', foodContact: true, citations: [] };
-  const FCS_NOTE = 'FDA FD1 (food contact article): no Prior Notice — food contact substances are not food for Prior Notice (21 CFR 1.276(b)(5)(i)(A)). Give the manufacturer’s name and address for the MID on the invoice.';
+  const FCS_NOTE = 'FDA FD1: no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); the MID needs the manufacturer’s name and address.';
+  const FCS_UNSTATED = 'FDA FD1: food contact use not stated — if it touches food, no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); if not, file the FDA disclaimer.';
+  const title = (html: string) => html.match(/<title>(.*?)<\/title>/)?.[1];
+  const authority = (html: string) => html.match(/<small>(.*?)<\/small>/)?.[1];
 
   it('writes the Disclaim B statement with the 2016 policy’s exact title, citation and effective date (C5)', async () => {
     const html = (await generateGccCertificate({ items: [TEE] })).packageHtml;
@@ -415,7 +418,8 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(res.packageHtml).toContain('Intended Use Code');
     expect(res.packageHtml).toContain('Appendix R');
     expect(res.packageHtml).toContain('Statement — No CPSC Certificate Required');
-    expect(res.packageHtml).toContain('Disclaim A may be filed. Every disclaimer needs an Intended Use Code (CATAIR, PG01 Note 1): choose it from CBP Appendix R, e.g. 130.XXX For Consumer Use as a Non-Food Product.');
+    expect(res.packageHtml).toContain('Disclaim A may be filed. Every disclaimer needs an Intended Use Code (CATAIR, Disclaimer PG01 Note 1): choose it from CBP Appendix R, e.g. 130.XXX For Consumer Use as a Non-Food Product (besides 130.001-005).');
+    expect(res.items[0].filingNote).toContain('130.001-005'); // 130.001-005 は子供の年齢帯の別のコード（CATAIR の除外）
     expect(res.packageHtml).toContain('The certifier states that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product.');
   });
 
@@ -429,18 +433,28 @@ describe('exemption statements, cover sheet and FDA note', () => {
   });
 
   it('does not claim FDA compliance for a mug without test data (review probe for C6)', async () => {
-    const res = await generateGccCertificate({ orderNumber: 'ORDER-1002', items: [MUG] });
+    const res = await generateGccCertificate({ orderNumber: 'ORDER-1002', items: [MUG, { ...MUG, identifier: 'MUG-2' }] });
     expect(res.items[0].fdaNote).toContain('21 CFR 1.276(b)(5)(i)(A)');
     expect(res.packageHtml).not.toMatch(/compl(?:y|ies) with FDA/i);
     expect(res.items[0].fdaNote).toBe(FCS_NOTE);
-    expect(cover(res.packageHtml)).toContain(FCS_NOTE); // JSON と表紙で同じ文
+    // 表紙は同じ文を表の下に 1 回だけ出し、行には印（番号）を付ける
+    const top = cover(res.packageHtml);
+    expect(top.split(FCS_NOTE).length - 1).toBe(1);
+    expect(top).toContain(`<b>Note 1:</b> ${FCS_NOTE}`);
+    expect(top.match(/<td>1<\/td><\/tr>/g)?.length).toBe(2);
   });
 
   it('words the FDA note from checkFdaRegulated and leaves it out where FDA is not involved', async () => {
     const note = async (item: Partial<GccItemInput>) => (await generateGccCertificate({ allowDraft: true, items: [{ ...MUG, ...item }] })).items[0].fdaNote;
     expect(await note({ foodContact: false })).toBe('FDA FD1: not for food contact — file the FDA disclaimer.');
+    expect(await note({ foodContact: true })).toBe(FCS_NOTE);
     expect(await note({ htsCode: '3304.99.50.00', productName: 'Face Cream', foodContact: undefined })).toBe('FDA FD2 (COS)');
-    expect(await note({ htsCode: '0901.21.00.00', productName: 'Roasted Coffee', foodContact: undefined })).toBe('FDA FD4 (FOO) — Prior Notice is required before arrival.');
+    // 章からの推定は推定と書く（章に FDA の対象でない品が混ざる）
+    expect(await note({ htsCode: '0901.21.00.00', productName: 'Roasted Coffee', foodContact: undefined })).toBe('FDA FD4 (FOO): estimated from the HTS chapter, confirm the item. If it is food, Prior Notice is required before arrival.');
+    expect(await note({ htsCode: '9002.11.90.00', productName: 'Camera Lens', foodContact: undefined })).toBe('FDA FD2 (DEV): estimated from the HTS chapter, confirm the item.');
+    // 食品接触の用途が分からない食器コードは、食品接触品と決めつけない
+    expect(await note({ htsCode: '7013.99.90.00', productName: 'Decorative Glass Vase', foodContact: undefined })).toBe(FCS_UNSTATED);
+    expect(await note({ htsCode: '7013.99.90.00', productName: 'Drinking Glass', foodContact: true })).toBe(FCS_NOTE);
     expect(await note({ htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', foodContact: undefined })).toBeUndefined();
     const helmet = await generateGccCertificate({ orderNumber: 'ORDER-1004', items: [{ ...HELMET, citations: [] }, TEE] });
     expect(cover(helmet.packageHtml)).not.toMatch(/FDA FD/);
@@ -469,7 +483,7 @@ describe('exemption statements, cover sheet and FDA note', () => {
     for (const v of [res.packageId, res.generatedAt, 'ORDER-1005', 'TEST-AWB-0002', 'Courier', 'INV-1', '<b>Certifier:</b> Acme Imports LLC']) expect(top).toContain(v);
     expect(top).not.toContain('compliance@acme-imports.test');
     expect(top).toContain('<tr><th>Line</th><th>Product</th><th>Identifier</th><th>HTS</th><th>CPSC</th><th>Note</th></tr>');
-    for (const v of [`GCC attached (${res.items[0].certificateId})`, 'Disclaim B, IUC 130.006 (statement attached)', 'Disclaim A — IUC required', 'No CPSC data (HTS code not on CPSC list)', 'HOLD — CPC required', FCS_NOTE]) expect(top).toContain(v);
+    for (const v of [`GCC attached (${res.items[0].certificateId})`, 'Disclaim B, IUC 130.006 (statement attached)', 'Disclaim A — IUC required', 'No CPSC data (HTS code not on CPSC list)', 'HOLD — CPC required', `<b>Note 1:</b> ${FCS_NOTE}`]) expect(top).toContain(v);
     expect(top.match(/<td class="n">\d+<\/td>/g)?.length).toBe(6);
     // 表紙のあとに、GCC・Disclaim B・CPC の節だけを続ける（Disclaim A の節は付けない）
     expect(res.packageHtml.match(/<section/g)?.length).toBe(4);
@@ -491,6 +505,14 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(cover(unknownAge.packageHtml)).toContain('<b>Certifier:</b> [MISSING: certifier]');
     const nameless = await generateGccCertificate({ allowDraft: true, orderNumber: 'ORDER-1007', certifier: { ...CERTIFIER, name: undefined }, recordCustodian: CUSTODIAN, items: [HELMET] });
     expect(cover(nameless.packageHtml)).toContain('<b>Certifier:</b> [MISSING: certifier.name]');
+    const noCustodian = await generateGccCertificate({ allowDraft: true, orderNumber: 'ORDER-1007', certifier: CERTIFIER, items: [HELMET, { ...HELMET, identifier: undefined }] });
+    expect(cover(noCustodian.packageHtml)).toContain('DRAFT — missing: recordCustodian</td>'); // 証明者は渡されているので、名前を挙げない
+    expect(cover(noCustodian.packageHtml)).toContain('DRAFT — missing: identifier, recordCustodian</td>');
+    expect(cover(noCustodian.packageHtml)).not.toContain('missing: certifier');
+    const partly = await generateGccCertificate({ allowDraft: true, orderNumber: 'ORDER-1007', certifier: { name: 'Caller Brand Inc.' }, recordCustodian: CUSTODIAN, items: [HELMET] });
+    expect(cover(partly.packageHtml)).toContain('DRAFT — missing: certifier</td>'); // 欠けた項目は証明書の表の印が示す
+    const noParties = await generateGccCertificate({ allowDraft: true, orderNumber: 'ORDER-1007', items: [HELMET] });
+    expect(cover(noParties.packageHtml)).toContain('DRAFT — missing: certifier, recordCustodian</td>');
     const given = await generateGccCertificate({ orderNumber: 'ORDER-1007', certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
     expect(cover(given.packageHtml)).toContain('<b>Certifier:</b> Acme Imports LLC');
     expect(cover(given.packageHtml)).not.toContain('[MISSING');
@@ -511,5 +533,51 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(css.length).toBeLessThanOrEqual(1500);
     expect(css).toContain('page-break-before:always;break-before:page');
     expect(html).not.toContain('class="page"');
+  });
+
+  it('titles each paper by what it is, and only a certificate is titled "GCC" (I1)', async () => {
+    const dresser: GccItemInput = { htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult', citations: [] };
+    const blocks: GccItemInput = { htsCode: '9503.00.00.73', productName: 'Wooden Blocks', identifier: 'BLK-1', targetAge: 'child' };
+    expect(title((await generateGccCertificate({ items: [TEE] })).packageHtml)).toBe('Statement of Exemption — Adult Polyester T-Shirt');
+    expect(title((await generateGccCertificate({ items: [dresser] })).packageHtml)).toBe('No CPSC Certificate — Wooden Dresser');
+    expect(title((await generateGccCertificate({ items: [blocks] })).packageHtml)).toBe('CPC Required — Wooden Blocks');
+    expect(title((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] })).packageHtml)).toBe('GCC — Adult Bicycle Helmet');
+    expect(title((await generateGccCertificate({ allowDraft: true, items: [HELMET] })).packageHtml)).toBe('DRAFT GCC — Adult Bicycle Helmet');
+    // 注文は、GCC が 1 つも無くても表紙の題
+    expect(title((await generateGccCertificate({ orderNumber: 'ORDER-2', items: [TEE, blocks] })).packageHtml)).toBe('Customs Clearance Summary — ORDER-2');
+    expect(title((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, awbNumber: 'TEST-AWB-0003', items: [HELMET, TEE] })).packageHtml)).toBe('Customs Clearance Summary — TEST-AWB-0003');
+  });
+
+  it('heads each paper with its own authority, not the certificate part (I2)', async () => {
+    const dresser: GccItemInput = { htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult', citations: [] };
+    const blocks: GccItemInput = { htsCode: '9503.00.00.73', productName: 'Wooden Blocks', identifier: 'BLK-1', targetAge: 'child' };
+    expect(authority((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] })).packageHtml)).toBe('16 CFR Part 1110');
+    expect(authority((await generateGccCertificate({ allowDraft: true, items: [HELMET] })).packageHtml)).toBe('16 CFR Part 1110');
+    expect(authority((await generateGccCertificate({ items: [TEE] })).packageHtml)).toBe('16 CFR 1610.1(d)');
+    expect(authority((await generateGccCertificate({ items: [dresser] })).packageHtml)).toBe('CPSC eFiling');
+    expect(authority((await generateGccCertificate({ items: [blocks] })).packageHtml)).toBe('16 CFR Part 1107');
+    const order = (await generateGccCertificate({ orderNumber: 'ORDER-3', items: [TEE, blocks] })).packageHtml;
+    expect(order).not.toContain('16 CFR Part 1110');
+  });
+
+  it('names the declaring certifier on a Disclaim A statement, as on Disclaim B (M1)', async () => {
+    const dresser: GccItemInput = { htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult', citations: [] };
+    const given = (await generateGccCertificate({ certifier: CERTIFIER, items: [dresser] })).packageHtml;
+    expect(given).toContain('Declared by');
+    expect(given).toContain('compliance@acme-imports.test');
+    expect((await generateGccCertificate({ items: [dresser] })).packageHtml).not.toContain('Declared by');
+  });
+
+  it('keeps 10 and 50 food-contact items within the response targets (35,000 and 150,000 characters), with each FDA note once on the cover (I4)', async () => {
+    const mug = (i: number): GccItemInput => ({ ...HELMET, htsCode: '6912.00.44.00', productName: `Adult Stoneware Mug Model ${i}`, identifier: `MUG-${String(i).padStart(4, '0')}`, foodContact: true, citations: ['16 CFR 1303'] });
+    const make = (n: number) => generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, orderNumber: 'ORDER-1009', items: Array.from({ length: n }, (_, i) => mug(i + 1)) });
+    const ten = await make(10);
+    expect(ten.counts.gccGenerated).toBe(10);
+    expect(JSON.stringify(ten).length).toBeLessThanOrEqual(35_000);
+    const fifty = await make(50);
+    expect(fifty.counts.gccGenerated).toBe(50);
+    expect(fifty.items.every((item) => item.fdaNote === FCS_NOTE)).toBe(true);
+    expect(cover(fifty.packageHtml).split(FCS_NOTE).length - 1).toBe(1);
+    expect(JSON.stringify(fifty).length).toBeLessThanOrEqual(150_000);
   });
 });

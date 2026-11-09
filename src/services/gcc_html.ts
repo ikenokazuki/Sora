@@ -53,6 +53,8 @@ function partyHtml(party?: GccParty, miss?: Miss, prefix = '', whole = true): st
 }
 
 function section(options: {
+  /** 題の上の小さな見出し（その紙の根拠の条文） */
+  authority: string;
   badgeKind: 'ready' | 'draft' | 'exempt-b' | 'exempt-a' | 'cpc';
   badgeText: string;
   title: string;
@@ -66,7 +68,7 @@ function section(options: {
   const { summary, input } = options;
   const subtitle = options.subtitle ?? `Line ${summary.line}${summary.identifier ? ` • ${idLabel(input)}: ${summary.identifier}` : ''} • HTS: ${summary.htsCode}`;
   const rows = options.rows.map(([num, label, value]) => `<tr><td class="n">${escapeHtml(num)}</td><th>${escapeHtml(label)}</th><td>${value}</td></tr>`).join('');
-  return `<section class="card"><header><div><small>16 CFR Part 1110</small><h1>${escapeHtml(options.title)}</h1><p>${escapeHtml(subtitle)}</p></div><span class="badge ${options.badgeKind}">${escapeHtml(options.badgeText)}</span></header><table>${rows}</table>${options.footerNote ? `<p class="foot">${escapeHtml(options.footerNote)}</p>` : ''}</section>`;
+  return `<section class="card"><header><div><small>${escapeHtml(options.authority)}</small><h1>${escapeHtml(options.title)}</h1><p>${escapeHtml(subtitle)}</p></div><span class="badge ${options.badgeKind}">${escapeHtml(options.badgeText)}</span></header><table>${rows}</table>${options.footerNote ? `<p class="foot">${escapeHtml(options.footerNote)}</p>` : ''}</section>`;
 }
 
 function productHtml({ input, summary }: GccRenderItem, miss?: Miss): string {
@@ -126,6 +128,7 @@ function certificateSection(item: GccRenderItem, render: GccRenderInput): string
   const covered = (key: string) => [...marked].some((m) => key === m || key.startsWith(`${m}.`));
   const unmarked = (summary.missingFields ?? []).filter((k) => !covered(k));
   return section({
+    authority: '16 CFR Part 1110',
     badgeKind: isDraft ? 'draft' : 'ready',
     badgeText: isDraft ? 'DRAFT — NOT VALID' : 'GCC',
     title: isDraft ? 'DRAFT General Certificate of Conformity — not valid' : 'General Certificate of Conformity',
@@ -146,6 +149,7 @@ function exemptBSection(item: GccRenderItem, render: GccRenderInput): string {
   const basis = citation === '16 CFR 1610.1(d)(1)' ? `Fabric: plain surface, ${input.fabricWeightOzPerSqYd} oz/sq yd` : `Fiber content: ${input.material}`;
   const policy = ADULT_APPAREL_GCC_POLICY;
   return section({
+    authority: '16 CFR 1610.1(d)',
     badgeKind: 'exempt-b',
     badgeText: 'ACE DISCLAIM B (IUC 130.006)',
     title: 'Statement of Exemption — Adult Wearing Apparel (16 CFR 1610.1(d))',
@@ -164,16 +168,17 @@ function exemptBSection(item: GccRenderItem, render: GccRenderInput): string {
 }
 
 /** Disclaim A（1 品のときだけ紙にする。注文のときは表紙の行だけ） */
-function noGccSection(item: GccRenderItem): string {
+function noGccSection(item: GccRenderItem, render: GccRenderInput): string {
   const { input, summary, exclusion1610c } = item;
   const basis = exclusion1610c
     ? `Not subject to 16 CFR 1610 under ${exclusion1610c.citation}: ${exclusion1610c.text}. The certifier states that no other CPSC rule requiring a certificate applies.`
     : 'The certifier states that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product.';
   const ace =
     summary.disclaimCode === 'A'
-      ? 'Disclaim A may be filed. Every disclaimer needs an Intended Use Code (CATAIR, PG01 Note 1): choose it from CBP Appendix R, e.g. 130.XXX For Consumer Use as a Non-Food Product.'
+      ? 'Disclaim A may be filed. Every disclaimer needs an Intended Use Code (CATAIR, Disclaimer PG01 Note 1): choose it from CBP Appendix R, e.g. 130.XXX For Consumer Use as a Non-Food Product (besides 130.001-005).'
       : 'The HTS code is not on CPSC’s eFiling list; no CPSC data is filed.';
   return section({
+    authority: 'CPSC eFiling',
     badgeKind: 'exempt-a',
     badgeText: summary.disclaimCode === 'A' ? 'NO GCC (DISCLAIM A)' : 'NO GCC',
     title: 'Statement — No CPSC Certificate Required',
@@ -183,6 +188,7 @@ function noGccSection(item: GccRenderItem): string {
       ['Product', productHtml(item)],
       ['Basis', escapeHtml(basis)],
       ['ACE', escapeHtml(ace)],
+      ...(render.certifier ? ([['Declared by', partyHtml(render.certifier)]] as Array<[string, string]>) : []),
     ]),
   });
 }
@@ -190,6 +196,7 @@ function noGccSection(item: GccRenderItem): string {
 function cpcSection(item: GccRenderItem): string {
   const { input, summary } = item;
   return section({
+    authority: '16 CFR Part 1107',
     badgeKind: 'cpc',
     badgeText: 'CPC REQUIRED (NO GCC)',
     title: 'Children’s Product — CPC Required (no GCC issued)',
@@ -210,19 +217,22 @@ function itemSection(item: GccRenderItem, render: GccRenderInput): string {
     case 'exempt_disclaim_b':
       return exemptBSection(item, render);
     case 'exempt_no_gcc_needed':
-      return noGccSection(item);
+      return noGccSection(item, render);
     case 'cpc_required_instead':
       return cpcSection(item);
   }
 }
 
+/** 当事者に欠けがあれば、その当事者の名前 1 つ（欠けた項目は証明書の表の印が示す。表紙は短く保つ） */
+const partyGap = (prefix: string, party?: GccParty) => (PARTY_FIELDS.every((f) => party?.[f]) ? [] : [prefix]);
+
 /** 表紙の CPSC の列 */
-function coverAction(summary: GccItemSummary): string {
+function coverAction(summary: GccItemSummary, render: GccRenderInput): string {
   switch (summary.status) {
     case 'generated':
       return `GCC attached (${summary.certificateId})`;
     case 'draft_needs_info':
-      return `DRAFT — missing: ${(summary.missingFields ?? []).join(', ') || 'certifier / custodian'}`;
+      return `DRAFT — missing: ${[...(summary.missingFields ?? []), ...partyGap('certifier', render.certifier), ...partyGap('recordCustodian', render.recordCustodian)].join(', ')}`;
     case 'exempt_disclaim_b':
       return 'Disclaim B, IUC 130.006 (statement attached)';
     case 'exempt_no_gcc_needed':
@@ -250,10 +260,13 @@ function coverSection(render: GccRenderInput): string {
       ] as const
     ).map(([label, value]) => value && `<b>${label}:</b> ${value}`),
   );
+  // 同じ FDA の注記は表の下に 1 回だけ出し、行には番号の印を付ける（食器が 50 品でも表が膨らまない）
+  const notes = [...new Set(items.map(({ summary }) => summary.fdaNote).filter((n): n is string => !!n))];
   const rows = items
-    .map(({ summary: s }) => `<tr><td class="n">${s.line}</td><td>${escapeHtml(s.productName)}</td><td>${escapeHtml(s.identifier || '-')}</td><td>${escapeHtml(s.htsCode)}</td><td>${escapeHtml(coverAction(s))}</td><td>${escapeHtml(s.fdaNote)}</td></tr>`)
+    .map(({ summary: s }) => `<tr><td class="n">${s.line}</td><td>${escapeHtml(s.productName)}</td><td>${escapeHtml(s.identifier || '-')}</td><td>${escapeHtml(s.htsCode)}</td><td>${escapeHtml(coverAction(s, render))}</td><td>${s.fdaNote ? notes.indexOf(s.fdaNote) + 1 : ''}</td></tr>`)
     .join('');
-  return `<section class="card"><header><div><small>Customs Broker / Courier Clearance</small><h1>Customs Clearance Summary — CPSC (and FDA) PGA</h1></div><span class="badge ready">${items.length} LINE(S)</span></header><p class="meta">${meta}</p><table><tr><th>Line</th><th>Product</th><th>Identifier</th><th>HTS</th><th>CPSC</th><th>Note</th></tr>${rows}</table></section>`;
+  const footnotes = notes.length ? `<p class="foot">${notes.map((n, i) => `<b>Note ${i + 1}:</b> ${escapeHtml(n)}`).join('<br>')}</p>` : '';
+  return `<section class="card"><header><div><small>Customs Broker / Courier Clearance</small><h1>Customs Clearance Summary — CPSC (and FDA) PGA</h1></div><span class="badge ready">${items.length} LINE(S)</span></header><p class="meta">${meta}</p><table><tr><th>Line</th><th>Product</th><th>Identifier</th><th>HTS</th><th>CPSC</th><th>Note</th></tr>${rows}</table>${footnotes}</section>`;
 }
 
 const PRINT_CSS =
@@ -265,7 +278,10 @@ export function renderGccPackageHtml(input: GccRenderInput): string {
     input.mode === 'order_package'
       ? [coverSection(input), ...input.items.filter((i) => i.summary.status !== 'exempt_no_gcc_needed').map((i) => itemSection(i, input))]
       : input.items.map((i) => itemSection(i, input));
-  const title = input.mode === 'order_package' ? `US Customs & CPSC GCC Package — ${input.order.orderNumber || input.order.awbNumber || input.packageId}` : `${input.items[0]?.summary.status === 'draft_needs_info' ? 'DRAFT ' : ''}GCC — ${input.items[0]?.summary.productName}`;
+  const first = input.items[0]?.summary;
+  // 印刷の見出しや PDF の名前に使われる。証明書だけを GCC と呼ぶ
+  const prefix = { generated: 'GCC', draft_needs_info: 'DRAFT GCC', exempt_disclaim_b: 'Statement of Exemption', exempt_no_gcc_needed: 'No CPSC Certificate', cpc_required_instead: 'CPC Required' }[first?.status ?? 'generated'];
+  const title = input.mode === 'order_package' ? `Customs Clearance Summary — ${input.order.orderNumber || input.order.awbNumber || input.packageId}` : `${prefix} — ${first?.productName}`;
   const body = sections.join('');
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title><style>${PRINT_CSS}</style></head><body>${body}</body></html>`;
 }
