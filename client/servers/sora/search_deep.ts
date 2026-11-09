@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type SearchDeepInput = {
-  /** 検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向") */
+  /** 検索キーワード (例: "TypeScript 5.5 新機能", "最新AI動向")。対象の名前に加えて、知りたいことを表す語（出身大学・発売日・価格など）も入れる。evidence のハイライトはこの語で本文の根拠を選ぶため、名前だけでは答えの節を落としやすい */
   query: string;
   /** 本文取得する上位結果件数 (デフォルト: 5, 最大: 20)。取得に失敗したページは次の候補で補うため results が limit を超えることがあり、adaptiveScrape:true では証拠不足の間 scrapeBudget まで増える。X 投稿は別枠 (realtimeLimit) */
   limit?: number;

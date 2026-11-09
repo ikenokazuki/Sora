@@ -66,12 +66,12 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
-2026-11-09 に測り直した（GCC を作るツール `generate_gcc_certificate` を足した後。前の値は 2026-11-06、v4.1.0 の引数の監査と細かい修正の後の既定 21,764・全ツール（52 ツール）58,757・`instructions` 8,922）。
+2026-11-10 に測り直した（GCC を作るツール `generate_gcc_certificate` を足し、`search_deep` の `query` の説明を増やした後。前の値は 2026-11-06、v4.1.0 の引数の監査と細かい修正の後の既定 21,764・全ツール（52 ツール）58,757・`instructions` 8,922）。
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 22,269 |
-| 全ツール（53 ツール） | 63,529 |
+| 既定（14 ツール） | 22,358 |
+| 全ツール（53 ツール） | 63,618 |
 | `instructions` | 8,948 |
 
 `search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,574 文字（2026-11-06 の測り直しと同じ）。
