@@ -4156,7 +4156,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
   it('checkCpscCertificate should fall back to a 6-digit near match when the full HTS code is unmapped', async () => {
     // 実在コード 9503000073 の統計接尾辞だけ変えた架空コード（先頭6桁 "950300" は一致する）
-    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'child' });
+    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'adult' });
     expect(result.certificateRequired).toBe('unknown');
     expect(result.missingInfo.some((m) => m.includes('950300') || m.includes('Toys'))).toBe(true);
   });
@@ -4383,7 +4383,7 @@ describe('Sora REST & MCP Endpoints', () => {
     // 規制非該当・未掲載品（ネジ等）: ACE免責コードAを提示
     const resUnmapped = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
     expect(resUnmapped.eFilingRequired).toBe(false);
-    expect(resUnmapped.disclaimerCodeHint).toContain('A');
+    expect(resUnmapped.disclaimerCodeHint).toBe('A (only if confirmed that no CPSC rule applies; Intended Use Code required)');
   });
 
   it('POST /trade/hts-predict should return the classification, the official position, the evidence and the PGA analysis', async () => {

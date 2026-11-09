@@ -288,6 +288,23 @@ function cpscListRegulation(htsCode: string, category: string): CpscApplicableRe
   };
 }
 
+/** ASTM F963 は 14 歳未満、16 CFR 1501 は 3 歳未満の規則なので、大人の Toys には「当たる」と書かず、この案内を添える */
+const ADULT_TOY_REGULATION_NOTE =
+  'CPSC の一覧の玩具のコードです。ASTM F963（16 CFR 1250）は 14 歳未満の遊び道具、16 CFR 1501 は 3 歳未満向けの品の規則です。対象の年齢に合わせて、当たる規則を確かめてください。';
+
+/** 区分の規則の行。表に無い区分と大人の Toys は「個別規格要確認」 */
+function cpscCategoryRegulation(category: string, targetAge: CpscCertificateCheckOptions['targetAge']): CpscApplicableRegulation {
+  const curated = category === 'Toys' && targetAge === 'adult' ? undefined : CPSC_CATEGORY_REGULATIONS[category];
+  return (
+    curated ?? {
+      cfr: '個別規格要確認',
+      summary: `"${category}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
+      excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
+      sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
+    }
+  );
+}
+
 /** HTSコードおよび横断製品属性（電池・年齢・生地仕様）からCPSC適合証明書(GCC/CCC)の要否とeFiling義務を判定 */
 export async function checkCpscCertificate(
   options: CpscCertificateCheckOptions,
@@ -299,11 +316,16 @@ export async function checkCpscCertificate(
   const normalized = normalizeHtsCode(htsCode);
   const exactCategory = findExactMatch(normalized);
   const nearMatch = exactCategory ? undefined : findNearMatch(normalized);
-  const isToy = (exactCategory ?? nearMatch?.category) === 'Toys';
+  // 一覧に無いコードの、同じ 6 桁の区分の案内（例: 6506.10 の Bicycle Helmets）
+  const nearCategoryHint = nearMatch
+    ? [`同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearMatch.category}" カテゴリに CPSC の一覧のコード "${nearMatch.similarCode}" があります。この区分に当たるかも確かめてください。`]
+    : [];
+  const isAdultToy = exactCategory === 'Toys' && options.targetAge === 'adult';
 
   // 1. 横断規制: ボタン電池・コイン電池内蔵または使用製品 (Reese's Law, 16 CFR Part 1263 / ANSI UL 4200A)
   //    ※ 16 CFR § 1263.1(c) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
-  const isChildToy = isToy && options.targetAge === 'child';
+  //    （Toys と同じ 6 桁なだけのコードは玩具と決まらないので、ここで除かない）
+  const isChildToy = exactCategory === 'Toys' && options.targetAge === 'child';
   if (options.hasBattery === true && options.batteryType === 'button_coin' && !isChildToy) {
     const missingInfo: string[] = [];
     const missingInputs: string[] = [];
@@ -316,7 +338,7 @@ export async function checkCpscCertificate(
     const certType: CpscCertificateCheckResult['certificateType'] =
       options.targetAge === 'unknown' ? 'unknown' : options.targetAge === 'child' ? 'CCC' : 'GCC';
     const regs: CpscApplicableRegulation[] = [REESES_LAW_REGULATION];
-    if (exactCategory && CPSC_CATEGORY_REGULATIONS[exactCategory]) regs.push(CPSC_CATEGORY_REGULATIONS[exactCategory]);
+    if (exactCategory && CPSC_CATEGORY_REGULATIONS[exactCategory]) regs.push(cpscCategoryRegulation(exactCategory, options.targetAge));
     return {
       certificateRequired: true,
       certificateType: certType,
@@ -325,7 +347,8 @@ export async function checkCpscCertificate(
       missingInfo,
       nextActions: [
         `Reese’s Law（16 CFR Part 1263 / ANSI/UL 4200A-2023）への適合試験結果に基づき、製品本来のHTSコード（"${htsCode}"）のまま ${certType === 'unknown' ? 'GCC（大人用）またはCCC（子供用）' : certType} を発行し、CBP ACEシステムへeFilingしてください（※単体電池コード 8506 への書き換えは関税分類違反となるため不要です）。`,
-        ...(isToy && options.targetAge === 'adult'
+        ...(isAdultToy ? [ADULT_TOY_REGULATION_NOTE] : []),
+        ...(isAdultToy || nearMatch?.category === 'Toys'
           ? ['14 歳未満の子供の遊び道具で 16 CFR 1250 の電池の要件に合うものは、16 CFR 1263.1(c) により part 1263 の対象外です（その場合は 16 CFR 1250 を当てます）。']
           : []),
       ],
@@ -358,11 +381,8 @@ export async function checkCpscCertificate(
       ? undefined
       : d.exemption && { ...d.exemption, enforcementDiscretion: options.targetAge === 'adult' && d.exemption.exempt };
     const cCondition = section1610c && `${section1610c.citation} の条件（${section1610c.text}）`;
-    // 一覧に無いコードの、同じ 6 桁の区分（衣料・履物の区分は 16 CFR 1610 の答えそのものなので除く。例: 6506.10 の Bicycle Helmets）
-    const nearCategoryHint =
-      nearMatch && nearMatch.category !== 'Clothing' && nearMatch.category !== 'Shoes'
-        ? [`同じ6桁分類 (${normalized.slice(0, 6)}) の "${nearMatch.category}" カテゴリに CPSC の一覧のコード "${nearMatch.similarCode}" があります。この区分に当たるかも確かめてください。`]
-        : [];
+    // 衣料・履物の区分の案内は 16 CFR 1610 の答えそのものなので出さない
+    const nearHint = nearMatch?.category === 'Clothing' || nearMatch?.category === 'Shoes' ? [] : nearCategoryHint;
 
     if (options.targetAge === 'unknown') {
       // (c) の見出しは、大人なら (c) の条件、子供なら CPC で決まり、生地では答えが変わらない
@@ -375,7 +395,7 @@ export async function checkCpscCertificate(
         applicableRegulations: [...listedRegs, clothingReg],
         testingExemption,
         missingInfo: [`対象年齢（大人用か12歳以下子供用か）${facts}の確認が必要です。`],
-        nextActions: [`対象年齢層${facts}を確認して再判定してください。`, ...(section1610c ? [] : nameNotes), ...nearCategoryHint],
+        nextActions: [`対象年齢層${facts}を確認して再判定してください。`, ...(section1610c ? [] : nameNotes), ...nearHint],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'partial',
         missingInputs: ['targetAge', ...(fabric?.missingInputs ?? [])],
@@ -409,7 +429,7 @@ export async function checkCpscCertificate(
           ? [
               '12歳以下の子供向け製品として、CPSC認定第三者試験機関での試験（CPSIAの鉛・小部品等）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
               '条件に当たれば CPC に 16 CFR 1610 は要りません。当たらなければ 16 CFR 1610 も要ります。',
-              ...nearCategoryHint,
+              ...nearHint,
             ]
           : [
               '12歳以下の子供用衣料品として、CPSC認定第三者試験機関での試験（16 CFR 1610.1(d) 免除該当生地でもCPSIA鉛・小部品等、寝間着なら 16 CFR 1615/1616）に基づき CPC（CCC）を発行し、CBP ACEへeFilingしてください。',
@@ -446,7 +466,7 @@ export async function checkCpscCertificate(
           '条件に当たれば 16 CFR 1610 の対象外です。ほかに当てはまる規則が無ければ GCC は要りません（CPSC の一覧のコードなら ACE で Disclaim A を送れます。Intended Use Code も要ります）。当たらなければ 16 CFR 1610 の対象です。',
           ifNot,
           ...nameNotes,
-          ...nearCategoryHint,
+          ...nearHint,
         ],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'complete',
@@ -545,12 +565,7 @@ export async function checkCpscCertificate(
       eFilingRequired: options.targetAge !== 'unknown',
       applicableRegulations: [
         cpscListRegulation(htsCode, exactCategory),
-        CPSC_CATEGORY_REGULATIONS[exactCategory] ?? {
-          cfr: '個別規格要確認',
-          summary: `"${exactCategory}" カテゴリに適用される具体的な安全規格（可燃性・小部品・磁石・鉛/フタル酸エステル等）はCPSC公式ガイダンスで個別に確認してください。`,
-          excerpt: CPSC_CATEGORY_FALLBACK_EXCERPT,
-          sourceUrl: CPSC_GUIDANCE_SOURCE_URL,
-        },
+        cpscCategoryRegulation(exactCategory, options.targetAge),
       ],
       missingInfo,
       nextActions:
@@ -558,6 +573,7 @@ export async function checkCpscCertificate(
           ? ['不足情報（対象年齢など）を補って再判定してください。']
           : [
               `${certificateType}を発行し、CBP ACEシステムへeFilingしてください（申告方式: フルPGAメッセージセット送信、またはCPSC Product Registry事前登録による参照送信）。`,
+              ...(isAdultToy ? [ADULT_TOY_REGULATION_NOTE] : []),
             ],
       disclaimer: DISCLAIMER,
       inputCompleteness,
@@ -567,7 +583,8 @@ export async function checkCpscCertificate(
     };
   }
 
-  if (nearMatch) {
+  // 子供の近いコードは、一覧に無いコードの子供の答え（下の CPC）に近いコードの案内を添える
+  if (nearMatch && options.targetAge !== 'child') {
     const missingInputs: string[] = [];
     const clarifyingQuestions: string[] = [];
     if (options.targetAge === 'unknown') {
@@ -622,6 +639,7 @@ export async function checkCpscCertificate(
       missingInfo: [],
       nextActions: [
         `HTSコード "${htsCode}" はCPSC重点HTSリスト外ですが、12歳以下の子供向け製品（Children’s Product）であるため CPSIA（総鉛含有量 15 U.S.C. § 1278a・表面塗装鉛 16 CFR 1303・トラッキングラベル等）が適用されます。CPSC認定第三者試験機関での試験に基づき CPC（CCC）を発行し、CBP ACE へ eFiling してください。`,
+        ...nearCategoryHint,
       ],
       disclaimer: DISCLAIMER,
       inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
@@ -639,7 +657,7 @@ export async function checkCpscCertificate(
     certificateType: 'unknown',
     eFilingRequired: false,
     applicableRegulations: [],
-    disclaimerCodeHint: 'A (Not Regulated by CPSC)',
+    disclaimerCodeHint: 'A (only if confirmed that no CPSC rule applies; Intended Use Code required)',
     missingInfo: [
       `HTSコード "${htsCode}" はCPSC公式HTSリストに掲載がありません。ただしこのリストは非網羅的であり、掲載が無いことは証明書不要を意味しません。`,
     ],

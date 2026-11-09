@@ -535,6 +535,8 @@ describe('HTS prediction and product compliance', () => {
           expect(res.certificateType, htsCode).toBe('GCC');
           expect(res.disclaimerCodeHint, htsCode).toBeUndefined();
         }
+        const unknownAge = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge: 'unknown', material: 'plastic' });
+        expect(unknownAge.impactExplanation).not.toContain('Disclaim');
       });
 
       it('does not cite 16 CFR 1460 for drywall or a partial list for children’s furniture (C4, I7)', async () => {
@@ -560,9 +562,54 @@ describe('HTS prediction and product compliance', () => {
       });
 
       it('does not offer Disclaim B for a near match (B is only for enforcement discretion)', async () => {
-        const res = await checkCpscCertificate({ htsCode: '9403.60.80.40', targetAge: 'adult', material: 'wood' });
-        expect(res.disclaimerCodeHint ?? '').not.toContain('B');
-        expect(res.nextActions.join('')).not.toContain('A または B');
+        for (const targetAge of ['adult', 'unknown'] as const) {
+          const res = await checkCpscCertificate({ htsCode: '9403.60.80.40', targetAge, material: 'wood' });
+          expect(res.certificateRequired, targetAge).toBe('unknown');
+          expect(res.disclaimerCodeHint, targetAge).toBeUndefined();
+          expect(res.nextActions.join(''), targetAge).not.toContain('A または B');
+          expect(res.nextActions.join(''), targetAge).toContain('Disclaim A。Disclaimer には Intended Use Code も要ります');
+        }
+      });
+
+      it('answers a child on a near code like a child on an unlisted code (CPC), keeping the near-code hint', async () => {
+        const res = await checkCpscCertificate({ htsCode: '9403.60.80.40', targetAge: 'child', material: 'wood' });
+        expect(res.certificateRequired).toBe(true);
+        expect(res.certificateType).toBe('CCC');
+        expect(res.eFilingRequired).toBe(true);
+        expect(res.disclaimerCodeHint).toBeUndefined();
+        expect(res.nextActions.join('')).toContain('"Other Children’s Furniture"');
+        expect(res.nextActions.join('')).toContain('"9403608010"');
+        expect(res.nextActions.join('')).not.toContain('Disclaim');
+      });
+
+      it('keeps 16 CFR 1263 for a child on a code that only shares six digits with a Toys code, and shows the § 1263.1(c) note', async () => {
+        const res = await checkCpscCertificate({ htsCode: '8543.70.99.99', targetAge: 'child', hasBattery: true, batteryType: 'button_coin' });
+        expect(res.certificateRequired).toBe(true);
+        expect(res.certificateType).toBe('CCC');
+        expect(res.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(true);
+        expect(res.nextActions.join('')).toContain('16 CFR 1263.1(c)');
+        expect(res.disclaimerCodeHint).toBeUndefined();
+      });
+
+      const ADULT_TOY_NOTE = 'CPSC の一覧の玩具のコードです。ASTM F963（16 CFR 1250）は 14 歳未満の遊び道具、16 CFR 1501 は 3 歳未満向けの品の規則です。対象の年齢に合わせて、当たる規則を確かめてください。';
+
+      it('does not list the toy rules as applying to an adult on a Toys code, and keeps them for a child or an unknown age', async () => {
+        const adult = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge: 'adult', material: 'plastic' });
+        expect(adult.certificateRequired).toBe(true);
+        expect(adult.certificateType).toBe('GCC');
+        expect(adult.eFilingRequired).toBe(true);
+        expect(adult.applicableRegulations.map((r) => r.cfr)).toContain('個別規格要確認');
+        expect(adult.applicableRegulations.map((r) => r.cfr)).not.toContain('ASTM F963 / 16 CFR 1501');
+        expect(adult.nextActions).toContain(ADULT_TOY_NOTE);
+        const button = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge: 'adult', material: 'plastic', hasBattery: true, batteryType: 'button_coin' });
+        expect(button.applicableRegulations.map((r) => r.cfr)).not.toContain('ASTM F963 / 16 CFR 1501');
+        expect(button.applicableRegulations.map((r) => r.cfr)).toContain('個別規格要確認');
+        expect(button.nextActions).toContain(ADULT_TOY_NOTE);
+        for (const targetAge of ['child', 'unknown'] as const) {
+          const res = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge, material: 'plastic' });
+          expect(res.applicableRegulations.map((r) => r.cfr), targetAge).toContain('ASTM F963 / 16 CFR 1501');
+          expect(res.nextActions, targetAge).not.toContain(ADULT_TOY_NOTE);
+        }
       });
 
       it('applies 16 CFR 1263 to button cells, notes the § 1263.1(c) toy exemption for children under 14, and leaves other batteries out (M5)', async () => {
@@ -1211,7 +1258,7 @@ describe('checkCpscCertificate on a code the CPSC list does not carry', () => {
     expect(JSON.stringify(res)).not.toContain('productCategory');
     // 案内は CPSC への個別確認と免責コードの申告に向かう
     expect(res.nextActions.join('')).toContain('CPSC公式に個別確認');
-    expect(res.disclaimerCodeHint).toContain('A');
+    expect(res.disclaimerCodeHint).toBe('A (only if confirmed that no CPSC rule applies; Intended Use Code required)');
   });
 
   it('says "CPSC公式に個別確認" once, in nextActions, and keeps the other fields to their own point', async () => {
