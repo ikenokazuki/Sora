@@ -623,6 +623,14 @@ describe('HTS prediction and product compliance', () => {
         const zincAir = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: true, batteryType: 'other' });
         expect(zincAir.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(false);
       });
+
+      it('counts an explicit button_coin as a battery without hasBattery, and rejects it with hasBattery: false', async () => {
+        const alone = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'button_coin' });
+        expect(alone.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(true);
+        const other = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'other' });
+        expect(other.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(false);
+        await expect(checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      });
     });
 
     it('applies cross-cutting 16 CFR Part 1263 (Reese’s Law / ANSI UL 4200A) GCC + eFiling to button/coin-cell consumer products without overwriting HTS to 8506', async () => {

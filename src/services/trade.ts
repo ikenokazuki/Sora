@@ -313,6 +313,9 @@ export async function checkCpscCertificate(
   if (!htsCode) {
     throw new Error('htsCode is required for CPSC certificate check');
   }
+  if (options.hasBattery === false && options.batteryType === 'button_coin') {
+    throw new TradeInputError('batteryType が button_coin なのに hasBattery が false です。どちらかを直してください', 'INVALID_INPUT');
+  }
   const normalized = normalizeHtsCode(htsCode);
   const exactCategory = findExactMatch(normalized);
   const nearMatch = exactCategory ? undefined : findNearMatch(normalized);
@@ -326,7 +329,7 @@ export async function checkCpscCertificate(
   //    ※ 16 CFR § 1263.1(c) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
   //    （Toys と同じ 6 桁なだけのコードは玩具と決まらないので、ここで除かない）
   const isChildToy = exactCategory === 'Toys' && options.targetAge === 'child';
-  if (options.hasBattery === true && options.batteryType === 'button_coin' && !isChildToy) {
+  if (options.batteryType === 'button_coin' && !isChildToy) {
     const missingInfo: string[] = [];
     const missingInputs: string[] = [];
     const clarifyingQuestions: string[] = [];
@@ -2025,7 +2028,7 @@ export async function checkProductCompliance(
     cpscResult,
   );
 
-  if (options.hasBattery === true && options.batteryType === 'button_coin') {
+  if (options.batteryType === 'button_coin') {
     actionPlan.push(
       '【CPSC ボタン電池・コイン電池】ボタン電池・コイン電池を使う製品は、誤飲防止の規則（Reese’s Law, 16 CFR 1263）の包装・警告表示・性能基準への適合確認が必要です。',
     );

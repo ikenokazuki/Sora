@@ -128,43 +128,76 @@ function trimDeep<T>(value: T): T {
   return value;
 }
 
-const GCC_PLACEHOLDER_PATTERNS: RegExp[] = [
-  /@example\.|\.example\b/i,
-  /\b(?:sample|dummy|placeholder|tbd|todo|unknown|unverified|fictional|mock|fake|probably|estimated?|approx(?:imately)?)\b/i,
-  /^(?:n\/?a|none|null|undefined|-+|\?+|xxx+)$/i,
-  /0000-0000|\b000-0000\b/,
-  /\[(?:missing|required|insert|tbd|todo)\b/i,
-  /(?:サンプル|ダミー|仮置き|仮入力|未定|不明|架空)/,
-];
+// 見本・仮置きと見なすのは、値全体が見本の語のとき・型の差し込み口・予約された名前（RFC 2606・6761）・電話でない数字だけ。語が値の一部にあるだけ（"Sample & Co. GmbH"）は通す
+const PLACEHOLDER_WORD = /^(?:n\/a|none|null|nil|undefined|unknown|tbd|tba|todo|sample|dummy|placeholder|test|example|x+|-+|\?+|\.{2,}|…+)$/i;
+const PLACEHOLDER_WORD_JA = /^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し)$/;
+const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^}]*\}\}/i;
+const RESERVED_DOMAIN = /(?:^|\.)example\.(?:com|net|org)$|\.(?:example|invalid|localhost)$/;
+const FAKE_EMAIL = /^(?:test|sample|dummy|fake|example)@(?:test|sample|dummy|fake|example)(?:\.|$)/i;
 
-function isPlaceholderGccValue(val?: string): boolean {
-  const trimmed = val?.trim();
-  if (!trimmed) return false;
-  return GCC_PLACEHOLDER_PATTERNS.some((re) => re.test(trimmed));
+function isPlaceholderValue(value: string, kind?: 'email' | 'phone'): boolean {
+  if (PLACEHOLDER_WORD.test(value) || PLACEHOLDER_WORD_JA.test(value) || TEMPLATE_SLOT.test(value)) return true;
+  if (kind === 'email') return RESERVED_DOMAIN.test(value.slice(value.lastIndexOf('@') + 1).toLowerCase()) || FAKE_EMAIL.test(value);
+  if (kind === 'phone') {
+    const digits = value.replace(/\D/g, '');
+    return digits.length < 7 || /(\d)\1{6}/.test(digits);
+  }
+  return false;
 }
 
-/** 見本・仮置きの値を拒否する。呼び出し側が渡した値だけを見る（サーバーの環境変数の値は見ない） */
-function assertNoPlaceholderValues(options: GenerateGccCertificateOptions): void {
-  const partyChecks = (prefix: string, party?: GccParty): Array<[string, string | undefined]> =>
-    PARTY_FIELDS.map((f) => [`${prefix}.${f}`, party?.[f]]);
-  const checks: Array<[string, string | undefined]> = [
-    ...partyChecks('certifier', options.certifier),
-    ...partyChecks('recordCustodian', options.recordCustodian),
-    ...options.items.flatMap((item, i): Array<[string, string | undefined]> => [
-      [`items[${i}].identifier`, item.identifier],
-      [`items[${i}].manufacture.date`, item.manufacture?.date],
-      ...partyChecks(`items[${i}].manufacture`, item.manufacture),
-      [`items[${i}].testing.date`, item.testing?.date],
-      [`items[${i}].testing.reportNumber`, item.testing?.reportNumber],
-      ...(item.testing?.parties ?? []).flatMap((party, j) => partyChecks(`items[${i}].testing.parties[${j}]`, party)),
-    ]),
-  ];
-  const bad = checks.filter(([, v]) => isPlaceholderGccValue(v)).map(([k]) => k);
-  if (bad.length > 0) {
-    throw new TradeInputError(
-      `GCC法定項目にサンプル・仮置き・不確定な値が含まれているため拒否しました (${bad.join(', ')})。15 U.S.C. § 2068(a)(6) により推測値や仮置きデータでの証明書生成は厳禁です。実在の確定レコードのみを指定してください。`,
-      'UNVERIFIED_PLACEHOLDER_INPUT',
+/** YYYY-MM か YYYY-MM-DD で、実在し、地球上でいちばん進んだ今日（UTC+14）より先でない */
+function isValidGccDate(date: string): boolean {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(date);
+  if (!m) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : undefined];
+  if (year < 1900 || month < 1 || month > 12) return false;
+  if (day !== undefined) {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return false;
+  }
+  return date <= new Date(Date.now() + 14 * 3_600_000).toISOString().slice(0, date.length);
+}
+
+/**
+ * 呼び出し側が渡した文字列の確かめ（商品ページを読む前に行う）。見本・仮置きに見える値は 400、日付の形と未来の日付も 400。
+ * サーバーの SORA_GCC_*（運営者の設定）と、注文の番号は見ない
+ */
+function assertGccInputs(options: GenerateGccCertificateOptions): void {
+  type Check = [path: string, value: string | undefined, kind?: 'email' | 'phone'];
+  const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' ? f : undefined]);
+  const dates: Check[] = [];
+  const checks: Check[] = [...party('certifier', options.certifier), ...party('recordCustodian', options.recordCustodian)];
+  options.items.forEach((item, i) => {
+    const at = `items[${i}]`;
+    if (item.hasBattery === false && item.batteryType === 'button_coin') {
+      throw new TradeInputError(`${at}: batteryType が button_coin なのに hasBattery が false です。どちらかを直してください`, 'INVALID_INPUT');
+    }
+    const manufactureDate: Check = [`${at}.manufacture.date`, item.manufacture?.date];
+    const testingDate: Check = [`${at}.testing.date`, item.testing?.date];
+    dates.push(manufactureDate, testingDate);
+    checks.push(
+      [`${at}.productName`, item.productName],
+      [`${at}.identifier`, item.identifier],
+      [`${at}.brand`, item.brand],
+      [`${at}.description`, item.description],
+      [`${at}.material`, item.material],
+      ...(item.citations ?? []).map((c, k): Check => [`${at}.citations[${k}]`, c]),
+      ...party(`${at}.manufacture`, item.manufacture),
+      manufactureDate,
+      testingDate,
+      [`${at}.testing.reportNumber`, item.testing?.reportNumber],
+      ...(item.testing?.parties ?? []).flatMap((p, j) => party(`${at}.testing.parties[${j}]`, p)),
     );
+  });
+  // 空の値は「足りない」であって、見本ではない
+  const offending = (list: Check[], bad: (value: string, kind?: 'email' | 'phone') => boolean) => list.filter(([, value, kind]) => value?.trim() && bad(value.trim(), kind)).map(([path]) => path);
+  const placeholders = offending(checks, isPlaceholderValue);
+  if (placeholders.length > 0) {
+    throw new TradeInputError(`GCC の項目に見本・仮置きに見える値があります（${placeholders.join(', ')}）。記録の値だけを渡してください。`, 'UNVERIFIED_PLACEHOLDER_INPUT');
+  }
+  const badDates = offending(dates, (value) => !isValidGccDate(value));
+  if (badDates.length > 0) {
+    throw new TradeInputError(`日付は YYYY-MM か YYYY-MM-DD の、実在する未来でない日にしてください（${badDates.join(', ')}）。`, 'INVALID_INPUT');
   }
 }
 
@@ -195,6 +228,7 @@ function fdaNoteFor(htsCode: string, foodContact?: boolean): string | undefined 
         : 'FDA FD1: no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); the MID needs the manufacturer’s name and address.';
     }
     const flag = `FDA ${fda.fdFlag} (${fda.possiblePrograms.join(', ')})`;
+    if (fda.missingInputs?.includes('foodUsage')) return `${flag}: food use not stated — if it is food, Prior Notice is required before arrival.`;
     return fda.confidence === 'chapter-level-estimate'
       ? `${flag}: estimated from the HTS chapter, confirm the item.${fda.priorNoticeRequired ? ' If it is food, Prior Notice is required before arrival.' : ''}`
       : `${flag}${fda.priorNoticeRequired ? ' — Prior Notice is required before arrival.' : ''}`;
@@ -316,7 +350,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   }
 
   if (input.citations.length === 0) {
-    if (required.length > 0) return draft(['citations'], [qRequired(required)]);
+    if (required.length > 0) return draft([...(askBattery ? ['batteryType'] : []), 'citations'], [qRequired(required), ...(askBattery ? [Q_BATTERY] : [])]);
     if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
     return decided(
       {
@@ -352,7 +386,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
  * HTS は推測せず、CPSC の一覧と HTS の桁だけで判断する。
  */
 export async function generateGccCertificate(options: GenerateGccCertificateOptions): Promise<GenerateGccCertificateResult> {
-  assertNoPlaceholderValues(options);
+  assertGccInputs(options);
   const decisions: ItemDecision[] = [];
   for (let i = 0; i < options.items.length; i++) decisions.push(await decideItem(options.items[i], i));
 

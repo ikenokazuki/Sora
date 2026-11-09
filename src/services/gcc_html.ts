@@ -94,7 +94,8 @@ function certificateSection(item: GccRenderItem, render: GccRenderInput): string
   };
   const value = (key: string, text?: string) => (text ? escapeHtml(text) : miss(key));
   const citations = summary.citations ?? input.citations ?? [];
-  const citationsMissing = !citations.length || !!summary.missingFields?.includes('citations');
+  // 渡された空の配列は「当てはまる規則は無い」という答え。無いと言うのは、渡されていないか、足りないと判定したときだけ
+  const citationsMissing = input.citations ? !!summary.missingFields?.includes('citations') : true;
   const exclusions = summary.testingExclusions ?? [];
   const parties = testing?.parties ?? [];
   const rules = citations.length ? `<ul>${citations.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>` : '';

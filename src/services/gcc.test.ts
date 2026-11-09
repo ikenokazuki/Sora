@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import { GenerateGccCertificateRequestSchema } from '../types.js';
-import { type GccItemInput, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
+import { type GccItemInput, type GenerateGccCertificateOptions, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
 import { GCC_ATTESTATION } from './gcc_html.js';
 import { ADULT_APPAREL_GCC_POLICY, SECTION_1610_1_D, TradeInputError } from './trade.js';
 
@@ -168,6 +168,25 @@ describe('generateGccCertificate', () => {
     expect(knownType.items[0].status).toBe('generated');
   });
 
+  it('lists batteryType too when an empty citations list meets a required rule and a battery of unknown type', async () => {
+    const shirt: GccItemInput = { htsCode: '6109.10.00.12', productName: 'Adult Cotton T-Shirt With LED Badge', identifier: 'TEE-LED-1', targetAge: 'adult', material: '100% cotton', hasBattery: true, citations: [] };
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [shirt] });
+    expect(res.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['batteryType', 'citations'] });
+    expect(res.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1610');
+    expect(res.items[0].clarifyingQuestions?.join('')).toContain('batteryType');
+  });
+
+  it('counts an explicit button_coin as a battery without hasBattery, and rejects it with hasBattery: false', async () => {
+    const parties = { certifier: CERTIFIER, recordCustodian: CUSTODIAN };
+    const noFlag = { ...PENLIGHT, hasBattery: undefined };
+    const wrong = await generateGccCertificate({ ...parties, allowDraft: true, items: [{ ...noFlag, citations: ['16 CFR 1203'] }] });
+    expect(wrong.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['citations'] });
+    expect(wrong.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1263');
+    expect((await generateGccCertificate({ ...parties, items: [{ ...noFlag, citations: ['16 CFR 1263'] }] })).items[0].status).toBe('generated');
+    await expect(generateGccCertificate({ ...parties, allowDraft: true, items: [{ ...PENLIGHT, hasBattery: false }] })).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('items[0]') });
+    expect((await generateGccCertificate({ ...parties, items: [{ ...HELMET, hasBattery: false, batteryType: 'other' }] })).items[0].status).toBe('generated');
+  });
+
   it('reads "16 C.F.R." the same as "16 CFR" (review m2)', async () => {
     const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...PENLIGHT, citations: ['16 C.F.R. 1263'] }] });
     expect(res.items[0].status).toBe('generated');
@@ -222,21 +241,6 @@ describe('generateGccCertificate', () => {
       items: [{ ...HELMET, manufacture: reversed(FACTORY), testing: reversed({ date: '2026-06-15', reportNumber: 'TR-0001', parties: [reversed(LAB)] }) }],
     });
     expect(b.items[0].certificateId).toBe(a.items[0].certificateId);
-  });
-
-  it('rejects sample or placeholder values in what the caller sent, even with allowDraft, but not in the server defaults (M2)', async () => {
-    const err = await generateGccCertificate({
-      allowDraft: true,
-      certifier: { ...CERTIFIER, name: 'Sample Exporter Inc.', email: 'compliance@acme-imports.example.com', phone: '+81-3-0000-0000' },
-      recordCustodian: CUSTODIAN,
-      items: [{ ...HELMET, manufacture: { ...FACTORY, date: 'TBD', city: '仮置き工場', country: 'Unknown' } }],
-    }).catch((e) => e);
-    expect(err).toBeInstanceOf(TradeInputError);
-    expect(err.code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
-    for (const field of ['certifier.name', 'certifier.email', 'certifier.phone', 'items[0].manufacture.date', 'items[0].manufacture.city', 'items[0].manufacture.country']) expect(err.message).toContain(field);
-    process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, email: 'compliance@acme-imports.example.com' });
-    const res = await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] });
-    expect(res.items[0].status).toBe('generated');
   });
 
   it('prints only the caller’s citations, never a rule Sora derived', async () => {
@@ -371,6 +375,18 @@ describe('GCC document (16 CFR 1110.11)', () => {
     expect(missingLine((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] })).packageHtml)).toBeUndefined();
   });
 
+  it('does not say citations are missing when the caller gave an empty list, only the question that is still open', async () => {
+    const gas: GccItemInput = { htsCode: '3923.30.00.90', productName: 'Portable Gasoline Container', identifier: 'GAS-5', targetAge: 'adult', citations: [], hasBattery: true };
+    const res = await generateGccCertificate({ allowDraft: true, certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [gas] });
+    expect(res.items[0].missingFields).toEqual(['batteryType']);
+    expect(row(res.packageHtml, 2)).toBe('');
+    expect(res.packageHtml).not.toContain('[MISSING: citations]');
+    expect(missingLine(res.packageHtml)).toBe('Missing: batteryType');
+    const shirt: GccItemInput = { htsCode: '6109.10.00.12', productName: 'Adult Cotton T-Shirt With LED Badge', identifier: 'TEE-LED-1', targetAge: 'adult', material: '100% cotton', hasBattery: true, citations: [] };
+    const required = await generateGccCertificate({ allowDraft: true, certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [shirt] });
+    expect(row(required.packageHtml, 2)).toBe('[MISSING: citations]');
+  });
+
   it('puts DRAFT in the title of a single-product draft, which print headers and PDF names use', async () => {
     const res = await generateGccCertificate({ allowDraft: true, items: [HELMET] });
     expect(res.packageHtml).toContain('<title>DRAFT GCC — Adult Bicycle Helmet</title>');
@@ -455,6 +471,9 @@ describe('exemption statements, cover sheet and FDA note', () => {
     // 食品接触の用途が分からない食器コードは、食品接触品と決めつけない
     expect(await note({ htsCode: '7013.99.90.00', productName: 'Decorative Glass Vase', foodContact: undefined })).toBe(FCS_UNSTATED);
     expect(await note({ htsCode: '7013.99.90.00', productName: 'Drinking Glass', foodContact: true })).toBe(FCS_NOTE);
+    // 食品用途が分からない香料の見出し（FD3）も、そう書く
+    expect(await note({ htsCode: '3302.10.10.00', productName: 'Flavor Compound', foodContact: undefined })).toBe('FDA FD3 (FOO): food use not stated — if it is food, Prior Notice is required before arrival.');
+    expect(await note({ htsCode: '3302.10.10.00', productName: 'Flavor Compound', foodContact: true })).toBe('FDA FD3 (FOO)');
     expect(await note({ htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', foodContact: undefined })).toBeUndefined();
     const helmet = await generateGccCertificate({ orderNumber: 'ORDER-1004', items: [{ ...HELMET, citations: [] }, TEE] });
     expect(cover(helmet.packageHtml)).not.toMatch(/FDA FD/);
@@ -579,5 +598,81 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(fifty.items.every((item) => item.fdaNote === FCS_NOTE)).toBe(true);
     expect(cover(fifty.packageHtml).split(FCS_NOTE).length - 1).toBe(1);
     expect(JSON.stringify(fifty).length).toBeLessThanOrEqual(150_000);
+  });
+});
+
+describe('placeholder and date checks (M2, M3)', () => {
+  const base = { certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] };
+
+  it('accepts plausible real values that the old patterns rejected (review probes)', async () => {
+    for (const name of ['Mockingbird Apparel Ltd', 'Unknown Pleasures Records Inc.', 'Sample & Co. GmbH']) {
+      expect((await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name } })).items[0].status, name).toBe('generated');
+    }
+    const res = await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, street: 'Approx. 2nd floor, 100 Example Street' }, items: [{ ...HELMET, testing: { ...HELMET.testing, reportNumber: 'TR-2026-0000-0000' } }] });
+    expect(res.items[0].status).toBe('generated');
+  });
+
+  it('rejects whole-value placeholders, template slots, documentation domains and fake phone numbers', async () => {
+    const cases: Array<[string, GenerateGccCertificateOptions]> = [
+      ['certifier.name', { ...base, certifier: { ...CERTIFIER, name: 'TBD' } }],
+      ['certifier.street', { ...base, certifier: { ...CERTIFIER, street: 'N/A' } }],
+      ['certifier.name', { ...base, certifier: { ...CERTIFIER, name: '[MISSING NAME]' } }],
+      ['certifier.name', { ...base, certifier: { ...CERTIFIER, name: '{{company}}' } }],
+      ['certifier.email', { ...base, certifier: { ...CERTIFIER, email: 'compliance@example.com' } }],
+      ['certifier.email', { ...base, certifier: { ...CERTIFIER, email: 'a@b.invalid' } }],
+      ['certifier.email', { ...base, certifier: { ...CERTIFIER, email: 'test@test.com' } }],
+      ['certifier.phone', { ...base, certifier: { ...CERTIFIER, phone: '+1-555-555-5555' } }],
+      ['certifier.phone', { ...base, certifier: { ...CERTIFIER, phone: '000-0000' } }],
+      ['items[0].manufacture.name', { ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, name: '未定' } }] }],
+      ['items[0].citations[0]', { ...base, items: [{ ...HELMET, citations: ['TBD'] }] }],
+    ];
+    for (const [field, options] of cases) {
+      await expect(generateGccCertificate(options), field).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining(field) });
+    }
+  });
+
+  it('accepts the reserved test values, and treats an empty string as missing, not as a placeholder', async () => {
+    for (const phone of ['+1-202-555-0100', '+1-202-555-0199']) expect((await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, phone, email: 'a@acme-imports.test' } })).items[0].status, phone).toBe('generated');
+    const blank = await generateGccCertificate({ ...base, allowDraft: true, certifier: { ...CERTIFIER, street: '  ' } });
+    expect(blank.missingFields).toEqual(['certifier.street']);
+  });
+
+  it('lists every offending field in one message, checks the item strings and the test parties, and puts placeholders before dates', async () => {
+    const err = await generateGccCertificate({
+      ...base,
+      certifier: { ...CERTIFIER, phone: '+1-555-555-5555' },
+      items: [{ ...HELMET, productName: 'TBD', brand: 'n/a', material: 'Unknown', manufacture: { ...FACTORY, date: 'TBD' }, testing: { ...HELMET.testing, parties: [{ ...LAB, email: 'lab@acme-lab.invalid' }] } }],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(TradeInputError);
+    expect(err.code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
+    for (const field of ['certifier.phone', 'items[0].productName', 'items[0].brand', 'items[0].material', 'items[0].manufacture.date', 'items[0].testing.parties[0].email']) expect(err.message, field).toContain(field);
+    expect(err.message).not.toContain('certifier.name');
+  });
+
+  it('does not check the server’s SORA_GCC_* values: an operator typo is not the caller’s 400', async () => {
+    const prev = process.env.SORA_GCC_CERTIFIER;
+    process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, email: 'ops@example.com' });
+    try {
+      expect((await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] })).items[0].status).toBe('generated');
+    } finally {
+      if (prev === undefined) delete process.env.SORA_GCC_CERTIFIER;
+      else process.env.SORA_GCC_CERTIFIER = prev;
+    }
+  });
+
+  it('requires YYYY-MM or YYYY-MM-DD dates that exist and are not in the future (M3)', async () => {
+    for (const date of ['2026-13', '2026-02-30', '2026/06', 'June 2026', '2099-01']) {
+      await expect(generateGccCertificate({ ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, date } }] }), date).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
+    const err = await generateGccCertificate({ ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, date: '2026-13' }, testing: { ...HELMET.testing, date: '2099-01-01' } }] }).catch((e) => e);
+    expect(err.message).toContain('items[0].manufacture.date');
+    expect(err.message).toContain('items[0].testing.date');
+    // 地球上でいちばん進んだ今日（UTC+14）までは通し、その先は通さない
+    const day = (offsetDays: number) => new Date(Date.now() + 14 * 3_600_000 + offsetDays * 86_400_000).toISOString().slice(0, 10);
+    expect((await generateGccCertificate({ ...base, items: [{ ...HELMET, testing: { ...HELMET.testing, date: day(0) } }] })).items[0].status).toBe('generated');
+    await expect(generateGccCertificate({ ...base, items: [{ ...HELMET, testing: { ...HELMET.testing, date: day(2) } }] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    for (const date of ['2026-06', '2026-06-15']) {
+      expect((await generateGccCertificate({ ...base, items: [{ ...HELMET, testing: { ...HELMET.testing, date } }] })).items[0].status, date).toBe('generated');
+    }
   });
 });
