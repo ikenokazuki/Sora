@@ -149,7 +149,7 @@ function trimDeep<T>(value: T): T {
 const PLACEHOLDER_WORD = /^(?:n\/a|n\.?a\.?|none|null|nil|undefined|unknown|tbd|tba|tbc|todo|sample|dummy|placeholder|test|example|to be (?:confirmed|determined|advised|announced)|not (?:provided|available|applicable|specified|known|given)|unavailable|pending|same(?: as above)?|see (?:above|below|invoice)|nan|x[-x]*|-+|\?+|\.{2,}|…+)$/i;
 const PLACEHOLDER_WORD_JA = /^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し|未確認|確認中|要確認|未記入|未設定|[ー―—–]+)$/;
 const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^{}]*\}\}/i; // [^}] は {{ の繰り返しで二乗の時間になる
-const WHOLE_SLOT = /^(?:<[^>]*>+|\[[^\]]*\]+|\{[^}]*\}+)$|^your (?:company|name|street|address|city|state|country|email|phone|business|brand|product)\b/i;
+const WHOLE_SLOT = /^(?:<[^>]*>+|\[[^\]]*\]+|\{[^}]*\}+)$|^your\s+(?:(?:company|business|brand)(?:\s+name)?|name|street|address|city|state|country|email|phone|product)$/i; // "Your Business Solutions LLC" のような実在の名前は通す。差し込み口そのものの値だけ
 const RESERVED_DOMAIN = /(?:^|\.)example\.(?:com|net|org)$|\.(?:example|invalid|localhost)$/;
 const FAKE_EMAIL = /^(?:test|sample|dummy|fake|example)@(?:test|sample|dummy|fake|example)(?:\.|$)/i;
 const NON_LATIN = /[^\P{L}\p{Script=Latin}\p{Script=Common}]/u; // µ などの Script=Common の文字は通す。ギリシャ文字などほかの文字は通さない
@@ -522,7 +522,7 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
 
   const order = trimDeep({ orderNumber: options.orderNumber, awbNumber: options.awbNumber, carrier: options.carrier, invoiceNumber: options.invoiceNumber });
   for (const decision of decisions) {
-    if (!certifier && decision.summary.filingNote === FILING_NOTE.notListed) decision.summary.filingNote = FILING_NOTE.notListedNoCertifier;
+    if (!certifier?.name && decision.summary.filingNote === FILING_NOTE.notListed) decision.summary.filingNote = FILING_NOTE.notListedNoCertifier;
     if (!decision.gcc || decision.summary.missingFields?.length || missingFields.length) continue;
     const { input, summary } = decision;
     summary.status = 'generated';

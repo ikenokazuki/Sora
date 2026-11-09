@@ -530,6 +530,28 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(namedGas.items[0].filingNote).toContain('証明者は当てはまる規則が無いとしています');
   });
 
+  it('treats a certifier without a name as no certifier on every statement (R1)', async () => {
+    const partial = { country: 'Japan' };
+    const dresser: GccItemInput = { htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult', citations: [] };
+    const gas: GccItemInput = { htsCode: '3923.30.00.90', productName: 'Portable Gasoline Container', identifier: 'GAS-5', targetAge: 'adult', citations: [] };
+    const hat: GccItemInput = { htsCode: '6505.00.60.30', productName: 'Adult Knit Cap', identifier: 'CAP-1', targetAge: 'adult', citations: [] };
+    const a = await generateGccCertificate({ certifier: partial, items: [dresser] });
+    expect(a.packageHtml).toContain('<th>Declared by</th><td>[MISSING: certifier]</td>');
+    expect(a.packageHtml).toContain('The requesting party answered that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product (no certifier is identified).');
+    expect(a.packageHtml).not.toContain('The certifier states');
+    expect(a.packageHtml).not.toContain('Japan');
+    const b = await generateGccCertificate({ certifier: partial, items: [hat] });
+    expect(b.packageHtml).toContain('The requesting party answered that no other CPSC rule requiring a certificate applies (no certifier is identified).');
+    expect(b.packageHtml).not.toContain('The certifier states');
+    expect(b.packageHtml).not.toContain('Japan');
+    const c = await generateGccCertificate({ certifier: partial, items: [TEE] });
+    expect(c.items[0].status).toBe('exempt_disclaim_b');
+    expect(c.packageHtml).not.toContain('Declared by');
+    expect(c.packageHtml).not.toContain('Japan');
+    const d = await generateGccCertificate({ certifier: partial, items: [gas] });
+    expect(d.items[0].filingNote).toContain('証明者は示されていません');
+  });
+
   it('states the 16 CFR 1610.1(c) basis on a Disclaim A statement, and no ACE data for an unlisted code', async () => {
     const hat = await generateGccCertificate({ items: [{ htsCode: '6505.00.60.30', productName: 'Adult Knit Cap', identifier: 'CAP-1', targetAge: 'adult', citations: [] }] });
     expect(hat.packageHtml).toContain('Not subject to 16 CFR 1610 under 16 CFR 1610.1(c)(1): Hats, provided');
@@ -718,6 +740,15 @@ describe('placeholder and date checks (M2, M3)', () => {
     ];
     for (const [field, options] of cases) {
       await expect(generateGccCertificate(options), field).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining(field) });
+    }
+  });
+
+  it('rejects only a whole "your <slot>" value, and takes real companies that start with Your (R2)', async () => {
+    for (const name of ['Your Business Solutions LLC', 'Your Brand Partners Inc.', 'Your State Bank', 'Your Company Holdings', 'Your Name Here Ltd']) {
+      expect((await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name } })).items[0].status, name).toBe('generated');
+    }
+    for (const name of ['Your Company Name', 'YOUR STREET', 'your  business', 'Your Brand Name', 'Your Name', 'Your product', 'your address']) {
+      await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name } }), name).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.name') });
     }
   });
 

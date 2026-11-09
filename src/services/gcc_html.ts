@@ -168,7 +168,7 @@ function exemptBSection(item: GccRenderItem, render: GccRenderInput): string {
       ['CPSC policy', escapeHtml(`${policy.title}, ${policy.citation}, effective ${policy.effective}.`)],
       ['ACE', escapeHtml('CPSC PGA Message Set: Disclaim B with Intended Use Code 130.006 (CPSC eFiling CATAIR Implementation Guide).')],
       ['Note', escapeHtml('The product must still meet the flammability requirements of 16 CFR 1610.')],
-      ...(render.certifier ? ([['Declared by', partyHtml(render.certifier)]] as Array<[string, string]>) : []),
+      ...(render.certifier?.name ? ([['Declared by', partyHtml(render.certifier)]] as Array<[string, string]>) : []),
     ]),
   });
 }
@@ -176,8 +176,8 @@ function exemptBSection(item: GccRenderItem, render: GccRenderInput): string {
 /** Disclaim A（1 品のときだけ紙にする。注文のときは表紙の行だけ） */
 function noGccSection(item: GccRenderItem, render: GccRenderInput): string {
   const { input, summary, exclusion1610c } = item;
-  const who = render.certifier ? 'The certifier states' : 'The requesting party answered';
-  const unidentified = render.certifier ? '' : ' (no certifier is identified)';
+  const who = render.certifier?.name ? 'The certifier states' : 'The requesting party answered';
+  const unidentified = render.certifier?.name ? '' : ' (no certifier is identified)';
   const basis = exclusion1610c
     ? `Not subject to 16 CFR 1610 under ${exclusion1610c.citation}: ${exclusion1610c.text}. ${who} that no other CPSC rule requiring a certificate applies${unidentified}.`
     : `${who} that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product${unidentified}.`;
@@ -196,7 +196,7 @@ function noGccSection(item: GccRenderItem, render: GccRenderInput): string {
       ['Product', productHtml(item)],
       ['Basis', escapeHtml(basis)],
       ['ACE', escapeHtml(ace)],
-      ['Declared by', render.certifier ? partyHtml(render.certifier) : '[MISSING: certifier]'],
+      ['Declared by', render.certifier?.name ? partyHtml(render.certifier) : '[MISSING: certifier]'],
     ]),
   });
 }
