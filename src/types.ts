@@ -729,11 +729,12 @@ const GccPartyShape = {
   state: z.string().optional(), country: z.string().optional(), email: z.string().optional(), phone: z.string().optional(),
 };
 export const GccPartySchema = z.object(GccPartyShape);
+const GccIdentifierTypeSchema = z.enum(['sku', 'model', 'gtin', 'upc', 'serial', 'registered', 'other']);
 export const GccItemInputSchema = z.object({
   htsCode: z.string().min(1).describe('10 桁の HTS コード（インボイス・通関業者の値。推測しない）'),
   productName: z.string().min(1).describe('英語の一般名（16 CFR 1110.11(a)(1)）'),
   identifier: z.string().optional().describe('製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)）'),
-  identifierType: z.enum(['sku', 'model', 'gtin', 'upc', 'serial', 'registered', 'other']).optional().describe('identifier の種類（デフォルト: "sku"）').meta({ default: 'sku' }),
+  identifierType: GccIdentifierTypeSchema.optional().describe('identifier の種類（デフォルト: "sku"）').meta({ default: 'sku' }),
   brand: z.string().optional(),
   description: z.string().optional().describe('製品の説明（英語）'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('child: 12 歳以下（GCC でなく CPC が要る）、adult: 13 歳以上・一般'),
@@ -747,6 +748,7 @@ export const GccItemInputSchema = z.object({
   manufacture: z.object({ date: z.string().optional(), ...GccPartyShape }).optional().describe('製造の年月（YYYY-MM）と工場の名前・住所・メール・電話（16 CFR 1110.11(a)(5)）'),
   testing: z.object({ date: z.string().optional(), reportNumber: z.string().optional(), parties: z.array(GccPartySchema).optional() }).optional()
     .describe('最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの名前・住所・メール・電話（16 CFR 1110.11(a)(6)）'),
+  url: z.string().url().optional().describe('商品ページ。番号・名前の候補を返すだけで、証明書には載せない（1 回に 5 件まで）'),
 });
 export const GenerateGccCertificateRequestSchema = z.object({
   items: z.array(GccItemInputSchema).min(1).max(50).describe('1 件 1 製品（最大 50 件）'),
@@ -2253,6 +2255,13 @@ export const GccItemSummarySchema = z.object({
   missingFields: z.array(z.string()).optional().describe('この品の足りない項目'),
   clarifyingQuestions: z.array(z.string()).optional().describe('確認の質問'),
   warnings: z.array(z.string()).optional().describe('注意'),
+  suggestions: z.object({
+    identifier: z.string().optional(),
+    identifierType: GccIdentifierTypeSchema.optional(),
+    pageProductName: z.string().optional(),
+    brand: z.string().optional(),
+    variants: z.number().int().optional().describe('ページにある種類の数'),
+  }).optional().describe('商品ページからの候補（url を付けて identifier を省いた品だけ。証明書には載らない）'),
 });
 
 export const GenerateGccCertificateResultSchema = z.object({

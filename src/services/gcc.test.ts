@@ -1,4 +1,5 @@
-import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import * as scraper from '../scraper.js';
 import { GenerateGccCertificateRequestSchema } from '../types.js';
 import { type GccItemInput, type GenerateGccCertificateOptions, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
 import { GCC_ATTESTATION } from './gcc_html.js';
@@ -703,5 +704,116 @@ describe('placeholder and date checks (M2, M3)', () => {
     for (const date of ['2026-06', '2026-06-15']) {
       expect((await generateGccCertificate({ ...base, items: [{ ...HELMET, testing: { ...HELMET.testing, date } }] })).items[0].status, date).toBe('generated');
     }
+  });
+});
+
+describe('product page suggestions (I3, I5, M11)', () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let hits = 0;
+  let prevAllow: string | undefined;
+  const ld = {
+    '@context': 'https://schema.org', '@type': 'ProductGroup', name: 'Road Helmet', brand: { '@type': 'Brand', name: 'Acme' },
+    hasVariant: [
+      { '@type': 'Product', '@id': '/p?variant=11#v', name: 'Road Helmet - S', sku: 'HLM-S', offers: { '@type': 'Offer', url: '/p?variant=11' } },
+      { '@type': 'Product', '@id': '/p?variant=123#v', name: 'Road Helmet - L', sku: 'HLM-L', offers: { '@type': 'Offer', url: '/p?variant=123' } },
+    ],
+  };
+  beforeAll(() => {
+    prevAllow = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    server = Bun.serve({
+      hostname: '127.0.0.1', port: 0,
+      fetch() {
+        hits++;
+        return new Response(`<!doctype html><html><head><title>Road Helmet | Acme Shop</title><script type="application/ld+json">${JSON.stringify(ld)}</script></head><body><main><h1>Road Helmet</h1><p>${'Lightweight road cycling helmet for adults with an impact-absorbing liner. '.repeat(12)}</p></main></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      },
+    });
+  });
+  afterAll(() => {
+    server.stop();
+    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+  });
+  const page = (path: string) => `http://127.0.0.1:${server.port}${path}`;
+  const options = (items: GccItemInput[]) => ({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items });
+
+  it('suggests the exact variant’s SKU and keeps the GCC a draft until the caller passes it', async () => {
+    const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p?variant=123') }]));
+    expect(res.items[0].status).toBe('draft_needs_info');
+    expect(res.items[0].missingFields).toEqual(['identifier']);
+    expect(res.items[0].suggestions).toMatchObject({ identifier: 'HLM-L', identifierType: 'sku', pageProductName: 'Road Helmet - L', brand: 'Acme', variants: 2 });
+    const prefix = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p?variant=12') }]));
+    expect(prefix.items[0].suggestions?.identifier).toBeUndefined();
+    const plain = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p') }]));
+    expect(plain.items[0].suggestions?.identifier).toBeUndefined();
+    expect(plain.items[0].clarifyingQuestions?.join('')).toContain('2 種類');
+  }, 15_000);
+
+  it('does not read the page when the caller passed the identifier', async () => {
+    const before = hits;
+    await generateGccCertificate(options([{ ...HELMET, url: page('/p') }]));
+    expect(hits).toBe(before);
+  });
+
+  it('reads the page with the static fetch only, 10 seconds at most, and at most 5 items with url per call', async () => {
+    const spy = spyOn(scraper, 'scrapeUrl');
+    try {
+      await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p?variant=11') }]));
+      expect(spy.mock.calls[0][0]).toMatchObject({ fastOnly: true, timeoutMs: 10_000, formats: ['jsonLd'] });
+    } finally {
+      spy.mockRestore();
+    }
+    const six = Array.from({ length: 6 }, (_, i) => ({ ...HELMET, identifier: undefined, url: page(`/p?variant=${i}`) }));
+    await expect(generateGccCertificate(options(six))).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  }, 15_000);
+
+  it('never lets a page value onto the certificate or its HTML, and the URL does not change the certificate id', async () => {
+    const draft = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p?variant=123') }]));
+    expect(draft.items[0].suggestions?.identifier).toBe('HLM-L');
+    for (const pageValue of ['HLM-L', 'Road Helmet - L', 'Acme Shop']) expect(draft.packageHtml).not.toContain(pageValue);
+    const withUrl = await generateGccCertificate({ ...options([{ ...HELMET, url: page('/p') }]), allowDraft: false });
+    const without = await generateGccCertificate({ ...options([HELMET]), allowDraft: false });
+    expect(withUrl.items[0].certificateId).toBe(without.items[0].certificateId);
+    expect(withUrl.items[0].suggestions).toBeUndefined();
+    expect(withUrl.packageId).toBe(without.packageId);
+    expect(withUrl.packageHtml).not.toContain('127.0.0.1');
+  }, 15_000);
+
+  it('goes on with a warning when the page cannot be read, and returns the suggestions in the 422 details', async () => {
+    const spy = spyOn(scraper, 'scrapeUrl').mockRejectedValue(new Error('blocked host'));
+    try {
+      const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p') }]));
+      expect(res.items[0].status).toBe('draft_needs_info');
+      expect(res.items[0].warnings).toEqual(['商品ページを読めませんでした（blocked host）']);
+      expect(res.items[0].suggestions).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+    const err = await generateGccCertificate({ ...options([{ ...HELMET, identifier: undefined, url: page('/p?variant=11') }]), allowDraft: false }).catch((e) => e);
+    expect(err).toBeInstanceOf(TradeGccIncompleteError);
+    expect(err.details.items[0].suggestions).toMatchObject({ identifier: 'HLM-S', identifierType: 'sku' });
+  }, 15_000);
+
+  it('reads Product data from @graph and falls back from sku to gtin and mpn, with one offer’s sku and one variant chosen without a ?variant=', async () => {
+    const read = async (jsonLd: unknown[], url = 'https://shop.example.com/p') => {
+      const spy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url, jsonLd } as unknown as Awaited<ReturnType<typeof scraper.scrapeUrl>>);
+      try {
+        return (await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url }]))).items[0];
+      } finally {
+        spy.mockRestore();
+      }
+    };
+    const graph = await read([{ '@graph': [{ '@type': 'WebSite', name: 'Shop' }, { '@type': ['Thing', 'Product'], name: 'Helmet A', brand: 'Acme', gtin13: 4_900_000_000_000, mpn: 'M-1' }] }]);
+    expect(graph.suggestions).toEqual({ identifier: '4900000000000', identifierType: 'gtin', pageProductName: 'Helmet A', brand: 'Acme' });
+    expect((await read([{ '@type': 'Product', name: 'Helmet B', mpn: 'M-2' }])).suggestions).toMatchObject({ identifier: 'M-2', identifierType: 'model' });
+    expect((await read([{ '@type': 'Product', name: 'Helmet C', offers: [{ '@type': 'Offer', sku: 'OFF-1' }] }])).suggestions).toMatchObject({ identifier: 'OFF-1', identifierType: 'sku' });
+    expect((await read([{ '@type': 'Product', name: 'Helmet D', offers: [{ sku: 'OFF-1' }, { sku: 'OFF-2' }] }])).suggestions?.identifier).toBeUndefined();
+    const single = await read([{ '@type': 'ProductGroup', name: 'Helmet E', hasVariant: [{ '@type': 'Product', name: 'Helmet E - M', sku: 'E-M' }] }]);
+    expect(single.suggestions).toMatchObject({ identifier: 'E-M', pageProductName: 'Helmet E - M', variants: 1 });
+    expect((await read([{ '@type': 'Article', headline: 'News' }])).suggestions).toBeUndefined();
+    // 種類の参照が "#" だけ（自分の ?variant= を引き継ぐ）なら、どの種類にも当てない
+    const refs = await read([{ '@type': 'ProductGroup', name: 'Helmet F', hasVariant: [{ '@id': '#s', sku: 'F-S' }, { '@id': '#l', sku: 'F-L' }] }], 'https://shop.example.com/p?variant=5');
+    expect(refs.suggestions).toMatchObject({ pageProductName: 'Helmet F', variants: 2 });
+    expect(refs.suggestions?.identifier).toBeUndefined();
   });
 });

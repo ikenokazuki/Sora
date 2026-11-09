@@ -1,6 +1,7 @@
 // 米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) の作成と、通関の保留に出す一式。
 // 証明書に載せる値は呼び出し側が渡したものだけ。規則の判断は同梱の CPSC の一覧と HTS の桁で行い、外には取りに行かない
 import { createHash } from 'node:crypto';
+import { errorMessage } from '../errors.js';
 import { GccPartySchema } from '../types.js';
 import { type GccRenderItem, NO_STATE, renderGccPackageHtml } from './gcc_html.js';
 import { BATTERY_CONTRADICTION, type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
@@ -14,6 +15,15 @@ export interface GccParty {
   country?: string;
   email?: string;
   phone?: string;
+}
+/** 商品ページから読んだ候補。証明書には載らない（呼び出し側が確かめて identifier などに入れる） */
+export interface GccSuggestions {
+  identifier?: string;
+  identifierType?: GccIdentifierType;
+  pageProductName?: string;
+  brand?: string;
+  /** ページにある種類（ProductGroup の hasVariant）の数 */
+  variants?: number;
 }
 export interface GccItemInput {
   htsCode: string;
@@ -32,6 +42,8 @@ export interface GccItemInput {
   citations?: string[];
   manufacture?: GccParty & { date?: string };
   testing?: { date?: string; reportNumber?: string; parties?: GccParty[] };
+  /** 商品ページ。identifier が無いときだけ読み、候補（suggestions）を返す。証明書には載せない */
+  url?: string;
 }
 export interface GenerateGccCertificateOptions {
   items: GccItemInput[];
@@ -68,6 +80,8 @@ export interface GccItemSummary {
   missingFields?: string[];
   clarifyingQuestions?: string[];
   warnings?: string[];
+  /** url を付けて identifier を省いた品だけ */
+  suggestions?: GccSuggestions;
 }
 export interface GenerateGccCertificateResult {
   packageId: string;
@@ -90,7 +104,7 @@ export class TradeGccIncompleteError extends Error {
     message: string,
     readonly details: {
       missingFields: string[];
-      items: Array<Pick<GccItemSummary, 'line' | 'htsCode' | 'productName' | 'identifier' | 'missingFields' | 'clarifyingQuestions'>>;
+      items: Array<Pick<GccItemSummary, 'line' | 'htsCode' | 'productName' | 'identifier' | 'missingFields' | 'clarifyingQuestions' | 'suggestions'>>;
     },
   ) {
     super(message);
@@ -168,6 +182,7 @@ function assertGccInputs(options: GenerateGccCertificateOptions): void {
   type Check = [path: string, value: string | undefined, kind?: Kind];
   const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' || f === 'state' ? f : undefined]);
   const dates: Check[] = [];
+  if (options.items.filter((item) => item.url).length > 5) throw new TradeInputError('url を付けられる品は 1 回に 5 件までです', 'INVALID_INPUT');
   const checks: Check[] = [...party('certifier', options.certifier), ...party('recordCustodian', options.recordCustodian)];
   options.items.forEach((item, i) => {
     const at = `items[${i}]`;
@@ -257,6 +272,71 @@ function missingItemRecords(input: GccItemInput, needsTestRecord: boolean): stri
 
 /** 判定の結果。gcc が true の品（GCC の道）は、証明者・記録の担当の欠けも見てから status と filingNote が決まる */
 type ItemDecision = GccRenderItem & { gcc: boolean };
+
+// --- 商品ページ（url）からの候補。値は suggestions と質問にだけ入れ、証明書にも HTML にも載せない ---
+type Json = Record<string, any>;
+const asList = (value: unknown): Json[] => (Array.isArray(value) ? value : [value]).filter((v): v is Json => !!v && typeof v === 'object');
+/** ページの値は長さを切って文字列にする（ページが応答を膨らませない） */
+const pageText = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value).trim().slice(0, 200) : '') || undefined;
+const brandOf = (o: Json) => pageText(typeof o.brand === 'object' ? o.brand?.name : o.brand);
+
+function identifierOf(o: Json): Pick<GccSuggestions, 'identifier' | 'identifierType'> {
+  const offers = asList(o.offers);
+  const sku = pageText(o.sku) ?? (offers.length === 1 ? pageText(offers[0].sku) : undefined);
+  if (sku) return { identifier: sku, identifierType: 'sku' };
+  const gtin = ['gtin13', 'gtin12', 'gtin14', 'gtin8', 'gtin'].map((k) => pageText(o[k])).find(Boolean);
+  if (gtin) return { identifier: gtin, identifierType: 'gtin' };
+  const mpn = pageText(o.mpn);
+  return mpn ? { identifier: mpn, identifierType: 'model' } : {};
+}
+
+/**
+ * scrape の jsonLd（配列と、その中の @graph を 1 段）の最初の ProductGroup・Product から候補を読む。
+ * 種類が 2 つ以上あるときは、URL の ?variant= と完全に同じ種類だけを選ぶ（"12" は "123" に当てない）。選べなければ番号は出さない
+ */
+function readProductSuggestions(jsonLd: unknown, pageUrl: string, wantedVariant: string | null): GccSuggestions | undefined {
+  const nodes = asList(Array.isArray(jsonLd) ? jsonLd.flat() : []).flatMap((n) => [n, ...asList(n['@graph'])]);
+  const product = nodes.find((n) => [n['@type']].flat().some((t) => t === 'ProductGroup' || t === 'Product'));
+  if (!product) return undefined;
+  const variants = asList(product.hasVariant);
+  const isWanted = (variant: Json) =>
+    [variant['@id'], variant.url, ...asList(variant.offers).map((o) => o.url)].some((ref) => {
+      if (typeof ref !== 'string' || ref === '' || ref.startsWith('#')) return false; // 自分の URL を引き継ぐ参照は、どの種類にも当たってしまう
+      try {
+        return new URL(ref, pageUrl).searchParams.get('variant') === wantedVariant;
+      } catch {
+        return false;
+      }
+    });
+  const picked = variants.length === 0 ? product : wantedVariant !== null ? variants.find(isWanted) : variants.length === 1 ? variants[0] : undefined;
+  const suggestions: GccSuggestions = {
+    ...(picked ? identifierOf(picked) : {}),
+    pageProductName: pageText(picked?.name) ?? pageText(product.name),
+    brand: (picked && brandOf(picked)) ?? brandOf(product),
+    variants: variants.length || undefined,
+  };
+  return Object.values(suggestions).some((v) => v !== undefined) ? suggestions : undefined;
+}
+
+/** identifier が無く url がある品の商品ページを、ブラウザなしで読む。読めなくても品は進める（warnings に書く） */
+async function readItemPage({ input, summary }: ItemDecision): Promise<void> {
+  if (!input.url || input.identifier) return;
+  try {
+    const { scrapeUrl } = await import('../scraper.js'); // 使う呼び出しのときだけ読み込む
+    const page = await scrapeUrl({ url: input.url, fastOnly: true, timeoutMs: 10_000, formats: ['jsonLd'], onlyMainContent: true, maxChars: 2_000 });
+    const suggestions = readProductSuggestions(page.jsonLd, page.url || input.url, new URL(input.url).searchParams.get('variant'));
+    if (!suggestions) return;
+    summary.suggestions = suggestions;
+    const question = suggestions.identifier
+      ? `商品ページの番号 ${suggestions.identifier}（${suggestions.identifierType}）を使うなら、出荷する品と同じか確かめてから identifier に入れてください。`
+      : suggestions.variants && suggestions.variants >= 2
+        ? `商品ページに ${suggestions.variants} 種類あります。出荷する種類の番号を identifier に入れてください（URL に ?variant= を付けると候補を出せます）。`
+        : undefined;
+    if (question) summary.clarifyingQuestions = [...(summary.clarifyingQuestions ?? []), question];
+  } catch (err) {
+    summary.warnings = [...(summary.warnings ?? []), `商品ページを読めませんでした（${(errorMessage(err) ?? String(err)).slice(0, 200)}）`];
+  }
+}
 
 /** 1 品の判定（16 CFR 1110.11 と CPSC の一覧の桁だけで決める。証明書の規則は呼び出し側の citations だけ） */
 async function decideItem(item: GccItemInput, index: number): Promise<ItemDecision> {
@@ -391,6 +471,7 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
   assertGccInputs(options);
   const decisions: ItemDecision[] = [];
   for (let i = 0; i < options.items.length; i++) decisions.push(await decideItem(options.items[i], i));
+  await Promise.all(decisions.map(readItemPage));
 
   const hasGcc = decisions.some((d) => d.gcc);
   const certifier = resolveParty(options.certifier, 'SORA_GCC_CERTIFIER', hasGcc);
@@ -437,13 +518,14 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
     const allMissing = [...new Set([...drafts.flatMap((s) => s.missingFields ?? []), ...missingFields])];
     throw new TradeGccIncompleteError(`GCC に必要な記録が足りません（${allMissing.join(', ')}）。記録の値を渡してください。下書きを見るには allowDraft: true。`, {
       missingFields,
-      items: drafts.map(({ line, htsCode, productName, identifier, missingFields: itemMissing, clarifyingQuestions }) => ({
+      items: drafts.map(({ line, htsCode, productName, identifier, missingFields: itemMissing, clarifyingQuestions, suggestions }) => ({
         line,
         htsCode,
         productName,
         ...(identifier ? { identifier } : {}),
         ...(itemMissing ? { missingFields: itemMissing } : {}),
         ...(clarifyingQuestions ? { clarifyingQuestions } : {}),
+        ...(suggestions ? { suggestions } : {}),
       })),
     });
   }

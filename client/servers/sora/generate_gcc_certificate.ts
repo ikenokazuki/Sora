@@ -55,6 +55,8 @@ export type GenerateGccCertificateInput = {
         phone?: string;
       }[];
     };
+    /** 商品ページ。番号・名前の候補を返すだけで、証明書には載せない（1 回に 5 件まで） */
+    url?: string;
   }[];
   /** 証明者（輸入品は輸入者。16 CFR 1110.7）。省くとサーバーの SORA_GCC_CERTIFIER */
   certifier?: {
@@ -144,6 +146,15 @@ export type GenerateGccCertificateOutput = {
     clarifyingQuestions?: string[];
     /** 注意 */
     warnings?: string[];
+    /** 商品ページからの候補（url を付けて identifier を省いた品だけ。証明書には載らない） */
+    suggestions?: {
+      identifier?: string;
+      identifierType?: "sku" | "model" | "gtin" | "upc" | "serial" | "registered" | "other";
+      pageProductName?: string;
+      brand?: string;
+      /** ページにある種類の数 */
+      variants?: number;
+    };
   }[];
   /** 印刷用の HTML（1 つ） */
   packageHtml: string;
