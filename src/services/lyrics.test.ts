@@ -67,6 +67,14 @@ describe('pickLrclibRecord: symbol-only titles and short artist names', () => {
     expect(pickLrclibRecord([rec(1, '★', A, 'ああ'), rec(2, '♪', A, 'いい')], '  ♪ ', A).chosen?.id).toBe(2);
     expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ')], '!!!').chosen).toBeUndefined();
   });
+  test('an empty or blank title matches nothing (an empty string is a prefix of every name)', () => {
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '   ', A).chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ')], '', A).chosen).toBeUndefined();
+  });
+  test('symbol-only names are compared after width and case folding (！！！ is !!!)', () => {
+    expect(pickLrclibRecord([rec(1, '!!!', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '！！！', A).chosen?.id).toBe(1);
+    expect(pickLrclibRecord([rec(1, '曲X', '！！！', 'ああ')], '曲X', '!!!').chosen?.id).toBe(1);
+  });
   test('an artist name of three characters or fewer must be equal, not contained (ai does not match mai)', () => {
     expect(pickLrclibRecord([rec(1, '曲X', 'mai', 'ああ')], '曲X', 'ai').chosen).toBeUndefined();
     expect(pickLrclibRecord([rec(1, '曲X', 'ai', 'ああ')], '曲X', 'mai').chosen).toBeUndefined();

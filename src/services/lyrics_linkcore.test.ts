@@ -85,6 +85,10 @@ describe('normalizeName: names made only of symbols', () => {
     expect(normalizeName('!!!')).not.toBe(normalizeName('???'));
     expect(normalizeName('♪')).not.toBe(normalizeName('★'));
     expect(normalizeName('')).toBe('');
+    // 普通の名前と同じく、全角半角と大小文字はそろえる
+    expect(normalizeName('！！！')).toBe(normalizeName('!!!'));
+    expect(normalizeName('ＡＢ？')).toBe('ab');
+    expect(normalizeName('？？')).toBe('??');
   });
 });
 

@@ -40,10 +40,11 @@ export interface LinkcoreDeps {
 /**
  * 曲名・歌手名の突き合わせ用に、全角半角・大小文字・空白と記号を畳む。
  * 記号だけの名前（「♪」「!!!」）は畳むと空になり、前方一致で何にでも当たり、キャッシュの鍵も別の名前と同じになる。
- * そのときは畳まず、前後の空白を除いた元の名前を使う（空になるのは、元が空白だけのときだけ）。
+ * そのときは、記号と空白を除かずに、全角半角と大小文字だけそろえた名前（前後の空白は除く）を使う（空になるのは、元が空白だけのときだけ）。
  */
 export function normalizeName(s: string): string {
-  return s.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '') || s.trim();
+  const folded = s.normalize('NFKC').toLowerCase();
+  return folded.replace(/[\s\p{P}\p{S}]+/gu, '') || folded.trim();
 }
 
 /**

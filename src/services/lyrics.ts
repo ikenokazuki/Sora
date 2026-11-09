@@ -47,13 +47,15 @@ const candidateOf = (r: LrclibRecord): Candidate => ({ title: r.trackName, artis
 const pairKey = (r: LrclibRecord) => `${normalizeName(r.trackName)}\u0000${normalizeName(r.artistName)}`;
 
 /**
- * LRCLIB の検索結果から 1 件を選ぶ。曲名の完全一致、前方一致の順。歌手の指定があれば包含一致で絞る。
+ * LRCLIB の検索結果から 1 件を選ぶ。曲名の完全一致、前方一致の順（曲名が空なら、何にも一致しない）。
+ * 歌手の指定があれば、包含一致で絞る（3 文字以下の名前は完全一致。matchesArtist）。
  * 同じ曲の重複登録は本文ごとにまとめ、最も多く登録された本文を採る（同数なら長い方）。
  * ponytail: 多数決だけ。誤登録が多数派の曲では誤る。
  */
 export function pickLrclibRecord(records: LrclibRecord[], title: string, artist?: string): { chosen?: LrclibRecord; candidates: Candidate[] } {
   const pool = records.filter(hasText);
   const want = normalizeName(title);
+  if (want === '') return { candidates: [] }; // 空の曲名は、前方一致で全件に当たってしまう
   const artistOk = (r: LrclibRecord) => !artist || matchesArtist(artist, r.artistName);
   const exact = pool.filter((r) => artistOk(r) && normalizeName(r.trackName) === want);
   const group = exact.length > 0 ? exact : pool.filter((r) => artistOk(r) && normalizeName(r.trackName).startsWith(want));
