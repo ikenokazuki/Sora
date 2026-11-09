@@ -1283,6 +1283,17 @@ bun run typecheck && bun run lint && bun run schema:notation
 
 レビューの「Integration」の項目: 説明の合計（Task 0・9）、全ツールの予算（Task 0・4・9）、docs/code-execution.md（Task 10）、types.ts・tools_trade.ts・trade.ts の衝突（Task 0）、生地の質問が predict と compliance に届くこと（Task 2: compliance には引数を足して聞き、predict では聞かない）、instructions（Task 9）、README（Task 10）、クライアント（Task 0・10）。
 
+## 最終レビューの決定（2026-11-09。上の文に優先する）
+
+- 試験の日（`testing.date`）は `YYYY-MM-DD` だけ（16 CFR 1110.11(a)(6)。CATAIR の Laboratory Testing の日は 8 桁）。製造の日（`manufacture.date`）は年月でよい（(a)(5)）。
+- 見本・仮置きの語を足す（値全体が一致するときだけ）: `n.a.`・`tbc`・`to be confirmed/determined/advised/announced`・`not provided/available/applicable/specified/known/given`・`unavailable`・`pending`・`same`・`same as above`・`see above/below/invoice`・`nan`・`x` の繰り返し・`未確認`・`確認中`・`要確認`・`未記入`・`未設定`・長音や横線だけの値。値全体が `<…>`・`[…]`・`{…}` のものと `your company`・`your name` などの差し込み口も見本とする。メールは `@` が 1 つで、ドメインに点があること。電話は数字と `+()-. ` と空白だけ。一覧は完全ではないと README に書く。`state` の「州・県が無い」の答えに `NA` も足す。
+- HTS の見出し 6111・6209（乳児の衣類）で `targetAge: 'adult'` は、大人の免除の判定をせず `unknown` で年齢を聞く（GCC では下書き）。
+- Disclaim A の文に証明者がいないとき、「The certifier states」と書かない（`Declared by: [MISSING: certifier]` にし、要求した側の答えとして書く）。
+- 証明書に載る値は英語（ラテン文字）だけ（16 CFR 1110.9(a)）。ほかの文字は `INVALID_INPUT` にし、項目の場所と 1110.9(a) を挙げる。
+- 試験の除外（16 CFR 1110.11(c)）は、試験の記録が渡されていないときだけ表示する。記録があれば記録を載せる。
+- CPSC の一覧で `Button Cell & Coin Batteries` のコードは、`batteryType` が無ければ聞く（空気亜鉛電池は 16 CFR 1263.1(d) で対象外なので、一覧だけでは決まらない）。
+- Disclaim の送信は任意（CATAIR）なので「送れます（任意）」と書く。`htsCode` は数字・点・空白・ハイフンだけ。1 つの `citations` の文字列に `16 CFR` を 2 回書かない（(a)(2) は規則を分けて挙げる）。`citations: []` の免除の衣料には、省けば Disclaim B になることも案内する。
+
 ## 持ち主に聞くこと
 
 1. **`items` の上限を 50 のままにするか、20 に下げるか。** 推奨の既定: 50 のまま（この計画のとおり）。50 品の応答は 150,000 字ほどになる（1 品の GCC の HTML が約 2,000 字で、16 CFR 1110.11(a)(7) の文などは減らせない）。MCP のクライアントには応答を約 2 万 5 千トークンで切るものがあるので、20 品（6 万字ほど）までにしたいなら、Task 4 の `max(50)` と、Task 9 の大きさの目標（50 品 → 20 品 70,000 字）を変えるだけでよい。
