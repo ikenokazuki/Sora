@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findLinkcoreLyrics, normalizeName, parseLyricsPage, parseReleasePage } from './lyrics_linkcore.js';
+import { findLinkcoreLyrics, matchesArtist, normalizeName, parseLyricsPage, parseReleasePage } from './lyrics_linkcore.js';
 
 // 歌詞の本文は使わない。以下の曲名・歌手名・歌詞はすべてテスト用の作り物。
 const ARTIST = 'テストグループ';
@@ -78,7 +78,65 @@ describe('normalizeName', () => {
   });
 });
 
+describe('normalizeName: names made only of symbols', () => {
+  test('are not folded to an empty string (it would match every name and collide as a key)', () => {
+    expect(normalizeName('♪')).toBe('♪');
+    expect(normalizeName('  ♪ ')).toBe('♪');
+    expect(normalizeName('!!!')).not.toBe(normalizeName('???'));
+    expect(normalizeName('♪')).not.toBe(normalizeName('★'));
+    expect(normalizeName('')).toBe('');
+    // 普通の名前と同じく、全角半角と大小文字はそろえる
+    expect(normalizeName('！！！')).toBe(normalizeName('!!!'));
+    expect(normalizeName('ＡＢ？')).toBe('ab');
+    expect(normalizeName('？？')).toBe('??');
+  });
+});
+
+describe('matchesArtist', () => {
+  test('a name of three characters or fewer must be equal, not contained', () => {
+    expect(matchesArtist('ai', 'mai')).toBe(false);
+    expect(matchesArtist('mai', 'ai')).toBe(false);
+    expect(matchesArtist('ai', 'AI')).toBe(true);
+    expect(matchesArtist('ＡＩ', 'ai')).toBe(true);
+    expect(matchesArtist('abc', 'abcd')).toBe(false);
+    expect(matchesArtist('嵐', '嵐ファン')).toBe(false);
+  });
+  test('longer names keep the containment rule', () => {
+    expect(matchesArtist('abcd', 'abcde')).toBe(true);
+    expect(matchesArtist('Test Group', 'test group feat. ゲスト')).toBe(true);
+    expect(matchesArtist(ARTIST, `${ARTIST} feat. ゲスト`)).toBe(true);
+    expect(matchesArtist('テストグループ', '別のグループ')).toBe(false);
+  });
+  test('an empty name matches nothing; symbol-only names match only themselves', () => {
+    expect(matchesArtist('', 'ai')).toBe(false);
+    expect(matchesArtist('ai', '  ')).toBe(false);
+    expect(matchesArtist('!!!', '!!!')).toBe(true);
+    expect(matchesArtist('!!!', '???')).toBe(false);
+  });
+});
+
 describe('findLinkcoreLyrics', () => {
+  test('a symbol-only title does not match a different symbol-only track', async () => {
+    const rid = newId();
+    const site = fakeSite({
+      [`https://linkco.re/${rid}`]: releaseHtml(rid, '★', ARTIST, [{ name: '★', song: 5, lyrics: true }, { name: '♪', song: 6, lyrics: true }]),
+      [lyricsUrl(rid, 6)]: lyricsHtml(['ふふ']),
+      [lyricsUrl(rid, 5)]: lyricsHtml(['へへ']),
+    });
+    const r = await findLinkcoreLyrics(ARTIST, '♪', { search: searchReturning([hit(rid, '★')]).search, fetchPage: site.fetchPage });
+    expect(r).toMatchObject({ status: 'found', lyrics: 'ふふ', track: { title: '♪' } });
+    const none = await findLinkcoreLyrics(ARTIST, '☆', { search: searchReturning([hit(rid, '★')]).search, fetchPage: site.fetchPage });
+    expect(none.status).toBe('no-match');
+  });
+
+  test('a short artist name does not seed from a release of a longer name that contains it', async () => {
+    const rid = newId();
+    const site = fakeSite({ [`https://linkco.re/${rid}`]: releaseHtml(rid, '曲A', 'mai', [{ name: '曲A', song: 7, lyrics: true }]), [lyricsUrl(rid, 7)]: lyricsHtml(['らら']) });
+    const r = await findLinkcoreLyrics('ai', '曲A', { search: searchReturning([hit(rid, '曲A', 'mai')]).search, fetchPage: site.fetchPage });
+    expect(r.status).toBe('no-match');
+    expect(site.fetched).toEqual([]);
+  });
+
   test('search -> release page -> lyric page', async () => {
     const rid = newId();
     const site = fakeSite({

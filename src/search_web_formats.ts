@@ -16,7 +16,7 @@ const DEFAULT_DEPS: SearchWebFormatDependencies={searchYahooWeb,scrapeUrl};
 export function buildSearchWebCacheKey(o: SearchWebRequest): string {
   const formats=o.formats?.slice().sort().join(',')||'none';
   const limit=o.limit ?? (o.formats&&o.formats.length>0?5:'provider');
-  return ['search:web',o.query,(normalizeDomainList(o.includeDomains)||[]).join(','),(normalizeDomainList(o.excludeDomains)||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
+  return ['search:web:v2',o.query,(normalizeDomainList(o.includeDomains)||[]).join(','),(normalizeDomainList(o.excludeDomains)||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
 }
 /** 検索元が制限中（throttled）か、古い結果を返した（stale）応答。取り直せるように、キャッシュしない。 */
 export function isTransientWebSearch(result: unknown): boolean {

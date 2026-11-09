@@ -20,8 +20,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     'disaster',
     '【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] }',
     {
-      pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")'),
-      road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速", "阪神高速", "東北道")'),
+      pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")。解決できない値はエラー。road と併せるとその都道府県のページを road で絞る'),
+      road: z.string().optional().describe('道路名 (例: "東名高速", "中央道", "名神高速", "東北道", "圏央道")。該当する道路の情報が無ければ、その旨を返す'),
     },
     async (opts) => {
       try {
@@ -46,10 +46,10 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_disaster_warnings',
     'disaster',
-    '【気象庁公式防災直結】大雨・洪水・暴風・大雪・波浪等の特別警報・気象警報・注意報は、一般Web検索の古い情報に頼らず必ず気象庁公式データ直結の本ツールで市区町村単位でリアルタイム取得してください。返却: { areaName, warnings: [{ name, level, status }] }',
+    '【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、一般Web検索の古い情報に頼らず必ず本ツールで市区町村単位でリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] }',
     {
-      city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
-      areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
+      city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方'),
+      areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可'),
     },
     async (opts) => {
       try {
@@ -111,8 +111,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }',
     {
       address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
-      lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
-      lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+      lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
+      lon: z.number().min(-180).max(180).optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
       noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
     },
     async (opts) => {
@@ -143,9 +143,9 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
       lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
       lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
-      radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000)').meta({ default: 5000 }),
+      radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
       center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他'),
-      bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat"'),
+      bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
       limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
       noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
       withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データが揃う前に調べた施設は addressIncomplete: true（足りないデータは addressPending / addressUnavailable）で、数秒後の再実行で完全になる。解釈できない住所は addressInfo なしで印も付かない').meta({ default: false }),

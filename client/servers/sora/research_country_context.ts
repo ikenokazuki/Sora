@@ -8,7 +8,7 @@ export type ResearchCountryContextInput = {
   period?: "7d" | "30d" | "90d";
   includeSocial?: boolean;
   social?: {
-    /** 検索する SNS (省略時は weibo, threads, instagram, facebook のすべて)。queries で語を指定しない SNS は query か地域名で検索する */
+    /** 検索する SNS (省略時は weibo, threads, instagram, facebook のすべて)。指定すると queries の SNS もこの中に絞る。queries の無い SNS は query か地域名で検索する */
     platforms?: ("weibo" | "threads" | "instagram" | "facebook")[];
     /** SNS ごとの検索語 (1つの SNS につき2語まで、全体で8件まで) */
     queries?: {

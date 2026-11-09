@@ -12,16 +12,20 @@ export type CheckProductComplianceInput = {
   htsCode?: string;
   /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   targetAge?: "adult" | "child" | "unknown";
-  /** 主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
+  /** 主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること。衣料は "100% polyester" の形（16 CFR 1610.1(d)(2)） */
   material?: string;
-  /** 製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。【推測値の入力厳禁】不明な場合は省略すること */
+  /** 製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること */
   productCategory?: string;
-  /** 食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。【推測値のでっち上げ厳禁】Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること */
+  /** 食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   foodContact?: boolean;
-  /** 電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。【推測値のでっち上げ厳禁】Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること */
+  /** 電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない（batteryType が button_coin だと 400）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   hasBattery?: boolean;
-  /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
+  /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。button_coin は hasBattery を省いても電池あり（false とは矛盾で 400）。other は true のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   batteryType?: "button_coin" | "other";
+  /** 衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略 */
+  fabricSurface?: "plain" | "raised";
+  /** 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除。不明なら省略 */
+  fabricWeightOzPerSqYd?: number;
 };
 
 export type CheckProductComplianceOutput = {
@@ -145,8 +149,19 @@ export type CheckProductComplianceOutput = {
           /** 規制条項の公式参照先 URL */
           sourceUrl: string;
         }[];
-        /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A") */
+        /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
         disclaimerCodeHint?: string;
+        /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
+        testingExemption?: {
+          /** 可燃性等の実試験が法定免除されるか */
+          exempt: boolean;
+          /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
+          citation?: string;
+          /** 試験免除または適用除外の理由説明 */
+          reason: string;
+          /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
+          enforcementDiscretion?: boolean;
+        };
         /** 判定に必要な不足情報項目 */
         missingInfo: string[];
         /** 輸入者・輸出者が次に取るべき実務アクションリスト */
@@ -316,8 +331,19 @@ export type CheckProductComplianceOutput = {
       /** 規制条項の公式参照先 URL */
       sourceUrl: string;
     }[];
-    /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A") */
+    /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
     disclaimerCodeHint?: string;
+    /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
+    testingExemption?: {
+      /** 可燃性等の実試験が法定免除されるか */
+      exempt: boolean;
+      /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
+      citation?: string;
+      /** 試験免除または適用除外の理由説明 */
+      reason: string;
+      /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
+      enforcementDiscretion?: boolean;
+    };
     /** 判定に必要な不足情報項目 */
     missingInfo: string[];
     /** 輸入者・輸出者が次に取るべき実務アクションリスト */

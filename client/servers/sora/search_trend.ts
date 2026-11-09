@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type SearchTrendInput = {
-  /** 取得件数 (デフォルト: 20, 最大: 50) */
+  /** 取得件数 (デフォルト: 20, 最大: 50。返るのはページに載っている件数まで) */
   limit?: number;
 };
 

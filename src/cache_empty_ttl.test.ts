@@ -24,4 +24,10 @@ describe('empty search answers are kept only briefly', () => {
     expect(searchCacheTtl({ items: [] })).toBe(CACHE_TTL_EMPTY);
     expect(searchCacheTtl({ items: [{ url: 'https://e/a' }] })).toBe(CACHE_TTL_DEFAULT);
   });
+
+  test('the upstream error text kept as raw (no items) gets the short TTL too', () => {
+    expect(searchCacheTtl({ source: 'image', raw: 'Error: HTTP 503 Service Unavailable' })).toBe(CACHE_TTL_EMPTY);
+    expect(searchCacheTtl({ source: 'image', raw: 'x', items: [{ url: 'https://e/a' }] })).toBe(CACHE_TTL_DEFAULT);
+    expect(searchCacheTtl({ source: 'suggest', suggestions: ['a'] })).toBe(CACHE_TTL_DEFAULT);
+  });
 });

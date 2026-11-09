@@ -79,6 +79,26 @@ describe('findAwaLyrics', () => {
     expect(site.fetched).toEqual([url(seed), url(target)]);
   });
 
+  test('a symbol-only title does not match a different symbol-only track', async () => {
+    const [seed, target] = [hex(), hex()];
+    const site = fakeSite({
+      [url(seed)]: awaPage(seed, '★', ARTIST, 'へへ', [{ id: target, name: '♪' }]),
+      [url(target)]: awaPage(target, '♪', ARTIST, 'ふふ'),
+    });
+    const r = await findAwaLyrics(ARTIST, '♪', { search: searchReturning([hit(seed, '★')]).search, fetchPage: site.fetchPage });
+    expect(r).toMatchObject({ status: 'found', lyrics: 'ふふ', sourceUrl: url(target) });
+    const none = await findAwaLyrics(ARTIST, '☆', { search: searchReturning([hit(seed, '★')]).search, fetchPage: site.fetchPage });
+    expect(none.status).toBe('no-match');
+  });
+
+  test('a short artist name does not seed from a track of a longer name that contains it', async () => {
+    const id = hex();
+    const site = fakeSite({ [url(id)]: awaPage(id, '曲A', 'mai', 'ら') });
+    const r = await findAwaLyrics('ai', '曲A', { search: searchReturning([hit(id, '曲A', 'mai')]).search, fetchPage: site.fetchPage });
+    expect(r.status).toBe('no-match');
+    expect(site.fetched).toEqual([]);
+  });
+
   test('a song whose page has no text is reported as not registered', async () => {
     const id = hex();
     const site = fakeSite({ [url(id)]: awaPage(id, '曲A', ARTIST, '  ') });

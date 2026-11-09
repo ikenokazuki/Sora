@@ -105,10 +105,10 @@ describe('buildScrapeCacheKey', () => {
     for (const [label, patch] of same) expect(keyOf(patch), label).toBe(baseKey);
   });
 
-  test('includeMedia: false は別のキー（既定の true と同じ値は同じキー）、キーの版は v9', () => {
+  test('includeMedia: false は別のキー（既定の true と同じ値は同じキー）、キーの版は v10', () => {
     expect(keyOf({ includeMedia: false })).not.toBe(keyOf({}));
     expect(keyOf({ includeMedia: true })).toBe(keyOf({}));
-    expect(keyOf({})).toStartWith('scrape:v9:');
+    expect(keyOf({})).toStartWith('scrape:v10:');
   });
 
   test('ヘッダー名の大文字小文字と並び順、formats の並び順は区別しない', () => {
@@ -205,8 +205,14 @@ describe('trackingCacheKey', () => {
 
   test('キャリアを明示した照会は、ヒントを渡してもキーが変わらない（ヒントを使わないため）', () => {
     const plain = trackingCacheKey({ carrier: 'yamato' }, num);
-    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' }, num)).toBe(plain);
+    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'] }, num)).toBe(plain);
     expect(trackingCacheKey({ carrier: 'sagawa' }, num)).not.toBe(plain);
+  });
+
+  test('自動判別のキーは tracking:v4（v3 は、失敗した会社があっても not_found として保存していた）。会社を指定したキーは v3 のまま', () => {
+    expect(trackingCacheKey({}, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ carrier: 'yamato' }, num)).toStartWith('tracking:v3:yamato:');
   });
 
   test('自動判別は、判別に渡すヒントが違えば別のキーになる', () => {
@@ -217,15 +223,19 @@ describe('trackingCacheKey', () => {
       trackingCacheKey({ preferredCarriers: ['sagawa'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa'] }, num),
-      trackingCacheKey({ originCountry: 'JP' }, num),
-      trackingCacheKey({ destinationCountry: 'US' }, num),
     ];
     expect(new Set([plain, ...variants]).size).toBe(variants.length + 1);
   });
 
+  test('消した originCountry・destinationCountry を渡しても、キーは変わらない', () => {
+    const sent = { preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' } as never;
+    expect(trackingCacheKey(sent, num)).toBe(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num));
+    expect(trackingCacheKey({ originCountry: 'JP' } as never, num)).toBe(trackingCacheKey({}, num));
+  });
+
   test('優先キャリアの並び順・重複と、空のヒントは区別しない', () => {
     expect(trackingCacheKey({ preferredCarriers: ['sagawa', 'yamato'] }, num)).toBe(trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa', 'yamato'] }, num));
-    expect(trackingCacheKey({ preferredCarriers: [], originCountry: ' ', destinationCountry: '' }, num)).toBe(trackingCacheKey({}, num));
+    expect(trackingCacheKey({ preferredCarriers: [] }, num)).toBe(trackingCacheKey({}, num));
   });
 });
 

@@ -1,6 +1,24 @@
 import type { Context } from 'hono';
 
 /**
+ * JSON の本文の最上位で null の項目を、指定なしとして取り除く（None・nil を「未指定」として送るクライアント向け）。
+ * 必須の項目が null なら、取り除いたあとの検証で欠けとして 400 になる。オブジェクトでない本文はそのまま返す。
+ */
+export function dropNullFields(body: unknown): unknown {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== null));
+}
+
+/** JSON の本文を読む。JSON として読めなければ 400 INVALID_JSON の応答を返す（呼び出し側は Response かどうかで分ける） */
+export async function jsonBodyOr400(c: Context): Promise<unknown> {
+  try {
+    return await c.req.json();
+  } catch {
+    return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
+  }
+}
+
+/**
  * 構造化エラーレスポンス ヘルパー
  */
 export function formatError(

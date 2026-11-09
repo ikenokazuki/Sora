@@ -58,6 +58,7 @@ export function createIntelligenceRoutes(deps: IntelligenceRouteDeps = {}) {
       }
       return c.json(page(c.req.param('contextId'), { ids, cursor: c.req.query('cursor'), limit }));
     } catch (error) {
+      if (error instanceof RangeError) return formatError(c, error.message, 'INVALID_INPUT', 400, false);
       return formatError(c, error instanceof Error ? error.message : 'Evidence page failed', 'INTEL_ERROR', 500);
     }
   });
@@ -66,6 +67,7 @@ export function createIntelligenceRoutes(deps: IntelligenceRouteDeps = {}) {
     try {
       return c.json(updates(c.req.param('contextId'), c.req.query('cursor')));
     } catch (error) {
+      if (error instanceof RangeError) return formatError(c, error.message, 'INVALID_INPUT', 400, false);
       return formatError(c, error instanceof Error ? error.message : 'Context updates failed', 'INTEL_ERROR', 500);
     }
   });

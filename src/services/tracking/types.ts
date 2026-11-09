@@ -18,8 +18,6 @@ export type {
 
 export interface TrackingDetectionHints {
   preferredCarriers?: CarrierCode[];
-  originCountry?: string;
-  destinationCountry?: string;
 }
 
 export interface CarrierDetectionSignal {

@@ -59,6 +59,10 @@ describe('intel mcp details', () => {
       const page = (await client.callTool({ name: 'get_country_context_evidence', arguments: { contextId, limit: 10 } })) as unknown as { structuredContent: { items: unknown[]; totalStored: number } };
       expect(page.structuredContent.totalStored).toBe(1);
       expect(page.structuredContent.items).toHaveLength(1);
+      const evidenceId = (page.structuredContent.items[0] as { evidenceId: string }).evidenceId;
+      const byIds = (await client.callTool({ name: 'get_country_context_evidence', arguments: { contextId, evidenceIds: [evidenceId, 'evd_bogus'] } })) as unknown as { structuredContent: { items: unknown[]; missingIds?: string[] } };
+      expect(byIds.structuredContent.items).toHaveLength(1);
+      expect(byIds.structuredContent.missingIds).toEqual(['evd_bogus']);
       const snapshot = (await client.callTool({ name: 'get_country_context', arguments: { contextId } })) as unknown as { structuredContent: { contextId: string } };
       expect(snapshot.structuredContent.contextId).toBe(contextId);
       const updates = (await client.callTool({ name: 'get_country_context_updates', arguments: { contextId } })) as unknown as { structuredContent: { changes: unknown[] } };

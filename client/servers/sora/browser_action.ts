@@ -6,15 +6,13 @@ export type BrowserActionInput = {
   url?: string;
   /** 既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定) */
   sessionId?: string;
-  /** マルチターン対話セッションの所有者検証トークン */
-  ownerToken?: string;
   /** 新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false) */
   createSession?: boolean;
   /** 指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false) */
   closeSession?: boolean;
   /** 順次実行するブラウザアクションの配列 */
   actions?: {
-    /** アクション種別 */
+    /** アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る) */
     type: "click" | "fill" | "type" | "press" | "select" | "scroll" | "wait" | "evaluate" | "navigate" | "screenshot";
     /** 操作対象の CSS セレクタ */
     selector?: string;
@@ -30,7 +28,7 @@ export type BrowserActionInput = {
     script?: string;
     /** navigate 時に遷移する URL */
     url?: string;
-    /** 操作後の待機ディレイ (ミリ秒) */
+    /** click は操作の後の待ち、fill・type は 1 文字ごとの間隔 (ミリ秒)。press・scroll・wait などでは読まれない */
     delay?: number;
     /** fill 時に既存の入力をクリアするか (デフォルト: true) */
     clear?: boolean;
@@ -45,16 +43,16 @@ export type BrowserActionInput = {
     markdown?: boolean;
     /** 操作後の生 HTML を抽出するか (デフォルト: false) */
     html?: boolean;
-    /** 操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false) */
+    /** 操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る */
     screenshot?: boolean;
     /** フルページスクリーンショットにするか (デフォルト: true) */
     screenshotFullPage?: boolean;
-    /** 特定要素のみを切り抜く CSS セレクタ */
+    /** 特定要素のみを切り抜く CSS セレクタ。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る */
     clipSelector?: string;
     /** 最大抽出文字数 (デフォルト: 30000) */
     maxChars?: number;
   };
-  /** 全体のタイムアウト時間 (ミリ秒, デフォルト: 30000) */
+  /** ページ遷移 (最初の URL・navigate) の待ち時間 (ミリ秒, デフォルト: 30000)。全体の制限時間ではない */
   timeout?: number;
 };
 

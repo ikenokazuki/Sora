@@ -19,8 +19,8 @@ export interface InspectImageResult {
   cached?: boolean;
 }
 
-/** マジックバイトから画像 MIME タイプを安全に判定 */
-export function detectImageMimeType(buffer: Uint8Array, headerContentType?: string | null): string {
+/** マジックバイトから画像 MIME タイプを安全に判定 (画像と判断できなければ undefined) */
+export function detectImageMimeType(buffer: Uint8Array, headerContentType?: string | null): string | undefined {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return 'image/jpeg';
   }
@@ -41,8 +41,6 @@ export function detectImageMimeType(buffer: Uint8Array, headerContentType?: stri
   if (headerContentType?.startsWith('image/')) {
     return headerContentType.split(';')[0].trim().toLowerCase();
   }
-
-  return 'image/jpeg'; // フォールバック
 }
 
 /** SSRF 防御 & サイズ制限 & TLS指紋偽装付き画像フェッチ */
@@ -77,14 +75,18 @@ export async function fetchImageBuffer(
   }
 
   const buf = Buffer.from(arrayBuf);
-  const mimeType = detectImageMimeType(new Uint8Array(buf), res.headers.get('content-type'));
+  const contentType = res.headers.get('content-type');
+  const mimeType = detectImageMimeType(new Uint8Array(buf), contentType);
+  if (!mimeType) {
+    throw new Error(`画像ではありません (Content-Type: ${contentType?.split(';')[0].trim() || 'なし'}): ${imageUrl}`);
+  }
 
   return { buffer: buf, mimeType };
 }
 
 /** 画像をフェッチして MCP ImageContent / Base64 を生成 (LRUキャッシュ対応) */
 export async function inspectImage(options: { url: string }): Promise<InspectImageResult> {
-  const cacheKey = `img_inspect:${options.url}`;
+  const cacheKey = `img_inspect:v2:${options.url}`; // v2: 画像でない応答を image/jpeg の成功として保存していた v1 を読まない
   const cached = getFromCache<InspectImageResult>(cacheKey);
   if (cached) {
     return { ...cached, cached: true };

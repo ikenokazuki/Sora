@@ -22,7 +22,7 @@ export type CrawlSiteInput = {
   responseMode?: "full" | "evidence";
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
-  /** 相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false) */
+  /** 相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false) */
   annotateTemporal?: boolean;
   /** 各ページの最大文字数 (デフォルト: 15000, 上限: 50000) */
   maxChars?: number;
@@ -272,6 +272,8 @@ export type CrawlSiteOutput = {
     rawHtml?: string;
     /** スクリーンショット画像 (Base64 PNG) */
     screenshot?: string;
+    /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+    warnings?: string[];
     /** ページ品質スコア (0〜100) */
     quality?: number;
     /** 必須フィールド充足度 (0〜100) */

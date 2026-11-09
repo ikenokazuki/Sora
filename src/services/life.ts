@@ -1,12 +1,11 @@
 import * as cheerio from 'cheerio';
-import { MUNICIPALITY_CITY_MAP } from '../city_map.js';
+import { JMA_CLASS10, JMA_OFFICES } from '../jma_areas.js';
 import { getFromCache, setToCache, CACHE_TTL_WEATHER } from '../cache.js';
 import type { TransitSearchOptions, WeatherForecastOptions } from '../types.js';
+import { AreaInputError, resolveCityId } from './jma_area.js';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
-
-export { MUNICIPALITY_CITY_MAP };
 
 function tokyoNow(now: Date) {
   const parts = Object.fromEntries(
@@ -33,7 +32,7 @@ export function resolveTransitDateTime(opts: TransitSearchOptions, now = new Dat
 
 export function transitCacheKey(opts: TransitSearchOptions): string {
   const dt = resolveTransitDateTime(opts);
-  return `transit:${JSON.stringify([
+  return `transit:v2:${JSON.stringify([
     opts.from, opts.to, opts.via ?? [], dt.year, dt.month, dt.day, dt.hour, dt.minute,
     opts.timeType ?? 'departure', opts.ticket ?? 'ic', opts.seatPreference ?? '', opts.walkSpeed ?? '', opts.sortBy ?? 'time',
     opts.useAirline !== false, opts.useShinkansen !== false, opts.useExpress !== false,
@@ -80,16 +79,16 @@ export function buildTransitUrl(opts: TransitSearchOptions): string {
   // 運賃タイプ
   params.set('ticket', opts.ticket === 'cash' ? 'normal' : 'ic');
 
-  // 座席指定
-  const seatMap: Record<string, string> = { non_reserved: '0', reserved: '1', green: '2' };
-  params.set('shin', seatMap[opts.seatPreference || 'non_reserved'] || '0');
+  // 座席指定（expkind。shin は新幹線を使うかどうかのフラグ）
+  const seatMap: Record<string, string> = { non_reserved: '1', reserved: '2', green: '3' };
+  params.set('expkind', seatMap[opts.seatPreference || 'non_reserved'] || '1');
 
   // 歩く速度
   const walkMap: Record<string, string> = { fast: '1', slightly_fast: '2', slightly_slow: '3', slow: '4' };
   params.set('ws', walkMap[opts.walkSpeed || 'slightly_slow'] || '3');
 
-  // 並び順
-  const sortMap: Record<string, string> = { time: '0', transfer: '1', fare: '2' };
+  // 並び順（0: 到着が早い順、1: 料金が安い順、2: 乗り換え回数順）
+  const sortMap: Record<string, string> = { time: '0', fare: '1', transfer: '2' };
   params.set('s', sortMap[opts.sortBy || 'time'] || '0');
 
   // 交通手段フラグ
@@ -225,33 +224,15 @@ export async function searchTransitRoute(input: TransitSearchOptions): Promise<a
   return result;
 }
 
-/** 都市名または都道府県名から 6 桁の地点 ID を解決 */
-export function resolveCityId(query: string): string {
-  const clean = query.trim();
-  if (/^\d{6}$/.test(clean)) {
-    return clean;
-  }
-
-  // 1. 気象庁公式自治体マップによる完全一致
-  if (MUNICIPALITY_CITY_MAP[clean]) {
-    return MUNICIPALITY_CITY_MAP[clean];
-  }
-
-  // 2. 接尾辞を除去して再試行（例: "東京都" -> "東京", "天童市" -> "天童", "軽井沢町" -> "軽井沢"）
-  const stripped = clean.replace(/(?:都|府|県|市|区|町|村)$/, '');
-  if (MUNICIPALITY_CITY_MAP[stripped]) {
-    return MUNICIPALITY_CITY_MAP[stripped];
-  }
-
-  // 3. 部分一致
-  for (const [key, id] of Object.entries(MUNICIPALITY_CITY_MAP)) {
-    if (key.length >= 2 && (clean.includes(key) || key.includes(clean))) {
-      return id;
-    }
-  }
-
-  // 見つからない場合はデフォルトで東京 (130010)
-  return '130010';
+/**
+ * 予報区（または気象台）の番号から、予報の JSON を出す気象台の番号。北海道・鹿児島・沖縄は XX0000 ではなく、
+ * 十勝・奄美の予報は別の気象台（014100・460100）の JSON に入る
+ */
+function weatherOfficeOf(cityId: string): string {
+  const area = JMA_CLASS10[cityId];
+  const office = area ? (area.forecastOffice ?? area.office) : JMA_OFFICES[cityId] ? cityId : undefined;
+  if (!office) throw new AreaInputError(`地点ID「${cityId}」が見つかりません`);
+  return office;
 }
 
 const WEATHER_CODE_TELOP: Record<string, string> = {
@@ -279,16 +260,18 @@ function getTelopFromCode(code: string, weatherText?: string): string {
 /** 天気予報を取得 (気象庁公式オープンデータ API 直接通信 / 完全自律型) */
 export async function fetchWeatherForecast(options: WeatherForecastOptions): Promise<any> {
   const cityId = resolveCityId(options.city);
+  const officeCode = weatherOfficeOf(cityId);
   const days = Math.min(Math.max(options.days ?? 7, 1), 8);
-  const cacheKey = `weather:${cityId}:${days}`;
+  const cacheKey = `weather:v3:${cityId}:${days}`;
+  // キャッシュには入力に依らない中身だけを入れ、返すときに今の入力の地名を付ける
+  const withCity = (result: any) => ({ ...result, location: { ...result.location, city: options.city } });
 
   if (!options.noCache) {
     const cached = getFromCache<any>(cacheKey);
-    if (cached) return cached;
+    if (cached) return withCity(cached);
   }
 
   // 気象庁（JMA）公式 API 直接通信（一次ソース一本化）
-  const officeCode = cityId.substring(0, 2) + '0000';
   const [forecastRes, overviewRes] = await Promise.all([
     fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${officeCode}.json`, {
       headers: { 'User-Agent': 'Sora/2.0' },
@@ -315,7 +298,8 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
 
   const targetArea = weatherAreas.find((a: any) => a.area?.code === cityId) || weatherAreas[0];
   const targetPop = popAreas.find((a: any) => a.area?.code === cityId) || popAreas[0];
-  const targetTemp = tempAreas?.[0];
+  // 気温の地点は予報区の表の先頭の地点の名前で選ぶ（JSON の地点の並びは予報区の並びと同じとは限らない）。無ければ最初の地点
+  const targetTemp = tempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.points[0]) ?? tempAreas[0];
 
   const dateLabels = ['今日', '明日', '明後日'];
   const forecasts = [];
@@ -362,11 +346,20 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
     const weeklyWeatherAreas: any[] = weeklyForecast.timeSeries?.[0]?.areas || [];
     const weeklyTempAreas: any[] = weeklyForecast.timeSeries?.[1]?.areas || [];
 
+    // 週間予報の地域は予報区をまとめたもの（"中部・南部"・"下北・三八上北"）や気象台の範囲（"鹿児島県（奄美地方除く）"）。
+    // 予報区の番号、気象台の番号、名前（"中部" は "中部・南部"、"沿岸北部" は "沿岸"）の順で選ぶ
+    const areaName: string = JMA_CLASS10[cityId]?.name ?? '';
     const targetWeeklyWeather =
-      weeklyWeatherAreas.find((a: any) => a.area?.code === cityId || a.area?.code === officeCode) ||
+      weeklyWeatherAreas.find((a: any) => a.area?.code === cityId) ??
+      weeklyWeatherAreas.find((a: any) => a.area?.code === officeCode) ??
+      weeklyWeatherAreas.find((a: any) => areaName && a.area?.name && (a.area.name.split('・').includes(areaName) || areaName.startsWith(a.area.name))) ??
       weeklyWeatherAreas[0];
+    // 気温の地点は、短期予報と同じく予報区の表の先頭の地点の名前で選ぶ。週間予報に無い地点（飯田・むつなど）は、
+    // 選んだ地域と同じ位置の地点（気温の地点は地域と同じ並び）
     const targetWeeklyTemp =
-      weeklyTempAreas.find((a: any) => a.area?.code === cityId) || weeklyTempAreas[0];
+      weeklyTempAreas.find((a: any) => a.area?.name === JMA_CLASS10[cityId]?.points[0]) ??
+      weeklyTempAreas[weeklyWeatherAreas.indexOf(targetWeeklyWeather)] ??
+      weeklyTempAreas[0];
 
     for (let j = 0; j < weeklyTimeDefines.length; j++) {
       const rawDate = weeklyTimeDefines[j];
@@ -408,15 +401,15 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   const formatted = {
     source: 'weather',
     cityId,
-    title: `${targetArea?.area?.name || options.city} の天気`,
+    title: `${targetArea?.area?.name || JMA_CLASS10[cityId]?.name || cityId} の天気`,
     publishedTime: shortForecast?.reportDatetime,
     publicTime: shortForecast?.reportDatetime,
     publishingOffice: shortForecast?.publishingOffice || '気象庁',
     location: {
       area: targetArea?.area?.name,
       prefecture: targetArea?.area?.name,
-      city: options.city,
     },
+    temperatureArea: targetTemp?.area?.name,
     overview: overviewData?.text || overviewData?.headlineText || '',
     description: {
       headline: overviewData?.headlineText || '',
@@ -430,5 +423,5 @@ export async function fetchWeatherForecast(options: WeatherForecastOptions): Pro
   };
 
   if (!options.noCache) setToCache(cacheKey, formatted, CACHE_TTL_WEATHER);
-  return formatted;
+  return withCity(formatted);
 }

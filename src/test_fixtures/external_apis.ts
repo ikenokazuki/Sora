@@ -3,6 +3,7 @@
 // 形は各 API の実際の応答に合わせ、中身はテストに必要な最小限にしている。
 import crossExcerpt from './cross_search_excerpt.json';
 import usitcExcerpt from './usitc_export_excerpt.json';
+import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES as JMA_OFFICE_NAMES } from '../jma_areas.js';
 
 /**
  * USITC HTS 全件の export（/reststop/exportList）の抜粋。実際の関税率表の行（中間行を含む）を、
@@ -55,12 +56,39 @@ function itunesSearch(url: URL): unknown {
   return { resultCount: results.length, results: results.slice(0, limit) };
 }
 
-/** 気象庁の府県予報区（府県予報の office と、その中の一次細分区域）。 */
-const JMA_OFFICES: Record<string, { office: string; areas: Array<{ code: string; name: string }> }> = {
+/**
+ * 気象庁の府県予報区（府県予報の office と、その中の一次細分区域）。points は短期予報の気温の地点で、
+ * 実際の JSON と同じく一次細分区域と同じ順に並ぶ（省くと地点は 1 つ）。
+ */
+const JMA_OFFICES: Record<string, { office: string; areas: Array<{ code: string; name: string }>; points?: Array<{ code: string; name: string }> }> = {
   '130000': { office: '気象庁', areas: [{ code: '130010', name: '東京地方' }, { code: '130020', name: '伊豆諸島北部' }] },
   '190000': { office: '甲府地方気象台', areas: [{ code: '190010', name: '中・西部' }, { code: '190020', name: '東部・富士五湖' }] },
   '270000': { office: '大阪管区気象台', areas: [{ code: '270000', name: '大阪府' }] },
+  '400000': {
+    office: '福岡管区気象台',
+    areas: [{ code: '400010', name: '福岡地方' }, { code: '400020', name: '北九州地方' }],
+    points: [{ code: '82182', name: '福岡' }, { code: '82056', name: '八幡' }],
+  },
+  '471000': { office: '沖縄気象台', areas: [{ code: '471010', name: '本島中南部' }, { code: '471020', name: '本島北部' }] },
+  '016000': { office: '札幌管区気象台', areas: [{ code: '016010', name: '石狩地方' }, { code: '016020', name: '空知地方' }] },
+  // 実際の JSON と同じく、地点の並び（山形・酒田・新庄・米沢）が予報区の並び（村山・置賜・庄内・最上）と違う
+  '060000': {
+    office: '山形地方気象台',
+    areas: [{ code: '060010', name: '村山' }, { code: '060020', name: '置賜' }, { code: '060030', name: '庄内' }, { code: '060040', name: '最上' }],
+    points: [{ code: '35426', name: '山形' }, { code: '35136', name: '酒田' }, { code: '35172', name: '新庄' }, { code: '35571', name: '米沢' }],
+  },
+  // 十勝地方（014030）の予報は釧路地方気象台の JSON に入る
+  '014100': {
+    office: '釧路地方気象台',
+    areas: [{ code: '014020', name: '釧路地方' }, { code: '014010', name: '根室地方' }, { code: '014030', name: '十勝地方' }],
+    points: [{ code: '19432', name: '釧路' }, { code: '18273', name: '根室' }, { code: '20432', name: '帯広' }],
+  },
 };
+
+/** 気象庁に無い気象台の番号（例: 北海道の 010000）は、実際と同じく 404 を返す。 */
+const isJmaOffice = (code: string) => code in JMA_OFFICE_NAMES;
+/** 予報の JSON を自分では出さない気象台（十勝・奄美。予報は別の気象台の JSON に入る） */
+const NO_FORECAST = new Set(Object.values(JMA_CLASS10).filter((c) => c.forecastOffice).map((c) => c.office));
 
 const jstDate = (offsetDays: number): string => {
   const d = new Date(Date.now() + 9 * 3600_000 + offsetDays * 86400_000);
@@ -88,7 +116,11 @@ function jmaForecast(officeCode: string): unknown {
           })),
         },
         { timeDefines: shortDays, areas: info.areas.map((area) => ({ area, pops: ['0', '10', '20', '30'] })) },
-        { timeDefines: shortDays, areas: [{ area: { code: `${officeCode.slice(0, 2)}000`, name: '代表地点' }, temps: ['18', '27', '19', '26', '20', '25'] }] },
+        {
+          timeDefines: shortDays,
+          areas: (info.points ?? [{ code: `${officeCode.slice(0, 2)}000`, name: '代表地点' }])
+            .map((area, i) => ({ area, temps: ['18', '27', '19', '26', '20', '25'].map((t) => String(Number(t) - i)) })),
+        },
       ],
     },
     {
@@ -124,14 +156,20 @@ function jmaOverview(officeCode: string): unknown {
   };
 }
 
-/** 気象庁 warning/{office}.json（一次細分区域に注意報を1つ）。 */
+/**
+ * 気象庁 warning/data/r8/{office}.json。実際と同じく報（種類ごとの dataTypeCode）の配列で、どの報にもその気象台の
+ * すべての予報区（class10Items）と市町村（class20Items）の欄があり、欄には番号と警報だけがある（名前は無い）。
+ * どの欄にも、大雨の報で大雨注意報（レベル２）、雷などの報で雷注意報を置く。
+ */
 function jmaWarning(officeCode: string): unknown {
-  const info = JMA_OFFICES[officeCode] ?? { office: '気象庁', areas: [{ code: `${officeCode.slice(0, 2)}0010`, name: '地方' }] };
-  return {
-    reportDatetime: jstDate(0).replace('T00:00:00', 'T05:00:00'),
-    publishingOffice: info.office,
-    areaTypes: [{ areas: info.areas.map((a) => ({ code: a.code, name: a.name, warnings: [{ code: '14', status: '発表' }] })) }],
-  };
+  const areas = Object.keys(JMA_CLASS10).filter((c) => JMA_CLASS10[c].office === officeCode);
+  const towns = Object.values(JMA_CLASS20).flat().filter((t) => JMA_CLASS10[t.class10]?.office === officeCode);
+  const report = (dataTypeCode: string, time: string, kinds: unknown[]) => ({
+    reportDatetime: jstDate(0).replace('T00:00:00', time),
+    dataTypeCode,
+    warning: { class10Items: areas.map((areaCode) => ({ areaCode, kinds })), class20Items: towns.map((t) => ({ areaCode: t.code, kinds })) },
+  });
+  return [report('VPWW55', 'T05:00:00', [{ code: '10', status: '発表' }]), report('VPWW61', 'T04:00:00', [{ code: '14', status: '継続' }])];
 }
 
 /** P2P地震情報 history（code 551 の地震情報）。 */
@@ -182,10 +220,11 @@ export function externalApiFixtureResponse(url: URL): Response | undefined {
   if (url.hostname === 'rulings.cbp.gov' && url.pathname === '/api/search') return json(crossSearchResponse(url.searchParams.get('term') || ''));
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
-    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/warning)\/(\d{6})\.json$/);
+    const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/r8)\/(\d+)\.json$/);
+    if (m && (!isJmaOffice(m[2]) || (m[1] !== 'warning/data/r8' && NO_FORECAST.has(m[2])))) return new Response('Not Found', { status: 404 });
     if (m?.[1] === 'forecast/data/forecast') return json(jmaForecast(m[2]));
     if (m?.[1] === 'forecast/data/overview_forecast') return json(jmaOverview(m[2]));
-    if (m?.[1] === 'warning/data/warning') return json(jmaWarning(m[2]));
+    if (m?.[1] === 'warning/data/r8') return json(jmaWarning(m[2]));
   }
   if (url.hostname === 'api.p2pquake.net' && url.pathname === '/v2/history') return json(p2pHistory());
   if (url.hostname === 'roadway.yahoo.co.jp') return new Response(roadwayHtml(url), { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });

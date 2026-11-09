@@ -542,3 +542,26 @@ describe('切る前の全文', () => {
     expect(result.fullMarkdown).toContain(tail);
   });
 });
+
+describe('scrape output of product pages', () => {
+  it('does not take a variant SKU, price or availability from ProductGroup.hasVariant (scrape output stays as in v4.0.0)', () => {
+    const ld = {
+      '@context': 'https://schema.org', '@type': 'ProductGroup', name: 'Logo Tee', brand: { '@type': 'Brand', name: 'Acme' },
+      hasVariant: [
+        { '@type': 'Product', name: 'Logo Tee - S', sku: 'TEE-S', offers: { '@type': 'Offer', url: 'https://shop.test/p?variant=11', price: '20.00', priceCurrency: 'USD', availability: 'https://schema.org/OutOfStock' } },
+        { '@type': 'Product', name: 'Logo Tee - M', sku: 'TEE-M', offers: { '@type': 'Offer', url: 'https://shop.test/p?variant=12', price: '22.00', priceCurrency: 'USD', availability: 'https://schema.org/InStock' } },
+      ],
+    };
+    const html = `<!doctype html><html><head><title>T</title><script type="application/ld+json">${JSON.stringify(ld)}</script></head><body><main><p>${'Body text for the product page. '.repeat(20)}</p></main></body></html>`;
+    for (const url of ['https://shop.test/p', 'https://shop.test/p?variant=11']) {
+      const r = convertHtmlToMarkdown(html, url, 30000);
+      expect(r.brand, url).toBe('Acme');
+      expect(r.sku, url).toBeUndefined();
+      expect(r.price, url).toBeUndefined();
+      expect(r.availability, url).toBeUndefined();
+    }
+    const offerOnly = { '@context': 'https://schema.org', '@type': 'Product', name: 'Mug', offers: { '@type': 'Offer', sku: ' MUG-1 ', price: '9', priceCurrency: 'USD' } };
+    const r = convertHtmlToMarkdown(html.replace(JSON.stringify(ld), JSON.stringify(offerOnly)), 'https://shop.test/m', 30000);
+    expect(r.sku).toBeUndefined();
+  });
+});

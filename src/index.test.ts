@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, spyOn } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
@@ -13,6 +13,26 @@ beforeAll(() => {
   if (!process.env.SORA_LIVE_TESTS) restoreExternalFetch = installExternalApiFixtures();
 });
 afterAll(() => restoreExternalFetch?.());
+
+/** ALLOW_LOCAL_FETCH を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
+function setLocalFetch(value: string | undefined): () => void {
+  const prev = process.env.ALLOW_LOCAL_FETCH;
+  if (value === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+  else process.env.ALLOW_LOCAL_FETCH = value;
+  return () => {
+    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prev;
+  };
+}
+
+/** このファイルのテストが ALLOW_LOCAL_FETCH を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
+let allowLocalFetchAtStart: string | undefined;
+beforeAll(() => {
+  allowLocalFetchAtStart = process.env.ALLOW_LOCAL_FETCH;
+});
+afterAll(() => {
+  expect(process.env.ALLOW_LOCAL_FETCH).toBe(allowLocalFetchAtStart);
+});
 
 /** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
 async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
@@ -666,7 +686,7 @@ describe('web-fetcher Core Functions', () => {
     expect(resolveCityId('箱根町')).toBe('140020');
     expect(resolveCityId('箱根')).toBe('140020');
     expect(resolveCityId('別府市')).toBe('440010');
-    expect(resolveCityId('石垣島')).toBe('473000');
+    expect(resolveCityId('石垣島')).toBe('474010');
   });
 });
 
@@ -815,10 +835,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/scrape', {
           method: 'POST',
@@ -839,9 +857,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(data.links).toContain('https://example.com/about');
       expect(data.links).toContain('https://example.com/contact');
       expect(data.rawHtml).toContain('Format Test');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -864,10 +881,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/crawl/stream', {
           method: 'POST',
@@ -885,9 +900,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('event: start');
       expect(text).toContain('event: page');
       expect(text).toContain('event: done');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1474,10 +1488,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/test`,
         actions: [
@@ -1494,8 +1506,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.actionOutputs.every((o: any) => o.result === 'ok')).toBe(true);
       expect(result.markdown).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1526,9 +1538,7 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
-
+    const restoreLocalFetch = setLocalFetch('true');
     try {
       const res = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/long-page`,
@@ -1541,7 +1551,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(typeof res.screenshot).toBe('string');
       expect((res.screenshot || '').length).toBeGreaterThan(1000);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1575,10 +1585,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/mouse-trail`,
         actions: [{ type: 'click', selector: '#btn' }, { type: 'wait', ms: 100 }],
@@ -1589,8 +1597,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.markdown.match(/clicked: (\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(5);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1886,9 +1894,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/cookie-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainCookies(domain, []); // 他テストの残留Cookieをクリア（DBはテスト間で共有）
@@ -1909,9 +1916,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // 2回目: 保存済みCookieが復元され、サーバーへ送り返されるはず
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toContain('seen-cookie:true');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1936,10 +1942,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/lang-consistency`,
         renderJs: true,
@@ -1948,9 +1952,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
       expect(seenAcceptLanguage.startsWith('ja')).toBe(true);
       expect(result.content).toContain('languages:ja-JP');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1973,18 +1976,16 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const before = getBotDetectionMetrics().upgradeCount;
 
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
 
       expect(result.renderedWithBrowser).toBe(true);
       expect(getBotDetectionMetrics().upgradeCount).toBe(before + 1);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2017,9 +2018,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/storage-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
@@ -2034,9 +2034,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // (markdown変換で "_" が "\_" にエスケープされることがあるため正規表現で許容する)
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toMatch(/seen-storage:persisted\\?_value/);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2078,10 +2077,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
 
       expect(res.content).toContain('TOP-CONTENT-VISIBLE');
@@ -2091,9 +2088,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.content).toContain('SHADOW-DOM-CONTENT');
       // networkidle 成立後にクライアント側が描画するケース
       expect(res.content).toContain('LATE-CONTENT-RENDERED');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2129,10 +2125,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/passive-mouse-trail`,
         renderJs: true,
@@ -2142,8 +2136,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.content.match(/count=(\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(3);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2172,10 +2166,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       // Turn 1: 新規セッション作成 & 画面オープン (所有者トークン付き)
       const turn1 = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/session-test`,
@@ -2220,8 +2212,8 @@ describe('Sora REST & MCP Endpoints', () => {
       });
 
       expect(turn3.sessionClosed).toBe(true);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2539,7 +2531,19 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
-    await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
+    // 手元の宛先には送らず（ALLOW_LOCAL_FETCH が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.ALLOW_LOCAL_FETCH;
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
+      expect(warn.mock.calls.map((c) => c.map(String).join(' '))).toEqual([
+        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: http://127.0.0.1:59999/invalid-webhook',
+      ]);
+    } finally {
+      warn.mockRestore();
+      if (prevEnv !== undefined) process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    }
   });
 
   it('convertHtmlToMarkdown should extract image metadata, caption, and dimensions', () => {
@@ -2626,14 +2630,14 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('validateHostIpDns should block private IPs and throw appropriate security error', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-
-    await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
-
-    process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    const restoreLocalFetch = setLocalFetch(undefined);
+    try {
+      await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
+    } finally {
+      restoreLocalFetch();
+    }
   });
 
   it('SimpleSemaphore should limit concurrency correctly', async () => {
@@ -2769,7 +2773,11 @@ describe('Sora REST & MCP Endpoints', () => {
     let realFetch: typeof fetch;
     let fetched: string[];
     let prevEnv: string | undefined;
+    // 止めた宛先は console.warn に出る。テストの出力に混ぜず、ここで受けて確かめる
+    let warn: ReturnType<typeof spyOn<Console, 'warn'>>;
+    const warned = () => warn.mock.calls.map((c) => c.map(String).join(' '));
     beforeEach(() => {
+      warn = spyOn(console, 'warn').mockImplementation(() => {});
       realFetch = globalThis.fetch;
       fetched = [];
       globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -2780,6 +2788,7 @@ describe('Sora REST & MCP Endpoints', () => {
       delete process.env.ALLOW_LOCAL_FETCH;
     });
     afterEach(() => {
+      warn.mockRestore();
       globalThis.fetch = realFetch;
       if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
       else process.env.ALLOW_LOCAL_FETCH = prevEnv;
@@ -2797,11 +2806,13 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
       }
       expect(fetched).toEqual([]);
+      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${url}`));
     });
 
     it('fetches a public destination (control for the blocked cases)', async () => {
       await expect(sendWebhookNotification('https://93.184.216.34/hook', { data: 'test' })).resolves.toBeUndefined();
       expect(fetched).toEqual(['https://93.184.216.34/hook']);
+      expect(warned()).toEqual([]);
     });
   });
 
@@ -2936,7 +2947,8 @@ describe('Sora REST & MCP Endpoints', () => {
   // ==========================================
   it('fetchWeatherWarnings should parse JMA warning structure and handle city names', async () => {
     const warnings = await fetchWeatherWarnings({ city: '東京' });
-    expect(warnings.areaCode).toBe('130010');
+    // 都道府県名（略称を含む）は県全体
+    expect(warnings.areaCode).toBe('130000');
     expect(warnings.reportTime).toBeDefined();
     expect(Array.isArray(warnings.warnings)).toBe(true);
     expect(Array.isArray(warnings.advisories)).toBe(true);
@@ -2961,6 +2973,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resWarn.status).toBe(200);
     const warnJson = (await resWarn.json()) as any;
+    // 都道府県名（略称を含む）は県全体の欄を返す（大阪市にしない）
     expect(warnJson.areaCode).toBe('270000');
 
     const resEq = await app.request('/disaster/earthquake', {
@@ -3306,6 +3319,17 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(checkJson.eFilingRequired).toBe(true);
   });
 
+  it('POST /trade/cpsc-check and /trade/compliance answer 400 INVALID_INPUT for button_coin with hasBattery: false', async () => {
+    const post = (path: string, body: unknown) => app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const cpsc = await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(cpsc.status).toBe(400);
+    expect(((await cpsc.json()) as any).code).toBe('INVALID_INPUT');
+    const compliance = await post('/trade/compliance', { productName: 'LED Penlight', htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(compliance.status).toBe(400);
+    expect(((await compliance.json()) as any).code).toBe('INVALID_INPUT');
+    expect((await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'button_coin' })).status).toBe(200);
+  });
+
   it('POST /trade/fda-check should handle REST requests', async () => {
     const resEmpty = await app.request('/trade/fda-check', {
       method: 'POST',
@@ -3607,8 +3631,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(52);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(38);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(53);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(39);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3703,9 +3727,8 @@ describe('Sora REST & MCP Endpoints', () => {
         return new Response('<html><body>ok</body></html>', { headers: { 'Content-Type': 'text/html' } });
       },
     });
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1'); // 既存プールセッションの影響を排除
       await fetchWithSafeRedirects(`http://127.0.0.1:${server.port}/ua-check`);
 
@@ -3713,9 +3736,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(seenUa).toContain('Chrome/');
       expect(seenUa).not.toContain('Macintosh');
       expect(seenUa).not.toContain('Firefox');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3745,9 +3767,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1');
 
       const base = `http://127.0.0.1:${server.port}`;
@@ -3767,9 +3788,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const browserAl = seen['/browser-path']?.al ?? '';
       expect(browserAl.startsWith('ja-JP')).toBe(true);
       expect(staticAl.startsWith(browserAl)).toBe(true);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3871,9 +3891,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       dbSaveDomainCookies('127.0.0.1', []); // 他テストのDB永続化分をクリア
 
       await scrapeUrl({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
@@ -3883,9 +3902,8 @@ describe('Sora REST & MCP Endpoints', () => {
       dbSaveDomainCookies('127.0.0.1', []);
       const result = await scrapeUrl({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
       expect(result.content).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
@@ -3919,16 +3937,13 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       await executeBrowserActions({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, actions: [], extract: { markdown: true } });
       const result = await executeBrowserActions({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, actions: [], extract: { markdown: true } });
       expect(result.markdown).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
@@ -4082,7 +4097,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 52 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 53 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4128,7 +4143,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('reverse_geocode');
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
-    expect(enabledToolsAll.length).toBe(52);
+    expect(enabledToolsAll).toContain('generate_gcc_certificate');
+    expect(enabledToolsAll.length).toBe(53);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4151,7 +4167,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
   it('checkCpscCertificate should fall back to a 6-digit near match when the full HTS code is unmapped', async () => {
     // 実在コード 9503000073 の統計接尾辞だけ変えた架空コード（先頭6桁 "950300" は一致する）
-    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'child' });
+    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'adult' });
     expect(result.certificateRequired).toBe('unknown');
     expect(result.missingInfo.some((m) => m.includes('950300') || m.includes('Toys'))).toBe(true);
   });
@@ -4322,7 +4338,6 @@ describe('Sora REST & MCP Endpoints', () => {
   it('checkFdaRegulated should return clarifyingQuestions and impactExplanation when foodContact is undefined for FD1 tableware', () => {
     const res = checkFdaRegulated({
       htsCode: '6912.00.4100',
-      productDescription: 'Ceramic coffee mugs',
     });
 
     expect(res.inputCompleteness).toBe('partial');
@@ -4379,7 +4394,7 @@ describe('Sora REST & MCP Endpoints', () => {
     // 規制非該当・未掲載品（ネジ等）: ACE免責コードAを提示
     const resUnmapped = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
     expect(resUnmapped.eFilingRequired).toBe(false);
-    expect(resUnmapped.disclaimerCodeHint).toContain('A');
+    expect(resUnmapped.disclaimerCodeHint).toBe('A (only if confirmed that no CPSC rule applies; Intended Use Code required)');
   });
 
   it('POST /trade/hts-predict should return the classification, the official position, the evidence and the PGA analysis', async () => {
@@ -4454,6 +4469,26 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.disclaimer).toBeTruthy();
   });
 
+  it('POST /trade/compliance ignores generateGcc and sku: 200 without a gcc field', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/trade/compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: 'Adult Bicycle Helmet',
+          htsCode: '6506.10.60.45',
+          targetAge: 'adult',
+          generateGcc: true,
+          sku: 'HLM-001',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json).not.toHaveProperty('gcc');
+    expect(json.product).not.toHaveProperty('sku');
+  });
+
   it('POST /trade/fda-check should parse foodContact and evaluate FD1 status', async () => {
     // 飲食用途の陶磁器食器 (Chapter 69) -> FD1, FDA対象
     const reqFoodContact = new Request('http://localhost/trade/fda-check', {
@@ -4461,7 +4496,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Ceramic coffee mugs',
         foodContact: true,
       }),
     });
@@ -4478,7 +4512,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Decorative display ceramic plate',
         foodContact: false,
       }),
     });
@@ -4488,6 +4521,56 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(jsonNonFood.fdFlag).toBe('FD1');
     expect(jsonNonFood.fdaRegulatedLikely).toBe(false);
     expect(jsonNonFood.nextActions.some((a: string) => a.includes('免責') || a.includes('Disclaimer'))).toBe(true);
+  });
+
+  it('POST /trade/gcc-generate answers 400, 422 and a schema-valid package', async () => {
+    const { GenerateGccCertificateResultSchema } = await import('./types.js');
+    const post = (body: unknown) =>
+      app.fetch(new Request('http://localhost/trade/gcc-generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+    const certifier = { name: 'Acme Imports LLC', street: '100 Example Street', city: 'Anytown', state: 'CA', country: 'United States', email: 'compliance@acme-imports.test', phone: '+1-202-555-0101' };
+    const recordCustodian = { ...certifier, name: 'Compliance Manager', email: 'records@acme-imports.test', phone: '+1-202-555-0102' };
+    const lab = { name: 'Acme Test Lab', street: '2 Example Road', city: 'Taipei', state: 'Taipei City', country: 'Taiwan', email: 'lab@acme-lab.test', phone: '+1-202-555-0104' };
+    const helmet = {
+      htsCode: '6506.10.60.45',
+      productName: 'Adult Bicycle Helmet',
+      identifier: 'HLM-001',
+      targetAge: 'adult',
+      citations: ['16 CFR 1203'],
+      manufacture: { date: '2026-06', name: 'Acme Helmet Factory', street: '1 Example Road', city: 'Taichung', state: 'Taichung City', country: 'Taiwan', email: 'factory@acme-factory.test', phone: '+1-202-555-0103' },
+      testing: { date: '2026-06-15', reportNumber: 'TR-0001', parties: [lab] },
+    };
+    const tee = { htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' };
+
+    const badRes = await post({});
+    expect(badRes.status).toBe(400);
+    expect(((await badRes.json()) as any).code).toBe('INVALID_INPUT');
+
+    const incompleteRes = await post({ items: [{ ...helmet, identifier: undefined }] });
+    expect(incompleteRes.status).toBe(422);
+    const incomplete = (await incompleteRes.json()) as any;
+    expect(incomplete.code).toBe('MISSING_REQUIRED_GCC_FIELDS');
+    expect(incomplete.details.items[0].missingFields).toContain('identifier');
+    expect(incomplete.details.missingFields).toContain('certifier.name');
+
+    const pkgRes = await post({ certifier, recordCustodian, orderNumber: 'ORDER-1001', items: [helmet, tee] });
+    expect(pkgRes.status).toBe(200);
+    const pkg = (await pkgRes.json()) as any;
+    expect(GenerateGccCertificateResultSchema.safeParse(pkg).success).toBe(true);
+    expect(pkg.mode).toBe('order_package');
+    expect(pkg.counts).toMatchObject({ totalItems: 2, gccGenerated: 1, disclaimBExempt: 1 });
+    expect(pkg.packageHtml).toContain('ORDER-1001');
+
+    process.env.SORA_GCC_CERTIFIER = '{not json';
+    try {
+      const brokenRes = await post({ recordCustodian, items: [helmet] });
+      expect(brokenRes.status).toBe(500);
+      const broken = (await brokenRes.json()) as any;
+      expect(broken.code).toBe('TRADE_ERROR');
+      expect(broken.error).toContain('SORA_GCC_CERTIFIER');
+      expect((await post({ items: [tee] })).status).toBe(200);
+    } finally {
+      delete process.env.SORA_GCC_CERTIFIER;
+    }
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
@@ -4822,6 +4905,7 @@ describe('Sora REST & MCP Endpoints', () => {
         'check_fda_regulated',
         'verify_hts_code',
         'check_product_compliance',
+        'generate_gcc_certificate',
         'search_laws',
         'get_law_text',
         'search_diet_minutes',
@@ -5437,7 +5521,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 81 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 82 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5469,8 +5553,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(81);
-      expect(withContentCount).toBe(81);
+      expect(operationCount).toBe(82);
+      expect(withContentCount).toBe(82);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

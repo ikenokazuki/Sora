@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { checkCoordinates, checkZip, compareAddresses } from './address_checks.js';
@@ -140,6 +140,7 @@ describe('checkCoordinates', () => {
       waitMs: 300, concurrency: 2,
     });
     const ctx = createAddressContext(built.data);
+    await prebuild(built.data, { kind: 'master' }, { kind: 'postal' }, { kind: 'index' }, { kind: 'city', lgCode: CHIYODA_LG });
     const town = await ctx.normalizer.normalize('東京都千代田区永田町1-7-1', { level: 3 });
     const check = await checkCoordinates(ctx, 35.675915, 139.745515, town);
     expect(check.nearest).toMatchObject({ level: 3 });

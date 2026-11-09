@@ -110,7 +110,7 @@ const SEARCH_STOP_WORDS = new Set([
  * 数値スコアではなく、一致の種類を優先順位として扱います。
  */
 export function searchCatalog(
-  toolCatalog: Map<string, ToolCatalogEntry>,
+  toolCatalog: ReadonlyMap<string, ToolCatalogEntry>,
   query: string,
 ): ToolCatalogEntry[] {
   const normalizedQuery = query.trim().toLowerCase().replace(/^default\./, '');

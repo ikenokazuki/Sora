@@ -20,6 +20,13 @@ describe('intelligence REST', () => {
     expect(fetched.status).toBe(200);
     expect((await fetched.json() as { contextId: string }).contextId).toBe('ctx-1');
   });
+  test('POST with social only runs the research with includeSocial on', async () => {
+    let seen: { includeSocial?: boolean } | undefined;
+    const app = createIntelligenceRoutes({ research: (async (request: { includeSocial?: boolean }) => { seen = request; return report; }) as never });
+    const res = await app.request('/intelligence/country', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ region: 'China', social: { platforms: ['weibo'] } }) });
+    expect(res.status).toBe(200);
+    expect(seen?.includeSocial).toBe(true);
+  });
   test('POST rejects invalid input and GET 404s unknown ids', async () => {
     const app = createIntelligenceRoutes({ research: (async () => report) as never, retrieve: (() => undefined) as never });
     const bad = await app.request('/intelligence/country', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ region: '' }) });

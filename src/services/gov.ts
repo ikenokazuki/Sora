@@ -413,6 +413,14 @@ export interface DietMinutesSearchResult {
   source: 'kokkai-ndl';
 }
 
+/** 入力の誤り（REST では 400） */
+export class GovInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GovInputError';
+  }
+}
+
 /** 国会会議録検索 API (kokkai.ndl.go.jp) */
 export async function searchDietMinutes(options: {
   keyword?: string;
@@ -433,7 +441,7 @@ export async function searchDietMinutes(options: {
   const limit = Math.min(Math.max(options.limit ?? 10, 1), 30);
 
   if (!keyword && !speaker && !nameOfMeeting) {
-    throw new Error('keyword, speaker, または nameOfMeeting のいずれかを指定してください');
+    throw new GovInputError('keyword, speaker, または nameOfMeeting のいずれかを指定してください');
   }
 
   const cacheKey = `gov:diet:${keyword || ''}:${speaker || ''}:${nameOfHouse || ''}:${nameOfMeeting || ''}:${from || ''}:${until || ''}:${limit}`;

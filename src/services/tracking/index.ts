@@ -63,11 +63,8 @@ export async function trackPackageAuto(
   trackingNumber: string,
   hints?: {
     preferredCarriers?: CarrierCode[];
-    originCountry?: string;
-    destinationCountry?: string;
     signal?: AbortSignal;
     noCache?: boolean;
-    verbose?: boolean;
     candidatesOverride?: RankedCandidate[];
   },
 ): Promise<TrackingResult> {
@@ -202,14 +199,46 @@ export async function trackPackageAuto(
   }
 
   // 3. 検証成功キャリアなし（URL-only は auto winner になれない）
+  // 照会に失敗した会社があれば、「見つからなかった」とは言えない（その会社には荷物があるかもしれない）。error はキャッシュしない。
+  // 「該当なし」と答えた会社だけなら not_found。例外も、会社のアダプターが error を返したものも失敗として数える
+  const failed = allAttemptedResults.filter((a) => a.result.status === 'error');
+  if (failed.length > 0) {
+    const first = failed[0];
+    const failedNames = failed.map((f) => f.candidate.adapter.name).join(', ');
+    return {
+      carrier: first.candidate.carrier,
+      carrierName: first.candidate.adapter.name,
+      trackingNumber: num,
+      status: 'error',
+      statusText: `照会できなかった配送会社があるため、荷物の有無は確認できませんでした (照会できなかった会社: ${failedNames})`,
+      events: [],
+      trackingUrl: first.candidate.adapter.trackingUrl(num),
+      error: failed.map((f) => `${f.candidate.adapter.name}: ${f.result.error || f.result.statusText}`).join('; '),
+      verification: {
+        level: 'none',
+        reasons: [`Carrier lookup failed (${failedNames}); no carrier returned strong verified shipment evidence`],
+      },
+      resolvedCarrier: {
+        code: first.candidate.carrier,
+        name: first.candidate.adapter.name,
+        confidence: 'weak',
+        verification: 'none',
+        method: 'unverified_fallback',
+      },
+    };
+  }
+
   const primaryCandidate = candidates[0];
   const attemptedNames = targetCandidates.map((c) => c.adapter.name).join(', ');
+  // 公式ページの URL だけを返した会社（unknown。資格情報なし、ブラウザで読めなかった UPS・FedEx・DHL など）は、実際には確かめていない。not_found のままにするが、名前を挙げる
+  const unchecked = allAttemptedResults.filter((a) => a.result.status === 'unknown').map((a) => a.candidate.adapter.name);
+  const uncheckedNote = unchecked.length > 0 ? `、確認できなかった会社: ${unchecked.join(', ')}` : '';
   return {
     carrier: primaryCandidate.carrier,
     carrierName: primaryCandidate.adapter.name,
     trackingNumber: num,
     status: 'not_found',
-    statusText: `該当するお荷物情報が見つかりませんでした (照会対象: ${attemptedNames})`,
+    statusText: `該当するお荷物情報が見つかりませんでした (照会対象: ${attemptedNames}${uncheckedNote})`,
     events: [],
     trackingUrl: primaryCandidate.adapter.trackingUrl(num),
     verification: {
@@ -227,19 +256,15 @@ export async function trackPackageAuto(
 }
 
 /**
- * 追跡結果のキャッシュキー。自動判別の結果は、判別に渡すヒント（優先キャリア・差出元／お届け先の国）で変わる。
+ * 追跡結果のキャッシュキー。自動判別の結果は、判別に渡すヒント（優先キャリア）で変わる。
  * キャリアを明示した照会はヒントを使わないので、キーに入れない。
  */
-export function trackingCacheKey(
-  req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers' | 'originCountry' | 'destinationCountry'>,
-  num: string,
-): string {
+export function trackingCacheKey(req: Pick<TrackingRequest, 'carrier' | 'preferredCarriers'>, num: string): string {
   if (req.carrier && req.carrier !== 'auto') return `tracking:v3:${req.carrier}:${num}`;
   const preferred = [...new Set(req.preferredCarriers ?? [])].sort();
-  const origin = req.originCountry?.trim() ?? '';
-  const destination = req.destinationCountry?.trim() ?? '';
-  if (preferred.length === 0 && !origin && !destination) return `tracking:v3:auto:${num}`;
-  return `tracking:v3:auto:${num}:${JSON.stringify({ preferred, origin, destination })}`;
+  // v4: 自動判別で失敗した会社があるとき、v3 は not_found をキャッシュしていた
+  if (preferred.length === 0) return `tracking:v4:auto:${num}`;
+  return `tracking:v4:auto:${num}:${preferred.join(',')}`;
 }
 
 /**
@@ -265,10 +290,7 @@ export async function trackPackage(req: TrackingRequest): Promise<TrackingResult
   if (isAuto) {
     result = await trackPackageAuto(num, {
       preferredCarriers: req.preferredCarriers,
-      originCountry: req.originCountry,
-      destinationCountry: req.destinationCountry,
       noCache: req.noCache,
-      verbose: req.verbose,
     });
   } else {
     result = await trackByCarrier(req.carrier as CarrierCode, num, {

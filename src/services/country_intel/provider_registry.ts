@@ -129,12 +129,13 @@ const persistentCache: ProviderCache = {
 /** 既定実行口の共有キャッシュ。明示の null 指定は無効化として維持する。 */
 export const defaultProviderCache: ProviderCache = persistentCache;
 
+// v2: social.platforms が queries の SNS も絞るようになり、同じ条件でも social_posts の結果が変わった。
 export function providerCacheKey(providerId: string, plan: ResearchPlan): string {
   const topics = [...(plan.request.topics ?? [])].sort();
   const queries = [...plan.pass1, ...plan.pass2]
     .filter((query) => query.providerId === providerId)
     .map((query) => query.query);
-  return `country-intel:provider:v1:${encodeURIComponent(providerId)}:${JSON.stringify({
+  return `country-intel:provider:v2:${encodeURIComponent(providerId)}:${JSON.stringify({
     region: plan.region.id,
     topics,
     period: plan.request.period ?? '30d',

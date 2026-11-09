@@ -75,6 +75,7 @@ systemRoutes.get('/', (c) => {
       tradeHtsVerify: 'POST /trade/hts-verify',
       tradeHtsPredict: 'POST /trade/hts-predict',
       tradeCompliance: 'POST /trade/compliance',
+      tradeGccGenerate: 'POST /trade/gcc-generate',
       mediaInspectImage: 'POST /media/inspect-image',
       youtubeTranscript: 'POST /youtube/transcript',
       youtubeChannel: 'POST /youtube/channel',

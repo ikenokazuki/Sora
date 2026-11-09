@@ -45,6 +45,43 @@ describe('adaptive deep search public contract', () => {
     expect(IntegratedSearchRequestSchema.safeParse({ query: 'fixture', ...options }).success).toBe(false);
   });
 
+  test.each([
+    { limit: -3 }, { limit: 0 }, { limit: 21 }, { highlightMaxCount: 99 }, { formats: ['bogus'] },
+    { updated: 'month' }, { maxChars: 999999 }, { realtimeSort: 'old' }, { includeDomains: 'a.example' },
+  ])('REST validates %j with the shared schema before searching', async (options) => {
+    const response = await searchRoutes.request('/search/deep', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'fixture', ...options }),
+    });
+    expect(response.status).toBe(400);
+    expect(searchSpy).not.toHaveBeenCalled();
+  });
+
+  test('REST treats a top-level null as not set, but a null query is still missing', async () => {
+    const post = (body: unknown) => searchRoutes.request('/search/deep', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const ok = await post({ query: 'fixture', limit: null, formats: null, includeMedia: null, realtimeFocus: null, maxTotalChars: null, responseMode: null });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as any).responseMode).toBe('evidence');
+    expect(['limit', 'formats', 'includeMedia', 'realtimeFocus'].filter((k) => k in searchSpy.mock.calls[0][0])).toEqual([]);
+    const missing = await post({ query: null, limit: 3 });
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as { error: string }).error).toBe('query is required');
+    expect(searchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('REST keeps the earlier error messages', async () => {
+    const error = async (body: unknown) => ((await (await searchRoutes.request('/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })).json()) as { error: string }).error;
+    expect(await error({})).toBe('query is required');
+    expect(await error({ query: 'fixture', responseMode: 'short' })).toBe('responseMode must be "full" or "evidence"');
+    expect(await error({ query: 'fixture', realtimeLimit: 0 })).toBe('realtimeLimit must be an integer between 1 and 100');
+    expect(await error({ query: 'fixture', maxTotalChars: 10 })).toBe('maxTotalChars must be an integer between 1000 and 500000');
+    expect(await error({ query: 'fixture', limit: 50 })).toStartWith('limit:');
+  });
+
   test('MCP search_deep forwards opt-in settings to retrieval', async () => {
     const server = createMcpServer();
     try {
@@ -74,7 +111,7 @@ describe('adaptive deep search public contract', () => {
     expect(stripped.results[0].markdown).toBe('本文');
     // false は応答を作る段階だけでなく、integratedSearch（ページを取る scrapeUrl）にも渡す
     expect(searchSpy.mock.calls.at(-1)![0]).toMatchObject({ includeMedia: false });
-    for (const includeMedia of ['false', 0, null]) {
+    for (const includeMedia of ['false', 0]) {
       expect((await post({ query: 'fixture', includeMedia })).status).toBe(400);
     }
     const properties = generateOpenApiDocument().paths['/search'].post.requestBody.content['application/json'].schema.properties;

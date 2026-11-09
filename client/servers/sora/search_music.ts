@@ -9,7 +9,7 @@ export type SearchMusicInput = {
   /** 検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song") */
   entity?: "song" | "album" | "musicArtist";
   /** 属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名) */
-  attribute?: "songTerm" | "artistTerm" | "albumTerm" | string;
+  attribute?: "songTerm" | "artistTerm" | "albumTerm";
   /** 取得件数 (1〜50, デフォルト: 20) */
   limit?: number;
   /** キャッシュをバイパスするか */

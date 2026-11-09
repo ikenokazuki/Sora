@@ -81,6 +81,8 @@ export interface EvidencePage {
   contextId: string;
   items: EvidenceDetail[];
   totalStored: number;
+  /** ids 指定で、この報告に無かった ID。 */
+  missingIds?: string[];
   nextCursor?: string;
 }
 
@@ -103,6 +105,7 @@ export const EvidencePageSchema = z.object({
   contextId: z.string(),
   items: z.array(EvidenceDetailSchema),
   totalStored: z.number(),
+  missingIds: z.array(z.string()).optional().describe('ids 指定で、この報告に無かった ID'),
   nextCursor: z.string().optional(),
 });
 
