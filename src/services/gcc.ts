@@ -152,20 +152,23 @@ const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^{}]*\
 const WHOLE_SLOT = /^(?:<[^>]*>+|\[[^\]]*\]+|\{[^}]*\}+)$|^your (?:company|name|street|address|city|state|country|email|phone|business|brand|product)\b/i;
 const RESERVED_DOMAIN = /(?:^|\.)example\.(?:com|net|org)$|\.(?:example|invalid|localhost)$/;
 const FAKE_EMAIL = /^(?:test|sample|dummy|fake|example)@(?:test|sample|dummy|fake|example)(?:\.|$)/i;
-const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
+const NON_LATIN = /[^\P{L}\p{Script=Latin}\p{Script=Common}]/u; // µ などの Script=Common の文字は通す。ギリシャ文字などほかの文字は通さない
+const PHONE_EXTENSION = /(?:ext\.?|x) *\d+$/i;
 
-type GccValueKind = 'email' | 'phone' | 'state' | 'day';
+type GccValueKind = 'email' | 'phone' | 'state' | 'city' | 'day';
 
 function isPlaceholderValue(value: string, kind?: GccValueKind): boolean {
   if (kind === 'state' && NO_STATE.test(value)) return false; // 州・県が無い国（シンガポールなど）の答え
+  if (kind === 'city' && /^(?:nan|same)$/i.test(value)) return false; // タイの Nan、タンザニアの Same は実在の地名
   if (PLACEHOLDER_WORD.test(value) || PLACEHOLDER_WORD_JA.test(value) || TEMPLATE_SLOT.test(value) || WHOLE_SLOT.test(value)) return true;
   if (kind === 'email') {
     const [local, domain, ...rest] = value.split('@');
     return rest.length > 0 || !local || !domain?.slice(1, -1).includes('.') || RESERVED_DOMAIN.test(domain.toLowerCase()) || FAKE_EMAIL.test(value);
   }
   if (kind === 'phone') {
-    const digits = value.replace(/\D/g, '');
-    return /[^\d+(). -]/.test(value) || digits.length < 7 || /(\d)\1{6}/.test(digits);
+    const number = value.replace(PHONE_EXTENSION, ''); // 末尾の内線（ext 12・ext. 12・x12）だけ外して確かめる
+    const digits = number.replace(/\D/g, '');
+    return /[^\d+(). -]/.test(number) || digits.length < 7 || /(\d)\1{6}/.test(digits);
   }
   return false;
 }
@@ -189,7 +192,7 @@ function isValidGccDate(date: string, dayRequired: boolean): boolean {
  */
 function assertGccInputs(options: GenerateGccCertificateOptions): void {
   type Check = [path: string, value: string | undefined, kind?: GccValueKind];
-  const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' || f === 'state' ? f : undefined]);
+  const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' || f === 'state' || f === 'city' ? f : undefined]);
   const dates: Check[] = [];
   if (options.items.filter((item) => item.url).length > 5) throw new TradeInputError('url を付けられる品は 1 回に 5 件までです', 'INVALID_INPUT');
   const checks: Check[] = [...party('certifier', options.certifier), ...party('recordCustodian', options.recordCustodian)];

@@ -733,16 +733,31 @@ describe('placeholder and date checks (M2, M3)', () => {
     for (const email of ['not an email', 'a@b', 'a@b@c.test', '@acme-imports.test', 'a@.test', 'a@test.']) {
       await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, email } }), email).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.email') });
     }
-    for (const phone of ['call 1234567 me', '202-555-0100 ext. 5', '+1 202 555 0100 x12']) {
+    for (const phone of ['call 1234567 me', 'fax 2025550100', '202-555-0100 ext.', '202-555-0100 extension 12', '202-555-0100 ext. 12a', '202-555-0100 ext. 12 ext. 13', '202-555-0100 ext. 1/2', 'ext. 1234567', 'x1234567', '123456 ext. 1', '1111111 ext. 1']) {
       await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, phone } }), phone).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.phone') });
     }
-    for (const phone of ['+1 (202) 555-0100', '202.555.0100']) {
+    for (const phone of ['+1 (202) 555-0100', '202.555.0100', '+1-202-555-0100 ext. 12', '+1-202-555-0100 ext 12', '+1-202-555-0100 EXT. 12', '+1-202-555-0100 x12', '2025550100x12']) {
       expect((await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, phone } })).items[0].status, phone).toBe('generated');
     }
   });
 
+  it('takes bare Nan and Same as real city names in the city field only (Nan in Thailand, Same in Tanzania)', async () => {
+    for (const city of ['Nan', 'NAN', 'Same', 'same']) {
+      const res = await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, city }, items: [{ ...HELMET, manufacture: { ...FACTORY, city }, testing: { ...HELMET.testing, parties: [{ ...LAB, city }] } }] });
+      expect(res.items[0].status, city).toBe('generated');
+    }
+    for (const city of ['Same as above', 'N/A', 'NA', 'TBD']) {
+      await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, city } }), city).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.city') });
+    }
+    for (const value of ['Nan', 'Same']) {
+      await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name: value } }), value).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.name') });
+      await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, state: value } }), value).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('certifier.state') });
+      await expect(generateGccCertificate({ ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, street: value } }] }), value).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT', message: expect.stringContaining('items[0].manufacture.street') });
+    }
+  });
+
   it('runs every input check in linear time on long adversarial values (N2)', async () => {
-    const values = ['x'.repeat(200_000) + 'y', 'x-'.repeat(100_000) + 'y', '<'.repeat(200_000), '['.repeat(200_000), '{'.repeat(200_000), 'a@'.repeat(100_000), `a@${'b.'.repeat(100_000)}@c`, '1'.repeat(200_000) + 'a', '16 CFR '.repeat(30_000), '日'.repeat(200_000), 'Your Company'.repeat(20_000)];
+    const values = ['x'.repeat(200_000), 'x '.repeat(100_000), 'ext'.repeat(60_000), `x${' '.repeat(200_000)}y`, `1${' '.repeat(200_000)}a`, 'x'.repeat(200_000) + 'y', 'x-'.repeat(100_000) + 'y', '<'.repeat(200_000), '['.repeat(200_000), '{'.repeat(200_000), 'a@'.repeat(100_000), `a@${'b.'.repeat(100_000)}@c`, '1'.repeat(200_000) + 'a', '16 CFR '.repeat(30_000), '日'.repeat(200_000), 'Your Company'.repeat(20_000)];
     for (const value of values) {
       const started = performance.now();
       await generateGccCertificate({ ...base, allowDraft: true, certifier: { ...CERTIFIER, name: value, street: value, email: value, phone: value }, items: [{ ...HELMET, citations: [value] }] }).catch(() => undefined);
@@ -769,6 +784,11 @@ describe('placeholder and date checks (M2, M3)', () => {
       await expect(generateGccCertificate(options), field).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('16 CFR 1110.9(a)') });
       await expect(generateGccCertificate(options), field).rejects.toMatchObject({ message: expect.stringContaining(field) });
     }
+    // ギリシャ文字はほかの文字と同じに扱う。マイクロ記号 U+00B5（Script=Common の文字）は通す
+    for (const description of ['Filter 10 \u03bcm', 'Resistor 10 \u03a9', 'Micro \u03b1']) {
+      await expect(generateGccCertificate({ ...base, items: [{ ...HELMET, description }] }), description).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('items[0].description') });
+    }
+    expect((await generateGccCertificate({ ...base, items: [{ ...HELMET, description: 'Filter 10 \u00b5m' }] })).items[0].status).toBe('generated');
     // 証明書に載らない表紙の番号と url は対象外。アクセント付きのラテン文字は通す
     const cover = await generateGccCertificate({ ...base, orderNumber: '注文-1', awbNumber: '追跡-1', carrier: '配送', invoiceNumber: '請求-1', items: [{ ...HELMET, url: 'https://shop.example.com/ヘルメット' }] });
     expect(cover.items[0].status).toBe('generated');
