@@ -66,15 +66,15 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
-2026-11-06 に測り直した（v4.1.0 の引数の監査と、その残りの細かい修正の後。前の値は 2026-11-05、v4.0.0 の引数の整理の後の既定 20,903・全ツール 56,848・`instructions` 8,881）。
+2026-11-09 に測り直した（GCC を作るツール `generate_gcc_certificate` を足した後。前の値は 2026-11-06、v4.1.0 の引数の監査と細かい修正の後の既定 21,764・全ツール（52 ツール）58,757・`instructions` 8,922）。
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 21,764 |
-| 全ツール（52 ツール） | 58,757 |
-| `instructions` | 8,922 |
+| 既定（14 ツール） | 22,269 |
+| 全ツール（53 ツール） | 63,529 |
+| `instructions` | 8,948 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,574 文字（`schema` 以外は 2026-11-05 の測り直しと同じ）。
+`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,574 文字（2026-11-06 の測り直しと同じ）。
 
 以下の `search_deep` の表は、2026-10-26 に実際の通信で測った値（測り直していない）。
 
@@ -92,4 +92,4 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## しきい値の上げ方
 
-`src/context_budget.test.ts` が `tools/list` の大きさ（既定 25,000 文字、全ツール 61,500 文字）を守る。ツールや引数の説明を増やして超えたときは、増やす理由を確かめたうえで `bun scripts/measure-context.ts` で現在の値を測り、しきい値を上げて、コミットメッセージに理由を書く。
+`src/context_budget.test.ts` が `tools/list` の大きさ（既定 25,000 文字、全ツール 64,000 文字）を守る。ツールや引数の説明を増やして超えたときは、増やす理由を確かめたうえで `bun scripts/measure-context.ts` で現在の値を測り、しきい値を上げて、コミットメッセージに理由を書く。
