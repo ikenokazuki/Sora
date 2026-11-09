@@ -91,7 +91,7 @@ function certificateSection(item: GccRenderItem, render: GccRenderInput): string
     return `[MISSING: ${key}]`;
   };
   const value = (key: string, text?: string) => (text ? escapeHtml(text) : miss(key));
-  const citations = summary.citations ?? [];
+  const citations = summary.citations ?? input.citations ?? [];
   const citationsMissing = !citations.length || !!summary.missingFields?.includes('citations');
   const exclusions = summary.testingExclusions ?? [];
   const parties = testing?.parties ?? [];
@@ -116,24 +116,24 @@ function certificateSection(item: GccRenderItem, render: GccRenderInput): string
   const rows: Array<[string, string, string]> = [
     ['1', 'Product — 16 CFR 1110.11(a)(1)', productHtml(item, miss)],
     ['2', 'Rules certified — 16 CFR 1110.11(a)(2)', rules + (citationsMissing ? miss('citations') : '')],
-    ['3', 'Certifier (the importer of record for imported products, 16 CFR 1110.7) — 16 CFR 1110.11(a)(3)', partyHtml(render.certifier, miss, 'certifier')],
+    ['3', 'Certifier (the importer for imported products, 16 CFR 1110.3 and 1110.7) — 16 CFR 1110.11(a)(3)', partyHtml(render.certifier, miss, 'certifier')],
     ['4', 'Records contact — 16 CFR 1110.11(a)(4)', partyHtml(render.recordCustodian, miss, 'recordCustodian')],
     ['5', 'Manufacture — 16 CFR 1110.11(a)(5)', manufactureHtml],
     ['6', 'Testing — 16 CFR 1110.11(a)(6)', joinLines([...testRecord, ...exclusionLines])],
     ['7', 'Attestation — 16 CFR 1110.11(a)(7)', isDraft ? '[Not attested: this is a draft]' : escapeHtml(GCC_ATTESTATION)],
   ];
-  // 表の印にないキー（targetAge など）と、印のキー。印が覆うキー（manufacture の下の項目など）は繰り返さない
+  // 題の下の行は、表の印が覆わないキー（targetAge など）だけ。印のキーは繰り返さない（印が覆うキーは、印と同じか、その下の項目）
   const covered = (key: string) => [...marked].some((m) => key === m || key.startsWith(`${m}.`));
-  const missingKeys = [...(summary.missingFields ?? []).filter((k) => !covered(k)), ...marked].join(', ');
+  const unmarked = (summary.missingFields ?? []).filter((k) => !covered(k));
   return section({
     badgeKind: isDraft ? 'draft' : 'ready',
     badgeText: isDraft ? 'DRAFT — NOT VALID' : 'GCC',
     title: isDraft ? 'DRAFT General Certificate of Conformity — not valid' : 'General Certificate of Conformity',
     summary,
     input,
-    subtitle: isDraft ? `Missing: ${missingKeys}` : `Certificate ID: ${summary.certificateId} · Generated: ${render.generatedAt}`,
+    subtitle: isDraft ? (unmarked.length ? `Missing: ${unmarked.join(', ')}` : 'Missing elements are marked below.') : `Certificate ID: ${summary.certificateId} · Generated: ${render.generatedAt}`,
     rows,
-    footerNote: isDraft ? 'DRAFT — do not file until every missing element is filled in.' : 'File the certificate data in CBP ACE (16 CFR 1110.13(a)(1)).',
+    footerNote: isDraft ? 'DRAFT — do not file until every missing element is filled in.' : 'Filing: see 16 CFR 1110.13.',
   });
 }
 
@@ -241,7 +241,7 @@ export function renderGccPackageHtml(input: GccRenderInput): string {
     input.mode === 'order_package'
       ? [coverSection(input), ...input.items.filter((i) => i.summary.status !== 'exempt_no_gcc_needed').map((i) => itemSection(i, input))]
       : input.items.map((i) => itemSection(i, input));
-  const title = input.mode === 'order_package' ? `US Customs & CPSC GCC Package — ${input.order.orderNumber || input.order.awbNumber || input.packageId}` : `GCC — ${input.items[0]?.summary.productName}`;
+  const title = input.mode === 'order_package' ? `US Customs & CPSC GCC Package — ${input.order.orderNumber || input.order.awbNumber || input.packageId}` : `${input.items[0]?.summary.status === 'draft_needs_info' ? 'DRAFT ' : ''}GCC — ${input.items[0]?.summary.productName}`;
   const body = sections.map((s, i) => (i === 0 ? s : `<div class="page"></div>${s}`)).join('');
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title><style>${PRINT_CSS}</style></head><body>${body}</body></html>`;
 }

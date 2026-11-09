@@ -276,6 +276,11 @@ describe('generateGccCertificate', () => {
 });
 
 describe('GCC document (16 CFR 1110.11)', () => {
+  /** 表の n 行目（16 CFR 1110.11(a)(n)）の値のセル */
+  const row = (html: string, n: number) => html.match(new RegExp(`<tr><td class="n">${n}</td><th>[^<]*</th><td>(.*?)</td></tr>`))?.[1] ?? '';
+  /** 下書きの題の下の行 */
+  const missingLine = (html: string) => html.match(/<p>(Missing[^<]*)<\/p>/)?.[1];
+
   it('prints every element of 16 CFR 1110.11(a) and the attestation word for word', async () => {
     const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
     const html = res.packageHtml;
@@ -284,7 +289,17 @@ describe('GCC document (16 CFR 1110.11)', () => {
     expect(html).toContain('SKU: HLM-001');
     expect(html).toContain('<li>16 CFR 1203</li>');
     for (const v of ['100 Example Street', 'Anytown, CA', 'compliance@acme-imports.test', '+1-202-555-0104', 'Acme Helmet Factory', 'Date of manufacture: 2026-06', 'Most recent test: 2026-06-15', res.items[0].certificateId!]) expect(html).toContain(v);
-    expect(html).toContain('importer of record');
+    expect(html).toContain('the importer for imported products');
+    expect(html).not.toContain('importer of record');
+    // 値は自分の行にある: 記録の担当は (a)(4)、証明者は (a)(3)
+    expect(row(html, 3)).toContain('compliance@acme-imports.test');
+    expect(row(html, 3)).not.toContain('records@acme-imports.test');
+    for (const v of ['Compliance Manager', 'records@acme-imports.test', '+1-202-555-0102']) expect(row(html, 4)).toContain(v);
+    expect(row(html, 4)).not.toContain('compliance@acme-imports.test');
+    expect(row(html, 5)).toContain('Acme Helmet Factory');
+    expect(row(html, 6)).toContain('Acme Test Lab');
+    expect(html).toContain('<title>GCC — Adult Bicycle Helmet</title>');
+    expect(html).toContain('Filing: see 16 CFR 1110.13.');
     expect(html).not.toMatch(/direct.to.consumer/i);
   });
 
@@ -329,9 +344,34 @@ describe('GCC document (16 CFR 1110.11)', () => {
     const both = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...TEE, citations: ['16 CFR 1203', '16 CFR 1610'], manufacture: FACTORY }] });
     expect(both.packageHtml).toContain('[MISSING: testing]');
     expect(both.packageHtml).toContain('Testing exclusion for 16 CFR 1610: 16 CFR 1610.1(d)(2)');
-    expect(both.packageHtml).toMatch(/Missing: [^<]*testing/);
+    expect(missingLine(both.packageHtml)).toBe('Missing elements are marked below.');
     const dateOnly = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...HELMET, testing: { date: '2026-06-15' } }] });
     expect(dateOnly.packageHtml).toContain('Most recent test: 2026-06-15');
     expect(dateOnly.packageHtml).toContain('[MISSING: testing.parties]');
+  });
+
+  it('prints every cited rule in the rules row, also on a draft whose age is not known yet', async () => {
+    const both = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...PENLIGHT, citations: ['16 CFR 1263', '16 CFR 1203'] }] });
+    expect(row(both.packageHtml, 2)).toBe('<ul><li>16 CFR 1263</li><li>16 CFR 1203</li></ul>');
+    const noAge = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...HELMET, targetAge: undefined }] });
+    expect(noAge.items[0].missingFields).toEqual(['targetAge']);
+    expect(row(noAge.packageHtml, 2)).toBe('<ul><li>16 CFR 1203</li></ul>');
+    expect(noAge.packageHtml).not.toContain('[MISSING: citations]');
+    expect(missingLine(noAge.packageHtml)).toBe('Missing: targetAge');
+  });
+
+  it('does not repeat the markers in the draft’s Missing line', async () => {
+    const partly = await generateGccCertificate({ allowDraft: true, certifier: { name: 'Caller Brand Inc.' }, recordCustodian: CUSTODIAN, items: [HELMET] });
+    expect(partly.packageHtml).toContain('[MISSING: certifier.street]');
+    expect(missingLine(partly.packageHtml)).toBe('Missing elements are marked below.');
+    const allMissing = await generateGccCertificate({ allowDraft: true, items: [{ htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult' }] });
+    for (const key of ['certifier', 'recordCustodian', 'manufacture', 'testing', 'citations']) expect(allMissing.packageHtml).toContain(`[MISSING: ${key}]`);
+    expect(missingLine(allMissing.packageHtml)).toBe('Missing: material');
+    expect(missingLine((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] })).packageHtml)).toBeUndefined();
+  });
+
+  it('puts DRAFT in the title of a single-product draft, which print headers and PDF names use', async () => {
+    const res = await generateGccCertificate({ allowDraft: true, items: [HELMET] });
+    expect(res.packageHtml).toContain('<title>DRAFT GCC — Adult Bicycle Helmet</title>');
   });
 });
