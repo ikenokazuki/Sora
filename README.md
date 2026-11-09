@@ -1971,9 +1971,9 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 - **判定**:
   - 12 歳以下は `cpc_required_instead`（CPC はこのツールでは作りません）。年齢が無ければ `targetAge` を聞きます。
   - 大人の衣料で `16 CFR 1610.1(d)` の免除に当たるものは `exempt_disclaim_b`（`ACE Disclaim B` / `Intended Use Code 130.006`）。
-  - ボタン・コイン電池（`16 CFR 1263`）と衣料（`16 CFR 1610`）は、`citations` に無ければ下書きにします。帽子・手袋・履物の見出しは `16 CFR 1610.1(c)` の条件を質問で返します。
+  - ボタン・コイン電池（`16 CFR 1263`）と衣料（`16 CFR 1610`）は、`citations` に無ければ下書きにします。`hasBattery: true` で `batteryType` が無いときも下書きにして種類を聞きます。帽子・手袋・履物の見出しは `16 CFR 1610.1(c)` の条件を質問で返します。
   - `citations: []` で CPSC の一覧のコードは `exempt_no_gcc_needed`（`ACE Disclaim A` と `warnings`）、一覧に無いコードは CPSC のデータを送らない案内です。
-- **当事者**: `certifier`・`recordCustodian`・`manufacture`・`testing.parties[]` は同じ形 `{ name, street, city, state, country, email, phone }`（16 CFR 1110.11(a)(3)〜(6)）。証明者と記録の担当は、呼び出し側の値か、サーバーの環境変数 `SORA_GCC_CERTIFIER`・`SORA_GCC_CUSTODIAN`（JSON）のどちらか 1 つから丸ごと取ります。
+- **当事者**: `certifier`・`recordCustodian`・`manufacture`・`testing.parties[]` は同じ形 `{ name, street, city, state, country, email, phone }`（16 CFR 1110.11(a)(3)〜(6)）。証明者と記録の担当は、呼び出し側の値か、サーバーの環境変数 `SORA_GCC_CERTIFIER`・`SORA_GCC_CUSTODIAN`（JSON。証明書に要るときだけ読みます）のどちらか 1 つから丸ごと取ります。
 - **足りないとき**: 既定（`allowDraft: false`）で HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）で止まり、`details` に足りない項目を返します。`allowDraft: true` で下書きを見られます。見本・仮置きの値（`example.com`, `Sample`, `TBD`, `0000-0000` など）は HTTP `400`（`UNVERIFIED_PLACEHOLDER_INPUT`）で拒否します。
 
 - **リクエスト**:

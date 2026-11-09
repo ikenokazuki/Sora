@@ -875,6 +875,13 @@ describe('HTS prediction and product compliance', () => {
 });
 
 describe('checkCpscCertificate on a code the CPSC list does not carry', () => {
+  it('keeps 16 CFR 1610 next to 16 CFR 1263 on an unlisted garment code, but not on a 16 CFR 1610.1(c) heading (review F1)', async () => {
+    const cfrs = async (htsCode: string) =>
+      (await checkCpscCertificate({ htsCode, targetAge: 'adult', hasBattery: true, batteryType: 'button_coin' })).applicableRegulations.map((r) => r.cfr);
+    expect(await cfrs('6109.10.00.12')).toEqual(['16 CFR 1263 (ANSI/UL 4200A-2023)', '16 CFR 1610']);
+    expect(await cfrs('6116.10.05.00')).toEqual(['16 CFR 1263 (ANSI/UL 4200A-2023)']);
+  });
+
   it('does not ask for a productCategory, which no input could use', async () => {
     const res = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
     expect(res.certificateRequired).toBe('unknown');

@@ -21,6 +21,7 @@ const CUSTODIAN = { ...CERTIFIER, name: 'Compliance Manager', email: 'records@ac
 const FACTORY = { date: '2026-06', name: 'Acme Helmet Factory', street: '1 Example Road', city: 'Taichung', state: 'Taichung City', country: 'Taiwan', email: 'factory@acme-factory.test', phone: '+1-202-555-0103' };
 const LAB = { name: 'Acme Test Lab', street: '2 Example Road', city: 'Taipei', state: 'Taipei City', country: 'Taiwan', email: 'lab@acme-lab.test', phone: '+1-202-555-0104' };
 const HELMET: GccItemInput = { htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', identifier: 'HLM-001', targetAge: 'adult', citations: ['16 CFR 1203'], manufacture: FACTORY, testing: { date: '2026-06-15', reportNumber: 'TR-0001', parties: [LAB] } };
+const PENLIGHT: GccItemInput = { htsCode: '8513.10.20.00', productName: 'LED Penlight', identifier: 'PEN-001', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin', manufacture: FACTORY, testing: { date: '2026-06-15', parties: [LAB] } };
 const TEE: GccItemInput = { htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' };
 
 describe('generateGccCertificate', () => {
@@ -79,11 +80,10 @@ describe('generateGccCertificate', () => {
   });
 
   it('keeps a button-cell product a draft until 16 CFR 1263 is among the citations', async () => {
-    const penlight: GccItemInput = { htsCode: '8513.10.20.00', productName: 'LED Penlight', identifier: 'PEN-001', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin', manufacture: FACTORY, testing: { date: '2026-06-15', parties: [LAB] } };
-    const wrong = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...penlight, citations: ['16 CFR 1203'] }] });
+    const wrong = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...PENLIGHT, citations: ['16 CFR 1203'] }] });
     expect(wrong.items[0].status).toBe('draft_needs_info');
     expect(wrong.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1263');
-    const right = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...penlight, citations: ['16 CFR 1263'] }] });
+    const right = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...PENLIGHT, citations: ['16 CFR 1263'] }] });
     expect(right.items[0].status).toBe('generated');
   });
 
@@ -120,6 +120,9 @@ describe('generateGccCertificate', () => {
     expect(GenerateGccCertificateRequestSchema.safeParse({}).success).toBe(false);
     expect(GenerateGccCertificateRequestSchema.safeParse({ items: [] }).success).toBe(false);
     expect(GenerateGccCertificateRequestSchema.safeParse({ items: Array.from({ length: 51 }, () => HELMET) }).success).toBe(false);
+    const fifty = Array.from({ length: 50 }, () => HELMET);
+    expect(GenerateGccCertificateRequestSchema.safeParse({ items: fifty }).success).toBe(true);
+    expect((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: fifty })).counts.gccGenerated).toBe(50);
   });
 
   it('gives stable IDs without a date, different for different products (M1)', async () => {
@@ -127,6 +130,8 @@ describe('generateGccCertificate', () => {
     const a2 = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
     expect(a2.packageId).toBe(a1.packageId);
     expect(a2.items[0].certificateId).toBe(a1.items[0].certificateId);
+    const other = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...HELMET, identifier: 'HLM-002' }] });
+    expect(other.items[0].certificateId).not.toBe(a1.items[0].certificateId);
     const t1 = await generateGccCertificate({ items: [{ htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', targetAge: 'adult', material: '100% polyester' }] });
     const t2 = await generateGccCertificate({ items: [{ htsCode: '6201.40.40.21', productName: 'Adult Nylon Jacket', targetAge: 'adult', material: '100% nylon' }] });
     expect(t1.packageId).not.toBe(t2.packageId);
@@ -138,6 +143,77 @@ describe('generateGccCertificate', () => {
     expect(Object.keys(res).sort()).toEqual(['counts', 'disclaimer', 'generatedAt', 'items', 'mode', 'overallStatus', 'packageHtml', 'packageId']);
     for (const item of res.items) for (const k of ['compliance', 'certificateMarkdown', 'certificateHtml', 'statutoryFields', 'aceFilingGuidance']) expect(item).not.toHaveProperty(k);
   });
+  it('keeps 16 CFR 1610 on an unlisted garment code with a coin cell (review F1)', async () => {
+    const shirt: GccItemInput = { ...PENLIGHT, htsCode: '6109.10.00.12', productName: 'Adult Cotton T-Shirt With LED Badge', identifier: 'TEE-LED-1', material: '100% cotton' };
+    const only1263 = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...shirt, citations: ['16 CFR 1263'] }] });
+    expect(only1263.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['citations'] });
+    expect(only1263.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1610');
+    const both = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...shirt, citations: ['16 CFR 1263', '16 CFR 1610'] }] });
+    expect(both.items[0].status).toBe('generated');
+  });
+
+  it('keeps an item with a battery of unknown type a draft, because the type decides 16 CFR 1263 (review m1)', async () => {
+    const parties = { certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true };
+    const helmet = await generateGccCertificate({ ...parties, items: [{ ...HELMET, hasBattery: true }] });
+    expect(helmet.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['batteryType'] });
+    expect(helmet.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1263');
+    const moreMissing = await generateGccCertificate({ ...parties, items: [{ ...HELMET, hasBattery: true, identifier: undefined }] });
+    expect(moreMissing.items[0].missingFields).toEqual(['batteryType', 'identifier']);
+    const exemptGarment = await generateGccCertificate({ allowDraft: true, items: [{ ...TEE, hasBattery: true }] });
+    expect(exemptGarment.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['batteryType'] });
+    const noRule = await generateGccCertificate({ allowDraft: true, items: [{ htsCode: '3923.30.00.90', productName: 'Portable Gasoline Container', identifier: 'GAS-5', targetAge: 'adult', citations: [], hasBattery: true }] });
+    expect(noRule.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['batteryType'] });
+    const knownType = await generateGccCertificate({ ...parties, items: [{ ...HELMET, hasBattery: true, batteryType: 'other' }] });
+    expect(knownType.items[0].status).toBe('generated');
+  });
+
+  it('reads "16 C.F.R." the same as "16 CFR" (review m2)', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...PENLIGHT, citations: ['16 C.F.R. 1263'] }] });
+    expect(res.items[0].status).toBe('generated');
+  });
+
+  it('accepts 16 CFR 1250 in place of 1263 only on a code in the Toys list (16 CFR 1263.1(c))', async () => {
+    const toy: GccItemInput = { ...PENLIGHT, htsCode: '9503.00.00.73', productName: 'Adult Collectible Figure With Light', identifier: 'FIG-1', citations: ['16 CFR 1250'] };
+    expect((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [toy] })).items[0].status).toBe('generated');
+    const notToy = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...PENLIGHT, citations: ['16 CFR 1250'] }] });
+    expect(notToy.items[0]).toMatchObject({ status: 'draft_needs_info', missingFields: ['citations'] });
+  });
+
+  it('asks for a test party when testing.parties is empty', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...HELMET, testing: { date: '2026-06-15', parties: [] } }] });
+    expect(res.items[0].missingFields).toEqual(['testing.parties']);
+  });
+
+  it('reports the line of each draft in a generated and draft mix', async () => {
+    const err = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET, { ...HELMET, identifier: undefined }] }).catch((e) => e);
+    expect(err).toBeInstanceOf(TradeGccIncompleteError);
+    expect(err.details.items.map((item: { line: number }) => item.line)).toEqual([2]);
+    expect(err.details.missingFields).toEqual([]);
+  });
+
+  it('reads a broken server default only when a certificate needs it, and reports it as a server setting (review m5)', async () => {
+    process.env.SORA_GCC_CERTIFIER = '{not json';
+    process.env.SORA_GCC_CUSTODIAN = '[1]';
+    const exempt = await generateGccCertificate({ orderNumber: 'ORDER-1001', items: [TEE] });
+    expect(exempt.items[0].status).toBe('exempt_disclaim_b');
+    expect(exempt.packageHtml).not.toContain('[MISSING]');
+    const err = await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(TradeInputError);
+    expect(err.message).toContain('SORA_GCC_CERTIFIER');
+  });
+
+  it('gives the same certificate id whatever the key order of the records (review m6)', async () => {
+    const reversed = <T extends object>(value: T) => Object.fromEntries(Object.entries(value).reverse()) as T;
+    const a = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
+    const b = await generateGccCertificate({
+      certifier: reversed(CERTIFIER),
+      recordCustodian: reversed(CUSTODIAN),
+      items: [{ ...HELMET, manufacture: reversed(FACTORY), testing: reversed({ date: '2026-06-15', reportNumber: 'TR-0001', parties: [reversed(LAB)] }) }],
+    });
+    expect(b.items[0].certificateId).toBe(a.items[0].certificateId);
+  });
+
   it('rejects sample or placeholder values in what the caller sent, even with allowDraft, but not in the server defaults (M2)', async () => {
     const err = await generateGccCertificate({
       allowDraft: true,
@@ -154,11 +230,10 @@ describe('generateGccCertificate', () => {
   });
 
   it('prints only the caller’s citations, never a rule Sora derived', async () => {
-    const penlight: GccItemInput = { htsCode: '8513.10.20.00', productName: 'LED Penlight', identifier: 'PEN-001', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin', manufacture: FACTORY, testing: { date: '2026-06-15', parties: [LAB] } };
-    const cited = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...penlight, citations: ['16 CFR 1263'] }] });
+    const cited = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...PENLIGHT, citations: ['16 CFR 1263'] }] });
     expect(cited.packageHtml).toContain('16 CFR 1263');
     expect(cited.packageHtml).not.toContain('ANSI/UL 4200A');
-    const draft = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [penlight], allowDraft: true });
+    const draft = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [PENLIGHT], allowDraft: true });
     expect(draft.items[0].clarifyingQuestions?.[0]).toContain('16 CFR 1263');
     expect(draft.packageHtml).not.toContain('16 CFR 1263');
   });

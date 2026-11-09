@@ -189,7 +189,7 @@ function coverSection(render: GccRenderInput): string {
   const rows = items
     .map(({ summary: s }) => `<tr><td class="n">${s.line}</td><td>${escapeHtml(s.identifier || '-')}</td><td>${escapeHtml(s.productName)}</td><td>${escapeHtml(s.htsCode)}</td><td>${escapeHtml(coverAction(s))}</td></tr>`)
     .join('');
-  return `<section class="card"><header><div><small>Customs Broker / Courier Clearance</small><h1>U.S. CPSC Entry Summary Cover Sheet</h1><p>Reference: ${escapeHtml(render.packageId)} • Generated: ${escapeHtml(render.generatedAt)}</p></div><span class="badge ready">${items.length} LINE(S)</span></header><p class="meta"><b>AWB / Tracking #:</b> ${escapeHtml(awb)} • <b>Order #:</b> ${escapeHtml(order.orderNumber || 'N/A')} • <b>Commercial Invoice #:</b> ${escapeHtml(order.invoiceNumber || 'N/A')}</p><p class="meta"><b>Certifier:</b> ${partyHtml(render.certifier)}</p><table><tr><th>Line</th><th>ID</th><th>Product</th><th>HTS</th><th>CPSC PGA action</th></tr>${rows}</table></section>`;
+  return `<section class="card"><header><div><small>Customs Broker / Courier Clearance</small><h1>U.S. CPSC Entry Summary Cover Sheet</h1><p>Reference: ${escapeHtml(render.packageId)} • Generated: ${escapeHtml(render.generatedAt)}</p></div><span class="badge ready">${items.length} LINE(S)</span></header><p class="meta"><b>AWB / Tracking #:</b> ${escapeHtml(awb)} • <b>Order #:</b> ${escapeHtml(order.orderNumber || 'N/A')} • <b>Commercial Invoice #:</b> ${escapeHtml(order.invoiceNumber || 'N/A')}</p>${render.certifier ? `<p class="meta"><b>Certifier:</b> ${partyHtml(render.certifier)}</p>` : ''}<table><tr><th>Line</th><th>ID</th><th>Product</th><th>HTS</th><th>CPSC PGA action</th></tr>${rows}</table></section>`;
 }
 
 const PRINT_CSS =

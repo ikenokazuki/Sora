@@ -970,7 +970,7 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'check_product_compliance');
     return mustContain(raw, ['actionPlan'], 'usitc-compliance');
   }),
-  toolCase('trade.gcc', ['generate_gcc_certificate'], ['usitc'], true, 90000, async (ctx) => {
+  toolCase('trade.gcc', ['generate_gcc_certificate'], [], false, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'GCC', 30000);
     const { text: rawJsonText } = await mcpJson(
       ctx,
@@ -981,7 +981,7 @@ export const TOOL_CASES: HealthCase[] = [
       60000,
     );
     const raw = toolPayload(rawJsonText, 'generate_gcc_certificate');
-    return mustContain(raw, ['130.006', 'packageHtml'], 'usitc-gcc');
+    return mustContain(raw, ['130.006', 'packageHtml'], 'gcc');
   }),
   toolCase('media.inspect', ['inspect_image'], ['web:image'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, '画像', 30000);

@@ -108,13 +108,15 @@ const FILING_NOTE = {
   cpc: '12 歳以下の子供用なので CPC が要ります（このツールは CPC を作りません）。',
 };
 const Q_AGE = 'この製品は 12 歳以下の子供向けですか？子供向けなら GCC ではなく CPC（16 CFR 1107）が要ります。';
+const Q_BATTERY = '電池の種類を batteryType に入れてください（button_coin: ボタン・コイン電池、other: それ以外）。button_coin なら 16 CFR 1263 が当てはまります。';
 const qRequired = (rules: string[]) =>
   `citations に ${rules.map((p) => `16 CFR ${p}`).join('・')} がありません。試験報告書で確かめて citations に足してください（ボタン・コイン電池は 16 CFR 1263、衣料は 16 CFR 1610）。`;
 
 const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
 const FABRIC_INPUTS = ['material', 'fabricSurface', 'fabricWeightOzPerSqYd'];
 const htsDigits = (code: string) => code.replace(/\D/g, '');
-const cfrPart = (citation: string) => citation.match(/16\s*CFR\s*(?:Part\s*|§\s*)?(\d{3,4})/i)?.[1];
+const cfrPart = (citation: string) => citation.match(/16\s*C\.?F\.?R\.?\s*(?:Part\s*|§\s*)?(\d{3,4})/i)?.[1];
+const partyValues = (party?: GccParty) => PARTY_FIELDS.map((f) => party?.[f] ?? '');
 const hash12 = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12).toUpperCase();
 
 /** 文字列の前後の空白を、入れ子の中まで除く */
@@ -165,11 +167,11 @@ function assertNoPlaceholderValues(options: GenerateGccCertificateOptions): void
   }
 }
 
-/** 呼び出し側の値に中身があればそれを丸ごと、無ければサーバーの環境変数を丸ごと使う（項目ごとに混ぜない） */
-function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER' | 'SORA_GCC_CUSTODIAN'): GccParty | undefined {
+/** 呼び出し側の値に中身があればそれを丸ごと、無ければ証明書に要るときだけサーバーの環境変数を丸ごと読む（項目ごとに混ぜない） */
+function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER' | 'SORA_GCC_CUSTODIAN', needed: boolean): GccParty | undefined {
   const given = trimDeep(party);
   if (given && PARTY_FIELDS.some((f) => given[f])) return given;
-  const raw = process.env[envName]?.trim();
+  const raw = needed ? process.env[envName]?.trim() : undefined;
   if (!raw) return undefined;
   try {
     return trimDeep(GccPartySchema.parse(JSON.parse(raw)));
@@ -218,6 +220,8 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   });
   const category = findCpscListCategory(digits);
   const cEx = section1610cExclusionFor(digits);
+  // 電池の種類で 16 CFR 1263 が当たるかが決まるので、分かるまで免除・規則なしの答えを出さない
+  const askBattery = input.hasBattery === true && !input.batteryType;
   const summaryBase = {
     line: index + 1,
     htsCode: input.htsCode,
@@ -235,7 +239,9 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
     decided({ status: 'draft_needs_info', filingNote: FILING_NOTE.draft, missingFields, clarifyingQuestions });
   /** GCC の道。証明者の欠けは品に入れず、status は呼び出し元で決める */
   const gccPath = (rec: { citations?: string[]; testingExclusions?: string[]; missingFields: string[]; clarifyingQuestions?: string[] }) => {
-    const { citations, testingExclusions, missingFields, clarifyingQuestions } = rec;
+    const { citations, testingExclusions } = rec;
+    const missingFields = [...(askBattery ? ['batteryType'] : []), ...rec.missingFields];
+    const clarifyingQuestions = [...(rec.clarifyingQuestions ?? []), ...(askBattery ? [Q_BATTERY] : [])];
     return decided(
       {
         status: 'draft_needs_info',
@@ -243,7 +249,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
         ...(citations ? { citations } : {}),
         ...(testingExclusions?.length ? { testingExclusions } : {}),
         ...(missingFields.length ? { missingFields } : {}),
-        ...(clarifyingQuestions?.length ? { clarifyingQuestions } : {}),
+        ...(clarifyingQuestions.length ? { clarifyingQuestions } : {}),
       },
       { gcc: true },
     );
@@ -265,6 +271,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
 
   if (input.citations === undefined) {
     if (cpsc.certificateRequired === false && cpsc.testingExemption?.enforcementDiscretion) {
+      if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
       const citation = cpsc.testingExemption.citation as keyof typeof SECTION_1610_1_D;
       return decided(
         { status: 'exempt_disclaim_b', disclaimCode: 'B', intendedUseCode: '130.006', filingNote: FILING_NOTE.disclaimB },
@@ -289,6 +296,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
 
   if (input.citations.length === 0) {
     if (required.length > 0) return draft(['citations'], [qRequired(required)]);
+    if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
     return decided(
       {
         status: 'exempt_no_gcc_needed',
@@ -323,12 +331,12 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
  */
 export async function generateGccCertificate(options: GenerateGccCertificateOptions): Promise<GenerateGccCertificateResult> {
   assertNoPlaceholderValues(options);
-  const certifier = resolveParty(options.certifier, 'SORA_GCC_CERTIFIER');
-  const recordCustodian = resolveParty(options.recordCustodian, 'SORA_GCC_CUSTODIAN');
   const decisions: ItemDecision[] = [];
   for (let i = 0; i < options.items.length; i++) decisions.push(await decideItem(options.items[i], i));
 
   const hasGcc = decisions.some((d) => d.gcc);
+  const certifier = resolveParty(options.certifier, 'SORA_GCC_CERTIFIER', hasGcc);
+  const recordCustodian = resolveParty(options.recordCustodian, 'SORA_GCC_CUSTODIAN', hasGcc);
   const missingFields = hasGcc ? [...missingPartyFields('certifier', certifier), ...missingPartyFields('recordCustodian', recordCustodian)] : [];
 
   const order = trimDeep({ orderNumber: options.orderNumber, awbNumber: options.awbNumber, carrier: options.carrier, invoiceNumber: options.invoiceNumber });
@@ -347,10 +355,10 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
         input.description ?? '',
         summary.citations,
         summary.testingExclusions,
-        certifier,
-        recordCustodian,
-        input.manufacture,
-        input.testing,
+        partyValues(certifier),
+        partyValues(recordCustodian),
+        [input.manufacture?.date ?? '', ...partyValues(input.manufacture)],
+        [input.testing?.date ?? '', input.testing?.reportNumber ?? '', (input.testing?.parties ?? []).map(partyValues)],
       ]),
     )}`;
   }

@@ -4548,6 +4548,18 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(pkg.mode).toBe('order_package');
     expect(pkg.counts).toMatchObject({ totalItems: 2, gccGenerated: 1, disclaimBExempt: 1 });
     expect(pkg.packageHtml).toContain('ORDER-1001');
+
+    process.env.SORA_GCC_CERTIFIER = '{not json';
+    try {
+      const brokenRes = await post({ recordCustodian, items: [helmet] });
+      expect(brokenRes.status).toBe(500);
+      const broken = (await brokenRes.json()) as any;
+      expect(broken.code).toBe('TRADE_ERROR');
+      expect(broken.error).toContain('SORA_GCC_CERTIFIER');
+      expect((await post({ items: [tee] })).status).toBe(200);
+    } finally {
+      delete process.env.SORA_GCC_CERTIFIER;
+    }
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {

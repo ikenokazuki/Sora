@@ -339,6 +339,8 @@ export async function checkCpscCertificate(
       options.targetAge === 'unknown' ? 'unknown' : options.targetAge === 'child' ? 'CCC' : 'GCC';
     const regs: CpscApplicableRegulation[] = [REESES_LAW_REGULATION];
     if (exactCategory && CPSC_CATEGORY_REGULATIONS[exactCategory]) regs.push(cpscCategoryRegulation(exactCategory, options.targetAge));
+    // 一覧に無い第61・62類の衣料にも 16 CFR 1610 が当たる（16 CFR 1610.1(c) の見出しは条件で決まるので足さない）
+    else if (!exactCategory && isWearingApparelChapter(normalized) && !section1610cExclusionFor(normalized)) regs.push(CPSC_CATEGORY_REGULATIONS.Clothing);
     return {
       certificateRequired: true,
       certificateType: certType,
