@@ -2,646 +2,156 @@
 import { callSora } from '../../runtime.js';
 
 export type GenerateGccCertificateInput = {
-  /** 商品ページURL */
-  url?: string;
-  /** 商品の英語一般名（宣伝文句・ブランド名は除く。日本語は英訳して渡す） */
-  productName?: string;
-  /** 商品SKU・品番 */
-  sku?: string;
-  /** ブランド名 */
-  brand?: string;
-  /** モデル番号・ロット番号 */
-  modelOrBatch?: string;
-  /** 商品の英語仕様説明（事実のみ記載） */
-  description?: string;
-  /** ユーザー明示の既知HTSコード（推測入力厳禁。分類したい時は省略） */
-  htsCode?: string;
-  /** 対象年齢層（child: 12歳以下, adult: 大人/一般, unknown: 不明）。推測禁止、不明時は省略 */
-  targetAge?: "adult" | "child" | "unknown";
-  /** 主な素材・繊維混率（例: 100% polyester, ceramic, cotton）。推測禁止、不明時は省略 */
-  material?: string;
-  /** 製品カテゴリ（例: toy, apparel, tableware, electronics）。不明時は省略 */
-  productCategory?: string;
-  /** 食品・飲料接触用途か（食器等のFDA FD1分岐に必要）。推測禁止、不明時は省略 */
-  foodContact?: boolean;
-  /** 電池搭載の有無。推測禁止、不明時は省略 */
-  hasBattery?: boolean;
-  /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。不明時は省略 */
-  batteryType?: "button_coin" | "other";
-  /** 衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略 */
-  fabricSurface?: "plain" | "raised";
-  /** 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除。不明なら省略 */
-  fabricWeightOzPerSqYd?: number;
-  /** 証明者連絡先 (16 CFR 1110.11(a)(3))。省略時は SORA_GCC_CERTIFIER_* を使用。推測・仮置き厳禁 */
-  certifier?: {
-    /** 事業者名または担当者名 */
-    name?: string;
-    /** 郵送先住所（番地・都市・州省・郵便番号・国） */
-    address?: string;
-    /** メールアドレス */
-    email?: string;
-    /** 電話番号 */
-    phone?: string;
-  };
-  /** 記録保管者連絡先 (16 CFR 1110.11(a)(4))。省略時は SORA_GCC_CUSTODIAN_* を使用。推測・仮置き厳禁 */
-  recordCustodian?: {
-    /** 事業者名または担当者名 */
-    name?: string;
-    /** 郵送先住所（番地・都市・州省・郵便番号・国） */
-    address?: string;
-    /** メールアドレス */
-    email?: string;
-    /** 電話番号 */
-    phone?: string;
-  };
-  /** 製造年月・都市・国の実レコード (16 CFR 1110.11(a)(5))。推測・仮置き厳禁 */
-  manufacture?: {
-    /** 製造年月（例: "2026-05"）。推測禁止 */
-    date?: string;
-    /** 製造都市・州省（例: "Shenzhen, Guangdong"）。推測禁止 */
-    city?: string;
-    /** 製造国（例: "China"）。推測禁止 */
-    country?: string;
-    /** 製造工場の正式名称（FDA MID・ACE用） */
-    manufacturerName?: string;
-  };
-  /** 試験日・場所・試験機関の実レコード (16 CFR 1110.11(a)(6)-(7))。推測・仮置き厳禁 */
-  testing?: {
-    /** 試験実施日（例: "2026-06-10"）。推測禁止 */
-    date?: string;
-    /** 試験実施都市・国（例: "Tokyo, Japan"）。推測禁止 */
-    location?: string;
-    /** 試験機関名（例: "Acme Test Lab"）。推測禁止 */
-    laboratoryName?: string;
-    /** 試験機関住所 */
-    laboratoryAddress?: string;
-    /** 試験機関電話番号 */
-    laboratoryPhone?: string;
-    /** 試験報告書番号 */
-    reportNumber?: string;
-  };
-  /** EC注文番号（例: "#10492"）。発送後の通関保留パッケージ出力時に指定 */
-  orderNumber?: string;
-  /** 航空貨物運送状・追跡番号（例: "TEST-AWB-0001"） */
-  awbNumber?: string;
-  /** 配送会社名（例: "FedEx"） */
-  carrier?: string;
-  /** インボイス番号（例: "INV-2026-10492"） */
-  invoiceNumber?: string;
-  /** 不足があっても下書きを返す（既定: false） */
-  allowDraft?: boolean;
-  /** 複数SKU一括作成時の明細配列（最大50件、トップレベルと同型） */
-  items?: {
-    url?: string;
-    productName?: string;
-    sku?: string;
+  /** 1 件 1 製品（最大 50 件） */
+  items: {
+    /** 10 桁の HTS コード（インボイス・通関業者の値。推測しない） */
+    htsCode: string;
+    /** 英語の一般名（16 CFR 1110.11(a)(1)） */
+    productName: string;
+    /** 製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)） */
+    identifier?: string;
+    /** identifier の種類（デフォルト: "sku"） */
+    identifierType?: "sku" | "model" | "gtin" | "upc" | "serial" | "registered" | "other";
     brand?: string;
-    modelOrBatch?: string;
+    /** 製品の説明（英語） */
     description?: string;
-    htsCode?: string;
+    /** child: 12 歳以下（GCC でなく CPC が要る）、adult: 13 歳以上・一般 */
     targetAge?: "adult" | "child" | "unknown";
+    /** 衣料の繊維の組成（"100% polyester" の形。繊維は一般名） */
     material?: string;
-    productCategory?: string;
-    foodContact?: boolean;
-    hasBattery?: boolean;
-    batteryType?: "button_coin" | "other";
+    /** 衣料の生地の表面（raised: 起毛・フリース・パイル） */
     fabricSurface?: "plain" | "raised";
+    /** 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る） */
     fabricWeightOzPerSqYd?: number;
-    certifier?: {
-      name?: string;
-      address?: string;
-      email?: string;
-      phone?: string;
-    };
-    recordCustodian?: {
-      name?: string;
-      address?: string;
-      email?: string;
-      phone?: string;
-    };
+    hasBattery?: boolean;
+    /** button_coin: ボタン・コイン電池（空気亜鉛電池は other） */
+    batteryType?: "button_coin" | "other";
+    /** 食品・飲料に触れるか（FDA の案内に使う） */
+    foodContact?: boolean;
+    /** 試験報告書の規則を 1 つずつ（例: "16 CFR 1203"）。当てはまる規則が無いと確かめたら [] */
+    citations?: string[];
+    /** 製造の年月（YYYY-MM）と工場の名前・住所・メール・電話（16 CFR 1110.11(a)(5)） */
     manufacture?: {
       date?: string;
+      name?: string;
+      street?: string;
       city?: string;
+      state?: string;
       country?: string;
-      manufacturerName?: string;
+      email?: string;
+      phone?: string;
     };
+    /** 最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの名前・住所・メール・電話（16 CFR 1110.11(a)(6)） */
     testing?: {
       date?: string;
-      location?: string;
-      laboratoryName?: string;
-      laboratoryAddress?: string;
-      laboratoryPhone?: string;
       reportNumber?: string;
+      parties?: {
+        name?: string;
+        street?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        email?: string;
+        phone?: string;
+      }[];
     };
   }[];
+  /** 証明者（輸入品は輸入者。16 CFR 1110.7）。省くとサーバーの SORA_GCC_CERTIFIER */
+  certifier?: {
+    name?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    email?: string;
+    phone?: string;
+  };
+  /** 試験の記録を持つ人（役職でよい。16 CFR 1110.11(a)(4)）。省くと SORA_GCC_CUSTODIAN */
+  recordCustodian?: {
+    name?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    email?: string;
+    phone?: string;
+  };
+  orderNumber?: string;
+  awbNumber?: string;
+  carrier?: string;
+  invoiceNumber?: string;
+  /** 足りない項目があっても下書きを返す（デフォルト: false。false では 422） */
+  allowDraft?: boolean;
 };
 
 export type GenerateGccCertificateOutput = {
-  /** パッケージ・証明書識別 ID (例: "GCC-20261107-AB12CD") */
-  certificateId: string;
-  /** 生成日時 (ISO 8601) */
+  /** 一式の ID（PKG- で始まる） */
+  packageId: string;
+  /** 作成日時（ISO 8601、UTC） */
   generatedAt: string;
-  /** 出力モード: "single_product"(単一SKU), "order_package"(複数SKUまたは注文・AWB単位の通関パッケージ) */
+  /** single_product: 1 品 / order_package: 複数品か注文の情報あり */
   mode: "single_product" | "order_package";
-  /** 注文・配送コンテキスト情報 */
-  orderContext?: {
-    /** EC注文番号 */
-    orderNumber?: string;
-    /** AWB・追跡番号 */
-    awbNumber?: string;
-    /** 配送会社名 */
-    carrier?: string;
-    /** インボイス番号 */
-    invoiceNumber?: string;
-  };
-  /** パッケージ全体のステータス: "ready"(全GCC完備), "exempt"(全品GCC不要・免除), "partial_or_draft"(一部情報不足ドラフト含む), "cpc_required"(子供向けCPC必須品を含む) */
+  /** 全体の状態 */
   overallStatus: "ready" | "exempt" | "partial_or_draft" | "cpc_required";
-  /** パッケージ全体の日本語集計サマリー */
-  summary: string;
-  /** パッケージ全体の重要警告リスト（子供向け製品が含まれCPC/CCCが必要な場合の警告等） */
-  warnings?: string[];
-  /** ステータス別明細件数内訳 */
+  /** 状態ごとの数 */
   counts: {
-    /** 総明細数 */
+    /** 品の数 */
     totalItems: number;
-    /** 完成GCC発行件数 */
+    /** GCC ができた数 */
     gccGenerated: number;
-    /** 情報不足ドラフト件数 */
+    /** 下書きの数 */
     draftNeedsInfo: number;
-    /** 16 CFR 1610.1(d) 大人服免除 (Disclaim B) 件数 */
+    /** Disclaim B の数 */
     disclaimBExempt: number;
-    /** GCC不要 (Disclaim A) 件数 */
-    disclaimAExempt: number;
-    /** 子供向けCPC要切替件数 */
+    /** GCC が要らない数 */
+    noGccNeeded: number;
+    /** CPC が要る数 */
     cpcRequired: number;
   };
-  /** SKU明細ごとのGCC生成・免除判定結果配列 */
+  /** 証明者・記録の担当の足りない項目 */
+  missingFields?: string[];
+  /** 品ごとの要約 */
   items: {
-    /** 明細行番号 (1始まり) */
-    lineNumber: number;
-    /** SKU・品番 */
-    sku?: string;
-    /** 製品名 */
-    productName?: string;
-    /** HTS コード */
-    htsCode?: string;
-    /** 発行ステータス: "generated"(法定7項目完備GCC), "draft_needs_info"(未入力項目ありドラフト), "exempt_disclaim_b"(大人服試験・GCC免除シート), "exempt_no_gcc_needed"(GCC不要・Disclaim A), "cpc_required_instead"(子供向けCPC必須のためGCC発行不可) */
+    /** 行番号（1 始まり） */
+    line: number;
+    /** generated: GCC ができた / draft_needs_info: 足りない記録がある下書き / exempt_disclaim_b: 16 CFR 1610.1(d) の免除の大人の衣料 / exempt_no_gcc_needed: 当てはまる規則が無い / cpc_required_instead: 子供用で CPC が要る */
     status: "generated" | "draft_needs_info" | "exempt_disclaim_b" | "exempt_no_gcc_needed" | "cpc_required_instead";
-    /** CBP ACE 電子申告・Disclaimer ガイダンス */
-    aceFilingGuidance: {
-      /** CBP ACE での CPSC 証明書データ電子申告 (eFiling) が必須か */
-      eFilingRequired: boolean;
-      /** 要求される証明書種別 */
-      certificateType: "GCC" | "CCC" | "none" | "unknown";
-      /** 対象 PGA 機関 ("CPSC") */
-      pgaAgency: "CPSC";
-      /** ACE CPSC PGA Disclaimer コード ("A": 非対象品 / "B": 16 CFR 1610.1(d) 大人服執行裁量免除) */
-      disclaimCode?: "A" | "B";
-      /** ACE Intended Use Code (例: 大人服執行裁量免除時の "130.006") */
-      intendedUseCode?: string;
-      /** 通関業者・クーリエ向け英文申告指示テキスト */
-      filingInstruction: string;
-      /** 併存する FDA PGA (FD1 食器 Prior Notice 不要等) の通関実務注記 */
-      fdaNote?: string;
-    };
-    /** 16 CFR 1110.11 法定7項目の構造化データ */
-    statutoryFields?: {
-      /** 1. 対象製品の識別情報 (16 CFR 1110.11(a)(1)) */
-      productIdentification: {
-        /** 対象製品名 (16 CFR 1110.11(a)(1)) */
-        productName: string;
-        /** SKU・品番 */
-        sku?: string;
-        /** ブランド名 */
-        brand?: string;
-        /** モデル番号・ロット・バッチ */
-        modelOrBatch?: string;
-        /** 製品仕様・説明 */
-        description?: string;
-        /** HTS コード */
-        htsCode?: string;
-      };
-      /** 2. 適合を証明する各 CPSC 安全規格の CFR 条項 (16 CFR 1110.11(a)(2)) */
-      citations: string[];
-      /** 3. 適合証明を行う米国輸入者・国内製造者・海外直送事業者 (16 CFR 1110.11(a)(3)) */
-      certifier: {
-        /** 事業者名または担当者氏名 */
-        name: string;
-        /** 郵送先住所 */
-        address: string;
-        /** メールアドレス */
-        email?: string;
-        /** 電話番号 */
-        phone?: string;
-      } | null;
-      /** 4. 試験記録保管責任者の連絡先 (16 CFR 1110.11(a)(4)) */
-      recordCustodian: {
-        /** 事業者名または担当者氏名 */
-        name: string;
-        /** 郵送先住所 */
-        address: string;
-        /** メールアドレス */
-        email?: string;
-        /** 電話番号 */
-        phone?: string;
-      } | null;
-      /** 5. 製造年月および製造場所 (16 CFR 1110.11(a)(5)) */
-      manufactureDateAndPlace: {
-        /** 製造年月 */
-        date: string | null;
-        /** 製造都市・州省 */
-        city: string | null;
-        /** 製造国 */
-        country: string | null;
-        /** 製造工場名 */
-        manufacturerName?: string;
-      };
-      /** 6. 適合性試験の実施日および場所 (16 CFR 1110.11(a)(6)) */
-      testingDateAndPlace: {
-        /** 法定試験免除対象か */
-        exemptFromTesting: boolean;
-        /** 試験免除の根拠条項 */
-        exemptionCitation?: string;
-        /** 試験免除の理由 */
-        exemptionReason?: string;
-        /** 試験実施日 */
-        date: string | null;
-        /** 試験実施場所 */
-        location: string | null;
-        /** 試験報告書番号 */
-        reportNumber?: string;
-      };
-      /** 7. 試験を実施した第三者試験機関・試験主体 (16 CFR 1110.11(a)(7)) */
-      testingLaboratory: {
-        /** 試験機関非該当の理由（試験免除時等） */
-        notApplicableReason?: string;
-        /** 試験機関名 */
-        name: string | null;
-        /** 試験機関住所 */
-        address?: string;
-        /** 試験機関電話番号 */
-        phone?: string;
-      };
-    };
-    /** 重要警告リスト（12歳以下の子供向け製品でCPC/CCCが必須かつ本ツールのGCC発行対象外である旨の警告等） */
-    warnings?: string[];
-    /** GCC完成に不足している必須項目リスト（推測補完せず明示） */
-    missingFields: string[];
-    /** 確認質問リスト */
+    /** HTS コード */
+    htsCode: string;
+    /** 製品名 */
+    productName: string;
+    /** 製品を特定する番号 */
+    identifier?: string;
+    /** 証明書の ID（generated のときだけ） */
+    certificateId?: string;
+    /** CPSC の一覧の区分（完全一致のとき） */
+    cpscListCategory?: string;
+    /** 証明する規則（GCC のとき） */
+    citations?: string[];
+    /** 試験の除外（例: "16 CFR 1610.1(d)(2)"） */
+    testingExclusions?: string[];
+    /** ACE の Disclaimer のコード */
+    disclaimCode?: "A" | "B";
+    /** Intended Use Code（B のとき "130.006"） */
+    intendedUseCode?: string;
+    /** ACE での扱い */
+    filingNote: string;
+    /** FDA の案内 */
+    fdaNote?: string;
+    /** この品の足りない項目 */
+    missingFields?: string[];
+    /** 確認の質問 */
     clarifyingQuestions?: string[];
-    /** 当該SKUの統合コンプライアンス判定結果 */
-    compliance: {
-      /** 判定対象商品プロファイル */
-      product: {
-        /** 商品名 */
-        name?: string;
-        /** 商品説明 */
-        description?: string;
-        /** 商品ページ URL */
-        url?: string;
-        /** 検出カテゴリ */
-        detectedCategory?: string;
-        /** 対象年齢層 */
-        targetAge: "adult" | "child" | "unknown";
-        /** 主な素材 */
-        material?: string;
-        /** 判定に使用した HTS コード */
-        htsCode?: string;
-      };
-      /** 総合コンプライアンス判定: "action_required"(要手続/証明書必須), "potential_action_required"(条件付き要確認), "likely_exempt"(規制対象外の可能性高), "needs_more_info"(情報不足) */
-      overallStatus: "action_required" | "potential_action_required" | "likely_exempt" | "needs_more_info";
-      /** コンプライアンス診断結果の日本語総括サマリー */
-      summary: string;
-      /** 入力情報の充足度 */
-      inputCompleteness?: "complete" | "partial";
-      /** 不足情報項目 */
-      missingInputs?: string[];
-      /** LLM がユーザーに尋ねるべき確認質問リスト */
-      clarifyingQuestions?: string[];
-      /** 不足項目が判定に与える影響解説 */
-      impactExplanation?: string;
-      /** HTS コード実在検証結果 */
-      htsVerification?: {
-        /** 検証対象の HTS コード */
-        htsCode: string;
-        /** 指定された製品説明 */
-        productDescription: string;
-        /** USITC 公式データベースに実在するコードか */
-        verified: boolean;
-        /** 一致レベル: "exact"(8桁または10桁の行が実在), "6-digit-category"(6桁類一致), "unmatched"(不一致) */
-        matchLevel: "exact" | "6-digit-category" | "unmatched";
-        /** 国際共通 6桁 HS コード */
-        hsCode?: string;
-        /** USITC 公式品名解説 */
-        officialDescription?: string;
-        /** 公式の階層での位置（最上位の見出しから親まで）。"Other" のように説明だけでは分からないときの手がかり */
-        officialPath?: string[];
-        /** 基本関税率 (General Rate of Duty)。その行に率が無ければ最も近い祖先の率を継承した値 */
-        generalRate?: string;
-        /** 第2欄税率 (Column 2 Rate) */
-        otherRate?: string;
-        /** 特恵関税・特定協定税率 (Special Rate) */
-        specialRate?: string;
-        /** 近隣・関連する候補 HTS コード一覧 */
-        nearbyCandidates: {
-          /** HTS 10桁コード (XXXX.XX.XXXX) */
-          htsCode: string;
-          /** USITC 公式品目解説 (英語) */
-          description: string;
-          /** 基本関税率 (General Rate of Duty) */
-          generalRate: string;
-          /** 特別税率・第2欄税率 */
-          otherRate?: string;
-        }[];
-        /** 法的免責事項文 */
-        disclaimer: string;
-        /** 情報提供元 ("usitc-hts") */
-        source: "usitc-hts";
-        /** 入力充足度 */
-        inputCompleteness?: "complete" | "partial";
-        /** 不足項目一覧 */
-        missingInputs?: string[];
-        /** 確認質問 */
-        clarifyingQuestions?: string[];
-        /** 関税・規制への影響説明 */
-        impactExplanation?: string;
-      };
-      /** HTS コード推論結果 */
-      htsPrediction?: {
-        /** 推定された 6桁 HS 号 (例: "9503.00") */
-        detectedSubheading: string;
-        /** 最有力コードの属する公式の見出しの説明 */
-        category: string;
-        /** 最適マッチ品目 */
-        bestMatch: {
-          /** 最有力候補 HTS 10桁コード */
-          htsCode: string;
-          /** 最有力品目の説明 */
-          description: string;
-          /** 公式の階層での位置（" › " 区切り） */
-          parentDescription?: string;
-          /** 公式の階層での位置（最上位の見出しから親まで） */
-          path?: string[];
-          /** 一般関税率。その行に率が無ければ最も近い祖先の率を継承。どこにも無ければ "N/A" */
-          generalRate: string;
-          /** 率を継承した祖先のコード。その行自身の率なら無い */
-          rateFrom?: string;
-          /** 適合度スコア (0〜100) */
-          score: number;
-          /** 推定信頼度。high: 判例とHTS全文検索が同じ6桁を指し票が集まった（評価で約9割が一致）, medium: 約7割, low: 約3〜4割 */
-          confidence: "high" | "medium" | "low";
-          /** 推論理由・分類根拠 */
-          reason: string;
-          /** 該当品目の CPSC 規制判定結果 */
-          cpsc?: {
-            /** 適合証明書 (GCCまたはCPC) が必要か */
-            certificateRequired: boolean | "unknown";
-            /** 要求される証明書種別: "GCC"(一般品), "CCC"(子供向け品 CPC), "none"(不要), "unknown"(要確認) */
-            certificateType: "GCC" | "CCC" | "none" | "unknown";
-            /** 2026年7月よりCBP ACEでの電子的提出(eFiling)が必須となる品目か */
-            eFilingRequired: boolean;
-            /** 適用される CPSC 安全基準・規制規格リスト */
-            applicableRegulations: {
-              /** 適用される米国連邦規則集 (CFR) 条項 (例: "16 CFR 1610") */
-              cfr: string;
-              /** 規制概要の日本語説明 */
-              summary: string;
-              /** CPSC 公式ガイダンス抜粋英文 */
-              excerpt: string;
-              /** 規制条項の公式参照先 URL */
-              sourceUrl: string;
-            }[];
-            /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
-            disclaimerCodeHint?: string;
-            /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
-            testingExemption?: {
-              /** 可燃性等の実試験が法定免除されるか */
-              exempt: boolean;
-              /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
-              citation?: string;
-              /** 試験免除または適用除外の理由説明 */
-              reason: string;
-              /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
-              enforcementDiscretion?: boolean;
-            };
-            /** 判定に必要な不足情報項目 */
-            missingInfo: string[];
-            /** 輸入者・輸出者が次に取るべき実務アクションリスト */
-            nextActions: string[];
-            /** 免責事項文 */
-            disclaimer: string;
-            /** 入力情報の充足度 */
-            inputCompleteness?: "complete" | "partial";
-            /** 未指定のパラメータ一覧 */
-            missingInputs?: string[];
-            /** LLM がユーザーに尋ねるべき確認質問リスト */
-            clarifyingQuestions?: string[];
-            /** 不足情報が判定に与える影響の解説 */
-            impactExplanation?: string;
-          };
-          /** 該当品目の FDA 規制判定結果 */
-          fda?: {
-            /** 米国 FDA 規制対象の可能性が高いか */
-            fdaRegulatedLikely: boolean | "unknown";
-            /** CBP ACE FDA 申告フラグ: "FD1"(条件付き要事前届出/Prior Notice不要), "FD2"(要FDA申告), "FD3"(事前届出・FDA申告双方必要), "FD4"(必須), "none"(非対象) */
-            fdFlag: "FD1" | "FD2" | "FD3" | "FD4" | "none";
-            /** 該当する FDA 監視プログラムコード一覧 (FOO=食品, COS=化粧品, DEV=医療機器, DRU=医薬品等) */
-            possiblePrograms: string[];
-            /** 輸入前の事前通知 (Prior Notice) 義務が発生する可能性があるか */
-            priorNoticeMayApply: boolean;
-            /** Prior Notice が明確に必須か */
-            priorNoticeRequired?: boolean;
-            /** 合致した HTS 6桁コードプレフィックス */
-            matchedSubheading?: string;
-            /** 合致した HTS 類 (Chapter 01〜97) */
-            matchedChapter: string;
-            /** 判定信頼度区分 */
-            confidence: "hts-flag-match" | "chapter-level-estimate";
-            /** 必須となる手続要件一覧 (DUNS番号登録、製造所登録、事前届出等) */
-            requiredActions?: string[];
-            /** 判定精度向上のための不足情報 */
-            missingInfo: string[];
-            /** 輸入手続き上の推奨アクション一覧 */
-            nextActions: string[];
-            /** 免責事項文 */
-            disclaimer: string;
-            /** 入力充足度 */
-            inputCompleteness?: "complete" | "partial";
-            /** 未指定項目一覧 */
-            missingInputs?: string[];
-            /** ユーザーへの確認質問リスト */
-            clarifyingQuestions?: string[];
-            /** 判定分岐の影響説明 */
-            impactExplanation?: string;
-          };
-        };
-        /** 上位候補（異なる6桁ごとに代表の行を1つ、最大5件） */
-        candidates: {
-          /** 候補 HTS コード */
-          htsCode: string;
-          /** 候補品目の公式説明 */
-          description: string;
-          /** 関税率 */
-          generalRate: string;
-          /** マッチング適合スコア */
-          score: number;
-          /** 公式の階層での位置（最上位の見出しから親まで） */
-          path?: string[];
-          /** この6桁を挙げた手がかり: "hts-text"(HTS全文検索), "cbp-ruling"(CBP分類判例) */
-          sources?: ("hts-text" | "cbp-ruling")[];
-        }[];
-        /** 候補が公式の階層のどこで分かれるか（confidence が high でないときに付く） */
-        decisionPoints?: {
-          /** 分類の確認質問。公式の階層で候補が最初に分かれる区分を尋ねる */
-          question: string;
-          /** 選択肢。答えとなる区分の語を description に加えて再実行すると絞り込める */
-          options: {
-            /** 公式の区分の説明文 */
-            text: string;
-            /** その区分の代表コード */
-            htsCode?: string;
-            /** その区分の代表コードの一般関税率 */
-            generalRate?: string;
-          }[];
-        }[];
-        /** 根拠: 参照したデータの取得日時と、CBP 判例 */
-        evidence: {
-          /** 参照した USITC HTS 全件データの取得日時 (ISO 8601) */
-          dataFetchedAt: string;
-          /** CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(通信失敗。HTS全文検索だけで答えた) */
-          crossStatus: "ok" | "no_rulings" | "unavailable";
-          /** 判例が得られた照会語 */
-          crossQuery?: string;
-          /** 判例を参照できなかった理由 */
-          crossNote?: string;
-          /** 最有力の6桁を支持した判例（上位3件） */
-          rulings: {
-            /** 判例番号 */
-            rulingNumber: string;
-            /** 判例の日付 (YYYY-MM-DD) */
-            date: string;
-            /** 判例の件名 */
-            subject: string;
-            /** 判例が挙げた分類コード（数字のみ） */
-            tariffs: string[];
-            /** 判例の URL (rulings.cbp.gov) */
-            url: string;
-          }[];
-        };
-        /** 法的免責事項文 */
-        disclaimer: string;
-        /** 入力充足度 */
-        inputCompleteness?: "complete" | "partial";
-        /** 未指定項目一覧（classificationDetail: 分類の確認が必要） */
-        missingInputs?: string[];
-        /** ユーザーへの確認質問リスト */
-        clarifyingQuestions?: string[];
-        /** 関税・規制への影響説明 */
-        impactExplanation?: string;
-      };
-      /** FDA 規制フラグ・Prior Notice 判定 */
-      fda?: {
-        /** 米国 FDA 規制対象の可能性が高いか */
-        fdaRegulatedLikely: boolean | "unknown";
-        /** CBP ACE FDA 申告フラグ: "FD1"(条件付き要事前届出/Prior Notice不要), "FD2"(要FDA申告), "FD3"(事前届出・FDA申告双方必要), "FD4"(必須), "none"(非対象) */
-        fdFlag: "FD1" | "FD2" | "FD3" | "FD4" | "none";
-        /** 該当する FDA 監視プログラムコード一覧 (FOO=食品, COS=化粧品, DEV=医療機器, DRU=医薬品等) */
-        possiblePrograms: string[];
-        /** 輸入前の事前通知 (Prior Notice) 義務が発生する可能性があるか */
-        priorNoticeMayApply: boolean;
-        /** Prior Notice が明確に必須か */
-        priorNoticeRequired?: boolean;
-        /** 合致した HTS 6桁コードプレフィックス */
-        matchedSubheading?: string;
-        /** 合致した HTS 類 (Chapter 01〜97) */
-        matchedChapter: string;
-        /** 判定信頼度区分 */
-        confidence: "hts-flag-match" | "chapter-level-estimate";
-        /** 必須となる手続要件一覧 (DUNS番号登録、製造所登録、事前届出等) */
-        requiredActions?: string[];
-        /** 判定精度向上のための不足情報 */
-        missingInfo: string[];
-        /** 輸入手続き上の推奨アクション一覧 */
-        nextActions: string[];
-        /** 免責事項文 */
-        disclaimer: string;
-        /** 入力充足度 */
-        inputCompleteness?: "complete" | "partial";
-        /** 未指定項目一覧 */
-        missingInputs?: string[];
-        /** ユーザーへの確認質問リスト */
-        clarifyingQuestions?: string[];
-        /** 判定分岐の影響説明 */
-        impactExplanation?: string;
-      };
-      /** CPSC 証明書・eFiling 義務化判定 */
-      cpsc?: {
-        /** 適合証明書 (GCCまたはCPC) が必要か */
-        certificateRequired: boolean | "unknown";
-        /** 要求される証明書種別: "GCC"(一般品), "CCC"(子供向け品 CPC), "none"(不要), "unknown"(要確認) */
-        certificateType: "GCC" | "CCC" | "none" | "unknown";
-        /** 2026年7月よりCBP ACEでの電子的提出(eFiling)が必須となる品目か */
-        eFilingRequired: boolean;
-        /** 適用される CPSC 安全基準・規制規格リスト */
-        applicableRegulations: {
-          /** 適用される米国連邦規則集 (CFR) 条項 (例: "16 CFR 1610") */
-          cfr: string;
-          /** 規制概要の日本語説明 */
-          summary: string;
-          /** CPSC 公式ガイダンス抜粋英文 */
-          excerpt: string;
-          /** 規制条項の公式参照先 URL */
-          sourceUrl: string;
-        }[];
-        /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
-        disclaimerCodeHint?: string;
-        /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
-        testingExemption?: {
-          /** 可燃性等の実試験が法定免除されるか */
-          exempt: boolean;
-          /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
-          citation?: string;
-          /** 試験免除または適用除外の理由説明 */
-          reason: string;
-          /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
-          enforcementDiscretion?: boolean;
-        };
-        /** 判定に必要な不足情報項目 */
-        missingInfo: string[];
-        /** 輸入者・輸出者が次に取るべき実務アクションリスト */
-        nextActions: string[];
-        /** 免責事項文 */
-        disclaimer: string;
-        /** 入力情報の充足度 */
-        inputCompleteness?: "complete" | "partial";
-        /** 未指定のパラメータ一覧 */
-        missingInputs?: string[];
-        /** LLM がユーザーに尋ねるべき確認質問リスト */
-        clarifyingQuestions?: string[];
-        /** 不足情報が判定に与える影響の解説 */
-        impactExplanation?: string;
-      };
-      /** 米国輸出・通関に向けた具体的な実務ToDoチェックリスト */
-      actionPlan: string[];
-      /** 法的免責事項文 */
-      disclaimer: string;
-    };
-    /** 出力ドキュメントの英語タイトル */
-    documentTitle?: string;
-    /** 当該SKUの英語版GCCまたは免除申告書 Markdown */
-    certificateMarkdown?: string;
-    /** 当該SKUの英語版GCCまたは免除申告書 HTMLセクション */
-    certificateHtml?: string;
+    /** 注意 */
+    warnings?: string[];
   }[];
-  /** 提出用英語版 Markdown 全文（注文パッケージ時は Page 1 通関カバーシート + 個別SKU証明書） */
-  packageMarkdown: string;
-  /** ブラウザ印刷・PDF保存（@media print & 改ページ対応）可能なスタンドアロン英語版 HTML 全文 */
+  /** 印刷用の HTML（1 つ） */
   packageHtml: string;
-  /** 法的免責事項文 */
+  /** 免責の文 */
   disclaimer: string;
 };
 
-/** 【必須・推測厳禁】米国CPSCのGCCと通関書類を作る。返却: { overallStatus, items } */
+/** 【必須・推測厳禁】米国CPSCのGCCと通関の保留に出す書類を印刷用のHTMLで作る。値は記録（試験報告書など）から渡す。足りないと 422（下書きは allowDraft）。12 歳以下の子供用は作らない。返却: { packageId, overallStatus, counts, items, packageHtml } */
 export function generateGccCertificate(input: GenerateGccCertificateInput): Promise<GenerateGccCertificateOutput> {
   return callSora<GenerateGccCertificateOutput>({ method: 'POST', path: '/trade/gcc-generate' }, input);
 }

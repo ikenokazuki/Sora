@@ -1,393 +1,192 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { clearCache } from '../cache.js';
-import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
-import { resetCrossBreakerForTest } from './cbp_cross.js';
-import { TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
-import { resetHtsDataForTest } from './hts_data.js';
+import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
+import { GenerateGccCertificateRequestSchema } from '../types.js';
+import { type GccItemInput, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
 import { TradeInputError } from './trade.js';
 
-describe('GCC', () => {
-  let restore: (() => void) | undefined;
-  beforeAll(() => {
-    restore = installExternalApiFixtures();
+// サーバーの既定（SORA_GCC_*）が手元の環境にあっても、テストは呼び出し側の値だけで始める
+const savedEnv = { certifier: process.env.SORA_GCC_CERTIFIER, custodian: process.env.SORA_GCC_CUSTODIAN };
+beforeEach(() => {
+  delete process.env.SORA_GCC_CERTIFIER;
+  delete process.env.SORA_GCC_CUSTODIAN;
+});
+afterAll(() => {
+  for (const [key, value] of [['SORA_GCC_CERTIFIER', savedEnv.certifier], ['SORA_GCC_CUSTODIAN', savedEnv.custodian]] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
+
+const CERTIFIER = { name: 'Acme Imports LLC', street: '100 Example Street', city: 'Anytown', state: 'CA', country: 'United States', email: 'compliance@acme-imports.test', phone: '+1-202-555-0101' };
+const CUSTODIAN = { ...CERTIFIER, name: 'Compliance Manager', email: 'records@acme-imports.test', phone: '+1-202-555-0102' };
+const FACTORY = { date: '2026-06', name: 'Acme Helmet Factory', street: '1 Example Road', city: 'Taichung', state: 'Taichung City', country: 'Taiwan', email: 'factory@acme-factory.test', phone: '+1-202-555-0103' };
+const LAB = { name: 'Acme Test Lab', street: '2 Example Road', city: 'Taipei', state: 'Taipei City', country: 'Taiwan', email: 'lab@acme-lab.test', phone: '+1-202-555-0104' };
+const HELMET: GccItemInput = { htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', identifier: 'HLM-001', targetAge: 'adult', citations: ['16 CFR 1203'], manufacture: FACTORY, testing: { date: '2026-06-15', reportNumber: 'TR-0001', parties: [LAB] } };
+const TEE: GccItemInput = { htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' };
+
+describe('generateGccCertificate', () => {
+  it('makes a GCC with the elements of the current 16 CFR 1110.11 when every record is given', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
+    expect(res.overallStatus).toBe('ready');
+    expect(res.mode).toBe('single_product');
+    expect(res.items[0]).toMatchObject({ line: 1, status: 'generated', htsCode: '6506.10.60.45', identifier: 'HLM-001', citations: ['16 CFR 1203'] });
+    expect(res.items[0].missingFields).toBeUndefined();
+    expect(res.items[0].certificateId).toMatch(/^GCC-[0-9A-F]{12}$/);
+    expect(res.packageId).toMatch(/^PKG-[0-9A-F]{12}$/);
+    expect(res.missingFields).toBeUndefined();
   });
-  afterAll(() => restore?.());
-  beforeEach(() => {
-    clearCache();
-    resetCrossBreakerForTest();
-    resetHtsDataForTest();
+
+  it('keeps a GCC a draft without the unique identifier and the full contact details (review probe for C1)', async () => {
+    const item: GccItemInput = { htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', targetAge: 'adult', citations: ['16 CFR 1203'], manufacture: { date: '2026-06', city: 'Taichung', country: 'Taiwan' }, testing: { date: '2026-06-15', parties: [{ name: 'Acme Test Lab' }] } };
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [item], allowDraft: true });
+    expect(res.items[0].status).toBe('draft_needs_info');
+    expect(res.items[0].missingFields).toEqual([
+      'identifier', 'manufacture.name', 'manufacture.street', 'manufacture.state', 'manufacture.email', 'manufacture.phone',
+      'testing.parties[0].street', 'testing.parties[0].city', 'testing.parties[0].state', 'testing.parties[0].country', 'testing.parties[0].email', 'testing.parties[0].phone',
+    ]);
+    expect(res.items[0].certificateId).toBeUndefined();
+    await expect(generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [item] })).rejects.toBeInstanceOf(TradeGccIncompleteError);
   });
 
-  describe('generateGccCertificate & checkProductCompliance GCC integration', () => {
-    const sampleCertifier = {
-      name: 'Acme Imports LLC',
-      address: '100 Example Street, Anytown, CA, United States',
-      email: 'compliance@acme-imports.test',
-      phone: '+1-213-555-0199',
-    };
-    const sampleCustodian = {
-      name: 'Compliance Manager',
-      address: '100 Example Street, Anytown, CA, United States',
-      email: 'qa-records@acme-imports.test',
-      phone: '+1-202-555-0103',
-    };
+  it('does not call an unlisted adult item "no GCC needed" until the certifier says no rule applies (review probe for C2)', async () => {
+    const gas: GccItemInput = { htsCode: '3923.30.00.90', productName: 'Portable Gasoline Container', identifier: 'GAS-5', targetAge: 'adult' };
+    const asked = await generateGccCertificate({ items: [gas], allowDraft: true });
+    expect(asked.items[0].status).toBe('draft_needs_info');
+    expect(asked.items[0].missingFields).toContain('citations');
+    const none = await generateGccCertificate({ items: [{ ...gas, citations: [] }] });
+    expect(none.items[0].status).toBe('exempt_no_gcc_needed');
+    expect(none.items[0].disclaimCode).toBeUndefined();
+    expect(none.items[0].filingNote).toContain('CPSC の一覧に無い');
+  });
 
-    it('generates a complete 7-element 16 CFR 1110.11 GCC (JSON, Markdown, print HTML) for a regulated SKU', async () => {
-      const res = await generateGccCertificate({
-        productName: 'Official Concert LED Penlight',
-        sku: 'PEN-2026-TOUR',
-        brand: 'Acme',
-        modelOrBatch: 'LOT-2026-09A',
-        description: 'Handheld LED concert penlight using LR44 button cells',
-        htsCode: '9405.42.84.40',
-        targetAge: 'adult',
-        material: 'ABS plastic',
-        hasBattery: true,
-        batteryType: 'button_coin',
-        certifier: sampleCertifier,
-        recordCustodian: sampleCustodian,
-        manufacture: {
-          date: '2026-09',
-          city: 'Shenzhen, Guangdong',
-          country: 'China',
-          manufacturerName: 'Acme Electronics Factory',
-        },
-        testing: {
-          date: '2026-09-18',
-          location: 'Shenzhen, China',
-          laboratoryName: 'Acme Test Lab',
-          laboratoryAddress: '2 Example Road, Shenzhen, Guangdong, China',
-          laboratoryPhone: '+1-202-555-0104',
-          reportNumber: 'TR-0001',
-        },
-      });
+  it('does not give Disclaim A to an adult dresser on a children’s furniture code (review probe for C3)', async () => {
+    const dresser: GccItemInput = { htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult' };
+    expect((await generateGccCertificate({ items: [dresser], allowDraft: true })).items[0].status).toBe('draft_needs_info');
+    const stated = await generateGccCertificate({ items: [{ ...dresser, citations: [] }] });
+    expect(stated.items[0]).toMatchObject({ status: 'exempt_no_gcc_needed', disclaimCode: 'A', cpscListCategory: 'Other Children’s Furniture' });
+    expect(stated.items[0].warnings?.[0]).toContain('Other Children’s Furniture');
+  });
 
-      expect(res.mode).toBe('single_product');
-      expect(res.overallStatus).toBe('ready');
-      expect(res.counts.gccGenerated).toBe(1);
-      const item = res.items[0];
-      expect(item.status).toBe('generated');
-      expect(item.missingFields).toEqual([]);
-      expect(item.aceFilingGuidance.eFilingRequired).toBe(true);
-      expect(item.statutoryFields?.productIdentification.sku).toBe('PEN-2026-TOUR');
-      expect(item.statutoryFields?.citations.some((c) => c.includes('16 CFR 1263'))).toBe(true);
-      expect(item.statutoryFields?.certifier?.name).toBe('Acme Imports LLC');
-      expect(item.statutoryFields?.recordCustodian?.email).toBe('qa-records@acme-imports.test');
-      expect(item.statutoryFields?.manufactureDateAndPlace).toMatchObject({
-        date: '2026-09',
-        city: 'Shenzhen, Guangdong',
-        country: 'China',
-      });
-      expect(item.statutoryFields?.testingLaboratory.name).toContain('Acme Test Lab');
-      expect(item.certificateMarkdown).toContain('General Certificate of Conformity');
-      expect(item.certificateMarkdown).toContain('PEN-2026-TOUR');
-      expect(item.certificateMarkdown).toContain('16 CFR 1263');
-      expect(res.packageHtml).toContain('<!DOCTYPE html>');
-      expect(res.packageHtml).toContain('@media print');
+  it('gives Disclaim B with IUC 130.006 to adult apparel exempt under 16 CFR 1610.1(d) without the certifier', async () => {
+    const res = await generateGccCertificate({ items: [TEE] });
+    expect(res.items[0]).toMatchObject({ status: 'exempt_disclaim_b', disclaimCode: 'B', intendedUseCode: '130.006' });
+    expect(res.overallStatus).toBe('exempt');
+    expect(res.missingFields).toBeUndefined();
+  });
+
+  it('identifies the 16 CFR 1610.1(d) testing exclusion in a GCC instead of a test record (16 CFR 1110.11(c))', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...TEE, citations: ['16 CFR 1610'], manufacture: FACTORY }] });
+    expect(res.items[0]).toMatchObject({ status: 'generated', testingExclusions: ['16 CFR 1610.1(d)(2)'] });
+  });
+
+  it('keeps a button-cell product a draft until 16 CFR 1263 is among the citations', async () => {
+    const penlight: GccItemInput = { htsCode: '8513.10.20.00', productName: 'LED Penlight', identifier: 'PEN-001', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin', manufacture: FACTORY, testing: { date: '2026-06-15', parties: [LAB] } };
+    const wrong = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...penlight, citations: ['16 CFR 1203'] }] });
+    expect(wrong.items[0].status).toBe('draft_needs_info');
+    expect(wrong.items[0].clarifyingQuestions?.join('')).toContain('16 CFR 1263');
+    const right = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...penlight, citations: ['16 CFR 1263'] }] });
+    expect(right.items[0].status).toBe('generated');
+  });
+
+  it('does not make a GCC for children’s products and asks for the age when it is missing', async () => {
+    const child = await generateGccCertificate({ items: [{ htsCode: '9503.00.00.73', productName: 'Wooden Blocks', identifier: 'BLK-1', targetAge: 'child' }] });
+    expect(child.items[0].status).toBe('cpc_required_instead');
+    expect(child.overallStatus).toBe('cpc_required');
+    const noAge = await generateGccCertificate({ allowDraft: true, items: [{ htsCode: '9503.00.00.73', productName: 'Wooden Blocks', identifier: 'BLK-1' }] });
+    expect(noAge.items[0].missingFields).toContain('targetAge');
+  });
+
+  it('takes each party whole from one source and never mixes the caller’s and the server’s values (review probe for I2)', async () => {
+    const prev = process.env.SORA_GCC_CERTIFIER;
+    process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, name: 'Server Default LLC', email: 'ops@server-default.test' });
+    try {
+      const mixed = await generateGccCertificate({ certifier: { name: 'Caller Brand Inc.' }, recordCustodian: CUSTODIAN, items: [HELMET], allowDraft: true });
+      expect(mixed.missingFields).toEqual(['certifier.street', 'certifier.city', 'certifier.state', 'certifier.country', 'certifier.email', 'certifier.phone']);
+      expect(mixed.packageHtml).not.toContain('ops@server-default.test');
+      const fromEnv = await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] });
+      expect(fromEnv.items[0].status).toBe('generated');
+      expect(fromEnv.packageHtml).toContain('ops@server-default.test');
+      process.env.SORA_GCC_CERTIFIER = '{not json';
+      await expect(generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] })).rejects.toThrow('SORA_GCC_CERTIFIER');
+    } finally {
+      if (prev === undefined) delete process.env.SORA_GCC_CERTIFIER;
+      else process.env.SORA_GCC_CERTIFIER = prev;
+    }
+  });
+
+  it('rejects an HTS code that is not 10 digits, no items and more than 50 items (I5, I10)', async () => {
+    await expect(generateGccCertificate({ items: [{ ...HELMET, htsCode: '6506.10' }] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(generateGccCertificate({ items: [{ ...HELMET, productName: '  ' }] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(generateGccCertificate({ items: [{ ...HELMET, citations: [' '] }] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(GenerateGccCertificateRequestSchema.safeParse({}).success).toBe(false);
+    expect(GenerateGccCertificateRequestSchema.safeParse({ items: [] }).success).toBe(false);
+    expect(GenerateGccCertificateRequestSchema.safeParse({ items: Array.from({ length: 51 }, () => HELMET) }).success).toBe(false);
+  });
+
+  it('gives stable IDs without a date, different for different products (M1)', async () => {
+    const a1 = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
+    const a2 = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
+    expect(a2.packageId).toBe(a1.packageId);
+    expect(a2.items[0].certificateId).toBe(a1.items[0].certificateId);
+    const t1 = await generateGccCertificate({ items: [{ htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', targetAge: 'adult', material: '100% polyester' }] });
+    const t2 = await generateGccCertificate({ items: [{ htsCode: '6201.40.40.21', productName: 'Adult Nylon Jacket', targetAge: 'adult', material: '100% nylon' }] });
+    expect(t1.packageId).not.toBe(t2.packageId);
+  });
+
+  it('returns a small summary and the HTML only: no Markdown and no per-item compliance result (I4, I6)', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, orderNumber: 'ORDER-1001', items: [HELMET, TEE] });
+    expect(res.mode).toBe('order_package');
+    expect(Object.keys(res).sort()).toEqual(['counts', 'disclaimer', 'generatedAt', 'items', 'mode', 'overallStatus', 'packageHtml', 'packageId']);
+    for (const item of res.items) for (const k of ['compliance', 'certificateMarkdown', 'certificateHtml', 'statutoryFields', 'aceFilingGuidance']) expect(item).not.toHaveProperty(k);
+  });
+  it('rejects sample or placeholder values in what the caller sent, even with allowDraft, but not in the server defaults (M2)', async () => {
+    const err = await generateGccCertificate({
+      allowDraft: true,
+      certifier: { ...CERTIFIER, name: 'Sample Exporter Inc.', email: 'compliance@acme-imports.example.com', phone: '+81-3-0000-0000' },
+      recordCustodian: CUSTODIAN,
+      items: [{ ...HELMET, manufacture: { ...FACTORY, date: 'TBD', city: '仮置き工場', country: 'Unknown' } }],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(TradeInputError);
+    expect(err.code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
+    for (const field of ['certifier.name', 'certifier.email', 'certifier.phone', 'items[0].manufacture.date', 'items[0].manufacture.city', 'items[0].manufacture.country']) expect(err.message).toContain(field);
+    process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, email: 'compliance@acme-imports.example.com' });
+    const res = await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] });
+    expect(res.items[0].status).toBe('generated');
+  });
+
+  it('prints only the caller’s citations, never a rule Sora derived', async () => {
+    const penlight: GccItemInput = { htsCode: '8513.10.20.00', productName: 'LED Penlight', identifier: 'PEN-001', targetAge: 'adult', hasBattery: true, batteryType: 'button_coin', manufacture: FACTORY, testing: { date: '2026-06-15', parties: [LAB] } };
+    const cited = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...penlight, citations: ['16 CFR 1263'] }] });
+    expect(cited.packageHtml).toContain('16 CFR 1263');
+    expect(cited.packageHtml).not.toContain('ANSI/UL 4200A');
+    const draft = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [penlight], allowDraft: true });
+    expect(draft.items[0].clarifyingQuestions?.[0]).toContain('16 CFR 1263');
+    expect(draft.packageHtml).not.toContain('16 CFR 1263');
+  });
+
+  it('asks about 16 CFR 1610.1(c) for an adult hat instead of citing 16 CFR 1610 on its own', async () => {
+    const hat: GccItemInput = { htsCode: '6505.00.60.30', productName: 'Adult Knit Cap', identifier: 'CAP-1', targetAge: 'adult' };
+    const res = await generateGccCertificate({ items: [hat], allowDraft: true });
+    expect(res.items[0].status).toBe('draft_needs_info');
+    expect(res.items[0].missingFields).toContain('citations');
+    expect(res.items[0].clarifyingQuestions?.[0]).toContain('16 CFR 1610.1(c)(1)');
+    expect(res.items[0].citations).toBeUndefined();
+    const stated = await generateGccCertificate({ items: [{ ...hat, citations: [] }] });
+    expect(stated.items[0].status).toBe('exempt_no_gcc_needed');
+    expect(stated.packageHtml).toContain('16 CFR 1610.1(c)(1)');
+  });
+
+  it('escapes every caller string in packageHtml (XSS)', async () => {
+    const xss = `<script>alert("xss")</script><img src=x onerror=alert('1')>&"`;
+    const party = { ...CERTIFIER, name: `Party ${xss}`, street: `Street ${xss}` };
+    const res = await generateGccCertificate({
+      orderNumber: `ORD-${xss}`,
+      awbNumber: `AWB-${xss}`,
+      certifier: party,
+      recordCustodian: party,
+      items: [{ ...HELMET, identifier: `SKU-${xss}`, productName: `Helmet ${xss}`, description: `Desc ${xss}`, manufacture: { ...FACTORY, city: `City ${xss}` }, testing: { date: '2026-06-15', parties: [{ ...LAB, name: `Lab ${xss}` }] } }],
     });
-
-    it('fails closed with TradeGccIncompleteError by default when statutory fields are missing, and returns draft_needs_info only with allowDraft: true', async () => {
-      const incompleteInput = {
-        productName: 'Tour Brushed Fleece Pullover Hoodie',
-        sku: 'HD-COT-BLK-M',
-        htsCode: '6109.10.00.12',
-        targetAge: 'adult' as const,
-        material: '80% cotton 20% polyester',
-        fabricSurface: 'raised' as const,
-        fabricWeightOzPerSqYd: 9.1,
-      };
-
-      let caught: unknown;
-      try {
-        await generateGccCertificate(incompleteInput);
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(TradeGccIncompleteError);
-      const incompleteErr = caught as TradeGccIncompleteError;
-      expect(incompleteErr.code).toBe('MISSING_REQUIRED_GCC_FIELDS');
-      expect(incompleteErr.missingFields).toContain('certifier.name');
-      expect(incompleteErr.missingFields).toContain('certifier.email');
-      expect(incompleteErr.missingFields).toContain('recordCustodian.email');
-      expect(incompleteErr.missingFields).toContain('manufacture.date');
-      expect(incompleteErr.missingFields).toContain('testing.laboratoryName');
-
-      const res = await generateGccCertificate({
-        ...incompleteInput,
-        allowDraft: true,
-      });
-
-      expect(res.overallStatus).toBe('partial_or_draft');
-      const item = res.items[0];
-      expect(item.status).toBe('draft_needs_info');
-      expect(item.missingFields).toContain('certifier.name');
-      expect(item.missingFields).toContain('certifier.address');
-      expect(item.missingFields).toContain('certifier.email');
-      expect(item.missingFields).toContain('certifier.phone');
-      expect(item.missingFields).toContain('recordCustodian.name');
-      expect(item.missingFields).toContain('recordCustodian.email');
-      expect(item.missingFields).toContain('manufacture.date');
-      expect(item.missingFields).toContain('manufacture.city');
-      expect(item.missingFields).toContain('manufacture.country');
-      expect(item.missingFields).toContain('testing.date');
-      expect(item.missingFields).toContain('testing.laboratoryName');
-      expect(item.certificateMarkdown).toContain('DRAFT');
-    });
-
-    it('rejects sample, placeholder, or uncertain values in statutory GCC fields even when allowDraft is true', async () => {
-      let caught: unknown;
-      try {
-        await generateGccCertificate({
-          productName: 'Tour Brushed Fleece Pullover Hoodie',
-          sku: 'HD-COT-BLK-M',
-          htsCode: '6109.10.00.12',
-          targetAge: 'adult',
-          material: '100% cotton',
-          fabricSurface: 'raised',
-          fabricWeightOzPerSqYd: 9.4,
-          allowDraft: true,
-          certifier: {
-            name: 'Sample Exporter Inc.',
-            address: '100 Example Street, Anytown, CA',
-            email: 'compliance@acme-imports.example.com',
-            phone: '+81-3-0000-0000',
-          },
-          manufacture: {
-            date: 'TBD',
-            city: '仮置き工場',
-            country: 'Unknown',
-          },
-        });
-      } catch (err) {
-        caught = err;
-      }
-      expect(caught).toBeInstanceOf(TradeInputError);
-      const inputErr = caught as TradeInputError;
-      expect(inputErr.code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
-      expect(inputErr.message).toContain('certifier.name');
-      expect(inputErr.message).toContain('certifier.email');
-      expect(inputErr.message).toContain('certifier.phone');
-      expect(inputErr.message).toContain('manufacture.date');
-      expect(inputErr.message).toContain('manufacture.city');
-      expect(inputErr.message).toContain('manufacture.country');
-    });
-
-    it('uses pre-configured SORA_GCC_CERTIFIER_* and SORA_GCC_CUSTODIAN_* environment defaults without requiring LLM lookup', async () => {
-      const envKeys = [
-        'SORA_GCC_CERTIFIER_NAME',
-        'SORA_GCC_CERTIFIER_ADDRESS',
-        'SORA_GCC_CERTIFIER_EMAIL',
-        'SORA_GCC_CERTIFIER_PHONE',
-        'SORA_GCC_CUSTODIAN_NAME',
-      ] as const;
-      const prev: Record<string, string | undefined> = {};
-      for (const k of envKeys) prev[k] = process.env[k];
-
-      process.env.SORA_GCC_CERTIFIER_NAME = 'Acme Imports LLC';
-      process.env.SORA_GCC_CERTIFIER_ADDRESS = '100 Example Street, Anytown, CA, United States';
-      process.env.SORA_GCC_CERTIFIER_EMAIL = 'compliance@acme-imports.test';
-      process.env.SORA_GCC_CERTIFIER_PHONE = '+1-202-555-0101';
-      process.env.SORA_GCC_CUSTODIAN_NAME = 'Compliance Manager, Acme Imports LLC';
-
-      try {
-        const res = await generateGccCertificate({
-          productName: 'Adult Road Bicycle Helmet',
-          sku: 'HLM-ENV-01',
-          htsCode: '6506.10.60.45',
-          targetAge: 'adult',
-          material: 'polycarbonate',
-          hasBattery: true,
-          batteryType: 'button_coin',
-          manufacture: { date: '2026-10', city: 'Taichung', country: 'Taiwan' },
-          testing: {
-            date: '2026-10-12',
-            location: 'Osaka, Japan',
-            laboratoryName: 'Acme Test Lab Osaka',
-            reportNumber: 'TR-0004',
-          },
-        });
-        expect(res.overallStatus).toBe('ready');
-        expect(res.items[0].status).toBe('generated');
-        expect(res.items[0].statutoryFields?.certifier).toEqual({
-          name: 'Acme Imports LLC',
-          address: '100 Example Street, Anytown, CA, United States',
-          email: 'compliance@acme-imports.test',
-          phone: '+1-202-555-0101',
-        });
-        expect(res.items[0].statutoryFields?.recordCustodian).toEqual({
-          name: 'Compliance Manager, Acme Imports LLC',
-          address: '100 Example Street, Anytown, CA, United States',
-          email: 'compliance@acme-imports.test',
-          phone: '+1-202-555-0101',
-        });
-      } finally {
-        for (const k of envKeys) {
-          if (prev[k] === undefined) delete process.env[k];
-          else process.env[k] = prev[k];
-        }
-      }
-    });
-
-    it('refuses to issue a GCC when a product is for children <= 12 (returns cpc_required_instead)', async () => {
-      const res = await generateGccCertificate({
-        productName: 'Kids Plush Mascot Doll',
-        sku: 'PLUSH-KIDS-01',
-        htsCode: '9503.00.00.73',
-        targetAge: 'child',
-        material: 'polyester plush',
-        certifier: sampleCertifier,
-        recordCustodian: sampleCustodian,
-      });
-
-      expect(res.overallStatus).toBe('cpc_required');
-      expect(res.warnings?.length).toBe(1);
-      expect(res.warnings?.[0]).toContain('CPC');
-      expect(res.warnings?.[0]).toContain('非対応');
-      expect(res.items[0].status).toBe('cpc_required_instead');
-      expect(res.items[0].warnings?.length).toBe(1);
-      expect(res.items[0].aceFilingGuidance.certificateType).toBe('CCC');
-      expect(res.items[0].aceFilingGuidance.eFilingRequired).toBe(true);
-    });
-
-    it('generates a multi-SKU post-shipment Courier / Customs Clearance Package (Page 1 Cover Sheet + per-SKU GCCs & Fabric Exemption Statement)', async () => {
-      const pkg = await generateGccCertificate({
-        orderNumber: 'SHOP-ORD-10492',
-        awbNumber: 'TEST-AWB-0003',
-        carrier: 'FedEx',
-        invoiceNumber: 'INV-2026-10492',
-        certifier: sampleCertifier,
-        recordCustodian: sampleCustodian,
-        items: [
-          {
-            sku: 'TEE-WHT-L',
-            productName: "Men's Heavyweight Plain Cotton T-Shirt",
-            description: 'Short sleeve crew neck plain jersey t-shirt',
-            htsCode: '6109.10.00.12',
-            targetAge: 'adult',
-            material: '100% cotton',
-            fabricSurface: 'plain',
-            fabricWeightOzPerSqYd: 5.6,
-            manufacture: { date: '2026-08', city: 'Osaka', country: 'Japan' },
-          },
-          {
-            sku: 'HD-FLC-XL',
-            productName: 'Unisex Cotton-Blend Brushed Fleece Hoodie',
-            description: 'Pullover sweatshirt hoodie with brushed fleece interior',
-            htsCode: '6109.10.00.12',
-            targetAge: 'adult',
-            material: '80% cotton 20% polyester',
-            fabricSurface: 'raised',
-            fabricWeightOzPerSqYd: 9.4,
-            manufacture: { date: '2026-08', city: 'Suzhou, Jiangsu', country: 'China' },
-            testing: {
-              date: '2026-08-20',
-              location: 'Shanghai, China',
-              laboratoryName: 'Acme Test Lab Shanghai',
-              reportNumber: 'TR-0002',
-            },
-          },
-          {
-            sku: 'PEN-LED-02',
-            productName: 'LED Concert Penlight Stick',
-            description: 'Portable LED light stick powered by coin cell battery',
-            htsCode: '9405.42.84.40',
-            targetAge: 'adult',
-            material: 'ABS plastic',
-            hasBattery: true,
-            batteryType: 'button_coin',
-            manufacture: { date: '2026-09', city: 'Shenzhen', country: 'China' },
-            testing: {
-              date: '2026-09-10',
-              location: 'Shenzhen, China',
-              laboratoryName: 'Acme Test Lab Shenzhen',
-              reportNumber: 'TR-0003',
-            },
-          },
-          {
-            sku: 'MUG-CER-01',
-            productName: 'Logo Stoneware Coffee Mug',
-            description: 'Ceramic coffee mug for hot beverages',
-            htsCode: '6912.00.44.00',
-            targetAge: 'adult',
-            material: 'ceramic',
-            foodContact: true,
-            manufacture: {
-              date: '2026-07',
-              city: 'Tajimi, Gifu',
-              country: 'Japan',
-              manufacturerName: 'Acme Ceramics Factory',
-            },
-          },
-        ],
-      });
-
-      expect(pkg.mode).toBe('order_package');
-      expect(pkg.overallStatus).toBe('ready');
-      expect(pkg.counts).toEqual({
-        totalItems: 4,
-        gccGenerated: 2,
-        draftNeedsInfo: 0,
-        disclaimBExempt: 1,
-        disclaimAExempt: 1,
-        cpcRequired: 0,
-      });
-
-      expect(pkg.items[0].status).toBe('exempt_disclaim_b');
-      expect(pkg.items[0].aceFilingGuidance.disclaimCode).toBe('B');
-      expect(pkg.items[0].aceFilingGuidance.intendedUseCode).toBe('130.006');
-      expect(pkg.items[1].status).toBe('generated');
-      expect(pkg.items[2].status).toBe('generated');
-      expect(pkg.items[3].status).toBe('exempt_no_gcc_needed');
-      expect(pkg.items[3].aceFilingGuidance.disclaimCode).toBe('A');
-      expect(pkg.items[3].aceFilingGuidance.fdaNote).toContain('21 CFR');
-
-      // Cover sheet + individual SKU documents + print page breaks
-      expect(pkg.packageMarkdown).toContain('SHOP-ORD-10492');
-      expect(pkg.packageMarkdown).toContain('TEST-AWB-0003');
-      expect(pkg.packageMarkdown).toContain('130.006');
-      expect(pkg.packageHtml).toContain('page-break-before: always');
-      expect(pkg.packageHtml).toContain('HD-FLC-XL');
-      expect(pkg.packageHtml).toContain('PEN-LED-02');
-    });
-
-    it('strictly HTML-escapes all untrusted product, order, and party strings in certificateHtml and packageHtml (XSS prevention)', async () => {
-      const xss = `<script>alert("xss")</script><img src=x onerror=alert('1')>&"`;
-      const res = await generateGccCertificate({
-        orderNumber: `ORD-${xss}`,
-        awbNumber: `AWB-${xss}`,
-        certifier: {
-          name: `Certifier ${xss}`,
-          address: `Addr ${xss}`,
-          email: 'sec@acme-imports.test',
-          phone: '+1-213-555-0144',
-        },
-        recordCustodian: {
-          name: `Custodian ${xss}`,
-          address: `CustAddr ${xss}`,
-          email: 'rec@acme-imports.test',
-          phone: '+1-213-555-0145',
-        },
-        items: [
-          {
-            sku: `SKU-${xss}`,
-            productName: `Helmet ${xss}`,
-            description: `Adult cycling helmet ${xss}`,
-            htsCode: '6506.10.60.45',
-            targetAge: 'adult',
-            material: 'polycarbonate',
-            hasBattery: true,
-            batteryType: 'button_coin',
-            manufacture: { date: '2026-05', city: `City ${xss}`, country: 'Japan' },
-            testing: { date: '2026-05-10', location: `LabLoc ${xss}`, laboratoryName: `Lab ${xss}` },
-          },
-        ],
-      });
-
-      expect(res.packageHtml).not.toContain('<script>');
-      expect(res.packageHtml).not.toContain('<img src=x');
-      expect(res.packageHtml).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
-      expect(res.items[0].certificateHtml).not.toContain('<script>');
-      expect(res.items[0].certificateHtml).toContain('&amp;&quot;');
-    });
+    expect(res.packageHtml).not.toContain('<script>');
+    expect(res.packageHtml).not.toContain('<img src=x');
+    expect(res.packageHtml).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
   });
 });

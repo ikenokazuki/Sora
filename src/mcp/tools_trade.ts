@@ -186,7 +186,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'generate_gcc_certificate',
     'trade',
-    '【必須・推測厳禁】米国CPSCのGCCと通関書類を作る。返却: { overallStatus, items }',
+    '【必須・推測厳禁】米国CPSCのGCCと通関の保留に出す書類を印刷用のHTMLで作る。値は記録（試験報告書など）から渡す。足りないと 422（下書きは allowDraft）。12 歳以下の子供用は作らない。返却: { packageId, overallStatus, counts, items, packageHtml }',
     GenerateGccCertificateRequestSchema.shape,
     async (opts) => {
       try {
@@ -204,8 +204,8 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
                 text: toolJson({
                   error: err.message,
                   code: err.code,
-                  missingFields: err.missingFields,
-                  items: err.items,
+                  missingFields: err.details.missingFields,
+                  items: err.details.items,
                 }),
               },
             ],

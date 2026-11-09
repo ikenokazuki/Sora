@@ -152,10 +152,7 @@ tradeRoutes.post('/trade/gcc-generate', async (c) => {
     return c.json(result);
   } catch (err) {
     if (err instanceof TradeGccIncompleteError) {
-      return formatError(c, err.message, err.code, 422, false, {
-        missingFields: err.missingFields,
-        items: err.items,
-      });
+      return formatError(c, err.message, err.code, 422, false, err.details);
     }
     if (err instanceof TradeInputError) return formatError(c, err.message, err.code, 400, false);
     return formatError(c, errorMessage(err) || 'GCC certificate generation failed', 'TRADE_ERROR', 500);

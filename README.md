@@ -558,7 +558,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `check_fda_regulated` | HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "0902.10.10.15", "3304.99.5000")<br>- `foodContact` (boolean, 任意): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ |
 | `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。判定には使わず、根拠の記録として応答に返す |
 | `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材。衣料は `"100% polyester"` の形（16 CFR 1610.1(d)(2)）<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足す。`batteryType` が `"button_coin"` なら、CPSC の判定に 16 CFR 1263 を当て、注意書きを 1 行足す。`false` では何もしない<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"` |
-| `generate_gcc_certificate` | 米国CPSC一般適合証明書（GCC: `16 CFR Part 1110` 法定7項目）の自動生成、および発送後のFedEx/DHL等の米国税関保留（CBP PGA Hold）に対する注文・AWB単位の通関パッケージ（Page 1 通関・PGA総括カバーシート＋SKU別GCC・`16 CFR § 1610.1(d)` 大人服免除根拠シート）を構造化JSON・英語Markdown・印刷/PDF保存対応HTMLで一括出力します。事業者連絡先はサーバー環境変数 `SORA_GCC_CERTIFIER_*` / `SORA_GCC_CUSTODIAN_*` で事前固定でき、未指定の法定必須項目がある場合は既定でエラー停止（`MISSING_REQUIRED_GCC_FIELDS`、ドラフト確認時のみ `allowDraft: true`）、サンプル・仮置き値は即時エラー拒否（`UNVERIFIED_PLACEHOLDER_INPUT`）、12歳以下の子供向け製品は `cpc_required_instead` で警告します。 | `certificateId`, `mode`, `items`, `packageHtml` | - `url` / `productName` / `sku` / `htsCode` / `material` / `targetAge` 等（単一SKU指定）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 注文・運送状番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 不足項目がある場合にドラフト出力を許可するか<br>- `items` (array, 任意, 最大50件): 複数SKU注文一括処理<br>- `certifier` / `recordCustodian` / `manufacture` / `testing`: 16 CFR 1110.11 法定証明者・製造所・試験記録 |
+| `generate_gcc_certificate` | 米国CPSC一般適合証明書（GCC: `16 CFR 1110.11` の要素）と、通関の保留に出す一式を、呼び出し側の記録から作ります（JSON の要約と印刷用 HTML）。HTS は推測せず、外には取りに行きません。足りない記録は既定で `MISSING_REQUIRED_GCC_FIELDS`（下書きは `allowDraft: true`）、見本の値は `UNVERIFIED_PLACEHOLDER_INPUT`、12 歳以下は `cpc_required_instead`。 | `packageId`, `overallStatus`, `counts`, `items`, `packageHtml` | - `items` (array, 必須, 1〜50 件): `htsCode`・`productName`（必須）、`identifier`・`identifierType`、`targetAge`、`material`・`fabricSurface`・`fabricWeightOzPerSqYd`、`hasBattery`・`batteryType`、`citations`（試験報告書の規則）、`manufacture`、`testing`<br>- `certifier` / `recordCustodian` (任意): `{ name, street, city, state, country, email, phone }`。省くと `SORA_GCC_CERTIFIER` / `SORA_GCC_CUSTODIAN`（JSON）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 注文・運送状の番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 足りない項目があっても下書きを返す |
 
 ---
 
@@ -1964,55 +1964,83 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 
 ---
 
-### 3.22b 米国CPSC 一般適合証明書 (GCC) 自動生成 & 発送後通関保留パッケージ出力 (`POST /trade/gcc-generate`)
-単一商品の事前GCC（`16 CFR Part 1110` 法定7項目）発行と、発送後にFedEx / DHL / UPS等の通関部門から米国CBP PGA Hold照会を受けた際の**注文・AWB単位の通関提出パッケージ一括生成**の両方に対応します。
+### 3.22b 米国CPSC 一般適合証明書 (GCC) の作成 (`POST /trade/gcc-generate`)
+`items`（1〜50 件、1 件 1 製品。16 CFR 1110.13(a)）から、今の 16 CFR 1110.11 の要素の GCC と、通関の保留に出す一式を、JSON の要約と印刷用の HTML（`packageHtml`）で返します。HTS は推測せず、同梱の CPSC の一覧と HTS の桁だけで判断します（外には取りに行きません）。
 
-- **ECプラットフォーム非依存**: Shopify・自社EC等の商品URL（`url`）を渡せば Schema.org `Product` / `Offer` JSON-LD から商品名・ブランド・バリアントSKUを自動抽出し、任意の受注管理・Webhook基盤から直接パラメータを渡すことも可能です。
-- **実務規制ロジック内蔵**:
-  - 大人用衣料品で `16 CFR § 1610.1(d)(1)`（平織り・天竺等の平滑表面かつ `>= 2.6 oz/sq yd` / `>= 88.2 g/m²`）または `§ 1610.1(d)(2)`（特定6繊維のみ）を満たす場合は、2016年CPSC執行裁量ポリシーに基づき `exempt_disclaim_b`（`ACE Disclaim B` / `Intended Use Code 130.006`）と判定し、クーリエ提出用の英語免除根拠シートを出力します。
-  - ボタン電池・コイン電池搭載製品（`hasBattery: true, batteryType: "button_coin"`）は本来のHTSを維持したまま横断的に `16 CFR Part 1263`（Reese's Law / `ANSI/UL 4200A`）GCC対象とします。
-  - 事業者固定の証明者・記録保管責任者連絡先は、環境変数 `SORA_GCC_CERTIFIER_NAME` / `SORA_GCC_CERTIFIER_ADDRESS` / `SORA_GCC_CERTIFIER_EMAIL` / `SORA_GCC_CERTIFIER_PHONE` および `SORA_GCC_CUSTODIAN_NAME`（住所・電話・メールは未指定時に `CERTIFIER` から自動継承、個別指定も可）でサーバー側に事前設定できるため、都度LLMにWeb探索させたり翻訳ゆれが混入するのを防ぎます。
-  - 試験日・製造年月・連絡先等の法定必須項目が不足している場合は、既定（`allowDraft: false`）で HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）エラーとして即時停止し、サンプル・仮置き値（`example.com`, `Sample`, `TBD`, `0000-0000` 等）は HTTP `400`（`UNVERIFIED_PLACEHOLDER_INPUT`）で厳格に拒否します（12歳以下の子供向け製品は `cpc_required_instead` と `warnings` でGCC誤発行をブロック）。
+- **値は記録から渡す**: 証明書に載る値は呼び出し側が渡したものだけです。規則は `citations`（試験報告書にある規則を 1 つずつ）で、`citations: []` は「当てはまる規則が無いと確かめた」という答えです。
+- **判定**:
+  - 12 歳以下は `cpc_required_instead`（CPC はこのツールでは作りません）。年齢が無ければ `targetAge` を聞きます。
+  - 大人の衣料で `16 CFR 1610.1(d)` の免除に当たるものは `exempt_disclaim_b`（`ACE Disclaim B` / `Intended Use Code 130.006`）。
+  - ボタン・コイン電池（`16 CFR 1263`）と衣料（`16 CFR 1610`）は、`citations` に無ければ下書きにします。帽子・手袋・履物の見出しは `16 CFR 1610.1(c)` の条件を質問で返します。
+  - `citations: []` で CPSC の一覧のコードは `exempt_no_gcc_needed`（`ACE Disclaim A` と `warnings`）、一覧に無いコードは CPSC のデータを送らない案内です。
+- **当事者**: `certifier`・`recordCustodian`・`manufacture`・`testing.parties[]` は同じ形 `{ name, street, city, state, country, email, phone }`（16 CFR 1110.11(a)(3)〜(6)）。証明者と記録の担当は、呼び出し側の値か、サーバーの環境変数 `SORA_GCC_CERTIFIER`・`SORA_GCC_CUSTODIAN`（JSON）のどちらか 1 つから丸ごと取ります。
+- **足りないとき**: 既定（`allowDraft: false`）で HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）で止まり、`details` に足りない項目を返します。`allowDraft: true` で下書きを見られます。見本・仮置きの値（`example.com`, `Sample`, `TBD`, `0000-0000` など）は HTTP `400`（`UNVERIFIED_PLACEHOLDER_INPUT`）で拒否します。
 
 - **リクエスト**:
   ```bash
   curl -X POST http://localhost:3016/trade/gcc-generate \
     -H "Content-Type: application/json" \
     -d '{
-      "orderNumber": "#10492",
+      "orderNumber": "ORDER-1001",
       "awbNumber": "TEST-AWB-0001",
       "carrier": "FedEx",
       "certifier": {
         "name": "Acme Imports LLC",
-        "address": "100 Example Street, Anytown, CA, United States",
+        "street": "100 Example Street",
+        "city": "Anytown",
+        "state": "CA",
+        "country": "United States",
         "email": "compliance@acme-imports.test",
-        "phone": "+1-202-555-0102"
+        "phone": "+1-202-555-0101"
       },
       "recordCustodian": {
         "name": "Compliance Manager",
-        "address": "100 Example Street, Anytown, CA, United States",
+        "street": "100 Example Street",
+        "city": "Anytown",
+        "state": "CA",
+        "country": "United States",
         "email": "records@acme-imports.test",
         "phone": "+1-202-555-0102"
       },
       "items": [
         {
-          "sku": "PENLIGHT-01",
-          "productName": "LED Concert Penlight",
-          "htsCode": "8513.10.2000",
+          "htsCode": "8513.10.20.00",
+          "productName": "LED Penlight",
+          "identifier": "PEN-001",
           "targetAge": "adult",
           "hasBattery": true,
           "batteryType": "button_coin",
-          "manufacture": { "date": "2026-04", "city": "Shenzhen, Guangdong", "country": "China" },
+          "citations": ["16 CFR 1263"],
+          "manufacture": {
+            "date": "2026-04",
+            "name": "Acme Electronics Factory",
+            "street": "2 Example Road",
+            "city": "Shenzhen",
+            "state": "Guangdong",
+            "country": "China",
+            "email": "factory@acme-factory.test",
+            "phone": "+1-202-555-0103"
+          },
           "testing": {
             "date": "2026-05-12",
-            "location": "Shenzhen, China",
-            "laboratoryName": "Acme Test Lab"
+            "reportNumber": "TR-0001",
+            "parties": [
+              {
+                "name": "Acme Test Lab",
+                "street": "2 Example Road",
+                "city": "Taipei",
+                "state": "Taipei City",
+                "country": "Taiwan",
+                "email": "lab@acme-lab.test",
+                "phone": "+1-202-555-0104"
+              }
+            ]
           }
         },
         {
-          "sku": "TEE-POLY-02",
-          "productName": "Adult Graphic T-Shirt",
-          "htsCode": "6109.90.1007",
+          "htsCode": "6109.90.10.07",
+          "productName": "Adult Polyester T-Shirt",
+          "identifier": "TEE-001",
           "targetAge": "adult",
           "material": "100% polyester"
         }
@@ -2022,28 +2050,21 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 - **レスポンス例**:
   ```json
   {
-    "certificateId": "GCC-20261107-9F2A1C",
+    "packageId": "PKG-3A1F0C9B2E77",
     "generatedAt": "2026-11-07T10:30:00.000Z",
     "mode": "order_package",
-    "orderContext": {
-      "orderNumber": "#10492",
-      "awbNumber": "TEST-AWB-0001",
-      "carrier": "FedEx"
-    },
     "overallStatus": "ready",
-    "summary": "全2明細を判定 / GCC発行完了: 1件 / 16 CFR 1610.1(d) 大人服免除 (ACE Disclaim B / 130.006): 1件",
     "counts": {
       "totalItems": 2,
       "gccGenerated": 1,
       "draftNeedsInfo": 0,
       "disclaimBExempt": 1,
-      "disclaimAExempt": 0,
+      "noGccNeeded": 0,
       "cpcRequired": 0
     },
-    "items": [],
-    "packageMarkdown": "# US Customs & CPSC PGA Clearance Summary Cover Sheet...",
+    "items": [ ... ],
     "packageHtml": "<!DOCTYPE html><html lang=\"en\">...",
-    "disclaimer": "本証明書データおよび通関カバーシートは米国 16 CFR Part 1110..."
+    "disclaimer": "参考の出力で、法的助言ではありません。..."
   }
   ```
 

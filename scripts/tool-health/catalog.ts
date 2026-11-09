@@ -976,10 +976,7 @@ export const TOOL_CASES: HealthCase[] = [
       ctx,
       'generate_gcc_certificate',
       {
-        productName: 'Adult Polyester T-Shirt',
-        htsCode: '6109.90.1007',
-        targetAge: 'adult',
-        material: '100% polyester',
+        items: [{ productName: 'Adult Polyester T-Shirt', htsCode: '6109.90.1007', targetAge: 'adult', material: '100% polyester' }],
       },
       60000,
     );

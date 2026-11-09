@@ -4512,122 +4512,42 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(jsonNonFood.nextActions.some((a: string) => a.includes('免責') || a.includes('Disclaimer'))).toBe(true);
   });
 
-  it('POST /trade/gcc-generate should return schema-valid GCC & order clearance packages', async () => {
+  it('POST /trade/gcc-generate answers 400, 422 and a schema-valid package', async () => {
     const { GenerateGccCertificateResultSchema } = await import('./types.js');
+    const post = (body: unknown) =>
+      app.fetch(new Request('http://localhost/trade/gcc-generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+    const certifier = { name: 'Acme Imports LLC', street: '100 Example Street', city: 'Anytown', state: 'CA', country: 'United States', email: 'compliance@acme-imports.test', phone: '+1-202-555-0101' };
+    const recordCustodian = { ...certifier, name: 'Compliance Manager', email: 'records@acme-imports.test', phone: '+1-202-555-0102' };
+    const lab = { name: 'Acme Test Lab', street: '2 Example Road', city: 'Taipei', state: 'Taipei City', country: 'Taiwan', email: 'lab@acme-lab.test', phone: '+1-202-555-0104' };
+    const helmet = {
+      htsCode: '6506.10.60.45',
+      productName: 'Adult Bicycle Helmet',
+      identifier: 'HLM-001',
+      targetAge: 'adult',
+      citations: ['16 CFR 1203'],
+      manufacture: { date: '2026-06', name: 'Acme Helmet Factory', street: '1 Example Road', city: 'Taichung', state: 'Taichung City', country: 'Taiwan', email: 'factory@acme-factory.test', phone: '+1-202-555-0103' },
+      testing: { date: '2026-06-15', reportNumber: 'TR-0001', parties: [lab] },
+    };
+    const tee = { htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' };
 
-    // 1. 入力空オブジェクト -> 400 INVALID_INPUT
-    const badRes = await app.fetch(
-      new Request('http://localhost/trade/gcc-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }),
-    );
+    const badRes = await post({});
     expect(badRes.status).toBe(400);
+    expect(((await badRes.json()) as any).code).toBe('INVALID_INPUT');
 
-    // 1b. サンプル値混入時は 400 UNVERIFIED_PLACEHOLDER_INPUT、法定項目不足時は 422 MISSING_REQUIRED_GCC_FIELDS で停止すること
-    const placeholderRes = await app.fetch(
-      new Request('http://localhost/trade/gcc-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productName: 'LED Concert Penlight',
-          htsCode: '8513.10.2000',
-          targetAge: 'adult',
-          hasBattery: true,
-          batteryType: 'button_coin',
-          certifier: { name: 'Acme Imports LLC', address: 'Tokyo', email: 'compliance@example.com', phone: '+1-202-555-0102' },
-        }),
-      }),
-    );
-    expect(placeholderRes.status).toBe(400);
-    expect(((await placeholderRes.json()) as any).code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
-
-    const incompleteRes = await app.fetch(
-      new Request('http://localhost/trade/gcc-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productName: 'LED Concert Penlight',
-          htsCode: '8513.10.2000',
-          targetAge: 'adult',
-          hasBattery: true,
-          batteryType: 'button_coin',
-        }),
-      }),
-    );
+    const incompleteRes = await post({ items: [{ ...helmet, identifier: undefined }] });
     expect(incompleteRes.status).toBe(422);
-    expect(((await incompleteRes.json()) as any).code).toBe('MISSING_REQUIRED_GCC_FIELDS');
+    const incomplete = (await incompleteRes.json()) as any;
+    expect(incomplete.code).toBe('MISSING_REQUIRED_GCC_FIELDS');
+    expect(incomplete.details.items[0].missingFields).toContain('identifier');
+    expect(incomplete.details.missingFields).toContain('certifier.name');
 
-    // 2. 複数SKU注文・AWBパッケージ出力 (GCC完成品 + 大人服 Disclaim B 免除 + 大人用食器 Disclaim A)
-    const pkgRes = await app.fetch(
-      new Request('http://localhost/trade/gcc-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderNumber: '#10500',
-          awbNumber: 'TEST-AWB-0002',
-          carrier: 'FedEx',
-          certifier: {
-            name: 'Acme Imports LLC',
-            address: '100 Example Street, Anytown, CA, United States',
-            email: 'compliance@acme-imports.test',
-            phone: '+1-202-555-0102',
-          },
-          recordCustodian: {
-            name: 'Compliance Manager',
-            address: '100 Example Street, Anytown, CA, United States',
-            email: 'records@acme-imports.test',
-            phone: '+1-202-555-0102',
-          },
-          items: [
-            {
-              sku: 'PENLIGHT-01',
-              productName: 'LED Concert Penlight',
-              htsCode: '8513.10.2000',
-              targetAge: 'adult',
-              hasBattery: true,
-              batteryType: 'button_coin',
-              manufacture: { date: '2026-04', city: 'Shenzhen, Guangdong', country: 'China' },
-              testing: {
-                date: '2026-05-12',
-                location: 'Shenzhen, China',
-                laboratoryName: 'Acme Test Lab',
-              },
-            },
-            {
-              sku: 'TEE-POLY-02',
-              productName: 'Adult Graphic T-Shirt',
-              htsCode: '6109.90.1007',
-              targetAge: 'adult',
-              material: '100% polyester',
-            },
-            {
-              sku: 'MUG-CER-03',
-              productName: 'Adult Ceramic Coffee Mug',
-              htsCode: '6912.00.4400',
-              targetAge: 'adult',
-              material: 'ceramic',
-              foodContact: true,
-              manufacture: { manufacturerName: 'Acme Ceramics Factory', city: 'Tajimi, Gifu', country: 'Japan' },
-            },
-          ],
-        }),
-      }),
-    );
+    const pkgRes = await post({ certifier, recordCustodian, orderNumber: 'ORDER-1001', items: [helmet, tee] });
     expect(pkgRes.status).toBe(200);
-    const pkgJson = (await pkgRes.json()) as any;
-    expect(GenerateGccCertificateResultSchema.safeParse(pkgJson).success).toBe(true);
-    expect(pkgJson.mode).toBe('order_package');
-    expect(pkgJson.overallStatus).toBe('ready');
-    expect(pkgJson.counts).toMatchObject({
-      totalItems: 3,
-      gccGenerated: 1,
-      disclaimBExempt: 1,
-      disclaimAExempt: 1,
-    });
-    expect(pkgJson.packageHtml).toContain('@media print');
-    expect(pkgJson.packageHtml).toContain('TEST-AWB-0002');
+    const pkg = (await pkgRes.json()) as any;
+    expect(GenerateGccCertificateResultSchema.safeParse(pkg).success).toBe(true);
+    expect(pkg.mode).toBe('order_package');
+    expect(pkg.counts).toMatchObject({ totalItems: 2, gccGenerated: 1, disclaimBExempt: 1 });
+    expect(pkg.packageHtml).toContain('ORDER-1001');
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {

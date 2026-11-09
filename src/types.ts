@@ -691,29 +691,6 @@ const TradeFabricFieldsShape = {
   fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional().describe('衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除。不明なら省略'),
 };
 
-export const GccPartyContactInputSchema = z.object({
-  name: z.string().optional().describe('事業者名または担当者名'),
-  address: z.string().optional().describe('郵送先住所（番地・都市・州省・郵便番号・国）'),
-  email: z.string().optional().describe('メールアドレス'),
-  phone: z.string().optional().describe('電話番号'),
-});
-
-export const GccManufactureInfoSchema = z.object({
-  date: z.string().optional().describe('製造年月（例: "2026-05"）。推測禁止'),
-  city: z.string().optional().describe('製造都市・州省（例: "Shenzhen, Guangdong"）。推測禁止'),
-  country: z.string().optional().describe('製造国（例: "China"）。推測禁止'),
-  manufacturerName: z.string().optional().describe('製造工場の正式名称（FDA MID・ACE用）'),
-});
-
-export const GccTestingRecordSchema = z.object({
-  date: z.string().optional().describe('試験実施日（例: "2026-06-10"）。推測禁止'),
-  location: z.string().optional().describe('試験実施都市・国（例: "Tokyo, Japan"）。推測禁止'),
-  laboratoryName: z.string().optional().describe('試験機関名（例: "Acme Test Lab"）。推測禁止'),
-  laboratoryAddress: z.string().optional().describe('試験機関住所'),
-  laboratoryPhone: z.string().optional().describe('試験機関電話番号'),
-  reportNumber: z.string().optional().describe('試験報告書番号'),
-});
-
 export const CpscCertificateCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
   targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
@@ -733,27 +710,6 @@ export const VerifyHtsCodeRequestSchema = z.object({
   productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。必須。判定には使わず、根拠の記録として応答に返す'),
 });
 
-const GccOrderItemFieldsShape = {
-  url: z.string().url('有効なURLを指定してください').optional().describe('商品ページURL'),
-  productName: z.string().optional().describe('商品の英語一般名（宣伝文句・ブランド名は除く。日本語は英訳して渡す）'),
-  sku: z.string().optional().describe('商品SKU・品番'),
-  brand: z.string().optional().describe('ブランド名'),
-  modelOrBatch: z.string().optional().describe('モデル番号・ロット番号'),
-  description: z.string().optional().describe('商品の英語仕様説明（事実のみ記載）'),
-  htsCode: z.string().optional().describe('ユーザー明示の既知HTSコード（推測入力厳禁。分類したい時は省略）'),
-  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下, adult: 大人/一般, unknown: 不明）。推測禁止、不明時は省略'),
-  material: z.string().optional().describe('主な素材・繊維混率（例: 100% polyester, ceramic, cotton）。推測禁止、不明時は省略'),
-  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, tableware, electronics）。不明時は省略'),
-  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（食器等のFDA FD1分岐に必要）。推測禁止、不明時は省略'),
-  hasBattery: z.boolean().optional().describe('電池搭載の有無。推測禁止、不明時は省略'),
-  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。不明時は省略'),
-  ...TradeFabricFieldsShape,
-  certifier: GccPartyContactInputSchema.optional().describe('証明者連絡先 (16 CFR 1110.11(a)(3))。省略時は SORA_GCC_CERTIFIER_* を使用。推測・仮置き厳禁'),
-  recordCustodian: GccPartyContactInputSchema.optional().describe('記録保管者連絡先 (16 CFR 1110.11(a)(4))。省略時は SORA_GCC_CUSTODIAN_* を使用。推測・仮置き厳禁'),
-  manufacture: GccManufactureInfoSchema.optional().describe('製造年月・都市・国の実レコード (16 CFR 1110.11(a)(5))。推測・仮置き厳禁'),
-  testing: GccTestingRecordSchema.optional().describe('試験日・場所・試験機関の実レコード (16 CFR 1110.11(a)(6)-(7))。推測・仮置き厳禁'),
-};
-
 export const ProductComplianceRequestSchema = z.object({
   url: z.string().url('有効なURLを指定してください').optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
   productName: z.string().optional().describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。HTS と判例は英語なので、日本語の商品は英訳して渡す。英語の語が無く htsCode も無いときは、英訳を促す needs_more_info を返す'),
@@ -768,57 +724,39 @@ export const ProductComplianceRequestSchema = z.object({
   ...TradeFabricFieldsShape,
 });
 
-// items[] 要素スキーマ: トップレベルと同型（ツール定義の重複肥大化を防ぐため要素内の説明は省略）
-const BarePartyContactSchema = z.object({
-  name: z.string().optional(),
-  address: z.string().optional(),
-  email: z.string().optional(),
-  phone: z.string().optional(),
-});
-const BareManufactureSchema = z.object({
-  date: z.string().optional(),
-  city: z.string().optional(),
-  country: z.string().optional(),
-  manufacturerName: z.string().optional(),
-});
-const BareTestingSchema = z.object({
-  date: z.string().optional(),
-  location: z.string().optional(),
-  laboratoryName: z.string().optional(),
-  laboratoryAddress: z.string().optional(),
-  laboratoryPhone: z.string().optional(),
-  reportNumber: z.string().optional(),
-});
-export const GccOrderItemInputSchema = z.object({
-  url: z.string().url('有効なURLを指定してください').optional(),
-  productName: z.string().optional(),
-  sku: z.string().optional(),
+const GccPartyShape = {
+  name: z.string().optional(), street: z.string().optional(), city: z.string().optional(),
+  state: z.string().optional(), country: z.string().optional(), email: z.string().optional(), phone: z.string().optional(),
+};
+export const GccPartySchema = z.object(GccPartyShape);
+export const GccItemInputSchema = z.object({
+  htsCode: z.string().min(1).describe('10 桁の HTS コード（インボイス・通関業者の値。推測しない）'),
+  productName: z.string().min(1).describe('英語の一般名（16 CFR 1110.11(a)(1)）'),
+  identifier: z.string().optional().describe('製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)）'),
+  identifierType: z.enum(['sku', 'model', 'gtin', 'upc', 'serial', 'registered', 'other']).optional().describe('identifier の種類（デフォルト: "sku"）').meta({ default: 'sku' }),
   brand: z.string().optional(),
-  modelOrBatch: z.string().optional(),
-  description: z.string().optional(),
-  htsCode: z.string().optional(),
-  targetAge: z.enum(['adult', 'child', 'unknown']).optional(),
-  material: z.string().optional(),
-  productCategory: z.string().optional(),
-  foodContact: z.boolean().optional(),
+  description: z.string().optional().describe('製品の説明（英語）'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('child: 12 歳以下（GCC でなく CPC が要る）、adult: 13 歳以上・一般'),
+  material: z.string().optional().describe('衣料の繊維の組成（"100% polyester" の形。繊維は一般名）'),
+  fabricSurface: z.enum(['plain', 'raised']).optional().describe('衣料の生地の表面（raised: 起毛・フリース・パイル）'),
+  fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional().describe('衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）'),
   hasBattery: z.boolean().optional(),
-  batteryType: z.enum(['button_coin', 'other']).optional(),
-  fabricSurface: z.enum(['plain', 'raised']).optional(),
-  fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional(),
-  certifier: BarePartyContactSchema.optional(),
-  recordCustodian: BarePartyContactSchema.optional(),
-  manufacture: BareManufactureSchema.optional(),
-  testing: BareTestingSchema.optional(),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('button_coin: ボタン・コイン電池（空気亜鉛電池は other）'),
+  foodContact: z.boolean().optional().describe('食品・飲料に触れるか（FDA の案内に使う）'),
+  citations: z.array(z.string()).optional().describe('試験報告書の規則を 1 つずつ（例: "16 CFR 1203"）。当てはまる規則が無いと確かめたら []'),
+  manufacture: z.object({ date: z.string().optional(), ...GccPartyShape }).optional().describe('製造の年月（YYYY-MM）と工場の名前・住所・メール・電話（16 CFR 1110.11(a)(5)）'),
+  testing: z.object({ date: z.string().optional(), reportNumber: z.string().optional(), parties: z.array(GccPartySchema).optional() }).optional()
+    .describe('最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの名前・住所・メール・電話（16 CFR 1110.11(a)(6)）'),
 });
-
 export const GenerateGccCertificateRequestSchema = z.object({
-  ...GccOrderItemFieldsShape,
-  orderNumber: z.string().optional().describe('EC注文番号（例: "#10492"）。発送後の通関保留パッケージ出力時に指定'),
-  awbNumber: z.string().optional().describe('航空貨物運送状・追跡番号（例: "TEST-AWB-0001"）'),
-  carrier: z.string().optional().describe('配送会社名（例: "FedEx"）'),
-  invoiceNumber: z.string().optional().describe('インボイス番号（例: "INV-2026-10492"）'),
-  allowDraft: z.boolean().optional().describe('不足があっても下書きを返す（既定: false）').meta({ default: false }),
-  items: z.array(GccOrderItemInputSchema).min(1).max(50).optional().describe('複数SKU一括作成時の明細配列（最大50件、トップレベルと同型）'),
+  items: z.array(GccItemInputSchema).min(1).max(50).describe('1 件 1 製品（最大 50 件）'),
+  certifier: GccPartySchema.optional().describe('証明者（輸入品は輸入者。16 CFR 1110.7）。省くとサーバーの SORA_GCC_CERTIFIER'),
+  recordCustodian: GccPartySchema.optional().describe('試験の記録を持つ人（役職でよい。16 CFR 1110.11(a)(4)）。省くと SORA_GCC_CUSTODIAN'),
+  orderNumber: z.string().optional(),
+  awbNumber: z.string().optional(),
+  carrier: z.string().optional(),
+  invoiceNumber: z.string().optional(),
+  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（デフォルト: false。false では 422）').meta({ default: false }),
 });
 
 export const PredictHtsCodeRequestSchema = z.object({
@@ -2298,105 +2236,42 @@ export const CheckProductComplianceResultSchema = z.object({
   disclaimer: z.string().describe('法的免責事項文'),
 });
 
-export const GccResolvedPartyContactSchema = z.object({
-  name: z.string().describe('事業者名または担当者氏名'),
-  address: z.string().describe('郵送先住所'),
-  email: z.string().optional().describe('メールアドレス'),
-  phone: z.string().optional().describe('電話番号'),
-});
-
-export const GccStatutoryFieldsSchema = z.object({
-  productIdentification: z.object({
-    productName: z.string().describe('対象製品名 (16 CFR 1110.11(a)(1))'),
-    sku: z.string().optional().describe('SKU・品番'),
-    brand: z.string().optional().describe('ブランド名'),
-    modelOrBatch: z.string().optional().describe('モデル番号・ロット・バッチ'),
-    description: z.string().optional().describe('製品仕様・説明'),
-    htsCode: z.string().optional().describe('HTS コード'),
-  }).describe('1. 対象製品の識別情報 (16 CFR 1110.11(a)(1))'),
-  citations: z.array(z.string()).describe('2. 適合を証明する各 CPSC 安全規格の CFR 条項 (16 CFR 1110.11(a)(2))'),
-  certifier: GccResolvedPartyContactSchema.nullable().describe('3. 適合証明を行う米国輸入者・国内製造者・海外直送事業者 (16 CFR 1110.11(a)(3))'),
-  recordCustodian: GccResolvedPartyContactSchema.nullable().describe('4. 試験記録保管責任者の連絡先 (16 CFR 1110.11(a)(4))'),
-  manufactureDateAndPlace: z.object({
-    date: z.string().nullable().describe('製造年月'),
-    city: z.string().nullable().describe('製造都市・州省'),
-    country: z.string().nullable().describe('製造国'),
-    manufacturerName: z.string().optional().describe('製造工場名'),
-  }).describe('5. 製造年月および製造場所 (16 CFR 1110.11(a)(5))'),
-  testingDateAndPlace: z.object({
-    exemptFromTesting: z.boolean().describe('法定試験免除対象か'),
-    exemptionCitation: z.string().optional().describe('試験免除の根拠条項'),
-    exemptionReason: z.string().optional().describe('試験免除の理由'),
-    date: z.string().nullable().describe('試験実施日'),
-    location: z.string().nullable().describe('試験実施場所'),
-    reportNumber: z.string().optional().describe('試験報告書番号'),
-  }).describe('6. 適合性試験の実施日および場所 (16 CFR 1110.11(a)(6))'),
-  testingLaboratory: z.object({
-    notApplicableReason: z.string().optional().describe('試験機関非該当の理由（試験免除時等）'),
-    name: z.string().nullable().describe('試験機関名'),
-    address: z.string().optional().describe('試験機関住所'),
-    phone: z.string().optional().describe('試験機関電話番号'),
-  }).describe('7. 試験を実施した第三者試験機関・試験主体 (16 CFR 1110.11(a)(7))'),
-});
-
-export const GccAceFilingGuidanceSchema = z.object({
-  eFilingRequired: z.boolean().describe('CBP ACE での CPSC 証明書データ電子申告 (eFiling) が必須か'),
-  certificateType: z.enum(['GCC', 'CCC', 'none', 'unknown']).describe('要求される証明書種別'),
-  pgaAgency: z.literal('CPSC').describe('対象 PGA 機関 ("CPSC")'),
-  disclaimCode: z.enum(['A', 'B']).optional().describe('ACE CPSC PGA Disclaimer コード ("A": 非対象品 / "B": 16 CFR 1610.1(d) 大人服執行裁量免除)'),
-  intendedUseCode: z.string().optional().describe('ACE Intended Use Code (例: 大人服執行裁量免除時の "130.006")'),
-  filingInstruction: z.string().describe('通関業者・クーリエ向け英文申告指示テキスト'),
-  fdaNote: z.string().optional().describe('併存する FDA PGA (FD1 食器 Prior Notice 不要等) の通関実務注記'),
-});
-
-export const GccCertificateItemResultSchema = z.object({
-  lineNumber: z.number().int().describe('明細行番号 (1始まり)'),
-  sku: z.string().optional().describe('SKU・品番'),
-  productName: z.string().optional().describe('製品名'),
-  htsCode: z.string().optional().describe('HTS コード'),
-  status: z.enum([
-    'generated',
-    'draft_needs_info',
-    'exempt_disclaim_b',
-    'exempt_no_gcc_needed',
-    'cpc_required_instead',
-  ]).describe('発行ステータス: "generated"(法定7項目完備GCC), "draft_needs_info"(未入力項目ありドラフト), "exempt_disclaim_b"(大人服試験・GCC免除シート), "exempt_no_gcc_needed"(GCC不要・Disclaim A), "cpc_required_instead"(子供向けCPC必須のためGCC発行不可)'),
-  aceFilingGuidance: GccAceFilingGuidanceSchema.describe('CBP ACE 電子申告・Disclaimer ガイダンス'),
-  statutoryFields: GccStatutoryFieldsSchema.optional().describe('16 CFR 1110.11 法定7項目の構造化データ'),
-  warnings: z.array(z.string()).optional().describe('重要警告リスト（12歳以下の子供向け製品でCPC/CCCが必須かつ本ツールのGCC発行対象外である旨の警告等）'),
-  missingFields: z.array(z.string()).describe('GCC完成に不足している必須項目リスト（推測補完せず明示）'),
-  clarifyingQuestions: z.array(z.string()).optional().describe('確認質問リスト'),
-  compliance: CheckProductComplianceResultSchema.describe('当該SKUの統合コンプライアンス判定結果'),
-  documentTitle: z.string().optional().describe('出力ドキュメントの英語タイトル'),
-  certificateMarkdown: z.string().optional().describe('当該SKUの英語版GCCまたは免除申告書 Markdown'),
-  certificateHtml: z.string().optional().describe('当該SKUの英語版GCCまたは免除申告書 HTMLセクション'),
+export const GccItemSummarySchema = z.object({
+  line: z.number().int().describe('行番号（1 始まり）'),
+  status: z.enum(['generated', 'draft_needs_info', 'exempt_disclaim_b', 'exempt_no_gcc_needed', 'cpc_required_instead']).describe('generated: GCC ができた / draft_needs_info: 足りない記録がある下書き / exempt_disclaim_b: 16 CFR 1610.1(d) の免除の大人の衣料 / exempt_no_gcc_needed: 当てはまる規則が無い / cpc_required_instead: 子供用で CPC が要る'),
+  htsCode: z.string().describe('HTS コード'),
+  productName: z.string().describe('製品名'),
+  identifier: z.string().optional().describe('製品を特定する番号'),
+  certificateId: z.string().optional().describe('証明書の ID（generated のときだけ）'),
+  cpscListCategory: z.string().optional().describe('CPSC の一覧の区分（完全一致のとき）'),
+  citations: z.array(z.string()).optional().describe('証明する規則（GCC のとき）'),
+  testingExclusions: z.array(z.string()).optional().describe('試験の除外（例: "16 CFR 1610.1(d)(2)"）'),
+  disclaimCode: z.enum(['A', 'B']).optional().describe('ACE の Disclaimer のコード'),
+  intendedUseCode: z.string().optional().describe('Intended Use Code（B のとき "130.006"）'),
+  filingNote: z.string().describe('ACE での扱い'),
+  fdaNote: z.string().optional().describe('FDA の案内'),
+  missingFields: z.array(z.string()).optional().describe('この品の足りない項目'),
+  clarifyingQuestions: z.array(z.string()).optional().describe('確認の質問'),
+  warnings: z.array(z.string()).optional().describe('注意'),
 });
 
 export const GenerateGccCertificateResultSchema = z.object({
-  certificateId: z.string().describe('パッケージ・証明書識別 ID (例: "GCC-20261107-AB12CD")'),
-  generatedAt: z.string().describe('生成日時 (ISO 8601)'),
-  mode: z.enum(['single_product', 'order_package']).describe('出力モード: "single_product"(単一SKU), "order_package"(複数SKUまたは注文・AWB単位の通関パッケージ)'),
-  orderContext: z.object({
-    orderNumber: z.string().optional().describe('EC注文番号'),
-    awbNumber: z.string().optional().describe('AWB・追跡番号'),
-    carrier: z.string().optional().describe('配送会社名'),
-    invoiceNumber: z.string().optional().describe('インボイス番号'),
-  }).optional().describe('注文・配送コンテキスト情報'),
-  overallStatus: z.enum(['ready', 'exempt', 'partial_or_draft', 'cpc_required']).describe('パッケージ全体のステータス: "ready"(全GCC完備), "exempt"(全品GCC不要・免除), "partial_or_draft"(一部情報不足ドラフト含む), "cpc_required"(子供向けCPC必須品を含む)'),
-  summary: z.string().describe('パッケージ全体の日本語集計サマリー'),
-  warnings: z.array(z.string()).optional().describe('パッケージ全体の重要警告リスト（子供向け製品が含まれCPC/CCCが必要な場合の警告等）'),
+  packageId: z.string().describe('一式の ID（PKG- で始まる）'),
+  generatedAt: z.string().describe('作成日時（ISO 8601、UTC）'),
+  mode: z.enum(['single_product', 'order_package']).describe('single_product: 1 品 / order_package: 複数品か注文の情報あり'),
+  overallStatus: z.enum(['ready', 'exempt', 'partial_or_draft', 'cpc_required']).describe('全体の状態'),
   counts: z.object({
-    totalItems: z.number().int().describe('総明細数'),
-    gccGenerated: z.number().int().describe('完成GCC発行件数'),
-    draftNeedsInfo: z.number().int().describe('情報不足ドラフト件数'),
-    disclaimBExempt: z.number().int().describe('16 CFR 1610.1(d) 大人服免除 (Disclaim B) 件数'),
-    disclaimAExempt: z.number().int().describe('GCC不要 (Disclaim A) 件数'),
-    cpcRequired: z.number().int().describe('子供向けCPC要切替件数'),
-  }).describe('ステータス別明細件数内訳'),
-  items: z.array(GccCertificateItemResultSchema).describe('SKU明細ごとのGCC生成・免除判定結果配列'),
-  packageMarkdown: z.string().describe('提出用英語版 Markdown 全文（注文パッケージ時は Page 1 通関カバーシート + 個別SKU証明書）'),
-  packageHtml: z.string().describe('ブラウザ印刷・PDF保存（@media print & 改ページ対応）可能なスタンドアロン英語版 HTML 全文'),
-  disclaimer: z.string().describe('法的免責事項文'),
+    totalItems: z.number().int().describe('品の数'),
+    gccGenerated: z.number().int().describe('GCC ができた数'),
+    draftNeedsInfo: z.number().int().describe('下書きの数'),
+    disclaimBExempt: z.number().int().describe('Disclaim B の数'),
+    noGccNeeded: z.number().int().describe('GCC が要らない数'),
+    cpcRequired: z.number().int().describe('CPC が要る数'),
+  }).describe('状態ごとの数'),
+  missingFields: z.array(z.string()).optional().describe('証明者・記録の担当の足りない項目'),
+  items: z.array(GccItemSummarySchema).describe('品ごとの要約'),
+  packageHtml: z.string().describe('印刷用の HTML（1 つ）'),
+  disclaimer: z.string().describe('免責の文'),
 });
 
 // --- 10. 荷物追跡系 レスポンススキーマ ---
@@ -3611,7 +3486,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/gcc-generate': {
         post: {
-          summary: '米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) 自動生成 & 発送後クーリエ通関保留パッケージ一括出力（単一SKU / 複数SKU注文対応・HTML/Markdown/JSON出力）',
+          summary: '米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) の作成と通関保留パッケージ（JSON の要約と印刷用 HTML）',
           requestBody: {
             content: {
               'application/json': {

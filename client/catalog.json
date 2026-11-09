@@ -139,7 +139,7 @@
     "name": "generate_gcc_certificate",
     "fn": "generateGccCertificate",
     "category": "trade",
-    "description": "【必須・推測厳禁】米国CPSCのGCCと通関書類を作る。返却: { overallStatus, items }",
+    "description": "【必須・推測厳禁】米国CPSCのGCCと通関の保留に出す書類を印刷用のHTMLで作る。値は記録（試験報告書など）から渡す。足りないと 422（下書きは allowDraft）。12 歳以下の子供用は作らない。返却: { packageId, overallStatus, counts, items, packageHtml }",
     "keywords": [
       "GCC",
       "General Certificate of Conformity",
