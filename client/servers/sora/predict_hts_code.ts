@@ -8,13 +8,13 @@ export type PredictHtsCodeInput = {
   description?: string;
   /** 主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します */
   material?: string;
-  /** 大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。【推測値の入力厳禁】不明な場合は省略すること */
+  /** 大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること */
   productCategory?: string;
   /** 対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】CPSC証明書およびeFiling要件が分岐するため、不明な場合は省略すること */
   targetAge?: "adult" | "child" | "unknown";
-  /** 食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。【推測値のでっち上げ厳禁】FDA規制・Prior Notice要否が分岐するため、不明な場合は省略すること */
+  /** 食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること */
   foodContact?: boolean;
-  /** 電池・バッテリーを使用する製品か。【推測値のでっち上げ厳禁】CPSC規格や危険物表示義務が分岐するため、不明な場合は省略すること */
+  /** 電池・バッテリーを使用する製品か。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること */
   hasBattery?: boolean;
 };
 
@@ -62,8 +62,19 @@ export type PredictHtsCodeOutput = {
         /** 規制条項の公式参照先 URL */
         sourceUrl: string;
       }[];
-      /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A") */
+      /** eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B") */
       disclaimerCodeHint?: string;
+      /** 16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細 */
+      testingExemption?: {
+        /** 可燃性等の実試験が法定免除されるか */
+        exempt: boolean;
+        /** 試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)") */
+        citation?: string;
+        /** 試験免除または適用除外の理由説明 */
+        reason: string;
+        /** 2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか */
+        enforcementDiscretion?: boolean;
+      };
       /** 判定に必要な不足情報項目 */
       missingInfo: string[];
       /** 輸入者・輸出者が次に取るべき実務アクションリスト */

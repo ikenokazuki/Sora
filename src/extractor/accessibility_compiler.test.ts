@@ -3,8 +3,6 @@ import {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  normalizeSafeNumeric,
 } from './accessibility_compiler.js';
 import type { HeadingBlock } from './hierarchical_bm25.js';
 
@@ -84,81 +82,6 @@ describe('Accessibility Compiler (Evidence-Preserving Data Plane)', () => {
       const diag = computeEvidenceDiagnostics('本文', '');
       expect(diag.weakEvidenceSignal).toBe(true);
       expect(diag.reasons).toContain('empty_query');
-    });
-  });
-
-  describe('detectDiscrepancies', () => {
-    it('複数ソース・同一文書で異なる日付が存在する場合、CandidateDiscrepancy として対比提示すること', () => {
-      const items = [
-        {
-          text: '一次情報によると、新製品の発売日は 2026年09月15日 と予定されています。',
-          sourceId: 'S1',
-          blockId: 'P1',
-        },
-        {
-          text: '別ソースでは、発売日は 2026-09-20 に延期されたとの情報があります。',
-          sourceId: 'S2',
-          blockId: 'P3',
-        },
-      ];
-
-      const discrepancies = detectDiscrepancies(items);
-      expect(discrepancies.length).toBeGreaterThanOrEqual(1);
-
-      const dateDiscrepancy = discrepancies.find((d) => d.kind === 'date');
-      expect(dateDiscrepancy).toBeDefined();
-      expect(dateDiscrepancy!.status).toBe('needs_agent_resolution');
-      expect(dateDiscrepancy!.values.length).toBe(2);
-      expect(dateDiscrepancy!.values.map((v) => v.normalized)).toContain('2026-09-15');
-      expect(dateDiscrepancy!.values.map((v) => v.normalized)).toContain('2026-09-20');
-    });
-
-    it('異なる金額が存在する場合、money 不一致候補として提示すること', () => {
-      const items = [
-        { text: '通常価格は 1,200円 です。', sourceId: 'S1', blockId: 'P2' },
-        { text: '特別セール価格は 980円 です。', sourceId: 'S1', blockId: 'P5' },
-      ];
-
-      const discrepancies = detectDiscrepancies(items);
-      const moneyDiscrepancy = discrepancies.find((d) => d.kind === 'money');
-      expect(moneyDiscrepancy).toBeDefined();
-      expect(moneyDiscrepancy!.values.map((v) => v.normalized)).toContain('1200円');
-      expect(moneyDiscrepancy!.values.map((v) => v.normalized)).toContain('980円');
-    });
-
-    it('値が1種類しかない場合は誤発火しないこと', () => {
-      const items = [
-        { text: 'イベント日は 2026-10-01 です。', sourceId: 'S1', blockId: 'P1' },
-        { text: '開催日は 2026年10月01日 に決定しました。', sourceId: 'S2', blockId: 'P1' },
-      ];
-
-      const discrepancies = detectDiscrepancies(items);
-      expect(discrepancies.find((d) => d.kind === 'date')).toBeUndefined();
-    });
-  });
-
-  describe('normalizeSafeNumeric', () => {
-    it('全角数字を半角数字に変換し DerivationTrace を生成すること', () => {
-      const result = normalizeSafeNumeric('価格は ３５００ 円です。');
-      expect(result.normalizedText).toContain('3500');
-      expect(result.derivations.some((d) => d.operation === 'fullwidth_digits_to_halfwidth')).toBe(true);
-    });
-
-    it('漢数字の「万」「億」を決定論的に数値展開すること', () => {
-      const result = normalizeSafeNumeric('予算は 3万5000 円、会員数は 120万 人です。');
-      expect(result.normalizedText).toContain('35000');
-      expect(result.normalizedText).toContain('1200000');
-      expect(result.derivations.some((d) => d.operation === 'kanji_man_to_digits')).toBe(true);
-    });
-
-    it('物理単位 km/ms を固定規則で正規化すること (外部推測が必要な為替等は変換しない)', () => {
-      const result = normalizeSafeNumeric('距離は 2.5 km、レイテンシは 400 ms、為替は 150 ドルです。');
-      expect(result.normalizedText).toContain('2500 m');
-      expect(result.normalizedText).toContain('0.4 s');
-      // 為替（150 ドル）は変換されずそのまま保持されること
-      expect(result.normalizedText).toContain('150 ドル');
-      expect(result.derivations.some((d) => d.operation === 'km_to_m')).toBe(true);
-      expect(result.derivations.some((d) => d.operation === 'ms_to_s')).toBe(true);
     });
   });
 });

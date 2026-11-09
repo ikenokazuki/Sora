@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, SAPPORO_LG, sampleUpstream } from '../test_fixtures/address/harness.js';
 import { createAddressContext } from './address_context.js';
 import { ADDRESS_ATTRIBUTION, PARCEL_ATTRIBUTION, addressAttribution } from './address_attribution.js';
@@ -214,6 +214,7 @@ describe('annotatePoiAddresses', () => {
       { address: 'こんにちは', lat: 35, lng: 139 },
       { lat: 35, lng: 139 },
     ];
+    await prebuild(built.data, { kind: 'master' }, { kind: 'postal' });
     const partial = await annotatePoiAddresses(ctx, pois);
     expect(partial.results[0]?.incomplete).toBe(true);
     // 時間切れと、解釈できない・住所が無い施設は区別される
@@ -223,6 +224,7 @@ describe('annotatePoiAddresses', () => {
 
     gated.release();
     await built.data.idle();
+    await prebuild(built.data, { kind: 'num', lgCode: CHIYODA_LG });
     const complete = await annotatePoiAddresses(ctx, pois);
     expect(complete.results[0]).toMatchObject({ info: { level: 8, numberSource: 'rsdt' } });
     expect(complete.results[0]?.incomplete).toBeUndefined();

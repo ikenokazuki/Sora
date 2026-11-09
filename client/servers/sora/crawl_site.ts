@@ -18,19 +18,11 @@ export type CrawlSiteInput = {
   onlyMainContent?: boolean;
   /** 巡回ページからハイライトを抽出するキーワード */
   query?: string;
-  /** 巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか */
-  extractHighlights?: boolean;
-  /** 抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか */
-  onlyHighlights?: boolean;
+  /** 返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す */
+  responseMode?: "full" | "evidence";
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
-  /** Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false) */
-  reorderUFlat?: boolean;
-  /** MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7) */
-  diversityWeight?: number;
-  /** HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true) */
-  minimizeTables?: boolean;
-  /** 相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false) */
+  /** 相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false) */
   annotateTemporal?: boolean;
   /** 各ページの最大文字数 (デフォルト: 15000, 上限: 50000) */
   maxChars?: number;
@@ -40,6 +32,8 @@ export type CrawlSiteInput = {
   concurrency?: number;
   /** クロール完了通知用 Webhook URL */
   webhookUrl?: string;
+  /** 画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る */
+  includeMedia?: boolean;
   /** キャッシュをバイパスするか */
   noCache?: boolean;
 };
@@ -128,52 +122,6 @@ export type CrawlSiteOutput = {
         confidence: "high" | "medium";
       }[];
     }[];
-    /** 客観的な証拠充足性観測量 */
-    evidenceDiagnostics?: {
-      /** クエリ語句網羅率 (0.0〜1.0) */
-      queryCoverage: number;
-      /** 本文中にマッチした検索語句リスト */
-      matchedTerms: string[];
-      /** マッチしなかった未充足語句リスト */
-      missingTerms: string[];
-      /** スコア > 0 の候補ブロック数 */
-      candidateCount: number;
-      /** 最高関連スコア */
-      topScore: number;
-      /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
-      weakEvidenceSignal: boolean;
-      /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
-      reasons: string[];
-    };
-    /** 日付・金額・バージョンの不一致候補 */
-    discrepancies?: {
-      /** 不一致種別 (日付、金額、バージョン、数値) */
-      kind: "date" | "money" | "version" | "number";
-      /** 競合している値のリスト */
-      values: {
-        /** 原文の表記 */
-        original: string;
-        /** 正規化後の値 */
-        normalized: string;
-        /** 出所ソースID */
-        sourceId?: string;
-        /** ブロックID */
-        blockId?: string;
-        /** 文脈スニペット */
-        context?: string;
-      }[];
-      /** 解決ステータス */
-      status: "needs_agent_resolution";
-    }[];
-    /** 決定論的な単位・漢数字変換導出履歴 */
-    derivations?: {
-      /** 適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m") */
-      operation: string;
-      /** 変換前文字列 */
-      input: string;
-      /** 変換後文字列 */
-      output: string;
-    }[];
     /** 相対日付表現の絶対日時解決結果一覧 */
     temporalAnchors?: {
       /** 検出された相対時間表現 (例: "明日", "来週金曜日") */
@@ -206,38 +154,12 @@ export type CrawlSiteOutput = {
     };
     /** ハイライト該当箇所へジャンプする Chrome URL */
     textFragmentUrl?: string;
-    /** 抽出型自動要約 (TL;DR) 箇条書きリスト */
-    summary?: string[];
-    /** 本文中の引用・出典リンク一覧 */
-    citations?: {
-      /** 引用テキスト */
-      text: string;
-      /** 引用元URL */
-      url: string;
-      /** 周辺コンテキスト */
-      context?: string;
-    }[];
-    /** RAG 用セマンティック・チャンク配列 */
-    chunks?: {
-      /** チャンク番号 (0-based) */
-      index: number;
-      /** 所属する直近の見出し */
-      heading?: string;
-      /** チャンク本文 Markdown */
-      content: string;
-      /** 推定トークン数 */
-      estimatedTokens: number;
-    }[];
     /** 本文の総文字数 */
     characterCount?: number;
     /** 単語数 */
     wordCount?: number;
     /** 想定読了時間 (分) */
     readingTimeMin?: number;
-    /** LLM 最適化済み XML プロンプト文字列 */
-    promptContext?: string;
-    /** <mark> で一致語句をハイライトした本文 */
-    highlightedContent?: string;
     /** YouTube・動画・音声等のリッチメディア情報 */
     media?: {
       /** メディア種別 */
@@ -260,15 +182,6 @@ export type CrawlSiteOutput = {
     };
     /** ページ内抽出リンク URL 一覧 */
     links?: string[];
-    /** リンク健全性検証結果 */
-    linksWithStatus?: {
-      /** リンク先URL */
-      url: string;
-      /** HTTPステータスコード */
-      status: number;
-      /** 到達成功フラグ (2xx/3xx) */
-      ok: boolean;
-    }[];
     /** 抽出された重要画像一覧 */
     images?: {
       /** 画像URL */
@@ -359,6 +272,8 @@ export type CrawlSiteOutput = {
     rawHtml?: string;
     /** スクリーンショット画像 (Base64 PNG) */
     screenshot?: string;
+    /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+    warnings?: string[];
     /** ページ品質スコア (0〜100) */
     quality?: number;
     /** 必須フィールド充足度 (0〜100) */

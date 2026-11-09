@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 const tLive = test.skipIf(!process.env.SORA_LIVE_TESTS);
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -32,7 +32,7 @@ describe('fetch_x_post contract', () => {
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
     expect(names).toContain('fetch_x_post');
-    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(52);
+    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(53);
   });
 
   test('search_tools discovers the tool by ツイート', async () => {
@@ -108,14 +108,24 @@ describe('fetch_x_post contract', () => {
   });
 
   test('REST rejects invalid input without fetching and documents the endpoint', async () => {
-    for (const body of [{}, { statusId: 'abc' }, { url: 'https://example.com/x' }, 'not-json']) {
-      const res = await app.request('/realtime/post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: typeof body === 'string' ? body : JSON.stringify(body),
-      });
-      expect(res.status).toBe(400);
+    // API キーの無い構成では、プロセスで最初の要求に匿名で使える旨の案内が 1 回だけ出る（先にほかのファイルが出していれば出ない）。
+    // テストの出力に混ぜず、ここで受けて確かめる
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    let warned: string[];
+    try {
+      for (const body of [{}, { statusId: 'abc' }, { url: 'https://example.com/x' }, 'not-json']) {
+        const res = await app.request('/realtime/post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: typeof body === 'string' ? body : JSON.stringify(body),
+        });
+        expect(res.status).toBe(400);
+      }
+      warned = warn.mock.calls.map((c) => c.map(String).join(' '));
+    } finally {
+      warn.mockRestore();
     }
+    expect(warned).toEqual(warned.length > 0 ? [expect.stringContaining('[Sora] No API key configured: anonymous access is open')] : []);
     const doc: any = generateOpenApiDocument();
     expect(doc.paths['/realtime/post'].post.responses['404']).toBeDefined();
   });

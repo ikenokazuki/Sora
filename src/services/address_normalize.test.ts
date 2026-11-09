@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData, waitFor } from '../test_fixtures/address/builders.js';
 import {
   ABR_LAST_MODIFIED, CHIYODA_LG, CHIYODA_TOWNS, RSDT_POS_HEADER, abrUrl, csv, replaceTowns, rsdtPosRow, sampleUpstream, townRow,
 } from '../test_fixtures/address/harness.js';
@@ -229,6 +229,7 @@ describe('待ち時間と失敗', () => {
     let gated!: GatedBuilder;
     const { data } = createTestAddressData(dir, { wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'city')) });
     const normalizer = new AddressNormalizer(data);
+    await prebuild(data, { kind: 'master' });
     const partial = await normalizer.normalize('東京都千代田区永田町1-7-1', { waitMs: 300 });
     expect(partial).toMatchObject({ level: 2, incomplete: true, pending: [`city:${CHIYODA_LG}`], normalized: '東京都千代田区' });
     expect(partial.keys.machiazaId).toBeUndefined();
@@ -379,6 +380,7 @@ describe('番地・号（段B）', () => {
   test('段B の構築が間に合わなければ level 3 で incomplete と pending。構築が終わると次の呼び出しで読み直して level 8 になる', async () => {
     let gated!: GatedBuilder;
     const { normalizer, data } = setup({ wrap: (inner) => (gated = new GatedBuilder(inner, (job) => job.kind === 'num')) });
+    await prebuild(data, { kind: 'master' }, { kind: 'city', lgCode: CHIYODA_LG });
     const partial = await normalizer.normalize('東京都千代田区永田町1-7-1', { waitMs: 400 });
     expect(partial).toMatchObject({ level: 3, other: '7-1', incomplete: true, pending: [`num:${CHIYODA_LG}`] });
     expect(normalizer.generation).toBe(1);

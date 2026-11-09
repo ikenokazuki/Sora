@@ -7,11 +7,15 @@ import {
   searchLaws,
   getLawData,
   searchDietMinutes,
+  GovInputError,
   fetchElevationAndCoordinates,
   fetchFlightStatus,
 } from '../scraper.js';
 import { searchOpenPoi } from '../services/poi.js';
+import { AreaInputError } from '../services/jma_area.js';
+import { TrafficInputError } from '../services/traffic.js';
 import {
+  WeatherRequestSchema,
   DisasterWarningsRequestSchema,
   EarthquakeRequestSchema,
   RoadTrafficRequestSchema,
@@ -25,56 +29,46 @@ import {
   NormalizeAddressRequestSchema,
   ReverseGeocodeRequestSchema,
 } from '../types.js';
-import { formatError } from './utils.js';
+import { dropNullFields, formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
 
-// 天気予報 (POST /weather)
-publicDataRoutes.post('/weather', async (c) => {
-  try {
-    const body = await c.req.json();
-    const city = body?.city;
-    if (!city || typeof city !== 'string') {
-      return c.json({ error: 'city is required' }, 400);
-    }
+/** クエリの数。空なら省略。数でないものは、strict なら NaN にしてスキーマで 400 にし、そうでなければ省略にする */
+const queryNumber = (c: Context, key: string, { strict = false } = {}): number | undefined => {
+  const v = c.req.query(key);
+  if (v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return strict || Number.isFinite(n) ? n : undefined;
+};
 
-    const days = body?.days ? parseInt(body.days, 10) : undefined;
-    const result = await fetchWeatherForecast({ city, days, noCache: body?.noCache });
-    return c.json(result);
-  } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
+// 天気予報。POST・GET とも MCP と同じスキーマで確かめる
+async function weatherResponse(c: Context, input: unknown) {
+  const parsed = WeatherRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    return formatError(c, 'Invalid weather parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
   }
+  try {
+    return c.json(await fetchWeatherForecast(parsed.data));
+  } catch (err) {
+    if (err instanceof AreaInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    return formatError(c, errorMessage(err) || 'Weather forecast failed', 'WEATHER_ERROR', 500);
+  }
+}
+
+const weatherQuery = (c: Context, city: string | undefined) => ({
+  city,
+  days: queryNumber(c, 'days', { strict: true }),
+  noCache: c.req.query('noCache') === 'true',
 });
+
+// 天気予報 (POST /weather)
+publicDataRoutes.post('/weather', async (c) => weatherResponse(c, dropNullFields(await readJsonBody(c))));
 
 // 天気予報 (GET /weather & GET /weather/:city)
-publicDataRoutes.get('/weather/:city', async (c) => {
-  try {
-    const city = c.req.param('city');
-    const daysParam = c.req.query('days');
-    const days = daysParam ? parseInt(daysParam, 10) : undefined;
-    const noCache = c.req.query('noCache') === 'true';
+publicDataRoutes.get('/weather/:city', (c) => weatherResponse(c, weatherQuery(c, c.req.param('city'))));
 
-    const result = await fetchWeatherForecast({ city, days, noCache });
-    return c.json(result);
-  } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
-  }
-});
-
-publicDataRoutes.get('/weather', async (c) => {
-  try {
-    const city = c.req.query('city') || '東京';
-    const daysParam = c.req.query('days');
-    const days = daysParam ? parseInt(daysParam, 10) : undefined;
-    const noCache = c.req.query('noCache') === 'true';
-
-    const result = await fetchWeatherForecast({ city, days, noCache });
-    return c.json(result);
-  } catch (err) {
-    return c.json({ error: errorMessage(err) || 'Weather forecast failed' }, 500);
-  }
-});
+publicDataRoutes.get('/weather', (c) => weatherResponse(c, weatherQuery(c, c.req.query('city') || '東京')));
 
 // 気象警報・注意報 (POST /disaster/warnings)
 publicDataRoutes.post('/disaster/warnings', async (c) => {
@@ -94,6 +88,7 @@ publicDataRoutes.post('/disaster/warnings', async (c) => {
     const result = await fetchWeatherWarnings(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof AreaInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Disaster warnings fetch failed', 'DISASTER_ERROR', 500);
   }
 });
@@ -138,6 +133,7 @@ publicDataRoutes.post('/traffic/road', async (c) => {
     const result = await fetchRoadTraffic(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -152,6 +148,7 @@ publicDataRoutes.get('/traffic/road', async (c) => {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -165,6 +162,7 @@ publicDataRoutes.get('/traffic/road/:pref', async (c) => {
     const result = await fetchRoadTraffic({ pref, road, noCache });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Road traffic fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -231,6 +229,7 @@ publicDataRoutes.post('/gov/diet-minutes', async (c) => {
     const result = await searchDietMinutes(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof GovInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
@@ -259,6 +258,7 @@ publicDataRoutes.get('/gov/diet-minutes', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof GovInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Diet minutes search failed', 'GOV_ERROR', 500);
   }
 });
@@ -286,20 +286,18 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
 });
 
 publicDataRoutes.get('/geo/elevation', async (c) => {
-  const address = c.req.query('address') || c.req.query('q');
-  const latStr = c.req.query('lat');
-  const lonStr = c.req.query('lon');
-  const lat = latStr ? parseFloat(latStr) : undefined;
-  const lon = lonStr ? parseFloat(lonStr) : undefined;
-  const noCache = c.req.query('noCache') === 'true' || c.req.query('noCache') === '1';
+  const parsed = ElevationRequestSchema.safeParse({
+    address: c.req.query('address') || c.req.query('q'),
+    lat: queryNumber(c, 'lat', { strict: true }),
+    lon: queryNumber(c, 'lon', { strict: true }),
+    noCache: c.req.query('noCache') === 'true' || c.req.query('noCache') === '1',
+  });
+  if (!parsed.success) {
+    return formatError(c, 'Invalid elevation parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
+  }
 
   try {
-    const result = await fetchElevationAndCoordinates({
-      address,
-      lat,
-      lon,
-      noCache,
-    });
+    const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
   } catch (err) {
     return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
@@ -329,20 +327,14 @@ publicDataRoutes.post('/geo/poi', async (c) => {
 });
 
 publicDataRoutes.get('/geo/poi', async (c) => {
-  const num = (key: string): number | undefined => {
-    const v = c.req.query(key);
-    if (v === undefined || v === '') return undefined;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
-  };
   const parsed = PoiSearchRequestSchema.safeParse({
     query: c.req.query('query') ?? c.req.query('q'),
-    lat: num('lat'),
-    lon: num('lon'),
-    radiusMeters: num('radiusMeters') ?? num('radius'),
+    lat: queryNumber(c, 'lat'),
+    lon: queryNumber(c, 'lon'),
+    radiusMeters: queryNumber(c, 'radiusMeters') ?? queryNumber(c, 'radius'),
     center: c.req.query('center'),
     bbox: c.req.query('bbox'),
-    limit: num('limit'),
+    limit: queryNumber(c, 'limit'),
     noCache: c.req.query('noCache') === 'true',
     withAddress: c.req.query('withAddress') === 'true' ? true : undefined,
   });
@@ -369,13 +361,6 @@ async function addressErrorResponse(c: Context, err: unknown) {
   if (err instanceof AddressUnavailableError) return formatError(c, message, 'ADDRESS_DATA_UNAVAILABLE', 502, !err.blocked);
   return formatError(c, message, 'GEO_ERROR', 500);
 }
-
-const queryNumber = (c: Context, key: string): number | undefined => {
-  const v = c.req.query(key);
-  if (v === undefined || v === '') return undefined;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
-};
 
 async function readJsonBody(c: Context): Promise<unknown> {
   try {
@@ -460,7 +445,7 @@ publicDataRoutes.get('/geo/reverse', async (c) => {
   }
 });
 
-// 主要空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
+// 5 空港フライト運航状況検索 (POST /traffic/flight, GET /traffic/flight, GET /traffic/flight/:airport)
 publicDataRoutes.post('/traffic/flight', async (c) => {
   let rawBody: unknown;
   try {
@@ -478,6 +463,7 @@ publicDataRoutes.post('/traffic/flight', async (c) => {
     const result = await fetchFlightStatus(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -501,6 +487,7 @@ publicDataRoutes.get('/traffic/flight', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });
@@ -524,6 +511,7 @@ publicDataRoutes.get('/traffic/flight/:airport', async (c) => {
     });
     return c.json(result);
   } catch (err) {
+    if (err instanceof TrafficInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Flight status fetch failed', 'TRAFFIC_ERROR', 500);
   }
 });

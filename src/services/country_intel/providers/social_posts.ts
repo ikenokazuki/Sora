@@ -26,18 +26,19 @@ function defaultQuery(input: ProviderInput): string {
 
 function planQueries(input: ProviderInput): Array<{ platform: IntelSocialPlatform; query: string }> {
   const explicit = input.request.social?.queries ?? [];
-  const byPlatform = new Map<IntelSocialPlatform, string[]>();
-  for (const q of explicit) {
-    if (!SOCIAL_PLATFORMS.includes(q.platform)) throw new Error('unsupported social platform: ' + String(q.platform));
-    const list = byPlatform.get(q.platform) ?? [];
-    if (list.length < SOCIAL_MAX_PER_PLATFORM && !list.includes(q.query)) list.push(q.query);
-    byPlatform.set(q.platform, list);
-  }
   const platforms = input.request.social?.platforms?.length
     ? [...new Set(input.request.social.platforms)]
     : [...SOCIAL_PLATFORMS];
   for (const p of platforms) {
     if (!SOCIAL_PLATFORMS.includes(p)) throw new Error('unsupported social platform: ' + String(p));
+  }
+  const byPlatform = new Map<IntelSocialPlatform, string[]>();
+  for (const q of explicit) {
+    if (!SOCIAL_PLATFORMS.includes(q.platform)) throw new Error('unsupported social platform: ' + String(q.platform));
+    if (!platforms.includes(q.platform)) continue; // platforms 指定時は queries の SNS も絞る
+    const list = byPlatform.get(q.platform) ?? [];
+    if (list.length < SOCIAL_MAX_PER_PLATFORM && !list.includes(q.query)) list.push(q.query);
+    byPlatform.set(q.platform, list);
   }
   const fallback = defaultQuery(input);
   const out: Array<{ platform: IntelSocialPlatform; query: string }> = [];

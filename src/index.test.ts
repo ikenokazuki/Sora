@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, spyOn } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
@@ -13,6 +13,26 @@ beforeAll(() => {
   if (!process.env.SORA_LIVE_TESTS) restoreExternalFetch = installExternalApiFixtures();
 });
 afterAll(() => restoreExternalFetch?.());
+
+/** ALLOW_LOCAL_FETCH を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
+function setLocalFetch(value: string | undefined): () => void {
+  const prev = process.env.ALLOW_LOCAL_FETCH;
+  if (value === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+  else process.env.ALLOW_LOCAL_FETCH = value;
+  return () => {
+    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prev;
+  };
+}
+
+/** このファイルのテストが ALLOW_LOCAL_FETCH を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
+let allowLocalFetchAtStart: string | undefined;
+beforeAll(() => {
+  allowLocalFetchAtStart = process.env.ALLOW_LOCAL_FETCH;
+});
+afterAll(() => {
+  expect(process.env.ALLOW_LOCAL_FETCH).toBe(allowLocalFetchAtStart);
+});
 
 /** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
 async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
@@ -46,7 +66,7 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
   }
 }
 import * as cheerio from 'cheerio';
-import { extractQueryHighlightDetails } from './enrichment.js';
+import { extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -68,19 +88,12 @@ import {
   cleanMarkdownTokens,
   normalizeRealtimeItem,
   extractTablesFromHtml,
-  generateExtractiveSummary,
-  dedupSearchResults,
   maskPiiInText,
-  generatePromptContext,
-  highlightQueryMatchesInMarkdown,
   calculateContentStats,
   calculateContentQuality,
   detectPageType,
   calculateExtractionCompleteness,
   collectFieldEvidence,
-  extractCitationsFromMarkdown,
-  chunkMarkdownContent,
-  validateExtractedLinks,
   sendWebhookNotification,
   scrapeUrl,
   integratedSearch,
@@ -94,7 +107,6 @@ import {
   mergeRealtimeItemsWithDedup,
   extractQueryHighlights,
   generateTextFragmentUrl,
-  chooseBestDescription,
   resolveCityId,
   executeBrowserActions,
   resolveChromiumPath,
@@ -246,6 +258,67 @@ describe('web-fetcher Core Functions', () => {
 
     const preserved = cleanMarkdownTokens(mdWithBase64, true);
     expect(preserved).toContain('data:image/png;base64');
+  });
+
+  it('cleanMarkdownTokens は alt の無い画像を ! を残さずに消し、URL の中の括弧も読む', () => {
+    expect(cleanMarkdownTokens('商品 ![](https://example.com/a.png) 説明')).toBe('商品  説明');
+    expect(cleanMarkdownTokens('- ![](https://example.com/a.png) [名前](https://example.com/p)')).toBe('-  [名前](https://example.com/p)');
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)](https://example.com/p)')).toBe('');
+    expect(cleanMarkdownTokens('![](https://example.com/i/filters:format(webp)/a.jpg) 本文')).toBe('本文');
+    expect(cleanMarkdownTokens('![](https://example.com/a.png "Skill verified")本文')).toBe('本文');
+    // 前後がどちらも空白でないときは、語がくっつかないように空白 1 字にする（前は、残った ! が区切っていた）
+    expect(cleanMarkdownTokens('Cocktail![](https://example.com/a.png)Friendsgiving')).toBe('Cocktail Friendsgiving');
+    expect(cleanMarkdownTokens('[A](https://example.com/a)![](https://example.com/logo.png)[\n\nB は取引所\n\n](https://example.com/b)'))
+      .toBe('[A](https://example.com/a) [\n\nB は取引所\n\n](https://example.com/b)');
+    // 片方が空白・行頭・行末なら、空白は足さない
+    expect(cleanMarkdownTokens('行末![](https://example.com/a.png)\n次の行')).toBe('行末\n次の行');
+    expect(cleanMarkdownTokens('前の行\n![](https://example.com/a.png)行頭')).toBe('前の行\n行頭');
+    // リンクの文字の端（前が [、または後ろが ]）にも足さない（語がくっつく心配が無く、[ Text] のように文字が増えるだけ）
+    expect(cleanMarkdownTokens('[![](https://example.com/a.png)Text](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[Text![](https://example.com/a.png)](https://example.com/)')).toBe('[Text](https://example.com/)');
+    expect(cleanMarkdownTokens('[A![](https://example.com/a.png)B](https://example.com/)')).toBe('[A B](https://example.com/)');
+    expect(cleanMarkdownTokens('[Click](javascript:void(0)) です')).toBe('Click です');
+    expect(cleanMarkdownTokens('![図 \\[1\\]](data:image/svg+xml;utf8,<svg fill="rgb(0,0,0)"></svg>) 本文')).toBe('[画像: 図 \\[1\\]] 本文');
+    // 長い data URI でも置き換える（1 字ごとに選ぶ正規表現は 100 万字ほどで黙って一致しなくなった）
+    expect(cleanMarkdownTokens('前 ![図](data:image/png;base64,' + 'A'.repeat(2_000_000) + ') 後')).toBe('前 [画像: 図] 後');
+  });
+
+  it('cleanMarkdownTokens は、逃がした \\[ が並んでも止まらず、逃がした \\[ から始まる字は javascript: のリンクとして読まない', () => {
+    const t0 = performance.now();
+    cleanMarkdownTokens('\\['.repeat(100_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(cleanMarkdownTokens('前 [Click](javascript:void(0)) 後')).toBe('前 Click 後');
+    // 地の文の「[text](javascript:…)」を Turndown が逃がした形は、字を壊さずそのまま残す
+    expect(cleanMarkdownTokens('\\[text\\](javascript:void(0))')).toBe('\\[text\\](javascript:void(0))');
+  });
+
+  it('cleanMarkdownTokens は、直前の \\ が奇数個の [ だけをリンクとして読まない（偶数個なら \\ が字で、続くリンクは生きている）', () => {
+    // \[a](javascript:x) は逃がした [ （残す）。\\[a](javascript:x) は字の \ のあとの本物のリンク（外す）
+    expect(cleanMarkdownTokens('\\[a](javascript:x)')).toBe('\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\[a](javascript:x)')).toBe('\\\\a');
+    expect(cleanMarkdownTokens('\\\\\\[a](javascript:x)')).toBe('\\\\\\[a](javascript:x)');
+    expect(cleanMarkdownTokens('\\\\\\\\[a](javascript:x)')).toBe('\\\\\\\\a');
+    expect(cleanMarkdownTokens('前 \\\\[a](javascript:x) 中 \\[b](javascript:y) 中 [c](javascript:z) 後')).toBe('前 \\\\a 中 \\[b](javascript:y) 中 c 後');
+    // \ の長い並びのあとでも、偶数個なら外し、奇数個なら残す（後読みを [ の位置でだけ評価しないと、JSC が途中で諦めて外すべきリンクが残り、1 秒ほどかかる）
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens('\\'.repeat(200_000) + '[a](javascript:x)')).toBe('\\'.repeat(200_000) + 'a');
+    expect(cleanMarkdownTokens('\\'.repeat(200_001) + '[a](javascript:x)')).toBe('\\'.repeat(200_001) + '[a](javascript:x)');
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it('cleanMarkdownTokens は、行の途中の長い空白で止まらない（行末の空白だけを消す）', () => {
+    // 行末の空白を消す正規表現は、空白の並びの途中のすべての位置から並びの最後まで読んで、長さの二乗の時間だった（16 万字で 27 秒）
+    const middle = 'a' + ' '.repeat(160_000) + 'b';
+    const t0 = performance.now();
+    expect(cleanMarkdownTokens(middle)).toBe(middle);
+    expect(cleanMarkdownTokens(`${middle}${' \t'.repeat(80_000)}\n次の行`)).toBe(`${middle}\n次の行`);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it('replaceMarkdownImages は alt の逃がした括弧と URL の中の括弧を読む', () => {
+    expect(replaceMarkdownImages('![Apple Watch \\[GPS\\]](https://example.com/w.png) と ![](https://example.com/i/filters:format(webp)/a.jpg) と ![図](https://example.com/b.png "t")'))
+      .toBe('[画像: Apple Watch \\[GPS\\]] と  と [画像: 図]');
+    expect(replaceMarkdownImages('前 ![図](https://example.com/' + 'a'.repeat(2_000_000) + '.png) 後')).toBe('前 [画像: 図] 後');
   });
 
   it('convertHtmlToMarkdown should purge cookie banners, extract metadata (publishedTime, author, siteName), format GFM tables and preserve codeblock languages', () => {
@@ -567,38 +640,16 @@ describe('web-fetcher Core Functions', () => {
     expect(fragmentUrl).toContain(encodeURIComponent('スタンダード'));
   });
 
-  it('chooseBestDescription should replace generic boilerplate meta with dynamic query snippet', () => {
-    const genericMeta = 'noteは、クリエイターが文章や画像、音声を投稿し、ユーザーがコンテンツを楽しんで応援できるプラットフォームです。';
-    const query = '君と見るそら ソライロ コール';
-    const dynamicSnippet = '## ・ソライロ\n\n〈イントロ〉スタンダード\nうりゃおい ×4 👏 ×5 しゃーいくぞ\nタイガー ファイヤー サイバー';
-
-    // 1. クエリ主要語を含まない定型文メタは動的スニペットに置き換えられる
-    const selected = chooseBestDescription(genericMeta, dynamicSnippet, query);
-    expect(selected).toBeDefined();
-    expect(selected).not.toContain('プラットフォーム');
-    expect(selected).toContain('ソライロ');
-
-    // 2. クエリ単語を十分に含む適切な Meta Description は尊重される
-    const relevantMeta = 'アイドルグループ「君と見るそら」の代表曲「ソライロ」のライブコール・MIX・口上まとめです。';
-    const selectedRelevant = chooseBestDescription(relevantMeta, dynamicSnippet, query);
-    expect(selectedRelevant).toBe(relevantMeta);
-
-    // 3. スペースなし日本語クエリでも形態素カバー率で判定できる
-    const nonSpacedQuery = 'ソライロコールまとめ';
-    const selectedNonSpaced = chooseBestDescription(relevantMeta, dynamicSnippet, nonSpacedQuery);
-    expect(selectedNonSpaced).toBe(relevantMeta);
-  });
-
   it('scrapeUrl should include source: "web" in the response', async () => {
     const result = await withExamplePage((url) => scrapeUrl({ url, mode: 'fast', noCache: true }));
     expect(result.source).toBe('web');
   });
 
-  it('scrapeUrl with onlyHighlights: true should replace full content with only matched highlights', async () => {
+  it('scrapeUrl with responseMode: evidence should replace full content with only matched highlights', async () => {
     const result = await withExamplePage((url) => scrapeUrl({
       url,
       query: 'Domain',
-      onlyHighlights: true,
+      responseMode: 'evidence',
       fastOnly: true,
       noCache: true,
     }));
@@ -635,7 +686,7 @@ describe('web-fetcher Core Functions', () => {
     expect(resolveCityId('箱根町')).toBe('140020');
     expect(resolveCityId('箱根')).toBe('140020');
     expect(resolveCityId('別府市')).toBe('440010');
-    expect(resolveCityId('石垣島')).toBe('473000');
+    expect(resolveCityId('石垣島')).toBe('474010');
   });
 });
 
@@ -784,10 +835,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/scrape', {
           method: 'POST',
@@ -808,9 +857,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(data.links).toContain('https://example.com/about');
       expect(data.links).toContain('https://example.com/contact');
       expect(data.rawHtml).toContain('Format Test');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -833,10 +881,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await app.fetch(
         new Request('http://localhost/crawl/stream', {
           method: 'POST',
@@ -854,9 +900,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('event: start');
       expect(text).toContain('event: page');
       expect(text).toContain('event: done');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1443,10 +1488,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/test`,
         actions: [
@@ -1463,8 +1506,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(result.actionOutputs.every((o: any) => o.result === 'ok')).toBe(true);
       expect(result.markdown).toContain('Sora Interactive');
       expect(result.screenshot).toBeDefined();
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1495,9 +1538,7 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
-
+    const restoreLocalFetch = setLocalFetch('true');
     try {
       const res = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/long-page`,
@@ -1510,7 +1551,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(typeof res.screenshot).toBe('string');
       expect((res.screenshot || '').length).toBeGreaterThan(1000);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1544,10 +1585,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/mouse-trail`,
         actions: [{ type: 'click', selector: '#btn' }, { type: 'wait', ms: 100 }],
@@ -1558,8 +1597,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.markdown.match(/clicked: (\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(5);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1855,9 +1894,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/cookie-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainCookies(domain, []); // 他テストの残留Cookieをクリア（DBはテスト間で共有）
@@ -1878,9 +1916,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // 2回目: 保存済みCookieが復元され、サーバーへ送り返されるはず
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toContain('seen-cookie:true');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1905,10 +1942,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/lang-consistency`,
         renderJs: true,
@@ -1917,9 +1952,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
       expect(seenAcceptLanguage.startsWith('ja')).toBe(true);
       expect(result.content).toContain('languages:ja-JP');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1942,18 +1976,16 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const before = getBotDetectionMetrics().upgradeCount;
 
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
 
       expect(result.renderedWithBrowser).toBe(true);
       expect(getBotDetectionMetrics().upgradeCount).toBe(before + 1);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -1986,9 +2018,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       const url = `http://127.0.0.1:${server.port}/storage-persist`;
       const domain = '127.0.0.1';
       dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
@@ -2003,9 +2034,8 @@ describe('Sora REST & MCP Endpoints', () => {
       // (markdown変換で "_" が "\_" にエスケープされることがあるため正規表現で許容する)
       const second = await scrapeUrl({ url, renderJs: true, noCache: true });
       expect(second.content).toMatch(/seen-storage:persisted\\?_value/);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2047,10 +2077,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const res = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
 
       expect(res.content).toContain('TOP-CONTENT-VISIBLE');
@@ -2060,9 +2088,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(res.content).toContain('SHADOW-DOM-CONTENT');
       // networkidle 成立後にクライアント側が描画するケース
       expect(res.content).toContain('LATE-CONTENT-RENDERED');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2098,10 +2125,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       const result = await scrapeUrl({
         url: `http://127.0.0.1:${server.port}/passive-mouse-trail`,
         renderJs: true,
@@ -2111,8 +2136,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const match = result.content.match(/count=(\d+)/);
       expect(match).not.toBeNull();
       expect(Number(match![1])).toBeGreaterThanOrEqual(3);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2141,10 +2166,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       // Turn 1: 新規セッション作成 & 画面オープン (所有者トークン付き)
       const turn1 = await executeBrowserActions({
         url: `http://127.0.0.1:${server.port}/session-test`,
@@ -2189,8 +2212,8 @@ describe('Sora REST & MCP Endpoints', () => {
       });
 
       expect(turn3.sessionClosed).toBe(true);
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       server.stop();
     }
   });
@@ -2453,30 +2476,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.tables?.[0].rows[1]['価格']).toBe('¥128,000');
   });
 
-  it('generateExtractiveSummary should extract top key sentences from article text', () => {
-    const longArticle = `
-      本日は新しい Web スクレイピングサービス Sora 2.0 のリリース日です。
-      このシステムは圧倒的な高速性と高い耐障害性を兼ね備えています。
-      特にリアルタイム情報と深層検索の統合は大きな特徴です。
-      開発チームは数ヶ月にわたり性能改善を行ってきました。
-      今後のロードマップにもご期待ください。
-    `;
-    const summary = generateExtractiveSummary(longArticle, 2);
-    expect(summary.length).toBeGreaterThanOrEqual(1);
-    expect(summary.length).toBeLessThanOrEqual(2);
-  });
-
-  it('dedupSearchResults should filter out duplicate and highly similar items', () => {
-    const rawItems = [
-      { id: 1, title: '【速報】東京で大雨警報が発令されました', snippet: '気象庁発表' },
-      { id: 2, title: '【速報】東京で大雨警報が発令されました！', snippet: '気象庁発表' },
-      { id: 3, title: '明日の全国の天気予報と気温の推移', snippet: '全国的に晴れ' },
-    ];
-    const deduped = dedupSearchResults(rawItems, (item) => `${item.title} ${item.snippet}`);
-    expect(deduped.length).toBe(2);
-    expect(deduped.map((i) => i.id)).toEqual([1, 3]);
-  });
-
   it('maskPiiInText should automatically mask emails, phone numbers, and credit cards', () => {
     const raw = '連絡先: info@example.com / TEL: 090-1234-5678 / カード番号: 4532-0150-1234-5671 です。';
     const masked = maskPiiInText(raw);
@@ -2485,6 +2484,13 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(masked).toContain('[CREDIT_CARD]');
     expect(masked).not.toContain('info@example.com');
     expect(masked).not.toContain('090-1234-5678');
+  });
+
+  it('maskPiiInText は、メールの直後に _ や + でつながった次のメールも隠し、20 万字の英字の並びでも止まらない', () => {
+    expect(maskPiiInText('a@b.co_c@d.org と x@y.jp+z@w.net')).toBe('[EMAIL][EMAIL] と [EMAIL][EMAIL]');
+    const t0 = performance.now();
+    maskPiiInText('a'.repeat(200_000));
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it('convertHtmlToMarkdown should extract YouTube media info and chapters', () => {
@@ -2512,36 +2518,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(res.media?.chapters?.[1].seconds).toBe(150);
   });
 
-  it('generatePromptContext should build standard XML context wrapper for LLMs', () => {
-    const promptXml = generatePromptContext({
-      url: 'https://example.com/ai-news',
-      title: '最新の AI ニュース',
-      content: '# 本文\nここが記事の内容です。',
-      siteName: 'AI Watch',
-      publishedTime: '2026-08-22T10:00:00Z',
-      summary: ['AI Watch の最新記事です', '大幅な高速化が達成されました'],
-      isTruncated: false,
-      contentType: 'text/html',
-      source: 'web',
-    });
-
-    expect(promptXml).toContain('<web_page url="https://example.com/ai-news"');
-    expect(promptXml).toContain('site_name="AI Watch"');
-    expect(promptXml).toContain('<summary>');
-    expect(promptXml).toContain('- AI Watch の最新記事です');
-    expect(promptXml).toContain('</web_page>');
-  });
-
-  it('highlightQueryMatchesInMarkdown should emphasize matched keywords with <mark>', () => {
-    const markdown = '# タイトル\nSora は超高速なスクレイピングツールです。\n```ts\nconst sora = "fast";\n```';
-    const highlighted = highlightQueryMatchesInMarkdown(markdown, 'スクレイピング');
-    expect(highlighted).toContain('<mark>スクレイピング</mark>');
-
-    // スペースなし日本語クエリでも形態素・バイグラムで適切にマークされる
-    const highlightedMulti = highlightQueryMatchesInMarkdown(markdown, '高速スクレイピング');
-    expect(highlightedMulti).toContain('<mark>');
-  });
-
   it('calculateContentStats should accurately calculate characterCount, wordCount, and readingTimeMin', () => {
     const japaneseText = 'あ'.repeat(1200); // 1200文字 -> 約3分
     const statsJa = calculateContentStats(japaneseText);
@@ -2554,41 +2530,20 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(statsEn.readingTimeMin).toBe(3);
   });
 
-  it('extractCitationsFromMarkdown should extract external links and their surrounding context', () => {
-    const markdown = `
-      政府の最新統計によると、IT市場は急拡大しています。
-      詳細なデータは [総務省統計局レポート](https://www.stat.go.jp/data/it-report.html) をご参照ください。
-      また、海外市場については [Gartner Market Report](https://www.gartner.com/en/reports/123) でも言及されています。
-    `;
-    const citations = extractCitationsFromMarkdown(markdown);
-    expect(citations.length).toBe(2);
-    expect(citations[0].text).toBe('総務省統計局レポート');
-    expect(citations[0].url).toBe('https://www.stat.go.jp/data/it-report.html');
-    expect(citations[0].context).toContain('総務省統計局レポート');
-    expect(citations[1].text).toBe('Gartner Market Report');
-    expect(citations[1].url).toBe('https://www.gartner.com/en/reports/123');
-  });
-
-  it('extractCitationsFromMarkdown resolves relative links against baseUrl and skips anchors and non-http links', () => {
-    const markdown = '出典は[こちらの記事](/news/1)、[同じ記事](https://site.example/news/1)、[外部記事](https://other.example/x)、'
-      + '[節](#sec)、[メール](mailto:a@example.com)、[スクリプト](javascript:void(0))、[相対](../about) です。';
-    const urls = extractCitationsFromMarkdown(markdown, 'https://site.example/blog/page').map((c) => c.url);
-    expect(urls).toEqual(['https://site.example/news/1', 'https://other.example/x', 'https://site.example/about']);
-    // baseUrl が無い場合、相対リンクは解決できないので入らない
-    expect(extractCitationsFromMarkdown(markdown).map((c) => c.url)).toEqual(['https://site.example/news/1', 'https://other.example/x']);
-  });
-
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
-    await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
-  });
-
-  it('chunkMarkdownContent should split markdown into semantic chunks with headings and tokens', () => {
-    const markdown = `# 主要見出し\nこれは最初のセクションです。\n\n## サブセクション\nこれは 2 番目のセクションです。\n\`\`\`ts\nconst a = 1;\n\`\`\`\n\n## 最後のセクション\n最後のまとめです。`;
-    const chunks = chunkMarkdownContent(markdown, 100);
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0].index).toBe(0);
-    expect(chunks[0].heading).toBe('主要見出し');
-    expect(chunks[0].estimatedTokens).toBeGreaterThan(0);
+    // 手元の宛先には送らず（ALLOW_LOCAL_FETCH が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
+    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.ALLOW_LOCAL_FETCH;
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
+      expect(warn.mock.calls.map((c) => c.map(String).join(' '))).toEqual([
+        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: http://127.0.0.1:59999/invalid-webhook',
+      ]);
+    } finally {
+      warn.mockRestore();
+      if (prevEnv !== undefined) process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    }
   });
 
   it('convertHtmlToMarkdown should extract image metadata, caption, and dimensions', () => {
@@ -2611,14 +2566,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(result.images?.[0].width).toBe(800);
     expect(result.images?.[0].height).toBe(600);
     expect(result.images?.[0].isMainImage).toBe(true);
-  });
-
-  it('validateExtractedLinks should validate link status without breaking', async () => {
-    const links = ['https://example.com/valid', 'http://127.0.0.1:59998/broken'];
-    const statuses = await validateExtractedLinks(links, 500, 2);
-    expect(statuses.length).toBe(2);
-    expect(statuses[0].url).toBe('https://example.com/valid');
-    expect(typeof statuses[0].ok).toBe('boolean');
   });
 
   it('isSecureEqual should correctly compare strings in constant time', () => {
@@ -2683,14 +2630,14 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('validateHostIpDns should block private IPs and throw appropriate security error', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-
-    await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
-    await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
-
-    process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    const restoreLocalFetch = setLocalFetch(undefined);
+    try {
+      await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('localhost')).rejects.toThrow('プライベートネットワーク');
+      await expect(validateHostIpDns('169.254.169.254')).rejects.toThrow('プライベートネットワーク');
+    } finally {
+      restoreLocalFetch();
+    }
   });
 
   it('SimpleSemaphore should limit concurrency correctly', async () => {
@@ -2800,7 +2747,6 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/scrape'].post.requestBody.content['application/json'].schema.type).toBe('object');
     const scrapeProps = doc.paths['/scrape'].post.requestBody.content['application/json'].schema.properties;
     expect(scrapeProps.stripLinks).toBeDefined();
-    expect(scrapeProps.filterLinkDensity).toBeDefined();
     expect(doc.paths['/scrape/stream']).toBeDefined();
     expect(doc.paths['/scrape/batch']).toBeDefined();
     expect(doc.paths['/weather']).toBeDefined();
@@ -2821,32 +2767,53 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(doc.paths['/search/music']).toBeDefined();
   });
 
-  it('validateExtractedLinks should block private and loopback IPs', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-    try {
-      const results = await validateExtractedLinks([
-        'http://127.0.0.1:8000/test',
+  describe('sendWebhookNotification の SSRF 対策', () => {
+    // 止めずに fetch すると、接続の失敗が catch されて resolves だけでは見分けられない。差し替えた fetch が呼ばれたかで確かめる
+    // （公開側の比べは IP リテラルなので、名前解決もしない。差し替えた fetch は何もしないで返す）
+    let realFetch: typeof fetch;
+    let fetched: string[];
+    let prevEnv: string | undefined;
+    // 止めた宛先は console.warn に出る。テストの出力に混ぜず、ここで受けて確かめる
+    let warn: ReturnType<typeof spyOn<Console, 'warn'>>;
+    const warned = () => warn.mock.calls.map((c) => c.map(String).join(' '));
+    beforeEach(() => {
+      warn = spyOn(console, 'warn').mockImplementation(() => {});
+      realFetch = globalThis.fetch;
+      fetched = [];
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        fetched.push(String(input));
+        return new Response(null, { status: 200 });
+      }) as typeof fetch;
+      prevEnv = process.env.ALLOW_LOCAL_FETCH;
+      delete process.env.ALLOW_LOCAL_FETCH;
+    });
+    afterEach(() => {
+      warn.mockRestore();
+      globalThis.fetch = realFetch;
+      if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+      else process.env.ALLOW_LOCAL_FETCH = prevEnv;
+    });
+
+    it('does not fetch loopback, private, link-local and localhost destinations', async () => {
+      const blocked = [
+        'http://127.0.0.1:8000/hook',
         'http://10.0.2.2:3000/admin',
         'http://169.254.169.254/latest/meta-data',
-        'http://localhost:8080',
-      ]);
-      expect(results.length).toBe(4);
-      expect(results.every((r) => r.ok === false && r.status === 403)).toBe(true);
-    } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
-    }
-  });
+        'http://169.254.169.254/hook',
+        'http://localhost:8080/hook',
+      ];
+      for (const url of blocked) {
+        await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
+      }
+      expect(fetched).toEqual([]);
+      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${url}`));
+    });
 
-  it('sendWebhookNotification should block SSRF to internal destinations without throwing', async () => {
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
-    try {
-      await expect(sendWebhookNotification('http://127.0.0.1:8000/hook', { data: 'test' })).resolves.toBeUndefined();
-      await expect(sendWebhookNotification('http://169.254.169.254/hook', { data: 'test' })).resolves.toBeUndefined();
-    } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
-    }
+    it('fetches a public destination (control for the blocked cases)', async () => {
+      await expect(sendWebhookNotification('https://93.184.216.34/hook', { data: 'test' })).resolves.toBeUndefined();
+      expect(fetched).toEqual(['https://93.184.216.34/hook']);
+      expect(warned()).toEqual([]);
+    });
   });
 
   it('convertHtmlToMarkdown and cleanMarkdownTokens should purge hidden elements and zero-width characters', () => {
@@ -2980,7 +2947,8 @@ describe('Sora REST & MCP Endpoints', () => {
   // ==========================================
   it('fetchWeatherWarnings should parse JMA warning structure and handle city names', async () => {
     const warnings = await fetchWeatherWarnings({ city: '東京' });
-    expect(warnings.areaCode).toBe('130010');
+    // 都道府県名（略称を含む）は県全体
+    expect(warnings.areaCode).toBe('130000');
     expect(warnings.reportTime).toBeDefined();
     expect(Array.isArray(warnings.warnings)).toBe(true);
     expect(Array.isArray(warnings.advisories)).toBe(true);
@@ -3005,6 +2973,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     expect(resWarn.status).toBe(200);
     const warnJson = (await resWarn.json()) as any;
+    // 都道府県名（略称を含む）は県全体の欄を返す（大阪市にしない）
     expect(warnJson.areaCode).toBe('270000');
 
     const resEq = await app.request('/disaster/earthquake', {
@@ -3350,6 +3319,17 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(checkJson.eFilingRequired).toBe(true);
   });
 
+  it('POST /trade/cpsc-check and /trade/compliance answer 400 INVALID_INPUT for button_coin with hasBattery: false', async () => {
+    const post = (path: string, body: unknown) => app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const cpsc = await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(cpsc.status).toBe(400);
+    expect(((await cpsc.json()) as any).code).toBe('INVALID_INPUT');
+    const compliance = await post('/trade/compliance', { productName: 'LED Penlight', htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(compliance.status).toBe(400);
+    expect(((await compliance.json()) as any).code).toBe('INVALID_INPUT');
+    expect((await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'button_coin' })).status).toBe(200);
+  });
+
   it('POST /trade/fda-check should handle REST requests', async () => {
     const resEmpty = await app.request('/trade/fda-check', {
       method: 'POST',
@@ -3651,8 +3631,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(52);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(38);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(53);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(39);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -3747,9 +3727,8 @@ describe('Sora REST & MCP Endpoints', () => {
         return new Response('<html><body>ok</body></html>', { headers: { 'Content-Type': 'text/html' } });
       },
     });
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1'); // 既存プールセッションの影響を排除
       await fetchWithSafeRedirects(`http://127.0.0.1:${server.port}/ua-check`);
 
@@ -3757,9 +3736,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(seenUa).toContain('Chrome/');
       expect(seenUa).not.toContain('Macintosh');
       expect(seenUa).not.toContain('Firefox');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3789,9 +3767,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       await closeHttpSession('127.0.0.1');
 
       const base = `http://127.0.0.1:${server.port}`;
@@ -3811,9 +3788,8 @@ describe('Sora REST & MCP Endpoints', () => {
       const browserAl = seen['/browser-path']?.al ?? '';
       expect(browserAl.startsWith('ja-JP')).toBe(true);
       expect(staticAl.startsWith(browserAl)).toBe(true);
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       await closeHttpSession('127.0.0.1');
       server.stop();
     }
@@ -3915,9 +3891,8 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
       dbSaveDomainCookies('127.0.0.1', []); // 他テストのDB永続化分をクリア
 
       await scrapeUrl({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
@@ -3927,9 +3902,8 @@ describe('Sora REST & MCP Endpoints', () => {
       dbSaveDomainCookies('127.0.0.1', []);
       const result = await scrapeUrl({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
       expect(result.content).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
@@ -3963,16 +3937,13 @@ describe('Sora REST & MCP Endpoints', () => {
       },
     });
 
+    const restoreLocalFetch = setLocalFetch('true');
     try {
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
-
       await executeBrowserActions({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, actions: [], extract: { markdown: true } });
       const result = await executeBrowserActions({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, actions: [], extract: { markdown: true } });
       expect(result.markdown).toContain('leaked:false');
-
-      process.env.ALLOW_LOCAL_FETCH = prevEnv;
     } finally {
+      restoreLocalFetch();
       serverA.stop();
       serverB.stop();
     }
@@ -4126,7 +4097,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 52 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 53 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4172,7 +4143,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('reverse_geocode');
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
-    expect(enabledToolsAll.length).toBe(52);
+    expect(enabledToolsAll).toContain('generate_gcc_certificate');
+    expect(enabledToolsAll.length).toBe(53);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4195,7 +4167,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
   it('checkCpscCertificate should fall back to a 6-digit near match when the full HTS code is unmapped', async () => {
     // 実在コード 9503000073 の統計接尾辞だけ変えた架空コード（先頭6桁 "950300" は一致する）
-    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'child' });
+    const result = await checkCpscCertificate({ htsCode: '9503009999', targetAge: 'adult' });
     expect(result.certificateRequired).toBe('unknown');
     expect(result.missingInfo.some((m) => m.includes('950300') || m.includes('Toys'))).toBe(true);
   });
@@ -4366,7 +4338,6 @@ describe('Sora REST & MCP Endpoints', () => {
   it('checkFdaRegulated should return clarifyingQuestions and impactExplanation when foodContact is undefined for FD1 tableware', () => {
     const res = checkFdaRegulated({
       htsCode: '6912.00.4100',
-      productDescription: 'Ceramic coffee mugs',
     });
 
     expect(res.inputCompleteness).toBe('partial');
@@ -4423,7 +4394,7 @@ describe('Sora REST & MCP Endpoints', () => {
     // 規制非該当・未掲載品（ネジ等）: ACE免責コードAを提示
     const resUnmapped = await checkCpscCertificate({ htsCode: '7318.15.0000', targetAge: 'adult' });
     expect(resUnmapped.eFilingRequired).toBe(false);
-    expect(resUnmapped.disclaimerCodeHint).toContain('A');
+    expect(resUnmapped.disclaimerCodeHint).toBe('A (only if confirmed that no CPSC rule applies; Intended Use Code required)');
   });
 
   it('POST /trade/hts-predict should return the classification, the official position, the evidence and the PGA analysis', async () => {
@@ -4498,6 +4469,26 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.disclaimer).toBeTruthy();
   });
 
+  it('POST /trade/compliance ignores generateGcc and sku: 200 without a gcc field', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost/trade/compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: 'Adult Bicycle Helmet',
+          htsCode: '6506.10.60.45',
+          targetAge: 'adult',
+          generateGcc: true,
+          sku: 'HLM-001',
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json).not.toHaveProperty('gcc');
+    expect(json.product).not.toHaveProperty('sku');
+  });
+
   it('POST /trade/fda-check should parse foodContact and evaluate FD1 status', async () => {
     // 飲食用途の陶磁器食器 (Chapter 69) -> FD1, FDA対象
     const reqFoodContact = new Request('http://localhost/trade/fda-check', {
@@ -4505,7 +4496,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Ceramic coffee mugs',
         foodContact: true,
       }),
     });
@@ -4522,7 +4512,6 @@ describe('Sora REST & MCP Endpoints', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         htsCode: '6912.00.4100',
-        productDescription: 'Decorative display ceramic plate',
         foodContact: false,
       }),
     });
@@ -4532,6 +4521,56 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(jsonNonFood.fdFlag).toBe('FD1');
     expect(jsonNonFood.fdaRegulatedLikely).toBe(false);
     expect(jsonNonFood.nextActions.some((a: string) => a.includes('免責') || a.includes('Disclaimer'))).toBe(true);
+  });
+
+  it('POST /trade/gcc-generate answers 400, 422 and a schema-valid package', async () => {
+    const { GenerateGccCertificateResultSchema } = await import('./types.js');
+    const post = (body: unknown) =>
+      app.fetch(new Request('http://localhost/trade/gcc-generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+    const certifier = { name: 'Acme Imports LLC', street: '100 Example Street', city: 'Anytown', state: 'CA', country: 'United States', email: 'compliance@acme-imports.test', phone: '+1-202-555-0101' };
+    const recordCustodian = { ...certifier, name: 'Compliance Manager', email: 'records@acme-imports.test', phone: '+1-202-555-0102' };
+    const lab = { name: 'Acme Test Lab', street: '2 Example Road', city: 'Taipei', state: 'Taipei City', country: 'Taiwan', email: 'lab@acme-lab.test', phone: '+1-202-555-0104' };
+    const helmet = {
+      htsCode: '6506.10.60.45',
+      productName: 'Adult Bicycle Helmet',
+      identifier: 'HLM-001',
+      targetAge: 'adult',
+      citations: ['16 CFR 1203'],
+      manufacture: { date: '2026-06', name: 'Acme Helmet Factory', street: '1 Example Road', city: 'Taichung', state: 'Taichung City', country: 'Taiwan', email: 'factory@acme-factory.test', phone: '+1-202-555-0103' },
+      testing: { date: '2026-06-15', reportNumber: 'TR-0001', parties: [lab] },
+    };
+    const tee = { htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' };
+
+    const badRes = await post({});
+    expect(badRes.status).toBe(400);
+    expect(((await badRes.json()) as any).code).toBe('INVALID_INPUT');
+
+    const incompleteRes = await post({ items: [{ ...helmet, identifier: undefined }] });
+    expect(incompleteRes.status).toBe(422);
+    const incomplete = (await incompleteRes.json()) as any;
+    expect(incomplete.code).toBe('MISSING_REQUIRED_GCC_FIELDS');
+    expect(incomplete.details.items[0].missingFields).toContain('identifier');
+    expect(incomplete.details.missingFields).toContain('certifier.name');
+
+    const pkgRes = await post({ certifier, recordCustodian, orderNumber: 'ORDER-1001', items: [helmet, tee] });
+    expect(pkgRes.status).toBe(200);
+    const pkg = (await pkgRes.json()) as any;
+    expect(GenerateGccCertificateResultSchema.safeParse(pkg).success).toBe(true);
+    expect(pkg.mode).toBe('order_package');
+    expect(pkg.counts).toMatchObject({ totalItems: 2, gccGenerated: 1, disclaimBExempt: 1 });
+    expect(pkg.packageHtml).toContain('ORDER-1001');
+
+    process.env.SORA_GCC_CERTIFIER = '{not json';
+    try {
+      const brokenRes = await post({ recordCustodian, items: [helmet] });
+      expect(brokenRes.status).toBe(500);
+      const broken = (await brokenRes.json()) as any;
+      expect(broken.code).toBe('TRADE_ERROR');
+      expect(broken.error).toContain('SORA_GCC_CERTIFIER');
+      expect((await post({ items: [tee] })).status).toBe(200);
+    } finally {
+      delete process.env.SORA_GCC_CERTIFIER;
+    }
   });
 
   it('convertHtmlToMarkdown should extract JSON-LD product availability (InStock), price, brand, and omit hidden sold-out badges', () => {
@@ -4761,7 +4800,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(evidence.siteName?.source).toBe('dom');
     });
 
-    it('convertHtmlToMarkdown should support stripLinks and filterLinkDensity options', () => {
+    it('convertHtmlToMarkdown should support the stripLinks option', () => {
       const html = '<html><body><h1>テスト</h1><p>詳細は<a href="https://example.com/doc">こちらのドキュメント</a>と<img src="https://example.com/pic.png" alt="画像">をご覧ください。</p></body></html>';
       
       const normal = convertHtmlToMarkdown(html, 'https://example.com', 5000);
@@ -4866,6 +4905,7 @@ describe('Sora REST & MCP Endpoints', () => {
         'check_fda_regulated',
         'verify_hts_code',
         'check_product_compliance',
+        'generate_gcc_certificate',
         'search_laws',
         'get_law_text',
         'search_diet_minutes',
@@ -5481,7 +5521,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 81 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 82 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5513,8 +5553,8 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(81);
-      expect(withContentCount).toBe(81);
+      expect(operationCount).toBe(82);
+      expect(withContentCount).toBe(82);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

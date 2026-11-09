@@ -136,6 +136,26 @@
     "file": "servers/sora/fetch_x_post.ts"
   },
   {
+    "name": "generate_gcc_certificate",
+    "fn": "generateGccCertificate",
+    "category": "trade",
+    "description": "【必須・推測や見本の値は禁止】米国CPSCの一般適合証明書（GCC、16 CFR 1110.11）と、通関の保留に出す書類（表紙、品目ごとのGCC、16 CFR 1610.1(d) の免除の説明）を印刷用のHTMLで作る。値は記録から渡す（州・県が無ければ state は N/A）。足りない項目があれば既定でエラー（allowDraft で下書き）。12歳以下の子供用は CPC が要るので作らない。返却: { packageId, overallStatus, counts, items, packageHtml }",
+    "keywords": [
+      "GCC",
+      "General Certificate of Conformity",
+      "一般適合証明書",
+      "適合証明書",
+      "16 CFR 1110",
+      "CPSC",
+      "eFiling",
+      "通関保留",
+      "Disclaim"
+    ],
+    "method": "POST",
+    "path": "/trade/gcc-generate",
+    "file": "servers/sora/generate_gcc_certificate.ts"
+  },
+  {
     "name": "get_country_context",
     "fn": "getCountryContext",
     "category": "intel",
@@ -154,7 +174,7 @@
     "name": "get_country_context_evidence",
     "fn": "getCountryContextEvidence",
     "category": "intel",
-    "description": "【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに属さない ID は拒否します。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, nextCursor? }",
+    "description": "【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }",
     "keywords": [
       "国地域",
       "根拠",
@@ -204,7 +224,7 @@
     "name": "get_flight_status",
     "fn": "getFlightStatus",
     "category": "life",
-    "description": "【公式運航情報直結】主要空港（羽田、成田、伊丹、関西、中部、新千歳、福岡、那覇等）の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }",
+    "description": "【公式運航情報直結】羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] }",
     "keywords": [
       "フライト",
       "航空",
@@ -430,7 +450,7 @@
     "name": "scrape_batch",
     "fn": "scrapeBatch",
     "category": "web",
-    "description": "【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }",
+    "description": "【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }。results は入力の順ではなく、取得が終わった順",
     "keywords": [
       "一括スクレイプ",
       "一括取得",
@@ -506,7 +526,7 @@
     "name": "search_diet_minutes",
     "fn": "searchDietMinutes",
     "category": "gov",
-    "description": "【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }",
+    "description": "【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。keyword・speaker・nameOfMeeting のどれか1つは必須。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }",
     "keywords": [
       "国会会議録",
       "国会",
@@ -526,7 +546,7 @@
     "name": "search_disaster_warnings",
     "fn": "searchDisasterWarnings",
     "category": "disaster",
-    "description": "【気象庁公式防災直結】大雨・洪水・暴風・大雪・波浪等の特別警報・気象警報・注意報は、一般Web検索の古い情報に頼らず必ず気象庁公式データ直結の本ツールで市区町村単位でリアルタイム取得してください。返却: { areaName, warnings: [{ name, level, status }] }",
+    "description": "【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、一般Web検索の古い情報に頼らず必ず本ツールで市区町村単位でリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] }",
     "keywords": [
       "気象警報",
       "注意報",
@@ -913,7 +933,7 @@
     "name": "watch_list",
     "fn": "watchList",
     "category": "watch",
-    "description": "【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, interval_seconds, last_checked_at?, last_hash? }]",
+    "description": "【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, last_checked_at?, last_hash? }]",
     "keywords": [
       "Web監視一覧",
       "登録確認",
@@ -927,7 +947,7 @@
     "name": "watch_register",
     "fn": "watchRegister",
     "category": "watch",
-    "description": "【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector, interval_seconds }, initialResult?, initialError? }",
+    "description": "【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector }, initialResult?, initialError? }",
     "keywords": [
       "Web監視登録",
       "差分監視",

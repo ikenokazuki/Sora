@@ -1240,7 +1240,7 @@ export function requiresExactRealtimeQuery(query: string): boolean {
 /** realtime HTTPキャッシュキー。完成クエリで識別し条件の混在を防ぐ。 */
 export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): string {
   return JSON.stringify([
-    'search:realtime:json-v2',
+    'search:realtime:json-v3',
     buildYahooRealtimeQuery(options),
     options.sort ?? 'recent',
     options.limit ?? 20,
@@ -1316,6 +1316,9 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
       } else if (/(?:明後日|あさって)/.test(remaining)) {
         const dayAfter = new Date(jstNow.getTime() + 48 * 60 * 60 * 1000);
         targetDateStr = `${dayAfter.getMonth() + 1}/${dayAfter.getDate()}`;
+      } else if (/(?:一昨日|おととい)/.test(remaining)) {
+        const dayBeforeYesterday = new Date(jstNow.getTime() - 48 * 60 * 60 * 1000);
+        targetDateStr = `${dayBeforeYesterday.getMonth() + 1}/${dayBeforeYesterday.getDate()}`;
       } else if (/(?:昨日|きのう)/.test(remaining)) {
         const yesterday = new Date(jstNow.getTime() - 24 * 60 * 60 * 1000);
         targetDateStr = `${yesterday.getMonth() + 1}/${yesterday.getDate()}`;
@@ -1324,7 +1327,7 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
   }
 
   // 2. ノイズ語句の除去 (自然言語フレーズ、助詞、冗長語)
-  const noisePattern = /(?:明日|あした|あす|今日|本日|きょう|昨日|きのう|明後日|あさって|予定|スケジュール|情報|一覧|最新|公式|について|まとめ|何時|何時から|いつ|どこ|どこで|教えて|ライブ予定|ライブ情報|チケット情報|チケット一覧|開催情報|詳細|概要|購入方法|チケット購入方法|タイムテーブル|タイテ|出演時間)/g;
+  const noisePattern = /(?:明日|あした|あす|今日|本日|きょう|一昨日|おととい|昨日|きのう|明後日|あさって|予定|スケジュール|情報|一覧|最新|公式|について|まとめ|何時|何時から|いつ|どこ|どこで|教えて|ライブ予定|ライブ情報|チケット情報|チケット一覧|開催情報|詳細|概要|購入方法|チケット購入方法|タイムテーブル|タイテ|出演時間)/g;
   const cleaned = remaining
     .replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, '')
     .replace(/(?:\d{4}[-/.])?\d{1,2}[-/.]\d{1,2}/g, '')
@@ -1375,6 +1378,19 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
   const normalized = (query || '').replace(/\bfrom:([a-zA-Z0-9_]+)/gi, 'id:$1').normalize('NFKC');
   const modifiers: string[] = [];
   let remaining = ` ${normalized} `;
+  const addModifier = (m: string) => {
+    modifiers.push(m.replace(/\s+/g, ' ').trim());
+    return ' ';
+  };
+  // `(` の直前の - は、語頭に 1 つだけのときに限り除外の記号（-(A B)）。それ以外（foo-(bar)・(a)-(b)・--(a)）は語の一部でも
+  // 記号でもないので外す。直前が - でない位置から始めて走査を線形に保つ
+  remaining = remaining.replace(/(?<!-)-+(?=\()/g, (m, offset: number, str: string) => (m === '-' && /\s/.test(str[offset - 1]) ? m : ' '));
+  // OR の括弧（(A B)・-(A B)）と URL: は、1 件の投稿にそろえる語ではないので修飾子にする（括弧の中の # や - は分けない）。
+  // 入れ子は内側から外す（深さ 16 まで。それより深い残りは下の断片として 1 つにする）
+  for (let prev = '', depth = 0; prev !== remaining && depth < 16; depth++) {
+    prev = remaining;
+    remaining = remaining.replace(/-?\([^()]*\)|(?:^|\s)(?:URL|url):\S+/g, addModifier);
+  }
   remaining = remaining.replace(/\b(?:id|ID):([a-zA-Z0-9_]+)/gi, (_, id) => {
     modifiers.push(`id:${id}`);
     return ' ';
@@ -1387,6 +1403,8 @@ function splitRealtimeQueryParts(query: string): { semantics: string[]; modifier
     modifiers.push(`#${tag}`);
     return ' ';
   });
+  // 括弧が閉じていない断片（A (B・A B)）も語にしない。閉じていない ( は末尾まで、対のない ) はその語だけ
+  remaining = remaining.replace(/-?\([\s\S]*$|(?<![^\s(])[^\s(]*\)[^\s(]*/g, addModifier);
   remaining = remaining.replace(/(?:^|\s)-([^\s-]+)/g, (_, ex) => {
     modifiers.push(`-${ex}`);
     return ' ';

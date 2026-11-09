@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GatedBuilder, createTestAddressData, settleAddressData } from '../test_fixtures/address/builders.js';
+import { GatedBuilder, createTestAddressData, prebuild, settleAddressData } from '../test_fixtures/address/builders.js';
 import { CHIYODA_LG, KEN_ALL_FIXTURE, POSTAL_LAST_MODIFIED, SAPPORO_LG, addTown } from '../test_fixtures/address/harness.js';
 import { createAddressContext, type AddressContext } from './address_context.js';
 import { AddressInputError } from './address_errors.js';
@@ -94,7 +94,8 @@ describe('lookupZip', () => {
   });
 
   test('市区町村の町字が間に合わなければ、市区町村の代表点で答えて incomplete と pending を付ける', async () => {
-    const { ctx } = newContext({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city') });
+    const { ctx, data } = newContext({ wrap: (inner) => new GatedBuilder(inner, (job) => job.kind === 'city') });
+    await prebuild(data, { kind: 'postal' }, { kind: 'master' });
     const lookup = await lookupZip(ctx, '1000014', { waitMs: 300 });
     expect(lookup).toMatchObject({ incomplete: true, pending: [`city:${CHIYODA_LG}`] });
     expect(lookup.candidates[0]).toMatchObject({ town: '永田町', lgCode: CHIYODA_LG, lat: 35.694003, lon: 139.753634, locationLevel: 2 });

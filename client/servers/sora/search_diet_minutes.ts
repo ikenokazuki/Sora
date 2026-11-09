@@ -2,13 +2,13 @@
 import { callSora } from '../../runtime.js';
 
 export type SearchDietMinutesInput = {
-  /** 国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策") */
+  /** 国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   keyword?: string;
-  /** 発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎") */
+  /** 発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   speaker?: string;
   /** 院名 ("衆議院" または "参議院") */
   nameOfHouse?: "衆議院" | "参議院";
-  /** 委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会") */
+  /** 委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")。keyword・speaker・nameOfMeeting のどれか 1 つは必須 */
   nameOfMeeting?: string;
   /** 開会日付範囲 開始 (YYYY-MM-DD) */
   from?: string;
@@ -68,7 +68,7 @@ export type SearchDietMinutesOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source } */
+/** 【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。keyword・speaker・nameOfMeeting のどれか1つは必須。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source } */
 export function searchDietMinutes(input: SearchDietMinutesInput): Promise<SearchDietMinutesOutput> {
   return callSora<SearchDietMinutesOutput>({ method: 'POST', path: '/gov/diet-minutes' }, input);
 }

@@ -38,7 +38,6 @@ export interface YahooRealtimePage {
 export type RealtimeFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
 const ENDPOINT = 'https://search.yahoo.co.jp/realtime/api/v1/pagination';
-const PAGE_WIDTH = 40;
 const MAX_OFFSET = 10000;
 
 export function buildYahooRealtimeApiUrl(options: YahooRealtimePageOptions): URL {
@@ -52,7 +51,8 @@ export function buildYahooRealtimeApiUrl(options: YahooRealtimePageOptions): URL
   if (!Number.isInteger(page) || page < 1) {
     throw new Error(`page must be an integer >= 1 (got ${String(options.page)})`);
   }
-  const start = (page - 1) * PAGE_WIDTH;
+  // limit 件ずつ進む（Yahoo は 40 の倍数でない start も受ける）
+  const start = (page - 1) * limit;
   if (!Number.isSafeInteger(start) || start > MAX_OFFSET) {
     throw new Error(`page offset out of range (page ${page})`);
   }

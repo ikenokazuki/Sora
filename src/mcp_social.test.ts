@@ -85,6 +85,33 @@ describe('F5 country intel social input', () => {
       await server.close();
     }
   });
+  test('social alone is enough: the service sees includeSocial=true through the MCP default', async () => {
+    const seen: unknown[] = [];
+    const { researchCountryContext } = await import('./services/country_intel/report.js');
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createMcpServer({
+      modules: ['intel'],
+      deferTools: false,
+      intelResearch: ((request: any) => researchCountryContext(request, {
+        cache: null,
+        providers: [{
+          id: 'probe', areas: ['social_observations'], latencyClass: 'near_realtime', defaultTtlSeconds: 60,
+          async run(input) { seen.push(input.request.includeSocial); return { items: [], coverage: ['social_observations'] }; },
+        }],
+      })) as never,
+    });
+    const client = new Client({ name: 'intel-social-test', version: '1.0.0' });
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const result = (await client.callTool({ name: 'research_country_context', arguments: { region: 'China', social: { platforms: ['weibo'] } } })) as any;
+      expect(result.isError).toBeFalsy();
+      expect(seen).toEqual([true]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
   test('invalid social platform is rejected before the service runs', async () => {
     let calls = 0;
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

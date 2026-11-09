@@ -22,7 +22,7 @@ export type SearchRealtimeInput = {
   sort?: "recent" | "popular";
   /** 返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る */
   limit?: number;
-  /** ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得) */
+  /** ページ番号 (1-based, デフォルト: 1, 上限: 100。limit 件ずつ進む) */
   page?: number;
   /** 優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public） */
   focus?: "official" | "public";

@@ -60,24 +60,9 @@ describe('buildScrapeCacheKey', () => {
     ['query', { query: '重さ' }],
     ['removeSelectors', { removeSelectors: ['.ad'] }],
     ['stripLinks', { stripLinks: true }],
-    ['filterLinkDensity', { filterLinkDensity: true }],
-    ['onlyHighlights', { onlyHighlights: true }],
+    ['responseMode', { responseMode: 'evidence' }],
     ['highlightMaxCount', { highlightMaxCount: 5 }],
-    ['evidenceMode', { evidenceMode: 'highlights' }],
-    ['includeDiagnostics', { includeDiagnostics: false }],
-    ['includeDiscrepancies', { includeDiscrepancies: true }],
-    ['safeNormalize', { safeNormalize: true }],
-    ['reorderUFlat', { reorderUFlat: true }],
-    ['diversityWeight', { diversityWeight: 0.2 }],
     ['annotateTemporal', { annotateTemporal: true }],
-    ['minimizeTables', { minimizeTables: false }],
-    ['extractSummary', { extractSummary: true }],
-    ['extractCitations', { extractCitations: true }],
-    ['chunkMarkdown', { chunkMarkdown: true }],
-    ['chunkSize', { chunkSize: 500 }],
-    ['validateLinks', { validateLinks: true }],
-    ['formatAsPrompt', { formatAsPrompt: true }],
-    ['highlightMatches', { highlightMatches: true }],
     ['maskPii', { maskPii: true }],
     ['url', { url: 'https://example.com/other' }],
   ];
@@ -107,22 +92,23 @@ describe('buildScrapeCacheKey', () => {
     const same: Array<[string, Partial<ScrapeOptions>]> = [
       ['noCache', { noCache: true }],
       ['timeoutMs', { timeoutMs: 1000 }],
-      ['retries', { retries: 2 }],
-      ['retryDelayMs', { retryDelayMs: 10 }],
       ['tenantId', { tenantId: 'key:abc' }],
-      ['webhookUrl', { webhookUrl: 'https://hooks.example.com/x' }],
       ['onProgress', { onProgress: () => {} }],
       ['fullPage の既定値', { fullPage: true }],
       ['mode の既定値', { mode: 'auto' }],
       ['renderJs の既定値', { renderJs: false }],
       ['stripLinks の既定値', { stripLinks: false }],
-      ['minimizeTables の既定値', { minimizeTables: true }],
-      ['includeDiagnostics の既定値', { includeDiagnostics: true }],
       ['空の headers', { headers: {} }],
       // 資格情報付きの要求は共有キャッシュを使わない（読みも書きもしない）ので、キーには入れない
       ['Authorization', { headers: { Authorization: 'Bearer secret' } }],
     ];
     for (const [label, patch] of same) expect(keyOf(patch), label).toBe(baseKey);
+  });
+
+  test('includeMedia: false は別のキー（既定の true と同じ値は同じキー）、キーの版は v10', () => {
+    expect(keyOf({ includeMedia: false })).not.toBe(keyOf({}));
+    expect(keyOf({ includeMedia: true })).toBe(keyOf({}));
+    expect(keyOf({})).toStartWith('scrape:v10:');
   });
 
   test('ヘッダー名の大文字小文字と並び順、formats の並び順は区別しない', () => {
@@ -219,8 +205,14 @@ describe('trackingCacheKey', () => {
 
   test('キャリアを明示した照会は、ヒントを渡してもキーが変わらない（ヒントを使わないため）', () => {
     const plain = trackingCacheKey({ carrier: 'yamato' }, num);
-    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' }, num)).toBe(plain);
+    expect(trackingCacheKey({ carrier: 'yamato', preferredCarriers: ['sagawa'] }, num)).toBe(plain);
     expect(trackingCacheKey({ carrier: 'sagawa' }, num)).not.toBe(plain);
+  });
+
+  test('自動判別のキーは tracking:v4（v3 は、失敗した会社があっても not_found として保存していた）。会社を指定したキーは v3 のまま', () => {
+    expect(trackingCacheKey({}, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num)).toStartWith('tracking:v4:auto:');
+    expect(trackingCacheKey({ carrier: 'yamato' }, num)).toStartWith('tracking:v3:yamato:');
   });
 
   test('自動判別は、判別に渡すヒントが違えば別のキーになる', () => {
@@ -231,15 +223,19 @@ describe('trackingCacheKey', () => {
       trackingCacheKey({ preferredCarriers: ['sagawa'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato'] }, num),
       trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa'] }, num),
-      trackingCacheKey({ originCountry: 'JP' }, num),
-      trackingCacheKey({ destinationCountry: 'US' }, num),
     ];
     expect(new Set([plain, ...variants]).size).toBe(variants.length + 1);
   });
 
+  test('消した originCountry・destinationCountry を渡しても、キーは変わらない', () => {
+    const sent = { preferredCarriers: ['sagawa'], originCountry: 'JP', destinationCountry: 'US' } as never;
+    expect(trackingCacheKey(sent, num)).toBe(trackingCacheKey({ preferredCarriers: ['sagawa'] }, num));
+    expect(trackingCacheKey({ originCountry: 'JP' } as never, num)).toBe(trackingCacheKey({}, num));
+  });
+
   test('優先キャリアの並び順・重複と、空のヒントは区別しない', () => {
     expect(trackingCacheKey({ preferredCarriers: ['sagawa', 'yamato'] }, num)).toBe(trackingCacheKey({ preferredCarriers: ['yamato', 'sagawa', 'yamato'] }, num));
-    expect(trackingCacheKey({ preferredCarriers: [], originCountry: ' ', destinationCountry: '' }, num)).toBe(trackingCacheKey({}, num));
+    expect(trackingCacheKey({ preferredCarriers: [] }, num)).toBe(trackingCacheKey({}, num));
   });
 });
 

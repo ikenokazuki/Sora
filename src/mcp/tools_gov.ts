@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getLawData, searchDietMinutes, searchLaws } from '../scraper.js';
 import { errorMessage } from '../errors.js';
+import { DIET_MINUTES_INPUT_RULE } from '../types.js';
 import { registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
@@ -70,12 +71,12 @@ export function registerGovTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_diet_minutes',
     'gov',
-    '【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }',
+    '【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。keyword・speaker・nameOfMeeting のどれか1つは必須。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source }',
     {
-      keyword: z.string().optional().describe('検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
-      speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
+      keyword: z.string().optional().describe(`検索キーワード・質問内容 (例: "人工知能", "少子化対策")。${DIET_MINUTES_INPUT_RULE}`),
+      speaker: z.string().optional().describe(`発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")。${DIET_MINUTES_INPUT_RULE}`),
       nameOfHouse: z.enum(['衆議院', '参議院']).optional().describe('院名 ("衆議院" または "参議院")'),
-      nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
+      nameOfMeeting: z.string().optional().describe(`委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")。${DIET_MINUTES_INPUT_RULE}`),
       from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
       until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
       limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),

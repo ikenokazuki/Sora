@@ -1,13 +1,13 @@
 import { extractText, getMeta } from 'unpdf';
 import { safeTruncateMarkdown, estimateTokens } from './enrichment.js';
-import { type ScrapeResult, DEFAULT_MAX_CHARS } from './types.js';
+import { type ScrapeResult, DEFAULT_MAX_CHARS, HIGHLIGHT_SOURCE_MAX_CHARS } from './types.js';
 
 /** PDF バッファからテキスト・メタデータを抽出し Markdown へ構造化 */
 export async function parsePdfToMarkdown(
   buffer: ArrayBuffer | Uint8Array,
   targetUrl: string,
   maxChars = DEFAULT_MAX_CHARS,
-): Promise<ScrapeResult> {
+): Promise<ScrapeResult & { fullContent: string }> {
   const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   const { text, totalPages } = await extractText(uint8, { mergePages: true });
   let pdfMetadata: any = {};
@@ -35,5 +35,6 @@ export async function parsePdfToMarkdown(
     source: 'web',
     metadata: { ...pdfMetadata, totalPages },
     estimatedTokens,
+    fullContent: safeTruncateMarkdown(markdown, HIGHLIGHT_SOURCE_MAX_CHARS),
   };
 }

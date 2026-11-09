@@ -67,6 +67,28 @@ describe('country report', () => {
     expect(report.region.countryCode).toBe('CN');
   });
 
+  test('resolves a Japanese region name', async () => {
+    const report = await researchCountryContext({ region: '台湾' }, { providers: [], now, cache: null });
+    expect(report.region).toMatchObject({ id: 'country:TW', countryCode: 'TW', confidence: 'high' });
+  });
+
+  test('social input alone turns includeSocial on', async () => {
+    const seen: Array<boolean | undefined> = [];
+    const probe: CountryIntelProvider = {
+      id: 'probe', areas: ['social_observations'], latencyClass: 'near_realtime', defaultTtlSeconds: 60,
+      async run(input) { seen.push(input.request.includeSocial); return { items: [], coverage: ['social_observations'] }; },
+    };
+    const report = await researchCountryContext(
+      { region: 'China', includeSocial: false, social: { platforms: ['weibo'] } },
+      { providers: [probe], now, cache: null },
+    );
+    expect(seen).toEqual([true]);
+    expect(report.limitations?.some((info) => info.code === 'social_not_requested')).toBe(false);
+    seen.length = 0;
+    await researchCountryContext({ region: 'China' }, { providers: [probe], now, cache: null });
+    expect(seen).toEqual([false]);
+  });
+
   test('assembles and persists a comprehensive evidence-backed report', async () => {
     const report = await researchCountryContext(
       { region: 'South Korea' },

@@ -1,3 +1,128 @@
+# Sora v4.1.0 — 引数の監査で見つかった食い違いを直し、警報を気象庁の新しいデータ（r8）に移し、米国 CPSC の一般適合証明書（GCC）を作るツールを足した
+
+全ツール・約 260 の引数を、説明と実際の動きが合っているかで調べ、食い違いを直しました。既定の値は変えていません。REST の応答の形は、項目を足したものと、`crawl_site` の各ページから内部の項目を外したもの以外は変えていません。あわせて、米国 CPSC の一般適合証明書（GCC）を作る `generate_gcc_certificate`（MCP の遅延ツール）と `POST /trade/gcc-generate` を足しました（ツールは 52 → 53、遅延ツールは 39）。
+
+## 先に気づく変更（呼び出し側）
+
+- **知らない地名・空港・都道府県で、東京・羽田の答えを返さず、エラーにしました。** `get_weather` の `city`、`search_disaster_warnings` の `city`・`areaCode` は東京に、`get_flight_status` の `airport` は羽田に、`search_road_traffic` の `pref` は東京都に、黙って替えていました。今は見つからない旨のエラー（REST は 400）です。空白だけの `city` も入力の誤りです（今までは天気・警報とも群馬県南部の答えでした。警報で `areaCode` を渡したときは `areaCode` を使う）。省いたときの既定は東京で、警報は東京地方です（v4.0.0 は伊豆諸島・小笠原を含む東京都全体でした。`city: "東京"` と指定したときは東京都全体です）。`get_flight_status` が答えるのは羽田・成田・伊丹・関西・中部の 5 空港だけです（Yahoo の運航情報がこの 5 つだけのため。新千歳・福岡・那覇などは以前も羽田の答えでした）。空港名の一部だけ（「羽」「o」）・「大阪」・2 つの空港を含む入力もエラーです。英語・ローマ字の名前（「Haneda」「Kansai International Airport」）と全角の英数字は解決し、「東京」「tokyo」だけなら羽田です。
+- **同じ名前の町村が複数ある地名は、候補を挙げたエラーにしました。** 「森町」「府中」「川崎」「中野」「草津」「千代田」などは、`get_weather` と `search_disaster_warnings` で「北海道森町、静岡県森町」のように挙げて聞き返します。都道府県名か「市」「町」まで付ければ解決します。ほかの予報区の市町村にも当たる気温の地点の名前（「上野」「池田」「湯沢」「大野」）と「日高」も、市町村と予報区を挙げて聞き返します。都道府県名でない天気の地名で、同じ予報区に「市」「区」を足した市区があるもの（「横浜」「神戸」「札幌」など）は、警報ではその市区（横浜市など）、天気ではその予報区です。郡の付いた住所（「北海道上川郡上川町」）は郡の後ろの町村で引きます（今までは別の県の地名に当たることがあった。地名の読み方は「天気・警報・地震・標高」の節）。地名の表 `city_map.ts` は、気象庁の市町村の表と突き合わせて直しました（97 件を外し、8 件を直し、気温の地点と主な島などの 63 件を足した。例: 石垣島・竹富島・西表島は石垣島地方、小樽は後志地方、日光・鬼怒川は栃木県北部）。
+- **今まで通っていた不正な入力が、REST では 400、MCP では検証エラーになります。** 対象は `POST /search`（`/search/deep` などの別名も）、`/search/trend`、`/transit/route`、`/weather`（GET も）、`GET /geo/elevation`、`/crawl`・`/crawl/stream`、`/scrape`・`/scrape/stream`・`/scrape/batch`、`POST /map`、`/gov/diet-minutes`、`/search/music` です。主なものは次のとおりです。`/search` の `limit` が 21 以上（今までは 20 に丸めていた）と、`formats`・`updated`・`highlightMaxCount`・`maxChars` の不正な値。`/search/trend` の `limit` が 1〜50 の整数でないもの。`/weather` の `days` が 1〜8 の整数でないもの（文字列の `"3"` も不可）。標高の `lat`・`lon` の範囲外（lat は -90〜90、lon は -180〜180。MCP の `get_elevation` も同じ）。`/transit/route` の `via` が 4 つ以上。`GET /geo/elevation` の数でない `lat`・`lon`（`35.6abc` など。今までは先頭の数だけを読んだ）。`/crawl` の `maxDepth`（0 と 6 以上）・`maxPages`（51 以上）・`concurrency`（11 以上）・`maxChars`・`timeoutMs` の範囲外（`/crawl/stream` は、ストリームを開く前に 400）。`/scrape` 系で `renderJs` と `fastOnly` の同時指定や壊れた `removeSelectors`（今までは 500 や、`/scrape/batch` では 200、`/scrape/stream` ではストリームの中の `SCRAPE_ERROR`。今はストリームを開く前に 400）、`POST /map` の `limit`（1〜1000）・`timeoutMs`（1〜120000）の範囲外と型の誤り（今までは 1000 を超える `limit` は 1000 に丸め、ほかの値は 500 など）、`scrape_batch` の `webhookUrl` が URL でないもの。`search_diet_minutes` で `keyword`・`speaker`・`nameOfMeeting` のどれも無いもの（今までは REST が 500）。`search_music` の `attribute` が 3 つの値以外のもの。`search_road_traffic` の `pref` の数字以外の混じったコード（`"13abc"`。今までは 13）。`/search`・`/search/trend`・`/crawl`・`/scrape` などのスキーマの誤りは「項目名: 理由」の文で返します（`/weather`・`/transit/route`・`/search/music` などは今までの文と `details`）。JSON として読めない本文は、`/search`（別名も）・`/search/web`・`/search/image` などの Yahoo の検索・`/search/realtime` でも 400 `INVALID_JSON` です（今までは 500）。新しく検証するルート（`/search`・`/search/trend`・`/transit/route`・`/weather`・`/crawl`・`/map`）と `/scrape`・`/scrape/stream`・`/scrape/batch` では、トップレベルの `null` を「指定なし」として扱います（必須の項目が `null` なら 400。`/scrape` 系は今まで 400）。
+- **CPSC の判定が変わる品があります**（`check_cpsc_certificate`・`check_product_compliance`・`generate_gcc_certificate` が同じ判定を使います）。大人の衣料（HTS の第 61・62 類と、CPSC の一覧の Clothing・Shoes）は、16 CFR 1610.1(d) の試験の免除で決まります。免除に当たれば証明書も、証明書のデータの eFiling も要らず（`certificateRequired: false`）、81 FR 12587（2016 年 3 月 25 日から）の執行裁量で、ACE では Disclaim B を送れます（任意。送るときは Intended Use Code 130.006 が要ります）。今までは、一覧にある衣料のコードは一律に GCC が要るとし、一覧に無い第 61・62 類のコードは `unknown` でした。繊維の組成は `material` に `"100% polyester"` の形で入れ、acrylic・modacrylic・nylon・olefin・polyester・wool だけなら免除です（別の名前は読みません）。平らな生地は `fabricSurface: "plain"` と `fabricWeightOzPerSqYd` が 2.6 以上で免除です。免除に当たらないと決まれば GCC、足りない事実は `clarifyingQuestions` で聞きます。大人の帽子・手袋・履物の見出し（6504〜6506・6116・6216・6401〜6405）は、16 CFR 1610.1(c) の条件に当たるかで決まるので、`unknown` と条件の説明を返します。乳児の衣類の見出し（6111・6209）で `targetAge: "adult"` は、大人の免除を判定せず `unknown` で年齢を聞きます。ボタン・コイン電池は `hasBattery: true` と `batteryType: "button_coin"` で 16 CFR 1263 を当てます（`button_coin` だけでも電池ありとして扱い、`hasBattery: false` と一緒だと REST は 400、MCP はエラーです）。区分の規則の参考を載せるのは、確かめた 3 区分（Clothing・Infant Sleep Products・Toys）だけで、ほかは `個別規格要確認` です（Infant Sleep Products は 16 CFR 1632/1633 でなく 16 CFR 1236・1218・1241 に直しました。大人の玩具には ASTM F963 などが「当たる」と書かず、年齢で確かめる注記を付けます）。同梱の CPSC の一覧には、PDF の行の折り返しで抜けていた 5 件を足しました（591 件）。
+- **消した引数があります。** 送っても、エラーにはならず、黙って無視します。型付きのクライアント（`client/`）の型からは消えました。
+
+| 消した引数 | 対象 | 扱い |
+|---|---|---|
+| `productCategory`・`description` | check_cpsc_certificate | どこからも読まれていなかった。判定は変わらない。リストに無い HTS コードの案内から、カテゴリを聞く質問を外した（`inputCompleteness` は `complete`。「CPSC公式に個別確認」は `nextActions` の 1 か所だけ） |
+| `productDescription` | check_fda_regulated | どこからも読まれていなかった |
+| `originCountry`・`destinationCountry` | track_package | 自動判別に使われていなかった（絞り込みは `preferredCarriers`） |
+| `verbose` | REST `POST /tracking` | 読まれていなかった |
+| `intervalSeconds` | watch_register | 自動で巡回する処理は無い。差分は `watch_check` を呼んだときに前回と比べる。応答の `interval_seconds` は保存した値として残る |
+| `page` | REST `POST /search/news` | 同梱の検索処理が `page` に対応していなかった |
+| 本文の `ownerToken` | REST `POST /browser/action` | REST は `Authorization` ヘッダーで持ち主を確かめる。MCP の `browser_action` の `ownerToken` は残る |
+
+## 天気・警報・地震・標高
+
+- **`search_disaster_warnings` の警報を、気象庁の新しいデータ（`warning/data/r8/`）から読みます。** 気象庁は 2026 年 5 月下旬に新しい防災気象情報に移り、今まで読んでいた `warning/data/warning/` は 5 月の発表のまま止まっていて、数か月前の警報を今の警報として返していました。すべての報の「発表」「継続」だけを、同じ種類は 1 つ（「発表」を「継続」より先）にして合わせ（「解除」「発表警報・注意報はなし」は除く）、`reportTime` は使った報のうち最も新しい発表日時です。応答の形は同じで、レベル 5・特別警報は `specialWarnings`、警報・危険警報（レベル 4）は `warnings`、注意報は `advisories` です。大雨・土砂災害・高潮には段階 `alertLevel`（2〜5）が付き、名前は気象庁のページと同じ（「大雨危険警報」など）です。旧い洪水警報・注意報（コード 04・18）は返りません。**河川の氾濫（氾濫危険情報など）は対象外です**（気象庁のページは別のデータ `flood/data/r8/flood_xml.json` から読んでおり、Sora は読んでいません）。
+- **警報の地名を、市町村の単位で解決します。** 今までは都道府県の予報区をすべて合わせて返していました（新宿区に小笠原・伊豆諸島の警報が混ざっていた）。今は、市町村 → 予報区 → エラーの順に解決し、その範囲の警報だけを返します。都道府県名（「静岡県」と、「静岡」「石川」「東京」などの略称）は、今までどおり県全体です。`areaCode` は 7 桁（市町村）・6 桁（予報区または気象台）・2 桁（都道府県）を受けます。都道府県名と 2 桁の番号は、気象台が複数ある北海道・鹿児島・沖縄では、気象台の番号を挙げ、市町村名・地方名でも引けることを書いたエラーです。気象台の名前（「上川・留萌地方」「八重山地方」など）は、その気象台の範囲全体です。応答の `areaCode`・`areaName`・`prefecture` は解決した値になりました（今までは入力のまま、または「東京」）。気象庁が区域に分けている市（横浜・神戸など）は、区域の番号をカンマでつないだ `areaCode`（例 `1410011,1410012`）で返し、その形を渡すこともできます。名前が市で終わる区域も市全体に入ります（「日光市」の警報に「日光市今市」の区域が入る）。気象庁のデータに解決した番号の欄が無いときは、「警報なし」ではなくエラーです。天気・警報のキャッシュには、最初に引いた入力の地名が残らなくなりました。
+- **`get_weather` の気温と週間予報を、その予報区のものにしました。** 今までは気象台の最初の地点・地域で、北九州が福岡の気温、長野県中部・南部が北部の週間予報、青森県下北が津軽の週間予報、伊豆諸島・小笠原が東京の週間の気温でした。今日〜明後日の気温は予報区の地点（応答の `temperatureArea`）、3 日目以降は予報区を含む週間予報の地域（「中部・南部」など）の天気と、予報区の地点（週間予報に無い地点は、その地域の地点）の気温です。北海道・鹿児島・沖縄（27 予報区で 404 だった）と、十勝・奄美も引けるようになりました。秋田県内陸の気温は、気象庁の並びのとおり最初の地点の鷹巣です（横手は 2 つ目の地点）。都道府県名は県の代表の予報区で（「山口県」は「山口」と同じ中部。v4.0.0 は西部）、`"北海道"` だけは予報区の番号と名前を挙げたエラーです。気象庁の予報区の名前（「十勝地方」「下北」、いくつもの県にある「東部」などは「神奈川県東部」）と気温の地点の名前（「古川」「津川」など）はその予報区で、気象台の名前（「上川・留萌地方」）は予報区を挙げたエラーです。`POST /weather`・`GET /weather` の 500 には、ほかのルートと同じ `code`（`WEATHER_ERROR`）・`status`・`retryable` が付きます。
+- **地名の一部の一致で、別の県に当たらないようにしました**（天気・警報とも）。後ろに町名などが続く入力はいちばん前の地名で引き（「日光市中宮祠」は山口県の光市でなく日光市）、郡の付いた住所は郡の後ろの町村で引きます（先頭の市・区の後ろの郡は町名。「山口市小郡栄町1丁目」は千葉県の栄町でなく山口市）。先頭の都道府県名は、短い形でもその都道府県の中で後ろを引きます。「〜島」で終わる入力は、都道府県名・市区町村・島の名前で始まるときだけ一部の一致を使い（「小浜島」を福井県の小浜市にしない。主な島は地名の表に足した）、「美ヶ原高原」の「高原」は宮崎県の高原町にしません。いちばん前の地名が 1 つに決まらなければ候補を挙げたエラー、見つからなければ市区町村の名前か都道府県名を付けるよう求めるエラーです。入力の中の空白は無視します。旧国名・地方名などを前に付けた名前（「安芸府中」「東北郡山」）と郡の名前だけ（「足柄上郡」）は、今も前の語や郡の名前の一部が別の県の市町村に当たることがあります（都道府県名を付ければ避けられます）。
+- **`search_earthquake` の失敗をエラーにしました**（今までは 0 件の結果で、「地震が無い」と区別できなかった。MCP はエラーの応答、REST は 500。キャッシュしません）。`minIntensity` が既定より大きいときは 100 件取ってから震度で絞るので、`limit` が小さくて 0 件になることがなくなりました。
+
+## 検索
+
+- **`search_realtime` の `page` が `limit` 件ずつ進みます。** 今までは 40 件ずつ進んだため、`limit` 20（既定）の 2 ページ目は 41 件目から始まり、21〜40 件目が抜けていました。今は `(page-1) × limit` 件目から取ります（Yahoo が 40 の倍数でない開始位置を受けることを確かめてあります）。`missingTerms` に、括弧と `URL:` の断片（`(ハロウィン`・閉じていない `(` から後ろ（`A (B C` の `(B C`）・`URL:example.com` など）も入らなくなりました（`foo-(bar)` の `-` は除外の記号として読まない）。
+- **MCP の `search_image`・`search_video`・`search_chiebukuro` に `page` を足しました**（REST と同じ）。`page` は `limit` によらず Yahoo のページの大きさ（20 件、知恵袋は 10 件）ずつ進むので、漏れなく続けるには `limit` を省いてください。`limit` の説明は「最大 20 件（知恵袋は 10 件）。大きい値を指定しても 20 件（10 件）」になりました（スキーマの上限は 50 のままで、エラーにはしません）。
+- **MCP の Yahoo の 6 ツール（image・video・news・chiebukuro・suggest_keywords・realtime）に、REST と同じキー・時間のキャッシュをかけました。** 同じ検索は REST と MCP で答えを共有し、MCP の応答にもキャッシュに当たったときは `cached`・`cachedAt`・`ageSeconds` が付きます（`search_realtime` は当たらないときも `cached: false`。`verbose` では `executedWaves`・`stopReason`・`requiredTerms`・`coveredTerms` も付きます）。同梱の検索処理が返したエラーの文（Yahoo の 503 など）は、30 分でなく 1 分だけ残します。
+- **`search_deep` の `noCache` が、ページ本文の取得にも届くようになりました**（今までは統合検索のキャッシュだけを迂回していた）。X のタイムライン・プロフィールのページの本文（markdown）は、同じ応答の `realtime.items` に同じアカウントの投稿があるときは省きます（同じ投稿が 2 回入っていた。ハイライトは残す。投稿 1 件の URL、`realtime` が無いとき、`formats` に `markdown` を明示したときは今までどおり）。
+- **`search_route` の `sortBy` と `seatPreference` が効くようになりました。** `transfer`（乗換回数順）と `fare`（料金順）が逆に Yahoo へ送られていて、座席の指定は送られていませんでした（省いたときは Yahoo の既定の自由席優先）。`POST /transit/route` は `year`・`month`・`day`・`hour`・`minute` を受ける（日時の解決に使われている）ので、スキーマに足して残しました。
+- **`get_flight_status` の行き先・出発地が正しくなりました**（到着の一覧に出発地、出発の一覧に到着地の空港が入っていた。`keyword` の絞り込みも当たらなかった）。
+- **`search_road_traffic` が、情報が無いときに「順調」と言わなくなりました**（道路名で絞って 0 件、表に無い道路名、都道府県のページから 1 件も読めない、のとき「この道路の情報は見つかりませんでした」）。`pref` と `road` を両方指定したときは、その都道府県のページを道路名で絞ります（今までは `road` が表に当たると `pref` を無視した）。
+
+## 取得（scrape・crawl・map・browser）
+
+- **`maskPii: true` が、本文とハイライトのほかの文字列にも効きます。** 今までは `content` とハイライトだけで、`html`・`rawHtml`・`title`・`description`・`tables`・`extracted`・`jsonLd`・`events`・`author`・`images` の `alt` など・PDF の `metadata`・動画のチャプターの題は元のままでした。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列は、パスの数字を電話番号と取り違えて壊すため、マスクしません（`socialLinks`・`ogImage`・`twitterHandle` も。`extracted` の中の URL はマスクの対象）。マスクで同じになった表の見出しは、`_2` などを付けて列を残します。`screenshot` の画像はマスクしません。
+- **`formats` に `screenshot` があれば、`mode` が `auto`（既定）でもブラウザで画像を撮ります**（`scrape`・`scrape_batch`・`crawl_site`・`search_deep` の本文の取得など）。今までは、静的な取得が通ると画像も警告も付きませんでした。静的に取ったあとでブラウザを使うので、その HTML のページは 2 回取りに行きます。静的に取れたページは、本文と HTTP の状態を静的な取得のまま返し、ブラウザからは画像だけを使います（ボット対策でブラウザだけが 403 の画面に飛ばされても、本文を替えない）。`mode: "fast"`（`fastOnly`）や、ブラウザで撮れなかったとき（本文が 50 字未満の SPA のページも、例外にしない）は、静的に取れた結果に、画像を取れなかった旨の `warnings`（新しい項目）を付けて返し、その結果は 1 分だけキャッシュします。PDF・画像・音声・動画のファイルも、本文を残したまま `warnings` を付けます。`search_web`・`search_deep` の結果にも `warnings` が残ります。
+- **`headers` が、ブラウザの経路（`mode: "browser"`・SPA への切り替え・REST の `renderJs`）でも届きます**（今までは静的な取得だけ）。最初のページと同じ送り先には全部、別のオリジンへのページ遷移（リダイレクトなど）には認証用のヘッダー（`Authorization`・`Cookie`・`X-Api-Key` など）を除いて付けます。画像やスクリプトなどの別オリジンへの要求には付けません。`User-Agent` はブラウザでは送りません（`navigator.userAgent` と食い違うため。静的な取得では今までどおり送る）。
+- **MCP の `scrape`・`scrape_batch` の `verbose` が `highlightDiagnostics` に届きます**（今までは REST だけ）。
+- **`crawl_site`・`POST /crawl` の各ページを、`scrape` と同じ形に整えました。** `formats` に `links` が無ければ `links` を付けず、`quality`・`evidence`・`qualityReasons`・`missingFields` などの内部の項目も付きません。`webhookUrl` の通知の payload は、この整えた結果です（`/crawl/stream` は今まで送られていなかった）。`scrape_batch` の通知も、応答と同じ整えた結果です。REST の `/scrape`・`/scrape/stream`・`/scrape/batch` は、本文に `verbose` が無ければ `?verbose=true` を読みます。`/scrape/stream` は、PDF・画像・動画のページや、ブラウザが失敗して静的な結果を返すときも、結果を `done` のイベントで送ります（今までは `done` を送らずに閉じていた）。
+- **`map_site` の `since`・`until` を、日付で絞ってから `limit` で切ります**（今までは先に件数で切るため、`limit` が小さいと 0 件になった）。日付で絞るときは、サイトマップの先頭 5,000 件まで読みます。`lastmod` の無い URL は常に残り、リンクをたどる切り替えのときは効きません。子のサイトマップは、先頭の 1 つを取ってから、まだ足りなければ残りを 3 つずつ並べて取ります（結果は子の並びのまま）。
+- **`browser_action` の `extract.clipSelector` だけを指定すると画像が空白になる不具合を直しました。** 画像の指定なしで作ったセッションも、あとの呼び出しで `screenshot`・`clipSelector` を求めれば画像を読み込んで撮ります（開いたままのページの CSS の背景画像と Web フォントは次の遷移から）。`inspect_image` は、画像でない応答（HTML など）を `image/jpeg` の成功として返さず、エラーにします（Content-Type が不正でも中身が画像のものは今までどおり）。
+
+## 貿易・荷物・監視・国会・音楽
+
+- **`watch_check` の `webhookSent` が、通知先が 2xx で受け取ったときだけ `true` になります**（今までは送る前に `true`）。応答を待ちますが、変化のあった対象の通知は保存のあとにまとめて（同時に 5 件まで）送るので、待ち時間はおおむね最も遅い通知先で決まります（1 件あたり最大約 5 秒）。
+- **`verify_hts_code` の `productDescription` は必須のままですが、判定には使いません**（根拠の記録として応答に返すだけ）。
+- **米国 CPSC の一般適合証明書（GCC）を作る `generate_gcc_certificate`（MCP の遅延ツール）と `POST /trade/gcc-generate` を足しました。** 今の 16 CFR 1110.11 の要素の GCC と、通関の保留に出す一式（表紙・品ごとの GCC・16 CFR 1610.1(d) の免除の説明）を、印刷用の HTML（`packageHtml`）と JSON の要約（`packageId`・`overallStatus`・`counts`・`items`）で返します。Markdown は返しません。`items`（1〜50 件、1 件 1 製品）だけを受け、各品に `htsCode`（10 桁）と `productName`（英語）が要ります。HTS は推測せず、判例も HTS の全件も読みません。証明書に載せる値は呼び出し側が記録から渡したものだけで、規則（`citations`）も呼び出し側の答えです。`citations: []` は「当てはまる規則が無いと証明者が確かめた」という答えで、Sora が当てはまると判断した規則（ボタン・コイン電池の 16 CFR 1263、衣料の 16 CFR 1610）が `citations` に無いと下書きにします。大人の衣料で 16 CFR 1610.1(d) の免除に当たる品は Disclaim B（Intended Use Code 130.006）、`citations: []` で CPSC の一覧にあるコードは Disclaim A（送るには Intended Use Code が要ります）、12 歳以下は GCC でなく CPC が要るので `cpc_required_instead` です。足りない記録は、既定で 422 `MISSING_REQUIRED_GCC_FIELDS`（`allowDraft: true` なら下書きを返す。MCP は `isError` で同じ `code` と `details`）、見本・仮置きに見える値は 400 `UNVERIFIED_PLACEHOLDER_INPUT`（一覧は完全ではありません）、証明書に載る値にラテン文字以外の文字（漢字・かな・ギリシャ文字など）があれば 400 `INVALID_INPUT`（16 CFR 1110.9(a)）です。試験の日（`testing.date`）は `YYYY-MM-DD`、製造の日は年月でも構いません。`url` を付けた品（1 回に 5 件まで。ブラウザなしの静的な取得で、1 品 10 秒まで）は、商品ページから番号などの候補（`suggestions`）を返すだけで、証明書には載せません。証明者と記録の担当は、呼び出し側の値か、サーバーの環境変数 `SORA_GCC_CERTIFIER`・`SORA_GCC_CUSTODIAN`（JSON。共有のサーバーでは設定しない）の値を、項目ごとに混ぜず丸ごと使います。`packageId` と `certificateId` は内容のハッシュで、生成の時刻は入りません。Sora は ACE にも CPSC にも何も送らず、適合も保証しません。証明書の中身が正しいことの責任は証明者（輸入者など）にあります（応答の `disclaimer`）。既知の限界: 応答の大きさは、10 品で約 3 万字、50 品で約 14 万字です（応答を長さで切るクライアントでは、品を分けて呼んでください）。
+- **`check_cpsc_certificate` に `hasBattery`・`batteryType`・`fabricSurface`・`fabricWeightOzPerSqYd` を足しました。** `check_product_compliance` にも `fabricSurface`・`fabricWeightOzPerSqYd` を足しました（`hasBattery`・`batteryType` は前からあります）。`batteryType` は、空気亜鉛電池（16 CFR 1263.1(d) で対象外）なら `other` を書きます。生地の重さは oz/sq yd（16 CFR 1610.1(d)(1) の単位。g/m² なら 33.906 で割る）だけで、丸めずに比べます。
+- **引数の説明を、実際の動きに合わせて直しました。** 例: `foodContact` は HTS の 4 桁が FCS の表の品目（3924・4419・6911・6912・7013・7323）のときだけ、`hasBattery` は `true` のときだけ検索語に battery を足す、`preferredCarriers` は自動判別のときだけ、`annotateTemporal` は「来週」だけでは注記しない、`browser_action` の `timeout` はページ遷移の待ちだけ、`evaluate` は `ALLOW_BROWSER_EVALUATE=true` のときだけ動く、`search_diet_minutes` は `keyword`・`speaker`・`nameOfMeeting` のどれか 1 つが要る（OpenAPI の 400 にも書いた）、など。README だけの訂正もあります（`search_news` の既定は 20 件、`suggest_keywords` の最大は 20 件、`ALLOW_BROWSER_EVALUATE` の既定は止める側、コードに無い `SAFE_BROWSER_MODE` の記述を削除）。
+
+## 国の情報
+
+- **`research_country_context` の `region` が、日本語の国名を解決します**（「台湾」「日本」「韓国」「アメリカ合衆国」など。ICU の国名から作り、表は持たない）。正式名の先頭だけの入力（「アメリカ」）は、4 文字以上で 1 か国だけに当たるときに `confidence: "medium"` で解決します（「アラブ」「サウジ」は解決しない）。複数に当たるもの（「コンゴ」「ドミニカ」）は解決しません。国名の空白と全角・半角の違いは無視し（「ミャンマー(ビルマ)」）、`USA` も米国になりました（v4.0.0 では解決しなかった）。
+- **`social.platforms` を指定すると、`social.queries` の別の SNS も `platforms` の中に絞ります**（今までは `queries` の SNS をすべて検索した）。**`social` を渡したら `includeSocial` を `true` とみなします**（今までは別に渡さないと失敗した。MCP は明示の `false` と既定の `false` を区別できないため、`false` でも `true` になります）。
+- **`get_country_context_evidence` の `evidenceIds`（REST は `ids`）で、その報告に無い ID を `missingIds` で返し、`limit` を超える分を `nextCursor` で続け、`cursor` を読みます**（今までは無い ID を黙って落とし、超えた分を `nextCursor` 無しで切り、`cursor` を読まなかった）。古い・別の問い合わせの `cursor` は、REST では 500 でなく 400 です（`/updates` の `cursor` も）。
+
+## そのほか
+
+- 答えを間違えていた 4 件を直しました。`get_flight_status` は、便が 0 件のとき「順調」と言わず、読み取れなかった旨か、条件に合う便が無い旨を返します。`annotateTemporal`・日付を含む問い・`search_realtime` の言い換えで、「来月」「先月」「再来月」が月末にあふれず（1月31日の「来月」は 2月28日）、「一昨日」を 2 日前に読み、「当日券」「当日精算」などの「当日」を日付として注記しません。`track_package` の自動判別は、照会に失敗した会社があって荷物の証拠が無いとき、`not_found` でなく `error`（失敗した会社の名前入り）を返します。`get_lyrics` は、記号だけの曲名が検索結果のどれにでも一致する誤りと、3 文字以下の歌手名の部分一致（「ai」が「mai」に当たる）を直しました。
+- キャッシュのキーの版を上げました。入れ替えた直後は、同じ取得・検索でも取り直します: `scrape:v9` → `v10`、`search:integrated:v12` → `v13`、`search:realtime:json-v2` → `json-v3`、`traffic:v2` → `traffic:v3`、`tracking:v3:auto` → `tracking:v4:auto`（自動判別のキーだけ）、`country-intel:provider:v1` → `v2`、版の無かった `map:`・`weather:`・`disaster:warning:`・`disaster:earthquake:`・`transit:`・`traffic:flight:`・`img_inspect:`・`search:web:`・`lyrics:` は、それぞれ `v2`（`weather:` と `disaster:warning:` は `v3`）を付けた形になりました。
+- MCP の定義の大きさを、`createMcpServer` の `tools/list` の JSON で測ると（v4.0.0 → v4.1.0）、最初から見える 14 ツールは 21,587 → 22,953 字（+6%）、全ツールは 209,156 字（52 ツール）→ 215,982 字（53 ツール）、`instructions` は 8,881 → 8,948 字です。最初から見える 14 ツールの説明文（`description`）の合計は 3,490 → 3,495 字（上限 3,500 字）で、`generate_gcc_certificate` は遅延ツールなので、これは変わりません。HTTP の経路で測る `scripts/measure-context.ts` の値（既定 22,269・全ツール 63,529・`instructions` 8,948。全ツールの上限は 64,000）は測り方が違うので、これらと一致しません（`docs/code-execution.md` を参照）。
+- 天気・警報の地名の表 `src/jma_areas.ts` を作り直すスクリプトを `scripts/jma-areas/` に入れました（手順は README の「開発時の検証」）。
+- 型付きのクライアント（`client/`）を作り直しました。`generate_gcc_certificate` を足し、`check_cpsc_certificate`・`check_product_compliance` の新しい引数を入れました。`search_deep` の `realtimeFocus` の説明から「(default)」を外し（省くと検索語から決まる）、`search_trend` の `limit`・`search_deep` の `maxChars`・`realtimeLimit`・`search_tools` の `detail` の説明も実際の動きに合わせました。
+- `docs/engines/` に、判断をする機能（HTS コードの推測、CPSC・GCC・FDA の判定、住所の正規化、地名の解決、根拠の選び方など）が答えをどう決めているかの説明を足しました。README の「判断エンジンの一覧」から読めます。
+
+# Sora v4.0.0 — 本文の画像とハイライトの選び方を直し、効いていない引数を消して responseMode にまとめた
+
+## 破壊的な変更（引数）
+
+- **効いていない引数・使われていない引数を消しました。** 消した引数を送っても、REST も MCP もエラーにはならず、黙って無視します。そのため、`onlyHighlights: true` などを明示していた呼び出しは、エラーにならないまま全文が返り、応答が大きくなります。下の表の移行先に替えてください。型付きのクライアント（`client/`）の型からも消したので、TypeScript ではコンパイルエラーになります。
+- **`onlyHighlights`・`evidenceMode`・`extractHighlights` を、`responseMode`（`"full"` / `"evidence"`）にまとめました。** `scrape`・`scrape_batch`・`crawl_site` と REST の `/scrape`・`/scrape/batch`・`/crawl` の既定は `"full"`、`search_deep` と `POST /search` は今までどおり `"evidence"` です。scrape 系の `"evidence"` は、検索語に合うハイライトがあれば `content` をハイライトに置き換えます（本文に合う節が無いときは、ページの説明文を補完の証拠として返します）。`query` があれば必ずハイライトを作るので、ハイライトが要らないときは `query` を渡さないでください。`/scrape` と `/scrape/batch` は正しくない値を 400 にし、`/crawl` は `"full"` として扱います。
+- **`search_deep`・`POST /search` で `extractHighlights: false` を使って本文を残していた呼び出しは、`responseMode: "full"` か `formats: ["markdown"]` に替えてください。** v3.0.0 のリリースノートで案内していた方法ですが、v4.0.0 では効かず、本文が省かれます。`formats` に `markdown` が無くても `contextSufficiency` が付くようになります。
+- **`reorderUFlat` を消しました。** scrape のハイライトには効いていませんでした。`search_deep`・`crawl_site`・`POST /search`・`POST /crawl` では、`true` のとき結果を U 字に並べ替えていました。v4.0.0 では点数順のまま返します。
+- **`scrape_batch`・`POST /scrape/batch` の `webhookUrl` の通知は、一括の完了時の 1 回だけになりました**（payload は一括の結果）。今まではページごとの通知もありました。`scrape`・`POST /scrape`・`POST /scrape/stream` の `webhookUrl` は消しました。
+- **MCP の `scrape`・`scrape_batch` から `renderJs`・`fastOnly`・`selectors`・`clipSelector`・`removeSelectors` を外しました。** REST と型付きのクライアントには残ります。`renderJs`・`fastOnly` の代わりは `mode` です。MCP からは、`selectors` の結果の `extracted` と、要素のスクリーンショットは得られなくなります。
+
+| 消した引数 | 対象 | 移行先・扱い |
+|---|---|---|
+| `onlyHighlights: true`・`evidenceMode: "highlights"`・`"contextual_highlights"` | scrape・scrape_batch・crawl_site | `responseMode: "evidence"` |
+| `extractHighlights` | scrape 系・search_deep・POST /search | scrape 系: 不要（`query` があればハイライトを作る）。search_deep で本文を残すには `responseMode: "full"` か `formats: ["markdown"]` |
+| `includeDiagnostics`・`includeDiscrepancies`・`diversityWeight`・`minimizeTables` | 全ツール | 不要（効いていなかった。MMR の重みは 0.7、表はいつも縮める） |
+| `reorderUFlat` | 全ツール | 不要（点数順のまま返す） |
+| `extractSummary`・`extractCitations`・`chunkMarkdown`・`chunkSize`・`validateLinks`・`formatAsPrompt`・`highlightMatches`・`filterLinkDensity`・`safeNormalize` | scrape・scrape_batch | 不要（応答の `summary`・`citations`・`chunks`・`promptContext`・`highlightedContent`・`linksWithStatus`・`derivations` も無くなる） |
+| `dedup`・`enablePrf` | search_deep・POST /search | 不要（既定はどちらも無効だった。応答の `prf` も無くなる） |
+| `webhookUrl`・`retries`・`retryDelayMs` | scrape・POST /scrape・POST /scrape/stream | 再試行は呼び出し側で。通知が要るときは `scrape_batch` の `webhookUrl` |
+| `retries` | scrape_batch・POST /scrape/batch | 再試行は呼び出し側で |
+| `renderJs`・`fastOnly`・`selectors`・`clipSelector`・`removeSelectors` | MCP の scrape・scrape_batch だけ | `mode`。CSS セレクタは REST か型付きのクライアントで |
+
+MCP の引数は、`scrape` が 38 → 16、`scrape_batch` が 35 → 16、`crawl_site` が 14 → 11、`search_deep` が 32 → 26 になりました。MCP の `tools/list` の JSON で、最初から見える 14 ツールの定義は 24,884 → 21,587 字（−13%）、`scrape` は 5,680 → 3,029 字、`scrape_batch` は 4,449 → 2,622 字です（v3.0.0 のあとの main との比べ）。
+
+## 本文の取り出し
+
+- **rs-trafilatura の経路で、本文の画像が戻るようになりました。** rs-trafilatura が返す本文には img が入らないため、v3.0.0 では、記事以外の種類のページの本文から画像がすべて消えていました。画像があるときだけ、目印を置いた HTML で rs-trafilatura をもう一度走らせ、本文の文字が 1 回目と同じときだけ画像に戻します（6,400 枚まで）。WCXB の F1 は変わりません（dev +0.0001、test −0.00001、Bevendorff らの評価集 −0.00002）。画像が戻る分、一覧のページのトークンは増えます（日本語の 72 ページで推定 +9%、記事以外の 33 ページで +19%、最大 +718%）。画像が要らないときは `includeMedia: false` を使ってください。
+- **`removeSelectors` が、rs-trafilatura の経路でも効くようになりました**（REST と型付きのクライアント）。
+- **本文のリンクと画像の URL を絶対 URL にしました。** 日本語などの字は、パーセントエンコードせずにそのまま書きます。空白・制御文字・見えない字になる並びと、UTF-8 として読めない並びは、エンコードのまま残します。`#` だけのリンクと `javascript:` のリンクは文字だけにし、`#/`・`#!/` のハッシュの経路のリンクは残します。
+- **formats の `html` は、本文の HTML になりました。** 取得したそのままの HTML は `rawHtml` です。`includeMedia: false` のとき、`rawHtml` には img が残り、`html` は rs-trafilatura の本文を使うページ（記事以外）では画像が入りません。
+- `search_deep` の `includeMedia: false` を、ページを取る段階にも渡すようにしました（画像を戻すための 2 回目を走らせません）。
+
+## ハイライト
+
+- **ハイライトを、maxChars で切る前の全文（200,000 字まで）から選ぶようになりました。** 本文の後ろのほうにある答えも選べます。Wikipedia の長い記事 10 件で、先頭の 30,000 字より後ろにある事実がハイライトに入ったのは、0 件 → 10 件です。ハイライトの合計は maxChars に収めます（通常のハイライトを順に残し、残りの字数を表・コードなどの大きな節に分けます）。
+- `search_deep` の `evidence` は、本文が maxChars で切れた結果では、ハイライトを本文に入れ替えません（本文の外から選んだ答えを捨てないため）。
+- 節の中の、リンク先のホストが 6 つ以上あるリンクだけの段落（言語の一覧など）は、ハイライトの候補から外します。同じサイトへのリンクだけの一覧（曲名・作品名など）と、ふつうの SNS の行は残します。
+- 日付の注記（`annotateTemporal`）は、ハイライトにも付きます。リンクの飛び先には入れません。ページの description を、ハイライトで置き換えなくなりました。
+- 実際の `search_deep` の 40 問で、`full` に答えがあったもののうち `evidence` にも答えが残った割合は、問いが 89.3%（25/28）、ページが 88.9%（80/90）でした（前の測定は 86.2%・85.9%）。本番と同じ rs-trafilatura の経路で測り直すと、ページが 88.8%（79/89）、問いが 85.7%（24/28）でした（新しく落ちた 1 問は、rs-trafilatura が掲示板と判定したページの本文によるものです）。日本語の評価集 JQaRA の dev・test では、選ぶハイライトは v3.0.0 と同じです。
+
+## そのほか
+
+- 長い入力で止まっていた処理を、結果の変わらない形に直しました（200,000 字の数字の並びでハイライトを選ぶ処理 約 10 分 → 35 ms、1 つの図に画像 6,400 枚 267 秒 → 74 ms、並んだ `#` のリンク 16 万個 600 秒超 → 5.9 秒 など）。
+- `search_earthquake` の `minIntensity` を、数の enum ではなく範囲で受け取るようにしました。関数の宣言で enum を文字列にしか許さないモデル（Gemini など）で、ツールの一覧ごと 400 になっていました。
+- Yahoo の検索の実行ファイルを、`YAHOO_MCP_PATH`・`/usr/local/bin`・リポジトリの `bin/`・`PATH` の順で探すようにしました。
+- MCP の instructions に `get_youtube_channel` の案内を足しました。
+- キャッシュのキーの版を上げました（`scrape:v8` → `v9`、`search:integrated:v11` → `v12`）。入れ替えた直後は、同じ取得・検索でも取り直します。
+- ソースから動かすときは Bun 1.4 以上を使ってください。1.3 系では後読みのある正規表現が遅く、ハイライトを選ぶ処理に約 5 倍の時間がかかります（イメージは影響を受けません）。
+
+評価の詳しい記録は `docs/evaluations/main-content/results.md`（「rs-trafilatura の経路の画像（v4.0.0）」）と `docs/evaluations/v4-highlights/results.md` にあります。
+
 # Sora v3.0.0 — rho-select を廃止し、search_deep の既定を evidence にし、本文の取り出しに rs-trafilatura を使うようにした
 
 - **破壊的変更: rho-select を廃止し、引数 `highlightAlgorithm` と `highlightOverheadTokens` を消しました。** MCP の `scrape`・`scrape_batch`・`search_deep`・`crawl_site` と、REST の `/scrape`・`/scrape/stream`・`/scrape/batch`・`/crawl`・`/crawl/stream`・`POST /search`（`/search/deep`・`/search/integrated`・`/deep-search` も）が対象です。今も送ってくる呼び出し側は、検証エラーにはならず、黙って無視されます（MCP と `/scrape`・`/scrape/stream`・`/scrape/batch` はスキーマが知らない欄を落とし、`/crawl`・`/crawl/stream`・`/search` はその欄を読みません）。`"rho-select"`・`"legacy"` など、どの値を指定していても、新しい選び方になります。`highlightMaxCount`（1〜10）は残っています。verbose の `highlightDiagnostics` は、rho-select の診断（`certificate` など）から、ハイライト選択の診断（`queryCoverage` などの `EvidenceDiagnostics`）に替わりました。型付きのクライアント（`client/`）の型からも、2 つの引数を消しました。

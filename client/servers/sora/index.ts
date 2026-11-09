@@ -6,6 +6,7 @@ export * from './check_product_compliance.js';
 export * from './crawl_site.js';
 export * from './fetch_social_post.js';
 export * from './fetch_x_post.js';
+export * from './generate_gcc_certificate.js';
 export * from './get_country_context.js';
 export * from './get_country_context_evidence.js';
 export * from './get_country_context_updates.js';

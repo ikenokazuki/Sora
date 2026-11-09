@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { errorMessage } from './errors.js';
+import { isSensitiveHeaderName } from './security/credential_scope.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -649,13 +650,30 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
 }
 
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
-export async function setupPageSecurity(page: Page, blockMedia = false): Promise<void> {
+export async function setupPageSecurity(
+  page: Page,
+  /** true なら画像・Web フォントも遮断する。関数なら要求のたびに呼ぶ（セッションで、あとから画像が要るようになる場合） */
+  blockMedia: boolean | (() => boolean) = false,
+  /**
+   * 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求には全部付ける。
+   * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）。
+   * User-Agent は付けない（navigator.userAgent と sec-ch-ua はステルスの値のままなので、要求のヘッダーだけ替えると食い違い、ボット対策に見分けられる）
+   */
+  scopedHeaders?: { origin: string; headers: Record<string, string> },
+): Promise<void> {
+  const lowercased = (headers: [string, string][]) => Object.fromEntries(headers.map(([name, value]) => [name.toLowerCase(), value]));
+  const callerHeaders = Object.entries(scopedHeaders?.headers ?? {}).filter(([name]) => name.toLowerCase() !== 'user-agent');
+  const allHeaders = scopedHeaders && lowercased(callerHeaders);
+  const navigationHeaders = scopedHeaders && lowercased(callerHeaders.filter(([name]) => !isSensitiveHeaderName(name)));
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
       try {
         const reqUrlStr = req.url();
         const resourceType = req.resourceType();
+        const sameOrigin = scopedHeaders !== undefined && URL.canParse(reqUrlStr) && new URL(reqUrlStr).origin === scopedHeaders.origin;
+        const extra = sameOrigin ? allHeaders : req.isNavigationRequest() && req.frame() === page.mainFrame() ? navigationHeaders : undefined;
+        const proceed = () => req.continue(extra && Object.keys(extra).length > 0 ? { headers: { ...req.headers(), ...extra } } : undefined);
 
         // 動画・音声・3Dモデル・広告トラッカーは帯域・メモリ保護のため常時高速遮断
         if (
@@ -667,16 +685,16 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
         }
 
         // スクリーンショット非要求時 (blockMedia=true) は画像・Webフォントも追加遮断
-        if (blockMedia && ['image', 'font'].includes(resourceType)) {
+        if ((typeof blockMedia === 'function' ? blockMedia() : blockMedia) && ['image', 'font'].includes(resourceType)) {
           return req.abort('blockedbyclient');
         }
 
         if (process.env.ALLOW_LOCAL_FETCH === 'true') {
-          return req.continue();
+          return proceed();
         }
 
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
-          return req.continue();
+          return proceed();
         }
         let reqUrl: URL;
         try {
@@ -696,7 +714,7 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
         const now = Date.now();
         const cached = dnsValidationCache.get(host);
         if (cached && cached.expiresAt > now) {
-          return req.continue();
+          return proceed();
         }
 
         try {
@@ -711,7 +729,7 @@ export async function setupPageSecurity(page: Page, blockMedia = false): Promise
             expiresAt: now + DNS_CACHE_TTL_MS,
           });
         } catch {}
-        req.continue();
+        proceed();
       } catch {
         req.abort('failed');
       }

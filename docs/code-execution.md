@@ -21,7 +21,7 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
   - 生成クライアントの `client/SKILL.md`（取得した環境で認識される）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
-どれも `tools/list` を増やさない（既定 24,728 文字のまま）。
+どれも `tools/list` を増やさない。
 
 ## クライアントを取得する
 
@@ -62,24 +62,28 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## 実測
 
-2026-10-26 に実際の通信で測った（`get_youtube_channel` を足した後）。文字数は、クライアントが受け取る HTTP 本文の長さ。
+文字数は、クライアントが受け取る HTTP 本文の長さ。
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
+2026-11-09 に測り直した（GCC を作るツール `generate_gcc_certificate` を足した後。前の値は 2026-11-06、v4.1.0 の引数の監査と細かい修正の後の既定 21,764・全ツール（52 ツール）58,757・`instructions` 8,922）。
+
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 24,861 |
-| 全ツール（52 ツール） | 63,342 |
-| `instructions` | 8,750 |
+| 既定（14 ツール） | 22,269 |
+| 全ツール（53 ツール） | 63,529 |
+| `instructions` | 8,948 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,477 文字。
+`search_tools` の応答（クエリ「住所」）: 既定 619、`names` 360、`summary` 564、`schema` 2,574 文字（2026-11-06 の測り直しと同じ）。
+
+以下の `search_deep` の表は、2026-10-26 に実際の通信で測った値（測り直していない）。
 
 **`search_deep`（「TypeScript 5.5 新機能」、上位 3 件）**
 
 | 受け取り方 | モデルに入る文字数 |
 |---|---|
 | 直接（`limit: 3`） | 27,892 |
-| 引数で絞る（`includeRealtime: false`、`extractHighlights: true`、`maxChars: 1500`） | 12,273 |
+| 引数で絞る（`includeRealtime: false`、`maxChars: 1500`） | 12,273 |
 | クライアントでコードから絞る（題名・URL・要点 2 つだけを出力） | 934 |
 
 直接呼ぶ場合でも引数で大きさは減らせる。コードで絞る方法は、必要な項目が決まっているときに最も小さい。モデルが本文全体を読んで判断する必要がある場合は、直接呼ぶ（`responseMode: "full"` を付ける）。
@@ -88,4 +92,4 @@ for (const h of official) console.log((await scrape({ url: h.url })).content.sli
 
 ## しきい値の上げ方
 
-`src/context_budget.test.ts` が `tools/list` の大きさ（既定 25,000 文字、全ツール 61,500 文字）を守る。ツールや引数の説明を増やして超えたときは、増やす理由を確かめたうえで `bun scripts/measure-context.ts` で現在の値を測り、しきい値を上げて、コミットメッセージに理由を書く。
+`src/context_budget.test.ts` が `tools/list` の大きさ（既定 25,000 文字、全ツール 64,000 文字）を守る。ツールや引数の説明を増やして超えたときは、増やす理由を確かめたうえで `bun scripts/measure-context.ts` で現在の値を測り、しきい値を上げて、コミットメッセージに理由を書く。

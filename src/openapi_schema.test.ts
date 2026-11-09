@@ -36,11 +36,10 @@ describe('public response schemas', () => {
     expect(ScrapeResponseSchema.safeParse(compact).success).toBe(true);
   });
 
-  test('integrated search documents markdown results, realtime envelope and PRF metadata', () => {
+  test('integrated search documents markdown results and the realtime envelope', () => {
     const response = { query: 'Festival', source: 'integrated', count: 1, cached: false, responseMode: 'evidence',
       results: [{ title: 'Event', url: 'https://example.com/event', source: 'web', highlights: ['Live 15:20'], contentStatus: 'structured_data', events: [{ name: 'Festival' }] }],
       realtime: { source: 'x', sort: 'recent', count: 1, effectiveQuery: 'Festival', isFallback: false, items: [{ source: 'x', id: '123', text: 'Live 15:20', url: 'https://x.com/a/status/123', retrievalSources: ['web', 'realtime'] }] },
-      prf: { originalQuery: 'Festival', expandedQuery: 'Festival timetable', expansionTerms: ['timetable'] },
     };
     const parsed = IntegratedSearchResponseSchema.safeParse(response);
     expect(parsed.success).toBe(true);

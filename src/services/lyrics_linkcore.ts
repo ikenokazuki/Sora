@@ -37,16 +37,26 @@ export interface LinkcoreDeps {
   fetchPage?: (url: string) => Promise<string>;
 }
 
-/** 曲名・歌手名の突き合わせ用に、全角半角・大小文字・空白と記号を畳む。 */
+/**
+ * 曲名・歌手名の突き合わせ用に、全角半角・大小文字・空白と記号を畳む。
+ * 記号だけの名前（「♪」「!!!」）は畳むと空になり、前方一致で何にでも当たり、キャッシュの鍵も別の名前と同じになる。
+ * そのときは、記号と空白を除かずに、全角半角と大小文字だけそろえた名前（前後の空白は除く）を使う（空になるのは、元が空白だけのときだけ）。
+ */
 export function normalizeName(s: string): string {
-  return s.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+  const folded = s.normalize('NFKC').toLowerCase();
+  return folded.replace(/[\s\p{P}\p{S}]+/gu, '') || folded.trim();
 }
 
-/** 正規化後に一致、または片方がもう片方を含む（「A feat. B」のような表記ゆれ）。 */
+/**
+ * 正規化後に一致、または片方がもう片方を含む（「A feat. B」のような表記ゆれ）。
+ * 3 文字以下の名前は含むだけでは別の名前に当たる（ai が mai に）ので、全体が同じときだけ一致とする。
+ */
 export function matchesArtist(wanted: string, found: string): boolean {
   const a = normalizeName(wanted);
   const b = normalizeName(found);
-  return a !== '' && b !== '' && (a === b || a.includes(b) || b.includes(a));
+  if (a === '' || b === '') return false;
+  if (Math.min([...a].length, [...b].length) <= 3) return a === b;
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 export function parseReleasePage(html: string, selfId: string): ReleasePage {

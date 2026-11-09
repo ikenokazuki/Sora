@@ -4,7 +4,7 @@ import { callSora } from '../../runtime.js';
 export type VerifyHtsCodeInput = {
   /** 検証したいHTSコード（例: "9503.00.0073"）。推測ではなく既知・候補のコードを指定すること */
   htsCode: string;
-  /** 製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目 */
+  /** 製品の説明（素材・用途・機能・加工度合い等）。必須。判定には使わず、根拠の記録として応答に返す */
   productDescription: string;
 };
 

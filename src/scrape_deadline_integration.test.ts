@@ -32,7 +32,7 @@ test('scrapeDeadlineMs also stops adaptive extra waves once the deadline fired',
   }
 }, 30000);
 
-// 本文もハイライトも要求されていないとき（formats に markdown なし・extractHighlights:false）は、
+// 本文もハイライトも要求されていないとき（formats に markdown なし・検索語が URL だけでハイライトを選ぶ語が無い）は、
 // 判定材料が無いので contextSufficiency を付けない（誤って insufficient と出さない）
 test('contextSufficiency is omitted when neither markdown nor highlights were requested', async () => {
   const server = Bun.serve({ port: 0, fetch() {
@@ -44,7 +44,8 @@ test('contextSufficiency is omitted when neither markdown nor highlights were re
   const previous = process.env.ALLOW_LOCAL_FETCH;
   process.env.ALLOW_LOCAL_FETCH = 'true';
   try {
-    const htmlOnly = await integratedSearch({ query: '駐車場 料金', limit: 3, includeRealtime: false, noCache: true, formats: ['html'], extractHighlights: false });
+    const htmlOnly = await integratedSearch({ query: `http://127.0.0.1:${server.port}/a`, limit: 3, includeRealtime: false, noCache: true, formats: ['html'] });
+    expect(htmlOnly.count).toBe(1);
     expect(htmlOnly.contextSufficiency).toBeUndefined();
     const normal = await integratedSearch({ query: '駐車場 料金', limit: 3, includeRealtime: false, noCache: true });
     expect(normal.contextSufficiency?.level).toBe('no_gap_detected');

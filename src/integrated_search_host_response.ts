@@ -1,4 +1,5 @@
-import { safeTruncateMarkdown } from './enrichment.js';
+import { replaceMarkdownImages, truncateMarkdownWithin } from './enrichment.js';
+import { isNavBlock } from './extractor/markdown_sections.js';
 import {
   type ScrapeFormat,
   IntegratedSearchResponseModeSchema,
@@ -10,7 +11,6 @@ export { IntegratedSearchResponseModeSchema, type IntegratedSearchResponseMode }
 export interface IntegratedSearchHostResponseOptions {
   responseMode?: IntegratedSearchResponseMode;
   explicitFormats?: readonly ScrapeFormat[];
-  extractHighlights?: boolean;
   verbose?: boolean;
   /** 全結果の markdown 合計文字数の上限。未指定なら制限しない。 */
   maxTotalChars?: number;
@@ -29,7 +29,8 @@ function hasCanonicalHighlights(item: Record<string, any>): boolean {
 }
 
 // ハイライトが本文のこの割合以上なら、本文を省いてもほとんど減らない。ハイライトの代わりに本文を返す（窓で切った根拠より答えを落とさない）。
-// 保存した実ページの 76 問では、0.75 から 0.85 に上げても答えの残る結果は変わらず、evidence のトークンが減る
+// 保存した実ページの 76 問では、0.75 から 0.85 に上げても答えの残る結果は変わらず、evidence のトークンが減る。
+// 本文が maxChars で切れた結果（isTruncated）には使わない: ハイライトは切る前の全文から選ぶので、本文に無い答えを持つことがある
 const MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO = 0.85;
 
 function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
@@ -38,68 +39,88 @@ function highlightsNearlyAsLongAsMarkdown(item: Record<string, any>): boolean {
   return highlightChars >= item.markdown.length * MARKDOWN_INSTEAD_OF_HIGHLIGHTS_RATIO;
 }
 
+function itemUrl(item: Record<string, any>): URL | undefined {
+  const rawUrl = typeof item?.url === 'string' ? item.url : typeof item?.link === 'string' ? item.link : '';
+  try {
+    return rawUrl ? new URL(rawUrl) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isXHost(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return host === 'x.com' || host.endsWith('.x.com') || host === 'twitter.com' || host.endsWith('.twitter.com');
+}
+
 function isXItem(item: Record<string, any>): boolean {
   if (item?.source === 'x') return true;
+  const url = itemUrl(item);
+  return url !== undefined && isXHost(url);
+}
 
-  const rawUrl =
-    typeof item?.url === 'string'
-      ? item.url
-      : typeof item?.link === 'string'
-        ? item.link
-        : '';
-
-  if (!rawUrl) return false;
-
-  try {
-    const host = new URL(rawUrl).hostname.toLowerCase();
-    return (
-      host === 'x.com' ||
-      host.endsWith('.x.com') ||
-      host === 'twitter.com' ||
-      host.endsWith('.twitter.com')
-    );
-  } catch {
-    return false;
+/** 同じ応答の realtime.items にある投稿のアカウント（author_handle、小文字）。 */
+function realtimeHandles(result: Record<string, any>): Set<string> {
+  const handles = new Set<string>();
+  if (!Array.isArray(result?.realtime?.items)) return handles;
+  for (const post of result.realtime.items) {
+    if (typeof post?.author_handle === 'string' && post.author_handle) handles.add(post.author_handle.toLowerCase());
   }
+  return handles;
+}
+
+/**
+ * X のタイムライン・プロフィールのページ（`/<アカウント>` とその下。投稿 1 件の `/status/` は除く）で、
+ * 同じアカウントの投稿が同じ応答の realtime.items にあるか。ページの投稿はそちらと重なるので、本文を省ける。
+ */
+function isXTimelineCoveredByRealtime(item: Record<string, any>, handles: ReadonlySet<string>): boolean {
+  const url = itemUrl(item);
+  if (!url || !isXHost(url)) return false;
+  const [handle, ...rest] = url.pathname.split('/').filter(Boolean);
+  return handle !== undefined && handles.has(handle.toLowerCase()) && !rest.some((s) => /^status(?:es)?$/i.test(s));
 }
 
 /**
  * A conservative, Host-facing evidence projection for one integrated-search item.
  *
  * This function deliberately preserves the existing JSON properties and only
- * considers removing `markdown`.
+ * considers removing `markdown` (or, in the case below, `highlights`).
+ * X posts keep their markdown (a post is its own evidence), except X timeline/profile pages
+ * whose account has posts in the same response's realtime.items: those drop the markdown and keep the highlights.
  *
  * `markdown` is NEVER overwritten with highlights.
  * `highlights` is removed only when it is nearly as long as `markdown` (the markdown is kept instead),
- * unless another result points to it with `highlightsSameAs` (`highlightsReferenced`) or `maxTotalChars`
- * may cut that markdown; compact mode may replace a duplicate with `highlightsSameAs`.
+ * unless another result points to it with `highlightsSameAs` (`highlightsReferenced`), `maxTotalChars`
+ * may cut that markdown, or the markdown was already cut (`isTruncated`: the highlights are chosen from the full
+ * text and may hold an answer the markdown lost); compact mode may replace a duplicate with `highlightsSameAs`.
  */
 export function projectIntegratedSearchEvidenceItem(
   sourceItem: Record<string, any>,
   options: IntegratedSearchHostResponseOptions = {},
   highlightsReferenced = false,
+  realtimeAccounts: ReadonlySet<string> = new Set(),
 ): Record<string, any> {
   const item = { ...sourceItem };
 
   const markdownWasExplicitlyRequested =
     options.explicitFormats?.includes('markdown') === true;
 
-  const highlightExtractionWasExplicitlyDisabled =
-    options.extractHighlights === false;
-
   const hasFallbackRisk =
     Boolean(item?.scrapeError) || item?.isSnippetFallback === true;
 
+  // X の投稿はそれ自体が根拠なので本文を残す。ただしタイムラインのページは、同じアカウントの投稿が realtime.items にあれば重なるので省く
+  const xTimelineCovered = isXTimelineCoveredByRealtime(item, realtimeAccounts);
+
   const mayElideMarkdown =
     !markdownWasExplicitlyRequested &&
-    !highlightExtractionWasExplicitlyDisabled &&
     !hasFallbackRisk &&
-    !isXItem(item) &&
+    (!isXItem(item) || xTimelineCovered) &&
     // 同じハイライトが別の結果にある（highlightsSameAs）場合も、根拠はそちらで足りる
     (hasCanonicalHighlights(item) || typeof item?.highlightsSameAs === 'string');
 
-  // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無いときだけ
-  if (mayElideMarkdown && !highlightsReferenced && options.maxTotalChars === undefined && highlightsNearlyAsLongAsMarkdown(item)) {
+  // 本文を返してハイライトを消すのは、参照される（highlightsSameAs）ハイライトでなく、本文を切り詰める上限（maxTotalChars）も無く、
+  // 本文が maxChars で切れていない（isTruncated でない）ときだけ
+  if (mayElideMarkdown && !xTimelineCovered && !highlightsReferenced && options.maxTotalChars === undefined && item.isTruncated !== true && highlightsNearlyAsLongAsMarkdown(item)) {
     delete item.highlights;
   } else if (mayElideMarkdown) {
     delete item.markdown;
@@ -107,9 +128,6 @@ export function projectIntegratedSearchEvidenceItem(
 
   return item;
 }
-
-// ponytail: URL に ')' を含む画像記法は対象外
-const MARKDOWN_IMAGE = /!\[([^\]]*)\]\([^)]*\)/g;
 
 /** 画像・動画の URL を省く。本文中の画像記法は alt があれば「[画像: alt]」に置き換える。images（formats で明示要求）・highlights は触らない。 */
 function stripMedia(result: Record<string, any>): Record<string, any> {
@@ -119,7 +137,7 @@ function stripMedia(result: Record<string, any>): Record<string, any> {
       if (!item || typeof item !== 'object') return item;
       const { ogImage: _og, media: _media, ...rest } = item;
       if (typeof rest.markdown === 'string') {
-        rest.markdown = rest.markdown.replace(MARKDOWN_IMAGE, (_m: string, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
+        rest.markdown = replaceMarkdownImages(rest.markdown);
       }
       return rest;
     });
@@ -135,43 +153,6 @@ function stripMedia(result: Record<string, any>): Record<string, any> {
     };
   }
   return out;
-}
-
-const NAV_LABEL_MAX_CHARS = 16;
-/** 行全体が1つのリンクとして読めるか。中の `](` は無視できないため、最後の `](URL)` で判定する */
-const BRACKET_LINK_LINE = /^[-*+\d.\s]*\[([\s\S]*)\]\([^)\n]*\)$/;
-
-/**
- * 行が「テキストラベルだけのリンク」か。リンクの判別は最後の `](URL)` で行う（画像リンク全体も1つのリンク）。
- * ラベルがテキストなら返し、画像だけ `[![alt](src)](url)`（SNS アイコン・バナー等）や空のラベルなら、
- * 「リンク行だがナビの候補ではない」として null を返す。リンクですらない行は undefined。
- */
-type LabelLinkVerdict = { label: string } | null | undefined;
-function isLabelLinkLine(line: string): LabelLinkVerdict {
-  const trimmed = line.trim();
-  const last = trimmed.lastIndexOf('](');
-  if (last < 0 || !trimmed.endsWith(')')) return undefined;
-  const before = trimmed.slice(0, last);
-  // 先頭のリスト記号と `[` を外す。外側の `[...](...)` が閉じていなければリンク行ではない
-  const stripped = before.replace(/^[-*+\d.\s]*\[/, '');
-  if (stripped === before || !BRACKET_LINK_LINE.test(trimmed)) return undefined;
-  const label = stripped.trim();
-  if (!label || label === '-') return null;
-  if (label.startsWith('!')) return null;
-  return { label };
-}
-
-/** 塊がすべて「[短いラベル](URL)」行か（グローバルナビ・パンくず・フッターのリンク列）。
- * 空のラベル行（取り除けなかった SNS アイコン列など）は無視する。画像だけのリンク行がある塊は動かさない
- * （別の塊にまとめられる。削除されることはないので害はない）。 */
-function isNavBlock(block: string): boolean {
-  const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
-  // 空のリスト記号だけの行（`-` のみ）は、Turndown が空のリンクや画像を取り除いた残骸なので無視する
-  const labels = lines.filter((l) => !/^[-*+]\s*$/.test(l)).map((l) => isLabelLinkLine(l));
-  // 全行がリンク行で、かつテキストラベルが1つ以上ある塊をナビとして扱う。
-  // 画像だけの行（バナー・SNS アイコン）はテキストラベルとみなさないが、ナビ扱いも妨げない
-  // （グローバルナビの途中に SNS アイコンが混じる equal-love.jp のような実データに対応）。
-  return labels.every((l) => l !== undefined) && labels.some((l) => l !== null && l.label.length <= NAV_LABEL_MAX_CHARS);
 }
 
 /**
@@ -251,9 +232,7 @@ function applyMarkdownBudget(
     const md: string = it.markdown;
     // ナビの塊を先に落として quota に収まればそれを返す。収まらなければ従来どおり先頭側を残して切る
     const ordered = dropNavBlocksFirst(md, quota[i]);
-    let kept = safeTruncateMarkdown(ordered, quota[i]);
-    // safeTruncateMarkdown は開いたコードブロックを閉じるため数文字はみ出しうる。その分だけ手前で切り直す
-    if (kept.length > quota[i]) kept = safeTruncateMarkdown(ordered, Math.max(0, 2 * quota[i] - kept.length));
+    let kept = truncateMarkdownWithin(ordered, quota[i]);
     const para = kept.lastIndexOf('\n\n');
     if (para > quota[i] * 0.5) kept = kept.slice(0, para).trimEnd();
     return { ...it, markdown: kept, markdownTruncated: { totalChars: md.length, keptChars: kept.length } };
@@ -289,12 +268,13 @@ export function formatIntegratedSearchHostResponse(
   const referenced = new Set(
     Array.isArray(result?.results) ? result.results.map((item: Record<string, any>) => item?.highlightsSameAs).filter((u: unknown) => typeof u === 'string') : [],
   );
+  const accounts = realtimeHandles(result);
   return withBudget({
     ...result,
     responseMode: 'evidence',
     results: Array.isArray(result?.results)
       ? result.results.map((item: Record<string, any>) =>
-          projectIntegratedSearchEvidenceItem(item, options, referenced.has(item?.url || item?.link || '')),
+          projectIntegratedSearchEvidenceItem(item, options, referenced.has(item?.url || item?.link || ''), accounts),
         )
       : result?.results,
   });

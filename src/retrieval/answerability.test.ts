@@ -27,6 +27,16 @@ describe('answerability signals (hermetic)', () => {
     expect(detectValueKinds('Wi-Fi 7に対応')).toContain('wifi');
     expect(detectValueKinds('価格について解説します')).toEqual([]);
   });
+  test('値の判定は、数字・カンマ（重さは . も）の並びのどこに数字があっても同じで、20 万桁の数字の並びでも止まらない', () => {
+    expect(detectValueKinds(`1${','.repeat(30)}円`)).toContain('price');
+    expect(detectValueKinds(',,,1,2 円')).toContain('price');
+    expect(detectValueKinds(`${','.repeat(30)}円`)).not.toContain('price');
+    expect(detectValueKinds(`5${'.'.repeat(30)} g`)).toContain('weight');
+    expect(detectValueKinds(`${'.'.repeat(30)}kg`)).not.toContain('weight');
+    const t0 = performance.now();
+    expect(detectValueKinds('1'.repeat(200_000))).toEqual([]);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
   test('extracts entity terms minus intent terms', () => {
     const terms = entityTermsForQuery('Astra Phone X 価格');
     expect(terms).toContain('astra');
@@ -228,6 +238,13 @@ describe('relative day resolution (hermetic)', () => {
     expect(extractDateRequirements('明日のライブ', ref)).toEqual([{ month: 10, day: 1, year: 2026 }]);
     expect(extractDateRequirements('明後日', ref)).toEqual([{ month: 10, day: 2, year: 2026 }]);
     expect(extractDateRequirements('価格', ref)).toEqual([]);
+  });
+
+  test('一昨日は 2 日前（昨日と取り違えない）。ほかの語を含む語も長い方が勝つ', () => {
+    const ref = new Date(2026, 8, 30);
+    expect(extractDateRequirements('一昨日のライブ', ref)).toEqual([{ month: 9, day: 28, year: 2026 }]);
+    expect(extractDateRequirements('昨日のライブ', ref)).toEqual([{ month: 9, day: 29, year: 2026 }]);
+    expect(extractDateRequirements('明後日と明日', ref)).toEqual([{ month: 10, day: 2, year: 2026 }]);
   });
 });
 

@@ -8,8 +8,10 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '3.0.0';
+export const SORA_VERSION = '4.1.0';
 export const DEFAULT_MAX_CHARS = 30_000;
+/** ハイライトを選ぶ全文（maxChars で切る前の本文）の上限。docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 4 */
+export const HIGHLIGHT_SOURCE_MAX_CHARS = 200_000;
 
 export const SCRAPE_FORMATS = [
   'markdown',
@@ -42,12 +44,6 @@ export interface MediaInfo {
   chapters?: Array<{ title: string; time: string; seconds: number }>;
 }
 
-export interface Citation {
-  text: string;
-  url: string;
-  context?: string;
-}
-
 export interface ImageItem {
   url: string;
   alt?: string;
@@ -76,19 +72,6 @@ export interface EventItem {
     url?: string;
     availability?: string;
   };
-}
-
-export interface MarkdownChunk {
-  index: number;
-  heading?: string;
-  content: string;
-  estimatedTokens: number;
-}
-
-export interface LinkStatus {
-  url: string;
-  status: number;
-  ok: boolean;
 }
 
 export interface CookieParam {
@@ -163,26 +146,6 @@ export interface EvidenceDiagnostics {
   reasons: string[];           // weak判定の客観的理由 (例: ["low_query_coverage", "no_matching_blocks"])
 }
 
-/** 不一致候補 (Candidate Discrepancy) - 勝手に解消せず上位エージェントに対比提示 */
-export interface CandidateDiscrepancy {
-  kind: 'date' | 'money' | 'version' | 'number';
-  values: Array<{
-    original: string;
-    normalized: string;
-    sourceId?: string;
-    blockId?: string;
-    context?: string;
-  }>;
-  status: 'needs_agent_resolution';
-}
-
-/** 決定論的導出メタデータ (Derivation Trace) */
-export interface DerivationTrace {
-  operation: string; // 例: "kanji_num_to_digits", "km_to_m", "fullwidth_to_halfwidth"
-  input: string;
-  output: string;
-}
-
 export interface ScrapeResult {
   url: string;
   title: string;
@@ -202,23 +165,14 @@ export interface ScrapeResult {
   socialLinks?: Record<string, string>;
   highlights?: string[];
   highlightItems?: HighlightItem[];
-  evidenceDiagnostics?: EvidenceDiagnostics;
-  discrepancies?: CandidateDiscrepancy[];
-  derivations?: DerivationTrace[];
   temporalAnchors?: TemporalAnchor[];
   highlightDiagnostics?: EvidenceDiagnostics;
   textFragmentUrl?: string;
-  summary?: string[];
-  citations?: Citation[];
-  chunks?: MarkdownChunk[];
   characterCount?: number;
   wordCount?: number;
   readingTimeMin?: number;
-  promptContext?: string;
-  highlightedContent?: string;
   media?: MediaInfo;
   links?: string[];
-  linksWithStatus?: LinkStatus[];
   images?: ImageItem[];
   jsonLd?: any[];
   availability?: 'InStock' | 'OutOfStock' | 'PreOrder' | string;
@@ -235,6 +189,8 @@ export interface ScrapeResult {
   html?: string;
   rawHtml?: string;
   screenshot?: string; // base64 PNG
+  /** 求めた形式を満たせなかった旨（例: formats に screenshot があるのに、ブラウザで描画しなかった） */
+  warnings?: string[];
   quality?: number;
   completeness?: number;
   pageType?: 'article' | 'product' | 'qa' | 'generic';
@@ -274,6 +230,9 @@ export interface BrowserActionOptions {
     markdown?: boolean;
     screenshot?: boolean;
     html?: boolean;
+    screenshotFullPage?: boolean;
+    clipSelector?: string;
+    maxChars?: number;
   };
   timeout?: number;
 }
@@ -337,110 +296,69 @@ export const CookieParamSchema = z.object({
   sameSite: z.enum(['Strict', 'Lax', 'None']).optional().describe('SameSite ポリシー'),
 });
 
+export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
+export type IntegratedSearchResponseMode = z.infer<
+  typeof IntegratedSearchResponseModeSchema
+>;
+
+/** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
+export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す').meta({ default: 'full' });
+
+/** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
+export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
+
+/** scrape・scrape_batch 共通の mode */
+export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ)').meta({ default: 'auto' });
+
+/** scrape・scrape_batch 共通の headers */
+export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない');
+
+/** scrape・scrape_batch 共通の maskPii */
+export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false });
+
+/** scrape・scrape_batch・crawl_site・search_deep 共通の annotateTemporal */
+export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false)').meta({ default: false });
+
 export const ScrapeRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('スクレイピング対象の完全な URL (http/https) または PDF URL'),
   maxChars: z.number().int().min(1).max(100_000).optional().describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-  mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto"(スマート自動判定, デフォルト), "fast"(最速静的HTTP), "browser"(Stealth Chromium)').meta({ default: 'auto' }),
+  mode: SCRAPE_MODE_FIELD,
   renderJs: z.boolean().optional().describe('常にブラウザ描画を強制するか (mode="browser" と同等)'),
   fastOnly: z.boolean().optional().describe('常に静的取得を強制するか (mode="fast" と同等)'),
   formats: z.array(ScrapeFormatSchema).optional().describe('取得する出力フォーマット配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
   fullPage: z.boolean().optional().default(true).describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('ヘッダー・フッター・サイドバー等のノイズを除外し、記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
   selectors: z.record(z.string(), z.string()).optional().describe('ピンポイント抽出用 CSS セレクタ連想配列 (例: {"price": ".item-price", "title": "h1"})'),
-  clipSelector: z.string().optional().describe('特定要素のみを切り抜いてスクリーンショット撮影する CSS セレクタ (例: "#chart")'),
-  headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
+  clipSelector: z.string().optional().describe('formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ (例: "#chart")。ブラウザで撮るので、mode "fast"・fastOnly では撮れない'),
+  headers: SCRAPE_HEADERS_FIELD,
   cookies: z.array(CookieParamSchema).optional().describe('リクエスト時に送信するカスタム Cookie 配列'),
   removeSelectors: z.array(z.string()).optional().describe('Markdown 変換前に徹底パージする不要要素の CSS セレクタ配列 (例: [".ad", ".comments"])'),
   query: z.string().optional().describe('ハイライト抽出用キーワード'),
-  extractHighlights: z.boolean().optional().describe('指定キーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを本文 content として返し、ノイズ全文を削除するか (デフォルト: false)').meta({ default: false }),
+  responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  evidenceMode: z.enum(['full', 'highlights', 'contextual_highlights']).optional().describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-  includeDiagnostics: z.boolean().optional().describe('決定論的な証拠充足性観測量 (queryCoverage, weakEvidenceSignal 等) を含めるか'),
-  includeDiscrepancies: z.boolean().optional().describe('日付・金額等の不一致候補 (Candidate Discrepancies) を検出して含めるか'),
-  safeNormalize: z.boolean().optional().describe('漢数字や物理単位の安全な決定論的正規化 (1万2000円->12000円, km->m等) を適用し導出履歴を残すか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 抽出パッセージを LLM の注意が集中する先頭と末尾に最重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)。類似する言い換え文の重複を排除').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
-  extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約 (TL;DR) を生成するか (デフォルト: false)').meta({ default: false }),
-  extractCitations: z.boolean().optional().describe('本文中の出典・外部引用リンク一覧を抽出するか (デフォルト: false)').meta({ default: false }),
-  chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか (見出し階層＆トークン数付き) (デフォルト: false)').meta({ default: false }),
-  chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンクあたりの文字数目安 (デフォルト: 1000)').meta({ default: 1000 }),
-  validateLinks: z.boolean().optional().describe('抽出されたページ内リンクの健全性・到達性を並行検証するか (デフォルト: false)').meta({ default: false }),
-  formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか (デフォルト: false)').meta({ default: false }),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化し、LLM トークンを削減するか (デフォルト: false)').meta({ default: false }),
-  filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧・関連記事ブロックを自動パージするか (デフォルト: false)').meta({ default: false }),
-  highlightMatches: z.boolean().optional().describe('本文中の検索一致語句を <mark> でハイライトするか (デフォルト: false)').meta({ default: false }),
-  maskPii: z.boolean().optional().describe('メールアドレス・電話番号・クレカ等の個人情報を自動マスキングするか (デフォルト: false)').meta({ default: false }),
-  webhookUrl: z.string().optional().describe('スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-  retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3, デフォルト: 0)').meta({ default: 0 }),
-  retryDelayMs: z.number().int().min(1).max(30_000).optional().describe('リトライ待機ディレイ (ミリ秒, 上限: 30000)'),
+  maskPii: SCRAPE_MASK_PII_FIELD,
   noCache: z.boolean().optional().describe('キャッシュをバイパスして強制再取得するか').meta({ default: false }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   keepDataImages: z.boolean().optional().describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
 });
 
 export const SCRAPE_BATCH_INPUT_SHAPE = {
     urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
     concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
     maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
-    mode: z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (静的フェッチ失敗時に自動ブラウザ昇格, デフォルト), "fast" (静的HTTPのみ), "browser" (常時Headless Chromium)').meta({ default: 'auto' }),
+    mode: SCRAPE_MODE_FIELD,
     formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
-    selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
-    clipSelector: z.string().optional().describe('指定した要素のみを切り抜く CSS セレクタ'),
-    headers: z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列'),
-    removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
+    headers: SCRAPE_HEADERS_FIELD,
     query: z.string().optional().describe('ハイライト抽出用キーワード'),
-    extractHighlights: z.boolean().optional().describe('各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか (省略時: query指定時はtrue、未指定時はfalse)'),
-    onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
-    extractSummary: z.boolean().optional().describe('超高速な抽出型自動要約（TL;DR）を生成するか'),
-    extractCitations: z.boolean().optional().describe('本文内の出典・引用リンク一覧を抽出するか'),
-    chunkMarkdown: z.boolean().optional().describe('RAG 用セマンティック・チャンキングを行うか'),
-    chunkSize: z.number().int().min(1).max(100_000).optional().describe('チャンク文字数目安 (上限: 100000)'),
-    validateLinks: z.boolean().optional().describe('抽出リンクの健全性を検証するか'),
-    formatAsPrompt: z.boolean().optional().describe('LLM に最適化された標準 XML プロンプトラッパー形式を生成するか'),
+    responseMode: SCRAPE_RESPONSE_MODE_FIELD,
     stripLinks: z.boolean().optional().describe('Markdown 内のリンク [テキスト](url) から URL を除去してプレーンテキスト化するか'),
-    filterLinkDensity: z.boolean().optional().describe('リンク密度が極端に高いナビゲーション・タグ一覧ブロックを自動パージするか'),
-    highlightMatches: z.boolean().optional().describe('本文中の検索一致語句をハイライトするか'),
-    maskPii: z.boolean().optional().describe('個人情報・機密情報を自動マスキングするか'),
-    webhookUrl: z.string().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
-    retries: z.number().int().min(0).max(3).optional().describe('接続失敗時の自動リトライ回数 (0〜3)'),
-    evidenceMode: z
-      .enum(['full', 'highlights', 'contextual_highlights'])
-      .optional()
-      .describe('証拠提示モード: "full"(デフォルト全文), "highlights"(抽出文のみ), "contextual_highlights"(前後文脈・見出し・表ヘッダーを保持したパッセージ)').meta({ default: 'full' }),
-    includeDiagnostics: z
-      .boolean()
-      .optional()
-      .describe('クエリ網羅率や証拠シグナル等の客観的観測量（Evidence Diagnostics）を付与するか (省略時: false。現在はハイライト診断が verbose 時のみ出力されるため、単独指定では診断は付与されない)'),
-    includeDiscrepancies: z
-      .boolean()
-      .optional()
-      .describe('日付・金額・バージョンの不一致候補を検出して対比提示するか (省略時: false。現在は単独指定では不一致候補は付与されない)'),
-    safeNormalize: z
-      .boolean()
-      .optional()
-      .describe('漢数字（万）や単位（km/ms）等の決定論的正規化と導出履歴（derivations）を付与するか (デフォルト: false)').meta({ default: false }),
-    reorderUFlat: z
-      .boolean()
-      .optional()
-      .describe('Lost in the Middle 対策: 抽出ハイライトを U字型（最重要情報を先頭と末尾）に並び替えるか (デフォルト: false)').meta({ default: false }),
-    diversityWeight: z
-      .number()
-      .min(0)
-      .max(1)
-      .optional()
-      .describe('MMR 多様性制御パラメータ λ: 1.0に近いほどクエリ関連度重視、0.0に近いほど重複排除・新規性重視 (デフォルト: 0.7)').meta({ default: 0.7 }),
-    annotateTemporal: z
-      .boolean()
-      .optional()
-      .describe('相対時間表現（明日、来週等）に公開日時を基準とした絶対日時注記 [YYYY-MM-DD] を決定論的に付与するか (デフォルト: false)').meta({ default: false }),
-    minimizeTables: z
-      .boolean()
-      .optional()
-      .describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
+    maskPii: SCRAPE_MASK_PII_FIELD,
+    webhookUrl: z.string().url().optional().describe('一括スクレイプ完了時に結果ペイロードを通知する Webhook URL (非同期)'),
+    annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
     onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
     highlightMaxCount: z
       .number()
@@ -449,11 +367,16 @@ export const SCRAPE_BATCH_INPUT_SHAPE = {
       .max(10)
       .optional()
       .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
+    includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
     verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
 };
 
 export const BatchScrapeRequestSchema = z.object({
   ...SCRAPE_BATCH_INPUT_SHAPE,
+  // CSS セレクタは MCP には出さず（LLM はページの HTML を見ずに呼ぶので正しく書けない）、REST にだけ残す
+  selectors: z.record(z.string(), z.string()).optional().describe('特定要素のみをピンポイント抽出する CSS セレクタ連想配列'),
+  clipSelector: z.string().optional().describe('formats に screenshot があるとき、ページ全体の代わりにこの要素だけの画像を返す CSS セレクタ。ブラウザで撮るので、mode "fast" では撮れない'),
+  removeSelectors: z.array(z.string()).optional().describe('除去したいノイズ要素の CSS セレクタ配列'),
   verbose: z.boolean().optional().describe('デバッグ用: quality スコアや evidence 等の内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
 });
@@ -462,7 +385,7 @@ export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press',
 
 /** 実装 (browser_session.ts runActionsOnPage) が解釈するアクション項目のみ。 */
 export const BrowserActionStepSchema = z.object({
-  type: BrowserActionTypeSchema.describe('アクション種別'),
+  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
   selector: z.string().optional().describe('操作対象の CSS セレクタ'),
   text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト'),
   value: z.string().optional().describe('select タグで選択する値'),
@@ -470,7 +393,7 @@ export const BrowserActionStepSchema = z.object({
   ms: z.number().optional().describe('wait 時の待機時間 (ミリ秒)'),
   script: z.string().optional().describe('evaluate で実行する JavaScript コード文字列'),
   url: z.string().optional().describe('navigate 時に遷移する URL'),
-  delay: z.number().optional().describe('操作後の待機ディレイ (ミリ秒)'),
+  delay: z.number().optional().describe('click は操作の後の待ち、fill・type は 1 文字ごとの間隔 (ミリ秒)。press・scroll・wait などでは読まれない'),
   clear: z.boolean().optional().describe('fill 時に既存の入力をクリアするか (デフォルト: true)').meta({ default: true }),
   distance: z.number().optional().describe('スクロール移動量 (px, デフォルト: 800)').meta({ default: 800 }),
   direction: z.enum(['down', 'up']).optional().describe('スクロール方向 (デフォルト: "down")').meta({ default: 'down' }),
@@ -479,19 +402,18 @@ export const BrowserActionStepSchema = z.object({
 export const BrowserActionRequestSchema = z.object({
   url: z.string().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
   sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
-  ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
   createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)').meta({ default: false }),
   closeSession: z.boolean().optional().describe('指定したセッションを終了してブラウザリソースを解放するか (デフォルト: false)').meta({ default: false }),
   actions: z.array(BrowserActionStepSchema).optional().describe('順次実行するブラウザアクションの配列'),
   extract: z.object({
     markdown: z.boolean().optional().describe('操作後のページ本文を Markdown で抽出するか (デフォルト: true)').meta({ default: true }),
     html: z.boolean().optional().describe('操作後の生 HTML を抽出するか (デフォルト: false)').meta({ default: false }),
-    screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)').meta({ default: false }),
+    screenshot: z.boolean().optional().describe('操作後の画面スクリーンショット（Base64 PNG）を取得するか (デフォルト: false)。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る').meta({ default: false }),
     screenshotFullPage: z.boolean().optional().describe('フルページスクリーンショットにするか (デフォルト: true)').meta({ default: true }),
-    clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ'),
+    clipSelector: z.string().optional().describe('特定要素のみを切り抜く CSS セレクタ。セッションで撮影の指定なしに開いたページの CSS の背景画像と Web フォントは、次の遷移から出る'),
     maxChars: z.number().optional().describe('最大抽出文字数 (デフォルト: 30000)').meta({ default: 30000 }),
   }).optional().describe('操作完了後に抽出するデータ指定'),
-  timeout: z.number().optional().describe('全体のタイムアウト時間 (ミリ秒, デフォルト: 30000)').meta({ default: 30000 }),
+  timeout: z.number().optional().describe('ページ遷移 (最初の URL・navigate) の待ち時間 (ミリ秒, デフォルト: 30000)。全体の制限時間ではない').meta({ default: 30000 }),
 });
 
 export const CrawlRequestSchema = z.object({
@@ -503,33 +425,35 @@ export const CrawlRequestSchema = z.object({
   formats: z.array(ScrapeFormatSchema).optional().describe('取得する形式配列 (デフォルト: ["markdown"])').meta({ default: ['markdown'] }),
   onlyMainContent: z.boolean().optional().describe('記事本文のみ抽出するか (デフォルト: true)').meta({ default: true }),
   query: z.string().optional().describe('巡回ページからハイライトを抽出するキーワード'),
-  extractHighlights: z.boolean().optional().describe('巡回した各ページからキーワードに関連する重要文（ハイライト）を自動抽出するか'),
-  onlyHighlights: z.boolean().optional().describe('抽出されたハイライトのみを各ページの本文 content として返し、ノイズ全文を削除するか'),
+  responseMode: SCRAPE_RESPONSE_MODE_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 各ページの抽出パッセージを U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 15000, 上限: 50000)').meta({ default: 15000 }),
   timeoutMs: z.number().int().min(1).max(120_000).optional().describe('タイムアウト時間 (ミリ秒, デフォルト: 15000)').meta({ default: 15000 }),
   concurrency: z.number().int().min(1).max(10).optional().describe('並行クロールワーカー数 (デフォルト: 3, 上限: 10)').meta({ default: 3 }),
   webhookUrl: z.string().url().optional().describe('クロール完了通知用 Webhook URL'),
+  includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
+
+/** map_site・REST の /map 共通の since / until */
+export const MAP_SINCE_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以降の URL に絞る (例: "2026-08-01", "2026-01-01T00:00:00Z")。lastmod の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない';
+export const MAP_UNTIL_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以前の URL に絞る。lastmod の無い URL は常に残り、リンクをたどる切り替えのときは効かない';
 
 export const MapRequestSchema = z.object({
   url: z.string().min(1, 'url は必須です').describe('サイトマップ探索対象のベース URL (例: "https://example.com")'),
   limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
-  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)').meta({ default: false }),
-  since: z.string().optional().describe('指定日時以降に更新された URL のみ抽出するフィルタ (例: "2026-08-01")'),
-  until: z.string().optional().describe('指定日時以前に更新された URL のみ抽出するフィルタ'),
+  includeSubdomains: z.boolean().optional().describe('サブドメインも含めるか (デフォルト: false)。サイトマップが無く、ページ内のリンクをたどる切り替えのときだけ効く').meta({ default: false }),
+  since: z.string().optional().describe(MAP_SINCE_DESCRIPTION),
+  until: z.string().optional().describe(MAP_UNTIL_DESCRIPTION),
+  timeoutMs: z.number().int().min(1).max(120_000).optional().describe('リンクをたどる切り替えのときの取得のタイムアウト (ミリ秒, デフォルト: 15000)。サイトマップ・robots.txt の取得は固定の 10 秒・5 秒').meta({ default: 15000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
 export const ImageSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('画像検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)').meta({ default: 20 }),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 20 件ずつ進む。漏れなく続けるには limit を省く'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -538,8 +462,8 @@ export const VideoPlatformSchema = z.enum(['all', 'youtube', 'tiktok', 'x', 'ins
 
 export const VideoSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('動画検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)').meta({ default: 20 }),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 20 件ずつ進む。漏れなく続けるには limit を省く'),
   updated: VideoSearchUpdatedSchema.optional().describe('投稿日の期間 (デフォルト: "all")').meta({ default: 'all' }),
   platform: VideoPlatformSchema.optional().describe('動画サイト (デフォルト: "all")').meta({ default: 'all' }),
   transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
@@ -550,7 +474,6 @@ export const VideoSearchRequestSchema = z.object({
 export const NewsSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('ニュース検索キーワード'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }).meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -558,8 +481,8 @@ export const ChiebukuroStatusSchema = z.enum(['all', 'open', 'vote', 'solved']);
 
 export const ChiebukuroSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('知恵袋 Q&A 検索キーワード'),
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)'),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件)').meta({ default: 10 }),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, 上限: 100)。limit によらず 10 件ずつ進む。漏れなく続けるには limit を省く'),
   status: ChiebukuroStatusSchema.optional()
     .describe('回答状況: "all"(すべて, デフォルト), "open"(回答受付中), "vote"(投票受付中), "solved"(解決済み)')
     .meta({ default: 'all' }),
@@ -567,7 +490,7 @@ export const ChiebukuroSearchRequestSchema = z.object({
 });
 
 export const TrendSearchRequestSchema = z.object({
-  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50)').meta({ default: 20 }),
+  limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50。返るのはページに載っている件数まで)').meta({ default: 20 }),
 });
 
 export const RealtimeSearchRequestSchema = z.object({
@@ -581,7 +504,7 @@ export const RealtimeSearchRequestSchema = z.object({
   url: z.string().optional().describe('【URL/ドメイン絞り込み】含まれるURLまたはドメイン名 (URL:演算子として送信)'),
   sort: z.enum(['recent', 'popular']).optional().describe('並び順: "recent"(新着順, デフォルト) または "popular"(話題順)').meta({ default: 'recent' }),
   limit: z.number().int().min(1).max(40).optional().describe('返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は応答の omittedCount に入る').meta({ default: 20 }),
-  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。Yahoo側は40件固定幅で取得)').meta({ default: 1 }),
+  page: z.number().int().min(1).max(100).optional().describe('ページ番号 (1-based, デフォルト: 1, 上限: 100。limit 件ずつ進む)').meta({ default: 1 }),
   focus: z.enum(['official', 'public']).optional().describe('優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
   anchor: z.string().max(100).optional().describe('守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
   verbose: z.boolean().optional().describe('検索診断（retrievalQueries など）を含めるか').meta({ default: false }),
@@ -611,18 +534,22 @@ export const TRANSIT_ROUTE_INPUT_SHAPE = {
   useFerry: z.boolean().optional().describe('フェリーを使う (デフォルト: true)').meta({ default: true }),
 };
 
-export const TransitRouteRequestSchema = z.object(TRANSIT_ROUTE_INPUT_SHAPE);
+// REST だけが受ける日時の指定。date・time より優先される
+export const TransitRouteRequestSchema = z.object({
+  ...TRANSIT_ROUTE_INPUT_SHAPE,
+  year: z.number().int().min(2000).max(2100).optional().describe('年 (date より優先)'),
+  month: z.number().int().min(1).max(12).optional().describe('月 (date より優先)'),
+  day: z.number().int().min(1).max(31).optional().describe('日 (date より優先)'),
+  hour: z.number().int().min(0).max(23).optional().describe('時 (time より優先)'),
+  minute: z.number().int().min(0).max(59).optional().describe('分 (time より優先)'),
+});
 
 export const WeatherRequestSchema = z.object({
-  city: z.string().min(1, 'city は必須です').describe('市区町村名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の地点ID'),
+  city: z.string().trim().min(1, 'city は必須です').describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。都道府県名は県の代表の予報区。気象台が複数ある北海道・鹿児島・沖縄は予報区か市町村の名前で（"北海道" だけはエラー）。見つからない地名と、複数の市町村に当たる名前（例: "府中"）はエラー'),
   days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
-export const IntegratedSearchResponseModeSchema = z.enum(['full', 'evidence']);
-export type IntegratedSearchResponseMode = z.infer<
-  typeof IntegratedSearchResponseModeSchema
->;
 export const SEARCH_WEB_INPUT_SHAPE = {
   query: z.string().min(1, 'query は必須です').describe('Web 検索キーワード'),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列 (例: ["natalie.mu"])'),
@@ -649,23 +576,17 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   realtimeSort: z.enum(['recent', 'popular']).optional().describe('リアルタイム速報のソート順: "recent"(新着順, デフォルト), "popular"(人気順)').meta({ default: 'recent' }),
   realtimeFocus: z.enum(['official', 'public']).optional().describe('X 投稿で優先する発信者。official: 本人・公式（予定・告知・事実確認）、public: 本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミ などがあれば public）'),
   realtimeAnchor: z.string().max(100).optional().describe('X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する'),
-  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
+  realtimeLimit: z.number().int().min(1).max(100).optional().describe('返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす（1 回の取得は 40 件まで）。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20)').meta({ default: 20 }),
   officialAccountId: z.string().optional().describe('公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件）'),
   includeMedia: z.boolean().optional().describe('画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない').meta({ default: true }),
-  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+  maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。html には効かない)').meta({ default: 30000 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか (デフォルト: false)').meta({ default: false }),
   includeDomains: z.array(z.string()).optional().describe('結果を絞り込むドメイン配列'),
   excludeDomains: z.array(z.string()).optional().describe('結果から除外するドメイン配列'),
   updated: z.enum(['all', 'day', 'week', 'year']).optional().describe('期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内)'),
-  extractHighlights: z.boolean().optional().describe('重要文（ハイライト）を自動抽出するか (デフォルト: true)').meta({ default: true }),
   onlyMainContent: z.boolean().optional().describe('記事本文のみを抽出するか (デフォルト: true)').meta({ default: true }),
-  formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します'),
-  dedup: z.boolean().optional().describe('重複・類似項目を自動排除するか (デフォルト: false)').meta({ default: false }),
-  reorderUFlat: z.boolean().optional().describe('Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false)').meta({ default: false }),
-  enablePrf: z.boolean().optional().describe('インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false)').meta({ default: false }),
-  diversityWeight: z.number().min(0).max(1).optional().describe('MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7)').meta({ default: 0.7 }),
-  minimizeTables: z.boolean().optional().describe('HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true)').meta({ default: true }),
-  annotateTemporal: z.boolean().optional().describe('相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false)').meta({ default: false }),
+  formats: z.array(ScrapeFormatSchema).optional().describe('指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します。X の投稿の結果は指定しなくても本文を残す。タイムラインのページは、realtime に同じアカウントの投稿があるときは本文を省く'),
+  annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
   highlightMaxCount: z.number().int().min(1).max(10).optional().describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
   verbose: z.boolean().optional().describe('デバッグ用: 内部詳細メタデータを含めるか (デフォルト: false)').meta({ default: false }),
   scrapeDeadlineMs: z.number().int().min(0).max(120_000).optional().describe('遅いページの打ち切り上限 (ms, 既定0=無効)。半数が揃って5秒後または上限到達で打ち切り、deadlineExceeded:true とスニペットで返す。本文のある遅いページも落ちる'),
@@ -673,7 +594,7 @@ export const INTEGRATED_SEARCH_INPUT_SHAPE = {
   maxTotalChars: z.number().int().min(1000).max(500_000).optional().describe('本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限'),
   // 既定は evidence（ハイライト中心）。測定は docs/evaluations/response-compression/results.md。
   // 全文が要る呼び出し側は responseMode: 'full' を渡す。
-  responseMode: IntegratedSearchResponseModeSchema.optional().default('evidence').describe('返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
+  responseMode: IntegratedSearchResponseModeSchema.optional().default('evidence').describe('返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す。ただし本文が maxChars で切れた結果は、highlights を切る前の全文から選ぶので、入れ替えずに highlights を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。'),
 };
 export const IntegratedSearchRequestSchema = z.object(INTEGRATED_SEARCH_INPUT_SHAPE);
 export const SuggestRequestSchema = z.object({
@@ -683,8 +604,8 @@ export const SuggestRequestSchema = z.object({
 });
 
 export const DisasterWarningsRequestSchema = z.object({
-  city: z.string().optional().describe('市区町村名または都道府県名 (例: "東京", "新宿区", "大阪府", "福岡")'),
-  areaCode: z.string().optional().describe('気象庁エリアコード (6桁または2桁, 例: "130000", "130010")'),
+  city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方'),
+  areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -701,8 +622,8 @@ export const EarthquakeRequestSchema = z.object({
 });
 
 export const RoadTrafficRequestSchema = z.object({
-  pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)'),
-  road: z.string().optional().describe('道路名 (例: "東名高速", "首都高", "中央道", "名神高速")'),
+  pref: z.union([z.string(), z.number()]).optional().describe('都道府県名または都道府県コード (例: "東京都", "愛知県", "大阪府", 13)。解決できない値はエラー。road と併せるとその都道府県のページを road で絞る'),
+  road: z.string().optional().describe('道路名 (例: "東名高速", "中央道", "名神高速", "東北道", "圏央道")。該当する道路の情報が無ければ、その旨を返す'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
@@ -711,7 +632,6 @@ export const WatchRegisterRequestSchema = z.object({
   title: z.string().optional().describe('監視ターゲットの識別用タイトル (例: "チケット当落発表ページ")'),
   selector: z.string().optional().describe('ピンポイントで差分監視する CSS セレクタ (例: "#status", ".news-list")'),
   webhookUrl: z.string().url().optional().describe('差分検知時に通知を送信する Webhook URL'),
-  intervalSeconds: z.number().int().min(1).max(604_800).optional().describe('監視インターバル目安 (秒, デフォルト: 3600, 上限: 604800)').meta({ default: 3600 }),
 });
 
 export const WatchCheckRequestSchema = z.object({
@@ -737,7 +657,7 @@ export const MusicSearchRequestSchema = z.object({
   query: z.string().min(1, 'query は必須です').describe('検索キーワード (曲名、アーティスト名、アルバム名)'),
   country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
   entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song", "album", "musicArtist" (デフォルト: "song")').meta({ default: 'song' }),
-  attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).or(z.string()).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
+  attribute: z.enum(['songTerm', 'artistTerm', 'albumTerm']).optional().describe('属性絞り込み: "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名)'),
   limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
@@ -753,33 +673,41 @@ export const LawDataRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
+/** search_diet_minutes の入力の決まり。引数の説明と OpenAPI の 400 に使う */
+export const DIET_MINUTES_INPUT_RULE = 'keyword・speaker・nameOfMeeting のどれか 1 つは必須';
+
 export const DietMinutesSearchRequestSchema = z.object({
-  keyword: z.string().optional().describe('国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")'),
-  speaker: z.string().optional().describe('発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")'),
+  keyword: z.string().optional().describe(`国会会議録の検索キーワード・質問内容 (例: "人工知能", "少子化対策")。${DIET_MINUTES_INPUT_RULE}`),
+  speaker: z.string().optional().describe(`発言者名・議員名・閣僚名 (例: "総理大臣", "河野太郎")。${DIET_MINUTES_INPUT_RULE}`),
   nameOfHouse: z.enum(['衆議院', '参議院']).optional().describe('院名 ("衆議院" または "参議院")'),
-  nameOfMeeting: z.string().optional().describe('委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")'),
+  nameOfMeeting: z.string().optional().describe(`委員会名・本会議名 (例: "予算委員会", "本会議", "内閣委員会")。${DIET_MINUTES_INPUT_RULE}`),
   from: z.string().optional().describe('開会日付範囲 開始 (YYYY-MM-DD)'),
   until: z.string().optional().describe('開会日付範囲 終了 (YYYY-MM-DD)'),
   limit: z.number().int().min(1).max(30).optional().describe('取得件数 (1〜30, デフォルト: 10)').meta({ default: 10 }),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
+const TradeFabricFieldsShape = {
+  fabricSurface: z.enum(['plain', 'raised']).optional().describe('衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う。不明なら省略'),
+  fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional().describe('衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除。不明なら省略'),
+};
+
 export const CpscCertificateCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "9503.00.0073"）。判定の主軸キー'),
-  targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
-  material: z.string().optional().describe('主な素材（鉛・フタル酸エステル規制関連で重要）。【推測値の入力厳禁】不明な場合は省略すること'),
-  productCategory: z.string().optional().describe('製品カテゴリの補足（HTSコードのみで対応表がヒットしない場合の補助情報）。【推測値の入力厳禁】不明な場合は省略すること'),
-  description: z.string().optional().describe('自由記述の補足説明'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。12歳以下は GCC でなく CPC。【推測値のでっち上げ厳禁】不明な場合は"unknown"を指定すること。ツール側が不足項目としてユーザーへの確認質問を返却します'),
+  material: z.string().optional().describe('主な素材。衣料では繊維の組成（"100% polyester" の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ。【推測値の入力厳禁】不明な場合は省略すること'),
+  hasBattery: z.boolean().optional().describe('電池を使う製品か。true で batteryType が button_coin なら 16 CFR 1263 を当てる。不明なら省略'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。button_coin は hasBattery を省いても電池あり（false とは矛盾でエラー）。other は true のときだけ。不明なら省略'),
+  ...TradeFabricFieldsShape,
 });
 
 export const FdaRegulatedCheckRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('HTSコード（例: "3004.90.0000", "2106.90.9998"）'),
-  productDescription: z.string().optional().describe('製品の自由記述説明（用途・素材等の補助情報）'),
-  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。食器・調理器具(Chapter 39/69/70/73等)のFD1適用分岐に使用。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します'),
+  foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します'),
 });
 
 export const VerifyHtsCodeRequestSchema = z.object({
   htsCode: z.string().min(1, 'htsCode は必須です').describe('検証したいHTSコード（例: "9503.00.0073"）。推測ではなく既知・候補のコードを指定すること'),
-  productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。コード推論の根拠を明示するための必須項目'),
+  productDescription: z.string().min(1, 'productDescription は必須です').describe('製品の説明（素材・用途・機能・加工度合い等）。必須。判定には使わず、根拠の記録として応答に返す'),
 });
 
 export const ProductComplianceRequestSchema = z.object({
@@ -788,25 +716,64 @@ export const ProductComplianceRequestSchema = z.object({
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
   htsCode: z.string().optional().describe('ユーザーから明示された既知のHTSコード（指定時は最優先で検証）。推測・候補値は入れず、分類したいときは省略する（Sora が公式データと判例から特定する）'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
-  material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
-  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。【推測値の入力厳禁】不明な場合は省略すること'),
-  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。【推測値のでっち上げ厳禁】Kitchenware等のカテゴリでFDA食品接触安全基準の判定要否に必要。不明な場合は省略しユーザーに確認すること'),
-  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。【推測値のでっち上げ厳禁】Electronics等のカテゴリでCPSC規制カテゴリ判定・DOT/PHMSA危険物表示要否に必要。不明な場合は省略しユーザーに確認すること'),
-  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池等その他の電池）。hasBattery=trueの場合のみ意味を持つ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること。衣料は "100% polyester" の形（16 CFR 1610.1(d)(2)）'),
+  productCategory: z.string().optional().describe('製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, helmet）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない（batteryType が button_coin だと 400）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。button_coin は hasBattery を省いても電池あり（false とは矛盾で 400）。other は true のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること'),
+  ...TradeFabricFieldsShape,
 });
+
+const GccPartyShape = {
+  name: z.string().optional(), street: z.string().optional(), city: z.string().optional(),
+  state: z.string().optional(), country: z.string().optional(), email: z.string().optional(), phone: z.string().optional(),
+};
+export const GccPartySchema = z.object(GccPartyShape);
+const GccIdentifierTypeSchema = z.enum(['sku', 'model', 'gtin', 'upc', 'serial', 'registered', 'other']);
+export const GccItemInputSchema = z.object({
+  htsCode: z.string().min(1).describe('10 桁の HTS コード（インボイス・通関業者の値。推測しない）'),
+  productName: z.string().min(1).describe('英語の一般名（16 CFR 1110.11(a)(1)）'),
+  identifier: z.string().optional().describe('製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)）'),
+  identifierType: GccIdentifierTypeSchema.optional().describe('identifier の種類').meta({ default: 'sku' }),
+  brand: z.string().optional(),
+  description: z.string().optional().describe('製品の説明（英語）'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('child: 12 歳以下（CPC が要る）、adult: 13 歳以上・一般'),
+  material: z.string().optional().describe('衣料の繊維の組成（"100% polyester" の形。繊維は一般名）'),
+  fabricSurface: z.enum(['plain', 'raised']).optional().describe('衣料の生地の表面（raised: 起毛・フリース・パイル）'),
+  fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional().describe('衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）'),
+  hasBattery: z.boolean().optional(),
+  batteryType: z.enum(['button_coin', 'other']).optional().describe('button_coin: ボタン・コイン電池（空気亜鉛電池は other）'),
+  foodContact: z.boolean().optional().describe('食品・飲料に触れるか（FDA の案内に使う）'),
+  citations: z.array(z.string()).optional().describe('試験報告書の規則を 1 つずつ（例: "16 CFR 1203"）。当てはまる規則が無いと確かめたら []'),
+  manufacture: z.object({ date: z.string().optional(), ...GccPartyShape }).optional().describe('製造の年月（YYYY-MM）と工場の連絡先（16 CFR 1110.11(a)(5)）'),
+  testing: z.object({ date: z.string().optional(), reportNumber: z.string().optional(), parties: z.array(GccPartySchema).optional() }).optional()
+    .describe('最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの連絡先（16 CFR 1110.11(a)(6)）'),
+  url: z.string().url().optional().describe('商品ページ。番号・名前の候補を返すだけで、証明書には載せない（1 回に 5 件まで）'),
+});
+export const GenerateGccCertificateRequestSchema = z.object({
+  items: z.array(GccItemInputSchema).min(1).max(50).describe('1 件 1 製品（最大 50 件）'),
+  certifier: GccPartySchema.optional().describe('証明者（輸入品は輸入者。16 CFR 1110.7）。省くとサーバーの SORA_GCC_CERTIFIER'),
+  recordCustodian: GccPartySchema.optional().describe('試験の記録を持つ人（役職でよい。16 CFR 1110.11(a)(4)）。省くと SORA_GCC_CUSTODIAN'),
+  orderNumber: z.string().optional(),
+  awbNumber: z.string().optional(),
+  carrier: z.string().optional(),
+  invoiceNumber: z.string().optional(),
+  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（false ではエラー）').meta({ default: false }),
+});
+
 export const PredictHtsCodeRequestSchema = z.object({
   productName: z.string().min(1, 'productName は必須です').describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400）'),
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
   material: z.string().optional().describe('主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します'),
-  productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。【推測値の入力厳禁】不明な場合は省略すること'),
+  productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
   targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。【推測値のでっち上げ厳禁】CPSC証明書およびeFiling要件が分岐するため、不明な場合は省略すること'),
-  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。【推測値のでっち上げ厳禁】FDA規制・Prior Notice要否が分岐するため、不明な場合は省略すること'),
-  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。【推測値のでっち上げ厳禁】CPSC規格や危険物表示義務が分岐するため、不明な場合は省略すること'),
+  foodContact: z.boolean().optional().describe('食品・飲料に接触する用途か（true: 飲食・調理用, false: 非食品用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
+  hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
 });
 export const ElevationRequestSchema = z.object({
   address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
-  lat: z.number().optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
-  lon: z.number().optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+  lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
+  lon: z.number().min(-180).max(180).optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
   noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
 });
 // 住所データ（ABR）: 郵便番号・正規化・逆ジオコーディング。結果は内部の型をそのまま返すので、主要項目だけを定義する。
@@ -972,11 +939,11 @@ export const PoiSearchResultSchema = z.object({
 });
 
 export const FlightStatusRequestSchema = z.object({
-  airport: z.string().optional().describe('対象空港名または空港コード (例: "羽田", "成田", "伊丹", "関空", "中部", "新千歳", "福岡", "那覇", "HND", "NRT", "ITM", "KIX", "NGO", "CTS", "FUK", "OKA", デフォルト: "羽田")').meta({ default: '羽田' }),
+  airport: z.string().optional().describe('対象空港名または空港コード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "羽田", "関空", "NGO", デフォルト: "羽田")。他の空港はエラー').meta({ default: '羽田' }),
   type: z.enum(['departure', 'arrival']).optional().describe('発着区分: "departure" (出発) または "arrival" (到着) (デフォルト: "departure")').meta({ default: 'departure' }),
   category: z.enum(['domestic', 'international']).optional().describe('路線区分: "domestic" (国内線) または "international" (国際線) (デフォルト: "domestic")').meta({ default: 'domestic' }),
   flightNumber: z.string().optional().describe('特定の便名で絞り込む場合 (例: "ANA2421", "JAL505")'),
-  keyword: z.string().optional().describe('目的地・出発地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
+  keyword: z.string().optional().describe('出発地・目的地・航空会社名などのキーワード絞り込み (例: "那覇", "全日本空輸")'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 export const InspectImageRequestSchema = z.object({
@@ -1063,20 +1030,14 @@ export interface TrackingResult {
 export const TrackingRequestSchema = z.object({
   trackingNumber: z.string().min(1, '追跡番号は必須です').describe('荷物の追跡番号・送り状番号・お問い合わせ番号（ハイフン有無問わず）'),
   carrier: z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl', 'auto']).optional().describe('運送会社コード (yamato, sagawa, japanpost, seino, fukutsu, ups, fedex, dhl, auto)。未指定または "auto" の場合は自動判別'),
-  preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列'),
-  originCountry: z.string().optional().describe('差出元の国コード（ISO 2文字）'),
-  destinationCountry: z.string().optional().describe('お届け先の国コード（ISO 2文字）'),
+  preferredCarriers: z.array(z.enum(['yamato', 'sagawa', 'japanpost', 'seino', 'fukutsu', 'ups', 'fedex', 'dhl'])).optional().describe('優先的に検証する運送会社候補のヒント配列。自動判別（carrier を省く・auto）のときだけ効く'),
   noCache: z.boolean().optional().describe('キャッシュをバイパスして最新情報を強制取得するか').meta({ default: false }),
-  verbose: z.boolean().optional().describe('詳細な detection 判定情報をレスポンスに含めるか'),
 });
 export interface TrackingRequest {
   trackingNumber: string;
   carrier?: CarrierCode | 'auto';
   preferredCarriers?: CarrierCode[];
-  originCountry?: string;
-  destinationCountry?: string;
   noCache?: boolean;
-  verbose?: boolean;
 }
 
 
@@ -1104,12 +1065,6 @@ export const MediaInfoSchema = z.object({
     time: z.string().describe('表示時間文字列 (例: 01:23)'),
     seconds: z.number().describe('再生秒数'),
   })).optional().describe('動画チャプター情報'),
-});
-
-export const CitationSchema = z.object({
-  text: z.string().describe('引用テキスト'),
-  url: z.string().describe('引用元URL'),
-  context: z.string().optional().describe('周辺コンテキスト'),
 });
 
 export const ImageItemSchema = z.object({
@@ -1144,19 +1099,6 @@ export const EventItemSchema = z.object({
 
 export const ScheduleItemSchema = EventItemSchema.extend({
   sources: z.array(z.string()).describe('この予定を載せていたページの URL'),
-});
-
-export const MarkdownChunkSchema = z.object({
-  index: z.number().describe('チャンク番号 (0-based)'),
-  heading: z.string().optional().describe('所属する直近の見出し'),
-  content: z.string().describe('チャンク本文 Markdown'),
-  estimatedTokens: z.number().describe('推定トークン数'),
-});
-
-export const LinkStatusSchema = z.object({
-  url: z.string().describe('リンク先URL'),
-  status: z.number().describe('HTTPステータスコード'),
-  ok: z.boolean().describe('到達成功フラグ (2xx/3xx)'),
 });
 
 export const FieldEvidenceSchema = z.object({
@@ -1200,24 +1142,6 @@ export const EvidenceDiagnosticsSchema = z.object({
   topScore: z.number().describe('最高関連スコア'),
   weakEvidenceSignal: z.boolean().describe('根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0)'),
   reasons: z.array(z.string()).describe('判定理由 (例: ["low_query_coverage", "no_matching_blocks"])'),
-});
-
-export const CandidateDiscrepancySchema = z.object({
-  kind: z.enum(['date', 'money', 'version', 'number']).describe('不一致種別 (日付、金額、バージョン、数値)'),
-  values: z.array(z.object({
-    original: z.string().describe('原文の表記'),
-    normalized: z.string().describe('正規化後の値'),
-    sourceId: z.string().optional().describe('出所ソースID'),
-    blockId: z.string().optional().describe('ブロックID'),
-    context: z.string().optional().describe('文脈スニペット'),
-  })).describe('競合している値のリスト'),
-  status: z.literal('needs_agent_resolution').describe('解決ステータス'),
-});
-
-export const DerivationTraceSchema = z.object({
-  operation: z.string().describe('適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m")'),
-  input: z.string().describe('変換前文字列'),
-  output: z.string().describe('変換後文字列'),
 });
 
 // --- 1. システム系 レスポンススキーマ ---
@@ -1317,23 +1241,14 @@ export const ScrapeResponseSchema = z.object({
   socialLinks: z.record(z.string(), z.string()).optional().describe('ページ内公式SNSリンク連想配列'),
   highlights: z.array(z.string()).optional().describe('キーワードに関連する重要文（ハイライト）一覧'),
   highlightItems: z.array(HighlightItemSchema).optional().describe('出所情報・スコア付きハイライト詳細配列'),
-  evidenceDiagnostics: EvidenceDiagnosticsSchema.optional().describe('客観的な証拠充足性観測量'),
-  discrepancies: z.array(CandidateDiscrepancySchema).optional().describe('日付・金額・バージョンの不一致候補'),
-  derivations: z.array(DerivationTraceSchema).optional().describe('決定論的な単位・漢数字変換導出履歴'),
   temporalAnchors: z.array(TemporalAnchorSchema).optional().describe('相対日付表現の絶対日時解決結果一覧'),
   highlightDiagnostics: EvidenceDiagnosticsSchema.optional().describe('ハイライト選択の診断情報（verbose 時のみ）'),
   textFragmentUrl: z.string().optional().describe('ハイライト該当箇所へジャンプする Chrome URL'),
-  summary: z.array(z.string()).optional().describe('抽出型自動要約 (TL;DR) 箇条書きリスト'),
-  citations: z.array(CitationSchema).optional().describe('本文中の引用・出典リンク一覧'),
-  chunks: z.array(MarkdownChunkSchema).optional().describe('RAG 用セマンティック・チャンク配列'),
   characterCount: z.number().optional().describe('本文の総文字数'),
   wordCount: z.number().optional().describe('単語数'),
   readingTimeMin: z.number().optional().describe('想定読了時間 (分)'),
-  promptContext: z.string().optional().describe('LLM 最適化済み XML プロンプト文字列'),
-  highlightedContent: z.string().optional().describe('<mark> で一致語句をハイライトした本文'),
   media: MediaInfoSchema.optional().describe('YouTube・動画・音声等のリッチメディア情報'),
   links: z.array(z.string()).optional().describe('ページ内抽出リンク URL 一覧'),
-  linksWithStatus: z.array(LinkStatusSchema).optional().describe('リンク健全性検証結果'),
   images: z.array(ImageItemSchema).optional().describe('抽出された重要画像一覧'),
   jsonLd: z.array(z.record(z.string(), z.any())).optional().describe('構造化データ (Schema.org JSON-LD)'),
   availability: z.string().optional().describe('EC 在庫状況 (InStock, OutOfStock 等)'),
@@ -1350,6 +1265,7 @@ export const ScrapeResponseSchema = z.object({
   html: z.string().optional().describe('クリーン整形済み HTML 本文'),
   rawHtml: z.string().optional().describe('取得時の完全な生 HTML'),
   screenshot: z.string().optional().describe('スクリーンショット画像 (Base64 PNG)'),
+  warnings: z.array(z.string()).optional().describe('求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった)'),
   quality: z.number().optional().describe('ページ品質スコア (0〜100)'),
   completeness: z.number().optional().describe('必須フィールド充足度 (0〜100)'),
   pageType: z.enum(['article', 'product', 'qa', 'generic']).optional().describe('自動判定されたページ種別'),
@@ -1365,7 +1281,7 @@ export const BatchScrapeResponseSchema = z.object({
   total: z.number().describe('一括リクエスト URL 総数'),
   successful: z.number().describe('スクレイピング成功件数'),
   failed: z.number().describe('失敗件数'),
-  results: z.array(ScrapeResponseSchema).describe('成功したページのスクレイピング結果一覧'),
+  results: z.array(ScrapeResponseSchema).describe('成功したページのスクレイピング結果一覧。入力の順ではなく、取得が終わった順'),
   errors: z.array(z.object({
     url: z.string().describe('失敗した URL'),
     error: z.string().describe('エラー原因説明'),
@@ -1535,7 +1451,6 @@ export const IntegratedSearchResponseSchema = z.object({
     omittedCount: z.number().int().optional().describe(REALTIME_OMITTED_DESCRIPTION),
     items: z.array(IntegratedRealtimeItemSchema),
   }).optional().describe('Xリアルタイム検索のメタデータと投稿一覧'),
-  prf: z.object({ originalQuery: z.string(), expandedQuery: z.string(), expansionTerms: z.array(z.string()) }).optional().describe('擬似適合フィードバックによるクエリ拡張'),
   responseMode: z.literal('evidence').optional().describe('evidence（既定）のとき返す。full および verbose 時は省略'),
   contextSufficiency: z.object({
     level: z.enum(['no_gap_detected', 'partial', 'insufficient']).describe('no_gap_detected: 欠落を検出しなかった（十分の保証ではない） / partial: 不足の根拠あり / insufficient: 本文を取得できたページも投稿も無い'),
@@ -1722,6 +1637,7 @@ export const WeatherResponseSchema = z.object({
     prefecture: z.string().optional().describe('予報区名（livedoor 天気互換。都道府県名とは限らない）'),
     city: z.string().optional().describe('指定した地名'),
   }).optional().describe('対象地域（livedoor 天気互換）'),
+  temperatureArea: z.string().optional().describe('今日・明日・明後日の気温の地点名 (例: "八幡")'),
   overview: z.string().optional().describe('気象概況テキスト'),
   description: z.object({
     headline: z.string().optional().describe('概況の見出し'),
@@ -1736,20 +1652,21 @@ export const WeatherResponseSchema = z.object({
 
 export const WarningItemSchema = z.object({
   code: z.string().describe('警報・注意報コード (例: "03")'),
-  name: z.string().describe('警報・注意報名称 (例: "大雨警報", "雷注意報")'),
-  level: z.enum(['special', 'warning', 'advisory']).describe('警報レベル: "special"(特別警報), "warning"(警報), "advisory"(注意報)'),
-  status: z.string().optional().describe('発令ステータス (発表、継続、解除等)'),
+  name: z.string().describe('警報・注意報名称 (例: "大雨危険警報", "雷注意報")'),
+  level: z.enum(['special', 'warning', 'advisory']).describe('警報レベル: "special"(特別警報), "warning"(警報・危険警報), "advisory"(注意報)'),
+  alertLevel: z.number().int().min(2).max(5).optional().describe('段階 (レベル2〜5: 注意報・警報・危険警報・特別警報)。大雨・土砂災害・高潮だけ'),
+  status: z.string().optional().describe('発令ステータス (発表、継続等。解除は含まない)'),
 });
 
 export const AreaWarningsResponseSchema = z.object({
-  areaCode: z.string().describe('気象庁エリアコード (6桁)'),
-  areaName: z.string().describe('対象地域名 (例: "東京都")'),
+  areaCode: z.string().describe('解決した気象庁エリアコード (7桁は市町村、6桁は予報区または気象台)。区域に分かれた市 (横浜市など) は区域の番号をカンマでつなぐ (例: "1410011,1410012")'),
+  areaName: z.string().describe('解決した市町村・予報区・気象台の地域の名前 (例: "新宿区", "東京地方")'),
   prefecture: z.string().describe('都道府県名'),
-  reportTime: z.string().describe('発表日時 (ISO 8601)'),
+  reportTime: z.string().describe('使った報のうち最も新しい発表日時 (ISO 8601)'),
   specialWarnings: z.array(WarningItemSchema).describe('発表中の特別警報一覧'),
-  warnings: z.array(WarningItemSchema).describe('発表中の警報一覧'),
+  warnings: z.array(WarningItemSchema).describe('発表中の警報・危険警報一覧'),
   advisories: z.array(WarningItemSchema).describe('発表中の注意報一覧'),
-  hasActiveAlerts: z.boolean().describe('現在発令中の特別警報または警報が存在するか'),
+  hasActiveAlerts: z.boolean().describe('発表中の特別警報・警報・注意報が1つでもあるか'),
   ...CACHE_META_SHAPE,
 });
 
@@ -2123,7 +2040,7 @@ export const WatchTargetRecordSchema = z.object({
   last_hash: z.string().nullable().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
   last_content: z.string().nullable().optional().describe('直前チェック時の本文スニペット'),
   webhook_url: z.string().nullable().optional().describe('差分検知通知先 Webhook URL'),
-  interval_seconds: z.number().describe('監視間隔 (秒)'),
+  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる'),
   last_checked_at: z.number().nullable().optional().describe('最終チェック日時 (Unixミリ秒)'),
   created_at: z.number().describe('ターゲット登録日時 (Unixミリ秒)'),
 });
@@ -2137,7 +2054,7 @@ export const WatchCheckResultSchema = z.object({
   diffSummary: z.string().optional().describe('差分検出内容のサマリー説明'),
   snapshotSnippet: z.string().optional().describe('最新コンテンツの冒頭スニペット'),
   checkedAt: z.string().describe('チェック実行日時 (ISO 8601)'),
-  webhookSent: z.boolean().optional().describe('Webhook 通知が送信されたか'),
+  webhookSent: z.boolean().optional().describe('Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略'),
   errorCode: z.string().optional().describe('失敗コード (WATCH_SELECTOR_NOT_FOUND 等)'),
 });
 
@@ -2170,12 +2087,20 @@ export const CpscApplicableRegulationSchema = z.object({
   sourceUrl: z.string().describe('規制条項の公式参照先 URL'),
 });
 
+export const CpscTestingExemptionSchema = z.object({
+  exempt: z.boolean().describe('可燃性等の実試験が法定免除されるか'),
+  citation: z.string().optional().describe('試験免除の根拠条文 (例: "16 CFR 1610.1(d)(1)", "16 CFR 1610.1(d)(2)")'),
+  reason: z.string().describe('試験免除または適用除外の理由説明'),
+  enforcementDiscretion: z.boolean().optional().describe('2016年CPSC執行裁量ポリシーにより大人用衣料品のGCC発行・eFilingも免除（ACE Disclaim B / 130.006）されるか'),
+});
+
 export const CpscCertificateCheckResultSchema = z.object({
   certificateRequired: z.union([z.boolean(), z.literal('unknown')]).describe('適合証明書 (GCCまたはCPC) が必要か'),
   certificateType: z.enum(['GCC', 'CCC', 'none', 'unknown']).describe('要求される証明書種別: "GCC"(一般品), "CCC"(子供向け品 CPC), "none"(不要), "unknown"(要確認)'),
   eFilingRequired: z.boolean().describe('2026年7月よりCBP ACEでの電子的提出(eFiling)が必須となる品目か'),
   applicableRegulations: z.array(CpscApplicableRegulationSchema).describe('適用される CPSC 安全基準・規制規格リスト'),
-  disclaimerCodeHint: z.string().optional().describe('eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A")'),
+  disclaimerCodeHint: z.string().optional().describe('eFiling 非対象品申告時に使用する ACE Disclaimer コード目安 (例: "A", "B")'),
+  testingExemption: CpscTestingExemptionSchema.optional().describe('16 CFR 1610.1(d) 等の法定試験免除・執行裁量免除の詳細'),
   missingInfo: z.array(z.string()).describe('判定に必要な不足情報項目'),
   nextActions: z.array(z.string()).describe('輸入者・輸出者が次に取るべき実務アクションリスト'),
   disclaimer: z.string().describe('免責事項文'),
@@ -2313,6 +2238,51 @@ export const CheckProductComplianceResultSchema = z.object({
   disclaimer: z.string().describe('法的免責事項文'),
 });
 
+export const GccItemSummarySchema = z.object({
+  line: z.number().int().describe('行番号（1 始まり）'),
+  status: z.enum(['generated', 'draft_needs_info', 'exempt_disclaim_b', 'exempt_no_gcc_needed', 'cpc_required_instead']).describe('generated: GCC ができた / draft_needs_info: 足りない記録がある下書き / exempt_disclaim_b: 16 CFR 1610.1(d) の免除の大人の衣料 / exempt_no_gcc_needed: 当てはまる規則が無い / cpc_required_instead: 子供用で CPC が要る'),
+  htsCode: z.string().describe('HTS コード'),
+  productName: z.string().describe('製品名'),
+  identifier: z.string().optional().describe('製品を特定する番号'),
+  certificateId: z.string().optional().describe('証明書の ID（generated のときだけ）'),
+  cpscListCategory: z.string().optional().describe('CPSC の一覧の区分（完全一致のとき）'),
+  citations: z.array(z.string()).optional().describe('証明する規則（GCC のとき）'),
+  testingExclusions: z.array(z.string()).optional().describe('試験の除外（例: "16 CFR 1610.1(d)(2)"）'),
+  disclaimCode: z.enum(['A', 'B']).optional().describe('ACE の Disclaimer のコード'),
+  intendedUseCode: z.string().optional().describe('Intended Use Code（B のとき "130.006"）'),
+  filingNote: z.string().describe('ACE での扱い'),
+  fdaNote: z.string().optional().describe('FDA の案内'),
+  missingFields: z.array(z.string()).optional().describe('この品の足りない項目'),
+  clarifyingQuestions: z.array(z.string()).optional().describe('確認の質問'),
+  warnings: z.array(z.string()).optional().describe('注意'),
+  suggestions: z.object({
+    identifier: z.string().optional(),
+    identifierType: GccIdentifierTypeSchema.optional(),
+    pageProductName: z.string().optional(),
+    brand: z.string().optional(),
+    variants: z.number().int().optional().describe('ページにある種類の数'),
+  }).optional().describe('商品ページからの候補（url を付けて identifier を省いた品だけ。証明書には載らない）'),
+});
+
+export const GenerateGccCertificateResultSchema = z.object({
+  packageId: z.string().describe('一式の ID（PKG- で始まる）'),
+  generatedAt: z.string().describe('作成日時（ISO 8601、UTC）'),
+  mode: z.enum(['single_product', 'order_package']).describe('single_product: 1 品 / order_package: 複数品か注文の情報あり'),
+  overallStatus: z.enum(['ready', 'exempt', 'partial_or_draft', 'cpc_required']).describe('全体の状態'),
+  counts: z.object({
+    totalItems: z.number().int().describe('品の数'),
+    gccGenerated: z.number().int().describe('GCC ができた数'),
+    draftNeedsInfo: z.number().int().describe('下書きの数'),
+    disclaimBExempt: z.number().int().describe('Disclaim B の数'),
+    noGccNeeded: z.number().int().describe('GCC が要らない数'),
+    cpcRequired: z.number().int().describe('CPC が要る数'),
+  }).describe('状態ごとの数'),
+  missingFields: z.array(z.string()).optional().describe('証明者・記録の担当の足りない項目'),
+  items: z.array(GccItemSummarySchema).describe('品ごとの要約'),
+  packageHtml: z.string().describe('印刷用の HTML（1 つ）'),
+  disclaimer: z.string().describe('免責の文'),
+});
+
 // --- 10. 荷物追跡系 レスポンススキーマ ---
 export const TrackingEventSchema = z.object({
   date: z.string().optional().describe('イベント発生日時 (例: "2026/09/10 09:30")'),
@@ -2358,7 +2328,7 @@ export const TrackingResultSchema = z.object({
       strength: z.enum(['exclusive', 'strong', 'weak']).describe('候補強度'),
       reasons: z.array(z.string()).describe('判定理由'),
     })).optional().describe('ローカル判定候補一覧'),
-  }).optional().describe('自動判別・検証診断情報 (verbose: true 時)'),
+  }).optional().describe('自動判別・検証診断情報'),
   resolvedCarrier: z.object({
     code: z.string().describe('確定した運送会社コード'),
     name: z.string().describe('確定した運送会社名称'),
@@ -2498,7 +2468,7 @@ export function generateOpenApiDocument() {
       },
       '/scrape': {
         post: {
-          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・RAGチャンキング・出典抽出・読了時間・PII保護対応)',
+          summary: '単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・読了時間・PII保護対応)',
           requestBody: {
             content: {
               'application/json': {
@@ -2680,7 +2650,7 @@ export function generateOpenApiDocument() {
       },
       '/search': {
         post: {
-          summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・重複排除・最新事実/スケジュール調査)',
+          summary: '万能深層Web検索 (Web + X/Twitter + Clean Markdown 本文一括スクレイプ・最新事実/スケジュール調査)',
           description: '取得した本文の回答値・対象との関連・日付整合性を用いて証拠を評価します。一律の新着順ではありません。年を省略した月日は次に到来する日付の年を仮定するため、過去の調査では年を明示してください。updated は検索プロバイダーの更新期間指定であり、イベント開催日の指定ではありません。adaptiveScrape は追加取得の明示 opt-in、verbose は診断情報の表示に使用します。応答の contextSufficiency は、取得できた本文・投稿に対して要件語の言及と回答値（時刻・金額・日付など）が揃っているかを示す信号です（no_gap_detected は十分の保証ではありません）。maxTotalChars は本文合計の上限、scrapeDeadlineMs は遅いページの打ち切り（既定は無効）で、いずれも明示指定した場合のみ働きます。応答の schedule は上位ページの予定（構造化データの Event）を日付と名称でまとめた一覧です。includeMedia: false で画像・動画の URL を省けます（既定は含める）。realtimeAnchor で X 検索で守る固有名詞（クエリ中の語）を指定できます（省略時は推定）。',
           requestBody: {
             content: {
@@ -3129,7 +3099,7 @@ export function generateOpenApiDocument() {
           summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (GET クエリ指定)',
           parameters: [
             { name: 'pref', in: 'query', schema: { type: 'string' }, description: '都道府県名 (例: "東京都", "神奈川県")' },
-            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3149,7 +3119,7 @@ export function generateOpenApiDocument() {
           summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (都道府県パス指定)',
           parameters: [
             { name: 'pref', in: 'path', required: true, schema: { type: 'string' }, description: '都道府県名 (例: "東京", "神奈川")' },
-            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "首都高")' },
+            { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: 'キャッシュをバイパスするか' },
           ],
           responses: {
@@ -3523,6 +3493,34 @@ export function generateOpenApiDocument() {
           },
         },
       },
+      '/trade/gcc-generate': {
+        post: {
+          summary: '米国CPSCの一般適合証明書（GCC）と、通関の保留に出す書類を作る（16 CFR 1110.11）',
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: zodToOpenApiSchema(GenerateGccCertificateRequestSchema),
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'GCC・免除の説明・表紙の HTML と、品ごとの要約',
+              content: {
+                'application/json': {
+                  schema: zodToOpenApiSchema(GenerateGccCertificateResultSchema),
+                },
+              },
+            },
+            '400': {
+              description: '入力の誤り（スキーマ、10 桁でない HTS コード、日付、url の品が 6 件以上、証明書に載る値のラテン文字以外の文字、1 つの citations の文字列に 16 CFR が複数: INVALID_INPUT）、見本・仮置きに見える値（UNVERIFIED_PLACEHOLDER_INPUT）',
+            },
+            '422': {
+              description: 'GCC にする品に足りない項目がある（MISSING_REQUIRED_GCC_FIELDS。details.missingFields と details.items。allowDraft: true なら下書きを返す）',
+            },
+          },
+        },
+      },
       '/gov/diet-minutes': {
         post: {
           summary: '国会会議録検索 API (衆参両院の本会議・委員会発言記録・議員答弁全文検索)',
@@ -3542,15 +3540,16 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '400': { description: `入力の誤り (INVALID_INPUT): ${DIET_MINUTES_INPUT_RULE}` },
           },
         },
         get: {
           summary: '国会会議録検索 API (GET クエリ指定)',
           parameters: [
-            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: '検索キーワード' },
-            { name: 'speaker', in: 'query', schema: { type: 'string' }, description: '発言者名 (例: "総理大臣", "大臣")' },
+            { name: 'keyword', in: 'query', schema: { type: 'string' }, description: `検索キーワード。${DIET_MINUTES_INPUT_RULE}` },
+            { name: 'speaker', in: 'query', schema: { type: 'string' }, description: `発言者名 (例: "総理大臣", "大臣")。${DIET_MINUTES_INPUT_RULE}` },
             { name: 'nameOfHouse', in: 'query', schema: { type: 'string', enum: ['衆議院', '参議院'] }, description: '議院区分' },
-            { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: '会議・委員会名' },
+            { name: 'nameOfMeeting', in: 'query', schema: { type: 'string' }, description: `会議・委員会名。${DIET_MINUTES_INPUT_RULE}` },
             { name: 'from', in: 'query', schema: { type: 'string' }, description: '期間開始日 (YYYY-MM-DD)' },
             { name: 'until', in: 'query', schema: { type: 'string' }, description: '期間終了日 (YYYY-MM-DD)' },
             { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 30, default: 10 }, description: '取得件数 (1〜30, デフォルト: 10)' },
@@ -3565,6 +3564,7 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '400': { description: `入力の誤り (INVALID_INPUT): ${DIET_MINUTES_INPUT_RULE}` },
           },
         },
       },
@@ -3661,7 +3661,7 @@ export function generateOpenApiDocument() {
       ...addressOpenApiPaths(),
       '/traffic/flight': {
         post: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API',
           requestBody: {
             content: {
               'application/json': {
@@ -3671,7 +3671,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
@@ -3681,9 +3681,9 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (GET クエリ指定)',
           parameters: [
-            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "NRT", "成田", "KIX", "関空", "FUK", "福岡")' },
+            { name: 'airport', in: 'query', schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "HND", "羽田", "NRT", "成田", "KIX", "関空")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み (例: "NH241", "JL516")' },
@@ -3692,7 +3692,7 @@ export function generateOpenApiDocument() {
           ],
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
@@ -3704,9 +3704,9 @@ export function generateOpenApiDocument() {
       },
       '/traffic/flight/{airport}': {
         get: {
-          summary: '主要空港フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
+          summary: '5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API (空港パス指定)',
           parameters: [
-            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (例: "HND", "羽田", "成田")' },
+            { name: 'airport', in: 'path', required: true, schema: { type: 'string' }, description: '空港名またはコード (羽田・成田・伊丹・関西・中部の 5 空港だけ。「東京」「tokyo」は羽田で、成田は名前で指定。例: "HND", "羽田", "成田")' },
             { name: 'type', in: 'query', schema: { type: 'string', enum: ['departure', 'arrival'] }, description: '出発/到着' },
             { name: 'category', in: 'query', schema: { type: 'string', enum: ['domestic', 'international'] }, description: '国内線/国際線' },
             { name: 'flightNumber', in: 'query', schema: { type: 'string' }, description: '便名絞り込み' },
@@ -3715,7 +3715,7 @@ export function generateOpenApiDocument() {
           ],
           responses: {
             '200': {
-              description: '主要空港フライト運航状況サマリーおよび便別詳細一覧',
+              description: '5 空港のフライト運航状況サマリーおよび便別詳細一覧',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(FlightStatusResultSchema),
@@ -3892,7 +3892,7 @@ export function generateOpenApiDocument() {
           summary: '根拠原文・構造化データのページ取得',
           parameters: [
             { name: 'contextId', in: 'path', required: true, schema: { type: 'string' }, description: 'コンテキストID' },
-            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (省略時はページ走査)' },
+            { name: 'ids', in: 'query', required: false, schema: { type: 'string' }, description: '根拠IDのカンマ区切り (MCP の evidenceIds に当たる。省略時はページ走査)' },
             { name: 'cursor', in: 'query', required: false, schema: { type: 'string' }, description: '次ページカーソル' },
             { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 40 }, description: '取得件数 (1〜100, デフォルト: 40)' },
           ],

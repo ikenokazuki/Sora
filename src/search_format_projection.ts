@@ -15,6 +15,8 @@ export function projectRequestedScrapeFormats(
   const out: Record<string, any> = {};
   if (scrape.contentStatus) out.contentStatus = scrape.contentStatus;
   if (Array.isArray(scrape.events) && scrape.events.length > 0) out.events = scrape.events;
+  // 取得の警告（formats の screenshot を撮れなかったなど）は、どの形式でも残す
+  if (Array.isArray(scrape.warnings) && scrape.warnings.length > 0) out.warnings = scrape.warnings;
   if (requested.includes('markdown')) {
     const content = typeof scrape?.content === 'string' ? scrape.content : typeof scrape?.markdown === 'string' ? scrape.markdown : '';
     const minChars = Math.max(0, options.minMarkdownChars ?? 0);

@@ -20,13 +20,13 @@ export type SearchDeepInput = {
   realtimeFocus?: "official" | "public";
   /** X 検索で守る固有名詞（人名・グループ名・作品名・会場名など、クエリ中の語）。分かる場合は渡すと、緩和検索でこの語を落とさない。クエリの語に無ければ無視して推定する */
   realtimeAnchor?: string;
-  /** 返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20) */
+  /** 返す X 投稿の上限（公式の投稿は別枠）。省いた件数は realtime.omittedCount に入る。20 より大きくすると取得も増やす（1 回の取得は 40 件まで）。公式アカウントの投稿は別枠で追加されるため realtime.items は上限に公式枠（official は5件まで、public は2件まで）を足した数になる (デフォルト: 20) */
   realtimeLimit?: number;
   /** 公式XアカウントID (例: "kimisora_JPN")。指定時は公式アカウントの最新告知を優先取得して先頭に配置します（realtimeFocus が public の時は後ろに最大2件） */
   officialAccountId?: string;
   /** 画像・動画の URL（X 投稿の media、各ページの ogImage と media、本文中の画像）を応答に含めるか (デフォルト: true)。false で省く。画像の内容が必要な質問では省かない。formats に images を指定したときの images は省かない */
   includeMedia?: boolean;
-  /** 各ページの最大文字数 (デフォルト: 30000) */
+  /** 各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。html には効かない) */
   maxChars?: number;
   /** キャッシュをバイパスするか (デフォルト: false) */
   noCache?: boolean;
@@ -36,23 +36,11 @@ export type SearchDeepInput = {
   excludeDomains?: string[];
   /** 期間指定: "all"(全期間), "day"(24h以内), "week"(1週間以内), "year"(1年以内) */
   updated?: "all" | "day" | "week" | "year";
-  /** 重要文（ハイライト）を自動抽出するか (デフォルト: true) */
-  extractHighlights?: boolean;
   /** 記事本文のみを抽出するか (デフォルト: true) */
   onlyMainContent?: boolean;
-  /** 指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します */
+  /** 指定フォーマット配列 (例: ["markdown", "tables"])。指定時は要求形式のみを抽出し、evidenceモードでも明示要求された形式を保持します。X の投稿の結果は指定しなくても本文を残す。タイムラインのページは、realtime に同じアカウントの投稿があるときは本文を省く */
   formats?: ("markdown" | "html" | "rawHtml" | "links" | "screenshot" | "jsonLd" | "images" | "tables")[];
-  /** 重複・類似項目を自動排除するか (デフォルト: false) */
-  dedup?: boolean;
-  /** Lost in the Middle 対策: 検索結果アイテムを LLM の注意が集中する先頭と末尾に重要情報を配置する U字型で並べ替えるか (デフォルト: false) */
-  reorderUFlat?: boolean;
-  /** インメモリ擬似適合フィードバック (PRF) による共起語自動クエリ拡張を有効化するか (デフォルト: false) */
-  enablePrf?: boolean;
-  /** MMR によるパッセージ多様性比率 (0.0〜1.0, デフォルト: 0.7) */
-  diversityWeight?: number;
-  /** HTML テーブルの空欄列・冗長列を自動パージしてトークン消費を圧縮するか (デフォルト: true) */
-  minimizeTables?: boolean;
-  /** 相対時間表現（明日、来週等）に決定論的な絶対日時注記 [YYYY-MM-DD] を付与するか (デフォルト: false) */
+  /** 相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false) */
   annotateTemporal?: boolean;
   /** ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで */
   highlightMaxCount?: number;
@@ -64,7 +52,7 @@ export type SearchDeepInput = {
   videos?: number;
   /** 本文 Markdown 合計の文字数上限。上位ほど多く配分し、超過は段落境界で切り詰める (markdownTruncated 付与、highlights は残す。切り詰めのとき本文の塊を先に残し、短いリンクだけのナビの塊を先に落とす)。未指定なら無制限 */
   maxTotalChars?: number;
-  /** 返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。 */
+  /** 返却モード (デフォルト: "evidence")。"evidence": 検索語に合う highlights を返し、安全条件を満たす結果だけ全文 Markdown を省く（highlights が本文とほぼ同じ長さの結果は highlights の代わりに全文を返す。ただし本文が maxChars で切れた結果は、highlights を切る前の全文から選ぶので、入れ替えずに highlights を返す）。日時・作詞者など局所的な事実の確認はこのままでよい。"full": 全文と周辺文脈を返す。全文要約、網羅的な列挙・調査、複数観点の比較、ページ全体の文脈が必要な場合は full を指定する。evidence で必要項目が欠ける・根拠が曖昧・ソース間で矛盾する場合は full または formats:["markdown"] で再取得する。formats:["markdown"] を明示した場合は evidence でも全文 Markdown を保持する。 */
   responseMode?: "full" | "evidence";
 };
 
@@ -182,52 +170,6 @@ export type SearchDeepOutput = {
         confidence: "high" | "medium";
       }[];
     }[];
-    /** 客観的な証拠充足性観測量 */
-    evidenceDiagnostics?: {
-      /** クエリ語句網羅率 (0.0〜1.0) */
-      queryCoverage: number;
-      /** 本文中にマッチした検索語句リスト */
-      matchedTerms: string[];
-      /** マッチしなかった未充足語句リスト */
-      missingTerms: string[];
-      /** スコア > 0 の候補ブロック数 */
-      candidateCount: number;
-      /** 最高関連スコア */
-      topScore: number;
-      /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
-      weakEvidenceSignal: boolean;
-      /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
-      reasons: string[];
-    };
-    /** 日付・金額・バージョンの不一致候補 */
-    discrepancies?: {
-      /** 不一致種別 (日付、金額、バージョン、数値) */
-      kind: "date" | "money" | "version" | "number";
-      /** 競合している値のリスト */
-      values: {
-        /** 原文の表記 */
-        original: string;
-        /** 正規化後の値 */
-        normalized: string;
-        /** 出所ソースID */
-        sourceId?: string;
-        /** ブロックID */
-        blockId?: string;
-        /** 文脈スニペット */
-        context?: string;
-      }[];
-      /** 解決ステータス */
-      status: "needs_agent_resolution";
-    }[];
-    /** 決定論的な単位・漢数字変換導出履歴 */
-    derivations?: {
-      /** 適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m") */
-      operation: string;
-      /** 変換前文字列 */
-      input: string;
-      /** 変換後文字列 */
-      output: string;
-    }[];
     /** 相対日付表現の絶対日時解決結果一覧 */
     temporalAnchors?: {
       /** 検出された相対時間表現 (例: "明日", "来週金曜日") */
@@ -260,38 +202,12 @@ export type SearchDeepOutput = {
     };
     /** ハイライト該当箇所へジャンプする Chrome URL */
     textFragmentUrl?: string;
-    /** 抽出型自動要約 (TL;DR) 箇条書きリスト */
-    summary?: string[];
-    /** 本文中の引用・出典リンク一覧 */
-    citations?: {
-      /** 引用テキスト */
-      text: string;
-      /** 引用元URL */
-      url: string;
-      /** 周辺コンテキスト */
-      context?: string;
-    }[];
-    /** RAG 用セマンティック・チャンク配列 */
-    chunks?: {
-      /** チャンク番号 (0-based) */
-      index: number;
-      /** 所属する直近の見出し */
-      heading?: string;
-      /** チャンク本文 Markdown */
-      content: string;
-      /** 推定トークン数 */
-      estimatedTokens: number;
-    }[];
     /** 本文の総文字数 */
     characterCount?: number;
     /** 単語数 */
     wordCount?: number;
     /** 想定読了時間 (分) */
     readingTimeMin?: number;
-    /** LLM 最適化済み XML プロンプト文字列 */
-    promptContext?: string;
-    /** <mark> で一致語句をハイライトした本文 */
-    highlightedContent?: string;
     /** YouTube・動画・音声等のリッチメディア情報 */
     media?: {
       /** メディア種別 */
@@ -314,15 +230,6 @@ export type SearchDeepOutput = {
     };
     /** ページ内抽出リンク URL 一覧 */
     links?: string[];
-    /** リンク健全性検証結果 */
-    linksWithStatus?: {
-      /** リンク先URL */
-      url: string;
-      /** HTTPステータスコード */
-      status: number;
-      /** 到達成功フラグ (2xx/3xx) */
-      ok: boolean;
-    }[];
     /** 抽出された重要画像一覧 */
     images?: {
       /** 画像URL */
@@ -413,6 +320,8 @@ export type SearchDeepOutput = {
     rawHtml?: string;
     /** スクリーンショット画像 (Base64 PNG) */
     screenshot?: string;
+    /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+    warnings?: string[];
     /** ページ品質スコア (0〜100) */
     quality?: number;
     /** 必須フィールド充足度 (0〜100) */
@@ -558,52 +467,6 @@ export type SearchDeepOutput = {
           confidence: "high" | "medium";
         }[];
       }[];
-      /** 客観的な証拠充足性観測量 */
-      evidenceDiagnostics?: {
-        /** クエリ語句網羅率 (0.0〜1.0) */
-        queryCoverage: number;
-        /** 本文中にマッチした検索語句リスト */
-        matchedTerms: string[];
-        /** マッチしなかった未充足語句リスト */
-        missingTerms: string[];
-        /** スコア > 0 の候補ブロック数 */
-        candidateCount: number;
-        /** 最高関連スコア */
-        topScore: number;
-        /** 根拠薄弱フラグ (coverage < 0.35 または candidateCount === 0) */
-        weakEvidenceSignal: boolean;
-        /** 判定理由 (例: ["low_query_coverage", "no_matching_blocks"]) */
-        reasons: string[];
-      };
-      /** 日付・金額・バージョンの不一致候補 */
-      discrepancies?: {
-        /** 不一致種別 (日付、金額、バージョン、数値) */
-        kind: "date" | "money" | "version" | "number";
-        /** 競合している値のリスト */
-        values: {
-          /** 原文の表記 */
-          original: string;
-          /** 正規化後の値 */
-          normalized: string;
-          /** 出所ソースID */
-          sourceId?: string;
-          /** ブロックID */
-          blockId?: string;
-          /** 文脈スニペット */
-          context?: string;
-        }[];
-        /** 解決ステータス */
-        status: "needs_agent_resolution";
-      }[];
-      /** 決定論的な単位・漢数字変換導出履歴 */
-      derivations?: {
-        /** 適用された決定論的変換操作 (例: "kanji_num_to_digits", "km_to_m") */
-        operation: string;
-        /** 変換前文字列 */
-        input: string;
-        /** 変換後文字列 */
-        output: string;
-      }[];
       /** 相対日付表現の絶対日時解決結果一覧 */
       temporalAnchors?: {
         /** 検出された相対時間表現 (例: "明日", "来週金曜日") */
@@ -636,51 +499,16 @@ export type SearchDeepOutput = {
       };
       /** ハイライト該当箇所へジャンプする Chrome URL */
       textFragmentUrl?: string;
-      /** 抽出型自動要約 (TL;DR) 箇条書きリスト */
-      summary?: string[];
-      /** 本文中の引用・出典リンク一覧 */
-      citations?: {
-        /** 引用テキスト */
-        text: string;
-        /** 引用元URL */
-        url: string;
-        /** 周辺コンテキスト */
-        context?: string;
-      }[];
-      /** RAG 用セマンティック・チャンク配列 */
-      chunks?: {
-        /** チャンク番号 (0-based) */
-        index: number;
-        /** 所属する直近の見出し */
-        heading?: string;
-        /** チャンク本文 Markdown */
-        content: string;
-        /** 推定トークン数 */
-        estimatedTokens: number;
-      }[];
       /** 本文の総文字数 */
       characterCount?: number;
       /** 単語数 */
       wordCount?: number;
       /** 想定読了時間 (分) */
       readingTimeMin?: number;
-      /** LLM 最適化済み XML プロンプト文字列 */
-      promptContext?: string;
-      /** <mark> で一致語句をハイライトした本文 */
-      highlightedContent?: string;
       /** 投稿に添付されたメディア URL 配列 */
       media?: string[];
       /** ページ内抽出リンク URL 一覧 */
       links?: string[];
-      /** リンク健全性検証結果 */
-      linksWithStatus?: {
-        /** リンク先URL */
-        url: string;
-        /** HTTPステータスコード */
-        status: number;
-        /** 到達成功フラグ (2xx/3xx) */
-        ok: boolean;
-      }[];
       /** 投稿に添付された画像 URL 配列 */
       images?: string[];
       /** 構造化データ (Schema.org JSON-LD) */
@@ -752,6 +580,8 @@ export type SearchDeepOutput = {
       rawHtml?: string;
       /** スクリーンショット画像 (Base64 PNG) */
       screenshot?: string;
+      /** 求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった) */
+      warnings?: string[];
       /** ページ品質スコア (0〜100) */
       quality?: number;
       /** 必須フィールド充足度 (0〜100) */
@@ -825,12 +655,6 @@ export type SearchDeepOutput = {
       /** リポスト数（0 のときは省略） */
       repost_count?: number;
     }[];
-  };
-  /** 擬似適合フィードバックによるクエリ拡張 */
-  prf?: {
-    originalQuery: string;
-    expandedQuery: string;
-    expansionTerms: string[];
   };
   /** evidence（既定）のとき返す。full および verbose 時は省略 */
   responseMode?: "evidence";

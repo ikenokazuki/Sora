@@ -17,41 +17,26 @@ import {
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  normalizeSafeNumeric,
   type ProvenanceBlock,
 } from './extractor/accessibility_compiler.js';
-import {
-  reorderLostInTheMiddle,
-  selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
-} from './extractor/information_retrieval.js';
+import { selectMaximalMarginalRelevance } from './extractor/information_retrieval.js';
 import {
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
   type TemporalAnchor,
 } from './extractor/temporal_anchor.js';
 export {
-  normalizeSafeNumeric,
   assignBlockProvenance,
   formatBlockAnchor,
   computeEvidenceDiagnostics,
-  detectDiscrepancies,
-  reorderLostInTheMiddle,
   selectMaximalMarginalRelevance,
-  expandQueryWithPseudoRelevanceFeedback,
   extractTemporalAnchors,
   annotateTextWithTemporalAnchors,
 };
 import type {
-  Citation,
-  MarkdownChunk,
-  LinkStatus,
-  ScrapeResult,
   FieldEvidence,
   HighlightItem,
   EvidenceDiagnostics,
-  CandidateDiscrepancy,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
@@ -83,21 +68,46 @@ export function safeTruncateMarkdown(markdown: string, maxChars: number): string
   return sliced;
 }
 
+/** safeTruncateMarkdown は、開いたコードブロックを閉じる 4 字のぶん maxChars をはみ出しうる。その分だけ手前で切り直して、maxChars 字以内にする */
+export function truncateMarkdownWithin(markdown: string, maxChars: number): string {
+  const kept = safeTruncateMarkdown(markdown, maxChars);
+  return kept.length > maxChars ? safeTruncateMarkdown(markdown, Math.max(0, 2 * maxChars - kept.length)) : kept;
+}
+
+// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
+// どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
+const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
+const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
+const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
+const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
+// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [。直前の `\` が奇数個）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる。
+// 直前の `\` が偶数個なら、`\\` が字の `\` で、続く `[a](javascript:x)` は生きたリンクなので外す。
+// 先頭の (?=\[) は、後読みを `[` の位置でだけ評価するため。無いと、`\` の長い並びで JSC が途中で諦めて（外すべきリンクが残り、0.7〜1 秒かかる）
+const JS_LINK_RE = new RegExp(String.raw`(?=\[)(?<!(?<!\\)(?:\\\\)*\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
+const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
+const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
+
 /** 不要な空リンク、無効な JavaScript リンク、連続空行、巨大な base64 インライン画像をパージしてトークンを削減 */
 export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
   let cleaned = markdown
-    // 1. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
-    .replace(/\[(?:\s|&nbsp;)*\]\([^)]*\)/g, '')
-    // 2. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
-    .replace(/\[([^\]]+)\]\(javascript:[^)]*\)/gi, '$1')
-    // 3. 空の画像タグの除去: ![](url), ![] (url)
-    .replace(/!\[(?:\s|&nbsp;)*\]\s*\([^)]*\)/g, '');
+    // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）。
+    // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）。
+    // 前が `[`、または後ろが `]` のとき（リンクの文字の端）は足さない（[![](url)Text](url) が [ Text](url) にならないように）
+    .replace(EMPTY_IMAGE_RE, (m, offset: number, whole: string) => {
+      const before = whole[offset - 1] ?? ' ';
+      const after = whole[offset + m.length] ?? ' ';
+      return /\S/.test(before) && /\S/.test(after) && before !== '[' && after !== ']' ? ' ' : '';
+    })
+    // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
+    .replace(EMPTY_LINK_RE, '')
+    // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
+    .replace(JS_LINK_RE, '$1');
 
   // 3.1. 巨大な base64 インライン画像の置換・パージ (LLM トークン浪費防止)
   // keepDataImages が false の場合、data:image/... を [画像: alt] に置換、alt が空なら完全除去
   if (!keepDataImages) {
-    cleaned = cleaned.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_, alt) => {
+    cleaned = cleaned.replace(DATA_IMAGE_RE, (_, alt) => {
       const trimmedAlt = alt.trim();
       return trimmedAlt ? `[画像: ${trimmedAlt}]` : '';
     });
@@ -108,8 +118,8 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/^[ \t]+$/gm, '')
     // 5. 3連続以上の空行を2行に圧縮
     .replace(/\n{3,}/g, '\n\n')
-    // 6. 行末の不要な半角スペースを除去
-    .replace(/[ \t]+$/gm, '')
+    // 6. 行末の不要な半角スペースを除去。(?<![ \t]) は空白の並びの先頭からだけ試すため（無いと、行の途中の長い空白で、並びの途中のすべての位置から読んで二乗の時間になる）
+    .replace(/(?<![ \t])[ \t]+$/gm, '')
     // 7. ゼロ幅文字・不可視制御文字の除去 (間接プロンプトインジェクション緩和)
     .replace(/[\u200B-\u200D\uFEFF\u00AD\u2060]/g, '')
     // 8. LLM 特殊制御トークン・擬似システム命令タグの無害化 (間接プロンプトインジェクション防御)
@@ -121,90 +131,9 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .trim();
 }
 
-/** 超高速 抽出型自動要約 (重要文抽出 / TL;DR) */
-export function generateExtractiveSummary(text: string, maxSentences = 4): string[] {
-  if (!text || text.trim().length === 0) return [];
-  const rawSentences = text
-    .replace(/\r\n/g, '\n')
-    .split(/(?<=[。！？\n])|(?<=\.\s+)/)
-    .map((s) => s.replace(/\s+/g, ' ').trim())
-    .filter((s) => s.length >= 15 && s.length <= 250 && !s.startsWith('#') && !s.startsWith('|') && !s.startsWith('```'));
-
-  if (rawSentences.length <= maxSentences) return rawSentences;
-
-  const wordFreq = new Map<string, number>();
-  const words = text.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || [];
-  for (const w of words) {
-    wordFreq.set(w, (wordFreq.get(w) || 0) + 1);
-  }
-
-  const scored = rawSentences.map((sentence, idx) => {
-    const sWords = sentence.toLowerCase().match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\w]{2,}/gu) || [];
-    let score = 0;
-    for (const w of sWords) {
-      score += wordFreq.get(w) || 0;
-    }
-    const positionBoost = idx < 3 ? 1.5 : idx > rawSentences.length - 3 ? 1.2 : 1.0;
-    const finalScore = (score / Math.max(sWords.length, 1)) * positionBoost;
-    return { sentence, idx, score: finalScore };
-  });
-
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxSentences)
-    .sort((a, b) => a.idx - b.idx)
-    .map((item) => item.sentence);
-}
-
-/** N-gram Jaccard 類似度による検索結果の重複排除 */
-export function dedupSearchResults<T>(
-  items: T[],
-  getText: (item: T) => string,
-  threshold = 0.65,
-): T[] {
-  if (!items || items.length <= 1) return items;
-
-  const getBigrams = (str: string): Set<string> => {
-    const s = str.toLowerCase().replace(/\s+/g, '');
-    const grams = new Set<string>();
-    for (let i = 0; i < s.length - 1; i++) {
-      grams.add(s.slice(i, i + 2));
-    }
-    return grams;
-  };
-
-  const jaccard = (a: Set<string>, b: Set<string>): number => {
-    if (a.size === 0 || b.size === 0) return 0;
-    let intersection = 0;
-    for (const g of a) {
-      if (b.has(g)) intersection++;
-    }
-    const union = a.size + b.size - intersection;
-    return union > 0 ? intersection / union : 0;
-  };
-
-  const result: T[] = [];
-  const gramList: Array<Set<string>> = [];
-
-  for (const item of items) {
-    const text = getText(item);
-    const itemGrams = getBigrams(text);
-    let isDuplicate = false;
-
-    for (const existingGrams of gramList) {
-      if (jaccard(itemGrams, existingGrams) >= threshold) {
-        isDuplicate = true;
-        break;
-      }
-    }
-
-    if (!isDuplicate) {
-      result.push(item);
-      gramList.push(itemGrams);
-    }
-  }
-
-  return result;
+/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
+export function replaceMarkdownImages(markdown: string): string {
+  return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
 }
 
 /** Luhn アルゴリズムによるクレジットカード番号チェック */
@@ -230,8 +159,9 @@ export function maskPiiInText(text: string): string {
   if (!text) return text;
   let masked = text;
 
-  // 1. メールアドレス
-  masked = masked.replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
+  // 1. メールアドレス。後読みで、ローカル部の字の並びの先頭からだけ試す（途中の字ごとに並びの最後まで読むと、長い英数字の並びで二乗の時間になる）。
+  //    後ろの枝は、前の一致が `_` `+` の手前で終わり、そこから次のメールが続く形（a@b.c_d@e.f）も前と同じに読むため
+  masked = masked.replace(/(?:(?<![a-zA-Z0-9_.+-])|(?=[_+])(?<=@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+))[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[EMAIL]');
 
   // 2. クレジットカード番号 (13〜19桁, Luhn 検証または一般的な4桁x4ブロック)
   masked = masked.replace(/\b(?:\d{4}[ -]?){3}\d{4}\b|\b\d{4}[ -]?\d{6}[ -]?\d{5}\b/g, (match) => {
@@ -242,58 +172,6 @@ export function maskPiiInText(text: string): string {
   masked = masked.replace(/\b(?:\+?81[- ]?|0)(?:[789]0[- ]?\d{4}[- ]?\d{4}|[1-9]\d{0,3}[- ]?\d{1,4}[- ]?\d{4})\b/g, '[PHONE]');
 
   return masked;
-}
-
-/** LLM 最適化プロンプトコンテキスト XML 生成 */
-export function generatePromptContext(result: ScrapeResult): string {
-  const attrs: string[] = [
-    `url="${result.url}"`,
-    `title="${result.title.replace(/"/g, '&quot;')}"`,
-  ];
-  if (result.siteName) attrs.push(`site_name="${result.siteName.replace(/"/g, '&quot;')}"`);
-  if (result.publishedTime) attrs.push(`published_time="${result.publishedTime}"`);
-  if (result.author) attrs.push(`author="${result.author.replace(/"/g, '&quot;')}"`);
-
-  let context = `<web_page ${attrs.join(' ')}>\n`;
-  if (result.summary && result.summary.length > 0) {
-    context += `<summary>\n${result.summary.map((s) => `- ${s}`).join('\n')}\n</summary>\n\n`;
-  }
-  context += `${result.content}\n</web_page>`;
-  return context;
-}
-
-/** 検索キーワードの Markdown 本文自動強調 (<mark>単語</mark>) */
-export function highlightQueryMatchesInMarkdown(markdown: string, query: string): string {
-  if (!markdown || !query) return markdown;
-  const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return markdown;
-
-  // 長い term から先に置換して部分一致の崩れを防ぐ（降順ソート）
-  const sortedTerms = terms.slice().sort((a, b) => b.length - a.length);
-
-  let inCodeBlock = false;
-  const lines = markdown.split('\n');
-
-  const highlightedLines = lines.map((line) => {
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      return line;
-    }
-    if (inCodeBlock || line.trim().startsWith('---') || line.trim().startsWith('http')) {
-      return line;
-    }
-
-    let modified = line;
-    for (const term of sortedTerms) {
-      if (term.length < 2) continue;
-      const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(?<!<[^>]*)(?<!\\[[^\\]]*)(?<!\\([^\\)]*)(${esc})(?![^<]*>)(?![^\\[]*\\])(?![^\\(]*\\))`, 'gi');
-      modified = modified.replace(regex, '<mark>$1</mark>');
-    }
-    return modified;
-  });
-
-  return highlightedLines.join('\n');
 }
 
 /** 本文の文字数・単語数・推定読了時間 (分) の算出 */
@@ -322,55 +200,6 @@ export function calculateContentStats(text: string): {
   };
 }
 
-/**
- * 出典リンクの URL を返す。絶対 URL はそのまま、相対 URL は baseUrl で解決する。
- * ページ内アンカー（#...）、解決できないもの、http(s) 以外（mailto: など）は undefined。
- */
-function resolveCitationUrl(raw: string, baseUrl?: string): string | undefined {
-  if (!raw || raw.startsWith('#')) return undefined;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (!baseUrl) return undefined;
-  try {
-    const resolved = new URL(raw, baseUrl);
-    return resolved.protocol === 'http:' || resolved.protocol === 'https:' ? resolved.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** 本文内 出典・引用リンク (Citations) の構造化抽出 */
-export function extractCitationsFromMarkdown(markdown: string, baseUrl?: string): Citation[] {
-  if (!markdown) return [];
-  const citations: Citation[] = [];
-  const linkRegex = /\[([^\]]+)\]\(([^\s)]+)\)/g;
-  const seenUrls = new Set<string>();
-
-  // 段落単位で走査し、コンテキスト文を取得
-  const paragraphs = markdown.split(/\n\s*\n/);
-
-  for (const para of paragraphs) {
-    let match: RegExpExecArray | null;
-    while ((match = linkRegex.exec(para)) !== null) {
-      const text = match[1].trim();
-      const url = resolveCitationUrl(match[2].trim(), baseUrl);
-
-      // 画像リンク・ページ内アンカー・http(s) 以外のリンクを除外
-      if (!url || text.startsWith('!') || text.length === 0 || seenUrls.has(url)) continue;
-
-      seenUrls.add(url);
-      const context = para.replace(/\s+/g, ' ').trim().slice(0, 150);
-
-      citations.push({
-        text,
-        url,
-        context: context.length > 0 ? context : undefined,
-      });
-    }
-  }
-
-  return citations;
-}
-
 /** Webhook URL の SSRF 安全性検証 (ホスト名 & DNS 解決後 IP の二重チェック) */
 async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
   if (process.env.ALLOW_LOCAL_FETCH === 'true') return true;
@@ -394,14 +223,14 @@ async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
   }
 }
 
-/** 長時間ジョブ完了時の Webhook コールバック非同期送信 (Fire-and-forget & SSRF Protected) */
-export async function sendWebhookNotification(webhookUrl?: string, payload?: any): Promise<void> {
-  if (!webhookUrl || typeof webhookUrl !== 'string') return;
+/** Webhook を送り、2xx で受け取られたときだけ true を返す (SSRF Protected)。失敗は例外にせず false */
+export async function deliverWebhook(webhookUrl?: string, payload?: any): Promise<boolean> {
+  if (!webhookUrl || typeof webhookUrl !== 'string') return false;
 
   const isSafe = await isSafeWebhookUrl(webhookUrl);
   if (!isSafe) {
     console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookUrl}`);
-    return;
+    return false;
   }
 
   try {
@@ -423,110 +252,16 @@ export async function sendWebhookNotification(webhookUrl?: string, payload?: any
     if (!res.ok) {
       console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
     }
+    return res.ok;
   } catch (err) {
     console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
+    return false;
   }
 }
 
-/** RAG 最適化セマンティック・チャンキング */
-export function chunkMarkdownContent(markdown: string, maxChunkChars = 1000): MarkdownChunk[] {
-  if (!markdown) return [];
-  const lines = markdown.split('\n');
-  const chunks: MarkdownChunk[] = [];
-
-  let chunkHeading: string | undefined = undefined;
-  let activeHeading: string | undefined = undefined;
-  let currentChunkLines: string[] = [];
-  let currentChunkLen = 0;
-
-  const flushChunk = () => {
-    if (currentChunkLines.length === 0) return;
-    const content = currentChunkLines.join('\n').trim();
-    if (content.length > 0) {
-      chunks.push({
-        index: chunks.length,
-        heading: chunkHeading,
-        content,
-        estimatedTokens: estimateTokens(content),
-      });
-    }
-    currentChunkLines = [];
-    currentChunkLen = 0;
-    chunkHeading = activeHeading;
-  };
-
-  let inCodeBlock = false;
-
-  for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-    }
-
-    const headingMatch = !inCodeBlock ? line.match(/^(#{1,4})\s+(.+)/) : null;
-    if (headingMatch) {
-      if (currentChunkLines.length > 0) {
-        flushChunk();
-      }
-      activeHeading = headingMatch[2].trim();
-      chunkHeading = activeHeading;
-    }
-
-    currentChunkLines.push(line);
-    currentChunkLen += line.length + 1;
-
-    if (currentChunkLen >= maxChunkChars && !inCodeBlock && line.trim() === '') {
-      flushChunk();
-    }
-  }
-
-  flushChunk();
-  return chunks;
-}
-
-/** リンクの健全性・到達性並行検証 (HEAD / GET & SSRF Protected) */
-export async function validateExtractedLinks(links: string[], timeoutMs = 3000, limit = 15): Promise<LinkStatus[]> {
-  if (!links || links.length === 0) return [];
-  const targetLinks = links.slice(0, limit);
-
-  const results = await Promise.all(
-    targetLinks.map(async (url) => {
-      try {
-        const isSafe = await isSafeWebhookUrl(url);
-        if (!isSafe) {
-          return {
-            url,
-            status: 403,
-            ok: false,
-          };
-        }
-        let res = await fetch(url, {
-          method: 'HEAD',
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Sora-LinkValidator/1.0)' },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (res.status === 405 || res.status === 501) {
-          res = await fetch(url, {
-            method: 'GET',
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Sora-LinkValidator/1.0)' },
-            signal: AbortSignal.timeout(timeoutMs),
-          });
-        }
-        return {
-          url,
-          status: res.status,
-          ok: res.ok,
-        };
-      } catch {
-        return {
-          url,
-          status: 0,
-          ok: false,
-        };
-      }
-    }),
-  );
-
-  return results;
+/** 長時間ジョブ完了時の Webhook コールバック非同期送信 (Fire-and-forget & SSRF Protected) */
+export async function sendWebhookNotification(webhookUrl?: string, payload?: any): Promise<void> {
+  await deliverWebhook(webhookUrl, payload);
 }
 
 export interface ParsedSection {
@@ -541,7 +276,7 @@ export interface ParsedSection {
 
 // maxHighlights を指定しないときの足し方: 上位 3 件の後、合計がこの字数に収まる限り、窓で切った節を丸ごとに戻し、
 // さらに後ろの候補を足す（最大 8 件）。語を並べた検索語で答えの節が 4 位以下・窓の外になるのを拾う
-const HIGHLIGHT_CHAR_BUDGET = 1600;
+export const HIGHLIGHT_CHAR_BUDGET = 1600;
 const BUDGET_MAX_HIGHLIGHTS = 8;
 // 長い節を窓で切るとき、前に付ける節の書き出しの字数（返す文だけに付け、MMR の類似度には使わない）
 const WINDOW_LEAD_CHARS = 350;
@@ -553,16 +288,15 @@ const LOW_SCORE_RATIO = 0.25;
 // 候補にする（長い段落は文でまとめる）。答えが窓の外の段落にあるのを拾う。選んだ窓と塊は節ごとに 1 つのハイライトにまとめる。
 // 文で切れずにこの 2 倍を超えた塊（. や ．で文を終える英語・論文の段落など）は候補にしない（先頭 3 件は字数を確かめないので、目安を大きく超える）
 const SPLIT_CHUNK_CHARS = 300;
+// MMR の重み λ（1 に近いほど関連度を重んじ、0 に近いほど重複を避ける）
+const MMR_LAMBDA = 0.7;
 
 export interface QueryHighlightDetailsOptions {
   sourceId?: string;
   url?: string;
   publishedTime?: string;
-  evidenceMode?: 'full' | 'highlights' | 'contextual_highlights';
   /** 指定すると、その件数まで選ぶ（字数の目安による追加・取りこぼしの補い・長い節の塊をしない）。選ぶ節は件数の目安を入れる前と同じ */
   maxHighlights?: number;
-  reorderUFlat?: boolean;
-  diversityWeight?: number;
   annotateTemporal?: boolean;
 }
 
@@ -570,11 +304,10 @@ export interface QueryHighlightDetailsResult {
   highlights: string[];
   highlightItems: HighlightItem[];
   diagnostics: EvidenceDiagnostics;
-  discrepancies: CandidateDiscrepancy[];
   temporalAnchors: TemporalAnchor[];
 }
 
-/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・不一致候補・時間的文脈アンカーを統合) */
+/** クエリ関連ハイライト詳細抽出 (Block Provenance・文脈保持パッセージ・証拠観測量・時間的文脈アンカーを統合) */
 export function extractQueryHighlightDetails(
   content: string,
   query: string,
@@ -584,20 +317,18 @@ export function extractQueryHighlightDetails(
   const extend = options.maxHighlights == null;
   const maxHighlights = extend ? 3 : Math.max(1, Math.ceil(options.maxHighlights as number)) || 1;
   const sourceId = options.sourceId || 'S1';
-  const evidenceMode = options.evidenceMode || 'highlights';
 
   if (!query || !content) {
     return {
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content || '', query || '', 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
 
   const terms = extractTermsWithBigrams(query);
-  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンクだけのナビの塊を外し、
+  // 節の切り分けは parseMarkdownSections（先頭のメタデータ・「📍 階層」「📅」の目印の行・リンク先のホストが多いリンクだけの段落（言語の一覧など）を外し、
   // リストの中の見出しも見出しとして扱う）
   const sections = parseMarkdownSections(content);
   const rawBlocks: HeadingBlock[] = sections.map((sec) => {
@@ -609,7 +340,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics: computeEvidenceDiagnostics(content, query, 0, 0),
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -669,22 +399,16 @@ export function extractQueryHighlightDetails(
       ? `## ${block.headingPath.join(' > ')}\n\n`
       : '';
 
-    // contextual_highlights モードの場合はアンカーヘッダーを付与
-    const anchorHeader = evidenceMode === 'contextual_highlights'
-      ? `${formatBlockAnchor(block.ref)}\n`
-      : '';
-    const prefix = `${anchorHeader}${headingPrefix}`;
-
     // 目安より長い節は塊も候補にする（件数を指定しないときだけ）。窓は節の点のまま、塊は節の点 × 節の中での点の比
     const split = extend && win?.span && block.body.length > HIGHLIGHT_CHAR_BUDGET;
     const leadEnd = win?.leadEnd ?? 0;
     scoredCandidates.push({
       block,
       score,
-      snippet: `${prefix}${snippetBody}`.trim(),
+      snippet: `${headingPrefix}${snippetBody}`.trim(),
       rawSnippetBody: similarityText,
-      wholeSnippet: snippetBody !== block.body && !split ? `${prefix}${block.body}`.trim() : undefined,
-      part: split ? { span: win!.span!, chunk: false, prefix, leadEnd } : undefined,
+      wholeSnippet: snippetBody !== block.body && !split ? `${headingPrefix}${block.body}`.trim() : undefined,
+      part: split ? { span: win!.span!, chunk: false, prefix: headingPrefix, leadEnd } : undefined,
     });
     if (split) {
       const chunks = chunkSpans(block.body, SPLIT_CHUNK_CHARS).map(([a, b]) => {
@@ -694,7 +418,7 @@ export function extractQueryHighlightDetails(
       const maxRaw = Math.max(...chunks.map((c) => c.raw));
       for (const c of chunks) {
         if (c.raw <= 0 || c.text.length > 2 * SPLIT_CHUNK_CHARS) continue;
-        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${prefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix, leadEnd } });
+        scoredCandidates.push({ block, score: score * c.raw / maxRaw, snippet: `${headingPrefix}${c.text}`.trim(), rawSnippetBody: c.text, part: { span: c.span, chunk: true, prefix: headingPrefix, leadEnd } });
       }
     }
   }
@@ -715,7 +439,6 @@ export function extractQueryHighlightDetails(
       highlights: [],
       highlightItems: [],
       diagnostics,
-      discrepancies: [],
       temporalAnchors: [],
     };
   }
@@ -726,14 +449,13 @@ export function extractQueryHighlightDetails(
   const validCandidates = scoredCandidates.filter((c, idx) => idx === 0 || c.score >= topScore * 0.35);
 
   // 2. MMR (Maximal Marginal Relevance) による多様性選択 (同一内容・言い換えの重複排除)
-  const diversityWeight = options.diversityWeight ?? 0.7;
   // MMR の貪欲な順は上限に依らず、類似度は書き出しを付けない窓で測るので、件数を指定したときの節と、
-  // 指定しないときの先頭 3 件（U 字の並べ替えの前。目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
+  // 指定しないときの先頭 3 件（目安より長い節の塊が入るときを除く）は、目安を入れる前と同じ
   const mmrOrder = selectMaximalMarginalRelevance(validCandidates, {
     getScore: (c) => c.score,
     getText: (c) => c.rawSnippetBody,
     limit: extend ? BUDGET_MAX_HIGHLIGHTS : maxHighlights,
-    lambda: diversityWeight,
+    lambda: MMR_LAMBDA,
   });
   const mmrCandidates = mmrOrder.slice(0, maxHighlights);
   if (extend) {
@@ -772,8 +494,7 @@ export function extractQueryHighlightDetails(
           : b.body;
         if (body.length > cap) continue;
         const headingPrefix = b.headingPath.length > 0 ? `## ${b.headingPath.join(' > ')}\n\n` : '';
-        const anchorHeader = evidenceMode === 'contextual_highlights' ? `${formatBlockAnchor(b.ref)}\n` : '';
-        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${anchorHeader}${headingPrefix}${body}`.trim(), rawSnippetBody: body };
+        const fill = { block: b, score: scoreOf.get(b) ?? 0, snippet: `${headingPrefix}${body}`.trim(), rawSnippetBody: body };
         mmrCandidates.push(fill);
         used += fill.snippet.length;
         break;
@@ -792,17 +513,11 @@ export function extractQueryHighlightDetails(
     }
   }
 
-  // 3. Lost in the Middle 対策: U字型リオーダリング (先頭と末尾に重要パッセージを配置)
-  const merged = mergeSectionParts(mmrCandidates);
-  const finalCandidates = options.reorderUFlat
-    ? reorderLostInTheMiddle(merged)
-    : merged;
-
   const selectedHighlights: string[] = [];
   const selectedItems: HighlightItem[] = [];
   const allTemporalAnchors: TemporalAnchor[] = [];
 
-  for (const cand of finalCandidates) {
+  for (const cand of mergeSectionParts(mmrCandidates)) {
     let snippetText = cand.snippet;
     const itemAnchors = extractTemporalAnchors(snippetText, options.publishedTime);
     if (itemAnchors.length > 0) {
@@ -824,19 +539,10 @@ export function extractQueryHighlightDetails(
     });
   }
 
-  // 不一致候補 (Candidate Discrepancies) の検出
-  const discrepancyItems = selectedItems.map((item) => ({
-    text: item.text,
-    sourceId: item.ref?.sourceId,
-    blockId: item.ref?.blockId,
-  }));
-  const discrepancies = detectDiscrepancies(discrepancyItems);
-
   return {
     highlights: selectedHighlights,
     highlightItems: selectedItems,
     diagnostics,
-    discrepancies,
     temporalAnchors: allTemporalAnchors,
   };
 }
@@ -1441,54 +1147,6 @@ export function generateTextFragmentUrl(baseUrl: string, snippet: string): strin
   } catch {
     return baseUrl;
   }
-}
-
-/**
- * Meta Description vs Dynamic Snippet Arbiter (Google 流 最適説明文選定)
- * meta.description がクエリ主要語を含まない固定定型文である場合、本文から抽出した動的ハイライトを優先
- */
-export function chooseBestDescription(
-  metaDesc: string | undefined,
-  dynamicSnippet: string | undefined,
-  query: string,
-): string | undefined {
-  if (!metaDesc && !dynamicSnippet) return undefined;
-  if (!dynamicSnippet) return metaDesc;
-  // 動的スニペットから Frontmatter やシステム装飾（> 📍 **階層**: 等）をサニタイズ
-  const cleanSnippet = dynamicSnippet
-    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n*/, '')
-    .replace(/^>\s*(?:📍|📅)\s*\*\*.*?\*\*:.*$/gm, '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 250)
-    .trim();
-
-  // サニタイズ後にスニペットが空または極小になった場合は metaDesc を使用
-  if (!cleanSnippet || cleanSnippet.length < 10) return metaDesc;
-
-  if (!metaDesc) {
-    return cleanSnippet;
-  }
-  if (!query) return metaDesc;
-
-  const terms = extractTermsWithBigrams(query);
-  if (terms.length === 0) return metaDesc;
-  const lowerMeta = metaDesc.toLowerCase();
-
-  // Meta Description 内のクエリ単語カバー率を計算
-  let metaMatchedCount = 0;
-  for (const term of terms) {
-    if (lowerMeta.includes(term)) metaMatchedCount++;
-  }
-
-  // Meta Description がクエリの半分以上の単語をカバーしており、かつ適正長の場合は著者の Meta を尊重
-  const coverage = metaMatchedCount / terms.length;
-  if (coverage >= 0.5 && metaDesc.length >= 40 && metaDesc.length <= 300) {
-    return metaDesc;
-  }
-
-  // クエリ単語が不足している、またはサイト共通ボイラープレートの疑いがある場合は本文動的スニペットを採用
-  return cleanSnippet;
 }
 
 /**

@@ -20,7 +20,7 @@ export type WatchListOutput = {
     last_content?: string | null;
     /** 差分検知通知先 Webhook URL */
     webhook_url?: string | null;
-    /** 監視間隔 (秒) */
+    /** 保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる */
     interval_seconds: number;
     /** 最終チェック日時 (Unixミリ秒) */
     last_checked_at?: number | null;
@@ -29,7 +29,7 @@ export type WatchListOutput = {
   }[];
 };
 
-/** 【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, interval_seconds, last_checked_at?, last_hash? }] */
+/** 【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, last_checked_at?, last_hash? }] */
 export function watchList(): Promise<WatchListOutput> {
   return callSora<WatchListOutput>({ method: 'GET', path: '/watch/list' });
 }

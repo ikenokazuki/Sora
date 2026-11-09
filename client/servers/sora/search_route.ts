@@ -34,6 +34,16 @@ export type SearchRouteInput = {
   useLocalBus?: boolean;
   /** フェリーを使う (デフォルト: true) */
   useFerry?: boolean;
+  /** 年 (date より優先) */
+  year?: number;
+  /** 月 (date より優先) */
+  month?: number;
+  /** 日 (date より優先) */
+  day?: number;
+  /** 時 (time より優先) */
+  hour?: number;
+  /** 分 (time より優先) */
+  minute?: number;
 };
 
 export type SearchRouteOutput = {

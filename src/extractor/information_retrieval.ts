@@ -2,51 +2,13 @@
  * 情報検索理論 (IR) & 先端 RAG アルゴリズムモジュール
  * 
  * 外部ベクトルDBや巨大モデルに依存せず、決定論的かつインメモリ超高速 (<0.05ms) で
- * LLM の想起率・トークン効率・語彙カバレッジを最大化する 3 大アルゴリズム群：
+ * LLM の想起率・トークン効率を最大化するアルゴリズム：
  * 
- * 1. U字型リオーダリング (Lost in the Middle 対策 / Primacy-Recency Boustrophedon Layout)
- * 2. MMR (Maximal Marginal Relevance / 貪欲多様性最大化による冗長性根絶)
- * 3. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバックによる語彙拡張)
+ * - MMR (Maximal Marginal Relevance / 貪欲多様性最大化による冗長性根絶)
  */
 
-import { extractTermsWithBigrams } from './hierarchical_bm25.js';
-
 // =========================================================================
-// 1. U字型リオーダリング (Lost in the Middle 対策)
-// =========================================================================
-
-/**
- * スコア降順配列 [1位, 2位, 3位, 4位, 5位, ...] を
- * LLM のアテンションが最も高まる先頭と末尾に最重要アイテムを配置する U字型 (Boustrophedon) に並べ替える。
- * 
- * 出力例: [1位, 3位, 5位, ..., 4位, 2位]
- * (1位がプロンプト冒頭、2位がプロンプト末尾、低スコアのものが中央に配置される)
- * 
- * 計算量: O(N)
- */
-export function reorderLostInTheMiddle<T>(items: T[]): T[] {
-  if (!items || items.length <= 2) {
-    return items ? [...items] : [];
-  }
-
-  const head: T[] = [];
-  const tail: T[] = [];
-  let toHead = true;
-
-  for (let i = 0; i < items.length; i++) {
-    if (toHead) {
-      head.push(items[i]);
-    } else {
-      tail.unshift(items[i]);
-    }
-    toHead = !toHead;
-  }
-
-  return [...head, ...tail];
-}
-
-// =========================================================================
-// 2. MMR (Maximal Marginal Relevance / 最大限界関連度)
+// MMR (Maximal Marginal Relevance / 最大限界関連度)
 // =========================================================================
 
 export interface MmrOptions<T> {
@@ -194,103 +156,4 @@ export function selectMaximalMarginalRelevance<T>(
   }
 
   return selectedIndices.map((idx) => candidates[idx]);
-}
-
-// =========================================================================
-// 3. インメモリ PRF (Pseudo-Relevance Feedback / 擬似適合フィードバック)
-// =========================================================================
-
-export interface PrfResult {
-  expandedQuery: string;
-  expansionTerms: string[];
-}
-
-/**
- * 擬似適合フィードバック (Rocchio 式インメモリ共起解析)
- * 
- * 上位適合ドキュメント (topDocs: 1〜3件) に高頻度で出現し、
- * かつ全ドキュメントコーパス (allDocs) において希少 (高IDF) な共起語を抽出し、
- * 検索クエリの表現揺れ・語彙不足を自動補完する。
- * 
- * 計算量: O(N * 文書長) (インメモリ・0.05ms 未満)
- */
-export function expandQueryWithPseudoRelevanceFeedback(
-  query: string,
-  topDocs: string[],
-  allDocs: string[],
-  options?: { maxTerms?: number; minDf?: number }
-): PrfResult {
-  const maxTerms = options?.maxTerms ?? 3;
-  const minDf = options?.minDf ?? 1;
-
-  if (!query || topDocs.length === 0 || allDocs.length === 0) {
-    return { expandedQuery: query, expansionTerms: [] };
-  }
-
-  const queryTerms = new Set(
-    extractTermsWithBigrams(query).map((t) => t.toLowerCase())
-  );
-
-  // 1. 全文書コーパスにおける単語のドキュメント頻度 DF(w) を計算
-  const N = allDocs.length;
-  const dfMap = new Map<string, number>();
-
-  for (const doc of allDocs) {
-    const docTerms = new Set(extractTermsWithBigrams(doc).map((t) => t.toLowerCase()));
-    for (const term of docTerms) {
-      if (term.length >= 2) {
-        dfMap.set(term, (dfMap.get(term) || 0) + 1);
-      }
-    }
-  }
-
-  // 2. 上位適合文書群における単語の出現頻度 TF(w, topDocs) を集計
-  const topTfMap = new Map<string, number>();
-  for (const doc of topDocs) {
-    const docTerms = extractTermsWithBigrams(doc).map((t) => t.toLowerCase());
-    for (const term of docTerms) {
-      if (term.length >= 2) {
-        topTfMap.set(term, (topTfMap.get(term) || 0) + 1);
-      }
-    }
-  }
-
-  // 3. 各単語の PRF スコア (Rocchio / BM25 適合重み) を算出
-  // PRF(w) = TF(w, topDocs) * IDF(w, allDocs)
-  const candidateScores: Array<{ term: string; score: number }> = [];
-
-  for (const [term, tf] of topTfMap.entries()) {
-    // クエリ自身に含まれる語は除外
-    if (queryTerms.has(term)) continue;
-
-    // 数字のみ、またはノイズの除外
-    if (/^\d+$/.test(term)) continue;
-
-    const df = dfMap.get(term) || 1;
-    if (df < minDf) continue;
-
-    // スムージング付き BM25 IDF
-    const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1.0);
-
-    // TF飽和 (多すぎる単語に過度に偏らないように log 圧縮)
-    const tfScore = Math.log(1 + tf);
-
-    const score = tfScore * idf;
-    if (score > 0) {
-      candidateScores.push({ term, score });
-    }
-  }
-
-  // スコア降順にソート
-  candidateScores.sort((a, b) => b.score - a.score);
-
-  const expansionTerms = candidateScores.slice(0, maxTerms).map((c) => c.term);
-  const expandedQuery = expansionTerms.length > 0
-    ? `${query} ${expansionTerms.join(' ')}`
-    : query;
-
-  return {
-    expandedQuery,
-    expansionTerms,
-  };
 }

@@ -1,6 +1,8 @@
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import type { z } from 'zod';
 import {
+  assertScrapeInputs,
   scrapeUrl,
   scrapeBatchUrls,
   mapSiteUrl,
@@ -10,9 +12,11 @@ import { formatCompactScrapeResult } from '../response_cleaner.js';
 import {
   ScrapeRequestSchema,
   BatchScrapeRequestSchema,
+  CrawlRequestSchema,
+  MapRequestSchema,
 } from '../types.js';
-import { formatError } from './utils.js';
-import { errorMessage } from '../errors.js';
+import { dropNullFields, formatError } from './utils.js';
+import { errorMessage, ScrapeInputError } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
 
@@ -23,6 +27,11 @@ function classifyFetchError(msg: string, fallbackCode: string) {
   const code = isSecurity ? 'SSRF_BLOCKED' : isTimeout ? 'TIMEOUT' : fallbackCode;
   const status = isSecurity ? 403 : isTimeout ? 408 : 500;
   return { code, status: status as 403 | 408 | 500, retryable: !isSecurity };
+}
+
+/** verbose は、本文の指定を優先し、無ければ ?verbose=true を使う（/scrape・/scrape/stream・/scrape/batch で同じ） */
+function resolveVerbose(c: Context, bodyVerbose: boolean | undefined): boolean {
+  return bodyVerbose ?? c.req.query('verbose') === 'true';
 }
 
 /** url を必須とする JSON ボディを読む。JSON が不正、または url が http(s) の URL として読めなければ 400 を返す。 */
@@ -50,6 +59,22 @@ async function readUrlRequestBody(
   return { body };
 }
 
+/** url を必須とする本文を読み、スキーマの範囲（/crawl の maxDepth 5・/map の limit 1000 など）も確かめて 400 にする。null の項目は未指定として扱う */
+async function readValidatedRequestBody<S extends z.ZodType>(
+  c: Context,
+  schema: S,
+): Promise<{ data: z.infer<S> } | { error: Response }> {
+  const input = await readUrlRequestBody(c);
+  if ('error' in input) return input;
+  const parsed = schema.safeParse(dropNullFields(input.body));
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'invalid request';
+    return { error: formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format()) };
+  }
+  return { data: parsed.data };
+}
+
 // 単一 URL / PDF スクレイプ (マルチフォーマット対応)
 scrapeRoutes.post('/scrape', async (c) => {
   let rawBody: unknown;
@@ -59,7 +84,7 @@ scrapeRoutes.post('/scrape', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  const parsed = ScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
@@ -67,12 +92,13 @@ scrapeRoutes.post('/scrape', async (c) => {
   }
 
   try {
-    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
+    const verbose = resolveVerbose(c, parsed.data.verbose);
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await scrapeUrl({ ...parsed.data, tenantId });
+    const result = await scrapeUrl({ ...parsed.data, verbose, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
     const msg = errorMessage(err) || 'Scrape failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'SCRAPE_ERROR');
     return formatError(c, msg, code, status, retryable);
   }
@@ -87,25 +113,42 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = ScrapeRequestSchema.safeParse(rawBody);
+  const parsed = ScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const message = issue ? `${issue.path.join('.') || 'url'}: ${issue.message}` : 'url is required';
     return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
   }
+  // 入力の誤りは、ストリームを開く前に 400 で返す（/scrape と同じ）
+  try {
+    assertScrapeInputs(parsed.data);
+  } catch (err) {
+    if (err instanceof ScrapeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    throw err;
+  }
 
   return streamSSE(c, async (stream) => {
+    let doneSent = false;
     try {
-      await scrapeUrl({
+      const result = await scrapeUrl({
         ...parsed.data,
+        verbose: resolveVerbose(c, parsed.data.verbose),
         tenantId: c.get('tenant')?.tenantId ?? 'legacy',
         onProgress: async (evt) => {
+          if (evt.stage === 'done') doneSent = true;
           await stream.writeSSE({
             event: evt.stage === 'done' ? 'done' : 'progress',
             data: JSON.stringify(evt),
           });
         },
       });
+      // PDF・画像・動画のページ・ブラウザの失敗からの切り替えなど、done を送らずに返す経路でも、結果の done で終える
+      if (!doneSent) {
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ stage: 'done', message: 'Scraping completed successfully', data: result }),
+        });
+      }
     } catch (err) {
       await stream.writeSSE({
         event: 'error',
@@ -127,19 +170,23 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
     return formatError(c, 'Invalid JSON body', 'INVALID_JSON', 400, false);
   }
 
-  const parsed = BatchScrapeRequestSchema.safeParse(rawBody);
+  const parsed = BatchScrapeRequestSchema.safeParse(dropNullFields(rawBody));
   if (!parsed.success) {
-    return formatError(c, 'urls must be a non-empty array of URLs (max: 20)', 'INVALID_INPUT', 400, false, parsed.error.format());
+    const issue = parsed.error.issues[0];
+    const message = issue && issue.path[0] !== 'urls' ? `${issue.path.join('.')}: ${issue.message}` : 'urls must be a non-empty array of URLs (max: 20)';
+    return formatError(c, message, 'INVALID_INPUT', 400, false, parsed.error.format());
   }
 
   try {
-    const verbose = parsed.data.verbose ?? c.req.query('verbose') === 'true';
+    const verbose = resolveVerbose(c, parsed.data.verbose);
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await scrapeBatchUrls({ ...parsed.data, tenantId });
+    // ?verbose=true も scrapeBatchUrls に渡し、webhook の中身を応答と同じ整形にする
+    const result = await scrapeBatchUrls({ ...parsed.data, verbose, tenantId });
     const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
   } catch (err) {
     const msg = errorMessage(err) || 'Batch scrape failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
     const code = isSecurity ? 'SSRF_BLOCKED' : 'BATCH_SCRAPE_ERROR';
     return formatError(c, msg, code, isSecurity ? 403 : 500, !isSecurity);
@@ -148,20 +195,11 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
 
 // サイトマップ URL マッピング (/map)
 scrapeRoutes.post('/map', async (c) => {
-  const input = await readUrlRequestBody(c);
+  const input = await readValidatedRequestBody(c, MapRequestSchema);
   if ('error' in input) return input.error;
-  const { body } = input;
 
   try {
-    const result = await mapSiteUrl({
-      url: body.url,
-      limit: body.limit,
-      includeSubdomains: body.includeSubdomains,
-      timeoutMs: body.timeoutMs,
-      since: body.since,
-      until: body.until,
-      noCache: body.noCache,
-    });
+    const result = await mapSiteUrl(input.data);
 
     return c.json(result);
   } catch (err) {
@@ -173,35 +211,12 @@ scrapeRoutes.post('/map', async (c) => {
 
 // サブページ再帰的クロール (/crawl)
 scrapeRoutes.post('/crawl', async (c) => {
-  const input = await readUrlRequestBody(c);
+  const input = await readValidatedRequestBody(c, CrawlRequestSchema);
   if ('error' in input) return input.error;
-  const { body } = input;
 
   try {
     const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
-    const result = await crawlSiteUrl({
-      url: body.url,
-      tenantId,
-      maxPages: body.maxPages,
-      maxDepth: body.maxDepth,
-      maxChars: body.maxChars,
-      timeoutMs: body.timeoutMs,
-      concurrency: body.concurrency,
-      onlyMainContent: body.onlyMainContent,
-      includePatterns: body.includePatterns,
-      excludePatterns: body.excludePatterns,
-      formats: body.formats,
-      webhookUrl: body.webhookUrl,
-      query: body.query,
-      extractHighlights: body.extractHighlights,
-      onlyHighlights: body.onlyHighlights,
-      reorderUFlat: body.reorderUFlat,
-      diversityWeight: body.diversityWeight,
-      annotateTemporal: body.annotateTemporal,
-      minimizeTables: body.minimizeTables,
-      highlightMaxCount: body.highlightMaxCount,
-      noCache: body.noCache,
-    });
+    const result = await crawlSiteUrl({ ...input.data, tenantId });
 
     return c.json(result);
   } catch (err) {
@@ -214,39 +229,21 @@ scrapeRoutes.post('/crawl', async (c) => {
 // サブページ再帰的クロール SSE ストリーミング (/crawl/stream)
 scrapeRoutes.post('/crawl/stream', async (c) => {
   // 入力の誤りは、ストリームを開く前に 400 で返す
-  const input = await readUrlRequestBody(c);
+  const input = await readValidatedRequestBody(c, CrawlRequestSchema);
   if ('error' in input) return input.error;
-  const { body } = input;
+  const { data } = input;
 
   return streamSSE(c, async (stream) => {
     await stream.writeSSE({
       event: 'start',
-      data: JSON.stringify({ url: body.url, status: 'crawling' }),
+      data: JSON.stringify({ url: data.url, status: 'crawling' }),
     });
 
     try {
       const streamTenant = c.get('tenant')?.tenantId ?? 'legacy';
       const result = await crawlSiteUrl({
-        url: body.url,
+        ...data,
         tenantId: streamTenant,
-        maxPages: body.maxPages,
-        maxDepth: body.maxDepth,
-        maxChars: body.maxChars,
-        timeoutMs: body.timeoutMs,
-        concurrency: body.concurrency,
-        onlyMainContent: body.onlyMainContent,
-        includePatterns: body.includePatterns,
-        excludePatterns: body.excludePatterns,
-        formats: body.formats,
-        query: body.query,
-        extractHighlights: body.extractHighlights,
-        onlyHighlights: body.onlyHighlights,
-        reorderUFlat: body.reorderUFlat,
-        diversityWeight: body.diversityWeight,
-        annotateTemporal: body.annotateTemporal,
-        minimizeTables: body.minimizeTables,
-        highlightMaxCount: body.highlightMaxCount,
-        noCache: body.noCache,
         onPageCrawled: (page, count) => {
           stream.writeSSE({
             event: 'page',

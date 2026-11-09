@@ -3,6 +3,9 @@ import { getFromCache, setToCache } from '../cache.js';
 
 export const CACHE_TTL_TRAFFIC = 3 * 60 * 1000; // 3分 (リアルタイム更新)
 
+/** pref・airport が表に無いときの入力エラー（REST では 400） */
+export class TrafficInputError extends Error {}
+
 export interface TrafficItem {
   roadName: string;
   direction: string;
@@ -91,23 +94,27 @@ const ROAD_CODE_MAP: Record<string, string> = {
   '道央道': '1001001', '道央自動車道': '1001001',
 };
 
+const NO_ROAD_INFO = 'この道路の情報は見つかりませんでした。';
+
 /** 都道府県名またはコードを解決 */
 export function resolvePrefecture(prefInput?: string | number): { code: number; name: string } | null {
   if (!prefInput) return null;
   const str = String(prefInput).trim().toLowerCase();
-  const num = parseInt(str, 10);
-  if (!Number.isNaN(num) && num >= 1 && num <= 47) {
+  // 数字だけをコードにする（parseInt は "13abc" を 13 にする）
+  const num = /^\d+$/.test(str) ? Number(str) : Number.NaN;
+  if (num >= 1 && num <= 47) {
     const entry = Object.values(PREF_MAP).find(p => p.code === num);
     return entry || { code: num, name: `都道府県コード ${num}` };
   }
-  return PREF_MAP[str] || null;
+  // 入力の文字列で表を引く（"constructor" などで Object の既定のプロパティを拾わない）
+  return Object.hasOwn(PREF_MAP, str) ? PREF_MAP[str] : null;
 }
 
 /** 道路名から主要高速道路コードを解決 */
 export function resolveRoadCode(roadInput?: string): string | null {
   if (!roadInput) return null;
   const clean = roadInput.trim().replace(/\s+/g, '');
-  return ROAD_CODE_MAP[clean] || null;
+  return Object.hasOwn(ROAD_CODE_MAP, clean) ? ROAD_CODE_MAP[clean] : null;
 }
 
 /** 道路交通情報（JARTIC/Yahoo! 道路交通情報）を取得 */
@@ -117,18 +124,21 @@ export async function fetchRoadTraffic(options: {
   noCache?: boolean;
 }): Promise<RoadTrafficResult> {
   const prefInfo = resolvePrefecture(options.pref);
+  if (!prefInfo && String(options.pref ?? '').trim() !== '') {
+    throw new TrafficInputError(`都道府県「${options.pref}」が見つかりません。都道府県名（例: 愛知県）か 1〜47 のコードで指定してください`);
+  }
   const roadCode = resolveRoadCode(options.road);
   const targetRoadName = options.road?.trim();
 
   // キャッシュキーの構築。結果には指定された道路名がそのまま入る（「東名」と「東名高速道路」は同じ道路コードになる）ので、名前も入れる
-  const cacheKey = `traffic:v2:${prefInfo?.code || 'all'}:${roadCode || ''}:${targetRoadName || ''}`;
+  const cacheKey = `traffic:v3:${prefInfo?.code || 'all'}:${roadCode || ''}:${targetRoadName || ''}`;
   if (!options.noCache) {
     const cached = getFromCache<RoadTrafficResult>(cacheKey);
     if (cached) return cached;
   }
 
-  // 1. 主要高速道路の個別コードがある場合、区間詳細ページを取得
-  if (roadCode) {
+  // 1. 主要高速道路の個別コードがあり、都道府県の指定が無い場合、区間詳細ページを取得
+  if (roadCode && !prefInfo) {
     const url = `https://roadway.yahoo.co.jp/traffic/road/${roadCode}/list`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Sora-Traffic-Fetcher/1.0' },
@@ -176,9 +186,11 @@ export async function fetchRoadTraffic(options: {
     });
 
     const hasIssues = items.some(it => !it.status.includes('規制情報はありません') && !it.status.includes('順調'));
-    const summary = hasIssues
-      ? `${resolvedRoadName}にて ${items.length} 件の規制・事故等の情報があります。`
-      : `${resolvedRoadName}は現在、規制情報はなく順調です。`;
+    const summary = items.length === 0
+      ? `${resolvedRoadName}: ${NO_ROAD_INFO}`
+      : hasIssues
+        ? `${resolvedRoadName}にて ${items.length} 件の規制・事故等の情報があります。`
+        : `${resolvedRoadName}は現在、規制情報はなく順調です。`;
 
     const result: RoadTrafficResult = {
       road: resolvedRoadName,
@@ -246,17 +258,21 @@ export async function fetchRoadTraffic(options: {
     }
   });
 
-  // もし道路名フィルタが指定されていればフィルタリング
+  // もし道路名フィルタが指定されていればフィルタリング（表の別名は同じ道路コードの名前にも当てる。例: 中央自動車道 → 中央道）
   let filteredItems = allItems;
   if (targetRoadName) {
-    filteredItems = allItems.filter(it => it.roadName.toLowerCase().includes(targetRoadName.toLowerCase()));
+    filteredItems = allItems.filter(it => it.roadName.toLowerCase().includes(targetRoadName.toLowerCase())
+      || (roadCode !== null && resolveRoadCode(it.roadName) === roadCode));
   }
 
   const hasIssues = filteredItems.some(it => !it.status.includes('規制情報はありません') && !it.status.includes('順調'));
   const issueCount = filteredItems.filter(it => !it.status.includes('規制情報はありません')).length;
-  const summary = hasIssues
-    ? `${prefName}${targetRoadName ? ' (' + targetRoadName + ')' : ''}にて ${issueCount} 件の規制・事故情報があります。`
-    : `${prefName}${targetRoadName ? ' (' + targetRoadName + ')' : ''}の道路は現在、規制情報はなく順調です。`;
+  const scope = `${prefName}${targetRoadName ? ' (' + targetRoadName + ')' : ''}`;
+  const summary = filteredItems.length === 0
+    ? `${scope}: ${NO_ROAD_INFO}`
+    : hasIssues
+      ? `${scope}にて ${issueCount} 件の規制・事故情報があります。`
+      : `${scope}の道路は現在、規制情報はなく順調です。`;
 
   const result: RoadTrafficResult = {
     pref: prefName,
@@ -301,46 +317,70 @@ export interface FlightStatusResult {
   source: 'yahoo-transit';
 }
 
+const DEFAULT_AIRPORT = { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' };
+
 const AIRPORT_MAP: Record<string, { id: number; name: string; code: string }> = {
   '羽田': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   '羽田空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   '東京国際空港': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   'hnd': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'haneda': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  'tokyo international airport': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
+  '東京': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   'tokyo': { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' },
   '成田': { id: 1, name: '成田国際空港', code: 'NRT' },
   '成田空港': { id: 1, name: '成田国際空港', code: 'NRT' },
   '成田国際空港': { id: 1, name: '成田国際空港', code: 'NRT' },
   'nrt': { id: 1, name: '成田国際空港', code: 'NRT' },
+  'narita': { id: 1, name: '成田国際空港', code: 'NRT' },
+  'narita international airport': { id: 1, name: '成田国際空港', code: 'NRT' },
   '伊丹': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '伊丹空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '大阪国際空港': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   'itm': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  'itami': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
+  'osaka international airport': { id: 3, name: '大阪国際空港(伊丹空港)', code: 'ITM' },
   '関西': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関西空港': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関西国際空港': { id: 4, name: '関西国際空港', code: 'KIX' },
   '関空': { id: 4, name: '関西国際空港', code: 'KIX' },
   'kix': { id: 4, name: '関西国際空港', code: 'KIX' },
+  'kansai': { id: 4, name: '関西国際空港', code: 'KIX' },
+  'kansai international airport': { id: 4, name: '関西国際空港', code: 'KIX' },
   '中部': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   '中部空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   'セントレア': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   '中部国際空港': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
   'ngo': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'centrair': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'chubu': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
+  'chubu centrair international airport': { id: 5, name: '中部国際空港(セントレア)', code: 'NGO' },
 };
+
+// 入力が丸ごとこれと同じときだけ当てる別名。東京は羽田（省いたときの既定）で、成田は名前で指定してもらう。長い入力の中の「東京」「tokyo」（"tokyo narita"・東京駅）では当てない
+const EXACT_ONLY_ALIASES = new Set(['東京', 'tokyo']);
 
 /** 空港名またはコードから空港情報を解決 */
 export function resolveAirport(airportInput?: string): { id: number; name: string; code: string } {
-  if (!airportInput) {
-    return { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' };
-  }
-  const key = airportInput.trim().toLowerCase();
-  const direct = AIRPORT_MAP[key];
-  if (direct) return direct;
+  // 全角の英数字・半角のカナもそろえる（"ＨＮＤ"・"ｾﾝﾄﾚｱ"）
+  const key = airportInput?.normalize('NFKC').trim().toLowerCase();
+  if (!key) return DEFAULT_AIRPORT;
+  if (Object.hasOwn(AIRPORT_MAP, key)) return AIRPORT_MAP[key];
 
+  // 表の別名を含む入力（「羽田空港国際線ターミナル」「Tokyo Haneda」）だけを受ける。入力の一部が別名に含まれるだけの断片（「羽」「o」）は受けない。
+  // 日本語の別名は含んでいればよい。英字の別名は単語（複数語の名前は語の並び）として入っているときだけ（"mango" の "ngo"・"hndx" は拾わない）。
+  const words = ` ${key.split(/[^a-z0-9]+/).filter(Boolean).join(' ')} `;
+  const hits = new Map<string, { id: number; name: string; code: string }>();
   for (const [k, v] of Object.entries(AIRPORT_MAP)) {
-    if (key.includes(k) || k.includes(key)) return v;
+    if (EXACT_ONLY_ALIASES.has(k)) continue;
+    if (/^[a-z]/.test(k) ? words.includes(` ${k} `) : key.includes(k)) hits.set(v.code, v);
   }
+  if (hits.size === 1) return [...hits.values()][0];
 
-  return { id: 2, name: '東京国際空港(羽田空港)', code: 'HND' };
+  const supported = '対応は羽田・成田・伊丹・関西・中部の 5 空港です';
+  // 複数の空港の別名が入っていたら（「羽田と成田」）どれとも決められないので、1 つにするよう伝える
+  if (hits.size > 1) throw new TrafficInputError(`空港を 1 つだけ指定してください（「${airportInput}」には複数の空港が含まれています）。${supported}`);
+  throw new TrafficInputError(`空港「${airportInput}」には対応していません。${supported}`);
 }
 
 /** フライト運航状況・欠航・遅延情報取得 (Yahoo! 路線情報) */
@@ -361,7 +401,7 @@ export async function fetchFlightStatus(options: {
   const fac = category === 'international' ? 2 : 1;
   const ad = type === 'arrival' ? 2 : 1;
 
-  const cacheKey = `traffic:flight:${airportInfo.id}:${fac}:${ad}:${flightNumberFilter || ''}:${keywordFilter || ''}`;
+  const cacheKey = `traffic:flight:v2:${airportInfo.id}:${fac}:${ad}:${flightNumberFilter || ''}:${keywordFilter || ''}`;
 
   if (!options.noCache) {
     const cached = getFromCache<FlightStatusResult>(cacheKey);
@@ -390,6 +430,7 @@ export async function fetchFlightStatus(options: {
   // Yahoo 路線情報は Next.js 化され、一覧は __NEXT_DATA__ 内の JSON で配信される。
   // 旧来の table/tr 構造はフォールバックとして残す。
   // 該当区分キーは Yahoo 側の表記ゆれ（Depature）をそのまま使う。
+  // 名前の向きも逆で、相手の空港は到着の一覧では arrivalName、出発の一覧では depatureName に入っている。
   const sectionKey =
     category === 'international'
       ? type === 'arrival' ? 'internationalArrival' : 'internationalDepature'
@@ -415,7 +456,7 @@ export async function fetchFlightStatus(options: {
             airline: String(item.airlineName ?? '').trim(),
             flightNumber: flightNumber.replace(/\s+/g, ''),
             isCodeshare: item.isCodeShare ? true : undefined,
-            destinationOrOrigin: String((type === 'arrival' ? item.depatureName : item.arrivalName) ?? '').trim(),
+            destinationOrOrigin: String((type === 'arrival' ? item.arrivalName : item.depatureName) ?? '').trim(),
             status: String(item.displayStatus ?? '').trim(),
             detail: String(item.message ?? '').trim() || undefined,
           });
@@ -478,11 +519,18 @@ export async function fetchFlightStatus(options: {
   const cancelledCount = filtered.filter(f => f.status.includes('欠航')).length;
   const delayedCount = filtered.filter(f => f.status.includes('遅れ')).length;
 
-  let summary = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}: 対象便数 ${filtered.length}便。`;
-  if (hasDelaysOrCancellations) {
-    summary += ` (欠航: ${cancelledCount}便, 遅延: ${delayedCount}便)`;
+  const scope = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}`;
+  // 便が 0 件のときは運航について何も言わない。一覧が空だったのか、ページの形が変わって読めなかったのかは区別せず、1 つの文で両方を言う
+  let summary: string;
+  if (allFlights.length === 0) {
+    summary = `${scope}: 便の情報を読み取れませんでした（該当する便がないか、ページの形式が変わった可能性があります）。運航状況は分かりません。`;
+  } else if (filtered.length === 0) {
+    summary = `${scope}: 条件に合う便はありません（絞り込み前は ${allFlights.length}便）。`;
   } else {
-    summary += ' 現在、目立った欠航や遅延はなく順調に運航されています。';
+    summary = `${scope}: 対象便数 ${filtered.length}便。`;
+    summary += hasDelaysOrCancellations
+      ? ` (欠航: ${cancelledCount}便, 遅延: ${delayedCount}便)`
+      : ' 現在、目立った欠航や遅延はなく順調に運航されています。';
   }
 
   const result: FlightStatusResult = {
@@ -498,7 +546,8 @@ export async function fetchFlightStatus(options: {
     source: 'yahoo-transit',
   };
 
-  if (!options.noCache) {
+  // 便が 1 件も読めなかった結果は、取り直せるようにキャッシュしない（読めて絞り込みで 0 件になった結果は残す）
+  if (!options.noCache && allFlights.length > 0) {
     setToCache(cacheKey, result, CACHE_TTL_FLIGHT);
   }
 

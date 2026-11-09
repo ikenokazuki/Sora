@@ -101,13 +101,11 @@ describe('integrated search Host response', () => {
     expect(output.highlights).toEqual(item.highlights);
   });
 
-  test('extractHighlights:false preserves markdown', () => {
-    const item = baseItem();
-    const output = projectIntegratedSearchEvidenceItem(item, {
-      responseMode: 'evidence',
-      extractHighlights: false,
-    });
-    expect(output.markdown).toBe(item.markdown);
+  test('responseMode: full preserves markdown', () => {
+    const input = response();
+    const output = formatIntegratedSearchHostResponse(input, { responseMode: 'full' });
+    expect(output.results[0].markdown).toBe(input.results[0].markdown);
+    expect(output.results[0].highlights).toEqual(input.results[0].highlights);
   });
 
   test('highlights nearly as long as markdown: markdown kept instead of highlights', () => {
@@ -124,6 +122,27 @@ describe('integrated search Host response', () => {
     const kept = projectIntegratedSearchEvidenceItem(shorter, { responseMode: 'evidence' });
     expect(kept.highlights).toEqual(shorter.highlights);
     expect(kept.markdown).toBeUndefined();
+  });
+
+  test('a truncated page keeps its highlights even when they are longer than the markdown (they come from beyond the cut)', () => {
+    // 本文は maxChars で切れて答えが無く、ハイライトは切れたところより後ろの節から選んでいる（答えは 17:00）
+    const markdown = `# 前書き\n\n${'関係のない文が続きます。'.repeat(200)}`.slice(0, 2000);
+    const highlight = `## 当日の案内\n\n開場時間は 17:00、開演は 18:00 です。${'補足の説明です。'.repeat(400)}`.slice(0, 2500);
+    const truncated = { ...baseItem(), markdown, highlights: [highlight], isTruncated: true };
+
+    const kept = projectIntegratedSearchEvidenceItem(truncated, { responseMode: 'evidence' });
+    expect(kept.highlights).toEqual([highlight]);
+    expect(kept.markdown).toBeUndefined();
+    expect(JSON.stringify(kept)).toContain('17:00');
+    const evidence = formatIntegratedSearchHostResponse({ ...response(), results: [truncated] }, { responseMode: 'evidence' });
+    expect(JSON.stringify(evidence.results[0])).toContain('17:00');
+
+    // 切れていない結果は今のまま: ハイライトが本文の 0.85 倍以上なら、本文を返してハイライトを消す
+    for (const isTruncated of [false, undefined]) {
+      const whole = projectIntegratedSearchEvidenceItem({ ...truncated, isTruncated }, { responseMode: 'evidence' });
+      expect(whole.markdown).toBe(markdown);
+      expect(whole.highlights).toBeUndefined();
+    }
   });
 
   test('highlights nearly as long as markdown but pointed to by highlightsSameAs: highlights kept for the duplicate', () => {
@@ -195,6 +214,80 @@ describe('integrated search Host response', () => {
         }).markdown,
       ).toBe(item.markdown);
     }
+  });
+
+  describe('X timeline page whose posts are already in realtime.items', () => {
+    const timelineUrl = 'https://x.com/TokyoSunrockers/all';
+    const timeline = () => ({ ...baseItem(), source: 'web', url: timelineUrl });
+    const withRealtime = (results: Record<string, any>[], items: Record<string, any>[], extra: Record<string, any> = {}) => ({
+      ...response(),
+      results,
+      realtime: { ...response().realtime, count: items.length, items },
+      ...extra,
+    });
+    const evidence = (input: Record<string, any>, options: Record<string, any> = {}) =>
+      formatIntegratedSearchHostResponse(input, { responseMode: 'evidence', ...options });
+
+    test('drops the markdown and keeps the highlights when realtime has a post by the same account (case-insensitive)', () => {
+      for (const url of [
+        timelineUrl,
+        'https://twitter.com/tokyosunrockers',
+        'https://x.com/TOKYOSUNROCKERS/with_replies?lang=ja',
+        'https://x.com/TokyoSunrockers/',
+        'https://mobile.twitter.com/TokyoSunrockers',
+        'https://mobile.twitter.com/TokyoSunrockers/',
+      ]) {
+        const input = withRealtime([{ ...timeline(), url }], [{ author_handle: 'tokyoSunrockers', text: 'post' }]);
+        const item = evidence(input).results[0];
+        expect(item.markdown).toBeUndefined();
+        expect(item.highlights).toEqual(timeline().highlights);
+      }
+    });
+
+    test('keeps the highlights even when they are nearly as long as the markdown', () => {
+      const short = { ...timeline(), markdown: '## Target\nAnswer evidence', highlights: ['## Target\n\nAnswer evidence'] };
+      const item = evidence(withRealtime([short], [{ author_handle: 'TokyoSunrockers' }])).results[0];
+      expect(item.markdown).toBeUndefined();
+      expect(item.highlights).toEqual(short.highlights);
+    });
+
+    test('keeps the markdown for another account, a single post, no realtime items, or no highlights', () => {
+      const mine = { author_handle: 'TokyoSunrockers' };
+      const cases: [string, Record<string, any>][] = [
+        ['another account', withRealtime([timeline()], [{ author_handle: 'someone_else' }])],
+        ['a handle that only starts with the same letters', withRealtime([timeline()], [{ author_handle: 'TokyoSunrockers2' }])],
+        ['a single post URL', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/status/123' }], [mine])],
+        ['a legacy single post URL', withRealtime([{ ...timeline(), url: 'https://twitter.com/TokyoSunrockers/statuses/123' }], [mine])],
+        ['a single post URL with a capitalized segment', withRealtime([{ ...timeline(), url: 'https://x.com/TokyoSunrockers/Status/123' }], [mine])],
+        ['a legacy single post URL in capitals', withRealtime([{ ...timeline(), url: 'https://mobile.twitter.com/TokyoSunrockers/STATUSES/123' }], [mine])],
+        ['a trailing-slash timeline of another account', withRealtime([{ ...timeline(), url: 'https://x.com/someone_else/' }], [mine])],
+        ['a mobile timeline of another account', withRealtime([{ ...timeline(), url: 'https://mobile.twitter.com/someone_else' }], [mine])],
+        ['no realtime items', withRealtime([timeline()], [])],
+        ['realtime item without a handle', withRealtime([timeline()], [{ text: 'post' }])],
+        ['no realtime at all', { ...response(), results: [timeline()], realtime: undefined }],
+        ['no highlights', withRealtime([{ ...timeline(), highlights: [] }], [mine])],
+        ['a root URL', withRealtime([{ ...timeline(), url: 'https://x.com/' }], [mine])],
+      ];
+      for (const [name, input] of cases) {
+        expect([name, evidence(input).results[0].markdown]).toEqual([name, input.results[0].markdown]);
+      }
+    });
+
+    test('keeps the markdown when formats explicitly asks for markdown, and in full mode', () => {
+      const input = withRealtime([timeline()], [{ author_handle: 'TokyoSunrockers' }]);
+      expect(evidence(input, { explicitFormats: ['markdown'] }).results[0].markdown).toBe(timeline().markdown);
+      expect(formatIntegratedSearchHostResponse(input, { responseMode: 'full' }).results[0].markdown).toBe(timeline().markdown);
+    });
+
+    test('does not change non-timeline results or the source object', () => {
+      const web = baseItem();
+      const input = withRealtime([timeline(), web], [{ author_handle: 'TokyoSunrockers' }]);
+      const before = structuredClone(input);
+      const out = evidence(input);
+      expect(out.results[1].markdown).toBeUndefined();
+      expect(out.results[1].highlights).toEqual(web.highlights);
+      expect(input).toEqual(before);
+    });
   });
 
   test('markdown is never overwritten with highlight text', () => {

@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
+import * as cache from '../cache.js';
 import { getLyrics, pickLrclibRecord } from './lyrics.js';
 
 // 歌詞の本文は使わない。曲名・歌手名・歌詞はすべてテスト用の作り物。
@@ -54,6 +55,65 @@ describe('pickLrclibRecord', () => {
     const r = pickLrclibRecord([rec(1, '曲X', '歌手甲', 'ああ'), rec(2, '曲X', '歌手乙', 'いい'), rec(3, '曲X', '歌手乙', 'いい')], '曲X');
     expect(r.chosen?.artistName).toBe('歌手乙');
     expect(r.candidates.map((c) => c.artist)).toEqual(['歌手甲']);
+  });
+});
+
+describe('pickLrclibRecord: symbol-only titles and short artist names', () => {
+  const A = 'テスト歌手';
+  test('a title made only of symbols matches only the same symbol-only title, never every record', () => {
+    // 正規化すると空になる曲名は、空文字列として全件の前方一致に当たっていた
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '♪', A).chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '★', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '♪', A).chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '★', A, 'ああ'), rec(2, '♪', A, 'いい')], '  ♪ ', A).chosen?.id).toBe(2);
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ')], '!!!').chosen).toBeUndefined();
+  });
+  test('an empty or blank title matches nothing (an empty string is a prefix of every name)', () => {
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '   ', A).chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '曲X', A, 'ああ')], '', A).chosen).toBeUndefined();
+  });
+  test('symbol-only names are compared after width and case folding (！！！ is !!!)', () => {
+    expect(pickLrclibRecord([rec(1, '!!!', A, 'ああ'), rec(2, '曲Y', A, 'いい')], '！！！', A).chosen?.id).toBe(1);
+    expect(pickLrclibRecord([rec(1, '曲X', '！！！', 'ああ')], '曲X', '!!!').chosen?.id).toBe(1);
+  });
+  test('an artist name of three characters or fewer must be equal, not contained (ai does not match mai)', () => {
+    expect(pickLrclibRecord([rec(1, '曲X', 'mai', 'ああ')], '曲X', 'ai').chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '曲X', 'ai', 'ああ')], '曲X', 'mai').chosen).toBeUndefined();
+    expect(pickLrclibRecord([rec(1, '曲X', 'ＡＩ', 'ああ')], '曲X', 'ai').chosen?.id).toBe(1);
+    // 4 文字以上は今まで通り含んでいればよい
+    expect(pickLrclibRecord([rec(1, '曲X', 'test GROUP feat. ゲスト', 'ああ')], '曲X', 'test group').chosen?.id).toBe(1);
+  });
+});
+
+describe('getLyrics: cache key', () => {
+  test('is versioned (lyrics:v2): v1 stored matches made by the substring rule for short artist names', async () => {
+    const artist = uniq('歌手'); const title = uniq('曲');
+    const setSpy = spyOn(cache, 'setToCache');
+    try {
+      const l = fakeLrclib([rec(1, title, artist, 'ああ')]);
+      await getLyrics({ title, artist }, { fetchFn: l.fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone });
+      expect(setSpy.mock.calls.map(([key]) => String(key)).filter((key) => key.startsWith('lyrics:') && !key.startsWith('lyrics:linkcore:')).every((key) => key.startsWith('lyrics:v2:'))).toBe(true);
+      expect(setSpy.mock.calls.some(([key]) => String(key).startsWith('lyrics:v2:'))).toBe(true);
+    } finally {
+      setSpy.mockRestore();
+    }
+  });
+
+  test('different symbol-only titles are cached apart, and so are different symbol-only artists', async () => {
+    const artist = uniq('歌手');
+    const l1 = fakeLrclib([rec(1, '♪', artist, 'ああ')]);
+    const first = await getLyrics({ title: '♪', artist }, { fetchFn: l1.fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone });
+    expect(first.found).toBe(true);
+    const l2 = fakeLrclib([]);
+    const second = await getLyrics({ title: '★', artist }, { fetchFn: l2.fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone });
+    expect(l2.calls.length).toBeGreaterThan(0); // 「♪」の結果を引き継がず、取りに行く
+    expect(second.found).toBe(false);
+
+    const title = uniq('曲');
+    const l3 = fakeLrclib([rec(3, title, '!!!', 'うう')]);
+    expect((await getLyrics({ title, artist: '!!!' }, { fetchFn: l3.fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone })).found).toBe(true);
+    const l4 = fakeLrclib([]);
+    expect((await getLyrics({ title, artist: '???' }, { fetchFn: l4.fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone })).found).toBe(false);
+    expect(l4.calls.length).toBeGreaterThan(0);
   });
 });
 

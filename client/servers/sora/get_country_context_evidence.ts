@@ -4,7 +4,7 @@ import { callSora } from '../../runtime.js';
 export type GetCountryContextEvidenceInput = {
   /** コンテキストID */
   contextId: string;
-  /** 根拠IDのカンマ区切り (省略時はページ走査) */
+  /** 根拠IDのカンマ区切り (MCP の evidenceIds に当たる。省略時はページ走査) */
   ids?: string;
   /** 次ページカーソル */
   cursor?: string;
@@ -39,10 +39,12 @@ export type GetCountryContextEvidenceOutput = {
     contentTruncated: boolean;
   }[];
   totalStored: number;
+  /** ids 指定で、この報告に無かった ID */
+  missingIds?: string[];
   nextCursor?: string;
 };
 
-/** 【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに属さない ID は拒否します。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, nextCursor? } */
+/** 【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? } */
 export function getCountryContextEvidence(input: GetCountryContextEvidenceInput): Promise<GetCountryContextEvidenceOutput> {
   return callSora<GetCountryContextEvidenceOutput>({ method: 'GET', path: '/intelligence/context/:contextId/evidence' }, input);
 }
