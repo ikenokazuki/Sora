@@ -239,7 +239,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   const draft = (missingFields: string[], clarifyingQuestions: string[]) =>
     decided({ status: 'draft_needs_info', filingNote: FILING_NOTE.draft, missingFields, clarifyingQuestions });
   /** GCC の道。証明者の欠けは品に入れず、status は呼び出し元で決める */
-  const gccPath = (rec: { citations?: string[]; testingExclusions?: string[]; missingFields: string[]; clarifyingQuestions?: string[] }) => {
+  const gccPath = (rec: { citations?: string[]; testingExclusions?: string[]; testingNotNeeded?: boolean; missingFields: string[]; clarifyingQuestions?: string[] }) => {
     const { citations, testingExclusions } = rec;
     const missingFields = [...(askBattery ? ['batteryType'] : []), ...rec.missingFields];
     const clarifyingQuestions = [...(rec.clarifyingQuestions ?? []), ...(askBattery ? [Q_BATTERY] : [])];
@@ -252,7 +252,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
         ...(missingFields.length ? { missingFields } : {}),
         ...(clarifyingQuestions.length ? { clarifyingQuestions } : {}),
       },
-      { gcc: true },
+      { gcc: true, ...(rec.testingNotNeeded ? { testingNotNeeded: true } : {}) },
     );
   };
 
@@ -321,6 +321,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   return gccPath({
     citations: input.citations,
     testingExclusions,
+    testingNotNeeded: !needsTestRecord,
     missingFields: [...(uncited.length ? ['citations'] : []), ...missingItemRecords(input, needsTestRecord)],
     clarifyingQuestions: uncited.length ? [qRequired(uncited)] : undefined,
   });

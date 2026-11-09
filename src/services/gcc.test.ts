@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
 import { GenerateGccCertificateRequestSchema } from '../types.js';
 import { type GccItemInput, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
+import { GCC_ATTESTATION } from './gcc_html.js';
 import { TradeInputError } from './trade.js';
 
 // サーバーの既定（SORA_GCC_*）が手元の環境にあっても、テストは呼び出し側の値だけで始める
@@ -204,7 +205,7 @@ describe('generateGccCertificate', () => {
     process.env.SORA_GCC_CUSTODIAN = '[1]';
     const exempt = await generateGccCertificate({ orderNumber: 'ORDER-1001', items: [TEE] });
     expect(exempt.items[0].status).toBe('exempt_disclaim_b');
-    expect(exempt.packageHtml).not.toContain('[MISSING]');
+    expect(exempt.packageHtml).not.toContain('[MISSING');
     const err = await generateGccCertificate({ recordCustodian: CUSTODIAN, items: [HELMET] }).catch((e) => e);
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(TradeInputError);
@@ -266,10 +267,50 @@ describe('generateGccCertificate', () => {
       awbNumber: `AWB-${xss}`,
       certifier: party,
       recordCustodian: party,
-      items: [{ ...HELMET, identifier: `SKU-${xss}`, productName: `Helmet ${xss}`, description: `Desc ${xss}`, manufacture: { ...FACTORY, city: `City ${xss}` }, testing: { date: '2026-06-15', parties: [{ ...LAB, name: `Lab ${xss}` }] } }],
+      items: [{ ...HELMET, identifier: `SKU-${xss}`, productName: `Helmet ${xss}`, brand: `Brand ${xss}`, description: `Desc ${xss}`, citations: [`16 CFR 1203 ${xss}`], manufacture: { ...FACTORY, city: `City ${xss}` }, testing: { date: '2026-06-15', reportNumber: `TR ${xss}`, parties: [{ ...LAB, name: `Lab ${xss}` }] } }],
     });
     expect(res.packageHtml).not.toContain('<script>');
     expect(res.packageHtml).not.toContain('<img src=x');
     expect(res.packageHtml).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
+  });
+});
+
+describe('GCC document (16 CFR 1110.11)', () => {
+  it('prints every element of 16 CFR 1110.11(a) and the attestation word for word', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] });
+    const html = res.packageHtml;
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) expect(html).toContain(`16 CFR 1110.11(a)(${n})`);
+    expect(html).toContain(GCC_ATTESTATION);
+    expect(html).toContain('SKU: HLM-001');
+    expect(html).toContain('<li>16 CFR 1203</li>');
+    for (const v of ['100 Example Street', 'Anytown, CA', 'compliance@acme-imports.test', '+1-202-555-0104', 'Acme Helmet Factory', 'Date of manufacture: 2026-06', 'Most recent test: 2026-06-15', res.items[0].certificateId!]) expect(html).toContain(v);
+    expect(html).toContain('importer of record');
+    expect(html).not.toMatch(/direct.to.consumer/i);
+  });
+
+  it('marks a draft as not valid and shows each missing element', async () => {
+    const res = await generateGccCertificate({ allowDraft: true, items: [{ ...HELMET, identifier: undefined }] });
+    expect(res.packageHtml).toContain('DRAFT');
+    expect(res.packageHtml).toContain('[MISSING: identifier]');
+    expect(res.packageHtml).toContain('[MISSING: certifier.name]');
+    expect(res.packageHtml).not.toMatch(/\bREADY\b/);
+  });
+
+  it('identifies the testing exclusion in place of the test date and place (16 CFR 1110.11(c))', async () => {
+    const res = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...TEE, citations: ['16 CFR 1610'], manufacture: FACTORY }] });
+    expect(res.packageHtml).toContain('Testing exclusion for 16 CFR 1610: 16 CFR 1610.1(d)(2)');
+    expect(res.packageHtml).toContain('in lieu of the test date and place (16 CFR 1110.11(c))');
+  });
+
+  it('asks for the test record only when a cited rule has no testing exclusion', async () => {
+    const only1610 = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...TEE, citations: ['16 CFR 1610'] }] });
+    expect(only1610.packageHtml).toContain('[MISSING: manufacture.name]');
+    expect(only1610.packageHtml).not.toContain('Most recent test');
+    expect(only1610.packageHtml).not.toContain('[MISSING: testing.');
+    const both = await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items: [{ ...TEE, citations: ['16 CFR 1203', '16 CFR 1610'], manufacture: FACTORY }] });
+    expect(both.packageHtml).toContain('[MISSING: testing.date]');
+    expect(both.packageHtml).toContain('[MISSING: testing.parties]');
+    expect(both.packageHtml).toContain('Testing exclusion for 16 CFR 1610: 16 CFR 1610.1(d)(2)');
+    expect(both.packageHtml).toMatch(/Missing: [^<]*testing\.date/);
   });
 });

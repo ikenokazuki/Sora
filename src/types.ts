@@ -3496,7 +3496,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: 'GCC 証明書（法定7項目）・16 CFR 1610.1(d) 免除根拠シート・通関カバーシートおよび印刷用HTML',
+              description: 'GCC 証明書（16 CFR 1110.11(a)(1)〜(7)）・16 CFR 1610.1(d) 免除根拠シート・通関カバーシートおよび印刷用HTML',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(GenerateGccCertificateResultSchema),
