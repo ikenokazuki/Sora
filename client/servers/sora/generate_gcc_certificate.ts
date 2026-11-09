@@ -82,7 +82,7 @@ export type GenerateGccCertificateInput = {
   awbNumber?: string;
   carrier?: string;
   invoiceNumber?: string;
-  /** 足りない項目があっても下書きを返す（false では 422） */
+  /** 足りない項目があっても下書きを返す（false ではエラー） */
   allowDraft?: boolean;
 };
 

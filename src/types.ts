@@ -758,7 +758,7 @@ export const GenerateGccCertificateRequestSchema = z.object({
   awbNumber: z.string().optional(),
   carrier: z.string().optional(),
   invoiceNumber: z.string().optional(),
-  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（false では 422）').meta({ default: false }),
+  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（false ではエラー）').meta({ default: false }),
 });
 
 export const PredictHtsCodeRequestSchema = z.object({

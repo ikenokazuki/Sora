@@ -966,7 +966,7 @@ describe('generate_gcc_certificate over MCP', () => {
   const parse = (r: any) => JSON.parse(r.content[0].text);
   const call = (client: Client, args: Record<string, unknown>) => client.callTool({ name: 'generate_gcc_certificate', arguments: args });
 
-  it('keeps the tool definition within 3,600 characters (I8)', async () => {
+  it('keeps the in-memory tool definition within 3,600 characters (I8)', async () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();
       expect(JSON.stringify(tools.find((t) => t.name === 'generate_gcc_certificate')).length).toBeLessThanOrEqual(3600);
@@ -982,7 +982,7 @@ describe('generate_gcc_certificate over MCP', () => {
     });
   });
 
-  it('returns the same error shape as REST: isError with code and details (M8, I10)', async () => {
+  it('returns the GCC errors in the same shape as REST: isError with code and details (M8, I10)', async () => {
     await withClient(async (client) => {
       const incomplete = await call(client, { items: [{ ...HELMET, identifier: undefined }] });
       expect(incomplete.isError).toBe(true);
@@ -998,8 +998,10 @@ describe('generate_gcc_certificate over MCP', () => {
       expect(parse(placeholder).code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
       const badHts = await call(client, { items: [{ ...HELMET, htsCode: '6506.10' }] });
       expect(parse(badHts)).toMatchObject({ code: 'INVALID_INPUT' });
-      const tooMany = await call(client, { items: Array.from({ length: 51 }, () => HELMET) }).catch((e) => ({ isError: true, thrown: String(e) }));
-      expect((tooMany as any).isError).toBe(true);
+      // スキーマの誤り（51 件）は GCC のエラーではなく、SDK の入力検証の文（-32602）で返る
+      const tooMany = await call(client, { items: Array.from({ length: 51 }, () => HELMET) });
+      expect(tooMany.isError).toBe(true);
+      expect((tooMany.content as any)[0].text).toContain('-32602');
     });
   });
 
