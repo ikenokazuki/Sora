@@ -305,6 +305,9 @@ function cpscCategoryRegulation(category: string, targetAge: CpscCertificateChec
   );
 }
 
+/** hasBattery: false と batteryType: button_coin は両立しない（check_cpsc_certificate・check_product_compliance・GCC で同じ文） */
+export const BATTERY_CONTRADICTION = 'batteryType が button_coin なのに hasBattery が false です。どちらかを直してください';
+
 /** HTSコードおよび横断製品属性（電池・年齢・生地仕様）からCPSC適合証明書(GCC/CCC)の要否とeFiling義務を判定 */
 export async function checkCpscCertificate(
   options: CpscCertificateCheckOptions,
@@ -314,7 +317,7 @@ export async function checkCpscCertificate(
     throw new Error('htsCode is required for CPSC certificate check');
   }
   if (options.hasBattery === false && options.batteryType === 'button_coin') {
-    throw new TradeInputError('batteryType が button_coin なのに hasBattery が false です。どちらかを直してください', 'INVALID_INPUT');
+    throw new TradeInputError(BATTERY_CONTRADICTION, 'INVALID_INPUT');
   }
   const normalized = normalizeHtsCode(htsCode);
   const exactCategory = findExactMatch(normalized);
@@ -1908,6 +1911,9 @@ export async function checkProductCompliance(
   const material = options.material?.trim();
   const productCategory = options.productCategory?.trim();
   let htsCode = options.htsCode?.trim();
+  if (options.hasBattery === false && options.batteryType === 'button_coin') {
+    throw new TradeInputError(BATTERY_CONTRADICTION, 'INVALID_INPUT');
+  }
 
   // 1. URL が指定されている場合はスクレイピングして商品情報を取得
   if (options.url) {

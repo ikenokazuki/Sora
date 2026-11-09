@@ -38,6 +38,8 @@ export function escapeHtml(value: unknown): string {
 }
 
 const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
+/** 州・県が無い国（シンガポールなど）の、state の答え。値は必要だが、印刷では州の欄を省く */
+export const NO_STATE = /^(?:n\/a|none|-)$/i;
 const ID_LABELS: Record<GccIdentifierType, string> = { sku: 'SKU', model: 'Model number', gtin: 'GTIN', upc: 'UPC', serial: 'Serial number', registered: 'Registered number', other: 'Identifier' };
 const idLabel = (input: GccItemInput) => ID_LABELS[input.identifierType ?? 'sku'];
 const joinLines = (lines: Array<string | undefined | false>) => lines.filter(Boolean).join('<br>');
@@ -48,7 +50,10 @@ type Miss = (key: string) => string;
 /** 当事者を name / street / city, state / country / Email・Phone の行に分ける。miss があれば、欠けた項目を prefix.項目 の印にする（まるごと無いときは prefix の印 1 つ。whole が false なら項目ごと） */
 function partyHtml(party?: GccParty, miss?: Miss, prefix = '', whole = true): string {
   if (miss && whole && !PARTY_FIELDS.some((f) => party?.[f])) return miss(prefix);
-  const [name, street, city, state, country, email, phone] = PARTY_FIELDS.map((f) => (party?.[f] ? escapeHtml(party[f]) : (miss?.(`${prefix}.${f}`) ?? '')));
+  const [name, street, city, state, country, email, phone] = PARTY_FIELDS.map((f) => {
+    const text = party?.[f];
+    return text ? (f === 'state' && NO_STATE.test(text) ? '' : escapeHtml(text)) : (miss?.(`${prefix}.${f}`) ?? '');
+  });
   return joinLines([name, street, [city, state].filter(Boolean).join(', '), country, [email && `Email: ${email}`, phone && `Phone: ${phone}`].filter(Boolean).join(' · ')]);
 }
 

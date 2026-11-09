@@ -2,8 +2,8 @@
 // 証明書に載せる値は呼び出し側が渡したものだけ。規則の判断は同梱の CPSC の一覧と HTS の桁で行い、外には取りに行かない
 import { createHash } from 'node:crypto';
 import { GccPartySchema } from '../types.js';
-import { type GccRenderItem, renderGccPackageHtml } from './gcc_html.js';
-import { type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
+import { type GccRenderItem, NO_STATE, renderGccPackageHtml } from './gcc_html.js';
+import { BATTERY_CONTRADICTION, type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
 
 export type GccIdentifierType = 'sku' | 'model' | 'gtin' | 'upc' | 'serial' | 'registered' | 'other';
 export interface GccParty {
@@ -131,11 +131,12 @@ function trimDeep<T>(value: T): T {
 // 見本・仮置きと見なすのは、値全体が見本の語のとき・型の差し込み口・予約された名前（RFC 2606・6761）・電話でない数字だけ。語が値の一部にあるだけ（"Sample & Co. GmbH"）は通す
 const PLACEHOLDER_WORD = /^(?:n\/a|none|null|nil|undefined|unknown|tbd|tba|todo|sample|dummy|placeholder|test|example|x+|-+|\?+|\.{2,}|…+)$/i;
 const PLACEHOLDER_WORD_JA = /^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し)$/;
-const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^}]*\}\}/i;
+const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^{}]*\}\}/i; // [^}] は {{ の繰り返しで二乗の時間になる
 const RESERVED_DOMAIN = /(?:^|\.)example\.(?:com|net|org)$|\.(?:example|invalid|localhost)$/;
 const FAKE_EMAIL = /^(?:test|sample|dummy|fake|example)@(?:test|sample|dummy|fake|example)(?:\.|$)/i;
 
-function isPlaceholderValue(value: string, kind?: 'email' | 'phone'): boolean {
+function isPlaceholderValue(value: string, kind?: 'email' | 'phone' | 'state'): boolean {
+  if (kind === 'state' && NO_STATE.test(value)) return false; // 州・県が無い国（シンガポールなど）の答え
   if (PLACEHOLDER_WORD.test(value) || PLACEHOLDER_WORD_JA.test(value) || TEMPLATE_SLOT.test(value)) return true;
   if (kind === 'email') return RESERVED_DOMAIN.test(value.slice(value.lastIndexOf('@') + 1).toLowerCase()) || FAKE_EMAIL.test(value);
   if (kind === 'phone') {
@@ -163,14 +164,15 @@ function isValidGccDate(date: string): boolean {
  * サーバーの SORA_GCC_*（運営者の設定）と、注文の番号は見ない
  */
 function assertGccInputs(options: GenerateGccCertificateOptions): void {
-  type Check = [path: string, value: string | undefined, kind?: 'email' | 'phone'];
-  const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' ? f : undefined]);
+  type Kind = 'email' | 'phone' | 'state';
+  type Check = [path: string, value: string | undefined, kind?: Kind];
+  const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' || f === 'state' ? f : undefined]);
   const dates: Check[] = [];
   const checks: Check[] = [...party('certifier', options.certifier), ...party('recordCustodian', options.recordCustodian)];
   options.items.forEach((item, i) => {
     const at = `items[${i}]`;
     if (item.hasBattery === false && item.batteryType === 'button_coin') {
-      throw new TradeInputError(`${at}: batteryType が button_coin なのに hasBattery が false です。どちらかを直してください`, 'INVALID_INPUT');
+      throw new TradeInputError(`${at}: ${BATTERY_CONTRADICTION}`, 'INVALID_INPUT');
     }
     const manufactureDate: Check = [`${at}.manufacture.date`, item.manufacture?.date];
     const testingDate: Check = [`${at}.testing.date`, item.testing?.date];
@@ -190,7 +192,7 @@ function assertGccInputs(options: GenerateGccCertificateOptions): void {
     );
   });
   // 空の値は「足りない」であって、見本ではない
-  const offending = (list: Check[], bad: (value: string, kind?: 'email' | 'phone') => boolean) => list.filter(([, value, kind]) => value?.trim() && bad(value.trim(), kind)).map(([path]) => path);
+  const offending = (list: Check[], bad: (value: string, kind?: Kind) => boolean) => list.filter(([, value, kind]) => value?.trim() && bad(value.trim(), kind)).map(([path]) => path);
   const placeholders = offending(checks, isPlaceholderValue);
   if (placeholders.length > 0) {
     throw new TradeInputError(`GCC の項目に見本・仮置きに見える値があります（${placeholders.join(', ')}）。記録の値だけを渡してください。`, 'UNVERIFIED_PLACEHOLDER_INPUT');
@@ -228,7 +230,7 @@ function fdaNoteFor(htsCode: string, foodContact?: boolean): string | undefined 
         : 'FDA FD1: no Prior Notice (21 CFR 1.276(b)(5)(i)(A)); the MID needs the manufacturer’s name and address.';
     }
     const flag = `FDA ${fda.fdFlag} (${fda.possiblePrograms.join(', ')})`;
-    if (fda.missingInputs?.includes('foodUsage')) return `${flag}: food use not stated — if it is food, Prior Notice is required before arrival.`;
+    if (fda.missingInputs?.includes('foodUsage')) return `${flag}: food use not stated.`;
     return fda.confidence === 'chapter-level-estimate'
       ? `${flag}: estimated from the HTS chapter, confirm the item.${fda.priorNoticeRequired ? ' If it is food, Prior Notice is required before arrival.' : ''}`
       : `${flag}${fda.priorNoticeRequired ? ' — Prior Notice is required before arrival.' : ''}`;

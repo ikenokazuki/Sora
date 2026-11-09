@@ -40,6 +40,7 @@ tradeRoutes.post('/trade/cpsc-check', async (c) => {
     const result = await checkCpscCertificate(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TradeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'CPSC certificate check failed', 'TRADE_ERROR', 500);
   }
 });
@@ -129,6 +130,7 @@ tradeRoutes.post('/trade/compliance', async (c) => {
     const result = await checkProductCompliance(parsed.data);
     return c.json(result);
   } catch (err) {
+    if (err instanceof TradeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Product compliance check failed', 'TRADE_ERROR', 500);
   }
 });

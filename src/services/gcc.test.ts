@@ -472,7 +472,7 @@ describe('exemption statements, cover sheet and FDA note', () => {
     expect(await note({ htsCode: '7013.99.90.00', productName: 'Decorative Glass Vase', foodContact: undefined })).toBe(FCS_UNSTATED);
     expect(await note({ htsCode: '7013.99.90.00', productName: 'Drinking Glass', foodContact: true })).toBe(FCS_NOTE);
     // 食品用途が分からない香料の見出し（FD3）も、そう書く
-    expect(await note({ htsCode: '3302.10.10.00', productName: 'Flavor Compound', foodContact: undefined })).toBe('FDA FD3 (FOO): food use not stated — if it is food, Prior Notice is required before arrival.');
+    expect(await note({ htsCode: '3302.10.10.00', productName: 'Flavor Compound', foodContact: undefined })).toBe('FDA FD3 (FOO): food use not stated.');
     expect(await note({ htsCode: '3302.10.10.00', productName: 'Flavor Compound', foodContact: true })).toBe('FDA FD3 (FOO)');
     expect(await note({ htsCode: '6506.10.60.45', productName: 'Adult Bicycle Helmet', foodContact: undefined })).toBeUndefined();
     const helmet = await generateGccCertificate({ orderNumber: 'ORDER-1004', items: [{ ...HELMET, citations: [] }, TEE] });
@@ -649,6 +649,35 @@ describe('placeholder and date checks (M2, M3)', () => {
     expect(err.message).not.toContain('certifier.name');
   });
 
+  it('matches template slots without quadratic time on a long run of braces (I2)', async () => {
+    for (const name of ['{{x}}', '{{ company }}', 'a{{b}}c']) {
+      await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name } }), name).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT' });
+    }
+    const started = performance.now();
+    const res = await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, name: '{{'.repeat(100_000) } });
+    expect(res.items[0].status).toBe('generated');
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it('rejects placeholders in what the caller sent even with allowDraft', async () => {
+    await expect(generateGccCertificate({ ...base, allowDraft: true, certifier: { ...CERTIFIER, name: 'TBD' } })).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT' });
+    await expect(generateGccCertificate({ ...base, allowDraft: true, items: [{ ...HELMET, manufacture: { ...FACTORY, date: 'TBD' } }] })).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT' });
+  });
+
+  it('takes N/A, - and None as "no state or province" in the state field only, and leaves the state out of the printed party (m4)', async () => {
+    for (const state of ['N/A', '-', 'None']) {
+      const res = await generateGccCertificate({ ...base, certifier: { ...CERTIFIER, city: 'Singapore', state, country: 'Singapore' }, items: [{ ...HELMET, manufacture: { ...FACTORY, state } }] });
+      expect(res.items[0].status, state).toBe('generated');
+      expect(res.packageHtml, state).toContain('<br>Singapore<br>Singapore<br>');
+      expect(res.packageHtml, state).not.toMatch(/Singapore, (?:N\/A|-|None)/);
+      expect(res.packageHtml, state).not.toContain(', N/A');
+      expect(res.packageHtml, state).toContain('Taichung<br>Taiwan');
+    }
+    await expect(generateGccCertificate({ ...base, certifier: { ...CERTIFIER, city: 'N/A' } })).rejects.toMatchObject({ code: 'UNVERIFIED_PLACEHOLDER_INPUT' });
+    const blank = await generateGccCertificate({ ...base, allowDraft: true, certifier: { ...CERTIFIER, state: '' } });
+    expect(blank.missingFields).toEqual(['certifier.state']);
+  });
+
   it('does not check the server’s SORA_GCC_* values: an operator typo is not the caller’s 400', async () => {
     const prev = process.env.SORA_GCC_CERTIFIER;
     process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, email: 'ops@example.com' });
@@ -661,7 +690,7 @@ describe('placeholder and date checks (M2, M3)', () => {
   });
 
   it('requires YYYY-MM or YYYY-MM-DD dates that exist and are not in the future (M3)', async () => {
-    for (const date of ['2026-13', '2026-02-30', '2026/06', 'June 2026', '2099-01']) {
+    for (const date of ['2026-13', '2026-02-30', '2026/06', 'June 2026', '2099-01', '1899-12', '1899-12-31']) {
       await expect(generateGccCertificate({ ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, date } }] }), date).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     }
     const err = await generateGccCertificate({ ...base, items: [{ ...HELMET, manufacture: { ...FACTORY, date: '2026-13' }, testing: { ...HELMET.testing, date: '2099-01-01' } }] }).catch((e) => e);

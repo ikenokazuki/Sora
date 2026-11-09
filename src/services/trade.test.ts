@@ -398,6 +398,18 @@ describe('HTS prediction and product compliance', () => {
       expect(button.actionPlan.some((a) => a.includes('UN3480'))).toBe(false);
     });
 
+    it('adds the Reese’s Law note for button_coin without hasBattery, and rejects hasBattery: false with button_coin before any scrape or prediction', async () => {
+      const alone = await checkProductCompliance({
+        productName: 'Rechargeable Power Bank',
+        description: 'Portable lithium-ion battery pack with USB cable.',
+        targetAge: 'adult',
+        batteryType: 'button_coin',
+      });
+      expect(alone.actionPlan.some((a) => a.includes('16 CFR 1263'))).toBe(true);
+      // url だけなら、読めなくても「情報不足」の答えが返るだけ。矛盾は先に止まる
+      await expect(checkProductCompliance({ url: 'http://127.0.0.1:1/product', hasBattery: false, batteryType: 'button_coin' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    });
+
     it('does not proceed with a default code when the classification is not settled: it returns the candidates and the question instead', async () => {
       const res = await checkProductCompliance({ productName: 'Quantum Widget Model X', description: 'A completely novel gadget with no established classification.' });
       expect(res.overallStatus).toBe('needs_more_info');

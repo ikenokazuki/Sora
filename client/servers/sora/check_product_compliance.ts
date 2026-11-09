@@ -18,7 +18,7 @@ export type CheckProductComplianceInput = {
   productCategory?: string;
   /** 食品・飲料に接触する用途か（true: 飲み物や食べ物を入れる/口をつける等の食品接触用途, false: 装飾等の非食品接触用途）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   foodContact?: boolean;
-  /** 電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
+  /** 電池・バッテリーを使用する製品か（true: ボタン電池・コイン電池またはリチウムイオン電池等を内蔵/同梱, false: 電池不使用）。trueのときだけ推測の検索語にbatteryを足す。batteryTypeがbutton_coinなら、CPSCの判定に16 CFR 1263を当て、注意書きを1行足す。falseでは何もしない（batteryType が button_coin だと 400）。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   hasBattery?: boolean;
   /** 電池の種類（button_coin: ボタン電池・コイン電池, other: リチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など）。button_coin は hasBattery を省いても電池あり（false とは矛盾で 400）。other は true のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略しユーザーに確認すること */
   batteryType?: "button_coin" | "other";

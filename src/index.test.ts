@@ -3319,6 +3319,17 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(checkJson.eFilingRequired).toBe(true);
   });
 
+  it('POST /trade/cpsc-check and /trade/compliance answer 400 INVALID_INPUT for button_coin with hasBattery: false', async () => {
+    const post = (path: string, body: unknown) => app.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const cpsc = await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(cpsc.status).toBe(400);
+    expect(((await cpsc.json()) as any).code).toBe('INVALID_INPUT');
+    const compliance = await post('/trade/compliance', { productName: 'LED Penlight', htsCode: '8513.10.20.00', targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(compliance.status).toBe(400);
+    expect(((await compliance.json()) as any).code).toBe('INVALID_INPUT');
+    expect((await post('/trade/cpsc-check', { htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'button_coin' })).status).toBe(200);
+  });
+
   it('POST /trade/fda-check should handle REST requests', async () => {
     const resEmpty = await app.request('/trade/fda-check', {
       method: 'POST',
