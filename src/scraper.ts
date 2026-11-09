@@ -104,6 +104,7 @@ export * from './services/music.js';
 export * from './services/gov.js';
 export * from './services/health.js';
 export * from './services/trade.js';
+export * from './services/gcc.js';
 export * from './services/image_inspect.js';
 export * from './http_fetcher.js';
 export * from './html_parser.js';
