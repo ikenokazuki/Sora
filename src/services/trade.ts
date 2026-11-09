@@ -743,7 +743,7 @@ const FDA_SUBHEADING_RULES: FdaSubheadingRule[] = [
     fdFlag: 'FD1',
     priorNotice: false,
     actionNote:
-      '【FDA食品接触物質 (FCS / FD1)】完成品の食器・飲料用容器等は 21 CFR § 1.276(b)(5) により FDA Prior Notice（事前通知）は不要です。FDA食品接触安全基準（溶出試験・鉛・カドミウム CPG Sec. 545.400/545.450・21 CFR 175-177・BPA等）への適合確認と、ACE通関時の製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合はACE Disclaimerを申告してください。',
+      '【FDA食品接触物質 (FCS / FD1)】完成品の食器・飲料用容器等は 21 CFR § 1.276(b)(5)(i)(A) により FDA Prior Notice（事前通知）は不要です。FDA食品接触安全基準（溶出試験・鉛・カドミウム CPG Sec. 545.400/545.450・21 CFR 175-177・BPA等）への適合確認と、ACE通関時の製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合はACE Disclaimerを申告してください。',
   },
   // 香料・食品添加物原料
   {
@@ -1857,7 +1857,7 @@ function buildIntegratedActionPlan(
     }
     if (fdaResult.possiblePrograms.includes('FCS') || fdaResult.fdFlag === 'FD1') {
       actionPlan.push(
-        '【FDA 食品接触物質 (FCS)】完成品の食器・調理器具等は 21 CFR § 1.276(b)(5) により Prior Notice は不要ですが、FDA食品接触安全基準（溶出試験等）への適合確認と製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合は通関業者へACE免責（Disclaimer）申告を指示してください。',
+        '【FDA 食品接触物質 (FCS)】完成品の食器・調理器具等は 21 CFR § 1.276(b)(5)(i)(A) により Prior Notice は不要ですが、FDA食品接触安全基準（溶出試験等）への適合確認と製造工場名・住所（FDA MID用）の提示が必要です。非食品接触用途の場合は通関業者へACE免責（Disclaimer）申告を指示してください。',
       );
     }
 

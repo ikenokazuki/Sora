@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { GccPartySchema } from '../types.js';
 import { type GccRenderItem, renderGccPackageHtml } from './gcc_html.js';
-import { SECTION_1610_1_D, TradeInputError, checkCpscCertificate, findCpscListCategory, section1610cExclusionFor } from './trade.js';
+import { type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
 
 export type GccIdentifierType = 'sku' | 'model' | 'gtin' | 'upc' | 'serial' | 'registered' | 'other';
 export interface GccParty {
@@ -63,6 +63,7 @@ export interface GccItemSummary {
   /** B のとき '130.006' */
   intendedUseCode?: string;
   filingNote: string;
+  /** FDA の注記（英語。表紙と同じ文）。FDA が関わるときだけ。適合したとは書かない */
   fdaNote?: string;
   missingFields?: string[];
   clarifyingQuestions?: string[];
@@ -181,6 +182,18 @@ function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER'
   }
 }
 
+/** FDA の注記。HTS と foodContact から言えること（Prior Notice の要否・FD フラグ）だけを書き、FDA への適合は書かない */
+function fdaNoteFor(htsCode: string, foodContact?: boolean): string | undefined {
+  const fda = checkFdaRegulated({ htsCode, foodContact });
+  const fcs = fda.possiblePrograms.includes('FCS') || fda.fdFlag === 'FD1';
+  if (fda.fdaRegulatedLikely === true) {
+    if (fcs)
+      return 'FDA FD1 (food contact article): no Prior Notice — food contact substances are not food for Prior Notice (21 CFR 1.276(b)(5)(i)(A)). Give the manufacturer’s name and address for the MID on the invoice.';
+    return `FDA ${fda.fdFlag} (${fda.possiblePrograms.join(', ')})${fda.priorNoticeRequired ? ' — Prior Notice is required before arrival.' : ''}`;
+  }
+  if (fda.fdaRegulatedLikely === false && fda.fdFlag === 'FD1') return 'FDA FD1: not for food contact — file the FDA disclaimer.';
+}
+
 const missingPartyFields = (prefix: string, party?: GccParty) => PARTY_FIELDS.filter((f) => !party?.[f]).map((f) => `${prefix}.${f}`);
 
 /** 16 CFR 1110.11(a)(1)・(5)・(6) の順に足りない項目を挙げる */
@@ -223,12 +236,14 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   const cEx = section1610cExclusionFor(digits);
   // 電池の種類で 16 CFR 1263 が当たるかが決まるので、分かるまで免除・規則なしの答えを出さない
   const askBattery = input.hasBattery === true && !input.batteryType;
+  const fdaNote = fdaNoteFor(digits, input.foodContact);
   const summaryBase = {
     line: index + 1,
     htsCode: input.htsCode,
     productName: input.productName,
     ...(input.identifier ? { identifier: input.identifier } : {}),
     ...(category ? { cpscListCategory: category } : {}),
+    ...(fdaNote ? { fdaNote } : {}),
   };
   const decided = (summary: Omit<GccItemSummary, keyof typeof summaryBase>, extra: Partial<ItemDecision> = {}): ItemDecision => ({
     input,
@@ -274,10 +289,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
     if (cpsc.certificateRequired === false && cpsc.testingExemption?.enforcementDiscretion) {
       if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
       const citation = cpsc.testingExemption.citation as keyof typeof SECTION_1610_1_D;
-      return decided(
-        { status: 'exempt_disclaim_b', disclaimCode: 'B', intendedUseCode: '130.006', filingNote: FILING_NOTE.disclaimB },
-        { exemption: { citation, basis: SECTION_1610_1_D[citation] } },
-      );
+      return decided({ status: 'exempt_disclaim_b', disclaimCode: 'B', intendedUseCode: '130.006', filingNote: FILING_NOTE.disclaimB }, { exemption: { citation } });
     }
     const references = cfrs.filter((c) => !c.startsWith('CPSC HTS Guidance List') && c !== '個別規格要確認');
     const qCitations =

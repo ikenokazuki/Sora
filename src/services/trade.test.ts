@@ -662,6 +662,10 @@ describe('HTS prediction and product compliance', () => {
       expect(adultMugFda.priorNoticeMayApply).toBe(false);
       expect(adultMugFda.requiredActions?.[0]).toContain('21 CFR');
       expect(adultMugFda.requiredActions?.[0]).toContain('Prior Notice');
+      // 条文の番号は (b)(5)(i)(A)（food contact substances は food に入らない）。(b)(5) だけでは (i)(B) の農薬も指す
+      expect(adultMugFda.requiredActions?.[0]).toContain('21 CFR § 1.276(b)(5)(i)(A)');
+      const mugPlan = await checkProductCompliance({ htsCode: '6912.00.44.00', productName: 'Stoneware Coffee Mug', targetAge: 'adult', material: 'ceramic', foodContact: true });
+      expect(mugPlan.actionPlan.join('')).toContain('21 CFR § 1.276(b)(5)(i)(A)');
 
       const childMug = await checkProductCompliance({
         htsCode: '6912.00.44.00',
