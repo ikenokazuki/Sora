@@ -1,11 +1,26 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, setSystemTime, test } from 'bun:test';
 import {
   buildYahooRealtimeQuery,
+  extractRealtimeFallbackQueries,
   requiresExactRealtimeQuery,
   searchYahooRealtime,
 } from './yahoo.js';
 
 const OPT = { detailEnrichment: false } as const;
+
+afterEach(() => setSystemTime());
+
+test('rewrites 一昨日 to the date two days back in JST (not yesterday), and leaves no stray character', () => {
+  setSystemTime(new Date('2026-11-09T03:00:00Z')); // 日本時間 11 月 9 日 12 時
+  const two = extractRealtimeFallbackQueries('君と見るそら 一昨日 ライブ');
+  expect(two).toContain('君と見るそら 11/7');
+  expect(two).toContain('君と見るそら 11月7日');
+  expect(two).not.toContain('君と見るそら 11/8');
+  expect(two.some((q) => q.includes('一'))).toBe(true); // 元の問い (先頭の候補) だけが「一昨日」を残す
+  expect(two.slice(1).some((q) => q.includes('一'))).toBe(false);
+  const one = extractRealtimeFallbackQueries('君と見るそら 昨日 ライブ');
+  expect(one).toContain('君と見るそら 11/8');
+});
 
 test('does not broaden or rewrite an OR query after an empty result', async () => {
   const seen: string[] = [];

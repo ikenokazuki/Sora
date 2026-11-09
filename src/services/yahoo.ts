@@ -1316,6 +1316,9 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
       } else if (/(?:明後日|あさって)/.test(remaining)) {
         const dayAfter = new Date(jstNow.getTime() + 48 * 60 * 60 * 1000);
         targetDateStr = `${dayAfter.getMonth() + 1}/${dayAfter.getDate()}`;
+      } else if (/(?:一昨日|おととい)/.test(remaining)) {
+        const dayBeforeYesterday = new Date(jstNow.getTime() - 48 * 60 * 60 * 1000);
+        targetDateStr = `${dayBeforeYesterday.getMonth() + 1}/${dayBeforeYesterday.getDate()}`;
       } else if (/(?:昨日|きのう)/.test(remaining)) {
         const yesterday = new Date(jstNow.getTime() - 24 * 60 * 60 * 1000);
         targetDateStr = `${yesterday.getMonth() + 1}/${yesterday.getDate()}`;
@@ -1324,7 +1327,7 @@ export function extractRealtimeFallbackQueries(query: string): string[] {
   }
 
   // 2. ノイズ語句の除去 (自然言語フレーズ、助詞、冗長語)
-  const noisePattern = /(?:明日|あした|あす|今日|本日|きょう|昨日|きのう|明後日|あさって|予定|スケジュール|情報|一覧|最新|公式|について|まとめ|何時|何時から|いつ|どこ|どこで|教えて|ライブ予定|ライブ情報|チケット情報|チケット一覧|開催情報|詳細|概要|購入方法|チケット購入方法|タイムテーブル|タイテ|出演時間)/g;
+  const noisePattern = /(?:明日|あした|あす|今日|本日|きょう|一昨日|おととい|昨日|きのう|明後日|あさって|予定|スケジュール|情報|一覧|最新|公式|について|まとめ|何時|何時から|いつ|どこ|どこで|教えて|ライブ予定|ライブ情報|チケット情報|チケット一覧|開催情報|詳細|概要|購入方法|チケット購入方法|タイムテーブル|タイテ|出演時間)/g;
   const cleaned = remaining
     .replace(/(?:\d{4}年)?\d{1,2}月\d{1,2}日/g, '')
     .replace(/(?:\d{4}[-/.])?\d{1,2}[-/.]\d{1,2}/g, '')

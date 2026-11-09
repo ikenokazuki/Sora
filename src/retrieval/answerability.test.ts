@@ -239,6 +239,13 @@ describe('relative day resolution (hermetic)', () => {
     expect(extractDateRequirements('明後日', ref)).toEqual([{ month: 10, day: 2, year: 2026 }]);
     expect(extractDateRequirements('価格', ref)).toEqual([]);
   });
+
+  test('一昨日は 2 日前（昨日と取り違えない）。ほかの語を含む語も長い方が勝つ', () => {
+    const ref = new Date(2026, 8, 30);
+    expect(extractDateRequirements('一昨日のライブ', ref)).toEqual([{ month: 9, day: 28, year: 2026 }]);
+    expect(extractDateRequirements('昨日のライブ', ref)).toEqual([{ month: 9, day: 29, year: 2026 }]);
+    expect(extractDateRequirements('明後日と明日', ref)).toEqual([{ month: 10, day: 2, year: 2026 }]);
+  });
 });
 
 describe('analyzeFacetEvidence lookahead (label followed by value)', () => {

@@ -35,6 +35,25 @@ function formatDateIso(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// 別の語の一部として現れたときは、その日付を指さない表現の条件。検出（extractTemporalAnchors）と注記（annotate…）で同じものを使う。
+// 「一昨日」の中の「昨日」は 2 日前（1 日前ではない）。「当日券」「当日精算」「当日受付」「当日払い」の「当日」は日付ではない。
+const NOT_AFTER_ICHI = '(?<!一)';
+const NOT_COMPOUND = '(?![券精受払])';
+const EXPRESSION_GUARDS: Record<string, [before: string, after: string]> = {
+  '昨日': [NOT_AFTER_ICHI, ''],
+  '当日': ['', NOT_COMPOUND],
+};
+
+/** 月だけずらす。ずらした先の月に同じ日がなければ、その月の末日にする（setMonth だと 1月31日の来月が 3月3日にあふれる） */
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d;
+}
+
 /**
  * テキストから相対時間表現を検出し、基準日に基づく絶対日時アンカーを抽出する
  */
@@ -76,8 +95,8 @@ export function extractTemporalAnchors(
     { regex: /明後日|あさって/g, offset: 2, confidence: 'high' },
     { regex: /一昨日|おととい/g, offset: -2, confidence: 'high' },
     { regex: /明日|明朝|翌日/g, offset: 1, confidence: 'high' },
-    { regex: /昨日|前日/g, offset: -1, confidence: 'high' },
-    { regex: /本日|今日|当日/g, offset: 0, confidence: 'high' },
+    { regex: new RegExp(`${NOT_AFTER_ICHI}昨日|前日`, 'g'), offset: -1, confidence: 'high' },
+    { regex: new RegExp(`本日|今日|当日${NOT_COMPOUND}`, 'g'), offset: 0, confidence: 'high' },
   ];
 
   for (const { regex, offset, confidence } of exactDayMatches) {
@@ -138,9 +157,7 @@ export function extractTemporalAnchors(
     else if (expr === '再来月') monthOffset = 2;
     else if (expr === '先月') monthOffset = -1;
 
-    const d = new Date(refDate);
-    d.setMonth(d.getMonth() + monthOffset);
-    addAnchor(expr, d, 'medium');
+    addAnchor(expr, addMonths(refDate, monthOffset), 'medium');
   }
 
   return anchors;
@@ -161,16 +178,14 @@ export function annotateTextWithTemporalAnchors(
   const anchors = extractTemporalAnchors(text, referenceDateStr);
   if (anchors.length === 0) return text;
 
-  let annotated = text;
-  // 長い表現から順に置換して重複注記を防ぐ
+  // 長い表現から順に並べた 1 つの正規表現で 1 回だけ置換する（来週金曜が来週金曜日の一部に当たって二重に注記しない）。
+  // 先読みで最初に当たった表現に決め、後ろに注記があれば短い表現へ戻らずにそのままにする。飛び先は先に当てて、そのまま返す
   const sortedAnchors = anchors.slice().sort((a, b) => b.expression.length - a.expression.length);
-
-  for (const anchor of sortedAnchors) {
-    // 既に注記されていない場合のみ注記付与。飛び先は先に当てて、そのまま返す
-    const escaped = anchor.expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${MD_LINK_DEST_RE})|${escaped}(?!\\s*\\[\\d{4}-\\d{2}-\\d{2}\\])`, 'g');
-    annotated = annotated.replace(regex, (_m, dest: string | undefined) => dest ?? `${anchor.expression} [${anchor.resolvedDate}]`);
-  }
-
-  return annotated;
+  const resolved = new Map(sortedAnchors.map((a) => [a.expression, a.resolvedDate]));
+  const alternatives = sortedAnchors.map(({ expression }) => {
+    const [before, after] = EXPRESSION_GUARDS[expression] ?? ['', ''];
+    return `${before}${expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${after}`;
+  });
+  const regex = new RegExp(`(${MD_LINK_DEST_RE})|(?=(${alternatives.join('|')}))\\2(?!\\s*\\[\\d{4}-\\d{2}-\\d{2}\\])`, 'g');
+  return text.replace(regex, (_m, dest: string | undefined, expr: string) => dest ?? `${expr} [${resolved.get(expr)}]`);
 }

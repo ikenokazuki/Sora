@@ -306,7 +306,8 @@ export function extractDateRequirements(query: string, ref?: Date): DateRequirem
   const out: DateRequirement[] = [];
   if (!query || typeof query !== 'string') return out;
   const base = ref instanceof Date ? new Date(ref.getTime()) : new Date();
-  for (const entry of RELATIVE_DAY_OFFSETS) {
+  // 長い語から見る（「一昨日」を「昨日」より先に。配列の並びに頼らない）
+  for (const entry of [...RELATIVE_DAY_OFFSETS].sort((a, b) => b.term.length - a.term.length)) {
     if (query.indexOf(entry.term) < 0) continue;
     const d = new Date(base.getTime());
     d.setDate(d.getDate() + entry.offset);
