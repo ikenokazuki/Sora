@@ -68,6 +68,7 @@
 - MCP の定義の大きさを、`createMcpServer` の `tools/list` の JSON で測ると（v4.0.0 → v4.1.0）、最初から見える 14 ツールは 21,587 → 22,953 字（+6%）、全ツールは 209,156 字（52 ツール）→ 215,982 字（53 ツール）、`instructions` は 8,881 → 8,948 字です。最初から見える 14 ツールの説明文（`description`）の合計は 3,490 → 3,495 字（上限 3,500 字）で、`generate_gcc_certificate` は遅延ツールなので、これは変わりません。HTTP の経路で測る `scripts/measure-context.ts` の値（既定 22,269・全ツール 63,529・`instructions` 8,948。全ツールの上限は 64,000）は測り方が違うので、これらと一致しません（`docs/code-execution.md` を参照）。
 - 天気・警報の地名の表 `src/jma_areas.ts` を作り直すスクリプトを `scripts/jma-areas/` に入れました（手順は README の「開発時の検証」）。
 - 型付きのクライアント（`client/`）を作り直しました。`generate_gcc_certificate` を足し、`check_cpsc_certificate`・`check_product_compliance` の新しい引数を入れました。`search_deep` の `realtimeFocus` の説明から「(default)」を外し（省くと検索語から決まる）、`search_trend` の `limit`・`search_deep` の `maxChars`・`realtimeLimit`・`search_tools` の `detail` の説明も実際の動きに合わせました。
+- `docs/engines/` に、判断をする機能（HTS コードの推測、CPSC・GCC・FDA の判定、住所の正規化、地名の解決、根拠の選び方など）が答えをどう決めているかの説明を足しました。README の「判断エンジンの一覧」から読めます。
 
 # Sora v4.0.0 — 本文の画像とハイライトの選び方を直し、効いていない引数を消して responseMode にまとめた
 
