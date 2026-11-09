@@ -179,14 +179,14 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     { defaultEnabled: true, keywords: ['商品判定', 'コンプライアンス', 'FDA', 'CPSC', 'eFiling', 'GCC', 'CCC', 'HTS', '貿易一括判定', '輸出', '輸入'] },
   );
 
-  // Tool: generate_gcc_certificate (米国CPSC GCC適合証明書・発送後通関保留パッケージ一括生成) - DEFERRED
+  // Tool: generate_gcc_certificate (米国CPSC の一般適合証明書と通関の保留に出す書類) - DEFERRED
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'generate_gcc_certificate',
     'trade',
-    '【必須・推測厳禁】米国CPSCのGCCと通関の保留に出す書類を印刷用のHTMLで作る。値は記録（試験報告書など）から渡す。足りないと 422（下書きは allowDraft）。12 歳以下の子供用は作らない。返却: { packageId, overallStatus, counts, items, packageHtml }',
+    '【必須・推測や見本の値は禁止】米国CPSCの一般適合証明書（GCC、16 CFR 1110.11）と、通関の保留に出す書類（表紙、品目ごとのGCC、16 CFR 1610.1(d) の免除の説明）を印刷用のHTMLで作る。値は記録から渡す（州・県が無ければ state は N/A）。足りない項目があれば既定でエラー（allowDraft で下書き）。12歳以下の子供用は CPC が要るので作らない。返却: { packageId, overallStatus, counts, items, packageHtml }',
     GenerateGccCertificateRequestSchema.shape,
     async (opts) => {
       try {
@@ -195,27 +195,12 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
           content: [{ type: 'text', text: toolJson(result) }],
         };
       } catch (err) {
+        // REST と同じ形（error・code・details）。REST の 422 / 400 に当たるものだけ code を付け、ほかは今までの文
         if (err instanceof TradeGccIncompleteError) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text',
-                text: toolJson({
-                  error: err.message,
-                  code: err.code,
-                  missingFields: err.details.missingFields,
-                  items: err.details.items,
-                }),
-              },
-            ],
-          };
+          return { isError: true, content: [{ type: 'text', text: toolJson({ error: err.message, code: err.code, details: err.details }) }] };
         }
         if (err instanceof TradeInputError) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: toolJson({ error: err.message, code: err.code }) }],
-          };
+          return { isError: true, content: [{ type: 'text', text: toolJson({ error: err.message, code: err.code }) }] };
         }
         return {
           isError: true,
@@ -225,21 +210,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     },
     {
       defaultEnabled: deferredDefault,
-      keywords: [
-        'GCC',
-        'General Certificate of Conformity',
-        '一般適合証明書',
-        '適合証明書生成',
-        '16 CFR 1110',
-        '通関保留',
-        '税関保留',
-        'FedEx',
-        'DHL',
-        'AWB',
-        'CPSC',
-        'eFiling',
-        'Shopify',
-      ],
+      keywords: ['GCC', 'General Certificate of Conformity', '一般適合証明書', '適合証明書', '16 CFR 1110', 'CPSC', 'eFiling', '通関保留', 'Disclaim'],
     },
   );
 }

@@ -409,6 +409,13 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(SORA_MCP_INSTRUCTIONS).toMatch(/visible.*directly|表示されている.*直接/i);
     });
 
+    it('instructions name generate_gcc_certificate in the trade line but keep the GCC rules in the tool description', () => {
+      const trade = buildSoraMcpInstructions(['trade']);
+      expect(trade).toContain('generate_gcc_certificate');
+      expect(trade).not.toContain('GCC RULE');
+      expect(SORA_MCP_INSTRUCTIONS).not.toContain('GCC RULE');
+    });
+
     it('instructions document search_web formats and search_deep responseMode', () => {
       expect(SORA_MCP_INSTRUCTIONS).toContain('formats');
       expect(SORA_MCP_INSTRUCTIONS).toContain('responseMode');

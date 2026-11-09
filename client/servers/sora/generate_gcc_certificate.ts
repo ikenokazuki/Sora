@@ -10,12 +10,12 @@ export type GenerateGccCertificateInput = {
     productName: string;
     /** 製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)） */
     identifier?: string;
-    /** identifier の種類（デフォルト: "sku"） */
+    /** identifier の種類 */
     identifierType?: "sku" | "model" | "gtin" | "upc" | "serial" | "registered" | "other";
     brand?: string;
     /** 製品の説明（英語） */
     description?: string;
-    /** child: 12 歳以下（GCC でなく CPC が要る）、adult: 13 歳以上・一般 */
+    /** child: 12 歳以下（CPC が要る）、adult: 13 歳以上・一般 */
     targetAge?: "adult" | "child" | "unknown";
     /** 衣料の繊維の組成（"100% polyester" の形。繊維は一般名） */
     material?: string;
@@ -30,7 +30,7 @@ export type GenerateGccCertificateInput = {
     foodContact?: boolean;
     /** 試験報告書の規則を 1 つずつ（例: "16 CFR 1203"）。当てはまる規則が無いと確かめたら [] */
     citations?: string[];
-    /** 製造の年月（YYYY-MM）と工場の名前・住所・メール・電話（16 CFR 1110.11(a)(5)） */
+    /** 製造の年月（YYYY-MM）と工場の連絡先（16 CFR 1110.11(a)(5)） */
     manufacture?: {
       date?: string;
       name?: string;
@@ -41,7 +41,7 @@ export type GenerateGccCertificateInput = {
       email?: string;
       phone?: string;
     };
-    /** 最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの名前・住所・メール・電話（16 CFR 1110.11(a)(6)） */
+    /** 最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの連絡先（16 CFR 1110.11(a)(6)） */
     testing?: {
       date?: string;
       reportNumber?: string;
@@ -82,7 +82,7 @@ export type GenerateGccCertificateInput = {
   awbNumber?: string;
   carrier?: string;
   invoiceNumber?: string;
-  /** 足りない項目があっても下書きを返す（デフォルト: false。false では 422） */
+  /** 足りない項目があっても下書きを返す（false では 422） */
   allowDraft?: boolean;
 };
 
@@ -162,7 +162,7 @@ export type GenerateGccCertificateOutput = {
   disclaimer: string;
 };
 
-/** 【必須・推測厳禁】米国CPSCのGCCと通関の保留に出す書類を印刷用のHTMLで作る。値は記録（試験報告書など）から渡す。足りないと 422（下書きは allowDraft）。12 歳以下の子供用は作らない。返却: { packageId, overallStatus, counts, items, packageHtml } */
+/** 【必須・推測や見本の値は禁止】米国CPSCの一般適合証明書（GCC、16 CFR 1110.11）と、通関の保留に出す書類（表紙、品目ごとのGCC、16 CFR 1610.1(d) の免除の説明）を印刷用のHTMLで作る。値は記録から渡す（州・県が無ければ state は N/A）。足りない項目があれば既定でエラー（allowDraft で下書き）。12歳以下の子供用は CPC が要るので作らない。返却: { packageId, overallStatus, counts, items, packageHtml } */
 export function generateGccCertificate(input: GenerateGccCertificateInput): Promise<GenerateGccCertificateOutput> {
   return callSora<GenerateGccCertificateOutput>({ method: 'POST', path: '/trade/gcc-generate' }, input);
 }

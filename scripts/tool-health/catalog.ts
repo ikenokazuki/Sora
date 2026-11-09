@@ -970,15 +970,15 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'check_product_compliance');
     return mustContain(raw, ['actionPlan'], 'usitc-compliance');
   }),
-  toolCase('trade.gcc', ['generate_gcc_certificate'], [], false, 90000, async (ctx) => {
+  toolCase('trade.gcc', ['generate_gcc_certificate'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'GCC', 30000);
     const { text: rawJsonText } = await mcpJson(
       ctx,
       'generate_gcc_certificate',
       {
-        items: [{ productName: 'Adult Polyester T-Shirt', htsCode: '6109.90.1007', targetAge: 'adult', material: '100% polyester' }],
+        items: [{ htsCode: '6109.90.10.07', productName: 'Adult Polyester T-Shirt', identifier: 'TEE-001', targetAge: 'adult', material: '100% polyester' }],
       },
-      60000,
+      20000,
     );
     const raw = toolPayload(rawJsonText, 'generate_gcc_certificate');
     return mustContain(raw, ['130.006', 'packageHtml'], 'gcc');

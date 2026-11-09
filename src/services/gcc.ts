@@ -104,7 +104,7 @@ export class TradeGccIncompleteError extends Error {
     message: string,
     readonly details: {
       missingFields: string[];
-      items: Array<Pick<GccItemSummary, 'line' | 'htsCode' | 'productName' | 'identifier' | 'missingFields' | 'clarifyingQuestions' | 'suggestions'>>;
+      items: Array<Pick<GccItemSummary, 'line' | 'htsCode' | 'productName' | 'identifier' | 'missingFields' | 'clarifyingQuestions' | 'suggestions' | 'warnings'>>;
     },
   ) {
     super(message);
@@ -536,7 +536,7 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
     const allMissing = [...new Set([...drafts.flatMap((s) => s.missingFields ?? []), ...missingFields])];
     throw new TradeGccIncompleteError(`GCC に必要な記録が足りません（${allMissing.join(', ')}）。記録の値を渡してください。下書きを見るには allowDraft: true。`, {
       missingFields,
-      items: drafts.map(({ line, htsCode, productName, identifier, missingFields: itemMissing, clarifyingQuestions, suggestions }) => ({
+      items: drafts.map(({ line, htsCode, productName, identifier, missingFields: itemMissing, clarifyingQuestions, suggestions, warnings }) => ({
         line,
         htsCode,
         productName,
@@ -544,6 +544,7 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
         ...(itemMissing ? { missingFields: itemMissing } : {}),
         ...(clarifyingQuestions ? { clarifyingQuestions } : {}),
         ...(suggestions ? { suggestions } : {}),
+        ...(warnings ? { warnings } : {}),
       })),
     });
   }

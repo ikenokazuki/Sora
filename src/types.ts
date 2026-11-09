@@ -734,10 +734,10 @@ export const GccItemInputSchema = z.object({
   htsCode: z.string().min(1).describe('10 桁の HTS コード（インボイス・通関業者の値。推測しない）'),
   productName: z.string().min(1).describe('英語の一般名（16 CFR 1110.11(a)(1)）'),
   identifier: z.string().optional().describe('製品を特定する番号（SKU・型番・GTIN など。16 CFR 1110.11(a)(1)）'),
-  identifierType: GccIdentifierTypeSchema.optional().describe('identifier の種類（デフォルト: "sku"）').meta({ default: 'sku' }),
+  identifierType: GccIdentifierTypeSchema.optional().describe('identifier の種類').meta({ default: 'sku' }),
   brand: z.string().optional(),
   description: z.string().optional().describe('製品の説明（英語）'),
-  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('child: 12 歳以下（GCC でなく CPC が要る）、adult: 13 歳以上・一般'),
+  targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('child: 12 歳以下（CPC が要る）、adult: 13 歳以上・一般'),
   material: z.string().optional().describe('衣料の繊維の組成（"100% polyester" の形。繊維は一般名）'),
   fabricSurface: z.enum(['plain', 'raised']).optional().describe('衣料の生地の表面（raised: 起毛・フリース・パイル）'),
   fabricWeightOzPerSqYd: z.number().min(0.1).max(100).optional().describe('衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）'),
@@ -745,9 +745,9 @@ export const GccItemInputSchema = z.object({
   batteryType: z.enum(['button_coin', 'other']).optional().describe('button_coin: ボタン・コイン電池（空気亜鉛電池は other）'),
   foodContact: z.boolean().optional().describe('食品・飲料に触れるか（FDA の案内に使う）'),
   citations: z.array(z.string()).optional().describe('試験報告書の規則を 1 つずつ（例: "16 CFR 1203"）。当てはまる規則が無いと確かめたら []'),
-  manufacture: z.object({ date: z.string().optional(), ...GccPartyShape }).optional().describe('製造の年月（YYYY-MM）と工場の名前・住所・メール・電話（16 CFR 1110.11(a)(5)）'),
+  manufacture: z.object({ date: z.string().optional(), ...GccPartyShape }).optional().describe('製造の年月（YYYY-MM）と工場の連絡先（16 CFR 1110.11(a)(5)）'),
   testing: z.object({ date: z.string().optional(), reportNumber: z.string().optional(), parties: z.array(GccPartySchema).optional() }).optional()
-    .describe('最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの名前・住所・メール・電話（16 CFR 1110.11(a)(6)）'),
+    .describe('最も新しい試験の日（YYYY-MM-DD）と、試験した者ごとの連絡先（16 CFR 1110.11(a)(6)）'),
   url: z.string().url().optional().describe('商品ページ。番号・名前の候補を返すだけで、証明書には載せない（1 回に 5 件まで）'),
 });
 export const GenerateGccCertificateRequestSchema = z.object({
@@ -758,7 +758,7 @@ export const GenerateGccCertificateRequestSchema = z.object({
   awbNumber: z.string().optional(),
   carrier: z.string().optional(),
   invoiceNumber: z.string().optional(),
-  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（デフォルト: false。false では 422）').meta({ default: false }),
+  allowDraft: z.boolean().optional().describe('足りない項目があっても下書きを返す（false では 422）').meta({ default: false }),
 });
 
 export const PredictHtsCodeRequestSchema = z.object({
@@ -3495,7 +3495,7 @@ export function generateOpenApiDocument() {
       },
       '/trade/gcc-generate': {
         post: {
-          summary: '米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) の作成と通関保留パッケージ（JSON の要約と印刷用 HTML）',
+          summary: '米国CPSCの一般適合証明書（GCC）と、通関の保留に出す書類を作る（16 CFR 1110.11）',
           requestBody: {
             content: {
               'application/json': {
@@ -3505,7 +3505,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: 'GCC 証明書（16 CFR 1110.11(a)(1)〜(7)）・16 CFR 1610.1(d) 免除根拠シート・通関カバーシートおよび印刷用HTML',
+              description: 'GCC・免除の説明・表紙の HTML と、品ごとの要約',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(GenerateGccCertificateResultSchema),
@@ -3513,10 +3513,10 @@ export function generateOpenApiDocument() {
               },
             },
             '400': {
-              description: '入力の誤り: 商品情報未指定、スキーマ不正、またはサンプル・仮置き値等の不確定データが混入（INVALID_INPUT / UNVERIFIED_PLACEHOLDER_INPUT）',
+              description: '入力の誤り（スキーマ、10 桁でない HTS コード、日付、url の品が 6 件以上: INVALID_INPUT）、見本・仮置きに見える値（UNVERIFIED_PLACEHOLDER_INPUT）',
             },
             '422': {
-              description: 'GCC発行対象の明細に法定必須項目（製造所・試験成績書・連絡先等）が不足（MISSING_REQUIRED_GCC_FIELDS。allowDraft: true 指定時のみドラフト出力可）',
+              description: 'GCC にする品に足りない項目がある（MISSING_REQUIRED_GCC_FIELDS。details.missingFields と details.items。allowDraft: true なら下書きを返す）',
             },
           },
         },

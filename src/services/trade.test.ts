@@ -636,6 +636,15 @@ describe('HTS prediction and product compliance', () => {
         expect(zincAir.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(false);
       });
 
+      it('shows the § 1263.1(c) note for a button cell on a Toys code at an unknown age too', async () => {
+        const res = await checkCpscCertificate({ htsCode: '9503.00.00.90', targetAge: 'unknown', hasBattery: true, batteryType: 'button_coin' });
+        expect(res.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(true);
+        expect(res.nextActions.join('')).toContain('16 CFR 1263.1(c)');
+        expect(res.nextActions.join('')).toContain('14 歳未満');
+        const other = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'unknown', hasBattery: true, batteryType: 'button_coin' });
+        expect(other.nextActions.join('')).not.toContain('16 CFR 1263.1(c)');
+      });
+
       it('counts an explicit button_coin as a battery without hasBattery, and rejects it with hasBattery: false', async () => {
         const alone = await checkCpscCertificate({ htsCode: '8513.10.20.00', targetAge: 'adult', batteryType: 'button_coin' });
         expect(alone.applicableRegulations.some((r) => r.cfr.startsWith('16 CFR 1263'))).toBe(true);

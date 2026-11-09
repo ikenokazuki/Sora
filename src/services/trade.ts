@@ -356,7 +356,7 @@ export async function checkCpscCertificate(
       nextActions: [
         `Reese’s Law（16 CFR Part 1263 / ANSI/UL 4200A-2023）への適合試験結果に基づき、製品本来のHTSコード（"${htsCode}"）のまま ${certType === 'unknown' ? 'GCC（大人用）またはCCC（子供用）' : certType} を発行し、CBP ACEシステムへeFilingしてください（※単体電池コード 8506 への書き換えは関税分類違反となるため不要です）。`,
         ...(isAdultToy ? [ADULT_TOY_REGULATION_NOTE] : []),
-        ...(isAdultToy || nearMatch?.category === 'Toys'
+        ...(exactCategory === 'Toys' || nearMatch?.category === 'Toys'
           ? ['14 歳未満の子供の遊び道具で 16 CFR 1250 の電池の要件に合うものは、16 CFR 1263.1(c) により part 1263 の対象外です（その場合は 16 CFR 1250 を当てます）。']
           : []),
       ],

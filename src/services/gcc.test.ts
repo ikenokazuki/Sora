@@ -1,4 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { app } from '../index.js';
+import { createMcpServer, toolCatalogOf } from '../mcp.js';
+import { searchCatalog } from '../mcp/registry.js';
 import * as scraper from '../scraper.js';
 import { GenerateGccCertificateRequestSchema } from '../types.js';
 import { type GccItemInput, type GenerateGccCertificateOptions, TradeGccIncompleteError, generateGccCertificate } from './gcc.js';
@@ -849,6 +854,21 @@ describe('product page read failures and which items read a page (fix round 1)',
     expect(res.items[0].warnings?.[0]).toContain('商品ページを読めませんでした');
   }, 15_000);
 
+  it('puts the page warnings in the incomplete error details too, over REST and MCP, so allowDraft: false still shows that the page could not be read', async () => {
+    const args = { certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [{ ...HELMET, identifier: undefined, url: `http://127.0.0.1:${server.port}/gone` }] };
+    const thrown = await generateGccCertificate(args).catch((e) => e);
+    expect(thrown).toBeInstanceOf(TradeGccIncompleteError);
+    expect(thrown.details.items[0].warnings?.[0]).toContain('商品ページを読めませんでした');
+    const restRes = await app.request('/trade/gcc-generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) });
+    expect(restRes.status).toBe(422);
+    expect(((await restRes.json()) as any).details.items[0].warnings[0]).toContain('商品ページを読めませんでした');
+    await withClient(async (client) => {
+      const res = await client.callTool({ name: 'generate_gcc_certificate', arguments: args });
+      expect(res.isError).toBe(true);
+      expect(JSON.parse((res.content as any)[0].text).details.items[0].warnings[0]).toContain('商品ページを読めませんでした');
+    });
+  }, 30_000);
+
   it('says so when a readable page has no product data (I1)', async () => {
     const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: `http://127.0.0.1:${server.port}/plain` }]));
     expect(res.items[0].suggestions).toBeUndefined();
@@ -926,4 +946,83 @@ describe('product page read failures and which items read a page (fix round 1)',
       process.env.ALLOW_LOCAL_FETCH = 'true';
     }
   }, 15_000);
+});
+
+async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  const server = createMcpServer({ deferTools: false });
+  const client = new Client({ name: 'gcc-test', version: '1.0.0' });
+  await server.connect(st);
+  await client.connect(ct);
+  try {
+    return await fn(client);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
+
+describe('generate_gcc_certificate over MCP', () => {
+  const parse = (r: any) => JSON.parse(r.content[0].text);
+  const call = (client: Client, args: Record<string, unknown>) => client.callTool({ name: 'generate_gcc_certificate', arguments: args });
+
+  it('keeps the tool definition within 3,600 characters (I8)', async () => {
+    await withClient(async (client) => {
+      const { tools } = await client.listTools();
+      expect(JSON.stringify(tools.find((t) => t.name === 'generate_gcc_certificate')).length).toBeLessThanOrEqual(3600);
+    });
+  });
+
+  it('does not talk about an HTTP status in the tool description, and tells that state accepts N/A', async () => {
+    await withClient(async (client) => {
+      const { tools } = await client.listTools();
+      const tool = tools.find((t) => t.name === 'generate_gcc_certificate')!;
+      expect(tool.description).not.toContain('422');
+      expect(tool.description).toContain('state は N/A');
+    });
+  });
+
+  it('returns the same error shape as REST: isError with code and details (M8, I10)', async () => {
+    await withClient(async (client) => {
+      const incomplete = await call(client, { items: [{ ...HELMET, identifier: undefined }] });
+      expect(incomplete.isError).toBe(true);
+      expect(parse(incomplete)).toMatchObject({ code: 'MISSING_REQUIRED_GCC_FIELDS', details: { missingFields: expect.arrayContaining(['certifier.name']) } });
+      expect(parse(incomplete).details.items[0].missingFields).toContain('identifier');
+      const restRes = await app.request('/trade/gcc-generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: [{ ...HELMET, identifier: undefined }] }) });
+      const rest = (await restRes.json()) as any;
+      expect(restRes.status).toBe(422);
+      expect(parse(incomplete).details).toEqual(rest.details);
+      expect(parse(incomplete).error).toBe(rest.error);
+      const placeholder = await call(client, { certifier: { ...CERTIFIER, name: 'TBD' }, recordCustodian: CUSTODIAN, items: [HELMET] });
+      expect(placeholder.isError).toBe(true);
+      expect(parse(placeholder).code).toBe('UNVERIFIED_PLACEHOLDER_INPUT');
+      const badHts = await call(client, { items: [{ ...HELMET, htsCode: '6506.10' }] });
+      expect(parse(badHts)).toMatchObject({ code: 'INVALID_INPUT' });
+      const tooMany = await call(client, { items: Array.from({ length: 51 }, () => HELMET) }).catch((e) => ({ isError: true, thrown: String(e) }));
+      expect((tooMany as any).isError).toBe(true);
+    });
+  });
+
+  it('is found by "GCC" and not by a courier name (M12)', () => {
+    const catalog = toolCatalogOf(createMcpServer({ deferTools: true }));
+    const names = (q: string) => searchCatalog(catalog, q).map((e) => e.name);
+    expect(names('GCC')).toContain('generate_gcc_certificate');
+    expect(names('FedEx')).toContain('track_package');
+    expect(names('FedEx')).not.toContain('generate_gcc_certificate');
+  });
+
+  it('keeps the MCP response within 6,000 / 35,000 / 150,000 characters for 1 / 10 / 50 items of helmets and FD1 mugs (I4)', async () => {
+    const helmet = (i: number): GccItemInput => ({ ...HELMET, identifier: `HLM-${String(i).padStart(4, '0')}`, testing: { ...HELMET.testing, reportNumber: `TR-${i}` } });
+    const mug = (i: number): GccItemInput => ({ ...HELMET, htsCode: '6912.00.44.00', productName: `Adult Stoneware Mug Model ${i}`, identifier: `MUG-${String(i).padStart(4, '0')}`, foodContact: true, citations: ['16 CFR 1303'] });
+    await withClient(async (client) => {
+      for (const [kind, make] of [['helmet', helmet], ['mug', mug]] as const) {
+        for (const [n, max] of [[1, 6_000], [10, 35_000], [50, 150_000]] as const) {
+          const res = await call(client, { certifier: CERTIFIER, recordCustodian: CUSTODIAN, ...(n > 1 ? { orderNumber: 'ORDER-1001' } : {}), items: Array.from({ length: n }, (_, i) => make(i + 1)) });
+          expect(res.isError, `${kind} ${n}`).toBeFalsy();
+          expect(parse(res).counts.gccGenerated).toBe(n);
+          expect((res.content as any)[0].text.length, `${kind} ${n}`).toBeLessThanOrEqual(max);
+        }
+      }
+    });
+  }, 60_000);
 });
