@@ -171,7 +171,7 @@ export async function getLyrics(options: LyricsOptions, deps: LyricsDeps = {}): 
   const artist = options.artist?.trim() || undefined;
   if (!title) throw new Error('title is required for lyrics');
 
-  const key = `lyrics:${cacheKeyDigest<LyricsOptions, 'noCache'>({ title: normalizeName(title), artist: artist ? normalizeName(artist) : null })}`;
+  const key = `lyrics:v2:${cacheKeyDigest<LyricsOptions, 'noCache'>({ title: normalizeName(title), artist: artist ? normalizeName(artist) : null })}`;
   if (!options.noCache) {
     const cached = getFromCache<LyricsResult>(key);
     if (cached) return cached;
