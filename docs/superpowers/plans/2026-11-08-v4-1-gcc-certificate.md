@@ -831,7 +831,7 @@ describe('GCC document (16 CFR 1110.11)', () => {
     expect(html).toContain('SKU: HLM-001');
     expect(html).toContain('<li>16 CFR 1203</li>');
     for (const v of ['100 Example Street', 'Anytown, CA', 'compliance@acme-imports.test', '+1-202-555-0104', 'Acme Helmet Factory', 'Date of manufacture: 2026-06', 'Most recent test: 2026-06-15', res.items[0].certificateId!]) expect(html).toContain(v);
-    expect(html).toContain('importer of record');
+    expect(html).toContain('the importer for imported products');
     expect(html).not.toContain('direct-to-consumer');
   });
 
@@ -859,7 +859,7 @@ Expected: FAIL（古い見出し、証明の文が無い）
   - 表の 7 行（見出しの文はこのとおり）:
     1. `Product — 16 CFR 1110.11(a)(1)`: productName、`Brand: ${brand}`（あれば）、`${識別の名前}: ${identifier}`（sku → `SKU`、model → `Model number`、gtin → `GTIN`、upc → `UPC`、serial → `Serial number`、registered → `Registered number`、other → `Identifier`）、`HTS: ${htsCode}`、description（あれば）。
     2. `Rules certified — 16 CFR 1110.11(a)(2)`: `<ul>` の中に citations を 1 つずつ `<li>`。
-    3. `Certifier (the importer of record for imported products, 16 CFR 1110.7) — 16 CFR 1110.11(a)(3)`: 当事者の行（`name` / `street` / `${city}, ${state}` / `country` / `Email: ${email} · Phone: ${phone}`）。
+    3. `Certifier (the importer for imported products, 16 CFR 1110.3 and 1110.7) — 16 CFR 1110.11(a)(3)`: 当事者の行（`name` / `street` / `${city}, ${state}` / `country` / `Email: ${email} · Phone: ${phone}`）。
     4. `Records contact — 16 CFR 1110.11(a)(4)`: 当事者の行。
     5. `Manufacture — 16 CFR 1110.11(a)(5)`: `Date of manufacture: ${date}`（YYYY-MM。製造が何日にもわたるときは最初の月）と、工場の当事者の行。
     6. `Testing — 16 CFR 1110.11(a)(6)`: 試験の記録が要るとき `Most recent test: ${date}`、試験した者ごとの当事者の行、`Report: ${reportNumber}`（あれば）。testingExclusions ごとに `Testing exclusion for 16 CFR ${part}: ${exclusion} (identified in lieu of the test date and place (16 CFR 1110.11(c)))`。
