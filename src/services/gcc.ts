@@ -276,17 +276,18 @@ type ItemDecision = GccRenderItem & { gcc: boolean };
 // --- 商品ページ（url）からの候補。値は suggestions と質問にだけ入れ、証明書にも HTML にも載せない ---
 type Json = Record<string, any>;
 const asList = (value: unknown): Json[] => (Array.isArray(value) ? value : [value]).filter((v): v is Json => !!v && typeof v === 'object');
-/** ページの値は長さを切って文字列にする（ページが応答を膨らませない） */
-const pageText = (value: unknown) => (typeof value === 'string' || typeof value === 'number' ? String(value).trim().slice(0, 200) : '') || undefined;
+/** ページの値は、空白と制御文字を 1 つの空白にまとめ、長さを切って文字列にする（ページが応答を膨らませない。質問の文に入れる値なので、改行などは残さない） */
+const pageText = (value: unknown, max = 200) => (typeof value === 'string' || typeof value === 'number' ? String(value).replace(/[\p{Cc}\s]+/gu, ' ').trim().slice(0, max) : '') || undefined;
+const ID_MAX = 64;
 const brandOf = (o: Json) => pageText(typeof o.brand === 'object' ? o.brand?.name : o.brand);
 
 function identifierOf(o: Json): Pick<GccSuggestions, 'identifier' | 'identifierType'> {
   const offers = asList(o.offers);
-  const sku = pageText(o.sku) ?? (offers.length === 1 ? pageText(offers[0].sku) : undefined);
+  const sku = pageText(o.sku, ID_MAX) ?? (offers.length === 1 ? pageText(offers[0].sku, ID_MAX) : undefined);
   if (sku) return { identifier: sku, identifierType: 'sku' };
-  const gtin = ['gtin13', 'gtin12', 'gtin14', 'gtin8', 'gtin'].map((k) => pageText(o[k])).find(Boolean);
+  const gtin = ['gtin13', 'gtin12', 'gtin14', 'gtin8', 'gtin'].map((k) => pageText(o[k], ID_MAX)).find(Boolean);
   if (gtin) return { identifier: gtin, identifierType: 'gtin' };
-  const mpn = pageText(o.mpn);
+  const mpn = pageText(o.mpn, ID_MAX);
   return mpn ? { identifier: mpn, identifierType: 'model' } : {};
 }
 
@@ -318,23 +319,40 @@ function readProductSuggestions(jsonLd: unknown, pageUrl: string, wantedVariant:
   return Object.values(suggestions).some((v) => v !== undefined) ? suggestions : undefined;
 }
 
-/** identifier が無く url がある品の商品ページを、ブラウザなしで読む。読めなくても品は進める（warnings に書く） */
+/** ページを読む時間の上限（1 品あたりの全体。scrape の timeoutMs は転送 1 回ごとなので、リダイレクトをたどる間は超える） */
+const PAGE_READ_MS = 10_000;
+
+/** GCC を出せる品（下書き）で、identifier が無く url がある品の商品ページを、ブラウザなしで読む。読めなくても品は進める（warnings に書く） */
 async function readItemPage({ input, summary }: ItemDecision): Promise<void> {
-  if (!input.url || input.identifier) return;
+  if (!input.url || input.identifier || summary.status !== 'draft_needs_info') return;
+  const warn = (text: string) => {
+    summary.warnings = [...(summary.warnings ?? []), text];
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const { scrapeUrl } = await import('../scraper.js'); // 使う呼び出しのときだけ読み込む
-    const page = await scrapeUrl({ url: input.url, fastOnly: true, timeoutMs: 10_000, formats: ['jsonLd'], onlyMainContent: true, maxChars: 2_000 });
-    const suggestions = readProductSuggestions(page.jsonLd, page.url || input.url, new URL(input.url).searchParams.get('variant'));
-    if (!suggestions) return;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('10 秒以内に読めませんでした')), PAGE_READ_MS);
+    });
+    const page = await Promise.race([scrapeUrl({ url: input.url, fastOnly: true, timeoutMs: PAGE_READ_MS, formats: ['jsonLd'], onlyMainContent: true, maxChars: 2_000 }), deadline]);
+    // 4xx・5xx のページ（scrape は投げずに unavailable で返す）の構造化データは、商品のものとは限らない
+    if (page.contentStatus === 'unavailable') return warn('商品ページを読めませんでした（HTTP エラーか、本文のないページです）');
+    const wantedVariant = new URL(input.url).searchParams.get('variant');
+    const suggestions = readProductSuggestions(page.jsonLd, page.url, wantedVariant);
+    if (!suggestions) return warn('商品ページに商品データ（JSON-LD）が見つかりませんでした');
     summary.suggestions = suggestions;
     const question = suggestions.identifier
       ? `商品ページの番号 ${suggestions.identifier}（${suggestions.identifierType}）を使うなら、出荷する品と同じか確かめてから identifier に入れてください。`
       : suggestions.variants && suggestions.variants >= 2
-        ? `商品ページに ${suggestions.variants} 種類あります。出荷する種類の番号を identifier に入れてください（URL に ?variant= を付けると候補を出せます）。`
+        ? wantedVariant !== null
+          ? `商品ページに ${suggestions.variants} 種類ありますが、URL の ?variant= に当たる種類がありません。出荷する種類の番号を identifier に入れてください。`
+          : `商品ページに ${suggestions.variants} 種類あります。出荷する種類の番号を identifier に入れてください（URL に ?variant= を付けると候補を出せます）。`
         : undefined;
     if (question) summary.clarifyingQuestions = [...(summary.clarifyingQuestions ?? []), question];
   } catch (err) {
-    summary.warnings = [...(summary.warnings ?? []), `商品ページを読めませんでした（${(errorMessage(err) ?? String(err)).slice(0, 200)}）`];
+    warn(`商品ページを読めませんでした（${(errorMessage(err) || String(err)).slice(0, 200)}）`);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

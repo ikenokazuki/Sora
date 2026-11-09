@@ -755,7 +755,7 @@ describe('product page suggestions (I3, I5, M11)', () => {
     expect(hits).toBe(before);
   });
 
-  it('reads the page with the static fetch only, 10 seconds at most, and at most 5 items with url per call', async () => {
+  it('reads the page with the static fetch only (10 s per request) and at most 5 items with url per call', async () => {
     const spy = spyOn(scraper, 'scrapeUrl');
     try {
       await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: page('/p?variant=11') }]));
@@ -816,4 +816,114 @@ describe('product page suggestions (I3, I5, M11)', () => {
     expect(refs.suggestions).toMatchObject({ pageProductName: 'Helmet F', variants: 2 });
     expect(refs.suggestions?.identifier).toBeUndefined();
   });
+});
+
+describe('product page read failures and which items read a page (fix round 1)', () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let prevAllow: string | undefined;
+  const ld = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: 'Gone Helmet', sku: 'GONE-1' });
+  const body = `<main><h1>Helmet</h1><p>${'Lightweight road cycling helmet for adults with an impact-absorbing liner. '.repeat(12)}</p></main>`;
+  beforeAll(() => {
+    prevAllow = process.env.ALLOW_LOCAL_FETCH;
+    process.env.ALLOW_LOCAL_FETCH = 'true';
+    server = Bun.serve({
+      hostname: '127.0.0.1', port: 0,
+      fetch(req) {
+        const gone = new URL(req.url).pathname === '/gone';
+        return new Response(`<!doctype html><html><head><title>Helmet</title>${gone ? `<script type="application/ld+json">${ld}</script>` : ''}</head><body>${body}</body></html>`, { status: gone ? 404 : 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      },
+    });
+  });
+  afterAll(() => {
+    server.stop();
+    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
+    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+  });
+  const options = (items: GccItemInput[]) => ({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items });
+  const stub = (result: unknown) => spyOn(scraper, 'scrapeUrl').mockResolvedValue(result as Awaited<ReturnType<typeof scraper.scrapeUrl>>);
+
+  it('does not suggest from an HTTP error page that carries Product JSON-LD, and says the page could not be read (I1)', async () => {
+    const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: `http://127.0.0.1:${server.port}/gone` }]));
+    expect(res.items[0].suggestions).toBeUndefined();
+    expect((res.items[0].clarifyingQuestions ?? []).join('')).not.toContain('GONE-1');
+    expect(res.items[0].warnings?.[0]).toContain('商品ページを読めませんでした');
+  }, 15_000);
+
+  it('says so when a readable page has no product data (I1)', async () => {
+    const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: `http://127.0.0.1:${server.port}/plain` }]));
+    expect(res.items[0].suggestions).toBeUndefined();
+    expect(res.items[0].warnings).toEqual(['商品ページに商品データ（JSON-LD）が見つかりませんでした']);
+  }, 15_000);
+
+  it('gives up on a page that does not answer within 10 seconds in all, not per request (m1)', async () => {
+    const spy = spyOn(scraper, 'scrapeUrl').mockImplementation(() => new Promise(() => {}));
+    try {
+      const started = Date.now();
+      const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'https://shop.example.com/slow' }]));
+      expect(Date.now() - started).toBeLessThan(12_000);
+      expect(res.items[0].status).toBe('draft_needs_info');
+      expect(res.items[0].warnings).toEqual(['商品ページを読めませんでした（10 秒以内に読めませんでした）']);
+    } finally {
+      spy.mockRestore();
+    }
+  }, 15_000);
+
+  it('reads a page only for an item that can carry a GCC, not for CPC or exempt items (m2)', async () => {
+    const spy = stub({ url: 'https://shop.example.com/p', jsonLd: [{ '@type': 'Product', name: 'Helmet', sku: 'H-1' }] });
+    try {
+      const child = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, targetAge: 'child', url: 'https://shop.example.com/p' }]));
+      const exempt = await generateGccCertificate(options([{ ...TEE, identifier: undefined, url: 'https://shop.example.com/p' }]));
+      expect([child.items[0].status, exempt.items[0].status]).toEqual(['cpc_required_instead', 'exempt_disclaim_b']);
+      expect(spy).not.toHaveBeenCalled();
+      for (const item of [child.items[0], exempt.items[0]]) expect(item.suggestions).toBeUndefined();
+      const unknownAge = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, targetAge: undefined, url: 'https://shop.example.com/p' }]));
+      expect(unknownAge.items[0].status).toBe('draft_needs_info');
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+    // 数える上限は、読まない品も含めた url の付いた品の数のまま
+    const six = Array.from({ length: 6 }, () => ({ ...HELMET, identifier: undefined, targetAge: 'child' as const, url: 'https://shop.example.com/p' }));
+    await expect(generateGccCertificate(options(six))).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('flattens whitespace and control characters in a page value and cuts an identifier at 64 characters (m3)', async () => {
+    const spy = stub({ url: 'https://shop.example.com/p', jsonLd: [{ '@type': 'Product', name: 'Road\n\tHelmet\u0007  X', sku: `A\r\nB${'9'.repeat(100)}` }] });
+    try {
+      const item = (await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'https://shop.example.com/p' }]))).items[0];
+      expect(item.suggestions?.pageProductName).toBe('Road Helmet X');
+      expect(item.suggestions?.identifier).toHaveLength(64);
+      expect(item.suggestions?.identifier?.startsWith('A B9')).toBe(true);
+      expect(item.clarifyingQuestions?.join('')).not.toMatch(/\p{Cc}/u);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not tell the caller to add ?variant= when the one in the url matches no variant (m4)', async () => {
+    const group = { '@type': 'ProductGroup', name: 'Road Helmet', hasVariant: [{ '@id': '/p?variant=1', sku: 'A' }, { '@id': '/p?variant=2', sku: 'B' }] };
+    const spy = stub({ url: 'https://shop.example.com/p?variant=9', jsonLd: [group] });
+    try {
+      const unmatched = (await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'https://shop.example.com/p?variant=9' }]))).items[0];
+      expect(unmatched.suggestions?.identifier).toBeUndefined();
+      expect(unmatched.clarifyingQuestions?.join('')).toContain('?variant= に当たる種類がありません');
+      expect(unmatched.clarifyingQuestions?.join('')).not.toContain('付けると');
+      const none = (await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'https://shop.example.com/p' }]))).items[0];
+      expect(none.clarifyingQuestions?.join('')).toContain('付けると候補を出せます');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('blocks a private address through the real fetch guard without any request (m5)', async () => {
+    delete process.env.ALLOW_LOCAL_FETCH;
+    try {
+      const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'http://127.0.0.1:1/p' }]));
+      expect(res.items[0].suggestions).toBeUndefined();
+      expect(res.items[0].warnings?.[0]).toContain('商品ページを読めませんでした');
+      expect(res.items[0].warnings?.[0]).toContain('遮断');
+    } finally {
+      process.env.ALLOW_LOCAL_FETCH = 'true';
+    }
+  }, 15_000);
 });
