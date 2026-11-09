@@ -63,6 +63,23 @@ describe('get_flight_status の要約', () => {
     }
   });
 
+  test('便が 1 件も読めなかった結果はキャッシュしない（次の呼び出しで取り直す）。読めた結果は今まで通りキャッシュする', async () => {
+    stubPage(flightPage('domesticDepature', []));
+    await fetchFlightStatus({ airport: '羽田' });
+    await fetchFlightStatus({ airport: '羽田' });
+    expect(requested.length).toBe(2);
+
+    clearCache();
+    stubPage(flightPage('domesticDepature', [flight('33', '那覇', '羽田')]));
+    await fetchFlightStatus({ airport: '羽田' });
+    await fetchFlightStatus({ airport: '羽田' });
+    expect(requested.length).toBe(1);
+    // 絞り込みで 0 件になった結果は、ページは読めているのでキャッシュする
+    await fetchFlightStatus({ airport: '羽田', keyword: 'パリ' });
+    await fetchFlightStatus({ airport: '羽田', keyword: 'パリ' });
+    expect(requested.length).toBe(2);
+  });
+
   test('絞り込みで 0 件になったら、順調とは言わず条件に合う便が無いと返す', async () => {
     stubPage(flightPage('domesticDepature', [flight('33', '那覇', '羽田')]));
     for (const opts of [{ flightNumber: 'NH999' }, { keyword: 'パリ' }]) {

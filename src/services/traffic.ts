@@ -520,7 +520,7 @@ export async function fetchFlightStatus(options: {
   const delayedCount = filtered.filter(f => f.status.includes('遅れ')).length;
 
   const scope = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}`;
-  // 便が 0 件のときは運航について何も言わない。一覧が空だったのか、ページの形が変わって読めなかったのかは区別できないので、1 つの文で両方を言う
+  // 便が 0 件のときは運航について何も言わない。一覧が空だったのか、ページの形が変わって読めなかったのかは区別せず、1 つの文で両方を言う
   let summary: string;
   if (allFlights.length === 0) {
     summary = `${scope}: 便の情報を読み取れませんでした（該当する便がないか、ページの形式が変わった可能性があります）。運航状況は分かりません。`;
@@ -546,7 +546,8 @@ export async function fetchFlightStatus(options: {
     source: 'yahoo-transit',
   };
 
-  if (!options.noCache) {
+  // 便が 1 件も読めなかった結果は、取り直せるようにキャッシュしない（読めて絞り込みで 0 件になった結果は残す）
+  if (!options.noCache && allFlights.length > 0) {
     setToCache(cacheKey, result, CACHE_TTL_FLIGHT);
   }
 
