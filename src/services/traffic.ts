@@ -519,11 +519,18 @@ export async function fetchFlightStatus(options: {
   const cancelledCount = filtered.filter(f => f.status.includes('欠航')).length;
   const delayedCount = filtered.filter(f => f.status.includes('遅れ')).length;
 
-  let summary = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}: 対象便数 ${filtered.length}便。`;
-  if (hasDelaysOrCancellations) {
-    summary += ` (欠航: ${cancelledCount}便, 遅延: ${delayedCount}便)`;
+  const scope = `${airportInfo.name} ${category === 'domestic' ? '国内線' : '国際線'} ${type === 'departure' ? '出発' : '到着'}`;
+  // 便が 0 件のときは運航について何も言わない。一覧が空だったのか、ページの形が変わって読めなかったのかは区別できないので、1 つの文で両方を言う
+  let summary: string;
+  if (allFlights.length === 0) {
+    summary = `${scope}: 便の情報を読み取れませんでした（該当する便がないか、ページの形式が変わった可能性があります）。運航状況は分かりません。`;
+  } else if (filtered.length === 0) {
+    summary = `${scope}: 条件に合う便はありません（絞り込み前は ${allFlights.length}便）。`;
   } else {
-    summary += ' 現在、目立った欠航や遅延はなく順調に運航されています。';
+    summary = `${scope}: 対象便数 ${filtered.length}便。`;
+    summary += hasDelaysOrCancellations
+      ? ` (欠航: ${cancelledCount}便, 遅延: ${delayedCount}便)`
+      : ' 現在、目立った欠航や遅延はなく順調に運航されています。';
   }
 
   const result: FlightStatusResult = {

@@ -50,6 +50,42 @@ describe('get_flight_status の行き先・出発地', () => {
   });
 });
 
+describe('get_flight_status の要約', () => {
+  test('便が 1 件も読めなかったら、順調とは言わない（一覧が空でも、一覧が見つからなくても）', async () => {
+    for (const html of [flightPage('domesticDepature', []), '<html><body></body></html>', '<html><body><script id="__NEXT_DATA__">{broken</script></body></html>']) {
+      stubPage(html);
+      const res = await fetchFlightStatus({ airport: '羽田', noCache: true });
+      expect(res.count).toBe(0);
+      expect(res.hasDelaysOrCancellations).toBe(false);
+      expect(res.summary).toContain('読み取れませんでした');
+      expect(res.summary).not.toContain('順調');
+      expect(res.summary).not.toContain('対象便数');
+    }
+  });
+
+  test('絞り込みで 0 件になったら、順調とは言わず条件に合う便が無いと返す', async () => {
+    stubPage(flightPage('domesticDepature', [flight('33', '那覇', '羽田')]));
+    for (const opts of [{ flightNumber: 'NH999' }, { keyword: 'パリ' }]) {
+      const res = await fetchFlightStatus({ airport: '羽田', ...opts, noCache: true });
+      expect(res.count).toBe(0);
+      expect(res.summary).toContain('条件に合う便はありません');
+      expect(res.summary).not.toContain('順調');
+    }
+  });
+
+  test('便が読めて欠航・遅延が無ければ、今まで通り順調と返す。あれば件数を返す', async () => {
+    stubPage(flightPage('domesticDepature', [flight('33', '那覇', '羽田')]));
+    const ok = await fetchFlightStatus({ airport: '羽田', noCache: true });
+    expect(ok.count).toBe(1);
+    expect(ok.summary).toContain('順調');
+
+    stubPage(flightPage('domesticDepature', [flight('33', '那覇', '羽田', '欠航'), flight('44', '福岡', '羽田', '遅れ')]));
+    const bad = await fetchFlightStatus({ airport: '羽田', noCache: true });
+    expect(bad.summary).toContain('欠航: 1便, 遅延: 1便');
+    expect(bad.summary).not.toContain('順調');
+  });
+});
+
 describe('get_flight_status の空港', () => {
   test('表に無い空港はエラーにして、対応する 5 空港を挙げる（羽田にしない・外へ出ない）', async () => {
     stubPage(flightPage('domesticDepature', []));
