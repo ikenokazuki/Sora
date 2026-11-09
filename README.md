@@ -1969,7 +1969,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 ---
 
 ### 3.22b 米国CPSC 一般適合証明書 (GCC) の作成 (`POST /trade/gcc-generate`)
-`items`（1〜50 件、1 件 1 製品。16 CFR 1110.13(a)）から、今の 16 CFR 1110.11 の要素の GCC と、通関の保留に出す一式（表紙・品ごとの GCC・免除の説明）を作ります。出力は JSON の要約と印刷用の HTML（`packageHtml`）だけです（Markdown は返しません）。HTS は推測せず、判例（CROSS）も HTS の全件も読みません。同梱の CPSC の一覧と HTS の桁だけで判断します。MCP の `generate_gcc_certificate`（遅延ツール）も同じ入力・応答です。
+`items`（1〜50 件、1 件 1 製品。16 CFR 1110.13(a)）から、今の 16 CFR 1110.11 の要素の GCC と、通関の保留に出す一式（表紙・品ごとの GCC・免除の説明）を作ります。出力は JSON の要約と印刷用の HTML（`packageHtml`）だけです（Markdown は返しません）。HTS は推測せず、判例（CROSS）も HTS の全件も読みません。同梱の CPSC の一覧と HTS の桁だけで判断します。MCP の `generate_gcc_certificate`（遅延ツール）も同じ入力・応答です。Sora は ACE にも CPSC にも何も送らず、適合も保証しません。証明書の中身が正しいことの責任は証明者（輸入者など）にあります（応答の `disclaimer`）。
 
 - **入力**:
   - 品ごとに `htsCode`（10 桁。数字だけにして数えます）と `productName`（英語の一般名）が必須です。ほかは `identifier`・`identifierType`（`sku`（既定）・`model`・`gtin`・`upc`・`serial`・`registered`・`other`）、`brand`・`description`、`targetAge`、衣料の `material`（`"100% polyester"` の形）・`fabricSurface`・`fabricWeightOzPerSqYd`、`hasBattery`・`batteryType`、`foodContact`（FDA の注記用）、`citations`、`manufacture`・`testing`、`url` です。
@@ -1979,16 +1979,16 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   - `citations` は、試験報告書にある規則を 1 つずつ（例 `"16 CFR 1203"`）。`citations: []` は「当てはまる規則が無いと証明者が確かめた」という答えです。省くと、その品は下書きです（大人の衣料で 16 CFR 1610.1(d) の免除に当たる品だけは、省いたままで Disclaim B になります）。Sora が当てはまると判断した規則（ボタン・コイン電池の 16 CFR 1263、衣料の 16 CFR 1610）が `citations` に無いと、`[]` でも下書きです。
 - **判定**（品ごと）:
   - 12 歳以下（`targetAge: "child"`）は `cpc_required_instead` です（CPC はこのツールでは作りません）。`targetAge` が無いと、年齢を聞く下書きです。
-  - 大人の衣料で 16 CFR 1610.1(d) の試験の免除（平らな生地で 2.6 oz/sq yd 以上、または acrylic・modacrylic・nylon・olefin・polyester・wool だけの生地）に当たるものは `exempt_disclaim_b` です。2016 年の執行裁量（81 FR 12587、2016 年 3 月 25 日から）で GCC と eFiling は要らず、ACE では Disclaim B と Intended Use Code `130.006` を送ります。
+  - 大人の衣料で 16 CFR 1610.1(d) の試験の免除（平らな生地で 2.6 oz/sq yd 以上、または acrylic・modacrylic・nylon・olefin・polyester・wool だけの生地）に当たるもの（`citations` を省いたとき）は `exempt_disclaim_b` です。2016 年の執行裁量（81 FR 12587、2016 年 3 月 25 日から）で GCC は要らず、証明書のデータの eFiling も要らず、ACE では Disclaim B と Intended Use Code `130.006` を送ります。
   - `citations: []` で、CPSC の一覧にあるコードは `exempt_no_gcc_needed` と Disclaim A（`warnings` に、規則が当てはまらないと確かめてから送る旨）です。Disclaim A の送信には Intended Use Code が要ります（Appendix R の `130.XXX`。ただし 130.001〜005 は除く）。一覧に無いコードは `exempt_no_gcc_needed` で、CPSC のデータを送らない案内です。
   - 帽子・手袋・履物の見出し（6504〜6506、6116・6216、6401〜6405）は、16 CFR 1610.1(c) の条件に当たるかで 16 CFR 1610 が要るかが決まります。条件を質問で返し、`citations` に 1610 は求めません。
   - ボタン・コイン電池は `hasBattery: true` と `batteryType: "button_coin"`（16 CFR 1263）です。`hasBattery: true` で `batteryType` が無いときは、`citations: []` でも下書きにして種類を聞きます。`batteryType: "button_coin"` だけでも電池ありとして扱い、`hasBattery: false` と一緒だと 400（`INVALID_INPUT`）です。空気亜鉛電池は `other` を書きます。
   - どれにも当たらなければ GCC（`generated`）です。記録が足りなければ `draft_needs_info`（下書きの HTML は足りない項目を `[MISSING: 項目]` と書き、証明の文を付けません）。
-- **応答**: `packageId`・`overallStatus`（`ready`・`exempt`・`partial_or_draft`・`cpc_required`）・`counts`・`items`（品ごとの `status`・`certificateId`・`disclaimCode`・`filingNote`・`missingFields`・`clarifyingQuestions`・`warnings`・`suggestions` など）・`packageHtml`・`disclaimer`。`packageId` と `certificateId` は内容のハッシュで、日付は入りません（同じ記録なら同じ ID。生成の時刻は `generatedAt`）。
+- **応答**: `packageId`・`overallStatus`（`ready`・`exempt`・`partial_or_draft`・`cpc_required`）・`counts`・`items`（品ごとの `status`・`certificateId`・`disclaimCode`・`filingNote`・`missingFields`・`clarifyingQuestions`・`warnings`・`suggestions` など）・`packageHtml`・`disclaimer`。`packageId` と `certificateId` は内容のハッシュで、生成の時刻は入りません（同じ記録なら同じ ID。時刻は `generatedAt`）。
 - **エラー**:
   - HTTP `400`（`INVALID_INPUT`）: スキーマの誤り、10 桁でない `htsCode`、日付の誤り、`url` を付けた品が 6 件以上、`hasBattery: false` と `batteryType: "button_coin"` の矛盾。
   - HTTP `400`（`UNVERIFIED_PLACEHOLDER_INPUT`）: 見本・仮置きに見える値。値全体が `TBD`・`N/A`・`Sample`・`未定` などのとき、`[MISSING` や `{{...}}` の差し込み口、`example.com` などの予約されたメールのドメイン、`test@test.com`、7 桁未満や同じ数字が 7 つ以上続く電話番号です。語が値の一部にあるだけの `Sample & Co. GmbH` は通します。`state` の `N/A`・`-`・`None` は通します。サーバーの環境変数の値は確かめません。
-  - HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）: 既定（`allowDraft: false`）で、GCC にする品に足りない項目があるとき。`details.missingFields`（証明者・記録の担当）と `details.items`（品ごとの `missingFields`・`clarifyingQuestions`・`suggestions`・`warnings`）を返します。`allowDraft: true` なら 200 で下書きを返します。MCP では `isError` の応答で、同じ `code` と `details` です。
+  - HTTP `422`（`MISSING_REQUIRED_GCC_FIELDS`）: 既定（`allowDraft: false`）で、下書きになる品（記録が足りない品、年齢や電池の種類を聞く品など）があるとき。`details.missingFields`（証明者・記録の担当）と `details.items`（品ごとの `missingFields`・`clarifyingQuestions`・`suggestions`・`warnings`）を返します。`allowDraft: true` なら 200 で下書きを返します。MCP では `isError` の応答で、同じ `code` と `details` です。
 - **`url`（番号の候補）**: `url` を付けた下書きの品で `identifier` が無いときだけ、商品ページをブラウザなしの静的な取得で読み、JSON-LD の商品データから `suggestions`（`identifier`・`identifierType`・`pageProductName`・`brand`・`variants`）を返します。`url` を付けられる品は 1 回に 5 件まで、1 品 10 秒までです。出荷する品と同じか確かめてから、`identifier` に入れてください。読めなかったときは `warnings` に書いて進みます。
 - **サーバーの既定**: `certifier`・`recordCustodian` を省くと（中身が空のときも）、環境変数 `SORA_GCC_CERTIFIER`・`SORA_GCC_CUSTODIAN`（JSON。[4.3 の環境変数の表](#43-環境変数一覧-environment-variables)）の値を丸ごと使います。呼び出し側の値と項目ごとに混ぜることはありません。読めない値は、GCC を作る品があるときだけエラーにします。
 
@@ -2063,7 +2063,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
       ]
     }'
   ```
-- **レスポンス例**（上のリクエストを `generateGccCertificate` に渡した実際の出力から。`items[].filingNote` はそのまま、`packageHtml` は先頭だけ）:
+- **レスポンス例**（上のリクエストを `generateGccCertificate` に渡した実際の出力。`items` は返ったままで、`packageHtml` は先頭だけに縮めました。`generatedAt` は実行した時刻です）:
   ```json
   {
     "packageId": "PKG-A9201287855E",
