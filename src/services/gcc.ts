@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { errorMessage } from '../errors.js';
 import { GccPartySchema } from '../types.js';
-import { type GccRenderItem, NO_STATE, renderGccPackageHtml } from './gcc_html.js';
+import { type GccRenderItem, NO_STATE, PARTY_FIELDS, renderGccPackageHtml } from './gcc_html.js';
 import { BATTERY_CONTRADICTION, type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
 
 export type GccIdentifierType = 'sku' | 'model' | 'gtin' | 'upc' | 'serial' | 'registered' | 'other';
@@ -117,19 +117,21 @@ const DISCLAIMER_GCC = '参考の出力で、法的助言ではありません�
 const FILING_NOTE = {
   generated: 'ACE の CPSC の PGA Message Set で GCC のデータを送ります（Full PGA Message Set か Product Registry の参照。16 CFR 1110.13(a)(1)）。郵便（EMS など）で送る品は、着く前に Product Registry に入れます。',
   draft: '下書きです。missingFields を記録から埋めるまで ACE に送らないでください。',
-  disclaimB: 'ACE で Disclaim B と Intended Use Code 130.006 を送ります（16 CFR 1610.1(d) の免除の大人の衣料。81 FR 12587）。',
+  disclaimB: 'ACE で Disclaim B を送れます（任意。送るときは Intended Use Code 130.006 が要ります。16 CFR 1610.1(d) の免除の大人の衣料。81 FR 12587）。',
   disclaimA: 'ACE で Disclaim A を送れます（任意）。Disclaimer には Intended Use Code が要ります（CATAIR の Disclaimer PG01 の Note 1。CBP の Appendix R から選ぶ。例 130.XXX の Consumer Use as a Non-Food Product、ただし 130.001-005 は除く）。',
   notListed: 'CPSC の一覧に無い HTS コードで、証明者は当てはまる規則が無いとしています。CPSC のデータは送りません（規則が当てはまるなら GCC が要ります）。',
+  notListedNoCertifier: 'CPSC の一覧に無い HTS コードで、依頼した側の答えでは当てはまる規則はありません（証明者は示されていません）。CPSC のデータは送りません（規則が当てはまるなら GCC が要ります）。',
   cpc: '12 歳以下の子供用なので CPC が要ります（このツールは CPC を作りません）。',
 };
 const Q_AGE = 'この製品は 12 歳以下の子供向けですか？子供向けなら GCC ではなく CPC（16 CFR 1107）が要ります。';
 const Q_BATTERY = '電池の種類を batteryType に入れてください（button_coin: ボタン・コイン電池、other: それ以外）。button_coin なら 16 CFR 1263 が当てはまります。';
+const Q_OMIT_CITATIONS = 'citations を省くと、16 CFR 1610.1(d) の免除の Disclaim B になります。';
 const qRequired = (rules: string[]) =>
   `citations に ${rules.map((p) => `16 CFR ${p}`).join('・')} がありません。試験報告書で確かめて citations に足してください（ボタン・コイン電池は 16 CFR 1263、衣料は 16 CFR 1610）。`;
 
-const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
 const FABRIC_INPUTS = ['material', 'fabricSurface', 'fabricWeightOzPerSqYd'];
 const htsDigits = (code: string) => code.replace(/\D/g, '');
+const CFR_MARK = /16\s*C\.?F\.?R/gi;
 const cfrPart = (citation: string) => citation.match(/16\s*C\.?F\.?R\.?\s*(?:Part\s*|§\s*)?(\d{3,4})/i)?.[1];
 const partyValues = (party?: GccParty) => PARTY_FIELDS.map((f) => party?.[f] ?? '');
 const hash12 = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 12).toUpperCase();
@@ -142,28 +144,36 @@ function trimDeep<T>(value: T): T {
   return value;
 }
 
-// 見本・仮置きと見なすのは、値全体が見本の語のとき・型の差し込み口・予約された名前（RFC 2606・6761）・電話でない数字だけ。語が値の一部にあるだけ（"Sample & Co. GmbH"）は通す
-const PLACEHOLDER_WORD = /^(?:n\/a|none|null|nil|undefined|unknown|tbd|tba|todo|sample|dummy|placeholder|test|example|x+|-+|\?+|\.{2,}|…+)$/i;
-const PLACEHOLDER_WORD_JA = /^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し)$/;
+// 見本・仮置きと見なすのは、値全体が見本の語のとき・型の差し込み口・予約された名前（RFC 2606・6761）・電話でない数字だけ。語が値の一部にあるだけ（"Sample & Co. GmbH"）は通す。
+// どの式も長い入力で線形にする（x+[-x]* は二乗の時間になるので、同じ語を受ける x[-x]* にする）
+const PLACEHOLDER_WORD = /^(?:n\/a|n\.?a\.?|none|null|nil|undefined|unknown|tbd|tba|tbc|todo|sample|dummy|placeholder|test|example|to be (?:confirmed|determined|advised|announced)|not (?:provided|available|applicable|specified|known|given)|unavailable|pending|same(?: as above)?|see (?:above|below|invoice)|nan|x[-x]*|-+|\?+|\.{2,}|…+)$/i;
+const PLACEHOLDER_WORD_JA = /^(?:未定|不明|未入力|仮|仮置き|仮入力|ダミー|サンプル|なし|無し|未確認|確認中|要確認|未記入|未設定|[ー―—–]+)$/;
 const TEMPLATE_SLOT = /\[(?:missing|insert|required|tbd|todo|your)\b|\{\{[^{}]*\}\}/i; // [^}] は {{ の繰り返しで二乗の時間になる
+const WHOLE_SLOT = /^(?:<[^>]*>+|\[[^\]]*\]+|\{[^}]*\}+)$|^your (?:company|name|street|address|city|state|country|email|phone|business|brand|product)\b/i;
 const RESERVED_DOMAIN = /(?:^|\.)example\.(?:com|net|org)$|\.(?:example|invalid|localhost)$/;
 const FAKE_EMAIL = /^(?:test|sample|dummy|fake|example)@(?:test|sample|dummy|fake|example)(?:\.|$)/i;
+const NON_LATIN = /[^\P{L}\p{Script=Latin}]/u;
 
-function isPlaceholderValue(value: string, kind?: 'email' | 'phone' | 'state'): boolean {
+type GccValueKind = 'email' | 'phone' | 'state' | 'day';
+
+function isPlaceholderValue(value: string, kind?: GccValueKind): boolean {
   if (kind === 'state' && NO_STATE.test(value)) return false; // 州・県が無い国（シンガポールなど）の答え
-  if (PLACEHOLDER_WORD.test(value) || PLACEHOLDER_WORD_JA.test(value) || TEMPLATE_SLOT.test(value)) return true;
-  if (kind === 'email') return RESERVED_DOMAIN.test(value.slice(value.lastIndexOf('@') + 1).toLowerCase()) || FAKE_EMAIL.test(value);
+  if (PLACEHOLDER_WORD.test(value) || PLACEHOLDER_WORD_JA.test(value) || TEMPLATE_SLOT.test(value) || WHOLE_SLOT.test(value)) return true;
+  if (kind === 'email') {
+    const [local, domain, ...rest] = value.split('@');
+    return rest.length > 0 || !local || !domain?.slice(1, -1).includes('.') || RESERVED_DOMAIN.test(domain.toLowerCase()) || FAKE_EMAIL.test(value);
+  }
   if (kind === 'phone') {
     const digits = value.replace(/\D/g, '');
-    return digits.length < 7 || /(\d)\1{6}/.test(digits);
+    return /[^\d+(). -]/.test(value) || digits.length < 7 || /(\d)\1{6}/.test(digits);
   }
   return false;
 }
 
-/** YYYY-MM か YYYY-MM-DD で、実在し、地球上でいちばん進んだ今日（UTC+14）より先でない */
-function isValidGccDate(date: string): boolean {
+/** YYYY-MM か YYYY-MM-DD（dayRequired なら YYYY-MM-DD だけ）で、実在し、地球上でいちばん進んだ今日（UTC+14）より先でない */
+function isValidGccDate(date: string, dayRequired: boolean): boolean {
   const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(date);
-  if (!m) return false;
+  if (!m || (dayRequired && !m[3])) return false;
   const [year, month, day] = [Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : undefined];
   if (year < 1900 || month < 1 || month > 12) return false;
   if (day !== undefined) {
@@ -178,8 +188,7 @@ function isValidGccDate(date: string): boolean {
  * サーバーの SORA_GCC_*（運営者の設定）と、注文の番号は見ない
  */
 function assertGccInputs(options: GenerateGccCertificateOptions): void {
-  type Kind = 'email' | 'phone' | 'state';
-  type Check = [path: string, value: string | undefined, kind?: Kind];
+  type Check = [path: string, value: string | undefined, kind?: GccValueKind];
   const party = (prefix: string, p?: GccParty): Check[] => PARTY_FIELDS.map((f) => [`${prefix}.${f}`, p?.[f], f === 'email' || f === 'phone' || f === 'state' ? f : undefined]);
   const dates: Check[] = [];
   if (options.items.filter((item) => item.url).length > 5) throw new TradeInputError('url を付けられる品は 1 回に 5 件までです', 'INVALID_INPUT');
@@ -190,7 +199,7 @@ function assertGccInputs(options: GenerateGccCertificateOptions): void {
       throw new TradeInputError(`${at}: ${BATTERY_CONTRADICTION}`, 'INVALID_INPUT');
     }
     const manufactureDate: Check = [`${at}.manufacture.date`, item.manufacture?.date];
-    const testingDate: Check = [`${at}.testing.date`, item.testing?.date];
+    const testingDate: Check = [`${at}.testing.date`, item.testing?.date, 'day'];
     dates.push(manufactureDate, testingDate);
     checks.push(
       [`${at}.productName`, item.productName],
@@ -207,14 +216,19 @@ function assertGccInputs(options: GenerateGccCertificateOptions): void {
     );
   });
   // 空の値は「足りない」であって、見本ではない
-  const offending = (list: Check[], bad: (value: string, kind?: Kind) => boolean) => list.filter(([, value, kind]) => value?.trim() && bad(value.trim(), kind)).map(([path]) => path);
+  const offending = (list: Check[], bad: (value: string, kind?: GccValueKind) => boolean) => list.filter(([, value, kind]) => value?.trim() && bad(value.trim(), kind)).map(([path]) => path);
   const placeholders = offending(checks, isPlaceholderValue);
   if (placeholders.length > 0) {
     throw new TradeInputError(`GCC の項目に見本・仮置きに見える値があります（${placeholders.join(', ')}）。記録の値だけを渡してください。`, 'UNVERIFIED_PLACEHOLDER_INPUT');
   }
-  const badDates = offending(dates, (value) => !isValidGccDate(value));
+  const badDates = offending(dates, (value, kind) => !isValidGccDate(value, kind === 'day'));
   if (badDates.length > 0) {
-    throw new TradeInputError(`日付は YYYY-MM か YYYY-MM-DD の、実在する未来でない日にしてください（${badDates.join(', ')}）。`, 'INVALID_INPUT');
+    throw new TradeInputError(`日付は実在する未来でない日にしてください（manufacture.date は YYYY-MM か YYYY-MM-DD、testing.date は YYYY-MM-DD）: ${badDates.join(', ')}`, 'INVALID_INPUT');
+  }
+  // 16 CFR 1110.9(a)。material は証明書に載らない（免除の説明に載る形は "100% polyester" だけ）
+  const nonLatin = offending(checks.filter(([path]) => !path.endsWith('.material')), (value) => NON_LATIN.test(value));
+  if (nonLatin.length > 0) {
+    throw new TradeInputError(`証明書に載る値は英語（ラテン文字）で書いてください（16 CFR 1110.9(a)）: ${nonLatin.join(', ')}`, 'INVALID_INPUT');
   }
 }
 
@@ -360,9 +374,11 @@ async function readItemPage({ input, summary }: ItemDecision): Promise<void> {
 async function decideItem(item: GccItemInput, index: number): Promise<ItemDecision> {
   const input = trimDeep(item);
   const digits = htsDigits(input.htsCode);
-  if (digits.length !== 10) throw new TradeInputError(`items[${index}].htsCode は 10 桁の HTS コードにしてください`, 'INVALID_INPUT');
+  if (!/^[\d.\s-]+$/.test(input.htsCode) || digits.length !== 10) throw new TradeInputError(`items[${index}].htsCode は 10 桁の HTS コードにしてください（数字・点・空白・ハイフンだけ）`, 'INVALID_INPUT');
+  const htsCode = `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6, 8)}.${digits.slice(8)}`;
   if (!input.productName) throw new TradeInputError(`items[${index}].productName を入れてください`, 'INVALID_INPUT');
   if (input.citations?.some((c) => !c)) throw new TradeInputError(`items[${index}].citations に空の文字列があります`, 'INVALID_INPUT');
+  if (input.citations?.some((c) => (c.match(CFR_MARK)?.length ?? 0) > 1)) throw new TradeInputError(`items[${index}].citations は規則を 1 つずつ別の文字列にしてください（16 CFR 1110.11(a)(2)）`, 'INVALID_INPUT');
 
   const targetAge = input.targetAge ?? 'unknown';
   const cpsc = await checkCpscCertificate({
@@ -377,11 +393,11 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   const category = findCpscListCategory(digits);
   const cEx = section1610cExclusionFor(digits);
   // 電池の種類で 16 CFR 1263 が当たるかが決まるので、分かるまで免除・規則なしの答えを出さない
-  const askBattery = input.hasBattery === true && !input.batteryType;
+  const askBattery = (input.hasBattery === true || category === 'Button Cell & Coin Batteries') && !input.batteryType;
   const fdaNote = fdaNoteFor(digits, input.foodContact);
   const summaryBase = {
     line: index + 1,
-    htsCode: input.htsCode,
+    htsCode,
     productName: input.productName,
     ...(input.identifier ? { identifier: input.identifier } : {}),
     ...(category ? { cpscListCategory: category } : {}),
@@ -419,6 +435,8 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   }
   // 年齢が分からなければ、ここで聞いて止める
   if (targetAge === 'unknown') return draft(['targetAge'], [Q_AGE]);
+  // 乳児の衣類の見出し（6111・6209）に adult: 年齢か HTS コードが違うので、大人の免除の判定をしない
+  if (cpsc.missingInputs?.includes('targetAge')) return draft(['targetAge'], cpsc.clarifyingQuestions ?? [Q_AGE]);
 
   // Sora が当てはまると判断する規則（16 CFR 1610.1(c) の見出しは条件で決まるので 1610 を求めない）
   const cfrs = cpsc.applicableRegulations.map((r) => r.cfr);
@@ -427,10 +445,11 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
     ...(cfrs.some((c) => c.startsWith('16 CFR 1610')) && !cEx ? ['1610'] : []),
   ];
 
+  const disclaimBIfOmitted = cpsc.certificateRequired === false && cpsc.testingExemption?.enforcementDiscretion;
   if (input.citations === undefined) {
-    if (cpsc.certificateRequired === false && cpsc.testingExemption?.enforcementDiscretion) {
+    if (disclaimBIfOmitted) {
       if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
-      const citation = cpsc.testingExemption.citation as keyof typeof SECTION_1610_1_D;
+      const citation = cpsc.testingExemption?.citation as keyof typeof SECTION_1610_1_D;
       return decided({ status: 'exempt_disclaim_b', disclaimCode: 'B', intendedUseCode: '130.006', filingNote: FILING_NOTE.disclaimB }, { exemption: { citation } });
     }
     const references = cfrs.filter((c) => !c.startsWith('CPSC HTS Guidance List') && c !== '個別規格要確認');
@@ -450,7 +469,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   }
 
   if (input.citations.length === 0) {
-    if (required.length > 0) return draft([...(askBattery ? ['batteryType'] : []), 'citations'], [qRequired(required), ...(askBattery ? [Q_BATTERY] : [])]);
+    if (required.length > 0) return draft([...(askBattery ? ['batteryType'] : []), 'citations'], [qRequired(required), ...(disclaimBIfOmitted && !askBattery ? [Q_OMIT_CITATIONS] : []), ...(askBattery ? [Q_BATTERY] : [])]);
     if (askBattery) return draft(['batteryType'], [Q_BATTERY]);
     return decided(
       {
@@ -458,7 +477,7 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
         ...(category
           ? {
               disclaimCode: 'A' as const,
-              warnings: [`HTS ${input.htsCode} は CPSC の一覧（${category}）にあり、規則の対象になりうる品目です。当てはまる規則が無いことを確かめてから Disclaim A を送ってください。`],
+              warnings: [`HTS ${htsCode} は CPSC の一覧（${category}）にあり、規則の対象になりうる品目です。当てはまる規則が無いことを確かめてから Disclaim A を送ってください。`],
               filingNote: FILING_NOTE.disclaimA,
             }
           : { filingNote: FILING_NOTE.notListed }),
@@ -470,7 +489,9 @@ async function decideItem(item: GccItemInput, index: number): Promise<ItemDecisi
   const parts = new Set(input.citations.map(cfrPart));
   const uncited = required.filter((p) => !parts.has(p) && !(p === '1263' && category === 'Toys' && parts.has('1250')));
   const exemption = cpsc.testingExemption;
-  const testingExclusions = exemption?.exempt && exemption.citation?.startsWith('16 CFR 1610.1(d)') && parts.has('1610') ? [exemption.citation] : [];
+  // 16 CFR 1110.11(c) の除外は証明者が主張するもの。試験の記録が渡されていれば、記録を載せる
+  const noTestRecord = !(input.testing?.date || input.testing?.parties?.length);
+  const testingExclusions = noTestRecord && exemption?.exempt && exemption.citation?.startsWith('16 CFR 1610.1(d)') && parts.has('1610') ? [exemption.citation] : [];
   const needsTestRecord = input.citations.some((c) => !(cfrPart(c) === '1610' && testingExclusions.length > 0));
   return gccPath({
     citations: input.citations,
@@ -498,6 +519,7 @@ export async function generateGccCertificate(options: GenerateGccCertificateOpti
 
   const order = trimDeep({ orderNumber: options.orderNumber, awbNumber: options.awbNumber, carrier: options.carrier, invoiceNumber: options.invoiceNumber });
   for (const decision of decisions) {
+    if (!certifier && decision.summary.filingNote === FILING_NOTE.notListed) decision.summary.filingNote = FILING_NOTE.notListedNoCertifier;
     if (!decision.gcc || decision.summary.missingFields?.length || missingFields.length) continue;
     const { input, summary } = decision;
     summary.status = 'generated';

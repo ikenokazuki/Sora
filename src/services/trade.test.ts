@@ -748,6 +748,24 @@ describe('HTS prediction and product compliance', () => {
       expect(res.certificateType).toBe('GCC');
     });
 
+    it('asks for the age on a babies’ garment heading (6111, 6209) with targetAge: adult, with no Disclaim B and no exemption (N3)', async () => {
+      for (const htsCode of ['6111.30.50.50', '6209.30.30.40', '6111.20.10.00']) {
+        for (const extra of [{}, { hasBattery: true, batteryType: 'button_coin' as const }]) {
+          const res = await checkCpscCertificate({ htsCode, targetAge: 'adult', material: '100% polyester', ...extra });
+          expect(res.certificateRequired, htsCode).toBe('unknown');
+          expect(res.certificateType, htsCode).toBe('unknown');
+          expect(res.missingInputs, htsCode).toEqual(['targetAge']);
+          expect(res.clarifyingQuestions?.join(''), htsCode).toContain(`見出し ${htsCode.slice(0, 4)}`);
+          expect(res.testingExemption, htsCode).toBeUndefined();
+          expect(res.disclaimerCodeHint, htsCode).toBeUndefined();
+          expect(JSON.stringify(res), htsCode).not.toContain('Disclaim B');
+        }
+      }
+      expect((await checkCpscCertificate({ htsCode: '6111.30.50.50', targetAge: 'child', material: '100% polyester' })).certificateType).toBe('CCC');
+      expect((await checkCpscCertificate({ htsCode: '6111.30.50.50', targetAge: 'unknown', material: '100% polyester' })).certificateRequired).toBe('unknown');
+      expect((await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material: '100% polyester' })).certificateRequired).toBe(false);
+    });
+
     it('exempts adult apparel under 16 CFR 1610.1(d)(2) and (d)(1) at exactly 2.6 oz/sq yd and points to Disclaim B / IUC 130.006', async () => {
       const poly = await checkCpscCertificate({ htsCode: '6109.90.10.07', targetAge: 'adult', material: '100% polyester' });
       expect(poly.certificateRequired).toBe(false);

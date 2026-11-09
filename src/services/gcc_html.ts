@@ -37,9 +37,9 @@ export function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
+export const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
 /** 州・県が無い国（シンガポールなど）の、state の答え。値は必要だが、印刷では州の欄を省く */
-export const NO_STATE = /^(?:n\/a|none|-)$/i;
+export const NO_STATE = /^(?:n\/a|na|none|-)$/i;
 const ID_LABELS: Record<GccIdentifierType, string> = { sku: 'SKU', model: 'Model number', gtin: 'GTIN', upc: 'UPC', serial: 'Serial number', registered: 'Registered number', other: 'Identifier' };
 const idLabel = (input: GccItemInput) => ID_LABELS[input.identifierType ?? 'sku'];
 const joinLines = (lines: Array<string | undefined | false>) => lines.filter(Boolean).join('<br>');
@@ -176,9 +176,11 @@ function exemptBSection(item: GccRenderItem, render: GccRenderInput): string {
 /** Disclaim A（1 品のときだけ紙にする。注文のときは表紙の行だけ） */
 function noGccSection(item: GccRenderItem, render: GccRenderInput): string {
   const { input, summary, exclusion1610c } = item;
+  const who = render.certifier ? 'The certifier states' : 'The requesting party answered';
+  const unidentified = render.certifier ? '' : ' (no certifier is identified)';
   const basis = exclusion1610c
-    ? `Not subject to 16 CFR 1610 under ${exclusion1610c.citation}: ${exclusion1610c.text}. The certifier states that no other CPSC rule requiring a certificate applies.`
-    : 'The certifier states that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product.';
+    ? `Not subject to 16 CFR 1610 under ${exclusion1610c.citation}: ${exclusion1610c.text}. ${who} that no other CPSC rule requiring a certificate applies${unidentified}.`
+    : `${who} that no CPSC rule, ban, standard, or regulation requiring a certificate applies to this product${unidentified}.`;
   const ace =
     summary.disclaimCode === 'A'
       ? 'Disclaim A may be filed. Every disclaimer needs an Intended Use Code (CATAIR, Disclaimer PG01 Note 1): choose it from CBP Appendix R, e.g. 130.XXX For Consumer Use as a Non-Food Product (besides 130.001-005).'
@@ -194,7 +196,7 @@ function noGccSection(item: GccRenderItem, render: GccRenderInput): string {
       ['Product', productHtml(item)],
       ['Basis', escapeHtml(basis)],
       ['ACE', escapeHtml(ace)],
-      ...(render.certifier ? ([['Declared by', partyHtml(render.certifier)]] as Array<[string, string]>) : []),
+      ['Declared by', render.certifier ? partyHtml(render.certifier) : '[MISSING: certifier]'],
     ]),
   });
 }

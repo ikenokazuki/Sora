@@ -328,6 +328,25 @@ export async function checkCpscCertificate(
     : [];
   const isAdultToy = exactCategory === 'Toys' && options.targetAge === 'adult';
 
+  // 見出し 6111・6209 は USITC の HTS で "Babies' garments and clothing accessories"。adult と合わないので、81 FR 12587 の大人の免除も GCC も答えず年齢を聞く（電池の道より先）
+  const heading = normalized.slice(0, 4);
+  if (options.targetAge === 'adult' && (heading === '6111' || heading === '6209')) {
+    const question = `HTS の見出し ${heading} は乳児の衣類（Babies' garments and clothing accessories）ですが、targetAge が adult です。対象年齢は 12 歳以下ですか？それとも HTS コードが違いますか？（確かめて targetAge か htsCode を直してください）`;
+    return {
+      certificateRequired: 'unknown',
+      certificateType: 'unknown',
+      eFilingRequired: false,
+      applicableRegulations: exactCategory ? [cpscListRegulation(htsCode, exactCategory)] : [],
+      missingInfo: [question],
+      nextActions: ['対象年齢か HTS コードを確かめて、再判定してください。'],
+      disclaimer: DISCLAIMER,
+      inputCompleteness: 'partial',
+      missingInputs: ['targetAge'],
+      clarifyingQuestions: [question],
+      impactExplanation: '乳児の衣類の見出しなので、81 FR 12587 の大人の衣料の免除は判定しません。12歳以下向けなら CPC（CCC）が要ります。',
+    };
+  }
+
   // 1. 横断規制: ボタン電池・コイン電池内蔵または使用製品 (Reese's Law, 16 CFR Part 1263 / ANSI UL 4200A)
   //    ※ 16 CFR § 1263.1(c) により、ASTM F963 (16 CFR 1250) 適合の子供向け玩具 (Toys + child) は Part 1263 適用除外（CPC/ASTM F963側で電池室規制）
   //    （Toys と同じ 6 桁なだけのコードは玩具と決まらないので、ここで除かない）
@@ -492,7 +511,7 @@ export async function checkCpscCertificate(
         testingExemption,
         missingInfo: [],
         nextActions: [
-          '16 CFR 1610.1(d) の試験の免除に当たる大人の衣料なので、81 FR 12587（2016年3月25日から）の執行裁量で GCC と eFiling は要りません。ACE では Disclaim B と Intended Use Code 130.006 を送ります。燃焼性の基準（16 CFR 1610）には引き続き合っている必要があります。',
+          '16 CFR 1610.1(d) の試験の免除に当たる大人の衣料なので、81 FR 12587（2016年3月25日から）の執行裁量で GCC と eFiling は要りません。ACE では Disclaim B を送れます（任意。送るときは Intended Use Code 130.006 が要ります）。燃焼性の基準（16 CFR 1610）には引き続き合っている必要があります。',
         ],
         disclaimer: DISCLAIMER,
         inputCompleteness: 'complete',
