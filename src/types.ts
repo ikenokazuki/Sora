@@ -3513,7 +3513,7 @@ export function generateOpenApiDocument() {
               },
             },
             '400': {
-              description: '入力の誤り（スキーマ、10 桁でない HTS コード、日付、url の品が 6 件以上: INVALID_INPUT）、見本・仮置きに見える値（UNVERIFIED_PLACEHOLDER_INPUT）',
+              description: '入力の誤り（スキーマ、10 桁でない HTS コード、日付、url の品が 6 件以上、証明書に載る値のラテン文字以外の文字、1 つの citations の文字列に 16 CFR が複数: INVALID_INPUT）、見本・仮置きに見える値（UNVERIFIED_PLACEHOLDER_INPUT）',
             },
             '422': {
               description: 'GCC にする品に足りない項目がある（MISSING_REQUIRED_GCC_FIELDS。details.missingFields と details.items。allowDraft: true なら下書きを返す）',
