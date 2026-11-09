@@ -37,6 +37,7 @@ export function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const;
 const ID_LABELS: Record<GccIdentifierType, string> = { sku: 'SKU', model: 'Model number', gtin: 'GTIN', upc: 'UPC', serial: 'Serial number', registered: 'Registered number', other: 'Identifier' };
 const idLabel = (input: GccItemInput) => ID_LABELS[input.identifierType ?? 'sku'];
 const joinLines = (lines: Array<string | undefined | false>) => lines.filter(Boolean).join('<br>');
@@ -44,9 +45,10 @@ const joinLines = (lines: Array<string | undefined | false>) => lines.filter(Boo
 /** 欠けた項目を出す関数。表に [MISSING: キー] と書き、キーを覚える */
 type Miss = (key: string) => string;
 
-/** 当事者を name / street / city, state / country / Email・Phone の行に分ける。miss があれば、欠けた項目を prefix.項目 の印にする */
-function partyHtml(party?: GccParty, miss?: Miss, prefix = ''): string {
-  const [name, street, city, state, country, email, phone] = (['name', 'street', 'city', 'state', 'country', 'email', 'phone'] as const).map((f) => (party?.[f] ? escapeHtml(party[f]) : (miss?.(`${prefix}.${f}`) ?? '')));
+/** 当事者を name / street / city, state / country / Email・Phone の行に分ける。miss があれば、欠けた項目を prefix.項目 の印にする（まるごと無いときは prefix の印 1 つ。whole が false なら項目ごと） */
+function partyHtml(party?: GccParty, miss?: Miss, prefix = '', whole = true): string {
+  if (miss && whole && !PARTY_FIELDS.some((f) => party?.[f])) return miss(prefix);
+  const [name, street, city, state, country, email, phone] = PARTY_FIELDS.map((f) => (party?.[f] ? escapeHtml(party[f]) : (miss?.(`${prefix}.${f}`) ?? '')));
   return joinLines([name, street, [city, state].filter(Boolean).join(', '), country, [email && `Email: ${email}`, phone && `Phone: ${phone}`].filter(Boolean).join(' · ')]);
 }
 
@@ -83,43 +85,53 @@ function certificateSection(item: GccRenderItem, render: GccRenderInput): string
   const { input, summary } = item;
   const isDraft = summary.status === 'draft_needs_info';
   const { manufacture, testing } = input;
-  const missing = new Set(summary.missingFields);
+  const marked = new Set<string>();
   const miss: Miss = (key) => {
-    missing.add(key);
+    marked.add(key);
     return `[MISSING: ${key}]`;
   };
   const value = (key: string, text?: string) => (text ? escapeHtml(text) : miss(key));
   const citations = summary.citations ?? [];
-  const citationsMissing = !citations.length || missing.has('citations');
+  const citationsMissing = !citations.length || !!summary.missingFields?.includes('citations');
   const exclusions = summary.testingExclusions ?? [];
   const parties = testing?.parties ?? [];
   const rules = citations.length ? `<ul>${citations.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>` : '';
+  const hasTestData = testing?.date || parties.length || testing?.reportNumber;
   const testRecord = item.testingNotNeeded
     ? []
-    : [
-        `Most recent test: ${value('testing.date', testing?.date)}`,
-        ...(parties.length ? parties.map((party, j) => partyHtml(party, miss, `testing.parties[${j}]`)) : [miss('testing.parties')]),
-        testing?.reportNumber && `Report: ${escapeHtml(testing.reportNumber)}`,
-      ];
+    : !hasTestData
+      ? [miss('testing')]
+      : [
+          `Most recent test: ${value('testing.date', testing?.date)}`,
+          ...(parties.length ? parties.map((party, j) => partyHtml(party, miss, `testing.parties[${j}]`)) : [miss('testing.parties')]),
+          testing?.reportNumber && `Report: ${escapeHtml(testing.reportNumber)}`,
+        ];
   const exclusionLines = exclusions.map(
     (e) => `Testing exclusion for 16 CFR ${escapeHtml(e.replace(/^16 CFR (\d+).*/, '$1'))}: ${escapeHtml(e)} (identified in lieu of the test date and place (16 CFR 1110.11(c)))`,
   );
+  const manufactureHtml =
+    !manufacture?.date && !PARTY_FIELDS.some((f) => manufacture?.[f])
+      ? miss('manufacture')
+      : joinLines([`Date of manufacture: ${value('manufacture.date', manufacture?.date)}`, partyHtml(manufacture, miss, 'manufacture', false)]);
   const rows: Array<[string, string, string]> = [
     ['1', 'Product — 16 CFR 1110.11(a)(1)', productHtml(item, miss)],
     ['2', 'Rules certified — 16 CFR 1110.11(a)(2)', rules + (citationsMissing ? miss('citations') : '')],
     ['3', 'Certifier (the importer of record for imported products, 16 CFR 1110.7) — 16 CFR 1110.11(a)(3)', partyHtml(render.certifier, miss, 'certifier')],
     ['4', 'Records contact — 16 CFR 1110.11(a)(4)', partyHtml(render.recordCustodian, miss, 'recordCustodian')],
-    ['5', 'Manufacture — 16 CFR 1110.11(a)(5)', joinLines([`Date of manufacture: ${value('manufacture.date', manufacture?.date)}`, partyHtml(manufacture, miss, 'manufacture')])],
+    ['5', 'Manufacture — 16 CFR 1110.11(a)(5)', manufactureHtml],
     ['6', 'Testing — 16 CFR 1110.11(a)(6)', joinLines([...testRecord, ...exclusionLines])],
-    ['7', 'Attestation — 16 CFR 1110.11(a)(7)', escapeHtml(GCC_ATTESTATION)],
+    ['7', 'Attestation — 16 CFR 1110.11(a)(7)', isDraft ? '[Not attested: this is a draft]' : escapeHtml(GCC_ATTESTATION)],
   ];
+  // 表の印にないキー（targetAge など）と、印のキー。印が覆うキー（manufacture の下の項目など）は繰り返さない
+  const covered = (key: string) => [...marked].some((m) => key === m || key.startsWith(`${m}.`));
+  const missingKeys = [...(summary.missingFields ?? []).filter((k) => !covered(k)), ...marked].join(', ');
   return section({
     badgeKind: isDraft ? 'draft' : 'ready',
     badgeText: isDraft ? 'DRAFT — NOT VALID' : 'GCC',
     title: isDraft ? 'DRAFT General Certificate of Conformity — not valid' : 'General Certificate of Conformity',
     summary,
     input,
-    subtitle: isDraft ? `Missing: ${[...missing].join(', ')}` : `Certificate ID: ${summary.certificateId} · Generated: ${render.generatedAt}`,
+    subtitle: isDraft ? `Missing: ${missingKeys}` : `Certificate ID: ${summary.certificateId} · Generated: ${render.generatedAt}`,
     rows,
     footerNote: isDraft ? 'DRAFT — do not file until every missing element is filled in.' : 'File the certificate data in CBP ACE (16 CFR 1110.13(a)(1)).',
   });
