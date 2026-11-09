@@ -855,7 +855,7 @@ Run: `bun test src/services/gcc.test.ts -t 'GCC document'`
 Expected: FAIL（古い見出し、証明の文が無い）
 
 - [ ] **Step 2: 直す。** GCC の節（generated と draft）を次の形にする（英語。16 CFR 1110.9(a)）。値はすべて `escapeHtml` を通す。
-  - 題: generated は `General Certificate of Conformity`、draft は `DRAFT General Certificate of Conformity — not valid`。その下の行: generated は `Certificate ID: ${certificateId} · Generated: ${generatedAt}`、draft は `Missing: ${品と応答の missingFields をカンマでつないだもの}`。印は generated が `GCC`、draft が `DRAFT — NOT VALID`。
+  - 題: generated は `General Certificate of Conformity`、draft は `DRAFT General Certificate of Conformity — not valid`。その下の行: generated は `Certificate ID: ${certificateId} · Generated: ${generatedAt}`、draft は欄の印で示していないキーだけの `Missing: …`（無ければ `Missing elements are marked below.`）。下書きの (a)(7) は `[Not attested: this is a draft]`。丸ごと無い当事者は `[MISSING: certifier]` のように 1 つの印にする。generated の下の行は `Filing: see 16 CFR 1110.13.`。印は generated が `GCC`、draft が `DRAFT — NOT VALID`。
   - 表の 7 行（見出しの文はこのとおり）:
     1. `Product — 16 CFR 1110.11(a)(1)`: productName、`Brand: ${brand}`（あれば）、`${識別の名前}: ${identifier}`（sku → `SKU`、model → `Model number`、gtin → `GTIN`、upc → `UPC`、serial → `Serial number`、registered → `Registered number`、other → `Identifier`）、`HTS: ${htsCode}`、description（あれば）。
     2. `Rules certified — 16 CFR 1110.11(a)(2)`: `<ul>` の中に citations を 1 つずつ `<li>`。
