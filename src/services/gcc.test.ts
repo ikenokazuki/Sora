@@ -191,7 +191,15 @@ describe('generateGccCertificate', () => {
     expect(err.details.missingFields).toEqual([]);
   });
 
-  it('reads a broken server default only when a certificate needs it, and reports it as a server setting (review m5)', async () => {
+  it('uses a valid server default on an all-exempt package too (review m5)', async () => {
+    process.env.SORA_GCC_CERTIFIER = JSON.stringify({ ...CERTIFIER, email: 'ops@server-default.test' });
+    const order = await generateGccCertificate({ orderNumber: 'ORDER-1001', items: [TEE] });
+    expect(order.items[0].status).toBe('exempt_disclaim_b');
+    expect(order.packageHtml.split('ops@server-default.test').length - 1).toBe(2); // 表紙と Disclaim B の紙
+    expect((await generateGccCertificate({ items: [TEE] })).packageHtml).toContain('ops@server-default.test');
+  });
+
+  it('ignores a broken server default when no certificate needs it, and reports it as a server setting when one does (review m5)', async () => {
     process.env.SORA_GCC_CERTIFIER = '{not json';
     process.env.SORA_GCC_CUSTODIAN = '[1]';
     const exempt = await generateGccCertificate({ orderNumber: 'ORDER-1001', items: [TEE] });

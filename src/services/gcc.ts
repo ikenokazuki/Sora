@@ -167,15 +167,16 @@ function assertNoPlaceholderValues(options: GenerateGccCertificateOptions): void
   }
 }
 
-/** 呼び出し側の値に中身があればそれを丸ごと、無ければ証明書に要るときだけサーバーの環境変数を丸ごと読む（項目ごとに混ぜない） */
+/** 呼び出し側の値に中身があればそれを丸ごと、無ければサーバーの環境変数を丸ごと使う（項目ごとに混ぜない）。環境変数が読めないときは、証明書に要るときだけエラーにする */
 function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER' | 'SORA_GCC_CUSTODIAN', needed: boolean): GccParty | undefined {
   const given = trimDeep(party);
   if (given && PARTY_FIELDS.some((f) => given[f])) return given;
-  const raw = needed ? process.env[envName]?.trim() : undefined;
+  const raw = process.env[envName]?.trim();
   if (!raw) return undefined;
   try {
     return trimDeep(GccPartySchema.parse(JSON.parse(raw)));
   } catch {
+    if (!needed) return undefined;
     throw new Error(`${envName} を読めません（JSON のオブジェクトで name・street・city・state・country・email・phone）`);
   }
 }
