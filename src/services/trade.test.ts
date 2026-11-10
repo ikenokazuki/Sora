@@ -158,7 +158,7 @@ describe('HTS prediction and product compliance', () => {
       try {
         const res = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic' });
         expect(res.evidence.crossStatus).toBe('unavailable');
-        expect(res.evidence.crossNote).toContain('503');
+        expect(res.evidence.crossNote).toContain('503: down'); // 拒否の理由（応答の本文）も残す
         expect(res.evidence.rulings).toEqual([]);
         expect(res.detectedSubheading).toBe('6912.00');
         expect(res.bestMatch.confidence).toBe('low'); // 判例の票が無い全文検索だけの推測は low（medium でも dev の的中が半分）
