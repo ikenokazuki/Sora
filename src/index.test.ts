@@ -5292,32 +5292,30 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(reranked[1].rank).toBe(2);
     });
 
-    it('rerankByDeepEvidence should automatically identify intent anchor via low-DF term when no attribute word exists', () => {
-      // 評価プロトコル第4.2項: 属性辞書にない場合、候補群中で出現頻度(DF)が最も低い稀少語がアンカーとなる
-      const query = 'Python 機械学習 PyTorch2';
+    it('rerankByDeepEvidence should not anchor on the rarest query word when no attribute word exists', () => {
+      // 属性辞書の語が無い問いでは意図アンカーを置かない。以前は候補群で出現の最も少ない語（ここでは「キャンペーン」）を
+      // アンカーにして、その語の無いページを −8 点にしていたため、関係の無いお知らせのページが 1 位に上がっていた
+      const query = 'サンプル証券 手数料 キャンペーン';
+      const page = (rank: number, slug: string, title: string, body: string, score: number) => ({
+        rank,
+        url: `https://example.com/${slug}`,
+        title,
+        markdown: `# ${title}\n\n${body}`,
+        highlights: [body],
+        highlightItems: [{ text: body, score }],
+      });
       const items = [
-        {
-          rank: 1,
-          title: 'Python 機械学習 入門',
-          snippet: 'Python で機械学習を始めましょう。基本的なライブラリの使い方。',
-          url: 'https://example.com/intro',
-          markdown: '# Python 機械学習 入門\n\nScikit-learn を使ったデータ分析。',
-        },
-        {
-          rank: 2,
-          title: 'PyTorch2 新機能解説',
-          snippet: 'Python 機械学習における PyTorch2 の最新機能。',
-          url: 'https://example.com/pytorch2',
-          markdown: '# PyTorch2 リリースノート\n\nPython 機械学習における PyTorch2 のコンパイル機能とパフォーマンス。',
-          highlights: ['PyTorch2 のコンパイル機能とパフォーマンス。'],
-          highlightItems: [{ text: 'PyTorch2 のコンパイル機能とパフォーマンス。', score: 0.95 }],
-        },
+        page(1, 'fees', 'サンプル証券の手数料一覧', 'サンプル証券の株式の取引手数料は、約定 1 回ごとにかかります。', 0.9),
+        page(2, 'account', 'サンプル証券の口座と手数料', 'サンプル証券は口座の開設が無料で、手数料も安めです。', 0.8),
+        page(3, 'points', 'ポイントキャンペーンのお知らせ', '春のポイントキャンペーンを実施します。', 0.3),
       ];
 
       const reranked = rerankByDeepEvidence(items, query);
-      // PyTorch2 は items[1] にしか出現しない低DF稀少語（アンカー）であり、items[0] はペナルティを受ける
-      expect(reranked[0].url).toBe('https://example.com/pytorch2');
-      expect(reranked[0].rank).toBe(1);
+      expect(reranked.map((i) => i.url)).toEqual([
+        'https://example.com/fees',
+        'https://example.com/account',
+        'https://example.com/points',
+      ]);
     });
 
     it('rerankByDeepEvidence should support ablation study with enableHighlightFeature: false', () => {

@@ -184,7 +184,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 - `updated` は検索プロバイダーへの更新期間フィルターであり、開催日フィルターではありません。
   すべてのクエリを最新優先にはしません。時間語・回答値の検出は辞書と規則に基づくため、
   網羅的な意味理解や検索精度の保証ではありません。
-- 語彙（intent語・stopwords・時間語）は src/retrieval/lexicons/ に分離しています。
+- 語彙（intent語・時間語）は src/retrieval/lexicons/ に分離しています。
 - v2.53.0 までは ρSelect（rho-select v2）で選んでいました。日本語の公開評価集 JQaRA では、選んだ段落の正解の割合が
   ρSelect 0.33 に対しこの方式は 0.53 で、字幕（チャプターなし）でも上だったので置き換えました（`docs/evaluations/term-matching/results.md`）。
 
