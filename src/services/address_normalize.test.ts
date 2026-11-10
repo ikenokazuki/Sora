@@ -7,7 +7,7 @@ import {
   ABR_LAST_MODIFIED, CHIYODA_LG, CHIYODA_TOWNS, RSDT_POS_HEADER, abrUrl, csv, replaceTowns, rsdtPosRow, sampleUpstream, townRow,
 } from '../test_fixtures/address/harness.js';
 import { AddressInputError, AddressUnavailableError } from './address_errors.js';
-import { AddressNormalizer, addressVariants, shapeResult, splitPostalCode } from './address_normalize.js';
+import { AddressNormalizer, addressVariants, replaceRomajiTown, shapeResult, splitPostalCode } from './address_normalize.js';
 
 let dir: string;
 beforeEach(() => {
@@ -136,6 +136,66 @@ describe('normalize（郵便番号で市区町村を補う）', () => {
     expect((await normalizer.normalize('永田町一丁目7-1')).level).toBe(0);
     expect((await normalizer.normalize('〒999-9999 永田町一丁目7-1')).level).toBe(0);
     expect(await normalizer.normalize('〒060-0001 東京都千代田区永田町一丁目7-1')).toMatchObject({ level: 8 });
+  });
+});
+
+describe('replaceRomajiTown', () => {
+  const towns = [
+    { machiaza_id: '0025000', oaza_cho: '宇田川町', oaza_cho_r: 'Udagawacho' },
+    { machiaza_id: '0001001', oaza_cho: '神宮前', chome: '一丁目', oaza_cho_r: 'Jingumae' },
+    { machiaza_id: '0001002', oaza_cho: '神宮前', chome: '二丁目', oaza_cho_r: 'Jingumae' },
+    { machiaza_id: '0030000', oaza_cho: '道玄坂', oaza_cho_r: 'Dogenzaka' },
+    { machiaza_id: '0040000', oaza_cho: '新橋', oaza_cho_r: 'Shimbashi' },
+  ];
+
+  test.each([
+    ['Udagawacho,1-2 サンプルビル B1F', '宇田川町1-2 サンプルビル B1F'],
+    ['UDAGAWACHO 1-2', '宇田川町1-2'],
+    ['Udagawa-cho, 1-2', '宇田川町1-2'],
+    ['Udagawa Cho 1-2', '宇田川町1-2'],
+    ['Udagawachou 1-2', '宇田川町1-2'],
+    ['Jingūmae 1-chome 2-3', '神宮前1丁目2-3'],
+    ['Jinguumae 1-2-3', '神宮前1-2-3'],
+    ['Dougenzaka 2-1', '道玄坂2-1'],
+    ['Shinbashi 1-1', '新橋1-1'],
+    ['Udagawacho Sample Bldg 1-2', '宇田川町Sample Bldg 1-2'],
+  ])('ABR の英字の町名を日本語の町名にする: %s', (rest, expected) => {
+    expect(replaceRomajiTown(rest, towns)).toBe(expected);
+  });
+
+  test('当たらない、ローマ字で始まらない、2 つの町名に当たるときは null', () => {
+    expect(replaceRomajiTown('Kasumigaseki 1-7-1', towns)).toBeNull();
+    expect(replaceRomajiTown('宇田川町1-2', towns)).toBeNull();
+    expect(replaceRomajiTown('Udagawacho 1-2', [...towns, { machiaza_id: '0099000', oaza_cho: '宇多川町', oaza_cho_r: 'Udagawacho' }])).toBeNull();
+    expect(replaceRomajiTown('Udagawacho 1-2', [{ machiaza_id: '0025000', oaza_cho: '宇田川町' }])).toBeNull();
+  });
+});
+
+describe('normalize（町名がローマ字）', () => {
+  /** 千代田区の町字の英字名を、ABR と同じ形（Nagatacho）にした取得元。 */
+  const setup = () => {
+    const up = sampleUpstream({ numbers: true });
+    const row = (id: string, oaza: string, roma: string, chome: string, n: string): string[] => [CHIYODA_LG, id, oaza, `${oaza}カナ`, roma, chome, n, '', '', '', '1'];
+    replaceTowns(up, CHIYODA_LG, [
+      row('0006000', '千代田', 'Chiyoda', '', ''), row('0005001', '永田町', 'Nagatacho', '一丁目', '1'), row('0005002', '永田町', 'Nagatacho', '二丁目', '2'),
+    ], '"roma"');
+    return new AddressNormalizer(createTestAddressData(dir, { up }).data);
+  };
+
+  test.each([
+    ['東京都千代田区Nagatacho 1-7-1', ''],
+    ['東京都千代田区Nagata-cho, 1−7−1', ''],
+    ['東京都 千代田区 Nagata Cho 1-7-1', ''],
+    ['東京都千代田区Nagatacho 1-chome 7-1', ''],
+    ['東京都千代田区Nagatacho, 1-7-1 サンプルビル B1F', 'サンプルビル B1F'],
+  ])('町字の英字名で日本語の町名に置き換えて、番地・号まで読む: %s', async (input, other) => {
+    const result = await setup().normalize(input);
+    expect(result).toMatchObject({ input, level: 8, numberSource: 'rsdt', normalized: '東京都千代田区永田町一丁目7-1', other, keys: { machiazaId: '0005001' } });
+  });
+
+  test('英字名に当たらなければ、市区町村までの答えのまま', async () => {
+    const result = await setup().normalize('東京都千代田区Kasumigaseki 1-7-1');
+    expect(result).toMatchObject({ level: 2, normalized: '東京都千代田区', other: 'Kasumigaseki1-7-1' });
   });
 });
 

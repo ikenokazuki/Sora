@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { AddressData } from './address_data.js';
 import { lookupMlit } from './address_mlit.js';
 import { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
-import { lgCode6, type TownJson } from './address_names.js';
+import { lgCode6, type TownEntry, type TownJson } from './address_names.js';
 import type { NumberRanges } from './address_numbers.js';
 
 /** 住所の各階層のキー。町字・郵便番号・逆引きの結合に使う。 */
@@ -189,6 +189,39 @@ export function addressVariants(address: string): string[] {
   return [...new Set(variants)].filter((variant) => variant !== address);
 }
 
+/**
+ * ローマ字の町名を比べる形。長音記号などの記号を外して小文字の英字だけにし、書き方の揺れ（長音の ou・oo・uu、
+ * b・m・p の前の m と n）を ABR の英字名の形（Udagawacho、Jingumae、Dogenzaka）にそろえる。入力にも ABR の名前にも同じ変換をする。
+ */
+function romajiKey(text: string): string {
+  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z]/g, '')
+    .replace(/ou|oo/g, 'o').replace(/uu/g, 'u').replace(/m(?=[bmp])/g, 'n');
+}
+
+/**
+ * 市区町村のあとの読み残しの先頭にあるローマ字の町名を、その市区町村の町字の英字名（ABR）で日本語の町名にした文字列。
+ * 語を後ろから 1 つずつ減らして、最も長く当たる形を採る（「Nagatacho Sample Bldg」→「Nagatacho」）。続く「1-chome」は「1丁目」にする。
+ * ローマ字で始まらない、当たらない、別の 2 つ以上の町名に当たるときは null。
+ */
+export function replaceRomajiTown(rest: string, towns: readonly TownEntry[]): string | null {
+  const lead = rest.match(/^[\p{Script=Latin}\p{M}'’.\-\s]+/u)?.[0] ?? '';
+  if (!/^\p{Script=Latin}/u.test(lead)) return null;
+  const names = new Map<string, Set<string>>();
+  for (const town of towns) {
+    const key = town.oaza_cho && town.oaza_cho_r ? romajiKey(town.oaza_cho_r) : '';
+    if (key && town.oaza_cho) names.set(key, (names.get(key) ?? new Set()).add(town.oaza_cho));
+  }
+  const ends = [...lead.matchAll(/\S+/g)].map((word) => (word.index ?? 0) + word[0].length).reverse();
+  for (const end of ends) {
+    const found = names.get(romajiKey(lead.slice(0, end)));
+    if (!found) continue;
+    if (found.size !== 1) return null;
+    const after = rest.slice(end).replace(/^[\s,、，.]+/, '').replace(/^(\d+)\s*-?\s*chome(?![a-z])[\s,-]*/i, '$1丁目');
+    return `${[...found][0]}${after}`;
+  }
+  return null;
+}
+
 // ---------- ライブラリの読み込みと仮想ファイル ----------
 
 interface FileResponse {
@@ -297,9 +330,25 @@ export class AddressNormalizer {
         }
       }
     }
+    // 町名がローマ字で町字に届かないとき（「東京都千代田区Nagatacho, 1-7-1」）は、町字の英字名で日本語の町名にして読み直す。
+    let source = address;
+    if (level >= 3 && result.level === 2 && !notes.pending && !notes.unavailable) {
+      const replaced = await this.withJapaneseTown(address, result, deadline);
+      if (replaced) {
+        try {
+          const retried = await callState.run({ deadline }, () => generation.lib.normalize(replaced, { level }));
+          if (retried.level > result.level) {
+            result = retried;
+            source = replaced;
+          }
+        } catch {
+          // 置き換えで失敗しても、入力のままの答えを返す。
+        }
+      }
+    }
     // 番地・号に届かず、データの不足でもないときは、言い換えた入力を試し、より深く届いたものを採る。
     if (level >= 4 && result.level < 8 && !notes.pending && !notes.unavailable) {
-      for (const variant of addressVariants(address)) {
+      for (const variant of addressVariants(source)) {
         try {
           const retried = await callState.run({ deadline }, () => generation.lib.normalize(variant, { level }));
           if (retried.level > result.level) result = retried;
@@ -337,6 +386,24 @@ export class AddressNormalizer {
       result = await this.fillParcelPointFromMlit(result, deadline);
     }
     return shapeResult(input, postalCode, result, notes);
+  }
+
+  /**
+   * 読み残しの先頭のローマ字の町名を日本語にした住所（市区町村まで + 残り）。置き換えられない、データを読めないときは null。
+   * 残りは入力の最初の英字から取る（ライブラリの読み残しは空白が詰まり、「Udagawa Cho」の語の区切りが消えるため）。
+   */
+  private async withJapaneseTown(address: string, result: LibraryResult, deadline: number): Promise<string | null> {
+    const city = result.metadata.city;
+    const start = address.search(/\p{Script=Latin}/u);
+    if (!city || start < 0 || !/^\p{Script=Latin}/u.test(result.other.trim())) return null;
+    try {
+      const ready = await this.data.ensure({ kind: 'city', lgCode: lgCode6(city.code) }, Math.max(0, deadline - this.now()));
+      const towns = JSON.parse(await Bun.file(join(ready.path, 'town.json')).text()) as TownJson;
+      const rest = replaceRomajiTown(address.slice(start), towns.data);
+      return rest === null ? null : `${result.pref ?? ''}${result.city ?? ''}${rest}`;
+    } catch {
+      return null;
+    }
   }
 
   /** 街区符号を国土交通省のデータで補う。取得できなくても、ABR だけの答えをそのまま返す（取得中のときだけ pending を記録する）。 */
