@@ -1,17 +1,27 @@
-// 米国税関（CBP）の判例検索 CROSS（rulings.cbp.gov）。分類判例は「普段の言葉」と法令の用語をつなぐ手がかりになる。
-// 一括取得の手段が無いため、推測が呼ばれたときだけ照会し、結果を 24 時間キャッシュする。
-// 失敗しても推測は止めない（呼び出し側は HTS の全文検索だけで答える）。連続で失敗したときは 60 秒、照会を控える。
+// 米国税関（CBP）の分類判例（CROSS）。分類判例は「普段の言葉」と法令の用語をつなぐ手がかりになる。
+// 照会先は CROSS_SOURCE で選ぶ。既定の local は手元の判例の索引（cross_index.ts）、api は CBP の検索 API（rulings.cbp.gov）。
+// CBP の API は 2026 年 11 月からボット対策の後ろにあり、プログラムからは 403 になる（避けることはしない）。
+// どちらでも、失敗しても推測は止めない（呼び出し側は HTS の全文検索だけで答える）。API が連続で失敗したときは 60 秒、照会を控える。
 import { getFromCache, setToCache } from '../cache.js';
 import { errorMessage } from '../errors.js';
+import { CROSS_RULING_URL, crossIndexPendingNote, searchCrossIndex } from './cross_index.js';
 
 export const CROSS_SEARCH_URL = 'https://rulings.cbp.gov/api/search';
-export const CROSS_RULING_URL = 'https://rulings.cbp.gov/ruling/';
+export { CROSS_RULING_URL };
 const CACHE_TTL_CROSS = 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = 5000;
 const BREAKER_MS = 60_000;
 const PAGE_SIZE = 10;
 // ヒットが多すぎる語（model, table など）は、上位の判例が商品と無関係になるので使わない。
-const MAX_TOTAL_HITS = 2000;
+// API の 2000 は CBP の約 22 万件に合わせた値。手元の索引（約 6 万件）の 250 は dev だけで決めた（150〜300 で同じ、500 以上で下がる。
+// docs/evaluations/hts-predict/results.md）。
+const MAX_TOTAL_HITS_API = 2000;
+const MAX_TOTAL_HITS_LOCAL = 250;
+
+/** 照会先。CROSS_SOURCE=api のときだけ CBP の API を引く。 */
+export function crossSource(): 'local' | 'api' {
+  return process.env.CROSS_SOURCE === 'api' ? 'api' : 'local';
+}
 
 export interface CrossRuling {
   rulingNumber: string;
@@ -94,7 +104,9 @@ async function fetchRulings(term: string): Promise<{ rulings: CrossRuling[]; tot
  * 一般的な照会語（"coaster" の 132 件）で補う。照会語は具体的なものから渡す。
  */
 export async function lookupCrossRulings(queries: string[], target = PAGE_SIZE): Promise<CrossLookup> {
-  if (Date.now() < unavailableUntil) return { status: 'unavailable', rulings: [], error: '直前の照会に失敗したため、一時的に照会を控えています' };
+  const local = crossSource() === 'local';
+  if (!local && Date.now() < unavailableUntil) return { status: 'unavailable', rulings: [], error: '直前の照会に失敗したため、一時的に照会を控えています' };
+  const maxTotalHits = local ? MAX_TOTAL_HITS_LOCAL : MAX_TOTAL_HITS_API;
   const seen = new Set<string>();
   const rulings: CrossRuling[] = [];
   const used: string[] = [];
@@ -102,8 +114,10 @@ export async function lookupCrossRulings(queries: string[], target = PAGE_SIZE):
   for (const q of queries) {
     if (rulings.length >= target) break;
     try {
-      const { rulings: got, totalHits } = await fetchRulings(q);
-      if (totalHits > MAX_TOTAL_HITS) break; // これ以降の照会語はさらに短く、より一般的になる
+      const hit = local ? searchCrossIndex(q, PAGE_SIZE) : await fetchRulings(q);
+      if (!hit) return { status: 'unavailable', rulings: [], error: crossIndexPendingNote() };
+      const { rulings: got, totalHits } = hit;
+      if (totalHits > maxTotalHits) break; // これ以降の照会語はさらに短く、より一般的になる
       let added = false;
       for (const r of got) {
         if (seen.has(r.rulingNumber) || rulings.length >= target) continue;

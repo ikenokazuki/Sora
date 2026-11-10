@@ -2176,9 +2176,10 @@ export const HtsDecisionPointSchema = z.object({
 
 export const PredictHtsEvidenceSchema = z.object({
   dataFetchedAt: z.string().describe('参照した USITC HTS 全件データの取得日時 (ISO 8601)'),
-  crossStatus: z.enum(['ok', 'no_rulings', 'unavailable']).describe('CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(通信失敗。HTS全文検索だけで答えた)'),
+  crossStatus: z.enum(['ok', 'no_rulings', 'unavailable']).describe('CBP 判例(CROSS)の照会結果: "ok"(判例あり), "no_rulings"(該当なし), "unavailable"(判例の索引の準備中・取得の失敗など。HTS全文検索だけで答えた)'),
   crossQuery: z.string().optional().describe('判例が得られた照会語'),
   crossNote: z.string().optional().describe('判例を参照できなかった理由'),
+  attribution: z.string().optional().describe('手元の判例の索引を使ったときの出典の表示'),
   rulings: z.array(z.object({
     rulingNumber: z.string().describe('判例番号'),
     date: z.string().describe('判例の日付 (YYYY-MM-DD)'),

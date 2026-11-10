@@ -1,6 +1,7 @@
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
 import { errorMessage } from '../errors.js';
-import { type CrossRuling, type CrossStatus, lookupCrossRulings } from './cbp_cross.js';
+import { type CrossRuling, type CrossStatus, crossSource, lookupCrossRulings } from './cbp_cross.js';
+import { CROSS_INDEX_ATTRIBUTION } from './cross_index.js';
 import {
   type HtsLine,
   type HtsSearchHit,
@@ -1177,6 +1178,8 @@ export interface PredictHtsEvidence {
   crossStatus: CrossStatus;
   crossQuery?: string;
   crossNote?: string;
+  /** 手元の判例の索引を使ったときの出典の表示。 */
+  attribution?: string;
   /** 最有力の6桁を支持した判例（上位3件）。 */
   rulings: { rulingNumber: string; date: string; subject: string; tariffs: string[]; url: string }[];
 }
@@ -1728,7 +1731,8 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     impactExplanation = '製品情報（素材・対象年齢・用途等）が十分に提供されており、高確度なHTSコード候補および規制要件を特定しました。';
   }
 
-  const supportingRulings = (supporting.get(best6) ?? []).slice(0, 3);
+  // 判例番号の無い判例（URL が空）は票だけに使い、根拠には出さない
+  const supportingRulings = (supporting.get(best6) ?? []).filter((r) => r.url).slice(0, 3);
   const reasonParts = [
     `商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて${formatSubheading(best6)}を最有力としました`,
     ageGenderApplied
@@ -1764,6 +1768,7 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
       crossStatus: cross.status,
       crossQuery: cross.query,
       crossNote: cross.error,
+      attribution: cross.status === 'ok' && crossSource() === 'local' ? CROSS_INDEX_ATTRIBUTION : undefined,
       rulings: supportingRulings.map((r) => ({
         rulingNumber: r.rulingNumber,
         date: r.date,

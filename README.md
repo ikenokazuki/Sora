@@ -200,7 +200,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | `POST /browser/action` (初回実行) | **約 1.1 秒** | — | Stealth Chromium 起動＋描画＋クリック＋待機＋スクショ＋Markdown 抽出 |
 | `POST /browser/action` (セッション継続) | **約 0.3 〜 0.6 秒** | — | 既存タブ（`sessionId`）上での追加アクション実行 |
 | `POST /trade/compliance` (商品判定) | **約 0.6 〜 1.2 秒** | **0.5 ms** | HTS実在検証＋FDA規制判定＋CPSC証明書・eFiling一括診断 |
-| `POST /trade/hts-predict` (HTSコード推測) | **約 0.3 〜 0.5 秒**（初回のみ約 20 秒） | **約 50 ms** | USITC 公式 HTS 全件の階層つき全文検索（約 1 ms）＋CBP 分類判例の照会（約 0.1〜0.2 秒 × 最大 5 回）の統合。初回は HTS 全件（約 12MB）を取得して保存する |
+| `POST /trade/hts-predict` (HTSコード推測) | **約 70 ms**（初回のみ約 20 秒） | **約 50 ms** | USITC 公式 HTS 全件の階層つき全文検索（約 1 ms）＋手元の判例の索引の照会（最大 5 回）の統合。初回は HTS 全件（約 12MB）と判例の索引（約 6MB）を取得して保存する |
 | `POST /tracking` (荷物追跡) | **約 200 〜 400 ms** | **0.5 ms** | 番号の形で順位を付け、上位最大 4 社を 2 社ずつ照会（`1Z` の UPS は 1 社だけ）＋自動判別 |
 
 #### ⚡ 内部エンリッチメント・AI最適化処理の実測速度 (In-Memory Latency)
@@ -1741,11 +1741,11 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
 商品の**英語の一般名・説明**から、米国通関申告に必須となる10桁HTSコード・一般関税率・関連PGA規制（CPSC/FDA）を推測します。品目ごとの規則表や辞書は持たず、次の二つの公式データを**6桁の単位**で統合します。
 
 1. **USITC 公式 HTS 全件の階層つき全文検索**: 初回の呼び出しで HTS 全件（約 12MB）を取得し、SQLite に保存します（`SORA_HTS_DIR`。約 21MB）。「Other:」「Available in specified sets:」のような説明だけの中間行も含む完全な木として持ち、各行に祖先の説明（`path`）と、継承した関税率（`rateFrom`）を付けます。申告に使う約 2 万の行を FTS5（BM25）で引きます。
-2. **CBP の分類判例（CROSS）**: 「wallet → 4202.31」「wristwatch → 9102」のように、普段の言葉と法令の用語をつなぎます。このツールが呼ばれたときだけ照会し、24 時間キャッシュします。検索は AND 条件なので、品名を絞りながら（全ての語 → 前置詞より前の名詞句 → 後ろの4・3・2・1語）具体的なものから順に試し、10件になるまで集めます（"leather coaster" の 2件のような少数でも的確な判例を先頭に残し、足りない分を "coaster" のような一般的な語で補います）。商品の説明にある否定（"not ceramic" など）は、検索語として扱いません。`material` を指定すると、素材つきの照会（"plastic coaster"）を最も具体的なものとして先頭で試します。同じ品名でも素材で章が分かれるためです（plastic coaster は 3924.10、textile coaster は 6304.93、ceramic coaster は 6912）。確度が `high` でなく素材が未指定のときは、`material` の指定を促す質問を返します。判例が挙げたコードは現行の木で照合し、改訂で番号が変わったもの（9503.30 → 9503.00 など）は現行の6桁へ振り分けます。
+2. **CBP の分類判例（CROSS）**: 「wallet → 4202.31」「wristwatch → 9102」のように、普段の言葉と法令の用語をつなぎます。CBP の判例検索の API は 2026 年 11 月からプログラムの要求を断るため（ボット対策。Sora は避けません）、公開データから作った手元の判例の索引（約 6.3 万件、gzip で約 6MB）を、このツールが初めて呼ばれたときに Sora の GitHub のリリースから取得して引きます（作り方と出典は [docs/engines/hts-prediction.md](docs/engines/hts-prediction.md)）。検索は AND 条件なので、品名を絞りながら（全ての語 → 前置詞より前の名詞句 → 後ろの4・3・2・1語）具体的なものから順に試し、10件になるまで集めます（"leather coaster" の 2件のような少数でも的確な判例を先頭に残し、足りない分を "coaster" のような一般的な語で補います）。商品の説明にある否定（"not ceramic" など）は、検索語として扱いません。`material` を指定すると、素材つきの照会（"plastic coaster"）を最も具体的なものとして先頭で試します。同じ品名でも素材で章が分かれるためです（plastic coaster は 3924.10、textile coaster は 6304.93、ceramic coaster は 6912）。確度が `high` でなく素材が未指定のときは、`material` の指定を促す質問を返します。判例が挙げたコードは現行の木で照合し、改訂で番号が変わったもの（9503.30 → 9503.00 など）は現行の6桁へ振り分けます。
 
-二つの手がかりが同じ6桁を指し、判例の票が集まっているほど `confidence` が高くなります。6桁の中の行（10桁）は、判例が挙げた行、次に全文検索の順で選びます。本体ではなく部品・付属品の行（見出しが "Parts" で始まる）は、商品の語に部品・付属品を示す語が無いとき減点します。判例が使えないとき（通信失敗・該当なし）は、HTS の全文検索だけで答え、`evidence.crossStatus` に理由を残します。
+二つの手がかりが同じ6桁を指し、判例の票が集まっているほど `confidence` が高くなります。6桁の中の行（10桁）は、判例が挙げた行、次に全文検索の順で選びます。本体ではなく部品・付属品の行（見出しが "Parts" で始まる）は、商品の語に部品・付属品を示す語が無いとき減点します。判例が使えないとき（索引の準備中・取得の失敗・該当なし）は、HTS の全文検索だけで答え、`evidence.crossStatus` に理由を残します。判例を使ったときは、`evidence.attribution` に出典を表示します。
 
-> **精度（実測）**: 代表的な輸出品150件（`eval/hts_predict_cases.json`。dev 52・test 51・保留 47）で、1位の6桁（HS6）の一致は **72.0%**、候補（上位5つの6桁）の中に正解がある割合は **89.3%** でした。調整に使っていない保留セットでは 68.1%（候補内 85.1%）です。`confidence` は実績とよく合います: `high` の的中 94%（31/33）、`medium` 79%（59/75）、`low` 43%（18/42）。HTS の全文検索だけ（判例なし）では 37.3% で、確度はいつも `low` です（`/trade/compliance` は先へ進まず聞き返します）。変更前の実装は 18.0%（保留セットでは 6.4%）でした。評価の方法と外れた事例は [docs/evaluations/hts-predict/results.md](docs/evaluations/hts-predict/results.md) にあります。評価は6桁までで、10桁の選択は測っていません。
+> **精度（実測）**: 代表的な輸出品150件（`eval/hts_predict_cases.json`。dev 52・test 51・保留 47）で、1位の6桁（HS6）の一致は **72.0%**、候補（上位5つの6桁）の中に正解がある割合は **86.7%** でした（手元の判例の索引、2026-11-10。CBP の API を使った 2026-10-15 も 72.0%・89.3%）。保留セットでは 68.1%（候補内 85.1%）です。`confidence` は実績とよく合います: `high` の的中 100%（31/31）、`medium` 79%（53/67）、`low` 46%（24/52）。HTS の全文検索だけ（判例なし）では 37.3% で、確度はいつも `low` です（`/trade/compliance` は先へ進まず聞き返します）。変更前の実装は 18.0%（保留セットでは 6.4%）でした。評価の方法と外れた事例は [docs/evaluations/hts-predict/results.md](docs/evaluations/hts-predict/results.md) にあります。評価は6桁までで、10桁の選択は測っていません。
 
 > **入力は英語**: HTS も判例も英語なので、`productName` と `description` は商品の一般名の英語（宣伝文句・ブランド名は除く）で渡します。日本語の商品は呼び出し側で英訳してください（MCP では LLM が行います）。英語の語が無い入力と、日本語の字が英字より多い入力（日本語の商品ページの英字はブランド名や単位の断片です）は `400 INVALID_INPUT` です（`/trade/compliance` では `needs_more_info` で英訳を促します）。長い出品タイトルは判例に当たらないことがあり、その場合は全文検索だけで答えます。
 
@@ -2493,6 +2493,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `RS_TRAFILATURA_PATH` | *(未設定。イメージでは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
 | `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます |
+| `CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
+| `SORA_CROSS_INDEX_URL` / `SORA_CROSS_INDEX_SHA256` | （リリースの索引） | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`file://` も可）と SHA-256。両方を指定します |
 | `SORA_GCC_CERTIFIER` | *(未設定)* | `generate_gcc_certificate`・`POST /trade/gcc-generate` の証明者の既定。JSON のオブジェクト `{"name","street","city","state","country","email","phone"}`。呼び出しに `certifier` が無い（中身が空の）ときだけ丸ごと使い、呼び出し側の値と項目ごとに混ぜることはありません。**共有のサーバーでは設定しないでください**（`certifier` を省いたすべての呼び出しの証明書に、この値が入ります）。読めない値は、GCC を作る品があるときだけエラーになります。見本・仮置きの確かめはしません |
 | `SORA_GCC_CUSTODIAN` | *(未設定)* | 同じ形で、試験の記録を持つ人（16 CFR 1110.11(a)(4)）の既定。`recordCustodian` が無いときだけ使います。共有のサーバーでは設定しないでください |
 | `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します。v2.49.1・v2.49.2） |

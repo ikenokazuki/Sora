@@ -2,7 +2,7 @@
 
 米国へ輸出する商品には、10 桁の HTS コード（Harmonized Tariff Schedule。米国の関税率表の番号）が要ります。先頭の 6 桁は国際共通の HS コードで、残りは米国の細分です。商品名で関税率表を検索するだけでは、"wallet" や "wristwatch" のような普段の言葉と、表の用語が離れているので外します。
 
-Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁のコード・一般関税率・関連する規制の候補を決めます。公式の関税率表の全文検索と、米国税関（CBP）の分類判例（CROSS）の二つを、6 桁の単位で合わせます。決めきれないときは、公式の階層の分かれ目を選択肢にした質問を返します。
+Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁のコード・一般関税率・関連する規制の候補を決めます。公式の関税率表の全文検索と、米国税関（CBP）の分類判例（CROSS。手元の判例の索引から引きます）の二つを、6 桁の単位で合わせます。決めきれないときは、公式の階層の分かれ目を選択肢にした質問を返します。
 
 同じ関税率表を使う `verify_hts_code`（渡されたコードが表に実在するかの確認）も、このページで説明します。
 
@@ -21,12 +21,26 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 - 全文検索の対象は、申告に使う行（これより細かい行を持たず、コードが 8 桁以上で、第 98・99 類でない行）で、約 2 万行です。SQLite の全文検索機能（FTS5）で引きます。語の語幹をそろえ、BM25（語の出現数と行の長さから点を付ける、検索で広く使う式）で並べます。
 - 更新は 7 日ごとです。7 日を過ぎたあとの最初の利用では、古い表で答えながら、裏で取り直しを始めます。取り直しに失敗したら、1 時間は再試行しません。起動時の取得や定期の処理はありません。初回の取得に失敗したときは、その呼び出しがエラーになり、次の呼び出しで取り直します。
 
-外への問い合わせは、CROSS だけです。
+CBP の分類判例は、手元の判例の索引から引きます（既定。`CROSS_SOURCE=local`）。
 
-- `predict_hts_code` が呼ばれたときだけ、CBP の判例検索に問い合わせます。`verify_hts_code` は手元の表だけで答えます。
-- 1 回の問い合わせは 5 秒で時間切れにします。結果は 24 時間キャッシュします。1 回失敗すると、60 秒は問い合わせません。
-- 分類の判例だけを使い、取り消された判例は除きます。1 回に見る判例は 10 件までです。
-- 失敗しても止まりません。HTS の全文検索だけで答え、`evidence.crossStatus` に `unavailable`（失敗）か `no_rulings`（該当なし）を残します。
+- CBP の判例検索（rulings.cbp.gov の API）は、2026 年 11 月の時点でボット対策の後ろにあり、プログラムからの要求は 403 になります（本文は `Security parameters are missing from this request context.`）。Sora はこれを避けません。そこで、公開されている判例のデータから作った索引を、Sora の GitHub のリリースに置いて使います。
+- 索引は、`predict_hts_code` が初めて呼ばれたときに取得します（gzip で約 6MB）。SHA-256 を確かめてから、SQLite の全文検索（FTS5）の表にして、HTS と同じ場所（`SORA_HTS_DIR`）に `cross.sqlite` として保存します。起動時の取得や常駐の処理はありません。用意ができるまでの呼び出しは、HTS の全文検索だけで答え、`evidence.crossNote` に「判例の索引を準備中」と残します。取得に失敗したら、1 時間は取り直しません。
+- 照会は CBP の検索と同じく AND 条件です（照会語の全ての語を、判例の品名か説明に含む判例）。品名を説明の 2 倍の重みにした BM25 で並べ、上位 10 件を見ます。
+- 判例を使ったときは、`evidence.attribution` に出典を表示します。判例番号のある判例は `evidence.rulings` に rulings.cbp.gov への URL つきで出します。判例番号の無い判例（下の ATLAS の分）は票だけに使い、`evidence.rulings` には出しません。
+- `CROSS_SOURCE=api` にすると、これまでどおり CBP の API に問い合わせます（1 回 5 秒で時間切れ、24 時間キャッシュ、失敗したら 60 秒は問い合わせない、分類の判例だけで取り消された判例は除く）。今は 403 で `unavailable` になります。
+- 自分で作った索引を使うときは、`SORA_CROSS_INDEX_URL`（`file://` も可）と `SORA_CROSS_INDEX_SHA256` を両方指定します。
+
+### 判例の索引の作り方
+
+索引は `scripts/cross-index/build_index.py` で組み立てます。入力は次の 2 つです。
+
+1. **CBP の判例の原文**（Hugging Face の `orlandowhite/hts-cross-rulings`、版 `050ee2144e`、2000〜2025 年の 54,558 件）。使うのは、判例の原文（米国政府の著作物）と判例番号・日付だけです。データセットの要約の欄は使いません（ライセンスの記載が無いため）。
+   - 原文を Claude Haiku 5.5 で、品名（通販の題名の形）と 1〜2 文の説明に書き直しました（Message Batches、構造化出力、考える過程なし）。8,000 字を超える原文は、前の 5,500 字と後ろの 2,500 字だけを渡しました。人・会社・ブランドの名前、住所、型番、判例番号、HTS のコードは書かないよう指示し、正規表現でも消しています。ブランドの名前は正規表現では消し切れないので、指示に頼っています。
+   - 分類のコードは、原文の結論の決まり文句（"The applicable subheading for ... will be ..."）と、HQ の判例の HOLDING の節（"is classified in subheading ..."）から抜き出しました。無ければ Haiku が原文から抜き出したコードを使います。どちらも、データセットのコードと 6 桁まで合うものだけを残しました。
+   - 残ったのは 45,552 件です（書き直せなかった 103 件と、コードが合わない・分類の判例でない 8,903 件を除く）。
+2. **ATLAS のデータの写し**（Hugging Face の `Dayanand314Krishna/cross_rulings_hts_dataset_for_tariffs`、版 `0a66ad34`、Apache-2.0。元は “CROSS Rulings HTS Dataset for Tariff Classification” by Flexify.AI Inc.、https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs）。問い文（判例を要約した品物の説明）と、答えの 1 行目のコードだけを使い、説明からは名前・番号・コードを消しました。判例番号が無いので、票だけに使います。18,652 件で、重複を除くと 17,022 件です。
+
+合わせて 62,574 件です。出典の表示は、索引のファイルの見出しの行、`evidence.attribution`、リポジトリの `NOTICE` にあります。CBP の約 22 万件に比べると約 3 割で、2026 年の新しい判例は入っていません。
 
 ## 決め方
 
@@ -36,7 +50,7 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 2. 否定された語（"not ceramic"、"without battery"、"non-..."）は検索語から外します。`hasBattery` が `true` のときだけ、検索語に `battery` を足します。
 3. 次の二つを並行して行います。
    - HTS の全文検索（上位 60 行）。説明の語を、祖先の説明の語の 3 倍の重みで数えます。
-   - CROSS の照会。照会語は、具体的なものから順に、品名の全ての語、前置詞（for・with など）より前の名詞句、その後ろ 4・3・2・1 語です。`material` があれば、素材つき（"plastic coaster"）を先頭に置きます。10 件集まるまで続けます。照会は AND 条件で、語が多いと 0 件になるためです。ヒットが 2,000 件を超える語は上位が無関係になるので、そこで打ち切ります。
+   - 判例の照会。照会語は、具体的なものから順に、品名の全ての語、前置詞（for・with など）より前の名詞句、その後ろ 4・3・2・1 語です。`material` があれば、素材つき（"plastic coaster"）を先頭に置きます。10 件集まるまで続けます。照会は AND 条件で、語が多いと 0 件になるためです。ヒットが多すぎる語は上位が無関係になるので、そこで打ち切ります（手元の索引では 250 件、CBP の API では 2,000 件。250 は dev だけで決めました）。
 4. 判例が挙げたコードを、現行の表にある 6 桁に直します。改訂で番号が変わったコードは、上位 5 桁が同じ 6 桁へ、なければ見出し（4 桁）の下の 6 桁へ振り分けます。振り分け先が 6 個を超えるときは使いません。
 5. 判例に票を付けます。判例の重みは 1/(順位+1) で、1 件の判例が複数の 6 桁を挙げたら等分します。
 6. 候補の 6 桁を作ります。判例の票の多い順に 6 個、全文検索の上位から 6 個を合わせます。どちらも空なら 400 です。
@@ -87,15 +101,15 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 
 | | 1 位の 6 桁が正解 |
 |---|---|
-| 全体（150 件。調整に使った dev を含む） | 72.0% |
-| 調整に使っていない保留（47 件） | 68.1%（信頼区間は約 ±13 ポイント） |
+| 全体（150 件。調整に使った dev を含む） | 72.0%（手元の判例の索引。CBP の API でも 72.0%） |
+| 調整に使っていない保留（47 件） | 68.1%（信頼区間は約 ±13 ポイント。CBP の API でも 68.1%） |
 | 判例なし（HTS の全文検索だけ） | 37.3%（確度はいつも `low`） |
 
-- 候補（上位 5 つの 6 桁）に正解が入る割合は 89.3% です（保留では 85.1%）。
-- 確度ごとの的中率は、`high` 94%（31/33）、`medium` 79%（59/75）、`low` 43%（18/42）です。しきい値の決定に使った件を含みます。
+- 候補（上位 5 つの 6 桁）に正解が入る割合は 86.7% です（保留では 85.1%。CBP の API では 89.3%）。
+- 確度ごとの的中率（手元の判例の索引）は、`high` 100%（31/31）、`medium` 79%（53/67）、`low` 46%（24/52）です。しきい値の決定に使った件を含みます。
 - 商品の語が HTS にも判例にも乏しい品目（laptop・toothpaste・webcam など）や、同じ見出しの兄弟（磁器と陶器、靴の底の材質）は外れやすいです。調整を重ねても、1 位の一致率は上がりませんでした。評価の詳細は [docs/evaluations/hts-predict/results.md](../evaluations/hts-predict/results.md) にあります。
 - 入力は英語だけです。長い出品タイトルは判例に当たらないことがあり、そのときは全文検索だけで答えます。
-- HTS は最大 7 日古いことがあります。判例の検索が止まっている間は、精度が下がります。
+- HTS は最大 7 日古いことがあります。判例の索引は 2025 年までの判例で、リリースで入れ替えるまで更新されません。索引の準備中（初回の取得の間）と取得に失敗している間は、判例なしで答えるので、精度が下がります。
 - 一般関税率だけを返します。Chapter 99 の追加関税（通商法 301 条など）は計算せず、通関士への確認を案内するだけです。
 - このツールは分類の確定ではありません。自動で採用してよいのは `high` のときだけにしてください（`check_product_compliance` は `medium` も先へ進めます）。通関に使う前に、`evidence.rulings` の判例と CROSS で確かめてください。
 
@@ -103,9 +117,9 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 
 - `src/services/trade.ts`（`predictHtsCode`、`verifyHtsCode`、`crossQueriesFor`、`stripNegations`、`buildDecisionPoint`）
 - `src/services/hts_data.ts`（HTS の取得・保存・全文検索）
-- `src/services/cbp_cross.ts`（CROSS の照会）
+- `src/services/cbp_cross.ts`（判例の照会と、照会先の切り替え）、`src/services/cross_index.ts`（手元の判例の索引）、`scripts/cross-index/build_index.py`（索引の組み立て）
 - `src/mcp/tools_trade.ts`、`src/routes/trade.ts`
-- テスト: `src/services/trade.test.ts`、`src/services/hts_data.test.ts`、`src/services/cbp_cross.test.ts`。テストの入力は、実際の関税率表と判例の応答の抜粋です（`src/test_fixtures/usitc_export_excerpt.json`、`src/test_fixtures/cross_search_excerpt.json`）。
+- テスト: `src/services/trade.test.ts`、`src/services/hts_data.test.ts`、`src/services/cbp_cross.test.ts`、`src/services/cross_index.test.ts`。テストの入力は、実際の関税率表と判例の応答の抜粋です（`src/test_fixtures/usitc_export_excerpt.json`、`src/test_fixtures/cross_search_excerpt.json`）。
 - 評価: `eval/hts_predict_cases.json`、`scripts/eval-hts-predict.ts`
 
 [判断エンジンの一覧に戻る](README.md)

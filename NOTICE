@@ -1,0 +1,19 @@
+Sora
+Licensed under the terms in LICENSE.
+
+This product downloads a CBP ruling index (cross-rulings-index-*.jsonl.gz) from the
+Sora GitHub releases on first use of HTS prediction. The index contains:
+
+1. Data built from U.S. Customs and Border Protection (CBP) classification rulings,
+   which are works of the U.S. Government. Product names and descriptions were
+   rewritten from the ruling text; names of people and companies were left out or
+   removed where found.
+
+2. Data derived from "CROSS Rulings HTS Dataset for Tariff Classification"
+   by Flexify.AI Inc. (https://www.flexify.ai),
+   https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs,
+   licensed under the Apache License, Version 2.0
+   (https://www.apache.org/licenses/LICENSE-2.0).
+   Changes: only the product description in each question and the codes in the
+   first answer line are kept; names, numbers and codes were removed from the
+   description. These entries carry no ruling number and are used only as votes.
