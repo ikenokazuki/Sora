@@ -3,7 +3,6 @@
 // extractTermsWithBigrams + temporal intent detection.
 import { extractTermsWithBigrams } from '../extractor/hierarchical_bm25.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './lexicons/temporal.js';
-import { STOPWORDS_LIST } from './lexicons/stopwords.js';
 
 export interface QueryRequirements {
   entityTerms: string[];
@@ -11,8 +10,6 @@ export interface QueryRequirements {
   supportTerms: string[];
   hasDateReference: boolean;
 }
-
-const STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
 
 export const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST);
 
@@ -24,10 +21,10 @@ export function extractQueryRequirements(query: string): QueryRequirements {
   const normalized = query.toLowerCase().trim();
   if (!normalized) return empty;
   const hasDateReference = TEMPORAL_PATTERN.test(query);
-  const whitespaceWords = normalized.split(/[\s\u3000]+/).map((w) => w.trim()).filter((w) => w.length >= 2 && !STOPWORDS.has(w));
+  const whitespaceWords = normalized.split(/[\s\u3000]+/).map((w) => w.trim()).filter((w) => w.length >= 2);
   const extracted = extractTermsWithBigrams(query)
     .map((t) => t.toLowerCase())
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+    .filter((t) => t.length >= 2);
   const entityTerms = whitespaceWords.slice(0, 3);
   const entitySet = new Set(entityTerms);
   const intentTerms: string[] = [];

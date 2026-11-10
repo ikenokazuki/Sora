@@ -10,6 +10,8 @@ enrichment.ts and requirements.ts both build their sets from it; temporal.test.t
 ## 2. Triplicated stopwords (DONE, verified 2026-10-11)
 
 COMMON_STOPWORDS (enrichment.ts) and STOPWORDS (requirements.ts) both alias src/retrieval/lexicons/stopwords.ts.
+Update 2026-11-10: the shared list and both aliases are gone. On saved search results, dropping them left the
+rankings and highlights essentially unchanged, so the list was removed rather than maintained.
 ENTITY_STOPWORDS (answerability.ts) stays separate on purpose: it filters entity terms with single-character rules.
 
 ## 3. Dead RRF module (DONE, verified 2026-10-11)

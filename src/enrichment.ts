@@ -39,7 +39,6 @@ import type {
   EvidenceDiagnostics,
 } from './types.js';
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
-import { STOPWORDS_LIST } from './retrieval/lexicons/stopwords.js';
 
 import { estimateTokens } from './text_tokens.js';
 import { errorMessage } from './errors.js';
@@ -606,12 +605,12 @@ function isTableOrCode(body: string): boolean {
   return (body.includes('|') && body.includes('---')) || body.includes('```');
 }
 
-/** 取りこぼしを確かめる検索語: Segmenter の語（1 字の語も含む）。ひらがなだけの語・記号・不要語は除く */
+/** 取りこぼしを確かめる検索語: Segmenter の語（1 字の語も含む）。ひらがなだけの語と記号は除く */
 function coverageWords(query: string): string[] {
   const out = new Set<string>();
   for (const seg of new Intl.Segmenter('ja', { granularity: 'word' }).segment(query)) {
     const w = seg.segment.toLowerCase().trim();
-    if (!seg.isWordLike || !w || /^[\p{Script=Hiragana}ー]+$/u.test(w) || !/[\p{L}\p{N}]/u.test(w) || STOPWORDS_LIST.includes(w)) continue;
+    if (!seg.isWordLike || !w || /^[\p{Script=Hiragana}ー]+$/u.test(w) || !/[\p{L}\p{N}]/u.test(w)) continue;
     out.add(w);
   }
   return [...out];
@@ -845,11 +844,6 @@ export interface DeepEvidenceRerankOptions {
 }
 
 /**
- * 一般的な検索ストップワード（日本語・英語）
- */
-const COMMON_STOPWORDS: Set<string> = new Set(STOPWORDS_LIST);
-
-/**
  * 意図・属性を表すキーフレーズ（Intent Attribute Terms）
  * ユーザーが具体的な事実やメタデータを求めていることを示す属性語群
  */
@@ -869,7 +863,9 @@ const INTENT_ATTRIBUTE_TERMS: Set<string> = new Set(INTENT_ATTRIBUTE_TERMS_LIST)
  *
  * 【評価プロトコル v0.1 準拠の実装】
  * 1. 堅牢なターム分解: extractTermsWithBigrams により日本語無空白クエリでも正確にタームを抽出
- * 2. Intent Anchor 自動選定: 固定末尾語依存を廃止し、属性語辞書またはコーパス稀少語（低DF語）から意図語を同定
+ * 2. Intent Anchor: 固定末尾語依存を廃止し、属性語辞書の語から意図語を同定。辞書の語が無い問いでは置かない
+ *    （以前は候補群で出現の最も少ない語で代用していたが、保存済みの検索結果で比べると、代用をやめたほうが
+ *    1 位のページに答えがある割合が上がった）
  * 3. 有界な Rank Prior: (N-index) 依存を廃止し、alpha / sqrt(rank) による正規化事前確率を採用
  * 4. ハイライトのエビデンス: ハイライト存在基礎点と相対スケーリングによる頑健な証拠加算（Ablation対応）
  */
@@ -907,7 +903,7 @@ export function rerankByDeepEvidence<T extends {
     };
     // First whitespace token is the main entity (weight 3); later tokens
     // are support (1) unless they carry attribute (3) or date (2) intent.
-    const contentWords = whitespaceWords.filter((t) => t.length >= 2 && !COMMON_STOPWORDS.has(t));
+    const contentWords = whitespaceWords.filter((t) => t.length >= 2);
     contentWords.forEach((t, idx) => {
       termSet.add(t);
       let w = idx === 0 ? 3.0 : 1.0;
@@ -916,7 +912,7 @@ export function rerankByDeepEvidence<T extends {
       termWeights.set(t, w);
     });
     for (const t of extracted) {
-      if (t.length >= 2 && !COMMON_STOPWORDS.has(t) && !termSet.has(t)) {
+      if (t.length >= 2 && !termSet.has(t)) {
         termSet.add(t);
         // Generated bigrams/composites start low; attribute or date signals promote them.
         let w = 0.5;
@@ -931,8 +927,8 @@ export function rerankByDeepEvidence<T extends {
 
   if (queryTerms.length === 0) return items;
 
-  // 2. Intent Anchor（意図アンカー語）の自動同定 (第4.2項)
-  // 固定 lastWord を廃止し、属性語辞書合致語、または候補群中での出現頻度 (DF) が最も低い稀少語を選択
+  // 2. Intent Anchor（意図アンカー語）の同定 (第4.2項)
+  // 固定 lastWord を廃止し、属性語辞書合致語を選択（辞書の語が無ければ置かない）
   let intentAnchor: string | null = null;
 
   // 属性語辞書からクエリに含まれる最も具体的な属性語（最長一致）を探索
@@ -950,35 +946,7 @@ export function rerankByDeepEvidence<T extends {
   }
 
   // P2: Entity Anchor (2軸化)
-  let entityAnchor: string | null = null;
-  try {
-    const ws = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).filter((w) => w.length >= 2 && !COMMON_STOPWORDS.has(w));
-    if (ws.length > 0) entityAnchor = ws[0];
-  } catch { }
-
-  // 属性語がない場合、候補群中でのドキュメント頻度 df(t) が最も低い稀少語（P2: df=0除外）を選択
-  if (!intentAnchor && queryTerms.length >= 2) {
-    let minDf = Infinity;
-    let rarestTerm = queryTerms[0];
-    // クエリ全体そのものは除外して単語単位で探索
-    const candidateTerms = queryTerms.filter((t) => t.length < query.trim().length);
-    const searchTerms = candidateTerms.length > 0 ? candidateTerms : queryTerms;
-    let foundNonZero = false;
-    for (const term of searchTerms) {
-      let df = 0;
-      for (const item of items) {
-        const text = ((item.markdown || item.content || '') + ' ' + (item.title || '')).toLowerCase();
-        if (text.includes(term)) df++;
-      }
-      if (df === 0) continue;
-      foundNonZero = true;
-      if (df < minDf || (df === minDf && term.length > rarestTerm.length)) {
-        minDf = df;
-        rarestTerm = term;
-      }
-    }
-    intentAnchor = foundNonZero ? rarestTerm : null;
-  }
+  const entityAnchor = query.toLowerCase().trim().split(/[\s　]+/).map((w) => w.trim()).find((w) => w.length >= 2) ?? null;
 
   // 3. 最大ハイライトスコアの取得（相対校正スケーリング用: 第4.4項）
   let maxHighlightScore = 0;
