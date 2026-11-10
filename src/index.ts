@@ -29,9 +29,11 @@ import { socialRoutes } from './routes/social.js';
 import { lyricsRoutes } from './routes/lyrics.js';
 import { youtubeRoutes } from './routes/youtube.js';
 import { songRecognitionRoutes } from './routes/song_recognition.js';
+import { htsArchiveRoutes } from './routes/hts_archive.js';
 import { clientRoutes } from './routes/client.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 import { createRestOriginPolicy } from './security/rest_origin.js';
+import { isModuleActive } from './mcp/registry.js';
 export { formatError, mcpSessionManager };
 
 export const app = new Hono();
@@ -141,6 +143,7 @@ app.route('/', socialRoutes);
 app.route('/', lyricsRoutes);
 app.route('/', youtubeRoutes);
 app.route('/', songRecognitionRoutes);
+app.route('/', htsArchiveRoutes);
 app.route('/', clientRoutes);
 
 // ==========================================
@@ -208,5 +211,12 @@ if (import.meta.main) {
     void import('./services/address_preload.js')
       .then(({ startAddressPreload }) => startAddressPreload())
       .catch((error) => console.warn(`[Sora/Address] preload failed to start: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
+  // HTS の版の保存は、ENABLED_MODULES に hts-archive を挙げた運用者だけ。挙げなければ何も読み込まず、何も始めない。
+  if (isModuleActive('hts-archive')) {
+    void import('./services/hts_archive.js')
+      .then(({ startHtsArchive }) => startHtsArchive())
+      .catch((error) => console.warn(`[Sora/HtsArchive] failed to start: ${error instanceof Error ? error.message : String(error)}`));
   }
 }

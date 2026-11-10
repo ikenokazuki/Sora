@@ -4026,5 +4026,55 @@ export function generateOpenApiDocument() {
       },
     };
   }
+  // HTS の版の保存は ENABLED_MODULES に名前を挙げたときだけ公開する（1 日 1 回 USITC から全件を取る常駐の処理を伴うため）
+  if (isModuleActive('hts-archive')) {
+    const release = {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '保存した版の名前。ふつうは版の名前、同じ名前で中身が違えば取得の時刻（UTC）付き（例 2026HTSRev22-20261112T0412Z）' },
+        release: { type: 'string', description: '取得したときに USITC の版の一覧で current だった版の名前' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        date: { type: 'string', description: '版の一覧の date（MM/DD/YYYY）' },
+        fetchedAt: { type: 'string', format: 'date-time' },
+        sha256: { type: 'string', description: 'records をキーを並べ替え空白を入れない JSON にした SHA-256。同じなら中身が同じ' },
+        rowCount: { type: 'integer' },
+        bytes: { type: 'integer', description: '保存した gzip の大きさ' },
+      },
+    };
+    paths['/trade/hts/releases'] = {
+      get: {
+        summary: '保存した HTS の版の一覧 (新しい順。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        responses: {
+          '200': {
+            description: '保存した版と、最後に確かめた時刻・最後の失敗',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    checkedAt: { type: 'string', nullable: true },
+                    lastError: { type: 'string', nullable: true },
+                    releases: { type: 'array', items: release },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    paths['/trade/hts/releases/{id}'] = {
+      get: {
+        summary: '保存した HTS の版の全件 ({id, release, title, description, date, fetchedAt, records}。records は USITC の exportList の応答のまま。Accept-Encoding に gzip があれば gzip のまま返す。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9A-Za-z_-]{1,80}$' }, description: '一覧の id' }],
+        responses: {
+          '200': { description: '版の全件の JSON' },
+          '400': { description: 'id の形が違う' },
+          '404': { description: '保存されていない版、またはモジュールが無効' },
+        },
+      },
+    };
+  }
   return doc;
 }
