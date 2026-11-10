@@ -439,7 +439,8 @@ describe('GCC document (16 CFR 1110.11)', () => {
     expect(missingLine(partly.packageHtml)).toBe('Missing elements are marked below.');
     const allMissing = await generateGccCertificate({ allowDraft: true, items: [{ htsCode: '9403.50.90.80', productName: 'Wooden Dresser', identifier: 'DRS-1', targetAge: 'adult' }] });
     for (const key of ['certifier', 'recordCustodian', 'manufacture', 'testing', 'citations']) expect(allMissing.packageHtml).toContain(`[MISSING: ${key}]`);
-    expect(missingLine(allMissing.packageHtml)).toBe('Missing: material');
+    // 大人の品では鉛・フタル酸のための素材を聞かないので、印のほかに足りない項目は無い
+    expect(missingLine(allMissing.packageHtml)).toBe('Missing elements are marked below.');
     expect(missingLine((await generateGccCertificate({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, items: [HELMET] })).packageHtml)).toBeUndefined();
   });
 

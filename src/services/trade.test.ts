@@ -136,6 +136,16 @@ describe('HTS prediction and product compliance', () => {
       expect(err).toBeInstanceOf(TradeInputError);
       expect(err.message).toContain('英語');
       await expect(predictHtsCode({ productName: '   ' })).rejects.toBeInstanceOf(TradeInputError);
+      // 日本語が主の文の英字は、ブランド名や単位の断片（以前は "mAh USB" などで無人航空機・歯車の候補を返した）
+      const fragments = await predictHtsCode({
+        productName: 'ハンディファン ExampleBrand',
+        description: '首掛け・卓上・手持ちの3WAYで使える携帯扇風機です。容量 1000mAh、USB 充電、風量は3段階。',
+      }).catch((e) => e);
+      expect(fragments).toBeInstanceOf(TradeInputError);
+      expect(fragments.message).toContain('英語');
+      // 英語が主なら、日本語が混じっても照合する
+      const mixed = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug 陶器のマグカップ', material: 'ceramic' });
+      expect(mixed.detectedSubheading).toBe('6912.00');
     });
 
     it('still answers from the tariff text alone when the ruling database is unreachable', async () => {
@@ -148,11 +158,16 @@ describe('HTS prediction and product compliance', () => {
       try {
         const res = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic' });
         expect(res.evidence.crossStatus).toBe('unavailable');
-        expect(res.evidence.crossNote).toContain('503');
+        expect(res.evidence.crossNote).toContain('503: down'); // 拒否の理由（応答の本文）も残す
         expect(res.evidence.rulings).toEqual([]);
         expect(res.detectedSubheading).toBe('6912.00');
-        expect(res.bestMatch.confidence).not.toBe('high'); // 判例の裏付けが無いので high にはしない
+        expect(res.bestMatch.confidence).toBe('low'); // 判例の票が無い全文検索だけの推測は low（medium でも dev の的中が半分）
         expect(res.candidates[0].sources).toEqual(['hts-text']);
+        // 総合判定は推測のコードで先へ進まず、聞き返す（判例が無いことと、htsCode を渡せば進むことを伝える）
+        const compliance = await checkProductCompliance({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic', foodContact: true });
+        expect(compliance.overallStatus).toBe('needs_more_info');
+        expect(compliance.fda).toBeUndefined();
+        expect(compliance.clarifyingQuestions?.some((q) => q.includes('CROSS') && q.includes('htsCode'))).toBe(true);
       } finally {
         globalThis.fetch = fixtureFetch;
       }
@@ -560,6 +575,18 @@ describe('HTS prediction and product compliance', () => {
       it('cites infant sleep products as 16 CFR 1236 / 1218 / 1241', async () => {
         const res = await checkCpscCertificate({ htsCode: '9404.90.96.22', targetAge: 'child', material: 'polyester' });
         expect(res.applicableRegulations.map((r) => r.cfr)).toContain('16 CFR 1236 / 1218 / 1241');
+      });
+
+      it('cites the lighter standards 16 CFR 1210 / 1212 and does not ask an adult lighter’s material for lead or phthalates', async () => {
+        const adult = await checkCpscCertificate({ htsCode: '9613.10.00.00', targetAge: 'adult' });
+        expect(adult.certificateType).toBe('GCC');
+        expect(adult.eFilingRequired).toBe(true);
+        expect(adult.applicableRegulations.map((r) => r.cfr)).toContain('16 CFR 1210 / 16 CFR 1212');
+        expect(adult.missingInputs).toBeUndefined();
+        expect(adult.clarifyingQuestions).toBeUndefined();
+        // 年齢が分からないときは、子供向けなら要る素材を聞く
+        const unknownAge = await checkCpscCertificate({ htsCode: '9613.10.00.00', targetAge: 'unknown' });
+        expect(unknownAge.missingInputs).toEqual(['targetAge', 'material']);
       });
 
       it('carries the five codes the January 2026 list wraps onto a second line (M13)', () => {

@@ -62,7 +62,11 @@ async function fetchRulings(term: string): Promise<{ rulings: CrossRuling[]; tot
     headers: { 'User-Agent': 'Sora-Trade-Compliance-Fetcher/1.0', Accept: 'application/json' },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`CBP判例検索(CROSS)へのアクセスに失敗しました (HTTP ${res.status})`);
+  if (!res.ok) {
+    // 拒否の理由（例: 403 の "Security parameters are missing from this request context."）を記録に残す
+    const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
+    throw new Error(`CBP判例検索(CROSS)へのアクセスに失敗しました (HTTP ${res.status}${detail ? `: ${detail}` : ''})`);
+  }
   const body = (await res.json()) as { rulings?: RawRuling[]; totalHits?: number };
   const rulings: CrossRuling[] = [];
   for (const r of body.rulings ?? []) {
