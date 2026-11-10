@@ -151,8 +151,13 @@ describe('HTS prediction and product compliance', () => {
         expect(res.evidence.crossNote).toContain('503');
         expect(res.evidence.rulings).toEqual([]);
         expect(res.detectedSubheading).toBe('6912.00');
-        expect(res.bestMatch.confidence).not.toBe('high'); // 判例の裏付けが無いので high にはしない
+        expect(res.bestMatch.confidence).toBe('low'); // 判例の票が無い全文検索だけの推測は low（medium でも dev の的中が半分）
         expect(res.candidates[0].sources).toEqual(['hts-text']);
+        // 総合判定は推測のコードで先へ進まず、聞き返す（判例が無いことと、htsCode を渡せば進むことを伝える）
+        const compliance = await checkProductCompliance({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic', foodContact: true });
+        expect(compliance.overallStatus).toBe('needs_more_info');
+        expect(compliance.fda).toBeUndefined();
+        expect(compliance.clarifyingQuestions?.some((q) => q.includes('CROSS') && q.includes('htsCode'))).toBe(true);
       } finally {
         globalThis.fetch = fixtureFetch;
       }

@@ -38,7 +38,7 @@
    - HTS コードが表に完全一致すれば、一般関税率と、追加関税（Chapter 99）を通関士に確認する旨を足します。一致しなければ、`potential_action_required` にして、近いコードの確認を足します。
    - どれにも当たらなければ `likely_exempt` です。
 8. 電池の注意を 1 行足します。`batteryType: "button_coin"` なら 16 CFR 1263 の確認、`hasBattery: true` と `batteryType: "other"` なら、DOT/PHMSA の危険物表示の確認です。状態は変えません。
-9. `htsCode` を渡していて、推測（確度が `low` でない）の章が、渡されたコードの章（先頭 2 桁）と違えば、`【HTSコード乖離注意】` の警告を `actionPlan` の先頭と `impactExplanation` に足します。状態は変えません。
+9. `htsCode` を渡していて、推測（確度が `low` でない。判例を参照できないときは `low` なので比べない）の章が、渡されたコードの章（先頭 2 桁）と違えば、`【HTSコード乖離注意】` の警告を `actionPlan` の先頭と `impactExplanation` に足します。状態は変えません。
 10. 推測（`htsCode` が無いときだけ）・CPSC・FDA・HTS の実在確認が返した不足情報と質問を、重複を除いてまとめます。
 
 ## 決められないとき
@@ -62,7 +62,7 @@
 
 ## 限界
 
-- `htsCode` を省いたときの精度は、[hts-prediction.md](hts-prediction.md) の限界のとおりです。確度が `medium` のときも先へ進むので、`htsPrediction.bestMatch.confidence` を見て、`medium` は人が確かめてください。
+- `htsCode` を省いたときの精度は、[hts-prediction.md](hts-prediction.md) の限界のとおりです。確度が `low` のとき（判例を参照できないときを含む）は先へ進まず、`needs_more_info` で聞き返します。`medium` のときは先へ進むので、`htsPrediction.bestMatch.confidence` を見て、`medium` は人が確かめてください。
 - 追加関税（Section 301、アンチダンピング税、相殺関税など）は対象外です。`likely_exempt` は、何も規則が当たらないという意味ではありません。CPSC と FDA の判定がそれぞれの表の範囲で当たらない、という意味です。
 - 章の食い違いの警告は、章（先頭 2 桁）だけを比べます。同じ章の中の違いは検知しません。
 - 商品ページの題名には、宣伝文句やブランド名が入ります。推測が外れやすくなるので、英語の一般名を `productName` に渡すほうが確かです。

@@ -1612,8 +1612,11 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   const margin = ranked[0][1] - (ranked[1]?.[1] ?? 0);
   const textTop = textOrder[0];
   const crossTop = crossOrder[0];
+  // 判例の票が無い（照会できない・該当なし）ときは全文検索だけの推測で、medium でも dev の的中は 6/12 しかないため low
   const confidence: 'high' | 'medium' | 'low' =
-    textTop === best6 && crossTop === best6 && crossShare >= HIGH_CROSS_SHARE
+    totalVotes === 0
+      ? 'low'
+      : textTop === best6 && crossTop === best6 && crossShare >= HIGH_CROSS_SHARE
       ? 'high'
       : margin < LOW_MARGIN || (textTop !== best6 && crossTop !== best6)
         ? ageGenderApplied && (textTop === best6 || crossTop === best6)
@@ -2009,7 +2012,7 @@ export async function checkProductCompliance(
       // 商品ページが日本語のときは、該当なしではなく英訳が必要だと伝える
       const japanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(combinedText);
       const questions = htsPrediction?.clarifyingQuestions?.length
-        ? htsPrediction.clarifyingQuestions
+        ? [...htsPrediction.clarifyingQuestions]
         : !htsPrediction && japanese
           ? [
               '商品名・説明が日本語です。HTS と判例は英語なので、商品の一般名・素材・用途を英語にして productName と description に渡して再実行してください（宣伝文句やブランド名は除く。例: "PU Leather Coaster"）。',
@@ -2018,6 +2021,11 @@ export async function checkProductCompliance(
               predictionNote ??
                 '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
             ];
+      if (htsPrediction?.evidence.crossStatus === 'unavailable') {
+        questions.push(
+          'CBP の分類判例（CROSS）を参照できず、HTS の全文検索だけの推測のため確度が低くなっています。HTS コードが分かっていれば htsCode に渡すと、そのコードで判定を進めます。',
+        );
+      }
       return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
     }
     htsCode = htsPrediction.bestMatch.htsCode;
