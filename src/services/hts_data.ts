@@ -175,8 +175,8 @@ async function fetchExport(): Promise<HtsExportRow[]> {
   return rows;
 }
 
-/** 保存先のディレクトリ。テスト（DB が :memory:）で SORA_HTS_DIR が無いときは undefined（メモリ上に置く）。 */
-function htsDirectory(): string | undefined {
+/** 保存先のディレクトリ（判例の索引も同じ所に置く）。テスト（DB が :memory:）で SORA_HTS_DIR が無いときは undefined（メモリ上に置く）。 */
+export function htsDirectory(): string | undefined {
   if (process.env.SORA_HTS_DIR) return process.env.SORA_HTS_DIR;
   const dbPath = getDatabasePath();
   return dbPath === ':memory:' ? undefined : join(dirname(dbPath), 'hts');

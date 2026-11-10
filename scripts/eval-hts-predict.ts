@@ -7,6 +7,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { predictHtsCode } from '../src/services/trade.js';
+import { crossSource } from '../src/services/cbp_cross.js';
+import { ensureCrossIndex } from '../src/services/cross_index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -19,6 +21,7 @@ const noCross = args.includes('--no-cross');
 const limit = parseInt(arg('--limit') ?? '', 10) || Infinity;
 
 if (noCross) {
+  process.env.CROSS_SOURCE = 'api'; // 手元の索引も使わない（API への通信は下で止める）
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -37,6 +40,8 @@ interface Case {
 }
 const data = JSON.parse(readFileSync(join(here, '../eval/hts_predict_cases.json'), 'utf8')) as { cases: Case[] };
 const cases = data.cases.filter((c) => !split || c.split === split).slice(0, limit);
+// 手元の判例の索引（既定）は、最初の照会の前に用意を済ませる（準備中の間は判例なしで答えるため）
+if (!noCross && crossSource() === 'local') await ensureCrossIndex();
 
 const digits = (s: string) => s.replace(/\D/g, '');
 const matches = (code: string, expected: string[]) => expected.some((p) => digits(code).startsWith(p));
