@@ -82,7 +82,7 @@ const CPSC_PDF_EXCERPT =
 
 /**
  * CPSC_HTS_LIST の category 名をキーとした、CFR上の具体的な安全規格の対応表。
- * 実在確認済みの3カテゴリのみ収録。それ以外はCPSC_CATEGORY_FALLBACK_EXCERPTの
+ * 実在確認済みの4カテゴリのみ収録（eCFR の原文で範囲を確かめたもの）。それ以外はCPSC_CATEGORY_FALLBACK_EXCERPTの
  * 汎用フォールバックを使用する（存在しない規格を捏造しないため）。
  */
 const CPSC_CATEGORY_REGULATIONS: Record<string, CpscApplicableRegulation> = {
@@ -99,6 +99,14 @@ const CPSC_CATEGORY_REGULATIONS: Record<string, CpscApplicableRegulation> = {
     summary: '乳幼児用睡眠製品（16 CFR 1236）・バシネット（16 CFR 1218）・ベビーベッド用マットレス（16 CFR 1241）の安全基準。',
     excerpt: 'Safety Standard for Infant Sleep Products (16 CFR Part 1236), Bassinets and Cradles (16 CFR Part 1218), and Crib Mattresses (16 CFR Part 1241).',
     sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1236',
+  },
+  'Cigarette & Multipurpose Lighters': {
+    cfr: '16 CFR 1210 / 16 CFR 1212',
+    summary:
+      'ライターのチャイルドレジスタンス基準（5歳未満の子供が点火できない構造）。16 CFR 1210 は使い捨てのライター（詰め替えできないもの、またはブタン等の燃料で関税評価額か工場出荷価格が 2.75 ドル未満のもの。2026年11月の eCFR の額）とノベルティのライター、16 CFR 1212 は多目的ライター（点火棒など）が対象。詰め替え式で 2.75 ドル以上の、ノベルティでないたばこ用ライターは 16 CFR 1210 の対象外。',
+    excerpt:
+      '16 CFR 1210.1: "This standard applies to all disposable and novelty lighters, as defined in § 1210.2, that are manufactured or imported after July 12, 1994." 16 CFR 1212.1: "This standard applies to all multi-purpose lighters, as defined in § 1212.2, that are manufactured in the United States, or imported, on or after December 22, 2000."',
+    sourceUrl: 'https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1210',
   },
   Toys: {
     cfr: 'ASTM F963 / 16 CFR 1501',
@@ -569,9 +577,10 @@ export async function checkCpscCertificate(
       missingInputs.push('targetAge');
       clarifyingQuestions.push('この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？');
     }
-    if (!options.material) {
+    // 鉛・フタル酸エステルの規則は子供向けの品のものなので、大人向けでは素材を聞かない
+    if (!options.material && options.targetAge !== 'adult') {
       missingInputs.push('material');
-      clarifyingQuestions.push('製品の主要素材は何ですか？（例: プラスチック、金属、木材、布地など。鉛・フタル酸エステル等の安全基準適用確認に必要です）');
+      clarifyingQuestions.push('製品の主要素材は何ですか？（例: プラスチック、金属、木材、布地など。子供向けなら鉛・フタル酸エステル等の安全基準適用確認に必要です）');
     }
 
     const isChild = options.targetAge === 'child';

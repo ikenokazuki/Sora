@@ -577,6 +577,18 @@ describe('HTS prediction and product compliance', () => {
         expect(res.applicableRegulations.map((r) => r.cfr)).toContain('16 CFR 1236 / 1218 / 1241');
       });
 
+      it('cites the lighter standards 16 CFR 1210 / 1212 and does not ask an adult lighter’s material for lead or phthalates', async () => {
+        const adult = await checkCpscCertificate({ htsCode: '9613.10.00.00', targetAge: 'adult' });
+        expect(adult.certificateType).toBe('GCC');
+        expect(adult.eFilingRequired).toBe(true);
+        expect(adult.applicableRegulations.map((r) => r.cfr)).toContain('16 CFR 1210 / 16 CFR 1212');
+        expect(adult.missingInputs).toBeUndefined();
+        expect(adult.clarifyingQuestions).toBeUndefined();
+        // 年齢が分からないときは、子供向けなら要る素材を聞く
+        const unknownAge = await checkCpscCertificate({ htsCode: '9613.10.00.00', targetAge: 'unknown' });
+        expect(unknownAge.missingInputs).toEqual(['targetAge', 'material']);
+      });
+
       it('carries the five codes the January 2026 list wraps onto a second line (M13)', () => {
         expect(findCpscListCategory('6402.91.40.63')).toBe('Shoes');
         expect(findCpscListCategory('8506.80.00.10')).toBe('Button Cell & Coin Batteries');
