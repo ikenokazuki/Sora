@@ -8,7 +8,7 @@ import { getDatabasePath } from '../db.js';
 import { errorMessage } from '../errors.js';
 
 export const HTS_EXPORT_URL = 'https://hts.usitc.gov/reststop/exportList?from=0101&to=9999&format=JSON&styles=false';
-const SCHEMA_VERSION = '1';
+const SCHEMA_VERSION = '2'; // 2: 字下げの飛びと題の行で葉と祖先を誤っていたのを直した（保存済みの SQLite を作り直す）
 const REFRESH_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 古いデータで答えつつ、次の利用時に裏で更新する
 const REFRESH_RETRY_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 90_000;
@@ -102,18 +102,17 @@ export function buildHtsDatabase(rows: HtsExportRow[], db: Database, fetchedAt: 
     /** 率の持ち主（自分の行の率ならその行、継承なら祖先）のコード。コードの無い行は説明。 */
     rateOwner: string;
   }
-  const stack: Frame[] = [];
+  // 祖先は (生の字下げ, 行) で積む。親は「それより前の行のうち、生の字下げが自分より浅い一番近い行」。
+  // USITC の indent は中間を飛ばすことがある（2826.90.90 [2] の下の .10 と .90 がどちらも [4]。6109.10 の "T-shirts:" [3] の下の
+  // "Women's (339)" [5]）。飛んだ行どうしは兄弟で、深さ（indent 列）は祖先の数にする
+  const stack: { raw: number; frame: Frame; row: number }[] = [];
   const records: Omit<LineRecord, 'leaf'>[] = [];
-  const indents: number[] = [];
+  const parents: number[] = [];
 
   for (const [i, r] of rows.entries()) {
-    // USITC の indent は、同じ見出しの配下の小見出しの番号だけが変わった行（例: 6109.10 の "Underwear (352)" の下の
-    // "Women's (339)"、indent 3→5）で、中間の字下げを飛ばすことがある。深さは「直前の行より1つ深い」と読み替える
-    const rawIndent = Math.max(0, Number.parseInt(r.indent ?? '0', 10) || 0);
-    const prevIndent = indents.length > 0 ? indents[indents.length - 1] : -1;
-    const indent = rawIndent > prevIndent ? prevIndent + 1 : rawIndent;
-    stack.length = Math.min(stack.length, indent);
-    const parent = stack[stack.length - 1];
+    const raw = Math.max(0, Number.parseInt(r.indent ?? '0', 10) || 0);
+    while (stack.length > 0 && stack[stack.length - 1].raw >= raw) stack.pop();
+    const parent = stack[stack.length - 1]?.frame;
     const code = clean(r.htsno);
     const own = { general: clean(r.general), special: clean(r.special), other: clean(r.other) };
     const description = clean(r.description);
@@ -129,24 +128,30 @@ export function buildHtsDatabase(rows: HtsExportRow[], db: Database, fetchedAt: 
       id: i + 1,
       code,
       digits: code.replace(/\D/g, ''),
-      indent,
+      indent: stack.length,
       description,
-      path: stack.map((f) => f.description).join(PATH_SEP),
+      path: stack.map((s) => s.frame.description).join(PATH_SEP),
       general: frame.general,
       special: frame.special,
       other: frame.other,
       rate_from: own.general ? '' : frame.rateOwner,
     });
-    indents.push(indent);
-    stack[indent] = frame;
+    parents.push(stack[stack.length - 1]?.row ?? -1);
+    stack.push({ raw, frame, row: i });
+  }
+
+  // 葉: 下にコードのある行が無い行。コードの無い題の行（2716.00.00.00 の直後の "I. CHEMICAL ELEMENTS" など）が下に付いても葉のまま
+  const hasCodeBelow = new Array<boolean>(records.length).fill(false);
+  for (const [i, r] of records.entries()) {
+    if (!r.code) continue;
+    for (let p = parents[i]; p >= 0 && !hasCodeBelow[p]; p = parents[p]) hasCodeBelow[p] = true;
   }
 
   const insertLine = db.prepare('INSERT INTO lines VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   const insertFts = db.prepare('INSERT INTO lines_fts(rowid, description, path) VALUES (?,?,?)');
   db.transaction(() => {
     for (const [i, r] of records.entries()) {
-      // 葉: 次の行が自分と同じかそれより浅い（これより細かい行を持たない）
-      const leaf = i === records.length - 1 || indents[i + 1] <= indents[i] ? 1 : 0;
+      const leaf = hasCodeBelow[i] ? 0 : 1;
       insertLine.run(r.id, r.code, r.digits, r.indent, r.description, r.path, r.general, r.special, r.other, r.rate_from, leaf);
       // 検索の対象は、申告に使う行（葉で、コードがあり、98・99 章を除く）
       if (leaf === 1 && r.digits.length >= 8 && !/^9[89]/.test(r.digits)) {

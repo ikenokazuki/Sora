@@ -90,8 +90,8 @@ describe('HTS local data (hts_data)', () => {
   });
 
   describe('indent depth', () => {
-    // USITC の indent は、中間の字下げを飛ばすことがある（6109.10: "T-shirts:" [4] の下の "Women's (339)" [5]）。
-    // 深さは「直前の行より1つ深い」と読み替え、直前の行の配下にする。そうしないと、直前の無関係な行が祖先に入る
+    // USITC の indent は、中間の字下げを飛ばすことがある（6109.10: "T-shirts:" [3] の下の "Women's (339)" [5]）。
+    // 親は「それより前の行のうち、字下げが自分より浅い一番近い行」、深さは祖先の数にする
     function pathsOf(rows: { htsno: string; indent: string; description: string }[]): Record<string, string> {
       const db = new Database(':memory:');
       buildHtsDatabase(rows, db);
@@ -111,6 +111,32 @@ describe('HTS local data (hts_data)', () => {
       // [5] のままでは [3] の配下にならず、直前の兄弟行が祖先に入ってしまう
       expect(paths['6109.10.00.40']).toContain('T-shirts:');
       expect(paths['6109.10.00.40']).toMatch(/^\[2\]/);
+    });
+
+    it('reads rows after an indent jump as siblings, and keeps a line with only a codeless heading below it as a leaf', () => {
+      // 2026 年の export の抜粋。2826.90.90 [2] の下の .10 と .90 はどちらも [4]（字下げ 3 が飛んでいる）。
+      // 2716.00.00.00 の直後には、コードの無い題の行（第 28 類の部の見出し）が [1] で来る
+      const rows = [
+        { htsno: '2716.00.00.00', indent: '0', description: 'Electrical energy' },
+        { htsno: '', indent: '1', description: 'I. CHEMICAL ELEMENTS' },
+        { htsno: '2826', indent: '0', description: 'Fluorides; fluorosilicates, fluoroaluminates and other complex fluorine salts:' },
+        { htsno: '2826.90', indent: '1', description: 'Other:' },
+        { htsno: '2826.90.90', indent: '2', description: 'Other' },
+        { htsno: '2826.90.90.10', indent: '4', description: 'Lithium hexafluorophosphate' },
+        { htsno: '2826.90.90.90', indent: '4', description: 'Other' },
+      ];
+      const paths = pathsOf(rows);
+      expect(paths['2826.90.90.10']).toBe('[3] Fluorides; fluorosilicates, fluoroaluminates and other complex fluorine salts: > Other: > Other');
+      expect(paths['2826.90.90.90']).toBe(paths['2826.90.90.10']); // .10 の子ではなく兄弟
+      const db = new Database(':memory:');
+      buildHtsDatabase(rows, db);
+      const leafOf = (d: string) => (db.query('SELECT leaf FROM lines WHERE digits = ?').get(d) as { leaf: number }).leaf;
+      expect(leafOf('2826909010')).toBe(1);
+      expect(leafOf('2826909090')).toBe(1);
+      expect(leafOf('28269090')).toBe(0);
+      expect(leafOf('2716000000')).toBe(1); // 下にあるのはコードの無い題の行だけ
+      const searchable = db.query('SELECT l.digits FROM lines_fts JOIN lines l ON l.id = lines_fts.rowid').all() as { digits: string }[];
+      expect(searchable.map((r) => r.digits).sort()).toEqual(['2716000000', '2826909010', '2826909090']);
     });
 
     it('keeps the real export hierarchy for the cotton T-shirt rows', async () => {
