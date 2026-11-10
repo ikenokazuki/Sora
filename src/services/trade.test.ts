@@ -136,6 +136,16 @@ describe('HTS prediction and product compliance', () => {
       expect(err).toBeInstanceOf(TradeInputError);
       expect(err.message).toContain('英語');
       await expect(predictHtsCode({ productName: '   ' })).rejects.toBeInstanceOf(TradeInputError);
+      // 日本語が主の文の英字は、ブランド名や単位の断片（以前は "mAh USB" などで無人航空機・歯車の候補を返した）
+      const fragments = await predictHtsCode({
+        productName: 'ハンディファン ExampleBrand',
+        description: '首掛け・卓上・手持ちの3WAYで使える携帯扇風機です。容量 1000mAh、USB 充電、風量は3段階。',
+      }).catch((e) => e);
+      expect(fragments).toBeInstanceOf(TradeInputError);
+      expect(fragments.message).toContain('英語');
+      // 英語が主なら、日本語が混じっても照合する
+      const mixed = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug 陶器のマグカップ', material: 'ceramic' });
+      expect(mixed.detectedSubheading).toBe('6912.00');
     });
 
     it('still answers from the tariff text alone when the ruling database is unreachable', async () => {

@@ -762,7 +762,7 @@ export const GenerateGccCertificateRequestSchema = z.object({
 });
 
 export const PredictHtsCodeRequestSchema = z.object({
-  productName: z.string().min(1, 'productName は必須です').describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400）'),
+  productName: z.string().min(1, 'productName は必須です').describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語が主でないと 400）'),
   description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
   material: z.string().optional().describe('主な素材（例: wood, metal, ceramic, plastic, cotton, glass）。【推測値のでっち上げ厳禁】素材によりHTSコード・関税率が大きく分岐するため、不明な場合は省略すること。ツール側がユーザー確認質問を返却します'),
   productCategory: z.string().optional().describe('大まかな製品カテゴリ（例: toy, apparel, cosmetics, food, electronics, tableware）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること'),
@@ -3488,7 +3488,7 @@ export function generateOpenApiDocument() {
               },
             },
             '400': {
-              description: '入力の誤り: productName が空、英語の語が無い、または該当する品目が見つからない（INVALID_INPUT）',
+              description: '入力の誤り: productName が空、英語が主でない（日本語の字が英字より多い）、または該当する品目が見つからない（INVALID_INPUT）',
             },
           },
         },

@@ -64,7 +64,7 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 
 ## 決められないとき
 
-- 英語の語が無い入力と、該当する品目が見つからない入力は、REST では 400 `INVALID_INPUT`、MCP では `isError` の応答です。`/trade/compliance` は、`htsCode` を省いたときに限り、エラーにせず `needs_more_info` で英訳を促します。
+- 英語の語が無い入力、日本語の字が英字より多い入力（日本語の商品ページの英字はブランド名や mAh・USB などの単位の断片で、無関係な品目に引かれます）、該当する品目が見つからない入力は、REST では 400 `INVALID_INPUT`、MCP では `isError` の応答です。`/trade/compliance` は、`htsCode` を省いたときに限り、エラーにせず `needs_more_info` で英訳を促します。
 - 確度が `high` でないときは、`decisionPoints`（選択肢つきの質問）と `clarifyingQuestions` を返し、`missingInputs` に `classificationDetail` を入れます。利用者の答えとなる区分の語を `description` に足して、再実行します。
 
   ```json

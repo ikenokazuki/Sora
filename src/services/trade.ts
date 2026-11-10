@@ -1497,7 +1497,11 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     .filter(Boolean)
     .join(' ')
     .trim();
-  if (!hasEnglishWords(combinedText)) {
+  // 日本語が主の文（日本語の商品ページなど）では、英字はブランド名や単位（mAh・USB・cm）の断片で、照合すると無関係な品目に引かれる
+  // ponytail: 字数の比べ方は粗い。英訳した商品名に日本語の長い説明を添えた入力も止まる
+  const latinChars = combinedText.match(/[A-Za-z]/g)?.length ?? 0;
+  const japaneseChars = combinedText.match(/[\u3040-\u30ff\u3400-\u9fff]/g)?.length ?? 0;
+  if (!hasEnglishWords(combinedText) || japaneseChars > latinChars) {
     throw new TradeInputError(
       'HTSの照合は英語の品目説明で行います。productName と description を、商品の一般名の英語（例: "Stainless Steel Water Bottle"）にして再実行してください。',
     );
