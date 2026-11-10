@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type PredictHtsCodeInput = {
-  /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語の語が無いと 400） */
+  /** 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）。HTS と判例は英語なので、日本語の商品は英訳して渡すこと（英語が主でないと 400） */
   productName: string;
   /** 商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要） */
   description?: string;
@@ -191,7 +191,7 @@ export type PredictHtsCodeOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・即時推測厳禁】商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語の語が無いとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation } */
+/** 【必須・即時推測厳禁】商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation } */
 export function predictHtsCode(input: PredictHtsCodeInput): Promise<PredictHtsCodeOutput> {
   return callSora<PredictHtsCodeOutput>({ method: 'POST', path: '/trade/hts-predict' }, input);
 }
