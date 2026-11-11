@@ -13,7 +13,7 @@ jobs:
       # Bun と Chrome は版を固定する（新しい版が出るたびに CI の結果が変わらないように）。上げるときは手元で全件テストを通してから
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - id: chrome
         uses: browser-actions/setup-chrome@v2
         with:
