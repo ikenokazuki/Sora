@@ -1,3 +1,79 @@
+# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた（REST は変えていない）
+
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。REST（URL・リクエスト・レスポンス）と型付きクライアント（`client/`）の関数名は変えていません。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
+
+## 先に気づく変更（呼び出し側）
+
+- **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと `Tool <旧名> not found` のエラーです。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
+- **REST は変えていません。** URL・リクエスト・レスポンスは v4.2.0 と同じで、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
+- **`search_road_traffic` の応答の `source` が `"jartic"` から `"yahoo-roadway"` になりました**（REST・MCP とも。#70）。実際に読んでいるのは Yahoo! 道路交通情報（`roadway.yahoo.co.jp`）のページで、取得元を JARTIC と表示するのは実態に合わないためです。取得の動きとほかの欄は変えていません。`source` で分岐している呼び出し側は直してください。`search_tools` の検索語には `JARTIC` を残しています。
+- **MCP の応答の形が変わるツールがあります。**
+  - `lookup_address`・`lookup_hts`・`get_youtube` は、旧ツールの応答の先頭に `mode` 欄が付きます（`normalize` / `reverse` / `postal`、`verify` / `predict`、`video` / `channel`）。ほかの欄は旧ツールと同じです。
+  - `get_place_info`（旧 `get_elevation`）は `{ location, elevation, include }` の節に分けます。キャッシュの欄（`cached`・`cachedAt`・`ageSeconds`）は `elevation` の中に入ります。
+  - `get_disaster_info` は `{ include, warnings, earthquake }`、`check_regulations` は `{ agencies, cpsc, fda }` の形で、頼んだ節だけを返します。節の中身は旧ツールの応答のままです。2 つとも頼んで片方が失敗すると、その失敗のエラーだけを返します（もう片方の節は返しません）。
+- **`get_disaster_info` を引数なしで呼ぶと、最近の地震を返します。** 旧 `search_disaster_warnings` は、地域を省くと東京地方の警報を返していました。警報は `city` か `areaCode` が必要で、`include: ["warnings"]` で地域が無いと入力の誤りです。REST の `/disaster/warnings` は、今までどおり東京地方が既定です。
+- **`check_regulations` の判定に CPSC を含むとき（既定）は、`targetAge` が必要です。** 旧 `check_fda_regulated` のように `htsCode` だけで呼ぶと入力の誤りで、`targetAge` を足すか `agencies: ["fda"]` にするよう案内します（不明なら `targetAge: "unknown"`）。
+- **`lookup_hts` で HTS コードを照合するときは、商品の説明を `description` で渡します**（旧 `verify_hts_code` の `productDescription`）。REST の `/trade/hts-verify` は `productDescription` のままです。
+- **使い方に合わない引数は、入力の誤りになります。** まとめたツールで、選んだ使い方に無い引数を既定と違う値で渡すと（例: `scrape` の `urls` と `fullPage: false`、`search_media` の `type: "news"` と `page: 2`）、`isError` の「入力の誤り: …」に正しい使い方を添えて返します。旧ツールでは、宣言の無い引数は黙って捨てていました。既定と同じ値（LLM がスキーマの既定値をそのまま入れた場合）は通ります。
+- **X の個別投稿の取得が、モジュール `web` に移りました。** 旧 `fetch_x_post`（モジュール `yahoo`）は、`fetch_social_post`（`web`）の X の URL・`statusId` になりました。`ENABLED_MODULES` で `web` を外すと使えず、`yahoo` を外しても使えます。
+
+## ツールの統合
+
+- **初期公開の 13 ツールだけで、今まで遅延読み込みだった 3 つの機能も使えます。** `scrape` の `urls`（旧 `scrape_batch`）、`fetch_social_post` の X の投稿（旧 `fetch_x_post`）、`search_laws` の `lawId` による条文の全文（旧 `get_law_text`）です。`search_tools` で有効にする手間が要りません。
+- **Web: `scrape` は 1 ページなら `url`、複数（最大 20 件）なら `urls` です**（旧 `scrape_batch`）。`concurrency`・`webhookUrl` は `urls` のとき、`fullPage`・`keepDataImages` は `url` のときだけです。`crawl_site` は `listOnly: true` で URL の一覧だけを返します（旧 `map_site`。`limit`・`since`・`until`）。`fetch_social_post` は X の投稿の `url` か `statusId` も読みます（`commentLimit` は X 以外のときだけ）。
+- **Yahoo!: `search_media` は `type`（`image`・`video`・`news`）で選びます**（旧 `search_image`・`search_video`・`search_news`）。`page` は image・video のとき（news は `page: 1` だけ通る）、`transcripts`・`transcriptChars`・`updated`・`platform` は video のときだけです。`search_keywords` は `query` があればサジェスト（旧 `suggest_keywords`）、無ければ急上昇トレンド（旧 `search_trend`）です。`limit` の上限はサジェストが 20、トレンドが 50 で、サジェストで 20 を超えると入力の誤りです（旧 `suggest_keywords` はスキーマの検査の誤りでした）。
+- **住所: `lookup_address` は、渡した引数で引き方を選びます**（旧 `normalize_address`・`reverse_geocode`・`search_postal_code`）。`address` があれば正規化、`address` なしで `lat` と `lon` なら逆引き、`zipcode` だけなら郵便番号の住所の候補です。
+  - 住所から郵便番号（旧 `search_postal_code` の `address`）は、正規化の応答の `postalCodes` です。入力の写しの欄は `address` でなく `input` です。
+  - 郵便番号のデータの取得に失敗したときは、`postalCodes: []` と `incomplete`・`pending` で返します（旧 `search_postal_code` は `Postal code error`）。番地を国土交通省のデータで補ったときは、`dataset` に `mlit:…` が入ります。
+  - `lat` か `lon` の片方だけは、住所と一緒でも、サービスを呼ぶ前に入力の誤りです（旧 `normalize_address` は `Address normalize error`）。
+- **地点: `get_place_info` は、`include` で返す情報を選びます**（旧 `get_elevation`。今は `elevation` だけで、既定）。`address` と `lat`・`lon` を同時に渡すと入力の誤りです（旧 `get_elevation` は黙って住所を使っていました）。
+- **防災: `get_disaster_info` は、`include` で警報（`warnings`）と地震（`earthquake`）を選びます**（旧 `search_disaster_warnings`・`search_earthquake`）。既定は、`city` か `areaCode` があれば `["warnings"]`、無ければ `["earthquake"]` です。両方は `["warnings", "earthquake"]` で、2 つは順に取るので、所要時間は 2 つの合計になります。説明から P2P地震情報への切り替えの記述を外しました（検索語には残し、各件の `source` で分かります）。
+- **法令: `search_laws` は `keyword` で検索、`lawId` で条文の全文です**（旧 `get_law_text`）。`keyword` はスキーマで必須でなくなり、`keyword` と `lawId` のどちらか 1 つを渡します。どちらも無いときは、スキーマの検査の誤りでなく入力の誤りです。
+- **音楽: `search_music` は、曲名なら `attribute: "songTerm"`、アーティストの曲・アルバムなら `attribute: "artistTerm"` と `entity` で引きます**（旧 `search_song`・`search_artist`）。旧 `search_song` の失敗の文の題が `Artist search error` になっていた誤りは、`Music search error` に直りました。
+- **監視: `watch` は `action`（`register`・`check`・`list`・`delete`）で選びます**（旧 `watch_register`・`watch_check`・`watch_list`・`watch_delete`）。応答とエラーの文は旧ツールと同じです。
+- **貿易: `lookup_hts` は、`htsCode` があれば照合（`description` が必須）、省けば推測（`productName` が必須）です**（旧 `verify_hts_code`・`predict_hts_code`）。`check_regulations` は `agencies`（`cpsc`・`fda`、既定は両方）で判定する機関を選びます（旧 `check_cpsc_certificate`・`check_fda_regulated`）。
+- **国・地域: `get_country_context` は `part` で、保存したレポート（`report`、既定）・根拠（`evidence`）・差分（`updates`）を選びます**（旧 `get_country_context_evidence`・`get_country_context_updates`）。
+  - SDK が和集合の `outputSchema` を受けないので、`get_country_context` の `outputSchema` は `{ contextId, … }` だけの緩いものになりました（`SORA_TOOL_OUTPUT_SCHEMA=true` のときだけ見えます）。`structuredContent` の中身は同じです。
+  - 保存した中身が part ごとの形に合わないときは、プロトコルの `Output validation error` でなく、`isError` の `Country intelligence error: invalid <part> payload: …` を返します。
+- **YouTube: `get_youtube` は `url` の形で選びます**（旧 `get_youtube_transcript`・`get_youtube_channel`）。動画（watch・youtu.be・shorts・live・embed の URL か 11 文字の動画 ID）なら字幕と説明文、チャンネル（URL・`@ハンドル`・`UC…` の ID）なら最新の動画です。どちらでもない `url` は、`YouTube error` でなく、受ける形を挙げた入力の誤りです。
+
+## 入力の扱い（MCP）
+
+- **使わない任意の文字列の引数に `""` を入れても、指定なしとして扱います。** LLM は、使わない引数に空の文字列を入れることがあります。対象は `scrape` の `url`・`webhookUrl`（`urls: []` も）、`watch` の `url`・`webhookUrl`、`browser_action` の `url`、`search_laws` の `keyword`・`lawId`、`check_product_compliance` の `url`、`search_poi` の `query`・`center`・`bbox` です。今までは、多くがスキーマの検査（`Invalid URL`・`Too small`）で断っていました。
+- **`include: []`・`agencies: []` は、省いたのと同じ既定になります**（`get_disaster_info`・`get_place_info` の `include`、`check_regulations` の `agencies`）。使えない値は、`include に使えない値があります: ""` のように引用して示します。
+- **URL として読めない `url`・`webhookUrl` の誤りの文を変えました。** `scrape`・`watch`・`browser_action`・`check_product_compliance` で、zod の `Invalid URL` でなく「入力の誤り: url は URL として読めません（いま: "example.com/a"）。…」です。
+- **`search_poi` で検索語も場所も無い呼び出しは、検索せずに入力の誤りです**（「入力の誤り: query・center・bbox・lat と lon のどれかを指定してください。」）。今までは、サービスの検査の誤りの JSON（`POI search error: [ … ]`）でした。
+
+## REST の応答の文（欄は変えていない）
+
+旧いツール名を書いていた案内の文を、新しいツール名にしました。欄と形は同じです。
+
+- HTS・CPSC の判定の案内の文 3 か所（衣料の生地の質問の案内 2 か所と、HTS コードが見つからないときの質問）が、`check_regulations`・`lookup_hts の htsCode を省く` を挙げます（`/trade/cpsc-check`・`/trade/hts-verify`・`/trade/compliance` など）。
+- `POST /intelligence/country` の `limitations` の `response_sampled` の文が、詳細の取り方を `get_country_context (part: evidence)` と書きます。
+- `POST /search/video` で検索語が URL のときの `message` が、`YouTube なら get_youtube` と書きます。
+- YouTube のページを `scrape` で読んだときの注記（`/scrape`・`/scrape/batch`・`search_deep` など）が、続きの読み方を `get_youtube` と書きます。注記が 11 字短くなった分、長い字幕に使える字数が 11 字増えます。
+- OpenAPI の YouTube の抜粋（`reason`・`text`）の説明の文。
+
+## 型付きクライアント（`client/`）
+
+- **関数名は変えていません**（52 個）。まとめたツールの各ルートは、旧いツールの名前の関数のままです（例: `scrape` の `/scrape/batch` は `scrapeBatch`）。
+- **各関数の説明（JSDoc）は、その関数が呼ぶ REST のルートの OpenAPI の `summary`（あれば `description`）から作ります。** 今までは MCP のツールの説明を写していたので、まとめたツールでは REST の応答に無い `mode` などを書いていました。`catalog.json` の `description` は、`searchTools` で探せるように、ツールの説明のままです（1 ルート 1 行）。
+
+## v4.2.0 以降に main に入った、そのほかの変更
+
+- **HTS の版の保存（モジュール `hts-archive`、#68）。** 米国 USITC の HTS の全件の JSON を、版ごとに保存します。`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ動き（`all` には入らない）、挙げなければ起動時の処理・タイマー・取得はありません。MCP のツールは無く、REST だけです。
+  - 起動から 1 分後に 1 回、そのあと 24 時間ごとに `exportList` を取り、`records` の中身（キーを並べ替えた JSON の SHA-256）が最後に保存した版と違うときだけ、`releaseList` で `current` の版の名前を付けて保存します。同じ名前のまま中身が変わったときは、取得の時刻を付けた別の版にします。
+  - 保存先は `SORA_HTS_DIR` の `releases/` です（版ごとの gzip と `index.json`）。`GET /trade/hts/releases` で一覧、`GET /trade/hts/releases/:id` で 1 つの版を返します。無効のときは 404 `MODULE_DISABLED` です。
+- **住所の座標化で、番地まである住所は国土地理院を先に引きます**（`get_place_info`・`search_poi` の中心地名、#69）。該当が無いときや国土地理院が使えないときは Nominatim に進みます。地名・駅名・施設名は今までどおり Nominatim が先で、国土地理院は Nominatim が「該当なし」のときだけです（Nominatim が HTTP エラーのときは、国土地理院に落とさずエラーです）。Nominatim の間隔（1 秒に 1 回）は Nominatim への問い合わせにだけかけます。
+- **地震は、気象庁の公式データ（`bosai/quake/data`）を主にし、取れないときだけ P2P地震情報から返します**（`get_disaster_info` の `earthquake`・`/disaster/earthquake`、#69）。同じ地震の報は 1 件にまとめ、国外の遠地地震は含めません。`minIntensity` の絞り込みは一覧の全件（直近約 1 か月・約 160 件）が対象です。各件の `source`（`jma` / `p2pquake`）で取得元が分かり、両方失敗したら両方の理由を書いたエラーです。応答の形は同じです。
+- **ブラウザの TLS とヘッダを、静的取得（wreq-js の `chrome_149`）にそろえました（#73）。** 新しい版の Chromium が足す TLS の拡張（51764）・署名アルゴリズムの GREASE・Accept の `image/jxl` を `--disable-features` で止め、`sec-ch-ua` のブランドの一覧を Chromium の規則で作ります。Cloudflare 系のサイト（Indeed など）で 403 になっていたのが直りました（25 サイト × 3 周で 66/75 → 71/75）。
+- **コンテナのイメージを 1.51GB から 750MB にしました**（圧縮して 623MB → 345MB、#74）。最終のイメージに、Chromium が読む共有ライブラリと本番の依存だけを入れます。
+- **`SORA_BROWSER_LOW_MEMORY` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動できます**（既定は無効、#75）。`true`・`1`・`on`・`yes` で有効です。描画中のピークが、ページを 1 つずつ開いたとき約 18%、3 ページ同時で約 14% 下がります。待機中の常駐は変わらず、`navigator.deviceMemory` が 8 から 2 になります。
+- **REST の操作の一覧と定義を返す `GET /tools`・`GET /tools/<name>` を足しました（#76）。** `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで 52 件）で、`q`・`category` で絞れます。`GET /tools/<name>` は入力のスキーマ・path と query の引数・文書にあるエラー・別名や GET の形（`alternatives`）を返し、`?response=true` で応答のスキーマも付けます。
+  - OpenAPI の全 84 操作に `operationId`・`tags`・認証の宣言・共通のエラー応答（`default`）を付け、パスの変数の宣言が無かった操作に `parameters` を足しました。
+  - エラー応答の形を `{ error, code, status, retryable, details? }` にそろえました（検索の 12 経路・追跡の 3 経路、認証の 401（`UNAUTHORIZED`、`message` は残す）、本文が 10MB を超える 413（`PAYLOAD_TOO_LARGE`））。`error` の文と HTTP ステータスは変えていません。
+  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。`GET /client`・`GET /client/<path>` は残していて、OpenAPI では `deprecated` です。
+
 # Sora v4.2.0 — HTS の推測の判例を手元の索引から引くようにし、町名がローマ字の住所を読めるようにした
 
 米国税関（CBP）の判例検索の API が、2026 年 11 月からプログラムの要求を断るようになりました。そこで HTS の推測が票に使う分類判例を、公開データから作った手元の索引から引くようにしました。あわせて、HTS の推測と総合判定の誤りを直し、`normalize_address` が町名をローマ字で書いた住所を読めるようにしました。ツールの数と MCP の定義の大きさは v4.1.1 と同じです（`scripts/measure-context.ts` の値は、既定 22,269・全ツール 63,529・`instructions` 8,948）。
