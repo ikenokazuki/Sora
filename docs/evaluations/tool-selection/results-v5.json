@@ -1,0 +1,191 @@
+{
+  "_surface": {
+    "definition": "統合後（v5.0.0）。全ツールが見える状態の MCP tools/list（説明の冒頭を調整したあと）",
+    "tools": 33,
+    "chars": 57540
+  },
+  "claude-haiku-5-5": {
+    "surface": "new",
+    "tools": 33,
+    "prompts": 88,
+    "toolAccuracy": "87/88",
+    "argAccuracy": "38/39",
+    "byFamily": {
+      "fetch": "7/7",
+      "search": "13/14",
+      "life": "9/9",
+      "geo": "9/9",
+      "watch": "4/4",
+      "music": "3/3",
+      "gov": "3/3",
+      "trade": "6/6",
+      "intel": "4/4",
+      "youtube": "2/2",
+      "meta": "1/1",
+      "hard": "26/26"
+    },
+    "wrong": [
+      {
+        "id": "search-01",
+        "picked": "search_deep",
+        "accepted": [
+          "search_web"
+        ]
+      }
+    ],
+    "argProblems": [
+      {
+        "id": "music-02",
+        "failures": [
+          "entity: \"song\" (期待 \"musicArtist\")"
+        ]
+      }
+    ]
+  },
+  "claude-haiku-4-5": {
+    "surface": "new",
+    "tools": 33,
+    "prompts": 88,
+    "toolAccuracy": "87/88",
+    "argAccuracy": "39/39",
+    "byFamily": {
+      "fetch": "7/7",
+      "search": "13/14",
+      "life": "9/9",
+      "geo": "9/9",
+      "watch": "4/4",
+      "music": "3/3",
+      "gov": "3/3",
+      "trade": "6/6",
+      "intel": "4/4",
+      "youtube": "2/2",
+      "meta": "1/1",
+      "hard": "26/26"
+    },
+    "wrong": [
+      {
+        "id": "search-01",
+        "picked": "search_deep",
+        "accepted": [
+          "search_web"
+        ]
+      }
+    ],
+    "argProblems": []
+  },
+  "_first_run": {
+    "note": "説明の冒頭を調整する前の 1 回目（同じ 33 ツール）。lookup_address・get_place_info・search_media・check_regulations・lookup_hts の説明の冒頭に使い分けの手がかりを足して、2 回目を回した",
+    "chars": 57384,
+    "claude-haiku-5-5": {
+      "surface": "new",
+      "tools": 33,
+      "prompts": 88,
+      "toolAccuracy": "85/88",
+      "argAccuracy": "36/38",
+      "byFamily": {
+        "fetch": "7/7",
+        "search": "13/14",
+        "life": "9/9",
+        "geo": "9/9",
+        "watch": "4/4",
+        "music": "3/3",
+        "gov": "3/3",
+        "trade": "6/6",
+        "intel": "4/4",
+        "youtube": "2/2",
+        "meta": "1/1",
+        "hard": "24/26"
+      },
+      "wrong": [
+        {
+          "id": "search-01",
+          "picked": "search_deep",
+          "accepted": [
+            "search_web"
+          ]
+        },
+        {
+          "id": "hard-04",
+          "picked": "get_place_info",
+          "accepted": [
+            "lookup_address"
+          ]
+        },
+        {
+          "id": "hard-25",
+          "picked": "search_deep",
+          "accepted": [
+            "search_keywords",
+            "search_realtime"
+          ]
+        }
+      ],
+      "argProblems": [
+        {
+          "id": "life-06",
+          "failures": [
+            "city: undefined (期待 \"*\")"
+          ]
+        },
+        {
+          "id": "music-02",
+          "failures": [
+            "entity: \"album\" (期待 \"musicArtist\")"
+          ]
+        }
+      ]
+    },
+    "claude-haiku-4-5": {
+      "surface": "new",
+      "tools": 33,
+      "prompts": 88,
+      "toolAccuracy": "84/88",
+      "argAccuracy": "38/38",
+      "byFamily": {
+        "fetch": "7/7",
+        "search": "12/14",
+        "life": "9/9",
+        "geo": "9/9",
+        "watch": "4/4",
+        "music": "3/3",
+        "gov": "3/3",
+        "trade": "5/6",
+        "intel": "4/4",
+        "youtube": "2/2",
+        "meta": "1/1",
+        "hard": "25/26"
+      },
+      "wrong": [
+        {
+          "id": "search-01",
+          "picked": "search_deep",
+          "accepted": [
+            "search_web"
+          ]
+        },
+        {
+          "id": "search-10",
+          "picked": "search_deep",
+          "accepted": [
+            "search_media"
+          ]
+        },
+        {
+          "id": "trade-05",
+          "picked": "lookup_hts",
+          "accepted": [
+            "check_regulations"
+          ]
+        },
+        {
+          "id": "hard-09",
+          "picked": "scrape",
+          "accepted": [
+            "check_product_compliance"
+          ]
+        }
+      ],
+      "argProblems": []
+    }
+  }
+}

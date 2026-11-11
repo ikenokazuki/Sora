@@ -1,0 +1,106 @@
+{
+  "claude-haiku-5-5": {
+    "surface": "old",
+    "tools": 53,
+    "prompts": 88,
+    "toolAccuracy": "86/88",
+    "byFamily": {
+      "fetch": "7/7",
+      "search": "13/14",
+      "life": "9/9",
+      "geo": "9/9",
+      "watch": "4/4",
+      "music": "2/3",
+      "gov": "3/3",
+      "trade": "6/6",
+      "intel": "4/4",
+      "youtube": "2/2",
+      "meta": "1/1",
+      "hard": "26/26"
+    },
+    "wrong": [
+      {
+        "id": "search-01",
+        "picked": "search_deep",
+        "accepted": [
+          "search_web"
+        ]
+      },
+      {
+        "id": "music-03",
+        "picked": "search_artist",
+        "accepted": [
+          "search_music",
+          "search_song"
+        ]
+      }
+    ],
+    "picked": {
+      "search-01": "search_deep",
+      "music-03": "search_artist"
+    }
+  },
+  "claude-haiku-4-5": {
+    "surface": "old",
+    "tools": 53,
+    "prompts": 88,
+    "toolAccuracy": "84/88",
+    "byFamily": {
+      "fetch": "7/7",
+      "search": "13/14",
+      "life": "9/9",
+      "geo": "9/9",
+      "watch": "4/4",
+      "music": "3/3",
+      "gov": "3/3",
+      "trade": "5/6",
+      "intel": "4/4",
+      "youtube": "2/2",
+      "meta": "1/1",
+      "hard": "24/26"
+    },
+    "wrong": [
+      {
+        "id": "search-01",
+        "picked": "search_deep",
+        "accepted": [
+          "search_web"
+        ]
+      },
+      {
+        "id": "trade-01",
+        "picked": "predict_hts_code",
+        "accepted": [
+          "check_product_compliance"
+        ]
+      },
+      {
+        "id": "hard-09",
+        "picked": "scrape",
+        "accepted": [
+          "check_product_compliance"
+        ]
+      },
+      {
+        "id": "hard-26",
+        "picked": "verify_hts_code",
+        "accepted": [
+          "check_fda_regulated",
+          "check_cpsc_certificate",
+          "check_product_compliance"
+        ]
+      }
+    ],
+    "picked": {
+      "search-01": "search_deep",
+      "trade-01": "predict_hts_code",
+      "hard-09": "scrape",
+      "hard-26": "verify_hts_code"
+    }
+  },
+  "_surface": {
+    "definition": "統合前（v4.2.0 + #69）。全ツールが見える状態の MCP tools/list",
+    "tools": 53,
+    "chars": 64085
+  }
+}

@@ -70,4 +70,4 @@ print("\n\n".join(f"{x['title']}\n{x['url']}" for x in r["results"]))
 
 - 無効なモジュール（`ENABLED_MODULES`）の操作は、`GET /tools` に出ず、呼んでも 404 になる。
 - 調査の進め方（確認事項の分解、出典・日時の確認、取得失敗と 0 件の区別）は `sora-deep-research` に従う。このスキルは呼び出し方だけを扱う。
-- 型付き TypeScript クライアント（`GET /client`）は、この REST の直接呼び出しに置き換わった。当面は残るが、案内はやめており、v5.0.0 で廃止する予定。
+- 型付き TypeScript クライアントを配っていた `GET /client` は、v5.0.0 で廃止した。この REST の直接呼び出しを使う。

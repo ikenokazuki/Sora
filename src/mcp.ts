@@ -127,7 +127,7 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
-/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（53 ツールの定義を持つため） */
+/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（ツールの定義を持つため。53 ツールだった v4 の見積もり） */
 export const DEFAULT_MAX_MCP_SESSIONS = 100;
 /** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
 export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
@@ -302,7 +302,7 @@ export class McpSessionManager {
 
 /**
  * tools/list の1ツールを整形する。inputSchema は Gemini 互換化、outputSchema は既定で除外。
- * outputSchema は国別インテリジェンス2ツールだけで約160KBあり、ホストがモデルへ丸ごと渡すと
+ * outputSchema は国別インテリジェンス（research_country_context）だけで約74KBあり、ホストがモデルへ丸ごと渡すと
  * プロンプト長とレイテンシを押し上げる。tools/call 側の structuredContent 検証は影響を受けない。
  * 旧挙動が必要なクライアント向けに SORA_TOOL_OUTPUT_SCHEMA=true で復活できる。
  */

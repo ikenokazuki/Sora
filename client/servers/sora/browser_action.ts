@@ -90,7 +90,7 @@ export type BrowserActionOutput = {
   source: "browser";
 };
 
-/** 【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。返却: { success, url, sessionId?, markdown?, screenshot?, html?, actionOutputs?: [{ step, type, result?, error? }], error? } */
+/** ステートレス / ステートフル ブラウザ自動操作 */
 export function browserAction(input: BrowserActionInput): Promise<BrowserActionOutput> {
   return callSora<BrowserActionOutput>({ method: 'POST', path: '/browser/action' }, input);
 }

@@ -9,8 +9,10 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '4.2.0';
+export const SORA_VERSION = '5.0.0';
 export const DEFAULT_MAX_CHARS = 30_000;
+/** 一括スクレイプ（REST の /scrape/batch と、MCP の scrape の urls）の、1 ページあたりの maxChars の上限 */
+export const SCRAPE_BATCH_MAX_CHARS = 50_000;
 /** ハイライトを選ぶ全文（maxChars で切る前の本文）の上限。docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 4 */
 export const HIGHLIGHT_SOURCE_MAX_CHARS = 200_000;
 
@@ -302,22 +304,22 @@ export type IntegratedSearchResponseMode = z.infer<
   typeof IntegratedSearchResponseModeSchema
 >;
 
-/** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
+/** scrape・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す').meta({ default: 'full' });
 
-/** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
+/** scrape・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
 
-/** scrape・scrape_batch 共通の mode */
+/** scrape（url・urls）共通の mode */
 export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ)').meta({ default: 'auto' });
 
-/** scrape・scrape_batch 共通の headers */
+/** scrape（url・urls）共通の headers */
 export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない');
 
-/** scrape・scrape_batch 共通の maskPii */
+/** scrape（url・urls）共通の maskPii */
 export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false });
 
-/** scrape・scrape_batch・crawl_site・search_deep 共通の annotateTemporal */
+/** scrape・crawl_site・search_deep 共通の annotateTemporal */
 export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false)').meta({ default: false });
 
 export const ScrapeRequestSchema = z.object({
@@ -350,7 +352,7 @@ export const ScrapeRequestSchema = z.object({
 export const SCRAPE_BATCH_INPUT_SHAPE = {
     urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
     concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
-    maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+    maxChars: z.number().int().min(1).max(SCRAPE_BATCH_MAX_CHARS).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
     mode: SCRAPE_MODE_FIELD,
     formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
     headers: SCRAPE_HEADERS_FIELD,
@@ -437,7 +439,7 @@ export const CrawlRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
-/** map_site・REST の /map 共通の since / until */
+/** crawl_site の listOnly・REST の /map 共通の since / until */
 export const MAP_SINCE_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以降の URL に絞る (例: "2026-08-01", "2026-01-01T00:00:00Z")。lastmod の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない';
 export const MAP_UNTIL_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以前の URL に絞る。lastmod の無い URL は常に残り、リンクをたどる切り替えのときは効かない';
 
@@ -1492,16 +1494,16 @@ export const ImageSearchResponseSchema = z.object({
   items: z.array(ImageSearchItemSchema).describe('画像検索結果一覧'),
 });
 
-/** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_video の transcripts、search_deep の videos）。 */
+/** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_media の type: video の transcripts、search_deep の videos）。 */
 export const YoutubeExcerptSchema = z.object({
   status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
-  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画)'),
+  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube の動画と同じ。"video-unavailable" は再生できない動画)'),
   message: z.string().optional().describe('status が ok 以外のときの説明 (話の中身を推測で補わないよう求める)'),
   source: z.enum(['manual', 'auto']).optional().describe('字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
   language: z.string().optional().describe('字幕の言語コード'),
   note: z.string().optional().describe('自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある)'),
   excerpt: z.enum(['relevant', 'head']).optional().describe('"relevant"(検索語を含む段落), "head"(検索語を含む段落が無いので先頭から)'),
-  text: z.string().optional().describe('選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube_transcript で読む'),
+  text: z.string().optional().describe('選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube で読む'),
   chars: z.number().optional().describe('text の文字数'),
   totalChars: z.number().optional().describe('動画全体の字幕の文字数'),
 });
@@ -1912,7 +1914,7 @@ export const SongRecognitionResultSchema = z.object({
   found: z.boolean().describe('曲を特定できたか'),
   reason: z.enum(['no-match', 'not-audio', 'too-short', 'too-large', 'download-failed']).optional().describe('found が false の理由: "no-match"(Shazam が特定できない), "not-audio"(音声・動画として読めない。ページの URL など), "too-short"(3 秒未満・無音), "too-large"(URL のファイルが 20 MB 超), "download-failed"(URL を読めない)'),
   message: z.string().optional().describe('found が false のとき、または当たりが確かでない（match.uncertain）ときの説明と次の手'),
-  itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_song の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
+  itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_music の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
   itunesMatch: z.enum(['apple-id', 'title-artist']).nullable().describe('iTunes の曲の見つけ方: "apple-id"(Shazam の Apple の曲 ID), "title-artist"(曲名とアーティストの一致)。見つからなければ null'),
   shazam: ShazamTrackSchema.optional().describe('Shazam が特定した曲'),
   match: z.object({
@@ -2041,7 +2043,7 @@ export const WatchTargetRecordSchema = z.object({
   last_hash: z.string().nullable().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
   last_content: z.string().nullable().optional().describe('直前チェック時の本文スニペット'),
   webhook_url: z.string().nullable().optional().describe('差分検知通知先 Webhook URL'),
-  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる'),
+  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch の check（REST は POST /watch/check）を呼んだときに前回と比べる'),
   last_checked_at: z.number().nullable().optional().describe('最終チェック日時 (Unixミリ秒)'),
   created_at: z.number().describe('ターゲット登録日時 (Unixミリ秒)'),
 });
@@ -3178,26 +3180,6 @@ export function generateOpenApiDocument() {
               },
             },
           },
-        },
-      },
-      '/client': {
-        get: {
-          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済み TypeScript クライアントのファイル一覧 (manifest.json)',
-          deprecated: true,
-          responses: {
-            '200': {
-              description: '配布するファイルの相対パス一覧',
-              content: { 'application/json': { schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } } },
-            },
-          },
-        },
-      },
-      '/client/{path}': {
-        get: {
-          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
-          deprecated: true,
-          parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'manifest.json に載った相対パス (例: servers/sora/search_web.ts)' }],
-          responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)', content: { 'text/plain': { schema: { type: 'string' } } } } },
         },
       },
       '/tools': {

@@ -35,24 +35,23 @@ const post = (path: string, body: unknown) =>
 
 // 消した引数: ここに無い引数は MCP のスキーマに出ない
 const expectedProps: Record<string, string[]> = {
-  check_cpsc_certificate: ['htsCode', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
-  check_fda_regulated: ['htsCode', 'foodContact'],
+  check_regulations: ['htsCode', 'agencies', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact'],
   check_product_compliance: ['url', 'productName', 'description', 'htsCode', 'targetAge', 'material', 'productCategory', 'foodContact', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
-  verify_hts_code: ['htsCode', 'productDescription'],
+  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'],
   track_package: ['trackingNumber', 'carrier', 'preferredCarriers', 'noCache'],
-  watch_register: ['url', 'title', 'selector', 'webhookUrl'],
+  watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
 };
 
 describe('貿易・荷物・監視の MCP の引数', () => {
-  test('消した引数はスキーマに無い。verify_hts_code の productDescription は必須のまま', async () => {
+  test('消した引数はスキーマに無い。check_regulations の htsCode は必須のまま（lookup_hts の description の要否は htsCode の有無で、ハンドラが確かめる）', async () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();
       for (const [name, keys] of Object.entries(expectedProps)) {
         const schema = tools.find((t) => t.name === name)?.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
         expect(Object.keys(schema.properties ?? {}).sort(), name).toEqual([...keys].sort());
       }
-      const verify = tools.find((t) => t.name === 'verify_hts_code')?.inputSchema as { required?: string[] };
-      expect(verify.required).toContain('productDescription');
+      const regulations = tools.find((t) => t.name === 'check_regulations')?.inputSchema as { required?: string[] };
+      expect(regulations.required).toEqual(['htsCode']);
     });
   });
 
@@ -64,10 +63,9 @@ describe('貿易・荷物・監視の MCP の引数', () => {
     restore.push(() => cpsc.mockRestore(), () => fda.mockRestore(), () => track.mockRestore(), () => reg.mockRestore());
     await withClient(async (client) => {
       const calls: Array<[string, Record<string, unknown>]> = [
-        ['check_cpsc_certificate', { htsCode: '9503.00.0073', targetAge: 'child', productCategory: 'toy', description: 'x' }],
-        ['check_fda_regulated', { htsCode: '3004.90.0000', productDescription: 'x' }],
+        ['check_regulations', { htsCode: '9503.00.0073', targetAge: 'child', productCategory: 'toy', description: 'x', productDescription: 'x' }],
         ['track_package', { trackingNumber: '123456789012', originCountry: 'JP', destinationCountry: 'US' }],
-        ['watch_register', { url: 'https://example.com/', intervalSeconds: 60 }],
+        ['watch', { action: 'register', url: 'https://example.com/', intervalSeconds: 60 }],
       ];
       for (const [name, args] of calls) {
         const res = await client.callTool({ name, arguments: args });

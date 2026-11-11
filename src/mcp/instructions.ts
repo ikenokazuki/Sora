@@ -53,9 +53,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       lines.push(
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
-        '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
-        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). For X posts use `search_realtime` / `fetch_x_post`.',
-        '- **`map_site` / `crawl_site`**: Same-site URL listing / multi-page traversal for documentation or full-site knowledge collection.',
+        '- **`scrape`**: Known URL content extraction (`url`, or up to 20 `urls` in parallel) for deep reading of specific pages/documents.',
+        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). `fetch_social_post` also reads a known X post; search X with `search_realtime`.',
+        '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection (`listOnly: true` for the URL list only).',
       );
     }
     if (hasBrowser) {
@@ -67,7 +67,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       lines.push('- **`inspect_image`**: Image input for a flyer, timetable or table only when the answer needs its content.');
     }
     if (hasWatch) {
-      lines.push('- **`watch_register` / `watch_check` / `watch_list` / `watch_delete`**: Page change monitoring (ticket results, restocks, notices).');
+      lines.push('- **`watch`**: Page change monitoring (ticket results, restocks, notices).');
     }
   }
 
@@ -76,12 +76,12 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const tier1Directives: string[] = [];
   if (hasTrade) {
     tier1Directives.push(
-      "1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], predict_hts_code, check_cpsc_certificate, check_fda_regulated, verify_hts_code, generate_gcc_certificate).\n   - CRITICAL HTS RULE: To classify a product, call 'check_product_compliance' with 'htsCode' OMITTED; Sora finds the 10-digit code from the official HTS and CBP rulings. NEVER supply a guessed 'htsCode' (only one the user gave). Pass productName/description as a plain English generic name (translate Japanese; no brand or sales copy): the HTS and rulings are English.",
+      "1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], lookup_hts, check_regulations, generate_gcc_certificate).\n   - CRITICAL HTS RULE: To classify a product, call 'check_product_compliance' with 'htsCode' OMITTED; Sora finds the 10-digit code from the official HTS and CBP rulings. NEVER supply a guessed 'htsCode' (only one the user gave). Pass productName/description as a plain English generic name (translate Japanese; no brand or sales copy): the HTS and rulings are English.",
     );
   }
   if (hasGov) {
     tier1Directives.push(
-      "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).",
+      "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE] by keyword or lawId, search_diet_minutes).",
     );
   }
   if (hasLife) {
@@ -89,27 +89,27 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): Use 'track_package'. Discovery keywords: '荷物追跡', 'track_package'. Follow section 2 only when its definition is missing.",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): Use 'track_package'. Discovery keywords: '荷物追跡'. Follow section 2 only when its definition is missing.",
     );
   }
   if (hasDisaster) {
     tier1Directives.push(
-      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, JMA earthquake feed, road traffic, GSI elevation, addresses): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, JMA earthquake feed, road traffic, GSI elevation, addresses): Use 'disaster' tools (get_disaster_info [CORE], search_road_traffic, get_place_info, search_poi, lookup_address).",
     );
   }
   if (hasYahoo) {
     tier1Directives.push(
-      "6. Real-time Social, News & Q&A (X/Twitter realtime posts, Yahoo! News, trending ranking, Yahoo! Chiebukuro, image/video search): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], fetch_x_post, search_news, search_trend, suggest_keywords, search_image, search_video).",
+      "6. Real-time Social, News & Q&A (X/Twitter realtime posts, Yahoo! News, trending ranking, Yahoo! Chiebukuro, image/video search): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_media, search_keywords).",
     );
   }
   if (hasMusic) {
     tier1Directives.push(
-      "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
+      "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_music).",
     );
   }
   if (hasIntel) {
     tier1Directives.push(
-      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report by its contextId with get_country_context, get_country_context_evidence, get_country_context_updates. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report, its evidence or its updates by contextId with get_country_context (part). Discovery keywords: '国地域'. Follow section 2 only when its definition is missing.",
     );
   }
 
@@ -121,9 +121,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
 
   if (hasYoutube) {
     // 動画を探すとき・調べものでは、検索の側の指定（既定は 0）を使うよう、有効なモジュールのぶんだけ案内する
-    const viaSearch = [hasYahoo && 'to find videos use search_video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
+    const viaSearch = [hasYahoo && 'to find videos use search_media type:video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
     tier1Directives.push(
-      `10. YouTube Videos (what a video says, summaries, quotes): get_youtube_transcript with the URL; never guess from the title. A channel's latest videos: get_youtube_channel (URL, @handle or UC id), then get_youtube_transcript with a returned videoId.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
+      `10. YouTube Videos (what a video says, summaries, quotes): get_youtube with the URL; never guess from the title. A channel's latest videos: get_youtube with its URL, @handle or UC id, then with a returned videoId.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
     );
   }
 
@@ -166,7 +166,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   lines.push(
     '',
     '## 5. Interactive Clarification Flow',
-    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters Present the returned questions and impact explanation to the user.",
+    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters; present the returned questions and impact explanation to the user.",
   );
 
   return lines.join('\n');

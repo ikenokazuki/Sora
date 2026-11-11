@@ -10,10 +10,10 @@
 
 ## 使うツール
 
-- MCP: `search_postal_code`
+- MCP: `lookup_address` に `zipcode` だけを指定する（応答の `mode` は `postal`）。住所から郵便番号は、`address` を指定した[住所の正規化](address-normalization.md)の応答の `postalCodes` です（下の「住所から郵便番号（逆引き）」と同じ処理で、同じ値）。
 - REST: `POST /geo/postal-code`、`GET /geo/postal-code`
 
-引数は `zipcode`（郵便番号）と `address`（住所、300 文字まで）のどちらか一方です。両方、またはどちらも指定しないと入力の誤りです。
+REST の引数は `zipcode`（郵便番号）と `address`（住所、300 文字まで）のどちらか一方です。両方、またはどちらも指定しないと入力の誤りです。
 
 ## 手元のデータと外への問い合わせ
 

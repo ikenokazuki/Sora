@@ -56,16 +56,16 @@ describe('intel mcp details', () => {
       const skill = await client.readResource({ uri: 'sora-skill://sora-deep-research' });
       const skillText = (skill.contents[0] as any)?.text ?? '';
       expect(skillText).toContain('sora-deep-research');
-      const page = (await client.callTool({ name: 'get_country_context_evidence', arguments: { contextId, limit: 10 } })) as unknown as { structuredContent: { items: unknown[]; totalStored: number } };
+      const page = (await client.callTool({ name: 'get_country_context', arguments: { contextId, part: 'evidence', limit: 10 } })) as unknown as { structuredContent: { items: unknown[]; totalStored: number } };
       expect(page.structuredContent.totalStored).toBe(1);
       expect(page.structuredContent.items).toHaveLength(1);
       const evidenceId = (page.structuredContent.items[0] as { evidenceId: string }).evidenceId;
-      const byIds = (await client.callTool({ name: 'get_country_context_evidence', arguments: { contextId, evidenceIds: [evidenceId, 'evd_bogus'] } })) as unknown as { structuredContent: { items: unknown[]; missingIds?: string[] } };
+      const byIds = (await client.callTool({ name: 'get_country_context', arguments: { contextId, part: 'evidence', evidenceIds: [evidenceId, 'evd_bogus'] } })) as unknown as { structuredContent: { items: unknown[]; missingIds?: string[] } };
       expect(byIds.structuredContent.items).toHaveLength(1);
       expect(byIds.structuredContent.missingIds).toEqual(['evd_bogus']);
       const snapshot = (await client.callTool({ name: 'get_country_context', arguments: { contextId } })) as unknown as { structuredContent: { contextId: string } };
       expect(snapshot.structuredContent.contextId).toBe(contextId);
-      const updates = (await client.callTool({ name: 'get_country_context_updates', arguments: { contextId } })) as unknown as { structuredContent: { changes: unknown[] } };
+      const updates = (await client.callTool({ name: 'get_country_context', arguments: { contextId, part: 'updates' } })) as unknown as { structuredContent: { changes: unknown[] } };
       expect(updates.structuredContent.changes).toEqual([]);
     } finally {
       await client.close();

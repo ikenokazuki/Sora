@@ -7,7 +7,7 @@ import * as browserStealth from './browser_stealth.js';
 import * as scraper from './scraper.js';
 import { crawlSiteUrl, mapSiteUrl } from './scraper.js';
 
-// map_site の limit と日付の順、crawl_site の整形、/crawl・/crawl/stream の検査と webhook、scrape_batch の webhookUrl（手元のサーバーだけ。外へは出ない）
+// crawl_site の listOnly（mapSiteUrl・/map）の limit と日付の順、crawl_site の整形、/crawl・/crawl/stream の検査と webhook、scrape の urls（scrapeBatchUrls・/scrape/batch）の webhookUrl（手元のサーバーだけ。外へは出ない）
 
 let prevAllow: string | undefined;
 beforeAll(() => {
@@ -81,7 +81,7 @@ function startReceiver() {
 const post = (path: string, payload: unknown) =>
   app.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
 
-describe('map_site: 日付で絞ってから件数で切る', () => {
+describe('crawl_site の listOnly（mapSiteUrl）: 日付で絞ってから件数で切る', () => {
   test('limit 2 と since を一緒に指定しても、新しい 2 件が残る', async () => {
     const { server, base } = startSite({ sitemap: true });
     try {
@@ -126,6 +126,25 @@ describe('map_site: 日付で絞ってから件数で切る', () => {
     }
   });
 
+  test('MCP の crawl_site の listOnly: true も同じ（応答は { url, links, count, source }）', async () => {
+    const { server, base } = startSite({ sitemap: true });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const mcp = createMcpServer({ deferTools: false });
+    const client = new Client({ name: 'crawl-map-params', version: '1.0.0' });
+    await mcp.connect(st);
+    await client.connect(ct);
+    try {
+      const out: any = await client.callTool({ name: 'crawl_site', arguments: { url: base + '/', listOnly: true, limit: 2, since: '2026-05-01' } });
+      expect(out.isError).toBeFalsy();
+      const json = JSON.parse(out.content[0].text);
+      expect(json).toMatchObject({ url: base + '/', links: [`${base}/new1`, `${base}/new2`], count: 2, source: 'sitemap' });
+    } finally {
+      await client.close();
+      await mcp.close();
+      server.stop(true);
+    }
+  });
+
   test('キャッシュ: 古い版の結果（件数で先に切った 0 件）を、新しい版が引き継がない', async () => {
     const { server, base } = startSite({ sitemap: true });
     try {
@@ -140,7 +159,7 @@ describe('map_site: 日付で絞ってから件数で切る', () => {
   });
 });
 
-describe('map_site: サイトマップの読み方', () => {
+describe('crawl_site の listOnly（mapSiteUrl）: サイトマップの読み方', () => {
   const xml = (body: string) => new Response(`<?xml version="1.0"?>${body}`, { headers: { 'content-type': 'application/xml' } });
   const urlset = (items: string) => `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${items}</urlset>`;
 
@@ -445,7 +464,7 @@ describe('webhook', () => {
   });
 });
 
-describe('scrape_batch: webhook の中身は応答と同じ整形後の結果', () => {
+describe('scrape の urls（/scrape/batch）: webhook の中身は応答と同じ整形後の結果', () => {
   test('REST の /scrape/batch: 1 回だけ届き、data は応答と同じ（内部の項目は付かない）', async () => {
     const { server, base } = startSite();
     const receiver = startReceiver();
@@ -484,7 +503,7 @@ describe('scrape_batch: webhook の中身は応答と同じ整形後の結果', 
     }
   });
 
-  test('MCP の scrape_batch も同じ（1 回だけ、応答と同じ整形後）', async () => {
+  test('MCP の scrape の urls も同じ（1 回だけ、応答と同じ整形後）', async () => {
     const { server, base } = startSite();
     const receiver = startReceiver();
     const [ct, st] = InMemoryTransport.createLinkedPair();
@@ -493,7 +512,7 @@ describe('scrape_batch: webhook の中身は応答と同じ整形後の結果', 
     await mcp.connect(st);
     await client.connect(ct);
     try {
-      const out: any = await client.callTool({ name: 'scrape_batch', arguments: { urls: [base + '/a'], webhookUrl: receiver.url, noCache: true } });
+      const out: any = await client.callTool({ name: 'scrape', arguments: { urls: [base + '/a'], webhookUrl: receiver.url, noCache: true } });
       const json = JSON.parse(out.content[0].text);
       expect(json.results[0].quality).toBeUndefined();
       const got = await receiver.waitForOnly();
@@ -508,7 +527,7 @@ describe('scrape_batch: webhook の中身は応答と同じ整形後の結果', 
   });
 });
 
-describe('scrape_batch: webhookUrl は URL の形を確かめる', () => {
+describe('scrape の urls（/scrape/batch）: webhookUrl は URL の形を確かめる', () => {
   const restore: Array<() => void> = [];
   afterEach(() => {
     while (restore.length) restore.pop()!();
@@ -525,7 +544,7 @@ describe('scrape_batch: webhookUrl は URL の形を確かめる', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  test('MCP の scrape_batch も URL でない webhookUrl を断る', async () => {
+  test('MCP の scrape の urls も URL でない webhookUrl を断る', async () => {
     const spy = spyOn(scraper, 'scrapeBatchUrls').mockResolvedValue({ total: 0, successful: 0, failed: 0, results: [], errors: [] } as any);
     restore.push(() => spy.mockRestore());
     const [ct, st] = InMemoryTransport.createLinkedPair();
@@ -534,10 +553,10 @@ describe('scrape_batch: webhookUrl は URL の形を確かめる', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const bad = await client.callTool({ name: 'scrape_batch', arguments: { urls: ['https://example.com/'], webhookUrl: 'not a url' } }).catch((e) => ({ isError: true, thrown: String(e) }));
+      const bad = await client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com/'], webhookUrl: 'not a url' } }).catch((e) => ({ isError: true, thrown: String(e) }));
       expect((bad as any).isError).toBe(true);
       expect(spy).not.toHaveBeenCalled();
-      const ok = await client.callTool({ name: 'scrape_batch', arguments: { urls: ['https://example.com/'], webhookUrl: 'https://example.com/hook' } });
+      const ok = await client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com/'], webhookUrl: 'https://example.com/hook' } });
       expect((ok as any).isError).not.toBe(true);
       expect(spy).toHaveBeenCalledTimes(1);
     } finally {

@@ -112,12 +112,18 @@ export function defaultReferrerHeaders(headers?: Record<string, string>, cookies
  * 静的fetch側も同じバージョンに揃えないと同一Cookieでバージョンが飛ぶ。
  */
 export function pickBrowserProfile(): BrowserProfile {
-  const actual = getChromiumMajorVersion();
+  return `chrome_${profileMajorFor(getChromiumMajorVersion())}` as BrowserProfile;
+}
+
+/**
+ * 実際の Chromium のメジャーバージョンに最も近い、wreq のプロファイルのバージョン。分からなければ wreq の最大。
+ * wreq の最大より新しい実ブラウザ（いまの Debian の Chromium 156 など）は、最大（149）になる。
+ */
+export function profileMajorFor(actual: number | undefined): number {
   const versions = SUPPORTED_CHROME_PROFILE_VERSIONS;
-  const target = actual
+  return actual
     ? versions.reduce((best, v) => (Math.abs(v - actual) < Math.abs(best - actual) ? v : best), versions[0])
     : versions[versions.length - 1];
-  return `chrome_${target}` as BrowserProfile;
 }
 
 /**

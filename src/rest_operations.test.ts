@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { REST_MAP } from '../scripts/tool-health/catalog.js';
 import { createMcpServer, toolCatalogOf } from './mcp.js';
+import { EXPLICIT_ONLY_MODULES } from './mcp/registry.js';
 import {
   describeRestTool,
   finalizeOpenApi,
@@ -44,21 +45,19 @@ describe('台帳（REST_TOOLS・OTHER_OPERATIONS）', () => {
     expect(registered.filter((key) => !keys.has(key))).toEqual([]);
   });
 
-  // MCP のツールを統合する v5.0.0 では、この対応が 1 対多になる。そのとき、この 2 つのテストを直す
-  test('MCP のツールと同じ名前の操作は、REST_MAP と同じ経路で、MCP と同じカテゴリ', () => {
-    const catalog = toolCatalogOf(createMcpServer({ deferTools: false, modules: ['all', 'lyrics', 'shazam', 'hts-archive'] }));
-    for (const tool of REST_TOOLS) {
-      const mapped = REST_MAP[tool.id];
-      if (mapped) expect({ method: mapped.method, path: mapped.path.replace(/:(\w+)/g, '{$1}') }).toEqual({ method: tool.method, path: tool.path });
-      const entry = catalog.get(tool.id);
-      if (entry) expect(tool.category).toBe(entry.category);
-    }
-  });
+  // REST_MAP は、ツール名 → 経路（1 つか、複数）。MCP のツールを統合した v5.0.0 では、1 つのツールが複数の経路を持つ
+  type Route = { method: string; path: string };
+  const routesOf = (value: Route | Route[] | null | undefined): Route[] => (value == null ? [] : Array.isArray(value) ? value : [value]);
+  const keyOf = (route: Route) => operationKey(route.method, route.path.replace(/:(\w+)/g, '{$1}'));
 
-  test('REST_MAP のすべての経路が、台帳にある', () => {
-    const byId = new Map(REST_TOOLS.map((tool) => [tool.id, tool]));
-    for (const [name, route] of Object.entries(REST_MAP)) {
-      if (route) expect(byId.has(name)).toBe(true);
+  test('REST_MAP のすべての経路が台帳にあり、MCP のツールのカテゴリは、最初の経路のカテゴリと同じ', () => {
+    const catalog = toolCatalogOf(createMcpServer({ deferTools: false, modules: ['all', ...EXPLICIT_ONLY_MODULES] }));
+    const byKey = new Map(REST_TOOLS.map((tool) => [operationKey(tool.method, tool.path), tool]));
+    for (const [name, value] of Object.entries(REST_MAP)) {
+      const routes = routesOf(value);
+      for (const route of routes) expect(byKey.has(keyOf(route)), `${name}: ${keyOf(route)}`).toBe(true);
+      const entry = catalog.get(name);
+      if (entry && routes.length > 0) expect(byKey.get(keyOf(routes[0]))?.category, name).toBe(entry.category);
     }
   });
 });

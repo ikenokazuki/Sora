@@ -1,8 +1,8 @@
 {
   "name": "sora",
   "displayName": "Sora (All-in-One Web Scraping & Japan Infra MCP)",
-  "description": "Ultra-fast web scraping, stealth browser automation, and 37 Japanese public/infrastructure tools for AI agents. Open-source Firecrawl & Tavily alternative.",
-  "version": "2.9.0",
+  "description": "Ultra-fast web scraping, stealth browser automation, and Japanese public data and infrastructure tools for AI agents (33 MCP tools). Open-source Firecrawl & Tavily alternative.",
+  "version": "5.0.0",
   "license": "BUSL-1.1",
   "homepage": "https://github.com",
   "repository": {
@@ -18,7 +18,7 @@
   "tools": [
     {
       "name": "scrape",
-      "description": "Scrape a single URL with fast static fetch or stealth browser rendering into token-optimized Markdown."
+      "description": "Scrape one URL, or up to 20 URLs in parallel, with fast static fetch or stealth browser rendering into token-optimized Markdown."
     },
     {
       "name": "browser_action",

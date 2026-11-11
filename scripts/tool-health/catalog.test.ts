@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../../src/mcp.js';
 import {
-  CANONICAL_TOOLS, PROVIDER_CASES, REST_MAP, TOOL_CASES, snapshotDependencies,
+  CANONICAL_TOOLS, PROVIDER_CASES, REST_MAP, TOOL_CASES, restRoutesOf, snapshotDependencies, type RestMap,
 } from './catalog.js';
 
 async function canonicalNames(): Promise<string[]> {
@@ -71,5 +71,22 @@ describe('tool-health catalog consistency', () => {
     expect(new Set(Object.keys(REST_MAP)).size).toBe(CANONICAL_TOOLS.length);
     for (const name of CANONICAL_TOOLS) expect(name in REST_MAP).toBe(true);
     expect(REST_MAP['search_tools']).toBeNull();
+  });
+});
+
+describe('restRoutesOf', () => {
+  const several = [{ method: 'POST', path: '/b' }, { method: 'POST', path: '/b/c', fn: 'bC' }];
+  const map: RestMap = { none: null, one: { method: 'GET', path: '/a' }, several };
+
+  test('null is no route, one route is a one-element array, an array keeps its order', () => {
+    expect(restRoutesOf('none', map)).toEqual([]);
+    expect(restRoutesOf('one', map)).toEqual([{ method: 'GET', path: '/a' }]);
+    expect(restRoutesOf('several', map)).toEqual(several);
+  });
+
+  test('reads the given map, and REST_MAP when none is given', () => {
+    expect(restRoutesOf('one', { one: { method: 'POST', path: '/other' } })).toEqual([{ method: 'POST', path: '/other' }]);
+    expect(restRoutesOf('search_tools')).toEqual([]);
+    for (const [tool, route] of Object.entries(REST_MAP)) expect(restRoutesOf(tool)).toEqual(route ? [route].flat() : []);
   });
 });

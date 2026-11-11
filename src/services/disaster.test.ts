@@ -74,7 +74,7 @@ function anyOfficeWarningJson(url: URL) {
   }];
 }
 
-describe('search_disaster_warnings の地名の解決', () => {
+describe('警報（get_disaster_info の warnings、REST は /disaster/warnings）の地名の解決', () => {
   it('市区町村はその市町村の欄だけを返す（新宿区に伊豆諸島の注意報を混ぜない）', async () => {
     const calls = stubFetch(warningJson);
     const r = await fetchWeatherWarnings({ city: '新宿区', noCache: true });
@@ -245,7 +245,9 @@ describe('search_disaster_warnings の地名の解決', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      expect((await client.callTool({ name: 'search_disaster_warnings', arguments: { city: ' ' } })).isError).toBe(true);
+      const out = await client.callTool({ name: 'get_disaster_info', arguments: { city: ' ' } });
+      expect(out.isError).toBe(true);
+      expect((out.content as Array<{ text: string }>)[0].text).toContain('city が空白です');
     } finally {
       await client.close();
       await server.close();
@@ -268,9 +270,9 @@ describe('search_disaster_warnings の地名の解決', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const out = await client.callTool({ name: 'search_disaster_warnings', arguments: { city: '', areaCode: '1310400' } });
+      const out = await client.callTool({ name: 'get_disaster_info', arguments: { city: '', areaCode: '1310400' } });
       expect(out.isError).toBeFalsy();
-      expect(JSON.parse((out.content as Array<{ text: string }>)[0].text)).toMatchObject({ areaCode: '1310400', areaName: '新宿区' });
+      expect(JSON.parse((out.content as Array<{ text: string }>)[0].text)).toMatchObject({ include: ['warnings'], warnings: { areaCode: '1310400', areaName: '新宿区' } });
     } finally {
       await client.close();
       await server.close();
@@ -294,7 +296,7 @@ describe('search_disaster_warnings の地名の解決', () => {
   });
 });
 
-describe('search_disaster_warnings の areaCode', () => {
+describe('警報（get_disaster_info の warnings）の areaCode', () => {
   it('2 桁は XX0000 の気象台に補い、その範囲を合わせて返す', async () => {
     const calls = stubFetch(warningJson);
     const osaka = await fetchWeatherWarnings({ areaCode: '27', noCache: true });
@@ -368,7 +370,7 @@ describe('search_disaster_warnings の areaCode', () => {
  */
 const tokyoR8 = (reports: unknown[] = R8_TOKYO) => (url: URL) => (url.pathname === '/bosai/warning/data/r8/130000.json' ? reports : undefined);
 
-describe('search_disaster_warnings は気象庁の新しいデータ（r8）を読む', () => {
+describe('警報（get_disaster_info の warnings）は気象庁の新しいデータ（r8）を読む', () => {
   const advisory = (code: string, name: string, status = '継続') => ({ code, name, level: 'advisory' as const, status });
 
   it('市町村は市町村の欄、予報区は予報区の欄、気象台はその範囲の予報区の欄を、すべての報から合わせる', async () => {
@@ -450,7 +452,7 @@ describe('search_disaster_warnings は気象庁の新しいデータ（r8）を�
     await server.connect(st);
     await client.connect(ct);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'search_disaster_warnings');
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_disaster_info');
       expect(tool?.description).toContain('河川の氾濫は含まない');
     } finally {
       await client.close();
@@ -501,7 +503,7 @@ function jmaQuakes(options: { list?: QuakeEntry[]; failDetail?: boolean } = {}) 
 }
 const quakeCalls = (calls: string[]) => calls.filter((c) => c.includes('/bosai/quake/data/'));
 
-describe('search_earthquake', () => {
+describe('地震（get_disaster_info の earthquake、REST は /disaster/earthquake）', () => {
   describe('気象庁の公式データ', () => {
     it('震源・震度情報を新しい順に返す（震源、深さ、津波、観測点つき。遠地地震は含めない）', async () => {
       const calls = stubFetch(jmaQuakes());
@@ -636,8 +638,9 @@ describe('search_earthquake', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const out = await client.callTool({ name: 'search_earthquake', arguments: { limit: 2 } });
+      const out = await client.callTool({ name: 'get_disaster_info', arguments: { limit: 2 } });
       expect(out.isError).toBe(true);
+      expect((out.content as Array<{ text: string }>)[0].text).toStartWith('Earthquake search error: ');
     } finally {
       await client.close();
       await server.close();
@@ -645,7 +648,7 @@ describe('search_earthquake', () => {
   });
 });
 
-describe('get_elevation の緯度・経度の範囲', () => {
+describe('get_place_info（REST は /geo/elevation）の緯度・経度の範囲', () => {
   it('REST のスキーマは緯度 -90〜90・経度 -180〜180 だけを受ける', () => {
     expect(ElevationRequestSchema.safeParse({ lat: 35.68, lon: 139.76 }).success).toBe(true);
     expect(ElevationRequestSchema.safeParse({ lat: -90, lon: 180 }).success).toBe(true);
@@ -669,7 +672,7 @@ describe('get_elevation の緯度・経度の範囲', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_elevation');
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_place_info');
       const props = tool?.inputSchema.properties as any;
       expect([props.lat.minimum, props.lat.maximum, props.lon.minimum, props.lon.maximum]).toEqual([-90, 90, -180, 180]);
     } finally {
@@ -687,7 +690,7 @@ describe('get_elevation の緯度・経度の範囲', () => {
     await client.connect(ct);
     try {
       for (const args of [{ lat: 999, lon: 999 }, { lat: 35.68, lon: 999 }, { lat: -91, lon: 139.76 }]) {
-        const out = await client.callTool({ name: 'get_elevation', arguments: args });
+        const out = await client.callTool({ name: 'get_place_info', arguments: args });
         expect(out.isError).toBe(true);
         expect((out.content as Array<{ text: string }>)[0].text).toMatch(/Input validation error/);
       }

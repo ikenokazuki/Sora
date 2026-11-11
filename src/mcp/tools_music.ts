@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { searchArtist, searchMusic, searchSong } from '../scraper.js';
+import { searchMusic } from '../scraper.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
 
@@ -8,73 +8,14 @@ import type { ToolRegistrationContext } from './registry.js';
 /** 🎵 Category 7: Music Metadata (モジュール: 'music') */
 export function registerMusicTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
-  // Tool 22: search_song (iTunes 曲名指定 楽曲メタデータ検索) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_song',
-    'music',
-    '【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { query, country, count, items: [{ title, artist, previewUrl, artwork }], source }',
-    {
-      query: z.string().min(1).describe('検索曲名・楽曲タイトル (例: "アイドル", "夜に駆ける", "Subtitle")'),
-      country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-    },
-    async (opts) => {
-      try {
-        const result = await searchSong(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Artist search error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['楽曲検索', '楽曲', '曲名', '曲の検索', '曲', '歌', 'ソング', 'iTunes', '音楽', 'Apple Music', 'ミュージック'] },
-  );
-
-  // Tool 23: search_artist (iTunes アーティスト名指定 音楽・アルバム・アーティスト検索) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_artist',
-    'music',
-    '【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, count, items, source }',
-    {
-      query: z.string().min(1).describe('アーティスト名 (例: "YOASOBI", "Official髭男dism", "Ado")'),
-      country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
-      entity: z.enum(['song', 'album', 'musicArtist']).optional().describe('検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")').meta({ default: 'song' }),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
-    },
-    async (opts) => {
-      try {
-        const result = await searchArtist(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Artist search error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['アーティスト検索', 'アーティスト', 'ディスコグラフィ', '歌手', 'バンド', 'ミュージシャン', 'iTunes', 'アルバム'] },
-  );
-
-  // Tool 24: search_music (iTunes 音楽・アルバム・アーティスト汎用検索) - DEFERRED
+  // Tool 24: search_music (iTunes の楽曲・アルバム・アーティスト検索。曲名・アーティスト名は attribute で) - DEFERRED
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'search_music',
     'music',
-    '【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { query, country, entity, count, items, source }',
+    '【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source }',
     {
       query: z.string().min(1).describe('検索キーワード (曲名、アーティスト名、アルバム名の自由入力)'),
       country: z.string().optional().describe('国コード (デフォルト: "jp")').meta({ default: 'jp' }),
@@ -95,6 +36,6 @@ export function registerMusicTools(context: ToolRegistrationContext): void {
         };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', '音楽検索', '音楽', '楽曲', '曲', 'アルバム', 'iTunes', 'ミュージック'] },
+    { defaultEnabled: deferredDefault, keywords: ['汎用音楽検索', '音楽検索', '音楽', '楽曲', '曲', 'アルバム', 'iTunes', 'ミュージック', '楽曲検索', '曲名', '曲の検索', '歌', 'ソング', 'Apple Music', 'アーティスト検索', 'アーティスト', 'ディスコグラフィ', '歌手', 'バンド', 'ミュージシャン', 'search_song', 'search_artist'] },
   );
 }
