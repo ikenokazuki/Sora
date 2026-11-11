@@ -68,16 +68,16 @@ describe("bluesky search", () => {
   });
 
   test("did allowlist filters authors", async () => {
-    const previous = process.env.SORA_BLUESKY_DIDS;
-    process.env.SORA_BLUESKY_DIDS = "did:plc:keep";
+    const previous = process.env.SORA_INTEL_BLUESKY_DIDS;
+    process.env.SORA_INTEL_BLUESKY_DIDS = "did:plc:keep";
     try {
       const provider = createBlueskyProvider(fetchOk([post("did:plc:drop", "dropped"), post("did:plc:keep", "kept")]));
       const result = await provider.run(inputFor(true), AbortSignal.timeout(2000));
       expect(result.items).toHaveLength(1);
       expect(result.items[0].detail?.blocks[0].text).toBe("kept");
     } finally {
-      if (previous === undefined) delete process.env.SORA_BLUESKY_DIDS;
-      else process.env.SORA_BLUESKY_DIDS = previous;
+      if (previous === undefined) delete process.env.SORA_INTEL_BLUESKY_DIDS;
+      else process.env.SORA_INTEL_BLUESKY_DIDS = previous;
     }
   });
 
