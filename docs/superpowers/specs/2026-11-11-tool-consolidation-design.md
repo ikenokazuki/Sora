@@ -38,7 +38,17 @@
 
 そのまま残すもの: `search_web` `search_deep` `search_realtime` `search_social_posts` `search_chiebukuro`（検索の本流。意図が違う）、`browser_action` `inspect_image` `search_tools`、`get_weather` `search_route` `search_road_traffic` `get_flight_status` `track_package`、`search_poi` `search_diet_minutes`、`check_product_compliance` `generate_gcc_certificate`、`research_country_context`。
 
-新しく足すもの（別の設計メモ）: `search_archives`（国立公文書館。検索と id の取得を 1 ツールに）。防災は `get_place_info`、気象庁の追加は `get_weather`・`get_disaster_info` の `include`、交通は既存 3 ツールの欄、OpenPOI の補完は `search_poi` の応答。
+新しく足すもの: 新ツールは `search_archives`（国立公文書館。ジャパンサーチの単一 DB 検索 `najda-default`。検索と id の取得を 1 ツールに）だけ。ほかは、統合後の既存ツールの `include` や欄として足します（各機能の設計メモは別）。
+
+| 新機能 | 置き場（統合後の名前） |
+|---|---|
+| 防災（ハザードの想定区域・避難場所・地震の確率） | `get_place_info` の `include`: `hazards` `shelters` `seismic`（承認済みの設計メモ `get_area_safety` を、この形に直す） |
+| 気象庁: 地域時系列予報・アメダス現在値・季節予報と 2 週間気温・ナウキャスト | `get_weather` の `include`: `hourly` `observation` `outlook` `nowcast` |
+| 気象庁: 早期注意情報・気象解説情報・津波・長周期地震動・南海トラフ・海上警報・キキクル | `get_disaster_info` の `include`: `outlook` `bulletins` `tsunami` `longPeriod` `nankai` `sea` `risk` |
+| 空港の天気 | `get_flight_status` の欄 `airportWeather`（既存の天気・警報の関数を空港の所在市で流用） |
+| 道路の交通量（国土交通省の交通量 API） | `search_road_traffic` に `lat`・`lon` と `include: ['volume']` |
+| 国立公文書館 | `search_archives`（新ツール） |
+| OpenPOI の住所・施設の補完 | `search_poi` の応答（調査中） |
 
 結果: 53 → 33（`search_archives` を足して 34）。コアは 14 → 13（警報と地震が 1 つになる）。
 
