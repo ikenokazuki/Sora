@@ -64,7 +64,7 @@ export function renderEnvTable(): string;
 `index.ts` の `if (import.meta.main)` の中と、`stdio.ts` の `main()` の中だけで `checkEnv` を呼ぶ（テストが `index.js` を import しても影響しない）。
 
 - (a) 未知の `SORA_*` は警告する（綴り間違いの検出。クライアント用の `SORA_URL`、テスト用の `SORA_LIVE_TESTS` などは、既知に入れる）。
-- (b) 廃止した名前は警告し、置き換え先を示す。旧名と新名の両方があって値が違えば、エラー。
+- (b) 廃止した名前が設定されていたら警告し、置き換え先を示す。旧名は別名として読まない（新名があれば新名を使い、旧名は無視する）。
 - (c) **旧名だけがあって新名が無いとき、「拒否」の 10 個は、起動を拒否する**: `WEB_FETCHER_API_KEY`・`API_KEY`・`ENABLED_MODULES`・`DAILY_REQUEST_LIMIT`・`SORA_DEFER_TOOLS`・`SORA_DEFAULT_REFERER`・`FXTWITTER_API_BASE`・`SORA_ADDRESS`・`SORA_CROSS_INDEX_URL`・`SORA_CROSS_INDEX_SHA256`。認証の 2 個（`WEB_FETCHER_API_KEY`・`API_KEY`）と、無視すると、絞った設定が開く・外への通信が変わる・ツールの一覧が変わるもの。`API_KEY` がほかのプログラムのものなら、エラー文で「unset するか `SORA_API_KEY` を設定」と案内する。
 - (d) 不正な値は止める。
 - `SORA_MODULES` の未知のモジュール名は、いまは黙って無視される（綴りを間違えると全ツールが消える）。起動時に、使えるモジュール名を示してエラーにする。
@@ -151,7 +151,8 @@ README に載っていない Sora の設定（18 個）は、登録簿から表�
 | `SORA_DB_PATH`・`SORA_ALLOWED_HOSTS`・`SORA_ALLOWED_ORIGINS`・`SORA_ALLOW_ANONYMOUS`・`SORA_PUBLIC_URL`・`SORA_TRACKING_PAGE_SECRET` | 変わらない |
 
 - 変わる 2 個は、直し忘れると v5 が起動を拒否するので、黙って壊れることはない。キーを設定しない運用（`SORA_ALLOW_ANONYMOUS=true`）は、(c) の認証の拒否に当たらない。
-- v4 は新しい名前を読まない。そこで、v5 を入れる前に、**旧名と新名を両方書き**、v5 が安定してから旧名を消す。両方があって値が同じなら、v5 は警告だけ出す。こうすれば v4 に戻すときも壊れない。
+- **切り替えは 1 回で行う。旧名と新名の併記はしない**（併記すると、宣言が二重になって読みにくく、旧名を消す作業も増える。ユーザーの決定）。宣言（とコンテナの設定の上書き）を新名に直して、v5 を入れる。直し忘れた旧名は、v5 が起動を拒否または警告して知らせる。
+- v4 に戻すときは、宣言ごと戻す（宣言は git の履歴にあるので、コミットを戻せばよい）。v4 は新しい名前を読まないので、新名の宣言のまま v4 に戻すと、`SORA_MODULES` が読まれず（lyrics・shazam が無効になる）、`SORA_MCP_DEFER_TOOLS` が読まれず（遅延読み込みが有効になる）、動くが設定が違う。
 - 実際に効くのは、宣言のほかに、コンテナの設定の上書き（drop-in）なので、両方を直す。
 - 値を書き換える必要があるものは無い（`off`・`on` も真偽値として受け付けるので、`SORA_FETCH_DEFAULT_REFERER=off` はそのまま使える）。挙動が変わるのは 3 つだけ: `'1'`・`'yes'` が真になる、`SORA_MCP_DEFER_TOOLS` が `'0'`・`'off'` で無効になる、不正な値が起動時のエラーになる。
 
