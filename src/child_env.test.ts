@@ -3,8 +3,9 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveChromiumPath } from './browser_engine.js';
+import { SETTINGS } from './config.js';
 
-// Chromium と同梱の実行ファイル（rs-trafilatura・yahoo-search-mcp）は、Sora の秘密（API キー・運送会社の鍵・プロキシの資格情報など）を受け継がない。
+// Chromium と同梱の実行ファイル（rs-trafilatura・yahoo-search-mcp）と住所データの構築の子プロセスは、Sora の秘密（API キー・運送会社の鍵・プロキシの資格情報など）を受け継がない。
 // ほかの環境変数（PATH・標準のプロキシ・SORA_ の秘密でない設定など）は、そのまま受け継ぐ。
 
 const SECRETS = {
@@ -13,7 +14,8 @@ const SECRETS = {
   SORA_PROXY_URL: 'http://user:fake-secret-proxy@127.0.0.1:9',
   SORA_PROXY_LIST: 'http://user:fake-secret-list@127.0.0.1:9',
   SORA_TRACKING_FEDEX_CLIENT_SECRET: 'fake-secret-fedex',
-  FEDEX_API_SECRET: 'fake-secret-fedex-old',
+  // 旧名のまま秘密を入れている環境もある（旧名も外す）
+  [SETTINGS.SORA_TRACKING_FEDEX_CLIENT_SECRET.legacy[0]]: 'fake-secret-fedex-old',
   SORA_GCC_CERTIFIER: '{"name":"fake-secret-gcc"}',
 };
 const KEPT = { SORA_BROWSER_LOW_MEMORY: 'false', SORA_CHILD_ENV_MARKER: 'kept-marker' };
@@ -74,6 +76,18 @@ describe('子プロセスに秘密を渡さない', () => {
       const bin = script(`cat > /dev/null\nprintf '%s\\n' '${response}'`);
       const code = `import { callYahooMcp } from './src/services/yahoo.ts'; const r = await callYahooMcp('web_search', { query: 'q' }); console.log('RESULT', r.content.length);`;
       expect(await runSora(code, { SORA_YAHOO_MCP_PATH: bin })).toBe('RESULT 1');
+      expectStripped(readFileSync(`${bin}.env`, 'utf8'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('住所データの構築', async () => {
+    const { dir, script } = scratch();
+    try {
+      const bin = script('exit 0');
+      const code = `import { ChildProcessBuilder } from './src/services/address_builder.ts'; await new ChildProcessBuilder({ dir: '/x', command: () => [${JSON.stringify(bin)}] }).run({ kind: 'postal' }); console.log('RESULT ok');`;
+      expect(await runSora(code, {})).toBe('RESULT ok');
       expectStripped(readFileSync(`${bin}.env`, 'utf8'));
     } finally {
       rmSync(dir, { recursive: true, force: true });
