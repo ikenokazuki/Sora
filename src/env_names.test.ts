@@ -1,7 +1,9 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { afterAll, describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { createAuthMiddleware, resolvePeerLocal } from './auth.js';
+import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, resolveChromiumPath } from './browser_engine.js';
+import { handleBrowserSessionAction } from './browser_session.js';
 import { app } from './index.js';
 import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
@@ -9,7 +11,7 @@ import { resolveMcpOriginConfig, resolveMcpPort } from './security/mcp_origin.js
 import { sendAdminAlert } from './services/health.js';
 import { withEnv } from './test_fixtures/env.js';
 
-// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
+// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
 // 旧名を書くテストは、このファイルと config.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
 
 describe('SORA_MODULES', () => {
@@ -170,5 +172,52 @@ describe('通知の旧名は読まない（新しい名前の動きは index.tes
       warn.mockRestore();
       globalThis.fetch = realFetch;
     }
+  });
+});
+
+describe('ブラウザ', () => {
+  afterAll(closeSharedBrowser);
+
+  /** モジュールの読み込み時に読む値は、子プロセスで確かめる（このプロセスの値は、読み込んだときのまま）。 */
+  async function semaphoreMax(vars: Record<string, string>): Promise<string> {
+    const code = `import { browserSemaphore } from './src/browser_engine.ts'; console.log('RESULT', browserSemaphore.max);`;
+    const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'SORA_BROWSER_MAX_CONCURRENCY' && k !== 'MAX_CONCURRENT_BROWSERS'));
+    const proc = Bun.spawn([process.execPath, '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
+    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
+  }
+
+  test('SORA_BROWSER_MAX_CONCURRENCY は読み込み時に読み、50 で頭打ち。旧名 MAX_CONCURRENT_BROWSERS は読まない', async () => {
+    const auto = `RESULT ${defaultBrowserConcurrency(detectMemoryLimitBytes())}`;
+    expect(await semaphoreMax({ SORA_BROWSER_MAX_CONCURRENCY: '2' })).toBe('RESULT 2');
+    expect(await semaphoreMax({ SORA_BROWSER_MAX_CONCURRENCY: '80' })).toBe('RESULT 50');
+    expect(await semaphoreMax({ SORA_BROWSER_MAX_CONCURRENCY: 'abc' })).toBe(auto);
+    // 旧名には、自動の値と違う値を入れる
+    expect(await semaphoreMax({ MAX_CONCURRENT_BROWSERS: auto === 'RESULT 1' ? '2' : '1' })).toBe(auto);
+  }, 60_000);
+
+  test('旧名 BROWSER_IDLE_TTL_MS は読まない（0 にしても既定の 300000 のまま）', async () => {
+    await withEnv({ SORA_BROWSER_IDLE_TTL_MS: undefined, BROWSER_IDLE_TTL_MS: '0' }, () => expect(browserIdleTtlMs()).toBe(300_000));
+  });
+
+  const evaluate = () => handleBrowserSessionAction({ actions: [{ type: 'evaluate', script: '1 + 1' }] });
+
+  test('旧名 ALLOW_BROWSER_EVALUATE だけでは evaluate を許さない（ブラウザを起動せずに断る）', async () => {
+    await withEnv({ SORA_BROWSER_ALLOW_EVALUATE: undefined, ALLOW_BROWSER_EVALUATE: 'true' }, async () => {
+      const [log] = (await evaluate()).actionLogs;
+      expect(log.success).toBe(false);
+      expect(log.message).toContain('set SORA_BROWSER_ALLOW_EVALUATE=true to enable');
+    });
+  });
+
+  test.skipIf(!resolveChromiumPath())('SORA_BROWSER_ALLOW_EVALUATE（1 も真）で evaluate が動く', async () => {
+    await withEnv({ SORA_BROWSER_ALLOW_EVALUATE: '1' }, async () => {
+      const [log] = (await evaluate()).actionLogs;
+      expect(log.success).toBe(true);
+    });
+  }, 60_000);
+
+  test('CHROME_PATH は前後の空白を除いて読む', async () => {
+    await withEnv({ CHROME_PATH: ` ${process.execPath} ` }, () => expect(resolveChromiumPath()).toBe(process.execPath));
   });
 });

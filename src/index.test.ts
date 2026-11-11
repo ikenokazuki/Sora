@@ -2702,8 +2702,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(batchJson.retryable).toBe(false);
   });
 
-  it('ALLOW_BROWSER_EVALUATE=false should block arbitrary script execution via evaluate', async () => {
-    process.env.ALLOW_BROWSER_EVALUATE = 'false';
+  it('SORA_BROWSER_ALLOW_EVALUATE=false should block arbitrary script execution via evaluate', async () => {
+    process.env.SORA_BROWSER_ALLOW_EVALUATE = 'false';
     const res = await app.request('/browser/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2718,7 +2718,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.actionOutputs).toBeDefined();
     expect(json.actionOutputs[0].result).toBeUndefined();
     expect(json.actionOutputs[0].error).toContain('evaluate is disabled');
-    delete process.env.ALLOW_BROWSER_EVALUATE;
+    delete process.env.SORA_BROWSER_ALLOW_EVALUATE;
   });
 
   it('POST /scrape/stream should return SSE stream with progress and done events', async () => {

@@ -27,15 +27,15 @@ describe.skipIf(!resolveChromiumPath())('共有 Chromium の同時起動', () =>
   let prevIdle: string | undefined;
 
   beforeAll(async () => {
-    prevIdle = process.env.BROWSER_IDLE_TTL_MS;
-    process.env.BROWSER_IDLE_TTL_MS = '0'; // テスト中に無操作終了させない
+    prevIdle = process.env.SORA_BROWSER_IDLE_TTL_MS;
+    process.env.SORA_BROWSER_IDLE_TTL_MS = '0'; // テスト中に無操作終了させない
     await closeSharedBrowser();
   });
 
   afterAll(async () => {
     await closeSharedBrowser();
-    if (prevIdle !== undefined) process.env.BROWSER_IDLE_TTL_MS = prevIdle;
-    else delete process.env.BROWSER_IDLE_TTL_MS;
+    if (prevIdle !== undefined) process.env.SORA_BROWSER_IDLE_TTL_MS = prevIdle;
+    else delete process.env.SORA_BROWSER_IDLE_TTL_MS;
   });
 
   test('同時に getBrowser() を呼んでも、起動は 1 つで全員が同じブラウザを受け取る', async () => {

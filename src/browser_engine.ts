@@ -3,16 +3,13 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
+import { envBool, envInt, envPath, envRaw, envStr, envUrl, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
-  const envPaths = [
-    process.env.CHROME_PATH,
-    process.env.CHROME_BIN,
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-  ];
+  const envPaths = [envPath('CHROME_PATH'), envPath('CHROME_BIN'), envPath('PUPPETEER_EXECUTABLE_PATH')];
   for (const p of envPaths) {
     if (p && existsSync(p)) return p;
   }
@@ -116,21 +113,10 @@ let sharedBrowserLaunch: Promise<Browser> | null = null;
  * NO_PROXY / no_proxy はプロキシ除外リストとして解釈されます。
  */
 export function getProxyConfig(): { proxyServer?: string; proxyBypassList?: string } {
-  const proxyServer =
-    process.env.SORA_PROXY_URL?.trim() ||
-    process.env.HTTPS_PROXY?.trim() ||
-    process.env.https_proxy?.trim() ||
-    process.env.HTTP_PROXY?.trim() ||
-    process.env.http_proxy?.trim() ||
-    process.env.ALL_PROXY?.trim() ||
-    process.env.all_proxy?.trim() ||
-    undefined;
-
-  const proxyBypassList =
-    process.env.NO_PROXY?.trim() ||
-    process.env.no_proxy?.trim() ||
-    undefined;
-
+  // 標準の名前は検査しない文字列（scheme の無い host:port も Chromium は受け付ける）なので、ここで前後の空白を除く
+  const first = (names: Parameters<typeof envStr>[0][]) => names.map((name) => envStr(name)?.trim()).find(Boolean);
+  const proxyServer = envUrl('SORA_PROXY_URL') || first(['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']);
+  const proxyBypassList = first(['NO_PROXY', 'no_proxy']);
   return { proxyServer, proxyBypassList };
 }
 
@@ -231,14 +217,14 @@ export function wreqAlignDisabledFeatures(profileMajor: number): string[] {
 }
 
 /**
- * SORA_BROWSER_LOW_MEMORY（既定は無効）。true・1・on・yes（大文字小文字・前後の空白は問わない）で、Chromium を
+ * SORA_BROWSER_LOW_MEMORY（既定は無効。呼び出しのたびに読む）。true・1・on・yes（大文字小文字・前後の空白は問わない）で、Chromium を
  * 低メモリ端末のモード（--enable-low-end-device-mode）で起動する。描画中のピークの PSS 合計が、ページを 1 つずつ開いて
  * 約 18%・3 ページ同時で約 14% 下がる（同梱の Chromium 156 で実測）。待機中の常駐量は変わらない。
  * 指紋で変わるのは navigator.deviceMemory（8 → 2）だけだが、既定は変えない（使うかどうかは運用者が決める）。
  * それ以外の値（不正な値を含む）は無効。
  */
-export function isBrowserLowMemory(env: NodeJS.ProcessEnv = process.env): boolean {
-  return ['true', '1', 'on', 'yes'].includes((env.SORA_BROWSER_LOW_MEMORY ?? '').trim().toLowerCase());
+export function isBrowserLowMemory(env?: Env): boolean {
+  return envBool('SORA_BROWSER_LOW_MEMORY', env);
 }
 
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
@@ -328,17 +314,15 @@ export async function closeSharedBrowser(): Promise<void> {
 
 /**
  * 共有 Chromium の無操作終了。常駐させると約700MB（実測、7プロセス）を占有し続けるため、最後に取得されてから
- * BROWSER_IDLE_TTL_MS（既定 5 分、0 で無効）使われなければ閉じる。次回の getBrowser() で自動再起動する。
+ * SORA_BROWSER_IDLE_TTL_MS（既定 5 分、0 で無効）使われなければ閉じる。次回の getBrowser() で自動再起動する。
  * 開いているコンテキスト/ページ（ブラウザセッション・追跡・SNS 取得）やセマフォ保持中は使用中とみなす。
  */
-const DEFAULT_BROWSER_IDLE_TTL_MS = 300_000;
 let lastSharedBrowserUse = 0;
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
-function browserIdleTtlMs(): number {
-  const raw = process.env.BROWSER_IDLE_TTL_MS;
-  const n = raw === undefined || raw === '' ? DEFAULT_BROWSER_IDLE_TTL_MS : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+/** 呼び出しのたびに読む。不正な値は既定の 5 分（以前は 0 = 閉じない、になっていた）。 */
+export function browserIdleTtlMs(): number {
+  return envInt('SORA_BROWSER_IDLE_TTL_MS');
 }
 
 function markSharedBrowserUsed(): void {
@@ -429,7 +413,7 @@ export class SimpleSemaphore {
 
 /**
  * ブラウザ同時実行数の既定値。bun 本体 + Chromium の常駐に約700MB、1ページあたり約300MB を見込み、
- * 利用可能メモリから導く（1〜5）。メモリ不明なら従来の 5。MAX_CONCURRENT_BROWSERS 明示時はそちらが優先。
+ * 利用可能メモリから導く（1〜5）。メモリ不明なら従来の 5。SORA_BROWSER_MAX_CONCURRENCY 明示時はそちらが優先。
  * ponytail: 1ページ300MBは目安。実測で外れるなら係数を調整する。
  */
 export function defaultBrowserConcurrency(memBytes: number | undefined): number {
@@ -451,16 +435,15 @@ export function detectMemoryLimitBytes(): number | undefined {
 }
 
 /**
- * MAX_CONCURRENT_BROWSERS の解釈。正の整数ならそれ（上限 50）、それ以外（未設定・数値でない・0 以下）はメモリからの既定値。
+ * SORA_BROWSER_MAX_CONCURRENCY の解釈。正の整数ならそれ（50 を超える値は 50。頭打ちは登録簿の cap）、それ以外（未設定・数値でない・0 以下）はメモリからの既定値。
  * 数値でない値をそのまま使うとセマフォの上限が NaN になり、ブラウザ描画が永久に待つため。
  */
 export function resolveBrowserConcurrency(raw: string | undefined, memBytes: number | undefined): number {
-  const n = raw && /^\d+$/.test(raw.trim()) ? parseInt(raw.trim(), 10) : NaN;
-  return n > 0 ? Math.min(n, 50) : defaultBrowserConcurrency(memBytes);
+  return envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: raw }) ?? defaultBrowserConcurrency(memBytes);
 }
 
-export const MAX_CONCURRENT_BROWSERS = resolveBrowserConcurrency(process.env.MAX_CONCURRENT_BROWSERS, detectMemoryLimitBytes());
-export const browserSemaphore = new SimpleSemaphore(MAX_CONCURRENT_BROWSERS);
+/** 同時に動かすブラウザの数（モジュールの読み込み時に決める）。 */
+export const browserSemaphore = new SimpleSemaphore(resolveBrowserConcurrency(envRaw('SORA_BROWSER_MAX_CONCURRENCY'), detectMemoryLimitBytes()));
 
 /**
  * 任意の IPv4 表記（10進ドット、8進数、16進数、短縮表記、32bit整数）を 32bit 符号なし整数に正規化する。
