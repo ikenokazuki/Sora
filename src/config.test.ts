@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   AREAS,
+  checkEnv,
   envBool,
   envEnum,
   envInt,
@@ -270,5 +271,128 @@ describe('envJson', () => {
     for (const raw of ['{name:', '[]', '"x"', 'null', '{"name":1}']) {
       expect(envJson('SORA_GCC_CERTIFIER', { SORA_GCC_CERTIFIER: raw })).toBeUndefined();
     }
+  });
+});
+
+describe('checkEnv', () => {
+  test('an empty environment is fine (Fail-Open: no key and no anonymous flag is not an error)', () => {
+    expect(checkEnv({})).toEqual({ errors: [], warnings: [] });
+    expect(checkEnv({ HOME: '/home/user', PATH: '/usr/bin', LANG: 'C.UTF-8', NODE_ENV: 'production', PORT: '8000' })).toEqual({ errors: [], warnings: [] });
+  });
+
+  test('(a) unknown SORA_* names warn; the non-setting names are known', () => {
+    const { errors, warnings } = checkEnv({ SORA_MODULE: 'web', SORA_BROWSER_LOW_MEMRY: '1' });
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.join('\n')).toContain('SORA_MODULE');
+    expect(warnings.join('\n')).toContain('SORA_BROWSER_LOW_MEMRY');
+    expect(checkEnv({
+      SORA_VERSION: '5.0.0', SORA_MCP_INSTRUCTIONS: 'x', SORA_GCC_SOMETHING: 'x', SORA_LIVE_TESTS: '1',
+      SORA_TOOL_HEALTH_CASES_JSON: '[]', SORA_URL: 'http://127.0.0.1:3016', LOCALAPPDATA: 'C:\\x', OTHER_PROGRAM_SETTING: 'x',
+    })).toEqual({ errors: [], warnings: [] });
+  });
+
+  test.each(Object.entries(REFUSED))('(c) %s alone refuses to start', (old, [to]) => {
+    const { errors, warnings } = checkEnv({ [old]: 'value-of-the-old-name' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(old);
+    expect(errors[0]).toContain(to);
+    expect(errors[0]).not.toContain('value-of-the-old-name');
+    expect(warnings).toEqual([]);
+  });
+
+  test.each(Object.entries(REFUSED))('(b) %s next to its new name is ignored with a warning', (old, [to, value]) => {
+    const { errors, warnings } = checkEnv({ [old]: 'x', [to]: value });
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(old);
+    expect(warnings[0]).toContain(to);
+  });
+
+  test('API_KEY alone: tells to unset it if it belongs to another program, or to set SORA_API_KEY', () => {
+    const [message] = checkEnv({ API_KEY: 'x' }).errors;
+    expect(message).toContain('unset');
+    expect(message).toContain('SORA_API_KEY');
+  });
+
+  test('(b) the other renamed and merged names warn with their replacement', () => {
+    const warned = Object.entries(LEGACY).filter(([, l]) => l.policy === 'warn' && l.to);
+    expect(warned).toHaveLength(23);
+    for (const [old, { to }] of warned) {
+      const { errors, warnings } = checkEnv({ [old]: 'x' });
+      expect(errors).toEqual([]);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(old);
+      expect(warnings[0]).toContain(to as string);
+    }
+  });
+
+  test('(b) removed names warn as removed', () => {
+    for (const old of REMOVED) {
+      const { errors, warnings } = checkEnv({ [old]: 'off' });
+      expect(errors).toEqual([]);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(old);
+      expect(warnings[0]).toContain('廃止');
+    }
+  });
+
+  test('empty old names are treated as unset', () => {
+    expect(checkEnv({ API_KEY: '', ENABLED_MODULES: '  ', SORA_REALTIME_ANCHOR: '' })).toEqual({ errors: [], warnings: [] });
+  });
+
+  test('(d) invalid values are errors naming the variable and the expected form', () => {
+    const cases: [string, string, string][] = [
+      ['PORT', 'abc', '1〜65535'],
+      ['PORT', '0', '1〜65535'],
+      ['SORA_BROWSER_IDLE_TTL_MS', 'abc', '0 以上'],
+      ['SORA_BROWSER_IDLE_TTL_MS', '5m', '0 以上'],
+      ['SORA_AUTH_DAILY_LIMIT', '1e3', '1 以上'],
+      ['SORA_MCP_DEFER_TOOLS', 'nope', 'yes'],
+      ['SORA_LOG_FORMAT', 'yaml', 'json'],
+      ['SORA_PUBLIC_URL', 'sora.example.com', 'https'],
+      ['SORA_HTS_CROSS_INDEX_SHA256', 'xyz', '64'],
+      ['SORA_FETCH_MAX_CHROME_PROFILE', '0x9a', '136'],
+      ['SORA_ALLOWED_HOSTS', 'https://sora.example.com', 'Host'],
+      ['SORA_GCC_CUSTODIAN', '{oops', 'JSON'],
+    ];
+    for (const [name, raw, form] of cases) {
+      const { errors } = checkEnv({ [name]: raw });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain(name);
+      expect(errors[0]).toContain(form);
+    }
+  });
+
+  test('(d) unknown module names in SORA_MODULES list the valid ones', () => {
+    const { errors } = checkEnv({ SORA_MODULES: 'weeb' });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('SORA_MODULES');
+    expect(errors[0]).toContain('weeb');
+    for (const m of MODULE_NAMES) expect(errors[0]).toContain(m);
+    expect(checkEnv({ SORA_MODULES: 'all,lyrics,shazam,hts-archive' }).errors).toEqual([]);
+    expect(checkEnv({ SORA_MODULES: '*' }).errors).toEqual([]);
+  });
+
+  test('secret values are never printed', () => {
+    const secrets = { SORA_PROXY_URL: 'ftp://user:hunter2@proxy.example.test', SORA_GCC_CERTIFIER: '{"name":"hunter2"', SORA_ALERT_WEBHOOK_URL: 'hunter2-hook' };
+    const { errors } = checkEnv(secrets);
+    expect(errors).toHaveLength(3);
+    for (const message of errors) {
+      expect(message).not.toContain('hunter2');
+      expect(message).toMatch(/設定済み、長さ \d+/);
+    }
+    expect(errors.find((m) => m.includes('SORA_PROXY_URL'))).toContain(`長さ ${secrets.SORA_PROXY_URL.length}`);
+  });
+
+  test('a non-secret invalid value is shown', () => {
+    expect(checkEnv({ PORT: 'abc' }).errors[0]).toContain('"abc"');
+  });
+
+  test('the output is deterministic', () => {
+    const env = { SORA_ZZZ: '1', SORA_AAA: '1', ADMIN_ALERT_WEBHOOK_URL: 'x', LOG_FORMAT: 'json', PORT: 'x', SORA_MODULES: 'x' };
+    const { warnings } = checkEnv(env);
+    expect(checkEnv({ ...env })).toEqual(checkEnv(env));
+    expect(warnings.findIndex((w) => w.includes('SORA_AAA'))).toBeLessThan(warnings.findIndex((w) => w.includes('SORA_ZZZ')));
   });
 });

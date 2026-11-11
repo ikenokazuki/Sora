@@ -3,7 +3,7 @@
  *
  * - 読み取り（envBool など）は、呼び出しのたびに env を読む（覚えない）。空・空白だけの値は未設定とみなし、
  *   不正な値は既定値（無ければ undefined）を返す。例外は投げない。
- * - 旧名は別名として読まない。
+ * - 不正な値と旧名を止めるのは、起動時の checkEnv だけ。旧名は別名として読まない。
  */
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
 
@@ -434,14 +434,15 @@ const TABLE: Readonly<Record<string, Setting>> = { ...SETTINGS, ...EXTERNAL };
 /** 廃止した名前（置き換え先は無い。旧名だけのときは警告）。 */
 const REMOVED = ['SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR'];
 
-/** 旧名 → 置き換え先（廃止は to が無い）と、旧名だけのときの扱い（別名としては読まない）。 */
+/** 旧名 → 置き換え先（廃止は to が無い）と、旧名だけのときの扱い。checkEnv だけが使う（別名としては読まない）。 */
 export const LEGACY: Readonly<Record<string, { to?: SettingName; policy: 'error' | 'warn' }>> = Object.fromEntries([
   ...Object.entries(SETTINGS as Record<string, Setting>).flatMap(([to, s]) => (s.legacy ?? []).map((old) => [old, { to, policy: s.legacyOnly ?? 'warn' }])),
   ...REMOVED.map((old) => [old, { policy: 'warn' }]),
 ]);
 
-/** 設定でない名前（定数・OS・テストとスクリプト用）。`SORA_GCC_` で始まる名前も同じ。 */
+/** 設定でない名前（定数・OS・テストとスクリプト用）。checkEnv は未知の SORA_* として扱わない。`SORA_GCC_` で始まる名前も同じ。 */
 export const NOT_SETTINGS: readonly string[] = ['SORA_VERSION', 'SORA_MCP_INSTRUCTIONS', 'PATH', 'LOCALAPPDATA', 'SORA_LIVE_TESTS', 'SORA_TOOL_HEALTH_CASES_JSON', 'SORA_URL'];
+const NOT_SETTING_PREFIX = 'SORA_GCC_';
 
 const BOOL = new Map([['true', true], ['1', true], ['on', true], ['yes', true], ['false', false], ['0', false], ['off', false], ['no', false]]);
 
@@ -531,4 +532,55 @@ export function envStr<N extends NameOf<'str'>>(name: N, env: Env = process.env)
 /** JSON（読んで、形を検査する）。 */
 export function envJson(name: NameOf<'json'>, env: Env = process.env): unknown {
   return read(name, env);
+}
+
+function formOf(s: Setting): string {
+  if (s.form) return s.form;
+  switch (s.kind) {
+    case 'bool':
+      return 'true・false・1・0・on・off・yes・no のどれか（大文字小文字は問わない）';
+    case 'int':
+      return s.max === undefined ? `${s.min ?? 0} 以上の整数` : `${s.min ?? 0}〜${s.max} の整数`;
+    case 'enum':
+      return `${s.values?.join('・')} のどれか`;
+    case 'url':
+      return `${(s.schemes ?? HTTP).join('・')} の URL`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * 起動時の検査（純粋な関数）。errors があれば起動を止める（呼ぶのは起動の処理だけ）。
+ * (a) 未知の SORA_* は警告 (b) 旧名は警告（置き換え先つき。新名があれば旧名は無視）
+ * (c) 旧名だけで新名が無いとき、拒否の 10 個は errors (d) 不正な値は errors（秘密は「設定済み、長さ N」）。
+ * キーも SORA_ALLOW_ANONYMOUS も無いのはエラーにしない（Fail-Open）。
+ */
+export function checkEnv(env: Env = process.env): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  for (const [name, s] of Object.entries(TABLE)) {
+    const raw = env[name];
+    if (isBlank(raw) || parse(s, raw as string) !== undefined) continue;
+    const shown = s.secret ? `設定済み、長さ ${(raw as string).length}` : JSON.stringify(raw);
+    errors.push(`${name} の値（${shown}）は不正です。正しい形: ${formOf(s)}`);
+  }
+
+  for (const [old, { to, policy }] of Object.entries(LEGACY)) {
+    if (isBlank(env[old])) continue;
+    if (!to) warnings.push(`${old} は v5.0.0 で廃止しました（読みません）。設定を消してください`);
+    else if (!isBlank(env[to])) warnings.push(`${old} は ${to} に変わりました。${to} が設定されているので、${old} は無視します。${old} を消してください`);
+    else if (old === 'API_KEY') errors.push('API_KEY は v5.0.0 から読みません。ほかのプログラムのための値なら unset してください。Sora の認証キーなら SORA_API_KEY を設定してください');
+    else if (policy === 'error') errors.push(`${old} は ${to} に変わりました（旧名は読みません）。このままでは設定が効かないので、起動しません。${to} を設定してください`);
+    else warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください`);
+  }
+
+  for (const name of Object.keys(env).sort()) {
+    if (!name.startsWith('SORA_') || isBlank(env[name]) || Object.hasOwn(TABLE, name) || Object.hasOwn(LEGACY, name)) continue;
+    if (NOT_SETTINGS.includes(name) || name.startsWith(NOT_SETTING_PREFIX)) continue;
+    warnings.push(`${name} は Sora の設定にありません（綴りを確かめてください）`);
+  }
+
+  return { errors, warnings };
 }
