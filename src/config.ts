@@ -41,9 +41,11 @@ export interface Setting {
   default?: boolean | number | string | readonly string[];
   /** README の既定の欄（default を書くだけでは足りないとき） */
   defaultDoc?: string;
-  /** int の範囲（min の既定は 0、max は無し） */
+  /** int の範囲（min の既定は 0、max は無し）。範囲の外は不正 */
   min?: number;
   max?: number;
+  /** int の頭打ち。これを超える値は不正でなく、この値に読む */
+  cap?: number;
   /** int・str の値の全体の形 */
   pattern?: RegExp;
   /** enum の値（大文字小文字を問わずに比べ、返すのはこの綴り） */
@@ -198,9 +200,9 @@ export const SETTINGS = {
 
   // --- ブラウザ ---
   SORA_BROWSER_MAX_CONCURRENCY: {
-    area: 'browser', kind: 'int', min: 1, max: 50, legacy: ['MAX_CONCURRENT_BROWSERS'], legacyOnly: 'warn',
+    area: 'browser', kind: 'int', min: 1, cap: 50, legacy: ['MAX_CONCURRENT_BROWSERS'], legacyOnly: 'warn',
     defaultDoc: '*(メモリから自動: 1〜5)*',
-    doc: '同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1〜50）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます',
+    doc: '同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1 以上。50 を超える値は 50 にします）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます',
   },
   SORA_BROWSER_IDLE_TTL_MS: {
     area: 'browser', kind: 'int', min: 0, default: 300_000, legacy: ['BROWSER_IDLE_TTL_MS'], legacyOnly: 'warn',
@@ -456,7 +458,8 @@ function parse(s: Setting, raw: string): unknown {
     case 'int': {
       if (!/^\d+$/.test(v) || (s.pattern && !s.pattern.test(v))) return undefined;
       const n = Number(v);
-      return n >= (s.min ?? 0) && n <= (s.max ?? Number.MAX_SAFE_INTEGER) ? n : undefined;
+      if (n < (s.min ?? 0) || n > (s.max ?? Number.MAX_SAFE_INTEGER)) return undefined;
+      return s.cap === undefined ? n : Math.min(n, s.cap);
     }
     case 'enum':
       return s.values?.find((x) => x.toLowerCase() === v.toLowerCase());
@@ -541,6 +544,7 @@ function formOf(s: Setting): string {
     case 'bool':
       return 'true・false・1・0・on・off・yes・no のどれか（大文字小文字は問わない）';
     case 'int':
+      if (s.cap !== undefined) return `${s.min ?? 0} 以上の整数（${s.cap} を超える値は ${s.cap} にします）`;
       return s.max === undefined ? `${s.min ?? 0} 以上の整数` : `${s.min ?? 0}〜${s.max} の整数`;
     case 'enum':
       return `${s.values?.join('・')} のどれか`;

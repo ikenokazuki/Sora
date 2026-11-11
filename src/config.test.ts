@@ -72,12 +72,12 @@ const SECRETS = [
   'SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET', 'SORA_TRACKING_DHL_API_KEY',
 ];
 
-/** 整数の設定の全部: [最小, 最大, 既定]（設計メモの対応表とコードから手で写した）。 */
-const INTS: Record<string, [number, number | undefined, number | undefined]> = {
+/** 整数の設定の全部: [最小, 最大, 既定, 頭打ち]（設計メモの対応表とコードから手で写した）。頭打ちを超える値は不正でなく、頭打ちの値に読む。 */
+const INTS: Record<string, [number, number | undefined, number | undefined, number?]> = {
   PORT: [1, 65_535, 8000],
   SORA_AUTH_DAILY_LIMIT: [1, undefined, undefined],
   SORA_MCP_MAX_SESSIONS: [1, undefined, 100],
-  SORA_BROWSER_MAX_CONCURRENCY: [1, 50, undefined],
+  SORA_BROWSER_MAX_CONCURRENCY: [1, undefined, undefined, 50],
   SORA_BROWSER_IDLE_TTL_MS: [0, undefined, 300_000],
   SORA_FETCH_MAX_CHROME_PROFILE: [136, 999, 149],
   SORA_SEARCH_SCRAPE_DEADLINE_MS: [0, undefined, 0],
@@ -116,7 +116,7 @@ describe('registry', () => {
 
   test('every integer setting has the hand-written minimum, maximum and default', () => {
     expect(Object.entries(all).filter(([, s]) => s.kind === 'int').map(([name]) => name).sort()).toEqual(Object.keys(INTS).sort());
-    for (const [name, [min, max, fallback]] of Object.entries(INTS)) {
+    for (const [name, [min, max, fallback, cap]] of Object.entries(INTS)) {
       const read = (raw?: string) => envInt(name as 'PORT', { [name]: raw });
       expect(read(), name).toBe(fallback as number);
       expect(read(String(min)), name).toBe(min);
@@ -124,6 +124,11 @@ describe('registry', () => {
       if (max !== undefined) {
         expect(read(String(max)), name).toBe(max);
         expect(read(String(max + 1)), name).toBe(fallback as number);
+      }
+      if (cap !== undefined) {
+        expect(read(String(cap)), name).toBe(cap);
+        expect(read(String(cap + 1)), name).toBe(cap);
+        expect(checkEnv({ [name]: String(cap * 2) }).errors, name).toEqual([]);
       }
     }
   });
@@ -254,8 +259,9 @@ describe('envInt', () => {
     expect(envInt('SORA_BROWSER_IDLE_TTL_MS', { SORA_BROWSER_IDLE_TTL_MS: '0' })).toBe(0);
     expect(envInt('SORA_BROWSER_IDLE_TTL_MS', { SORA_BROWSER_IDLE_TTL_MS: 'abc' })).toBe(300_000);
     expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '50' })).toBe(50);
-    expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '51' })).toBeUndefined();
-    expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '0' })).toBeUndefined();
+    expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '60' })).toBe(50);
+    expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '80' })).toBe(50);
+    for (const raw of ['0', 'abc', '5m']) expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: raw })).toBeUndefined();
     expect(envInt('SORA_ADDRESS_BUILD_CONCURRENCY', { SORA_ADDRESS_BUILD_CONCURRENCY: '99' })).toBe(1);
     expect(envInt('PORT', { PORT: '0' })).toBe(8000);
     expect(envInt('PORT', { PORT: '65536' })).toBe(8000);
@@ -454,6 +460,7 @@ describe('checkEnv', () => {
       ['SORA_BROWSER_IDLE_TTL_MS', 'abc', '0 以上'],
       ['SORA_BROWSER_IDLE_TTL_MS', '5m', '0 以上'],
       ['SORA_AUTH_DAILY_LIMIT', '1e3', '1 以上'],
+      ['SORA_BROWSER_MAX_CONCURRENCY', '0', '50 を超える値は 50'],
       ['SORA_MCP_DEFER_TOOLS', 'nope', 'yes'],
       ['SORA_LOG_FORMAT', 'yaml', 'json'],
       ['SORA_PUBLIC_URL', 'sora.example.com', 'https'],
