@@ -8,6 +8,14 @@ RUN bun build ./src/index.ts --target=bun --outfile=server.js
 # 住所データの構築専用の入口。アプリ本体を読み込まないので、子プロセスとして軽く起動できる
 RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js
 
+# Stage 1b: 実行に要る node_modules だけ。builder の node_modules には開発用の Biome（127MB）・TypeScript（23MB）・型定義が入っていて、
+# 実行には使わない。wreq-js の musl 用バイナリ（glibc の distroless では選ばれない）も要らない（約 165MB 減）。
+FROM docker.io/oven/bun:1 AS prod-deps
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile --production \
+    && rm -rf node_modules/@wreq-js/binding-*-musl
+
 # Stage 2: 本文の取り出しに使う rs-trafilatura（https://github.com/Murrough-Foley/rs-trafilatura、MIT OR Apache-2.0）。
 # 版はコミットで固定する。上流は Cargo.lock を持たない（.gitignore）ので、依存の版は vendor/rs-trafilatura/Cargo.lock で固定する
 # （2026-10-28 に Cargo 1.91 で作ったもの）。rust-toolchain.toml の 1.85 の指定は消して、この Cargo.lock を作った版でビルドする。
@@ -46,6 +54,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
+# Stage 3b: Chromium が実際に使う共有ライブラリだけを /out に集める。
+# 以前は Debian の /usr/lib/x86_64-linux-gnu（約 300MB）を丸ごと、さらに /lib/x86_64-linux-gnu としてもう一度コピーして、
+# イメージに約 600MB 入っていた（distroless の /lib は実ディレクトリなので、2 回目は重複した別の層になる）。
+# 実際に読み込まれるのは、Chromium の依存の閉包（ldd）と、dlopen される NSS・SQLite・udev・Wayland で約 45MB
+# （screenshot・日本語・WebGL・WebRTC・Web Audio・Worker を動かして LD_DEBUG=libs で確かめた。ldd の閉包は全部読み込まれていた）。
+# glibc・libstdc++・libgcc・OpenSSL は distroless のベースが持つので、ここでは持ち込まない（loader と libc の版を食い違わせない）。
+FROM browser-harvester AS browser-libs
+RUN set -eu; \
+    mkdir -p /out/usr/lib; \
+    cp -a /usr/lib/chromium /out/usr/lib/chromium; \
+    rm -f /out/usr/lib/chromium/libVkLayer_khronos_validation.so* /out/usr/lib/chromium/libVkICD_mock_icd.so*; \
+    L=/usr/lib/x86_64-linux-gnu; \
+    EXTRA="$(ls $L/libnss*.so $L/libsoftokn3.so $L/libfreebl*.so $L/libsqlite3.so.0 $L/libwayland-client.so.0 $L/libwayland-server.so.0 $L/libudev.so.1 2>/dev/null || true)"; \
+    { ldd /usr/lib/chromium/chromium; \
+      for f in /usr/lib/chromium/*.so* $EXTRA; do ldd "$f" 2>/dev/null || true; done; } \
+      | awk '$3 ~ /^\// {print $3}' | sort -u > /tmp/libs.txt; \
+    printf '%s\n' $EXTRA >> /tmp/libs.txt; \
+    SKIP='^(ld-linux-x86-64\.so\.2|libc\.so\.6|libm\.so\.6|libdl\.so\.2|libpthread\.so\.0|librt\.so\.1|libresolv\.so\.2|libutil\.so\.1|libnss_[a-z]+\.so\.2|libstdc\+\+\.so\.6|libgcc_s\.so\.1|libgomp\.so\.1|libssl\.so\.3|libcrypto\.so\.3)$'; \
+    sort -u /tmp/libs.txt | while read -r p; do \
+      name="$(basename "$p")"; \
+      if printf '%s' "$name" | grep -Eq "$SKIP"; then continue; fi; \
+      real="$(readlink -f "$p")"; \
+      case "$real" in /usr/lib/chromium/*) continue;; esac; \
+      pdir="$(readlink -f "$(dirname "$p")")"; rdir="$(dirname "$real")"; \
+      mkdir -p "/out$rdir"; cp -a "$real" "/out$rdir/$(basename "$real")"; \
+      if [ "$pdir/$name" != "$real" ]; then mkdir -p "/out$pdir"; ln -sf "$(realpath --relative-to="$pdir" "$real")" "/out$pdir/$name"; fi; \
+    done; \
+    test -e /out$L/libnss3.so; test -e /out$L/libsoftokn3.so
+
 # Stage 4: Final Minimal Distroless Image
 FROM gcr.io/distroless/cc-debian12:latest
 WORKDIR /app
@@ -58,14 +95,12 @@ COPY --from=builder /app/client /app/client
 # MCP リソースとして配るスキル（src/mcp/resources.ts が /app/plugins/ から読む）
 COPY --from=builder /app/plugins/sora-deep-research/skills /app/plugins/sora-deep-research/skills
 COPY --from=builder /app/package.json /app/package.json
-COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=builder /app/bin/yahoo-search-mcp /app/yahoo-search-mcp
 
-# Copy Chromium and all shared libraries & assets
+# Copy Chromium and the shared libraries & assets it actually uses
 COPY --from=browser-harvester /usr/bin/chromium /usr/bin/chromium
-COPY --from=browser-harvester /usr/lib/chromium /usr/lib/chromium
-COPY --from=browser-harvester /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
-COPY --from=browser-harvester /lib/x86_64-linux-gnu /lib/x86_64-linux-gnu
+COPY --from=browser-libs /out/ /
 COPY --from=browser-harvester /usr/share/fonts /usr/share/fonts
 COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
