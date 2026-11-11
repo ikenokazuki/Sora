@@ -230,7 +230,7 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
     const request = (BrowserActionRequestSchema.shape as any);
     expect(request.timeout.description).toContain('navigate');
     const step = BrowserActionStepSchema.shape as any;
-    expect(step.type.description).toContain('ALLOW_BROWSER_EVALUATE=true');
+    expect(step.type.description).toContain('SORA_BROWSER_ALLOW_EVALUATE=true');
     for (const action of ['click', 'fill', 'type']) expect(step.delay.description).toContain(action);
     expect(step.type.description).toContain('extract.screenshot');
   });

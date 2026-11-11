@@ -388,7 +388,7 @@ export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press',
 
 /** 実装 (browser_session.ts runActionsOnPage) が解釈するアクション項目のみ。 */
 export const BrowserActionStepSchema = z.object({
-  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
+  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 SORA_BROWSER_ALLOW_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
   selector: z.string().optional().describe('操作対象の CSS セレクタ'),
   text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト'),
   value: z.string().optional().describe('select タグで選択する値'),

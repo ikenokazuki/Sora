@@ -12,7 +12,7 @@ export type BrowserActionInput = {
   closeSession?: boolean;
   /** 順次実行するブラウザアクションの配列 */
   actions?: {
-    /** アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る) */
+    /** アクション種別。evaluate は環境変数 SORA_BROWSER_ALLOW_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る) */
     type: "click" | "fill" | "type" | "press" | "select" | "scroll" | "wait" | "evaluate" | "navigate" | "screenshot";
     /** 操作対象の CSS セレクタ */
     selector?: string;
