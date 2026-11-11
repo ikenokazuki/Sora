@@ -33,7 +33,8 @@ chromium_in_image="$(docker run --rm --entrypoint /usr/lib/chromium/chromium "$i
 candidate="$(docker run --rm docker.io/library/debian:bookworm-slim bash -c 'apt-get update -qq >/dev/null 2>&1; apt-cache policy chromium | sed -n "s/^  Candidate: //p"')"
 chromium_debian="${candidate%%-*}"
 google="$(curl -fsS 'https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?orderBy=version%20desc&pageSize=1' | python3 -c 'import sys, json; print(json.load(sys.stdin)["versions"][0]["version"])')"
-wreq_max="$(grep -A2 'SUPPORTED_CHROME_PROFILE_VERSIONS = \[' src/http_fetcher.ts | grep -oE '[0-9]{3}' | sort -n | tail -1)"
+# 静的取得が使う Chrome プロファイルの上限（Containerfile の ARG。次のリリースに入る値。自前でビルドした native が持つ最新の版）
+wreq_max="$(sed -n 's/^ARG WREQ_MAX_CHROME_PROFILE=//p' Containerfile | head -1)"
 
 # Bun
 bun_in_image="$(docker run --rm --entrypoint /usr/local/bin/bun "$image" --version)"
@@ -101,7 +102,7 @@ summary="$(cat <<TABLE
 | 最新のリリース（${tag}）のイメージの Chromium | ${chromium_in_image} |
 | Debian bookworm の chromium（apt の候補） | ${candidate}$(mark "$chromium_newer") |
 | Google の最新の安定版（Linux） | ${google} |
-| wreq-js の最大のプロファイル | chrome_${wreq_max}（Google の安定版の主版との差 ${gap}） |
+| 静的取得の Chrome プロファイルの上限（Containerfile の WREQ_MAX_CHROME_PROFILE） | chrome_${wreq_max}（Google の安定版の主版との差 ${gap}） |
 | 最新のリリース（${tag}）のイメージの Bun | ${bun_in_image} |
 | Bun の最新の安定版 | ${bun_latest}$(mark "$bun_newer") |
 | CI の Bun（test.yml の bun-version） | ${bun_ci}$(mark "$bun_ci_old") |
