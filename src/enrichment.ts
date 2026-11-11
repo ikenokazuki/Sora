@@ -41,7 +41,7 @@ import type {
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 
 import { estimateTokens } from './text_tokens.js';
-import { errorMessage } from './errors.js';
+import { errorMessageWithoutUrls } from './errors.js';
 export { estimateTokens };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
@@ -254,7 +254,8 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
     }
     return res.ok;
   } catch (err) {
-    console.warn('[web-fetcher/webhook] Error sending webhook:', errorMessage(err));
+    // 例外の文にも宛先の URL が入る（Bun の UnexpectedRedirect など）ので、URL を伏せる
+    console.warn('[web-fetcher/webhook] Error sending webhook:', errorMessageWithoutUrls(err));
     return false;
   }
 }

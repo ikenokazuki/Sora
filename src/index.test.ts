@@ -67,6 +67,7 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
 }
 import * as cheerio from 'cheerio';
 import { deliverWebhook, extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
+import * as enrichmentModule from './enrichment.js';
 import { sendAdminAlert } from './services/health.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
@@ -2820,6 +2821,36 @@ describe('Sora REST & MCP Endpoints', () => {
       ]);
     });
 
+    // Bun の fetch の例外の文は、宛先の URL を丸ごと含む（redirect: 'error' で受けた UnexpectedRedirect など）
+    const redirectError = (url: string) => Object.assign(
+      new Error(`UnexpectedRedirect fetching "${url}". For more information, pass \`verbose: true\` in the second argument to fetch()`),
+      { code: 'UnexpectedRedirect' },
+    );
+
+    it('送信の例外の文に入った URL も出さない', async () => {
+      globalThis.fetch = (async () => { throw redirectError('https://93.184.216.34/hooks/T000/secret-token-b'); }) as unknown as typeof fetch;
+      expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-b', {})).toBe(false);
+      expect(warned()).toEqual([
+        '[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect fetching "<url>". For more information, pass `verbose: true` in the second argument to fetch()',
+      ]);
+    });
+
+    it('実際にリダイレクトを返す宛先でも、警告に URL を出さない（redirect: error で例外になる）', async () => {
+      globalThis.fetch = realFetch;
+      const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(null, { status: 302, headers: { Location: '/elsewhere/' } }) });
+      const restore = setLocalFetch('true');
+      try {
+        expect(await deliverWebhook(`http://127.0.0.1:${server.port}/hooks/T000/B000/secret-token-c`, {})).toBe(false);
+      } finally {
+        restore();
+        server.stop(true);
+      }
+      expect(warned()).toHaveLength(1);
+      expect(warned()[0]).toStartWith('[web-fetcher/webhook] Error sending webhook:');
+      expect(warned()[0]).not.toContain('secret-token-c');
+      expect(warned()[0]).not.toContain(`127.0.0.1:${server.port}`);
+    });
+
     describe('管理者のアラート（SORA_ALERT_WEBHOOK_URL）', () => {
       let prev: string | undefined;
       beforeEach(() => {
@@ -2841,6 +2872,20 @@ describe('Sora REST & MCP Endpoints', () => {
         sendAdminAlert('test', { a: 1 });
         await settle(() => fetched.length > 0);
         expect(fetched).toEqual(['https://93.184.216.34/hooks/alert']);
+      });
+
+      it('送信が例外で終わっても、警告に URL を出さない', async () => {
+        process.env.SORA_ALERT_WEBHOOK_URL = 'https://93.184.216.34/hooks/T000/secret-token-d';
+        const send = spyOn(enrichmentModule, 'sendWebhookNotification').mockRejectedValue(redirectError('https://93.184.216.34/hooks/T000/secret-token-d'));
+        try {
+          sendAdminAlert('test', { a: 1 });
+          await settle(() => warn.mock.calls.length > 0);
+        } finally {
+          send.mockRestore();
+        }
+        expect(warned()).toEqual([
+          '[Sora/Alert] Failed to send admin alert: UnexpectedRedirect fetching "<url>". For more information, pass `verbose: true` in the second argument to fetch()',
+        ]);
       });
 
       it('私的な宛先は止め、その警告に URL（秘密の部分を含む）を出さない', async () => {
