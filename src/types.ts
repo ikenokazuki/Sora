@@ -3182,26 +3182,6 @@ export function generateOpenApiDocument() {
           },
         },
       },
-      '/client': {
-        get: {
-          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済み TypeScript クライアントのファイル一覧 (manifest.json)',
-          deprecated: true,
-          responses: {
-            '200': {
-              description: '配布するファイルの相対パス一覧',
-              content: { 'application/json': { schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } } },
-            },
-          },
-        },
-      },
-      '/client/{path}': {
-        get: {
-          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
-          deprecated: true,
-          parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'manifest.json に載った相対パス (例: servers/sora/search_web.ts)' }],
-          responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)', content: { 'text/plain': { schema: { type: 'string' } } } } },
-        },
-      },
       '/tools': {
         get: {
           summary: '操作の一覧 (名前・メソッド・パス・カテゴリ・概要)。言語に依存せず、curl だけで使える。コード実行環境向け',

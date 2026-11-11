@@ -5504,7 +5504,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 84 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 82 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5536,8 +5536,18 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(84);
-      expect(withContentCount).toBe(84);
+      expect(operationCount).toBe(82);
+      expect(withContentCount).toBe(82);
+    });
+
+    it('GET /client と GET /client/<path> は v5.0.0 で廃止した（404。OpenAPI と操作の台帳にも載らない）', async () => {
+      const doc = generateOpenApiDocument();
+      expect(Object.keys(doc.paths).filter((path) => path.startsWith('/client'))).toEqual([]);
+      for (const path of ['/client', '/client/manifest.json', '/client/catalog.json', '/client/servers/sora/search_web.ts']) {
+        expect((await app.request(path)).status, path).toBe(404);
+      }
+      const { OTHER_OPERATIONS } = await import('./rest_operations.js');
+      expect(Object.keys(OTHER_OPERATIONS).filter((key) => key.includes('/client'))).toEqual([]);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {
