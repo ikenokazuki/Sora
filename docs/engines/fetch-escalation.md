@@ -4,7 +4,7 @@
 
 ## 使うツール
 
-- MCP: `scrape`、`scrape_batch`、`crawl_site`。`search_deep` と `search_web`（`formats` を指定したとき）の本文取得も、同じ処理を通ります。
+- MCP: `scrape`（`url`・`urls`）、`crawl_site`。`search_deep` と `search_web`（`formats` を指定したとき）の本文取得も、同じ処理を通ります。
 - REST: `POST /scrape`・`/scrape/stream`・`/scrape/batch`・`/crawl`
 - 切り替えの指定: `mode`（`auto`・`fast`・`browser`。既定は `auto`）。REST だけ、`renderJs`（`browser` と同じ）と `fastOnly`（`fast` と同じ）があります。
 

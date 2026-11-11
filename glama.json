@@ -18,7 +18,7 @@
   "tools": [
     {
       "name": "scrape",
-      "description": "Scrape a single URL with fast static fetch or stealth browser rendering into token-optimized Markdown."
+      "description": "Scrape one URL, or up to 20 URLs in parallel, with fast static fetch or stealth browser rendering into token-optimized Markdown."
     },
     {
       "name": "browser_action",

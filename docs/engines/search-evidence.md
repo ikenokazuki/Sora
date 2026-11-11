@@ -4,7 +4,7 @@
 
 ## 使うツール
 
-- MCP: `search_deep`（この記事の全体）、`scrape`・`scrape_batch`・`crawl_site`（`query` を渡したときのハイライト選びだけ）、`search_web`（候補探しだけ。ハイライトは選びません）
+- MCP: `search_deep`（この記事の全体）、`scrape`（`url`・`urls`）・`crawl_site`（`query` を渡したときのハイライト選びだけ）、`search_web`（候補探しだけ。ハイライトは選びません）
 - REST: `POST /search`・`/search/deep`・`/search/integrated`・`/deep-search`（4 つとも同じ処理）、`POST /search/web`、`POST /scrape`・`/scrape/batch`・`/crawl`
 
 ## 手元のデータと外への問い合わせ
