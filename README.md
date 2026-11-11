@@ -73,7 +73,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 81 オペレーション（72 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 82 オペレーション（73 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
