@@ -49,6 +49,11 @@ describe('yahoo throttle discipline (hermetic)', () => {
     expect(isYahooRateLimitText('cursorWf66Dt429gJBJhVN3r')).toBe(false);
     expect(isYahooRateLimitText('status code 429')).toBe(true);
   });
+  // 以前は環境変数が未設定だと初期の間隔が 0 だった。provider_pressure の既定値が、この単一のインスタンスまで届くことを固定する
+  test('web pressure singleton starts at 400 ms after a reset', () => {
+    resetYahooWebPressure();
+    expect(yahooWebPressure.snapshot().spacingMs).toBe(400);
+  });
   test('data payloads win over incidental matches', () => {
     expect(yahooResultHasData(JSON.stringify({ items: [{ title: 'a' }] }))).toBe(true);
     expect(yahooResultHasData(JSON.stringify([{ id: '1' }]))).toBe(true);

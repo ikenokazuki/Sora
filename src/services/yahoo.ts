@@ -499,7 +499,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
     ? [options.query]
     : extractRealtimeFallbackQueries(options.query);
 
-  // Pressure-aware query budget (spec sections 15-17): provider health wins over flags.
+  // Pressure-aware query budget (spec sections 15-17): the more loaded the provider, the fewer queries.
   const yahooPressureLevel = yahooWebPressure.getLevel();
   const yahooQueryBudget = getYahooQueryBudget(yahooPressureLevel);
   const verboseDiag = options.verbose === true;

@@ -150,7 +150,7 @@ export class ProviderPressureController {
   }
 }
 
-/** Pressure-aware Yahoo Web query budget: provider health wins over flags. */
+/** Pressure-aware Yahoo Web query budget: the more loaded the provider, the fewer queries (high 1, medium 2, low 3). */
 export function getYahooQueryBudget(pressure: ProviderPressureLevel): number {
   switch (pressure) {
     case 'high':
