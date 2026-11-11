@@ -23,7 +23,7 @@
 - **モード専用の引数の検査は `onlyForMode`**（Task 1b で足す。モードは、ハンドラが入力から決めた文字列を渡す）。引数の値を読む `onlyWith` は、モードが引数の値で決まる場合だけに使う。
 - **モード専用の引数に、zod の `.default()` を付けない。** ハンドラは、既定値が入った引数を「指定された」と見てしまい、他のモードで常にエラーになる。既存の決まりのとおり、`.meta({ default: … })` で説明にだけ既定を出し、ハンドラの中で既定を補う（例: `scrape` の `fullPage`（`.optional().default(true)`）、`fetch_social_post` の `commentLimit`（`.optional().default(10)`））。
 - 統合前の応答の中身は、モードごとに保つ（欄の名前・値）。モードを示す `mode` 欄を足してよい。複数の種類を返す統合（`get_disaster_info`）は、種類ごとの節にする。
-- Sora は OSS。個人のサービス名（oshiframe・LibreChat・n8n・idol-radar・hts-tiny・ikeno など）をコード・文書・コミットに書かない。例の値は架空のものを使う。
+- Sora は OSS。作者の個人のサービスや私的なシステムの名前を、コード・文書・コミットに書かない。例の値は架空のものを使う。
 - コミットは `git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit` で、Co-Authored-By や Generated-with の行を付けない。コミットの本文に「skip ci」と書かない。`git stash`（引数なし）・`git checkout .`・`git clean` を使わない。`rm` は `"${VAR:?}"` の形で、確かめてから。
 - 手元でテストを回す条件は、`env -u HTTPS_PROXY -u HTTP_PROXY bun test --timeout 60000`。全件（約 3,000 件・約 6 分）は、前景で回さず、`run_in_background` で。Chromium は nix のもの（`CHROME_PATH`）。
 - 各作業の終わりに、次が全部通ること: `bun run typecheck`、`bun run lint`、`bun run schema:notation`、`bun run gen:client`（実行後に `client/` の差分がコミット済みと同じ）、全体テスト。旧い名前が、統合した作業の範囲の `src/`・`scripts/`・README・`docs/engines/`・`glama.json`・`client/` に残らない（`RELEASE_NOTES.md`・`docs/superpowers/`・評価の基準線 `docs/evaluations/tool-selection/baseline-v4.json`・`prompts.json` は除く）。
