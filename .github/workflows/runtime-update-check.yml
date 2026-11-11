@@ -1,0 +1,25 @@
+name: Runtime update check
+
+# 週に 1 回、最新のリリースのイメージの Chromium・Bun と、CI の Bun を、新しい版と比べる。
+# 遅れていれば issue で知らせ、解消すれば閉じる。イメージの作成・配布はしない（リリースは人が決める）。
+# 読むのは、公開イメージ・Debian・Google・GitHub の公開の情報だけ。
+
+on:
+  schedule:
+    - cron: '17 21 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare runtime versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/runtime-update-check.sh
