@@ -28,10 +28,10 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
     {
-      url: z.string().optional().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")。url か urls のどちらか 1 つ'),
-      urls: z.array(z.string().url()).min(1).max(20).optional().describe('複数ページを一括取得するときの URL 配列 (最大 20 件)。ドメインごとの間隔を守りながら並行取得する。応答は { total, successful, failed, results, errors } で、results は入力の順ではなく、取得が終わった順'),
+      url: z.string().trim().optional().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")。url か urls のどちらか 1 つ'),
+      urls: z.array(z.string().url()).max(20).optional().describe('複数ページを一括取得するときの URL 配列 (最大 20 件)。ドメインごとの間隔を守りながら並行取得する。応答は { total, successful, failed, results, errors } で、results は入力の順ではなく、取得が終わった順'),
       concurrency: z.number().int().min(1).max(5).optional().describe('urls の並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
-      webhookUrl: z.string().optional().describe('urls の取得完了時に、応答と同じ整形後の結果を 1 回だけ通知する Webhook URL (非同期)'),
+      webhookUrl: z.string().trim().optional().describe('urls の取得完了時に、応答と同じ整形後の結果を 1 回だけ通知する Webhook URL (非同期)'),
       maxChars: z
         .number()
         .int()
@@ -81,8 +81,8 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
     async (args) => {
-      // 引数の mode（auto・fast・browser）とは別。url か urls かで決まる
-      const toolMode = args.urls ? WITH_URLS : WITH_URL;
+      // 引数の mode（auto・fast・browser）とは別。url か urls かで決まる（空の urls は指定なし）
+      const toolMode = args.urls?.length ? WITH_URLS : WITH_URL;
       // 既定値は、上のスキーマの .meta({ default }) と同じ値
       const invalid = exactlyOne(args, ['url', 'urls'], SCRAPE_USAGE)
         ?? onlyForMode(toolMode, [WITH_URLS], args, ['concurrency', 'webhookUrl'], SCRAPE_USAGE, { concurrency: 3 })
@@ -95,9 +95,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       }
       const { url, urls, concurrency, webhookUrl, fullPage, keepDataImages, ...common } = args;
       const { verbose } = common;
-      if (urls) {
+      if (toolMode === WITH_URLS) {
         try {
-          const result = await scrapeBatchUrls({ ...common, urls, tenantId: serverTenantId, concurrency, webhookUrl });
+          const result = await scrapeBatchUrls({ ...common, urls: urls!, tenantId: serverTenantId, concurrency, webhookUrl });
           const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
           return { content: [{ type: 'text', text: toolJson({ ...result, results: formattedResults }, verbose) }] };
         } catch (err) {

@@ -190,7 +190,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     'disaster',
     '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_place_info / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
     {
-      query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
+      query: z.string().trim().max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
       lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
       lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
       radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
@@ -201,10 +201,15 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       withAddress: z.boolean().optional().describe('各施設の住所を正規化して郵便番号を付け、施設の座標と突き合わせて addressInfo として返す。住所データが揃う前に調べた施設は addressIncomplete: true（足りないデータは addressPending / addressUnavailable）で、数秒後の再実行で完全になる。解釈できない住所は addressInfo なしで印も付かない').meta({ default: false }),
     },
     async (opts) => {
+      // 空の query・center・bbox は指定なし。サービスは REST のスキーマで読み直す（空を断り、検索語も場所も無いと
+      // zod の誤りの JSON を返す）ので、空を落としてから渡し、何も無いときは先に使い方の誤りにする
+      const input = { ...opts, query: opts.query || undefined, center: opts.center || undefined, bbox: opts.bbox || undefined };
+      if (!input.query && !input.center && !input.bbox && (input.lat === undefined || input.lon === undefined)) {
+        return usageError('query・center・bbox・lat と lon のどれかを指定してください。');
+      }
       try {
         const { searchOpenPoi } = await import('../services/poi.js');
-        // 空の center（lat・lon と排他）は指定なし。サービスは center があれば座標化する
-        const result = await searchOpenPoi({ ...opts, center: opts.center || undefined });
+        const result = await searchOpenPoi(input);
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };

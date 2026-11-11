@@ -164,7 +164,7 @@ export function searchCatalog(
 }
 
 /** `all` や未設定では有効にならず、名前を挙げたときだけ有効になるモジュール（自己責任で使う機能と、常駐の処理を伴う機能）。 */
-const EXPLICIT_ONLY_MODULES: readonly SoraModule[] = ['lyrics', 'shazam', 'hts-archive'];
+export const EXPLICIT_ONLY_MODULES: readonly SoraModule[] = ['lyrics', 'shazam', 'hts-archive'];
 
 /** モジュールが有効化されているかを判定 */
 export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 'all')[]): boolean {

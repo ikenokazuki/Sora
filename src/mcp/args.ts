@@ -49,7 +49,9 @@ export function onlyForMode(mode: string, allowedModes: string[], args: Record<s
 /**
  * keys のうち、指定された（空でない）値が URL として読めないときの、usage を添えたエラーの文。
  * 必須でない URL の引数は、スキーマに `.url()` を付けない（LLM が使わない引数に入れる "" を、zod の段で断ってしまう）。
- * 代わりにハンドラで、空でないときだけ、zod の `.url()` と同じく `new URL()` で読めるかを確かめる。
+ * 代わりにスキーマを `z.string().trim()` にし（zod 4 の `.url()` も前後の空白を取り除いてから読み、取り除いた値を渡していた。
+ * trim は JSON Schema に制約を足さない）、ハンドラで、空でないときだけ `new URL()` で読めるかを確かめる。
+ * 読み方は `.url()` と同じ（どのスキームも通る）。この関数は値を取り除かないので、スキーマの trim と組で使う。
  */
 export function notUrl(args: Record<string, unknown>, keys: string[], usage = ''): string | undefined {
   const bad = keys.find((k) => given(args[k]) && !URL.canParse(String(args[k])));

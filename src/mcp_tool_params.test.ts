@@ -190,6 +190,7 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
     ['urls に keepDataImages: true（既定値の false と違う）', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages は url を指定したときだけ指定できます（いま: urls を指定したとき）']],
     ['urls に 50000 を超える maxChars', { urls: ['https://example.com/a'], maxChars: 50_001 }, ['maxChars', '50000']],
     ['空の url だけ', { url: '' }, ['url・urls のどれか 1 つを指定してください']],
+    ['空の urls だけ', { urls: [] }, ['url・urls のどれか 1 つを指定してください']],
     ['URL として読めない url', { url: 'example.com/a' }, ['url は URL として読めません（いま: "example.com/a"）']],
     ['urls に URL として読めない webhookUrl', { urls: ['https://example.com/a'], webhookUrl: 'hook' }, ['webhookUrl は URL として読めません（いま: "hook"）']],
   ];
@@ -240,6 +241,22 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
     const one: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { url: 'https://example.com/a', webhookUrl: '' } }));
     expect(one.isError, textOf(one)).toBeFalsy();
     expect((single.mock.calls[0][0] as Record<string, unknown>).url).toBe('https://example.com/a');
+    // 空の urls も指定なし（1 ページの取得）
+    const empty: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { url: 'https://example.com/a', urls: [] } }));
+    expect(empty.isError, textOf(empty)).toBeFalsy();
+    expect(single).toHaveBeenCalledTimes(2);
+    expect(batch).toHaveBeenCalledTimes(1);
+  });
+
+  test('url・webhookUrl の前後の空白は、旧 .url() と同じく取り除いて渡す（全角の空白・NBSP も）', async () => {
+    const single = mockSingle();
+    const batch = mockBatch();
+    const one: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { url: '\u3000https://example.com/a \n' } }));
+    expect(one.isError, textOf(one)).toBeFalsy();
+    expect((single.mock.calls[0][0] as Record<string, unknown>).url).toBe('https://example.com/a');
+    const many: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com/a'], webhookUrl: '\u00a0https://example.com/hook ' } }));
+    expect(many.isError, textOf(many)).toBeFalsy();
+    expect((batch.mock.calls[0][0] as Record<string, unknown>).webhookUrl).toBe('https://example.com/hook');
   });
 
   test('モード専用の引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通る', async () => {
@@ -1286,6 +1303,13 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
     // 空の webhookUrl は登録しない（旧 watch_register は "" を断っていた）
     expect(spies.register.mock.calls[0][0]).toStrictEqual({ url: TARGET.url, title: undefined, selector: undefined, webhookUrl: undefined });
     notCalled(spies, ['list', 'register']);
+  });
+
+  test('url・webhookUrl の前後の空白は、旧 .url() と同じく取り除いて登録する', async () => {
+    const spies = mockAll();
+    const res = await call({ action: 'register', url: ` ${TARGET.url}\u3000`, webhookUrl: '\u00a0https://example.com/hook\n' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(spies.register.mock.calls[0][0]).toEqual({ url: TARGET.url, webhookUrl: 'https://example.com/hook' });
   });
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 何もせず、正しい使い方のエラー`, async () => {

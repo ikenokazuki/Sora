@@ -18,7 +18,7 @@ export function registerBrowserTools(context: ToolRegistrationContext): void {
     'browser',
     '【対話型ブラウザ自動操作】Chromium 実ブラウザを用いて、クリック・フォーム入力・キー押下・スクロール・待機・JavaScript実行・スクリーンショット取得などの対話的操作を順次実行します（対話・動的操作・レンダリングが必須なケース）。単純な静的ページの本文抽出は scrape、Web検索・調査は search_deep / search_web を使用してください。返却: { success, url, sessionId?, markdown?, screenshot?, html?, actionOutputs?: [{ step, type, result?, error? }], error? }',
     {
-      url: z.string().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
+      url: z.string().trim().optional().describe('操作対象の Web ページ URL (新規開始時に指定、既存セッション継続時は省略可能)'),
       sessionId: z.string().optional().describe('既存の対話セッションID (前回の操作に続けて同じタブで操作する場合に指定)'),
       ownerToken: z.string().optional().describe('マルチターン対話セッションの所有者検証トークン'),
       createSession: z.boolean().optional().describe('新しい対話セッションを作成し、次回以降も状態を維持するか (デフォルト: false)').meta({ default: false }),

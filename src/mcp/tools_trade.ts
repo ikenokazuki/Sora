@@ -12,7 +12,7 @@ import {
 import { CpscCertificateCheckRequestSchema, GenerateGccCertificateRequestSchema, ProductComplianceRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
-import { onlyForMode, usageError } from './args.js';
+import { notUrl, onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -161,7 +161,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     'trade',
     '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書・2026年7月eFiling義務を一括で判定し、通関前アクションプラン付きの総合診断を返す。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
     {
-      url: z.string().url().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
+      url: z.string().trim().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
       productName: z.string().optional().describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。日本語の商品は英訳して渡す'),
       description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
       htsCode: z.string().optional().describe('ユーザーからプロンプト内で明示的に提示された既知のHTSコード（指定時は最優先で検証）。【LLM自身の推測・候補値の入力厳禁！】HTSコードを推測・特定したい場合は必ず省略（未指定）にすること。未指定時にSoraが公式データと判例から特定します'),
@@ -175,8 +175,11 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       fabricWeightOzPerSqYd: ProductComplianceRequestSchema.shape.fabricWeightOzPerSqYd,
     },
     async (opts) => {
+      const invalid = notUrl(opts, ['url']);
+      if (invalid) return usageError(invalid);
       try {
-        const result = await checkProductCompliance(opts);
+        // 空の url は指定なし（url は品名・説明の代わりにもなるので、LLM が使わない側に "" を入れることがある）
+        const result = await checkProductCompliance({ ...opts, url: opts.url || undefined });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
