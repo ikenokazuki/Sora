@@ -5,6 +5,7 @@ import type { PersistedCookie } from './db.js';
 import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
+import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { isProxyBypassed } from './net/no_proxy.js';
@@ -328,10 +329,12 @@ export async function getOrCreateHttpSession(
   let session: UniversalHttpSession;
 
   if (mod) {
+    const trustStore = parseTrustStoreMode(process.env.SORA_FETCH_TRUST_STORE);
     session = await mod.createSession({
       browser,
       os: EMULATION_OS,
       emulation: { headers: { 'accept-language': ACCEPT_LANGUAGE }, origHeaders: CHROME_HEADER_ORDER },
+      ...(trustStore ? { trustStore } : {}),
       ...(proxyUrl ? { proxy: proxyUrl } : {}),
     });
   } else {
