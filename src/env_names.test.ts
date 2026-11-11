@@ -1,9 +1,14 @@
 import { afterAll, describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { createAuthMiddleware, resolvePeerLocal } from './auth.js';
-import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, resolveChromiumPath } from './browser_engine.js';
+import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, getProxyConfig, resolveChromiumPath } from './browser_engine.js';
 import { handleBrowserSessionAction } from './browser_session.js';
+import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
+import { defaultReferrerHeaders, pickProxyUrl } from './http_fetcher.js';
 import { app } from './index.js';
 import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
@@ -219,5 +224,66 @@ describe('ブラウザ', () => {
 
   test('CHROME_PATH は前後の空白を除いて読む', async () => {
     await withEnv({ CHROME_PATH: ` ${process.execPath} ` }, () => expect(resolveChromiumPath()).toBe(process.execPath));
+  });
+});
+
+describe('静的取得', () => {
+  const referer = (vars: Record<string, string | undefined>) =>
+    withEnv({ SORA_FETCH_DEFAULT_REFERER: undefined, SORA_DEFAULT_REFERER: undefined, ...vars }, () => 'Referer' in defaultReferrerHeaders());
+
+  test('SORA_FETCH_DEFAULT_REFERER は既定で有効。off・0・no・false（大文字小文字は問わない）で無効、不正な値は既定（有効）', async () => {
+    expect(await referer({})).toBe(true);
+    for (const value of ['off', '0', 'no', 'false', 'OFF']) expect(await referer({ SORA_FETCH_DEFAULT_REFERER: value }), value).toBe(false);
+    for (const value of ['on', '1', 'abc']) expect(await referer({ SORA_FETCH_DEFAULT_REFERER: value }), value).toBe(true);
+  });
+
+  test('旧名 SORA_DEFAULT_REFERER は読まない', async () => {
+    expect(await referer({ SORA_DEFAULT_REFERER: 'off' })).toBe(true);
+  });
+
+  test('SORA_RS_TRAFILATURA_PATH のコマンドで本文を取り出し、旧名 RS_TRAFILATURA_PATH は読まない', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sora-rs-name-'));
+    const bin = join(dir, 'rs');
+    writeFileSync(bin, `#!/bin/sh\ncat > /dev/null\nprintf '%s' '{"page_type":"article","content_html":"<p>本文</p>"}'\n`);
+    chmodSync(bin, 0o755);
+    try {
+      const html = '<html><body><p>本文</p></body></html>';
+      await withEnv({ SORA_RS_TRAFILATURA_PATH: ` ${bin} `, RS_TRAFILATURA_PATH: undefined }, async () => {
+        expect((await extractMainContentWithRs(html, 'https://example.com/a'))?.contentHtml).toBe('<p>本文</p>');
+      });
+      await withEnv({ SORA_RS_TRAFILATURA_PATH: undefined, RS_TRAFILATURA_PATH: bin }, async () => {
+        expect(await extractMainContentWithRs(html, 'https://example.com/a')).toBeUndefined();
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('プロキシ（名前は変えない。登録簿から読む）', () => {
+  const none = { SORA_PROXY_URL: undefined, SORA_PROXY_LIST: undefined, HTTPS_PROXY: undefined, https_proxy: undefined, HTTP_PROXY: undefined, http_proxy: undefined, ALL_PROXY: undefined, all_proxy: undefined, NO_PROXY: undefined, no_proxy: undefined };
+
+  test('SORA_PROXY_URL は http・https・socks5 の URL（末尾の / は外す）。読めない値は標準の名前に譲る', async () => {
+    await withEnv({ ...none, SORA_PROXY_URL: ' socks5://proxy.example.test:1080/ ', HTTPS_PROXY: 'http://std.example.test:3128' }, () => {
+      expect(getProxyConfig().proxyServer).toBe('socks5://proxy.example.test:1080');
+    });
+    await withEnv({ ...none, SORA_PROXY_URL: 'proxy.example.test:1080', HTTPS_PROXY: 'http://std.example.test:3128' }, () => {
+      expect(getProxyConfig().proxyServer).toBe('http://std.example.test:3128');
+    });
+  });
+
+  test('標準の名前は検査しない（scheme の無い host:port も、前後の空白を除いてそのまま）。小文字の綴りも読む', async () => {
+    await withEnv({ ...none, http_proxy: ' std.example.test:3128 ', no_proxy: ' localhost,.local ' }, () => {
+      expect(getProxyConfig()).toEqual({ proxyServer: 'std.example.test:3128', proxyBypassList: 'localhost,.local' });
+    });
+  });
+
+  test('SORA_PROXY_LIST は正しい URL だけから選び、正しい URL が無ければ SORA_PROXY_URL に戻る', async () => {
+    await withEnv({ ...none, SORA_PROXY_LIST: 'http://p1.example.test:8080, bad entry ,ftp://p2.example.test' }, () => {
+      for (let i = 0; i < 10; i++) expect(pickProxyUrl()).toBe('http://p1.example.test:8080');
+    });
+    await withEnv({ ...none, SORA_PROXY_LIST: 'bad entry', SORA_PROXY_URL: 'http://single.example.test:9090' }, () => {
+      expect(pickProxyUrl()).toBe('http://single.example.test:9090');
+    });
   });
 });

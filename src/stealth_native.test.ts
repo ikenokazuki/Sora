@@ -327,12 +327,12 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
   const GOOGLE = 'https://www.google.com/';
   let prevReferer: string | undefined;
   beforeAll(() => {
-    prevReferer = process.env.SORA_DEFAULT_REFERER;
-    delete process.env.SORA_DEFAULT_REFERER;
+    prevReferer = process.env.SORA_FETCH_DEFAULT_REFERER;
+    delete process.env.SORA_FETCH_DEFAULT_REFERER;
   });
   afterAll(() => {
-    if (prevReferer !== undefined) process.env.SORA_DEFAULT_REFERER = prevReferer;
-    else delete process.env.SORA_DEFAULT_REFERER;
+    if (prevReferer !== undefined) process.env.SORA_FETCH_DEFAULT_REFERER = prevReferer;
+    else delete process.env.SORA_FETCH_DEFAULT_REFERER;
   });
 
   test('既定では Google の Referer と、それに合う Sec-Fetch-Site: cross-site を付ける', async () => {
@@ -373,14 +373,14 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
     }
   });
 
-  test('SORA_DEFAULT_REFERER=off なら付けない', async () => {
+  test('SORA_FETCH_DEFAULT_REFERER=off なら付けない', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
-    process.env.SORA_DEFAULT_REFERER = 'off';
+    process.env.SORA_FETCH_DEFAULT_REFERER = 'off';
     try {
       await scrapeUrl({ url: `${server.base}/ref-off`, noCache: true });
       expect(headerValue(server.last('/ref-off'), 'referer')).toBeUndefined();
     } finally {
-      delete process.env.SORA_DEFAULT_REFERER;
+      delete process.env.SORA_FETCH_DEFAULT_REFERER;
       server.close();
     }
   });
