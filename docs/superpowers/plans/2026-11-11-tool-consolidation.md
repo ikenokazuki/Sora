@@ -17,6 +17,9 @@
 - コア（`defaultEnabled: true`）14 ツールの `description` の合計は 3500 字未満（`src/llm_contract_sync.test.ts`。この計画の開始時点で 3499 字）。初期の tools/list の合計は 30000 字未満（開始時点で 22,957 字）。コアのツールの説明を長くするときは、同じ作業の中で、意味を変えずに他のコアの説明を縮める。説明の決まりのテスト（先頭が「【」、「必須・公式・直結・速報」のどれかを含む）は保つ。新しいツールは遅延読み込み（コアにしない）。ただし、旧ツールがコアだった統合先は、コアのまま。
 - 統合したツールは、元のツールが属していたモジュールに置く（`registerTool` の第 5 引数）。モジュールが無効なら、そのツールは出ない。
 - 遅延読み込みのツールは `default.<名前>` の別名（`registerTool` が自動で作る）を持つ。新しい名前でも同じ。
+- **型つきクライアント（`client/`）の関数名は変えない。** 統合したツールの `REST_MAP` の各ルートに、旧いツールの名前（camelCase。例: `scrapeBatch`・`mapSite`・`fetchXPost`・`searchSong`）を `fn` として持たせる（Task 1b で足す）。1 つ目のルートは、新しいツール名の camelCase。
+- **モード専用の引数の検査は `onlyForMode`**（Task 1b で足す。モードは、ハンドラが入力から決めた文字列を渡す）。引数の値を読む `onlyWith` は、モードが引数の値で決まる場合だけに使う。
+- **モード専用の引数に、zod の `.default()` を付けない。** ハンドラは、既定値が入った引数を「指定された」と見てしまい、他のモードで常にエラーになる。既存の決まりのとおり、`.meta({ default: … })` で説明にだけ既定を出し、ハンドラの中で既定を補う（例: `scrape` の `fullPage`（`.optional().default(true)`）、`fetch_social_post` の `commentLimit`（`.optional().default(10)`））。
 - 統合前の応答の中身は、モードごとに保つ（欄の名前・値）。モードを示す `mode` 欄を足してよい。複数の種類を返す統合（`get_disaster_info`）は、種類ごとの節にする。
 - Sora は OSS。個人のサービス名（oshiframe・LibreChat・n8n・idol-radar・hts-tiny・ikeno など）をコード・文書・コミットに書かない。例の値は架空のものを使う。
 - コミットは `git -c user.name=ikenokazuki -c user.email=51224867+ikenokazuki@users.noreply.github.com commit` で、Co-Authored-By や Generated-with の行を付けない。コミットの本文に「skip ci」と書かない。`git stash`（引数なし）・`git checkout .`・`git clean` を使わない。`rm` は `"${VAR:?}"` の形で、確かめてから。
