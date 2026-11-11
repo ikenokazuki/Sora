@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { generateClient, type OpenApiDoc, type ToolMeta } from './render.js';
 
+const emptyOp = { responses: { 200: { content: { 'application/json': { schema: { type: 'object' } } } } } };
 const doc: OpenApiDoc = {
   paths: {
+    '/gov/law-text': { post: emptyOp },
+    '/intelligence/context/{contextId}/evidence': { get: emptyOp },
     '/search/web': {
       post: {
         summary: 'web search',
@@ -73,17 +76,81 @@ describe('generateClient', () => {
     expect(generateClient(doc, rest, tools)).toEqual(files);
   });
 
-  test('a tool with several routes gets one module with one function per route, named by method and path', () => {
+  test('a tool with several routes gets one module with one function per route: the first named after the tool, the others by method and path', () => {
     const watch: ToolMeta = { name: 'watch', category: 'watch', description: 'watch', keywords: [] };
     const multi = generateClient(doc, { watch: [{ method: 'GET', path: '/watch/list' }, { method: 'DELETE', path: '/watch/:id' }] }, [watch]);
     const module = multi['servers/sora/watch.ts'];
-    expect(module).toContain('export function getWatchList(): Promise<GetWatchListOutput>');
+    expect(module).toContain('export function watch(): Promise<WatchOutput>');
     expect(module).toContain('export function deleteWatchId(input: DeleteWatchIdInput): Promise<DeleteWatchIdOutput>');
     expect(module).toContain("callSora<DeleteWatchIdOutput>({ method: 'DELETE', path: '/watch/:id' }, input)");
     expect(module.match(/^import /gm)).toHaveLength(1);
     const catalog = JSON.parse(multi['catalog.json']);
-    expect(catalog.map((t: { name: string; fn: string }) => `${t.name}.${t.fn}`)).toEqual(['watch.getWatchList', 'watch.deleteWatchId']);
+    expect(catalog.map((t: { name: string; fn: string }) => `${t.name}.${t.fn}`)).toEqual(['watch.watch', 'watch.deleteWatchId']);
     expect(catalog[1]).toMatchObject({ method: 'DELETE', path: '/watch/:id', file: 'servers/sora/watch.ts' });
     expect(multi['servers/sora/index.ts'].match(/export \*/g)).toHaveLength(1);
+  });
+});
+
+describe('generateClient function names', () => {
+  const meta = (name: string): ToolMeta => ({ name, category: 'test', description: name, keywords: [] });
+  const fnsOf = (files: Record<string, string>): string[] => JSON.parse(files['catalog.json']).map((t: { fn: string }) => t.fn);
+  const errorOf = (run: () => unknown): string => {
+    try {
+      run();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return '';
+  };
+
+  test('a route fn replaces the default name in the module, its types and the catalog', () => {
+    const files = generateClient(doc, { search_web: { method: 'POST', path: '/search/web', fn: 'findWeb' } }, [meta('search_web')]);
+    const module = files['servers/sora/search_web.ts'];
+    expect(module).toContain('export function findWeb(input: FindWebInput): Promise<FindWebOutput>');
+    expect(module).not.toContain('searchWeb');
+    expect(JSON.parse(files['catalog.json'])[0]).toMatchObject({ name: 'search_web', fn: 'findWeb' });
+  });
+
+  test('with several routes the first is named after the tool unless it has an fn; the others use their fn', () => {
+    const second = { method: 'POST', path: '/gov/law-text', fn: 'getLawText' };
+    const plain = generateClient(doc, { search_laws: [{ method: 'POST', path: '/search/web' }, second] }, [meta('search_laws')]);
+    expect(fnsOf(plain)).toEqual(['searchLaws', 'getLawText']);
+    const named = generateClient(doc, { search_laws: [{ method: 'POST', path: '/search/web', fn: 'findLaws' }, second] }, [meta('search_laws')]);
+    expect(fnsOf(named)).toEqual(['findLaws', 'getLawText']);
+  });
+
+  test('a later route without fn is named by method and path; hyphens and :params become camelCase', () => {
+    const files = generateClient(doc, {
+      search_laws: [{ method: 'POST', path: '/search/web' }, { method: 'POST', path: '/gov/law-text' }],
+      get_country_context: [{ method: 'GET', path: '/intelligence/context/:contextId' }, { method: 'GET', path: '/intelligence/context/:contextId/evidence' }],
+    }, [meta('search_laws'), meta('get_country_context')]);
+    expect(fnsOf(files)).toEqual(['getCountryContext', 'getIntelligenceContextContextIdEvidence', 'searchLaws', 'postGovLawText']);
+    expect(files['servers/sora/get_country_context.ts']).toContain('export function getIntelligenceContextContextIdEvidence(input: GetIntelligenceContextContextIdEvidenceInput)');
+  });
+
+  test('two functions with the same name fail the generation and name both owners', () => {
+    const across = errorOf(() => generateClient(doc, {
+      search_web: { method: 'POST', path: '/search/web' },
+      search_laws: { method: 'POST', path: '/gov/law-text', fn: 'searchWeb' },
+    }, [meta('search_web'), meta('search_laws')]));
+    expect(across).toContain('"searchWeb"');
+    expect(across).toContain('search_web (POST /search/web)');
+    expect(across).toContain('search_laws (POST /gov/law-text)');
+    const inside = errorOf(() => generateClient(doc, {
+      watch: [{ method: 'GET', path: '/watch/list' }, { method: 'DELETE', path: '/watch/:id', fn: 'watch' }],
+    }, [meta('watch')]));
+    expect(inside).toContain('"watch"');
+    expect(inside).toContain('watch (GET /watch/list)');
+    expect(inside).toContain('watch (DELETE /watch/:id)');
+  });
+
+  test('a tool with several routes fails when any one is missing from the OpenAPI document, naming the tool and the route', () => {
+    const present = { method: 'POST', path: '/search/web' };
+    const missing = { method: 'POST', path: '/nope' };
+    for (const routes of [[present, missing], [missing, present]]) {
+      const message = errorOf(() => generateClient(doc, { search_laws: routes }, [meta('search_laws')]));
+      expect(message).toContain('search_laws');
+      expect(message).toContain('POST /nope');
+    }
   });
 });

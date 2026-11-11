@@ -53,7 +53,7 @@ function inputSchema(op: OpenApiOperation, method: string, path: string): OpenAp
   return Object.keys(properties).length > 0 ? { type: 'object', properties, required } : undefined;
 }
 
-/** 複数のルートを持つツールの関数名: メソッドとパス（`DELETE /watch/:id` → `deleteWatchId`）。 */
+/** `fn` の無い 2 つ目以降のルートの関数名: メソッドとパス（`DELETE /watch/:id` → `deleteWatchId`）。 */
 const routeFn = (route: RestRoute): string =>
   camel([route.method.toLowerCase(), ...route.path.split('/').filter(Boolean).map((s) => s.replace(/^:/, '').replace(/-/g, '_'))].join('_'));
 
@@ -82,16 +82,22 @@ export function generateClient(doc: OpenApiDoc, restMap: RestMap, tools: ToolMet
   const catalog: unknown[] = [];
   const modules: string[] = [];
   const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+  const owners = new Map<string, string>(); // 関数名 → それを持つツールとルート（index.ts が全部を再 export するので、重ならないこと）
 
   for (const tool of sorted) {
     if (!(tool.name in restMap)) throw new Error(`gen-client: tool "${tool.name}" has no REST_MAP entry`);
     const routes = restRoutesOf(tool.name, restMap);
     if (!routes.length) continue;
     const file = `servers/sora/${tool.name}.ts`;
-    const body = routes.flatMap((route) => {
+    const body = routes.flatMap((route, index) => {
       const op = doc.paths[openApiPath(route.path)]?.[route.method.toLowerCase()];
       if (!op) throw new Error(`gen-client: tool "${tool.name}" (${route.method} ${route.path}) is not in the OpenAPI document`);
-      const fn = routes.length === 1 ? camel(tool.name) : routeFn(route);
+      // 1 つ目のルートは、ツールの主な動きなので、ルートが増えても関数名を変えない。
+      const fn = route.fn ?? (index === 0 ? camel(tool.name) : routeFn(route));
+      const owner = `${tool.name} (${route.method} ${route.path})`;
+      const other = owners.get(fn);
+      if (other) throw new Error(`gen-client: function name "${fn}" is used by both ${other} and ${owner}; give one of them another fn in REST_MAP`);
+      owners.set(fn, owner);
       catalog.push({ name: tool.name, fn, category: tool.category, description: tool.description, keywords: tool.keywords, method: route.method, path: route.path, file });
       return routeFunction(fn, tool, route, op);
     });

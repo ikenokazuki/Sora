@@ -32,7 +32,15 @@ import { createSocialPostsProvider } from '../../src/services/country_intel/prov
 import { createWorldBankProvider } from '../../src/services/country_intel/providers/worldbank.js';
 import { createNagerProvider } from '../../src/services/country_intel/providers/nager.js';
 
-export interface RestRoute { method: string; path: string; }
+export interface RestRoute {
+  method: string;
+  path: string;
+  /**
+   * 型つきクライアント（client/）で、このルートの関数に付ける名前（camelCase）。
+   * 統合したツールのルートが、旧いツールの関数名（例: `scrapeBatch`）を保つために使う。
+   */
+  fn?: string;
+}
 
 export const CANONICAL_TOOLS: readonly string[] = [
   'scrape', 'scrape_batch', 'search_deep', 'map_site', 'crawl_site', 'search_web',
@@ -49,7 +57,15 @@ export const CANONICAL_TOOLS: readonly string[] = [
 ];
 
 
-/** ツール → REST のルート。配列は、モードごとに複数のルートを持つツール。null は REST の無いツール。 */
+/**
+ * ツール → REST のルート。配列は、モードごとに複数のルートを持つツール。null は REST の無いツール。
+ *
+ * 配列の順序には意味がある。
+ * - `pair_mismatch`（schema:notation）は、MCP の引数を、同じ名前の引数を持つ最初のルートと比べる。
+ * - 型つきクライアントでは、1 つ目のルートの関数名が `camel(ツール名)` になる（ルートが増えても変わらない）。
+ *   2 つ目以降は `fn`、無ければメソッドとパスから決まる（`POST /gov/law-text` → `postGovLawText`）。
+ *   `fn` はどのルートにも付けられ、あればそれが優先する。関数名はツールをまたいでも重ならない（重なると生成が失敗する）。
+ */
 export type RestMap = Record<string, RestRoute | RestRoute[] | null>;
 
 /** ツールの REST ルートの一覧（null は []、1 つは 1 要素の配列）。 */
