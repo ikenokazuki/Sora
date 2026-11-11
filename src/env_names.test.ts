@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { createAuthMiddleware, resolvePeerLocal } from './auth.js';
-import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, getProxyConfig, resolveChromiumPath } from './browser_engine.js';
+import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, getProxyConfig, resolveChromiumPath, validateHostIpDns } from './browser_engine.js';
 import { handleBrowserSessionAction } from './browser_session.js';
 import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
+import { deliverWebhook } from './enrichment.js';
 import { defaultReferrerHeaders, pickProxyUrl } from './http_fetcher.js';
 import { app } from './index.js';
 import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
@@ -228,6 +229,25 @@ describe('ブラウザ', () => {
 });
 
 describe('静的取得', () => {
+  test('SORA_FETCH_ALLOW_PRIVATE_NETWORK（1 も真）で SSRF の防御を外し、旧名 ALLOW_LOCAL_FETCH だけでは外さない（安全な側）', async () => {
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') });
+    const hook = `http://127.0.0.1:${server.port}/hook`;
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await withEnv({ SORA_FETCH_ALLOW_PRIVATE_NETWORK: '1', ALLOW_LOCAL_FETCH: undefined }, async () => {
+        expect(await validateHostIpDns('127.0.0.1')).toEqual([]);
+        expect(await deliverWebhook(hook, { a: 1 })).toBe(true);
+      });
+      await withEnv({ SORA_FETCH_ALLOW_PRIVATE_NETWORK: undefined, ALLOW_LOCAL_FETCH: 'true' }, async () => {
+        await expect(validateHostIpDns('127.0.0.1')).rejects.toThrow('プライベートネットワーク');
+        expect(await deliverWebhook(hook, { a: 1 })).toBe(false);
+      });
+    } finally {
+      warn.mockRestore();
+      server.stop(true);
+    }
+  });
+
   const referer = (vars: Record<string, string | undefined>) =>
     withEnv({ SORA_FETCH_DEFAULT_REFERER: undefined, SORA_DEFAULT_REFERER: undefined, ...vars }, () => 'Referer' in defaultReferrerHeaders());
 

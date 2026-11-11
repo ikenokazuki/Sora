@@ -8,13 +8,13 @@ let prevAllow: string | undefined;
 
 describe('scrape shared-cache isolation (P0-SEC-01)', () => {
   afterEach(() => {
-    if (prevAllow !== undefined) process.env.ALLOW_LOCAL_FETCH = prevAllow;
-    else delete process.env.ALLOW_LOCAL_FETCH;
+    if (prevAllow !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
+    else delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     clearCache();
   });
   test('authenticated scrapes bypass shared cache on read and write', async () => {
-    prevAllow = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     let hits = 0;
     const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
       hits++;

@@ -660,7 +660,7 @@ export const BLOCKED_TRACKER_DOMAINS = [
 
 /** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策＋インメモリキャッシュ） */
 export async function validateHostIpDns(hostname: string): Promise<string[]> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') return [];
+  if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) return [];
 
   const cleanHost = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
   if (isBlockedHostname(cleanHost) || isPrivateIp(cleanHost)) {
@@ -735,7 +735,7 @@ export async function setupPageSecurity(
           return req.abort('blockedbyclient');
         }
 
-        if (process.env.ALLOW_LOCAL_FETCH === 'true') {
+        if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
           return proceed();
         }
 

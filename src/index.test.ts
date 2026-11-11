@@ -14,24 +14,24 @@ beforeAll(() => {
 });
 afterAll(() => restoreExternalFetch?.());
 
-/** ALLOW_LOCAL_FETCH を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
+/** SORA_FETCH_ALLOW_PRIVATE_NETWORK を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
 function setLocalFetch(value: string | undefined): () => void {
-  const prev = process.env.ALLOW_LOCAL_FETCH;
-  if (value === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-  else process.env.ALLOW_LOCAL_FETCH = value;
+  const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  if (value === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = value;
   return () => {
-    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prev;
+    if (prev === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
   };
 }
 
-/** このファイルのテストが ALLOW_LOCAL_FETCH を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
+/** このファイルのテストが SORA_FETCH_ALLOW_PRIVATE_NETWORK を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
 let allowLocalFetchAtStart: string | undefined;
 beforeAll(() => {
-  allowLocalFetchAtStart = process.env.ALLOW_LOCAL_FETCH;
+  allowLocalFetchAtStart = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 });
 afterAll(() => {
-  expect(process.env.ALLOW_LOCAL_FETCH).toBe(allowLocalFetchAtStart);
+  expect(process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK).toBe(allowLocalFetchAtStart);
 });
 
 /** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
@@ -40,13 +40,13 @@ async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
     + '<p>This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.</p>'
     + '<p><a href="https://www.iana.org/domains/example">More information...</a></p></div></body></html>';
   const server = Bun.serve({ port: 0, fetch: () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
-  const prev = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
     return await fn(`http://127.0.0.1:${server.port}/`);
   } finally {
-    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prev;
+    if (prev === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     server.stop(true);
   }
 }
@@ -185,8 +185,8 @@ import {
 
 describe('web-fetcher Core Functions', () => {
   it('isBlockedHostname should block local, private IPs, decimal IPs, and metadata hostnames', () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     try {
       expect(isBlockedHostname('localhost')).toBe(true);
       expect(isBlockedHostname('127.0.0.1')).toBe(true);
@@ -205,7 +205,7 @@ describe('web-fetcher Core Functions', () => {
       expect(isBlockedHostname('example.com')).toBe(false);
       expect(isBlockedHostname('yahoo.co.jp')).toBe(false);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
+      if (prev !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 
@@ -2530,9 +2530,9 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
-    // 手元の宛先には送らず（ALLOW_LOCAL_FETCH が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
+    // 手元の宛先には送らず（SORA_FETCH_ALLOW_PRIVATE_NETWORK が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
+    const prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
@@ -2541,7 +2541,7 @@ describe('Sora REST & MCP Endpoints', () => {
       ]);
     } finally {
       warn.mockRestore();
-      if (prevEnv !== undefined) process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      if (prevEnv !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
     }
   });
 
@@ -2783,14 +2783,14 @@ describe('Sora REST & MCP Endpoints', () => {
         fetched.push(String(input));
         return new Response(null, { status: 200 });
       }) as typeof fetch;
-      prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      delete process.env.ALLOW_LOCAL_FETCH;
+      prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     });
     afterEach(() => {
       warn.mockRestore();
       globalThis.fetch = realFetch;
-      if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      if (prevEnv === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
     });
 
     it('does not fetch loopback, private, link-local and localhost destinations', async () => {
@@ -4786,8 +4786,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
     it('fetchImageBuffer should block private IPs (SSRF protection)', async () => {
       const { fetchImageBuffer } = await import('./services/image_inspect.js');
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      delete process.env.ALLOW_LOCAL_FETCH;
+      const prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 
       try {
         await expect(fetchImageBuffer('http://127.0.0.1/test.jpg')).rejects.toThrow();
@@ -4796,7 +4796,7 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(fetchImageBuffer('ftp://example.com/test.jpg')).rejects.toThrow();
       } finally {
         if (prevEnv !== undefined) {
-          process.env.ALLOW_LOCAL_FETCH = prevEnv;
+          process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
         }
       }
     });

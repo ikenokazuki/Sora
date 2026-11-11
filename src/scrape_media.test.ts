@@ -6,9 +6,9 @@ import { scrapeUrl } from './scraper.js';
 
 describe('scrape の includeMedia と rs-trafilatura への引数（手元のサーバー）', () => {
   let server: ReturnType<typeof Bun.serve>;
-  const prev = { allow: process.env.ALLOW_LOCAL_FETCH, rs: process.env.SORA_RS_TRAFILATURA_PATH };
+  const prev = { allow: process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK, rs: process.env.SORA_RS_TRAFILATURA_PATH };
   beforeAll(() => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     delete process.env.SORA_RS_TRAFILATURA_PATH;
     server = Bun.serve({
       port: 0,
@@ -21,7 +21,7 @@ describe('scrape の includeMedia と rs-trafilatura への引数（手元のサ
   });
   afterAll(() => {
     server.stop(true);
-    for (const [key, value] of [['ALLOW_LOCAL_FETCH', prev.allow], ['SORA_RS_TRAFILATURA_PATH', prev.rs]] as const) {
+    for (const [key, value] of [['SORA_FETCH_ALLOW_PRIVATE_NETWORK', prev.allow], ['SORA_RS_TRAFILATURA_PATH', prev.rs]] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }

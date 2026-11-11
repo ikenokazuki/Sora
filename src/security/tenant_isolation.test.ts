@@ -36,8 +36,8 @@ describe('tenant isolation (P1-SEC-02)', () => {
   });
 
   test('tenant cookie jars are isolated end-to-end', async () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     const seen: Array<string | undefined> = [];
     let n = 0;
     const { createServer } = await import('node:http');
@@ -63,8 +63,8 @@ describe('tenant isolation (P1-SEC-02)', () => {
       server.close();
       await closeHttpSession('127.0.0.1', 'tenantA').catch(() => {});
       await closeHttpSession('127.0.0.1', 'tenantB').catch(() => {});
-      if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
-      else delete process.env.ALLOW_LOCAL_FETCH;
+      if (prev !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
+      else delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     }
   });
 

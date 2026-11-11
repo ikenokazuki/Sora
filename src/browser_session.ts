@@ -336,7 +336,7 @@ async function runActionsOnPage(
           if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
             throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
           }
-          if (process.env.ALLOW_LOCAL_FETCH !== 'true') {
+          if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
             await validateHostIpDns(parsedUrl.hostname);
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
@@ -537,7 +537,7 @@ export async function handleBrowserSessionAction(
   try {
     // 初期 URL が指定されている場合、ページ遷移を実行
     if (options.url) {
-      if (process.env.ALLOW_LOCAL_FETCH !== 'true' && isBlockedHostname(new URL(options.url).hostname)) {
+      if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && isBlockedHostname(new URL(options.url).hostname)) {
         throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
       }
       const currentUrl = page.url();

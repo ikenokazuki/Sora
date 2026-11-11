@@ -1,5 +1,6 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
+import { envBool } from './config.js';
 import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalWindow, type HeadingBlock } from './extractor/hierarchical_bm25.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms } from './extractor/markdown_sections.js';
 import {
@@ -201,7 +202,7 @@ export function calculateContentStats(text: string): {
 
 /** Webhook URL の SSRF 安全性検証 (ホスト名 & DNS 解決後 IP の二重チェック) */
 async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') return true;
+  if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) return true;
   try {
     const u = new URL(urlStr);
     if (!['http:', 'https:'].includes(u.protocol)) return false;
