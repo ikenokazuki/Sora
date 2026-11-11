@@ -173,7 +173,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | 常駐メモリ（静的取得後） | 約 195 MB | `mode: fast` でスクレイプした後 |
 | 常駐メモリ（ブラウザ描画中） | 約 950 MB | bun 約 250MB + Chromium 約 700MB（7 プロセス） |
 | 常駐メモリ（無操作 5 分後） | 約 200 MB | Chromium 解放後（`BROWSER_IDLE_TTL_MS`） |
-| イメージサイズ | 約 1.3 GB | Bun + Chromium + 日本語フォント |
+| イメージサイズ | 約 750 MB | Bun + Chromium + 日本語フォント（展開後。圧縮して約 345 MB） |
 | 必要なコンテナ構成 | 単一コンテナ | Redis / PostgreSQL / ワーカーキュー不要 |
 | セキュリティ設計 | Distroless（シェルなし・非 root） | `gcr.io/distroless/cc-debian12` |
 
