@@ -16,13 +16,23 @@ import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
 import { integratedSearch } from './scraper.js';
 import { resolveMcpOriginConfig, resolveMcpPort } from './security/mcp_origin.js';
+import { addressEnabled, loadAddressConfig } from './services/address_config.js';
+import { startAddressPreload } from './services/address_preload.js';
+import { crossSource } from './services/cbp_cross.js';
+import { createBlueskyProvider } from './services/country_intel/providers/bluesky.js';
+import { createDefaultCountryIntelDependencies, disabledCountryIntelProviders } from './services/country_intel/runtime.js';
+import { CROSS_INDEX_URL, ensureCrossIndex, resetCrossIndexForTest } from './services/cross_index.js';
 import { sendAdminAlert } from './services/health.js';
+import { htsDirectory } from './services/hts_data.js';
 import { openPoiBaseUrl } from './services/poi.js';
+import { dhlAdapter, dhlApiKey } from './services/tracking/carriers/dhl.js';
+import { fedexAdapter, fedexApiCredentials } from './services/tracking/carriers/fedex.js';
+import { upsAdapter, upsApiCredentials } from './services/tracking/carriers/ups.js';
 import { FxTwitterDetailProvider } from './services/x_detail.js';
 import * as yahoo from './services/yahoo.js';
 import { withEnv } from './test_fixtures/env.js';
 
-// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ・検索・Yahoo・X・OpenPOI）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
+// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ・検索・Yahoo・X・OpenPOI・住所・HTS・追跡・国地域）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
 // 旧名を書くテストは、このファイルと config.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
 
 /**
@@ -420,5 +430,195 @@ describe('OpenPOI', () => {
     expect(await base(' https://poi.example.test/ ')).toBe('https://poi.example.test');
     expect(await base('https://poi.example.test//')).toBe('https://poi.example.test');
     for (const value of ['', 'poi.example.test', 'ftp://poi.example.test']) expect(await base(value), value).toBe('https://api.openpoiapi.com');
+  });
+});
+
+describe('住所（新しい名前の読み方は address_config.test.ts）', () => {
+  test('旧名 SORA_ADDRESS だけでは動作モードを変えない（off にしても止まらない。起動の拒否は起動時の検査）', () => {
+    expect(addressEnabled({ SORA_ADDRESS: 'off' })).toBe(true);
+    expect(loadAddressConfig({ SORA_ADDRESS: 'eager' }, '/data/sora.db').mode).toBe('lazy');
+    const timer = startAddressPreload({ SORA_ADDRESS: 'off', SORA_ADDRESS_PRELOAD: '13' }, { delayMs: 3_600_000 });
+    expect(timer).not.toBeNull();
+    clearTimeout(timer as ReturnType<typeof setTimeout>);
+  });
+});
+
+describe('HTS', () => {
+  test('SORA_HTS_CROSS_SOURCE は local・api（大文字小文字は問わない）。知らない値と、旧名 CROSS_SOURCE は既定の local', async () => {
+    const source = (vars: Record<string, string>) => withEnv({ SORA_HTS_CROSS_SOURCE: undefined, CROSS_SOURCE: undefined, ...vars }, () => crossSource());
+    expect(await source({})).toBe('local');
+    expect(await source({ SORA_HTS_CROSS_SOURCE: ' API ' })).toBe('api');
+    expect(await source({ SORA_HTS_CROSS_SOURCE: 'local' })).toBe('local');
+    expect(await source({ SORA_HTS_CROSS_SOURCE: 'remote' })).toBe('local');
+    expect(await source({ CROSS_SOURCE: 'api' })).toBe('local');
+  });
+
+  test('SORA_HTS_DIR は前後の空白を除いて読む', async () => {
+    await withEnv({ SORA_HTS_DIR: ' /data/hts-example ' }, () => expect(htsDirectory()).toBe('/data/hts-example'));
+  });
+
+  describe('判例の索引（SORA_HTS_CROSS_INDEX_URL・SORA_HTS_CROSS_INDEX_SHA256）', () => {
+    const NAMES = { SORA_HTS_CROSS_INDEX_URL: undefined, SORA_HTS_CROSS_INDEX_SHA256: undefined, SORA_CROSS_INDEX_URL: undefined, SORA_CROSS_INDEX_SHA256: undefined, SORA_HTS_DIR: undefined };
+    const SHA = 'a'.repeat(64);
+
+    /** 索引の取得を試み、呼んだ URL（fetch は 503 を返す）と、失敗の文を返す。 */
+    async function attempt(vars: Record<string, string>): Promise<{ urls: string[]; error: string }> {
+      const urls: string[] = [];
+      const original = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        urls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        return new Response('unavailable', { status: 503 });
+      }) as typeof fetch;
+      resetCrossIndexForTest();
+      try {
+        const error = await withEnv({ ...NAMES, ...vars }, () => ensureCrossIndex().then(() => 'resolved', (e: unknown) => String(e)));
+        return { urls, error };
+      } finally {
+        globalThis.fetch = original;
+        resetCrossIndexForTest();
+      }
+    }
+
+    test('新しい名前の URL（https・file）から取る', async () => {
+      const { urls } = await attempt({ SORA_HTS_CROSS_INDEX_URL: ' https://index.example.test/cross.jsonl.gz ', SORA_HTS_CROSS_INDEX_SHA256: SHA });
+      expect(urls).toEqual(['https://index.example.test/cross.jsonl.gz']);
+    });
+
+    test('旧名 SORA_CROSS_INDEX_URL・SORA_CROSS_INDEX_SHA256 は読まず、リリースの索引を取る（起動の拒否は起動時の検査）', async () => {
+      const { urls } = await attempt({ SORA_CROSS_INDEX_URL: 'https://index.example.test/cross.jsonl.gz', SORA_CROSS_INDEX_SHA256: SHA });
+      expect(urls).toEqual([CROSS_INDEX_URL]);
+    });
+
+    test('読めない URL（https・file でない）は、リリースの索引に戻さず、取らずに初回の利用で失敗する', async () => {
+      for (const value of ['http://index.example.test/cross.jsonl.gz', 'index.example.test/cross.jsonl.gz']) {
+        const { urls, error } = await attempt({ SORA_HTS_CROSS_INDEX_URL: value, SORA_HTS_CROSS_INDEX_SHA256: SHA });
+        expect(urls, value).toEqual([]);
+        expect(error, value).toContain('SORA_HTS_CROSS_INDEX_URL');
+      }
+    });
+
+    test('URL に SHA-256 が無い・形が違う（大文字・旧名だけ）ときは、取らずに初回の利用で失敗する', async () => {
+      for (const vars of [{}, { SORA_HTS_CROSS_INDEX_SHA256: 'A'.repeat(64) }, { SORA_HTS_CROSS_INDEX_SHA256: 'abc' }, { SORA_CROSS_INDEX_SHA256: SHA }] as Record<string, string>[]) {
+        const { urls, error } = await attempt({ SORA_HTS_CROSS_INDEX_URL: 'https://index.example.test/cross.jsonl.gz', ...vars });
+        expect(urls).toEqual([]);
+        expect(error).toContain('SORA_HTS_CROSS_INDEX_SHA256');
+      }
+    });
+  });
+});
+
+describe('追跡（運送会社の API の鍵）', () => {
+  const ID = 'example-client-id';
+  const SECRET = 'example-client-secret';
+
+  test('FedEx は ID と秘密を組で読む。片方だけ（空白だけを含む）は、どちらも無いのと同じ（API を使わずブラウザで照会する）', () => {
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID, SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET })).toEqual({ clientId: ID, clientSecret: SECRET });
+    expect(fedexApiCredentials({})).toBeUndefined();
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID })).toBeUndefined();
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID, SORA_TRACKING_FEDEX_CLIENT_SECRET: '  ' })).toBeUndefined();
+  });
+
+  test('FedEx の旧名（FEDEX_API_KEY・FEDEX_API_SECRET と FEDEX_CLIENT_ID・FEDEX_CLIENT_SECRET）は読まず、組をまたいで混ぜない', () => {
+    expect(fedexApiCredentials({ FEDEX_API_KEY: 'old-key', FEDEX_API_SECRET: 'old-secret' })).toBeUndefined();
+    expect(fedexApiCredentials({ FEDEX_CLIENT_ID: 'old-id', FEDEX_CLIENT_SECRET: 'old-secret' })).toBeUndefined();
+    expect(fedexApiCredentials({ FEDEX_API_KEY: 'old-key', FEDEX_CLIENT_SECRET: 'old-secret' })).toBeUndefined();
+    // 新しい名前の片方と旧名の片方は、組にならない
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID, FEDEX_API_SECRET: 'old-secret' })).toBeUndefined();
+    expect(fedexApiCredentials({ FEDEX_CLIENT_ID: 'old-id', SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(fedexApiCredentials({
+      SORA_TRACKING_FEDEX_CLIENT_ID: ID, SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET, FEDEX_API_KEY: 'old-key', FEDEX_CLIENT_SECRET: 'old-secret',
+    })).toEqual({ clientId: ID, clientSecret: SECRET });
+  });
+
+  test('UPS は SORA_TRACKING_UPS_CLIENT_ID・SORA_TRACKING_UPS_CLIENT_SECRET を組で読み、旧名 UPS_CLIENT_ID・UPS_CLIENT_SECRET は読まない', () => {
+    expect(upsApiCredentials({ SORA_TRACKING_UPS_CLIENT_ID: ID, SORA_TRACKING_UPS_CLIENT_SECRET: SECRET })).toEqual({ clientId: ID, clientSecret: SECRET });
+    expect(upsApiCredentials({ SORA_TRACKING_UPS_CLIENT_ID: ID })).toBeUndefined();
+    expect(upsApiCredentials({ SORA_TRACKING_UPS_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(upsApiCredentials({ UPS_CLIENT_ID: ID, UPS_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(upsApiCredentials({ SORA_TRACKING_UPS_CLIENT_ID: ID, UPS_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(upsApiCredentials({ UPS_CLIENT_ID: ID, SORA_TRACKING_UPS_CLIENT_SECRET: SECRET })).toBeUndefined();
+  });
+
+  test('DHL は SORA_TRACKING_DHL_API_KEY だけを読み、旧名 DHL_EXPRESS_API_KEY・DHL_API_KEY は読まない', () => {
+    expect(dhlApiKey({ SORA_TRACKING_DHL_API_KEY: 'example-dhl-key' })).toBe('example-dhl-key');
+    expect(dhlApiKey({ SORA_TRACKING_DHL_API_KEY: ' ' })).toBeUndefined();
+    expect(dhlApiKey({ DHL_EXPRESS_API_KEY: 'old-key', DHL_API_KEY: 'old-key' })).toBeUndefined();
+  });
+
+  test('照会は、新しい名前の鍵で API を呼ぶ（API の応答を差し替える。ブラウザは使わない）', async () => {
+    const requests: { url: string; init?: RequestInit }[] = [];
+    const responses: Record<string, unknown> = {
+      'https://onlinetools.ups.com/security/v1/oauth/token': { access_token: 'ups-token' },
+      'https://onlinetools.ups.com/api/track/v1/details/1Z999AA10123456784': { trackResponse: { shipment: [{ package: [{ currentStatus: { description: 'Delivered' }, activity: [] }] }] } },
+      'https://apis.fedex.com/oauth/token': { access_token: 'fedex-token', expires_in: 3600 },
+      'https://apis.fedex.com/track/v1/trackingnumbers': { output: { completeTrackResults: [{ trackResults: [{ latestStatusDetail: { description: 'Delivered' }, scanEvents: [] }] }] } },
+      'https://api-eu.dhl.com/track/shipments?trackingNumber=1234567890': { shipments: [{ status: { description: 'Delivered' }, events: [] }] },
+    };
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push({ url, init });
+      return url in responses ? Response.json(responses[url]) : new Response('not stubbed', { status: 500 });
+    }) as typeof fetch;
+    try {
+      await withEnv({
+        SORA_TRACKING_UPS_CLIENT_ID: 'ups-id', SORA_TRACKING_UPS_CLIENT_SECRET: 'ups-secret',
+        SORA_TRACKING_FEDEX_CLIENT_ID: 'fedex-id', SORA_TRACKING_FEDEX_CLIENT_SECRET: 'fedex-secret',
+        SORA_TRACKING_DHL_API_KEY: 'dhl-key',
+      }, async () => {
+        expect((await upsAdapter.track('1Z999AA10123456784')).status).toBe('delivered');
+        expect((await fedexAdapter.track('123456789012')).status).toBe('delivered');
+        expect((await dhlAdapter.track('1234567890')).status).toBe('delivered');
+      });
+      const header = (url: string, name: string) => new Headers(requests.find((r) => r.url === url)?.init?.headers).get(name);
+      expect(header('https://onlinetools.ups.com/security/v1/oauth/token', 'Authorization')).toBe(`Basic ${Buffer.from('ups-id:ups-secret').toString('base64')}`);
+      const fedexToken = new URLSearchParams(String(requests.find((r) => r.url === 'https://apis.fedex.com/oauth/token')?.init?.body));
+      expect([fedexToken.get('client_id'), fedexToken.get('client_secret')]).toEqual(['fedex-id', 'fedex-secret']);
+      expect(header('https://api-eu.dhl.com/track/shipments?trackingNumber=1234567890', 'DHL-API-Key')).toBe('dhl-key');
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+describe('国・地域の情報', () => {
+  const region = { id: 'country:CN', name: 'China', countryCode: 'CN' as string, languages: ['zh'] as string[], aliases: [] as string[], confidence: 'high' as const };
+  const input = { request: { region: 'China', includeSocial: true } as never, region, queries: [] };
+  const post = (did: string) => ({ uri: `at://${did}/app.bsky.feed.post/abc123`, author: { did, handle: 'user.example' }, record: { text: `post by ${did}`, createdAt: '2026-09-21T00:00:00Z' } });
+  /** 投稿を残した DID。 */
+  const kept = (vars: Record<string, string>) => withEnv({ SORA_INTEL_BLUESKY_DIDS: undefined, SORA_BLUESKY_DIDS: undefined, ...vars }, async () => {
+    const provider = createBlueskyProvider((async () => Response.json({ posts: [post('did:plc:keep'), post('did:plc:other')] })) as never);
+    const { items } = await provider.run(input, AbortSignal.timeout(2000));
+    return items.map((item) => item.detail?.structuredData?.did);
+  });
+
+  test('SORA_INTEL_BLUESKY_DIDS は、その DID の投稿だけを残す。未設定は全員', async () => {
+    expect(await kept({})).toEqual(['did:plc:keep', 'did:plc:other']);
+    expect(await kept({ SORA_INTEL_BLUESKY_DIDS: ' did:plc:keep , ' })).toEqual(['did:plc:keep']);
+  });
+
+  test('不正な要素は除いて、正しい DID で絞る。正しい DID が 1 つも無ければ、全員に開かず、誰の投稿も残さない（起動時の検査が止める）', async () => {
+    expect(await kept({ SORA_INTEL_BLUESKY_DIDS: 'did:plc:keep,not-a-did' })).toEqual(['did:plc:keep']);
+    expect(await kept({ SORA_INTEL_BLUESKY_DIDS: 'not-a-did' })).toEqual([]);
+  });
+
+  test('旧名 SORA_BLUESKY_DIDS は読まない', async () => {
+    expect(await kept({ SORA_BLUESKY_DIDS: 'did:plc:keep' })).toEqual(['did:plc:keep', 'did:plc:other']);
+  });
+
+  test('SORA_INTEL_DISABLED は取得先の ID の列。不正な要素（大文字など）は除く', async () => {
+    const disabled = (value: string) => withEnv({ SORA_INTEL_DISABLED: value }, () => [...disabledCountryIntelProviders()].sort());
+    expect(await disabled(' usgs, eonet,,usgs ')).toEqual(['eonet', 'usgs']);
+    expect(await disabled('USGS,eonet')).toEqual(['eonet']);
+    // 引数の上書きは、環境変数より優先する
+    await withEnv({ SORA_INTEL_DISABLED: 'usgs' }, () => expect([...disabledCountryIntelProviders([' gdacs '])]).toEqual(['gdacs']));
+  });
+
+  test('SORA_INTEL_SCRAPE は既定で有効。off・false・0・no（大文字小文字は問わない）で本文の取得を止め、不正な値は既定（有効）', async () => {
+    const scrape = (value: string | undefined) => withEnv({ SORA_INTEL_SCRAPE: value }, () => typeof createDefaultCountryIntelDependencies().scrapeArticle);
+    expect(await scrape(undefined)).toBe('function');
+    for (const value of ['off', 'false', '0', 'no', 'OFF']) expect(await scrape(value), value).toBe('undefined');
+    for (const value of ['on', '1', 'abc']) expect(await scrape(value), value).toBe('function');
   });
 });
