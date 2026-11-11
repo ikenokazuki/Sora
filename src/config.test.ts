@@ -38,6 +38,60 @@ const REFUSED: Record<string, [string, string]> = {
 
 const REMOVED = ['SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR'];
 
+/** 旧名だけのとき警告する、改名・統合の 23 個（設計メモの対応表から手で写した）。 */
+const RENAMED_WARN: Record<string, string> = {
+  ALLOW_LOCAL_NO_AUTH: 'SORA_AUTH_LOOPBACK_NO_KEY',
+  TRUST_PROXY: 'SORA_AUTH_TRUST_PROXY',
+  LOG_FORMAT: 'SORA_LOG_FORMAT',
+  ADMIN_ALERT_WEBHOOK_URL: 'SORA_ALERT_WEBHOOK_URL',
+  SORA_TOOL_OUTPUT_SCHEMA: 'SORA_MCP_OUTPUT_SCHEMA',
+  MAX_CONCURRENT_BROWSERS: 'SORA_BROWSER_MAX_CONCURRENCY',
+  BROWSER_IDLE_TTL_MS: 'SORA_BROWSER_IDLE_TTL_MS',
+  ALLOW_BROWSER_EVALUATE: 'SORA_BROWSER_ALLOW_EVALUATE',
+  ALLOW_LOCAL_FETCH: 'SORA_FETCH_ALLOW_PRIVATE_NETWORK',
+  RS_TRAFILATURA_PATH: 'SORA_RS_TRAFILATURA_PATH',
+  YAHOO_MCP_PATH: 'SORA_YAHOO_MCP_PATH',
+  SORA_SCRAPE_DEADLINE_MS: 'SORA_SEARCH_SCRAPE_DEADLINE_MS',
+  FXTWITTER_TIMEOUT_MS: 'SORA_X_DETAIL_TIMEOUT_MS',
+  CROSS_SOURCE: 'SORA_HTS_CROSS_SOURCE',
+  UPS_CLIENT_ID: 'SORA_TRACKING_UPS_CLIENT_ID',
+  UPS_CLIENT_SECRET: 'SORA_TRACKING_UPS_CLIENT_SECRET',
+  FEDEX_API_KEY: 'SORA_TRACKING_FEDEX_CLIENT_ID',
+  FEDEX_CLIENT_ID: 'SORA_TRACKING_FEDEX_CLIENT_ID',
+  FEDEX_API_SECRET: 'SORA_TRACKING_FEDEX_CLIENT_SECRET',
+  FEDEX_CLIENT_SECRET: 'SORA_TRACKING_FEDEX_CLIENT_SECRET',
+  DHL_EXPRESS_API_KEY: 'SORA_TRACKING_DHL_API_KEY',
+  DHL_API_KEY: 'SORA_TRACKING_DHL_API_KEY',
+  SORA_BLUESKY_DIDS: 'SORA_INTEL_BLUESKY_DIDS',
+};
+
+/** 秘密の 12 個（値を表示しない。Chromium などの子プロセスに渡さない）。 */
+const SECRETS = [
+  'SORA_API_KEY', 'SORA_ALERT_WEBHOOK_URL', 'SORA_PROXY_URL', 'SORA_PROXY_LIST', 'SORA_GCC_CERTIFIER', 'SORA_GCC_CUSTODIAN',
+  'SORA_TRACKING_PAGE_SECRET', 'SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET',
+  'SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET', 'SORA_TRACKING_DHL_API_KEY',
+];
+
+/** 整数の設定の全部: [最小, 最大, 既定]（設計メモの対応表とコードから手で写した）。 */
+const INTS: Record<string, [number, number | undefined, number | undefined]> = {
+  PORT: [1, 65_535, 8000],
+  SORA_AUTH_DAILY_LIMIT: [1, undefined, undefined],
+  SORA_MCP_MAX_SESSIONS: [1, undefined, 100],
+  SORA_BROWSER_MAX_CONCURRENCY: [1, 50, undefined],
+  SORA_BROWSER_IDLE_TTL_MS: [0, undefined, 300_000],
+  SORA_FETCH_MAX_CHROME_PROFILE: [136, 999, 149],
+  SORA_SEARCH_SCRAPE_DEADLINE_MS: [0, undefined, 0],
+  SORA_YAHOO_MIN_INTERVAL_MS: [0, undefined, 500],
+  SORA_YAHOO_BREAKER_COOLDOWN_MS: [0, undefined, 120_000],
+  SORA_X_DETAIL_TIMEOUT_MS: [1, undefined, 1500],
+  SORA_ADDRESS_MAX_MB: [64, 1_048_576, 2048],
+  SORA_ADDRESS_WAIT_MS: [1000, 120_000, 20_000],
+  SORA_ADDRESS_BUILD_CONCURRENCY: [1, 4, 1],
+};
+
+/** 既定で有効な真偽値（ほかの真偽値は既定で無効）。 */
+const BOOLS_ON_BY_DEFAULT = ['SORA_MCP_DEFER_TOOLS', 'SORA_FETCH_DEFAULT_REFERER', 'SORA_X_DETAIL_PROVIDER', 'SORA_INTEL_SCRAPE', 'SORA_INTEL_WEB_SEARCH'];
+
 describe('registry', () => {
   test('counts match the design (53 + 3 settings, 13 standard names, 40 old names)', () => {
     expect(Object.keys(SETTINGS)).toHaveLength(56);
@@ -46,6 +100,57 @@ describe('registry', () => {
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
     expect(Object.keys(LEGACY).filter((n) => !LEGACY[n].to).sort()).toEqual([...REMOVED].sort());
     for (const [old, [to]] of Object.entries(REFUSED)) expect(LEGACY[old].to).toBe(to as never);
+  });
+
+  test('every old name maps to its hand-written replacement and policy (40 rows)', () => {
+    expect(LEGACY as unknown).toEqual({
+      ...Object.fromEntries(Object.entries(REFUSED).map(([old, [to]]) => [old, { to, policy: 'error' }])),
+      ...Object.fromEntries(Object.entries(RENAMED_WARN).map(([old, to]) => [old, { to, policy: 'warn' }])),
+      ...Object.fromEntries(REMOVED.map((old) => [old, { policy: 'warn' }])),
+    });
+  });
+
+  test('exactly the 12 hand-listed settings are secret (no standard name is)', () => {
+    expect(Object.entries(all).filter(([, s]) => s.secret).map(([name]) => name).sort()).toEqual([...SECRETS].sort());
+  });
+
+  test('every integer setting has the hand-written minimum, maximum and default', () => {
+    expect(Object.entries(all).filter(([, s]) => s.kind === 'int').map(([name]) => name).sort()).toEqual(Object.keys(INTS).sort());
+    for (const [name, [min, max, fallback]] of Object.entries(INTS)) {
+      const read = (raw?: string) => envInt(name as 'PORT', { [name]: raw });
+      expect(read(), name).toBe(fallback as number);
+      expect(read(String(min)), name).toBe(min);
+      if (min > 0) expect(read(String(min - 1)), name).toBe(fallback as number);
+      if (max !== undefined) {
+        expect(read(String(max)), name).toBe(max);
+        expect(read(String(max + 1)), name).toBe(fallback as number);
+      }
+    }
+  });
+
+  test('boolean defaults: only the hand-listed ones are on', () => {
+    const bools = Object.entries(all).filter(([, s]) => s.kind === 'bool');
+    expect(bools.filter(([, s]) => s.default === true).map(([name]) => name).sort()).toEqual([...BOOLS_ON_BY_DEFAULT].sort());
+    for (const [name] of bools) expect(envBool(name as 'SORA_MCP_DEFER_TOOLS', {}), name).toBe(BOOLS_ON_BY_DEFAULT.includes(name));
+  });
+
+  test('every default reads back as itself when written as the value', () => {
+    for (const [name, s] of Object.entries(all)) {
+      if (s.default === undefined) continue;
+      const raw = Array.isArray(s.default) ? s.default.join(',') : String(s.default);
+      const env = { [name]: raw };
+      const readers: Record<Setting['kind'], (name: never, env: Record<string, string>) => unknown> = { bool: envBool, int: envInt, enum: envEnum, list: envList, url: envUrl, path: envPath, str: envStr, json: envJson };
+      const value = readers[s.kind](name as never, env);
+      expect(value, name).toEqual(s.default);
+      expect(checkEnv(env).errors, name).toEqual([]);
+    }
+  });
+
+  test('a default list is returned as a copy', () => {
+    const first = envList('SORA_MODULES', {});
+    first.push('web');
+    expect(envList('SORA_MODULES', {})).toEqual(['all']);
+    expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
   test('the three settings added after the design are registered', () => {
@@ -316,16 +421,16 @@ describe('checkEnv', () => {
     expect(message).toContain('SORA_API_KEY');
   });
 
-  test('(b) the other renamed and merged names warn with their replacement', () => {
-    const warned = Object.entries(LEGACY).filter(([, l]) => l.policy === 'warn' && l.to);
-    expect(warned).toHaveLength(23);
-    for (const [old, { to }] of warned) {
-      const { errors, warnings } = checkEnv({ [old]: 'x' });
-      expect(errors).toEqual([]);
+  test.each(Object.entries(RENAMED_WARN))('(b) %s alone warns with its replacement %s, without printing the value', (old, to) => {
+    const value = 'distinctive-old-value-7f3a';
+    for (const env of [{ [old]: value }, { [old]: value, [to]: 'x' }]) {
+      const { errors, warnings } = checkEnv(env);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(old);
-      expect(warnings[0]).toContain(to as string);
+      expect(warnings[0]).toContain(to);
+      for (const message of [...errors, ...warnings]) expect(message).not.toContain(value);
     }
+    expect(checkEnv({ [old]: value }).errors).toEqual([]);
   });
 
   test('(b) removed names warn as removed', () => {
