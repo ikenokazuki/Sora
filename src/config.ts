@@ -545,6 +545,27 @@ export function envJson(name: NameOf<'json'>, env: Env = process.env): unknown {
   return read(name, env);
 }
 
+/**
+ * 生の値（読み方を通さない。空・空白だけ・文字列でない値は undefined）。値を読むのには使わない。
+ * 生の値を受け取って、不正な値を警告の文に出す関数（parseMaxChromeProfile など）に渡すときだけ使う。
+ */
+export function envRaw(name: EnvName, env: Env = process.env): string | undefined {
+  settingOf(name);
+  const raw = env[name];
+  return isBlank(raw) ? undefined : (raw as string);
+}
+
+/** 子プロセスに渡さない名前: 秘密の設定と、その旧名（旧名のまま秘密を入れている環境もある）。`SORA_GCC_` で始まる名前も外す。 */
+const SECRET_NAMES: ReadonlySet<string> = new Set(Object.entries(TABLE).filter(([, s]) => s.secret).flatMap(([name, s]) => [name, ...(s.legacy ?? [])]));
+
+/**
+ * Chromium と同梱の実行ファイル（yahoo-search-mcp・rs-trafilatura）に渡す環境。秘密（API キー・運送会社の鍵・プロキシの資格情報など）を外し、
+ * ほか（PATH・HOME・LD_LIBRARY_PATH・SSL_CERT_FILE・標準のプロキシなど）はそのまま渡す。env は書き換えない。
+ */
+export function envWithoutSecrets(env: Env = process.env): Env {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !SECRET_NAMES.has(name) && !name.startsWith(NOT_SETTING_PREFIX)));
+}
+
 function formOf(s: Setting): string {
   if (s.form) return s.form;
   switch (s.kind) {

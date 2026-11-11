@@ -9,8 +9,10 @@ import {
   envJson,
   envList,
   envPath,
+  envRaw,
   envStr,
   envUrl,
+  envWithoutSecrets,
   EXTERNAL,
   LEGACY,
   NOT_SETTINGS,
@@ -20,6 +22,7 @@ import {
 } from './config.js';
 import { EXPLICIT_ONLY_MODULES as REGISTRY_EXPLICIT_ONLY } from './mcp/registry.js';
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
+import { withEnv } from './test_fixtures/env.js';
 
 const all = { ...SETTINGS, ...EXTERNAL } as Record<string, Setting>;
 
@@ -432,6 +435,42 @@ describe('envPath and envStr', () => {
   test('a string with a pattern must match it', () => {
     expect(envStr('SORA_HTS_CROSS_INDEX_SHA256', { SORA_HTS_CROSS_INDEX_SHA256: 'ab'.repeat(32) })).toBe('ab'.repeat(32));
     expect(envStr('SORA_HTS_CROSS_INDEX_SHA256', { SORA_HTS_CROSS_INDEX_SHA256: 'xyz' })).toBeUndefined();
+  });
+});
+
+describe('envRaw', () => {
+  test('gives the value as it is (invalid values too); unset, blank and non-string values are undefined', () => {
+    expect(envRaw('SORA_FETCH_MAX_CHROME_PROFILE', { SORA_FETCH_MAX_CHROME_PROFILE: ' 0x9a ' })).toBe(' 0x9a ');
+    for (const raw of [undefined, '', '  ', 150]) expect(envRaw('SORA_FETCH_TRUST_STORE', { SORA_FETCH_TRUST_STORE: raw as string })).toBeUndefined();
+    expect(() => envRaw('NOT_A_SETTING' as never, {})).toThrow('Unknown setting: NOT_A_SETTING');
+  });
+});
+
+describe('envWithoutSecrets (the environment for Chromium and the bundled programs)', () => {
+  const kept = {
+    PATH: '/usr/bin', HOME: '/home/sora', LD_LIBRARY_PATH: '/opt/lib', TZ: 'UTC', SSL_CERT_FILE: '/etc/ssl/certs/ca.crt',
+    CHROME_PATH: '/usr/bin/chromium', HTTPS_PROXY: 'http://proxy.example.test:3128', no_proxy: 'localhost',
+    SORA_BROWSER_LOW_MEMORY: 'true', SORA_FETCH_TRUST_STORE: 'defaultPaths', OTHER_PROGRAM_TOKEN: 'not-ours',
+  };
+
+  test('drops every secret setting, the old names of secret settings and SORA_GCC_*, and keeps everything else', () => {
+    const secretNames = [...SECRETS, ...Object.entries(LEGACY).filter(([, { to }]) => to && SECRETS.includes(to)).map(([old]) => old), 'SORA_GCC_EXTRA'];
+    expect(secretNames).toContain('API_KEY');
+    expect(secretNames).toContain('FEDEX_API_SECRET');
+    const env: Record<string, string> = { ...kept, ...Object.fromEntries(secretNames.map((name) => [name, `fake-secret-${name}`])) };
+    const child = envWithoutSecrets(env);
+    expect(child).toEqual(kept);
+    expect(JSON.stringify(child)).not.toContain('fake-secret');
+    expect(env.SORA_API_KEY).toBe('fake-secret-SORA_API_KEY'); // the input is not changed
+  });
+
+  test('reads process.env by default', async () => {
+    await withEnv({ SORA_API_KEY: 'fake-secret-default', SORA_BROWSER_LOW_MEMORY: 'on' }, () => {
+      const child = envWithoutSecrets();
+      expect(child.SORA_API_KEY).toBeUndefined();
+      expect(child.SORA_BROWSER_LOW_MEMORY).toBe('on');
+      expect(child.PATH).toBe(process.env.PATH);
+    });
   });
 });
 
