@@ -369,7 +369,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ```
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
-`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。さらに `GET /client` が、全ツールの型付き TypeScript 関数（`client/`、`bun run gen:client` で生成）を配ります。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。コードを実行できる LLM には、instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`） からこのクライアントを案内します（直接 MCP を呼ぶより優先）。
+`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
 Web 検索と本文スクレイピング、一括並行取得、深層統合検索、動的ツール発見、サイトマップ解析、再帰クロール。
@@ -2293,9 +2293,17 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・複数クエリ統合の既定値は有効化していません。
 
-### 3.30 生成クライアントの配布 (`GET /client`, `GET /client/<path>`, v2.40.0)
+### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`、旧 `GET /client`)
 
-コード実行環境向けの型付き TypeScript クライアント（全ツール分）を読み取り専用で配ります。`GET /client` は配布するファイルの一覧（`manifest.json`）を返し、`GET /client/<path>` が一覧に載ったファイルを返します（`.json` は `application/json`、それ以外は `text/plain`）。一覧に無いパスや `..` を含むパスは 404。認証は他の REST と同じです。クライアントは OpenAPI から `bun run gen:client` で生成し、リポジトリの `client/` にコミットしています。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。
+コード実行環境から、言語を問わず（curl・Python・Node など）REST を直接呼べるように、操作の一覧と 1 つ分の定義を返します。
+
+- `GET /tools`: `{ count, tools: [{ name, method, path, category, summary }] }`。`?q=`（空白で区切った語をすべて含むもの。名前・パス・カテゴリ・概要を、大文字小文字を区別せずに見ます）と `?category=` で絞れます。`ENABLED_MODULES` で無効なモジュールの操作は出ません。`name` は OpenAPI の `operationId` と同じです。
+- `GET /tools/<name>`: 入力のスキーマ（`request.schema`）、path・query の引数（`parameters`）、文書にあるエラー（`errors`）、別名・GET の形・SSE の形（`alternatives`）を返します。成功時の応答のスキーマは大きいことがある（最大 約 70KB）ので、`?response=true` のときだけ付きます。一覧に無い名前は 404（`NOT_FOUND`）。
+- 認証は他の REST と同じです（`Authorization: Bearer` または `X-API-Key`）。
+- REST の操作の失敗は、HTTP の 4xx / 5xx と、共通の `{ error, code, status, retryable, details? }`（401・403・413・429 も同じ形。HTML の `GET /t/…` のページは除く）。
+- `GET /openapi.json`（約 580KB）の各操作には、`operationId`・`tags`（カテゴリ）・認証・共通のエラー応答を宣言しています。LLM が読むときは、全体ではなく `GET /tools` を使ってください。
+- **旧: `GET /client`・`GET /client/<path>`（型付き TypeScript クライアント、v2.40.0）** は、REST の直接呼び出しに置き換わりました。案内をやめ、OpenAPI で `deprecated` にしています。当面は残しますが、v5.0.0 で廃止する予定です。
+- 手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。
 
 ### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)
 

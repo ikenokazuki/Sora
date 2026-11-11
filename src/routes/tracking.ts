@@ -3,6 +3,7 @@ import { trackPackage, cleanTrackingNumber } from '../services/tracking.js';
 import { isValidTrackingPage, renderTrackingPage } from '../services/tracking/page.js';
 import { TrackingRequestSchema, CARRIER_CODES } from '../types.js';
 import { errorMessage } from '../errors.js';
+import { formatError } from './utils.js';
 
 export const trackingRoutes = new Hono();
 
@@ -13,24 +14,13 @@ trackingRoutes.post('/tracking', async (c) => {
     const parseResult = TrackingRequestSchema.safeParse(rawBody);
 
     if (!parseResult.success) {
-      return c.json(
-        {
-          error: 'リクエストパラメータが不正です',
-          details: parseResult.error.flatten().fieldErrors,
-        },
-        400,
-      );
+      return formatError(c, 'リクエストパラメータが不正です', 'INVALID_INPUT', 400, false, parseResult.error.flatten().fieldErrors);
     }
 
     const result = await trackPackage(parseResult.data);
     return c.json(result);
   } catch (err) {
-    return c.json(
-      {
-        error: errorMessage(err) || '荷物追跡に失敗しました',
-      },
-      500,
-    );
+    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });
 
@@ -44,17 +34,12 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
     const validCarriers: string[] = [...CARRIER_CODES, 'auto'];
     const carrier = TrackingRequestSchema.shape.carrier.unwrap().safeParse(carrierParam);
     if (!carrier.success) {
-      return c.json(
-        {
-          error: `不正な運送会社コードです: ${carrierParam}。有効な値: ${validCarriers.join(', ')}`,
-        },
-        400,
-      );
+      return formatError(c, `不正な運送会社コードです: ${carrierParam}。有効な値: ${validCarriers.join(', ')}`, 'INVALID_INPUT', 400);
     }
 
     const num = cleanTrackingNumber(numberParam);
     if (!num) {
-      return c.json({ error: '伝票番号を指定してください' }, 400);
+      return formatError(c, '伝票番号を指定してください', 'INVALID_INPUT', 400);
     }
 
     const result = await trackPackage({
@@ -65,12 +50,7 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
 
     return c.json(result);
   } catch (err) {
-    return c.json(
-      {
-        error: errorMessage(err) || '荷物追跡に失敗しました',
-      },
-      500,
-    );
+    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });
 
@@ -96,7 +76,7 @@ trackingRoutes.get('/tracking/:number', async (c) => {
 
     const num = cleanTrackingNumber(numberParam);
     if (!num) {
-      return c.json({ error: '伝票番号を指定してください' }, 400);
+      return formatError(c, '伝票番号を指定してください', 'INVALID_INPUT', 400);
     }
 
     const result = await trackPackage({
@@ -107,11 +87,6 @@ trackingRoutes.get('/tracking/:number', async (c) => {
 
     return c.json(result);
   } catch (err) {
-    return c.json(
-      {
-        error: errorMessage(err) || '荷物追跡に失敗しました',
-      },
-      500,
-    );
+    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });
