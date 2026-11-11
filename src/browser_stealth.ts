@@ -46,22 +46,37 @@ export function buildUserAgentFromDefault(defaultUa: string): string {
   return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' + version + ' Safari/537.36';
 }
 
+const GREASE_BRAND_CHARS = [' ', '(', ':', '-', '.', '/', ')', ';', '=', '?', '_'];
+const GREASE_BRAND_VERSIONS = ['8', '99', '24'];
+const BRAND_ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+
+/**
+ * Chrome が sec-ch-ua と navigator.userAgentData.brands に並べるブランド（GREASE の名前・版・並び順）。
+ * メジャーバージョンだけで決まる（Chromium の components/embedder_support/user_agent_utils.cc の規則）。
+ * wreq-js の chrome_136〜149 が送る sec-ch-ua と一致し、静的取得とブラウザで同じ並びになる
+ * （stealth_native.test.ts で全プロファイルを突き合わせる）。違うと、同じ Cookie の「同じ Chrome」が別物に見える。
+ * greaseVersionSuffix は fullVersionList のとき '.0.0.0'（GREASE の版は 3 桁目以降が 0）。
+ */
+export function chromeBrandList(major: number, version: string, greaseVersionSuffix = ''): Array<{ brand: string; version: string }> {
+  const order = BRAND_ORDERS[major % BRAND_ORDERS.length];
+  const list: Array<{ brand: string; version: string }> = [];
+  list[order[0]] = {
+    brand: `Not${GREASE_BRAND_CHARS[major % GREASE_BRAND_CHARS.length]}A${GREASE_BRAND_CHARS[(major + 1) % GREASE_BRAND_CHARS.length]}Brand`,
+    version: GREASE_BRAND_VERSIONS[major % GREASE_BRAND_VERSIONS.length] + greaseVersionSuffix,
+  };
+  list[order[1]] = { brand: 'Chromium', version };
+  list[order[2]] = { brand: 'Google Chrome', version };
+  return list;
+}
+
 export function buildUserAgentMetadata(defaultUa: string): Protocol.Emulation.UserAgentMetadata {
   const match = defaultUa.match(/(?:Headless)?Chrome\/(\d+\.\d+\.\d+\.\d+)/);
   const alignedMajor = getAlignedChromeMajorVersion();
   const fullVersion = match ? match[1].replace(/^\d+/, alignedMajor) : alignedMajor + '.0.0.0';
   const majorVersion = fullVersion.split('.')[0];
   return {
-    brands: [
-      { brand: 'Not)A;Brand', version: '99' },
-      { brand: 'Chromium', version: majorVersion },
-      { brand: 'Google Chrome', version: majorVersion },
-    ],
-    fullVersionList: [
-      { brand: 'Not)A;Brand', version: '99.0.0.0' },
-      { brand: 'Chromium', version: fullVersion },
-      { brand: 'Google Chrome', version: fullVersion },
-    ],
+    brands: chromeBrandList(Number(majorVersion), majorVersion),
+    fullVersionList: chromeBrandList(Number(majorVersion), fullVersion, '.0.0.0'),
     fullVersion,
     platform: 'Windows',
     platformVersion: '10.0.0',
