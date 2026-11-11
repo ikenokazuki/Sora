@@ -69,6 +69,7 @@ import * as cheerio from 'cheerio';
 import { deliverWebhook, extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
 import * as enrichmentModule from './enrichment.js';
 import { sendAdminAlert } from './services/health.js';
+import { withEnv } from './test_fixtures/env.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -5727,16 +5728,14 @@ describe('Sora REST & MCP Endpoints', () => {
       const json = () => new Response(payload, { headers: { 'content-type': 'application/json' } });
       const sse = () => new Response(`data: ${payload}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
 
-      expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
-      expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
-
-      process.env.SORA_MCP_OUTPUT_SCHEMA = 'true';
-      try {
+      await withEnv({ SORA_MCP_OUTPUT_SCHEMA: undefined }, async () => {
+        expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
+        expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
+      });
+      await withEnv({ SORA_MCP_OUTPUT_SCHEMA: 'true' }, async () => {
         expect(await (await sanitizeMcpResponse(json())).text()).toContain('outputSchema');
         expect(await (await sanitizeMcpResponse(sse())).text()).toContain('outputSchema');
-      } finally {
-        delete process.env.SORA_MCP_OUTPUT_SCHEMA;
-      }
+      });
     });
 
     describe('Official X Account Detection & Hybrid Realtime Search', () => {

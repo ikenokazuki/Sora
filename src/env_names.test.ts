@@ -7,26 +7,10 @@ import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
 import { resolveMcpOriginConfig, resolveMcpPort } from './security/mcp_origin.js';
 import { sendAdminAlert } from './services/health.js';
+import { withEnv } from './test_fixtures/env.js';
 
 // v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
 // 旧名を書くテストは、このファイルと config.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
-
-/** 環境変数を書き換えて fn を回し、元に戻す（undefined は消す）。 */
-async function withEnv<T>(vars: Record<string, string | undefined>, fn: () => Promise<T> | T): Promise<T> {
-  const set = (entries: [string, string | undefined][]) => {
-    for (const [k, v] of entries) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  };
-  const saved = Object.keys(vars).map((k): [string, string | undefined] => [k, process.env[k]]);
-  set(Object.entries(vars));
-  try {
-    return await fn();
-  } finally {
-    set(saved);
-  }
-}
 
 describe('SORA_MODULES', () => {
   const modules = (value: string | undefined, old?: string) => withEnv({ SORA_MODULES: value, ENABLED_MODULES: old }, () => ({
@@ -57,9 +41,10 @@ describe('SORA_MODULES', () => {
 });
 
 describe('SORA_MCP_DEFER_TOOLS', () => {
-  // get_place_info は遅延発見のツール（既定では search_tools で有効にするまで無効）
-  const deferred = (vars: Record<string, string | undefined>, deferTools?: boolean) => withEnv({ SORA_MCP_DEFER_TOOLS: undefined, SORA_DEFER_TOOLS: undefined, ...vars }, () =>
-    toolCatalogOf(createMcpServer(deferTools === undefined ? undefined : { deferTools })).get('get_place_info')?.handle.enabled === false);
+  // 遅延した（search_tools で有効にするまで無効の）ツールがあるか。ツールの名前に頼らず、モジュールも全部にして数える
+  const deferred = (vars: Record<string, string | undefined>, deferTools?: boolean) =>
+    withEnv({ SORA_MCP_DEFER_TOOLS: undefined, SORA_DEFER_TOOLS: undefined, SORA_MODULES: undefined, ...vars }, () =>
+      [...toolCatalogOf(createMcpServer(deferTools === undefined ? undefined : { deferTools })).values()].some((entry) => entry.handle.enabled === false));
 
   test('既定は遅延。false・0・off・no（大文字小文字は問わない）で全部を最初から有効にする', async () => {
     expect(await deferred({})).toBe(true);

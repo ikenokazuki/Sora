@@ -2,23 +2,7 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { createAuthMiddleware, isLoopbackAddress, resolvePeerLocal } from './auth.js';
-
-/** 環境変数を書き換えて fn を回し、元に戻す（undefined は消す）。 */
-async function withEnv<T>(vars: Record<string, string | undefined>, fn: () => Promise<T> | T): Promise<T> {
-  const set = (entries: [string, string | undefined][]) => {
-    for (const [k, v] of entries) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  };
-  const saved = Object.keys(vars).map((k): [string, string | undefined] => [k, process.env[k]]);
-  set(Object.entries(vars));
-  try {
-    return await fn();
-  } finally {
-    set(saved);
-  }
-}
+import { withEnv } from './test_fixtures/env.js';
 
 function mockCtx(headers: Record<string, string> = {}, env: any = {}) {
   const lower: Record<string, string> = {};
