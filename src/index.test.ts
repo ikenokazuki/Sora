@@ -3038,7 +3038,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   // ==========================================
-  // 道路交通情報モジュールテスト (JARTIC / Yahoo 道路交通情報)
+  // 道路交通情報モジュールテスト (Yahoo 道路交通情報)
   // ==========================================
   it('resolvePrefecture and resolveRoadCode should normalize inputs', () => {
     expect(resolvePrefecture('東京都')?.code).toBe(13);
@@ -3054,13 +3054,13 @@ describe('Sora REST & MCP Endpoints', () => {
 
   it('fetchRoadTraffic should parse road traffic regulations for prefecture and specific highway', async () => {
     const tokyoTraffic = await fetchRoadTraffic({ pref: '東京都' });
-    expect(tokyoTraffic.source).toBe('jartic');
+    expect(tokyoTraffic.source).toBe('yahoo-roadway');
     expect(tokyoTraffic.pref).toBe('東京都');
     expect(tokyoTraffic.items.length).toBeGreaterThanOrEqual(1);
     expect(tokyoTraffic.updatedAt).toBeDefined();
 
     const tomeiTraffic = await fetchRoadTraffic({ road: '東名高速' });
-    expect(tomeiTraffic.source).toBe('jartic');
+    expect(tomeiTraffic.source).toBe('yahoo-roadway');
     expect(tomeiTraffic.road).toBe('東名高速');
     expect(tomeiTraffic.items.length).toBeGreaterThanOrEqual(1);
     expect(tomeiTraffic.items[0].roadName).toContain('東名');

@@ -38,7 +38,7 @@
     },
     {
       "name": "traffic_road",
-      "description": "Fetch real-time JARTIC road traffic regulations and congestion reports."
+      "description": "Fetch real-time road traffic regulations and congestion reports (read from the Yahoo! JAPAN road traffic pages)."
     },
     {
       "name": "gov_law_search",

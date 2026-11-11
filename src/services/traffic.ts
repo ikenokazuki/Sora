@@ -23,7 +23,7 @@ export interface RoadTrafficResult {
   hasIssues: boolean;
   summary: string;
   items: TrafficItem[];
-  source: 'jartic';
+  source: 'yahoo-roadway';
 }
 
 const PREF_MAP: Record<string, { code: number; name: string }> = {
@@ -117,7 +117,7 @@ export function resolveRoadCode(roadInput?: string): string | null {
   return Object.hasOwn(ROAD_CODE_MAP, clean) ? ROAD_CODE_MAP[clean] : null;
 }
 
-/** 道路交通情報（JARTIC/Yahoo! 道路交通情報）を取得 */
+/** 道路交通情報（Yahoo! 道路交通情報のページ）を取得 */
 export async function fetchRoadTraffic(options: {
   pref?: string | number;
   road?: string;
@@ -198,7 +198,7 @@ export async function fetchRoadTraffic(options: {
       hasIssues,
       summary,
       items,
-      source: 'jartic',
+      source: 'yahoo-roadway',
     };
 
     if (!options.noCache) {
@@ -282,7 +282,7 @@ export async function fetchRoadTraffic(options: {
     hasIssues,
     summary,
     items: filteredItems,
-    source: 'jartic',
+    source: 'yahoo-roadway',
   };
 
   if (!options.noCache) {

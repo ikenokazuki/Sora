@@ -775,7 +775,7 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   ...trackingCases(),
   ...trackingNegativeCases(),
-  toolCase('road.traffic', ['search_road_traffic'], ['yahoo:traffic', 'jartic'], true, 90000, async (ctx) => {
+  toolCase('road.traffic', ['search_road_traffic'], ['yahoo:traffic'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_road_traffic', { road: '東名高速' }, 60000);
     const raw = toolPayload(rawJsonText, 'search_road_traffic');
     return mustContain(raw, ['東名'], 'yahoo-traffic');

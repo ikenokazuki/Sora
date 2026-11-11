@@ -38,8 +38,8 @@ export type SearchRoadTrafficOutput = {
     /** 詳細説明テキスト */
     detail?: string;
   }[];
-  /** 情報提供元 ("jartic") */
-  source: "jartic";
+  /** 情報提供元 ("yahoo-roadway"。Yahoo! 道路交通情報のページ) */
+  source: "yahoo-roadway";
   /** キャッシュから返したか（キャッシュから返した時だけ true） */
   cached?: boolean;
   /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
@@ -48,7 +48,7 @@ export type SearchRoadTrafficOutput = {
   ageSeconds?: number;
 };
 
-/** 【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] } */
+/** 【必須・道路交通情報】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せず、Yahoo! 道路交通情報のページを読む本ツールで取得してください（応答の source は yahoo-roadway）。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] } */
 export function searchRoadTraffic(input: SearchRoadTrafficInput): Promise<SearchRoadTrafficOutput> {
   return callSora<SearchRoadTrafficOutput>({ method: 'POST', path: '/traffic/road' }, input);
 }
