@@ -1,11 +1,12 @@
 # Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
 
 ## 先に気づく変更（呼び出し側）
 
 - **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
-- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `GET /client` の廃止と `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
+- **`GET /client`・`GET /client/{path}` を廃止しました（v4.2.0 以降の変更で deprecated にしていました）。** 代わりは `GET /tools` と `GET /tools/{name}`、および各操作の REST の直接呼び出しです。型が要るときは、OpenAPI から標準のジェネレータで作ってください。リポジトリの `client/` の生成物は残っています（配る経路が無くなっただけです）。OpenAPI の操作は 84 から 82 になります。
 - **`search_road_traffic` の応答の `source` が `"jartic"` から `"yahoo-roadway"` になりました**（REST・MCP とも。#70）。実際に読んでいるのは Yahoo! 道路交通情報（`roadway.yahoo.co.jp`）のページで、取得元を JARTIC と表示するのは実態に合わないためです。取得の動きとほかの欄は変えていません。`source` で分岐している呼び出し側は直してください。`search_tools` の検索語には `JARTIC` を残しています。
 - **MCP の応答の形が変わるツールがあります。**
   - `lookup_address`・`lookup_hts`・`get_youtube` は、旧ツールの応答の先頭に `mode` 欄が付きます（`normalize` / `reverse` / `postal`、`verify` / `predict`、`video` / `channel`）。ほかの欄は旧ツールと同じです。
@@ -56,6 +57,7 @@
 
 ## 型付きクライアント（`client/`）
 
+- **配る経路の `GET /client` は廃止しました。** 生成物は、リポジトリの `client/` にだけあります（`bun run gen:client` で作り直す）。
 - **関数名は変えていません**（52 個）。まとめたツールの各ルートは、旧いツールの名前の関数のままです（例: `scrape` の `/scrape/batch` は `scrapeBatch`）。
 - **各関数の説明（JSDoc）は、その関数が呼ぶ REST のルートの OpenAPI の `summary`（あれば `description`）から作ります。** 今までは MCP のツールの説明を写していたので、まとめたツールでは REST の応答に無い `mode` などを書いていました。`catalog.json` の `description` は、`searchTools` で探せるように、ツールの説明のままです（1 ルート 1 行）。
 
@@ -70,9 +72,9 @@
 - **コンテナのイメージを 1.51GB から 750MB にしました**（圧縮して 623MB → 345MB、#74）。最終のイメージに、Chromium が読む共有ライブラリと本番の依存だけを入れます。
 - **`SORA_BROWSER_LOW_MEMORY` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動できます**（既定は無効、#75）。`true`・`1`・`on`・`yes` で有効です。描画中のピークが、ページを 1 つずつ開いたとき約 18%、3 ページ同時で約 14% 下がります。待機中の常駐は変わらず、`navigator.deviceMemory` が 8 から 2 になります。
 - **REST の操作の一覧と定義を返す `GET /tools`・`GET /tools/<name>` を足しました（#76）。** `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで 52 件）で、`q`・`category` で絞れます。`GET /tools/<name>` は入力のスキーマ・path と query の引数・文書にあるエラー・別名や GET の形（`alternatives`）を返し、`?response=true` で応答のスキーマも付けます。
-  - OpenAPI の全 84 操作に `operationId`・`tags`・認証の宣言・共通のエラー応答（`default`）を付け、パスの変数の宣言が無かった操作に `parameters` を足しました。
+  - OpenAPI のすべての操作（この PR の時点で 84、`GET /client` を廃止した v5.0.0 では 82）に `operationId`・`tags`・認証の宣言・共通のエラー応答（`default`）を付け、パスの変数の宣言が無かった操作に `parameters` を足しました。
   - エラー応答の形を `{ error, code, status, retryable, details? }` にそろえました（検索の 12 経路・追跡の 3 経路、認証の 401（`UNAUTHORIZED`、`message` は残す）、本文が 10MB を超える 413（`PAYLOAD_TOO_LARGE`））。`error` の文と HTTP ステータスは変えていません。
-  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。`GET /client`・`GET /client/<path>` は残していて、OpenAPI では `deprecated` です。
+  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。このとき `GET /client`・`GET /client/<path>` を `deprecated` にしました（v5.0.0 で廃止。「先に気づく変更」）。
 
 # Sora v4.2.0 — HTS の推測の判例を手元の索引から引くようにし、町名がローマ字の住所を読めるようにした
 
