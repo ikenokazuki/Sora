@@ -89,7 +89,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       "3. Japan Weather, Domestic Transit & Flights (Japan Meteorological Agency direct CDN, Yahoo! Transit IC fares & transfer routes, airport flight delays & cancellations): Use 'life' tools (get_weather [CORE], search_route [CORE], get_flight_status).",
     );
     tier1Directives.push(
-      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): Use 'track_package'. Discovery keywords: '荷物追跡', 'track_package'. Follow section 2 only when its definition is missing.",
+      "4. Package & Delivery Tracking (Yamato Transport, Sagawa Express, Japan Post domestic & international/EMS, Seino, Fukuyama Transporting, UPS, FedEx, DHL Express delivery status & event history): Use 'track_package'. Discovery keywords: '荷物追跡'. Follow section 2 only when its definition is missing.",
     );
   }
   if (hasDisaster) {
@@ -109,7 +109,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasIntel) {
     tier1Directives.push(
-      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report, its evidence or its updates by contextId with get_country_context (part). Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report, its evidence or its updates by contextId with get_country_context (part). Discovery keywords: '国地域'. Follow section 2 only when its definition is missing.",
     );
   }
 
@@ -166,7 +166,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   lines.push(
     '',
     '## 5. Interactive Clarification Flow',
-    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters Present the returned questions and impact explanation to the user.",
+    "- When tools return 'inputCompleteness: \"partial\"' or 'clarifyingQuestions', do not guess missing parameters; present the returned questions and impact explanation to the user.",
   );
 
   return lines.join('\n');

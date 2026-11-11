@@ -93,7 +93,7 @@ v2.40.0 から配っていた型付き TypeScript クライアント（`client/`
 |---|---|
 | 既定（13 ツール） | 23,060 |
 | 全ツール（33 ツール） | 57,071 |
-| `instructions` | 8,729 |
+| `instructions` | 8,685 |
 
 `search_tools` の応答（クエリ「住所」）: 既定 660、`names` 377、`summary` 605、`schema` 3,628 文字（前の値は既定 649、`names` 390、`summary` 594、`schema` 2,624。当たるのは `get_place_info`・`search_poi`・`lookup_address`）。
 
