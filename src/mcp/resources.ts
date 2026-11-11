@@ -4,7 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 /** MCP リソースとして配るスキル。実体は plugins/sora-deep-research/skills/<name>/SKILL.md。 */
 const SKILLS = [
   { name: 'sora-deep-research', description: '深層調査の手順（確認事項・証拠・不足の記録、取得失敗と0件の区別）' },
-  { name: 'sora-client', description: 'コードを実行できる環境から、型付きクライアント（GET /client）で Sora を使う手順' },
+  { name: 'sora-client', description: 'コードを実行できる環境から、REST（GET /tools → GET /tools/<name> → 呼び出し）で Sora を使う手順' },
 ] as const;
 
 /** スキルの本文。ソース実行（src/mcp/）とイメージ内のバンドル（/app/server.js）で plugins/ の相対位置が違うので両方を試す。 */

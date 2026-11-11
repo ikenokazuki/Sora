@@ -47,14 +47,14 @@ describe('search_tools detail / activate', () => {
     expect(text.length).toBeLessThan(21_000);
   });
 
-  test.each(['names', 'summary', 'schema'] as const)('detail:"%s" ends with the pointer to the typed client', async (detail) => {
+  test.each(['names', 'summary', 'schema'] as const)('detail:"%s" ends with the pointer to the REST API', async (detail) => {
     const server = createMcpServer({ deferTools: true });
     const text = (await search(server, { query: '荷物追跡', detail, activate: false })).content[0].text as string;
-    expect(text.trimEnd().endsWith('sora-skill://sora-client）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。')).toBe(true);
+    expect(text.trimEnd().endsWith('GET /tools/<name> で入力のスキーマ。手順はスキル sora-skill://sora-client）。')).toBe(true);
   });
 
   test('the default activation output also carries the pointer', async () => {
     const server = createMcpServer({ deferTools: true });
-    expect(((await search(server, { query: '荷物追跡' })).content[0].text as string)).toContain('GET /client');
+    expect(((await search(server, { query: '荷物追跡' })).content[0].text as string)).toContain('GET /tools');
   });
 });

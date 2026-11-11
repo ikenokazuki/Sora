@@ -31,6 +31,7 @@ import { youtubeRoutes } from './routes/youtube.js';
 import { songRecognitionRoutes } from './routes/song_recognition.js';
 import { htsArchiveRoutes } from './routes/hts_archive.js';
 import { clientRoutes } from './routes/client.js';
+import { toolsRoutes } from './routes/tools.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 import { createRestOriginPolicy } from './security/rest_origin.js';
 import { isModuleActive } from './mcp/registry.js';
@@ -87,7 +88,7 @@ app.use(
   bodyLimit({
     maxSize: 10 * 1024 * 1024, // 10MB
     onError: (c) => {
-      return c.json({ error: 'Payload Too Large: Request body exceeds 10MB limit' }, 413);
+      return formatError(c, 'Payload Too Large: Request body exceeds 10MB limit', 'PAYLOAD_TOO_LARGE', 413);
     },
   }),
 );
@@ -145,6 +146,7 @@ app.route('/', youtubeRoutes);
 app.route('/', songRecognitionRoutes);
 app.route('/', htsArchiveRoutes);
 app.route('/', clientRoutes);
+app.route('/', toolsRoutes);
 
 // ==========================================
 // 4. グレースフル・シャットダウン (ブラウザプロセス・DB完全解放)

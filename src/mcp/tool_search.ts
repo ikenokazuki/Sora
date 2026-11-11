@@ -28,11 +28,11 @@ function summaryLine(entry: ToolCatalogEntry): string {
   return `${tag}${cleanDesc}...`;
 }
 
-/** コードを実行できる呼び出し側を、型付きクライアントへ誘導する一文。 */
-export const CLIENT_HINT = 'コードを実行できる環境があるなら、MCP で直接呼ぶより、型付きクライアント（GET /client、スキル sora-skill://sora-client）から関数を呼び、必要な項目だけ出力する方が文脈を節約できます。';
+/** コードを実行できる呼び出し側を、REST の直接呼び出しへ誘導する一文。 */
+export const CLIENT_HINT = 'コードを実行できる環境があるなら、MCP で直接呼ぶより、REST を直接呼んで必要な項目だけ出力する方が文脈を節約できます（GET /tools で操作の一覧、GET /tools/<name> で入力のスキーマ。手順はスキル sora-skill://sora-client）。';
 
 /**
- * search_tools の本文を作る。末尾に型付きクライアントへの案内を付ける。
+ * search_tools の本文を作る。末尾に REST の直接呼び出しへの案内を付ける。
  * 呼び出し側は activate=true のとき先に有効化を済ませ、newlyEnabled を渡す。
  */
 export function formatToolMatches(matches: ToolMatch[], opts: { detail?: SearchDetail; activate?: boolean }): string {

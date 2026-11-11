@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { closeSharedBrowser, getBrowser, resolveChromiumPath } from './browser_engine.js';
-import { applyStealthEvasions } from './browser_stealth.js';
-import { ACCEPT_LANGUAGE, fetchWithSafeRedirects } from './http_fetcher.js';
+import { WREQ_ALIGN_DISABLED_FEATURES, closeSharedBrowser, getBrowser, resolveChromiumPath } from './browser_engine.js';
+import { applyStealthEvasions, chromeBrandList } from './browser_stealth.js';
+import { ACCEPT_LANGUAGE, EMULATION_OS, MAX_SUPPORTED_CHROME_PROFILE_VERSION, fetchWithSafeRedirects } from './http_fetcher.js';
 import { scrapeUrl } from './scraper.js';
 
 // ブラウザの偽装は、JS で上書きするより Chromium 本体のフラグと CDP で直す方が、見破られにくい
@@ -211,6 +211,42 @@ describe.skipIf(!resolveChromiumPath())('ブラウザの偽装は Chromium 本�
     expect(ua).not.toContain('Headless');
   });
 
+  test('起動引数で、wreq-js（静的取得）に無い TLS 拡張・署名の GREASE・image/jxl を止めている（Puppeteer の既定の機能の指定と 1 つにまとまる）', async () => {
+    const { browser } = await getBrowser();
+    const args = browser.process()?.spawnargs ?? [];
+    const flags = args.filter((a) => a.startsWith('--disable-features='));
+    // Chromium は --disable-features を 2 つ並べると最後だけを読む。Puppeteer が自分の分とまとめて 1 つにしていることを確かめる
+    expect(flags).toHaveLength(1);
+    const disabled = flags[0].slice('--disable-features='.length).split(',');
+    for (const feature of WREQ_ALIGN_DISABLED_FEATURES) expect(disabled).toContain(feature);
+    expect(WREQ_ALIGN_DISABLED_FEATURES).toContain('TLSTrustAnchorIDs');
+  });
+
+  test('ブラウザ経路が送る UA・sec-ch-ua・Accept 系のヘッダは、静的取得（wreq-js）が送るものと同じ', async () => {
+    const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
+    const { browser } = await getBrowser();
+    const context = await browser.createBrowserContext();
+    try {
+      const page = await context.newPage();
+      await applyStealthEvasions(page);
+      await page.goto(`${server.base}/from-browser`, { waitUntil: 'domcontentloaded' });
+      const { response } = await fetchWithSafeRedirects(`${server.base}/from-static`, 8000, 1);
+      await response.text();
+      const fromBrowser = server.last('/from-browser');
+      const fromStatic = server.last('/from-static');
+      for (const name of ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'user-agent', 'accept', 'accept-encoding', 'upgrade-insecure-requests']) {
+        expect(`${name}: ${headerValue(fromBrowser, name)}`).toBe(`${name}: ${headerValue(fromStatic, name)}`);
+      }
+      // 言語は、シークレット系のコンテキストで先頭 1 つに減らす Chromium がある（手元の 148）ので、完全一致でなく「ブラウザ側が静的側の先頭部分」で見る
+      expect(headerValue(fromStatic, 'accept-language')).toBe(ACCEPT_LANGUAGE);
+      expect(ACCEPT_LANGUAGE.startsWith(headerValue(fromBrowser, 'accept-language') ?? '\0')).toBe(true);
+      expect(headerValue(fromBrowser, 'sec-ch-ua-platform')).toBe('"Windows"');
+    } finally {
+      await context.close();
+      server.close();
+    }
+  }, 30000);
+
   test('fetchWithStealthBrowser（scrapeUrl の renderJs）でも同じく native のまま揃う', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: probePage() }));
     try {
@@ -252,6 +288,35 @@ describe('静的取得のヘッダは Chrome の順序と大文字小文字の�
     } finally {
       server.close();
     }
+  });
+});
+
+describe('ブラウザが名乗る sec-ch-ua のブランド（GREASE の名前・版・並び順）は、wreq-js の各 Chrome プロファイルと同じ', () => {
+  test(`chrome_136〜${MAX_SUPPORTED_CHROME_PROFILE_VERSION} の全プロファイルで、chromeBrandList の結果が wreq-js の送る sec-ch-ua と一致する`, async () => {
+    const { createSession } = await import('wreq-js');
+    const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
+    const mismatches: string[] = [];
+    try {
+      for (let major = 136; major <= MAX_SUPPORTED_CHROME_PROFILE_VERSION; major++) {
+        const session = await createSession({ browser: `chrome_${major}` as never, os: EMULATION_OS });
+        try {
+          await (await session.fetch(`${server.base}/wreq-${major}`)).text();
+        } finally {
+          await session.close();
+        }
+        const sent = headerValue(server.last(`/wreq-${major}`), 'sec-ch-ua');
+        const mine = chromeBrandList(major, String(major)).map((b) => `"${b.brand}";v="${b.version}"`).join(', ');
+        if (sent !== mine) mismatches.push(`chrome_${major}: wreq=${sent} / 計算=${mine}`);
+      }
+    } finally {
+      server.close();
+    }
+    expect(mismatches).toEqual([]);
+  }, 30000);
+
+  test('fullVersionList の GREASE の版は「<版>.0.0.0」になる', () => {
+    const list = chromeBrandList(149, '149.0.7827.155', '.0.0.0');
+    expect(list.map((b) => `${b.brand} ${b.version}`)).toEqual(['Google Chrome 149.0.7827.155', 'Chromium 149.0.7827.155', 'Not)A;Brand 24.0.0.0']);
   });
 });
 
