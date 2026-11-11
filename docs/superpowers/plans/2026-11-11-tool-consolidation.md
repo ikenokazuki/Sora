@@ -118,6 +118,7 @@
 - 応答（MCP だけ。REST の `/geo/elevation` は変えない）: `{ location: { query?, address?, matchedTitle?, lat, lon, geocodingSource?, geocodingAttribution?, needsVerification? }, elevation: { elevationMeters, dataAccuracy?, formatted, source }, include: ['elevation'] }`。旧 `get_elevation` の欄を、`location` と `elevation` に分ける。
 - `include` に未対応の値が来たら、使える値を示すエラー。
 
+- **作業の最初に（Task 4 の持ち越し。小さな直し。別コミット `fix(mcp):`）:** (a) `lookup_address` で、`address` と一緒に `lat` か `lon` の片方だけを指定した呼び出しは、いまはサービスまで進んでから失敗する（先に正規化と郵便番号の検索が走り、遅れて `Address normalize error`）。ハンドラの先頭（モードごとの検査の前）で、`lat` と `lon` が組でなければ、`usageError`（「lat と lon は組で指定してください」）にする。`mcp_tool_params.test.ts` の該当のテスト（`A+lat` だけの行）を直す。(b) `README.md` の `SORA_ADDRESS` の行（「3 ツールが呼ばれたときだけ」「3 ツールを登録せず」）を、`lookup_address` の 1 ツールの書き方に直す（`docs/operations/address-data.md` の同じ行と揃える）。
 - [ ] 共通の手順（A〜F）。
 
 ### Task 6: get_disaster_info
@@ -174,6 +175,7 @@
 **Files:**
 - Modify: `src/mcp/instructions.ts`、README（ツールの一覧・節・移行の表）、`docs/engines/README.md`、`glama.json`、`package.json` と版の定数（`SORA_VERSION`）、`RELEASE_NOTES.md`、`docs/evaluations/tool-selection/`（統合後の結果）、`client/`
 
+- [ ] **Step 0（持ち越し）:** (a) `scripts/gen-client`: 複数のルートを持つツールの関数の JSDoc を、統合した MCP の説明のコピーでなく、**そのルートの OpenAPI の summary / description から作る**（いまは、REST の応答に無い `mode` 欄の記述などが入る。Task 3・4 のレビューの指摘）。(b) 古い数の記述を、`grep` で全部直す: `docs/testing/tool-health.md`（canonical 53）、`src/mcp.ts` の「53 ツール」、`src/stdio.ts` の「50 種」、`docs/code-execution.md`、README の「全 50 ツール・約 88KB」（測り直す）と「13 コアツール」。(c) 任意: 実 API の検査（`scripts/tool-health/catalog.ts`）の、MCP 側のケースで `raw.mode` を確かめる（`lookup_address`・`get_disaster_info` など、モードを持つツール。REST 側は持たないので、共通の検査器には入れず、MCP 側だけに 1 行）。
 - [ ] **Step 1: ツールの名前の残りを確かめる。** `grep` で、旧い名前が、README・`docs/engines/`・`glama.json`・`src/mcp/instructions.ts`・`client/` に残っていないこと（`RELEASE_NOTES.md`・設計メモ・計画・基準線は除く）。`src/mcp/instructions.ts` の本文を、新しいツール名で書き直す（初期の tools/list と合わせて 30000 字未満）。
 - [ ] **Step 2: README に、移行の表（旧名 → 新名と引数）を足す。** `RELEASE_NOTES.md` に、v5.0.0 の節（破壊的変更: ツールの統合、`search_road_traffic` の `source`（PR #70 が先にマージされていれば）、旧名の `search_tools` での検索）を書く。
 - [ ] **Step 3: 版を 5.0.0 にする。** `package.json`・`SORA_VERSION`（grep で全箇所）・OpenAPI の version・`client/` の版。
