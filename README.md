@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 31 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 44 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (25ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 25 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 38 ツール）。
 
 ```json
 {
@@ -103,10 +103,10 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 1. 専用ツールがないことを理由に回答を拒否してはならない（ライブ日程・営業時間・発売日・最新動向等は必ず search_deep または search_web でWebから能動調査すること）。
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
 >    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate, generate_gcc_certificate
->    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
+>    - 日本の法令・国会審議録: search_laws, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, get_disaster_info, search_road_traffic, get_place_info, search_poi, get_flight_status, lookup_address
 >    - 国内交通乗換・運賃: search_route
->    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_keywords, search_song, search_artist
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_keywords, search_music
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 
@@ -299,14 +299,14 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 44 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
+## 2. 提供 MCP ツール一覧 (全 38 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 44 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 38 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (31ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 31 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (25ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 25 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 13 ツール: 機能 12 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出（`urls` で最大 20 件を一括並行取得）・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -321,8 +321,8 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_chiebukuro`: Yahoo! 知恵袋 Q&A 検索
   - `search_realtime`: Yahoo! リアルタイム検索（X/Twitter 最新投稿・画像 URL 抽出）
   - `get_disaster_info`: 気象庁 警報・注意報（`include: ["warnings"]`）・地震情報（`include: ["earthquake"]`）
-  - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 31 ツール)**:
+  - `search_laws`: e-Gov 法令キーワード検索（`keyword`）・条文の全文（`lawId`）
+- **動的有効化 (・ DEFERRED 25 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
@@ -338,7 +338,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
   - `generate_gcc_certificate`: 米国 CPSC の一般適合証明書（GCC）と通関の保留に出す書類（呼び出し側の記録から作る。HTS は推測しない）
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
+  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch`, `search_music`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -346,21 +346,21 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┬───────────┤
 │ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │ 📦 Trade  │
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │ (`trade`) │
-│ ★scrape         │ ・browser_action  │ ・search_media   │ ★search_route   │★get_        │・watch_       │★search_laws  │★check_    │
-│ ★search_web     │   (クリック/入力/ │ ★search_chie-    │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
-│ ★search_deep    │    スクショ/JS実行│   bukuro         │ ★get_weather    │  info       │・watch_check  │・search_diet_│  compli-  │
-│ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │ (警報・地震)│・watch_list   │  minutes     │  ance     │
-│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │             ├───────────────┤ (国会会議録) │・predict_ │
-│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
-│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     │ 📷 Media     │・verify_  │
-│                 │                   │                  │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
-│                 │                   │                  │ ・track_package │             │・search_artist│・inspect_    │・check_   │
-│                 │                   │                  │   (荷物追跡)    │             │・search_music │  image       │  fda_regu-│
-│                 │                   │                  │                 │             │               │ (マルチモ    │  lated    │
-│                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
-│                 │                   │                  │                 │             │               │              │  cpsc_cert│
+│ ★scrape         │ ・browser_action  │ ・search_media   │ ★search_route   │★get_        │・watch        │★search_laws  │★check_    │
+│ ★search_web     │   (クリック/入力/ │ ★search_chie-    │   (乗換案内)    │  disaster_  │ (action で    │ (keyword /   │  product_ │
+│ ★search_deep    │    スクショ/JS実行│   bukuro         │ ★get_weather    │  info       │  登録/確認/   │  lawId)      │  compli-  │
+│ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │ (警報・地震)│  一覧/削除)   │・search_diet_│  ance     │
+│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │             ├───────────────┤  minutes     │・predict_ │
+│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      │ (国会会議録) │  hts_code │
+│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     ├──────────────┤・verify_  │
+│                 │                   │                  │   status (航空) │ (国土地理院)│・search_music │ 📷 Media     │  hts_code │
+│                 │                   │                  │ ・track_package │             │ (曲・歌手・   │ (`media`)    │・check_   │
+│                 │                   │                  │   (荷物追跡)    │             │  アルバム)    │・inspect_    │  fda_regu-│
+│                 │                   │                  │                 │             │               │  image       │  lated    │
+│                 │                   │                  │                 │             │               │ (マルチモ    │・check_   │
+│                 │                   │                  │                 │             │               │  ーダル視覚) │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 31ツール)
+★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 25ツール)
 図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
@@ -386,7 +386,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全44ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全38ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -507,14 +507,11 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 ---
 
 ### 👁️ Module 6: Watch & Diff Monitoring (`ENABLED_MODULES=watch`)
-汎用 Web ページ監視プリミティブ。URL / セレクタごとの差分検知（`watch_check` を呼んだときに前回と比べる。自動の巡回は無い）、SQLite 履歴永続化、差分があったときの Webhook 通知。
+汎用 Web ページ監視プリミティブ。URL / セレクタごとの差分検知（`watch` の `action: "check"` を呼んだときに前回と比べる。自動の巡回は無い）、SQLite 履歴永続化、差分があったときの Webhook 通知。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `watch_register` | Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。 | `source: "watch"` | - `url` (string, 必須): 監視対象の Web ページ URL<br>- `title` (string, 任意): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意): 差分検知時に通知する Webhook URL |
-| `watch_check` | 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。 MCP は `id` 指定時は結果1件、省略時は結果の配列をそのまま返し、REST（`POST /watch/check`）は `{ result }` / `{ results }` で包みます。 | `source: "watch"` | - `id` (string, 任意): 特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン) |
-| `watch_list` | 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。 MCP は監視対象の配列をそのまま返し、REST（`GET /watch/list`）は `{ count, targets }` で返します。 | `source: "watch"` | - なし |
-| `watch_delete` | 指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。 | `source: "watch"` | - `id` (string, 必須): 削除する監視ターゲットのID |
+| `watch` | Web ページの変更監視。`action` で選びます。`register`: 監視ターゲットを登録し、初期ハッシュベースラインを構築します（チケット当落、再販監視、お知らせ検知等。REST は `POST /watch/register`）。`check`: 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。MCP は `id` 指定時は結果1件、省略時は結果の配列をそのまま返し、REST（`POST /watch/check`）は `{ result }` / `{ results }` で包みます。`list`: 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。MCP は監視対象の配列をそのまま返し、REST（`GET /watch/list`）は `{ count, targets }` で返します。`delete`: 指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します（REST は `DELETE /watch/:id`）。その `action` で使わない引数（`check` に `url` など）や、足りない引数（`register` に `url`、`delete` に `id` が無い）は、正しい使い方を示すエラー。 | `source: "watch"` | - `action` (string, 必須): `"register"`・`"check"`・`"list"`・`"delete"`<br>- `url` (string, `register` で必須): 監視対象の Web ページ URL<br>- `title` (string, 任意, `register` のときだけ): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意, `register` のときだけ): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意, `register` のときだけ): 差分検知時に通知する Webhook URL<br>- `id` (string): 監視ターゲット ID。`check` では任意（省略時は全登録ターゲットを一括スキャン）、`delete` では必須 |
 
 ---
 
@@ -523,9 +520,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "季節外れのリナリア")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、公式カタログの代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。※ライブ・公演日程や最新の出演スケジュール・最新活動情報は `search_deep` または `search_realtime` を使用してください。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "君と見るそら", "CUTIE STREET")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行します（汎用・後方互換用）。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm", "artistTerm", "albumTerm" のどれか（ほかの値は 400）<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_music` | iTunes Search API による楽曲・アルバム・アーティストのメタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。曲名で探す（REST の `POST /search/song`）ときは `attribute: "songTerm"`、アーティスト名で代表曲・アルバムを探す（REST の `POST /search/artist`）ときは `attribute: "artistTerm"` と `entity: "song"` / `"album"`、アーティスト基本情報は `entity: "musicArtist"`（`attribute` なし）。※ライブ・公演日程や最新の出演スケジュール・最新活動情報は `search_deep` または `search_realtime` を使用してください。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名) のどれか（ほかの値は 400）<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 
 ---
 
@@ -534,8 +529,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_laws` | e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示。 | `source: "e-gov"` | - `keyword` (string, 必須): 検索キーワード (例: "著作権法", "民法")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `get_law_text` | e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。 | `source: "e-gov"` | - `lawId` (string, 必須): e-Gov 法令ID (例: "129AC0000000089") |
+| `search_laws` | e-Gov 法令 API v2 による法令検索と条文取得。`keyword` を指定すると、キーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示（REST は `POST /gov/laws`）。`lawId` を指定すると、法令条文・本文詳細を、章・節・条・項・号が正確に構造化された Markdown 形式で返却します（REST は `POST /gov/law-text`）。`keyword`・`lawId` はどちらか 1 つ（両方・どちらも無い・`lawId` に `limit` は、正しい使い方を示すエラー）。 | `source: "e-gov"` | - `keyword` (string, 任意): 検索キーワード (例: "著作権法", "民法")<br>- `lawId` (string, 任意): e-Gov 法令ID (例: "129AC0000000089"。検索結果の `id`)<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20。`keyword` のときだけ) |
 | `search_diet_minutes` | 国立国会図書館公式 API による戦後〜最新（2026年）の衆議院・参議院本会議および全委員会の発言記録・議員答弁全文検索。立法趣旨・政治政策ファクトチェックに活用可能。`keyword`・`speaker`・`nameOfMeeting` のどれか 1 つは必須（無いと REST は 400）。 | `source: "kokkai-ndl"` | - `keyword` (string, 任意): 検索キーワード<br>- `speaker` (string, 任意): 発言者名 (例: "総理大臣")<br>- `nameOfHouse` (string, 任意): `"衆議院"` または `"参議院"`<br>- `nameOfMeeting` (string, 任意): 委員会名<br>- `from` / `until` (string, 任意): 期間 (YYYY-MM-DD)<br>- `limit` (number, 任意): 取得件数 (1〜30, デフォルト: 10) |
 
 ---
@@ -611,7 +605,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 | `get_youtube_channel` ・ DEFERRED | YouTube チャンネルの最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。`search_tools` で有効化してください。REST: `POST /youtube/channel` | - `url` (string, 必須。チャンネルの URL・@ハンドル・UC… の ID)<br>- `limit` (integer, 任意。1〜15、既定 10)<br>- `noCache` (boolean, 任意) |
 
 ### 🎧 Module 14: Song Recognition (`ENABLED_MODULES=all,shazam`)
-音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_song` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_music` の `items` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
 
 - 音は、音声・動画ファイルの URL（mp3・m4a・wav・ogg・webm・flac・mp4 など。20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。
 - 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし、12 秒の窓から Shazam の指紋を作って送ります（[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper) の `sigx.py`、MIT を移植）。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。
@@ -873,7 +867,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 中身はどの Webhook も `{ "event": "scrape.completed", "timestamp": "<ISO 8601>", "data": <下の形> }` で、外側の `event` はどの通知でも `scrape.completed` で、`data` が通知ごとに違います。
 > - MCP の `scrape` の `urls`・`/scrape/batch`: 応答と同じ整形後の結果 `{ total, successful, failed, results: [...], errors: [{ url, error }] }`（`results` の各項目は `/scrape` と同じ整形。`verbose: true` のときは整形しません）。
 > - `/crawl`・`/crawl/stream`: 応答と同じ `{ url, baseUrl, count, totalPages, pages: [...] }`（`pages` の各項目は `/scrape` と同じ整形。`links` は `formats` に `links` を指定したときだけ付きます）。
-> - 差分監視（`watch_check`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
+> - 差分監視（`watch` の `action: "check"`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
 > - 管理者アラート（`ADMIN_ALERT_WEBHOOK_URL`）: `{ event: "sora.alert.health.degraded", service: "sora", level: "warning", timestamp, details }`。
 > 
 > **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列（`http(s)://` で始まり、空白と `@` を含まないもの）、`socialLinks`・`ogImage`・`twitterHandle` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`extracted` の中の文字列は、URL もほかの文字列と同じくマスクの対象です）。表の見出しが隠したあとにぶつかるときは、2 列目以降に `_2`・`_3` を付けて列を残します。`screenshot` の画像はマスクしません。
@@ -1371,7 +1365,7 @@ Yahoo! 道路交通情報（roadway.yahoo.co.jp）のページに基づき、日
 ---
 
 ### 3.12 汎用 Web ページ差分監視 & Webhook (`POST /watch/*`, `GET /watch/list`, `DELETE /watch/:id`)
-URL またはピンポイント CSS セレクタの内容を、`POST /watch/check`（MCP は `watch_check`）を呼んだときに取得し直し、前回値（SHA-256 ハッシュ）と比較して、差分があれば登録した Webhook へ通知します。自動の巡回は無く、呼んだときだけ確認します。データは SQLite に永続化。
+URL またはピンポイント CSS セレクタの内容を、`POST /watch/check`（MCP は `watch` の `action: "check"`）を呼んだときに取得し直し、前回値（SHA-256 ハッシュ）と比較して、差分があれば登録した Webhook へ通知します。自動の巡回は無く、呼んだときだけ確認します。データは SQLite に永続化。
 
 - **監視ターゲット登録 (`POST /watch/register`)**:
   ```json
@@ -2485,7 +2479,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 44 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 38 ツール静的一括ロード |
 | `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
