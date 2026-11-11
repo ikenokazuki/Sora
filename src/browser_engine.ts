@@ -182,6 +182,19 @@ async function stealthUserAgent(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Chromium が TLS の ClientHello や Accept に足す、wreq-js の chrome_149（静的取得側）には無い項目を止める機能名。
+ * 静的取得とブラウザは Cookie を共有する「同じ Chrome」なので、ここが食い違うと、Chrome を名乗る UA のまま別物の指紋を送る形になる。
+ * 実測では、Debian・Google 公式の Chromium 148 以降が ClientHello に足す拡張 51764 だけで、Cloudflare 系（Indeed）に
+ * 403 で弾かれた（Chrome を名乗る UA のとき。止めると通る）。名前の無い版（CI の Chrome for Testing 141 など）では無視される。
+ * - TLSTrustAnchorIDs / NonMtcTrustAnchorIDs: ClientHello の拡張 51764（Trust Anchor IDs）。どちらを止めても消える
+ * - TlsGreaseSigalgs: 署名アルゴリズムへ足す GREASE（Chromium 150 以降）
+ * - JXLImageFormat: Accept の image/jxl（Chromium 156 以降）
+ * 署名アルゴリズムの ML-DSA（Chromium 150 以降）と、Google 公式ビルドだけの拡張 4832 は、止める機能名が無い（前者）か、
+ * Debian の Chromium には無い（後者）ので、ここには含めない。
+ */
+export const WREQ_ALIGN_DISABLED_FEATURES = ['TLSTrustAnchorIDs', 'NonMtcTrustAnchorIDs', 'TlsGreaseSigalgs', 'JXLImageFormat'];
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
   const userAgent = await stealthUserAgent();
@@ -203,6 +216,8 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     '--accept-lang=ja-JP,ja,en-US,en',
     // ヘッドレスは hover / pointer が none になる。デスクトップのマウスに揃える。
     '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
+    // TLS の ClientHello と Accept を、静的取得（wreq-js の chrome_149）に揃える。理由は WREQ_ALIGN_DISABLED_FEATURES。
+    `--disable-features=${WREQ_ALIGN_DISABLED_FEATURES.join(',')}`,
   ];
   if (userAgent) args.push(`--user-agent=${userAgent}`);
   if (proxy) {
