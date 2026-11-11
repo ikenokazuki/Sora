@@ -301,7 +301,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ## 2. 提供 MCP ツール一覧 (全 44 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 44 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 44 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
@@ -487,7 +487,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 |---|---|---|---|
 | `search_route` | 日本国内の電車乗換案内。駅間の最適ルート・所要時間・乗換回数・IC/きっぷ運賃を探索。経由駅指定（最大3駅）、日時指定、特急/新幹線利用フラグに対応。 | `source: "transit"` | - `from` (string, 必須): 出発駅名 (例「東京」)<br>- `to` (string, 必須): 到着駅名 (例「新宿」)<br>- `via` (string[], 任意): 経由駅 (最大3駅)<br>- `timeType` (string, 任意): `"departure"`, `"arrival"`, `"first_train"`, `"last_train"`<br>- `ticket` (string, 任意): `"ic"`, `"cash"`<br>- `sortBy` (string, 任意): `"time"`, `"transfer"`, `"fare"` |
 | `get_weather` | 気象庁公式オープンデータ直結による日本全国各地の今日・明日・明後日および週間（最大8日間）の天気予報、予想気温、降水確率、天気概況、風・波情報を取得。全国 1,805 市区町村名の自動解決に対応。 | `source: "weather"` | - `city` (string, 必須): 市区町村名・地名または都道府県名 (例「天童市」「軽井沢」「箱根」「浦安」「東京」) または 6桁の予報区の番号 (例「130010」)。都道府県名は県の代表の予報区。気象台が複数ある北海道・鹿児島・沖縄は予報区か市町村の名前で (「北海道」だけはエラー)。見つからない地名と、複数の市町村に当たる名前 (例「府中」) はエラー<br>- `days` (number, 任意): 予報日数 (1〜8日, デフォルト: 7) |
-| `search_road_traffic` | JARTIC 連携データによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "jartic"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)。解決できない値はエラー<br>- `road` (string, 任意): 道路名 (例「東名高速」「中央道」「名神高速」「東北道」)。`pref` と併せるとその都道府県のページを絞る。該当する道路の情報が無ければ、その旨を返す |
+| `search_road_traffic` | Yahoo! 道路交通情報のページによる日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・工事等）を取得。都道府県・主要高速道路の区間別詳細に対応。 | `source: "yahoo-roadway"` | - `pref` (string, 任意): 都道府県名またはコード (例「東京都」「愛知県」「大阪府」「13」)。解決できない値はエラー<br>- `road` (string, 任意): 道路名 (例「東名高速」「中央道」「名神高速」「東北道」)。`pref` と併せるとその都道府県のページを絞る。該当する道路の情報が無ければ、その旨を返す |
 | `get_flight_status` | 羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトのリアルタイム運航状況、定刻、変更時刻、便名、行先、欠航・遅延ステータスおよび理由詳細を取得。 | `source: "yahoo-transit"` | - `airport` (string, 任意): 空港名またはコード (5 空港だけ。他の空港はエラー。例: "羽田", "成田", "HND", "NRT", デフォルト: "羽田")<br>- `type` (string, 任意): `"departure"`(出発) または `"arrival"`(到着)<br>- `category` (string, 任意): `"domestic"`(国内線) または `"international"`(国際線)<br>- `flightNumber` (string, 任意): 便名絞り込み (例: "ANA2421", "JAL505")<br>- `keyword` (string, 任意): 出発地・行先・航空会社名絞り込み |
 | `track_package` | 日本の主要運送会社（ヤマト運輸、佐川急便、日本郵便、西濃運輸、福山通運）と国際配送（UPS、FedEx、DHL Express）の荷物追跡・配達状況を照会。伝票番号からのキャリア自動判別（`carrier: "auto"`）と、公式追跡ページの URL（`trackingUrl`。佐川急便は番号を渡せないため入力ページ）を返す。 | `source: "tracking"` | - `trackingNumber` (string, 必須): お問い合わせ伝票番号 (ハイフン有無両対応)<br>- `carrier` (string, 任意): 運送会社コード (`"auto"`: 自動判別, `"yamato"`, `"sagawa"`, `"japanpost"`, `"seino"`, `"fukutsu"`, `"ups"`, `"fedex"`, `"dhl"`) |
 
@@ -627,6 +627,21 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 docker run -d -p 3016:8000 -e ENABLED_MODULES="all,shazam" ghcr.io/ikenokazuki/sora:latest
 
 curl -X POST http://localhost:3016/music/recognize -F file=@clip.m4a -F offsetSec=0
+```
+
+### 📦 Module 15: HTS Release Archive (`ENABLED_MODULES=all,hts-archive`)
+米国 USITC の HTS（関税率表）の全件の JSON を、版ごとに保存します。HTS は年に 20〜30 回改訂されますが、USITC の API は現行版の全件しか返さず、過去の版は類ごとの PDF でしか取れません。改訂の前後を比べたいときに使います。**`all` には含まれません。** 1 日 1 回 USITC から全件を取る常駐の処理を伴うため、`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ、確認のタイマーと REST の `/trade/hts/releases` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、起動時の処理・タイマー・取得はなく、REST は 404（`MODULE_DISABLED`）を返します。MCP のツールはありません。
+
+- 起動から 1 分後に 1 回、そのあと 24 時間ごとに、全件の JSON（`exportList`、gzip の転送で約 640KB）を取ります。
+- 版が変わったかどうかは、中身だけで決めます。`records` をキーを並べ替え、空白を入れない JSON にした SHA-256 が、最後に保存した版と同じなら何もしません。版の一覧（`releaseList`）は、データの更新と同時に書き換わるとは限らないためです（例: Revision 22 は一覧の日付が 10/26、適用の開始が 10/30）。
+- 中身が変わった日だけ版の一覧を見て、`status` が `current` の版の名前（例 `2026HTSRev23`）を付けて保存します。一覧が遅れて同じ名前のまま中身が変わったときは、取得の時刻（UTC、分まで）を付けた別の版にします（例 `2026HTSRev23-20261112T0412Z`）。
+- 保存先は `SORA_HTS_DIR` の `releases/` です。1 版あたり gzip で約 700KB で、保存した版は消しません。取得に失敗したら一覧の `lastError` に残し、次の確認で取り直します。
+
+```bash
+docker run -d -p 3016:8000 -e ENABLED_MODULES="all,hts-archive" ghcr.io/ikenokazuki/sora:latest
+
+curl http://localhost:3016/trade/hts/releases
+curl --compressed http://localhost:3016/trade/hts/releases/2026HTSRev23 -o 2026HTSRev23.json
 ```
 
 ベース URL: `http://localhost:3016` (またはデプロイ先のドメイン URL)
@@ -1323,7 +1338,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
 ---
 
 ### 3.11 道路交通情報 (`POST /traffic/road`, `GET /traffic/road/:pref?`)
-JARTIC（日本道路交通情報センター）連携データに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します。
+Yahoo! 道路交通情報（roadway.yahoo.co.jp）のページに基づき、日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）を取得します。
 `pref` なしで `road` が表にある主要道路（東名・中央道・名神など）のときは、道路ごとの区間ページを返します（下の例。各項目に `section`・`cause` が付く）。それ以外（`pref` を付けたとき、表に無い道路、`road` なし。`pref` が無ければ東京都）は、都道府県のページを返し、`road` があれば道路名で絞ります（応答に `pref`・`prefCode` が付き、各項目は `roadName`・`direction`・`status`・`detail`）。該当する道路が無いときは「この道路の情報は見つかりませんでした」と返し（順調とは言いません）、解決できない `pref` は HTTP 400 です。
 
 - **リクエスト (`POST /traffic/road`)**:
@@ -1349,7 +1364,7 @@ JARTIC（日本道路交通情報センター）連携データに基づき、�
         "detail": "春日井IC付近 路肩規制 (工事)"
       }
     ],
-    "source": "jartic"
+    "source": "yahoo-roadway"
   }
   ```
 
@@ -2408,6 +2423,16 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - キャッシュしません（読みも書きもせず、同時の要求もまとめません）。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`、モジュールが無効なら 404 `MODULE_DISABLED` です。
   - 当たっても、iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は同じ 502 にします。`itunes: null` は iTunes につなげる曲が無かったときだけなので、呼び出し側は 502 なら指紋を残して照会し直せます（`/music/recognize` は今までどおり `itunes: null` で当たりを返します）。
 
+### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v4.3.0, 明示オプトイン)
+
+保存した HTS の版の一覧と、1 つの版の全件を返します。**`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。保存の仕組みは「Module 15: HTS Release Archive」を参照してください。
+
+- **`GET /trade/hts/releases`**: `{ "checkedAt", "lastError", "releases": [...] }`。`checkedAt` は最後に確かめた時刻、`lastError` は最後の確認の失敗（成功なら `null`）です。まだ 1 度も確かめていなければ `{ "checkedAt": null, "lastError": null, "releases": [] }` です。
+  - `releases` は新しく保存したものが先頭で、各行は `id`（保存した版の名前）、`release`（取得したときに一覧で current だった版の名前）、`title`、`description`、`date`（一覧の `MM/DD/YYYY` のまま）、`fetchedAt`、`sha256`、`rowCount`（行の数）、`bytes`（保存した gzip の大きさ）です。
+  - `sha256` は `records` を決まった形にした JSON の SHA-256 です。Python の `json.dumps(records, sort_keys=True, separators=(',', ':'), ensure_ascii=False)` を UTF-8 にしたものと同じ値になります。2 つの版の `sha256` が同じなら、中身も同じです。
+- **`GET /trade/hts/releases/:id`**: `{ "id", "release", "title", "description", "date", "fetchedAt", "records" }`。`records` は USITC の `exportList` の応答のまま（約 12MB）です。要求の `Accept-Encoding` に `gzip` があれば、保存した gzip のまま `Content-Encoding: gzip` で返します（`curl --compressed` など）。
+  - `id` が `^[0-9A-Za-z_-]{1,80}$` に合わなければ 400 `INVALID_INPUT`、保存されていなければ 404 `NOT_FOUND` です。
+
 ---
 
 ## 4. セキュリティ & アーキテクチャ
@@ -2481,7 +2506,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
 | `RS_TRAFILATURA_PATH` | *(未設定。イメージでは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
 | `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
-| `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます |
+| `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます。`hts-archive` モジュールを有効にすると、保存した HTS の版も `releases/` に置きます（Module 15） |
 | `CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
 | `SORA_CROSS_INDEX_URL` / `SORA_CROSS_INDEX_SHA256` | （リリースの索引） | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`file://` も可）と SHA-256。両方を指定します |
 | `SORA_GCC_CERTIFIER` | *(未設定)* | `generate_gcc_certificate`・`POST /trade/gcc-generate` の証明者の既定。JSON のオブジェクト `{"name","street","city","state","country","email","phone"}`。呼び出しに `certifier` が無い（中身が空の）ときだけ丸ごと使い、呼び出し側の値と項目ごとに混ぜることはありません。**共有のサーバーでは設定しないでください**（`certifier` を省いたすべての呼び出しの証明書に、この値が入ります）。読めない値は、GCC を作る品があるときだけエラーになります。見本・仮置きの確かめはしません |

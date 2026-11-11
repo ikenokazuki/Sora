@@ -1718,7 +1718,7 @@ export const RoadTrafficResponseSchema = z.object({
   hasIssues: z.boolean().describe('事故・通行止等の規制情報が存在するか'),
   summary: z.string().describe('道路交通サマリーテキスト'),
   items: z.array(TrafficItemSchema).describe('路線別交通情報配列'),
-  source: z.literal('jartic').describe('情報提供元 ("jartic")'),
+  source: z.literal('yahoo-roadway').describe('情報提供元 ("yahoo-roadway"。Yahoo! 道路交通情報のページ)'),
   ...CACHE_META_SHAPE,
 });
 
@@ -3079,7 +3079,7 @@ export function generateOpenApiDocument() {
       },
       '/traffic/road': {
         post: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制)',
           requestBody: {
             content: {
               'application/json': {
@@ -3099,7 +3099,7 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (GET クエリ指定)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (GET クエリ指定)',
           parameters: [
             { name: 'pref', in: 'query', schema: { type: 'string' }, description: '都道府県名 (例: "東京都", "神奈川県")' },
             { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
@@ -3119,7 +3119,7 @@ export function generateOpenApiDocument() {
       },
       '/traffic/road/{pref}': {
         get: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (都道府県パス指定)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (都道府県パス指定)',
           parameters: [
             { name: 'pref', in: 'path', required: true, schema: { type: 'string' }, description: '都道府県名 (例: "東京", "神奈川")' },
             { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
@@ -4024,6 +4024,56 @@ export function generateOpenApiDocument() {
             description: '曲の特定の結果 (/music/recognize と同じ形。attempts は 1 件、audio は無い。特定できない場合も 200 で found: false と reason を返す)',
             content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionResultSchema) } },
           },
+        },
+      },
+    };
+  }
+  // HTS の版の保存は ENABLED_MODULES に名前を挙げたときだけ公開する（1 日 1 回 USITC から全件を取る常駐の処理を伴うため）
+  if (isModuleActive('hts-archive')) {
+    const release = {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '保存した版の名前。ふつうは版の名前、同じ名前で中身が違えば取得の時刻（UTC）付き（例 2026HTSRev22-20261112T0412Z）' },
+        release: { type: 'string', description: '取得したときに USITC の版の一覧で current だった版の名前' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        date: { type: 'string', description: '版の一覧の date（MM/DD/YYYY）' },
+        fetchedAt: { type: 'string', format: 'date-time' },
+        sha256: { type: 'string', description: 'records をキーを並べ替え空白を入れない JSON にした SHA-256。同じなら中身が同じ' },
+        rowCount: { type: 'integer' },
+        bytes: { type: 'integer', description: '保存した gzip の大きさ' },
+      },
+    };
+    paths['/trade/hts/releases'] = {
+      get: {
+        summary: '保存した HTS の版の一覧 (新しい順。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        responses: {
+          '200': {
+            description: '保存した版と、最後に確かめた時刻・最後の失敗',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    checkedAt: { type: 'string', nullable: true },
+                    lastError: { type: 'string', nullable: true },
+                    releases: { type: 'array', items: release },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    paths['/trade/hts/releases/{id}'] = {
+      get: {
+        summary: '保存した HTS の版の全件 ({id, release, title, description, date, fetchedAt, records}。records は USITC の exportList の応答のまま。Accept-Encoding に gzip があれば gzip のまま返す。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9A-Za-z_-]{1,80}$' }, description: '一覧の id' }],
+        responses: {
+          '200': { description: '版の全件の JSON' },
+          '400': { description: 'id の形が違う' },
+          '404': { description: '保存されていない版、またはモジュールが無効' },
         },
       },
     };

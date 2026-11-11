@@ -2,7 +2,7 @@ import type { McpServer, RegisteredTool, ToolCallback } from '@modelcontextproto
 import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import type { XPostDetailProvider } from '../services/x_detail.js';
 
-export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel' | 'lyrics' | 'youtube' | 'shazam';
+export type SoraModule = 'web' | 'browser' | 'yahoo' | 'life' | 'disaster' | 'watch' | 'music' | 'gov' | 'trade' | 'media' | 'intel' | 'lyrics' | 'youtube' | 'shazam' | 'hts-archive';
 export type GhostFetchModule = SoraModule; // backward-compatibility alias
 
 export interface McpServerOptions {
@@ -163,8 +163,8 @@ export function searchCatalog(
   return (tiers.find((matches) => matches.length > 0) ?? []).slice(0, 3);
 }
 
-/** `all` や未設定では有効にならず、名前を挙げたときだけ有効になるモジュール（自己責任で使う機能）。 */
-const EXPLICIT_ONLY_MODULES: readonly SoraModule[] = ['lyrics', 'shazam'];
+/** `all` や未設定では有効にならず、名前を挙げたときだけ有効になるモジュール（自己責任で使う機能と、常駐の処理を伴う機能）。 */
+const EXPLICIT_ONLY_MODULES: readonly SoraModule[] = ['lyrics', 'shazam', 'hts-archive'];
 
 /** モジュールが有効化されているかを判定 */
 export function isModuleActive(mod: SoraModule, explicitModules?: (SoraModule | 'all')[]): boolean {
