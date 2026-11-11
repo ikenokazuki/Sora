@@ -1,7 +1,7 @@
 {
   "name": "sora-deep-research",
   "version": "0.1.0",
-  "description": "Sora MCPと組むスキル集。深層調査（確認事項・証拠・不足の記録、取得失敗と0件の区別）と、型付きクライアントの使い方。",
+  "description": "Sora MCPと組むスキル集。深層調査（確認事項・証拠・不足の記録、取得失敗と0件の区別）と、REST の直接呼び出しの使い方。",
   "author": {
     "name": "Sora"
   },

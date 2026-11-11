@@ -29,6 +29,6 @@ describe('skills', () => {
 
   test('the client skill names the endpoints and the environment variables', () => {
     const text = readSkill('sora-client') ?? '';
-    for (const word of ['GET /client', 'SORA_URL', 'SORA_API_KEY', 'SoraError']) expect(text).toContain(word);
+    for (const word of ['GET /tools', 'GET /tools/<name>', 'SORA_URL', 'SORA_API_KEY', 'retryable']) expect(text).toContain(word);
   });
 });
