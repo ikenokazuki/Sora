@@ -305,6 +305,8 @@ Sora は、目的に応じて **12 個の論理モジュール（全 33 ツー�
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
+v4 までのツール名（`scrape_batch`・`normalize_address`・`watch_register` など）から移るときは、[v5.0.0 への移行（旧ツール名 → 新ツール名）](#v500-への移行旧ツール名--新ツール名)の表を見てください。
+
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
 Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (20ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 20 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
@@ -361,6 +363,48 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube`）・Music・Intel（`research_country_context` / `get_country_context`）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
+
+### v5.0.0 への移行（旧ツール名 → 新ツール名）
+
+v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめました（初期公開は 14 個から 13 個）。旧いツール名 29 個がなくなり、新しいツール名 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。
+
+- **旧名の別名は残していません。** 旧名で呼ぶと `Tool <旧名> not found` のエラーです。下の表の新しいツールと引数で呼んでください。
+- **`search_tools` で旧名を検索すると、新しいツールが見つかります**（新しいツールの検索語に旧名を入れています）。
+- **REST（URL・リクエスト・レスポンス）は変えていません。** `GET /tools` の操作の名前（`operationId`）も旧いツール名のままです。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
+- 統合したツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選びます。選んだ使い方に無い引数を既定と違う値で渡すと、正しい使い方を添えた入力の誤り（`isError`、「入力の誤り: …」）になります。既定と同じ値は通ります。
+- 応答の形とエラーの変化は、[RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節にあります。
+
+| 旧ツール名 | 新ツール名 | 呼び方（引数） | 備考 |
+|---|---|---|---|
+| `scrape_batch` | `scrape` | `urls`（最大 20 件）。`concurrency`・`webhookUrl` も `urls` のときだけ | `fullPage`・`keepDataImages` は `url` のときだけ |
+| `map_site` | `crawl_site` | `listOnly: true`（`limit`・`since`・`until`） | 本文を巡回するときは `listOnly` を省く |
+| `fetch_x_post` | `fetch_social_post` | X の投稿の `url`、または `statusId` | モジュールは `web`（旧は `yahoo`）。`commentLimit` は X 以外のときだけ |
+| `search_image` | `search_media` | `type: "image"` | `page` は image・video のときだけ |
+| `search_video` | `search_media` | `type: "video"` | `transcripts`・`transcriptChars`・`updated`・`platform` は video のときだけ |
+| `search_news` | `search_media` | `type: "news"` | `page` は使えない（`page: 1` は通る） |
+| `suggest_keywords` | `search_keywords` | `query` を渡す | `limit` は 20 まで |
+| `search_trend` | `search_keywords` | `query` を省く | `limit` は 50 まで |
+| `normalize_address` | `lookup_address` | `address`（`zipcode`・`lat` と `lon`・`compareAddress` で突き合わせ、`level` で階層） | 応答に `mode: "normalize"` |
+| `reverse_geocode` | `lookup_address` | `address` なしで `lat` と `lon`（`maxDistanceMeters`） | 応答に `mode: "reverse"` |
+| `search_postal_code` | `lookup_address` | 郵便番号から住所: `zipcode` だけ。住所から郵便番号: `address` | `zipcode` だけなら応答に `mode: "postal"`。`address` なら正規化の応答の `postalCodes`（入力の写しの欄は `address` でなく `input`） |
+| `get_elevation` | `get_place_info` | `address`、または `lat` と `lon`（`include` の既定は `["elevation"]`） | 応答は `{ location, elevation, include }`。`address` と `lat`・`lon` を同時に渡すとエラー |
+| `search_disaster_warnings` | `get_disaster_info` | `city` か `areaCode`（`include` は既定で `["warnings"]`） | 応答は `{ include, warnings }`。地域を省くと地震を返す（警報は地域が必須） |
+| `search_earthquake` | `get_disaster_info` | 地域を省く、または `include: ["earthquake"]`（`limit`・`minIntensity`） | 応答は `{ include, earthquake }`。両方は `include: ["warnings", "earthquake"]` |
+| `get_law_text` | `search_laws` | `lawId` | `keyword` と `lawId` はどちらか 1 つ。`search_laws` はコアのツール |
+| `search_song` | `search_music` | `attribute: "songTerm"` | |
+| `search_artist` | `search_music` | `attribute: "artistTerm"` と `entity: "song"` / `"album"`。アーティストの情報は `entity: "musicArtist"`（`attribute` なし） | |
+| `watch_register` | `watch` | `action: "register"`（`url` は必須。`title`・`selector`・`webhookUrl`） | |
+| `watch_check` | `watch` | `action: "check"`（`id`。省くと全件） | |
+| `watch_list` | `watch` | `action: "list"` | |
+| `watch_delete` | `watch` | `action: "delete"`（`id` は必須） | |
+| `predict_hts_code` | `lookup_hts` | `htsCode` を省く（`productName` は必須） | 応答に `mode: "predict"` |
+| `verify_hts_code` | `lookup_hts` | `htsCode` と `description` | 旧の `productDescription` は `description`。応答に `mode: "verify"` |
+| `check_cpsc_certificate` | `check_regulations` | `htsCode`・`targetAge`（cpsc を含むとき必須）。CPSC だけなら `agencies: ["cpsc"]` | `agencies` の既定は `["cpsc", "fda"]`。応答は `{ agencies, cpsc?, fda? }`（頼んだ機関の節だけ） |
+| `check_fda_regulated` | `check_regulations` | `htsCode` と `agencies: ["fda"]`（`foodContact`） | 既定（両方）では `targetAge` も要る |
+| `get_country_context_evidence` | `get_country_context` | `part: "evidence"`（`evidenceIds`、または `cursor`・`limit`） | `part` を省くと保存したレポート（旧 `get_country_context` と同じ） |
+| `get_country_context_updates` | `get_country_context` | `part: "updates"`（`cursor`） | |
+| `get_youtube_transcript` | `get_youtube` | 動画の URL か 11 文字の動画 ID（`lang`・`fromSec`・`maxChars`） | 応答に `mode: "video"` |
+| `get_youtube_channel` | `get_youtube` | チャンネルの URL・`@ハンドル`・`UC…` の ID（`limit`） | 応答に `mode: "channel"` |
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
 `search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
