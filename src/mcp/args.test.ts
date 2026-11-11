@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { exactlyOne, notUrl, onlyForMode, onlyWith, usageError } from './args.js';
+import { exactlyOne, notUrl, onlyForMode, usageError } from './args.js';
 
 const USAGE = '使い方: 1 ページは url、複数は urls。';
 
@@ -30,30 +30,6 @@ describe('exactlyOne', () => {
     const message = exactlyOne({ url: 'https://a.example', urls: ['https://b.example'] }, ['url', 'urls'], USAGE);
     expect(message).toContain('url, urls');
     expect(message).toContain(USAGE);
-  });
-});
-
-describe('onlyWith', () => {
-  test('passes when none of the keys is given', () => {
-    expect(onlyWith({ action: 'list' }, 'action', 'register', ['title', 'selector'])).toBeUndefined();
-    expect(onlyWith({ action: 'list', title: '', selector: [] }, 'action', 'register', ['title', 'selector'])).toBeUndefined();
-  });
-
-  test('passes when the condition holds', () => {
-    expect(onlyWith({ action: 'register', title: 'x' }, 'action', 'register', ['title', 'selector'])).toBeUndefined();
-  });
-
-  test('a given key outside its condition names the key and the condition', () => {
-    const message = onlyWith({ action: 'list', title: 'x' }, 'action', 'register', ['title', 'selector']);
-    expect(message).toContain('title');
-    expect(message).not.toContain('selector');
-    expect(message).toContain('action');
-    expect(message).toContain('register');
-    expect(message).toContain('list');
-  });
-
-  test('the condition key missing is reported as 未指定', () => {
-    expect(onlyWith({ limit: 5 }, 'part', 'evidence', ['limit'])).toContain('未指定');
   });
 });
 
