@@ -6,7 +6,7 @@
 
 ## 使うツール
 
-- MCP（モジュール `intel`。遅延ツールなので、`search_tools` で「国地域」と探して有効化します）: `research_country_context`（調べる）、`get_country_context`（保存した報告を取り直す）、`get_country_context_evidence`（根拠を ID やページで取る）、`get_country_context_updates`（前回以降の差分）。
+- MCP（モジュール `intel`。遅延ツールなので、`search_tools` で「国地域」と探して有効化します）: `research_country_context`（調べる）、`get_country_context`（保存した報告を取り直す。`part: "evidence"` で根拠を ID やページで、`part: "updates"` で前回以降の差分を取る）。
 - REST: `POST /intelligence/country`、`GET /intelligence/context/:contextId`、`GET /intelligence/context/:contextId/evidence`、`GET /intelligence/context/:contextId/updates`。
 - 主な引数は `region`（必須）、`query`、`topics`、`period`（`7d`・`30d`・`90d`。既定 `30d`）、`includeSocial`、`social`、`noCache`、`verbose` です。
 

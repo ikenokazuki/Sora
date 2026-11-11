@@ -10,7 +10,7 @@
 - `search_media`（`type: "video"`）の `transcripts`（上位の YouTube 動画の何本に字幕を付けるか。0〜5、既定 0）と `transcriptChars`（1 本あたりの最大字数。500〜10,000、既定 2,000）。REST は `POST /search/video` です。
 - `search_deep` の `videos`（0〜5、既定 0）。
 
-`get_youtube_transcript`（REST は `POST /youtube/transcript`）は、問いで選びません。`fromSec`（既定 0）から `maxChars`（既定 30,000）までを返し、続きは `nextFromSec` で読みます。`get_youtube_channel` は動画の一覧を返すだけで、字幕は読みません。
+`get_youtube` に動画の URL を渡したとき（REST は `POST /youtube/transcript`）は、問いで選びません。`fromSec`（既定 0）から `maxChars`（既定 30,000）までを返し、続きは `nextFromSec` で読みます。チャンネルの URL を渡したとき（REST は `POST /youtube/channel`）は動画の一覧を返すだけで、字幕は読みません。
 
 ## 手元のデータと外への問い合わせ
 
@@ -61,7 +61,7 @@
 | `unavailable` | `blocked`・`request-failed` | YouTube が拒否した、または通信に失敗した。時間をおいて再試行します |
 | `unavailable` | `video-unavailable` | 再生できない動画 |
 
-`get_youtube_transcript` では、再生できない動画は `transcript` がなく、`found: false` と `reason: "video-unavailable"` になります。`ok` 以外のときの `message` には、話している内容を推測で補わないでください、と書いてあります。自動字幕には `note` が付き、聞き間違いを含むことと、引用するときは自動字幕と伝えることを求めます。
+`get_youtube` の動画では、再生できない動画は `transcript` がなく、`found: false` と `reason: "video-unavailable"` になります。`ok` 以外のときの `message` には、話している内容を推測で補わないでください、と書いてあります。自動字幕には `note` が付き、聞き間違いを含むことと、引用するときは自動字幕と伝えることを求めます。
 
 例（架空）: `search_media` に `type: "video"`、`query: "サンプル講座 第3回 試験範囲"`、`transcripts: 1` を渡したときの、1 本目の `transcript` です。
 
@@ -77,7 +77,7 @@
 }
 ```
 
-字幕全体は 41,200 字あり、問いに関係する 3 段落（1,480 字）を時刻順に返した、という意味です（数字は架空です）。全体は `get_youtube_transcript` で読めます。`excerpt` が `head` なら、問いの語がどの段落にもなく、先頭から返しています。
+字幕全体は 41,200 字あり、問いに関係する 3 段落（1,480 字）を時刻順に返した、という意味です（数字は架空です）。全体は `get_youtube` で読めます。`excerpt` が `head` なら、問いの語がどの段落にもなく、先頭から返しています。
 
 ## 限界
 

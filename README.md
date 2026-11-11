@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (23ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 23 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 36 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (20ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 20 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 33 ツール）。
 
 ```json
 {
@@ -299,14 +299,14 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 36 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
+## 2. 提供 MCP ツール一覧 (全 33 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 36 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (23ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 23 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (20ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 20 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 13 ツール: 機能 12 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出（`urls` で最大 20 件を一括並行取得）・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -322,11 +322,10 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_realtime`: Yahoo! リアルタイム検索（X/Twitter 最新投稿・画像 URL 抽出）
   - `get_disaster_info`: 気象庁 警報・注意報（`include: ["warnings"]`）・地震情報（`include: ["earthquake"]`）
   - `search_laws`: e-Gov 法令キーワード検索（`keyword`）・条文の全文（`lawId`）
-- **動的有効化 (・ DEFERRED 23 ツール)**:
+- **動的有効化 (・ DEFERRED 20 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
-  - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
-  - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
+  - `get_youtube`: `url` の形で判別。動画なら題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）、チャンネル（URL・@ハンドル・ID）なら最新の動画（題名・公開日・説明文の先頭・視聴回数。Yahoo の検索は使わない）
   - `get_flight_status`: 羽田・成田・伊丹・関西・中部の 5 空港のフライト運航状況・遅延・欠航
   - `get_place_info`: 住所・地名または座標の地点の情報。座標解決（国土地理院・Nominatim）& `include` で選ぶ情報（既定の `elevation`: 国土地理院の標高（海抜））
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
@@ -336,7 +335,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `check_regulations`: 米国の規制判定。`agencies` で CPSC 証明書 (GCC/CCC) / eFiling 義務と FDA 規制を選ぶ（既定は両方）
   - `generate_gcc_certificate`: 米国 CPSC の一般適合証明書（GCC）と通関の保留に出す書類（呼び出し側の記録から作る。HTS は推測しない）
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch`, `search_music`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
+  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch`, `search_music`, `research_country_context`, `get_country_context`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -358,8 +357,8 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │                 │                   │                  │                 │             │               │ (マルチモ    │ (CPSC/    │
 │                 │                   │                  │                 │             │               │  ーダル視覚) │  FDA)     │
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 23ツール)
-図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
+★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 20ツール)
+図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube`）・Music・Intel（`research_country_context` / `get_country_context`）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
 
@@ -384,7 +383,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全36ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全33ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -467,7 +466,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_media` | Yahoo! JAPAN の画像・動画・ニュースの検索（`type` で選ぶ）。`image` は画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページ、`video` は動画タイトル・動画URL・再生時間・配信元・サムネイル（`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます。全文は `get_youtube_transcript`）、`news` は最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。REST は `POST /search/image`・`/search/video`・`/search/news` のまま。 | 各アイテムに `source: "image"`・`"video"`・`"news"` | - `type` (string, 必須): `"image"`・`"video"`・`"news"`<br>- `query` (string, 必須): 検索キーワード（`video` で URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。`image`・`video` は大きい値を指定しても 20 件)<br>- `page` (number, 任意, `image`・`video` のときだけ): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意, `video` のときだけ): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意, `video` のときだけ): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意, `video` のときだけ): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意, `video` のときだけ): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0）<br>- そのモードに無い引数（`news` の `page`、`image`・`news` の動画の引数）は、正しい使い方を添えた入力の誤りになる（既定値と同じ値は通す） |
+| `search_media` | Yahoo! JAPAN の画像・動画・ニュースの検索（`type` で選ぶ）。`image` は画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページ、`video` は動画タイトル・動画URL・再生時間・配信元・サムネイル（`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます。全文は `get_youtube`）、`news` は最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。REST は `POST /search/image`・`/search/video`・`/search/news` のまま。 | 各アイテムに `source: "image"`・`"video"`・`"news"` | - `type` (string, 必須): `"image"`・`"video"`・`"news"`<br>- `query` (string, 必須): 検索キーワード（`video` で URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。`image`・`video` は大きい値を指定しても 20 件)<br>- `page` (number, 任意, `image`・`video` のときだけ): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意, `video` のときだけ): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意, `video` のときだけ): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意, `video` のときだけ): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意, `video` のときだけ): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0）<br>- そのモードに無い引数（`news` の `page`、`image`・`news` の動画の引数）は、正しい使い方を添えた入力の誤りになる（既定値と同じ値は通す） |
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。アイテム間動的コーパスIDF付きBM25+リランキングによりクエリへの適合度が高いQ&Aを最上位表示。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 10 件ずつ進む。漏れなく続けるには `limit` を省く |
 | `search_keywords` | `query` を指定すると Yahoo! JAPAN オートコンプリートサジェスト（関連検索ワード・補完候補）、省くと Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。REST は `POST /search/suggest`・`/search/trend` のまま。 | サジェスト: `source: "suggest"`<br>トレンド: 各アイテムに `source: "x"` | - `query` (string, 任意): 補完キーワード。省くと急上昇トレンド<br>- `limit` (number, 任意): 取得件数。サジェストはデフォルト 10・上限 20（超えると入力の誤り）、トレンドはデフォルト 20・上限 50（返るのはページに載っている件数まで。2026-11 は 31 件） |
 | `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。X取得はYahooのJSON直取得 (MCPバイナリ不使用)。一部失敗時は `partial: true` と `providerErrors` を付与。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/realtime`）は `data` で包みます。 | 各アイテムに `source: "x"` | - `query` (string, 任意): 検索キーワード (他条件の指定時は省略可)<br>- `accountId` / `fromUser` (string, 任意): 特定アカウント (`id:xxx` に変換)<br>- `toAccount` (string, 任意): 宛先 (`@xxx` に変換)<br>- `hashtags` (string, 任意): ハッシュタグ (`#` 付与)<br>- `excludeWords` (string, 任意): 除外語 (`-` 付与)<br>- `orWords` (string[], 任意): OR検索 (`(A B)` に変換)<br>- `url` (string, 任意): URL/ドメイン (`URL:` 演算子として送信)<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は `omittedCount`<br>- `page` (number, 任意): ページ番号 (デフォルト: 1。`limit` 件ずつ進む)<br>- `focus` (string, 任意): `"official"`（本人・公式を優先）または `"public"`（本人以外を優先。評判・感想・炎上の調査）。省略時はクエリの語から判定<br>- `anchor` (string, 任意, 100字まで): 守る固有名詞（クエリ中の語）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない |
@@ -561,9 +560,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | ツール名 | 説明 |
 |---|---|
 | `research_country_context` ・ DEFERRED | 指定国・地域の政治・経済・安全・災害・保健・旅行等の分野横断調査。初回は代表証拠、全件はcontextId参照 |
-| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得 |
-| `get_country_context_evidence` ・ DEFERRED | 証拠明細の取得 |
-| `get_country_context_updates` ・ DEFERRED | 更新差分の取得 |
+| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得。`part` で選ぶ（`report`（既定）: レポート全体、`evidence`: 証拠明細（`evidenceIds`・`limit`）、`updates`: 更新差分。`evidence` と `updates` は `cursor` で続きを読む） |
 
 ### 🎤 Module 12: Lyrics (`ENABLED_MODULES=all,lyrics`)
 歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
@@ -585,20 +582,19 @@ curl -X POST http://localhost:3016/lyrics \
 ```
 
 ### 🎬 Module 13: YouTube (`ENABLED_MODULES=youtube`)
-YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（`get_youtube_channel`。字幕は一覧の `videoId` を `get_youtube_transcript` に渡して読みます）。
+YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（同じ `get_youtube` が `url` の形で判別します。字幕は一覧の `videoId` を `url` に渡して読みます）。
 
 - 字幕は手動の字幕を優先し、無ければ YouTube の自動字幕（音声認識）を返します。自動字幕は `transcript.source: "auto"` と `note` で明示します。聞き間違いを含み、固有名詞や句読点が正しくないことがあります。
 - 字幕が無い動画（自動字幕も無い MV・ショートなど）は、`transcript.status: "none"` と理由（`no-captions` / `live-now` / `language-mismatch`）を返します。音声認識はしません。YouTube が取得を拒否したときは `unavailable`（`blocked` / `request-failed`）で、キャッシュしません。
 - 字幕は Android アプリと同じ YouTube の内部 API（innertube）から取ります。公開 API ではないため、YouTube の変更で止まることがあります。bot の確認を回避する処理（PO トークンの生成・Cookie）は持ちません。
 - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ YouTube に問い合わせ、結果を 30 分（字幕なしは 60 秒）キャッシュします。
-- `get_youtube_channel` は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
+- チャンネルの一覧は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
 - ほかのツールからも使われます。`scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_media`（`type: "video"`）の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_media` の動画は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
-| `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` (integer, 任意。読み始める秒)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
-| `get_youtube_channel` ・ DEFERRED | YouTube チャンネルの最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。`search_tools` で有効化してください。REST: `POST /youtube/channel` | - `url` (string, 必須。チャンネルの URL・@ハンドル・UC… の ID)<br>- `limit` (integer, 任意。1〜15、既定 10)<br>- `noCache` (boolean, 任意) |
+| `get_youtube` ・ DEFERRED | `url` が動画なら字幕・説明文・チャプター、チャンネルなら最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。応答の `mode`（`video` / `channel`）でどちらかを示します。どちらでもない `url` は、使い方を示すエラーです。`search_tools` で有効化してください。REST: `POST /youtube/transcript`（動画）・`POST /youtube/channel`（チャンネル） | - `url` (string, 必須。動画の URL か 11 文字の動画 ID、またはチャンネルの URL・@ハンドル・UC… の ID)<br>- `lang` (string, 任意。既定 `ja`。動画のときだけ)<br>- `fromSec` (integer, 任意。読み始める秒。動画のときだけ)<br>- `maxChars` (integer, 任意。動画のときだけ)<br>- `limit` (integer, 任意。1〜15、既定 10。チャンネルのときだけ)<br>- `noCache` (boolean, 任意) |
 
 ### 🎧 Module 14: Song Recognition (`ENABLED_MODULES=all,shazam`)
 音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_music` の `items` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
@@ -2235,7 +2231,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 - Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
 - Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries) become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
 - Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). `SORA_INTEL_WEB_SEARCH=off` stops the `official_web` provider's real web search (the provider stays in the run and returns no items); tests use it to stay offline. Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
-- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`. All four return text JSON plus validated `structuredContent`. REST mirrors them: `GET /intelligence/context/:contextId/evidence|updates`. Evidence by id: REST `ids` (comma separated) is MCP `evidenceIds` (array); ids not in the report come back in `missingIds`, and more ids than `limit` continue through `nextCursor` (pass the same ids with `cursor`).
+- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context` (`part`: `report` (default), `evidence`, `updates`). Both return text JSON plus validated `structuredContent`. REST mirrors the parts: `GET /intelligence/context/:contextId` and `/evidence|updates`. Evidence by id: REST `ids` (comma separated) is MCP `evidenceIds` (array); ids not in the report come back in `missingIds`, and more ids than `limit` continue through `nextCursor` (pass the same ids with `cursor`).
 - No sentiment, hostility, anti-Japan, safety, or risk scores by design.
 - Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts and details 180 days. Retrieval: `GET /intelligence/context/:contextId`.
 - Opt-in live smoke: `bun run test:intel:live`
@@ -2475,7 +2471,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 36 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード |
 | `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
