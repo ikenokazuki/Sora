@@ -370,7 +370,7 @@ v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめ�
 
 - **旧名の別名は残していません。** 旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。下の表の新しいツールと引数で呼んでください。
 - **`search_tools` で旧名を検索すると、新しいツールが見つかります**（新しいツールの検索語に旧名を入れています）。
-- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更（`GET /client` の廃止など）は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスの欄は同じで（応答の文だけ変えたものがあります）、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更（`GET /client` の廃止など）は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
 - 統合したツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選びます。選んだ使い方に無い引数を既定と違う値で渡すと、正しい使い方を添えた入力の誤り（`isError`、「入力の誤り: …」）になります。既定と同じ値は通ります。
 - 応答の形とエラーの変化は、[RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節にあります。
 
