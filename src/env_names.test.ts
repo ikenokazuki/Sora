@@ -479,9 +479,10 @@ describe('HTS', () => {
       }
     }
 
-    test('新しい名前の URL（https・file）から取る', async () => {
+    test('新しい名前の URL から取る（前後の空白は除き、末尾の / はそのまま）', async () => {
       const { urls } = await attempt({ SORA_HTS_CROSS_INDEX_URL: ' https://index.example.test/cross.jsonl.gz ', SORA_HTS_CROSS_INDEX_SHA256: SHA });
       expect(urls).toEqual(['https://index.example.test/cross.jsonl.gz']);
+      expect((await attempt({ SORA_HTS_CROSS_INDEX_URL: 'https://index.example.test/cross/', SORA_HTS_CROSS_INDEX_SHA256: SHA })).urls).toEqual(['https://index.example.test/cross/']);
     });
 
     test('旧名 SORA_CROSS_INDEX_URL・SORA_CROSS_INDEX_SHA256 は読まず、リリースの索引を取る（起動の拒否は起動時の検査）', async () => {

@@ -396,13 +396,16 @@ describe('envUrl', () => {
     expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: `https://sora.example.com${'/'.repeat(40_000)}` })).toBe('https://sora.example.com');
   });
 
-  test('the alert webhook is a full endpoint: trimmed and checked, trailing slash kept', () => {
+  test('full endpoint URLs (alert webhook, cross index) are trimmed and checked, trailing slash kept', () => {
     // 末尾の / の有無で別の URL として扱う受け手がある（/ の無い形に 301 を返すと、redirect: error では送れない）
     expect(envUrl('SORA_ALERT_WEBHOOK_URL', { SORA_ALERT_WEBHOOK_URL: ' https://hooks.example.com/catch/123/abc/ ' })).toBe('https://hooks.example.com/catch/123/abc/');
     expect(envUrl('SORA_ALERT_WEBHOOK_URL', { SORA_ALERT_WEBHOOK_URL: 'https://hooks.example.com/a//' })).toBe('https://hooks.example.com/a//');
     expect(envUrl('SORA_ALERT_WEBHOOK_URL', { SORA_ALERT_WEBHOOK_URL: 'https://hooks.example.com/a?next=/b/' })).toBe('https://hooks.example.com/a?next=/b/');
     expect(envUrl('SORA_ALERT_WEBHOOK_URL', { SORA_ALERT_WEBHOOK_URL: 'https://hooks.example.com/a' })).toBe('https://hooks.example.com/a');
     expect(envUrl('SORA_ALERT_WEBHOOK_URL', { SORA_ALERT_WEBHOOK_URL: 'ftp://hooks.example.com/a/' })).toBeUndefined();
+    // 判例の索引の URL も、そのまま取りに行く宛先
+    expect(envUrl('SORA_HTS_CROSS_INDEX_URL', { SORA_HTS_CROSS_INDEX_URL: ' https://index.example.test/cross/ ' })).toBe('https://index.example.test/cross/');
+    expect(envUrl('SORA_HTS_CROSS_INDEX_URL', { SORA_HTS_CROSS_INDEX_URL: 'file:///srv/index/cross.jsonl.gz' })).toBe('file:///srv/index/cross.jsonl.gz');
     // 基底の URL は今までどおり外す
     expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: 'https://sora.example.com/base/' })).toBe('https://sora.example.com/base');
     expect(envUrl('SORA_OPENPOI_BASE_URL', { SORA_OPENPOI_BASE_URL: 'https://poi.example.test/' })).toBe('https://poi.example.test');

@@ -320,7 +320,7 @@ export const SETTINGS = {
     doc: 'HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません）',
   },
   SORA_HTS_CROSS_INDEX_URL: {
-    area: 'hts', kind: 'url', schemes: ['https', 'file'], legacy: ['SORA_CROSS_INDEX_URL'], legacyOnly: 'error',
+    area: 'hts', kind: 'url', schemes: ['https', 'file'], keepTrailingSlash: true, legacy: ['SORA_CROSS_INDEX_URL'], legacyOnly: 'error',
     defaultDoc: '*(リリースの索引)*',
     doc: '自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`https://` か `file://`）。`SORA_HTS_CROSS_INDEX_SHA256` と両方を指定します',
   },
