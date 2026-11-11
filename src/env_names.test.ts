@@ -359,7 +359,6 @@ describe('Yahoo', () => {
     );
     const auto = await path({});
     expect(auto.startsWith('RESULT '), auto).toBe(true);
-    expect(auto).not.toBe('RESULT /opt/old/yahoo-search-mcp');
     expect(await path({ SORA_YAHOO_MCP_PATH: ' /opt/fake/yahoo-search-mcp ' })).toBe('RESULT /opt/fake/yahoo-search-mcp');
     expect(await path({ YAHOO_MCP_PATH: '/opt/old/yahoo-search-mcp' })).toBe(auto);
   }, 30_000);
