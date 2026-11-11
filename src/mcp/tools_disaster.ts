@@ -11,14 +11,14 @@ import type { ToolRegistrationContext } from './registry.js';
 /** 🚨 Category 5: Disaster & Emergency (モジュール: 'disaster') */
 export function registerDisasterTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
-  // Tool 16: search_road_traffic (リアルタイム道路交通情報 - JARTIC連携) - DEFERRED
+  // Tool 16: search_road_traffic (リアルタイム道路交通情報 - Yahoo! 道路交通情報のページ) - DEFERRED
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'search_road_traffic',
     'disaster',
-    '【JARTIC道路交通直結】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せずJARTIC（日本道路交通情報センター）連携の本ツールで取得してください。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] }',
+    '【必須・道路交通情報】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せず、Yahoo! 道路交通情報のページを読む本ツールで取得してください（応答の source は yahoo-roadway）。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] }',
     {
       pref: z.string().optional().describe('都道府県名またはコード (例: "東京都", "愛知県", "大阪府", "福岡県", "13")。解決できない値はエラー。road と併せるとその都道府県のページを road で絞る'),
       road: z.string().optional().describe('道路名 (例: "東名高速", "中央道", "名神高速", "東北道", "圏央道")。該当する道路の情報が無ければ、その旨を返す'),
@@ -36,7 +36,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
         };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['道路交通情報', '通行止め', '渋滞', '高速道路', '規制', 'JARTIC'] },
+    { defaultEnabled: deferredDefault, keywords: ['道路交通情報', '通行止め', '渋滞', '高速道路', '規制', 'JARTIC', 'Yahoo'] },
   );
 
   // Tool 17: search_disaster_warnings (気象警報・注意報) - CORE (defaultEnabled: true)

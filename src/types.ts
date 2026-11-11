@@ -1716,7 +1716,7 @@ export const RoadTrafficResponseSchema = z.object({
   hasIssues: z.boolean().describe('事故・通行止等の規制情報が存在するか'),
   summary: z.string().describe('道路交通サマリーテキスト'),
   items: z.array(TrafficItemSchema).describe('路線別交通情報配列'),
-  source: z.literal('jartic').describe('情報提供元 ("jartic")'),
+  source: z.literal('yahoo-roadway').describe('情報提供元 ("yahoo-roadway"。Yahoo! 道路交通情報のページ)'),
   ...CACHE_META_SHAPE,
 });
 
@@ -3077,7 +3077,7 @@ export function generateOpenApiDocument() {
       },
       '/traffic/road': {
         post: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制)',
           requestBody: {
             content: {
               'application/json': {
@@ -3097,7 +3097,7 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (GET クエリ指定)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (GET クエリ指定)',
           parameters: [
             { name: 'pref', in: 'query', schema: { type: 'string' }, description: '都道府県名 (例: "東京都", "神奈川県")' },
             { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
@@ -3117,7 +3117,7 @@ export function generateOpenApiDocument() {
       },
       '/traffic/road/{pref}': {
         get: {
-          summary: 'JARTIC 連携 リアルタイム道路交通情報取得 (都道府県パス指定)',
+          summary: 'Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (都道府県パス指定)',
           parameters: [
             { name: 'pref', in: 'path', required: true, schema: { type: 'string' }, description: '都道府県名 (例: "東京", "神奈川")' },
             { name: 'road', in: 'query', schema: { type: 'string' }, description: '路線名絞り込み (例: "東名", "中央道")' },
