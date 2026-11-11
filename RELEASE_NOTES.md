@@ -1,6 +1,6 @@
 # Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,227・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
 
 ## 先に気づく変更（呼び出し側）
 
@@ -53,11 +53,12 @@
 - `POST /intelligence/country` の `limitations` の `response_sampled` の文が、詳細の取り方を `get_country_context (part: evidence)` と書きます。
 - `POST /search/video` で検索語が URL のときの `message` が、`YouTube なら get_youtube` と書きます。
 - YouTube のページを `scrape` で読んだときの注記（`/scrape`・`/scrape/batch`・`search_deep` など）が、続きの読み方を `get_youtube` と書きます。注記が 11 字短くなった分、長い字幕に使える字数が 11 字増えます。
-- OpenAPI の YouTube の抜粋（`reason`・`text`）の説明の文。
+- OpenAPI の YouTube の抜粋（`reason`・`text`）の説明の文、`SongRecognitionResult.itunes` と `WatchTargetRecord.interval_seconds` の説明の文（MCP のツール名の言及を新しい名前にした）。
 
 ## 型付きクライアント（`client/`）
 
 - **配る経路の `GET /client` は廃止しました。** 生成物は、リポジトリの `client/` にだけあります（`bun run gen:client` で作り直す）。
+- **ファイルの名前は、まとめたツールの名前になりました**（例: `servers/sora/scrape_batch.ts` は `servers/sora/scrape.ts` の中に入りました）。`servers/sora/index.js` から読む import は、今までどおり動きます。
 - **関数名は変えていません**（52 個）。まとめたツールの各ルートは、旧いツールの名前の関数のままです（例: `scrape` の `/scrape/batch` は `scrapeBatch`）。
 - **各関数の説明（JSDoc）は、その関数が呼ぶ REST のルートの OpenAPI の `summary`（あれば `description`）から作ります。** 今までは MCP のツールの説明を写していたので、まとめたツールでは REST の応答に無い `mode` などを書いていました。`catalog.json` の `description` は、`searchTools` で探せるように、ツールの説明のままです（1 ルート 1 行）。
 
