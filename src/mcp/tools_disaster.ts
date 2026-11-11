@@ -96,8 +96,9 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     async (args) => {
       // 空の配列は省略と同じ（args.ts の given と同じ読み方）
       const requested = args.include?.length ? args.include : (args.city || args.areaCode ? ['warnings'] : ['earthquake']);
-      const unknown = requested.filter((kind) => !DISASTER_KINDS.includes(kind));
-      if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${DISASTER_USAGE}`);
+      // 値は JSON の形で引用する（"" も見えるように）
+      const unsupported = requested.filter((kind) => !DISASTER_KINDS.includes(kind));
+      if (unsupported.length > 0) return usageError(`include に使えない値があります: ${unsupported.map((v) => JSON.stringify(v)).join(', ')}。${DISASTER_USAGE}`);
       const kinds = DISASTER_KINDS.filter((kind) => requested.includes(kind));
       // 頼んだ種類は足りない引数を、頼まなかった種類はその種類だけの引数を断る（既定値と同じ値は断らない）
       for (const kind of DISASTER_KINDS) {
@@ -159,8 +160,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       if (!hasAddress && lat === undefined) return usageError(`address または (lat, lon) のいずれかを指定してください。${PLACE_USAGE}`);
       // 空の配列は省略と同じ（args.ts の given と同じ読み方）
       const requested = include?.length ? include : PLACE_INCLUDE_DEFAULT;
-      const unknown = requested.filter((kind) => !PLACE_KINDS.includes(kind));
-      if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${PLACE_USAGE}`);
+      const unsupported = requested.filter((kind) => !PLACE_KINDS.includes(kind));
+      if (unsupported.length > 0) return usageError(`include に使えない値があります: ${unsupported.map((v) => JSON.stringify(v)).join(', ')}。${PLACE_USAGE}`);
       // サービスには旧 get_elevation の引数だけを渡す
       const where: PlaceWhere = hasAddress ? { address } : { lat, lon };
       if (noCache !== undefined) where.noCache = noCache;

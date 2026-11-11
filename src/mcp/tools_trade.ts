@@ -70,8 +70,8 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     async (args) => {
       // 空の配列は省略と同じ（args.ts の given と同じ読み方）
       const requested = args.agencies?.length ? args.agencies : AGENCIES_DEFAULT;
-      const unknown = requested.filter((agency) => !AGENCIES.includes(agency));
-      if (unknown.length > 0) return usageError(`agencies に使えない値があります: ${unknown.join(', ')}。${REGULATION_USAGE}`);
+      const unsupported = requested.filter((agency) => !AGENCIES.includes(agency));
+      if (unsupported.length > 0) return usageError(`agencies に使えない値があります: ${unsupported.map((v) => JSON.stringify(v)).join(', ')}。${REGULATION_USAGE}`);
       const agencies = AGENCIES.filter((agency) => requested.includes(agency));
       // 頼んだ機関は足りない引数を、頼まなかった機関はその機関だけの引数を断る（頼んだ機関も使う引数は断らない）
       const accepted = new Set(agencies.flatMap((agency) => REGULATION_SECTIONS[agency].args));

@@ -201,6 +201,7 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       // scrape には実在の引数 mode（auto・fast・browser）がある。エラーの文は「モード」の語を使わない
       expect(text).not.toContain('モード');
@@ -312,6 +313,7 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       expect(text).toContain('listOnly');
@@ -436,6 +438,7 @@ describe('fetch_social_post: X の投稿は旧 fetch_x_post、ほかは旧 fetch
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       expect(text).toContain('statusId');
@@ -522,6 +525,7 @@ describe('search_media: type で画像・動画・ニュース（旧 search_imag
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       expect(text).toContain('image');
@@ -591,6 +595,7 @@ describe('search_keywords: query ありはサジェスト、なしは急上昇�
     expect(res.isError).toBe(true);
     const text = textOf(res);
     expect(text).toContain('入力の誤り');
+    expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
     expect(text).toContain('limit は 20 まで');
     expect(text).toContain('query');
     expect(suggest).not.toHaveBeenCalled();
@@ -728,6 +733,7 @@ describe('lookup_address: address は正規化、lat・lon だけは逆引き、
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       // 正しい使い方を添える
@@ -872,7 +878,8 @@ describe('get_place_info: address か lat・lon の地点の情報を、include 
     ['lat だけ', { lat: 35.6 }, ['lat と lon は組で指定してください']],
     ['address と lon だけ', { address: '原宿', lon: 139.7 }, ['lat と lon は組で指定してください']],
     ['address と lat・lon', { address: '原宿', ...point }, ['address と lat・lon は、どちらか一方だけを指定してください']],
-    ['include に使えない値', { address: '原宿', include: ['elevation', 'hazards'] }, ['include に使えない値があります: hazards']],
+    ['include に使えない値', { address: '原宿', include: ['elevation', 'hazards'] }, ['include に使えない値があります: "hazards"']],
+    ['include に空の文字列', { address: '原宿', include: [''] }, ['include に使えない値があります: ""']],
   ];
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
@@ -881,6 +888,7 @@ describe('get_place_info: address か lat・lon の地点の情報を、include 
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       // 正しい使い方（地点の指定と、include の使える値）を添える
@@ -986,7 +994,8 @@ describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
     ['include: ["warnings"] で地域なし', { include: ['warnings'] }, ['include の warnings には city か areaCode が必要です']],
     ['include: ["warnings"] で空の city・areaCode', { include: ['warnings'], city: '', areaCode: '' }, ['include の warnings には city か areaCode が必要です']],
-    ['include に使えない値', { include: ['earthquake', 'typhoon'] }, ['include に使えない値があります: typhoon']],
+    ['include に使えない値', { include: ['earthquake', 'typhoon'] }, ['include に使えない値があります: "typhoon"']],
+    ['include に空の文字列', { include: ['', 'earthquake'] }, ['include に使えない値があります: ""']],
     ['city と limit: 3（既定値の 5 と違う）', { city: '新宿区', limit: 3 }, [`limit は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
     ['areaCode と minIntensity: 40', { areaCode: '13', minIntensity: 40 }, [`minIntensity は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
     ['include: ["earthquake"] と city', { include: ['earthquake'], city: '新宿区' }, [`city は ${WITH_WARNINGS}だけ指定できます（いま: include: ["earthquake"]）`]],
@@ -999,6 +1008,7 @@ describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       // 正しい使い方（include の値と、それぞれの引数）を添える
@@ -1111,6 +1121,7 @@ describe('search_laws: keyword は法令の検索、lawId は条文の全文（�
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       for (const key of ['keyword', 'lawId', 'limit']) expect(text).toContain(key);
@@ -1283,6 +1294,7 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
       expect(res.isError).toBe(true);
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
+      expect(text).toContain('使い方'); // 使い方の文が添えられている（エラーの文だけでは通らない）
       for (const m of mentions) expect(text).toContain(m);
       expect(text).not.toContain('モード');
       // 正しい使い方（action の値と、それぞれの引数）を添える
@@ -1462,7 +1474,7 @@ describe('check_regulations: agencies で CPSC と FDA を選び、機関ごと�
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
     ['targetAge が無い（既定は cpsc を含む）', { htsCode: HTS }, [`${WITH_CPSC}（既定）は targetAge が必要です`, 'agencies: ["fda"]']],
     ['agencies: ["cpsc"] で targetAge が無い', { htsCode: HTS, agencies: ['cpsc'], material: 'wood' }, [`${WITH_CPSC}（既定）は targetAge が必要です`]],
-    ['agencies に使えない値', { htsCode: HTS, targetAge: 'adult', agencies: ['cpsc', 'usda'] }, ['agencies に使えない値があります: usda']],
+    ['agencies に使えない値', { htsCode: HTS, targetAge: 'adult', agencies: ['cpsc', 'usda'] }, ['agencies に使えない値があります: "usda"']],
     ['agencies: ["fda"] と batteryType', { htsCode: HTS, agencies: ['fda'], batteryType: 'button_coin' }, [`batteryType は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
     ['agencies: ["fda"] と targetAge・material・hasBattery: false', { htsCode: HTS, agencies: ['fda'], targetAge: 'adult', material: 'wood', hasBattery: false }, [`targetAge, material, hasBattery は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
     ['agencies: ["fda"] と生地の引数', { htsCode: HTS, agencies: ['fda'], fabricSurface: 'raised', fabricWeightOzPerSqYd: 2 }, [`fabricSurface, fabricWeightOzPerSqYd は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
