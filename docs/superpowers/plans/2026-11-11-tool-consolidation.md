@@ -179,3 +179,20 @@
 - [ ] **Step 3: 版を 5.0.0 にする。** `package.json`・`SORA_VERSION`（grep で全箇所）・OpenAPI の version・`client/` の版。
 - [ ] **Step 4: ツール選びの評価を、統合後で測る。** `bun docs/evaluations/tool-selection/snapshot.ts` で新しい定義を書き出し、`run.ts --surface new` を、`claude-haiku-5-5` と `claude-haiku-4-5` で回す（鍵は `~/.config/sora-hl/anthropic_key`。費用は数十円）。結果の要約を `docs/evaluations/tool-selection/results-v5.json` に保存し、README に、基準線との比較の表を足す。合格の目安（同じモデルで基準線より 1 問を超えて下がらない・モードを選ぶ引数の正答率 90% 以上）に届かなければ、原因のツールの説明を直して回し直す。直しきれないものは、その統合を戻すか、報告に残す。
 - [ ] **Step 5: 全体の検査と、コミット。** 全体テスト（bun 1.3.3 と、CI と同じ 1.4.2 の両方。手順は記憶の `sora-test-env` のとおり、`npm install --no-save --prefix <scratch>/bunX bun@1.4.2`）。
+
+### Task 11（任意。Task 10 のあと）: LLM に見せるスキーマの飾りを削る
+
+統合では、引数は減らない（282 個の引数の和が残る）ため、ツール定義の大きさは、数ほど減らない（2026-11-11 の実測: 53 ツールで約 6.4 万字。説明 21%、引数の説明 25%、スキーマの構造 54%）。そこで、検証はサーバー側のまま、LLM に見せる `tools/list` の入力スキーマから、飾りを外す。
+
+**Files:**
+- Modify: `tools/list` の入力スキーマを作る場所（`src/schema_sanitizer.ts` の `sanitizeJsonSchemaForGemini` と、`tools/list` の応答を作る箇所。調べて決める）、`src/mcp/tool_search.ts`（`search_tools` の `detail=schema` と揃える）、テスト、`docs/evaluations/tool-selection/`（結果）、`client/`（作り直し）
+
+**Interfaces:**
+- 外すもの（実測で、全部で約 11% 減）: `default`（約 2.8%）、数や文字数の範囲（`minimum`・`maximum`・`minLength`・`maxLength`・`exclusiveMinimum`・`exclusiveMaximum`・`minItems`・`maxItems`。約 3.7%）、`$schema` と `additionalProperties`（約 4.4%）。
+- 残すもの: 型、`enum`、`required`、`description`。既定値や範囲が、引数の説明に書かれていなければ使い方が分からないもの（例: 範囲が説明にしか無い引数）は、**説明に 1 句で書き足してから**外す（説明の字数が、外した字数より少ないものだけ）。
+- サーバー側の検証（zod）は、変えない。範囲外の値は、これまでどおりエラーになる。
+
+- [ ] **Step 1: 現状の大きさを測る**（`docs/evaluations/tool-selection/snapshot.ts` の字数。Task 10 の終わりの値）。
+- [ ] **Step 2: 飾りを外す層を実装する**（テスト: 外したあとのスキーマに、`default`・範囲・`$schema`・`additionalProperties` が無く、`type`・`enum`・`required`・`description` が残ること。`search_tools` の `detail=schema` と同じ形になること）。
+- [ ] **Step 3: ツール選びの評価を回す**（`claude-haiku-5-5` と `claude-haiku-4-5`。Task 10 の結果と比べる）。合格の目安: 正答率が、同じモデルで、1 問を超えて下がらない。モードを選ぶ引数の正答率が 90% 以上。**悪化したら、外すものを減らす（範囲だけ残す、など）か、この作業を取りやめる。**
+- [ ] **Step 4: 全体の検査と、コミット**（`feat(mcp):`）。大きさの変化（字数）を、コミットの本文と `RELEASE_NOTES.md` に書く。
