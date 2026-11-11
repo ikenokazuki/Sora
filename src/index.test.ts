@@ -706,25 +706,25 @@ describe('web-fetcher Auth Middleware', () => {
   });
 
   it('should reject direct local access by default when API key is set', async () => {
-    const prev = process.env.ALLOW_LOCAL_NO_AUTH;
-    delete process.env.ALLOW_LOCAL_NO_AUTH;
+    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
+    delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
     try {
       const res = await testApp.fetch(new Request('http://localhost/protected'));
       expect(res.status).toBe(401);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_NO_AUTH = prev;
+      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
     }
   });
 
-  it('should allow direct local access only when ALLOW_LOCAL_NO_AUTH=true', async () => {
-    const prev = process.env.ALLOW_LOCAL_NO_AUTH;
-    process.env.ALLOW_LOCAL_NO_AUTH = 'true';
+  it('should allow direct local access only when SORA_AUTH_LOOPBACK_NO_KEY=true', async () => {
+    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
+    process.env.SORA_AUTH_LOOPBACK_NO_KEY = 'true';
     try {
       const res = await testApp.fetch(new Request('http://localhost/protected'));
       expect(res.status).toBe(200);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_NO_AUTH = prev;
-      else delete process.env.ALLOW_LOCAL_NO_AUTH;
+      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
+      else delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
     }
   });
 
@@ -2839,13 +2839,11 @@ describe('Sora REST & MCP Endpoints', () => {
   it('createAuthMiddleware should allow requests when no API key is set (fail-open)', async () => {
     const testApp = new Hono();
     const prevNodeEnv = process.env.NODE_ENV;
-    const prevKey = process.env.WEB_FETCHER_API_KEY;
-    const prevApiKey = process.env.API_KEY;
+    const prevKey = process.env.SORA_API_KEY;
 
     try {
       process.env.NODE_ENV = 'production';
-      delete process.env.WEB_FETCHER_API_KEY;
-      delete process.env.API_KEY;
+      delete process.env.SORA_API_KEY;
 
       testApp.use('*', createAuthMiddleware());
       testApp.get('/test', (c) => c.json({ ok: true }));
@@ -2856,8 +2854,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(json.ok).toBe(true);
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
-      if (prevKey) process.env.WEB_FETCHER_API_KEY = prevKey;
-      if (prevApiKey) process.env.API_KEY = prevApiKey;
+      if (prevKey) process.env.SORA_API_KEY = prevKey;
     }
   });
 
@@ -3381,10 +3378,10 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.dependencies.jma).toBeDefined();
   });
 
-  it('createAuthMiddleware should enforce DAILY_REQUEST_LIMIT quota and return 429 when exceeded', async () => {
+  it('createAuthMiddleware should enforce SORA_AUTH_DAILY_LIMIT quota and return 429 when exceeded', async () => {
     const testApp = new Hono();
-    const prevLimit = process.env.DAILY_REQUEST_LIMIT;
-    process.env.DAILY_REQUEST_LIMIT = '2';
+    const prevLimit = process.env.SORA_AUTH_DAILY_LIMIT;
+    process.env.SORA_AUTH_DAILY_LIMIT = '2';
 
     try {
       testApp.use('*', createAuthMiddleware('test-quota-key'));
@@ -3404,9 +3401,9 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(json3.limit).toBe(2);
     } finally {
       if (prevLimit !== undefined) {
-        process.env.DAILY_REQUEST_LIMIT = prevLimit;
+        process.env.SORA_AUTH_DAILY_LIMIT = prevLimit;
       } else {
-        delete process.env.DAILY_REQUEST_LIMIT;
+        delete process.env.SORA_AUTH_DAILY_LIMIT;
       }
     }
   });

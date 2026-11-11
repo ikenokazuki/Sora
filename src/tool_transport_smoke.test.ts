@@ -13,8 +13,7 @@ let previousPort: string | undefined;
 beforeAll(async () => {
   directory = mkdtempSync(join(tmpdir(), 'transport-smoke-'));
   process.env.SORA_DB_PATH = join(directory, 'test.db');
-  delete process.env.WEB_FETCHER_API_KEY;
-  delete process.env.API_KEY;
+  delete process.env.SORA_API_KEY;
   // Claim a free port first so the MCP allowlist covers this exact origin.
   const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') });
   const port = probe.port;

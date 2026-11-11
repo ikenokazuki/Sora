@@ -215,16 +215,16 @@ describe('実際のアプリ（index.ts）', () => {
   });
 
   test('正しい API キーを付けても、許可されていない Origin のブラウザ要求は 403（検査は認証より先）', async () => {
-    const previous = process.env.WEB_FETCHER_API_KEY;
-    process.env.WEB_FETCHER_API_KEY = 'rest-origin-test-key';
+    const previous = process.env.SORA_API_KEY;
+    process.env.SORA_API_KEY = 'rest-origin-test-key';
     try {
       const res = await attacker('/watch/list', 'GET', { authorization: 'Bearer rest-origin-test-key' });
       expect(res.status).toBe(403);
       const direct = await soraApp.request('/watch/list', { headers: { host: 'localhost:8000', authorization: 'Bearer rest-origin-test-key' } });
       expect(direct.status).toBe(200);
     } finally {
-      if (previous === undefined) delete process.env.WEB_FETCHER_API_KEY;
-      else process.env.WEB_FETCHER_API_KEY = previous;
+      if (previous === undefined) delete process.env.SORA_API_KEY;
+      else process.env.SORA_API_KEY = previous;
     }
   });
 
