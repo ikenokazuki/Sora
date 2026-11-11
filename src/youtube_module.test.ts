@@ -107,9 +107,9 @@ describe('MCP tool', () => {
   test('the instructions mention it only when the module is active', () => {
     expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube_transcript');
     // 動画を探すときと調べものでは、検索の側の指定（既定は 0）を使うよう案内する
-    expect(buildSoraMcpInstructions(['all'])).toContain('search_video transcripts');
+    expect(buildSoraMcpInstructions(['all'])).toContain('search_media type:video transcripts');
     expect(buildSoraMcpInstructions(['all'])).toContain('search_deep videos');
-    expect(buildSoraMcpInstructions(['youtube'])).not.toContain('search_video');
+    expect(buildSoraMcpInstructions(['youtube'])).not.toContain('search_media');
     expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube_transcript');
     // チャンネルの最新動画のツールも案内する
     expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube_channel');

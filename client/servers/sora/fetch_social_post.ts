@@ -56,7 +56,37 @@ export type FetchSocialPostOutput = {
   warnings: string[];
 };
 
-/** 【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures } */
+/** 【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail } */
 export function fetchSocialPost(input: FetchSocialPostInput): Promise<FetchSocialPostOutput> {
   return callSora<FetchSocialPostOutput>({ method: 'POST', path: '/social/fetch' }, input);
+}
+
+export type FetchXPostInput = {
+  /** X投稿の数値ステータスID */
+  statusId?: string;
+  /** X投稿URL（statusIdの代わりに指定可） */
+  url?: string;
+};
+
+export type FetchXPostOutput = {
+  found: boolean;
+  statusId?: string;
+  reason?: string;
+  detail?: {
+    statusId?: string;
+    text?: string;
+    isNoteTweet?: boolean;
+    author?: {
+      name?: string;
+      screenName?: string;
+    };
+    createdAt?: string;
+    /** 画像・動画の URL */
+    media?: string[];
+  };
+};
+
+/** 【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail } */
+export function fetchXPost(input: FetchXPostInput): Promise<FetchXPostOutput> {
+  return callSora<FetchXPostOutput>({ method: 'POST', path: '/realtime/post' }, input);
 }

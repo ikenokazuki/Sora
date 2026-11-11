@@ -1,109 +1,59 @@
 import { z } from 'zod';
 import { fetchRealtimeTrends } from '../scraper.js';
 import { formatCompactRealtimeResponse } from '../search_compact.js';
-import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
-import { ChiebukuroSearchRequestSchema, ChiebukuroStatusSchema, ImageSearchRequestSchema, TrendSearchRequestSchema, VideoSearchRequestSchema } from '../types.js';
+import { ChiebukuroSearchRequestSchema, ChiebukuroStatusSchema, ImageSearchRequestSchema, VideoSearchRequestSchema } from '../types.js';
 import { errorMessage } from '../errors.js';
 import { searchChiebukuroCached, searchImageCached, searchNewsCached, searchRealtimeCached, searchVideoCached, suggestKeywordsCached } from '../yahoo_search_cache.js';
 import { isModuleActive, registerTool, toolJson } from './registry.js';
+import { onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
 /** 🇯🇵 Category 3: Yahoo! JAPAN Services (モジュール: 'yahoo') */
 export function registerYahooTools(context: ToolRegistrationContext): void {
-  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, options } = context;
-  // Tool 7: search_image (Yahoo 画像検索) - DEFERRED
+  const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
+  // Tool 7: search_media (Yahoo 画像・動画・ニュース検索。type で選ぶ) - DEFERRED
+  const MEDIA_USAGE = '使い方: type で選ぶ（image: 画像、video: 動画、news: ニュース）。page は image・video のとき、transcripts・transcriptChars・updated・platform は video のときだけ。';
+  // onlyForMode に渡す語句。エラーの文にそのまま出る
+  const typeIs = (type: string) => `type が ${type} のとき`;
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
-    'search_image',
+    'search_media',
     'yahoo',
-    '【Yahoo 画像検索】キーワードで画像を検索し、元画像の URL と寸法・サムネイル・掲載元ページを取得します。画像の中身を読むときは inspect_image を使ってください。返却: { query, count, items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }] }',
+    '【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）',
     {
-      query: z.string().min(1).describe('画像検索キーワード (例: "富士山", "猫 写真")'),
-      limit: ImageSearchRequestSchema.shape.limit,
-      page: ImageSearchRequestSchema.shape.page,
+      type: z.enum(['image', 'video', 'news']).describe('検索の種類。image の items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }]。video: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }]。news: [{ title, url, publisher, publishedTime, snippet }]（応答に source も付く）'),
+      query: z.string().min(1).describe('検索キーワード (例: "富士山", "料理 レシピ 動画", "経済動向")'),
+      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20, 最大: 50。image・video は大きい値を指定しても 20 件)').meta({ default: 20 }),
+      page: ImageSearchRequestSchema.shape.page.describe('ページ番号 (1-based, 上限: 100)。limit によらず 20 件ずつ進む。漏れなく続けるには limit を省く。image・video のときだけ'),
+      transcripts: VideoSearchRequestSchema.shape.transcripts.describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)。video のときだけ'),
+      transcriptChars: VideoSearchRequestSchema.shape.transcriptChars.describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)。video のときだけ'),
+      updated: VideoSearchRequestSchema.shape.updated.describe('投稿日の期間 (デフォルト: "all")。video のときだけ'),
+      platform: VideoSearchRequestSchema.shape.platform.describe('動画サイト (デフォルト: "all")。video のときだけ'),
     },
-    async ({ query, limit, page }) => {
+    async (args) => {
+      const mode = typeIs(args.type);
+      // 既定値は、上のスキーマの .meta({ default }) と同じ値
+      const invalid = onlyForMode(mode, [typeIs('image'), typeIs('video')], args, ['page'], MEDIA_USAGE)
+        ?? onlyForMode(mode, [typeIs('video')], args, ['transcripts', 'transcriptChars', 'updated', 'platform'], MEDIA_USAGE, { transcripts: 0, transcriptChars: 2000, updated: 'all', platform: 'all' });
+      if (invalid) return usageError(invalid);
+      const { type, query, limit, page, transcripts, transcriptChars, updated, platform } = args;
       try {
-        const result = await searchImageCached({ query, limit, page });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
+        const result = type === 'image'
+          ? await searchImageCached({ query, limit, page })
+          : type === 'video'
+            // ponytail: youtube モジュールが無効な設定では transcripts を無視する
+            ? await searchVideoCached({ query, limit, page, updated, platform, transcriptChars, transcripts: isModuleActive('youtube', context.options?.modules) ? transcripts : 0 })
+            : await searchNewsCached({ query, limit });
+        return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Image search error: ${errorMessage(err) || err}` }],
-        };
+        const label = { image: 'Image', video: 'Video', news: 'News' }[type];
+        return { isError: true, content: [{ type: 'text', text: `${label} search error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['画像検索', '写真', 'イラスト', 'Yahoo'] },
-  );
-
-  // Tool 8: search_video (Yahoo 動画検索) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_video',
-    'yahoo',
-    '【Yahoo 動画検索】キーワードで YouTube・TikTok 等の動画を検索します。transcripts を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }] }',
-    {
-      query: z.string().min(1).describe('動画検索キーワード (例: "料理 レシピ 動画")'),
-      limit: VideoSearchRequestSchema.shape.limit,
-      page: VideoSearchRequestSchema.shape.page,
-      transcripts: z.number().int().min(0).max(5).optional().describe('上位の YouTube 動画の何本に、検索語に関係する字幕の部分を付けるか (デフォルト: 0, 最大: 5)').meta({ default: 0 }),
-      transcriptChars: z.number().int().min(500).max(10_000).optional().describe('字幕を付ける動画 1 本あたりの最大文字数 (デフォルト: 2000)').meta({ default: 2000 }),
-      updated: VideoSearchRequestSchema.shape.updated,
-      platform: VideoSearchRequestSchema.shape.platform,
-    },
-    async ({ query, limit, page, transcripts, transcriptChars, updated, platform }) => {
-      try {
-        // ponytail: youtube モジュールが無効な設定では transcripts を無視する
-        const result = await searchVideoCached({
-          query, limit, page, updated, platform, transcriptChars,
-          transcripts: isModuleActive('youtube', context.options?.modules) ? transcripts : 0,
-        });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Video search error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['動画検索', 'YouTube', 'Yahoo'] },
-  );
-
-  // Tool 9: search_news (Yahoo ニュース検索) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_news',
-    'yahoo',
-    '【ニュース速報直結】大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）をYahoo!ニュースから取得します。時事問題・公式発表の調査に最適です。返却: { source, query, count, items: [{ title, url, publisher, publishedTime, snippet }] }',
-    {
-      query: z.string().min(1).describe('ニュース検索キーワード (例: "選挙", "経済動向", "ノーベル賞")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (デフォルト: 20)').meta({ default: 20 }),
-    },
-    async ({ query, limit }) => {
-      try {
-        const result = await searchNewsCached({ query, limit });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `News search error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['ニュース検索', '記事', '時事', 'Yahoo'] },
+    { defaultEnabled: deferredDefault, keywords: ['画像検索', '写真', 'イラスト', '動画検索', 'YouTube', 'TikTok', 'ニュース検索', '記事', '時事', 'Yahoo', 'search_image', 'search_video', 'search_news'] },
   );
 
   // Tool 10: search_chiebukuro (Yahoo 知恵袋検索) - CORE (defaultEnabled: true)
@@ -138,32 +88,36 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     { defaultEnabled: true, keywords: ['知恵袋', 'Q&A', '質問回答', '悩み', 'Yahoo'] },
   );
 
-  // Tool 11: suggest_keywords (サジェスト / キーワード補完) - DEFERRED
+  // Tool 11: search_keywords (query ありはサジェスト、なしは急上昇トレンド) - DEFERRED
+  const KEYWORDS_USAGE = '使い方: query を指定するとサジェスト（limit は 20 まで）、省くと急上昇トレンド（limit は 50 まで）。';
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
-    'suggest_keywords',
+    'search_keywords',
     'yahoo',
-    '【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }',
+    '【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }',
     {
-      query: z.string().min(1).describe('検索語句プレフィックス (例: "東京 観光")'),
-      limit: z.number().int().min(1).max(20).optional().describe('取得件数 (デフォルト: 10, 上限: 20)').meta({ default: 10 }),
+      query: z.string().optional().describe('サジェストを引く検索語句プレフィックス (例: "東京 観光")。省くと急上昇トレンド'),
+      limit: z.number().int().min(1).max(50).optional().describe('取得件数。省略時はサジェスト 10 件・トレンド 20 件。上限はサジェスト 20・トレンド 50（トレンドはページに載っている件数まで）'),
     },
     async ({ query, limit }) => {
+      if (query) {
+        // スキーマはトレンドの上限（50）まで通す。サジェストは、REST の /search/suggest と同じ上限
+        if ((limit ?? 0) > 20) return usageError(`query を指定したとき（サジェスト）の limit は 20 までです（いま: ${limit}）。${KEYWORDS_USAGE}`);
+        try {
+          return { content: [{ type: 'text', text: toolJson(await suggestKeywordsCached({ query, limit })) }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Suggest error: ${errorMessage(err) || err}` }] };
+        }
+      }
       try {
-        const result = await suggestKeywordsCached({ query, limit });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
+        return { content: [{ type: 'text', text: toolJson(await fetchRealtimeTrends(limit)) }] };
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Suggest error: ${errorMessage(err) || err}` }],
-        };
+        return { isError: true, content: [{ type: 'text', text: `Trend search error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['サジェスト', '関連キーワード', '予測', 'Yahoo'] },
+    { defaultEnabled: deferredDefault, keywords: ['サジェスト', '関連キーワード', '予測', 'Yahoo', '急上昇トレンド', '話題', 'ランキング', 'リアルタイム', 'suggest_keywords', 'search_trend'] },
   );
 
   // Tool 12: search_realtime (Yahoo リアルタイム検索) - CORE (defaultEnabled: true)
@@ -257,68 +211,4 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     },
     { defaultEnabled: true, keywords: ['リアルタイム検索', 'X', 'Twitter', 'ツイート', 'トレンド', '速報'] },
   );
-
-  // Tool 13: search_trend (Yahoo トレンド急上昇) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_trend',
-    'yahoo',
-    '【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }',
-    {
-      limit: TrendSearchRequestSchema.shape.limit,
-    },
-    async ({ limit }) => {
-      try {
-        const result = await fetchRealtimeTrends(limit);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Trend search error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['急上昇トレンド', '話題', 'ランキング', 'リアルタイム'] },
-  );
-
-  // Tool 12b: fetch_x_post (X個別投稿の全文取得) - DEFERRED
-  {
-    const xDetail = options?.xDetailProvider ?? defaultXDetailProvider;
-    registerTool(
-      mcpServer,
-      toolCatalog,
-      sessionActivated,
-      'fetch_x_post',
-      'yahoo',
-      '【X個別投稿の全文取得】search_realtimeで見つけたX投稿のうち詳しく知りたい1件の全文・投稿日時・メディアをFxTwitter経由で取得します（ID突合検証済みのみ返却、未検証の推測は返しません）。返却: { found, statusId, detail: { text, isNoteTweet, author, createdAt, media } }',
-      {
-        statusId: z.string().optional().describe('X投稿の数値ステータスID (例: "2100871827090501852")'),
-        url: z.string().optional().describe('X投稿URL (例: "https://x.com/xxx/status/123…")。statusIdの代わりに指定可'),
-      },
-      async (opts) => {
-        try {
-          const result = await fetchXPostDetail(opts, xDetail);
-          if (!result.found) {
-            return {
-              isError: true,
-              content: [{ type: 'text', text: `X post not found: ${result.reason}` }],
-            };
-          }
-          return {
-            content: [{ type: 'text', text: toolJson(result) }],
-          };
-        } catch (err) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `X post fetch error: ${errorMessage(err) || err}` }],
-          };
-        }
-      },
-      { defaultEnabled: deferredDefault, keywords: ['X', 'ツイート', 'ポスト', '全文', 'ステータス', 'status'] },
-    );
-  }
 }

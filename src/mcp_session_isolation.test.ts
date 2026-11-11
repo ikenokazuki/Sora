@@ -74,13 +74,13 @@ describe('MCP session activation isolation', () => {
         await second.initialize();
         expect(await first.names()).toHaveLength(14);
         expect(await second.names()).toHaveLength(14);
-        await first.discover('fetch_x_post');
+        await first.discover('search_keywords');
         const firstNames = await first.names();
         expect(firstNames).toHaveLength(16);
-        expect(firstNames).toContain('fetch_x_post');
-        expect(firstNames).toContain('default.fetch_x_post');
+        expect(firstNames).toContain('search_keywords');
+        expect(firstNames).toContain('default.search_keywords');
         expect(await second.names()).toHaveLength(14);
-        const hiddenCall = await second.call('default.fetch_x_post', { statusId: 'abc' });
+        const hiddenCall = await second.call('default.search_keywords', {});
         expect(hiddenCall.result.isError).toBe(true);
         expect(hiddenCall.result.content[0].text).toContain('disabled');
         await third.initialize();
@@ -114,12 +114,12 @@ describe('MCP session activation isolation', () => {
     const third = connection(manager);
     try {
       await first.initialize();
-      await first.discover('fetch_x_post');
+      await first.discover('search_keywords');
       expect((await first.close()).status).toBe(200);
       expect((await first.request('tools/list')).status).toBe(404);
       await second.initialize();
       expect(await second.names()).toHaveLength(14);
-      await second.discover('fetch_x_post');
+      await second.discover('search_keywords');
       manager.clearAllSessions();
       expect((await second.request('tools/list')).status).toBe(404);
       await third.initialize();
@@ -134,7 +134,7 @@ describe('MCP session activation isolation', () => {
     const first = connection(manager, { Authorization: 'Bearer session-owner-key' });
     try {
       await first.initialize();
-      await first.discover('fetch_x_post');
+      await first.discover('search_keywords');
       const sameOwner = await first.request('tools/list', {}, { 'x-api-key': 'session-owner-key' });
       expect(sameOwner.status).toBe(200);
       const sameOwnerBody = await sameOwner.json() as any;
@@ -156,12 +156,12 @@ describe('MCP session activation isolation', () => {
     const stateless = connection(manager);
     const stateful = connection(manager);
     try {
-      const discovery = await stateless.discover('fetch_x_post');
-      expect(discovery.result.content[0].text).toContain('fetch_x_post');
+      const discovery = await stateless.discover('search_keywords');
+      expect(discovery.result.content[0].text).toContain('search_keywords');
       expect(await stateless.names()).toHaveLength(14);
       await stateful.initialize();
       expect(await stateful.names()).toHaveLength(14);
-      await stateful.discover('fetch_x_post');
+      await stateful.discover('search_keywords');
       expect(await stateful.names()).toHaveLength(16);
       expect(await stateless.names()).toHaveLength(14);
     } finally {

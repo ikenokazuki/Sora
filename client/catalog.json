@@ -131,7 +131,7 @@
     "name": "fetch_social_post",
     "fn": "fetchSocialPost",
     "category": "web",
-    "description": "【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }",
+    "description": "【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail }",
     "keywords": [
       "SNS",
       "Weibo",
@@ -140,18 +140,34 @@
       "Instagram",
       "Facebook",
       "投稿取得",
-      "コメント"
+      "コメント",
+      "fetch_x_post",
+      "X",
+      "ツイート",
+      "ポスト",
+      "全文",
+      "ステータス",
+      "status"
     ],
     "method": "POST",
     "path": "/social/fetch",
     "file": "servers/sora/fetch_social_post.ts"
   },
   {
-    "name": "fetch_x_post",
+    "name": "fetch_social_post",
     "fn": "fetchXPost",
-    "category": "yahoo",
-    "description": "【X個別投稿の全文取得】search_realtimeで見つけたX投稿のうち詳しく知りたい1件の全文・投稿日時・メディアをFxTwitter経由で取得します（ID突合検証済みのみ返却、未検証の推測は返しません）。返却: { found, statusId, detail: { text, isNoteTweet, author, createdAt, media } }",
+    "category": "web",
+    "description": "【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail }",
     "keywords": [
+      "SNS",
+      "Weibo",
+      "微博",
+      "Threads",
+      "Instagram",
+      "Facebook",
+      "投稿取得",
+      "コメント",
+      "fetch_x_post",
       "X",
       "ツイート",
       "ポスト",
@@ -161,7 +177,7 @@
     ],
     "method": "POST",
     "path": "/realtime/post",
-    "file": "servers/sora/fetch_x_post.ts"
+    "file": "servers/sora/fetch_social_post.ts"
   },
   {
     "name": "generate_gcc_certificate",
@@ -604,19 +620,46 @@
     "file": "servers/sora/search_earthquake.ts"
   },
   {
-    "name": "search_image",
-    "fn": "searchImage",
+    "name": "search_keywords",
+    "fn": "suggestKeywords",
     "category": "yahoo",
-    "description": "【Yahoo 画像検索】キーワードで画像を検索し、元画像の URL と寸法・サムネイル・掲載元ページを取得します。画像の中身を読むときは inspect_image を使ってください。返却: { query, count, items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }] }",
+    "description": "【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }",
     "keywords": [
-      "画像検索",
-      "写真",
-      "イラスト",
-      "Yahoo"
+      "サジェスト",
+      "関連キーワード",
+      "予測",
+      "Yahoo",
+      "急上昇トレンド",
+      "話題",
+      "ランキング",
+      "リアルタイム",
+      "suggest_keywords",
+      "search_trend"
     ],
     "method": "POST",
-    "path": "/search/image",
-    "file": "servers/sora/search_image.ts"
+    "path": "/search/suggest",
+    "file": "servers/sora/search_keywords.ts"
+  },
+  {
+    "name": "search_keywords",
+    "fn": "searchTrend",
+    "category": "yahoo",
+    "description": "【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }",
+    "keywords": [
+      "サジェスト",
+      "関連キーワード",
+      "予測",
+      "Yahoo",
+      "急上昇トレンド",
+      "話題",
+      "ランキング",
+      "リアルタイム",
+      "suggest_keywords",
+      "search_trend"
+    ],
+    "method": "POST",
+    "path": "/search/trend",
+    "file": "servers/sora/search_keywords.ts"
   },
   {
     "name": "search_laws",
@@ -633,6 +676,78 @@
     "method": "POST",
     "path": "/gov/laws",
     "file": "servers/sora/search_laws.ts"
+  },
+  {
+    "name": "search_media",
+    "fn": "searchImage",
+    "category": "yahoo",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "keywords": [
+      "画像検索",
+      "写真",
+      "イラスト",
+      "動画検索",
+      "YouTube",
+      "TikTok",
+      "ニュース検索",
+      "記事",
+      "時事",
+      "Yahoo",
+      "search_image",
+      "search_video",
+      "search_news"
+    ],
+    "method": "POST",
+    "path": "/search/image",
+    "file": "servers/sora/search_media.ts"
+  },
+  {
+    "name": "search_media",
+    "fn": "searchVideo",
+    "category": "yahoo",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "keywords": [
+      "画像検索",
+      "写真",
+      "イラスト",
+      "動画検索",
+      "YouTube",
+      "TikTok",
+      "ニュース検索",
+      "記事",
+      "時事",
+      "Yahoo",
+      "search_image",
+      "search_video",
+      "search_news"
+    ],
+    "method": "POST",
+    "path": "/search/video",
+    "file": "servers/sora/search_media.ts"
+  },
+  {
+    "name": "search_media",
+    "fn": "searchNews",
+    "category": "yahoo",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "keywords": [
+      "画像検索",
+      "写真",
+      "イラスト",
+      "動画検索",
+      "YouTube",
+      "TikTok",
+      "ニュース検索",
+      "記事",
+      "時事",
+      "Yahoo",
+      "search_image",
+      "search_video",
+      "search_news"
+    ],
+    "method": "POST",
+    "path": "/search/news",
+    "file": "servers/sora/search_media.ts"
   },
   {
     "name": "search_music",
@@ -652,21 +767,6 @@
     "method": "POST",
     "path": "/search/music",
     "file": "servers/sora/search_music.ts"
-  },
-  {
-    "name": "search_news",
-    "fn": "searchNews",
-    "category": "yahoo",
-    "description": "【ニュース速報直結】大手報道機関の最新ニュース記事（タイトル・サマリー・配信メディア・配信日時・記事 URL）をYahoo!ニュースから取得します。時事問題・公式発表の調査に最適です。返却: { source, query, count, items: [{ title, url, publisher, publishedTime, snippet }] }",
-    "keywords": [
-      "ニュース検索",
-      "記事",
-      "時事",
-      "Yahoo"
-    ],
-    "method": "POST",
-    "path": "/search/news",
-    "file": "servers/sora/search_news.ts"
   },
   {
     "name": "search_poi",
@@ -802,35 +902,6 @@
     "file": "servers/sora/search_song.ts"
   },
   {
-    "name": "search_trend",
-    "fn": "searchTrend",
-    "category": "yahoo",
-    "description": "【公式トレンド直結】いま日本国内で最も話題になっている急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数・要約）は、必ず本ツールで取得してください。返却: { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }",
-    "keywords": [
-      "急上昇トレンド",
-      "話題",
-      "ランキング",
-      "リアルタイム"
-    ],
-    "method": "POST",
-    "path": "/search/trend",
-    "file": "servers/sora/search_trend.ts"
-  },
-  {
-    "name": "search_video",
-    "fn": "searchVideo",
-    "category": "yahoo",
-    "description": "【Yahoo 動画検索】キーワードで YouTube・TikTok 等の動画を検索します。transcripts を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を付けます（全文は get_youtube_transcript）。返却: { query, count, items: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }] }",
-    "keywords": [
-      "動画検索",
-      "YouTube",
-      "Yahoo"
-    ],
-    "method": "POST",
-    "path": "/search/video",
-    "file": "servers/sora/search_video.ts"
-  },
-  {
     "name": "search_web",
     "fn": "searchWeb",
     "category": "web",
@@ -849,21 +920,6 @@
     "method": "POST",
     "path": "/search/web",
     "file": "servers/sora/search_web.ts"
-  },
-  {
-    "name": "suggest_keywords",
-    "fn": "suggestKeywords",
-    "category": "yahoo",
-    "description": "【公式サジェスト直結】Yahoo! JAPAN のキーワード補完サジェストを取得し、指定語句の入力候補・よく一緒に検索される複合検索需要・関連語を返します。返却: { query, suggestions: [...] }",
-    "keywords": [
-      "サジェスト",
-      "関連キーワード",
-      "予測",
-      "Yahoo"
-    ],
-    "method": "POST",
-    "path": "/search/suggest",
-    "file": "servers/sora/suggest_keywords.ts"
   },
   {
     "name": "track_package",

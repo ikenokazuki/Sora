@@ -3631,8 +3631,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(51);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(37);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(47);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(33);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4097,7 +4097,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 51 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 47 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4144,7 +4144,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(51);
+    expect(enabledToolsAll.length).toBe(47);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4917,10 +4917,9 @@ describe('Sora REST & MCP Endpoints', () => {
         'get_flight_status',
         'get_elevation',
         'search_realtime',
-        'search_trend',
+        'search_keywords',
         'search_chiebukuro',
-        'suggest_keywords',
-        'search_news',
+        'search_media',
         'search_song',
         'search_artist',
         'search_music',

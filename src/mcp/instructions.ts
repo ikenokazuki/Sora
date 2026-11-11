@@ -54,7 +54,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
         '- **`scrape`**: Known URL content extraction (`url`, or up to 20 `urls` in parallel) for deep reading of specific pages/documents.',
-        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). For X posts use `search_realtime` / `fetch_x_post`.',
+        '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). `fetch_social_post` also reads a known X post; search X with `search_realtime`.',
         '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection (`listOnly: true` for the URL list only).',
       );
     }
@@ -99,7 +99,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasYahoo) {
     tier1Directives.push(
-      "6. Real-time Social, News & Q&A (X/Twitter realtime posts, Yahoo! News, trending ranking, Yahoo! Chiebukuro, image/video search): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], fetch_x_post, search_news, search_trend, suggest_keywords, search_image, search_video).",
+      "6. Real-time Social, News & Q&A (X/Twitter realtime posts, Yahoo! News, trending ranking, Yahoo! Chiebukuro, image/video search): Use 'yahoo' tools (search_realtime [CORE], search_chiebukuro [CORE], search_media, search_keywords).",
     );
   }
   if (hasMusic) {
@@ -121,7 +121,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
 
   if (hasYoutube) {
     // 動画を探すとき・調べものでは、検索の側の指定（既定は 0）を使うよう、有効なモジュールのぶんだけ案内する
-    const viaSearch = [hasYahoo && 'to find videos use search_video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
+    const viaSearch = [hasYahoo && 'to find videos use search_media type:video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
     tier1Directives.push(
       `10. YouTube Videos (what a video says, summaries, quotes): get_youtube_transcript with the URL; never guess from the title. A channel's latest videos: get_youtube_channel (URL, @handle or UC id), then get_youtube_transcript with a returned videoId.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
     );

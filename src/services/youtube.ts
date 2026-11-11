@@ -470,7 +470,7 @@ function selectRelevantParagraphs(paragraphs: Paragraph[], query: string, maxCha
 export interface YoutubeExcerptOptions { url: string; query: string; maxChars?: number; lang?: string; noCache?: boolean }
 export type YoutubeExcerptResult = Omit<YoutubeTranscriptResult, 'transcript' | 'description' | 'chapters' | 'requestedStartSec' | 'availableTracks'> & { transcript: YoutubeExcerpt };
 
-/** 動画の字幕のうち、検索語に関係する部分だけを返す（search_video の transcripts、search_deep の videos）。全文は getYoutubeTranscript。 */
+/** 動画の字幕のうち、検索語に関係する部分だけを返す（search_media の type: video の transcripts、search_deep の videos）。全文は getYoutubeTranscript。 */
 export async function getYoutubeExcerpt(options: YoutubeExcerptOptions, deps: YoutubeDeps = {}): Promise<YoutubeExcerptResult> {
   const { record } = await loadRecord(options, deps);
   const { transcript, description: _description, chapters: _chapters, availableTracks: _tracks, ...meta } = record;

@@ -1493,7 +1493,7 @@ export const ImageSearchResponseSchema = z.object({
   items: z.array(ImageSearchItemSchema).describe('画像検索結果一覧'),
 });
 
-/** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_video の transcripts、search_deep の videos）。 */
+/** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_media の type: video の transcripts、search_deep の videos）。 */
 export const YoutubeExcerptSchema = z.object({
   status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
   reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画)'),

@@ -44,9 +44,9 @@ export interface RestRoute {
 
 export const CANONICAL_TOOLS: readonly string[] = [
   'scrape', 'search_deep', 'crawl_site', 'search_web',
-  'search_social_posts', 'fetch_social_post', 'browser_action', 'search_image', 'search_video',
-  'search_news', 'search_chiebukuro', 'suggest_keywords', 'search_realtime', 'search_trend',
-  'fetch_x_post', 'search_route', 'get_weather', 'get_flight_status', 'track_package',
+  'search_social_posts', 'fetch_social_post', 'browser_action', 'search_media',
+  'search_chiebukuro', 'search_keywords', 'search_realtime',
+  'search_route', 'get_weather', 'get_flight_status', 'track_package',
   'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
   'get_elevation', 'search_poi', 'search_postal_code', 'normalize_address', 'reverse_geocode',
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
@@ -80,16 +80,16 @@ export const REST_MAP: RestMap = {
   crawl_site: [{ method: 'POST', path: '/crawl' }, { method: 'POST', path: '/map', fn: 'mapSite' }],
   search_web: { method: 'POST', path: '/search/web' },
   search_social_posts: { method: 'POST', path: '/social/search' },
-  fetch_social_post: { method: 'POST', path: '/social/fetch' },
+  fetch_social_post: [{ method: 'POST', path: '/social/fetch' }, { method: 'POST', path: '/realtime/post', fn: 'fetchXPost' }],
   browser_action: { method: 'POST', path: '/browser/action' },
-  search_image: { method: 'POST', path: '/search/image' },
-  search_video: { method: 'POST', path: '/search/video' },
-  search_news: { method: 'POST', path: '/search/news' },
+  search_media: [
+    { method: 'POST', path: '/search/image', fn: 'searchImage' },
+    { method: 'POST', path: '/search/video', fn: 'searchVideo' },
+    { method: 'POST', path: '/search/news', fn: 'searchNews' },
+  ],
   search_chiebukuro: { method: 'POST', path: '/search/chiebukuro' },
-  suggest_keywords: { method: 'POST', path: '/search/suggest' },
+  search_keywords: [{ method: 'POST', path: '/search/suggest', fn: 'suggestKeywords' }, { method: 'POST', path: '/search/trend', fn: 'searchTrend' }],
   search_realtime: { method: 'POST', path: '/search/realtime' },
-  search_trend: { method: 'POST', path: '/search/trend' },
-  fetch_x_post: { method: 'POST', path: '/realtime/post' },
   search_route: { method: 'POST', path: '/transit/route' },
   get_weather: { method: 'POST', path: '/weather' },
   get_flight_status: { method: 'POST', path: '/traffic/flight' },
@@ -714,24 +714,24 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return { sources: [{ source: 'chromium', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.image', ['search_image'], ['yahoo:image'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_image', { query: '富士山', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_image') as { items?: Array<Record<string, unknown>> };
-    const first = mustHaveItems(raw, 'search_image').items[0] as Record<string, unknown>;
+  toolCase('search.image', ['search_media'], ['yahoo:image'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'image', query: '富士山', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media') as { items?: Array<Record<string, unknown>> };
+    const first = mustHaveItems(raw, 'search_media').items[0] as Record<string, unknown>;
     const imageUrl = [first.original, first.source_url, first.thumbnail].find((v) => typeof v === 'string' && (v as string).startsWith('http'));
-    if (!imageUrl) throw new LiveFail('search_image first item lacks image URL (original/source_url/thumbnail)');
+    if (!imageUrl) throw new LiveFail('search_media (image) first item lacks image URL (original/source_url/thumbnail)');
     return { sources: [{ source: 'yahoo-image', count: (raw.items ?? []).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.video', ['search_video'], ['yahoo:video'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_video', { query: '料理', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_video');
-    mustHaveItems(raw, 'search_video', 'url');
+  toolCase('search.video', ['search_media'], ['yahoo:video'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'video', query: '料理', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media');
+    mustHaveItems(raw, 'search_media', 'url');
     return { sources: [{ source: 'yahoo-video', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.news', ['search_news'], ['yahoo:news'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_news', { query: '経済', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_news');
-    mustHaveItems(raw, 'search_news', 'url');
+  toolCase('search.news', ['search_media'], ['yahoo:news'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'news', query: '経済', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media');
+    mustHaveItems(raw, 'search_media', 'url');
     return { sources: [{ source: 'yahoo-news', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('search.chiebukuro', ['search_chiebukuro'], ['yahoo:chiebukuro'], true, 90000, async (ctx) => {
@@ -740,10 +740,10 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_chiebukuro', ['url', 'title']);
     return { sources: [{ source: 'yahoo-chiebukuro', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('suggest.keywords', ['suggest_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'suggest_keywords', { query: '東京', limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'suggest_keywords');
-    mustHaveItems(raw, 'suggest_keywords');
+  toolCase('suggest.keywords', ['search_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_keywords', { query: '東京', limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_keywords');
+    mustHaveItems(raw, 'search_keywords');
     return { sources: [{ source: 'yahoo-suggest', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('search.realtime', ['search_realtime'], ['yahoo:realtime'], true, 90000, async (ctx) => {
@@ -752,19 +752,19 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_realtime', 'url');
     return { sources: [{ source: 'yahoo-realtime', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.trend', ['search_trend'], ['yahoo:realtime'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_trend', { limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_trend');
-    mustHaveItems(raw, 'search_trend', 'keyword');
+  toolCase('search.trend', ['search_keywords'], ['yahoo:realtime'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_keywords', { limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_keywords');
+    mustHaveItems(raw, 'search_keywords', 'keyword');
     return { sources: [{ source: 'yahoo-trend', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('fetch.xpost', ['fetch_x_post'], ['fxtwitter'], true, 90000, async (ctx) => {
+  toolCase('fetch.xpost', ['fetch_social_post'], ['fxtwitter'], true, 90000, async (ctx) => {
     const secret = secretOrDefault(ctx, 'x.post', ['url'], { url: DEFAULT_X_POST.url });
-    const { text: rawJsonText } = await mcpJson(ctx, 'fetch_x_post', { url: secret.url }, 60000);
-    const raw = toolPayload(rawJsonText, 'fetch_x_post');
+    const { text: rawJsonText } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url }, 60000);
+    const raw = toolPayload(rawJsonText, 'fetch_social_post');
     const text = textOf(raw);
     if (!text.includes('found') && !text.includes(secret.url.split('/').pop() ?? 'status')) {
-      throw new LiveFail('fetch_x_post missing post evidence');
+      throw new LiveFail('fetch_social_post (X) missing post evidence');
     }
     return { sources: [{ source: 'fxtwitter', format: 'json', upstreamStatus: 'unknown' }] };
   }),

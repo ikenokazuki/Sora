@@ -6,6 +6,7 @@ import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_
 import { ANNOTATE_TEMPORAL_FIELD, INTEGRATED_SEARCH_INPUT_SHAPE, MAP_SINCE_DESCRIPTION, MAP_UNTIL_DESCRIPTION, SCRAPE_BATCH_MAX_CHARS, SCRAPE_HEADERS_FIELD, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_MASK_PII_FIELD, SCRAPE_MODE_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
+import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
 import { registerTool, toolJson } from './registry.js';
 import { exactlyOne, onlyForMode, usageError } from './args.js';
 
@@ -13,7 +14,7 @@ import type { ToolRegistrationContext } from './registry.js';
 
 /** 🌐 Category 1: Core Web & Crawling (モジュール: 'web') */
 export function registerWebTools(context: ToolRegistrationContext): void {
-  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId } = context;
+  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId, options } = context;
   // Tool 1: scrape (URL / PDF スクレイプ。urls で一括並行) - CORE (defaultEnabled: true)
   const SCRAPE_USAGE = '使い方: 1 ページは url、複数ページ（最大 20 件）は urls。concurrency・webhookUrl は urls のとき、fullPage・keepDataImages は url のときだけ。';
   // onlyForMode に渡す語句。エラーの文にそのまま出る。引数の mode（auto・fast・browser）と紛れないよう、入力の形で言う
@@ -284,19 +285,47 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     },
     { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿検索', 'ソーシャル'] },
   );
-  // Tool 5c: fetch_social_post (既知SNS投稿の取得)
+  // Tool 5c: fetch_social_post (既知SNS投稿の取得。X は statusId でも) - CORE
+  const SOCIAL_FETCH_USAGE = '使い方: 投稿の url（X・Weibo・Threads・Instagram・Facebook）。X は statusId でも可。commentLimit は X 以外のときだけ。';
+  // onlyForMode に渡す語句。エラーの文にそのまま出る。入力の形で言う
+  const X_POST = 'X の投稿を指定したとき';
+  const OTHER_POST = 'X 以外の投稿を指定したとき';
+  const isXUrl = (url: string): boolean => {
+    try {
+      return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/i.test(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+  };
+  const xDetail = options?.xDetailProvider ?? defaultXDetailProvider;
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'fetch_social_post',
     'web',
-    '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }',
+    '【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail }',
     {
-      url: z.string().min(1).describe('公開投稿URL'),
-      commentLimit: z.number().int().min(0).max(20).optional().default(10).describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),
+      url: z.string().optional().describe('公開投稿URL（X・Weibo・Threads・Instagram・Facebook）。X は search_realtime で見つけた 1 件の全文・投稿日時・メディアを FxTwitter 経由で取得（ID 突合検証済みのみ返し、未検証の推測は返さない）。url か statusId のどちらかは必須'),
+      statusId: z.string().optional().describe('X 投稿の数値ステータスID (例: "2100871827090501852")。url の代わりに指定可。X だけ'),
+      commentLimit: z.number().int().min(0).max(20).optional().describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)。X 以外のときだけ').meta({ default: 10 }),
     },
-    async ({ url, commentLimit }) => {
+    async (args) => {
+      if (!args.url && !args.statusId) return usageError(`url・statusId のどちらかを指定してください。${SOCIAL_FETCH_USAGE}`);
+      const mode = !args.url || isXUrl(args.url) ? X_POST : OTHER_POST;
+      // 既定値は、上のスキーマの .meta({ default }) と同じ値
+      const invalid = onlyForMode(mode, [X_POST], args, ['statusId'], SOCIAL_FETCH_USAGE)
+        ?? onlyForMode(mode, [OTHER_POST], args, ['commentLimit'], SOCIAL_FETCH_USAGE, { commentLimit: 10 });
+      if (invalid) return usageError(invalid);
+      if (mode === X_POST) {
+        try {
+          const result = await fetchXPostDetail({ statusId: args.statusId, url: args.url }, xDetail);
+          if (!result.found) return { isError: true, content: [{ type: 'text', text: `X post not found: ${result.reason}` }] };
+          return { content: [{ type: 'text', text: toolJson(result) }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `X post fetch error: ${errorMessage(err) || err}` }] };
+        }
+      }
       try {
         const { createSocialService } = await import('../services/social/index.js');
         const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('../services/social/transport.js');
@@ -308,12 +337,12 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           webSearch: createProdWebSearch(),
         });
         const signal = AbortSignal.timeout(30000);
-        const result = await svc.fetch({ url, commentLimit: commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
+        const result = await svc.fetch({ url: args.url!, commentLimit: args.commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
         return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
         return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿取得', 'コメント'] },
+    { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿取得', 'コメント', 'fetch_x_post', 'X', 'ツイート', 'ポスト', '全文', 'ステータス', 'status'] },
   );
 }

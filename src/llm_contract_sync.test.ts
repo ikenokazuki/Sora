@@ -1013,7 +1013,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const server = createMcpServer({ modules: ['yahoo'], deferTools: true });
       const reg = (server as any)._registeredTools;
       await reg.search_tools.handler({ query: 'yahoo' });
-      for (const name of ['search_news', 'search_image', 'search_video', 'search_trend', 'suggest_keywords']) {
+      for (const name of ['search_media', 'search_keywords']) {
         expect(reg[name].enabled).toBe(true);
       }
       await server.close();
@@ -1024,17 +1024,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const reg = (server as any)._registeredTools;
       const searchTools = reg['search_tools'];
 
-      // When LLM queries "トレンド trend 検索", it should target search_trend without flood
+      // When LLM queries "トレンド trend 検索", it should target search_keywords without flood
       const res = await searchTools.handler({ query: 'トレンド trend 検索' });
       const text = res.content[0].text;
-      expect(text).toContain('search_trend');
-      expect(text).not.toContain('search_image');
-      expect(text).not.toContain('search_video');
+      expect(text).toContain('search_keywords');
+      expect(text).not.toContain('search_media');
       expect(text).not.toContain('predict_hts_code');
 
       // Discovery returns the canonical MCP name even for model-prefixed queries.
-      expect(reg['search_trend'].enabled).toBe(true);
-      expect(reg['default.search_trend']?.enabled).toBe(true);
+      expect(reg['search_keywords'].enabled).toBe(true);
+      expect(reg['default.search_keywords']?.enabled).toBe(true);
     });
 
     it('tolerates default. prefix in search_tools query', async () => {
@@ -1042,11 +1041,11 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const reg = (server as any)._registeredTools;
       const searchTools = reg['search_tools'];
 
-      const res = await searchTools.handler({ query: 'default.search_trend' });
+      const res = await searchTools.handler({ query: 'default.search_keywords' });
       const text = res.content[0].text;
-      expect(text).toContain('search_trend');
-      expect(reg['search_trend'].enabled).toBe(true);
-      expect(reg['default.search_trend']?.enabled).toBe(true);
+      expect(text).toContain('search_keywords');
+      expect(reg['search_keywords'].enabled).toBe(true);
+      expect(reg['default.search_keywords']?.enabled).toBe(true);
     });
   });
 });
