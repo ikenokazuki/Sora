@@ -93,6 +93,15 @@ const INTS: Record<string, [number, number | undefined, number | undefined, numb
 /** 既定で有効な真偽値（ほかの真偽値は既定で無効）。 */
 const BOOLS_ON_BY_DEFAULT = ['SORA_MCP_DEFER_TOOLS', 'SORA_FETCH_DEFAULT_REFERER', 'SORA_X_DETAIL_PROVIDER', 'SORA_INTEL_SCRAPE', 'SORA_INTEL_WEB_SEARCH'];
 
+/** 3 回計って、いちばん速い値（ミリ秒）。負荷で 1 回が遅れても、線形かどうかの判定が揺れないようにする */
+function fastestOf3(fn: () => unknown): number {
+  return Math.min(...Array.from({ length: 3 }, () => {
+    const started = performance.now();
+    fn();
+    return performance.now() - started;
+  }));
+}
+
 describe('registry', () => {
   test('counts match the design (53 + 3 settings, 13 standard names, 40 old names)', () => {
     expect(Object.keys(SETTINGS)).toHaveLength(56);
@@ -276,6 +285,9 @@ describe('envInt', () => {
     expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '50' })).toBe(50);
     expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '60' })).toBe(50);
     expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '80' })).toBe(50);
+    // 桁の多い値も、不正にせず cap に丸める（安全な整数の範囲を超えても）
+    expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '9'.repeat(20) })).toBe(50);
+    expect(envError('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: '9'.repeat(20) })).toBeUndefined();
     for (const raw of ['0', 'abc', '5m']) expect(envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: raw })).toBeUndefined();
     expect(envInt('SORA_ADDRESS_BUILD_CONCURRENCY', { SORA_ADDRESS_BUILD_CONCURRENCY: '99' })).toBe(1);
     expect(envInt('PORT', { PORT: '0' })).toBe(8000);
@@ -337,9 +349,9 @@ describe('envList', () => {
   test('long lists are de-duplicated in linear time', () => {
     // 2 乗の重複除去（includes）では約 1.4 秒かかる大きさ。線形なら数ミリ秒
     const ids = Array.from({ length: 20_000 }, (_, i) => `p${i}`);
-    const started = performance.now();
-    expect(envList('SORA_INTEL_DISABLED', { SORA_INTEL_DISABLED: [...ids, ...ids].join(',') })).toHaveLength(20_000);
-    expect(performance.now() - started).toBeLessThan(300);
+    const raw = [...ids, ...ids].join(',');
+    expect(envList('SORA_INTEL_DISABLED', { SORA_INTEL_DISABLED: raw })).toHaveLength(20_000);
+    expect(fastestOf3(() => envList('SORA_INTEL_DISABLED', { SORA_INTEL_DISABLED: raw }))).toBeLessThan(300);
   });
 
   test('`all` is accepted only where the setting allows it', () => {
@@ -376,9 +388,8 @@ describe('envUrl', () => {
   test('trailing slashes are removed in linear time (no backtracking regex)', () => {
     // /\/+$/ では約 1.2 秒かかる大きさ（斜線の並びのあとに別の文字）。線形なら数ミリ秒
     const path = `https://sora.example.com${'/'.repeat(40_000)}x`;
-    const started = performance.now();
     expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: path })).toBe(path);
-    expect(performance.now() - started).toBeLessThan(300);
+    expect(fastestOf3(() => envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: path }))).toBeLessThan(300);
     expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: `https://sora.example.com${'/'.repeat(40_000)}` })).toBe('https://sora.example.com');
   });
 

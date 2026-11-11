@@ -472,7 +472,9 @@ function parse(s: Setting, raw: string): unknown {
     case 'int': {
       if (!/^\d+$/.test(v) || (s.pattern && !s.pattern.test(v))) return undefined;
       const n = Number(v);
-      if (n < (s.min ?? 0) || n > (s.max ?? Number.MAX_SAFE_INTEGER)) return undefined;
+      // cap のある設定は、上の側が不正にならない（桁の多い値も cap に丸める）
+      const upper = s.max ?? (s.cap === undefined ? Number.MAX_SAFE_INTEGER : Infinity);
+      if (n < (s.min ?? 0) || n > upper) return undefined;
       return s.cap === undefined ? n : Math.min(n, s.cap);
     }
     case 'enum':
