@@ -58,7 +58,7 @@ export type SearchEarthquakeOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] } */
+/** 【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せず気象庁公式データ直結の本ツールで取得してください（不調時はP2P地震情報）。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] } */
 export function searchEarthquake(input: SearchEarthquakeInput): Promise<SearchEarthquakeOutput> {
   return callSora<SearchEarthquakeOutput>({ method: 'POST', path: '/disaster/earthquake' }, input);
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
-import { GEOCODING_ATTRIBUTIONS, createGeocoder, geocodingAttribution } from './geocoding.js';
+import { GEOCODING_ATTRIBUTIONS, createGeocoder, geocodingAttribution, looksLikeStreetAddress } from './geocoding.js';
 
 const harajuku = [
   { display_name: '東京都渋谷区神宮前 原宿', lat: '35.669968', lon: '139.709008', address: { 'ISO3166-2-lvl4': 'JP-13' } },
@@ -36,13 +36,74 @@ describe('nominatim', () => {
     const geocode = createGeocoder({ fetchFn: async (url) => {
       hosts.push(new URL(url).hostname);
       if (hosts.length === 1) return response([]);
-      expect(new URL(url).searchParams.get('q')).toBe('東京都千代田区永田町1-7-1');
-      return response([{ geometry: { coordinates: [139.744385, 35.677414], type: 'Point' }, properties: { title: '東京都千代田区永田町一丁目７番' } }]);
+      expect(new URL(url).searchParams.get('q')).toBe('永田町駅周辺');
+      return response([{ geometry: { coordinates: [139.744385, 35.677414], type: 'Point' }, properties: { title: '東京都千代田区永田町' } }]);
     } });
-    expect(await geocode('東京都千代田区永田町1-7-1')).toEqual({
-      address: '東京都千代田区永田町一丁目７番', lat: 35.677414, lon: 139.744385, source: 'gsi', needsVerification: false,
+    expect(await geocode('永田町駅周辺')).toEqual({
+      address: '東京都千代田区永田町', lat: 35.677414, lon: 139.744385, source: 'gsi', needsVerification: false,
     });
     expect(hosts).toEqual(['nominatim.openstreetmap.org', 'msearch.gsi.go.jp']);
+  });
+
+  test('番地まである住所は国土地理院を先に引き、Nominatim の待ち時間も使わない', async () => {
+    const hosts: string[] = [];
+    let slept = 0;
+    const geocode = createGeocoder({
+      sleep: async (ms) => { slept += ms; },
+      fetchFn: async (url) => {
+        hosts.push(new URL(url).hostname);
+        return response([{ geometry: { coordinates: [139.746384, 35.673767], type: 'Point' }, properties: { title: '東京都千代田区永田町一丁目５番１号' } }]);
+      },
+    });
+    expect(await geocode('東京都千代田区永田町1-5-1')).toEqual({
+      address: '東京都千代田区永田町一丁目５番１号', lat: 35.673767, lon: 139.746384, source: 'gsi', needsVerification: false,
+    });
+    expect(hosts).toEqual(['msearch.gsi.go.jp']);
+    expect(slept).toBe(0);
+  });
+
+  test.each(['東京都千代田区永田町1-5-1', '千代田区永田町一丁目5番1号', '永田町 1ー5ー1', '東京都千代田区永田町２−１−１'])(
+    '番地まである住所と見なす: %s',
+    (query) => expect(looksLikeStreetAddress(query)).toBe(true),
+  );
+
+  test.each(['原宿', '渋谷駅', '東京タワー', '東京都千代田区永田町', '国道246号', '東京都'])(
+    '番地の無い地名・施設名・道路は住所と見なさない: %s',
+    (query) => expect(looksLikeStreetAddress(query)).toBe(false),
+  );
+
+  test('国土地理院に該当が無い住所は Nominatim で探し、Nominatim が最後まで当たらなければ該当なし', async () => {
+    const hosts: string[] = [];
+    const geocode = createGeocoder({ fetchFn: async (url) => {
+      hosts.push(new URL(url).hostname);
+      return hosts.length === 1 ? response([]) : response();
+    } });
+    expect((await geocode('架空市1-2-3')).source).toBe('nominatim');
+    expect(hosts).toEqual(['msearch.gsi.go.jp', 'nominatim.openstreetmap.org']);
+
+    const none = createGeocoder({ fetchFn: async () => response([]) });
+    await expect(none('架空市9-9-9')).rejects.toThrow('no match');
+  });
+
+  test('国土地理院が使えない間も、番地まである住所は従来どおり Nominatim で探す', async () => {
+    const hosts: string[] = [];
+    const geocode = createGeocoder({ fetchFn: async (url) => {
+      hosts.push(new URL(url).hostname);
+      if (hosts.length === 1) return new Response('unavailable', { status: 503 });
+      return response();
+    } });
+    expect((await geocode('東京都渋谷区神宮前1-1-1')).source).toBe('nominatim');
+    expect(hosts).toEqual(['msearch.gsi.go.jp', 'nominatim.openstreetmap.org']);
+  });
+
+  test('番地の無い名前は、Nominatim が使えないときに国土地理院の曖昧な当たりへ落とさずエラーにする', async () => {
+    const hosts: string[] = [];
+    const geocode = createGeocoder({ fetchFn: async (url) => {
+      hosts.push(new URL(url).hostname);
+      return new Response('unavailable', { status: 503 });
+    } });
+    await expect(geocode('渋谷駅')).rejects.toThrow('503');
+    expect(hosts).toEqual(['nominatim.openstreetmap.org']);
   });
 
   test('spaces concurrent requests for different places at least 1.1 seconds apart', async () => {

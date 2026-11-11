@@ -94,7 +94,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasDisaster) {
     tier1Directives.push(
-      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, P2P Earthquake, JARTIC road traffic, GSI elevation, addresses): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
+      "5. Japan Disaster & Emergency Information (Japan Meteorological Agency weather warnings, JMA earthquake feed, JARTIC road traffic, GSI elevation, addresses): Use 'disaster' tools (search_disaster_warnings [CORE], search_earthquake [CORE], search_road_traffic, get_elevation, search_poi, search_postal_code, normalize_address, reverse_geocode).",
     );
   }
   if (hasYahoo) {

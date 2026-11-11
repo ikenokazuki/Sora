@@ -10,7 +10,7 @@ export type SearchPoiInput = {
   lon?: number;
   /** 中心からの半径m (デフォルト: 5000、bbox 指定時は無視) */
   radiusMeters?: number;
-  /** 中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで1.1秒間隔を守って取得 */
+  /** 中心地名 (例: "渋谷", "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化する。lat/lonとは排他。Nominatimの未キャッシュ問い合わせは共有キューで1.1秒間隔を守って取得 */
   center?: string;
   /** 矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先) */
   bbox?: string;

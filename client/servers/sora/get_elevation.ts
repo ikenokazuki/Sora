@@ -2,7 +2,7 @@
 import { callSora } from '../../runtime.js';
 
 export type GetElevationInput = {
-  /** 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持 */
+  /** 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。番地まである住所は国土地理院、施設名・地名はNominatimで座標化し、Nominatimの未キャッシュ問い合わせは共有キューで1.1秒間隔を維持 */
   address?: string;
   /** 緯度 (住所未指定時に直接指定, 例: 35.681236) */
   lat?: number;
@@ -45,7 +45,7 @@ export type GetElevationOutput = {
   ageSeconds?: number;
 };
 
-/** 【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification } */
+/** 【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名を座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification } */
 export function getElevation(input: GetElevationInput): Promise<GetElevationOutput> {
   return callSora<GetElevationOutput>({ method: 'POST', path: '/geo/elevation' }, input);
 }
