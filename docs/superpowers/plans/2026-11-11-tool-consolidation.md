@@ -17,7 +17,7 @@
 - コア（`defaultEnabled: true`）14 ツールの `description` の合計は 3500 字未満（`src/llm_contract_sync.test.ts`。この計画の開始時点で 3499 字）。初期の tools/list の合計は 30000 字未満（開始時点で 22,957 字）。コアのツールの説明を長くするときは、同じ作業の中で、意味を変えずに他のコアの説明を縮める。説明の決まりのテスト（先頭が「【」、「必須・公式・直結・速報」のどれかを含む）は保つ。新しいツールは遅延読み込み（コアにしない）。ただし、旧ツールがコアだった統合先は、コアのまま。
 - 統合したツールは、元のツールが属していたモジュールに置く（`registerTool` の第 5 引数）。モジュールが無効なら、そのツールは出ない。
 - 遅延読み込みのツールは `default.<名前>` の別名（`registerTool` が自動で作る）を持つ。新しい名前でも同じ。
-- **型つきクライアント（`client/`）の関数名は変えない。** 統合したツールの `REST_MAP` の各ルートに、旧いツールの名前（camelCase。例: `scrapeBatch`・`mapSite`・`fetchXPost`・`searchSong`）を `fn` として持たせる（Task 1b で足す）。1 つ目のルートは、新しいツール名の camelCase。
+- **型つきクライアント（`client/`）の関数名は変えない。** 統合したツールの `REST_MAP` の各ルートに、そのルートに当たる**旧いツール**の名前（camelCase。例: `scrapeBatch`・`mapSite`・`fetchXPost`・`searchSong`・`watchRegister`・`searchImage`）を `fn` として持たせる（`RestRoute.fn`。Task 1b で追加済み）。新しいツール名が旧いツールの名前と同じで、1 つ目のルートがその旧ツールのものなら、`fn` は省略できる（1 つ目のルートは、camelCase のツール名になる）。1 つ目のルートが別の旧ツールのもの（例: `watch` の 1 つ目は `watchRegister`、`search_media` の 1 つ目は `searchImage`）なら、`fn` を付ける。
 - **モード専用の引数の検査は `onlyForMode`**（Task 1b で足す。モードは、ハンドラが入力から決めた文字列を渡す）。引数の値を読む `onlyWith` は、モードが引数の値で決まる場合だけに使う。
 - **モード専用の引数に、zod の `.default()` を付けない。** ハンドラは、既定値が入った引数を「指定された」と見てしまい、他のモードで常にエラーになる。既存の決まりのとおり、`.meta({ default: … })` で説明にだけ既定を出し、ハンドラの中で既定を補う（例: `scrape` の `fullPage`（`.optional().default(true)`）、`fetch_social_post` の `commentLimit`（`.optional().default(10)`））。
 - 統合前の応答の中身は、モードごとに保つ（欄の名前・値）。モードを示す `mode` 欄を足してよい。複数の種類を返す統合（`get_disaster_info`）は、種類ごとの節にする。
@@ -34,7 +34,7 @@
 - [ ] **B. 新しいツールの検査（テスト）を先に書く:** モードごとの正しい呼び出し、誤った組み合わせ（両方指定・どちらも無し・そのモードに無い引数）が、正しい使い方のエラーになること。旧ツールのテストは、新しいツール名で呼ぶ形に直す（応答の中身の検査は残す）。
 - [ ] **C. 実装:** `tools_*.ts` に新しいツールを登録し（元のサービス関数を呼ぶ）、旧ツールの登録を消す。`keywords` に旧名を入れる。
 - [ ] **D. 周辺の更新:** `CANONICAL_TOOLS`・`REST_MAP`（複数のルート）・`scripts/tool-health/catalog.ts` の検査・`src/mcp/instructions.ts`・README の表と節・`docs/engines/` の記事・`glama.json`・`schema:notation` の許可リスト（`scripts/schema-notation/allowlist.ts`）。
-- [ ] **E. 検査:** 上の「各作業の終わりに」のとおり。`bun run gen:client` で `client/` を作り直す。
+- [ ] **E. 検査:** 上の「各作業の終わりに」のとおり。`bun run gen:client` で `client/` を作り直す。さらに、**作業の前後で、`grep -h '^export function' client/servers/sora/*.ts | sort` を比べ、関数が 1 つも消えていないこと**を確かめる（`gen:client` の差分の検査は、関数名の変更に気づけない。旧いツールの関数名は、`fn` で保つ）。
 - [ ] **F. コミット:** 作業ごとに、意味のまとまりでコミット（コミットの題は日本語、`feat(mcp)!:` の形。本文に、統合した旧ツールと新ツールの対応を書く）。
 
 ---
@@ -84,6 +84,7 @@
 - `search_media`（`search_image`・`search_video`・`search_news` を統合。モジュール `yahoo`）: `type`（`image` `video` `news`、必須）、`query`、`limit`、`page`（news には無い）。動画だけの `transcripts`・`transcriptChars`・`updated`・`platform` は `type: video` のときだけ。応答は、それぞれ旧ツールと同じ。REST: `POST /search/image`・`/search/video`・`/search/news`。
 - `search_keywords`（`suggest_keywords`・`search_trend` を統合）: `query` あり＝サジェスト（`limit` が効く）、なし＝急上昇トレンド（`limit` が効く）。応答は、それぞれ旧ツールと同じ。REST: `POST /search/suggest`・`/search/trend`。
 - `search_media` の説明は、旧 3 ツールの検索語（画像・動画・ニュース・YouTube・TikTok・Yahoo）を残す。
+- `fetch_social_post` の `commentLimit` は `.optional().default(10)` を外し、`.meta({ default: 10 })` + ハンドラで補う（非 X のときだけ指定できる引数のため。`onlyForMode` に `'x'`/`'social'` を渡す）。`REST_MAP`: `fetch_social_post: [{ POST /social/fetch }, { POST /realtime/post, fn: 'fetchXPost' }]`、`search_media: [{ POST /search/image, fn: 'searchImage' }, { POST /search/video, fn: 'searchVideo' }, { POST /search/news, fn: 'searchNews' }]`、`search_keywords: [{ POST /search/suggest, fn: 'suggestKeywords' }, { POST /search/trend, fn: 'searchTrend' }]`。
 
 - [ ] 共通の手順（A〜F）。
 
@@ -136,7 +137,7 @@
 
 **Interfaces:**
 - `search_laws`（コア。`get_law_text` を統合）: `keyword`（検索）か `lawId`（条文の全文）の**どちらか 1 つ**。`limit` は `keyword` のときだけ。応答は旧ツールと同じ。REST: `POST /gov/laws`・`POST /gov/law-text`（`REST_MAP` は 2 経路）。
-- `search_music`（`search_song`・`search_artist` を統合）: 旧 `search_music` の引数のまま（`entity`: `song` `album` `musicArtist`）。旧 `search_song`・`search_artist` を消し、説明の「search_song / search_artist を推奨」の文を直す。REST: `POST /search/music`（`search_song`・`search_artist` 用の `/search/song`・`/search/artist` は REST に残す。`REST_MAP` は `/search/music` の 1 つ）。
+- `search_music`（`search_song`・`search_artist` を統合）: 旧 `search_music` の引数のまま（`entity`: `song` `album` `musicArtist`）。旧 `search_song`・`search_artist` を消し、説明の「search_song / search_artist を推奨」の文を直す。REST: `POST /search/music`・`POST /search/song`・`POST /search/artist`（REST は残す）。`REST_MAP`: `search_music: [{ POST /search/music }, { POST /search/song, fn: 'searchSong' }, { POST /search/artist, fn: 'searchArtist' }]`。
 - `watch`（`watch_register`・`watch_check`・`watch_list`・`watch_delete` を統合）: `action`（`register` `check` `list` `delete`、必須）。`register`: `url`（必須）・`title`・`selector`・`webhookUrl`。`check`: `id`（省略で全件）。`list`: 引数なし。`delete`: `id`（必須）。モードに無い引数はエラー。応答は、それぞれ旧ツールと同じ。REST: `POST /watch/register`・`POST /watch/check`・`GET /watch/list`・`DELETE /watch/:id`（`REST_MAP` は 4 経路）。
 
 - [ ] 共通の手順（A〜F）。
