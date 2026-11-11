@@ -13,6 +13,7 @@ import {
   EXTERNAL,
   LEGACY,
   NOT_SETTINGS,
+  renderEnvTable,
   type Setting,
   SETTINGS,
 } from './config.js';
@@ -394,5 +395,38 @@ describe('checkEnv', () => {
     const { warnings } = checkEnv(env);
     expect(checkEnv({ ...env })).toEqual(checkEnv(env));
     expect(warnings.findIndex((w) => w.includes('SORA_AAA'))).toBeLessThan(warnings.findIndex((w) => w.includes('SORA_ZZZ')));
+  });
+});
+
+describe('renderEnvTable', () => {
+  const table = renderEnvTable();
+
+  test('contains every setting and standard name, and none of the old names', () => {
+    for (const name of Object.keys(all)) expect(table).toContain(`| \`${name}\` |`);
+    for (const old of Object.keys(LEGACY)) expect(table).not.toContain(`\`${old}\``);
+  });
+
+  test('is deterministic, grouped by area in the naming-rule order, sorted by name within an area', () => {
+    expect(renderEnvTable()).toBe(table);
+    const labels = Object.values(AREAS);
+    const shown = table.split('\n').filter((line) => labels.some((l) => line === `**${l}**`)).map((line) => line.slice(2, -2));
+    expect(shown).toEqual(labels.filter((l) => shown.includes(l)));
+    for (const block of table.split(/\n(?=\*\*)/)) {
+      const names = [...block.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]);
+      expect(names).toEqual([...names].sort((a, b) => (a.toUpperCase() === b.toUpperCase() ? (a < b ? -1 : 1) : a.toUpperCase() < b.toUpperCase() ? -1 : 1)));
+    }
+  });
+
+  test('every row has exactly three cells', () => {
+    const rows = table.split('\n').filter((line) => line.startsWith('| `'));
+    expect(rows).toHaveLength(Object.keys(all).length);
+    for (const row of rows) expect(row.split(/(?<!\\)\|/)).toHaveLength(5);
+  });
+
+  test('defaults are shown', () => {
+    expect(table).toContain('| `PORT` | `8000` |');
+    expect(table).toContain('| `SORA_MCP_DEFER_TOOLS` | `true` |');
+    expect(table).toContain('| `SORA_MODULES` | `all` |');
+    expect(table).toContain('| `SORA_PUBLIC_URL` | *(未設定)* |');
   });
 });

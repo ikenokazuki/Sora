@@ -4,6 +4,7 @@
  * - 読み取り（envBool など）は、呼び出しのたびに env を読む（覚えない）。空・空白だけの値は未設定とみなし、
  *   不正な値は既定値（無ければ undefined）を返す。例外は投げない。
  * - 不正な値と旧名を止めるのは、起動時の checkEnv だけ。旧名は別名として読まない。
+ * - README §4.3 の表は renderEnvTable() で作る（この登録簿が正本）。
  */
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
 
@@ -583,4 +584,33 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
   }
 
   return { errors, warnings };
+}
+
+const byName = (a: string, b: string) => {
+  const [x, y] = [a.toUpperCase(), b.toUpperCase()];
+  return x === y ? (a < b ? -1 : 1) : x < y ? -1 : 1;
+};
+const cell = (text: string) => text.replaceAll('|', '\\|');
+
+function defaultCell(s: Setting): string {
+  if (s.defaultDoc) return s.defaultDoc;
+  if (s.default === undefined) return '*(未設定)*';
+  return `\`${Array.isArray(s.default) ? s.default.join(',') : String(s.default)}\``;
+}
+
+/** README §4.3 の表（領域ごと。名前・既定・説明）。 */
+export function renderEnvTable(): string {
+  const entries = Object.entries(TABLE);
+  return Object.entries(AREAS).flatMap(([area, label]) => {
+    const rows = entries.filter(([, s]) => s.area === area).sort(([a], [b]) => byName(a, b));
+    if (rows.length === 0) return [];
+    return [
+      `**${label}**`,
+      '',
+      '| 環境変数名 | デフォルト値 | 説明 |',
+      '|---|---|---|',
+      ...rows.map(([name, s]) => `| \`${name}\` | ${cell(defaultCell(s))} | ${cell(s.doc)} |`),
+      '',
+    ];
+  }).join('\n');
 }
