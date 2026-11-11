@@ -53,6 +53,8 @@ export interface Setting {
   values?: readonly string[];
   /** url の scheme（既定は http・https） */
   schemes?: readonly string[];
+  /** url の末尾の `/` を外さない（基底の URL でなく、そのまま呼ぶ宛先の URL。`/` の有無で別の URL として扱う受け手がある） */
+  keepTrailingSlash?: boolean;
   /** list の要素の検査と正規化（不正なら undefined） */
   item?: (value: string) => string | undefined;
   /** list で `all` を許す */
@@ -72,14 +74,15 @@ export interface Setting {
 const HTTP = ['http', 'https'] as const;
 const PROXY_SCHEMES = ['http', 'https', 'socks5'] as const;
 
-/** new URL() で読めて、scheme が許されたもの。末尾の `/` は外す（正規表現でなく線形に）。 */
-function url(value: string, schemes: readonly string[]): string | undefined {
+/** new URL() で読めて、scheme が許されたもの。末尾の `/` は外す（正規表現でなく線形に。keep なら外さない）。 */
+function url(value: string, schemes: readonly string[], keep = false): string | undefined {
   try {
     const u = new URL(value);
     if (!schemes.includes(u.protocol.slice(0, -1)) || (u.protocol !== 'file:' && !u.host)) return undefined;
   } catch {
     return undefined;
   }
+  if (keep) return value;
   let end = value.length;
   while (end > 0 && value[end - 1] === '/') end--;
   return value.slice(0, end);
@@ -162,7 +165,7 @@ export const SETTINGS = {
     doc: '`json` でリクエストログを構造化 JSON で出力します',
   },
   SORA_ALERT_WEBHOOK_URL: {
-    area: 'alert', kind: 'url', secret: true, legacy: ['ADMIN_ALERT_WEBHOOK_URL'], legacyOnly: 'warn',
+    area: 'alert', kind: 'url', secret: true, keepTrailingSlash: true, legacy: ['ADMIN_ALERT_WEBHOOK_URL'], legacyOnly: 'warn',
     doc: '`GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラートの Webhook URL（Slack・Discord など）。プライベートなネットワークの宛先には送りません',
   },
 
@@ -464,7 +467,7 @@ function parse(s: Setting, raw: string): unknown {
       return bad.length > 0 ? undefined : items;
     }
     case 'url':
-      return url(v, s.schemes ?? HTTP);
+      return url(v, s.schemes ?? HTTP, s.keepTrailingSlash);
     case 'path':
       return v;
     case 'str':
