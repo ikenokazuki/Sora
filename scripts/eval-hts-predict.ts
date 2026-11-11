@@ -1,4 +1,4 @@
-// HTS 推測（POST /trade/hts-predict、MCP predict_hts_code）の評価。
+// HTS 推測（POST /trade/hts-predict、MCP lookup_hts の htsCode なし）の評価。
 // 実データ（USITC 全件・CBP 判例）に問い合わせる。dev で調整し、test は報告だけに使う（eval/hts_predict_cases.json の split）。
 // 指標: 1位の6桁一致、1位の見出し（4桁）一致、候補（上位）内の6桁一致、信頼度ごとの的中率、待ち時間。
 // --no-cross は CBP 判例への通信を遮断する（判例の寄与と、判例が使えないときの経路を測る）。

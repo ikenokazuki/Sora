@@ -3430,7 +3430,8 @@ describe('Sora REST & MCP Endpoints', () => {
     const tradeServer = createMcpServer({ modules: ['trade'] });
     expect(tradeServer).toBeDefined();
     const tradeTools = Object.keys((tradeServer as any)._registeredTools);
-    expect(tradeTools).toContain('check_cpsc_certificate');
+    expect(tradeTools).toContain('check_regulations');
+    expect(tradeTools).toContain('lookup_hts');
   });
 
   it('detectSpaOrBotPage should flag a JavaScript-disabled notice page', () => {
@@ -3627,8 +3628,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(38);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(25);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(36);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(23);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4093,7 +4094,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 38 tools and enable 13 core hybrid tools by default', () => {
+  it('MCP server should register all 36 tools and enable 13 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4121,10 +4122,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('search_diet_minutes');
     expect(enabledToolsAll).toContain('get_place_info');
     expect(enabledToolsAll).toContain('get_flight_status');
-    expect(enabledToolsAll).toContain('check_cpsc_certificate');
-    expect(enabledToolsAll).toContain('check_fda_regulated');
-    expect(enabledToolsAll).toContain('verify_hts_code');
-    expect(enabledToolsAll).toContain('predict_hts_code');
+    expect(enabledToolsAll).toContain('check_regulations');
+    expect(enabledToolsAll).toContain('lookup_hts');
     expect(enabledToolsAll).toContain('check_product_compliance');
     expect(enabledToolsAll).toContain('inspect_image');
     expect(enabledToolsAll).toContain('watch');
@@ -4137,7 +4136,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(38);
+    expect(enabledToolsAll.length).toBe(36);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4893,10 +4892,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
       // 独自機能ツール群：推測禁止ディレクティブと返却注記を持つこと
       const uniqueToolsWithDirectives = [
-        'predict_hts_code',
-        'check_cpsc_certificate',
-        'check_fda_regulated',
-        'verify_hts_code',
+        'lookup_hts',
+        'check_regulations',
         'check_product_compliance',
         'generate_gcc_certificate',
         'search_laws',

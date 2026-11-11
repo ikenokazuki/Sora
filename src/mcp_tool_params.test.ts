@@ -22,7 +22,8 @@ afterEach(() => { while (restore.length) restore.pop()!(); });
 
 // v4.0.0 の MCP の引数（docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 5）。
 // v5.0.0 で scrape に旧 scrape_batch の urls・concurrency・webhookUrl を、crawl_site に旧 map_site の listOnly・limit・since・until を足した。
-// 統合したツールの引数は、旧ツールの引数の和（fetch_social_post は旧 fetch_x_post の statusId、search_media・search_keywords は Yahoo の 5 ツール）
+// 統合したツールの引数は、旧ツールの引数の和（fetch_social_post は旧 fetch_x_post の statusId、search_media・search_keywords は Yahoo の 5 ツール。
+// lookup_hts は旧 verify_hts_code の productDescription を、旧 predict_hts_code の description にまとめる）
 const expected: Record<string, string[]> = {
   scrape: ['url', 'urls', 'concurrency', 'webhookUrl', 'maxChars', 'mode', 'formats', 'fullPage', 'stripLinks', 'maskPii', 'query', 'onlyMainContent', 'headers', 'verbose', 'keepDataImages', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
   crawl_site: ['url', 'listOnly', 'limit', 'since', 'until', 'maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
@@ -35,6 +36,8 @@ const expected: Record<string, string[]> = {
   search_laws: ['keyword', 'lawId', 'limit'],
   search_music: ['query', 'country', 'entity', 'attribute', 'limit'],
   watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
+  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'],
+  check_regulations: ['htsCode', 'agencies', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -55,7 +58,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info・search_laws・search_music・watch）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info・search_laws・search_music・watch・lookup_hts・check_regulations）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -1235,6 +1238,216 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
   }
 });
 
+describe('lookup_hts: htsCode があれば照合、省けば商品の説明から推測（旧 verify_hts_code・predict_hts_code）', () => {
+  const VERIFIED = { htsCode: '9503.00.0073', productDescription: 'plastic toy car', verified: true, matchLevel: 'exact', officialDescription: 'Toys', generalRate: 'Free', nearbyCandidates: [], disclaimer: 'd', source: 'usitc-hts' };
+  const PREDICTED = { detectedSubheading: '6912.00', bestMatch: { htsCode: '6912.00.4400' }, candidates: [], decisionPoints: [], evidence: { crossStatus: 'ok' } };
+  /** 2 つのサービスを差し替える（関税率表も判例も読まない） */
+  const mockAll = () => {
+    const verify = spyOn(scraper, 'verifyHtsCode').mockResolvedValue(VERIFIED as any);
+    const predict = spyOn(scraper, 'predictHtsCode').mockResolvedValue(PREDICTED as any);
+    restore.push(() => { verify.mockRestore(); predict.mockRestore(); });
+    return { verify, predict };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'lookup_hts', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+  const PREDICT_ARGS = { productName: 'Ceramic Coffee Mug', description: 'Stoneware mug for coffee', material: 'ceramic', productCategory: 'Tableware', targetAge: 'adult', foodContact: true, hasBattery: false } as const;
+
+  test('htsCode と description: verifyHtsCode に htsCode と productDescription（description）だけを渡し、応答は旧 verify_hts_code と同じに mode: verify', async () => {
+    const { verify, predict } = mockAll();
+    const res = await call({ htsCode: '9503.00.0073', description: 'plastic toy car' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual({ mode: 'verify', ...VERIFIED });
+    expect(verify.mock.calls[0][0]).toEqual({ htsCode: '9503.00.0073', productDescription: 'plastic toy car' });
+    expect(predict).not.toHaveBeenCalled();
+  });
+
+  test('htsCode なし: predictHtsCode に旧 predict_hts_code の引数だけを渡し、応答は旧 predict_hts_code と同じに mode: predict', async () => {
+    const { verify, predict } = mockAll();
+    const res = await call(PREDICT_ARGS);
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual({ mode: 'predict', ...PREDICTED });
+    expect(predict.mock.calls[0][0]).toEqual(PREDICT_ARGS);
+    expect(verify).not.toHaveBeenCalled();
+    await call({ productName: 'Green Tea' });
+    expect(predict.mock.calls[1][0]).toEqual({ productName: 'Green Tea' });
+  });
+
+  test('空の htsCode は、指定しなかったのと同じ（推測）', async () => {
+    const { verify, predict } = mockAll();
+    for (const htsCode of ['', '  ']) {
+      const res = await call({ htsCode, productName: 'Green Tea', material: 'tea leaves' });
+      expect(res.isError, textOf(res)).toBeFalsy();
+      expect(body(res).mode).toBe('predict');
+    }
+    expect(predict).toHaveBeenCalledTimes(2);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  test('失敗は、旧ツールと同じ文（HTS code verification error・HTS code prediction error）', async () => {
+    const { verify, predict } = mockAll();
+    verify.mockRejectedValue(new Error('v'));
+    predict.mockRejectedValue(new Error('p'));
+    const bad = await call({ htsCode: '9503.00.0073', description: 'toy' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toBe('HTS code verification error: v');
+    const down = await call({ productName: 'Green Tea' });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe('HTS code prediction error: p');
+  });
+
+  // 誤った組み合わせ・足りない引数: 照合も推測もしない
+  const VERIFY = 'htsCode を指定したとき';
+  const PREDICT = 'htsCode を省いたとき';
+  const HTS = '9503.00.0073';
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['何も無い', {}, [`${PREDICT}は productName が必要です`]],
+    ['空の productName', { productName: '  ', description: 'mug' }, [`${PREDICT}は productName が必要です`]],
+    ['htsCode に description が無い', { htsCode: HTS }, [`${VERIFY}は description が必要です`]],
+    ['htsCode に空の description', { htsCode: HTS, description: ' ' }, [`${VERIFY}は description が必要です`]],
+    ['htsCode と productName', { htsCode: HTS, description: 'toy', productName: 'Toy Car' }, [`productName は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
+    ['htsCode と material・targetAge・foodContact: false・hasBattery: false', { htsCode: HTS, description: 'toy', material: 'plastic', targetAge: 'child', foodContact: false, hasBattery: false }, [`material, targetAge, foodContact, hasBattery は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
+    ['htsCode と productCategory', { htsCode: HTS, description: 'toy', productCategory: 'Toys' }, [`productCategory は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 照合も推測もせず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（htsCode の有無と、それぞれの引数）を添える
+      expect(text).toContain('使い方');
+      for (const key of ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  // 推測だけの引数にスキーマの既定値が付いたら、照合のときにその値を断らないよう onlyForMode に defaults を渡すこと
+  test('推測だけの引数には、スキーマの既定値が無い（照合で断る値に、既定値の例外は要らない）', async () => {
+    await withClient(async (client) => {
+      const schema = (await client.listTools()).tools.find((t) => t.name === 'lookup_hts')!.inputSchema as any;
+      for (const key of ['productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery']) expect(schema.properties[key].default, key).toBeUndefined();
+      // htsCode・description・productName の要否は入力の形で決まるので、スキーマでは必須にしない
+      expect(schema.required ?? []).toEqual([]);
+    });
+  });
+});
+
+describe('check_regulations: agencies で CPSC と FDA を選び、機関ごとの節で返す（旧 check_cpsc_certificate・check_fda_regulated）', () => {
+  const CPSC = { certificateRequired: true, certificateType: 'CCC', eFilingRequired: true, applicableRegulations: [], missingInfo: [], nextActions: [], disclaimer: 'd' };
+  const FDA = { fdaRegulatedLikely: false, fdFlag: 'none', possiblePrograms: [], priorNoticeMayApply: false, matchedChapter: '95', confidence: 'chapter-level-estimate', missingInfo: [], nextActions: [], disclaimer: 'd' };
+  /** 2 つのサービスを差し替える */
+  const mockAll = () => {
+    const cpsc = spyOn(scraper, 'checkCpscCertificate').mockResolvedValue(CPSC as any);
+    const fda = spyOn(scraper, 'checkFdaRegulated').mockReturnValue(FDA as any);
+    restore.push(() => { cpsc.mockRestore(); fda.mockRestore(); });
+    return { cpsc, fda };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'check_regulations', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+  const HTS = '9503.00.0073';
+
+  test('既定は両方: cpsc と fda の節は、旧ツールの応答のまま（順序は登録順）', async () => {
+    const { cpsc, fda } = mockAll();
+    const res = await call({ htsCode: HTS, targetAge: 'child' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    const out = body(res);
+    expect(Object.keys(out)).toEqual(['agencies', 'cpsc', 'fda']);
+    expect(out).toEqual({ agencies: ['cpsc', 'fda'], cpsc: CPSC, fda: FDA });
+    expect(cpsc.mock.calls[0][0]).toEqual({ htsCode: HTS, targetAge: 'child' });
+    expect(fda.mock.calls[0][0]).toEqual({ htsCode: HTS });
+  });
+
+  test('各機関には、旧ツールの引数だけを渡す', async () => {
+    const { cpsc, fda } = mockAll();
+    const cpscArgs = { targetAge: 'adult', material: '100% polyester', hasBattery: true, batteryType: 'button_coin', fabricSurface: 'plain', fabricWeightOzPerSqYd: 3 } as const;
+    await call({ htsCode: HTS, ...cpscArgs, foodContact: true });
+    expect(Object.keys(cpsc.mock.calls[0][0] as object).sort()).toEqual(['htsCode', ...Object.keys(cpscArgs)].sort());
+    expect(cpsc.mock.calls[0][0]).toEqual({ htsCode: HTS, ...cpscArgs });
+    expect(Object.keys(fda.mock.calls[0][0] as object).sort()).toEqual(['foodContact', 'htsCode']);
+    expect(fda.mock.calls[0][0]).toEqual({ htsCode: HTS, foodContact: true });
+  });
+
+  test('agencies: ["fda"] は FDA だけ（targetAge は要らない）、["cpsc"] は CPSC だけ', async () => {
+    const { cpsc, fda } = mockAll();
+    expect(body(await call({ htsCode: '6912.00.4400', agencies: ['fda'], foodContact: false }))).toEqual({ agencies: ['fda'], fda: FDA });
+    expect(cpsc).not.toHaveBeenCalled();
+    expect(body(await call({ htsCode: HTS, agencies: ['cpsc'], targetAge: 'unknown' }))).toEqual({ agencies: ['cpsc'], cpsc: CPSC });
+    expect(fda).toHaveBeenCalledTimes(1);
+  });
+
+  test('agencies の順序と重複は、登録順の 1 つずつにまとめる', async () => {
+    mockAll();
+    const out = body(await call({ htsCode: HTS, targetAge: 'adult', agencies: ['fda', 'cpsc', 'fda'] }));
+    expect(Object.keys(out)).toEqual(['agencies', 'cpsc', 'fda']);
+    expect(out.agencies).toEqual(['cpsc', 'fda']);
+  });
+
+  test('失敗は、旧ツールと同じ文（CPSC certificate check error・FDA regulation check error）', async () => {
+    // 電池の矛盾は、本物の checkCpscCertificate の入力の誤り
+    const battery = await call({ htsCode: '8513.10.20.00', agencies: ['cpsc'], targetAge: 'adult', hasBattery: false, batteryType: 'button_coin' });
+    expect(battery.isError).toBe(true);
+    expect(textOf(battery)).toBe('CPSC certificate check error: batteryType が button_coin なのに hasBattery が false です。どちらかを直してください');
+    const fda = spyOn(scraper, 'checkFdaRegulated').mockImplementation(() => { throw new Error('f'); });
+    restore.push(() => fda.mockRestore());
+    const down = await call({ htsCode: '6912.00.4400', agencies: ['fda'] });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe('FDA regulation check error: f');
+  });
+
+  // 誤った組み合わせ・足りない引数・使えない agencies: 判定しない
+  const WITH_CPSC = 'agencies に cpsc を含むとき';
+  const WITH_FDA = 'agencies に fda を含むとき';
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['targetAge が無い（既定は cpsc を含む）', { htsCode: HTS }, [`${WITH_CPSC}（既定）は targetAge が必要です`, 'agencies: ["fda"]']],
+    ['agencies: ["cpsc"] で targetAge が無い', { htsCode: HTS, agencies: ['cpsc'], material: 'wood' }, [`${WITH_CPSC}（既定）は targetAge が必要です`]],
+    ['agencies が空', { htsCode: HTS, targetAge: 'adult', agencies: [] }, ['agencies に、判定する機関を 1 つ以上指定してください']],
+    ['agencies に使えない値', { htsCode: HTS, targetAge: 'adult', agencies: ['cpsc', 'usda'] }, ['agencies に使えない値があります: usda']],
+    ['agencies: ["fda"] と batteryType', { htsCode: HTS, agencies: ['fda'], batteryType: 'button_coin' }, [`batteryType は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
+    ['agencies: ["fda"] と targetAge・material・hasBattery: false', { htsCode: HTS, agencies: ['fda'], targetAge: 'adult', material: 'wood', hasBattery: false }, [`targetAge, material, hasBattery は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
+    ['agencies: ["fda"] と生地の引数', { htsCode: HTS, agencies: ['fda'], fabricSurface: 'raised', fabricWeightOzPerSqYd: 2 }, [`fabricSurface, fabricWeightOzPerSqYd は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
+    ['agencies: ["cpsc"] と foodContact: false', { htsCode: HTS, agencies: ['cpsc'], targetAge: 'adult', foodContact: false }, [`foodContact は ${WITH_FDA}だけ指定できます（いま: agencies: ["cpsc"]）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 判定せず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（agencies の値と、それぞれの引数）を添える
+      expect(text).toContain('使い方');
+      for (const key of ['htsCode', 'agencies', 'cpsc', 'fda', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('空の material は、指定しなかったのと同じ（FDA だけでも断らない）', async () => {
+    const { fda } = mockAll();
+    const res = await call({ htsCode: HTS, agencies: ['fda'], material: '' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(fda).toHaveBeenCalledTimes(1);
+  });
+
+  test('スキーマ: htsCode だけが必須、agencies の既定値は ["cpsc","fda"] でそのまま入れても通り、機関だけの引数に既定値は無い', async () => {
+    mockAll();
+    await withClient(async (client) => {
+      const schema = (await client.listTools()).tools.find((t) => t.name === 'check_regulations')!.inputSchema as any;
+      expect(schema.required).toEqual(['htsCode']);
+      expect(schema.properties.agencies.default).toEqual(['cpsc', 'fda']);
+      // 機関だけの引数に既定値が付いたら、頼まなかった機関でその値を断らないよう onlyForMode に defaults を渡すこと
+      for (const key of ['targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact']) expect(schema.properties[key].default, key).toBeUndefined();
+      const res: any = await client.callTool({ name: 'check_regulations', arguments: { htsCode: HTS, targetAge: 'adult', agencies: schema.properties.agencies.default } });
+      expect(res.isError, textOf(res)).toBeFalsy();
+      expect(JSON.parse(textOf(res)).agencies).toEqual(['cpsc', 'fda']);
+    });
+  });
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -1264,6 +1477,14 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['watch_check', 'watch', 'watch'],
     ['watch_list', 'watch', 'watch'],
     ['watch_delete', 'watch', 'watch'],
+    ['predict_hts_code', 'lookup_hts', 'trade'],
+    ['verify_hts_code', 'lookup_hts', 'trade'],
+    ['HTS推測', 'lookup_hts', 'trade'],
+    ['実在確認', 'lookup_hts', 'trade'],
+    ['check_cpsc_certificate', 'check_regulations', 'trade'],
+    ['check_fda_regulated', 'check_regulations', 'trade'],
+    ['Prior Notice', 'check_regulations', 'trade'],
+    ['適合証明書', 'check_regulations', 'trade'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

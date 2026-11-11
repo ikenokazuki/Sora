@@ -6,9 +6,8 @@
     "runtime.ts",
     "search.ts",
     "servers/sora/browser_action.ts",
-    "servers/sora/check_cpsc_certificate.ts",
-    "servers/sora/check_fda_regulated.ts",
     "servers/sora/check_product_compliance.ts",
+    "servers/sora/check_regulations.ts",
     "servers/sora/crawl_site.ts",
     "servers/sora/fetch_social_post.ts",
     "servers/sora/generate_gcc_certificate.ts",
@@ -24,7 +23,7 @@
     "servers/sora/index.ts",
     "servers/sora/inspect_image.ts",
     "servers/sora/lookup_address.ts",
-    "servers/sora/predict_hts_code.ts",
+    "servers/sora/lookup_hts.ts",
     "servers/sora/research_country_context.ts",
     "servers/sora/scrape.ts",
     "servers/sora/search_chiebukuro.ts",
@@ -41,7 +40,6 @@
     "servers/sora/search_social_posts.ts",
     "servers/sora/search_web.ts",
     "servers/sora/track_package.ts",
-    "servers/sora/verify_hts_code.ts",
     "servers/sora/watch.ts"
   ]
 }

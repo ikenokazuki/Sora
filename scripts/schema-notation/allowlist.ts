@@ -7,6 +7,7 @@ export const NOTATION_ALLOWLIST: Record<string, string> = {
   'return_note_mismatch search_realtime 返却': 'MCP returns count and items at the top level; REST /search/realtime wraps them in data. The note describes the MCP payload.',
   'return_note_mismatch search_web 返却': 'MCP returns count and items at the top level; REST /search/web wraps them in data. The note describes the MCP payload.',
   'return_note_mismatch get_disaster_info 返却': 'MCP wraps the REST /disaster/warnings and /disaster/earthquake results, unchanged, in one section per include kind (warnings, earthquake). The note describes the MCP payload.',
+  'return_note_mismatch check_regulations 返却': 'MCP wraps the REST /trade/cpsc-check and /trade/fda-check results, unchanged, in one section per requested agency (cpsc, fda) next to agencies. The note describes the MCP payload.',
   'return_note_mismatch get_place_info 返却': 'MCP splits the flat REST /geo/elevation result into location and one section per include kind (elevation), with the same field names and values. The note describes the MCP payload.',
   'pair_mismatch search_keywords limit': 'One MCP limit serves both modes: suggestions (REST /search/suggest: 1-20, default 10) and trends (REST /search/trend: 1-50, default 20). MCP declares 1-50 without a default, states both defaults in the description and refuses limit > 20 with a query.',
   'range_mismatch mcp search_chiebukuro limit': YAHOO_RESULT_CAP,

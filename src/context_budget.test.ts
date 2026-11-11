@@ -18,7 +18,7 @@ describe('context budget', () => {
     const measured = await measureContext();
     expect(measured.defaultToolsList.tools).toBe(13);
     expect(measured.defaultToolsList.chars).toBeLessThanOrEqual(LIMITS.defaultToolsListChars);
-    expect(measured.allToolsList.tools).toBe(38);
+    expect(measured.allToolsList.tools).toBe(36);
     expect(measured.allToolsList.chars).toBeLessThanOrEqual(LIMITS.allToolsListChars);
   });
 });

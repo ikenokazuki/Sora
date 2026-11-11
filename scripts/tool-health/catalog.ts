@@ -51,7 +51,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'get_place_info', 'search_poi', 'lookup_address',
   'watch',
   'search_music', 'search_laws', 'search_diet_minutes',
-  'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
+  'check_regulations', 'lookup_hts',
   'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
 ];
@@ -119,10 +119,14 @@ export const REST_MAP: RestMap = {
   ],
   search_laws: [{ method: 'POST', path: '/gov/laws' }, { method: 'POST', path: '/gov/law-text', fn: 'getLawText' }],
   search_diet_minutes: { method: 'POST', path: '/gov/diet-minutes' },
-  check_cpsc_certificate: { method: 'POST', path: '/trade/cpsc-check' },
-  check_fda_regulated: { method: 'POST', path: '/trade/fda-check' },
-  verify_hts_code: { method: 'POST', path: '/trade/hts-verify' },
-  predict_hts_code: { method: 'POST', path: '/trade/hts-predict' },
+  check_regulations: [
+    { method: 'POST', path: '/trade/cpsc-check', fn: 'checkCpscCertificate' },
+    { method: 'POST', path: '/trade/fda-check', fn: 'checkFdaRegulated' },
+  ],
+  lookup_hts: [
+    { method: 'POST', path: '/trade/hts-verify', fn: 'verifyHtsCode' },
+    { method: 'POST', path: '/trade/hts-predict', fn: 'predictHtsCode' },
+  ],
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   generate_gcc_certificate: { method: 'POST', path: '/trade/gcc-generate' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
@@ -970,32 +974,34 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_diet_minutes', ['speaker', 'speech']);
     return { sources: [{ source: 'kokkai', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('trade.cpsc', ['check_cpsc_certificate'], [], false, 30000, async (ctx) => {
+  toolCase('trade.cpsc', ['check_regulations'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'check_cpsc_certificate', { htsCode: '9503.00.0073', targetAge: 'child' }, 20000);
-    const raw = toolPayload(rawJsonText, 'check_cpsc_certificate');
-    return mustContain(raw, ['9503'], 'cpsc-rules');
+    const { text: rawJsonText } = await mcpJson(ctx, 'check_regulations', { htsCode: '9503.00.0073', targetAge: 'child', agencies: ['cpsc'] }, 20000);
+    const raw = toolPayload(rawJsonText, 'check_regulations (cpsc)') as { cpsc?: unknown };
+    if (!raw.cpsc) throw new LiveFail('check_regulations returned no cpsc section for agencies: ["cpsc"]');
+    return mustContain(raw.cpsc, ['9503'], 'cpsc-rules');
   }),
-  toolCase('trade.fda', ['check_fda_regulated'], [], false, 30000, async (ctx) => {
+  toolCase('trade.fda', ['check_regulations'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'check_fda_regulated', { htsCode: '6912', foodContact: false }, 20000);
-    const raw = toolPayload(rawJsonText, 'check_fda_regulated');
-    return mustContain(raw, ['6912'], 'fda-rules');
+    const { text: rawJsonText } = await mcpJson(ctx, 'check_regulations', { htsCode: '6912', foodContact: false, agencies: ['fda'] }, 20000);
+    const raw = toolPayload(rawJsonText, 'check_regulations (fda)') as { fda?: unknown };
+    if (!raw.fda) throw new LiveFail('check_regulations returned no fda section for agencies: ["fda"]');
+    return mustContain(raw.fda, ['6912'], 'fda-rules');
   }),
-  toolCase('trade.verify', ['verify_hts_code'], ['usitc'], true, 90000, async (ctx) => {
+  toolCase('trade.verify', ['lookup_hts'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'verify_hts_code', { htsCode: '9503.00.0073', productDescription: 'toy' }, 60000);
-    const raw = toolPayload(rawJsonText, 'verify_hts_code');
+    const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { htsCode: '9503.00.0073', description: 'toy' }, 60000);
+    const raw = toolPayload(rawJsonText, 'lookup_hts (verify)');
     return mustContain(raw, ['9503'], 'usitc-verify');
   }),
-  toolCase('trade.predict', ['predict_hts_code'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
+  toolCase('trade.predict', ['lookup_hts'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'predict_hts_code', { productName: 'Green Tea' }, 80000);
-    const raw = toolPayload(rawJsonText, 'predict_hts_code');
+    const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { productName: 'Green Tea' }, 80000);
+    const raw = toolPayload(rawJsonText, 'lookup_hts (predict)');
     // 緑茶は 0902（茶）か 2101（茶の抽出物）。USITC の全件データと CBP 判例の構造（evidence）まで確かめる
-    const parsed = parseFirstJson(textOf(raw), 'predict_hts_code') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
-    if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('predict_hts_code classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
-    if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('predict_hts_code returned no evidence.dataFetchedAt');
+    const parsed = parseFirstJson(textOf(raw), 'lookup_hts (predict)') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
+    if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('lookup_hts (predict) classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
+    if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('lookup_hts (predict) returned no evidence.dataFetchedAt');
     // 判例の照会が失敗（unavailable）でも推測は返る。判例の応答の形が変わったときは no_rulings が続くので、ここでは状態を記録する
     return { sources: [
       { source: 'usitc-export', count: 1, format: 'json', upstreamStatus: 'unknown' },

@@ -1023,7 +1023,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const text = res.content[0].text;
       expect(text).toContain('search_keywords');
       expect(text).not.toContain('search_media');
-      expect(text).not.toContain('predict_hts_code');
+      expect(text).not.toContain('lookup_hts');
 
       // Discovery returns the canonical MCP name even for model-prefixed queries.
       expect(reg['search_keywords'].enabled).toBe(true);
