@@ -6,9 +6,9 @@ Sora のツールの多くは、取得した情報をそのまま返します。
 
 ## 貿易・通関
 
-- [商品名から HTS コードを推測する](hts-prediction.md)（`predict_hts_code`・`verify_hts_code`）
-- [米国 CPSC の証明書と eFiling を判定する](cpsc-certificate.md)（`check_cpsc_certificate`）
-- [HTS コードから FDA の規制を判定する](fda-regulated.md)（`check_fda_regulated`）
+- [商品名から HTS コードを推測する](hts-prediction.md)（`lookup_hts`）
+- [米国 CPSC の証明書と eFiling を判定する](cpsc-certificate.md)（`check_regulations` の `cpsc`）
+- [HTS コードから FDA の規制を判定する](fda-regulated.md)（`check_regulations` の `fda`）
 - [商品 1 つを関税・FDA・CPSC まとめて診断する](product-compliance.md)（`check_product_compliance`）
 - [一般適合証明書（GCC）と通関の書類を作る](gcc-certificate.md)（`generate_gcc_certificate`）
 

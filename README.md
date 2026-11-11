@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (25ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 25 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 38 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (23ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 25 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 38 ツール）。
 
 ```json
 {
@@ -102,7 +102,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 【Sora ツール利用規約】
 > 1. 専用ツールがないことを理由に回答を拒否してはならない（ライブ日程・営業時間・発売日・最新動向等は必ず search_deep または search_web でWebから能動調査すること）。
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
->    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate, generate_gcc_certificate
+>    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, lookup_hts, check_regulations, generate_gcc_certificate
 >    - 日本の法令・国会審議録: search_laws, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, get_disaster_info, search_road_traffic, get_place_info, search_poi, get_flight_status, lookup_address
 >    - 国内交通乗換・運賃: search_route
@@ -299,14 +299,14 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 38 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
+## 2. 提供 MCP ツール一覧 (全 36 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 38 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 36 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (25ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 25 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (23ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 25 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 13 ツール: 機能 12 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出（`urls` で最大 20 件を一括並行取得）・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
@@ -322,7 +322,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_realtime`: Yahoo! リアルタイム検索（X/Twitter 最新投稿・画像 URL 抽出）
   - `get_disaster_info`: 気象庁 警報・注意報（`include: ["warnings"]`）・地震情報（`include: ["earthquake"]`）
   - `search_laws`: e-Gov 法令キーワード検索（`keyword`）・条文の全文（`lawId`）
-- **動的有効化 (・ DEFERRED 25 ツール)**:
+- **動的有効化 (・ DEFERRED 23 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
@@ -332,10 +332,8 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
   - `lookup_address`: デジタル庁 ABR / 日本郵便の住所。`address` で住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合、`lat`・`lon` だけで緯度経度からの最寄り住所逆引き（住居表示・地番）、`zipcode` だけで郵便番号から住所候補
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
-  - `predict_hts_code`: 米国 HTS/HS コード推測（USITC 公式 HTS 全件＋CBP 分類判例。英語で入力）・分岐点の確認質問
-  - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
-  - `check_fda_regulated`: 米国 FDA 規制判定
-  - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
+  - `lookup_hts`: 米国 HTS/HS コード。`htsCode` があれば USITC 公式 HTS での実在検証、省けば推測（USITC 公式 HTS 全件＋CBP 分類判例。英語で入力）・分岐点の確認質問
+  - `check_regulations`: 米国の規制判定。`agencies` で CPSC 証明書 (GCC/CCC) / eFiling 義務と FDA 規制を選ぶ（既定は両方）
   - `generate_gcc_certificate`: 米国 CPSC の一般適合証明書（GCC）と通関の保留に出す書類（呼び出し側の記録から作る。HTS は推測しない）
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
   - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch`, `search_music`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
@@ -350,17 +348,17 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │ ★search_web     │   (クリック/入力/ │ ★search_chie-    │   (乗換案内)    │  disaster_  │ (action で    │ (keyword /   │  product_ │
 │ ★search_deep    │    スクショ/JS実行│   bukuro         │ ★get_weather    │  info       │  登録/確認/   │  lawId)      │  compli-  │
 │ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │ (警報・地震)│  一覧/削除)   │・search_diet_│  ance     │
-│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │             ├───────────────┤  minutes     │・predict_ │
-│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      │ (国会会議録) │  hts_code │
-│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     ├──────────────┤・verify_  │
-│                 │                   │                  │   status (航空) │ (国土地理院)│・search_music │ 📷 Media     │  hts_code │
+│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │             ├───────────────┤  minutes     │・lookup_  │
+│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      │ (国会会議録) │  hts      │
+│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     ├──────────────┤ (照合/    │
+│                 │                   │                  │   status (航空) │ (国土地理院)│・search_music │ 📷 Media     │  推測)    │
 │                 │                   │                  │ ・track_package │             │ (曲・歌手・   │ (`media`)    │・check_   │
-│                 │                   │                  │   (荷物追跡)    │             │  アルバム)    │・inspect_    │  fda_regu-│
-│                 │                   │                  │                 │             │               │  image       │  lated    │
-│                 │                   │                  │                 │             │               │ (マルチモ    │・check_   │
-│                 │                   │                  │                 │             │               │  ーダル視覚) │  cpsc_cert│
+│                 │                   │                  │   (荷物追跡)    │             │  アルバム)    │・inspect_    │  regula-  │
+│                 │                   │                  │                 │             │               │  image       │  tions    │
+│                 │                   │                  │                 │             │               │ (マルチモ    │ (CPSC/    │
+│                 │                   │                  │                 │             │               │  ーダル視覚) │  FDA)     │
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 25ツール)
+★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 23ツール)
 図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
@@ -539,10 +537,8 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `predict_hts_code` | 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語が主でないと 400）。 | `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `productName` (string, 必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `description` (string, 任意): 詳細説明・用途（英語）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測の検索語には入るが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。`true` のときだけ推測の検索語に battery を足す。`false` では何もしない |
-| `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`: A（規則の対象外と確かめた品）、B（16 CFR 1610.1(d) の免除の大人の衣料。Intended Use Code 130.006））を案内します。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`。12歳以下は GCC でなく CPC<br>- `material` (string, 任意): 主な素材。衣料では繊維の組成（`"100% polyester"` の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ<br>- `hasBattery` (boolean, 任意): 電池を使う製品か。true で `batteryType` が `button_coin` なら 16 CFR 1263 を当てる<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`。`button_coin` は `hasBattery` を省いても電池ありとして扱う（`false` とは矛盾で 400）。other はリチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除 |
-| `check_fda_regulated` | HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "0902.10.10.15", "3304.99.5000")<br>- `foodContact` (boolean, 任意): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ |
-| `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。判定には使わず、根拠の記録として応答に返す |
+| `lookup_hts` | 米国の HTS/HS コードを、入力で照合と推測に分けて引きます（応答の `mode` が `verify` か `predict`）。**照合**（`htsCode` を指定）: LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 **推測**（`htsCode` を省く）: 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語が主でないと 400）。 | `mode`、照合は `source: "usitc-hts"`、推測は `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `htsCode` (string, 任意): 照合したいHTSコード (例: "9503.00.0073")。ユーザーが示したコードだけを入れる（推測したいときは省く）。指定すると照合、省くと推測<br>- `description` (string, 照合では必須): 照合では商品の説明（素材・用途・機能・加工度合い等）で、判定には使わず、根拠の記録として応答の `productDescription` に返す。推測では詳細説明・用途（英語）<br>- `productName` (string, 推測では必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測の検索語には入るが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。`true` のときだけ推測の検索語に battery を足す。`false` では何もしない<br>`productName` から `hasBattery` までは推測（`htsCode` を省いたとき）だけの引数で、`htsCode` と一緒に指定すると入力の誤り |
+| `check_regulations` | HTSコードと製品情報から、米国の規制を判定します。`agencies`（既定は両方）で選んだ機関ごとに、節（`cpsc`・`fda`）を返します。**cpsc**: HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`: A（規則の対象外と確かめた品）、B（16 CFR 1610.1(d) の免除の大人の衣料。Intended Use Code 130.006））を案内します。 **fda**: HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `agencies`、`cpsc` は `source: "cpsc-hts-list"`、`fda` は `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073", "0902.10.10.15")<br>- `agencies` (string[], 任意, 既定 `["cpsc","fda"]`): 判定する機関（`cpsc`・`fda`）。応答は、選んだ機関ごとの節（`cpsc`・`fda`）<br>- `targetAge` (string, `cpsc` では必須): `"adult"` \| `"child"` \| `"unknown"`。12歳以下は GCC でなく CPC<br>- `material` (string, 任意): 主な素材。衣料では繊維の組成（`"100% polyester"` の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ<br>- `hasBattery` (boolean, 任意): 電池を使う製品か。true で `batteryType` が `button_coin` なら 16 CFR 1263 を当てる<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`。`button_coin` は `hasBattery` を省いても電池ありとして扱う（`false` とは矛盾で 400）。other はリチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `foodContact` (boolean, 任意, `fda` だけ): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>`targetAge` から `fabricWeightOzPerSqYd` までは `cpsc` だけの引数。選ばなかった機関だけの引数を指定すると入力の誤り |
 | `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材。衣料は `"100% polyester"` の形（16 CFR 1610.1(d)(2)）<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足す。`batteryType` が `"button_coin"` なら、CPSC の判定に 16 CFR 1263 を当て、注意書きを 1 行足す。`false` では何もしない（`batteryType` が `"button_coin"` だと矛盾で 400）<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"` |
 | `generate_gcc_certificate` | 米国CPSCの一般適合証明書（GCC。`16 CFR 1110.11` の要素）と、通関の保留に出す一式（表紙・品ごとの GCC・免除の説明）を、呼び出し側の記録から作ります（JSON の要約と印刷用 HTML）。HTS は推測せず、判例も HTS の全件も読みません。外に出るのは、`url` を付けた品の商品ページを、番号の候補（`suggestions`）のために静的な取得で読むときだけです（候補は証明書に載せません）。足りない記録は既定でエラー（`MISSING_REQUIRED_GCC_FIELDS`。下書きは `allowDraft: true`）、見本・仮置きの値は `UNVERIFIED_PLACEHOLDER_INPUT`、12 歳以下は `cpc_required_instead`。 | `packageId`, `overallStatus`, `counts`, `items`, `packageHtml` | - `items` (array, 必須, 1〜50 件): 1 件 1 製品。`htsCode`（10 桁）・`productName`（英語）は必須。ほかは `identifier`・`identifierType`、`brand`・`description`、`targetAge`、`material`・`fabricSurface`・`fabricWeightOzPerSqYd`（衣料）、`hasBattery`・`batteryType`、`foodContact`、`citations`（試験報告書の規則。`[]` は「当てはまる規則が無いと確かめた」）、`manufacture`・`testing`、`url`（番号の候補を読む。5 件まで。証明書には載せない）<br>- `certifier` / `recordCustodian` (任意): `{ name, street, city, state, country, email, phone }`。省くと環境変数 `SORA_GCC_CERTIFIER` / `SORA_GCC_CUSTODIAN`（JSON）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 表紙に載せる注文・運送状の番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 足りない項目があっても下書きを返す |
 
@@ -1978,7 +1974,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   - 当事者（`certifier`・`recordCustodian`・`manufacture`・`testing.parties[]`）は同じ形 `{ name, street, city, state, country, email, phone }`（16 CFR 1110.11(a)(3)〜(6)）です。州・県が無い国は `state` に `N/A`・`NA`・`-`・`None` を渡すと、印刷では州の欄を省きます。製造の日（`manufacture.date`、16 CFR 1110.11(a)(5)）は `YYYY-MM` か `YYYY-MM-DD`、試験の日（`testing.date`、(a)(6)。CATAIR の Laboratory Testing の日は 8 桁）は `YYYY-MM-DD` で、どちらも実在する未来でない日にしてください。証明書に載る値（`productName`・`brand`・`description`・`identifier`・`citations`・当事者の全項目・`testing.reportNumber`）は英語（ラテン文字。`µ` などの Script=Common の文字は通します）だけです（16 CFR 1110.9(a)）。
   - `citations` は、試験報告書にある規則を 1 つずつ（例 `"16 CFR 1203"`）。1 つの文字列に `16 CFR` を 2 回書くと 400 です（16 CFR 1110.11(a)(2) は規則を分けて挙げます）。`citations: []` は「当てはまる規則が無いと証明者が確かめた」という答えです。省くと、その品は下書きです（大人の衣料で 16 CFR 1610.1(d) の免除に当たる品だけは、省いたままで Disclaim B になります）。Sora が当てはまると判断した規則（ボタン・コイン電池の 16 CFR 1263、衣料の 16 CFR 1610）が `citations` に無いと、`[]` でも下書きです（16 CFR 1610.1(d) の免除の大人の衣料では、`citations` を省けば Disclaim B になると質問に書きます）。`testing` の記録（日付か試験した者）を渡すと、16 CFR 1110.11(c) の試験の除外（1610.1(d)）は書かず、記録を載せます。
 - **判定**（品ごと）:
-  - 12 歳以下（`targetAge: "child"`）は `cpc_required_instead` です（CPC はこのツールでは作りません）。`targetAge` が無いと、年齢を聞く下書きです。HTS の見出し 6111・6209（Babies' garments and clothing accessories）で `targetAge: "adult"` のときも、大人の免除の判定をせず、年齢を聞く下書きです（`check_cpsc_certificate` は `unknown`）。
+  - 12 歳以下（`targetAge: "child"`）は `cpc_required_instead` です（CPC はこのツールでは作りません）。`targetAge` が無いと、年齢を聞く下書きです。HTS の見出し 6111・6209（Babies' garments and clothing accessories）で `targetAge: "adult"` のときも、大人の免除の判定をせず、年齢を聞く下書きです（`check_regulations` の `cpsc` は `unknown`）。
   - 大人の衣料で 16 CFR 1610.1(d) の試験の免除（平らな生地で 2.6 oz/sq yd 以上、または acrylic・modacrylic・nylon・olefin・polyester・wool だけの生地）に当たるもの（`citations` を省いたとき）は `exempt_disclaim_b` です。2016 年の執行裁量（81 FR 12587、2016 年 3 月 25 日から）で GCC は要らず、証明書のデータの eFiling も要らず、ACE では Disclaim B を送れます（任意。CATAIR。送るときは Intended Use Code `130.006` が要ります）。
   - `citations: []` で、CPSC の一覧にあるコードは `exempt_no_gcc_needed` と Disclaim A（`warnings` に、規則が当てはまらないと確かめてから送る旨）です。Disclaim A の送信には Intended Use Code が要ります（Appendix R の `130.XXX`。ただし 130.001〜005 は除く）。一覧に無いコードは `exempt_no_gcc_needed` で、CPSC のデータを送らない案内です。どちらも紙には「証明者の答え」と書きます。証明者が無い（`certifier` も環境変数も無い）ときは、`Declared by: [MISSING: certifier]` と、要求した側の答え（`no certifier is identified`）として書きます（status は変わりません）。
   - 帽子・手袋・履物の見出し（6504〜6506、6116・6216、6401〜6405）は、16 CFR 1610.1(c) の条件に当たるかで 16 CFR 1610 が要るかが決まります。条件を質問で返し、`citations` に 1610 は求めません。
@@ -2479,7 +2475,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 38 ツール静的一括ロード |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 36 ツール静的一括ロード |
 | `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |

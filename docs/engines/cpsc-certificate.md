@@ -2,13 +2,13 @@
 
 米国の CPSC（消費者製品安全委員会）が管轄する製品には、適合証明書が要ることがあります。大人・一般向けは一般適合証明書（GCC）、12 歳以下の子供向けは子供用製品証明書（CPC。Sora の応答では `certificateType: "CCC"`）です。Sora は、2026 年 7 月 8 日から、この証明書のデータを CBP（米国税関）の通関システム ACE へ電子申告する eFiling が完全義務化されたものとして判定します。
 
-`check_cpsc_certificate` は、HTS コードと製品の情報から、(a) 証明書が要るか・どの種類か、(b) eFiling が要るか、(c) 証明書が要らないときに ACE へ送る免責（Disclaim A・B という免責の区分です。送るときは Intended Use Code という用途の番号を添えます）の案内を決めます。HTS コードの一覧を見るだけでは、年齢や衣料の生地で答えが変わることが分かりません。逆に、情報が足りないのに推測で埋めると、証明書が要る品を「不要」と答えてしまいます。そこで Sora は、公式の一覧と条文の条件に当たるかを自分で判定し、足りない情報は質問にします。
+`check_regulations` の `cpsc` は、HTS コードと製品の情報から、(a) 証明書が要るか・どの種類か、(b) eFiling が要るか、(c) 証明書が要らないときに ACE へ送る免責（Disclaim A・B という免責の区分です。送るときは Intended Use Code という用途の番号を添えます）の案内を決めます。HTS コードの一覧を見るだけでは、年齢や衣料の生地で答えが変わることが分かりません。逆に、情報が足りないのに推測で埋めると、証明書が要る品を「不要」と答えてしまいます。そこで Sora は、公式の一覧と条文の条件に当たるかを自分で判定し、足りない情報は質問にします。
 
 ## 使うツール
 
-- MCP: `check_cpsc_certificate`（モジュール `trade` の遅延ツールです。`search_tools` で有効化します）。
+- MCP: `check_regulations`（モジュール `trade` の遅延ツールです。`search_tools` で有効化します）。`agencies` に `cpsc` を含むと（既定は `cpsc` と `fda` の両方）、応答の `cpsc` の節がこの判定です。`cpsc` を含むときは `targetAge` が必須です（不明なら `"unknown"`）。
 - REST: `POST /trade/cpsc-check`。
-- 内部では、`predict_hts_code`（[hts-prediction.md](hts-prediction.md)）、`check_product_compliance`（[product-compliance.md](product-compliance.md)）、`generate_gcc_certificate`（[gcc-certificate.md](gcc-certificate.md)）が同じ判定を使います。
+- 内部では、HTS の推測（`lookup_hts`。[hts-prediction.md](hts-prediction.md)）、`check_product_compliance`（[product-compliance.md](product-compliance.md)）、`generate_gcc_certificate`（[gcc-certificate.md](gcc-certificate.md)）が同じ判定を使います。
 
 ## 手元のデータと外への問い合わせ
 
