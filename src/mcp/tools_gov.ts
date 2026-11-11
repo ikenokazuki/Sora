@@ -25,8 +25,8 @@ export function registerGovTools(context: ToolRegistrationContext): void {
     'gov',
     '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }',
     {
-      keyword: z.string().min(1).optional().describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")。現行法令名・法令番号・公布年月日の一覧を返す。keyword か lawId のどちらか 1 つ'),
-      lawId: z.string().min(1).optional().describe('e-Gov 法令ID (例: "129AC0000000089"。検索結果の id)。架空の条文を創作せず、章・節・条・項・号を構造化した公式の条文 Markdown を返す: { id, title, lawNum, markdown, articleCount, source }'),
+      keyword: z.string().optional().describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")。現行法令名・法令番号・公布年月日の一覧を返す。keyword か lawId のどちらか 1 つ'),
+      lawId: z.string().optional().describe('e-Gov 法令ID (例: "129AC0000000089"。検索結果の id)。架空の条文を創作せず、章・節・条・項・号を構造化した公式の条文 Markdown を返す: { id, title, lawNum, markdown, articleCount, source }'),
       limit: z.number().int().min(1).max(50).optional().describe(`取得件数 (1〜50, デフォルト: ${LAWS_LIMIT_DEFAULT})。keyword のときだけ`).meta({ default: LAWS_LIMIT_DEFAULT }),
     },
     async (args) => {

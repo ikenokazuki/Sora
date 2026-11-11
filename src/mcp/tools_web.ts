@@ -8,7 +8,7 @@ import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { defaultXDetailProvider, fetchXPostDetail } from '../services/x_detail.js';
 import { registerTool, toolJson } from './registry.js';
-import { exactlyOne, onlyForMode, usageError } from './args.js';
+import { exactlyOne, notUrl, onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -28,10 +28,10 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     'web',
     '【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
     {
-      url: z.string().url().optional().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")。url か urls のどちらか 1 つ'),
+      url: z.string().optional().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")。url か urls のどちらか 1 つ'),
       urls: z.array(z.string().url()).min(1).max(20).optional().describe('複数ページを一括取得するときの URL 配列 (最大 20 件)。ドメインごとの間隔を守りながら並行取得する。応答は { total, successful, failed, results, errors } で、results は入力の順ではなく、取得が終わった順'),
       concurrency: z.number().int().min(1).max(5).optional().describe('urls の並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
-      webhookUrl: z.string().url().optional().describe('urls の取得完了時に、応答と同じ整形後の結果を 1 回だけ通知する Webhook URL (非同期)'),
+      webhookUrl: z.string().optional().describe('urls の取得完了時に、応答と同じ整形後の結果を 1 回だけ通知する Webhook URL (非同期)'),
       maxChars: z
         .number()
         .int()
@@ -86,7 +86,8 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       // 既定値は、上のスキーマの .meta({ default }) と同じ値
       const invalid = exactlyOne(args, ['url', 'urls'], SCRAPE_USAGE)
         ?? onlyForMode(toolMode, [WITH_URLS], args, ['concurrency', 'webhookUrl'], SCRAPE_USAGE, { concurrency: 3 })
-        ?? onlyForMode(toolMode, [WITH_URL], args, ['fullPage', 'keepDataImages'], SCRAPE_USAGE, { fullPage: true, keepDataImages: false });
+        ?? onlyForMode(toolMode, [WITH_URL], args, ['fullPage', 'keepDataImages'], SCRAPE_USAGE, { fullPage: true, keepDataImages: false })
+        ?? notUrl(args, ['url', 'webhookUrl'], SCRAPE_USAGE);
       if (invalid) return usageError(invalid);
       // スキーマは url のときの上限（100000）まで通す。urls のときは、REST の /scrape/batch と同じ上限
       if (toolMode === WITH_URLS && (args.maxChars ?? 0) > SCRAPE_BATCH_MAX_CHARS) {

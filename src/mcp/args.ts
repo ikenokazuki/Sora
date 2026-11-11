@@ -46,6 +46,16 @@ export function onlyForMode(mode: string, allowedModes: string[], args: Record<s
   return `${set.join(', ')} は ${allowedModes.join(' か ')}だけ指定できます（いま: ${mode}）。${usage}`;
 }
 
+/**
+ * keys のうち、指定された（空でない）値が URL として読めないときの、usage を添えたエラーの文。
+ * 必須でない URL の引数は、スキーマに `.url()` を付けない（LLM が使わない引数に入れる "" を、zod の段で断ってしまう）。
+ * 代わりにハンドラで、空でないときだけ、zod の `.url()` と同じく `new URL()` で読めるかを確かめる。
+ */
+export function notUrl(args: Record<string, unknown>, keys: string[], usage = ''): string | undefined {
+  const bad = keys.find((k) => given(args[k]) && !URL.canParse(String(args[k])));
+  return bad === undefined ? undefined : `${bad} は URL として読めません（いま: ${JSON.stringify(args[bad])}）。${usage}`;
+}
+
 /** MCP のエラー応答（入力の誤り）。 */
 export function usageError(message: string): { isError: true; content: [{ type: 'text'; text: string }] } {
   return { isError: true, content: [{ type: 'text', text: `入力の誤り: ${message}` }] };

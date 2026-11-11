@@ -68,8 +68,8 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
       foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。fda のときだけ'),
     },
     async (args) => {
-      const requested = args.agencies ?? AGENCIES_DEFAULT;
-      if (requested.length === 0) return usageError(`agencies に、判定する機関を 1 つ以上指定してください。${REGULATION_USAGE}`);
+      // 空の配列は省略と同じ（args.ts の given と同じ読み方）
+      const requested = args.agencies?.length ? args.agencies : AGENCIES_DEFAULT;
       const unknown = requested.filter((agency) => !AGENCIES.includes(agency));
       if (unknown.length > 0) return usageError(`agencies に使えない値があります: ${unknown.join(', ')}。${REGULATION_USAGE}`);
       const agencies = AGENCIES.filter((agency) => requested.includes(agency));

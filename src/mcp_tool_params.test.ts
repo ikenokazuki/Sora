@@ -189,6 +189,9 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
     ['urls に fullPage: false（既定値の true と違う）', { urls: ['https://example.com/a'], fullPage: false }, ['fullPage は url を指定したときだけ指定できます（いま: urls を指定したとき）']],
     ['urls に keepDataImages: true（既定値の false と違う）', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages は url を指定したときだけ指定できます（いま: urls を指定したとき）']],
     ['urls に 50000 を超える maxChars', { urls: ['https://example.com/a'], maxChars: 50_001 }, ['maxChars', '50000']],
+    ['空の url だけ', { url: '' }, ['url・urls のどれか 1 つを指定してください']],
+    ['URL として読めない url', { url: 'example.com/a' }, ['url は URL として読めません（いま: "example.com/a"）']],
+    ['urls に URL として読めない webhookUrl', { urls: ['https://example.com/a'], webhookUrl: 'hook' }, ['webhookUrl は URL として読めません（いま: "hook"）']],
   ];
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
@@ -226,6 +229,17 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
       expect((called.mock.calls[0][0] as Record<string, unknown>)[ignored], ignored).toBeUndefined();
     });
   }
+
+  test('使わない側の "" は指定なし（LLM の空のプレースホルダ）: urls と url: ""・url と webhookUrl: "" は通る', async () => {
+    const single = mockSingle();
+    const batch = mockBatch();
+    const many: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com/a'], url: '' } }));
+    expect(many.isError, textOf(many)).toBeFalsy();
+    expect((batch.mock.calls[0][0] as Record<string, unknown>).url).toBeUndefined();
+    const one: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: { url: 'https://example.com/a', webhookUrl: '' } }));
+    expect(one.isError, textOf(one)).toBeFalsy();
+    expect((single.mock.calls[0][0] as Record<string, unknown>).url).toBe('https://example.com/a');
+  });
 
   test('モード専用の引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通る', async () => {
     mockSingle();
@@ -829,6 +843,11 @@ describe('get_place_info: address か lat・lon の地点の情報を、include 
     expect(calls).toEqual(['cyberjapandata2.gsi.go.jp', 'cyberjapandata2.gsi.go.jp']);
   });
 
+  test('include: [] は省略と同じ既定（["elevation"]）。args.ts の given と同じく、空の配列は指定なし', async () => {
+    stubUpstream();
+    expect(body(await call({ ...point, include: [] })).include).toEqual(['elevation']);
+  });
+
   test('サービスには、旧 get_elevation の引数だけを渡す（include は渡さない）', async () => {
     const spy = spyOn(scraper, 'fetchElevationAndCoordinates').mockResolvedValue({ lat: 1, lon: 2, elevationMeters: 3, formatted: 'f', source: 'gsi' });
     restore.push(() => spy.mockRestore());
@@ -853,7 +872,6 @@ describe('get_place_info: address か lat・lon の地点の情報を、include 
     ['lat だけ', { lat: 35.6 }, ['lat と lon は組で指定してください']],
     ['address と lon だけ', { address: '原宿', lon: 139.7 }, ['lat と lon は組で指定してください']],
     ['address と lat・lon', { address: '原宿', ...point }, ['address と lat・lon は、どちらか一方だけを指定してください']],
-    ['include が空', { ...point, include: [] }, ['include に、返す情報を 1 つ以上指定してください']],
     ['include に使えない値', { address: '原宿', include: ['elevation', 'hazards'] }, ['include に使えない値があります: hazards']],
   ];
   for (const [label, args, mentions] of wrong) {
@@ -939,6 +957,12 @@ describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（
     expect(quakes.mock.calls[0][0]).toEqual({ limit: 2 });
   });
 
+  test('include: [] は省略と同じ既定（地域があれば警報、無ければ地震）。空の配列は指定なし', async () => {
+    mockAll();
+    expect(body(await call({ city: '新宿区', include: [] })).include).toEqual(['warnings']);
+    expect(body(await call({ include: [] })).include).toEqual(['earthquake']);
+  });
+
   test('include: ["earthquake"] を明示すれば、city が無くても地震（既定と同じ）', async () => {
     mockAll();
     expect(body(await call({ include: ['earthquake'], limit: 1 }))).toEqual({ include: ['earthquake'], earthquake: QUAKES });
@@ -962,7 +986,6 @@ describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
     ['include: ["warnings"] で地域なし', { include: ['warnings'] }, ['include の warnings には city か areaCode が必要です']],
     ['include: ["warnings"] で空の city・areaCode', { include: ['warnings'], city: '', areaCode: '' }, ['include の warnings には city か areaCode が必要です']],
-    ['include が空', { city: '新宿区', include: [] }, ['include に、返す情報を 1 つ以上指定してください']],
     ['include に使えない値', { include: ['earthquake', 'typhoon'] }, ['include に使えない値があります: typhoon']],
     ['city と limit: 3（既定値の 5 と違う）', { city: '新宿区', limit: 3 }, [`limit は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
     ['areaCode と minIntensity: 40', { areaCode: '13', minIntensity: 40 }, [`minIntensity は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
@@ -1068,7 +1091,19 @@ describe('search_laws: keyword は法令の検索、lawId は条文の全文（�
     ['どちらも無い', {}, ['keyword・lawId のどれか 1 つを指定してください']],
     ['limit だけ', { limit: 5 }, ['keyword・lawId のどれか 1 つを指定してください']],
     ['lawId と limit: 5（既定値の 20 と違う）', { lawId: '129AC0000000089', limit: 5 }, ['limit は keyword を指定したときだけ指定できます（いま: lawId を指定したとき）']],
+    ['空の keyword だけ', { keyword: '' }, ['keyword・lawId のどれか 1 つを指定してください']],
   ];
+
+  test('使わない側の "" は指定なし（LLM の空のプレースホルダ）: lawId: "" なら検索、keyword: "" なら条文', async () => {
+    const { search, text } = mockBoth();
+    const found = await call({ keyword: '民法', lawId: '' });
+    expect(found.isError, textOf(found)).toBeFalsy();
+    expect(search.mock.calls[0][0]).toEqual({ keyword: '民法' });
+    const law = await call({ keyword: '', lawId: '129AC0000000089' });
+    expect(law.isError, textOf(law)).toBeFalsy();
+    expect(text.mock.calls[0][0]).toEqual({ lawId: '129AC0000000089' });
+    expect(search).toHaveBeenCalledTimes(1);
+  });
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
       const spies = mockBoth();
@@ -1227,7 +1262,20 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
     ['list に id', { action: 'list', id: 'w1' }, [`id は ${actionIs('check')} か ${actionIs('delete')}だけ指定できます（いま: ${actionIs('list')}）`]],
     ['register に id', { action: 'register', url: TARGET.url, id: 'w1' }, [`id は ${actionIs('check')} か ${actionIs('delete')}だけ指定できます（いま: ${actionIs('register')}）`]],
     ['delete に title・selector・webhookUrl', { action: 'delete', id: 'w1', title: 't', selector: '#a', webhookUrl: 'https://example.com/hook' }, [`title, selector, webhookUrl は ${actionIs('register')}だけ指定できます（いま: ${actionIs('delete')}）`]],
+    ['register に空の url', { action: 'register', url: '' }, [`${actionIs('register')}は url が必要です`]],
+    ['register に URL として読めない url', { action: 'register', url: 'example.com/status' }, ['url は URL として読めません（いま: "example.com/status"）']],
+    ['register に URL として読めない webhookUrl', { action: 'register', url: TARGET.url, webhookUrl: 'hook' }, ['webhookUrl は URL として読めません（いま: "hook"）']],
   ];
+
+  test('使わない引数の "" は指定なし（LLM の空のプレースホルダ）: list に url: ""・webhookUrl: ""、register に webhookUrl: ""', async () => {
+    const spies = mockAll();
+    expect(body(await call({ action: 'list', url: '', webhookUrl: '', id: '' }))).toEqual([TARGET]);
+    const res = await call({ action: 'register', url: TARGET.url, webhookUrl: '' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    // 空の webhookUrl は登録しない（旧 watch_register は "" を断っていた）
+    expect(spies.register.mock.calls[0][0]).toStrictEqual({ url: TARGET.url, title: undefined, selector: undefined, webhookUrl: undefined });
+    notCalled(spies, ['list', 'register']);
+  });
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 何もせず、正しい使い方のエラー`, async () => {
       const spies = mockAll();
@@ -1384,6 +1432,11 @@ describe('check_regulations: agencies で CPSC と FDA を選び、機関ごと�
     expect(fda).toHaveBeenCalledTimes(1);
   });
 
+  test('agencies: [] は省略と同じ既定（両方）。空の配列は指定なし', async () => {
+    mockAll();
+    expect(body(await call({ htsCode: HTS, targetAge: 'adult', agencies: [] })).agencies).toEqual(['cpsc', 'fda']);
+  });
+
   test('agencies の順序と重複は、登録順の 1 つずつにまとめる', async () => {
     mockAll();
     const out = body(await call({ htsCode: HTS, targetAge: 'adult', agencies: ['fda', 'cpsc', 'fda'] }));
@@ -1409,7 +1462,6 @@ describe('check_regulations: agencies で CPSC と FDA を選び、機関ごと�
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
     ['targetAge が無い（既定は cpsc を含む）', { htsCode: HTS }, [`${WITH_CPSC}（既定）は targetAge が必要です`, 'agencies: ["fda"]']],
     ['agencies: ["cpsc"] で targetAge が無い', { htsCode: HTS, agencies: ['cpsc'], material: 'wood' }, [`${WITH_CPSC}（既定）は targetAge が必要です`]],
-    ['agencies が空', { htsCode: HTS, targetAge: 'adult', agencies: [] }, ['agencies に、判定する機関を 1 つ以上指定してください']],
     ['agencies に使えない値', { htsCode: HTS, targetAge: 'adult', agencies: ['cpsc', 'usda'] }, ['agencies に使えない値があります: usda']],
     ['agencies: ["fda"] と batteryType', { htsCode: HTS, agencies: ['fda'], batteryType: 'button_coin' }, [`batteryType は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],
     ['agencies: ["fda"] と targetAge・material・hasBattery: false', { htsCode: HTS, agencies: ['fda'], targetAge: 'adult', material: 'wood', hasBattery: false }, [`targetAge, material, hasBattery は ${WITH_CPSC}だけ指定できます（いま: agencies: ["fda"]）`]],

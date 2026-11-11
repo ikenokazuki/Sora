@@ -94,8 +94,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       include: z.array(z.string()).optional().describe(`返す情報 (${DISASTER_KINDS.join('・')})。既定は city か areaCode があれば ["warnings"]、無ければ ["earthquake"]。両方は ["warnings","earthquake"]`),
     },
     async (args) => {
-      const requested = args.include ?? (args.city || args.areaCode ? ['warnings'] : ['earthquake']);
-      if (requested.length === 0) return usageError(`include に、返す情報を 1 つ以上指定してください。${DISASTER_USAGE}`);
+      // 空の配列は省略と同じ（args.ts の given と同じ読み方）
+      const requested = args.include?.length ? args.include : (args.city || args.areaCode ? ['warnings'] : ['earthquake']);
       const unknown = requested.filter((kind) => !DISASTER_KINDS.includes(kind));
       if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${DISASTER_USAGE}`);
       const kinds = DISASTER_KINDS.filter((kind) => requested.includes(kind));
@@ -157,8 +157,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       const hasAddress = Boolean(address?.trim());
       if (hasAddress && lat !== undefined) return usageError(`address と lat・lon は、どちらか一方だけを指定してください。${PLACE_USAGE}`);
       if (!hasAddress && lat === undefined) return usageError(`address または (lat, lon) のいずれかを指定してください。${PLACE_USAGE}`);
-      const requested = include ?? PLACE_INCLUDE_DEFAULT;
-      if (requested.length === 0) return usageError(`include に、返す情報を 1 つ以上指定してください。${PLACE_USAGE}`);
+      // 空の配列は省略と同じ（args.ts の given と同じ読み方）
+      const requested = include?.length ? include : PLACE_INCLUDE_DEFAULT;
       const unknown = requested.filter((kind) => !PLACE_KINDS.includes(kind));
       if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${PLACE_USAGE}`);
       // サービスには旧 get_elevation の引数だけを渡す
@@ -193,7 +193,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
       lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
       radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
-      center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化する。lat/lonとは排他'),
+      center: z.string().trim().max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化する。lat/lonとは排他'),
       bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
       limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
       noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
@@ -202,7 +202,8 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     async (opts) => {
       try {
         const { searchOpenPoi } = await import('../services/poi.js');
-        const result = await searchOpenPoi(opts);
+        // 空の center（lat・lon と排他）は指定なし。サービスは center があれば座標化する
+        const result = await searchOpenPoi({ ...opts, center: opts.center || undefined });
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };
