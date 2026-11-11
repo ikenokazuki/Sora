@@ -221,7 +221,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         try {
           return { content: [{ type: 'text', text: toolJson(await mapSiteUrl({ url, limit, since, until })) }] };
         } catch (err) {
-          return { isError: true, content: [{ type: 'text', text: `Crawl site (listOnly) error: ${errorMessage(err) || err}` }] };
+          return { isError: true, content: [{ type: 'text', text: `Map site error: ${errorMessage(err) || err}` }] };
         }
       }
       try {
