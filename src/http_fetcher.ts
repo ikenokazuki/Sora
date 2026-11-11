@@ -24,6 +24,7 @@ async function getWreqModule(): Promise<WreqModule | null> {
   wreqLoadAttempted = true;
   try {
     wreqModule = await import('wreq-js');
+    clampChromeProfileToNative(wreqModule.getProfiles());
   } catch (err) {
     console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
     wreqModule = null;
@@ -64,13 +65,59 @@ export async function throttleDomain(urlStr: string): Promise<void> {
 // ==========================================
 export const MAX_RESPONSE_BODY_BYTES = 30 * 1024 * 1024; // 最大 30MB
 
-const SUPPORTED_CHROME_PROFILE_VERSIONS = [
-  136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
-];
+/** wreq-js が持つ Chrome プロファイルの最小の版（これより古いプロファイルは使わない）。 */
+const MIN_CHROME_PROFILE_VERSION = 136;
 
-/** wreq-js が持つ最新の Chrome プロファイル。実ブラウザがこれより新しい場合の上限。 */
-export const MAX_SUPPORTED_CHROME_PROFILE_VERSION =
-  SUPPORTED_CHROME_PROFILE_VERSIONS[SUPPORTED_CHROME_PROFILE_VERSIONS.length - 1];
+/** npm で公開されている wreq-js（3.2.0）の native が持つ、最新の Chrome プロファイル。上限の既定。 */
+const DEFAULT_MAX_CHROME_PROFILE_VERSION = 149;
+
+/**
+ * 静的取得が使う Chrome プロファイルの上限（SORA_FETCH_MAX_CHROME_PROFILE）。ブラウザも、これを超える版は名乗らない
+ * （UA・TLS・ヘッダを、静的取得とブラウザで同じにするため）。未設定は 149（npm の wreq-js の native が持つ最新）。
+ * 公開イメージは、Containerfile で自前にビルドした native（上流の新しいプロファイルを持つ）に合わせて設定する。
+ * 値を下げれば、UA・TLS・ヘッダがその版のものに戻る（挙動を戻す手段）。native が持たない版を指定しても、起動時に native が持つ最大まで下げる。
+ * 136 未満・3 桁の 10 進数でない値は無視して、既定にする。
+ */
+export function parseMaxChromeProfile(raw: string | undefined): number {
+  const value = raw?.trim();
+  if (!value) return DEFAULT_MAX_CHROME_PROFILE_VERSION;
+  // 3 桁の 10 進数だけ（Number() だと、0x9a や 1e3 も通ってしまう）
+  if (/^\d{3}$/.test(value) && Number(value) >= MIN_CHROME_PROFILE_VERSION) return Number(value);
+  console.warn(`[http_fetcher] SORA_FETCH_MAX_CHROME_PROFILE=${JSON.stringify(value)} is not a 3-digit Chrome major >= ${MIN_CHROME_PROFILE_VERSION}; using ${DEFAULT_MAX_CHROME_PROFILE_VERSION}`);
+  return DEFAULT_MAX_CHROME_PROFILE_VERSION;
+}
+
+/** wreq-js が持つ最新の Chrome プロファイル（の設定）。実ブラウザがこれより新しい場合の上限。 */
+export const MAX_SUPPORTED_CHROME_PROFILE_VERSION = parseMaxChromeProfile(process.env.SORA_FETCH_MAX_CHROME_PROFILE);
+
+/** 実際に使う上限。設定が native の持つプロファイルより高いとき、native が持つ最大まで下がる（clampChromeProfileToNative）。 */
+let effectiveMaxChromeProfile = MAX_SUPPORTED_CHROME_PROFILE_VERSION;
+
+/** profiles（wreq-js の getProfiles()）のうち、max 以下で最大の Chrome の版。無ければ undefined。 */
+export function highestChromeProfileAtMost(profiles: readonly string[], max: number): number | undefined {
+  const majors = profiles.flatMap((p) => {
+    const m = /^chrome_(\d+)$/.exec(p);
+    return m && Number(m[1]) <= max ? [Number(m[1])] : [];
+  });
+  return majors.length > 0 ? Math.max(...majors) : undefined;
+}
+
+/** 上限を超える chrome_<版> は、上限にする（呼び出し側が、native の読み込み（切り詰め）の前に決めたプロファイルを直す）。 */
+export function withinMaxProfile(browser: BrowserProfile, max: number = effectiveMaxChromeProfile): BrowserProfile {
+  const m = /^chrome_(\d+)$/.exec(browser);
+  return m && Number(m[1]) > max ? (`chrome_${max}` as BrowserProfile) : browser;
+}
+
+/**
+ * 上限の設定が、native の持つプロファイルより高いと、プロファイルの作成が失敗して、静的取得が使えなくなる。
+ * そうなる前に、native が持つ最大まで下げて、警告を出す（ブラウザが名乗る版も、同じ上限に従う）。
+ */
+function clampChromeProfileToNative(profiles: readonly string[]): void {
+  const highest = highestChromeProfileAtMost(profiles, effectiveMaxChromeProfile);
+  if (highest === undefined || highest >= effectiveMaxChromeProfile) return;
+  console.warn(`[http_fetcher] wreq-js has no chrome_${effectiveMaxChromeProfile} profile (SORA_FETCH_MAX_CHROME_PROFILE); using chrome_${highest}`);
+  effectiveMaxChromeProfile = highest;
+}
 
 /** wreq-js の os オプションは既定が 'macos'。ブラウザ経路(Windows)と揃えるため明示指定する。 */
 export const EMULATION_OS = 'windows';
@@ -115,14 +162,12 @@ export function pickBrowserProfile(): BrowserProfile {
 }
 
 /**
- * 実際の Chromium のメジャーバージョンに最も近い、wreq のプロファイルのバージョン。分からなければ wreq の最大。
- * wreq の最大より新しい実ブラウザ（いまの Debian の Chromium 156 など）は、最大（149）になる。
+ * 実際の Chromium のメジャーバージョンに最も近い、wreq のプロファイルのバージョン（136 から上限まで）。分からなければ上限。
+ * 上限より新しい実ブラウザ（いまの Debian の Chromium 156 など）は、上限になる。
  */
-export function profileMajorFor(actual: number | undefined): number {
-  const versions = SUPPORTED_CHROME_PROFILE_VERSIONS;
-  return actual
-    ? versions.reduce((best, v) => (Math.abs(v - actual) < Math.abs(best - actual) ? v : best), versions[0])
-    : versions[versions.length - 1];
+export function profileMajorFor(actual: number | undefined, max: number = effectiveMaxChromeProfile): number {
+  if (!actual) return max;
+  return Math.min(Math.max(actual, MIN_CHROME_PROFILE_VERSION), max);
 }
 
 /**
@@ -335,7 +380,7 @@ export async function getOrCreateHttpSession(
 
   if (mod) {
     session = await mod.createSession({
-      browser,
+      browser: withinMaxProfile(browser),
       os: EMULATION_OS,
       emulation: { headers: { 'accept-language': ACCEPT_LANGUAGE }, origHeaders: CHROME_HEADER_ORDER },
       ...(proxyUrl ? { proxy: proxyUrl } : {}),

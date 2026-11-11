@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseChromiumMajorVersion, readChromiumMajorVersion } from './browser_engine.js';
-import { MAX_SUPPORTED_CHROME_PROFILE_VERSION, profileMajorFor } from './http_fetcher.js';
+import { MAX_SUPPORTED_CHROME_PROFILE_VERSION, parseMaxChromeProfile, profileMajorFor } from './http_fetcher.js';
 
 describe('parseChromiumMajorVersion（chromium --version の出力）', () => {
   test('Debian の Chromium・Google Chrome・Chrome for Testing の出力から、メジャーバージョンを取り出す', () => {
@@ -48,11 +48,12 @@ describe('readChromiumMajorVersion（実行ファイルに --version を問い�
 });
 
 describe('profileMajorFor（静的取得の wreq プロファイルの選び方）', () => {
-  test('wreq の最大（149）より新しい実ブラウザは、最大になる。版の検出が直っても、いまの Debian の Chromium 156 の名乗りは 149 のまま', () => {
-    expect(MAX_SUPPORTED_CHROME_PROFILE_VERSION).toBe(149);
-    expect(profileMajorFor(156)).toBe(149);
-    expect(profileMajorFor(157)).toBe(149);
-    expect(profileMajorFor(200)).toBe(149);
+  test('上限（SORA_FETCH_MAX_CHROME_PROFILE。未設定は npm の wreq-js の最新の 149）より新しい実ブラウザは、上限になる', () => {
+    const max = MAX_SUPPORTED_CHROME_PROFILE_VERSION;
+    expect(max).toBe(parseMaxChromeProfile(process.env.SORA_FETCH_MAX_CHROME_PROFILE));
+    expect(profileMajorFor(max)).toBe(max);
+    expect(profileMajorFor(max + 7)).toBe(max);
+    expect(profileMajorFor(200)).toBe(max);
   });
 
   test('範囲内は、その版（最も近いもの）。範囲より古いときは最小', () => {

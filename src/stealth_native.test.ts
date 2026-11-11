@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { WREQ_ALIGN_DISABLED_FEATURES, closeSharedBrowser, getBrowser, resolveChromiumPath } from './browser_engine.js';
-import { applyStealthEvasions, chromeBrandList } from './browser_stealth.js';
+import { closeSharedBrowser, getBrowser, resolveChromiumPath, wreqAlignDisabledFeatures } from './browser_engine.js';
+import { applyStealthEvasions, chromeBrandList, getAlignedChromeMajorVersion } from './browser_stealth.js';
 import { ACCEPT_LANGUAGE, EMULATION_OS, MAX_SUPPORTED_CHROME_PROFILE_VERSION, fetchWithSafeRedirects } from './http_fetcher.js';
 import { scrapeUrl } from './scraper.js';
 
@@ -218,8 +218,11 @@ describe.skipIf(!resolveChromiumPath())('ブラウザの偽装は Chromium 本�
     // Chromium は --disable-features を 2 つ並べると最後だけを読む。Puppeteer が自分の分とまとめて 1 つにしていることを確かめる
     expect(flags).toHaveLength(1);
     const disabled = flags[0].slice('--disable-features='.length).split(',');
-    for (const feature of WREQ_ALIGN_DISABLED_FEATURES) expect(disabled).toContain(feature);
-    expect(WREQ_ALIGN_DISABLED_FEATURES).toContain('TLSTrustAnchorIDs');
+    // 止める機能は、名乗る版（静的取得のプロファイルの版）で決まる。152 未満は、拡張 51764・署名の GREASE・image/jxl を止める
+    const expected = wreqAlignDisabledFeatures(Number(getAlignedChromeMajorVersion()));
+    for (const feature of expected) expect(disabled).toContain(feature);
+    expect(expected).toContain('JXLImageFormat');
+    if (Number(getAlignedChromeMajorVersion()) < 152) expect(expected).toContain('TLSTrustAnchorIDs');
   });
 
   test('ブラウザ経路が送る UA・sec-ch-ua・Accept 系のヘッダは、静的取得（wreq-js）が送るものと同じ', async () => {

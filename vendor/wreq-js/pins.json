@@ -1,0 +1,11 @@
+{
+  "wreqJs": {
+    "version": "3.2.0",
+    "rev": "0d52d5fa252841aeef34d4d063b1766a59612bf7"
+  },
+  "wreqUtilRev": "917d2581d6761a94db66466caa6c2eb4d4cdbd43",
+  "wreqRev": "cd76bcdf1307153de289d34e072528bdf0510a3b",
+  "wreqVersion": "0.16.1",
+  "btlsRev": "129887582a538b8f4dcf371d15c953335312ca37",
+  "cargoImage": "docker.io/library/rust:1.99.1-bookworm"
+}

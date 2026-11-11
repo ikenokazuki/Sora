@@ -20,7 +20,10 @@ if (!built.success) {
 }
 const bundlePath = '/app/image-smoke-out/image-smoke-entry.js'; // 変数にするのは、型検査が、イメージの中にしか無い実行時のファイルを探さないようにするため
 const { profiles } = (await import(bundlePath)) as { profiles: string[] };
-if (profiles.length < 100 || !profiles.includes('chrome_149')) failures.push(`プロファイルが想定と違う（${profiles.length} 件）`);
+// イメージが上限に決めた版（ENV の SORA_FETCH_MAX_CHROME_PROFILE。Containerfile の WREQ_MAX_CHROME_PROFILE）のプロファイルを、native が持つこと
+const max = process.env.SORA_FETCH_MAX_CHROME_PROFILE;
+if (!max || !/^\d{3}$/.test(max)) failures.push(`SORA_FETCH_MAX_CHROME_PROFILE が、3 桁の Chrome の版ではない（${JSON.stringify(max)}）`);
+if (profiles.length < 100 || !profiles.includes(`chrome_${max}`)) failures.push(`プロファイルが想定と違う（${profiles.length} 件。chrome_${max} が要る）`);
 
 const loaded = readFileSync('/proc/self/maps', 'utf8')
   .split('\n')
@@ -32,4 +35,4 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log(`ok: wreq-js native（${NATIVE}）, ${profiles.length} profiles`);
+console.log(`ok: wreq-js native（${NATIVE}）, ${profiles.length} profiles, chrome_${max} まで`);

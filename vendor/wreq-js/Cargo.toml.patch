@@ -1,0 +1,34 @@
+diff --git a/rust/Cargo.toml b/rust/Cargo.toml
+index f839846..4578084 100644
+--- a/rust/Cargo.toml
++++ b/rust/Cargo.toml
+@@ -10,8 +10,8 @@ crate-type = ["cdylib"]
+ 
+ [dependencies]
+ # HTTP client with browser impersonation
+-wreq = { version = "0.16.0", default-features = false, features = ["cookies", "gzip", "brotli", "deflate", "zstd", "charset", "system-proxy", "socks", "ws", "stream", "webpki-roots", "tokio-rt"] }
+-wreq-util = { version = "0.2.0", features = ["emulation-serde", "tokio-rt", "emulation-compression"] }
++wreq = { version = "=0.16.1", default-features = false, features = ["cookies", "gzip", "brotli", "deflate", "zstd", "charset", "system-proxy", "socks", "ws", "stream", "webpki-roots", "tokio-rt"] }
++wreq-util = { git = "https://github.com/0x676e67/wreq-util", rev = "917d2581d6761a94db66466caa6c2eb4d4cdbd43", features = ["emulation-serde", "tokio-rt", "emulation-compression"] }
+ webpki-root-certs = "1.0.9"
+ 
+ # WebSocket support
+@@ -44,7 +44,7 @@ uuid = { version = "1.23.4", features = ["v4"] }
+ [build-dependencies]
+ serde = { version = "1.0.229", features = ["derive"] }
+ serde_json = "1.0.151"
+-wreq-util = { version = "0.2.0", features = ["emulation-serde", "tokio-rt", "emulation-compression"] }
++wreq-util = { git = "https://github.com/0x676e67/wreq-util", rev = "917d2581d6761a94db66466caa6c2eb4d4cdbd43", features = ["emulation-serde", "tokio-rt", "emulation-compression"] }
+ 
+ [dev-dependencies]
+ btls = "0.5.6"
+@@ -54,3 +54,9 @@ opt-level = 3
+ lto = true
+ codegen-units = 1
+ debug = false
++
++# 上流（wreq-util の main）の新しい Chrome プロファイルを使うための固定。rev は vendor/wreq-js/pins.json（scripts/wreq-native/update.ts が作る）
++[patch.crates-io]
++wreq = { git = "https://github.com/0x676e67/wreq", rev = "cd76bcdf1307153de289d34e072528bdf0510a3b" }
++btls = { git = "https://github.com/0x676e67/btls", rev = "129887582a538b8f4dcf371d15c953335312ca37" }
++btls-sys = { git = "https://github.com/0x676e67/btls", rev = "129887582a538b8f4dcf371d15c953335312ca37" }

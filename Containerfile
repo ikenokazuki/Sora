@@ -1,3 +1,8 @@
+# 静的取得（wreq-js）が使う Chrome プロファイルの上限。Stage 1b でビルドする native（vendor/wreq-js の固定の wreq-util）が持つ最新の版。
+# ビルドの時点で native がこのプロファイルを持つことを確かめ、最終段で SORA_FETCH_MAX_CHROME_PROFILE として渡す。
+# ブラウザも、この版までしか名乗らない（UA・TLS・ヘッダを、静的取得と同じにするため）。実行時に下げれば、その版の UA・TLS・ヘッダに戻せる。
+ARG WREQ_MAX_CHROME_PROFILE=154
+
 # Stage 1: Build Application Bundle (Bun)
 FROM docker.io/oven/bun:1 AS builder
 WORKDIR /app
@@ -10,10 +15,12 @@ RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=addres
 
 # Stage 1b: wreq-js の native（静的取得の TLS・HTTP の実装）を、ソースからビルドする。
 # npm の wreq-js が持つ native（ビルド済み）は、wreq-js が新しい版を公開しないかぎり古いまま残る（3.2.0 は 2026-08-23 で、それ以降の公開はない）。
-# 同じ版のソース（git のタグ）を、コミットを固定し、上流の Cargo.lock のまま（--locked）ビルドする。依存の版はタグの時点のままなので、
-# npm 版と同じ挙動になる（133 プロファイルの ClientHello が同じで、wreq-js 自身のテストの結果も同じ。2026-11-12 に確認）。
-# 版を上げるときは、package.json の wreq-js の版と、この 2 つの ARG をそろえる（src/containerfile_pins.test.ts が、そろっていなければ落ちる）。
-# JS（npm の wreq-js）と native の版を食い違わせないためで、食い違うと、プロファイルや引数の扱いが合わなくなる。
+# wreq-js のソース（git のタグ）を、コミットを固定してビルドする。依存は、vendor/wreq-js の固定（Cargo.toml.patch と Cargo.lock。
+# scripts/wreq-native/update.ts が作る）で、上流の wreq-util（main）の新しい Chrome プロファイル（150〜154。ClientHello が、Debian の
+# Chromium 156 を起動引数なしで動かしたものと全項目で同じ）に向ける。wreq・btls の rev は、wreq-util が自分の [patch.crates-io] で使っているものと同じ。
+# 版を上げるときは、package.json の wreq-js の版と、WREQ_JS_VERSION・WREQ_JS_REV をそろえ、update.ts で固定を作り直す
+# （src/containerfile_pins.test.ts が、そろっていなければ落ちる）。JS（npm の wreq-js）と native の版を食い違わせないためで、
+# 食い違うと、プロファイルや引数の扱いが合わなくなる。
 FROM docker.io/library/rust:1.99.1-bookworm AS wreq-native
 ARG WREQ_JS_VERSION=3.2.0
 ARG WREQ_JS_REV=0d52d5fa252841aeef34d4d063b1766a59612bf7
@@ -21,6 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake clang lib
     && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 --branch "v${WREQ_JS_VERSION}" https://github.com/sqdshguy/wreq-js /src \
     && cd /src && test "$(git rev-parse HEAD)" = "$WREQ_JS_REV"
+COPY vendor/wreq-js/Cargo.toml.patch vendor/wreq-js/Cargo.lock /vendor/
+RUN cd /src && git apply /vendor/Cargo.toml.patch && cp /vendor/Cargo.lock rust/Cargo.lock
 RUN cd /src/rust && cargo build --release --locked \
     && cp target/release/libwreq_js.so /wreq-js.linux-x64-gnu.node
 
@@ -37,9 +46,10 @@ RUN bun install --frozen-lockfile --production \
     && rm -rf node_modules/@wreq-js/binding-*-musl \
     && test -f node_modules/@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node
 COPY --from=wreq-native /wreq-js.linux-x64-gnu.node /app/node_modules/@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node
-# 読み込めて、プロファイルが揃っていることを、ビルドの時点で確かめる（distroless の最終段は、シェルが無く、ビルド中に実行して確かめられない。
+# 読み込めて、上限に決めたプロファイルがあることを、ビルドの時点で確かめる（distroless の最終段は、シェルが無く、ビルド中に実行して確かめられない。
 # server.js に取り込んだ状態での確認は、イメージを作ったあとの scripts/image-smoke.ts）
-RUN bun -e "const w = await import('wreq-js'); const p = w.getProfiles(); if (p.length < 100 || !p.includes('chrome_149')) { console.error('wreq-js native: unexpected profiles', p.length); process.exit(1); } console.log('wreq-js native ok:', p.length, 'profiles')"
+ARG WREQ_MAX_CHROME_PROFILE
+RUN WREQ_MAX="$WREQ_MAX_CHROME_PROFILE" bun -e "const w = await import('wreq-js'); const p = w.getProfiles(); const max = 'chrome_' + process.env.WREQ_MAX; if (p.length < 100 || !p.includes(max)) { console.error('wreq-js native: no ' + max + ' (' + p.length + ' profiles)'); process.exit(1); } console.log('wreq-js native ok:', p.length, 'profiles, up to', max)"
 
 # Stage 2: 本文の取り出しに使う rs-trafilatura（https://github.com/Murrough-Foley/rs-trafilatura、MIT OR Apache-2.0）。
 # 版はコミットで固定する。上流は Cargo.lock を持たない（.gitignore）ので、依存の版は vendor/rs-trafilatura/Cargo.lock で固定する
@@ -141,6 +151,11 @@ ENV PORT=8000 \
     CHROME_PATH=/usr/lib/chromium/chromium \
     YAHOO_MCP_PATH=/app/yahoo-search-mcp \
     RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura
+
+# 静的取得とブラウザが名乗る Chrome の版の上限（src/http_fetcher.ts）。Stage 1b の native が持つ最新のプロファイル。
+# 下げれば、その版の UA・TLS・ヘッダに戻せる（例: docker run -e SORA_FETCH_MAX_CHROME_PROFILE=149 …。npm の wreq-js が持っていた最新）
+ARG WREQ_MAX_CHROME_PROFILE
+ENV SORA_FETCH_MAX_CHROME_PROFILE=$WREQ_MAX_CHROME_PROFILE
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/bun", "/app/server.js"]
