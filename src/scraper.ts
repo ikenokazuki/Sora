@@ -129,6 +129,7 @@ import {
   splitQueryUrls,
   uniqueTableHeaders,
 } from './html_parser.js';
+import { envInt } from './config.js';
 import { isModuleActive } from './mcp/registry.js';
 import { getTiktokPage, parseTikTokVideoUrl } from './services/tiktok.js';
 import { getYoutubePage } from './services/youtube.js';
@@ -1708,12 +1709,6 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
   }
   return { sufficient: reasons.length === 0, reasons };
 }
-/**
- * 本文取得の既定の打ち切り上限。0 = 無効（既定）。
- * ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。
- * 有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
- */
-const DEFAULT_SCRAPE_DEADLINE_MS = 0;
 /** 半数のページが揃ってから残りを待つ猶予。 */
 const SCRAPE_DEADLINE_GRACE_MS = 5_000;
 
@@ -1931,8 +1926,9 @@ export async function integratedSearch(options: {
     officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle);
   }
 
-  const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
-  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? (Number.isFinite(envDeadline) && process.env.SORA_SCRAPE_DEADLINE_MS ? envDeadline : DEFAULT_SCRAPE_DEADLINE_MS);
+  // 既定の締切は SORA_SEARCH_SCRAPE_DEADLINE_MS（既定 0 = 打ち切り無し）。
+  // ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
+  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? envInt('SORA_SEARCH_SCRAPE_DEADLINE_MS');
   let scrapeDeadlineHit = false;
   const videoDeadlineAt = Date.now() + scrapeDeadlineMs;
   let enrichedResults = topItems;

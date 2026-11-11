@@ -27,13 +27,13 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
-import { envWithoutSecrets } from '../config.js';
+import { envInt, envPath, envWithoutSecrets } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
-// Yahoo MCP バイナリのパス
-export const YAHOO_MCP_PATH =
-  process.env.YAHOO_MCP_PATH ||
+// Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む）
+export const YAHOO_MCP_EXECUTABLE_PATH =
+  envPath('SORA_YAHOO_MCP_PATH') ??
   (existsSync('/usr/local/bin/yahoo-search-mcp') ? '/usr/local/bin/yahoo-search-mcp' :
    existsSync(join(import.meta.dir, '../../bin/yahoo-search-mcp')) ? join(import.meta.dir, '../../bin/yahoo-search-mcp') :
    'yahoo-search-mcp');
@@ -45,9 +45,7 @@ export const YAHOO_MCP_PATH =
  * out into fallback and rescue queries.
  */
 export function yahooMinIntervalMs(): number {
-  const v = parseInt(process.env.SORA_YAHOO_MIN_INTERVAL_MS || '', 10);
-  if (Number.isFinite(v) && v >= 0) return v;
-  return 500;
+  return envInt('SORA_YAHOO_MIN_INTERVAL_MS');
 }
 
 let yahooCallGate: Promise<void> = Promise.resolve();
@@ -92,9 +90,7 @@ export function yahooResultHasData(rawText: string): boolean {
 }
 
 export function yahooBreakerCooldownMs(): number {
-  const v = parseInt(process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS || '', 10);
-  if (Number.isFinite(v) && v >= 0) return v;
-  return 120000;
+  return envInt('SORA_YAHOO_BREAKER_COOLDOWN_MS');
 }
 
 let yahooBreakerTrippedAt: number | null = null;
@@ -201,7 +197,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
     let isSettled = false;
 
     // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る
-    const child = spawn(YAHOO_MCP_PATH, [], {
+    const child = spawn(YAHOO_MCP_EXECUTABLE_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: envWithoutSecrets(),
     });
@@ -231,7 +227,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
-        reject(new Error(`Failed to spawn Yahoo MCP (${YAHOO_MCP_PATH}): ${err.message}`));
+        reject(new Error(`Failed to spawn Yahoo MCP (${YAHOO_MCP_EXECUTABLE_PATH}): ${err.message}`));
       }
     });
 

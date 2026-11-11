@@ -73,7 +73,7 @@ describe('子プロセスに秘密を渡さない', () => {
       const response = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ text: JSON.stringify({ items: [{ title: 't', url: 'https://example.com/' }] }) }] } });
       const bin = script(`cat > /dev/null\nprintf '%s\\n' '${response}'`);
       const code = `import { callYahooMcp } from './src/services/yahoo.ts'; const r = await callYahooMcp('web_search', { query: 'q' }); console.log('RESULT', r.content.length);`;
-      expect(await runSora(code, { YAHOO_MCP_PATH: bin })).toBe('RESULT 1');
+      expect(await runSora(code, { SORA_YAHOO_MCP_PATH: bin })).toBe('RESULT 1');
       expectStripped(readFileSync(`${bin}.env`, 'utf8'));
     } finally {
       rmSync(dir, { recursive: true, force: true });

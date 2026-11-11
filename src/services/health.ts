@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { getCacheSize } from '../cache.js';
 import { getDb } from '../db.js';
 import { sendWebhookNotification } from '../enrichment.js';
-import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
+import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_EXECUTABLE_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
 import { errorKind, errorMessage } from '../errors.js';
@@ -77,8 +77,8 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
   // Yahoo MCP チェック
   const yahooStatus: DependencyStatus = {
-    status: existsSync(YAHOO_MCP_PATH) ? 'ok' : 'unavailable',
-    message: existsSync(YAHOO_MCP_PATH) ? undefined : 'Yahoo MCP binary not found',
+    status: existsSync(YAHOO_MCP_EXECUTABLE_PATH) ? 'ok' : 'unavailable',
+    message: existsSync(YAHOO_MCP_EXECUTABLE_PATH) ? undefined : 'Yahoo MCP binary not found',
   };
 
   // 外部依存先並行プローブ

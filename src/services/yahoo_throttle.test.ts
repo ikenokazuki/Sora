@@ -15,7 +15,7 @@ import {
   searchYahooRealtime,
 } from './yahoo.js';
 const SAVED_ENV: Record<string, string | undefined> = {
-  YAHOO_MCP_PATH: process.env.YAHOO_MCP_PATH,
+  SORA_YAHOO_MCP_PATH: process.env.SORA_YAHOO_MCP_PATH,
   SORA_YAHOO_THROTTLE: process.env.SORA_YAHOO_THROTTLE,
   SORA_YAHOO_MIN_INTERVAL_MS: process.env.SORA_YAHOO_MIN_INTERVAL_MS,
   SORA_YAHOO_BREAKER_COOLDOWN_MS: process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS,
@@ -72,7 +72,7 @@ describe('yahoo throttle discipline (hermetic)', () => {
     expect(isYahooBreakerOpen()).toBe(false);
   });
   test('open breaker fails fast with throttled marker and no spawn', async () => {
-    process.env.YAHOO_MCP_PATH = '/nonexistent/yahoo-search-mcp-for-throttle-test';
+    process.env.SORA_YAHOO_MCP_PATH = '/nonexistent/yahoo-search-mcp-for-throttle-test';
     tripYahooBreaker();
     const res = await searchYahooWeb({ query: 'throttle probe', disableFallback: true });
     expect(res.items).toEqual([]);
