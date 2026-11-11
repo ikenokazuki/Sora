@@ -151,12 +151,13 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
   });
 
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
-    ['url も urls も無い', {}, ['url', 'urls']],
+    ['url も urls も無い', {}, ['url・urls のどれか 1 つを指定してください']],
     ['url と urls の両方', { url: 'https://example.com/a', urls: ['https://example.com/b'] }, ['url, urls']],
-    ['url に concurrency', { url: 'https://example.com/a', concurrency: 2 }, ['concurrency', '"batch"']],
-    ['url に webhookUrl', { url: 'https://example.com/a', webhookUrl: 'https://example.com/hook' }, ['webhookUrl', '"batch"']],
-    ['urls に fullPage', { urls: ['https://example.com/a'], fullPage: false }, ['fullPage', '"single"']],
-    ['urls に keepDataImages', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages', '"single"']],
+    // 既定値と違う値は断る（既定値と同じ値は、下の echoed で通す）
+    ['url に concurrency: 5（既定値の 3 と違う）', { url: 'https://example.com/a', concurrency: 5 }, ['concurrency は urls を指定したとき だけ指定できます（いま: url を指定したとき）']],
+    ['url に webhookUrl', { url: 'https://example.com/a', webhookUrl: 'https://example.com/hook' }, ['webhookUrl は urls を指定したとき だけ指定できます（いま: url を指定したとき）']],
+    ['urls に fullPage: false（既定値の true と違う）', { urls: ['https://example.com/a'], fullPage: false }, ['fullPage は url を指定したとき だけ指定できます（いま: urls を指定したとき）']],
+    ['urls に keepDataImages: true（既定値の false と違う）', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages は url を指定したとき だけ指定できます（いま: urls を指定したとき）']],
     ['urls に 50000 を超える maxChars', { urls: ['https://example.com/a'], maxChars: 50_001 }, ['maxChars', '50000']],
   ];
   for (const [label, args, mentions] of wrong) {
@@ -168,6 +169,8 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
       for (const m of mentions) expect(text).toContain(m);
+      // scrape には実在の引数 mode（auto・fast・browser）がある。エラーの文は「モード」の語を使わない
+      expect(text).not.toContain('モード');
       // 正しい使い方を添える
       expect(text).toContain('url');
       expect(text).toContain('urls');
@@ -175,6 +178,40 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
       expect(batch).not.toHaveBeenCalled();
     });
   }
+
+  // LLM は、スキーマの default をそのまま引数に入れることがある。モード専用の引数でも、既定値と同じ値は断らない（無視して取得する）
+  const echoed: Array<[string, Record<string, unknown>, 'single' | 'batch', string]> = [
+    ['urls + fullPage: true', { urls: ['https://example.com/a'], fullPage: true }, 'batch', 'fullPage'],
+    ['urls + keepDataImages: false', { urls: ['https://example.com/a'], keepDataImages: false }, 'batch', 'keepDataImages'],
+    ['url + concurrency: 3', { url: 'https://example.com/a', concurrency: 3 }, 'single', 'concurrency'],
+  ];
+  for (const [label, args, calls, ignored] of echoed) {
+    test(`${label}（既定値と同じ）は通り、その引数は使われない`, async () => {
+      const single = mockSingle();
+      const batch = mockBatch();
+      const res: any = await withClient((client) => client.callTool({ name: 'scrape', arguments: args }));
+      expect(res.isError).toBeFalsy();
+      const [called, notCalled] = calls === 'single' ? [single, batch] : [batch, single];
+      expect(notCalled).not.toHaveBeenCalled();
+      expect((called.mock.calls[0][0] as Record<string, unknown>)[ignored], ignored).toBeUndefined();
+    });
+  }
+
+  test('モード専用の引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通る', async () => {
+    mockSingle();
+    mockBatch();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'scrape')!.inputSchema as any).properties;
+      const url = 'https://example.com/a';
+      for (const [base, keys] of [[{ url }, ['concurrency']], [{ urls: [url] }, ['fullPage', 'keepDataImages']]] as const) {
+        for (const key of keys) {
+          expect(props[key].default, `${key} の default`).not.toBeUndefined();
+          const res: any = await client.callTool({ name: 'scrape', arguments: { ...base, [key]: props[key].default } });
+          expect(res.isError, `${key}: ${textOf(res)}`).toBeFalsy();
+        }
+      }
+    });
+  });
 });
 
 describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ（旧 map_site）', () => {
@@ -214,12 +251,15 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
     expect(JSON.parse(textOf(res))).toEqual(mapped);
   });
 
+  const LIST = 'listOnly: true のとき';
+  const CRAWL = 'listOnly が無い（false を含む）とき';
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
-    ['listOnly: true に maxPages', { listOnly: true, maxPages: 3 }, ['maxPages', '"crawl"']],
-    ['listOnly: true に query・formats', { listOnly: true, query: 'q', formats: ['markdown'] }, ['formats', 'query', '"crawl"']],
-    ['listOnly: true に includePatterns', { listOnly: true, includePatterns: ['/docs/**'] }, ['includePatterns', '"crawl"']],
-    ['listOnly を省いて limit', { limit: 5 }, ['limit', '"list"']],
-    ['listOnly: false に since・until', { listOnly: false, since: '2026-05-01', until: '2026-10-01' }, ['since', 'until', '"list"']],
+    ['listOnly: true に maxPages: 3（既定値の 10 と違う）', { listOnly: true, maxPages: 3 }, [`maxPages は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly: true に query・formats', { listOnly: true, query: 'q', formats: ['markdown'] }, ['formats', 'query', `は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly: true に includePatterns', { listOnly: true, includePatterns: ['/docs/**'] }, [`includePatterns は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly を省いて limit', { limit: 5 }, [`limit は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
+    ['listOnly: false に since・until', { listOnly: false, since: '2026-05-01', until: '2026-10-01' }, ['since', 'until', `は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
+    ['listOnly: false に limit: 50（既定値の 200 と違う）', { listOnly: false, limit: 50 }, [`limit は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
   ];
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
@@ -229,11 +269,45 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
       const text = textOf(res);
       expect(text).toContain('入力の誤り');
       for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
       expect(text).toContain('listOnly');
       expect(crawl).not.toHaveBeenCalled();
       expect(map).not.toHaveBeenCalled();
     });
   }
+
+  // LLM は、スキーマの default をそのまま引数に入れることがある。モード専用の引数でも、既定値と同じ値は断らない（無視して実行する）
+  const echoed: Array<[string, Record<string, unknown>, 'crawl' | 'map', string]> = [
+    ['listOnly: false + limit: 200', { listOnly: false, limit: 200 }, 'crawl', 'limit'],
+    ['limit: 200（listOnly を省く）', { limit: 200 }, 'crawl', 'limit'],
+    ['listOnly: true + maxPages: 10', { listOnly: true, maxPages: 10 }, 'map', 'maxPages'],
+  ];
+  for (const [label, args, calls, ignored] of echoed) {
+    test(`${label}（既定値と同じ）は通り、その引数は使われない`, async () => {
+      const { crawl, map } = mockBoth();
+      const res: any = await withClient((client) => client.callTool({ name: 'crawl_site', arguments: { url: 'https://example.com/', ...args } }));
+      expect(res.isError).toBeFalsy();
+      const [called, notCalled] = calls === 'crawl' ? [crawl, map] : [map, crawl];
+      expect(notCalled).not.toHaveBeenCalled();
+      expect((called.mock.calls[0][0] as Record<string, unknown>)[ignored], ignored).toBeUndefined();
+    });
+  }
+
+  test('モード専用の引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通る', async () => {
+    mockBoth();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'crawl_site')!.inputSchema as any).properties;
+      const url = 'https://example.com/';
+      // 配列の既定値（formats）は、=== で比べないので対象外
+      for (const [base, keys] of [[{ listOnly: true }, ['maxPages', 'maxChars', 'responseMode', 'annotateTemporal', 'includeMedia']], [{}, ['limit']]] as const) {
+        for (const key of keys) {
+          expect(props[key].default, `${key} の default`).not.toBeUndefined();
+          const res: any = await client.callTool({ name: 'crawl_site', arguments: { url, ...base, [key]: props[key].default } });
+          expect(res.isError, `${key}: ${textOf(res)}`).toBeFalsy();
+        }
+      }
+    });
+  });
 });
 
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {

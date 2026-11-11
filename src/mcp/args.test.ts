@@ -63,14 +63,15 @@ describe('onlyForMode', () => {
     expect(onlyForMode('channel', ['video', 'channel'], { limit: 5 }, ['limit'], USAGE)).toBeUndefined();
   });
 
-  test('a given key outside its modes names the given keys, the allowed modes, the current mode and the usage', () => {
+  test('a given key outside its modes names the given keys, the allowed modes (joined by 「か」), the current mode and the usage', () => {
     const message = onlyForMode('single', ['batch', 'stream'], { concurrency: 3, delay: undefined }, ['concurrency', 'delay'], USAGE);
-    expect(message).toContain('concurrency');
-    expect(message).not.toContain('delay');
-    expect(message).toContain('batch');
-    expect(message).toContain('stream');
-    expect(message).toContain('single');
-    expect(message).toContain(USAGE);
+    expect(message).toBe(`concurrency は batch か stream だけ指定できます（いま: single）。${USAGE}`);
+  });
+
+  test('the modes are phrases about the input; the message never says 「モード」 (the tool may have a real `mode` argument)', () => {
+    const message = onlyForMode('url を指定したとき', ['urls を指定したとき'], { concurrency: 5, webhookUrl: 'https://example.com/hook' }, ['concurrency', 'webhookUrl'], USAGE);
+    expect(message).toBe(`concurrency, webhookUrl は urls を指定したとき だけ指定できます（いま: url を指定したとき）。${USAGE}`);
+    expect(message).not.toContain('モード');
   });
 
   test('passes outside the modes when none of the keys is given (undefined, null, empty string, empty array)', () => {
@@ -85,6 +86,46 @@ describe('onlyForMode', () => {
 
   test('keys not in the list are ignored', () => {
     expect(onlyForMode('single', ['batch'], { url: 'https://example.com' }, ['concurrency'], USAGE)).toBeUndefined();
+  });
+
+  describe('defaults: a value equal to the default is not counted as given', () => {
+    const defaults = { concurrency: 3, fullPage: true, keepDataImages: false };
+
+    test('a value equal to its default passes (an LLM may echo the JSON Schema default)', () => {
+      expect(onlyForMode('single', ['batch'], { concurrency: 3 }, ['concurrency'], USAGE, defaults)).toBeUndefined();
+      expect(onlyForMode('batch', ['single'], { fullPage: true, keepDataImages: false }, ['fullPage', 'keepDataImages'], USAGE, defaults)).toBeUndefined();
+    });
+
+    test('a value different from its default is still refused (false and 0 included)', () => {
+      expect(onlyForMode('single', ['batch'], { concurrency: 5 }, ['concurrency'], USAGE, defaults)).toContain('concurrency');
+      expect(onlyForMode('batch', ['single'], { fullPage: false }, ['fullPage'], USAGE, defaults)).toContain('fullPage');
+      expect(onlyForMode('batch', ['single'], { keepDataImages: true }, ['keepDataImages'], USAGE, defaults)).toContain('keepDataImages');
+      expect(onlyForMode('single', ['batch'], { concurrency: 0 }, ['concurrency'], USAGE, defaults)).toContain('concurrency');
+    });
+
+    test('only the keys that differ from their default are named', () => {
+      const message = onlyForMode('single', ['batch'], { concurrency: 3, webhookUrl: 'https://example.com/hook' }, ['concurrency', 'webhookUrl'], USAGE, { concurrency: 3 });
+      expect(message).toContain('webhookUrl');
+      expect(message).not.toContain('concurrency');
+    });
+
+    test('a key that is not in defaults is refused whatever the value', () => {
+      expect(onlyForMode('single', ['batch'], { webhookUrl: 'https://example.com/hook' }, ['webhookUrl'], USAGE, defaults)).toContain('webhookUrl');
+    });
+
+    test('without defaults, the default value is refused as before', () => {
+      expect(onlyForMode('single', ['batch'], { concurrency: 3 }, ['concurrency'], USAGE)).toContain('concurrency');
+      expect(onlyForMode('single', ['batch'], { concurrency: 3 }, ['concurrency'], USAGE, undefined)).toContain('concurrency');
+    });
+
+    test('arrays and objects are compared by ===, so they never count as the default', () => {
+      expect(onlyForMode('single', ['batch'], { formats: ['markdown'] }, ['formats'], USAGE, { formats: ['markdown'] })).toContain('formats');
+      expect(onlyForMode('single', ['batch'], { headers: {} }, ['headers'], USAGE, { headers: {} })).toContain('headers');
+    });
+
+    test('in an allowed mode, defaults change nothing', () => {
+      expect(onlyForMode('batch', ['batch'], { concurrency: 5 }, ['concurrency'], USAGE, defaults)).toBeUndefined();
+    });
   });
 });
 

@@ -29,15 +29,19 @@ export function onlyWith(args: Record<string, unknown>, key: string, allowedWhen
 }
 
 /**
- * mode（ハンドラが入力から決めた文字列。url か urls か、動画かチャンネルか、など）が allowedModes に含まれないのに、
- * keys のどれかが指定されているとき、usage を添えたエラーの文。モードに合わない引数を、黙って無視せずに知らせる。
- * 既定値（zod の default）のある引数を keys に入れると、いつも指定されたことになる。
+ * mode（ハンドラが入力から決めた語句）が allowedModes に含まれないのに、keys のどれかが指定されているとき、
+ * usage を添えたエラーの文。モードに合わない引数を、黙って無視せずに知らせる。
+ * mode と allowedModes は、そのまま LLM に見せる。入力の形で言う（'urls を指定したとき'・'listOnly: true のとき' など）。
+ * 引数の mode（auto・fast・browser など）と紛れないよう、文に「モード」の語は使わない。
+ * defaults は、引数の既定値（`.meta({ default })` と同じ値）。既定値と同じ値（===）で指定された引数は、指定されたと数えない
+ * （LLM が JSON Schema の default をそのまま入れても断らない）。配列・オブジェクトは === で一致しないので、いつも指定されたと数える。
+ * 引数に zod の `.default()` は付けない（省いても値が入り、いつも指定されたことになる）。`.meta({ default })` だけを付ける。
  */
-export function onlyForMode(mode: string, allowedModes: string[], args: Record<string, unknown>, keys: string[], usage: string): string | undefined {
+export function onlyForMode(mode: string, allowedModes: string[], args: Record<string, unknown>, keys: string[], usage: string, defaults?: Record<string, unknown>): string | undefined {
   if (allowedModes.includes(mode)) return undefined;
-  const set = keys.filter((k) => given(args[k]));
+  const set = keys.filter((k) => given(args[k]) && args[k] !== defaults?.[k]);
   if (set.length === 0) return undefined;
-  return `${set.join(', ')} は ${allowedModes.map((m) => `"${m}"`).join('・')} モードのときだけ指定できます（いまのモード: ${mode}）。${usage}`;
+  return `${set.join(', ')} は ${allowedModes.join(' か ')} だけ指定できます（いま: ${mode}）。${usage}`;
 }
 
 /** MCP のエラー応答（入力の誤り）。 */

@@ -10,6 +10,8 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  */
 export const SORA_VERSION = '4.2.0';
 export const DEFAULT_MAX_CHARS = 30_000;
+/** 一括スクレイプ（REST の /scrape/batch と、MCP の scrape の urls）の、1 ページあたりの maxChars の上限 */
+export const SCRAPE_BATCH_MAX_CHARS = 50_000;
 /** ハイライトを選ぶ全文（maxChars で切る前の本文）の上限。docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 4 */
 export const HIGHLIGHT_SOURCE_MAX_CHARS = 200_000;
 
@@ -349,7 +351,7 @@ export const ScrapeRequestSchema = z.object({
 export const SCRAPE_BATCH_INPUT_SHAPE = {
     urls: z.array(z.string().url()).min(1).max(20).describe('スクレイピング対象の URL 配列 (最大 20 件)'),
     concurrency: z.number().int().min(1).max(5).optional().describe('並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
-    maxChars: z.number().int().min(1).max(50_000).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+    maxChars: z.number().int().min(1).max(SCRAPE_BATCH_MAX_CHARS).optional().describe('各ページの最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
     mode: SCRAPE_MODE_FIELD,
     formats: z.array(ScrapeFormatSchema).optional().describe('取得フォーマット'),
     headers: SCRAPE_HEADERS_FIELD,

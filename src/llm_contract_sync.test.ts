@@ -244,13 +244,11 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
     it('MCP の scrape にも無い', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape']) {
-        const tool = (server as any)._registeredTools[toolName];
-        expect(tool).toBeDefined();
-        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
-        for (const field of removed) {
-          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
-        }
+      const tool = (server as any)._registeredTools['scrape'];
+      expect(tool).toBeDefined();
+      const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of removed) {
+        expect(schema[field], `scrape.${field}`).toBeUndefined();
       }
     });
 
