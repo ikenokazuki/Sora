@@ -577,6 +577,36 @@ function formOf(s: Setting): string {
   }
 }
 
+/** エラー文に出す値。秘密は長さだけ。URL は資格情報・問い合わせ・断片を伏せ、読めない URL は長さだけ。 */
+function shown(s: Setting, raw: string): string {
+  if (s.secret) return `設定済み、長さ ${raw.length}`;
+  if (s.kind !== 'url') return JSON.stringify(raw);
+  try {
+    const u = new URL(raw.trim());
+    const hidden = `${u.search ? '?…' : ''}${u.hash ? '#…' : ''}`;
+    if (u.username || u.password) {
+      u.username = '***';
+      u.password = '';
+    }
+    u.search = '';
+    u.hash = '';
+    return JSON.stringify(u.href + hidden);
+  } catch {
+    return `読めない値、長さ ${raw.length}`;
+  }
+}
+
+/** 1 つの変数の値が不正なら、checkEnv が出すのと同じエラー文。正しい値・未設定なら undefined。 */
+export function envError(name: EnvName, env: Env = process.env): string | undefined {
+  const s = settingOf(name);
+  const raw = env[name];
+  if (isBlank(raw) || parse(s, raw as string) !== undefined) return undefined;
+  return `${name} の値（${shown(s, raw as string)}）は不正です。正しい形: ${formOf(s)}`;
+}
+
+/** 旧名のうち、SORA_ の付かない汎用の名前に添える文（ほかのプログラムの設定かもしれない）。 */
+const OTHER_PROGRAMS = 'ほかのプログラムのものなら、そのままで構いません';
+
 /**
  * 起動時の検査（純粋な関数）。errors があれば起動を止める（呼ぶのは起動の処理だけ）。
  * (a) 未知の SORA_* は警告 (b) 旧名は警告（置き換え先つき。新名があれば旧名は無視）
@@ -587,20 +617,27 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  for (const [name, s] of Object.entries(TABLE)) {
-    const raw = env[name];
-    if (isBlank(raw) || parse(s, raw as string) !== undefined) continue;
-    const shown = s.secret ? `設定済み、長さ ${(raw as string).length}` : JSON.stringify(raw);
-    errors.push(`${name} の値（${shown}）は不正です。正しい形: ${formOf(s)}`);
+  for (const name of Object.keys(TABLE)) {
+    const error = envError(name as EnvName, env);
+    if (error) errors.push(error);
   }
+
+  // 空の値は未設定（Fail-Open）。旧い実装はキーの名前があれば認証を掛けていたので、黙って外れないよう知らせる
+  if (typeof env.SORA_API_KEY === 'string' && env.SORA_API_KEY.trim() === '') warnings.push('SORA_API_KEY が空です。未設定として扱い、認証は無効になります');
 
   for (const [old, { to, policy }] of Object.entries(LEGACY)) {
     if (isBlank(env[old])) continue;
+    const generic = !old.startsWith('SORA_');
     if (!to) warnings.push(`${old} は v5.0.0 で廃止しました（読みません）。設定を消してください`);
-    else if (!isBlank(env[to])) warnings.push(`${old} は ${to} に変わりました。${to} が設定されているので、${old} は無視します。${old} を消してください`);
-    else if (old === 'API_KEY') errors.push('API_KEY は v5.0.0 から読みません。ほかのプログラムのための値なら unset してください。Sora の認証キーなら SORA_API_KEY を設定してください');
-    else if (policy === 'error') errors.push(`${old} は ${to} に変わりました（旧名は読みません）。このままでは設定が効かないので、起動しません。${to} を設定してください`);
-    else warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください`);
+    else if (!isBlank(env[to])) {
+      warnings.push(`${old} は ${to} に変わりました。${to} が設定されているので、${old} は無視します。${generic ? `Sora のための設定なら消してください（${OTHER_PROGRAMS}）` : `${old} を消してください`}`);
+    } else if (old === 'API_KEY') {
+      errors.push('API_KEY は v5.0.0 から読みません（Sora の認証キーは SORA_API_KEY）。このままでは認証が掛からないので、起動しません。ほかのプログラムのための値なら unset してください。Sora の認証キーなら SORA_API_KEY を設定してください');
+    } else if (policy === 'error') {
+      errors.push(`${old} は ${to} に変わりました（旧名は読みません）。このままでは設定が効かないので、起動しません。${to} を設定してください`);
+    } else {
+      warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください${generic ? `（${OTHER_PROGRAMS}）` : ''}`);
+    }
   }
 
   for (const name of Object.keys(env).sort()) {

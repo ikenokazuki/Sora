@@ -4,6 +4,7 @@ import {
   checkEnv,
   envBool,
   envEnum,
+  envError,
   envInt,
   envJson,
   envList,
@@ -461,10 +462,30 @@ describe('checkEnv', () => {
     expect(warnings[0]).toContain(to);
   });
 
-  test('API_KEY alone: tells to unset it if it belongs to another program, or to set SORA_API_KEY', () => {
+  test('API_KEY alone: tells to unset it if it belongs to another program, or to set SORA_API_KEY, and that Sora does not start', () => {
     const [message] = checkEnv({ API_KEY: 'x' }).errors;
     expect(message).toContain('unset');
     expect(message).toContain('SORA_API_KEY');
+    expect(message).toContain('起動しません');
+  });
+
+  test('generic old names (without SORA_) say that another program may keep them', () => {
+    const others = 'ほかのプログラムのものなら、そのままで構いません';
+    for (const [old, to] of Object.entries(RENAMED_WARN)) {
+      const alone = checkEnv({ [old]: 'x' }).warnings[0];
+      const ignored = checkEnv({ [old]: 'x', [to]: 'x' }).warnings[0];
+      for (const message of [alone, ignored]) {
+        if (old.startsWith('SORA_')) expect(message, old).not.toContain(others);
+        else expect(message, old).toContain(others);
+      }
+    }
+  });
+
+  test('SORA_API_KEY present but blank warns that authentication is off (Fail-Open)', () => {
+    for (const blank of ['', '   ']) {
+      expect(checkEnv({ SORA_API_KEY: blank })).toEqual({ errors: [], warnings: ['SORA_API_KEY が空です。未設定として扱い、認証は無効になります'] });
+    }
+    expect(checkEnv({ SORA_API_KEY: 'k' })).toEqual({ errors: [], warnings: [] });
   });
 
   test.each(Object.entries(RENAMED_WARN))('(b) %s alone warns with its replacement %s, without printing the value', (old, to) => {
@@ -540,6 +561,28 @@ describe('checkEnv', () => {
 
   test('a non-secret invalid value is shown', () => {
     expect(checkEnv({ PORT: 'abc' }).errors[0]).toContain('"abc"');
+  });
+
+  test('URL values never show credentials, the query or the fragment; an unreadable URL shows only its length', () => {
+    const [masked] = checkEnv({ SORA_X_DETAIL_BASE_URL: 'ftp://user9:pw-9q@fx.example.test/v1?token=tk-8z#frag-5' }).errors;
+    expect(masked).toContain('"ftp://***@fx.example.test/v1?…#…"');
+    for (const leak of ['user9', 'pw-9q', 'token', 'tk-8z', 'frag-5']) expect(masked).not.toContain(leak);
+    const unreadable = 'sora.example.com/?k=v-3x';
+    const [message] = checkEnv({ SORA_PUBLIC_URL: unreadable }).errors;
+    expect(message).toContain(`読めない値、長さ ${unreadable.length}`);
+    expect(message).not.toContain('sora.example.com');
+    expect(checkEnv({ SORA_HTS_CROSS_INDEX_URL: 'http://index.example.test/cross.jsonl.gz' }).errors[0]).toContain('"http://index.example.test/cross.jsonl.gz"');
+  });
+
+  test('envError gives the same message as checkEnv for one variable, and nothing for a valid or unset value', () => {
+    expect(envError('PORT', { PORT: 'abc' })).toBe(checkEnv({ PORT: 'abc' }).errors[0]);
+    expect(envError('SORA_FETCH_MAX_CHROME_PROFILE', { SORA_FETCH_MAX_CHROME_PROFILE: '0x9a' })).toContain('136');
+    expect(envError('SORA_FETCH_TRUST_STORE', { SORA_FETCH_TRUST_STORE: 'system' })).toContain('defaultPaths');
+    expect(envError('SORA_MODULES', { SORA_MODULES: 'web,weeb' })).toContain('weeb');
+    expect(envError('PORT', { PORT: '80' })).toBeUndefined();
+    expect(envError('PORT', {})).toBeUndefined();
+    expect(envError('PORT', { PORT: '  ' })).toBeUndefined();
+    expect(() => envError('NOT_A_SETTING' as never, {})).toThrow('Unknown setting: NOT_A_SETTING');
   });
 
   test('the output is deterministic', () => {
