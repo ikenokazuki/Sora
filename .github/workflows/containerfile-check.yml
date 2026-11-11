@@ -1,0 +1,27 @@
+name: Containerfile
+# Containerfile や依存の固定を変える PR だけ、イメージを実際にビルドして、wreq-js の native などが入っていることを確かめる。
+# 公開のワークフロー（docker-publish.yml）は main への push でしかイメージをビルドしないので、これが無いと、ビルドの失敗はマージの後に分かる。
+on:
+  pull_request:
+    paths:
+      - Containerfile
+      - package.json
+      - bun.lock
+      - vendor/**
+      - scripts/image-smoke.ts
+      - .github/workflows/containerfile-check.yml
+concurrency:
+  group: containerfile-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -f Containerfile -t sora-containerfile-check .
+      - name: Smoke test inside the image
+        run: docker run --rm -v "$PWD/scripts/image-smoke.ts:/app/image-smoke.ts:ro" --entrypoint /usr/local/bin/bun sora-containerfile-check /app/image-smoke.ts
