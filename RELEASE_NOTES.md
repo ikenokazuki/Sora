@@ -1,11 +1,11 @@
-# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた（REST は変えていない）
+# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。REST（URL・リクエスト・レスポンス）と型付きクライアント（`client/`）の関数名は変えていません。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,071・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
 
 ## 先に気づく変更（呼び出し側）
 
-- **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと `Tool <旧名> not found` のエラーです。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
-- **REST は変えていません。** URL・リクエスト・レスポンスは v4.2.0 と同じで、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
+- **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
 - **`search_road_traffic` の応答の `source` が `"jartic"` から `"yahoo-roadway"` になりました**（REST・MCP とも。#70）。実際に読んでいるのは Yahoo! 道路交通情報（`roadway.yahoo.co.jp`）のページで、取得元を JARTIC と表示するのは実態に合わないためです。取得の動きとほかの欄は変えていません。`source` で分岐している呼び出し側は直してください。`search_tools` の検索語には `JARTIC` を残しています。
 - **MCP の応答の形が変わるツールがあります。**
   - `lookup_address`・`lookup_hts`・`get_youtube` は、旧ツールの応答の先頭に `mode` 欄が付きます（`normalize` / `reverse` / `postal`、`verify` / `predict`、`video` / `channel`）。ほかの欄は旧ツールと同じです。
@@ -66,7 +66,7 @@
   - 保存先は `SORA_HTS_DIR` の `releases/` です（版ごとの gzip と `index.json`）。`GET /trade/hts/releases` で一覧、`GET /trade/hts/releases/:id` で 1 つの版を返します。無効のときは 404 `MODULE_DISABLED` です。
 - **住所の座標化で、番地まである住所は国土地理院を先に引きます**（`get_place_info`・`search_poi` の中心地名、#69）。該当が無いときや国土地理院が使えないときは Nominatim に進みます。地名・駅名・施設名は今までどおり Nominatim が先で、国土地理院は Nominatim が「該当なし」のときだけです（Nominatim が HTTP エラーのときは、国土地理院に落とさずエラーです）。Nominatim の間隔（1 秒に 1 回）は Nominatim への問い合わせにだけかけます。
 - **地震は、気象庁の公式データ（`bosai/quake/data`）を主にし、取れないときだけ P2P地震情報から返します**（`get_disaster_info` の `earthquake`・`/disaster/earthquake`、#69）。同じ地震の報は 1 件にまとめ、国外の遠地地震は含めません。`minIntensity` の絞り込みは一覧の全件（直近約 1 か月・約 160 件）が対象です。各件の `source`（`jma` / `p2pquake`）で取得元が分かり、両方失敗したら両方の理由を書いたエラーです。応答の形は同じです。
-- **ブラウザの TLS とヘッダを、静的取得（wreq-js の `chrome_149`）にそろえました（#73）。** 新しい版の Chromium が足す TLS の拡張（51764）・署名アルゴリズムの GREASE・Accept の `image/jxl` を `--disable-features` で止め、`sec-ch-ua` のブランドの一覧を Chromium の規則で作ります。Cloudflare 系のサイト（Indeed など）で 403 になっていたのが直りました（25 サイト × 3 周で 66/75 → 71/75）。
+- **ブラウザの TLS とヘッダを、静的取得（wreq-js の `chrome_149`）にそろえました（#73）。** 新しい版の Chromium が足す TLS の拡張（51764）・署名アルゴリズムの GREASE・Accept の `image/jxl` を `--disable-features` で止め、`sec-ch-ua` のブランドの一覧を Chromium の規則で作ります。Chrome を名乗る UA のまま 403 になっていた Cloudflare 系のサイトのうち、通るようになったものがあります（同梱の Chromium 156 で 25 サイト × 3 周を前後で取ると 66/75 → 71/75。Indeed は 0/3 → 3/3、悪化したサイトは無し。G2 は前後とも 0/3 で通らない）。件数が小さく、サイト側の揺れも含むので、数字は目安です。
 - **コンテナのイメージを 1.51GB から 750MB にしました**（圧縮して 623MB → 345MB、#74）。最終のイメージに、Chromium が読む共有ライブラリと本番の依存だけを入れます。
 - **`SORA_BROWSER_LOW_MEMORY` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動できます**（既定は無効、#75）。`true`・`1`・`on`・`yes` で有効です。描画中のピークが、ページを 1 つずつ開いたとき約 18%、3 ページ同時で約 14% 下がります。待機中の常駐は変わらず、`navigator.deviceMemory` が 8 から 2 になります。
 - **REST の操作の一覧と定義を返す `GET /tools`・`GET /tools/<name>` を足しました（#76）。** `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで 52 件）で、`q`・`category` で絞れます。`GET /tools/<name>` は入力のスキーマ・path と query の引数・文書にあるエラー・別名や GET の形（`alternatives`）を返し、`?response=true` で応答のスキーマも付けます。

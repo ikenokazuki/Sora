@@ -67,7 +67,7 @@ export function registerTool<Args extends ZodRawShapeCompat>(
     handle.disable();
   }
 
-  // LibreChat may look up the model-emitted `default.` name verbatim before dispatch.
+  // Some MCP clients look up the model-emitted `default.` name verbatim before dispatch.
   // Publish that alias only alongside an activated deferred tool, keeping startup lean.
   const compatibilityHandle = !opts.defaultEnabled
     ? mcpServer.tool(`default.${name}`, description, schema, handler)

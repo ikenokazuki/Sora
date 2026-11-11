@@ -368,9 +368,9 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 
 v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめました（初期公開は 14 個から 13 個）。旧いツール名 29 個がなくなり、新しいツール名 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。
 
-- **旧名の別名は残していません。** 旧名で呼ぶと `Tool <旧名> not found` のエラーです。下の表の新しいツールと引数で呼んでください。
+- **旧名の別名は残していません。** 旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。下の表の新しいツールと引数で呼んでください。
 - **`search_tools` で旧名を検索すると、新しいツールが見つかります**（新しいツールの検索語に旧名を入れています）。
-- **REST（URL・リクエスト・レスポンス）は変えていません。** `GET /tools` の操作の名前（`operationId`）も旧いツール名のままです。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
 - 統合したツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選びます。選んだ使い方に無い引数を既定と違う値で渡すと、正しい使い方を添えた入力の誤り（`isError`、「入力の誤り: …」）になります。既定と同じ値は通ります。
 - 応答の形とエラーの変化は、[RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節にあります。
 
@@ -423,7 +423,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
 
-遅延ツールは `search_tools` で有効化すると、正式名（例: `search_keywords`）と LibreChat 互換名（`default.search_keywords`）が公開されます。初期公開は13ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
+遅延ツールは `search_tools` で有効化すると、正式名（例: `search_keywords`）と `default.` を付けた互換名（`default.search_keywords`）が公開されます。初期公開は13ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
@@ -2564,7 +2564,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
 | `SORA_TRACKING_PAGE_SECRET` | *(未設定)* | 荷物ごとの表示ページ（照会結果の `pageUrl`、`GET /t/:carrier/:number`）の署名に使う秘密鍵。`SORA_PUBLIC_URL` と両方を設定したときだけ表示ページが有効になり、照会結果に `pageUrl` が付きます。未設定なら表示ページは `404` で、起動時の処理もありません。値を変えると、発行済みの URL はすべて無効になります |
 | `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。`pageUrl` の組み立てに使います |
-| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
+| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
 | `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
 | `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
