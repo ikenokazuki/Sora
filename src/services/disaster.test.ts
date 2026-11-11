@@ -645,7 +645,7 @@ describe('search_earthquake', () => {
   });
 });
 
-describe('get_elevation の緯度・経度の範囲', () => {
+describe('get_place_info（REST は /geo/elevation）の緯度・経度の範囲', () => {
   it('REST のスキーマは緯度 -90〜90・経度 -180〜180 だけを受ける', () => {
     expect(ElevationRequestSchema.safeParse({ lat: 35.68, lon: 139.76 }).success).toBe(true);
     expect(ElevationRequestSchema.safeParse({ lat: -90, lon: 180 }).success).toBe(true);
@@ -669,7 +669,7 @@ describe('get_elevation の緯度・経度の範囲', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_elevation');
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_place_info');
       const props = tool?.inputSchema.properties as any;
       expect([props.lat.minimum, props.lat.maximum, props.lon.minimum, props.lon.maximum]).toEqual([-90, 90, -180, 180]);
     } finally {
@@ -687,7 +687,7 @@ describe('get_elevation の緯度・経度の範囲', () => {
     await client.connect(ct);
     try {
       for (const args of [{ lat: 999, lon: 999 }, { lat: 35.68, lon: 999 }, { lat: -91, lon: 139.76 }]) {
-        const out = await client.callTool({ name: 'get_elevation', arguments: args });
+        const out = await client.callTool({ name: 'get_place_info', arguments: args });
         expect(out.isError).toBe(true);
         expect((out.content as Array<{ text: string }>)[0].text).toMatch(/Input validation error/);
       }

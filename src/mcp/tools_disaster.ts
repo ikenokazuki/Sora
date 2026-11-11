@@ -7,6 +7,7 @@ import { addressErrorMessage } from '../services/address_errors.js';
 import { registerTool, toolJson } from './registry.js';
 import { onlyForMode, usageError } from './args.js';
 
+import type { ElevationResult } from '../scraper.js';
 import type { ToolRegistrationContext } from './registry.js';
 
 /** 🚨 Category 5: Disaster & Emergency (モジュール: 'disaster') */
@@ -102,34 +103,61 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     { defaultEnabled: true, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
   );
 
-  // Tool: get_elevation (Nominatim 座標解決 & 国土地理院 標高取得) - DEFERRED
+  // Tool: get_place_info (地点の情報。include で選ぶ。いまは標高だけ) - DEFERRED
+  // include の種類ごとの節。種類を足すときは、ここに 1 行足す。どの節も、地点（location）と自分の節を返す
+  type PlaceWhere = { address?: string; lat?: number; lon?: number; noCache?: boolean };
+  type PlaceSection = { label: string; build: (where: PlaceWhere) => Promise<{ location: Record<string, unknown>; section: Record<string, unknown> }> };
+  const PLACE_SECTIONS: Record<string, PlaceSection> = {
+    // 旧 get_elevation の応答を、欄の名前と値のまま、地点と標高に分ける（キャッシュの印は標高の節に）
+    elevation: { label: 'Elevation', build: async (where) => {
+      const { elevationMeters, dataAccuracy, formatted, source, cached, cachedAt, ageSeconds, ...location } =
+        await fetchElevationAndCoordinates(where) as ElevationResult & { cached?: boolean; cachedAt?: string; ageSeconds?: number };
+      return { location, section: { elevationMeters, dataAccuracy, formatted, source, cached, cachedAt, ageSeconds } };
+    } },
+  };
+  const PLACE_KINDS = Object.keys(PLACE_SECTIONS);
+  const PLACE_INCLUDE_DEFAULT = ['elevation'];
+  const PLACE_USAGE = `使い方: 地点は address（住所・地名）か、lat と lon（座標）のどちらか一方。include で返す情報を選ぶ（使える値: ${PLACE_KINDS.join('・')}。既定 ${JSON.stringify(PLACE_INCLUDE_DEFAULT)}）。`;
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
-    'get_elevation',
+    'get_place_info',
     'disaster',
-    '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名を座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }',
+    '【地点情報・標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。地点は住所・地名（address）か座標（lat/lon）のどちらか一方。住所・地名は座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。includeで返す情報を選びます（elevation: 国土地理院の海抜標高（m）。既定）。location.needsVerificationがtrueならlocation.matchedTitleが意図した場所か確認してください。回答・公開時はlocation.geocodingAttributionを出典として表示すること。返却: { location: { lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }, elevation: { elevationMeters, dataAccuracy, formatted }, include }',
     {
-      address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
-      lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
-      lon: z.number().min(-180).max(180).optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
+      address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")。lat/lonとは排他'),
+      lat: z.number().min(-90).max(90).optional().describe('緯度 (lon とペア。address の代わりに直接指定, 例: 35.681236)'),
+      lon: z.number().min(-180).max(180).optional().describe('経度 (lat とペア。例: 139.767125)'),
       noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
+      include: z.array(z.string()).optional().describe(`返す情報 (${PLACE_KINDS.join('・')}。既定 ${JSON.stringify(PLACE_INCLUDE_DEFAULT)})。elevation: 国土地理院の海抜標高`).meta({ default: PLACE_INCLUDE_DEFAULT }),
     },
-    async (opts) => {
-      try {
-        const result = await fetchElevationAndCoordinates(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Elevation error: ${errorMessage(err) || err}` }],
-        };
+    async ({ address, lat, lon, noCache, include }) => {
+      if ((lat === undefined) !== (lon === undefined)) return usageError(`lat と lon は組で指定してください。${PLACE_USAGE}`);
+      const hasAddress = Boolean(address?.trim());
+      if (hasAddress && lat !== undefined) return usageError(`address と lat・lon は、どちらか一方だけを指定してください。${PLACE_USAGE}`);
+      if (!hasAddress && lat === undefined) return usageError(`address または (lat, lon) のいずれかを指定してください。${PLACE_USAGE}`);
+      const requested = include ?? PLACE_INCLUDE_DEFAULT;
+      if (requested.length === 0) return usageError(`include に、返す情報を 1 つ以上指定してください。${PLACE_USAGE}`);
+      const unknown = requested.filter((kind) => !PLACE_KINDS.includes(kind));
+      if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${PLACE_USAGE}`);
+      // サービスには旧 get_elevation の引数だけを渡す
+      const where: PlaceWhere = hasAddress ? { address } : { lat, lon };
+      if (noCache !== undefined) where.noCache = noCache;
+      const kinds = PLACE_KINDS.filter((kind) => requested.includes(kind));
+      const answer: Record<string, unknown> = {};
+      for (const kind of kinds) {
+        try {
+          const { location, section } = await PLACE_SECTIONS[kind].build(where);
+          answer.location ??= location;
+          answer[kind] = section;
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `${PLACE_SECTIONS[kind].label} error: ${errorMessage(err) || err}` }] };
+        }
       }
+      return { content: [{ type: 'text', text: toolJson({ ...answer, include: kinds }) }] };
     },
-    { defaultEnabled: deferredDefault, keywords: ['標高', '海抜', 'ジオコーディング', '国土地理院', '住所検索', '座標', '津波リスク', '水害'] },
+    { defaultEnabled: deferredDefault, keywords: ['標高', '海抜', 'ジオコーディング', '国土地理院', '住所検索', '座標', '津波リスク', '水害', '地点情報', 'get_elevation'] },
   );
 
   // Tool: search_poi (OpenPOI 全国施設POI検索) - DEFERRED
@@ -139,7 +167,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_poi',
     'disaster',
-    '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
+    '【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_place_info / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }',
     {
       query: z.string().trim().min(1).max(200).optional().describe('施設・住所キーワード (例: "ラーメン", "世田谷区 カフェ")'),
       lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),

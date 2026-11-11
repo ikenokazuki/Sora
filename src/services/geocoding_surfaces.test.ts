@@ -38,11 +38,12 @@ describe('shared geocoding across MCP and REST', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      const [get, post, mcp, elevation] = await Promise.all([
+      const [get, post, mcp, elevation, place] = await Promise.all([
         publicDataRoutes.request('/geo/poi?query=ラーメン&center=原宿'),
         publicDataRoutes.request('/geo/poi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'ラーメン', center: '原宿' }) }),
         client.callTool({ name: 'search_poi', arguments: { query: 'ラーメン', center: '原宿' } }),
         publicDataRoutes.request('/geo/elevation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: '原宿' }) }),
+        client.callTool({ name: 'get_place_info', arguments: { address: '原宿' } }),
       ]);
       for (const res of [get, post]) {
         expect(res.status).toBe(200);
@@ -58,9 +59,17 @@ describe('shared geocoding across MCP and REST', () => {
         source: 'gsi', geocodingSource: 'nominatim', geocodingAttribution: expect.stringContaining('OpenStreetMap'), matchedTitle: '東京都渋谷区神宮前 原宿',
         lat: 35.669968, lon: 139.709008, elevationMeters: 34, needsVerification: true,
       });
+      // MCP の get_place_info は、同じ解決を location に、標高を elevation の節に分けて返す
+      expect(place.isError).not.toBe(true);
+      const placeBlock = (place.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text');
+      expect(JSON.parse(placeBlock!.text!)).toMatchObject({
+        location: { geocodingSource: 'nominatim', geocodingAttribution: expect.stringContaining('OpenStreetMap'), matchedTitle: '東京都渋谷区神宮前 原宿', lat: 35.669968, lon: 139.709008, needsVerification: true },
+        elevation: { source: 'gsi', elevationMeters: 34 },
+        include: ['elevation'],
+      });
       expect(geocodingRequests).toBe(1);
       const tools = (await client.listTools()).tools;
-      for (const name of ['search_poi', 'get_elevation']) {
+      for (const name of ['search_poi', 'get_place_info']) {
         expect(tools.find((tool) => tool.name === name)!.inputSchema.properties).toHaveProperty('noCache');
       }
     } finally {

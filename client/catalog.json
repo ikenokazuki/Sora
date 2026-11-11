@@ -246,25 +246,6 @@
     "file": "servers/sora/get_country_context_updates.ts"
   },
   {
-    "name": "get_elevation",
-    "fn": "getElevation",
-    "category": "disaster",
-    "description": "【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名を座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }",
-    "keywords": [
-      "標高",
-      "海抜",
-      "ジオコーディング",
-      "国土地理院",
-      "住所検索",
-      "座標",
-      "津波リスク",
-      "水害"
-    ],
-    "method": "POST",
-    "path": "/geo/elevation",
-    "file": "servers/sora/get_elevation.ts"
-  },
-  {
     "name": "get_flight_status",
     "fn": "getFlightStatus",
     "category": "life",
@@ -299,6 +280,27 @@
     "method": "POST",
     "path": "/gov/law-text",
     "file": "servers/sora/get_law_text.ts"
+  },
+  {
+    "name": "get_place_info",
+    "fn": "getElevation",
+    "category": "disaster",
+    "description": "【地点情報・標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。地点は住所・地名（address）か座標（lat/lon）のどちらか一方。住所・地名は座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。includeで返す情報を選びます（elevation: 国土地理院の海抜標高（m）。既定）。location.needsVerificationがtrueならlocation.matchedTitleが意図した場所か確認してください。回答・公開時はlocation.geocodingAttributionを出典として表示すること。返却: { location: { lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }, elevation: { elevationMeters, dataAccuracy, formatted }, include }",
+    "keywords": [
+      "標高",
+      "海抜",
+      "ジオコーディング",
+      "国土地理院",
+      "住所検索",
+      "座標",
+      "津波リスク",
+      "水害",
+      "地点情報",
+      "get_elevation"
+    ],
+    "method": "POST",
+    "path": "/geo/elevation",
+    "file": "servers/sora/get_place_info.ts"
   },
   {
     "name": "get_weather",
@@ -842,7 +844,7 @@
     "name": "search_poi",
     "fn": "searchPoi",
     "category": "disaster",
-    "description": "【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }",
+    "description": "【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_place_info / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution }",
     "keywords": [
       "POI",
       "施設検索",

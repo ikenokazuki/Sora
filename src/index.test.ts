@@ -4124,7 +4124,7 @@ describe('Sora REST & MCP Endpoints', () => {
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
     expect(enabledToolsAll).toContain('search_diet_minutes');
-    expect(enabledToolsAll).toContain('get_elevation');
+    expect(enabledToolsAll).toContain('get_place_info');
     expect(enabledToolsAll).toContain('get_flight_status');
     expect(enabledToolsAll).toContain('check_cpsc_certificate');
     expect(enabledToolsAll).toContain('check_fda_regulated');
@@ -4913,7 +4913,7 @@ describe('Sora REST & MCP Endpoints', () => {
         'search_road_traffic',
         'search_route',
         'get_flight_status',
-        'get_elevation',
+        'get_place_info',
         'search_realtime',
         'search_keywords',
         'search_chiebukuro',

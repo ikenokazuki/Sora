@@ -13,6 +13,7 @@ import { createAddressContext, setAddressContextForTest } from './services/addre
 import { createTestAddressData, settleAddressData } from './test_fixtures/address/builders.js';
 import { CHIYODA_LG, replaceTowns, sampleUpstream } from './test_fixtures/address/harness.js';
 import * as yahooCache from './yahoo_search_cache.js';
+import { clearCache } from './cache.js';
 import { BatchScrapeRequestSchema, ScrapeRequestSchema } from './types.js';
 import type { XPostDetailProvider } from './services/x_detail.js';
 
@@ -29,6 +30,7 @@ const expected: Record<string, string[]> = {
   search_media: ['type', 'query', 'limit', 'page', 'transcripts', 'transcriptChars', 'updated', 'platform'],
   search_keywords: ['query', 'limit'],
   lookup_address: ['address', 'zipcode', 'lat', 'lon', 'level', 'compareAddress', 'maxDistanceMeters'],
+  get_place_info: ['address', 'lat', 'lon', 'noCache', 'include'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -49,7 +51,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -758,6 +760,122 @@ describe('lookup_address: address は正規化、lat・lon だけは逆引き、
   });
 });
 
+describe('get_place_info: address か lat・lon の地点の情報を、include で選んで返す（旧 get_elevation）', () => {
+  /** 地名は Nominatim（候補が 2 つで needsVerification）、標高は国土地理院。ほかの送り先には行かない */
+  const stubUpstream = () => {
+    const calls: string[] = [];
+    const spy = spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.hostname);
+      if (url.hostname === 'nominatim.openstreetmap.org') {
+        return Response.json([
+          { display_name: '東京都渋谷区神宮前 原宿', lat: '35.669968', lon: '139.709008', address: { 'ISO3166-2-lvl4': 'JP-13' } },
+          { display_name: '原宿, 群馬県', lat: '36.3', lon: '139.0', address: { 'ISO3166-2-lvl4': 'JP-10' } },
+        ]);
+      }
+      if (url.hostname === 'cyberjapandata2.gsi.go.jp') return Response.json({ elevation: 34, hsrc: '5m' });
+      throw new Error('unexpected upstream: ' + url.hostname);
+    }) as typeof fetch);
+    restore.push(() => spy.mockRestore());
+    return calls;
+  };
+  beforeEach(() => clearCache());
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'get_place_info', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+  const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+  const point = { lat: 35.3606, lon: 138.7274 };
+
+  test('address: 旧 get_elevation の欄を、名前と値のまま location と elevation に分ける（出典・要確認の印も残る）', async () => {
+    stubUpstream();
+    const res = await call({ address: '原宿' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    const out = body(res);
+    expect(Object.keys(out)).toEqual(['location', 'elevation', 'include']);
+    expect(out.include).toEqual(['elevation']);
+    expect(out.location).toEqual({
+      query: '原宿', address: '原宿', matchedTitle: '東京都渋谷区神宮前 原宿', geocodingSource: 'nominatim',
+      geocodingAttribution: expect.stringContaining('OpenStreetMap'), needsVerification: true, lat: 35.669968, lon: 139.709008,
+    });
+    expect(out.elevation).toEqual({ elevationMeters: 34, dataAccuracy: '5m', formatted: '東京都渋谷区神宮前 原宿 の標高 (海抜): 34m (精度: 5m)', source: 'gsi' });
+    // 旧 get_elevation の応答（= サービスの結果。2 回目なのでキャッシュの印が付く）と、欄が 1 つも欠けない
+    const { cached, cachedAt, ageSeconds, ...old } = plain(await scraper.fetchElevationAndCoordinates({ address: '原宿' })) as Record<string, unknown>;
+    expect(cached).toBe(true);
+    expect({ ...out.location, ...out.elevation }).toEqual(old);
+    // キャッシュから返したときの印は、elevation の節に入る
+    const again = body(await call({ address: '原宿' }));
+    expect(again.elevation).toMatchObject({ cached: true, cachedAt: expect.any(String), ageSeconds: expect.any(Number) });
+    expect(again.location.cached).toBeUndefined();
+  });
+
+  test('lat と lon: 座標の標高（座標解決の欄は無い）。include: ["elevation"] を明示しても同じ', async () => {
+    const calls = stubUpstream();
+    const out = body(await call(point));
+    expect(out).toEqual({ location: point, elevation: { elevationMeters: 34, dataAccuracy: '5m', formatted: '緯度: 35.3606, 経度: 138.7274 の標高 (海抜): 34m (精度: 5m)', source: 'gsi' }, include: ['elevation'] });
+    expect(calls).toEqual(['cyberjapandata2.gsi.go.jp']);
+    expect(body(await call({ ...point, include: ['elevation'], noCache: true }))).toEqual(out);
+    expect(calls).toEqual(['cyberjapandata2.gsi.go.jp', 'cyberjapandata2.gsi.go.jp']);
+  });
+
+  test('サービスには、旧 get_elevation の引数だけを渡す（include は渡さない）', async () => {
+    const spy = spyOn(scraper, 'fetchElevationAndCoordinates').mockResolvedValue({ lat: 1, lon: 2, elevationMeters: 3, formatted: 'f', source: 'gsi' });
+    restore.push(() => spy.mockRestore());
+    await call({ address: '富士山頂', noCache: true, include: ['elevation'] });
+    expect(spy.mock.calls[0][0]).toEqual({ address: '富士山頂', noCache: true });
+    await call(point);
+    expect(spy.mock.calls[1][0]).toEqual(point);
+  });
+
+  test('取得の失敗は、旧 get_elevation と同じ Elevation error の文', async () => {
+    const spy = spyOn(scraper, 'fetchElevationAndCoordinates').mockRejectedValue(new Error('住所から座標を特定できませんでした: どこか'));
+    restore.push(() => spy.mockRestore());
+    const res = await call({ address: 'どこか' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toBe('Elevation error: 住所から座標を特定できませんでした: どこか');
+  });
+
+  // 誤った組み合わせ・使えない include: 取得しない（外に問い合わせない）
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['何も無い', {}, ['address または (lat, lon) のいずれかを指定してください']],
+    ['空の address だけ', { address: '  ' }, ['address または (lat, lon) のいずれかを指定してください']],
+    ['lat だけ', { lat: 35.6 }, ['lat と lon は組で指定してください']],
+    ['address と lon だけ', { address: '原宿', lon: 139.7 }, ['lat と lon は組で指定してください']],
+    ['address と lat・lon', { address: '原宿', ...point }, ['address と lat・lon は、どちらか一方だけを指定してください']],
+    ['include が空', { ...point, include: [] }, ['include に、返す情報を 1 つ以上指定してください']],
+    ['include に使えない値', { address: '原宿', include: ['elevation', 'hazards'] }, ['include に使えない値があります: hazards']],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const calls = stubUpstream();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（地点の指定と、include の使える値）を添える
+      for (const key of ['address', 'lat', 'lon', 'include', 'elevation']) expect(text).toContain(key);
+      expect(calls).toEqual([]);
+    });
+  }
+
+  test('空の address と lat・lon は、座標の指定として通る', async () => {
+    stubUpstream();
+    const res = await call({ address: '', ...point });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res).location).toEqual(point);
+  });
+
+  test('スキーマの include の既定値は ["elevation"] で、その値をそのまま入れても通る', async () => {
+    stubUpstream();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'get_place_info')!.inputSchema as any).properties;
+      expect(props.include.default).toEqual(['elevation']);
+      const res: any = await client.callTool({ name: 'get_place_info', arguments: { ...point, include: props.include.default } });
+      expect(res.isError, textOf(res)).toBeFalsy();
+    });
+  });
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -771,6 +889,9 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['search_postal_code', 'lookup_address', 'disaster'],
     ['normalize_address', 'lookup_address', 'disaster'],
     ['reverse_geocode', 'lookup_address', 'disaster'],
+    ['get_elevation', 'get_place_info', 'disaster'],
+    ['標高', 'get_place_info', 'disaster'],
+    ['海抜', 'get_place_info', 'disaster'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

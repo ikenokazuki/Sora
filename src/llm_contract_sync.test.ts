@@ -754,7 +754,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(lifeInstructions).not.toContain('search_disaster_warnings');
       expect(lifeInstructions).not.toContain('search_earthquake');
       expect(lifeInstructions).not.toContain('search_road_traffic');
-      expect(lifeInstructions).not.toContain('get_elevation');
+      expect(lifeInstructions).not.toContain('get_place_info');
       expect(lifeInstructions).not.toContain('search_song');
       expect(lifeInstructions).not.toContain('search_artist');
       expect(lifeInstructions).not.toContain('search_laws');
@@ -768,7 +768,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(disasterInstructions).toContain('search_disaster_warnings');
       expect(disasterInstructions).toContain('search_earthquake');
       expect(disasterInstructions).toContain('search_road_traffic');
-      expect(disasterInstructions).toContain('get_elevation');
+      expect(disasterInstructions).toContain('get_place_info');
       // Excluded tools:
       expect(disasterInstructions).not.toContain('get_weather');
       expect(disasterInstructions).not.toContain('search_route');
@@ -793,7 +793,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(allInstructions).toContain('search_disaster_warnings');
       expect(allInstructions).toContain('search_earthquake');
       expect(allInstructions).toContain('search_road_traffic');
-      expect(allInstructions).toContain('get_elevation');
+      expect(allInstructions).toContain('get_place_info');
     });
 
     it('prefers host discovery and does not require activation before visible domain tools', () => {

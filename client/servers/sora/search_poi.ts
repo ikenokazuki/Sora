@@ -116,7 +116,7 @@ export type SearchPoiOutput = {
   }[];
 };
 
-/** 【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_elevation / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution } */
+/** 【OpenPOI直結・全国337万件】施設名・住所キーワードと位置範囲から施設を検索し、緯度経度付きで返します。複数語はORのため、場所はqueryに混ぜずcenterへ分離してください。centerはNominatimで座標化します（該当なしは国土地理院の住所検索で補完）。未キャッシュの解決は全ツール共有で1.1秒間隔となり、待機する場合があります。centerResolved.needsVerificationがtrueならaddressが意図した地域か確認し、異なる場合は地域名を補って再検索してください。候補一覧は返りません。座標既知ならlat/lon。get_place_info / search_routeと組み合わせ可能。回答・公開時は attribution・centerResolved.attribution・各 pois[].attributions（withAddress 指定時は addressAttribution も）を必ず出典として表示すること。返却: { centerResolved, count, pois: [{ name, address, lat, lng, licenses, attributions }], attribution } */
 export function searchPoi(input: SearchPoiInput): Promise<SearchPoiOutput> {
   return callSora<SearchPoiOutput>({ method: 'POST', path: '/geo/poi' }, input);
 }

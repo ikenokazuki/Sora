@@ -48,7 +48,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_chiebukuro', 'search_keywords', 'search_realtime',
   'search_route', 'get_weather', 'get_flight_status', 'track_package',
   'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
-  'get_elevation', 'search_poi', 'lookup_address',
+  'get_place_info', 'search_poi', 'lookup_address',
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
@@ -97,7 +97,7 @@ export const REST_MAP: RestMap = {
   search_road_traffic: { method: 'POST', path: '/traffic/road' },
   search_disaster_warnings: { method: 'POST', path: '/disaster/warnings' },
   search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
-  get_elevation: { method: 'POST', path: '/geo/elevation' },
+  get_place_info: { method: 'POST', path: '/geo/elevation', fn: 'getElevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
   lookup_address: [
     { method: 'POST', path: '/geo/address/normalize', fn: 'normalizeAddress' },
@@ -335,22 +335,25 @@ function requireGeocodingAttribution(source: string | undefined, attribution: st
   }
 }
 
-// 地名・住所を get_elevation で解決し、期待地域と出典を検査する。
+// 地名・住所を get_place_info（既定の include: elevation）で解決し、期待地域と出典を検査する。
 async function checkGeocodedElevation(ctx: CaseContext, address: string, box: GeoBox, sources: string[]): Promise<CaseObservation> {
-  const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address, noCache: true }, 60000);
-  const raw = toolPayload(rawJsonText, 'get_elevation');
-  const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as {
-    elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string; geocodingAttribution?: string;
+  const { text: rawJsonText } = await mcpJson(ctx, 'get_place_info', { address, noCache: true }, 60000);
+  const raw = toolPayload(rawJsonText, 'get_place_info');
+  const parsed = parseFirstJson(textOf(raw), 'get_place_info') as unknown as {
+    location?: { lat?: number; lon?: number; geocodingSource?: string; geocodingAttribution?: string };
+    elevation?: { elevationMeters?: number };
   };
-  if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters)) {
-    throw new LiveFail(`get_elevation (${address}) missing numeric elevation`);
+  const location = parsed.location ?? {};
+  const label = `get_place_info (${address})`;
+  if (typeof parsed.elevation?.elevationMeters !== 'number' || !Number.isFinite(parsed.elevation.elevationMeters)) {
+    throw new LiveFail(`${label} missing numeric elevation`);
   }
-  if (!parsed.geocodingSource || !sources.includes(parsed.geocodingSource)) {
-    throw new LiveFail(`get_elevation (${address}) resolved by unexpected source ${parsed.geocodingSource}`);
+  if (!location.geocodingSource || !sources.includes(location.geocodingSource)) {
+    throw new LiveFail(`${label} resolved by unexpected source ${location.geocodingSource}`);
   }
-  requireWithin(parsed.lat, parsed.lon, box, `get_elevation (${address})`);
-  requireGeocodingAttribution(parsed.geocodingSource, parsed.geocodingAttribution, `get_elevation (${address})`);
-  return { sources: [...new Set([parsed.geocodingSource, 'gsi'])].map((source) =>
+  requireWithin(location.lat, location.lon, box, label);
+  requireGeocodingAttribution(location.geocodingSource, location.geocodingAttribution, label);
+  return { sources: [...new Set([location.geocodingSource, 'gsi'])].map((source) =>
     ({ source, format: 'json', upstreamStatus: 'unknown', cached: false })) };
 }
 
@@ -383,7 +386,7 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
 // ---------- 住所系ツール（デジタル庁 ABR・日本郵便） ----------
 
 // 永田町一丁目5-1 は ABR の住居表示で番地まで照合できる実在の住所。国会議事堂の 永田町1-7-1 は住居番号が無く町字止まりなので、
-// 番地まで届くことの検査には使えない（その座標を get_elevation で解決する geo.address は、町字の点でも箱に入るので使える）。
+// 番地まで届くことの検査には使えない（その座標を get_place_info で解決する geo.address は、町字の点でも箱に入るので使える）。
 // ABR のデータが変わって届かなくなったら、実データで届く住所に差し替える。
 const NAGATACHO_ADDRESS = '東京都千代田区永田町1-5-1';
 const NAGATACHO_NORMALIZED = '東京都千代田区永田町一丁目5-1';
@@ -820,13 +823,13 @@ export const TOOL_CASES: HealthCase[] = [
     if (source !== 'jma') throw new LiveFail(`search_earthquake answered from ${source} instead of the JMA quake feed`);
     return mustContain(raw, ['20'], 'jma-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
+  toolCase('geo.elevation', ['get_place_info'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),
   // geocoding.jp では駅名がヒットしなかったため、駅名の解決を個別に検査する。
-  toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
+  toolCase('geo.station', ['get_place_info'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
   // 番地住所は OSM に無いことが多いので、国土地理院を先に引く（取得元が Nominatim になっても、正しい地点なら合格）。
-  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi', 'abr'], true, 90000,
+  toolCase('geo.address', ['get_place_info'], ['nominatim', 'gsi', 'abr'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim', 'abr'])),
   // 検索語（ラーメン）を付けると、OpenPOI が半径を無視して名前が一致する遠くの施設（6〜14km 先）を返すようになった（2026-10-14）。
   // 検索語なしなら半径内の施設が返るので、中心の解決と半径内の検査をそのまま保てる。

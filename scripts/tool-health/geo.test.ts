@@ -3,7 +3,10 @@ import { TOOL_CASES } from './catalog.js';
 import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified, type CaseContext } from './types.js';
 
 const OSM = '出典: © OpenStreetMap contributors (ODbL) https://www.openstreetmap.org/copyright';
-const elevation = { lat: 35.669968, lon: 139.709008, elevationMeters: 34, geocodingSource: 'nominatim', geocodingAttribution: OSM };
+const harajuku = { lat: 35.669968, lon: 139.709008, geocodingSource: 'nominatim', geocodingAttribution: OSM };
+/** get_place_info の応答（既定の include: elevation）。location を差し替えて使う */
+const place = (location: Record<string, unknown> = {}, elevation: Record<string, unknown> = { elevationMeters: 34 }) =>
+  ({ location: { ...harajuku, ...location }, elevation, include: ['elevation'] });
 const poi = {
   centerResolved: { input: '原宿', address: '東京都渋谷区神宮前 原宿', lat: 35.669968, lon: 139.709008, source: 'nominatim', attribution: OSM },
   count: 1, pois: [{ name: '原宿のラーメン店', lat: 35.67, lng: 139.709 }],
@@ -21,29 +24,35 @@ function context(result: unknown, restResult: unknown = result): CaseContext {
 describe('live geocoding checks', () => {
   test('elevation rejects numeric coordinates from the wrong city', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
-    await expect(check.run(context({ ...elevation, lat: 43.076111, lon: 141.363617 }))).rejects.toThrow();
+    await expect(check.run(context(place({ lat: 43.076111, lon: 141.363617 })))).rejects.toThrow();
+  });
+
+  test('elevation requires a numeric elevation in the elevation section', async () => {
+    const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
+    await expect(check.run(context(place({}, { elevationMeters: null })))).rejects.toThrow('elevation');
+    // 旧 get_elevation の平らな応答は、もう通らない
+    await expect(check.run(context({ ...harajuku, elevationMeters: 34 }))).rejects.toThrow('elevation');
   });
 
   test('elevation requires the attribution that matches the geocoding source', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
-    await expect(check.run(context(elevation))).resolves.toHaveProperty('sources');
-    await expect(check.run(context({ ...elevation, geocodingAttribution: undefined }))).rejects.toThrow('attribution');
-    await expect(check.run(context({ ...elevation, geocodingAttribution: '出典: 国土地理院' }))).rejects.toThrow('attribution');
+    await expect(check.run(context(place()))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place({ geocodingAttribution: undefined })))).rejects.toThrow('attribution');
+    await expect(check.run(context(place({ geocodingAttribution: '出典: 国土地理院' })))).rejects.toThrow('attribution');
   });
 
   test('station check requires Shibuya Station resolved by nominatim', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.station')!;
-    const shibuya = { ...elevation, lat: 35.6584716, lon: 139.700401 };
-    await expect(check.run(context(shibuya))).resolves.toHaveProperty('sources');
-    await expect(check.run(context(elevation))).rejects.toThrow('Shibuya');
+    await expect(check.run(context(place({ lat: 35.6584716, lon: 139.700401 })))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place()))).rejects.toThrow('Shibuya');
   });
 
   test('address check accepts the GSI fallback near Nagatacho', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.address')!;
-    const nagatacho = { ...elevation, lat: 35.677414, lon: 139.744385, geocodingSource: 'gsi', geocodingAttribution: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)' };
-    await expect(check.run(context(nagatacho))).resolves.toHaveProperty('sources');
-    await expect(check.run(context({ ...nagatacho, geocodingAttribution: OSM }))).rejects.toThrow('attribution');
-    await expect(check.run(context({ ...nagatacho, lat: 35.669968, lon: 139.709008 }))).rejects.toThrow('Nagatacho');
+    const nagatacho = { lat: 35.677414, lon: 139.744385, geocodingSource: 'gsi', geocodingAttribution: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)' };
+    await expect(check.run(context(place(nagatacho)))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place({ ...nagatacho, geocodingAttribution: OSM })))).rejects.toThrow('attribution');
+    await expect(check.run(context(place({ ...nagatacho, lat: 35.669968, lon: 139.709008 })))).rejects.toThrow('Nagatacho');
   });
 
   test('POI checks the center source, expected region, and each returned point', async () => {
