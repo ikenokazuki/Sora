@@ -56,7 +56,7 @@ bun docs/evaluations/tool-selection/run.ts --tools /tmp/tools-new.json --surface
 
 - 合格の目安（同じモデルで基準線より 1 問を超えて下がらない・引数の正答率 90% 以上）は、1 回目で満たしていました（5.5 は 1 問減、4.5 は同じ）。調整後は、どちらも基準線以上です。
 - 1 回目に増えた誤りは 4 件でした: `hard-04`（座標から住所を聞かれて `get_place_info`）、`search-10`（ニュースの見出しで `search_deep`。4.5）、`trade-05`（FDA の規制の対象かで `lookup_hts`。4.5）、`hard-25`（流行語で `search_deep`。どれを選んでも妥当な依頼）。統合で名前が一般的になったツール（`get_place_info`・`search_media`・`check_regulations`）と、近い名前のツールの説明の冒頭に、使い分けの手がかり（住所そのものは返さない・ニュースを先頭に・規制の判定は `check_regulations`）を足して回し直したところ、4 件とも直りました。
-- 残る誤りは `search-01`（`search_web` のところ `search_deep`。基準線でも同じで、依頼の言い方でどちらも妥当）と、5.5 の引数 `music-02`（「代表曲とアルバムの一覧」で `entity: "album"`。期待は `musicArtist`）です。
+- 残る誤りは `search-01`（`search_web` のところ `search_deep`。基準線でも同じで、依頼の言い方でどちらも妥当）と、5.5 の引数 `music-02`（「代表曲とアルバムの一覧」で `entity: "song"`。期待は `musicArtist`）です。`search_music` の説明では、アーティストの曲やアルバムは `attribute: "artistTerm"` と `entity: "song"`・`"album"` で引くので、期待値のほうが厳しすぎました（`life-06` と同じ）。
 - 1 回目の引数の誤り `life-06`（`city` ではなく `areaCode: "23"` で呼んだ）は、`areaCode` の 2 桁が都道府県として使える仕様なので誤りではなく、期待値が厳しかっただけです。
 - 同じ設定でも、1〜2 問は回すたびに揺らぎます。1 問の差には意味がありません。
 - 効果は、正答率が統合前より下がらず（調整後は上がり）、全ツールを渡す利用側の文脈が約 10% 小さくなることです。改善は、基準線が高いので測りにくい点は、上の「読み方」のとおりです。

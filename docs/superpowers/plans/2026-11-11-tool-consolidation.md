@@ -187,7 +187,7 @@
 - [ ] **Step 1: ツールの名前の残りを確かめる。** `grep` で、旧い名前が、README・`docs/engines/`・`glama.json`・`src/mcp/instructions.ts`・`client/` に残っていないこと（`RELEASE_NOTES.md`・設計メモ・計画・基準線は除く）。`src/mcp/instructions.ts` の本文を、新しいツール名で書き直す（初期の tools/list と合わせて 30000 字未満）。
 - [ ] **Step 2: README に、移行の表（旧名 → 新名と引数）を足す。** `RELEASE_NOTES.md` に、v5.0.0 の節（破壊的変更: ツールの統合、`search_road_traffic` の `source`（PR #70 は 2026-11-11 にマージ済み・2a498b80。v5 の枝に main を取り込んだあと、`yahoo-roadway` になっていることを確かめる）、旧名の `search_tools` での検索）を書く。
 - [ ] **Step 3: 版を 5.0.0 にする。** `package.json`・`SORA_VERSION`（grep で全箇所）・OpenAPI の version・`client/` の版。
-- [ ] **Step 4: ツール選びの評価を、統合後で測る。** `bun docs/evaluations/tool-selection/snapshot.ts` で新しい定義を書き出し、`run.ts --surface new` を、`claude-haiku-5-5` と `claude-haiku-4-5` で回す（鍵は `~/.config/sora-hl/anthropic_key`。費用は数十円）。結果の要約を `docs/evaluations/tool-selection/results-v5.json` に保存し、README に、基準線との比較の表を足す。合格の目安（同じモデルで基準線より 1 問を超えて下がらない・モードを選ぶ引数の正答率 90% 以上）に届かなければ、原因のツールの説明を直して回し直す。直しきれないものは、その統合を戻すか、報告に残す。
+- [ ] **Step 4: ツール選びの評価を、統合後で測る。** `bun docs/evaluations/tool-selection/snapshot.ts` で新しい定義を書き出し、`run.ts --surface new` を、`claude-haiku-5-5` と `claude-haiku-4-5` で回す（鍵は環境変数 `ANTHROPIC_API_KEY` か `ANTHROPIC_KEY_FILE` で渡す。費用は数十円）。結果の要約を `docs/evaluations/tool-selection/results-v5.json` に保存し、README に、基準線との比較の表を足す。合格の目安（同じモデルで基準線より 1 問を超えて下がらない・モードを選ぶ引数の正答率 90% 以上）に届かなければ、原因のツールの説明を直して回し直す。直しきれないものは、その統合を戻すか、報告に残す。
 - [ ] **Step 5: 全体の検査と、コミット。** 全体テスト（bun 1.3.3 と、CI と同じ 1.4.2 の両方。手順は記憶の `sora-test-env` のとおり、`npm install --no-save --prefix <scratch>/bunX bun@1.4.2`）。
 
 ### Task 11（任意。Task 10 のあと）: LLM に見せるスキーマの飾りを削る

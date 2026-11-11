@@ -3,10 +3,9 @@
 //   bun docs/evaluations/tool-selection/run.ts --tools <snapshot.json> --surface old|new --out <results.json>
 //        [--model claude-haiku-5-5] [--limit N] [--concurrency 4]
 // 依存: @anthropic-ai/sdk（リポジトリには入れない。別の場所で npm install し、この隣の node_modules にリンクする。node_modules は、この隣の .gitignore が無視する）
-// 鍵: 環境変数 ANTHROPIC_API_KEY、無ければ ANTHROPIC_KEY_FILE（既定 ~/.config/sora-hl/anthropic_key）。鍵は表示しない。
+// 鍵: 環境変数 ANTHROPIC_API_KEY、無ければ ANTHROPIC_KEY_FILE（鍵だけを書いたファイルのパス）。どちらも無ければ止まる。鍵は表示しない。
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 type Expect = string | null | string[];
@@ -40,8 +39,12 @@ const model = arg('model', 'claude-haiku-5-5') as string;
 const limit = Number(arg('limit', '0')) || 0;
 const concurrency = Number(arg('concurrency', '4')) || 4;
 
-const keyFile = process.env.ANTHROPIC_KEY_FILE ?? join(homedir(), '.config/sora-hl/anthropic_key');
-const apiKey = process.env.ANTHROPIC_API_KEY ?? readFileSync(keyFile, 'utf8').trim();
+const keyFile = process.env.ANTHROPIC_KEY_FILE;
+const apiKey = process.env.ANTHROPIC_API_KEY ?? (keyFile ? readFileSync(keyFile, 'utf8').trim() : undefined);
+if (!apiKey) {
+  console.error('鍵がありません。環境変数 ANTHROPIC_API_KEY か、鍵だけを書いたファイルのパスを ANTHROPIC_KEY_FILE に指定してください。');
+  process.exit(2);
+}
 const client = new Anthropic({ apiKey, maxRetries: 4 });
 
 const tools = (JSON.parse(readFileSync(toolsFile, 'utf8')) as { tools: ToolDef[] }).tools;
