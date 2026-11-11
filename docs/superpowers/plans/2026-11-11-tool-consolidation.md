@@ -111,9 +111,10 @@
 ### Task 5: get_place_info（標高）
 
 **Files:**
-- Modify: `src/mcp/tools_disaster.ts`、`docs/engines/coordinate-resolution.md`、`docs/superpowers/specs/2026-11-11-area-safety-design.md`（名前を `get_place_info` に直す。防災の設計の中身は変えない）、README、テスト
+- Modify: `src/mcp/tools_disaster.ts`、`docs/engines/coordinate-resolution.md`、README、テスト
 
 **Interfaces:**
+- （防災の設計メモ `area-safety` は、別の枝にあり、この作業では触らない。名前の直しは controller が行う。）
 - `get_place_info`（`get_elevation` を置き換える。モジュール `disaster`）: `address` か `lat`＋`lon`、`noCache`、`include`（配列。値は今は `elevation` だけ。既定 `['elevation']`。後の作業で `hazards` `shelters` `seismic` を足す）。
 - 応答（MCP だけ。REST の `/geo/elevation` は変えない）: `{ location: { query?, address?, matchedTitle?, lat, lon, geocodingSource?, geocodingAttribution?, needsVerification? }, elevation: { elevationMeters, dataAccuracy?, formatted, source }, include: ['elevation'] }`。旧 `get_elevation` の欄を、`location` と `elevation` に分ける。
 - `include` に未対応の値が来たら、使える値を示すエラー。
