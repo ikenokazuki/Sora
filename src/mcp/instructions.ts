@@ -67,7 +67,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       lines.push('- **`inspect_image`**: Image input for a flyer, timetable or table only when the answer needs its content.');
     }
     if (hasWatch) {
-      lines.push('- **`watch_register` / `watch_check` / `watch_list` / `watch_delete`**: Page change monitoring (ticket results, restocks, notices).');
+      lines.push('- **`watch`**: Page change monitoring (ticket results, restocks, notices).');
     }
   }
 
@@ -81,7 +81,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasGov) {
     tier1Directives.push(
-      "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE], get_law_text, search_diet_minutes).",
+      "2. Japanese Laws & Diet Minutes (Official e-Gov API v2, National Diet Library minutes): Use 'gov' tools (search_laws [CORE] by keyword or lawId, search_diet_minutes).",
     );
   }
   if (hasLife) {
@@ -104,7 +104,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasMusic) {
     tier1Directives.push(
-      "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_song, search_artist, search_music).",
+      "7. Music Metadata & Catalog (Official iTunes API metadata, previews, artwork): Use 'music' tools (search_music).",
     );
   }
   if (hasIntel) {

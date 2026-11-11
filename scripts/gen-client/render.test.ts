@@ -29,15 +29,13 @@ const doc: OpenApiDoc = {
 const rest = {
   search_web: { method: 'POST', path: '/search/web' },
   get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
-  watch_list: { method: 'GET', path: '/watch/list' },
-  watch_delete: { method: 'DELETE', path: '/watch/:id' },
+  watch: [{ method: 'GET', path: '/watch/list', fn: 'watchList' }, { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' }],
   search_tools: null,
 };
 const tools: ToolMeta[] = [
   { name: 'search_web', category: 'web', description: '【Web検索】URL一覧', keywords: ['検索'] },
   { name: 'get_country_context', category: 'intel', description: 'ctx', keywords: [] },
-  { name: 'watch_list', category: 'watch', description: 'list', keywords: [] },
-  { name: 'watch_delete', category: 'watch', description: 'del', keywords: [] },
+  { name: 'watch', category: 'watch', description: 'watch', keywords: [] },
   { name: 'search_tools', category: 'web', description: 'meta', keywords: [] },
 ];
 
@@ -56,8 +54,9 @@ describe('generateClient', () => {
   });
 
   test('a tool without input takes no argument; :id path params exist on DELETE', () => {
-    expect(files['servers/sora/watch_list.ts']).toContain('export function watchList(): Promise<WatchListOutput>');
-    expect(files['servers/sora/watch_delete.ts']).toContain('id: string;');
+    expect(files['servers/sora/watch.ts']).toContain('export function watchList(): Promise<WatchListOutput>');
+    expect(files['servers/sora/watch.ts']).toContain('export function watchDelete(input: WatchDeleteInput): Promise<WatchDeleteOutput>');
+    expect(files['servers/sora/watch.ts']).toContain('id: string;');
   });
 
   test('tools without a REST route are skipped; unresolved ones fail the generation', () => {
@@ -68,7 +67,7 @@ describe('generateClient', () => {
 
   test('catalog, manifest and index list the same generated tools in a fixed order', () => {
     const catalog = JSON.parse(files['catalog.json']);
-    expect(catalog.map((t: { name: string }) => t.name)).toEqual(['get_country_context', 'search_web', 'watch_delete', 'watch_list']);
+    expect(catalog.map((t: { name: string; fn: string }) => `${t.name}.${t.fn}`)).toEqual(['get_country_context.getCountryContext', 'search_web.searchWeb', 'watch.watchList', 'watch.watchDelete']);
     expect(catalog[1]).toMatchObject({ name: 'search_web', fn: 'searchWeb', category: 'web', method: 'POST', path: '/search/web' });
     const manifest = JSON.parse(files['manifest.json']);
     expect(manifest.files).toEqual(Object.keys(files).filter((f) => f !== 'manifest.json').sort());

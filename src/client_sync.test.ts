@@ -57,7 +57,7 @@ describe('generated functions call the REST route that REST_MAP names', () => {
     route('search_poi.ts', "{ method: 'POST', path: '/geo/poi' }, input");
     route('lookup_address.ts', "{ method: 'POST', path: '/geo/address/normalize' }, input");
     route('get_country_context.ts', "{ method: 'GET', path: '/intelligence/context/:contextId' }, input");
-    route('watch_list.ts', "{ method: 'GET', path: '/watch/list' })");
+    route('watch.ts', "{ method: 'GET', path: '/watch/list' })");
   });
 
   test('error bodies become SoraError with code, status, retryable and details', async () => {

@@ -36,7 +36,7 @@ describe('stdio transport', () => {
     proc.kill();
     expect(listLine).not.toBe('');
     const msg = JSON.parse(listLine);
-    expect(msg.result.tools.length).toBe(44);
+    expect(msg.result.tools.length).toBe(38);
     expect(listLine).not.toContain('outputSchema');
     expect(listLine.length).toBeLessThan(130_000);
   }, 40000);

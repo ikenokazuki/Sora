@@ -71,7 +71,151 @@ export type SearchMusicOutput = {
   ageSeconds?: number;
 };
 
-/** 【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { query, country, entity, count, items, source } */
+/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
 export function searchMusic(input: SearchMusicInput): Promise<SearchMusicOutput> {
   return callSora<SearchMusicOutput>({ method: 'POST', path: '/search/music' }, input);
+}
+
+export type SearchSongInput = {
+  /** 検索曲名・楽曲タイトル */
+  query: string;
+  /** 国コード (デフォルト: "jp") */
+  country?: string;
+  /** 取得件数 (1〜50, デフォルト: 20) */
+  limit?: number;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type SearchSongOutput = {
+  /** 検索キーワード */
+  query: string;
+  /** 検索対象ストア国コード (例: "jp") */
+  country: string;
+  /** 検索エンティティ種別 */
+  entity: string;
+  /** 絞り込み属性 */
+  attribute?: string;
+  /** ヒット件数 */
+  count: number;
+  /** 音楽メタデータ配列 */
+  items: {
+    /** 楽曲・アルバム・アーティストの固有 ID */
+    id: string;
+    /** 種別: "song"(曲), "album"(アルバム), "artist"(アーティスト) */
+    type: "song" | "album" | "artist";
+    /** 楽曲名またはアルバム名・アーティスト名 */
+    title: string;
+    /** アーティスト名 */
+    artist: string;
+    /** iTunes のアーティスト ID */
+    artistId?: number;
+    /** 収録アルバム名 */
+    album?: string;
+    /** ジャケット・アートワーク画像 */
+    artwork?: {
+      /** サムネイル画像 URL (100x100) */
+      thumbnail?: string;
+      /** 高解像度ジャケット画像 URL (600x600) */
+      highRes?: string;
+    };
+    /** 30秒無料試聴音源 AAC オーディオ URL */
+    previewUrl?: string;
+    /** リリース日 (ISO 8601) */
+    releaseDate?: string;
+    /** 音楽ジャンル (例: "J-Pop", "Rock") */
+    genre?: string;
+    /** アルバム内のトラック番号 */
+    trackNumber?: number;
+    /** 楽曲再生時間 (ミリ秒) */
+    trackTimeMillis?: number;
+    /** Apple Music / iTunes 公式リンク URL */
+    url?: string;
+  }[];
+  /** データソース ("itunes") */
+  source: "itunes";
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
+export function searchSong(input: SearchSongInput): Promise<SearchSongOutput> {
+  return callSora<SearchSongOutput>({ method: 'POST', path: '/search/song' }, input);
+}
+
+export type SearchArtistInput = {
+  /** アーティスト名 */
+  query: string;
+  /** 国コード (デフォルト: "jp") */
+  country?: string;
+  /** 検索エンティティ: "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song") */
+  entity?: "song" | "album" | "musicArtist";
+  /** 取得件数 (1〜50, デフォルト: 20) */
+  limit?: number;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type SearchArtistOutput = {
+  /** 検索キーワード */
+  query: string;
+  /** 検索対象ストア国コード (例: "jp") */
+  country: string;
+  /** 検索エンティティ種別 */
+  entity: string;
+  /** 絞り込み属性 */
+  attribute?: string;
+  /** ヒット件数 */
+  count: number;
+  /** 音楽メタデータ配列 */
+  items: {
+    /** 楽曲・アルバム・アーティストの固有 ID */
+    id: string;
+    /** 種別: "song"(曲), "album"(アルバム), "artist"(アーティスト) */
+    type: "song" | "album" | "artist";
+    /** 楽曲名またはアルバム名・アーティスト名 */
+    title: string;
+    /** アーティスト名 */
+    artist: string;
+    /** iTunes のアーティスト ID */
+    artistId?: number;
+    /** 収録アルバム名 */
+    album?: string;
+    /** ジャケット・アートワーク画像 */
+    artwork?: {
+      /** サムネイル画像 URL (100x100) */
+      thumbnail?: string;
+      /** 高解像度ジャケット画像 URL (600x600) */
+      highRes?: string;
+    };
+    /** 30秒無料試聴音源 AAC オーディオ URL */
+    previewUrl?: string;
+    /** リリース日 (ISO 8601) */
+    releaseDate?: string;
+    /** 音楽ジャンル (例: "J-Pop", "Rock") */
+    genre?: string;
+    /** アルバム内のトラック番号 */
+    trackNumber?: number;
+    /** 楽曲再生時間 (ミリ秒) */
+    trackTimeMillis?: number;
+    /** Apple Music / iTunes 公式リンク URL */
+    url?: string;
+  }[];
+  /** データソース ("itunes") */
+  source: "itunes";
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
+export function searchArtist(input: SearchArtistInput): Promise<SearchArtistOutput> {
+  return callSora<SearchArtistOutput>({ method: 'POST', path: '/search/artist' }, input);
 }

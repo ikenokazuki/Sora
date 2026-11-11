@@ -40,7 +40,7 @@ const expectedProps: Record<string, string[]> = {
   check_product_compliance: ['url', 'productName', 'description', 'htsCode', 'targetAge', 'material', 'productCategory', 'foodContact', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
   verify_hts_code: ['htsCode', 'productDescription'],
   track_package: ['trackingNumber', 'carrier', 'preferredCarriers', 'noCache'],
-  watch_register: ['url', 'title', 'selector', 'webhookUrl'],
+  watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
 };
 
 describe('貿易・荷物・監視の MCP の引数', () => {
@@ -67,7 +67,7 @@ describe('貿易・荷物・監視の MCP の引数', () => {
         ['check_cpsc_certificate', { htsCode: '9503.00.0073', targetAge: 'child', productCategory: 'toy', description: 'x' }],
         ['check_fda_regulated', { htsCode: '3004.90.0000', productDescription: 'x' }],
         ['track_package', { trackingNumber: '123456789012', originCountry: 'JP', destinationCountry: 'US' }],
-        ['watch_register', { url: 'https://example.com/', intervalSeconds: 60 }],
+        ['watch', { action: 'register', url: 'https://example.com/', intervalSeconds: 60 }],
       ];
       for (const [name, args] of calls) {
         const res = await client.callTool({ name, arguments: args });

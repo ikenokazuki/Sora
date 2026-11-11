@@ -335,21 +335,6 @@
     "file": "servers/sora/get_flight_status.ts"
   },
   {
-    "name": "get_law_text",
-    "fn": "getLawText",
-    "category": "gov",
-    "description": "【公式条文直結・創作厳禁】日本の法令条文の確認では、架空の条文・条項を創作（法律ハルシネーション）せず、必ず本ツールで公式e-Govの正確な条文Markdownを取得してください。章・節・条・項・号が正確に構造化された本文を返します。返却: { id, title, lawNum, markdown, articleCount, source }",
-    "keywords": [
-      "法令条文取得",
-      "条文",
-      "e-Gov",
-      "法律本文"
-    ],
-    "method": "POST",
-    "path": "/gov/law-text",
-    "file": "servers/sora/get_law_text.ts"
-  },
-  {
     "name": "get_place_info",
     "fn": "getElevation",
     "category": "disaster",
@@ -645,25 +630,6 @@
     "file": "servers/sora/scrape.ts"
   },
   {
-    "name": "search_artist",
-    "fn": "searchArtist",
-    "category": "music",
-    "description": "【iTunes公式直結】アーティスト名を指定して、公式メタデータから指定アーティストの代表曲一覧、アルバム一覧、アーティスト基本情報（Apple Musicリンク等）を正確に取得します。※歌手・アーティスト公式カタログメタデータを検索します。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, count, items, source }",
-    "keywords": [
-      "アーティスト検索",
-      "アーティスト",
-      "ディスコグラフィ",
-      "歌手",
-      "バンド",
-      "ミュージシャン",
-      "iTunes",
-      "アルバム"
-    ],
-    "method": "POST",
-    "path": "/search/artist",
-    "file": "servers/sora/search_artist.ts"
-  },
-  {
     "name": "search_chiebukuro",
     "fn": "searchChiebukuro",
     "category": "yahoo",
@@ -770,16 +736,40 @@
     "name": "search_laws",
     "fn": "searchLaws",
     "category": "gov",
-    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名・法令番号・公布年月日の一覧を返す。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
+    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
     "keywords": [
       "法令検索",
       "法律",
       "政令",
       "e-Gov",
-      "条文検索"
+      "条文検索",
+      "法令条文取得",
+      "条文",
+      "法律本文",
+      "get_law_text"
     ],
     "method": "POST",
     "path": "/gov/laws",
+    "file": "servers/sora/search_laws.ts"
+  },
+  {
+    "name": "search_laws",
+    "fn": "getLawText",
+    "category": "gov",
+    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
+    "keywords": [
+      "法令検索",
+      "法律",
+      "政令",
+      "e-Gov",
+      "条文検索",
+      "法令条文取得",
+      "条文",
+      "法律本文",
+      "get_law_text"
+    ],
+    "method": "POST",
+    "path": "/gov/law-text",
     "file": "servers/sora/search_laws.ts"
   },
   {
@@ -858,7 +848,7 @@
     "name": "search_music",
     "fn": "searchMusic",
     "category": "music",
-    "description": "【iTunes公式直結】楽曲・アルバム・アーティストの複合キーワード全文検索をiTunes公式メタデータに対して行います（曲名・アーティスト名が明確な場合は search_song / search_artist を推奨）。返却: { query, country, entity, count, items, source }",
+    "description": "【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: \"songTerm\"。アーティストの代表曲・アルバムは attribute: \"artistTerm\" と entity: \"song\" / \"album\"、アーティスト基本情報は entity: \"musicArtist\"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source }",
     "keywords": [
       "汎用音楽検索",
       "音楽検索",
@@ -867,10 +857,90 @@
       "曲",
       "アルバム",
       "iTunes",
-      "ミュージック"
+      "ミュージック",
+      "楽曲検索",
+      "曲名",
+      "曲の検索",
+      "歌",
+      "ソング",
+      "Apple Music",
+      "アーティスト検索",
+      "アーティスト",
+      "ディスコグラフィ",
+      "歌手",
+      "バンド",
+      "ミュージシャン",
+      "search_song",
+      "search_artist"
     ],
     "method": "POST",
     "path": "/search/music",
+    "file": "servers/sora/search_music.ts"
+  },
+  {
+    "name": "search_music",
+    "fn": "searchSong",
+    "category": "music",
+    "description": "【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: \"songTerm\"。アーティストの代表曲・アルバムは attribute: \"artistTerm\" と entity: \"song\" / \"album\"、アーティスト基本情報は entity: \"musicArtist\"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source }",
+    "keywords": [
+      "汎用音楽検索",
+      "音楽検索",
+      "音楽",
+      "楽曲",
+      "曲",
+      "アルバム",
+      "iTunes",
+      "ミュージック",
+      "楽曲検索",
+      "曲名",
+      "曲の検索",
+      "歌",
+      "ソング",
+      "Apple Music",
+      "アーティスト検索",
+      "アーティスト",
+      "ディスコグラフィ",
+      "歌手",
+      "バンド",
+      "ミュージシャン",
+      "search_song",
+      "search_artist"
+    ],
+    "method": "POST",
+    "path": "/search/song",
+    "file": "servers/sora/search_music.ts"
+  },
+  {
+    "name": "search_music",
+    "fn": "searchArtist",
+    "category": "music",
+    "description": "【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: \"songTerm\"。アーティストの代表曲・アルバムは attribute: \"artistTerm\" と entity: \"song\" / \"album\"、アーティスト基本情報は entity: \"musicArtist\"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source }",
+    "keywords": [
+      "汎用音楽検索",
+      "音楽検索",
+      "音楽",
+      "楽曲",
+      "曲",
+      "アルバム",
+      "iTunes",
+      "ミュージック",
+      "楽曲検索",
+      "曲名",
+      "曲の検索",
+      "歌",
+      "ソング",
+      "Apple Music",
+      "アーティスト検索",
+      "アーティスト",
+      "ディスコグラフィ",
+      "歌手",
+      "バンド",
+      "ミュージシャン",
+      "search_song",
+      "search_artist"
+    ],
+    "method": "POST",
+    "path": "/search/artist",
     "file": "servers/sora/search_music.ts"
   },
   {
@@ -968,28 +1038,6 @@
     "file": "servers/sora/search_social_posts.ts"
   },
   {
-    "name": "search_song",
-    "fn": "searchSong",
-    "category": "music",
-    "description": "【iTunes公式直結】楽曲タイトル（曲名）を指定して、iTunes公式メタデータ（正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンク）をピンポイント検索します。返却: { query, country, count, items: [{ title, artist, previewUrl, artwork }], source }",
-    "keywords": [
-      "楽曲検索",
-      "楽曲",
-      "曲名",
-      "曲の検索",
-      "曲",
-      "歌",
-      "ソング",
-      "iTunes",
-      "音楽",
-      "Apple Music",
-      "ミュージック"
-    ],
-    "method": "POST",
-    "path": "/search/song",
-    "file": "servers/sora/search_song.ts"
-  },
-  {
     "name": "search_web",
     "fn": "searchWeb",
     "category": "web",
@@ -1072,60 +1120,115 @@
     "file": "servers/sora/verify_hts_code.ts"
   },
   {
-    "name": "watch_check",
-    "fn": "watchCheck",
-    "category": "watch",
-    "description": "【Webページ差分スキャン実行】登録した監視対象を取得し直し、前回との差分を確認します。id を省略すると全件を確認します。差分があれば登録した Webhook に通知します。返却: id 指定時は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }、省略時はその配列",
-    "keywords": [
-      "Web監視チェック",
-      "更新確認",
-      "差分取得"
-    ],
-    "method": "POST",
-    "path": "/watch/check",
-    "file": "servers/sora/watch_check.ts"
-  },
-  {
-    "name": "watch_delete",
-    "fn": "watchDelete",
-    "category": "watch",
-    "description": "【Webページ監視ターゲット削除】指定 ID の監視対象を削除し、以後の監視を止めます。ID は watch_list で確認できます。返却: { success, id }",
-    "keywords": [
-      "Web監視削除",
-      "ターゲット削除",
-      "監視解除"
-    ],
-    "method": "DELETE",
-    "path": "/watch/:id",
-    "file": "servers/sora/watch_delete.ts"
-  },
-  {
-    "name": "watch_list",
-    "fn": "watchList",
-    "category": "watch",
-    "description": "【Webページ監視ターゲット一覧】登録済みの監視対象と、最終確認の時刻・ハッシュを一覧します。返却: [{ id, url, title?, selector?, last_checked_at?, last_hash? }]",
-    "keywords": [
-      "Web監視一覧",
-      "登録確認",
-      "ターゲット一覧"
-    ],
-    "method": "GET",
-    "path": "/watch/list",
-    "file": "servers/sora/watch_list.ts"
-  },
-  {
-    "name": "watch_register",
+    "name": "watch",
     "fn": "watchRegister",
     "category": "watch",
-    "description": "【Webページ差分監視登録】Web ページ（CSS セレクタで一部に限定も可）を監視対象に登録し、初回のハッシュを記録します。チケット当落・再販・お知らせの検知に利用します。以後の確認は watch_check。返却: { target: { id, url, title, selector }, initialResult?, initialError? }",
+    "description": "【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }",
     "keywords": [
       "Web監視登録",
       "差分監視",
       "更新通知",
-      "URL監視"
+      "URL監視",
+      "Web監視チェック",
+      "更新確認",
+      "差分取得",
+      "Web監視一覧",
+      "登録確認",
+      "ターゲット一覧",
+      "Web監視削除",
+      "ターゲット削除",
+      "監視解除",
+      "watch_register",
+      "watch_check",
+      "watch_list",
+      "watch_delete"
     ],
     "method": "POST",
     "path": "/watch/register",
-    "file": "servers/sora/watch_register.ts"
+    "file": "servers/sora/watch.ts"
+  },
+  {
+    "name": "watch",
+    "fn": "watchCheck",
+    "category": "watch",
+    "description": "【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }",
+    "keywords": [
+      "Web監視登録",
+      "差分監視",
+      "更新通知",
+      "URL監視",
+      "Web監視チェック",
+      "更新確認",
+      "差分取得",
+      "Web監視一覧",
+      "登録確認",
+      "ターゲット一覧",
+      "Web監視削除",
+      "ターゲット削除",
+      "監視解除",
+      "watch_register",
+      "watch_check",
+      "watch_list",
+      "watch_delete"
+    ],
+    "method": "POST",
+    "path": "/watch/check",
+    "file": "servers/sora/watch.ts"
+  },
+  {
+    "name": "watch",
+    "fn": "watchList",
+    "category": "watch",
+    "description": "【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }",
+    "keywords": [
+      "Web監視登録",
+      "差分監視",
+      "更新通知",
+      "URL監視",
+      "Web監視チェック",
+      "更新確認",
+      "差分取得",
+      "Web監視一覧",
+      "登録確認",
+      "ターゲット一覧",
+      "Web監視削除",
+      "ターゲット削除",
+      "監視解除",
+      "watch_register",
+      "watch_check",
+      "watch_list",
+      "watch_delete"
+    ],
+    "method": "GET",
+    "path": "/watch/list",
+    "file": "servers/sora/watch.ts"
+  },
+  {
+    "name": "watch",
+    "fn": "watchDelete",
+    "category": "watch",
+    "description": "【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }",
+    "keywords": [
+      "Web監視登録",
+      "差分監視",
+      "更新通知",
+      "URL監視",
+      "Web監視チェック",
+      "更新確認",
+      "差分取得",
+      "Web監視一覧",
+      "登録確認",
+      "ターゲット一覧",
+      "Web監視削除",
+      "ターゲット削除",
+      "監視解除",
+      "watch_register",
+      "watch_check",
+      "watch_list",
+      "watch_delete"
+    ],
+    "method": "DELETE",
+    "path": "/watch/:id",
+    "file": "servers/sora/watch.ts"
   }
 ]

@@ -1114,7 +1114,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(names1).toContain('check_product_compliance');
     expect(names1).toContain('search_tools');
 
-    // 3. Attempting to call standby tool (search_song) directly should fail
+    // 3. Attempting to call standby tool (search_music) directly should fail
     const callDisabledReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1127,7 +1127,7 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
-        params: { name: 'search_song', arguments: { title: 'アイドル' } },
+        params: { name: 'search_music', arguments: { query: 'アイドル' } },
       }),
     });
     const callDisabledRes = await manager.handleRequest(callDisabledReq);
@@ -1153,7 +1153,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     const searchRes = await manager.handleRequest(searchReq);
     const searchBody: any = await parseRes(searchRes);
-    expect(searchBody.result?.content?.[0]?.text).toContain('search_song');
+    expect(searchBody.result?.content?.[0]?.text).toContain('search_music');
 
     // 5. tools/list now includes activated tools and their compatibility aliases.
     const listReq2 = new Request('http://localhost/mcp', {
@@ -1169,12 +1169,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes2 = await manager.handleRequest(listReq2);
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
-    // クエリ「楽曲」は search_song（"楽曲タイトル"）と search_music（"楽曲・アルバム"）の
-    // 両方の description に部分一致し、正式名2件と互換名2件が公開される。
-    expect(names2.length).toBe(names1.length + 4);
-    expect(names2).toContain('search_song');
+    // クエリ「楽曲」は search_music の keywords に一致し、正式名と互換名の 2 件が公開される。
+    expect(names2.length).toBe(names1.length + 2);
     expect(names2).toContain('search_music');
-    expect(names2).toContain('default.search_song');
     expect(names2).toContain('default.search_music');
 
     // 6. Search for non-existent tool returns helpful message
@@ -3630,8 +3627,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(44);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(38);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(25);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4096,7 +4093,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 44 tools and enable 13 core hybrid tools by default', () => {
+  it('MCP server should register all 38 tools and enable 13 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4130,7 +4127,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('predict_hts_code');
     expect(enabledToolsAll).toContain('check_product_compliance');
     expect(enabledToolsAll).toContain('inspect_image');
-    expect(enabledToolsAll).toContain('watch_delete');
+    expect(enabledToolsAll).toContain('watch');
     expect(enabledToolsAll).toContain('track_package');
     expect(enabledToolsAll).toContain('research_country_context');
     expect(enabledToolsAll).toContain('search_social_posts');
@@ -4140,7 +4137,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(44);
+    expect(enabledToolsAll.length).toBe(38);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4903,7 +4900,6 @@ describe('Sora REST & MCP Endpoints', () => {
         'check_product_compliance',
         'generate_gcc_certificate',
         'search_laws',
-        'get_law_text',
         'search_diet_minutes',
         'get_weather',
         'get_disaster_info',
@@ -4915,8 +4911,6 @@ describe('Sora REST & MCP Endpoints', () => {
         'search_keywords',
         'search_chiebukuro',
         'search_media',
-        'search_song',
-        'search_artist',
         'search_music',
       ];
 
@@ -4946,7 +4940,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(registeredTools['search_deep'].description).toContain('ライブ・公演日程');
       expect(registeredTools['search_deep'].description).toContain('新製品・発売日');
       expect(registeredTools['search_web'].description).toContain('イベント日程');
-      expect(registeredTools['search_artist'].description).toContain('ライブ・公演日程');
+      expect(registeredTools['search_music'].description).toContain('ライブ・公演日程');
     });
 
     it('waitForDomStable should resolve promptly via DOM Quiescence when mutations settle', async () => {

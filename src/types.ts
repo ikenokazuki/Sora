@@ -1913,7 +1913,7 @@ export const SongRecognitionResultSchema = z.object({
   found: z.boolean().describe('曲を特定できたか'),
   reason: z.enum(['no-match', 'not-audio', 'too-short', 'too-large', 'download-failed']).optional().describe('found が false の理由: "no-match"(Shazam が特定できない), "not-audio"(音声・動画として読めない。ページの URL など), "too-short"(3 秒未満・無音), "too-large"(URL のファイルが 20 MB 超), "download-failed"(URL を読めない)'),
   message: z.string().optional().describe('found が false のとき、または当たりが確かでない（match.uncertain）ときの説明と次の手'),
-  itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_song の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
+  itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_music の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
   itunesMatch: z.enum(['apple-id', 'title-artist']).nullable().describe('iTunes の曲の見つけ方: "apple-id"(Shazam の Apple の曲 ID), "title-artist"(曲名とアーティストの一致)。見つからなければ null'),
   shazam: ShazamTrackSchema.optional().describe('Shazam が特定した曲'),
   match: z.object({
@@ -2042,7 +2042,7 @@ export const WatchTargetRecordSchema = z.object({
   last_hash: z.string().nullable().optional().describe('直前チェック時のコンテンツ SHA-256 ハッシュ'),
   last_content: z.string().nullable().optional().describe('直前チェック時の本文スニペット'),
   webhook_url: z.string().nullable().optional().describe('差分検知通知先 Webhook URL'),
-  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch_check を呼んだときに前回と比べる'),
+  interval_seconds: z.number().describe('保存された値 (秒, 既定 3600)。自動の巡回には使われない。差分は watch の check（REST は POST /watch/check）を呼んだときに前回と比べる'),
   last_checked_at: z.number().nullable().optional().describe('最終チェック日時 (Unixミリ秒)'),
   created_at: z.number().describe('ターゲット登録日時 (Unixミリ秒)'),
 });

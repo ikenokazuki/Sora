@@ -32,6 +32,9 @@ const expected: Record<string, string[]> = {
   lookup_address: ['address', 'zipcode', 'lat', 'lon', 'level', 'compareAddress', 'maxDistanceMeters'],
   get_place_info: ['address', 'lat', 'lon', 'noCache', 'include'],
   get_disaster_info: ['city', 'areaCode', 'limit', 'minIntensity', 'include'],
+  search_laws: ['keyword', 'lawId', 'limit'],
+  search_music: ['query', 'country', 'entity', 'attribute', 'limit'],
+  watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -52,7 +55,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info・search_laws・search_music・watch）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -1005,6 +1008,233 @@ describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（
   });
 });
 
+describe('search_laws: keyword は法令の検索、lawId は条文の全文（旧 get_law_text）', () => {
+  const LIST = { count: 1, items: [{ id: '129AC0000000089', title: '民法', lawNum: '明治二十九年法律第八十九号', promulgationDate: '1896-04-27' }], source: 'e-gov' };
+  const TEXT = { id: '129AC0000000089', title: '民法', lawNum: '明治二十九年法律第八十九号', markdown: '# 民法\n\n第一条 私権は、公共の福祉に適合しなければならない。', articleCount: 1, source: 'e-gov' };
+  /** 2 つのサービスを差し替える（e-Gov には問い合わせない） */
+  const mockBoth = () => {
+    const search = spyOn(scraper, 'searchLaws').mockResolvedValue(LIST as any);
+    const text = spyOn(scraper, 'getLawData').mockResolvedValue(TEXT as any);
+    restore.push(() => { search.mockRestore(); text.mockRestore(); });
+    return { search, text };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'search_laws', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+
+  test('keyword: searchLaws に keyword・limit を渡し、応答は旧 search_laws と同じ', async () => {
+    const { search, text } = mockBoth();
+    const res = await call({ keyword: '民法', limit: 3 });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual(LIST);
+    expect(search.mock.calls[0][0]).toEqual({ keyword: '民法', limit: 3 });
+    await call({ keyword: '民法' });
+    expect(search.mock.calls[1][0]).toEqual({ keyword: '民法' });
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  test('lawId: getLawData に lawId だけを渡し、応答は旧 get_law_text と同じ', async () => {
+    const { search, text } = mockBoth();
+    const res = await call({ lawId: '129AC0000000089' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual(TEXT);
+    expect(text.mock.calls[0][0]).toEqual({ lawId: '129AC0000000089' });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  test('取得の失敗は、旧ツールと同じ文（Law search error・Law data error）', async () => {
+    const s = spyOn(scraper, 'searchLaws').mockRejectedValue(new Error('e-Gov down'));
+    const t = spyOn(scraper, 'getLawData').mockRejectedValue(new Error('not found'));
+    restore.push(() => { s.mockRestore(); t.mockRestore(); });
+    const bad = await call({ keyword: '民法' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toBe('Law search error: e-Gov down');
+    const missing = await call({ lawId: 'nope' });
+    expect(missing.isError).toBe(true);
+    expect(textOf(missing)).toBe('Law data error: not found');
+  });
+
+  // 誤った組み合わせ: 取得しない（外に問い合わせない）
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['keyword と lawId の両方', { keyword: '民法', lawId: '129AC0000000089' }, ['keyword・lawId は 1 つだけ指定してください（指定: keyword, lawId）']],
+    ['どちらも無い', {}, ['keyword・lawId のどれか 1 つを指定してください']],
+    ['limit だけ', { limit: 5 }, ['keyword・lawId のどれか 1 つを指定してください']],
+    ['lawId と limit: 5（既定値の 20 と違う）', { lawId: '129AC0000000089', limit: 5 }, ['limit は keyword を指定したときだけ指定できます（いま: lawId を指定したとき）']],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const spies = mockBoth();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      for (const key of ['keyword', 'lawId', 'limit']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('スキーマの limit の既定値は 20 で、lawId にその値をそのまま入れても通り、使われない', async () => {
+    const { text } = mockBoth();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'search_laws')!.inputSchema as any).properties;
+      expect(props.limit.default).toBe(20);
+      const res: any = await client.callTool({ name: 'search_laws', arguments: { lawId: '129AC0000000089', limit: props.limit.default } });
+      expect(res.isError, textOf(res)).toBeFalsy();
+    });
+    expect(text.mock.calls[0][0]).toEqual({ lawId: '129AC0000000089' });
+  });
+});
+
+describe('search_music: 曲名・アーティスト名の検索も attribute と entity で（旧 search_song・search_artist）', () => {
+  const ITUNES = { results: [{ wrapperType: 'track', kind: 'song', trackId: 1, trackName: 'テスト曲', artistName: 'テスト歌手', previewUrl: 'https://example.com/p.m4a', artworkUrl100: 'https://example.com/a/100x100bb.jpg' }] };
+  /** iTunes を差し替え、問い合わせた URL を残す */
+  const mockItunes = () => {
+    const fetched: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => { fetched.push(String(url)); return new Response(JSON.stringify(ITUNES)); }) as unknown as typeof fetch;
+    restore.push(() => { globalThis.fetch = realFetch; });
+    return fetched;
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'search_music', arguments: args })) as Promise<any>;
+
+  // 旧ツールは、同じサービス（searchSong・searchArtist）を呼んでいた。同じ iTunes の URL を問い合わせ、同じ応答になる
+  test.each([
+    ['search_song', () => scraper.searchSong({ query: 'テスト曲', country: 'us', limit: 5 }), { query: 'テスト曲', country: 'us', limit: 5, attribute: 'songTerm' }],
+    ['search_artist（entity 省略）', () => scraper.searchArtist({ query: 'テスト歌手' }), { query: 'テスト歌手', attribute: 'artistTerm' }],
+    ['search_artist（entity: album）', () => scraper.searchArtist({ query: 'テスト歌手', entity: 'album' }), { query: 'テスト歌手', entity: 'album', attribute: 'artistTerm' }],
+    ['search_artist（entity: musicArtist）', () => scraper.searchArtist({ query: 'テスト歌手', entity: 'musicArtist' }), { query: 'テスト歌手', entity: 'musicArtist' }],
+  ] as Array<[string, () => Promise<unknown>, Record<string, unknown>]>)('旧 %s と同じ iTunes の問い合わせと応答', async (_label, old, args) => {
+    const fetched = mockItunes();
+    clearCache();
+    const before = await old();
+    clearCache();
+    const res = await call(args);
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(fetched).toHaveLength(2);
+    expect(fetched[1]).toBe(fetched[0]);
+    expect(JSON.parse(textOf(res))).toEqual(JSON.parse(JSON.stringify(before)));
+  });
+
+  test('説明は旧ツールを勧めず、曲名・アーティスト名の引き方と、ライブ日程は別のツールであることを書く', () => {
+    const description: string = (createMcpServer({ deferTools: false }) as any)._registeredTools['search_music'].description;
+    for (const old of ['search_song', 'search_artist']) expect(description).not.toContain(old);
+    for (const word of ['songTerm', 'artistTerm', 'musicArtist', 'ライブ・公演日程']) expect(description).toContain(word);
+  });
+});
+
+describe('watch: action で登録・確認・一覧・削除（旧 watch_register・watch_check・watch_list・watch_delete）', () => {
+  const TARGET = { id: 'w1', url: 'https://example.com/status', title: '当落', selector: '#status' };
+  const REGISTERED = { target: TARGET, initialResult: { targetId: 'w1', url: TARGET.url, changed: false, checkedAt: '2026-11-11T00:00:00Z' } };
+  const CHECKED = { targetId: 'w1', url: TARGET.url, changed: true, diffSummary: '変化あり', checkedAt: '2026-11-11T01:00:00Z' };
+  /** 5 つのサービスを差し替える（取得も DB も使わない） */
+  const mockAll = () => {
+    const register = spyOn(scraper, 'registerWatchTarget').mockResolvedValue(REGISTERED as any);
+    const check = spyOn(scraper, 'checkWatchTarget').mockResolvedValue(CHECKED as any);
+    const checkAll = spyOn(scraper, 'checkAllWatchTargets').mockResolvedValue([CHECKED] as any);
+    const list = spyOn(scraper, 'listWatchTargets').mockReturnValue([TARGET] as any);
+    const del = spyOn(scraper, 'deleteWatchTarget').mockReturnValue(true);
+    restore.push(() => { for (const spy of [register, check, checkAll, list, del]) spy.mockRestore(); });
+    return { register, check, checkAll, list, del };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'watch', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+  const notCalled = (spies: Record<string, unknown>, except: string[]) => {
+    for (const [name, spy] of Object.entries(spies)) if (!except.includes(name)) expect(spy as any, name).not.toHaveBeenCalled();
+  };
+
+  test('register: registerWatchTarget に url・title・selector・webhookUrl だけを渡し、応答は旧 watch_register と同じ', async () => {
+    const spies = mockAll();
+    const args = { url: TARGET.url, title: '当落', selector: '#status', webhookUrl: 'https://example.com/hook' };
+    const res = await call({ action: 'register', ...args });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual(REGISTERED);
+    expect(spies.register.mock.calls[0][0]).toEqual(args);
+    notCalled(spies, ['register']);
+  });
+
+  test('check: id があれば旧 watch_check の 1 件、省けば全件の配列', async () => {
+    const spies = mockAll();
+    expect(body(await call({ action: 'check', id: 'w1' }))).toEqual(CHECKED);
+    expect(spies.check.mock.calls[0][0]).toBe('w1');
+    expect(body(await call({ action: 'check' }))).toEqual([CHECKED]);
+    expect(spies.checkAll).toHaveBeenCalledTimes(1);
+    expect(spies.check).toHaveBeenCalledTimes(1);
+    notCalled(spies, ['check', 'checkAll']);
+  });
+
+  test('list: 旧 watch_list と同じ配列', async () => {
+    const spies = mockAll();
+    expect(body(await call({ action: 'list' }))).toEqual([TARGET]);
+    expect(spies.list).toHaveBeenCalledTimes(1);
+    notCalled(spies, ['list']);
+  });
+
+  test('delete: 旧 watch_delete と同じ { success, id }', async () => {
+    const spies = mockAll();
+    expect(body(await call({ action: 'delete', id: 'w1' }))).toEqual({ success: true, id: 'w1' });
+    expect(spies.del.mock.calls[0][0]).toBe('w1');
+    spies.del.mockReturnValue(false);
+    expect(body(await call({ action: 'delete', id: 'none' }))).toEqual({ success: false, id: 'none' });
+    notCalled(spies, ['del']);
+  });
+
+  test('失敗は、旧ツールと同じ文（Watch register error・Watch check error・Watch list error・Watch delete error）', async () => {
+    const spies = mockAll();
+    spies.register.mockRejectedValue(new Error('r'));
+    spies.checkAll.mockRejectedValue(new Error('c'));
+    spies.list.mockImplementation(() => { throw new Error('l'); });
+    spies.del.mockImplementation(() => { throw new Error('d'); });
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ action: 'register', url: TARGET.url }, 'Watch register error: r'],
+      [{ action: 'check' }, 'Watch check error: c'],
+      [{ action: 'list' }, 'Watch list error: l'],
+      [{ action: 'delete', id: 'w1' }, 'Watch delete error: d'],
+    ];
+    for (const [args, message] of cases) {
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toBe(message);
+    }
+  });
+
+  test('action が無い・知らない action は、何もせずに入力の誤り', async () => {
+    const spies = mockAll();
+    for (const args of [{ url: TARGET.url }, { action: 'watch', url: TARGET.url }]) {
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toContain('action');
+    }
+    notCalled(spies, []);
+  });
+
+  // 誤った組み合わせ・足りない引数: 何もしない（登録・取得・削除しない）
+  const actionIs = (a: string) => `action が ${a} のとき`;
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['register に url が無い', { action: 'register', title: '当落' }, [`${actionIs('register')}は url が必要です`]],
+    ['delete に id が無い', { action: 'delete' }, [`${actionIs('delete')}は id が必要です`]],
+    ['delete に空の id', { action: 'delete', id: '' }, [`${actionIs('delete')}は id が必要です`]],
+    ['check に url', { action: 'check', url: TARGET.url }, [`url は ${actionIs('register')}だけ指定できます（いま: ${actionIs('check')}）`]],
+    ['list に id', { action: 'list', id: 'w1' }, [`id は ${actionIs('check')} か ${actionIs('delete')}だけ指定できます（いま: ${actionIs('list')}）`]],
+    ['register に id', { action: 'register', url: TARGET.url, id: 'w1' }, [`id は ${actionIs('check')} か ${actionIs('delete')}だけ指定できます（いま: ${actionIs('register')}）`]],
+    ['delete に title・selector・webhookUrl', { action: 'delete', id: 'w1', title: 't', selector: '#a', webhookUrl: 'https://example.com/hook' }, [`title, selector, webhookUrl は ${actionIs('register')}だけ指定できます（いま: ${actionIs('delete')}）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 何もせず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（action の値と、それぞれの引数）を添える
+      for (const key of ['register', 'check', 'list', 'delete', 'url', 'title', 'selector', 'webhookUrl', 'id']) expect(text).toContain(key);
+      notCalled(spies, []);
+    });
+  }
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -1025,6 +1255,15 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['search_earthquake', 'get_disaster_info', 'disaster'],
     ['特別警報', 'get_disaster_info', 'disaster'],
     ['震度', 'get_disaster_info', 'disaster'],
+    ['get_law_text', 'search_laws', 'gov'],
+    ['条文', 'search_laws', 'gov'],
+    ['search_song', 'search_music', 'music'],
+    ['search_artist', 'search_music', 'music'],
+    ['歌手', 'search_music', 'music'],
+    ['watch_register', 'watch', 'watch'],
+    ['watch_check', 'watch', 'watch'],
+    ['watch_list', 'watch', 'watch'],
+    ['watch_delete', 'watch', 'watch'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

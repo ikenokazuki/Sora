@@ -727,8 +727,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const registered = (server as any)._registeredTools;
 
       // music module tools must not exist at all in registered tools
-      expect(registered['search_song']).toBeUndefined();
-      expect(registered['search_artist']).toBeUndefined();
+      expect(registered['search_music']).toBeUndefined();
 
       // search_tools should not be able to find music tools
       const searchTools = registered['search_tools'];
@@ -753,8 +752,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(lifeInstructions).not.toContain('get_disaster_info');
       expect(lifeInstructions).not.toContain('search_road_traffic');
       expect(lifeInstructions).not.toContain('get_place_info');
-      expect(lifeInstructions).not.toContain('search_song');
-      expect(lifeInstructions).not.toContain('search_artist');
+      expect(lifeInstructions).not.toContain('search_music');
       expect(lifeInstructions).not.toContain('search_laws');
       expect(lifeInstructions).not.toContain('check_product_compliance');
       expect(lifeInstructions).not.toContain('search_web');
@@ -771,7 +769,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(disasterInstructions).not.toContain('search_route');
       expect(disasterInstructions).not.toContain('get_flight_status');
       expect(disasterInstructions).not.toContain('track_package');
-      expect(disasterInstructions).not.toContain('search_song');
+      expect(disasterInstructions).not.toContain('search_music');
       expect(disasterInstructions).not.toContain('search_laws');
       expect(disasterInstructions).not.toContain('search_web');
       expect(disasterInstructions).not.toContain('search_deep');
@@ -780,7 +778,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const allInstructions = buildSoraMcpInstructions(['all']);
       expect(allInstructions).toContain('search_deep');
       expect(allInstructions).toContain('search_web');
-      expect(allInstructions).toContain('search_song');
+      expect(allInstructions).toContain('search_music');
       expect(allInstructions).toContain('search_laws');
       expect(allInstructions).toContain('check_product_compliance');
       expect(allInstructions).toContain('get_weather');
@@ -827,22 +825,22 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
       // natural language music
       const resSong = await searchTools.handler({ query: '曲の検索' });
-      expect(resSong.content?.[0]?.text).toContain('search_song');
+      expect(resSong.content?.[0]?.text).toContain('search_music');
 
       // natural language artist
       const resArtist = await searchTools.handler({ query: '歌手' });
-      expect(resArtist.content?.[0]?.text).toContain('search_artist');
+      expect(resArtist.content?.[0]?.text).toContain('search_music');
     });
 
     it('prevents false-positive 1-character reverse containment while activating intended tools', async () => {
       const server = createMcpServer({ deferTools: true });
       const searchTools = (server as any)._registeredTools['search_tools'];
 
-      // "歌手" must activate search_artist, but NOT search_song via 1-char "歌"
-      const resArtist = await searchTools.handler({ query: '歌手' });
-      const artistText = resArtist.content?.[0]?.text || '';
-      expect(artistText).toContain('search_artist');
-      expect(artistText).not.toContain('search_song');
+      // "雷門 周辺施設" must activate search_poi via "周辺施設", but NOT get_disaster_info via 1-char "雷"
+      const resPoi = await searchTools.handler({ query: '雷門 周辺施設' });
+      const poiText = resPoi.content?.[0]?.text || '';
+      expect(poiText).toContain('search_poi');
+      expect(poiText).not.toContain('get_disaster_info');
 
       // "ヤマトの追跡" must activate track_package via 3-char "ヤマト"
       const resTracking = await searchTools.handler({ query: 'ヤマトの追跡' });

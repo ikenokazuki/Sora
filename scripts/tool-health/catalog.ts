@@ -49,8 +49,8 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_route', 'get_weather', 'get_flight_status', 'track_package',
   'search_road_traffic', 'get_disaster_info',
   'get_place_info', 'search_poi', 'lookup_address',
-  'watch_register', 'watch_check', 'watch_list', 'watch_delete',
-  'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
+  'watch',
+  'search_music', 'search_laws', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
   'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
   'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
@@ -106,15 +106,18 @@ export const REST_MAP: RestMap = {
     { method: 'POST', path: '/geo/reverse', fn: 'reverseGeocode' },
     { method: 'POST', path: '/geo/postal-code', fn: 'searchPostalCode' },
   ],
-  watch_register: { method: 'POST', path: '/watch/register' },
-  watch_check: { method: 'POST', path: '/watch/check' },
-  watch_list: { method: 'GET', path: '/watch/list' },
-  watch_delete: { method: 'DELETE', path: '/watch/:id' },
-  search_song: { method: 'POST', path: '/search/song' },
-  search_artist: { method: 'POST', path: '/search/artist' },
-  search_music: { method: 'POST', path: '/search/music' },
-  search_laws: { method: 'POST', path: '/gov/laws' },
-  get_law_text: { method: 'POST', path: '/gov/law-text' },
+  watch: [
+    { method: 'POST', path: '/watch/register', fn: 'watchRegister' },
+    { method: 'POST', path: '/watch/check', fn: 'watchCheck' },
+    { method: 'GET', path: '/watch/list', fn: 'watchList' },
+    { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' },
+  ],
+  search_music: [
+    { method: 'POST', path: '/search/music' },
+    { method: 'POST', path: '/search/song', fn: 'searchSong' },
+    { method: 'POST', path: '/search/artist', fn: 'searchArtist' },
+  ],
+  search_laws: [{ method: 'POST', path: '/gov/laws' }, { method: 'POST', path: '/gov/law-text', fn: 'getLawText' }],
   search_diet_minutes: { method: 'POST', path: '/gov/diet-minutes' },
   check_cpsc_certificate: { method: 'POST', path: '/trade/cpsc-check' },
   check_fda_regulated: { method: 'POST', path: '/trade/fda-check' },
@@ -890,49 +893,49 @@ export const TOOL_CASES: HealthCase[] = [
     checkReverseGeocodeResult(rest.json, 'GET /geo/reverse');
     return observation;
   }),
-  toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.register', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe' }, 80000);
-    const raw = toolPayload(rawJsonText, 'watch_register');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe' }, 80000);
+    const raw = toolPayload(rawJsonText, 'watch (register)');
     return mustContain(raw, ['example.com'], 'watch-register');
   }),
-  toolCase('watch.check', ['watch_check'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.check', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-check' }, 80000);
-    const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
-    if (!id) throw new LiveFail('watch_register returned no target id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_check', { id }, 80000);
-    const raw = toolPayload(rawJsonText, 'watch_check');
+    const reg = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe-check' }, 80000);
+    const id = (parseFirstJson(reg.text, 'watch (register)') as { target?: { id?: string } }).target?.id;
+    if (!id) throw new LiveFail('watch (register) returned no target id');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'check', id }, 80000);
+    const raw = toolPayload(rawJsonText, 'watch (check)');
     return mustContain(raw, [id], 'watch-check');
   }),
-  toolCase('watch.list', ['watch_list'], ['watch:db'], false, 60000, async (ctx) => {
+  toolCase('watch.list', ['watch'], ['watch:db'], false, 60000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_list', {}, 30000);
-    const raw = toolPayload(rawJsonText, 'watch_list');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'list' }, 30000);
+    const raw = toolPayload(rawJsonText, 'watch (list)');
     if (Array.isArray(raw)) {
       return { sources: [{ source: 'watch-list', count: raw.length, format: 'json', upstreamStatus: 'unknown' }] };
     }
     return mustContain(raw, ['targets'], 'watch-list');
   }),
-  toolCase('watch.delete', ['watch_delete'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.delete', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-del' }, 80000);
-    const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
-    if (!id) throw new LiveFail('watch_register returned no target id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_delete', { id }, 30000);
-    const raw = toolPayload(rawJsonText, 'watch_delete');
+    const reg = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe-del' }, 80000);
+    const id = (parseFirstJson(reg.text, 'watch (register)') as { target?: { id?: string } }).target?.id;
+    if (!id) throw new LiveFail('watch (register) returned no target id');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'delete', id }, 30000);
+    const raw = toolPayload(rawJsonText, 'watch (delete)');
     return mustContain(raw, ['success'], 'watch-delete');
   }),
-  toolCase('music.song', ['search_song'], ['itunes'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_song', { query: 'アイドル', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_song');
-    mustHaveItems(raw, 'search_song', 'title');
+  toolCase('music.song', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'アイドル', attribute: 'songTerm', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_music (songTerm)');
+    mustHaveItems(raw, 'search_music (songTerm)', 'title');
     return mustContain(raw, ['itunes'], 'itunes-song');
   }),
-  toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_artist', { query: 'YOASOBI', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_artist');
-    mustHaveItems(raw, 'search_artist', ['title']);
+  toolCase('music.artist', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'YOASOBI', attribute: 'artistTerm', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_music (artistTerm)');
+    mustHaveItems(raw, 'search_music (artistTerm)', ['title']);
     return mustContain(raw, ['YOASOBI'], 'itunes-artist');
   }),
   toolCase('music.generic', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
@@ -947,17 +950,17 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_laws', ['id', 'title']);
     return mustContain(raw, ['民法'], 'egov');
   }),
-  toolCase('gov.lawtext', ['get_law_text'], ['egov'], true, 90000, async (ctx) => {
+  toolCase('gov.lawtext', ['search_laws'], ['egov'], true, 90000, async (ctx) => {
     const { text: foundText } = await mcpJson(ctx, 'search_laws', { keyword: '民法', limit: 1, noCache: true }, 60000);
     const list = toolPayload(foundText, 'search_laws') as { laws?: Array<{ lawId?: string; id?: string }>; items?: Array<{ lawId?: string; id?: string }> };
     const lawId = list.laws?.[0] ?? list.items?.[0];
     const id = lawId?.lawId ?? lawId?.id;
     if (!id) throw new LiveFail('search_laws returned no law id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_law_text', { lawId: id }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_law_text');
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_laws', { lawId: id }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_laws (lawId)');
     const text = textOf(raw);
     if (!text.includes('第一条') && !text.includes('第1条') && !text.includes('articleCount')) {
-      throw new LiveFail('get_law_text missing article evidence');
+      throw new LiveFail('search_laws (lawId) missing article evidence');
     }
     return { sources: [{ source: 'egov-lawtext', format: 'json', upstreamStatus: 'unknown' }] };
   }),
@@ -1053,9 +1056,9 @@ export const TOOL_CASES: HealthCase[] = [
     await ensureEnabled(ctx, '楽曲認識', 30000);
     // iTunes の試聴音源（YOASOBI「アイドル」）の 8 秒目からの 12 秒を、Shazam に 1 回だけ送る。
     // GitHub の実行環境を Shazam が拒否したら、エラーの文（HTTP 403）で blocked になる（soft hold）
-    const { text: songText } = await mcpJson(ctx, 'search_song', { query: 'YOASOBI アイドル', limit: 1 }, 30000);
-    const preview = (toolPayload(songText, 'search_song') as { items?: Array<{ previewUrl?: string }> }).items?.[0]?.previewUrl;
-    if (!preview) throw new LiveUnavailable('search_song returned no preview URL for the recognition sample');
+    const { text: songText } = await mcpJson(ctx, 'search_music', { query: 'YOASOBI アイドル', attribute: 'songTerm', limit: 1 }, 30000);
+    const preview = (toolPayload(songText, 'search_music (songTerm)') as { items?: Array<{ previewUrl?: string }> }).items?.[0]?.previewUrl;
+    if (!preview) throw new LiveUnavailable('search_music (songTerm) returned no preview URL for the recognition sample');
     const { text } = await mcpJson(ctx, 'recognize_song', { url: preview, offsetSec: 8 }, 90000);
     const raw = toolPayload(text, 'recognize_song') as { found?: boolean; reason?: string; message?: string };
     if (raw.found !== true) {

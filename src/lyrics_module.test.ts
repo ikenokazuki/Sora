@@ -57,7 +57,7 @@ describe('MCP tool', () => {
     expect(toolCatalogOf(createMcpServer({ modules: ['all'], deferTools: false })).has('get_lyrics')).toBe(false);
     const named = toolCatalogOf(createMcpServer({ modules: ['all', 'lyrics'], deferTools: false }));
     expect(named.get('get_lyrics')?.category).toBe('lyrics');
-    expect(named.has('search_song')).toBe(true);
+    expect(named.has('search_music')).toBe(true);
   });
 
   test('is deferred like the other music tools until search_tools activates it', () => {
