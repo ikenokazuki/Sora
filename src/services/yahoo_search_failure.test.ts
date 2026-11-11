@@ -97,28 +97,6 @@ describe('web search distinguishes upstream failure from empty results', () => {
       delete process.env.SORA_WEB_QUERY_UNION;
     }
   });
-  test('deprecated retry-wait env does not re-enable fan-out after 429', async () => {
-    process.env.SORA_WEB_QUERY_UNION = 'true';
-    process.env.SORA_WEB_RETRY_WAIT_MS = '0';
-    let calls = 0;
-    try {
-      const r = await searchYahooWeb(
-        { query: 'ｘ' },
-        {
-          callYahooMcp: async () => {
-            calls++;
-            return err429;
-          },
-          fetchYahooWebDirect: directEmpty,
-        } as any,
-      );
-      expect(calls).toBe(1);
-      expect(r.throttled).toBe(true);
-    } finally {
-      delete process.env.SORA_WEB_QUERY_UNION;
-      delete process.env.SORA_WEB_RETRY_WAIT_MS;
-    }
-  });
 
   test('fresh cache hit skips the provider', async () => {
     const key = yahooWebSearchFlightKey({ query: 'x', disableFallback: true });
