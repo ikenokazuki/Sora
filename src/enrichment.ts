@@ -228,7 +228,8 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
 
   const isSafe = await isSafeWebhookUrl(webhookUrl);
   if (!isSafe) {
-    console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookUrl}`);
+    // URL は出さない（Webhook の URL は秘密を含む。管理者のアラートの宛先など）。下の 2 つも同じ
+    console.warn('[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination');
     return false;
   }
 
@@ -249,11 +250,11 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
-      console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
+      console.warn(`[web-fetcher/webhook] Failed to send webhook: HTTP ${res.status}`);
     }
     return res.ok;
   } catch (err) {
-    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
+    console.warn('[web-fetcher/webhook] Error sending webhook:', errorMessage(err));
     return false;
   }
 }

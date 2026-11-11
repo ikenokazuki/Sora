@@ -6,6 +6,7 @@ import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
 import { errorMessage } from '../errors.js';
+import { envUrl } from '../config.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -118,7 +119,7 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
 /** 管理者アラート通知 (Slack / Discord Webhook) */
 export function sendAdminAlert(event: string, details: Record<string, any>): void {
-  const alertWebhookUrl = process.env.ADMIN_ALERT_WEBHOOK_URL;
+  const alertWebhookUrl = envUrl('SORA_ALERT_WEBHOOK_URL');
   if (!alertWebhookUrl) return;
 
   const payload = {

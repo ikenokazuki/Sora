@@ -11,6 +11,7 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
+import { envEnum } from './config.js';
 
 // ドメイン別サブルーター
 import { formatError } from './routes/utils.js';
@@ -117,7 +118,7 @@ app.use('*', async (c, next) => {
       ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'direct',
       userAgent: c.req.header('user-agent') || '',
     };
-    if (process.env.LOG_FORMAT === 'json') {
+    if (envEnum('SORA_LOG_FORMAT') === 'json') {
       console.log(JSON.stringify(logPayload));
     }
   }
