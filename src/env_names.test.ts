@@ -527,6 +527,8 @@ describe('追跡（運送会社の API の鍵）', () => {
     // 新しい名前の片方と旧名の片方は、組にならない
     expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID, FEDEX_API_SECRET: 'old-secret' })).toBeUndefined();
     expect(fedexApiCredentials({ FEDEX_CLIENT_ID: 'old-id', SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET })).toBeUndefined();
+    expect(fedexApiCredentials({ SORA_TRACKING_FEDEX_CLIENT_ID: ID, FEDEX_CLIENT_SECRET: 'old-secret' })).toBeUndefined();
+    expect(fedexApiCredentials({ FEDEX_API_KEY: 'old-key', SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET })).toBeUndefined();
     expect(fedexApiCredentials({
       SORA_TRACKING_FEDEX_CLIENT_ID: ID, SORA_TRACKING_FEDEX_CLIENT_SECRET: SECRET, FEDEX_API_KEY: 'old-key', FEDEX_CLIENT_SECRET: 'old-secret',
     })).toEqual({ clientId: ID, clientSecret: SECRET });
@@ -547,6 +549,7 @@ describe('追跡（運送会社の API の鍵）', () => {
     expect(dhlApiKey({ DHL_EXPRESS_API_KEY: 'old-key', DHL_API_KEY: 'old-key' })).toBeUndefined();
   });
 
+  // 注意: fedex.ts のモジュールのトークンの覚え（cachedToken）が空であることに頼っている。このテストより前に FedEx のトークンを取るテストを足すと、API を呼ばずに通る
   test('照会は、新しい名前の鍵で API を呼ぶ（API の応答を差し替える。ブラウザは使わない）', async () => {
     const requests: { url: string; init?: RequestInit }[] = [];
     const responses: Record<string, unknown> = {

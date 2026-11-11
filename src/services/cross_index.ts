@@ -36,7 +36,7 @@ function source(): { url: string; sha256: string } {
   const url = envUrl('SORA_HTS_CROSS_INDEX_URL');
   if (!url) return { url: CROSS_INDEX_URL, sha256: CROSS_INDEX_SHA256 };
   const sha256 = envStr('SORA_HTS_CROSS_INDEX_SHA256');
-  if (!sha256) throw new Error('SORA_HTS_CROSS_INDEX_URL を使うときは SORA_HTS_CROSS_INDEX_SHA256（16 進 64 字の小文字）も指定してください');
+  if (!sha256) throw new Error(envError('SORA_HTS_CROSS_INDEX_SHA256') ?? 'SORA_HTS_CROSS_INDEX_URL を使うときは SORA_HTS_CROSS_INDEX_SHA256（16 進 64 字の小文字）も指定してください');
   return { url, sha256 };
 }
 
