@@ -25,7 +25,7 @@ export function formatError(
   c: Context,
   message: string,
   code = 'INTERNAL_ERROR',
-  status: 400 | 401 | 403 | 404 | 408 | 422 | 429 | 500 | 502 = 500,
+  status: 400 | 401 | 403 | 404 | 408 | 413 | 422 | 429 | 500 | 502 = 500,
   retryable = false,
   details?: unknown,
 ) {

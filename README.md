@@ -173,7 +173,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | 常駐メモリ（静的取得後） | 約 195 MB | `mode: fast` でスクレイプした後 |
 | 常駐メモリ（ブラウザ描画中） | 約 950 MB | bun 約 250MB + Chromium 約 700MB（7 プロセス） |
 | 常駐メモリ（無操作 5 分後） | 約 200 MB | Chromium 解放後（`BROWSER_IDLE_TTL_MS`） |
-| イメージサイズ | 約 1.3 GB | Bun + Chromium + 日本語フォント |
+| イメージサイズ | 約 750 MB | Bun + Chromium + 日本語フォント（展開後。圧縮して約 345 MB） |
 | 必要なコンテナ構成 | 単一コンテナ | Redis / PostgreSQL / ワーカーキュー不要 |
 | セキュリティ設計 | Distroless（シェルなし・非 root） | `gcr.io/distroless/cc-debian12` |
 
@@ -363,7 +363,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ```
 
 ### 💻 コード実行環境から使う (型付き TypeScript クライアント)
-`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。さらに `GET /client` が、全ツールの型付き TypeScript 関数（`client/`、`bun run gen:client` で生成）を配ります。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。コードを実行できる LLM には、instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`） からこのクライアントを案内します（直接 MCP を呼ぶより優先）。
+`search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
 Web 検索と本文スクレイピング、一括並行取得、深層統合検索、動的ツール発見、サイトマップ解析、再帰クロール。
@@ -2268,9 +2268,17 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・複数クエリ統合の既定値は有効化していません。
 
-### 3.30 生成クライアントの配布 (`GET /client`, `GET /client/<path>`, v2.40.0)
+### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`、旧 `GET /client`)
 
-コード実行環境向けの型付き TypeScript クライアント（全ツール分）を読み取り専用で配ります。`GET /client` は配布するファイルの一覧（`manifest.json`）を返し、`GET /client/<path>` が一覧に載ったファイルを返します（`.json` は `application/json`、それ以外は `text/plain`）。一覧に無いパスや `..` を含むパスは 404。認証は他の REST と同じです。クライアントは OpenAPI から `bun run gen:client` で生成し、リポジトリの `client/` にコミットしています。取得方法・使い方・実測は [docs/code-execution.md](docs/code-execution.md)。
+コード実行環境から、言語を問わず（curl・Python・Node など）REST を直接呼べるように、操作の一覧と 1 つ分の定義を返します。
+
+- `GET /tools`: `{ count, tools: [{ name, method, path, category, summary }] }`。`?q=`（空白で区切った語をすべて含むもの。名前・パス・カテゴリ・概要を、大文字小文字を区別せずに見ます）と `?category=` で絞れます。`ENABLED_MODULES` で無効なモジュールの操作は出ません。`name` は OpenAPI の `operationId` と同じです。
+- `GET /tools/<name>`: 入力のスキーマ（`request.schema`）、path・query の引数（`parameters`）、文書にあるエラー（`errors`）、別名・GET の形・SSE の形（`alternatives`）を返します。成功時の応答のスキーマは大きいことがある（最大 約 70KB）ので、`?response=true` のときだけ付きます。一覧に無い名前は 404（`NOT_FOUND`）。
+- 認証は他の REST と同じです（`Authorization: Bearer` または `X-API-Key`）。
+- REST の操作の失敗は、HTTP の 4xx / 5xx と、共通の `{ error, code, status, retryable, details? }`（401・403・413・429 も同じ形。HTML の `GET /t/…` のページは除く）。
+- `GET /openapi.json`（約 580KB）の各操作には、`operationId`・`tags`（カテゴリ）・認証・共通のエラー応答を宣言しています。LLM が読むときは、全体ではなく `GET /tools` を使ってください。
+- **旧: `GET /client`・`GET /client/<path>`（型付き TypeScript クライアント、v2.40.0）** は、REST の直接呼び出しに置き換わりました。案内をやめ、OpenAPI で `deprecated` にしています。当面は残しますが、v5.0.0 で廃止する予定です。
+- 手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。
 
 ### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)
 
@@ -2487,6 +2495,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
 | `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
 | `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
+| `SORA_BROWSER_LOW_MEMORY` | *(未設定 = 無効)* | `true`（`1`・`on`・`yes` も可）で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
 | `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
 | `ALLOW_BROWSER_EVALUATE` | *(未設定 = 遮断)* | `true` を指定したときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意JS実行）が動きます。未設定やそれ以外の値は遮断 |
 | `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
@@ -2532,6 +2541,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   1 ページあたり約 300MB は目安です。明示した値が優先されます。
 - **Chromium は無操作で閉じます**（`BROWSER_IDLE_TTL_MS`、既定 5 分、`0` で無効）。次にブラウザが必要になったとき自動で再起動します（実測: 再起動後の最初のブラウザ描画も、起動済みの場合と同等の約 3.6 秒）。ブラウザセッション（`sessionId`）や追跡・SNS 取得でコンテキストが開いている間は閉じません。
 - **実測の目安**: 起動直後 約 160MB、静的取得後 約 195MB、ブラウザ描画中 約 950MB（bun 約 250MB + Chromium 約 700MB）、解放後 約 200MB。
+- **ブラウザ描画中のピークを下げたい**ときは `SORA_BROWSER_LOW_MEMORY=true`（既定は無効）。Chromium を低メモリ端末のモードで起動し、ページを 1 つずつ開いたときのピークが約 18%、3 ページ同時で約 14% 下がります。副作用は `navigator.deviceMemory` が 8 から 2 になることだけです（詳細は §4.3 の表）。
 - **ブラウザを使わせたくないリクエスト**には `scrape` の `mode: "fast"`（静的取得のみ）を指定します。
 - **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 14 ツールに絞れます。
 

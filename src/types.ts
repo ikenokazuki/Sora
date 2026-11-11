@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isModuleActive } from './mcp/registry.js';
+import { finalizeOpenApi } from './rest_operations.js';
 import { CountryContextReportSchema, CountryContextRequestSchema } from './services/country_intel/types.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema } from './services/social/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_intel/detail.js';
@@ -3183,7 +3184,8 @@ export function generateOpenApiDocument() {
       },
       '/client': {
         get: {
-          summary: '生成済み TypeScript クライアントのファイル一覧 (manifest.json)。コード実行環境向け',
+          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済み TypeScript クライアントのファイル一覧 (manifest.json)',
+          deprecated: true,
           responses: {
             '200': {
               description: '配布するファイルの相対パス一覧',
@@ -3194,9 +3196,65 @@ export function generateOpenApiDocument() {
       },
       '/client/{path}': {
         get: {
-          summary: '生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
+          summary: '[非推奨。GET /tools に置き換わった。v5.0.0 で廃止予定] 生成済みクライアントのファイルを1つ取得 (manifest.json に載ったものだけ)',
+          deprecated: true,
           parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'manifest.json に載った相対パス (例: servers/sora/search_web.ts)' }],
           responses: { '200': { description: 'ファイルの本文 (.json は application/json、それ以外は text/plain)', content: { 'text/plain': { schema: { type: 'string' } } } } },
+        },
+      },
+      '/tools': {
+        get: {
+          summary: '操作の一覧 (名前・メソッド・パス・カテゴリ・概要)。言語に依存せず、curl だけで使える。コード実行環境向け',
+          parameters: [
+            { name: 'q', in: 'query', required: false, schema: { type: 'string' }, description: '空白で区切った語をすべて含む操作だけ (名前・パス・カテゴリ・概要を、大文字小文字を区別せずに見る)' },
+            { name: 'category', in: 'query', required: false, schema: { type: 'string' }, description: 'そのカテゴリ (MCP のモジュール名。例: web・disaster・trade) だけ' },
+          ],
+          responses: {
+            '200': {
+              description: '操作の一覧。ENABLED_MODULES で無効なモジュールの操作は出ない',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      count: { type: 'integer' },
+                      tools: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            name: { type: 'string', description: 'GET /tools/<name> の名前 (operationId)' },
+                            method: { type: 'string', enum: ['GET', 'POST', 'DELETE'] },
+                            path: { type: 'string', description: 'OpenAPI の書き方 (パスの変数は {id})' },
+                            category: { type: 'string' },
+                            summary: { type: 'string' },
+                          },
+                          required: ['name', 'method', 'path', 'category', 'summary'],
+                        },
+                      },
+                    },
+                    required: ['count', 'tools'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/tools/{name}': {
+        get: {
+          summary: '1 つの操作の定義 (入力のスキーマ・path と query の引数・文書にあるエラー・別名)。名前は GET /tools の name',
+          parameters: [
+            { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'GET /tools の name (例: search_postal_code)' },
+            { name: 'response', in: 'query', required: false, schema: { type: 'string', enum: ['true'] }, description: 'true で、成功時の応答のスキーマも付ける (大きいことがある)' },
+          ],
+          responses: {
+            '200': {
+              description: '操作の定義 { name, method, path, category, summary, parameters?, request?, response?, errors?, alternatives? }',
+              content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } },
+            },
+            '404': { description: '一覧に無い名前、またはモジュールが無効' },
+          },
         },
       },
       '/watch/list': {
@@ -4078,5 +4136,5 @@ export function generateOpenApiDocument() {
       },
     };
   }
-  return doc;
+  return finalizeOpenApi(doc);
 }

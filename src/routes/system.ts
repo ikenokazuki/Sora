@@ -28,6 +28,7 @@ systemRoutes.get('/', (c) => {
       metrics: 'GET /metrics',
       docs: 'GET /docs (Scalar API Reference), GET /swagger (Swagger UI)',
       openapi: 'GET /openapi.json (OpenAPI 3.0.0 Specification)',
+      tools: 'GET /tools (操作の一覧), GET /tools/<name> (1 つの操作の入力スキーマ)',
       mcp: 'POST/GET /mcp (Streamable HTTP / SSE)',
       sse: 'GET /sse, POST /message',
       scrape: 'POST /scrape',

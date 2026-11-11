@@ -13,7 +13,7 @@ description: >
 
 - Sora MCPサーバへ接続する（stdio: `bun run src/stdio.ts`）。
 - `tools/list` に必要なツールが見える場合は直接呼ぶ。見えない場合は `search_tools` に関連語（例: 「国地域」「リアルタイム」「深層検索」）を渡して有効化してから呼ぶ。
-- コードを実行できる環境があるなら、MCP を直接呼ぶより型付きクライアント（スキル `sora-client`、リソース `sora-skill://sora-client`）を使い、結果を絞って必要な項目だけ出力する。
+- コードを実行できる環境があるなら、MCP を直接呼ぶより REST を直接呼び（`GET /tools` で一覧、`GET /tools/<名前>` で入力のスキーマ。手順はスキル `sora-client`、リソース `sora-skill://sora-client`）、結果を絞って必要な項目だけ出力する。
 - `search_tools` で見つからない場合は無効の可能性がある。捏造せず、利用可能な代替で進め、未取得として記録する。
 
 ## 手順

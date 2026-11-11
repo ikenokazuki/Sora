@@ -130,6 +130,9 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
         return c.json(
           {
             error: 'Unauthorized: Invalid or missing API key',
+            code: 'UNAUTHORIZED',
+            status: 401,
+            retryable: false,
             message: 'Please provide a valid API key via Authorization: Bearer <API_KEY> or X-API-Key header.',
           },
           401,
