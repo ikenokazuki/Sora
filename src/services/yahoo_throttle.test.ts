@@ -16,7 +16,6 @@ import {
 } from './yahoo.js';
 const SAVED_ENV: Record<string, string | undefined> = {
   SORA_YAHOO_MCP_PATH: process.env.SORA_YAHOO_MCP_PATH,
-  SORA_YAHOO_THROTTLE: process.env.SORA_YAHOO_THROTTLE,
   SORA_YAHOO_MIN_INTERVAL_MS: process.env.SORA_YAHOO_MIN_INTERVAL_MS,
   SORA_YAHOO_BREAKER_COOLDOWN_MS: process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS,
 };
@@ -33,7 +32,6 @@ beforeEach(() => {
   resetYahooBreaker();
   resetYahooCallGate();
   resetYahooWebPressure();
-  delete process.env.SORA_YAHOO_THROTTLE;
   delete process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS;
   process.env.SORA_YAHOO_MIN_INTERVAL_MS = '0';
 });

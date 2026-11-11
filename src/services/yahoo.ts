@@ -55,7 +55,6 @@ export function resetYahooCallGate(): void {
 }
 
 async function gateYahooCall(): Promise<void> {
-  if (process.env.SORA_YAHOO_THROTTLE === 'off') return;
   const minInterval = yahooMinIntervalMs();
   if (!(minInterval > 0)) return;
   let release!: () => void;
@@ -97,7 +96,6 @@ let yahooBreakerTrippedAt: number | null = null;
 
 export function isYahooBreakerOpen(): boolean {
   if (yahooBreakerTrippedAt == null) return false;
-  if (process.env.SORA_YAHOO_THROTTLE === 'off') return false;
   return yahooBreakerCooldownMs() > (Date.now() - yahooBreakerTrippedAt);
 }
 
@@ -143,13 +141,8 @@ export function resetYahooWebPressure(): void {
   yahooWebPressure.reset();
 }
 
-function pressureBypassed(): boolean {
-  return process.env.SORA_YAHOO_THROTTLE === 'off';
-}
-
 /** Short bounded pacing between queries (spec section 5: never sleep long). */
 async function paceForYahooPressure(): Promise<void> {
-  if (pressureBypassed()) return;
   const waitMs = Math.min(yahooWebPressure.snapshot().spacingMs, 250);
   if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
 }
@@ -161,7 +154,6 @@ async function paceForYahooPressure(): Promise<void> {
  */
 export function recordYahooWebResult(err: unknown): boolean {
   try { incrementSecurityCounter('yahoo_request_total'); } catch {}
-  if (pressureBypassed()) return false;
   const limited =
     (err instanceof YahooProviderError && err.status === 429) ||
     isYahooRateLimitedError(err) ||
@@ -179,7 +171,6 @@ export function recordYahooWebResult(err: unknown): boolean {
 
 export function recordYahooWebSuccess(): void {
   try { incrementSecurityCounter('yahoo_request_total'); } catch {}
-  if (pressureBypassed()) return;
   yahooWebPressure.onSuccess();
 }
 
@@ -525,7 +516,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
     : extractRealtimeFallbackQueries(options.query);
 
   // Pressure-aware query budget (spec sections 15-17): provider health wins over flags.
-  const yahooPressureLevel = pressureBypassed() ? 'low' as const : yahooWebPressure.getLevel();
+  const yahooPressureLevel = yahooWebPressure.getLevel();
   const yahooQueryBudget = getYahooQueryBudget(yahooPressureLevel);
   const verboseDiag = options.verbose === true;
 
@@ -548,7 +539,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
         webUnionThrottled = true;
         break;
       }
-      if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
+      if (!yahooWebPressure.canRequest()) {
         webUnionThrottled = true;
         break;
       }
@@ -690,7 +681,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
       webSequentialThrottled = true;
       break;
     }
-    if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
+    if (!yahooWebPressure.canRequest()) {
       webSequentialThrottled = true;
       break;
     }
@@ -776,7 +767,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
         }
         // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
         // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
-        if (i === 0 && candidateQueries.length > 1 && yahooQueryBudget >= 2 && (pressureBypassed() || yahooWebPressure.canRequest())) {
+        if (i === 0 && candidateQueries.length > 1 && yahooQueryBudget >= 2 && yahooWebPressure.canRequest()) {
           const conf = assessRetrievalConfidence(filtered, options.query);
           if (!conf.good) {
             try {
