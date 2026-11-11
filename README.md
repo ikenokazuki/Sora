@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (37ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 37 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 51 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 33 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 47 ツール）。
 
 ```json
 {
@@ -106,7 +106,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
 >    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status, search_postal_code, normalize_address, reverse_geocode
 >    - 国内交通乗換・運賃: search_route
->    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_keywords, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 
@@ -299,21 +299,21 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 51 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 47 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 51 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 47 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
 ### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (37ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 37 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (33ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 33 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
 
 - **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
   - `scrape`: Web ページ Markdown 抽出（`urls` で最大 20 件を一括並行取得）・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
   - `search_web`: 最速 1-hop Web 検索（候補 URL・スニペット即応、formats 指定で上位本文インライン取得対応）
   - `search_deep`: 深層統合検索・本文一括スクレイピング & リアルタイム速報（responseMode: evidence（既定）/ full）
   - `search_social_posts`: 公開 SNS 投稿検索（Weibo 新着 / Threads・Instagram・Facebook 公開投稿）
-  - `fetch_social_post`: 公開 SNS 投稿の本文・日時・反応取得
+  - `fetch_social_post`: 公開 SNS 投稿（X・Weibo・Threads・Instagram・Facebook。X は `statusId` でも可）の本文・日時・反応取得
   - `search_tools`: 現在 tools/list に表示されていない追加/deferred ツールの検索・動的有効化（Tool Search Tool）
   - `check_product_compliance`: 商品統合コンプライアンス一括診断（HTSコード/FDA/CPSC/eFiling）
   - `get_weather`: 気象庁 1,805 市区町村天気予報
@@ -323,7 +323,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `search_disaster_warnings`: 気象庁 警報・注意報
   - `search_earthquake`: 気象庁 地震情報
   - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 37 ツール)**:
+- **動的有効化 (・ DEFERRED 33 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
@@ -341,7 +341,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
   - `generate_gcc_certificate`: 米国 CPSC の一般適合証明書（GCC）と通関の保留に出す書類（呼び出し側の記録から作る。HTS は推測しない）
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`, `fetch_x_post`
+  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -349,21 +349,21 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┬───────────┤
 │ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │ 📦 Trade  │
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │ (`trade`) │
-│ ★scrape         │ ・browser_action  │ ・search_image   │ ★search_route   │★search_     │・watch_       │★search_laws  │★check_    │
-│ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
-│ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ★get_weather    │  warnings   │・watch_check  │・search_diet_│  compli-  │
-│ ★search_tools   │    セッション保持)│ ★search_chie-    │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
-│ ・crawl_site    │                   │   bukuro         │ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・predict_ │
-│                 │                   │ ★search_realtime │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
-│                 │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
-│                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
-│                 │                   │   keywords       │ ・track_package │             │・search_artist│・inspect_    │・check_   │
+│ ★scrape         │ ・browser_action  │ ・search_media   │ ★search_route   │★search_     │・watch_       │★search_laws  │★check_    │
+│ ★search_web     │   (クリック/入力/ │ ★search_chie-    │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
+│ ★search_deep    │    スクショ/JS実行│   bukuro         │ ★get_weather    │  warnings   │・watch_check  │・search_diet_│  compli-  │
+│ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
+│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・predict_ │
+│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
+│                 │                   │                  │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
+│                 │                   │                  │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
+│                 │                   │                  │ ・track_package │             │・search_artist│・inspect_    │・check_   │
 │                 │                   │                  │   (荷物追跡)    │             │・search_music │  image       │  fda_regu-│
 │                 │                   │                  │                 │             │               │ (マルチモ    │  lated    │
 │                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
 │                 │                   │                  │                 │             │               │              │  cpsc_cert│
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 37ツール)
+★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 33ツール)
 図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
@@ -385,11 +385,11 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
 
-遅延ツールは `search_tools` で有効化すると、正式名（例: `search_trend`）と LibreChat 互換名（`default.search_trend`）が公開されます。初期公開は14ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
+遅延ツールは `search_tools` で有効化すると、正式名（例: `search_keywords`）と LibreChat 互換名（`default.search_keywords`）が公開されます。初期公開は14ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全51ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全47ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -472,14 +472,11 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_image` | Yahoo! JAPAN 画像検索を実行し、画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページを取得します。 | 各アイテムに `source: "image"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く |
-| `search_video` | Yahoo! JAPAN 動画検索を実行し、動画タイトル・動画URL・再生時間・配信元・サムネイルを取得します。`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます（全文は `get_youtube_transcript`）。 | 各アイテムに `source: "video"` | - `query` (string, 必須): 検索キーワード（URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0） |
-| `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50) |
+| `search_media` | Yahoo! JAPAN の画像・動画・ニュースの検索（`type` で選ぶ）。`image` は画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページ、`video` は動画タイトル・動画URL・再生時間・配信元・サムネイル（`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます。全文は `get_youtube_transcript`）、`news` は最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。REST は `POST /search/image`・`/search/video`・`/search/news` のまま。 | 各アイテムに `source: "image"`・`"video"`・`"news"` | - `type` (string, 必須): `"image"`・`"video"`・`"news"`<br>- `query` (string, 必須): 検索キーワード（`video` で URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。`image`・`video` は大きい値を指定しても 20 件)<br>- `page` (number, 任意, `image`・`video` のときだけ): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意, `video` のときだけ): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意, `video` のときだけ): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意, `video` のときだけ): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意, `video` のときだけ): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0）<br>- そのモードに無い引数（`news` の `page`、`image`・`news` の動画の引数）は、正しい使い方を添えた入力の誤りになる（既定値と同じ値は通す） |
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。アイテム間動的コーパスIDF付きBM25+リランキングによりクエリへの適合度が高いQ&Aを最上位表示。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 10 件ずつ進む。漏れなく続けるには `limit` を省く |
-| `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 20) |
+| `search_keywords` | `query` を指定すると Yahoo! JAPAN オートコンプリートサジェスト（関連検索ワード・補完候補）、省くと Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。REST は `POST /search/suggest`・`/search/trend` のまま。 | サジェスト: `source: "suggest"`<br>トレンド: 各アイテムに `source: "x"` | - `query` (string, 任意): 補完キーワード。省くと急上昇トレンド<br>- `limit` (number, 任意): 取得件数。サジェストはデフォルト 10・上限 20（超えると入力の誤り）、トレンドはデフォルト 20・上限 50（返るのはページに載っている件数まで。2026-11 は 31 件） |
 | `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。X取得はYahooのJSON直取得 (MCPバイナリ不使用)。一部失敗時は `partial: true` と `providerErrors` を付与。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/realtime`）は `data` で包みます。 | 各アイテムに `source: "x"` | - `query` (string, 任意): 検索キーワード (他条件の指定時は省略可)<br>- `accountId` / `fromUser` (string, 任意): 特定アカウント (`id:xxx` に変換)<br>- `toAccount` (string, 任意): 宛先 (`@xxx` に変換)<br>- `hashtags` (string, 任意): ハッシュタグ (`#` 付与)<br>- `excludeWords` (string, 任意): 除外語 (`-` 付与)<br>- `orWords` (string[], 任意): OR検索 (`(A B)` に変換)<br>- `url` (string, 任意): URL/ドメイン (`URL:` 演算子として送信)<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は `omittedCount`<br>- `page` (number, 任意): ページ番号 (デフォルト: 1。`limit` 件ずつ進む)<br>- `focus` (string, 任意): `"official"`（本人・公式を優先）または `"public"`（本人以外を優先。評判・感想・炎上の調査）。省略時はクエリの語から判定<br>- `anchor` (string, 任意, 100字まで): 守る固有名詞（クエリ中の語）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない |
-| `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。返るのはページに載っている件数まで。2026-11 は 31 件) |
-| `fetch_x_post` | Xの個別投稿をステータスIDまたは投稿URLで指定して全文・投稿日時・メディアを取得（FxTwitter経由・ID突合検証済みのみ返却）。`search_realtime` で見つけた投稿の深掘り用。取得不可は明示エラー。 | `found: true` 時に `detail.text` | - `statusId` (string, 任意): 数値ステータスID<br>- `url` (string, 任意): X投稿URL（`statusId` の代わりに指定可） |
+| `fetch_social_post`（X の投稿。モジュールは `web`） | Xの個別投稿をステータスIDまたは投稿URLで指定して全文・投稿日時・メディアを取得（FxTwitter経由・ID突合検証済みのみ返却）。`search_realtime` で見つけた投稿の深掘り用。取得不可は明示エラー。X 以外（Weibo・Threads・Instagram・Facebook）の URL は公開 SNS 投稿の取得になる。REST は `POST /realtime/post` のまま。 | `found: true` 時に `detail.text` | - `url` (string, 任意): X投稿URL（x.com・twitter.com）<br>- `statusId` (string, 任意, X だけ): 数値ステータスID（`url` の代わりに指定可）。`url` か `statusId` のどちらかは必須<br>- `commentLimit` は X 以外のときだけ |
 
 > 💡 **X (旧 Twitter) ポスト詳細・長文投稿（Note Tweet）の適応的補完**:  
 > X post detail enrichment may use the third-party FxTwitter/FxEmbed public API. Only the public X status ID is sent. The integration is fail-soft and can be disabled with `SORA_X_DETAIL_PROVIDER=off`.
@@ -612,7 +609,7 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ YouTube に問い合わせ、結果を 30 分（字幕なしは 60 秒）キャッシュします。
 - `get_youtube_channel` は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
-- ほかのツールからも使われます。`scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_video` の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_video` は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
+- ほかのツールからも使われます。`scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_media`（`type: "video"`）の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_media` の動画は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|

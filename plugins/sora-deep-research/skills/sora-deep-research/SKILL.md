@@ -74,7 +74,7 @@ description: >
 
 - `search_realtime`（Yahooリアルタイム）は日本語圏のX投稿観測。日本語以外の投稿や全SNSの代替にしない。
 - `search_social_posts` はWeibo新着検索とThreads/Instagram/Facebook公開投稿の取得。Xは対象外のため `search_realtime` を使う。
-- `fetch_social_post` は既知投稿の本文・日時・反応の取得。Weiboは長文・人気コメント補完に対応。Metaのコメント取得は対象外。
+- `fetch_social_post` は既知投稿の本文・日時・反応の取得（Xの既知投稿もURLかstatusIdで読む）。Weiboは長文・人気コメント補完に対応。Metaのコメント取得は対象外。
 - Weibo熱搜ランキングは話題検知の候補であり、原投稿の実績として数えない。
 - 熱榜に載らないことは批判がないことの証明にならない。
 - 同じ記事の転載を複数集めても独立した裏付けに数えない。

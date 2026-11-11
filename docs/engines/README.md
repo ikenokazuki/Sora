@@ -25,7 +25,7 @@ Sora のツールの多くは、取得した情報をそのまま返します。
 
 - [検索結果から答えの根拠を選ぶ](search-evidence.md)（`search_deep`・`search_web`・`scrape`）
 - [X の投稿検索で固有名詞を落とさない](x-search.md)（`search_realtime`・`search_deep`）
-- [長い字幕から問いに関係する部分を選ぶ](youtube-transcript-selection.md)（`scrape`・`search_video`・`search_deep`）
+- [長い字幕から問いに関係する部分を選ぶ](youtube-transcript-selection.md)（`scrape`・`search_media`・`search_deep`）
 - [「明日」を日付に直して予定をまとめる](relative-dates.md)（`scrape`・`search_deep`）
 - [静的な取得で足りるかを判定する](fetch-escalation.md)（`scrape` ほか）
 
