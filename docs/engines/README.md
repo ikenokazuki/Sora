@@ -15,9 +15,9 @@ Sora のツールの多くは、取得した情報をそのまま返します。
 ## 地名・住所
 
 - [日本の地名を気象庁の予報区に引き当てる](weather-place-names.md)（`get_weather`・`search_disaster_warnings`）
-- [日本語の住所を正規化する](address-normalization.md)（`normalize_address`）
-- [郵便番号と住所を引き合わせる](postal-code.md)（`search_postal_code`）
-- [緯度経度から住所を探す](reverse-geocoding.md)（`reverse_geocode`）
+- [日本語の住所を正規化する](address-normalization.md)（`lookup_address` の `address`）
+- [郵便番号と住所を引き合わせる](postal-code.md)（`lookup_address` の `zipcode`）
+- [緯度経度から住所を探す](reverse-geocoding.md)（`lookup_address` の `lat`・`lon`）
 - [地名や住所を座標にする順序](coordinate-resolution.md)（`get_elevation`・`search_poi`）
 - [空港・都道府県・道路の名前を解決する](airport-road-names.md)（`get_flight_status`・`search_road_traffic`）
 
