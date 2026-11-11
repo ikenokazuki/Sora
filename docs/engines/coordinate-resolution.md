@@ -9,7 +9,7 @@
 
 ## 使うツール
 
-- MCP: `get_elevation`（`address` を座標にして標高を返す）、`search_poi`（`center` の地名を座標にして周辺の施設を返す。`withAddress` で施設の住所も調べる）
+- MCP: `get_place_info`（`address` を座標にして、`include` で選んだ情報を返す。既定は標高。座標解決の欄は `location`、標高の欄は `elevation` の節）、`search_poi`（`center` の地名を座標にして周辺の施設を返す。`withAddress` で施設の住所も調べる）
 - REST: `POST /geo/elevation`、`GET /geo/elevation`、`POST /geo/poi`、`GET /geo/poi`
 
 `lat` と `lon` を直接渡したときは、座標の解決をしません。
@@ -55,10 +55,10 @@
 
 ## 決められないとき
 
-- 候補が複数あるときは、先頭を返して `needsVerification: true` にします。呼び出し側は、`matchedTitle`（標高）か `centerResolved.address`（周辺施設）を見て、意図した場所かを確かめます。違うときは、地域名を足して、もう一度呼びます。
-- 座標が決まらないときは、エラーです。`get_elevation` は、REST で 500（`GEO_ERROR`）、MCP でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。広域の検索には切り替えません。
+- 候補が複数あるときは、先頭を返して `needsVerification: true` にします。呼び出し側は、`matchedTitle`（標高。MCP の `get_place_info` では `location.matchedTitle`）か `centerResolved.address`（周辺施設）を見て、意図した場所かを確かめます。違うときは、地域名を足して、もう一度呼びます。
+- 座標が決まらないときは、エラーです。標高は、REST（`/geo/elevation`）で 500（`GEO_ERROR`）、MCP の `get_place_info` でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。広域の検索には切り替えません。
 - 地名・駅名・施設名で Nominatim が HTTP エラーを返したときは、国土地理院に切り替えず、エラーにします。国土地理院は部分一致で別の地名（例: 「渋谷駅」に福島県の「渋谷」）を返すので、国土地理院に回るのは、Nominatim が「該当なし」と答えたときだけです。番地まである住所で国土地理院が使えないときは、Nominatim で探します。
-- 標高が取れなかったときは、`elevationMeters` が `null` で、`formatted` が「測定不能」になります。
+- 標高が取れなかったときは、`elevationMeters` が `null` で、`formatted` が「測定不能」になります（MCP の `get_place_info` では `elevation` の節）。
 - `withAddress` で、住所データが待ち時間に間に合わなかった施設には、`addressIncomplete: true` が付きます。住所を解釈できない施設には、`addressInfo` が付かず、この印も付きません。時間切れと解釈できないことは、この印で区別します。
 
 ## 限界

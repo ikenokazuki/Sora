@@ -22,7 +22,7 @@
 
 | 環境変数 | 型 / 選択肢 | 既定値 | 説明 |
 | :--- | :--- | :--- | :--- |
-| `SORA_ADDRESS` | `lazy` \| `eager` \| `off` | `lazy` | 住所機能の動作モード。<br>・`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ、必要な市区町村を取得する。`get_elevation` / `search_poi` の座標解決は、**取得済みのデータだけ**をローカル優先で使い、取得は頼まない。<br>・`eager`: `lazy` に加えて、座標解決でデータの無い地域を見つけたとき、**待たずに**裏で取得を始める（その回は従来の経路で答える）。<br>・`off`: 住所機能を無効化。`lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED` を返す。取得も子プロセスも起こさない。 |
+| `SORA_ADDRESS` | `lazy` \| `eager` \| `off` | `lazy` | 住所機能の動作モード。<br>・`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ、必要な市区町村を取得する。`get_place_info` / `search_poi` の座標解決は、**取得済みのデータだけ**をローカル優先で使い、取得は頼まない。<br>・`eager`: `lazy` に加えて、座標解決でデータの無い地域を見つけたとき、**待たずに**裏で取得を始める（その回は従来の経路で答える）。<br>・`off`: 住所機能を無効化。`lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED` を返す。取得も子プロセスも起こさない。 |
 | `SORA_ADDRESS_DIR` | パス文字列 | `<db_dir>/address` | 住所データの保存先ディレクトリ。未設定時はデータベースファイル（本番は `/data/sora.db`）と同階層の `address/`、つまり本番では `/data/address`。 |
 | `SORA_ADDRESS_MAX_MB` | 数値 (64〜1048576) | `2048` (2GB) | ディスク使用量の上限（MB）。超過時は古い市区町村データから自動回収。 |
 | `SORA_ADDRESS_WAIT_MS` | 数値 (1000〜120000) | `20000` (20秒) | 初回データ構築の待機上限（ミリ秒）。上限を超えた場合は暫定結果（`incomplete: true`）を返し、バックグラウンドで構築を継続。 |
@@ -161,7 +161,7 @@ ABR で番地・号に届かない住所（大字の無い住所、ABR に無い
 
 - 正規化が町字まで届き（level 3 以上）、番地・号に届かず、データの不足でもないときだけ、その市区町村の街区データ（`mlit:<lg_code>`、市区町村単位の zip で数十KB〜数百KB）を取得して、街区符号（住居表示でない町は地番の本番）を引きます。ABR で届く住所には使いません。
 - 結果は `numberSource: "mlit"`（`level: 8`、`point.level: 7`）です。**街区符号までの照合で、号（住居番号）は照合していません。** 号以降の入力は `other` に残ります。点は街区の代表点です。
-- 局所ジオコーダー（`get_elevation`、`search_poi` の座標解決）は、街区レベルの点（`point.level` が 8 未満）を使わず、従来の経路へ回します。
+- 局所ジオコーダー（`get_place_info`、`search_poi` の座標解決）は、街区レベルの点（`point.level` が 8 未満）を使わず、従来の経路へ回します。
 - **地番の座標の補完**: ABR の地番は、位置参照（座標）が付いているのが一部だけです（構築済みの20市区町村で40.8%。山形県天童市8.2%、東京都府中市と千葉県八街市は0.3%）。座標の無い地番で照合できたとき（`numberSource: "chiban"`）は、同じ本番の街区の点で `point` を補います（`point.level: 7`、`pointSource: "mlit"`）。照合の根拠（`numberSource`）は変わりません。
 - **逆ジオコーディング**: ABR の番地・号の点が範囲内に無いときだけ、街区の点を候補にします（`numberSource: "mlit"`、`point.level: 7`）。ABR の点があれば ABR を優先します。地番の街区は、近くの複数の番地が1つの代表点を共有するため、共有された点は使いません（どの番地か決められない）。点は街区の近似で、番地の特定ではありません。
 - 取得に失敗しても、ABR だけの答えを返します。取得元に無い市区町村は、空の索引を公開して調べ直しを避けます。版（`24.0a` など）は新しい順に探します。年 1 回の更新は、期限（30 日）の再確認で署名が変わって反映されます。
@@ -190,7 +190,7 @@ ABR で番地・号に届かない住所（大字の無い住所、ABR に無い
 - 禁止行為のひとつに、データの内容を他の情報と照合して特定の個人を識別する行為があります。**地番から所有者などの個人を特定する用途には使えません。** 本機能は住所の実在確認と座標の取得のためのもので、個人の識別は行いません。この機能を使うサービスでも、同様の用途に使わないでください。
 - 地図の精度は作成時期などによって異なり、法務省はその正確性を保証しません。
 
-MCP ツールおよび REST レスポンスの `attribution` フィールドには、ABR と日本郵便の出典と加工の明記が自動で付きます。`get_elevation` と `search_poi` の座標解決では、`geocodingAttribution` と `centerResolved.attribution` が、`search_poi` の `withAddress` では `addressAttribution` が同じ役割です。結果に地番のデータ（`numberSource: "chiban"` の住所や、地番の点を最寄りとして返した逆引き）を使ったときは、さらに法務省の登記所備付地図データの出典、加工した旨、精度の注意が付きます。結果を表示・公開する際は、必ず併記してください。記載例にある利用日（「○年○月○日に利用」）は、表示・公開する側で必要に応じて付記してください（データの時点は `dataset.updatedAt` で分かります）。
+MCP ツールおよび REST レスポンスの `attribution` フィールドには、ABR と日本郵便の出典と加工の明記が自動で付きます。`get_place_info`（REST は `/geo/elevation`）と `search_poi` の座標解決では、`geocodingAttribution`（MCP の `get_place_info` では `location.geocodingAttribution`）と `centerResolved.attribution` が、`search_poi` の `withAddress` では `addressAttribution` が同じ役割です。結果に地番のデータ（`numberSource: "chiban"` の住所や、地番の点を最寄りとして返した逆引き）を使ったときは、さらに法務省の登記所備付地図データの出典、加工した旨、精度の注意が付きます。結果を表示・公開する際は、必ず併記してください。記載例にある利用日（「○年○月○日に利用」）は、表示・公開する側で必要に応じて付記してください（データの時点は `dataset.updatedAt` で分かります）。
 
 ---
 

@@ -104,7 +104,7 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
 >    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate, generate_gcc_certificate
 >    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
->    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status, lookup_address
+>    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_place_info, search_poi, get_flight_status, lookup_address
 >    - 国内交通乗換・運賃: search_route
 >    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_keywords, search_song, search_artist
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
@@ -329,7 +329,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
   - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
   - `get_flight_status`: 羽田・成田・伊丹・関西・中部の 5 空港のフライト運航状況・遅延・欠航
-  - `get_elevation`: 住所・地名の座標解決（国土地理院・Nominatim）& 国土地理院の標高（海抜）取得
+  - `get_place_info`: 住所・地名または座標の地点の情報。座標解決（国土地理院・Nominatim）& `include` で選ぶ情報（既定の `elevation`: 国土地理院の標高（海抜））
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
   - `lookup_address`: デジタル庁 ABR / 日本郵便の住所。`address` で住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合、`lat`・`lon` だけで緯度経度からの最寄り住所逆引き（住居表示・地番）、`zipcode` だけで郵便番号から住所候補
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
@@ -353,7 +353,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 │ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
 │ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・predict_ │
 │                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
-│                 │                   │                  │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
+│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     │ 📷 Media     │・verify_  │
 │                 │                   │                  │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
 │                 │                   │                  │ ・track_package │             │・search_artist│・inspect_    │・check_   │
 │                 │                   │                  │   (荷物追跡)    │             │・search_music │  image       │  fda_regu-│
@@ -502,7 +502,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 |---|---|---|---|
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・危険警報・警報・注意報（大雨、土砂災害、高潮、暴風、大雪、波浪、雷等。河川の氾濫は対象外）を市区町村単位（都道府県名は県全体、市区町村でも都道府県でもない名前は予報区単位）でリアルタイム取得します。大雨・土砂災害・高潮は段階（`alertLevel`: レベル2〜5）付き。見つからない地名はエラー。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方<br>- `areaCode` (string, 任意): 気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27"。北海道・鹿児島・沖縄は6桁の気象台で指定)。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可 |
 | `search_earthquake` | 気象庁の公式データ（使えない間は P2P地震情報）によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)。震度で絞ってから `limit` 件を返す。取得に失敗したときは 0 件でなくエラー |
-| `get_elevation` | 住所・地名を緯度経度へ解決し（番地まである住所は国土地理院、施設名・駅名・地名はNominatim）、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度 (-90〜90)<br>- `lon` (number, 任意): 経度 (-180〜180)<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
+| `get_place_info` | 地点（住所・地名か座標のどちらか一方）の情報を返します。住所・地名は緯度経度へ解決し（番地まである住所は国土地理院、施設名・駅名・地名はNominatim）、`include` で選んだ情報を節ごとに返します（いまは `elevation`: 国土地理院の海抜標高（m）。既定）。応答は `{ location, elevation, include }` で、座標解決の欄（`matchedTitle`・`geocodingSource`・`geocodingAttribution`・`needsVerification`・`lat`・`lon`）は `location` に、標高の欄（`elevationMeters`・`dataAccuracy`・`formatted`・`source`）は `elevation` にあります。解決先は`location.matchedTitle`、取得元の確認要求は`location.needsVerification`で確認できます。取得済みローカル住所データがあれば優先。`address` と `lat`・`lon` の両方、`lat` だけ、使えない `include` の値は、正しい使い方を示すエラー。REST（`/geo/elevation`）の応答は平らなまま。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。`lat`・`lon` とは排他<br>- `lat` (number, 任意): 緯度 (-90〜90、`lon` とペア)<br>- `lon` (number, 任意): 経度 (-180〜180、`lat` とペア)<br>- `noCache` (boolean, 任意): 座標・標高を再取得<br>- `include` (string[], 任意): 返す情報 (`elevation`。デフォルト: `["elevation"]`) |
 | `search_poi` | OpenPOI直結の全国施設POI検索。中心地名を座標化し（番地まである住所は国土地理院、それ以外はNominatim）、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`（`withAddress`指定時は`addressAttribution`も）は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000、bbox 指定時は無視)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 各POIの住所を正規化して郵便番号を付け、POIの座標と突き合わせて addressInfo として付与（住所データ未取得の地域は初回に取得を待つ。最大 `SORA_ADDRESS_WAIT_MS`）。待ち時間までに揃わなかったPOIは`addressIncomplete: true`（全体の`addressIncomplete` / `addressPending` / `addressUnavailable`で不足を確認）で、数秒後の再実行で完全になります。解釈できない住所は`addressInfo`なしで印も付きません<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
 | `lookup_address` | デジタル庁 ABR・日本郵便による住所の正規化・逆ジオコーディング・郵便番号検索。入力で選び、応答の `mode` に `normalize` / `reverse` / `postal` を返します。`address` は住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号（住所から郵便番号の逆引きは応答の `postalCodes`）を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。`address` なしの `lat`・`lon` は最寄り住所の逆引き（住居表示または地番の level 8 の住所、全国地方公共団体コード、街区・番地号キー、郵便番号）。`zipcode` だけは郵便番号から住所候補（町字・事業所）。組み合わせの誤り（`lat`・`lon` と `zipcode` だけ、`address` に `maxDistanceMeters` など）は、正しい使い方を示すエラー。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 任意): 正規化する住所 (例: "東京都千代田区永田町1-7-1")<br>- `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)。単独なら住所候補、`address` と一緒なら突き合わせ<br>- `lat` / `lon` (number, 任意, ペア指定): `address` なしなら逆引きする座標、`address` と一緒なら突き合わせ用座標<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8。`address` のときだけ)<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 (`address` のときだけ)<br>- `maxDistanceMeters` (number, 任意): 番地・号の点を探す範囲 (メートル, デフォルト: 300, 上限: 2000。逆引きのときだけ) |
 
@@ -2463,7 +2463,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
 | `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 45 ツール静的一括ロード |
-| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_elevation` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
+| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
 | `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |

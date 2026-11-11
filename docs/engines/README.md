@@ -18,7 +18,7 @@ Sora のツールの多くは、取得した情報をそのまま返します。
 - [日本語の住所を正規化する](address-normalization.md)（`lookup_address` の `address`）
 - [郵便番号と住所を引き合わせる](postal-code.md)（`lookup_address` の `zipcode`）
 - [緯度経度から住所を探す](reverse-geocoding.md)（`lookup_address` の `lat`・`lon`）
-- [地名や住所を座標にする順序](coordinate-resolution.md)（`get_elevation`・`search_poi`）
+- [地名や住所を座標にする順序](coordinate-resolution.md)（`get_place_info`・`search_poi`）
 - [空港・都道府県・道路の名前を解決する](airport-road-names.md)（`get_flight_status`・`search_road_traffic`）
 
 ## 検索・取得
