@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from './mcp.js';
 import * as scraper from './scraper.js';
 import * as cleaner from './response_cleaner.js';
 import * as social from './services/social/index.js';
+import * as addressTools from './services/address_tools.js';
+import { createAddressContext, setAddressContextForTest } from './services/address_context.js';
+import { createTestAddressData, settleAddressData } from './test_fixtures/address/builders.js';
+import { CHIYODA_LG, replaceTowns, sampleUpstream } from './test_fixtures/address/harness.js';
 import * as yahooCache from './yahoo_search_cache.js';
 import { BatchScrapeRequestSchema, ScrapeRequestSchema } from './types.js';
 import type { XPostDetailProvider } from './services/x_detail.js';
@@ -21,6 +28,7 @@ const expected: Record<string, string[]> = {
   fetch_social_post: ['url', 'statusId', 'commentLimit'],
   search_media: ['type', 'query', 'limit', 'page', 'transcripts', 'transcriptChars', 'updated', 'platform'],
   search_keywords: ['query', 'limit'],
+  lookup_address: ['address', 'zipcode', 'lat', 'lon', 'level', 'compareAddress', 'maxDistanceMeters'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -41,7 +49,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -561,6 +569,197 @@ describe('search_keywords: query ありはサジェスト、なしは急上昇�
   });
 });
 
+describe('lookup_address: address は正規化、lat・lon だけは逆引き、zipcode だけは郵便番号の候補（旧 normalize_address・reverse_geocode・search_postal_code）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lookup-address-'));
+  });
+  afterEach(async () => {
+    setAddressContextForTest(null);
+    await settleAddressData();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  /** 手元の取得元（番地・号まで）で作った住所データを、ツールが使う */
+  const useData = (up = sampleUpstream({ numbers: true })) => {
+    const ctx = createAddressContext(createTestAddressData(dir, { up }).data);
+    setAddressContextForTest(ctx);
+    return ctx;
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'lookup_address', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+  const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+
+  test('address と zipcode: 旧 normalize_address と同じ応答に mode: normalize（番地・号の level 8、郵便番号の突き合わせ）', async () => {
+    const ctx = useData();
+    const args = { address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' };
+    const res = await call(args);
+    expect(res.isError, textOf(res)).toBeFalsy();
+    const { mode, ...rest } = body(res);
+    expect(mode).toBe('normalize');
+    expect(rest).toMatchObject({
+      level: 8, normalized: '東京都千代田区永田町一丁目7-1', numberSource: 'rsdt', keys: { blk: '7', rsdt: '1' },
+      point: { lat: 35.675912, lon: 139.745512, level: 8 }, postalCodes: [{ zipcode: '1000014', exact: true }], checks: { zipcode: { status: 'match' } },
+    });
+    expect(rest).toEqual(plain(await addressTools.normalizeAddressTool(args, ctx)));
+  });
+
+  test('address と lat・lon・compareAddress・level: 旧 normalize_address の突き合わせ（座標の近さ・名寄せ）', async () => {
+    const ctx = useData();
+    const args = { address: '東京都千代田区永田町1-7-1', lat: 35.675915, lon: 139.745515, compareAddress: '千代田区永田町一丁目7番1号', level: 8 };
+    const { mode, ...rest } = body(await call(args));
+    expect(mode).toBe('normalize');
+    expect(rest.checks.coordinates).toBeDefined();
+    expect(rest.checks.compare).toMatchObject({ relation: 'identical', sameLevel: 8 });
+    expect(rest).toEqual(plain(await addressTools.normalizeAddressTool(args, ctx)));
+  });
+
+  test('address だけ（地番の住所）: 旧 search_postal_code の「住所から郵便番号」と同じ郵便番号・正規化・階層・出典を返す', async () => {
+    const ctx = useData();
+    const address = '札幌市中央区北1条西2丁目12-3';
+    const res = body(await call({ address }));
+    expect(res).toMatchObject({ mode: 'normalize', input: address, level: 8, numberSource: 'chiban', normalized: '北海道札幌市中央区北１条西二丁目12-3', postalCodes: [{ zipcode: '0600001', exact: true }] });
+    const old = (await addressTools.searchPostalCode({ address }, ctx)) as addressTools.SearchPostalCodeByAddress;
+    const pick = (r: any) => ({ normalized: r.normalized, level: r.level, postalCodes: r.postalCodes, attribution: r.attribution });
+    expect(pick(res)).toEqual(plain(pick(old)));
+  });
+
+  test('address の町名がローマ字でも、番地・号まで読む', async () => {
+    const up = sampleUpstream({ numbers: true });
+    const row = (id: string, oaza: string, roma: string, chome: string, n: string): string[] => [CHIYODA_LG, id, oaza, `${oaza}カナ`, roma, chome, n, '', '', '', '1'];
+    replaceTowns(up, CHIYODA_LG, [row('0006000', '千代田', 'Chiyoda', '', ''), row('0005001', '永田町', 'Nagatacho', '一丁目', '1'), row('0005002', '永田町', 'Nagatacho', '二丁目', '2')], '"roma"');
+    useData(up);
+    expect(body(await call({ address: '東京都千代田区Nagatacho 1-7-1' }))).toMatchObject({ mode: 'normalize', level: 8, numberSource: 'rsdt', normalized: '東京都千代田区永田町一丁目7-1' });
+  });
+
+  test('zipcode だけ: 旧 search_postal_code と同じ応答に mode: postal（事業所の個別郵便番号も）', async () => {
+    const ctx = useData();
+    const res = await call({ zipcode: '060-8621' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    const { mode, ...rest } = body(res);
+    expect(mode).toBe('postal');
+    expect(rest).toMatchObject({ zipcode: '0608621', count: 1, candidates: [{ kind: 'office', city: '札幌市中央区' }] });
+    expect(rest.candidates[0].office).toEqual(expect.any(String));
+    expect(rest).toEqual(plain(await addressTools.searchPostalCode({ zipcode: '060-8621' }, ctx)));
+  });
+
+  test('lat と lon だけ: 旧 reverse_geocode と同じ応答に mode: reverse（番地・号の点までの距離）', async () => {
+    const ctx = useData();
+    const point = { lat: 35.675915, lon: 139.745515 };
+    const { mode, ...rest } = body(await call(point));
+    expect(mode).toBe('reverse');
+    expect(rest).toMatchObject({ found: true, level: 8, numberSource: 'rsdt', normalized: '東京都千代田区永田町一丁目7-1' });
+    expect(rest.distanceMeters).toBeLessThan(5);
+    expect(rest).toEqual(plain(await addressTools.reverseGeocodeTool(point, ctx)));
+  });
+
+  test('lat・lon と maxDistanceMeters: 範囲内に番地・号の点が無ければ、旧 reverse_geocode と同じく町字（level 3）', async () => {
+    const ctx = useData();
+    const args = { lat: 35.675895, lon: 139.746306, maxDistanceMeters: 50 };
+    const { mode, ...rest } = body(await call(args));
+    expect(mode).toBe('reverse');
+    expect(rest).toMatchObject({ found: true, level: 3, numberSource: null, normalized: '東京都千代田区永田町一丁目' });
+    expect(rest).toEqual(plain(await addressTools.reverseGeocodeTool(args, ctx)));
+  });
+
+  test('機能の入力の誤りは、旧ツールと同じエラーの文', async () => {
+    useData();
+    const normalize = await call({ address: '東京都千代田区永田町1-7-1', lat: 35.6 });
+    expect(normalize.isError).toBe(true);
+    expect(textOf(normalize)).toBe('Address normalize error: lat と lon は組で指定してください');
+    const postal = await call({ zipcode: '12' });
+    expect(postal.isError).toBe(true);
+    expect(textOf(postal)).toStartWith('Postal code error: ');
+  });
+
+  // 誤った組み合わせ: 取得しない（サービスの関数を呼ばない）
+  const mockAll = () => {
+    const normalize = spyOn(addressTools, 'normalizeAddressTool').mockResolvedValue({ normalized: 'n' } as any);
+    const reverse = spyOn(addressTools, 'reverseGeocodeTool').mockResolvedValue({ found: true } as any);
+    const postal = spyOn(addressTools, 'searchPostalCode').mockResolvedValue({ zipcode: 'z' } as any);
+    restore.push(() => normalize.mockRestore(), () => reverse.mockRestore(), () => postal.mockRestore());
+    return { normalize, reverse, postal };
+  };
+  const ADDRESS = 'address を指定したとき';
+  const POINT = 'address なしで lat・lon を指定したとき';
+  const ZIP = 'zipcode だけを指定したとき';
+  const point = { lat: 35.675915, lon: 139.745515 };
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['何も無い', {}, ['address・zipcode・lat と lon のどれかを指定してください']],
+    ['lat だけ', { lat: 35.6 }, ['lat と lon は組で指定してください']],
+    ['lon と zipcode', { lon: 139.7, zipcode: '1000014' }, ['lat と lon は組で指定してください']],
+    ['lat・lon と zipcode', { ...point, zipcode: '1000014' }, [`zipcode は ${ADDRESS} か ${ZIP}だけ指定できます（いま: ${POINT}）`]],
+    ['address と maxDistanceMeters: 100（既定値の 300 と違う）', { address: '東京都千代田区', maxDistanceMeters: 100 }, [`maxDistanceMeters は ${POINT}だけ指定できます（いま: ${ADDRESS}）`]],
+    ['zipcode と maxDistanceMeters: 100', { zipcode: '1000014', maxDistanceMeters: 100 }, [`maxDistanceMeters は ${POINT}だけ指定できます（いま: ${ZIP}）`]],
+    ['zipcode と level: 3（既定値の 8 と違う）', { zipcode: '1000014', level: 3 }, [`level は ${ADDRESS}だけ指定できます（いま: ${ZIP}）`]],
+    ['zipcode と compareAddress', { zipcode: '1000014', compareAddress: '東京都千代田区' }, [`compareAddress は ${ADDRESS}だけ指定できます（いま: ${ZIP}）`]],
+    ['lat・lon と level: 3・compareAddress', { ...point, level: 3, compareAddress: '東京都千代田区' }, [`level, compareAddress は ${ADDRESS}だけ指定できます（いま: ${POINT}）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方を添える
+      for (const key of ['address', 'zipcode', 'lat', 'lon']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('空の address・zipcode は、指定しなかったのと同じ', async () => {
+    const { normalize, reverse, postal } = mockAll();
+    const res = await call({ address: '  ', zipcode: '', ...point });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(reverse.mock.calls[0][0]).toEqual(point);
+    expect(normalize).not.toHaveBeenCalled();
+    expect(postal).not.toHaveBeenCalled();
+  });
+
+  test('各経路は、旧ツールの引数だけをサービスに渡す', async () => {
+    const { normalize, reverse, postal } = mockAll();
+    await call({ address: '東京都千代田区永田町1-7-1', zipcode: '1000014', lat: 35.6, lon: 139.7, level: 3, compareAddress: '東京都千代田区' });
+    expect(normalize.mock.calls[0][0]).toEqual({ address: '東京都千代田区永田町1-7-1', zipcode: '1000014', lat: 35.6, lon: 139.7, level: 3, compareAddress: '東京都千代田区' });
+    await call({ ...point, maxDistanceMeters: 1000 });
+    expect(reverse.mock.calls[0][0]).toEqual({ ...point, maxDistanceMeters: 1000 });
+    await call({ zipcode: '〒100-0014' });
+    expect(postal.mock.calls[0][0]).toEqual({ zipcode: '〒100-0014' });
+  });
+
+  // LLM は、スキーマの default をそのまま引数に入れることがある。ほかの入力の引数でも、既定値と同じ値は断らない（使わない）
+  const echoed: Array<[string, Record<string, unknown>, 'normalize' | 'reverse' | 'postal', string[]]> = [
+    ['address + maxDistanceMeters: 300', { address: '東京都千代田区', maxDistanceMeters: 300 }, 'normalize', ['maxDistanceMeters']],
+    ['lat・lon + level: 8', { ...point, level: 8 }, 'reverse', ['level']],
+    ['zipcode + level: 8・maxDistanceMeters: 300', { zipcode: '1000014', level: 8, maxDistanceMeters: 300 }, 'postal', ['level', 'maxDistanceMeters']],
+  ];
+  for (const [label, args, calls, ignored] of echoed) {
+    test(`${label}（既定値と同じ）は通り、その引数は使われない`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError, textOf(res)).toBeFalsy();
+      expect(body(res).mode).toBe(calls);
+      for (const [name, spy] of Object.entries(spies)) expect(spy, name).toHaveBeenCalledTimes(name === calls ? 1 : 0);
+      for (const key of ignored) expect((spies[calls].mock.calls[0][0] as Record<string, unknown>)[key], key).toBeUndefined();
+    });
+  }
+
+  test('ほかの入力の引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通る', async () => {
+    mockAll();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'lookup_address')!.inputSchema as any).properties;
+      for (const [base, keys] of [[{ address: '東京都千代田区' }, ['maxDistanceMeters']], [{ zipcode: '1000014' }, ['level', 'maxDistanceMeters']], [point, ['level']]] as const) {
+        for (const key of keys) {
+          expect(props[key].default, `${key} の default`).not.toBeUndefined();
+          const res: any = await client.callTool({ name: 'lookup_address', arguments: { ...base, [key]: props[key].default } });
+          expect(res.isError, `${key}: ${textOf(res)}`).toBeFalsy();
+        }
+      }
+    });
+  });
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -571,6 +770,9 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['search_news', 'search_media', 'yahoo'],
     ['suggest_keywords', 'search_keywords', 'yahoo'],
     ['search_trend', 'search_keywords', 'yahoo'],
+    ['search_postal_code', 'lookup_address', 'disaster'],
+    ['normalize_address', 'lookup_address', 'disaster'],
+    ['reverse_geocode', 'lookup_address', 'disaster'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

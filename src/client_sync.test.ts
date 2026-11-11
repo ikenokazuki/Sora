@@ -55,7 +55,7 @@ describe('generated functions call the REST route that REST_MAP names', () => {
     route('search_web.ts', "{ method: 'POST', path: '/search/web' }, input");
     route('search_deep.ts', "{ method: 'POST', path: '/search/deep' }, input");
     route('search_poi.ts', "{ method: 'POST', path: '/geo/poi' }, input");
-    route('normalize_address.ts', "{ method: 'POST', path: '/geo/address/normalize' }, input");
+    route('lookup_address.ts', "{ method: 'POST', path: '/geo/address/normalize' }, input");
     route('get_country_context.ts', "{ method: 'GET', path: '/intelligence/context/:contextId' }, input");
     route('watch_list.ts', "{ method: 'GET', path: '/watch/list' })");
   });

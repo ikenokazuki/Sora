@@ -33,7 +33,7 @@ describe('fetch_social_post (X) contract', () => {
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
     expect(names).toContain('fetch_social_post');
-    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(47);
+    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(45);
   });
 
   test('search_tools discovers the tool by ツイート', async () => {

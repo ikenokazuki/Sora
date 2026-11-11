@@ -48,7 +48,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_chiebukuro', 'search_keywords', 'search_realtime',
   'search_route', 'get_weather', 'get_flight_status', 'track_package',
   'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
-  'get_elevation', 'search_poi', 'search_postal_code', 'normalize_address', 'reverse_geocode',
+  'get_elevation', 'search_poi', 'lookup_address',
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
   'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
@@ -99,9 +99,11 @@ export const REST_MAP: RestMap = {
   search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
   get_elevation: { method: 'POST', path: '/geo/elevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
-  search_postal_code: { method: 'POST', path: '/geo/postal-code' },
-  normalize_address: { method: 'POST', path: '/geo/address/normalize' },
-  reverse_geocode: { method: 'POST', path: '/geo/reverse' },
+  lookup_address: [
+    { method: 'POST', path: '/geo/address/normalize', fn: 'normalizeAddress' },
+    { method: 'POST', path: '/geo/reverse', fn: 'reverseGeocode' },
+    { method: 'POST', path: '/geo/postal-code', fn: 'searchPostalCode' },
+  ],
   watch_register: { method: 'POST', path: '/watch/register' },
   watch_check: { method: 'POST', path: '/watch/check' },
   watch_list: { method: 'GET', path: '/watch/list' },
@@ -837,47 +839,47 @@ export const TOOL_CASES: HealthCase[] = [
     return observation;
   }),
   // 初回の呼び出しは取得元（ABR・日本郵便）からデータを取ってくるので、外部に依存する。
-  toolCase('geo.postal_code', ['search_postal_code'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'search_postal_code', { zipcode: '100-0014' });
-    const observation = checkPostalCodeResult(raw, 'search_postal_code');
+  toolCase('geo.lookup_address.postal', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', { zipcode: '100-0014' });
+    const observation = checkPostalCodeResult(raw, 'lookup_address (postal)');
     const rest = await ctx.rest.call('GET', '/geo/postal-code?zipcode=100-0014', undefined, 60000);
     checkPostalCodeResult(rest.json, 'GET /geo/postal-code');
     return observation;
   }),
-  toolCase('geo.normalize_address', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'normalize_address', { address: NAGATACHO_ADDRESS });
-    const observation = checkNormalizedAddressResult(raw, 'normalize_address');
+  toolCase('geo.lookup_address.normalize', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', { address: NAGATACHO_ADDRESS });
+    const observation = checkNormalizedAddressResult(raw, 'lookup_address (normalize)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(NAGATACHO_ADDRESS), undefined, 60000);
     checkNormalizedAddressResult(rest.json, 'GET /geo/address/normalize');
     return observation;
   }),
-  toolCase('geo.normalize_address.mlit', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.mlit', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '港区芝大門1-10-18-3F';
-    const raw = await callAddressTool(ctx, 'normalize_address', { address });
-    const observation = checkMlitAddressResult(raw, 'normalize_address (mlit)');
+    const raw = await callAddressTool(ctx, 'lookup_address', { address });
+    const observation = checkMlitAddressResult(raw, 'lookup_address (normalize, mlit)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkMlitAddressResult(rest.json, 'GET /geo/address/normalize (mlit)');
     return observation;
   }),
-  toolCase('geo.normalize_address.zipcode', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.zipcode', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
     const body = { address: '千駄ヶ谷2-34-8テラス外苑204', zipcode: '1510051' };
-    const raw = await callAddressTool(ctx, 'normalize_address', body);
-    const observation = checkZipcodeFilledAddressResult(raw, 'normalize_address (zipcode)');
+    const raw = await callAddressTool(ctx, 'lookup_address', body);
+    const observation = checkZipcodeFilledAddressResult(raw, 'lookup_address (normalize, zipcode)');
     const rest = await ctx.rest.call('POST', '/geo/address/normalize', body, 60000);
     checkZipcodeFilledAddressResult(rest.json, 'POST /geo/address/normalize (zipcode)');
     return observation;
   }),
-  toolCase('geo.normalize_address.parcel_point', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.parcel_point', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '山形県天童市大字山口4559-4';
-    const raw = await callAddressTool(ctx, 'normalize_address', { address });
-    const observation = checkParcelPointResult(raw, 'normalize_address (parcel point)');
+    const raw = await callAddressTool(ctx, 'lookup_address', { address });
+    const observation = checkParcelPointResult(raw, 'lookup_address (normalize, parcel point)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkParcelPointResult(rest.json, 'GET /geo/address/normalize (parcel point)');
     return observation;
   }),
-  toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'reverse_geocode', NAGATACHO_POINT);
-    const observation = checkReverseGeocodeResult(raw, 'reverse_geocode');
+  toolCase('geo.lookup_address.reverse', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', NAGATACHO_POINT);
+    const observation = checkReverseGeocodeResult(raw, 'lookup_address (reverse)');
     const rest = await ctx.rest.call('GET', `/geo/reverse?lat=${NAGATACHO_POINT.lat}&lon=${NAGATACHO_POINT.lon}`, undefined, 60000);
     checkReverseGeocodeResult(rest.json, 'GET /geo/reverse');
     return observation;

@@ -3631,8 +3631,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(47);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(33);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(45);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4097,7 +4097,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 47 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 45 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4138,13 +4138,11 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('search_social_posts');
     expect(enabledToolsAll).toContain('fetch_social_post');
     expect(enabledToolsAll).toContain('search_poi');
-    expect(enabledToolsAll).toContain('search_postal_code');
-    expect(enabledToolsAll).toContain('normalize_address');
-    expect(enabledToolsAll).toContain('reverse_geocode');
+    expect(enabledToolsAll).toContain('lookup_address');
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(47);
+    expect(enabledToolsAll.length).toBe(45);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {

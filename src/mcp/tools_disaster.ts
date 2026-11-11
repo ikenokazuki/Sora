@@ -5,6 +5,7 @@ import { errorMessage } from '../errors.js';
 import { addressEnabled } from '../services/address_config.js';
 import { addressErrorMessage } from '../services/address_errors.js';
 import { registerTool, toolJson } from './registry.js';
+import { onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -168,96 +169,56 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
   );
 
   if (addressEnabled()) {
-    // Tool: search_postal_code (郵便番号 ⇄ 住所候補) - DEFERRED
+    // Tool: lookup_address (住所の正規化・緯度経度から住所・郵便番号から住所候補。入力で選ぶ) - DEFERRED
+    const ADDRESS_USAGE = '使い方: 住所の正規化は address（zipcode・lat と lon・compareAddress で突き合わせ、level で階層）。緯度経度から住所は address なしで lat と lon（maxDistanceMeters で範囲）。郵便番号から住所候補は zipcode だけ。';
+    // onlyForMode に渡す語句。エラーの文にそのまま出る。入力の形で言う
+    const WITH_ADDRESS = 'address を指定したとき';
+    const WITH_POINT = 'address なしで lat・lon を指定したとき';
+    const ZIPCODE_ONLY = 'zipcode だけを指定したとき';
+    // 既定値（説明・既定値の比較）。補うのはサービス（normalizeAddressTool・reverseGeocode）
+    const LEVEL_DEFAULT = 8;
+    const MAX_DISTANCE_DEFAULT = 300;
     registerTool(
       mcpServer,
       toolCatalog,
       sessionActivated,
-      'search_postal_code',
+      'lookup_address',
       'disaster',
-      '【郵便番号 ⇄ 住所候補】郵便番号から住所候補を特定、または住所から郵便番号を逆引きします（一次データ: 日本郵便・デジタル庁ABR）。zipcode または address のどちらか一方を指定。大口事業所の個別郵便番号対応。使われた市区町村のみオンデマンド取得。返却: { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }] } または { address, normalized, level, postalCodes: [{ zipcode, town, exact, fallback }] }, dataset, attribution }',
+      '【住所正規化・逆ジオコーディング・郵便番号】日本の住所を引く（一次データ: デジタル庁ABR・日本郵便。使われた市区町村のみオンデマンド取得）。入力で選ぶ。address: 番地・号（level 8）まで照合・正規化し、緯度経度・結合キー・郵便番号を付与。zipcode・lat/lon・compareAddress で突き合わせ（名寄せ）。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。lat と lon だけ: 緯度経度から最寄りの番地・号または町字の住所を逆引き（代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点で numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。zipcode だけ: 郵便番号から住所候補（大口事業所の個別郵便番号にも対応）。返却: mode（normalize / reverse / postal）と、normalize は { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }、reverse は { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }、postal は { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }], dataset, attribution }',
       {
-        zipcode: z.string().trim().optional().describe('郵便番号 (例: "100-0014", "〒100-0014")。住所候補を引く。address とは排他'),
-        address: z.string().trim().max(300).optional().describe('住所 (例: "東京都千代田区永田町1-7-1")。郵便番号を引く。zipcode とは排他'),
+        address: z.string().trim().max(300).optional().describe('正規化する住所 (例: "東京都千代田区永田町1-7-1")。先頭の〒郵便番号は postalCode として分離。応答の postalCodes が、この住所の郵便番号'),
+        zipcode: z.string().trim().optional().describe('郵便番号 (例: "100-0014", "〒100-0014")。zipcode だけなら住所候補を引く。address と一緒なら突き合わせ（市区町村の無い住所は、この番号の市区町村を補って解決する。checks.zipcode に match/partial/mismatch を返す）'),
+        lat: z.number().min(-90).max(90).optional().describe('緯度 (lon とペア)。address なしなら、この座標の住所を逆引きする。address と一緒なら突き合わせ（checks.coordinates を返す）'),
+        lon: z.number().min(-180).max(180).optional().describe('経度 (lat とペア)'),
+        level: z.number().int().min(1).max(8).optional().describe(`正規化する最大の階層 (1〜8、既定 ${LEVEL_DEFAULT})。8は番地・号まで。address のときだけ`).meta({ default: LEVEL_DEFAULT }),
+        compareAddress: z.string().trim().max(300).optional().describe('名寄せの相手の住所。checks.compare に一致階層と違いを返す。address のときだけ'),
+        maxDistanceMeters: z.number().int().min(1).max(2000).optional().describe(`番地・号の点を探す範囲m (既定 ${MAX_DISTANCE_DEFAULT}、最大 2000)。address なしで lat・lon のときだけ`).meta({ default: MAX_DISTANCE_DEFAULT }),
       },
-      async (opts) => {
+      async (args) => {
+        const { address, zipcode, lat, lon, level, compareAddress, maxDistanceMeters } = args;
+        // 空の address・zipcode は、指定しなかったのと同じ
+        const mode = address ? WITH_ADDRESS : lat !== undefined || lon !== undefined ? WITH_POINT : zipcode ? ZIPCODE_ONLY : undefined;
+        if (!mode) return usageError(`address・zipcode・lat と lon のどれかを指定してください。${ADDRESS_USAGE}`);
+        if (mode === WITH_POINT && (lat === undefined || lon === undefined)) return usageError(`lat と lon は組で指定してください。${ADDRESS_USAGE}`);
+        const invalid = onlyForMode(mode, [WITH_ADDRESS, ZIPCODE_ONLY], args, ['zipcode'], ADDRESS_USAGE)
+          ?? onlyForMode(mode, [WITH_ADDRESS], args, ['level', 'compareAddress'], ADDRESS_USAGE, { level: LEVEL_DEFAULT })
+          ?? onlyForMode(mode, [WITH_POINT], args, ['maxDistanceMeters'], ADDRESS_USAGE, { maxDistanceMeters: MAX_DISTANCE_DEFAULT });
+        if (invalid) return usageError(invalid);
+        // 応答とエラーの文は、統合前の 3 ツールのまま（REST の 3 ルートと同じ応答）。mode を足す
+        const label = mode === WITH_ADDRESS ? 'Address normalize' : mode === WITH_POINT ? 'Reverse geocode' : 'Postal code';
         try {
-          const { searchPostalCode } = await import('../services/address_tools.js');
-          const result = await searchPostalCode(opts);
-          return {
-            content: [{ type: 'text', text: toolJson(result) }],
-          };
+          const tools = await import('../services/address_tools.js');
+          const answer = mode === WITH_ADDRESS
+            ? { mode: 'normalize', ...await tools.normalizeAddressTool({ address: address!, level, zipcode, lat, lon, compareAddress }) }
+            : mode === WITH_POINT
+              ? { mode: 'reverse', ...await tools.reverseGeocodeTool({ lat: lat!, lon: lon!, maxDistanceMeters }) }
+              : { mode: 'postal', ...await tools.searchPostalCode({ zipcode }) };
+          return { content: [{ type: 'text', text: toolJson(answer) }] };
         } catch (err) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Postal code error: ${addressErrorMessage(err)}` }],
-          };
+          return { isError: true, content: [{ type: 'text', text: `${label} error: ${addressErrorMessage(err)}` }] };
         }
       },
-      { defaultEnabled: deferredDefault, keywords: ['郵便番号', 'zipcode', '郵便', '住所候補', '事業所郵便番号', '郵便番号検索', 'postal'] },
-    );
-
-    // Tool: normalize_address (住所正規化・番地号照合・突き合わせ) - DEFERRED
-    registerTool(
-      mcpServer,
-      toolCatalog,
-      sessionActivated,
-      'normalize_address',
-      'disaster',
-      '【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。返却: { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }',
-      {
-        address: z.string().trim().min(1).max(300).describe('正規化する住所。先頭の〒郵便番号は postalCode として分離'),
-        level: z.number().int().min(1).max(8).optional().describe('正規化する最大の階層 (1〜8、既定 8)。8は番地・号まで').meta({ default: 8 }),
-        zipcode: z.string().trim().optional().describe('住所と突き合わせる郵便番号。市区町村の無い住所は、この番号の市区町村を補って解決する。checks.zipcode に match/partial/mismatch を返す'),
-        lat: z.number().min(-90).max(90).optional().describe('突き合わせる緯度 (lon とペア)。checks.coordinates を返す'),
-        lon: z.number().min(-180).max(180).optional().describe('突き合わせる経度 (lat とペア)'),
-        compareAddress: z.string().trim().max(300).optional().describe('名寄せの相手の住所。checks.compare に一致階層と違いを返す'),
-      },
-      async (opts) => {
-        try {
-          const { normalizeAddressTool } = await import('../services/address_tools.js');
-          const result = await normalizeAddressTool(opts);
-          return {
-            content: [{ type: 'text', text: toolJson(result) }],
-          };
-        } catch (err) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Address normalize error: ${addressErrorMessage(err)}` }],
-          };
-        }
-      },
-      { defaultEnabled: deferredDefault, keywords: ['住所正規化', '住所検索', '番地', '号', '地番', '名寄せ', '突き合わせ', '住居表示', 'ABR', 'normalize'] },
-    );
-
-    // Tool: reverse_geocode (緯度経度 → 住所逆引き) - DEFERRED
-    registerTool(
-      mcpServer,
-      toolCatalog,
-      sessionActivated,
-      'reverse_geocode',
-      'disaster',
-      '【緯度経度 → 住所逆引き】緯度経度から最寄りの番地・号または町字の住所を特定します（全国町字点索引・ABR住居表示/地番データ）。代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点（numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。返却: { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }',
-      {
-        lat: z.number().min(-90).max(90).describe('緯度'),
-        lon: z.number().min(-180).max(180).describe('経度'),
-        maxDistanceMeters: z.number().int().min(1).max(2000).optional().describe('番地・号の点を探す範囲m (既定 300、最大 2000)').meta({ default: 300 }),
-      },
-      async (opts) => {
-        try {
-          const { reverseGeocodeTool } = await import('../services/address_tools.js');
-          const result = await reverseGeocodeTool(opts);
-          return {
-            content: [{ type: 'text', text: toolJson(result) }],
-          };
-        } catch (err) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Reverse geocode error: ${addressErrorMessage(err)}` }],
-          };
-        }
-      },
-      { defaultEnabled: deferredDefault, keywords: ['逆ジオコーディング', '座標から住所', '緯度経度から住所', '逆引き', 'reverse_geocode', '現在地住所'] },
+      { defaultEnabled: deferredDefault, keywords: ['住所正規化', '住所検索', '番地', '号', '地番', '名寄せ', '突き合わせ', '住居表示', 'ABR', 'normalize', '郵便番号', 'zipcode', '郵便', '住所候補', '事業所郵便番号', '郵便番号検索', 'postal', '逆ジオコーディング', '座標から住所', '緯度経度から住所', '逆引き', '現在地住所', 'search_postal_code', 'normalize_address', 'reverse_geocode'] },
     );
   }
 }
