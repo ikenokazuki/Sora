@@ -9,16 +9,32 @@ import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detect
 import { handleBrowserSessionAction } from './browser_session.js';
 import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
 import { deliverWebhook } from './enrichment.js';
+import * as httpFetcher from './http_fetcher.js';
 import { defaultReferrerHeaders, pickProxyUrl } from './http_fetcher.js';
 import { app } from './index.js';
 import { createMcpServer, sanitizeMcpResponse, toolCatalogOf } from './mcp.js';
 import { isModuleActive } from './mcp/registry.js';
+import { integratedSearch } from './scraper.js';
 import { resolveMcpOriginConfig, resolveMcpPort } from './security/mcp_origin.js';
 import { sendAdminAlert } from './services/health.js';
+import { openPoiBaseUrl } from './services/poi.js';
+import { FxTwitterDetailProvider } from './services/x_detail.js';
+import * as yahoo from './services/yahoo.js';
 import { withEnv } from './test_fixtures/env.js';
 
-// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
+// v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ・検索・Yahoo・X・OpenPOI）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
 // 旧名を書くテストは、このファイルと config.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
+
+/**
+ * モジュールの読み込み時に読む値は、子プロセスで確かめる（このプロセスの値は、読み込んだときのまま）。
+ * code は `RESULT <値>` の行を出す。names は親の環境から外してから vars を足す。
+ */
+async function loadTimeResult(code: string, names: string[], vars: Record<string, string>): Promise<string> {
+  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !names.includes(k)));
+  const proc = Bun.spawn([process.execPath, '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
+  const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
+}
 
 describe('SORA_MODULES', () => {
   const modules = (value: string | undefined, old?: string) => withEnv({ SORA_MODULES: value, ENABLED_MODULES: old }, () => ({
@@ -184,14 +200,11 @@ describe('通知の旧名は読まない（新しい名前の動きは index.tes
 describe('ブラウザ', () => {
   afterAll(closeSharedBrowser);
 
-  /** モジュールの読み込み時に読む値は、子プロセスで確かめる（このプロセスの値は、読み込んだときのまま）。 */
-  async function semaphoreMax(vars: Record<string, string>): Promise<string> {
-    const code = `import { browserSemaphore } from './src/browser_engine.ts'; console.log('RESULT', browserSemaphore.max);`;
-    const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'SORA_BROWSER_MAX_CONCURRENCY' && k !== 'MAX_CONCURRENT_BROWSERS'));
-    const proc = Bun.spawn([process.execPath, '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
-    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
-  }
+  const semaphoreMax = (vars: Record<string, string>) => loadTimeResult(
+    `import { browserSemaphore } from './src/browser_engine.ts'; console.log('RESULT', browserSemaphore.max);`,
+    ['SORA_BROWSER_MAX_CONCURRENCY', 'MAX_CONCURRENT_BROWSERS'],
+    vars,
+  );
 
   test('SORA_BROWSER_MAX_CONCURRENCY は読み込み時に読み、50 で頭打ち。旧名 MAX_CONCURRENT_BROWSERS は読まない', async () => {
     const auto = `RESULT ${defaultBrowserConcurrency(detectMemoryLimitBytes())}`;
@@ -305,5 +318,108 @@ describe('プロキシ（名前は変えない。登録簿から読む）', () =
     await withEnv({ ...none, SORA_PROXY_LIST: 'bad entry', SORA_PROXY_URL: 'http://single.example.test:9090' }, () => {
       expect(pickProxyUrl()).toBe('http://single.example.test:9090');
     });
+  });
+});
+
+describe('検索', () => {
+  test('SORA_SEARCH_SCRAPE_DEADLINE_MS は search_deep の本文取得の既定の締切。0・不正な値と、旧名 SORA_SCRAPE_DEADLINE_MS は既定の 0（打ち切り無し）', async () => {
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', async fetch(req) {
+      await Bun.sleep(1000);
+      return new Response(`<html><head><title>t</title></head><body><main><h1>${new URL(req.url).pathname}</h1><p>${'本文の段落です。'.repeat(40)}</p></main></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    } });
+    const webSpy = spyOn(yahoo, 'searchYahooWeb');
+    const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockResolvedValue({ items: [] } as never);
+    let run = 0;
+    const cut = (vars: Record<string, string>) => withEnv({ SORA_SEARCH_SCRAPE_DEADLINE_MS: undefined, SORA_SCRAPE_DEADLINE_MS: undefined, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true', ...vars }, async () => {
+      // 締切で打ち切った取得も裏で続いてキャッシュに残るので、回ごとに別の URL にする
+      const items = ['a', 'b', 'c'].map((p) => ({ title: p, url: `http://127.0.0.1:${server.port}/${run}/${p}`, snippet: `${p} の抜粋` }));
+      run++;
+      webSpy.mockResolvedValue({ items, count: items.length } as never);
+      const result = await integratedSearch({ query: '締切 確認', limit: 3, includeRealtime: false, noCache: true });
+      return (result.results as { deadlineExceeded?: boolean }[]).some((r) => r.deadlineExceeded === true);
+    });
+    try {
+      expect(await cut({ SORA_SEARCH_SCRAPE_DEADLINE_MS: ' 300 ' })).toBe(true);
+      for (const value of ['0', '-1', 'abc', '1.5']) expect(await cut({ SORA_SEARCH_SCRAPE_DEADLINE_MS: value }), value).toBe(false);
+      expect(await cut({ SORA_SCRAPE_DEADLINE_MS: '300' })).toBe(false);
+    } finally {
+      webSpy.mockRestore();
+      realtimeSpy.mockRestore();
+      server.stop(true);
+    }
+  }, 30_000);
+});
+
+describe('Yahoo', () => {
+  test('SORA_YAHOO_MCP_PATH は読み込み時に読み、前後の空白を除く。旧名 YAHOO_MCP_PATH は読まない', async () => {
+    const path = (vars: Record<string, string>) => loadTimeResult(
+      `import { YAHOO_MCP_EXECUTABLE_PATH } from './src/services/yahoo.ts'; console.log('RESULT', YAHOO_MCP_EXECUTABLE_PATH);`,
+      ['SORA_YAHOO_MCP_PATH', 'YAHOO_MCP_PATH'],
+      vars,
+    );
+    const auto = await path({});
+    expect(auto.startsWith('RESULT '), auto).toBe(true);
+    expect(auto).not.toBe('RESULT /opt/old/yahoo-search-mcp');
+    expect(await path({ SORA_YAHOO_MCP_PATH: ' /opt/fake/yahoo-search-mcp ' })).toBe('RESULT /opt/fake/yahoo-search-mcp');
+    expect(await path({ YAHOO_MCP_PATH: '/opt/old/yahoo-search-mcp' })).toBe(auto);
+  }, 30_000);
+
+  test('SORA_YAHOO_MIN_INTERVAL_MS・SORA_YAHOO_BREAKER_COOLDOWN_MS は 0 以上の整数。不正な値は既定（500・120000）', async () => {
+    const read = (value: string | undefined) => withEnv({ SORA_YAHOO_MIN_INTERVAL_MS: value, SORA_YAHOO_BREAKER_COOLDOWN_MS: value }, () => [yahoo.yahooMinIntervalMs(), yahoo.yahooBreakerCooldownMs()]);
+    expect(await read(undefined)).toEqual([500, 120_000]);
+    expect(await read(' 250 ')).toEqual([250, 250]);
+    expect(await read('0')).toEqual([0, 0]);
+    for (const value of ['abc', '-1', '1.5', '250ms']) expect(await read(value), value).toEqual([500, 120_000]);
+  });
+});
+
+describe('X の投稿の詳細（FxTwitter 互換の API）', () => {
+  let seq = 0;
+  /**
+   * vars の環境で provider を作り、環境を戻してから 1 件を取る（構築時に読むことも確かめる）。
+   * 呼んだ URL（投稿の ID は <id>）と待ち時間を返す。呼ばなければ undefined。
+   */
+  async function detailCall(vars: Record<string, string>): Promise<[string, unknown] | undefined> {
+    const spy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockResolvedValue({ finalUrl: '', response: new Response('{}', { status: 404 }) });
+    try {
+      const provider = await withEnv({ SORA_X_DETAIL_BASE_URL: undefined, SORA_X_DETAIL_TIMEOUT_MS: undefined, SORA_X_DETAIL_PROVIDER: undefined, FXTWITTER_API_BASE: undefined, FXTWITTER_TIMEOUT_MS: undefined, ...vars }, () => new FxTwitterDetailProvider());
+      // 取得の結果はキャッシュされうるので、回ごとに別の ID にする
+      const statusId = `1900000000000${seq++}`;
+      await provider.fetchStatus(statusId);
+      const call = spy.mock.calls[0];
+      return call && [call[0].replace(statusId, '<id>'), call[1]];
+    } finally {
+      spy.mockRestore();
+    }
+  }
+  const DEFAULT_CALL: [string, unknown] = ['https://api.fxtwitter.com/2/status/<id>', 1500];
+
+  test('SORA_X_DETAIL_BASE_URL・SORA_X_DETAIL_TIMEOUT_MS は構築時に読む。URL の前後の空白と末尾の / は外す', async () => {
+    expect(await detailCall({})).toEqual(DEFAULT_CALL);
+    expect(await detailCall({ SORA_X_DETAIL_BASE_URL: ' http://fx.example.test:8080/ ', SORA_X_DETAIL_TIMEOUT_MS: ' 2500 ' })).toEqual(['http://fx.example.test:8080/2/status/<id>', 2500]);
+  });
+
+  test('URL でない値・http(s) でない値、1 未満・整数でない待ち時間は既定', async () => {
+    for (const value of ['fx.example.test', 'ftp://fx.example.test']) expect(await detailCall({ SORA_X_DETAIL_BASE_URL: value }), value).toEqual(DEFAULT_CALL);
+    for (const value of ['0', 'abc', '-5', '1.5']) expect(await detailCall({ SORA_X_DETAIL_TIMEOUT_MS: value }), value).toEqual(DEFAULT_CALL);
+  });
+
+  test('旧名 FXTWITTER_API_BASE・FXTWITTER_TIMEOUT_MS は読まない', async () => {
+    expect(await detailCall({ FXTWITTER_API_BASE: 'https://old.example.test', FXTWITTER_TIMEOUT_MS: '2500' })).toEqual(DEFAULT_CALL);
+  });
+
+  test('SORA_X_DETAIL_PROVIDER は既定で有効。off・false・0・no（大文字小文字は問わない）で無効、不正な値は既定（有効）', async () => {
+    for (const value of ['off', 'false', '0', 'no', 'OFF']) expect(await detailCall({ SORA_X_DETAIL_PROVIDER: value }), value).toBeUndefined();
+    for (const value of ['on', '1', 'abc']) expect(await detailCall({ SORA_X_DETAIL_PROVIDER: value }), value).toEqual(DEFAULT_CALL);
+  });
+});
+
+describe('OpenPOI', () => {
+  test('SORA_OPENPOI_BASE_URL は前後の空白と末尾の / を外す。空・URL でない値・http(s) でない値は既定', async () => {
+    const base = (value: string | undefined) => withEnv({ SORA_OPENPOI_BASE_URL: value }, () => openPoiBaseUrl());
+    expect(await base(undefined)).toBe('https://api.openpoiapi.com');
+    expect(await base(' https://poi.example.test/ ')).toBe('https://poi.example.test');
+    expect(await base('https://poi.example.test//')).toBe('https://poi.example.test');
+    for (const value of ['', 'poi.example.test', 'ftp://poi.example.test']) expect(await base(value), value).toBe('https://api.openpoiapi.com');
   });
 });
